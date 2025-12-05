@@ -84,11 +84,8 @@ export const profileValidationSchema = Joi.object({
 
   // Common
   name: Joi.string().min(2).trim().required(),
-  age: Joi.when('role', {
-    is: 'tutor', then: Joi.number().integer().min(18).required(),
-    otherwise: Joi.number().integer().min(5), // optional for students
-  }),
-  languages: Joi.array().items(Joi.string().trim()).default([]),
+ age: Joi.number().integer().min(5),
+languages: Joi.array().items(Joi.string().trim()).default([]),
 
  
   

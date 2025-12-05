@@ -348,34 +348,49 @@ export const useAccountSection = (
   });
 
   /* 7) URL-driven tab logic ------------------------------------------------- */
-  useEffect(() => {
-    if (queryParams?.get('action') === 'createSession') {
-      setActiveTab('sessions');
-      setFormData((fd) => ({
-        ...fd,
-        tutorId: queryParams.get('tutorId)') ?? queryParams.get('tutorId') ?? '',
-        tutorName: queryParams.get('tutorName') ?? '',
-        subject: queryParams.get('subject') ?? '',
-        pricing: queryParams.get('pricing') ? JSON.parse(queryParams.get('pricing')!) : {},
-      }));
-    }
-  }, [queryParams]);
+ useEffect(() => {
+  if (queryParams?.get('action') === 'createSession') {
+    setActiveTab('sessions');
+    setFormData((fd) => ({
+      ...fd,
+      tutorId: queryParams.get('tutorId') ?? '',
+      tutorName: queryParams.get('tutorName') ?? '',
+      subject: queryParams.get('subject') ?? '',
+      pricing: queryParams.get('pricing')
+        ? JSON.parse(queryParams.get('pricing')!)
+        : {},
+    }));
+  }
+}, [queryParams, setActiveTab, setFormData]);
+
 
   /* 8) When Earnings tab is open, refresh related data on focus ------------ */
-  useEffect(() => {
-    if (activeTab !== 'earnings') return;
+ useEffect(() => {
+  if (activeTab !== 'earnings') return;
+
+  // Always refresh once when Earnings tab is opened
+  refetchTransactions();
+  refetchAccount();
+  refetchEarnings();
+
+  // ✅ Only attach window focus listener on web
+  if (
+    typeof window === 'undefined' ||
+    typeof window.addEventListener !== 'function'
+  ) {
+    return;
+  }
+
+  const onFocus = () => {
     refetchTransactions();
     refetchAccount();
     refetchEarnings();
+  };
 
-    const onFocus = () => {
-      refetchTransactions();
-      refetchAccount();
-      refetchEarnings();
-    };
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [activeTab, refetchTransactions, refetchAccount, refetchEarnings]);
+  window.addEventListener('focus', onFocus);
+  return () => window.removeEventListener('focus', onFocus);
+}, [activeTab, refetchTransactions, refetchAccount, refetchEarnings]);
+
 
   /* 9) Handlers ------------------------------------------------------------- */
   const confirmCancelSession = useCallback(

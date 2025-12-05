@@ -1,6 +1,6 @@
 /// <reference path="../declarations.d.ts" />
-
-import React, { useMemo, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useMemo, useEffect, useRef, useState,useCallback } from 'react';
 import {
   View,
   Text,
@@ -328,6 +328,17 @@ const AccountSectionNative: React.FC = () => {
     () => () => debouncedReviewSubmission.cancel(),
     [debouncedReviewSubmission]
   );
+
+  
+  useFocusEffect(
+  useCallback(() => {
+    if (activeTab === 'earnings') {
+      refetchTransactions();
+      refetchAccount();
+      refetchEarnings();
+    }
+  }, [activeTab, refetchTransactions, refetchAccount, refetchEarnings])
+);
 
   // Sort sessions by date
   const sortedSessions = useMemo(

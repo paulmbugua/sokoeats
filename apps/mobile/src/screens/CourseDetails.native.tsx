@@ -10,17 +10,22 @@ import {
   Alert,
   Modal,
   TextInput,
-  Linking,            // ✅ NEW
 } from 'react-native';
 import debounce from 'lodash.debounce';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Linking } from 'react-native';
+
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useCourses, useEnrollments, useOerMeta } from '@mytutorapp/shared/hooks'; // ✅ NEW (useOerMeta)
+import { useCourses, useEnrollments, useOerMeta } from '@mytutorapp/shared/hooks';
 import { useCourseReviews } from '@mytutorapp/shared/hooks/useCourseReviews';
+
 import type { Course } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
 import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
+
+import tw from '../../tailwind';
 
 interface MaybeInstructor {
   tutorName?: string;
@@ -30,32 +35,77 @@ interface MaybeInstructor {
 type Nav = StackNavigationProp<MainStackParamList, 'CourseDetails'>;
 type Rt = RouteProp<MainStackParamList, 'CourseDetails'>;
 
+const FOOTER_OFFSET = 80;
+
 /* --------------------------------- Stars --------------------------------- */
 const StarRow: React.FC<{ avg?: number; count?: number }> = ({ avg = 0, count = 0 }) => {
   const a = Math.round(avg * 2) / 2;
-  const stars = [1, 2, 3, 4, 5].map((i) => (
-    <Text key={i} className={`mr-0.5 ${a >= i ? 'text-yellow-500' : a + 0.5 === i ? 'text-yellow-500/70' : 'text-yellow-500/30'}`}>
-      ★
-    </Text>
-  ));
   return (
-    <View className="flex-row items-center">
-      {stars}
-      <Text className="text-sm text-[#49739c] dark:text-darkTextSecondary ml-1">{avg.toFixed(1)} ({count})</Text>
+    <View style={tw`flex-row items-center`}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <Text
+          key={i}
+          style={tw.style(
+            'mr-0.5 text-lg',
+            a >= i
+              ? 'text-yellow-500'
+              : a + 0.5 === i
+              ? 'text-yellow-500/70'
+              : 'text-yellow-500/30',
+          )}
+        >
+          ★
+        </Text>
+      ))}
+      <Text style={tw`ml-1 text-sm text-[#49739c] dark:text-darkTextSecondary`}>
+        {avg.toFixed(1)} ({count})
+      </Text>
     </View>
   );
 };
 
 /** Coerce any price-like value to whole tokens (non-negative int) */
 function toTokens(v: unknown): number {
-  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number.parseFloat(v) : 0;
+  const n =
+    typeof v === 'number' ? v : typeof v === 'string' ? Number.parseFloat(v) : 0;
   return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
 }
+
+/* --------------------------------- UI Bits -------------------------------- */
+const Pill: React.FC<React.PropsWithChildren<{}>> = ({ children }) => (
+  <View
+    style={tw`h-8 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
+  >
+    <Text style={tw`text-sm text-slate-900 dark:text-slate-100`}>{children}</Text>
+  </View>
+);
+
+const CenterMessage: React.FC<{ text: string; variant?: 'error' | 'normal' }> = ({
+  text,
+  variant = 'normal',
+}) => (
+  <View style={tw`flex-1 items-center justify-center px-6`}>
+    <Text
+      style={tw.style(
+        'text-base text-center',
+        variant === 'error'
+          ? 'text-red-600 dark:text-red-400'
+          : 'text-slate-800 dark:text-slate-100',
+      )}
+    >
+      {text}
+    </Text>
+  </View>
+);
 
 const CourseDetailsNative: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
   const courseId = String(route.params?.courseId ?? '');
+
+  const insets = useSafeAreaInsets();
+  const topPad = Math.max(insets.top, 12);
+  const bottomPad = Math.max(insets.bottom, 16);
 
   const { backendUrl, token, profile, tokens: walletTokens = 0 } = useShopContext();
   const role = String(profile?.role ?? '').toLowerCase();
@@ -75,7 +125,7 @@ const CourseDetailsNative: React.FC = () => {
 
   const c: Course | null | undefined = selectedCourse ?? null;
 
-  // --- OER meta (NEW to mirror web) ---
+  // --- OER meta ---
   const oerMeta = useOerMeta(courseId);
 
   // --- Enrollments + Purchase flow ---
@@ -86,7 +136,7 @@ const CourseDetailsNative: React.FC = () => {
     loading: enrollmentsLoading,
     error: enrollError,
     fetchMine,
-    purchaseCourseAndEnroll, // ✅ purchase + auto-enroll
+    purchaseCourseAndEnroll, // purchase + auto-enroll
   } = useEnrollments({
     backendUrl,
     token: token ?? '',
@@ -100,7 +150,9 @@ const CourseDetailsNative: React.FC = () => {
 
   const myEnrollment = useMemo(() => {
     if (!courseId) return undefined;
-    return enrollments.find((e: any) => String(e?.course_id ?? e?.courseId) === String(courseId));
+    return enrollments.find(
+      (e: any) => String(e?.course_id ?? e?.courseId) === String(courseId),
+    );
   }, [enrollments, courseId]);
 
   // Always treat price as tokens
@@ -116,9 +168,15 @@ const CourseDetailsNative: React.FC = () => {
   const { avg, count, hasMyReview, reload, submit, posting } = useCourseReviews(
     backendUrl,
     courseId,
-    { myStudentId: myId, token: token ?? '' }
+    { myStudentId: myId, token: token ?? '' },
   );
-  const debouncedReload = useMemo(() => debounce(() => { void reload(); }, 200), [reload]);
+  const debouncedReload = useMemo(
+    () =>
+      debounce(() => {
+        void reload();
+      }, 200),
+    [reload],
+  );
   useEffect(() => () => debouncedReload.cancel(), [debouncedReload]);
 
   const [openReview, setOpenReview] = useState(false);
@@ -139,12 +197,15 @@ const CourseDetailsNative: React.FC = () => {
 
     const proceed = await confirm(
       'Purchase & Enroll',
-      `You are about to purchase "${c.title}" for ${priceTokens} tokens.\n\nThis amount will be deducted from your balance (${walletTokens} tokens). Continue?`
+      `You are about to purchase "${c.title}" for ${priceTokens} tokens.\n\nThis amount will be deducted from your balance (${walletTokens} tokens). Continue?`,
     );
     if (!proceed) return;
 
     if (!hasEnough) {
-      const goBuy = await confirm('Insufficient balance', 'Not enough tokens. Would you like to buy more now?');
+      const goBuy = await confirm(
+        'Insufficient balance',
+        'Not enough tokens. Would you like to buy more now?',
+      );
       if (goBuy) navigation.navigate('BuyTokens');
       return;
     }
@@ -155,7 +216,10 @@ const CourseDetailsNative: React.FC = () => {
     } catch (e: any) {
       const msg: string = e?.message || '';
       if (/insufficient/i.test(msg)) {
-        const go = await confirm('Insufficient balance', 'Not enough tokens. Buy more now?');
+        const go = await confirm(
+          'Insufficient balance',
+          'Not enough tokens. Buy more now?',
+        );
         if (go) navigation.navigate('BuyTokens');
       }
     }
@@ -167,7 +231,7 @@ const CourseDetailsNative: React.FC = () => {
   };
 
   const onUnenroll = async () => {
-    if (!(myEnrollment?.id)) return;
+    if (!myEnrollment?.id) return;
     try {
       await cancel(String(myEnrollment.id));
       debouncedReload();
@@ -182,7 +246,7 @@ const CourseDetailsNative: React.FC = () => {
     setComment('');
   }, [submit, rating, comment, courseId]);
 
-  // NEW: mobile transcript open (only when OER + enrolled)
+  // Mobile transcript open (only when OER + enrolled)
   const onOpenTranscript = useCallback(async () => {
     if (!oerMeta || !backendUrl || !courseId) return;
     const url = `${backendUrl.replace(/\/+$/, '')}/api/oer/transcript/${courseId}`;
@@ -193,263 +257,402 @@ const CourseDetailsNative: React.FC = () => {
     }
   }, [oerMeta, backendUrl, courseId]);
 
-  // ----- Guards / states -----
+  // ----- Guards / content selection -----
+  let body: React.ReactNode;
+
   if (!courseId) {
-    return (
-      <View className="flex-1 items-center justify-center p-6">
-        <Text className="text-red-600">Missing course id.</Text>
-      </View>
-    );
-  }
-  if (loadingCourse && !c) {
-    return (
-      <View className="flex-1 items-center justify-center p-6">
+    body = <CenterMessage text="Missing course id." variant="error" />;
+  } else if (loadingCourse && !c) {
+    body = (
+      <View style={tw`flex-1 items-center justify-center px-6`}>
         <ActivityIndicator />
-        <Text className="mt-2">Loading course…</Text>
+        <Text style={tw`mt-2 text-[#49739c] dark:text-white/70`}>
+          Loading course…
+        </Text>
       </View>
     );
-  }
-  if (courseError && !c) {
-    return (
-      <View className="flex-1 items-center justify-center p-6">
-        <Text className="text-red-600">Failed to load course.</Text>
-      </View>
-    );
-  }
-  if (!c) {
-    return (
-      <View className="flex-1 items-center justify-center p-6">
-        <Text>Course not found.</Text>
-      </View>
-    );
-  }
+  } else if (courseError && !c) {
+    body = <CenterMessage text="Failed to load course." variant="error" />;
+  } else if (!c) {
+    body = <CenterMessage text="Course not found." />;
+  } else {
+    const isEnrolled = Boolean(myEnrollment);
+    const disablePrimary = !token || enrollmentsLoading;
 
-  const isEnrolled = Boolean(myEnrollment);
-  const disablePrimary = !token || enrollmentsLoading;
-
-  return (
-    <ScrollView className="flex-1 bg-slate-50 dark:bg-darkBg" contentContainerStyle={{ paddingBottom: 24 }}>
-      <View className="max-w-[900px] self-center w-full px-4 py-8">
-        {/* Header */}
-        <View className="flex-row items-start justify-between gap-4">
-          <View className="flex-1 pr-4">
-            <Text className="text-[28px] font-extrabold tracking-[-0.02em] text-slate-900 dark:text-darkTextPrimary">
-              {c.title}
-            </Text>
-            {!!c.description && (
-              <Text className="mt-2 text-[#49739c] dark:text-darkTextSecondary">{c.description}</Text>
-            )}
-
-            {/* ✅ NEW: OER badge (matches web) */}
-            {oerMeta && (
-              <View className="mt-2">
-                <Pill>OER • {(oerMeta as any)?.catalog_provider?.toUpperCase?.() || 'OER'}</Pill>
-              </View>
-            )}
-
-            {/* ⭐ Rating row */}
-            <View className="mt-2">
-              <StarRow avg={avg} count={count} />
-            </View>
-
-            <View className="mt-3 flex-row flex-wrap gap-2">
-              {!!c.level && (
-                <Pill>Level: {c.level}</Pill>
-              )}
-              {!!c.duration && (
-                <Pill>Duration: {c.duration}</Pill>
-              )}
-              <Pill>Price: {priceTokens} tokens</Pill>
-            </View>
-
-            {/* Balance helper */}
-            <Text className="mt-2 text-sm text-[#49739c] dark:text-darkTextSecondary">
-              Your balance: {walletTokens} tokens
-            </Text>
-          </View>
-
-          {/* Actions column */}
-          <View className="w-[180px] gap-2">
-            {role === 'tutor' ? (
-              <Pressable
-                onPress={() => navigation.navigate('Courses')}
-                className="rounded-xl h-10 px-4 bg-[#e7edf4] dark:bg-[#172534] items-center justify-center"
-              >
-                <Text className="text-sm font-semibold text-slate-900 dark:text-slate-100">Manage / Share</Text>
-              </Pressable>
-            ) : isEnrolled ? (
-              <>
-                <Pressable
-                  onPress={onContinue}
-                  className="rounded-xl h-10 px-5 bg-[#3d99f5] items-center justify-center"
+    body = (
+      <ScrollView
+        style={tw`flex-1`}
+        contentContainerStyle={[
+          tw`pb-6`,
+          {
+            paddingTop: topPad,
+            paddingBottom: bottomPad + FOOTER_OFFSET, // nothing behind footer
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Outer container to center content */}
+        <View style={tw`w-full px-4`}>
+          <View
+            style={[
+              tw`w-full`,
+              { maxWidth: 900, alignSelf: 'center' },
+            ]}
+          >
+            {/* Header */}
+            <View style={tw`flex-row items-start justify-between gap-4`}>
+              {/* Left: title / meta */}
+              <View style={tw`flex-1 pr-2`}>
+                <Text
+                  style={tw`text-xs tracking-[2px] uppercase text-pink-500/80 dark:text-pink-400`}
                 >
-                  <Text className="text-white text-sm font-semibold">Continue Course</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={onUnenroll}
-                  className="rounded-xl h-10 px-4 bg-white dark:bg-[#0f1821] items-center justify-center
-                             border border-[#cedbe8] dark:border-darkCard"
+                  DayBreak Course
+                </Text>
+                <Text
+                  style={tw`mt-1 text-[26px] font-extrabold tracking-[-0.02em] text-slate-900 dark:text-darkTextPrimary`}
                 >
-                  <Text className="text-sm font-semibold text-slate-900 dark:text-slate-100">Unenroll</Text>
-                </Pressable>
+                  {c.title}
+                </Text>
 
-                {/* ✅ NEW: OER transcript (when enrolled) */}
+                {!!c.description && (
+                  <Text
+                    style={tw`mt-2 text-sm text-[#49739c] dark:text-darkTextSecondary`}
+                  >
+                    {c.description}
+                  </Text>
+                )}
+
+                {/* OER badge */}
                 {oerMeta && (
-                  <Pressable
-                    onPress={onOpenTranscript}
-                    className="rounded-xl h-10 px-4 bg-white dark:bg-[#0f1821] items-center justify-center
-                               border border-[#cedbe8] dark:border-darkCard"
-                  >
-                    <Text className="text-sm font-semibold text-slate-900 dark:text-slate-100">Download Transcript (Free)</Text>
-                  </Pressable>
+                  <View style={tw`mt-2`}>
+                    <Pill>
+                      OER •{' '}
+                      {((oerMeta as any)?.catalog_provider?.toUpperCase?.() ||
+                        'OER') as string}
+                    </Pill>
+                  </View>
                 )}
 
-                {/* Review button when enrolled & not yet reviewed */}
-                {!hasMyReview && (
-                  <Pressable
-                    onPress={() => setOpenReview(true)}
-                    className="rounded-xl h-10 px-4 bg-[#e7edf4] dark:bg-[#172534] items-center justify-center"
-                  >
-                    <Text className="text-sm font-semibold text-slate-900 dark:text-slate-100">Review this course</Text>
-                  </Pressable>
-                )}
-              </>
-            ) : (
-              <View className="gap-2">
-                <Pressable
-                  onPress={onPurchaseAndEnroll}
-                  disabled={disablePrimary}
-                  className={`rounded-xl h-10 px-5 items-center justify-center ${disablePrimary ? 'opacity-60' : ''} bg-[#3d99f5]`}
+                {/* Rating */}
+                <View style={tw`mt-2`}>
+                  <StarRow avg={avg} count={count} />
+                </View>
+
+                {/* Meta pills */}
+                <View style={tw`mt-3 flex-row flex-wrap gap-2`}>
+                  {!!c.level && <Pill>Level: {c.level}</Pill>}
+                  {!!c.duration && <Pill>Duration: {c.duration}</Pill>}
+                  <Pill>Price: {priceTokens} tokens</Pill>
+                </View>
+
+                {/* Balance helper */}
+                <Text
+                  style={tw`mt-2 text-xs text-[#49739c] dark:text-darkTextSecondary`}
                 >
-                  <Text className="text-white text-sm font-semibold">
-                    {enrollmentsLoading ? 'Checking…' : 'Purchase & Enroll'}
+                  Your balance: {walletTokens} tokens
+                </Text>
+              </View>
+
+              {/* Right: actions column */}
+              <View style={[tw`gap-2`, { width: 190 }]}>
+                {role === 'tutor' ? (
+                  <Pressable
+                    onPress={() => navigation.navigate('Courses')}
+                    style={tw`h-10 px-4 rounded-xl bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
+                  >
+                    <Text
+                      style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
+                    >
+                      Manage / Share
+                    </Text>
+                  </Pressable>
+                ) : isEnrolled ? (
+                  <>
+                    <Pressable
+                      onPress={onContinue}
+                      style={tw`h-10 px-5 rounded-xl bg-[#3d99f5] items-center justify-center`}
+                    >
+                      <Text
+                        style={tw`text-sm font-semibold text-white`}
+                      >
+                        Continue Course
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={onUnenroll}
+                      style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] items-center justify-center border border-[#cedbe8] dark:border-darkCard`}
+                    >
+                      <Text
+                        style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
+                      >
+                        Unenroll
+                      </Text>
+                    </Pressable>
+
+                    {/* OER transcript (when enrolled) */}
+                    {oerMeta && (
+                      <Pressable
+                        onPress={onOpenTranscript}
+                        style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] items-center justify-center border border-[#cedbe8] dark:border-darkCard`}
+                      >
+                        <Text
+                          style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
+                        >
+                          Download Transcript (Free)
+                        </Text>
+                      </Pressable>
+                    )}
+
+                    {/* Review button when enrolled & not yet reviewed */}
+                    {!hasMyReview && (
+                      <Pressable
+                        onPress={() => setOpenReview(true)}
+                        style={tw`h-10 px-4 rounded-xl bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
+                      >
+                        <Text
+                          style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
+                        >
+                          Review this course
+                        </Text>
+                      </Pressable>
+                    )}
+                  </>
+                ) : (
+                  <View style={tw`gap-2`}>
+                    <Pressable
+                      onPress={onPurchaseAndEnroll}
+                      disabled={disablePrimary}
+                      style={tw.style(
+                        'h-10 px-5 rounded-xl items-center justify-center bg-[#3d99f5]',
+                        disablePrimary && 'opacity-60',
+                      )}
+                    >
+                      <Text
+                        style={tw`text-sm font-semibold text-white`}
+                      >
+                        {enrollmentsLoading ? 'Checking…' : 'Purchase & Enroll'}
+                      </Text>
+                    </Pressable>
+
+                    {!hasEnough && (
+                      <Pressable
+                        onPress={() => navigation.navigate('BuyTokens')}
+                        style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] items-center justify-center border border-[#cedbe8] dark:border-darkCard`}
+                      >
+                        <Text
+                          style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
+                        >
+                          Buy Tokens
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
+                )}
+
+                {/* Achievements quick link */}
+                <Pressable
+                  onPress={() => navigation.navigate('Achievements')}
+                  style={tw`h-10 px-4 rounded-xl bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
+                >
+                  <Text
+                    style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
+                  >
+                    Achievements
                   </Text>
                 </Pressable>
 
-                {!hasEnough && (
-                  <Pressable
-                    onPress={() => navigation.navigate('BuyTokens')}
-                    className="rounded-xl h-10 px-4 bg-white dark:bg-[#0f1821] items-center justify-center
-                               border border-[#cedbe8] dark:border-darkCard"
+                {/* Back */}
+                <Pressable
+                  onPress={() => navigation.goBack()}
+                  style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] items-center justify-center border border-[#cedbe8] dark:border-darkCard`}
+                >
+                  <Text
+                    style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
                   >
-                    <Text className="text-sm font-semibold text-slate-900 dark:text-slate-100">Buy Tokens</Text>
-                  </Pressable>
+                    Back
+                  </Text>
+                </Pressable>
+
+                {!!enrollError && (
+                  <Text
+                    style={tw`mt-1 text-xs text-red-600 dark:text-red-400`}
+                  >
+                    {String(enrollError)}
+                  </Text>
                 )}
               </View>
-            )}
-
-            {/* Achievements quick link */}
-            <Pressable
-              onPress={() => navigation.navigate('Achievements')}
-              className="rounded-xl h-10 px-4 bg-[#e7edf4] dark:bg-[#172534] items-center justify-center"
-            >
-              <Text className="text-sm font-semibold text-slate-900 dark:text-slate-100">Achievements</Text>
-            </Pressable>
-
-            {/* Back */}
-            <Pressable
-              onPress={() => navigation.goBack()}
-              className="rounded-xl h-10 px-4 bg-white dark:bg-[#0f1821] items-center justify-center
-                         border border-[#cedbe8] dark:border-darkCard"
-            >
-              <Text className="text-sm font-semibold text-slate-900 dark:text-slate-100">Back</Text>
-            </Pressable>
-
-            {!!enrollError && (
-              <Text className="text-xs text-red-600 mt-1">{String(enrollError)}</Text>
-            )}
-          </View>
-        </View>
-
-        {/* Tutor card */}
-        <View className="mt-6 rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-4">
-          <Text className="text-lg font-bold mb-3 text-slate-900 dark:text-white">About the tutor</Text>
-          <View className="flex-row items-center gap-3">
-            <View className="h-12 w-12 rounded-full bg-[#e7edf4] dark:bg-[#172534]" />
-            <View className="flex-1">
-              <Text className="font-semibold text-slate-900 dark:text-white">{tutorName}</Text>
-              <Text className="text-sm text-[#49739c] dark:text-darkTextSecondary">{tutorBio}</Text>
             </View>
-          </View>
-        </View>
 
-        {/* Syllabus preview */}
-        <View className="mt-6 rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-4">
-          <Text className="text-lg font-bold mb-3 text-slate-900 dark:text-white">Syllabus</Text>
-          {Array.isArray(c.syllabus) && c.syllabus.length > 0 ? (
-            <View className="gap-2">
-              {c.syllabus.slice(0, 12).map((w) => (
-                <View key={w.week} className="flex-row">
-                  <Text className="font-medium text-slate-900 dark:text-white">Week {w.week}: </Text>
-                  <Text className="flex-1 text-slate-800 dark:text-slate-300">{w.topic || 'TBA'}</Text>
-                  {!!w.assignment && (
-                    <Text className="block text-sm text-[#49739c] dark:text-darkTextSecondary">
-                      {'\n'}Assignment: {w.assignment}
-                    </Text>
-                  )}
+            {/* Tutor card */}
+            <View
+              style={tw`mt-6 rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-4`}
+            >
+              <Text
+                style={tw`text-lg font-bold mb-3 text-slate-900 dark:text-white`}
+              >
+                About the tutor
+              </Text>
+              <View style={tw`flex-row items-center gap-3`}>
+                <View
+                  style={tw`h-12 w-12 rounded-full bg-[#e7edf4] dark:bg-[#172534]`}
+                />
+                <View style={tw`flex-1`}>
+                  <Text
+                    style={tw`font-semibold text-slate-900 dark:text-white`}
+                  >
+                    {tutorName}
+                  </Text>
+                  <Text
+                    style={tw`text-sm text-[#49739c] dark:text-darkTextSecondary`}
+                  >
+                    {tutorBio}
+                  </Text>
                 </View>
-              ))}
+              </View>
             </View>
-          ) : (
-            <Text className="text-[#49739c] dark:text-darkTextSecondary">No syllabus yet.</Text>
-          )}
+
+            {/* Syllabus preview */}
+            <View
+              style={tw`mt-6 rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-4`}
+            >
+              <Text
+                style={tw`text-lg font-bold mb-3 text-slate-900 dark:text-white`}
+              >
+                Syllabus
+              </Text>
+              {Array.isArray(c.syllabus) && c.syllabus.length > 0 ? (
+                <View style={tw`gap-2`}>
+                  {c.syllabus.slice(0, 12).map((w) => (
+                    <View key={w.week} style={tw`mb-1`}>
+                      <Text
+                        style={tw`font-medium text-slate-900 dark:text-white`}
+                      >
+                        Week {w.week}:{' '}
+                        <Text style={tw`text-slate-800 dark:text-slate-300`}>
+                          {w.topic || 'TBA'}
+                        </Text>
+                      </Text>
+                      {!!w.assignment && (
+                        <Text
+                          style={tw`mt-0.5 text-xs text-[#49739c] dark:text-darkTextSecondary`}
+                        >
+                          Assignment: {w.assignment}
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text
+                  style={tw`text-sm text-[#49739c] dark:text-darkTextSecondary`}
+                >
+                  No syllabus yet.
+                </Text>
+              )}
+            </View>
+          </View>
         </View>
+
+        {/* Review modal */}
+        <Modal
+          visible={openReview}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOpenReview(false)}
+        >
+          <View style={tw`flex-1 bg-black/40 items-center justify-center`}>
+            <View
+              style={tw`w-11/12 max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-darkCard`}
+            >
+              <Text
+                style={tw`text-lg font-bold mb-2 text-slate-900 dark:text-white`}
+              >
+                Rate this course
+              </Text>
+              <Text
+                style={tw`text-sm text-[#49739c] dark:text-darkTextSecondary mb-3`}
+              >
+                {c.title}
+              </Text>
+
+              <View style={tw`flex-row items-center gap-2 mb-3`}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Pressable key={n} onPress={() => setRating(n)}>
+                    <Text
+                      style={tw.style(
+                        'text-2xl',
+                        n <= rating ? 'text-yellow-500' : 'text-[#49739c]',
+                      )}
+                    >
+                      ★
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <TextInput
+                value={comment}
+                onChangeText={setComment}
+                placeholder="Optional comment (max 500 chars)"
+                maxLength={500}
+                multiline
+                style={tw`w-full text-sm rounded-lg p-2 bg-[#e7edf4] dark:bg-[#172534] text-slate-900 dark:text-slate-100`}
+                placeholderTextColor="#7a8aa0"
+              />
+
+              <View style={tw`mt-4 flex-row items-center gap-2`}>
+                <Pressable
+                  disabled={posting || rating < 1}
+                  onPress={onSubmitReview}
+                  style={tw.style(
+                    'px-4 h-10 rounded-xl items-center justify-center bg-[#3d99f5]',
+                    (posting || rating < 1) && 'opacity-60',
+                  )}
+                >
+                  <Text
+                    style={tw`text-sm font-semibold text-white`}
+                  >
+                    {posting ? 'Saving…' : 'Submit'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setOpenReview(false)}
+                  style={tw`px-4 h-10 rounded-xl items-center justify-center bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-darkCard`}
+                >
+                  <Text
+                    style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
+                  >
+                    Cancel
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </ScrollView>
+    );
+  }
+
+  return (
+    <SafeAreaView
+      style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
+      edges={['top', 'bottom']}
+    >
+      {/* Soft background orbs */}
+      <View style={tw`absolute inset-0`}>
+        <View
+          style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-pink-500/12 dark:bg-pink-500/10`}
+        />
+        <View
+          style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/10`}
+        />
       </View>
 
-      {/* Review modal */}
-      <Modal visible={openReview} transparent animationType="fade" onRequestClose={() => setOpenReview(false)}>
-        <View className="flex-1 bg-black/40 items-center justify-center">
-          <View className="w-11/12 max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-darkCard">
-            <Text className="text-lg font-bold mb-2 text-slate-900 dark:text-white">Rate this course</Text>
-            <Text className="text-sm text-[#49739c] dark:text-darkTextSecondary mb-3">{c.title}</Text>
-
-            <View className="flex-row items-center gap-2 mb-3">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <Pressable key={n} onPress={() => setRating(n)}>
-                  <Text className={n <= rating ? 'text-yellow-500 text-2xl' : 'text-[#49739c] text-2xl'}>★</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <TextInput
-              value={comment}
-              onChangeText={setComment}
-              placeholder="Optional comment (max 500 chars)"
-              maxLength={500}
-              multiline
-              className="w-full text-sm rounded-lg p-2 bg-[#e7edf4] dark:bg-[#172534] text-slate-900 dark:text-slate-100"
-              placeholderTextColor="#7a8aa0"
-            />
-
-            <View className="mt-4 flex-row items-center gap-2">
-              <Pressable
-                disabled={posting || rating < 1}
-                onPress={onSubmitReview}
-                className={`px-4 h-10 rounded-xl items-center justify-center ${posting || rating < 1 ? 'opacity-60' : ''} bg-[#3d99f5]`}
-              >
-                <Text className="text-white text-sm font-semibold">{posting ? 'Saving…' : 'Submit'}</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setOpenReview(false)}
-                className="px-4 h-10 rounded-xl items-center justify-center bg-white dark:bg-[#0f1821]
-                           border border-[#cedbe8] dark:border-darkCard"
-              >
-                <Text className="text-sm font-semibold text-slate-900 dark:text-slate-100">Cancel</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </ScrollView>
+      {body}
+    </SafeAreaView>
   );
 };
-
-/* --------------------------------- UI Bits -------------------------------- */
-const Pill: React.FC<React.PropsWithChildren<{}>> = ({ children }) => (
-  <View className="h-8 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] items-center justify-center">
-    <Text className="text-sm text-slate-900 dark:text-slate-100">{children}</Text>
-  </View>
-);
 
 export default CourseDetailsNative;

@@ -304,19 +304,11 @@ export default function ManageProfileFormNative() {
   ─────────────────────────────────────────────── */
 
   const validateBeforeSubmit = (): ValidationResult => {
-    const minAge = role === 'tutor' ? 18 : 5;
-
     if (!updatedData.name?.trim()) {
       return { ok: false, msg: 'Please enter your name.', focus: 'personal' };
     }
 
-    if (!updatedData.age || updatedData.age < minAge) {
-      return {
-        ok: false,
-        msg: `Please enter a valid age (${minAge}+).`,
-        focus: 'personal',
-      };
-    }
+    // age is no longer required / validated
 
     const hasLanguage = Object.values(updatedData.languages || {}).some(Boolean);
     if (!hasLanguage) {
@@ -449,14 +441,7 @@ export default function ManageProfileFormNative() {
             placeholderTextColor={placeholderColor}
             style={inputBase}
           />
-          <TextInput
-            placeholder="Age"
-            keyboardType="numeric"
-            value={updatedData.age ? String(updatedData.age) : ''}
-            onChangeText={(t) => handleInputChange('age', makeEvent(t))}
-            placeholderTextColor={placeholderColor}
-            style={[inputBase, tw`mb-0`]}
-          />
+          {/* Age field removed */}
         </View>
 
         {/* Country */}

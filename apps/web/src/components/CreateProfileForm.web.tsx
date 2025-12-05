@@ -26,7 +26,6 @@ type Errors = Record<string, string>;
 const labelFor: Record<string, string> = {
   role: 'Your Role',
   name: 'Name',
-  age: 'Age',
   country: 'Country',
   schoolGrade: 'School Grade / Year / Level',
   languages: 'Languages',
@@ -57,7 +56,6 @@ const CreateProfileForm: FC = () => {
     role,
     // basics
     name, setName,
-    age, setAge,
     languages, handleLanguageSelect,
     country, setCountry,
     schoolGrade, setSchoolGrade,
@@ -167,14 +165,7 @@ const CreateProfileForm: FC = () => {
         for (const el of invalids) {
           const key = el.getAttribute('name') || '';
           if (!key) continue;
-          // Friendlier messages
-          if (key === 'age') {
-            const min = Number(el.getAttribute('min') || 0);
-            tmpErrors[key] = `Age must be at least ${min}.`;
-          } else {
-            tmpErrors[key] = `${labelFor[key] || key} is required.`;
           }
-        }
         setErrors(tmpErrors);
         setBanner(buildBannerFromErrors(tmpErrors));
 
@@ -296,28 +287,6 @@ const CreateProfileForm: FC = () => {
             required
           />
           {errors.name && <p id="err-name" className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.name}</p>}
-        </div>
-
-        {/* Age */}
-        <div>
-          <label className={labelBase}>Age</label>
-          <input
-            ref={ageRef}
-            name="age"
-            type="number"
-            placeholder={`Age (${role === 'tutor' ? '18+' : '5+'})`}
-            value={age}
-            onChange={e => {
-              setAge(e.target.value);
-              clearFieldError('age');
-            }}
-            className={`${inputBase} ${errors.age ? invalidRing : ''}`}
-            min={role === 'tutor' ? 18 : 5}
-            aria-invalid={!!errors.age}
-            aria-describedby={errors.age ? 'err-age' : undefined}
-            required
-          />
-          {errors.age && <p id="err-age" className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.age}</p>}
         </div>
 
         {/* Country */}

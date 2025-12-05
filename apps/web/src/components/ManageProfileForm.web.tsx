@@ -50,7 +50,6 @@ const ManageProfileForm: FC = () => {
 
   // ─── Refs for “scroll to first error” UX ────────────────────────────────
   const nameRef = useRef<HTMLInputElement>(null);
-  const ageRef = useRef<HTMLInputElement>(null);
   const languagesRef = useRef<HTMLDivElement>(null);
   const ageGroupRef = useRef<HTMLDivElement>(null);
 
@@ -132,12 +131,6 @@ const ManageProfileForm: FC = () => {
       return { el: nameRef.current, msg: 'Please enter your name.' };
     }
 
-    // age
-    const minAge = role === 'tutor' ? 18 : 5;
-    if (!updatedData.age || updatedData.age < minAge) {
-      return { el: ageRef.current, msg: `Please enter a valid age (${minAge}+).` };
-    }
-
     // languages
     const hasLang = Object.values(updatedData.languages || {}).some(Boolean);
     if (!hasLang) {
@@ -207,18 +200,6 @@ const ManageProfileForm: FC = () => {
           placeholder="Name"
           value={updatedData.name}
           onChange={e => handleInputChange('name', e)}
-          className={inputBase}
-        />
-
-        {/* Age */}
-        <input
-          ref={ageRef}
-          name="age"
-          type="number"
-          placeholder="Age"
-          min={role === 'tutor' ? 18 : 5}
-          value={updatedData.age?.toString() || ''}
-          onChange={e => handleInputChange('age', e)}
           className={inputBase}
         />
 

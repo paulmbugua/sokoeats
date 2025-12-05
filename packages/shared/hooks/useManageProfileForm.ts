@@ -360,16 +360,19 @@ const useManageProfileForm = (
       const computedCurrency: PayoutCurrency =
         updatedData.payoutMethod === 'mpesa' ? 'KES' : 'USD';
 
+      // 🔑 Age is now *optional* – only send if > 0
       const payload: UpdateProfilePayload = {
         name: updatedData.name ?? '',
         country: updatedData.country,
         schoolGrade: updatedData.schoolGrade,
-        age: updatedData.age > 0 ? String(updatedData.age) : '',
         languages: Object.keys(updatedData.languages).filter(
           (l) => updatedData.languages[l as keyof typeof updatedData.languages]
         ),
         pricing: updatedData.pricing,
         recommended: updatedData.recommended,
+        ...(updatedData.age && updatedData.age > 0
+          ? { age: String(updatedData.age) }
+          : {}),
         ...(role === 'tutor'
           ? {
               gallery: finalGallery,

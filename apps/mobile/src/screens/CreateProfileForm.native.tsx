@@ -106,7 +106,7 @@ type Errors = Record<string, string>;
 const labelFor: Record<string, string> = {
   role: 'Your Role',
   name: 'Name',
-  age: 'Age',
+  // age removed
   country: 'Country',
   schoolGrade: 'School Grade / Year / Level',
   languages: 'Languages',
@@ -133,7 +133,6 @@ export default function CreateProfileFormNative() {
   const scrollRef = useRef<ScrollView>(null);
 
   const nameWrapRef = useRef<View>(null);
-  const ageWrapRef = useRef<View>(null);
   const countryWrapRef = useRef<View>(null);
   const schoolGradeWrapRef = useRef<View>(null);
   const languagesWrapRef = useRef<View>(null);
@@ -150,7 +149,7 @@ export default function CreateProfileFormNative() {
 
   const refsMap: Record<string, ViewRef> = {
     name: nameWrapRef,
-    age: ageWrapRef,
+    // age removed
     country: countryWrapRef,
     schoolGrade: schoolGradeWrapRef,
     languages: languagesWrapRef,
@@ -169,7 +168,7 @@ export default function CreateProfileFormNative() {
 
     // basics
     name, setName,
-    age, setAge,
+    // age removed from UI
     languages, handleLanguageSelect,
 
     category, setCategory,
@@ -237,36 +236,36 @@ export default function CreateProfileFormNative() {
   }, []);
 
   /* ---------------------- Media pickers (images) ---------------------- */
- const pickImage = async () => {
-  const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!granted) {
-    Alert.alert('Permission required', 'We need access to your photos.');
-    return;
-  }
-  const res = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    quality: 0.7,
-  });
+  const pickImage = async () => {
+    const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!granted) {
+      Alert.alert('Permission required', 'We need access to your photos.');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
 
-  if (res.canceled) return;
-  const a =
-    Array.isArray(res.assets) && res.assets.length > 0
-      ? res.assets[0]
-      : undefined;
-  if (!a) return;
+    if (res.canceled) return;
+    const a =
+      Array.isArray(res.assets) && res.assets.length > 0
+        ? res.assets[0]
+        : undefined;
+    if (!a) return;
 
-  const mimeType = guessImageMime(a);
-  const ext = mimeType.split('/')[1] || 'jpg';
-  const fileName = a.fileName ?? `profile-${Date.now()}.${ext}`;
+    const mimeType = guessImageMime(a);
+    const ext = mimeType.split('/')[1] || 'jpg';
+    const fileName = a.fileName ?? `profile-${Date.now()}.${ext}`;
 
-  const upload: UploadAsset = {
-    uri: a.uri,
-    name: fileName,
-    type: mimeType, // ✅ real MIME like image/jpeg
+    const upload: UploadAsset = {
+      uri: a.uri,
+      name: fileName,
+      type: mimeType, // ✅ real MIME like image/jpeg
+    };
+
+    setImages([upload]);
   };
-
-  setImages([upload]);
-};
 
   /* ---------------------- Media pickers (video) ---------------------- */
   const pickVideo = async () => {
@@ -399,14 +398,6 @@ export default function CreateProfileFormNative() {
     // Basic requireds
     if (!name?.trim()) next.name = 'Name is required.';
 
-    const ageNum = Number(age);
-    const minAge = role === 'tutor' ? 18 : 5;
-    if (!age?.trim()) {
-      next.age = 'Age is required.';
-    } else if (!Number.isFinite(ageNum) || ageNum < minAge) {
-      next.age = `Age must be at least ${minAge}.`;
-    }
-
     // Country
     if (!country) next.country = 'Select your country.';
 
@@ -463,7 +454,7 @@ export default function CreateProfileFormNative() {
 
     const order: string[] = [
       'name',
-      'age',
+      // 'age' removed from validation order
       'country',
       'schoolGrade',
       'languages',
@@ -597,26 +588,7 @@ export default function CreateProfileFormNative() {
             )}
           </View>
 
-          {/* Age */}
-          <View ref={ageWrapRef} style={tw`gap-2`}>
-            <Text style={label}>Age</Text>
-            <TextInput
-              placeholder={`Age (${role === 'tutor' ? '18+' : '5+'})`}
-              value={age}
-              onChangeText={(v) => {
-                setAge(v);
-                clearFieldError('age');
-              }}
-              keyboardType="numeric"
-              placeholderTextColor={placeholderColor}
-              style={[inputBase, errors.age ? invalidBorder : null]}
-            />
-            {!!errors.age && (
-              <Text style={tw`text-sm text-red-600 dark:text-red-400`}>
-                {errors.age}
-              </Text>
-            )}
-          </View>
+          {/* Age section removed */}
 
           {/* Country */}
           <View ref={countryWrapRef} style={tw`gap-2`}>

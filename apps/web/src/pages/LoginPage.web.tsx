@@ -99,7 +99,6 @@ const LoginPage: React.FC = () => {
   // Sign-up & Role modal fields
   const [name, setName] = useState('');
   const [role, setRole] = useState<'' | 'student' | 'tutor'>('');
-  const [age, setAge] = useState<string>('');
   const [languages, setLanguages] = useState<string[]>([]);
   const [country, setCountry] = useState<string>('');
 
@@ -200,7 +199,6 @@ const LoginPage: React.FC = () => {
           password,
           role,
           country: role === 'student' ? country : (undefined as any),
-          age: role === 'student' ? Number(age) : (undefined as any),
           languages: role === 'student' ? languages : (undefined as any),
         });
 
@@ -269,19 +267,15 @@ const LoginPage: React.FC = () => {
   // ─────────────────────────────────────────────────────────
   const isStudent = role === 'student';
   const trimmedName = (name || '').trim();
-  const numericAge = Number(age);
+  
 
   const isStudentValid =
-    isStudent &&
-    trimmedName.length >= 2 &&
-    trimmedName.length <= 80 &&
-    Number.isFinite(numericAge) &&
-    numericAge > 0 &&
-    Array.isArray(languages) &&
-    languages.length > 0 &&
-    (languages[0] || '').trim().length > 0 &&
-    country !== '';
-
+  isStudent &&
+  trimmedName.length >= 2 &&
+  trimmedName.length <= 80 &&
+  Array.isArray(languages) &&
+  (languages[0] || '').trim().length > 0 &&
+  country !== '';
   const canContinue = role === 'tutor' ? true : isStudentValid;
   const ctaText = role === 'tutor' ? 'Create account' : 'Create profile';
 
@@ -313,7 +307,6 @@ const LoginPage: React.FC = () => {
         await completeRole({
           role: 'student',
           name: trimmedName,
-          age: numericAge,
           languages,
           country,
         } as any);
@@ -535,15 +528,7 @@ const LoginPage: React.FC = () => {
 
                       {role === 'student' && (
                         <>
-                          <input
-                            type="number"
-                            value={age}
-                            onChange={(e) => setAge(e.target.value)}
-                            className="input"
-                            placeholder="Age"
-                            required
-                          />
-                          <select
+                            <select
                             value={languages[0] || ''}
                             onChange={handleLanguageChange}
                             className="input"
@@ -696,7 +681,6 @@ const LoginPage: React.FC = () => {
                   } else {
                     // Tutors do not create a profile
                     setName('');
-                    setAge('');
                     setLanguages([]);
                   }
                 }}
@@ -727,15 +711,6 @@ const LoginPage: React.FC = () => {
                     onChange={(e) => setName(e.target.value)}
                     className="input"
                     placeholder="Full name"
-                    required
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    value={age}
-                    onChange={(e) => setAge(e.target.value)}
-                    className="input"
-                    placeholder="Age"
                     required
                   />
                   <select

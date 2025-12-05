@@ -449,7 +449,11 @@ const OerBookCard: React.FC<{
 /* --------------------------------- Screen -------------------------------- */
 const MyCoursesNative: React.FC = () => {
   const navigation = useNavigation<Nav>();
-  const { backendUrl, token, profile } = useShopContext();
+ const { backendUrl, token, profile, role: ctxRole } = useShopContext();
+const rawRole = (profile as any)?.role ?? ctxRole ?? '';
+const roleStr = String(rawRole || '').toLowerCase();
+
+console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', roleStr);
   const { resolvedScheme } = useThemePref();
   const isDark = resolvedScheme === 'dark';
 
@@ -845,22 +849,21 @@ const MyCoursesNative: React.FC = () => {
 
   /* ------------------------------ Rendering ------------------------------ */
 
-  if (token && !profile) {
-    return (
-      <SafeAreaView
-        style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
-        edges={['top', 'bottom']}
-      >
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
-          <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>
-            Checking your account…
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
+  if (token && roleStr === 'tutor' && !profile) {
+  return (
+    <SafeAreaView
+      style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
+      edges={['top', 'bottom']}
+    >
+      <View style={tw`flex-1 items-center justify-center`}>
+        <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
+        <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>
+          Checking your account…
+        </Text>
+      </View>
+    </SafeAreaView>
+  );
+}
   // Course card (Courses tab)
   const renderCourseCard = ({ item }: { item: Course }) => {
     const cid = String(item.id);

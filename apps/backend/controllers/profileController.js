@@ -134,13 +134,23 @@ try {
   pricing = JSON.parse(req.body.pricing || '{}');
 } catch { pricing = undefined; }
 
-const parsedAge = Number.isFinite(Number(age)) ? Number(age) : undefined;
-const payload = {
-  role, name,
-  age: parsedAge,                 // tutor required by Joi; student optional
-  languages,                      // optional for students
-  country: rawCountry,            // optional
-  schoolGrade,                    // optional
+let parsedAge;
+if (age !== undefined && age !== null && String(age).trim() !== '') {
+  const n = Number(age);
+  if (Number.isFinite(n)) {
+    parsedAge = n;
+  }
+}
+const basePayload = {
+  role,
+  name,
+  languages,   // optional for students
+  country: rawCountry, // optional
+  schoolGrade,         // optional
+};                    // optional
+ const payload = {
+  ...basePayload,
+  ...(typeof parsedAge === 'number' ? { age: parsedAge } : {}),
   ...(isTutor && {
     category,
     gallery,
@@ -226,6 +236,15 @@ export const createProfileJson = async (req, res) => {
   try {
     // 1) Raw payload + light coercion (be defensive)
     const payload = req.body || {};
+    // 🔓 Optional age: normalize to a number or drop it
+    let ageNormalized;
+    if (payload.age !== undefined && payload.age !== null && String(payload.age).trim() !== '') {
+      const n = Number(payload.age);
+      if (Number.isFinite(n)) {
+        ageNormalized = n;
+      }
+    }
+
 
     let languagesIn = [];
     try {
@@ -261,10 +280,11 @@ export const createProfileJson = async (req, res) => {
       : {};
 
     const toValidate = {
-      ...payload,
-      languages: languagesIn,
-      ...(isTutor ? { gallery: galleryIn, video: videoIn, ...payoutFields } : {}),
-    };
+  ...payload,
+  ...(typeof ageNormalized === 'number' ? { age: ageNormalized } : {}),
+  languages: languagesIn,
+  ...(isTutor ? { gallery: galleryIn, video: videoIn, ...payoutFields } : {}),
+};
 
     // 4) Validate (schema should allow missing student age/languages/country)
     const { error, value } = profileValidationSchema.validate(toValidate, {
@@ -436,7 +456,18 @@ export const updateProfile = async (req, res) => {
     const profile = profileResult.rows[0];
     const normalizedRole = String(profile.role || '').toLowerCase();
 
-    const age = parseInt(ageStr, 10);
+    let age;
+if (typeof ageStr === 'number') {
+  age = ageStr;
+} else if (typeof ageStr === 'string') {
+  const trimmed = ageStr.trim();
+  if (trimmed !== '') {
+    const n = Number(trimmed);
+    if (Number.isFinite(n)) {
+      age = n;
+    }
+  }
+}
     const parsedLanguages = Array.isArray(languages) ? languages : [];
 
     // ---- gallery normalize
@@ -497,7 +528,7 @@ export const updateProfile = async (req, res) => {
     const validationData = {
       role: normalizedRole,
       name,
-      age,
+      ...(typeof age === 'number' ? { age } : {}),
       languages: parsedLanguages,
       country: normalizedCountry,
       schoolGrade,
@@ -519,6 +550,7 @@ export const updateProfile = async (req, res) => {
         } : {}),
       }),
     };
+
 
     console.log('updateProfile → validationData:', JSON.stringify(validationData, null, 2));
 

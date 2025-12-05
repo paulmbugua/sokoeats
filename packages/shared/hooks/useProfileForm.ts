@@ -112,7 +112,7 @@ const useProfileForm = (options?: UseProfileFormOptions) => {
 
   // ───────────────────────────── Form state ─────────────────────────────
   const [name, setName] = useState('');
-  const [age, setAge] = useState('');
+  const [age, setAge] = useState(''); // now optional, purely for UI
   const [languages, setLanguages] = useState<Record<string, boolean>>({
     English: false,
     Swahili: false,
@@ -185,47 +185,47 @@ const useProfileForm = (options?: UseProfileFormOptions) => {
 
       const selectedLanguages = Object.keys(languages).filter((l) => languages[l]);
 
-     // packages/shared/hooks/useProfileForm.ts
+      // packages/shared/hooks/useProfileForm.ts
 
-const uploadImages = async (): Promise<string[]> => {
-  if (role !== 'tutor') return [];
+      const uploadImages = async (): Promise<string[]> => {
+        if (role !== 'tutor') return [];
 
-  const valid = images.filter(
-    (i): i is UploadAsset | File => i !== null
-  );
-  if (valid.length === 0) {
-    throw new Error('At least one profile image is required.');
-  }
+        const valid = images.filter(
+          (i): i is UploadAsset | File => i !== null
+        );
+        if (valid.length === 0) {
+          throw new Error('At least one profile image is required.');
+        }
 
-  return Promise.all(
-    valid.map(async (file) => {
-      let input: any;
+        return Promise.all(
+          valid.map(async (file) => {
+            let input: any;
 
-      if (file instanceof File) {
-        // Web: keep File as-is
-        input = file;
-      } else if ((file as any).uri) {
-        // Native UploadAsset: KEEP uri + name + type so mimetype is correct
-        const ua = file as UploadAsset;
-        input = {
-          uri: ua.uri,
-          name:
-            ua.name ||
-            `profile-${Date.now()}.jpg`,
-          type: ua.type || 'image/jpeg',
-        };
-      } else if ((file as any).url) {
-        // In case we ever store a remote URL
-        input = (file as any).url;
-      } else {
-        throw new Error('Invalid image asset.');
-      }
+            if (file instanceof File) {
+              // Web: keep File as-is
+              input = file;
+            } else if ((file as any).uri) {
+              // Native UploadAsset: KEEP uri + name + type so mimetype is correct
+              const ua = file as UploadAsset;
+              input = {
+                uri: ua.uri,
+                name:
+                  ua.name ||
+                  `profile-${Date.now()}.jpg`,
+                type: ua.type || 'image/jpeg',
+              };
+            } else if ((file as any).url) {
+              // In case we ever store a remote URL
+              input = (file as any).url;
+            } else {
+              throw new Error('Invalid image asset.');
+            }
 
-      // Cast to any to keep TS happy with the web shim (string | File)
-      return uploadAsset(backendUrl, token, input as any, 'image');
-    })
-  );
-};
+            // Cast to any to keep TS happy with the web shim (string | File)
+            return uploadAsset(backendUrl, token, input as any, 'image');
+          })
+        );
+      };
 
       setStep('uploading');
       const gallery = await uploadImages();
@@ -247,13 +247,16 @@ const uploadImages = async (): Promise<string[]> => {
         return Number.isFinite(n) ? n : 0;
       };
 
+      // 🔑 Age is now *optional* in the payload
       const payload: ProfilePayload = {
         role: role as Role,
         name: name.trim(),
-        age: Number(age),
         languages: selectedLanguages,
         country,
         schoolGrade,
+        ...(age && age.trim()
+          ? { age: Number(age) }
+          : {}),
         ...(role === 'tutor' && {
           category,
           description: { bio, expertise, teachingStyle },

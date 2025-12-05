@@ -120,7 +120,7 @@ export interface UpdatedProfileData {
 /** Payload your API expects for updates */
 export interface UpdateProfilePayload {
   name: string;
-  age: string; // server expects string
+  age?: string; // server expects string
   languages: string[];
   
   country?: string;
@@ -440,7 +440,7 @@ export interface UploadAsset {
 export interface ProfilePayload {
   role: 'tutor' | 'student';
   name: string;
-  age: number;
+  age?: number;
   languages: string[];
   country: string;           // ISO-3166 alpha-2
   schoolGrade: string;       // free textay

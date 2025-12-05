@@ -280,6 +280,35 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   token: authToken,
   courseId: selectedCourse?.id,
 });
+// keep stable refs like native
+const topCoursesRef = React.useRef<TopCourse[]>([]);
+useEffect(() => {
+  topCoursesRef.current = Array.isArray(topCourses) ? topCourses : [];
+}, [topCourses]);
+
+const selectedCourseRef = React.useRef<typeof selectedCourse>(selectedCourse);
+useEffect(() => {
+  selectedCourseRef.current = selectedCourse;
+}, [selectedCourse]);
+
+// tiny helpers – same idea as native
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+const waitForCourses = async (timeoutMs = 5000, pollMs = 50) => {
+  const t0 = Date.now();
+  while (topCoursesRef.current.length === 0 && Date.now() - t0 < timeoutMs) {
+    await sleep(pollMs);
+  }
+  return topCoursesRef.current.length > 0;
+};
+
+const waitForSelection = async (timeoutMs = 3000, pollMs = 50) => {
+  const t0 = Date.now();
+  while (!selectedCourseRef.current && Date.now() - t0 < timeoutMs) {
+    await sleep(pollMs);
+  }
+  return selectedCourseRef.current;
+};
 
   const orgAssign = useOrgAssignment();
   const assignmentId = orgAssign?.assignmentId ?? undefined;
@@ -365,6 +394,11 @@ const assignmentIdForAi = authToken ? assignmentId : undefined;
   const [overrideQuiz, setOverrideQuiz] = useState(false);
 
    const lastRunKeyRef = React.useRef<string | null>(null);
+
+   // player readiness (parity with native)
+const [playerReady, setPlayerReady] = useState(false);
+const [playerLoading, setPlayerLoading] = useState(false);
+const [starting, setStarting] = useState(false);
 
   // ── Deriveds (order matters) ─────────────────────────────
   const isLockedLearner = Boolean(orgAssign?.locked ?? (isOrgFlow && !canShareUi));
@@ -456,21 +490,31 @@ useEffect(() => {
   // ── Effects that depend on deriveds ──────────────────────
 
   useEffect(() => {
-  if (activeRunId === null) return;
+  if (activeRunId === null) {
+    setPreparing(false);
+    return;
+  }
+
   const shouldPrepare =
     step === 'outlining' ||
     step === 'narrating' ||
-    ttsLoading;
+    !!ttsLoading ||
+    !hasAIContent ||
+    playerLoading ||
+    !playerReady;
+
   setPreparing(shouldPrepare);
-}, [activeRunId, step, ttsLoading]);
+}, [activeRunId, step, ttsLoading, hasAIContent, playerLoading, playerReady]);
+
 
 
 useEffect(() => {
-  // whenever course changes, revert UI to “Start with AI”
   setActiveRunId(null);
   setPreparing(false);
   setBlockedUntilStart(true);
-  setLockedSsml(null); // drop any pinned narration, so we don’t reuse the old audio
+  setLockedSsml(null);
+  setPlayerReady(false);
+  setPlayerLoading(false);
 }, [selectedCourse?.id]);
 
 
@@ -617,99 +661,119 @@ useEffect(() => {
   }, [disableQuiz, answerQuestion]);
 
   // ── Start course (uses deriveds above) ───────────────────
- const onStart = useCallback(async () => {
-  dlog('onStart: invoked', {
-    canStartNow,
-    busyUi,
-    isAiBusy,
-    activeRunId,
-    startMutex: startMutexRef.current,
-    selectedCourseId: selectedCourse?.id || null,
-    customTitle: customTitle.trim(),
-  });
-
-  if (!canStartNow) {
-    dlog('onStart ignored: canStartNow=false', { step, hasJoined, lessonsLen: lessons.length, outlineLen: outline.length });
+const onStart = useCallback(async () => {
+  if (starting || !canStartNow) {
+    dlog('onStart: ignored', {
+      starting,
+      canStartNow,
+      activeRunId,
+      startMutex: startMutexRef.current,
+    });
     return;
   }
 
-  if (startMutexRef.current) {
-    dlog('onStart ignored: startMutexRef already true');
+  const custom = customTitle.trim();
+  if (!selectedCourse && !custom) {
+    window.alert('Pick a course or type a topic first.');
     return;
   }
-  startMutexRef.current = true;
+
+  setStarting(true);
+  const courseSize = sizeToCourseSize[sizePreset];
+  const opts: any = {
+    assignmentId: assignmentIdForAi,
+    courseSize,
+    level: classLevel,
+    minutes: minutesEffective,
+    programTrack,
+    totalLessons: safeLessons,
+    voiceName: effectiveVoice,
+  };
+
+  // mark run + spinner + reset player
+  const id = ++runIdRef.current;
+  setActiveRunId(id);
+  setPreparing(true);
+  setPlayerReady(false);
+  setPlayerLoading(true);
+  setLockedSsml(null);
 
   try {
-    const id = ++runIdRef.current;
-    setActiveRunId(id);
-    setBlockedUntilStart(false);
-    setPreparing(true);
-
-    const courseSize = sizeToCourseSize[sizePreset];
-    const opts = {
-      assignmentId: assignmentIdForAi,
-      courseSize,
-      level: classLevel,
-      minutes: minutesEffective,
-      programTrack,
-      totalLessons: safeLessons,
-      voiceName: effectiveVoice,
-    };
-
-    const custom = customTitle.trim();
-
-    if (!selectedCourse && custom) {
-      // 🔐 Only gate the custom-topic (“Teach me”) path
-      if (!requireAuth('custom_topic', 'Sign in to create your own AI lesson topic')) {
-        // requireAuth already navigated → stop
-        setPreparing(false);
-        setActiveRunId(null);
-        return;
+    // -------- custom topic flow (Teach me) ----------
+    if (custom) {
+      dlog('onStart → startCustomTopic', { custom, opts });
+      await startCustomTopic(custom);
+      await waitForSelection();
+      if (selectedCourseRef.current?.id) {
+        opts.courseId = selectedCourseRef.current.id;
       }
-
-      dlog('onStart: custom topic path', { opts });
-      await startCustomTopic(custom, opts);
-      dlog('onStart: startCustomTopic resolved');
-    } else {
-      dlog('onStart: existing course path', { selectedCourseId: selectedCourse?.id, opts });
+      dlog('onStart → startWithAI (custom)', { opts });
       await startWithAI(opts);
-      dlog('onStart: startWithAI resolved');
+      return;
     }
-  } catch (e) {
-    console.error('[RobotTeacher] onStart error', e);
-    dlog('onStart: error', { error: e });
-  } finally {
-    startMutexRef.current = false;
-    dlog('onStart: finished', {
-      activeRunId,
-      step,
-      outlineLen: outline.length,
-      lessonsLen: lessons.length,
+
+    // -------- top courses flow ----------
+    let course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
+
+    if (!course) {
+      const preserveIds = courseIdParam ? [courseIdParam] : [];
+      try {
+        await loadTopCourses?.({ limit: 200, preserveIds } as any);
+      } catch {
+        try {
+          await loadTopCourses?.();
+        } catch {/* ignore */}
+      }
+      await waitForCourses();
+      course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
+    }
+
+    if (course && (!selectedCourseRef.current || selectedCourseRef.current.id !== course.id)) {
+      selectCourse(course);
+      await waitForSelection();
+    }
+
+    if (!selectedCourseRef.current) {
+      dlog('onStart: bail — no course after waiting');
+      window.alert('Could not start. Please choose a course and try again.');
+      setActiveRunId(null);
+      setPreparing(false);
+      setPlayerLoading(false);
+      return;
+    }
+
+    opts.courseId = selectedCourseRef.current.id;
+    dlog('onStart → startWithAI (top course)', {
+      opts,
+      selectedId: selectedCourseRef.current.id,
     });
+    await startWithAI(opts);
+  } catch (e) {
+    console.error('[RobotTeacher.web:onStart] failed', e);
+    setActiveRunId(null);
+    setPreparing(false);
+    setPlayerLoading(false);
+  } finally {
+    setStarting(false);
   }
 }, [
+  starting,
   canStartNow,
+  customTitle,
+  selectedCourse,
+  assignmentIdForAi,
   sizePreset,
   classLevel,
   minutesEffective,
   programTrack,
   safeLessons,
   effectiveVoice,
-  selectedCourse,
-  customTitle,
-  startWithAI,
+  courseIdParam,
   startCustomTopic,
-  step,
-  hasJoined,
-  lessons.length,
-  outline.length,
-  busyUi,
-  isAiBusy,
-  activeRunId,
-  assignmentIdForAi,
-  requireAuth,
+  startWithAI,
+  loadTopCourses,
+  selectCourse,
 ]);
-
 
   const onRequestStartGuarded = useCallback(() => {
     // Player may ask to "start" — ignore if we already have content or we're busy

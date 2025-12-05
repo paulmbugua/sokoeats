@@ -1,38 +1,43 @@
-/* eslint-disable react-native/no-inline-styles */
-import React, { useEffect, useMemo, useState } from 'react';
+// apps/mobile/src/screens/CreateCourse.native.tsx
+/* eslint-disable prettier/prettier */
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+} from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TextInput,
-  TouchableOpacity,
+  ScrollView,
+  Pressable,
   ActivityIndicator,
   Alert,
-  Platform,
 } from 'react-native';
-import tw from '../../tailwind';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-// ⬇️ switch to Expo's picker (works out of the box with Expo)
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
+import { Picker } from '@react-native-picker/picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { useCourses } from '@mytutorapp/shared/hooks/useCourses';
+import tw from '../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
+import { useCourses } from '@mytutorapp/shared/hooks/useCourses';
 import type { CoursePayload, SyllabusItem } from '@mytutorapp/shared/types';
 import { uploadClassVaultAsset } from '@mytutorapp/shared/api/classVaultUploadApi';
 
-/* ------------------------------- constants ------------------------------- */
+/* ───────── Constants / helpers ───────── */
 
 const steps = ['Basic Info', 'Details', 'Syllabus', 'Review'] as const;
-const DRAFT_KEY = 'mt_create_course_draft_v1_native';
 
-/* ------------------------------- helpers -------------------------------- */
-
+// Parse "8 weeks", "8w", "8" → clamp 1..52
 function parseWeeks(input: string): number {
   const m = String(input || '').match(/(\d{1,2})/);
   const n = m ? Number(m[1]) : 0;
   return Math.max(1, Math.min(52, Number.isFinite(n) ? n : 1));
 }
 
+// Safe extractor for tutorId from profile
 function deriveTutorId(profile: unknown): number {
   if (profile && typeof profile === 'object') {
     const p = profile as { user_id?: unknown; userId?: unknown; id?: unknown };
@@ -53,56 +58,43 @@ function deriveTutorId(profile: unknown): number {
   return 0;
 }
 
+const DRAFT_KEY = 'mt_create_course_draft_v1';
+
 type CreateCourseDraft = {
   step: number;
-  priceInput: string;
+  priceInput: string; // tokens as string input
   formData: CoursePayload;
   freeCourse?: boolean;
 };
-const isDraft = (obj: unknown): obj is CreateCourseDraft => {
+
+function isDraft(obj: unknown): obj is CreateCourseDraft {
   if (!obj || typeof obj !== 'object') return false;
-  const d = obj as any;
-  return typeof d.step === 'number' && typeof d.priceInput === 'string' && d.formData && typeof d.formData === 'object';
-};
+  const d = obj as Partial<CreateCourseDraft>;
+  return (
+    typeof d.step === 'number' &&
+    typeof d.priceInput === 'string' &&
+    typeof d.formData === 'object' &&
+    d.formData !== null
+  );
+}
 
 type EditableSyllabusField = 'topic' | 'assignment' | 'videoUrl' | 'notesUrl';
+type FieldName = 'title' | 'description' | 'level' | 'duration' | 'prerequisites';
 
-/* --------------------------- small UI bits --------------------------- */
+/* ───────── Screen ───────── */
 
-const SectionCard: React.FC<{ title?: string; children?: React.ReactNode; pad?: boolean }> = ({ title, children, pad = true }) => (
-  <View style={tw`rounded-2xl border border-gray-200 bg-white ${pad ? 'p-4' : ''}`}>
-    {!!title && <Text style={tw`text-base font-semibold mb-2`}>{title}</Text>}
-    {children}
-  </View>
-);
-
-const Row: React.FC<{ children: React.ReactNode; style?: any }> = ({ children, style }) => (
-  <View style={[tw`flex-row items-center`, style]}>{children}</View>
-);
-
-const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <Text style={tw`text-sm font-medium text-gray-800`}>{children}</Text>
-);
-
-const Input = (props: React.ComponentProps<typeof TextInput>) => (
-  <TextInput
-    placeholderTextColor="#8aa0b6"
-    {...props}
-    style={[
-      tw`w-full rounded-xl border border-gray-200 bg-[#f6f8fb] px-3 py-3 text-gray-900`,
-      props.style,
-    ]}
-  />
-);
-
-/* ----------------------------- main screen ---------------------------- */
-
-const CreateCourseNative: React.FC = () => {
+const CreateCourseScreen: React.FC = () => {
   const { backendUrl, token, profile } = useShopContext() as any;
   const { addCourse, loading, error } = useCourses({ backendUrl, token });
 
+  const insets = useSafeAreaInsets();
+  const FOOTER_OFFSET = 80; // height reserved for global footer
+  const ACTION_BAR_HEIGHT = 60; // internal action bar
+  const bottomPad = Math.max(insets.bottom, 16);
+  const topPad = Math.max(insets.top, 12);
+
   const [uploadPct, setUploadPct] = useState<Record<string, number>>({});
-  const [step, setStep] = useState<number>(0);
+  const [step, setStep] = useState(0);
 
   const [priceInput, setPriceInput] = useState<string>('');
   const [freeCourse, setFreeCourse] = useState<boolean>(false);
@@ -118,7 +110,9 @@ const CreateCourseNative: React.FC = () => {
     syllabus: [],
   });
 
-  /* ------------------------- upload progress helpers ------------------------- */
+  // which weeks are expanded
+  const [openWeeks, setOpenWeeks] = useState<Record<number, boolean>>({});
+
   const setCappedPct = (key: string, pct: number) =>
     setUploadPct((prev) => ({
       ...prev,
@@ -127,38 +121,51 @@ const CreateCourseNative: React.FC = () => {
 
   const markUploadDone = (key: string) => {
     setUploadPct((prev) => ({ ...prev, [key]: 100 }));
-    setTimeout(() => setUploadPct((prev) => ({ ...prev, [key]: 0 })), 600);
+    setTimeout(() => {
+      setUploadPct((prev) => ({ ...prev, [key]: 0 }));
+    }, 600);
   };
 
-  /* ---------------------------- load draft (mount) --------------------------- */
+  const updateField = (field: FieldName, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  /* ───────── Load draft (AsyncStorage) ───────── */
+
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(DRAFT_KEY);
         if (!raw) return;
-        const parsed = JSON.parse(raw);
+        const parsed = JSON.parse(raw) as unknown;
         if (!isDraft(parsed)) return;
 
         const resolvedTutorId = deriveTutorId(profile);
-        const fd = parsed.formData as CoursePayload;
+        const fd = parsed.formData;
         const mergedForm: CoursePayload = {
           ...fd,
           tutorId: resolvedTutorId || fd.tutorId || 0,
           syllabus: Array.isArray(fd.syllabus) ? fd.syllabus : [],
         };
 
-        setFormData(mergedForm);
-        setPriceInput(parsed.priceInput);
-        setStep(Number.isFinite(parsed.step) ? parsed.step : 0);
-        setFreeCourse(Boolean(parsed.freeCourse));
+        if (!cancelled) {
+          setFormData(mergedForm);
+          setPriceInput(parsed.priceInput);
+          setStep(Number.isFinite(parsed.step) ? parsed.step : 0);
+          setFreeCourse(Boolean((parsed as any).freeCourse));
+        }
       } catch {
         // ignore corrupt draft
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [profile]);
 
-  /* -------------------------- keep tutorId in sync -------------------------- */
+  /* ───────── Keep tutorId in sync ───────── */
+
   useEffect(() => {
     const tid = deriveTutorId(profile);
     if (tid && tid !== formData.tutorId) {
@@ -166,128 +173,157 @@ const CreateCourseNative: React.FC = () => {
     }
   }, [profile, formData.tutorId]);
 
-  /* ------------------------- auto-size syllabus weeks ------------------------ */
+  /* ───────── Auto-size syllabus from duration ───────── */
+
   useEffect(() => {
     const weeks = parseWeeks(formData.duration ?? '');
     setFormData((prev) => {
       const current = prev.syllabus ?? [];
-      const trimmed = current.slice(0, weeks).map((s, i) => ({ ...s, week: i + 1 }));
+      const trimmed = current
+        .slice(0, weeks)
+        .map((s, i) => ({ ...s, week: i + 1 }));
       const next: SyllabusItem[] = [...trimmed];
-      for (let i = trimmed.length; i < weeks; i++) next.push({ week: i + 1, topic: '', assignment: '' });
+      for (let i = trimmed.length; i < weeks; i++) {
+        next.push({ week: i + 1, topic: '', assignment: '' });
+      }
       return { ...prev, syllabus: next };
     });
   }, [formData.duration]);
 
-  /* ------------------------------ persist draft ----------------------------- */
+  /* ───────── Persist draft ───────── */
+
   useEffect(() => {
+    const draft: CreateCourseDraft = { step, priceInput, formData, freeCourse };
     (async () => {
       try {
-        const draft: CreateCourseDraft = { step, priceInput, formData, freeCourse };
         await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
       } catch {
-        // storage may be full/blocked
+        // storage may be full or blocked
       }
     })();
   }, [step, priceInput, formData, freeCourse]);
 
-  /* -------------------------------- handlers -------------------------------- */
+  /* ───────── Syllabus change ───────── */
 
-  const handleField = (key: 'title' | 'description' | 'level' | 'duration' | 'prerequisites', val: string) =>
-    setFormData((prev) => ({ ...prev, [key]: val }));
-
-  const handleSyllabusChange = (index: number, field: EditableSyllabusField, value: string) => {
+  const handleSyllabusChange = (
+    index: number,
+    field: EditableSyllabusField,
+    value: string,
+  ) => {
     setFormData((prev) => {
       const base = prev.syllabus ?? [];
-      const next = base.map((w, i) => (i === index ? { ...w, [field]: value } : w));
+      const next = base.map((w, i) =>
+        i === index ? { ...w, [field]: value } : w,
+      );
       return { ...prev, syllabus: next };
     });
   };
 
+  const toggleWeekOpen = useCallback((index: number) => {
+    setOpenWeeks((prev) => {
+      const current = prev[index] ?? index < 2; // default open first two
+      return { ...prev, [index]: !current };
+    });
+  }, []);
+
+  /* ───────── Upload helpers ───────── */
+
   const guardUpload = () => {
     if (!backendUrl || !token) {
-      Alert.alert('Upload blocked', 'Missing backend URL or auth token.');
+      Alert.alert('Upload not available', 'Missing backend URL or auth token.');
       return false;
     }
     return true;
   };
 
-  // Normalize Expo document picker result → RN upload object
-  const toRNFile = (asset: {
-    uri: string;
-    name?: string | null;
-    size?: number | null;
-    mimeType?: string | null;
-  }) => {
-    const name = asset.name || `upload${asset.size ? `-${asset.size}` : ''}`;
-    const type = asset.mimeType || 'application/octet-stream';
-    return { uri: asset.uri, name, type } as any;
-  };
-
-  // Generic single-file picker
-  const pickOne = async (kind: 'video' | 'pdf') => {
-    const res = await DocumentPicker.getDocumentAsync({
-      type: kind === 'video' ? 'video/*' : 'application/pdf',
-      multiple: false,
-      copyToCacheDirectory: true,
-      // iOS/Android supported; presentationStyle ignored on Android
-      // Note: no need for Platform check here
-    });
-    if (res.canceled) return null;
-    // SDKs differ slightly; prefer first asset if present, else the object itself
-    const asset = Array.isArray((res as any).assets) ? (res as any).assets[0] : (res as any);
-    if (!asset?.uri) return null;
-    return asset as { uri: string; name?: string; size?: number; mimeType?: string };
-  };
-
-  const pickAndUploadVideo = async (index: number) => {
+  const handleVideoFileUpload = async (
+    index: number,
+    asset: DocumentPicker.DocumentPickerAsset | null,
+  ) => {
+    if (!asset) return;
     if (!guardUpload()) return;
+    const key = `v-${index}`;
     try {
-      const asset = await pickOne('video');
-      if (!asset) return; // user canceled
-      const key = `v-${index}`;
       const onProgress = (p: number) => setCappedPct(key, p);
-      const rnFile = toRNFile(asset);
-      const { url } = await uploadClassVaultAsset(backendUrl!, token!, rnFile, 'video', onProgress, { folder: 'courses' });
+
+      const file: any = {
+        uri: asset.uri,
+        name: asset.name || `video-${Date.now()}.mp4`,
+        type: asset.mimeType || 'video/mp4',
+      };
+
+      const { url } = await uploadClassVaultAsset(
+        backendUrl!,
+        token!,
+        file,
+        'video',
+        onProgress,
+        { folder: 'courses' },
+      );
+
       setFormData((prev) => {
         const base = prev.syllabus ?? [];
-        const next = base.map((w, i) => (i === index ? { ...w, videoUrl: url } : w));
+        const next = base.map((w, i) =>
+          i === index ? { ...w, videoUrl: url } : w,
+        );
         return { ...prev, syllabus: next };
       });
+
       markUploadDone(key);
-    } catch (e: any) {
-      console.warn('[CreateCourse.native] video upload failed', e);
-      Alert.alert('Upload failed', 'Video upload failed. Please try again.');
-      setUploadPct((prev) => ({ ...prev, [`v-${index}`]: 0 }));
+    } catch (e) {
+      console.error('[CreateCourse.native] video upload failed', e);
+      Alert.alert('Video upload failed', 'Please try again.');
+      setUploadPct((prev) => ({ ...prev, [key]: 0 }));
     }
   };
 
-  const pickAndUploadPdf = async (index: number) => {
+  const handleNotesPdfUpload = async (
+    index: number,
+    asset: DocumentPicker.DocumentPickerAsset | null,
+  ) => {
+    if (!asset) return;
     if (!guardUpload()) return;
+    const key = `n-${index}`;
     try {
-      const asset = await pickOne('pdf');
-      if (!asset) return; // user canceled
-      const key = `n-${index}`;
       const onProgress = (p: number) => setCappedPct(key, p);
-      const rnFile = toRNFile(asset);
-      const { url } = await uploadClassVaultAsset(backendUrl!, token!, rnFile, 'pdf', onProgress, { folder: 'courses' });
+
+      const file: any = {
+        uri: asset.uri,
+        name: asset.name || `notes-${Date.now()}.pdf`,
+        type: asset.mimeType || 'application/pdf',
+      };
+
+      const { url } = await uploadClassVaultAsset(
+        backendUrl!,
+        token!,
+        file,
+        'pdf',
+        onProgress,
+        { folder: 'courses' },
+      );
+
       setFormData((prev) => {
         const base = prev.syllabus ?? [];
-        const next = base.map((w, i) => (i === index ? { ...w, notesUrl: url } : w));
+        const next = base.map((w, i) =>
+          i === index ? { ...w, notesUrl: url } : w,
+        );
         return { ...prev, syllabus: next };
       });
+
       markUploadDone(key);
-    } catch (e: any) {
-      console.warn('[CreateCourse.native] notes upload failed', e);
-      Alert.alert('Upload failed', 'Notes upload failed. Please try again.');
-      setUploadPct((prev) => ({ ...prev, [`n-${index}`]: 0 }));
+    } catch (e) {
+      console.error('[CreateCourse.native] PDF upload failed', e);
+      Alert.alert('Notes upload failed', 'Please try again.');
+      setUploadPct((prev) => ({ ...prev, [key]: 0 }));
     }
   };
-
-  /* --------------------------- upload indicators ---------------------------- */
 
   const fileUploading = useMemo(
-    () => Object.values(uploadPct).some((p) => (p ?? 0) > 0 && (p ?? 0) < 100),
-    [uploadPct]
+    () =>
+      Object.values(uploadPct).some(
+        (p) => (p ?? 0) > 0 && (p ?? 0) < 100,
+      ),
+    [uploadPct],
   );
 
   const overallUploadPct = useMemo(() => {
@@ -298,11 +334,11 @@ const CreateCourseNative: React.FC = () => {
     return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
   }, [uploadPct]);
 
-  /* --------------------------------- submit -------------------------------- */
+  /* ───────── Submit ───────── */
 
   const handleSubmit = async () => {
     if (!formData.tutorId) {
-      Alert.alert('Missing tutor', 'Please sign in again.');
+      Alert.alert('Missing tutor', 'Missing tutor id. Please sign in again.');
       return;
     }
 
@@ -310,8 +346,15 @@ const CreateCourseNative: React.FC = () => {
     if (!freeCourse) {
       const trimmed = priceInput.trim();
       const parsed = trimmed === '' ? NaN : Number(trimmed);
-      if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
-        Alert.alert('Invalid price', 'Enter a non-negative whole number of tokens, or mark the course as Free.');
+      if (
+        !Number.isFinite(parsed) ||
+        parsed < 0 ||
+        !Number.isInteger(parsed)
+      ) {
+        Alert.alert(
+          'Invalid price',
+          'Please enter a valid non-negative whole number of tokens, or mark the course as Free.',
+        );
         return;
       }
       tokensToSend = parsed;
@@ -323,7 +366,7 @@ const CreateCourseNative: React.FC = () => {
           (s.topic?.trim().length ?? 0) > 0 ||
           (s.assignment?.trim().length ?? 0) > 0 ||
           (s.videoUrl?.trim().length ?? 0) > 0 ||
-          (s.notesUrl?.trim().length ?? 0) > 0
+          (s.notesUrl?.trim().length ?? 0) > 0,
       )
       .map((s, i) => ({ ...s, week: i + 1 }));
 
@@ -335,7 +378,10 @@ const CreateCourseNative: React.FC = () => {
 
     try {
       await addCourse(payload);
-      try { await AsyncStorage.removeItem(DRAFT_KEY); } catch {}
+      try {
+        await AsyncStorage.removeItem(DRAFT_KEY);
+      } catch {}
+
       setFormData({
         tutorId: deriveTutorId(profile),
         title: '',
@@ -350,30 +396,41 @@ const CreateCourseNative: React.FC = () => {
       setPriceInput('');
       setUploadPct({});
       setStep(0);
+
       Alert.alert('Success', 'Course created successfully!');
     } catch (err: any) {
+      const e = err as {
+        message?: string;
+        response?: { data?: { error?: string; message?: string } };
+      };
       const msg =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        err?.message ||
+        e?.response?.data?.error ||
+        e?.response?.data?.message ||
+        e?.message ||
         'Failed to create course.';
       console.error('[CreateCourse.native] submit error', err);
       Alert.alert('Error', msg);
     }
   };
 
-  /* ------------------------------ validation ------------------------------- */
+  /* ───────── Validation ───────── */
 
   const canNext = useMemo(() => {
     if (step === 0) {
-      return formData.title.trim().length > 3 && !!formData.description?.trim();
+      return (
+        formData.title.trim().length > 3 &&
+        !!formData.description?.trim()
+      );
     }
     if (step === 1) {
       const weeksOk = parseWeeks(formData.duration ?? '') >= 1;
       if (freeCourse) return weeksOk;
       const trimmed = priceInput.trim();
       const parsed = trimmed === '' ? NaN : Number(trimmed);
-      const priceOk = Number.isFinite(parsed) && parsed >= 0 && Number.isInteger(parsed);
+      const priceOk =
+        Number.isFinite(parsed) &&
+        parsed >= 0 &&
+        Number.isInteger(parsed);
       return weeksOk && priceOk;
     }
     if (step === 2) {
@@ -382,7 +439,7 @@ const CreateCourseNative: React.FC = () => {
           (w.topic?.trim().length ?? 0) > 0 ||
           (w.assignment?.trim().length ?? 0) > 0 ||
           (w.videoUrl?.trim().length ?? 0) > 0 ||
-          (w.notesUrl?.trim().length ?? 0) > 0
+          (w.notesUrl?.trim().length ?? 0) > 0,
       );
     }
     return true;
@@ -391,15 +448,23 @@ const CreateCourseNative: React.FC = () => {
   const tokensForDisplay =
     freeCourse
       ? 0
-      : priceInput.trim() !== '' && Number.isFinite(Number(priceInput))
+      : priceInput.trim() !== '' &&
+        Number.isFinite(Number(priceInput))
       ? Number(priceInput)
       : formData.price;
 
-  const priceFmtTokens = `${Number(tokensForDisplay || 0)} Tokens (≈ $${Number(tokensForDisplay || 0)} USD)`;
+  const priceFmtTokens = `${Number(
+    tokensForDisplay || 0,
+  )} Tokens (≈ $${Number(tokensForDisplay || 0)} USD)`;
+
   const progressPct = ((step + 1) / steps.length) * 100;
 
-  const clearDraft = async () => {
-    try { await AsyncStorage.removeItem(DRAFT_KEY); } catch {}
+  const clearDraft = () => {
+    (async () => {
+      try {
+        await AsyncStorage.removeItem(DRAFT_KEY);
+      } catch {}
+    })();
     setPriceInput('');
     setFreeCourse(false);
     setFormData((prev) => ({
@@ -414,408 +479,881 @@ const CreateCourseNative: React.FC = () => {
     setStep(0);
   };
 
-  /* --------------------------------- render -------------------------------- */
+  /* ───────── UI ───────── */
+
+  const cleanSyllabusReview = useMemo(
+    () =>
+      (formData.syllabus ?? [])
+        .filter(
+          (s) =>
+            (s.topic?.trim().length ?? 0) > 0 ||
+            (s.assignment?.trim().length ?? 0) > 0 ||
+            (s.videoUrl?.trim().length ?? 0) > 0 ||
+            (s.notesUrl?.trim().length ?? 0) > 0,
+        )
+        .map((s, i) => ({ ...s, week: i + 1 })),
+    [formData.syllabus],
+  );
 
   return (
-    <View style={tw`flex-1 bg-[#f1f5f9]`}>
-      {/* Header */}
-      <View style={tw`px-4 py-3 border-b border-gray-200 bg-white`}>
-        <Row style={tw`justify-between`}>
-          <Row style={tw`gap-3`}>
-            <View style={tw`h-9 w-9 rounded-xl bg-blue-600 items-center justify-center`}>
-              <Text style={tw`text-white font-bold`}>📘</Text>
-            </View>
-            <View>
-              <Text style={tw`text-lg font-extrabold text-gray-900`}>Create a New Course</Text>
-              <Text style={tw`text-xs text-gray-500`}>
-                Autosaves locally •{' '}
-                <Text onPress={clearDraft} style={tw`underline`}>
-                  Clear draft
-                </Text>
-              </Text>
-            </View>
-          </Row>
+    <SafeAreaView
+      style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
+      edges={['top', 'bottom']}
+    >
+      {/* Soft background blobs (like FindTutor) */}
+      <View style={tw`absolute inset-0`}>
+        <View
+          style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-blue-500/10 dark:bg-blue-500/15`}
+        />
+        <View
+          style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-indigo-500/10 dark:bg-indigo-500/15`}
+        />
+      </View>
 
-          {/* Tiny stepper badges */}
-          <Row style={tw`gap-2`}>
-            {steps.map((_, idx) => {
+      <ScrollView
+        style={tw`flex-1`}
+        contentContainerStyle={[
+          tw`pb-6`,
+          {
+            paddingTop: topPad + 4,
+            paddingBottom:
+              bottomPad + FOOTER_OFFSET + ACTION_BAR_HEIGHT + 12,
+            paddingHorizontal: 16,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View
+          style={tw`flex-row items-center justify-between mb-3 mt-2`}
+        >
+          <View style={tw`flex-row items-center flex-1 pr-2`}>
+            <View
+              style={tw`h-9 w-9 rounded-xl bg-blue-600 items-center justify-center shadow-sm`}
+            >
+              <Text style={tw`text-white text-lg`}>📘</Text>
+            </View>
+            <View style={tw`ml-3 flex-1`}>
+              <Text
+                style={tw`text-[18px] font-extrabold text-slate-900 dark:text-white`}
+              >
+                Create a New Course
+              </Text>
+              <View style={tw`flex-row items-center mt-1`}>
+                <Text
+                  style={tw`text-[11px] text-slate-500 dark:text-slate-400`}
+                >
+                  Autosaves locally •{' '}
+                </Text>
+                <Pressable onPress={clearDraft}>
+                  <Text
+                    style={tw`text-[11px] underline text-slate-700 dark:text-slate-200`}
+                  >
+                    Clear draft
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+
+          {/* Stepper summary */}
+          <View style={tw`flex-row items-center`}>
+            {steps.map((label, idx) => {
               const active = idx === step;
               const done = idx < step;
               return (
-                <View
-                  key={idx}
-                  style={tw.style(
-                    'h-7 w-7 rounded-full items-center justify-center',
-                    done ? 'bg-emerald-600' : active ? 'bg-blue-600' : 'bg-gray-300'
+                <View key={label} style={tw`flex-row items-center`}>
+                  <View
+                    style={tw.style(
+                      'h-8 w-8 rounded-full items-center justify-center',
+                      done
+                        ? 'bg-emerald-600'
+                        : active
+                        ? 'bg-blue-600'
+                        : 'bg-slate-200 dark:bg-slate-700',
+                    )}
+                  >
+                    <Text
+                      style={tw.style(
+                        'text-xs font-semibold',
+                        done || active
+                          ? 'text-white'
+                          : 'text-slate-700 dark:text-slate-300',
+                      )}
+                    >
+                      {idx + 1}
+                    </Text>
+                  </View>
+                  {idx < steps.length - 1 && (
+                    <View
+                      style={tw`mx-1 h-[2px] w-6 rounded bg-slate-200 dark:bg-slate-700`}
+                    />
                   )}
-                >
-                  <Text style={tw`text-white text-xs font-bold`}>{idx + 1}</Text>
                 </View>
               );
             })}
-          </Row>
-        </Row>
+          </View>
+        </View>
 
         {/* Progress bar */}
-        <View style={tw`mt-3 h-1 rounded bg-gray-200 overflow-hidden`}>
-          <View style={[tw`h-full bg-blue-600`, { width: `${progressPct}%` }]} />
+        <View
+          style={tw`h-1 rounded-full bg-slate-200/70 dark:bg-white/10 mb-4`}
+        >
+          <View
+            style={[
+              tw`h-full rounded-full bg-blue-600`,
+              { width: `${progressPct}%` },
+            ]}
+          />
         </View>
-      </View>
 
-      {/* Content */}
-      <ScrollView contentContainerStyle={tw`px-4 py-6 gap-6`}>
-        <SectionCard pad>
-          {/* Mobile step label */}
-          <Text style={tw`mb-3 text-sm font-medium text-gray-700`}>{steps[step]}</Text>
+        {/* Step label for small view */}
+        <Text
+          style={tw`text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2`}
+        >
+          Step {step + 1} of {steps.length} · {steps[step]}
+        </Text>
 
-          {/* Step 0: Basic Info */}
-          {step === 0 && (
-            <View style={tw`gap-4`}>
-              <View>
-                <Label>Course Title</Label>
-                <Input
-                  value={formData.title}
-                  onChangeText={(t) => handleField('title', t)}
-                  placeholder="e.g., Calculus I: Limits to Derivatives"
-                />
+        {/* Main card */}
+        <View
+          style={tw`rounded-2xl bg-white dark:bg-[#0f1821] border border-slate-200 dark:border-white/10 shadow-sm overflow-hidden`}
+        >
+          <View style={tw`p-4`}>
+            {/* Step 0: Basic Info */}
+            {step === 0 && (
+              <View style={tw`gap-y-4`}>
+                {/* Title */}
+                <View>
+                  <Text
+                    style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}
+                  >
+                    Course Title
+                  </Text>
+                  <TextInput
+                    value={formData.title}
+                    onChangeText={(t) => updateField('title', t)}
+                    placeholder="e.g., Calculus I: Limits to Derivatives"
+                    placeholderTextColor="#64748b"
+                    style={tw`w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-3 text-slate-900 dark:text-white`}
+                  />
+                </View>
+
+                {/* Description */}
+                <View>
+                  <Text
+                    style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}
+                  >
+                    Description
+                  </Text>
+                  <TextInput
+                    value={formData.description ?? ''}
+                    onChangeText={(t) => updateField('description', t)}
+                    placeholder="What will learners achieve? Who is it for?"
+                    placeholderTextColor="#64748b"
+                    style={tw`w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-3 text-slate-900 dark:text-white`}
+                    multiline
+                    textAlignVertical="top"
+                    numberOfLines={5}
+                  />
+                </View>
+
+                {/* Level */}
+                <View>
+                  <Text
+                    style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}
+                  >
+                    Level
+                  </Text>
+                  <View
+                    style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-1`}
+                  >
+                    <Picker
+                      selectedValue={formData.level}
+                      onValueChange={(val) =>
+                        updateField('level', String(val))
+                      }
+                      dropdownIconColor="#0f172a"
+                      style={tw`text-slate-900 dark:text-white`}
+                    >
+                      <Picker.Item label="Beginner" value="Beginner" />
+                      <Picker.Item
+                        label="Intermediate"
+                        value="Intermediate"
+                      />
+                      <Picker.Item label="Advanced" value="Advanced" />
+                      <Picker.Item
+                        label="All Levels"
+                        value="All Levels"
+                      />
+                    </Picker>
+                  </View>
+                </View>
               </View>
+            )}
 
-              <View>
-                <Label>Description</Label>
-                <Input
-                  value={formData.description ?? ''}
-                  onChangeText={(t) => handleField('description', t)}
-                  placeholder="What will learners achieve? Who is it for?"
-                  multiline
-                  numberOfLines={5}
-                  style={tw`min-h-28`}
-                />
-              </View>
-
-              <View>
-                <Label>Level</Label>
-                <Input
-                  value={formData.level}
-                  onChangeText={(t) => handleField('level', t)}
-                  placeholder="Beginner | Intermediate | Advanced | All Levels"
-                />
-              </View>
-            </View>
-          )}
-
-          {/* Step 1: Details */}
-          {step === 1 && (
-            <View style={tw`gap-4`}>
-              <View>
-                <Label>Duration</Label>
-                <Input
-                  value={formData.duration ?? ''}
-                  onChangeText={(t) => handleField('duration', t)}
-                  placeholder="e.g., 8 weeks"
-                />
-                <Text style={tw`text-xs text-gray-500 mt-1`}>
-                  Tip: type “8 weeks”, “8weeks”, or “8w”. We’ll size the syllabus automatically.
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                onPress={() => {
-                  const next = !freeCourse;
-                  setFreeCourse(next);
-                  if (next) setPriceInput('');
-                }}
-                style={tw`flex-row items-start gap-3 rounded-xl border border-gray-200 bg-[#f6f8fb] p-3`}
-              >
-                <View style={tw.style('h-5 w-5 rounded-md', freeCourse ? 'bg-emerald-600' : 'bg-white border border-gray-300')} />
-                <View style={tw`flex-1`}>
-                  <Text style={tw`text-sm font-medium text-gray-900`}>This is a free course</Text>
-                  <Text style={tw`text-xs text-gray-600`}>
-                    Learners enroll at no cost. Price will be saved as <Text style={tw`font-semibold`}>0 Tokens</Text>.
+            {/* Step 1: Details */}
+            {step === 1 && (
+              <View style={tw`gap-y-4`}>
+                {/* Duration */}
+                <View>
+                  <Text
+                    style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}
+                  >
+                    Duration
+                  </Text>
+                  <TextInput
+                    value={formData.duration ?? ''}
+                    onChangeText={(t) => updateField('duration', t)}
+                    placeholder="e.g., 8 weeks"
+                    placeholderTextColor="#64748b"
+                    style={tw`w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-3 text-slate-900 dark:text-white`}
+                  />
+                  <Text
+                    style={tw`mt-1 text-[11px] text-slate-500 dark:text-slate-400`}
+                  >
+                    Tip: type "8 weeks", "8weeks", or "8w". We’ll size the
+                    syllabus automatically.
                   </Text>
                 </View>
-              </TouchableOpacity>
 
-              <View>
-                <Label>
-                  Price (Tokens) {freeCourse ? <Text style={tw`text-xs`}> (disabled for Free)</Text> : null}
-                </Label>
-                <Input
-                  value={freeCourse ? '' : priceInput}
-                  onChangeText={setPriceInput}
-                  placeholder={freeCourse ? 'Free course selected' : 'e.g., 5 (Tokens)'}
-                  editable={!freeCourse}
-                  keyboardType="number-pad"
-                />
-                <Text style={tw`text-xs text-gray-500 mt-1`}>1 Token = 1 USD (whole numbers).</Text>
-              </View>
-
-              <View>
-                <Label>Prerequisites (optional)</Label>
-                <Input
-                  value={formData.prerequisites ?? ''}
-                  onChangeText={(t) => handleField('prerequisites', t)}
-                  placeholder="e.g., Basic algebra, comfort with functions"
-                  multiline
-                  numberOfLines={4}
-                  style={tw`min-h-24`}
-                />
-              </View>
-            </View>
-          )}
-
-          {/* Step 2: Syllabus */}
-          {step === 2 && (
-            <View style={tw`gap-4`}>
-              <View style={tw`rounded-xl border border-gray-200 bg-[#f6f8fb] p-3`}>
-                <Text style={tw`text-sm text-gray-700`}>
-                  Syllabus for <Text style={tw`font-semibold`}>{parseWeeks(formData.duration ?? '')}</Text> week
-                  {parseWeeks(formData.duration ?? '') === 1 ? '' : 's'} (auto-sized)
-                </Text>
-              </View>
-
-              <View style={tw`gap-4`}>
-                {(formData.syllabus ?? []).map((item, index) => {
-                  const vKey = `v-${index}`;
-                  const nKey = `n-${index}`;
-                  const vPct = Math.round(uploadPct[vKey] ?? 0);
-                  const nPct = Math.round(uploadPct[nKey] ?? 0);
-
-                  return (
-                    <SectionCard key={index} pad>
-                      <Row style={tw`justify-between mb-2`}>
-                        <Row style={tw`gap-2`}>
-                          <View style={tw`h-6 w-6 rounded-lg bg-blue-600/10 items-center justify-center`}>
-                            <Text style={tw`text-blue-700 font-semibold text-xs`}>{item.week}</Text>
-                          </View>
-                          <Text style={tw`text-sm font-semibold`}>
-                            {item.topic?.trim() ? item.topic : `Week ${item.week}`}
-                          </Text>
-                        </Row>
-                      </Row>
-
-                      <View style={tw`gap-3`}>
-                        <Input
-                          value={item.topic ?? ''}
-                          onChangeText={(t) => handleSyllabusChange(index, 'topic', t)}
-                          placeholder="Topic (e.g., Limits & Continuity)"
-                        />
-                        <Input
-                          value={item.assignment ?? ''}
-                          onChangeText={(t) => handleSyllabusChange(index, 'assignment', t)}
-                          placeholder="Notes / Assignment"
-                          multiline
-                          numberOfLines={4}
-                          style={tw`min-h-24`}
-                        />
-
-                        {/* URLs */}
-                        <Input
-                          value={item.videoUrl ?? ''}
-                          onChangeText={(t) => handleSyllabusChange(index, 'videoUrl', t)}
-                          placeholder="Optional: Video URL (YouTube/Vimeo/MP4)"
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                        />
-                        <Row style={tw`justify-between`}>
-                          <Text style={tw`text-xs text-gray-600`}>Or upload video file</Text>
-                          {vPct > 0 && vPct < 100 && (
-                            <Text style={tw`text-xs text-gray-600`}>Uploading… {vPct}%</Text>
-                          )}
-                        </Row>
-                        <TouchableOpacity
-                          onPress={() => pickAndUploadVideo(index)}
-                          style={tw`rounded-lg border border-dashed border-gray-300 bg-[#f6f8fb] p-3`}
-                        >
-                          <Text style={tw`text-sm`}>Pick video</Text>
-                          {!!item.videoUrl && (
-                            <Text style={tw`text-xs text-blue-600 mt-1`} numberOfLines={1}>
-                              {item.videoUrl}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-
-                        <Input
-                          value={item.notesUrl ?? ''}
-                          onChangeText={(t) => handleSyllabusChange(index, 'notesUrl', t)}
-                          placeholder="Optional: Notes URL (PDF/Doc)"
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                        />
-                        <Row style={tw`justify-between`}>
-                          <Text style={tw`text-xs text-gray-600`}>Or upload notes (PDF)</Text>
-                          {nPct > 0 && nPct < 100 && (
-                            <Text style={tw`text-xs text-gray-600`}>Uploading… {nPct}%</Text>
-                          )}
-                        </Row>
-                        <TouchableOpacity
-                          onPress={() => pickAndUploadPdf(index)}
-                          style={tw`rounded-lg border border-dashed border-gray-300 bg-[#f6f8fb] p-3`}
-                        >
-                          <Text style={tw`text-sm`}>Pick PDF</Text>
-                          {!!item.notesUrl && (
-                            <Text style={tw`text-xs text-blue-600 mt-1`} numberOfLines={1}>
-                              {item.notesUrl}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    </SectionCard>
-                  );
-                })}
-              </View>
-            </View>
-          )}
-
-          {/* Step 3: Review */}
-          {step === 3 && (() => {
-            const cleanSyllabus = (formData.syllabus ?? [])
-              .filter(
-                (s) =>
-                  (s.topic?.trim().length ?? 0) > 0 ||
-                  (s.assignment?.trim().length ?? 0) > 0 ||
-                  (s.videoUrl?.trim().length ?? 0) > 0 ||
-                  (s.notesUrl?.trim().length ?? 0) > 0
-              )
-              .map((s, i) => ({ ...s, week: i + 1 }));
-
-            return (
-              <View style={tw`gap-4`}>
-                <View style={tw`flex-row gap-4`}>
-                  <SectionCard pad>
-                    <Text style={tw`text-xs text-gray-500`}>Title</Text>
-                    <Text style={tw`font-semibold`}>{formData.title || '—'}</Text>
-                  </SectionCard>
-                  <SectionCard pad>
-                    <Text style={tw`text-xs text-gray-500`}>Level</Text>
-                    <Text style={tw`font-semibold`}>{formData.level}</Text>
-                  </SectionCard>
-                </View>
-
-                <View style={tw`flex-row gap-4`}>
-                  <SectionCard pad>
-                    <Text style={tw`text-xs text-gray-500`}>Duration</Text>
-                    <Text style={tw`font-semibold`}>{formData.duration || '—'}</Text>
-                  </SectionCard>
-                  <SectionCard pad>
-                    <Text style={tw`text-xs text-gray-500`}>Price</Text>
-                    {freeCourse ? (
-                      <Row style={tw`gap-2`}>
-                        <Text style={tw`px-2 py-1 rounded-lg text-xs font-semibold bg-emerald-600/10 text-emerald-700`}>Free</Text>
-                        <Text style={tw`text-xs text-gray-500`}>(saved as 0 Tokens)</Text>
-                      </Row>
-                    ) : (
-                      <Text style={tw`font-semibold`}>{priceFmtTokens}</Text>
+                {/* Free course toggle */}
+                <Pressable
+                  onPress={() => {
+                    const next = !freeCourse;
+                    setFreeCourse(next);
+                    if (next) setPriceInput('');
+                  }}
+                  style={tw`flex-row items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
+                >
+                  <View
+                    style={tw`mt-0.5 h-4 w-4 rounded border border-slate-400 dark:border-slate-500 items-center justify-center bg-white dark:bg-[#0f1821]`}
+                  >
+                    {freeCourse && (
+                      <View
+                        style={tw`h-3 w-3 rounded bg-emerald-500`}
+                      />
                     )}
-                  </SectionCard>
+                  </View>
+                  <View style={tw`flex-1`}>
+                    <Text
+                      style={tw`text-sm font-medium text-slate-800 dark:text-slate-100`}
+                    >
+                      This is a free course
+                    </Text>
+                    <Text
+                      style={tw`text-xs text-slate-600 dark:text-slate-300 mt-0.5`}
+                    >
+                      Learners will enroll at no cost. The price field will
+                      be disabled and saved as 0 Tokens.
+                    </Text>
+                  </View>
+                </Pressable>
+
+                {/* Price */}
+                <View>
+                  <View style={tw`flex-row items-baseline mb-1`}>
+                    <Text
+                      style={tw`text-sm font-medium text-slate-700 dark:text-slate-200`}
+                    >
+                      Price (Tokens)
+                    </Text>
+                    {freeCourse && (
+                      <Text
+                        style={tw`ml-2 text-xs text-slate-500 dark:text-slate-400`}
+                      >
+                        (disabled for Free)
+                      </Text>
+                    )}
+                  </View>
+                  <TextInput
+                    value={freeCourse ? '' : priceInput}
+                    onChangeText={setPriceInput}
+                    editable={!freeCourse}
+                    keyboardType="number-pad"
+                    placeholder={
+                      freeCourse
+                        ? 'Free course selected'
+                        : 'e.g., 5 (Tokens)'
+                    }
+                    placeholderTextColor="#64748b"
+                    style={tw.style(
+                      'w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-3 text-slate-900 dark:text-white',
+                      freeCourse ? 'opacity-60' : '',
+                    )}
+                  />
+                  <Text
+                    style={tw`mt-1 text-[11px] text-slate-500 dark:text-slate-400`}
+                  >
+                    1 Token = 1 USD (charged in tokens, shown here as whole
+                    numbers).
+                  </Text>
                 </View>
 
-                <SectionCard pad>
-                  <Text style={tw`text-xs text-gray-500 mb-1`}>Prerequisites</Text>
-                  <Text>{formData.prerequisites || '—'}</Text>
-                </SectionCard>
-
-                <SectionCard pad>
-                  <Text style={tw`text-xs text-gray-500 mb-2`}>
-                    Syllabus ({cleanSyllabus.length} week{cleanSyllabus.length === 1 ? '' : 's'})
+                {/* Prerequisites */}
+                <View>
+                  <Text
+                    style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}
+                  >
+                    Prerequisites (optional)
                   </Text>
-                  {cleanSyllabus.length === 0 ? (
-                    <Text>—</Text>
+                  <TextInput
+                    value={formData.prerequisites ?? ''}
+                    onChangeText={(t) =>
+                      updateField('prerequisites', t)
+                    }
+                    placeholder="e.g., Basic algebra, comfort with functions"
+                    placeholderTextColor="#64748b"
+                    style={tw`w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-3 text-slate-900 dark:text-white`}
+                    multiline
+                    textAlignVertical="top"
+                    numberOfLines={4}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Step 2: Syllabus */}
+            {step === 2 && (
+              <View style={tw`gap-y-4`}>
+                <View
+                  style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
+                >
+                  <Text
+                    style={tw`text-sm text-slate-600 dark:text-slate-300`}
+                  >
+                    Syllabus for{' '}
+                    <Text style={tw`font-semibold`}>
+                      {parseWeeks(formData.duration ?? '')}
+                    </Text>{' '}
+                    week
+                    {parseWeeks(formData.duration ?? '') === 1 ? '' : 's'}{' '}
+                    (auto-sized from duration)
+                  </Text>
+                </View>
+
+                <View style={tw`gap-y-3`}>
+                  {(formData.syllabus ?? []).map((item, index) => {
+                    const isOpen =
+                      openWeeks[index] ?? index < 2; // default open first 2
+                    return (
+                      <View
+                        key={index}
+                        style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0f1821] overflow-hidden`}
+                      >
+                        {/* Summary / header */}
+                        <Pressable
+                          onPress={() => toggleWeekOpen(index)}
+                          style={tw`flex-row items-center justify-between px-4 py-3`}
+                        >
+                          <View style={tw`flex-row items-center gap-2`}>
+                            <View
+                              style={tw`h-6 w-6 rounded-lg bg-blue-600/10 items-center justify-center`}
+                            >
+                              <Text
+                                style={tw`text-xs font-semibold text-blue-700 dark:text-blue-300`}
+                              >
+                                {item.week}
+                              </Text>
+                            </View>
+                            <Text
+                              style={tw`text-sm font-semibold text-slate-800 dark:text-slate-100`}
+                            >
+                              {item.topic?.trim()
+                                ? item.topic
+                                : `Week ${item.week}`}
+                            </Text>
+                          </View>
+                          <Text
+                            style={tw`text-base text-slate-500`}
+                          >
+                            {isOpen ? '⌃' : '⌄'}
+                          </Text>
+                        </Pressable>
+
+                        {/* Body */}
+                        {isOpen && (
+                          <View style={tw`px-4 pb-4 gap-y-3`}>
+                            <TextInput
+                              value={item.topic ?? ''}
+                              onChangeText={(t) =>
+                                handleSyllabusChange(
+                                  index,
+                                  'topic',
+                                  t,
+                                )
+                              }
+                              placeholder="Topic (e.g., Limits & Continuity)"
+                              placeholderTextColor="#64748b"
+                              style={tw`w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-2 text-slate-900 dark:text-white`}
+                            />
+
+                            <TextInput
+                              value={item.assignment ?? ''}
+                              onChangeText={(t) =>
+                                handleSyllabusChange(
+                                  index,
+                                  'assignment',
+                                  t,
+                                )
+                              }
+                              placeholder="Notes/Assignment"
+                              placeholderTextColor="#64748b"
+                              style={tw`w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-3 text-slate-900 dark:text-white`}
+                              multiline
+                              textAlignVertical="top"
+                              numberOfLines={4}
+                            />
+
+                            <View
+                              style={tw`flex-col sm:flex-row gap-3`}
+                            >
+                              {/* Video URL + upload */}
+                              <View style={tw`flex-1 gap-y-2`}>
+                                <TextInput
+                                  value={item.videoUrl ?? ''}
+                                  onChangeText={(t) =>
+                                    handleSyllabusChange(
+                                      index,
+                                      'videoUrl',
+                                      t,
+                                    )
+                                  }
+                                  placeholder="Optional: Video URL (YouTube/Vimeo/MP4)"
+                                  placeholderTextColor="#64748b"
+                                  style={tw`w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-2 text-slate-900 dark:text-white`}
+                                />
+                                <View>
+                                  <View
+                                    style={tw`flex-row items-center justify-between`}
+                                  >
+                                    <Text
+                                      style={tw`text-xs text-slate-600 dark:text-slate-300`}
+                                    >
+                                      Or upload video file
+                                    </Text>
+                                    {(uploadPct[`n-${index}`] ?? 0) > 0 && (
+                                        <Text style={tw`text-xs text-slate-500`}>
+                                          Uploading… {Math.round(uploadPct[`n-${index}`] ?? 0)}%
+                                        </Text>
+                                      )}
+
+                                  </View>
+                                  <Pressable
+                                    onPress={async () => {
+                                      try {
+                                        const res =
+                                          await DocumentPicker.getDocumentAsync(
+                                            {
+                                              type: 'video/*',
+                                              multiple: false,
+                                              copyToCacheDirectory: true,
+                                            },
+                                          );
+                                        if (res.canceled) return;
+                                        const asset =
+                                          res.assets?.[0] ?? null;
+                                        await handleVideoFileUpload(
+                                          index,
+                                          asset,
+                                        );
+                                      } catch (e) {
+                                        console.error(
+                                          '[CreateCourse.native] pick video error',
+                                          e,
+                                        );
+                                      }
+                                    }}
+                                    style={tw`mt-1 w-full rounded-lg border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-[#132133] px-3 py-2 items-center justify-center`}
+                                  >
+                                    <Text
+                                      style={tw`text-xs font-semibold text-blue-700 dark:text-blue-300`}
+                                    >
+                                      Choose video file
+                                    </Text>
+                                  </Pressable>
+                                  {item.videoUrl &&
+                                    item.videoUrl.length > 0 && (
+                                      <Text
+                                        numberOfLines={2}
+                                        ellipsizeMode="tail"
+                                        style={tw`mt-1 text-xs text-blue-600`}
+                                      >
+                                        {item.videoUrl}
+                                      </Text>
+                                    )}
+                                </View>
+                              </View>
+
+                              {/* Notes URL + upload */}
+                              <View style={tw`flex-1 gap-y-2`}>
+                                <TextInput
+                                  value={item.notesUrl ?? ''}
+                                  onChangeText={(t) =>
+                                    handleSyllabusChange(
+                                      index,
+                                      'notesUrl',
+                                      t,
+                                    )
+                                  }
+                                  placeholder="Optional: Notes URL (PDF/Doc)"
+                                  placeholderTextColor="#64748b"
+                                  style={tw`w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-2 text-slate-900 dark:text-white`}
+                                />
+                                <View>
+                                  <View
+                                    style={tw`flex-row items-center justify-between`}
+                                  >
+                                    <Text
+                                      style={tw`text-xs text-slate-600 dark:text-slate-300`}
+                                    >
+                                      Or upload notes (PDF)
+                                    </Text>
+                                   {(uploadPct[`v-${index}`] ?? 0) > 0 && (
+                                    <Text style={tw`text-xs text-slate-500`}>
+                                      Uploading… {Math.round(uploadPct[`v-${index}`] ?? 0)}%
+                                    </Text>
+                                  )}
+
+                                  </View>
+                                  <Pressable
+                                    onPress={async () => {
+                                      try {
+                                        const res =
+                                          await DocumentPicker.getDocumentAsync(
+                                            {
+                                              type: 'application/pdf',
+                                              multiple: false,
+                                              copyToCacheDirectory: true,
+                                            },
+                                          );
+                                        if (res.canceled) return;
+                                        const asset =
+                                          res.assets?.[0] ?? null;
+                                        await handleNotesPdfUpload(
+                                          index,
+                                          asset,
+                                        );
+                                      } catch (e) {
+                                        console.error(
+                                          '[CreateCourse.native] pick pdf error',
+                                          e,
+                                        );
+                                      }
+                                    }}
+                                    style={tw`mt-1 w-full rounded-lg border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-[#132133] px-3 py-2 items-center justify-center`}
+                                  >
+                                    <Text
+                                      style={tw`text-xs font-semibold text-indigo-700 dark:text-indigo-300`}
+                                    >
+                                      Choose PDF file
+                                    </Text>
+                                  </Pressable>
+                                  {item.notesUrl &&
+                                    item.notesUrl.length > 0 && (
+                                      <Text
+                                        numberOfLines={2}
+                                        ellipsizeMode="tail"
+                                        style={tw`mt-1 text-xs text-blue-600`}
+                                      >
+                                        {item.notesUrl}
+                                      </Text>
+                                    )}
+                                </View>
+                              </View>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Step 3: Review */}
+            {step === 3 && (
+              <View style={tw`gap-y-4`}>
+                <View
+                  style={tw`flex-row flex-wrap gap-3`}
+                >
+                  {/* Title */}
+                  <View
+                    style={tw`flex-1 min-w-[48%] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
+                  >
+                    <Text
+                      style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}
+                    >
+                      Title
+                    </Text>
+                    <Text
+                      style={tw`font-semibold text-slate-900 dark:text-white`}
+                    >
+                      {formData.title || '—'}
+                    </Text>
+                  </View>
+
+                  {/* Level */}
+                  <View
+                    style={tw`flex-1 min-w-[48%] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
+                  >
+                    <Text
+                      style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}
+                    >
+                      Level
+                    </Text>
+                    <Text
+                      style={tw`font-semibold text-slate-900 dark:text-white`}
+                    >
+                      {formData.level}
+                    </Text>
+                  </View>
+
+                  {/* Duration */}
+                  <View
+                    style={tw`flex-1 min-w-[48%] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
+                  >
+                    <Text
+                      style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}
+                    >
+                      Duration
+                    </Text>
+                    <Text
+                      style={tw`font-semibold text-slate-900 dark:text-white`}
+                    >
+                      {formData.duration || '—'}
+                    </Text>
+                  </View>
+
+                  {/* Price */}
+                  <View
+                    style={tw`flex-1 min-w-[48%] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
+                  >
+                    <Text
+                      style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}
+                    >
+                      Price
+                    </Text>
+                    {freeCourse ? (
+                      <View style={tw`flex-row items-center gap-2`}>
+                        <View
+                          style={tw`px-2 py-1 rounded-lg bg-emerald-600/10`}
+                        >
+                          <Text
+                            style={tw`text-xs font-semibold text-emerald-700 dark:text-emerald-300`}
+                          >
+                            Free
+                          </Text>
+                        </View>
+                        <Text
+                          style={tw`text-xs text-slate-500 dark:text-slate-400`}
+                        >
+                          (saved as 0 Tokens)
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text
+                        style={tw`font-semibold text-slate-900 dark:text-white`}
+                      >
+                        {priceFmtTokens}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Prereqs */}
+                <View
+                  style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
+                >
+                  <Text
+                    style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}
+                  >
+                    Prerequisites
+                  </Text>
+                  <Text
+                    style={tw`text-sm text-slate-900 dark:text-white`}
+                  >
+                    {formData.prerequisites || '—'}
+                  </Text>
+                </View>
+
+                {/* Syllabus */}
+                <View
+                  style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
+                >
+                  <Text
+                    style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-2`}
+                  >
+                    Syllabus ({cleanSyllabusReview.length} week
+                    {cleanSyllabusReview.length === 1 ? '' : 's'})
+                  </Text>
+                  {cleanSyllabusReview.length === 0 ? (
+                    <Text
+                      style={tw`text-sm text-slate-700 dark:text-slate-300`}
+                    >
+                      —
+                    </Text>
                   ) : (
-                    <View style={tw`gap-3`}>
-                      {cleanSyllabus.map((w) => (
-                        <View key={w.week} style={tw`gap-1`}>
-                          <Text style={tw`font-medium`}>{w.topic || 'Untitled topic'}</Text>
-                          {!!w.assignment && (
-                            <Text style={tw`text-sm`}><Text style={tw`font-medium`}>Assignment:</Text> {w.assignment}</Text>
-                          )}
-                          {!!w.videoUrl && (
-                            <Text style={tw`text-sm`} numberOfLines={1}><Text style={tw`font-medium`}>Video:</Text> {w.videoUrl}</Text>
-                          )}
-                          {!!w.notesUrl && (
-                            <Text style={tw`text-sm`} numberOfLines={1}><Text style={tw`font-medium`}>Notes:</Text> {w.notesUrl}</Text>
-                          )}
+                    <View style={tw`pl-4`}>
+                      {cleanSyllabusReview.map((w) => (
+                        <View
+                          key={w.week}
+                          style={tw`mb-2`}
+                        >
+                          <Text
+                            style={tw`font-medium text-slate-900 dark:text-white`}
+                          >
+                            {w.week}. {w.topic || 'Untitled topic'}
+                          </Text>
+
+                          {w.assignment ? (
+                            <Text
+                              style={tw`text-xs text-slate-700 dark:text-slate-300 mt-1`}
+                            >
+                              <Text style={tw`font-semibold`}>
+                                Assignment:{' '}
+                              </Text>
+                              {w.assignment}
+                            </Text>
+                          ) : null}
+
+                          {w.videoUrl ? (
+                            <Text
+                              style={tw`text-xs text-slate-700 dark:text-slate-300 mt-1`}
+                            >
+                              <Text style={tw`font-semibold`}>
+                                Video:{' '}
+                              </Text>
+                              {w.videoUrl}
+                            </Text>
+                          ) : null}
+
+                          {w.notesUrl ? (
+                            <Text
+                              style={tw`text-xs text-slate-700 dark:text-slate-300 mt-1`}
+                            >
+                              <Text style={tw`font-semibold`}>
+                                Notes:{' '}
+                              </Text>
+                              {w.notesUrl}
+                            </Text>
+                          ) : null}
                         </View>
                       ))}
                     </View>
                   )}
-                </SectionCard>
+                </View>
               </View>
-            );
-          })()}
-        </SectionCard>
+            )}
+          </View>
+
+          {/* Global upload banner */}
+          {fileUploading && (
+            <View
+              style={tw`mx-4 mb-4 rounded-xl border border-yellow-200 dark:border-yellow-900/40 bg-yellow-50 dark:bg-[#1b2a3a] p-3`}
+            >
+              <Text
+                style={tw`text-sm text-yellow-900 dark:text-yellow-100 mb-2`}
+              >
+                Uploading files… {overallUploadPct}%
+              </Text>
+              <View
+                style={tw`w-full h-2 rounded bg-slate-200 dark:bg-slate-700 overflow-hidden`}
+              >
+                <View
+                  style={[
+                    tw`h-full bg-blue-600`,
+                    { width: `${overallUploadPct}%` },
+                  ]}
+                />
+              </View>
+            </View>
+          )}
+        </View>
 
         {error ? (
-          <Text style={tw`text-red-600 text-sm`} accessibilityRole="alert">
+          <Text
+            style={tw`mt-3 text-sm text-red-600 dark:text-red-400`}
+          >
             {String(error)}
           </Text>
         ) : null}
-
-        {/* Global upload banner */}
-        {fileUploading && (
-          <View style={tw`rounded-2xl border border-yellow-200 bg-yellow-50 p-3`}>
-            <Text style={tw`text-sm text-yellow-900 mb-2`}>Uploading files… {overallUploadPct}%</Text>
-            <View style={tw`w-full h-2 rounded bg-gray-200 overflow-hidden`}>
-              <View style={[tw`h-full bg-blue-600`, { width: `${overallUploadPct}%` }]} />
-            </View>
-          </View>
-        )}
       </ScrollView>
 
-      {/* Sticky action bar */}
-      <View style={tw`px-4 py-3 border-t border-gray-200 bg-white`}>
-        <Row style={tw`justify-between`}>
-          <Text style={tw`text-xs text-gray-500`}>
+      {/* Sticky action bar – lifted above global footer */}
+      <View
+        style={[
+          tw`border-t border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1016]/95`,
+          {
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: bottomPad + FOOTER_OFFSET,
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+          },
+        ]}
+      >
+        <View style={tw`flex-row items-center justify-between`}>
+          <Text
+            style={tw`text-[11px] text-slate-500 dark:text-slate-400`}
+          >
             Step {step + 1} of {steps.length} • {steps[step]}
           </Text>
-          <Row style={tw`gap-8`}>
+          <View style={tw`flex-row items-center gap-3`}>
             {step > 0 && (
-              <TouchableOpacity
+              <Pressable
                 onPress={() => setStep(step - 1)}
-                style={tw`rounded-xl px-4 py-2 border border-gray-300`}
+                style={tw`flex-row items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/0 dark:bg-white/0 px-4 py-2`}
               >
-                <Text>Back</Text>
-              </TouchableOpacity>
+                <Text style={tw`text-sm text-slate-700 dark:text-slate-200`}>
+                  ← Back
+                </Text>
+              </Pressable>
             )}
 
             {step < steps.length - 1 ? (
-              <TouchableOpacity
-                onPress={() => canNext && !fileUploading && setStep(step + 1)}
+              <Pressable
+                onPress={() =>
+                  canNext && !fileUploading && setStep(step + 1)
+                }
                 disabled={!canNext || fileUploading}
                 style={tw.style(
-                  'rounded-xl px-4 py-2',
-                  canNext && !fileUploading ? 'bg-blue-600' : 'bg-gray-400'
+                  'flex-row items-center gap-1 rounded-xl px-4 py-2 shadow-sm',
+                  canNext && !fileUploading
+                    ? 'bg-blue-600'
+                    : 'bg-slate-400',
                 )}
               >
-                <Text style={tw`text-white font-semibold`}>
-                  {fileUploading ? 'Uploading…' : 'Next'}
+                <Text style={tw`text-sm text-white`}>
+                  {fileUploading ? 'Uploading…' : 'Next →'}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             ) : (
-              <TouchableOpacity
+              <Pressable
                 onPress={handleSubmit}
                 disabled={loading || fileUploading || !formData.tutorId}
                 style={tw.style(
-                  'rounded-xl px-4 py-2',
-                  loading || fileUploading || !formData.tutorId ? 'bg-gray-400' : 'bg-emerald-600'
+                  'flex-row items-center gap-1 rounded-xl px-4 py-2 shadow-sm',
+                  loading || fileUploading || !formData.tutorId
+                    ? 'bg-slate-400'
+                    : 'bg-emerald-600',
                 )}
               >
-                {loading ? (
-                  <Row style={tw`gap-2`}>
-                    <ActivityIndicator color="white" />
-                    <Text style={tw`text-white font-semibold`}>Saving…</Text>
-                  </Row>
-                ) : (
-                  <Text style={tw`text-white font-semibold`}>
-                    {fileUploading ? 'Uploading…' : 'Create Course'}
-                  </Text>
-                )}
-              </TouchableOpacity>
+                <Text style={tw`text-sm text-white`}>
+                  {fileUploading
+                    ? 'Uploading…'
+                    : loading
+                    ? 'Saving…'
+                    : 'Create Course'}
+                </Text>
+              </Pressable>
             )}
-          </Row>
-        </Row>
+          </View>
+        </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
-export default CreateCourseNative;
+export default CreateCourseScreen;

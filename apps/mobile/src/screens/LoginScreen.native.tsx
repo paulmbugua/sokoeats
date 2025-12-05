@@ -10,7 +10,6 @@ import {
   Alert,
   Modal,
   Platform,
-  useColorScheme,
   type StyleProp,
   type ViewStyle,
   type TextStyle,
@@ -37,6 +36,7 @@ import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 // 🔹 parity with web (Cancel role flow)
 import { signOut } from 'firebase/auth';
 import { auth } from '@mytutorapp/shared/utils/firebaseConfig';
+import { useThemePref } from '../theme/ThemeContext';
 
 type LoginNavProp = StackNavigationProp<MainStackParamList>;
 type LoginRoute = RouteProp<MainStackParamList, 'Login'>;
@@ -51,8 +51,7 @@ const LoginScreenNative: React.FC = () => {
   const { token, role: userRole, logout } = useShopContext() as any;
 
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { resolvedScheme } = useThemePref();
 
   const FOOTER_OFFSET = 80; // extra padding so nothing is hidden behind global footer
   const bottomPad = Math.max(insets.bottom, 16);
@@ -75,7 +74,6 @@ const LoginScreenNative: React.FC = () => {
   // Sign-up & Role modal fields
   const [name, setName] = useState<string>('');
   const [role, setRole] = useState<Role>('');
-  const [age, setAge] = useState<string>(''); // keep as string
   const [languages, setLanguages] = useState<string[]>([]);
   const [country, setCountry] = useState<string>(''); // students only
 
@@ -93,17 +91,15 @@ const LoginScreenNative: React.FC = () => {
   // Google-first role completion modal
   const [showRoleModal, setShowRoleModal] = useState<boolean>(false);
 
-  // ── Theme-aware field colors (consistent with inputs) ─────
+  /* ──────────────────────────────────────────────
+     Theme-aware picker text colours (parity with ManageProfileForm)
+  ─────────────────────────────────────────────── */
+
   const placeholderColor =
-    (tw.color(isDark ? 'slate-400' : 'text-slate-500') as string) ||
-    (isDark ? '#94A3B8' : '#9CA3AF');
+    resolvedScheme === 'dark' ? '#64748B' : '#94A3B8';
   const selectedTextColor =
-    (tw.color(isDark ? 'white' : 'text-slate-900') as string) ||
-    (isDark ? '#FFFFFF' : '#0F172A');
-  const itemTextColor = selectedTextColor; // for non-placeholder Picker.Item
-  const dropdownIconColor =
-    (tw.color(isDark ? 'white' : 'text-slate-700') as string) ||
-    (isDark ? '#FFFFFF' : '#374151');
+    resolvedScheme === 'dark' ? '#E5E7EB' : '#0F172A';
+  const dropdownIconColor = selectedTextColor;
 
   // Wrap pickers in a styled container to match TextInputs
   const PICKER_MIN_HEIGHT = 52;
@@ -207,11 +203,6 @@ const LoginScreenNative: React.FC = () => {
         return;
       }
       if (role === 'student') {
-        const nAge = Number(age);
-        if (!Number.isFinite(nAge) || nAge <= 0) {
-          setError('Please enter a valid age.');
-          return;
-        }
         if (!languages.length || !(languages[0] || '').trim()) {
           setError('Please select your language.');
           return;
@@ -224,7 +215,7 @@ const LoginScreenNative: React.FC = () => {
         password,
         role,
         country: role === 'student' ? country : (undefined as any),
-        age: role === 'student' ? Number(age) : (undefined as any),
+        // age removed
         languages: role === 'student' ? languages : (undefined as any),
       });
 
@@ -292,13 +283,10 @@ const LoginScreenNative: React.FC = () => {
   // ── Role modal logic (Google-first) ───────────────────────
   const isStudent = role === 'student';
   const trimmedName = (name || '').trim();
-  const numericAge = Number(age);
   const isStudentValid =
     isStudent &&
     trimmedName.length >= 2 &&
     trimmedName.length <= 80 &&
-    Number.isFinite(numericAge) &&
-    numericAge > 0 &&
     Array.isArray(languages) &&
     languages.length > 0 &&
     (languages[0] || '').trim().length > 0 &&
@@ -321,7 +309,7 @@ const LoginScreenNative: React.FC = () => {
         await completeRole({
           role: 'student',
           name: trimmedName,
-          age: numericAge,
+          // age removed
           languages,
           country,
         } as any);
@@ -666,7 +654,6 @@ const LoginScreenNative: React.FC = () => {
                                 setLanguages(['English']);
                             } else {
                               setName('');
-                              setAge('');
                               setLanguages([]);
                               setCountry('');
                             }
@@ -689,31 +676,14 @@ const LoginScreenNative: React.FC = () => {
                             value=""
                             color={placeholderColor}
                           />
-                          <Picker.Item
-                            label="Student"
-                            value="student"
-                            color={itemTextColor}
-                          />
-                          <Picker.Item
-                            label="Tutor"
-                            value="tutor"
-                            color={itemTextColor}
-                          />
+                          <Picker.Item label="Student" value="student" />
+                          <Picker.Item label="Tutor" value="tutor" />
                         </Picker>
                       </View>
                     </View>
 
                     {role === 'student' && (
                       <>
-                        <TextInput
-                          value={age}
-                          onChangeText={setAge}
-                          placeholder="Age"
-                          placeholderTextColor={placeholderColor}
-                          keyboardType="numeric"
-                          style={tw`bg-slate-100 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 px-3 py-3 rounded-xl text-[#0d141c] dark:text-white mb-4`}
-                        />
-
                         {/* Language */}
                         <View style={pickerContainerStyle}>
                           <View style={pickerShell}>
@@ -751,7 +721,6 @@ const LoginScreenNative: React.FC = () => {
                                   key={lang}
                                   label={lang}
                                   value={lang}
-                                  color={itemTextColor}
                                 />
                               ))}
                             </Picker>
@@ -791,7 +760,6 @@ const LoginScreenNative: React.FC = () => {
                                     key={code || name}
                                     label={name || '—'}
                                     value={code || name}
-                                    color={itemTextColor}
                                   />
                                 );
                               })}
@@ -995,7 +963,6 @@ const LoginScreenNative: React.FC = () => {
                         }
                       } else {
                         setName('');
-                        setAge('');
                         setLanguages([]);
                         setCountry('');
                       }
@@ -1017,16 +984,8 @@ const LoginScreenNative: React.FC = () => {
                       value=""
                       color={placeholderColor}
                     />
-                    <Picker.Item
-                      label="Student"
-                      value="student"
-                      color={itemTextColor}
-                    />
-                    <Picker.Item
-                      label="Tutor"
-                      value="tutor"
-                      color={itemTextColor}
-                    />
+                    <Picker.Item label="Student" value="student" />
+                    <Picker.Item label="Tutor" value="tutor" />
                   </Picker>
                 </View>
               </View>
@@ -1039,14 +998,6 @@ const LoginScreenNative: React.FC = () => {
                     onChangeText={setName}
                     placeholder="Full name"
                     placeholderTextColor={placeholderColor}
-                    style={tw`bg-slate-100 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 px-3 py-3 rounded-xl text-[#0d141c] dark:text-white mb-4`}
-                  />
-                  <TextInput
-                    value={age}
-                    onChangeText={setAge}
-                    placeholder="Age"
-                    placeholderTextColor={placeholderColor}
-                    keyboardType="numeric"
                     style={tw`bg-slate-100 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 px-3 py-3 rounded-xl text-[#0d141c] dark:text-white mb-4`}
                   />
 
@@ -1088,7 +1039,6 @@ const LoginScreenNative: React.FC = () => {
                             key={lang}
                             label={lang}
                             value={lang}
-                            color={itemTextColor}
                           />
                         ))}
                       </Picker>
@@ -1122,14 +1072,16 @@ const LoginScreenNative: React.FC = () => {
                           value=""
                           color={placeholderColor}
                         />
-                        {COUNTRIES.map((c) => (
-                          <Picker.Item
-                            key={c.code}
-                            label={c.name}
-                            value={c.code}
-                            color={itemTextColor}
-                          />
-                        ))}
+                        {COUNTRIES.map((c) => {
+                          const { code, name } = normCountry(c);
+                          return (
+                            <Picker.Item
+                              key={code || name}
+                              label={name || '—'}
+                              value={code || name}
+                            />
+                          );
+                        })}
                       </Picker>
                     </View>
                   </View>
