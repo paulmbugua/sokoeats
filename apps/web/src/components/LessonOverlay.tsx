@@ -443,15 +443,22 @@ export default function LessonOverlay({
   // 2) Items to show
   const items = useMemo<OverlayItem[]>(() => {
     if (!lesson) return [];
+
     const normalizeAt = (n?: number) =>
-      typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.round(n - 1)) : undefined;
+      typeof n === 'number' && Number.isFinite(n)
+        ? Math.max(0, Math.round(n - 1))
+        : undefined;
+
     const onlyOneSentence = sentences.length <= 1;
+
     const atFor = (n?: number) => {
-      const v = normalizeAt(n);
-      return onlyOneSentence ? 0 : v;
+      if (onlyOneSentence) return 0;
+      const v = normalizeAt(typeof n === 'number' ? n : 1);
+      return typeof v === 'number' ? v : 0;
     };
 
     const out: OverlayItem[] = [];
+
     (lesson.formulas || []).forEach((f, i) => {
       const at0 = atFor(f.announceAtSentence);
       if (typeof at0 === 'number') {
@@ -492,8 +499,6 @@ export default function LessonOverlay({
       }
     });
 
-    
-
     (lesson.snippets || []).forEach((sn, i) => {
       const at0 = atFor(sn.announceAtSentence);
       if (typeof at0 === 'number' && (sn.code || '').trim()) {
@@ -511,27 +516,10 @@ export default function LessonOverlay({
       }
     });
 
-    // Fallbacks
-    // Fallback: Notes preview only (no image card)
-if (allowMarkdownFallback && !out.length && typeof lesson.markdown === 'string' && lesson.markdown) {
-  // Strip out pure image lines so we don't accidentally show images via markdown
-  const preview = lesson.markdown
-    .split('\n')
-    .filter((line) => !/^!\[.*\]\(.*\)/.test(line.trim()))
-    .slice(0, 12)
-    .join('\n')
-    .trim();
-
-  if (preview) {
-    const md = `**Notes**\n\n${preview}`;
-    // Reuse the table styling for the notes preview
-    out.push({ kind: 'table', at: 0, key: 'N0:fallback', md, title: 'Notes' });
-  }
-}
-
-
+    // ⬅️ No markdown fallback here anymore. If backend sends nothing, we show nothing.
     return out.sort((a, b) => a.at - b.at);
   }, [lesson, sentences.length]);
+
 
   const latestIdx = useMemo(() => {
     if (!items.length) return -1;
@@ -679,9 +667,15 @@ if (allowMarkdownFallback && !out.length && typeof lesson.markdown === 'string' 
   const currentGroupSig = useMemo(() => groupSignature(group), [group]);
 
   const [dismissedSig, setDismissedSig] = useState<string | null>(null);
+    const hasNonImageInGroup = useMemo(
+    () => group.some((it) => it.kind !== 'image'),
+    [group]
+  );
 
-  const visible = useMemo(() => {
+
+   const visible = useMemo(() => {
     if (minimized || activeIdx < 0) return false;
+    if (!hasNonImageInGroup) return false; // 🚫 Never show for image-only overlays
     if (dismissedSig && currentGroupSig === dismissedSig) return false;
     if (pinned || maximized) return true;
     const justTriggeredOrCurrent = items[activeIdx]?.at === currentSentenceIndex;
@@ -698,7 +692,9 @@ if (allowMarkdownFallback && !out.length && typeof lesson.markdown === 'string' 
     items,
     dismissedSig,
     currentGroupSig,
+    hasNonImageInGroup,
   ]);
+
 
     useEffect(() => {
     olog('visibility', {

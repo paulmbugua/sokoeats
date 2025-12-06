@@ -186,15 +186,42 @@ export default function Narration({
     return out;
   }, [timings]);
 
-  // Tokenize SSML when available
+  // Tokenize SSML when available – BUT bail out if counts don’t match timings/words
   const tokens: DisplayToken[] | null = React.useMemo(() => {
     if (!ssml || !normalizedTimings?.length) return null;
     try {
-      return ssmlToDisplayTokens(ssml, normalizedTimings) as DisplayToken[];
-    } catch {
+      const tks = ssmlToDisplayTokens(ssml, normalizedTimings) as DisplayToken[];
+
+      const wordTokCount = tks.filter((t) => t.kind === 'word').length;
+      const timingCount = normalizedTimings.length;
+      const wordsCount = words.length;
+
+      const ref = timingCount || wordsCount || wordTokCount || 1;
+      const mismatch =
+        Math.abs(wordTokCount - timingCount) / ref > 0.1 ||
+        Math.abs(wordsCount - timingCount) / ref > 0.1;
+
+      if (mismatch) {
+        // Too much drift between SSML tokens, backend timings, and useWordSync.words → fallback
+        if (process.env.NODE_ENV !== 'production') {
+          // optional debug
+          console.warn('[Narration] token/timing mismatch, falling back to simple transcript', {
+            wordTokCount,
+            timingCount,
+            wordsCount,
+          });
+        }
+        return null;
+      }
+
+      return tks;
+    } catch (e) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[Narration] ssmlToDisplayTokens failed, falling back', e);
+      }
       return null;
     }
-  }, [ssml, normalizedTimings]);
+  }, [ssml, normalizedTimings, words.length]);
 
   // Only render tokens that belong to the active paragraph (+ surrounding punctuation)
   const visibleTokens: DisplayToken[] | null = React.useMemo(() => {

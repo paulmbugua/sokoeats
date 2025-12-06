@@ -615,7 +615,7 @@ function Container(props: Props) {
             rememberKey={`${course?.id || 'global'}:${lessonIdx}`}
             portal
             zIndex={10050}
-            allowMarkdownFallback 
+            
           />
 
           {!isPlaying && !isAdvancing && (

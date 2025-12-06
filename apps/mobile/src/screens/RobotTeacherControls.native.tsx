@@ -5,11 +5,7 @@ import {
   Text,
   TextInput,
   Pressable,
-  ScrollView,
-  Modal,
-  FlatList,
-  Platform,
-} from "react-native";
+ } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import tw from "../../tailwind";
 
@@ -35,93 +31,33 @@ const CourseSelect = React.memo(function CourseSelect({
   onChange: (v: string) => void;
   placeholder?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const selected = useMemo(() => options.find((o) => o.value === value), [options, value]);
+  const hasOptions = options && options.length > 0;
 
   return (
-    <View style={tw`relative`}>
-      <Pressable
-        onPress={() => setOpen(true)}
-        accessibilityRole="button"
-        accessibilityLabel="Select course"
-        style={tw`h-11 rounded-xl px-3 pr-9 justify-center border border-[#cedbe8] bg-slate-50 dark:border-white/10 dark:bg-[#172534]`}
+    <View
+      style={tw`h-11 rounded-xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#172534] justify-center`}
+    >
+      <Picker
+        selectedValue={value || ""}
+        onValueChange={(v) => {
+          // avoid doing anything if we’re on the placeholder with no real options
+          if (!hasOptions && !v) return;
+          onChange(String(v));
+        }}
+        dropdownIconColor="#64748b"
+        style={tw`-ml-1 text-sm text-[#0d141c] dark:text-white`}
       >
-        <Text style={tw`${selected ? 'text-[#0d141c] dark:text-white' : 'text-slate-500 dark:text-white/70'} text-sm`}>
-          {selected ? selected.label : placeholder}
-        </Text>
+        <Picker.Item
+          label={hasOptions ? placeholder : "No courses available"}
+          value=""
+          color="rgba(148,163,184,0.9)" // subtle placeholder color
+        />
 
-        <View
-          style={tw`absolute right-3 top-1/2 -translate-y-1/2 opacity-60`}
-          pointerEvents="none"
-        >
-          <Text style={tw`text-slate-500 dark:text-white/70`}>▾</Text>
-        </View>
-      </Pressable>
-
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={tw`flex-1 bg-black/40`} onPress={() => setOpen(false)} />
-
-        <View style={tw`absolute inset-x-4 top-[20%] rounded-2xl overflow-hidden bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
-          <View style={tw`px-4 py-3 border-b border-[#cedbe8] dark:border-white/10`}>
-            <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Choose a course</Text>
-          </View>
-
-          {Platform.OS === "android" ? (
-            <View style={tw`px-2 py-2`}>
-              <Picker
-                selectedValue={value}
-                onValueChange={(v) => {
-                  onChange(String(v));
-                  setOpen(false);
-                }}
-                dropdownIconColor="#64748b"
-              >
-                {options.length === 0 ? (
-                  <Picker.Item label="No courses available" value="" />
-                ) : (
-                  options.map((o) => <Picker.Item key={o.value} label={o.label} value={o.value} />)
-                )}
-              </Picker>
-            </View>
-          ) : (
-            <FlatList
-              data={options}
-              keyExtractor={(o) => o.value}
-              renderItem={({ item }) => {
-                const active = item.value === value;
-                return (
-                  <Pressable
-                    onPress={() => {
-                      onChange(item.value);
-                      setOpen(false);
-                    }}
-                    style={tw`${active ? 'bg-indigo-50 dark:bg-indigo-600/30' : ''} px-4 py-3`}
-                  >
-                    <Text style={tw`${active ? 'text-indigo-700 dark:text-white' : 'text-[#0d141c] dark:text-white'} text-sm`}>
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              }}
-              ListEmptyComponent={
-                <View style={tw`px-4 py-3`}>
-                  <Text style={tw`text-sm text-slate-500 dark:text-white/60`}>No courses available</Text>
-                </View>
-              }
-              style={{ maxHeight: 300 }}
-            />
-          )}
-
-          <View style={tw`px-4 py-3 border-t border-[#cedbe8] dark:border-white/10`}>
-            <Pressable
-              onPress={() => setOpen(false)}
-              style={tw`self-end px-3 py-2 rounded-lg bg-[#e7edf4] dark:bg-[#172534]`}
-            >
-              <Text style={tw`text-[#0d141c] dark:text-white`}>Close</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+        {hasOptions &&
+          options.map((o) => (
+            <Picker.Item key={o.value} label={o.label} value={o.value} />
+          ))}
+      </Picker>
     </View>
   );
 });

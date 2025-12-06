@@ -1,184 +1,159 @@
 // apps/backend/services/googleTtsService.js
 import crypto from 'node:crypto';
 import textToSpeech from '@google-cloud/text-to-speech';
-import { v2 as cloudinary } from 'cloudinary';
-import { fileURLToPath } from 'node:url';
-import { basename } from 'node:path';
-import { simpleAlign } from './simpleAlignerService.js';
+
+const DEBUG = process.env.DEBUG_TTS === '1';
+const CACHE_VER = process.env.TTS_CACHE_VER || 'v1';
+const dlog = (...a) => {
+  if (DEBUG) console.log('[ttsSvc]', ...a);
+};
+
+// Optional de-echo feature flag (carried over from Azure version)
+const DEECHO_TEXT = process.env.AZURE_TTS_DEECHO === '1';
 
 // ─────────────────────────────────────────────────────────
-const thisFile = basename(fileURLToPath(import.meta.url));
-console.info('[ttsSvc] VERSION wordmarks-v2', { file: thisFile, pid: process.pid });
+// Google TTS client & config
+// ─────────────────────────────────────────────────────────
 
-let __voicesCache = { at: 0, list: [] };
-const VOICES_TTL_MS = 12 * 60 * 60 * 1000;
-
-const DEFAULT_VOICE  = process.env.GOOGLE_TTS_VOICE || 'en-US-Wavenet-C';
-const DEFAULT_LANG   = process.env.GOOGLE_TTS_LANG  || 'en-US';
+const DEFAULT_VOICE = process.env.GOOGLE_TTS_VOICE || 'en-US-Wavenet-C';
+const DEFAULT_LANG = process.env.GOOGLE_TTS_LANG || 'en-US';
 const AUDIO_ENCODING = 'MP3';
-const MAX_SSML_BYTES = 3800;
 
-// Prefer v1beta1 when available
+// Google hard limit is 5000 bytes; stay under that
+const MAX_TTS_INPUT_BYTES = 4800;
+
+// Prefer v1beta1 if available (timepoint support is here)
 const tts = textToSpeech?.v1beta1?.TextToSpeechClient
   ? new textToSpeech.v1beta1.TextToSpeechClient()
   : new textToSpeech.TextToSpeechClient();
 
 // ─────────────────────────────────────────────────────────
-// SSML helpers (Azure → GCP normalization)
+// Utility helpers
 // ─────────────────────────────────────────────────────────
 
-/**
- * Strip Azure / Amazon extras + generic cleanup.
- */
-function sanitizeForGoogle(ssmlInner) {
-  let s = String(ssmlInner || '');
-  // Strip Azure mstts & Amazon tags and generic <voice> wrappers
-  s = s.replace(/<\/?mstts:[^>]*>/gi, '');
-  s = s.replace(/<\/?amazon:[^>]*>/gi, '');
-  s = s.replace(/<\/?voice[^>]*>/gi, '');
-  s = s.replace(/\s+\>/g, '>').replace(/\<\s+/g, '<');
-  return s;
-}
+const byteLen = (s) => Buffer.byteLength(String(s || ''), 'utf8');
 
-/**
- * Convert Azure-style SSML to something GCP likes:
- * - <bookmark mark="..."/> → <mark name="..."/>
- * - Remove xmlns:mstts + mstts:* tags
- */
-function toGcpSsml(ssml) {
-  if (!ssml) return ssml;
-  let out = String(ssml);
-
-  // Azure bookmark → GCP <mark name="..."/>
-  out = out.replace(
-    /<bookmark\s+mark="([^"]+)"\s*\/>/gi,
-    '<mark name="$1"/>'
-  );
-
-  // Strip Azure mstts namespace + tags (defensive; GCP usually ignores unknowns)
-  out = out.replace(/\s+xmlns:mstts="[^"]*"/gi, '');
-  out = out.replace(/<\/?mstts:[^>]+>/gi, '');
-
-  return out;
-}
-
-const byteLen = (s) => Buffer.byteLength(s, 'utf8');
-const wrapSpeak = (inner) => `<speak>${inner}</speak>`;
-const unwrapSpeak = (s) =>
-  String(s || '').replace(/^\s*<speak[^>]*>/i, '').replace(/<\/speak>\s*$/i, '');
-
-// ─────────────────────────────────────────────────────────
-// Param parsing
-// ─────────────────────────────────────────────────────────
 function parsePitch(pitch = '+0st') {
   const m = String(pitch).match(/(-?\d+(\.\d+)?)\s*st/i);
   return m ? Number(m[1]) : 0;
 }
+
 function parseRate(rate = '0%') {
   const m = String(rate).match(/(-?\d+(\.\d+)?)\s*%/);
   return m ? 1 + Number(m[1]) / 100 : 1.0;
 }
+
 function deriveLang(voiceName) {
   const v = String(voiceName || '').trim() || DEFAULT_VOICE;
   const parts = v.split('-');
-  if (parts.length >= 2 && /^[a-z]{2,3}$/i.test(parts[0]) && /^[A-Z]{2}$/.test(parts[1])) {
+  if (
+    parts.length >= 2 &&
+    /^[a-z]{2,3}$/i.test(parts[0]) &&
+    /^[A-Z]{2}$/.test(parts[1])
+  ) {
     return `${parts[0]}-${parts[1]}`;
   }
   return DEFAULT_LANG;
 }
 
-async function cloudinaryHas(publicId) {
-  try {
-    await cloudinary.api.resource(`tts/${publicId}`, { resource_type: 'video' });
-    return true;
-  } catch {
-    return false;
-  }
+// Simple SSML tag stripper → plain text (for approx timings)
+function stripTextFromSsml(ssml) {
+  return String(ssml || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-function makeKey({ voiceName, speakingRate, pitch, textOrSsml }) {
+// Optional de-echo (remove duplicated sentences)
+function deEchoSentences(plain) {
+  const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  const parts = String(plain || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/(?<=[.!?])\s+/);
+
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const cur = parts[i]?.trim();
+    if (!cur) continue;
+    const prev = out[out.length - 1] || '';
+    const A = norm(prev);
+    const B = norm(cur);
+
+    if (A && A === B) continue;
+
+    if (A && (A.includes(B) || B.includes(A))) {
+      if (B.length > A.length) out[out.length - 1] = cur;
+      continue;
+    }
+
+    out.push(cur);
+  }
+  return out.join(' ');
+}
+
+// Cache key over everything that affects audio bits
+function makeKey({ voiceName, speakingRateMult, pitchSt, textOrSsml }) {
   const h = crypto.createHash('sha1');
-  h.update(JSON.stringify({ voiceName, speakingRate, pitch, textOrSsml }));
+  h.update(
+    JSON.stringify({
+      ver: CACHE_VER,
+      voiceName,
+      speakingRateMult,
+      pitchSt,
+      textOrSsml,
+    }),
+  );
   return h.digest('hex');
 }
 
-function normalizeVoices(list = []) {
-  const arr = list.map((v) => ({
-    name: v.name,
-    languageCodes: Array.isArray(v.languageCodes) ? v.languageCodes : [],
-    ssmlGender: v.ssmlGender || v.gender || 'SSML_VOICE_GENDER_UNSPECIFIED',
-    naturalSampleRateHertz: v.naturalSampleRateHertz || v.sampleRateHertz || null,
-  }));
-  arr.sort((a, b) => {
-    const la = (a.languageCodes[0] || '').localeCompare(b.languageCodes[0] || '');
-    if (la) return la;
-    return a.name.localeCompare(b.name);
-  });
-  return arr;
-}
+const wrapSpeak = (inner) => `<speak>${inner}</speak>`;
+const unwrapSpeak = (s) =>
+  String(s || '')
+    .replace(/^\s*<speak[^>]*>/i, '')
+    .replace(/<\/speak>\s*$/i, '');
 
 // ─────────────────────────────────────────────────────────
-// Mark injection
+// Chunking helpers (SSML + plain text)
 // ─────────────────────────────────────────────────────────
 
 /**
- * Inject <mark name="w#"/> in *text nodes only* after:
- *  - Normalizing Azure → GCP SSML
- *  - Stripping Azure / Amazon / voice tags
+ * Split SSML into chunks that are each under maxBytes (including <speak> wrapper).
+ * We:
+ *  - strip the outer <speak>
+ *  - split into tags vs text nodes
+ *  - pack tokens into chunks <= maxBytes
+ *  - wrap each chunk back in <speak>...</speak>
  */
-function injectMarksIntoSsml(ssml) {
-  const raw = toGcpSsml(ssml.trim());
-  const inner = sanitizeForGoogle(unwrapSpeak(raw));
-  const tokens = inner.split(/(<[^>]+>)/g).filter(Boolean);
-  const wordRe = /([A-Za-z0-9]+(?:[’'\-][A-Za-z0-9]+)*)/g;
-  let idx = 0;
-  const words = [];
-
-  const out = tokens
-    .map((tok) => {
-      // leave tags untouched
-      if (/^<[^>]+>$/.test(tok)) return tok;
-
-      // inject <mark name="w#"/> only into text nodes
-      return tok.replace(wordRe, (m) => {
-        const mark = `<mark name="w${idx}"/>`;
-        words.push(m);
-        idx++;
-        return `${mark}${m}`;
-      });
-    })
-    .join('');
-
-  return { ssml: wrapSpeak(out), words };
-}
-
-// ─────────────────────────────────────────────────────────
-// Chunking helpers
-// ─────────────────────────────────────────────────────────
-
-function splitSsmlSmart(fullSsml, maxBytes = MAX_SSML_BYTES) {
+function splitSsmlSmart(fullSsml, maxBytes = MAX_TTS_INPUT_BYTES) {
   const inner = unwrapSpeak(fullSsml.trim());
   const tokens = inner.split(/(<[^>]+>)/g).filter(Boolean);
   const chunks = [];
   let cur = '';
   const overhead = byteLen('<speak></speak>');
+
   const flush = () => {
     const t = cur.trim();
     if (t) chunks.push(wrapSpeak(t));
     cur = '';
   };
+
   for (const token of tokens) {
     const nextLen = byteLen(cur + token) + overhead;
+
     if (nextLen <= maxBytes) {
       cur += token;
       continue;
     }
+
+    // Long text token (not a tag) → split on punctuation/whitespace
     if (!/^<[^>]+>$/.test(token) && byteLen(token) + overhead > maxBytes) {
       const parts = token.split(/(\.|\?|!|;|,|\s+)/g).filter(Boolean);
       let piece = '';
       for (const p of parts) {
-        if (byteLen(cur + piece + p) + overhead <= maxBytes) piece += p;
-        else {
+        if (byteLen(cur + piece + p) + overhead <= maxBytes) {
+          piece += p;
+        } else {
           cur += piece;
           flush();
           piece = p;
@@ -187,394 +162,376 @@ function splitSsmlSmart(fullSsml, maxBytes = MAX_SSML_BYTES) {
       cur += piece;
       continue;
     }
+
+    // Otherwise flush current and start new chunk with this token
     flush();
-    if (byteLen(token) + overhead > maxBytes) chunks.push(wrapSpeak(token));
-    else cur = token;
+    if (byteLen(token) + overhead > maxBytes) {
+      // Very rare: tag itself too large → force as its own chunk
+      chunks.push(wrapSpeak(token));
+    } else {
+      cur = token;
+    }
   }
+
   flush();
+  return chunks;
+}
 
-  const merged = [];
-  for (const c of chunks) {
-    if (!merged.length) {
-      merged.push(c);
-      continue;
+/**
+ * Split plain text into chunks under maxBytes, on word boundaries.
+ */
+function splitTextSmart(fullText, maxBytes = MAX_TTS_INPUT_BYTES) {
+  const words = String(fullText || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [' '];
+
+  const chunks = [];
+  let cur = '';
+
+  for (const w of words) {
+    const candidate = cur ? `${cur} ${w}` : w;
+    if (byteLen(candidate) > maxBytes) {
+      if (cur) chunks.push(cur);
+      // If single word is too large (very rare), force as its own chunk
+      cur = byteLen(w) > maxBytes ? w.slice(0, maxBytes) : w;
+    } else {
+      cur = candidate;
     }
-    const last = merged[merged.length - 1];
-    if (byteLen(last) + byteLen(unwrapSpeak(c)) <= maxBytes - 64) {
-      merged[merged.length - 1] = wrapSpeak(unwrapSpeak(last) + unwrapSpeak(c));
-    } else merged.push(c);
   }
-  return merged;
+  if (cur) chunks.push(cur);
+  return chunks;
 }
 
 // ─────────────────────────────────────────────────────────
-// Timepoints helpers
+// Approximate timings + captions (no STT / aligner)
 // ─────────────────────────────────────────────────────────
 
-function timepointsToWords(allTps, wordsList) {
-  const out = [];
-  for (const tp of allTps || []) {
-    const name = String(tp.markName || tp.timepointName || '').trim();
-    if (!name || name[0] !== 'w') continue;
-    const i = Number(name.slice(1));
-    if (Number.isFinite(i) && wordsList[i] != null) {
-      out.push({ i, t: Math.round((tp.timeSeconds || 0) * 1000), w: wordsList[i] });
-    }
-  }
-  out.sort((a, b) => a.i - b.i);
-  let last = -1;
-  for (const w of out) {
-    if (w.t < last) w.t = last;
-    last = w.t;
-  }
-  return out;
-}
+function approxFromPlain(plain, rateMult = 1) {
+  const rawWords = String(plain || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
 
-const approxTimings = (words, rateMult = 1) => {
-  const STEP = Math.max(80, Math.round(190 / Math.max(rateMult, 0.25)));
+  // Base ~220ms/word at 1.0x → ~270 wpm; adjust by rateMult
+  const BASE_STEP_MS = 220;
+  const step = Math.max(80, Math.round(BASE_STEP_MS / Math.max(rateMult, 0.25)));
+
   let t = 0;
-  return words.map((w, i) => {
-    const o = { i, t, w };
-    t += STEP;
-    return o;
+  const wordsJson = rawWords.map((w, i) => {
+    const obj = { i, t, w };
+    t += step;
+    return obj;
   });
-};
+
+  return { wordsJson };
+}
 
 // ─────────────────────────────────────────────────────────
-// Proper enum for enableTimePointing
+// Core Google synth (chunked)  +  SSML_MARK timepoints
 // ─────────────────────────────────────────────────────────
 
-const { protos } = textToSpeech;
-
-// Try v1beta1 first, then v1, then fall back to literal 1 (SSML_MARK)
-const SSML_MARK_ENUM =
-  protos?.google?.cloud?.texttospeech?.v1beta1?.SynthesizeSpeechRequest?.TimepointType?.SSML_MARK ??
-  protos?.google?.cloud?.texttospeech?.v1?.SynthesizeSpeechRequest?.TimepointType?.SSML_MARK ??
-  1;
-
-// ─────────────────────────────────────────────────────────
-// TTS main entry
-// ─────────────────────────────────────────────────────────
-export async function synthesizeTtsLocalFirst({
+async function synthesizeGoogleAudio({
   ssml,
-  text,
-  voiceName,
-  speakingRate,
-  pitch,
-  wantTimepoints = true,
+  plainText,
+  voice,
+  langCode,
+  rateMult,
+  pitchSt,
 }) {
-  const t0 = process.hrtime.bigint();
+  const audioBuffers = [];
+  const allMarks = []; // collect SSML_MARK timepoints across chunks
 
-  const voice    = voiceName || DEFAULT_VOICE;
-  const langCode = deriveLang(voice);
-  const rateMult = parseRate(speakingRate);
-  const pitchSt  = parsePitch(pitch);
+  if (ssml && String(ssml).trim().length) {
+    // SSML path
+    const fullSsml = ssml.trim();
+    const ssmlBytes = byteLen(fullSsml);
 
-  // Build input SSML + words list
-  let inputSSML, wordsList = null;
-  if (ssml) {
-    if (wantTimepoints) {
-      const injected = injectMarksIntoSsml(ssml);
-      inputSSML = injected.ssml;
-      wordsList = injected.words;
-    } else {
-      // still normalize Azure → GCP even if we don't want timepoints
-      inputSSML = toGcpSsml(ssml);
-    }
-  } else if (text) {
-    const words = String(text).trim().split(/\s+/).filter(Boolean);
-    const marked = words.map((w, i) => `<mark name="w${i}"/>${w}`).join(' ');
-    inputSSML = `<speak>${marked}</speak>`;
-    wordsList = wantTimepoints ? words : null;
-  } else {
-    inputSSML = `<speak></speak>`;
-  }
+    const ssmlChunks =
+      ssmlBytes > MAX_TTS_INPUT_BYTES
+        ? splitSsmlSmart(fullSsml, MAX_TTS_INPUT_BYTES)
+        : [fullSsml];
 
-  const cacheKey = makeKey({
-    voiceName: voice,
-    speakingRate: rateMult,
-    pitch: pitchSt,
-    textOrSsml: inputSSML,
-  });
-
-  console.log('[ttsSvc] IN', {
-    ssmlLen: inputSSML.length,
-    voice,
-    langCode,
-    rateMult,
-    pitchSt,
-    keyHead: cacheKey.slice(0, 8),
-  });
-
-  const already = await cloudinaryHas(cacheKey);
-  const cdnUrlCached = already
-    ? cloudinary.url(`tts/${cacheKey}.mp3`, { resource_type: 'video', secure: true })
-    : null;
-
-  // Cached: align (if needed) and return a URL
-  if (already) {
-    let wordsJson = null;
-
-    if (wantTimepoints && (wordsList?.length || 0) > 0) {
-      const plain = wordsList.join(' ');
-      const aligned = await simpleAlign({
-        audioBuffer: undefined,
-        audioUrl: cdnUrlCached || undefined,
-        text: plain,
-        lang: langCode || 'en-US',
-      });
-
-      wordsJson =
-        Array.isArray(aligned) && aligned.length
-          ? aligned
-          : approxTimings(wordsList, rateMult);
-    }
-
-    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
-    console.log('[ttsSvc] OUT (cached)', {
-      cached: true,
-      keyHead: cacheKey.slice(0, 8),
-      ms: Math.round(ms),
-      chunks: 0,
-      marksInFull: (inputSSML.match(/<mark\s+name="/gi) || []).length,
-      wordsOut: wordsJson?.length || 0,
+    dlog('google synth (ssml)', {
+      chunks: ssmlChunks.length,
+      totalBytes: ssmlBytes,
     });
 
-    return {
-      cached: true,
-      cacheKey,
-      cdnUrl: cdnUrlCached,
-      mp3Buffer: undefined,
-      wordsJson,
-      visemesJson: null,
-      bookmarksJson: null,
-      vttText: null,
-      srtText: null,
-    };
-  }
+    for (let i = 0; i < ssmlChunks.length; i++) {
+      const chunkSsml = ssmlChunks[i];
 
-  // Not cached → synthesize
-  const ssmlBytes = byteLen(inputSSML);
-  const chunks = ssmlBytes > MAX_SSML_BYTES ? splitSsmlSmart(inputSSML, MAX_SSML_BYTES) : [inputSSML];
-  if (chunks.length > 1) console.log('[ttsSvc] CHUNK', { count: chunks.length, totalBytes: ssmlBytes });
+      const req = {
+        input: { ssml: chunkSsml },
+        voice: { name: voice, languageCode: langCode },
+        audioConfig: {
+          audioEncoding: AUDIO_ENCODING, // 'MP3'
+          speakingRate: rateMult, // numeric (e.g. 0.93 for -7%)
+          pitch: pitchSt, // numeric semitones
+        },
+        // Ask Google to return SSML <mark> timepoints
+        enableTimePointing: ['SSML_MARK'],
+      };
 
-  const markCountAll = (inputSSML.match(/<mark\s+name="/gi) || []).length;
-  if (wantTimepoints && !markCountAll) {
-    console.warn(
-      '[ttsSvc] no <mark> found after injection; timepoints unavailable → align/approx later'
-    );
-  }
+      try {
+        const t1 = process.hrtime.bigint();
+        const [resp] = await tts.synthesizeSpeech(req);
 
-  // If there are *zero* marks in the entire SSML, we really can't get timepoints.
-  const forceNoTimepoints = wantTimepoints && !markCountAll;
-
-  // Just log per-chunk marks; don't disable timepoints if a chunk has 0 marks.
-  if (wantTimepoints && markCountAll) {
-    chunks.forEach((c, k) => {
-      const mc = (c.match(/<mark\s+name="/gi) || []).length;
-      console.debug('[ttsSvc] chunk marks', {
-        chunk: k + 1,
-        of: chunks.length,
-        marks: mc,
-      });
-    });
-  }
-
-  const allChunkBuffers = [];
-  const collectedWords = [];
-  let offsetMs = 0;
-  let wordsSeen = 0; // global counter
-
-  for (let i = 0; i < chunks.length; i++) {
-    const c = chunks[i];
-
-    // Normalize chunk SSML for GCP (bookmark → mark, strip mstts, etc.)
-    const ssmlForGcp = toGcpSsml(c);
-
-    const req = {
-      input: { ssml: ssmlForGcp },
-      voice: { name: voice, languageCode: langCode },
-      audioConfig: {
-        audioEncoding: AUDIO_ENCODING,
-        speakingRate: rateMult,
-        pitch: pitchSt,
-      },
-      // ✅ enableTimePointing MUST be at the top level, not in audioConfig
-      enableTimePointing:
-        wantTimepoints && !forceNoTimepoints ? [SSML_MARK_ENUM] : undefined,
-    };
-
-    console.debug('[ttsSvc] request flags', {
-      chunk: i + 1,
-      of: chunks.length,
-      hasMarks: /<mark\s+name=/i.test(ssmlForGcp),
-      timepointFlag: req.enableTimePointing,
-      client: tts.constructor?.name || 'TextToSpeechClient',
-    });
-
-    const t1 = process.hrtime.bigint();
-    let resp;
-    try {
-      [resp] = await tts.synthesizeSpeech(req);
-    } catch (e) {
-      console.error('[ttsSvc] GCP synth ERROR', {
-        chunk: i + 1,
-        of: chunks.length,
-        name: e?.name,
-        code: e?.code,
-        message: e?.message,
-        langCode,
-        voice,
-      });
-      throw e;
-    }
-    const ms = Number(process.hrtime.bigint() - t1) / 1e6;
-
-    const b64 = resp.audioContent || '';
-    const buf = Buffer.from(b64, 'base64');
-    const tps = Array.isArray(resp.timepoints) ? resp.timepoints : [];
-    const marksInChunk = (c.match(/<mark\s+name="/gi) || []).length;
-
-    const approxStepMs = Math.max(80, Math.round(190 / Math.max(rateMult, 0.25)));
-    let stepForThisChunk = approxStepMs;
-
-    console.debug('[ttsSvc] timepoints returned', tps.length || 0);
-    console.log('[ttsSvc] GCP synth OK', {
-      chunk: i + 1,
-      of: chunks.length,
-      ms: Math.round(ms),
-      bytes: buf.length,
-      timepoints: tps.length,
-    });
-
-    if (!forceNoTimepoints && wantTimepoints && tps.length) {
-      const local = timepointsToWords(tps, wordsList || []);
-
-      // extra debug: only for first chunk
-      if (i === 0) {
-        console.log('[ttsSvc] sample local timepoints', local.slice(0, 5));
-      }
-
-      const shifted = local.map((w) => ({ ...w, t: w.t + offsetMs }));
-      collectedWords.push(...shifted);
-
-      const last = tps[tps.length - 1];
-      if (last && Number.isFinite(last.timeSeconds)) {
-        const chunkDurMs = Math.round(last.timeSeconds * 1000);
-        if (marksInChunk > 0) {
-          stepForThisChunk = Math.max(50, Math.round(chunkDurMs / marksInChunk));
+        // Collect timepoints, if any <mark> tags are present in SSML
+        const marks = Array.isArray(resp.timepoints) ? resp.timepoints : [];
+        if (marks.length) {
+          dlog('google timepoints (sample)', marks.slice(0, 5));
+          for (const m of marks) {
+            allMarks.push({
+              markName: m.markName,
+              timeSeconds: m.timeSeconds,
+              chunk: i, // optional: which chunk (0-based)
+            });
+          }
         }
-        offsetMs += chunkDurMs;
-      }
-      wordsSeen += marksInChunk;
-    } else if (wantTimepoints && marksInChunk > 0 && (wordsList?.length || 0) > 0) {
-      const baseI = wordsSeen;
-      const wordsForChunk = [];
-      for (let k = 0; k < marksInChunk; k++) {
-        const iGlobal = baseI + k;
-        if (!wordsList[iGlobal]) break;
-        wordsForChunk.push({
-          i: iGlobal,
-          t: offsetMs + k * stepForThisChunk,
-          w: wordsList[iGlobal],
+
+        const b64 = resp.audioContent || '';
+        const buf = Buffer.from(b64, 'base64');
+        if (!buf.length) {
+          throw Object.assign(new Error('TTS_EMPTY_AUDIO_CHUNK'), {
+            code: 'TTS_EMPTY_AUDIO_CHUNK',
+          });
+        }
+
+        audioBuffers.push(buf);
+
+        dlog('chunk OK', {
+          chunk: i + 1,
+          of: ssmlChunks.length,
+          bytes: buf.length,
+          ms: Number(process.hrtime.bigint() - t1) / 1e6,
         });
+      } catch (e) {
+        console.error('[ttsSvc] GCP synth ERROR (ssml chunk)', {
+          chunk: i + 1,
+          of: ssmlChunks.length,
+          name: e?.name,
+          code: e?.code,
+          message: e?.message,
+          langCode,
+          voice,
+        });
+        throw e;
       }
-      collectedWords.push(...wordsForChunk);
-      offsetMs += stepForThisChunk * marksInChunk;
-      wordsSeen += marksInChunk;
     }
+  } else {
+    // Plain text path (no SSML marks)
+    const fullText = (plainText || ' ').trim();
+    const textBytes = byteLen(fullText);
 
-    allChunkBuffers.push(buf);
-  }
+    const textChunks =
+      textBytes > MAX_TTS_INPUT_BYTES
+        ? splitTextSmart(fullText, MAX_TTS_INPUT_BYTES)
+        : [fullText];
 
-  let mp3Buffer = Buffer.concat(allChunkBuffers);
-  console.log('[ttsSvc] buffer', { bytes: mp3Buffer.length });
-
-  // Upload → if success, return URL; if fail, keep mp3Buffer for controller
-  let finalCdnUrl = null;
-  try {
-    const uploadedUrl = await new Promise((resolve, reject) => {
-      const up = cloudinary.uploader.upload_stream(
-        { public_id: `tts/${cacheKey}`, resource_type: 'video', format: 'mp3', overwrite: true },
-        (err, res) => (err ? reject(err) : resolve(res?.secure_url || null))
-      );
-      up.end(mp3Buffer);
-    });
-    if (uploadedUrl) {
-      finalCdnUrl = uploadedUrl;
-      console.log('[ttsSvc] upload OK', { key: cacheKey.slice(0, 8) });
-    } else {
-      console.warn('[ttsSvc] upload returned no secure_url');
-    }
-  } catch (e) {
-    console.error('[ttsSvc] Cloudinary upload failed', e?.message || e);
-  }
-
-  // Timings: Google SSML timepoints → simpleAlign → approx
-  let wordsJson = wantTimepoints && collectedWords.length
-    ? collectedWords.sort((a, b) => a.i - b.i)
-    : null;
-
-  if (wantTimepoints && (!wordsJson || wordsJson.length === 0)) {
-    const plain =
-      (wordsList && wordsList.length)
-        ? wordsList.join(' ')
-        : unwrapSpeak(inputSSML);
-
-    const aligned = await simpleAlign({
-      audioBuffer: finalCdnUrl ? undefined : mp3Buffer,
-      audioUrl: finalCdnUrl || undefined,
-      text: plain,
-      lang: langCode || 'en-US',
+    dlog('google synth (text)', {
+      chunks: textChunks.length,
+      totalBytes: textBytes,
     });
 
-    if (Array.isArray(aligned) && aligned.length) {
-      wordsJson = aligned;
+    for (let i = 0; i < textChunks.length; i++) {
+      const chunkText = textChunks[i];
+
+      const req = {
+        input: { text: chunkText },
+        voice: { name: voice, languageCode: langCode },
+        audioConfig: {
+          audioEncoding: AUDIO_ENCODING,
+          speakingRate: rateMult,
+          pitch: pitchSt,
+        },
+      };
+
+      try {
+        const t1 = process.hrtime.bigint();
+        const [resp] = await tts.synthesizeSpeech(req);
+        const b64 = resp.audioContent || '';
+        const buf = Buffer.from(b64, 'base64');
+        if (!buf.length) {
+          throw Object.assign(new Error('TTS_EMPTY_AUDIO_CHUNK'), {
+            code: 'TTS_EMPTY_AUDIO_CHUNK',
+          });
+        }
+        audioBuffers.push(buf);
+        dlog('chunk OK', {
+          chunk: i + 1,
+          of: textChunks.length,
+          bytes: buf.length,
+          ms: Number(process.hrtime.bigint() - t1) / 1e6,
+        });
+      } catch (e) {
+        console.error('[ttsSvc] GCP synth ERROR (text chunk)', {
+          chunk: i + 1,
+          of: textChunks.length,
+          name: e?.name,
+          code: e?.code,
+          message: e?.message,
+          langCode,
+          voice,
+        });
+        throw e;
+      }
     }
   }
 
-  // Final fallback: evenly-spaced timings
-  if (!wordsJson || wordsJson.length === 0) {
-    wordsJson =
-      (wantTimepoints && wordsList?.length)
-        ? approxTimings(wordsList, rateMult)
-        : null;
+  const audioBuffer = Buffer.concat(audioBuffers);
+  if (!audioBuffer.length) {
+    throw Object.assign(new Error('TTS_EMPTY_AUDIO'), { code: 'TTS_EMPTY_AUDIO' });
   }
 
-  const totalMs = Number(process.hrtime.bigint() - t0) / 1e6;
-  console.log('[ttsSvc] OUT', {
-    cached: false,
-    keyHead: cacheKey.slice(0, 8),
-    ms: Math.round(totalMs),
-    chunks: chunks.length,
-    marksInFull: markCountAll,
-    wordsOut: wordsJson?.length || 0,
-    haveUrl: !!finalCdnUrl,
-    haveBuf: !!mp3Buffer?.length,
-  });
-
-  // Only drop the buffer when we succeeded to upload.
   return {
-    cached: false,
-    cacheKey,
-    cdnUrl: finalCdnUrl || undefined,
-    mp3Buffer: finalCdnUrl ? undefined : mp3Buffer, // keep buffer if no URL
-    wordsJson,
-    visemesJson: null,
-    bookmarksJson: null,
-    vttText: null,
-    srtText: null,
+    audioBuffer,
+    timepoints: allMarks, // [] for plain text or SSML with no <mark>
   };
 }
 
 // ─────────────────────────────────────────────────────────
-// Voice listing
+// Public: synthesizeTtsLocalFirst (simple + fast)
+// Shape kept close to old version for controller compatibility
 // ─────────────────────────────────────────────────────────
-export async function listGoogleVoices({ languageCode, onlyWavenet = true, force = false } = {}) {
+
+export async function synthesizeTtsLocalFirst({
+  ssml,
+  text,
+  voiceName,
+  speakingRate = '0%',
+  pitch = '+0st',
+}) {
+  const t0 = process.hrtime.bigint();
+
+  const voice = voiceName || DEFAULT_VOICE;
+  const langCode = deriveLang(voice);
+  const rateMult = parseRate(speakingRate);
+  const pitchSt = parsePitch(pitch);
+
+  // Build plain text for approximate timings
+  const haveText = text && String(text).trim().length > 0;
+  let plain = haveText ? String(text).trim() : stripTextFromSsml(ssml);
+
+  if (DEECHO_TEXT && plain) {
+    const cleaned = deEchoSentences(plain);
+    if (cleaned && cleaned !== plain) plain = cleaned;
+  }
+
+  const textOrSsml = ssml || text || '';
+  const cacheKey = makeKey({
+    voiceName: voice,
+    speakingRateMult: rateMult,
+    pitchSt,
+    textOrSsml,
+  });
+
+  dlog('begin', {
+    voice,
+    speakingRate,
+    pitch,
+    langCode,
+    textLen: plain?.length || 0,
+    ssmlLen: (ssml || '').length || 0,
+    keyHead: cacheKey.slice(0, 8),
+  });
+
+  // No Cloudinary lookups here → faster
+  const { wordsJson } = approxFromPlain(plain || text || '', rateMult);
+
+  // Google synth in chunks (with SSML_MARK timepoints when SSML)
+  const { audioBuffer, timepoints } = await synthesizeGoogleAudio({
+    ssml,
+    plainText: plain || text || '',
+    voice,
+    langCode,
+    rateMult,
+    pitchSt,
+  });
+
+  const totalMs = Number(process.hrtime.bigint() - t0) / 1e6;
+  console.log('[ttsSvc] OUT', {
+    keyHead: cacheKey.slice(0, 8),
+    ms: Math.round(totalMs),
+    bytes: audioBuffer.length,
+    words: wordsJson.length,
+    timepoints: Array.isArray(timepoints) ? timepoints.length : 0,
+  });
+
+  return {
+    cached: false,            // we no longer use Cloudinary cache here
+    cacheKey,
+    mp3Buffer: audioBuffer,   // main payload
+    wordsJson,                // approx timings for words
+    visemesJson: [],          // still empty – can be filled in later if needed
+    bookmarksJson: Array.isArray(timepoints) ? timepoints : [], // real SSML marks
+    vttText: null,            // no VTT/SRT generation for speed
+    srtText: null,
+    ids: {
+      audioId: cacheKey,
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// Public: legacy synthesizeTtsWithVisemes
+// Simple wrapper kept for compatibility if anything uses it.
+// (NO Cloudinary upload here now – keep uploads in controllers)
+// ─────────────────────────────────────────────────────────
+
+export async function synthesizeTtsWithVisemes(opts) {
+  const out = await synthesizeTtsLocalFirst(opts || {});
+  return {
+    urlPath: null,           // no direct URL; controller decides how to expose it
+    subtitleVttUrl: null,
+    subtitleSrtUrl: null,
+    visemes: [],
+    words: out.wordsJson || [],
+    bookmarks: out.bookmarksJson || [],
+    cacheKey: out.cacheKey,
+    cached: out.cached === true,
+    mp3Buffer: out.mp3Buffer,
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// Voice listing (for UI)
+// ─────────────────────────────────────────────────────────
+
+function normalizeVoices(list = []) {
+  const arr = list.map((v) => ({
+    name: v.name,
+    languageCodes: Array.isArray(v.languageCodes) ? v.languageCodes : [],
+    ssmlGender:
+      v.ssmlGender || v.gender || 'SSML_VOICE_GENDER_UNSPECIFIED',
+    naturalSampleRateHertz:
+      v.naturalSampleRateHertz || v.sampleRateHertz || null,
+  }));
+  arr.sort((a, b) => {
+    const la = (a.languageCodes[0] || '').localeCompare(
+      b.languageCodes[0] || '',
+    );
+    if (la) return la;
+    return a.name.localeCompare(b.name);
+  });
+  return arr;
+}
+
+export async function listGoogleVoices({
+  languageCode,
+  onlyWavenet = true,
+  force = false,
+} = {}) {
+  // Simple in-memory cache
+  if (!listGoogleVoices.__cache) {
+    listGoogleVoices.__cache = { at: 0, list: [] };
+  }
+  const VOICES_TTL_MS = 12 * 60 * 60 * 1000;
   const now = Date.now();
-  if (!force && __voicesCache.list.length && now - __voicesCache.at < VOICES_TTL_MS) {
-    let out = __voicesCache.list;
-    if (languageCode) out = out.filter((v) => v.languageCodes.includes(languageCode));
+  const cache = listGoogleVoices.__cache;
+
+  if (!force && cache.list.length && now - cache.at < VOICES_TTL_MS) {
+    let out = cache.list;
+    if (languageCode)
+      out = out.filter((v) => v.languageCodes.includes(languageCode));
     if (onlyWavenet) out = out.filter((v) => /wavenet/i.test(v.name));
     return out;
   }
@@ -585,15 +542,40 @@ export async function listGoogleVoices({ languageCode, onlyWavenet = true, force
     if (languageCode) req.languageCode = languageCode;
     [resp] = await tts.listVoices(req);
   } catch (e) {
-    console.error('[ttsSvc] listVoices ERROR', { code: e?.code, message: e?.message });
+    console.error('[ttsSvc] listVoices ERROR', {
+      code: e?.code,
+      message: e?.message,
+    });
     throw e;
   }
 
   const norm = normalizeVoices(resp?.voices || []);
-  __voicesCache = { at: now, list: norm };
+  cache.at = now;
+  cache.list = norm;
 
   let out = norm;
-  if (languageCode) out = out.filter((v) => v.languageCodes.includes(languageCode));
+  if (languageCode)
+    out = out.filter((v) => v.languageCodes.includes(languageCode));
   if (onlyWavenet) out = out.filter((v) => /wavenet/i.test(v.name));
   return out;
+}
+
+// Optional self-test: sanity-check that GCP TTS works
+export async function ttsSelfTest(voiceName = DEFAULT_VOICE) {
+  try {
+    const [resp] = await tts.synthesizeSpeech({
+      input: { text: 'This is a Google Text-to-Speech probe.' },
+      voice: { name: voiceName, languageCode: deriveLang(voiceName) },
+      audioConfig: { audioEncoding: AUDIO_ENCODING },
+    });
+    const ok = !!resp?.audioContent;
+    console.log('[tts/selftest]', { voice: voiceName, ok });
+    return ok;
+  } catch (e) {
+    console.warn('[tts/selftest] failed', {
+      code: e?.code,
+      msg: e?.message,
+    });
+    return false;
+  }
 }

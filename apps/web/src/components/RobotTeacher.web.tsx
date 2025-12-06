@@ -701,6 +701,19 @@ const onStart = useCallback(async () => {
   try {
     // -------- custom topic flow (Teach me) ----------
     if (custom) {
+      // ⬇️ AUTH GUARD ONLY FOR AI SANDBOX
+      const ok = requireAuth(
+        'ai_sandbox',
+        'Please sign in to create a custom AI course.'
+      );
+      if (!ok) {
+        // reset run state so UI doesn’t look “stuck”
+        setActiveRunId(null);
+        setPreparing(false);
+        setPlayerLoading(false);
+        return;
+      }
+
       dlog('onStart → startCustomTopic', { custom, opts });
       await startCustomTopic(custom);
       await waitForSelection();
@@ -773,6 +786,7 @@ const onStart = useCallback(async () => {
   startWithAI,
   loadTopCourses,
   selectCourse,
+  requireAuth, 
 ]);
 
   const onRequestStartGuarded = useCallback(() => {

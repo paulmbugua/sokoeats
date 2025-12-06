@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 /* eslint-disable react-hooks/exhaustive-deps */
+
 import React, {
   useCallback,
   useEffect,
@@ -18,7 +19,6 @@ import {
   Animated,
   Easing,
 } from 'react-native';
-import { ThemeProvider, useThemeTokens } from './player/ThemeContext.native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import type { AVPlaybackStatus } from 'expo-av';
@@ -46,6 +46,7 @@ import {
 import TopBar from './player/TopBar.native';
 import BottomBar from './player/BottomBar.native';
 import Narration from './player/Narration.native';
+import { ThemeProvider, useThemeTokens } from './player/ThemeContext.native';
 
 type WordTiming = { text: string; start: number; end: number };
 
@@ -260,7 +261,7 @@ function ClassroomPlayerNativeInner({
 }: ClassroomPlayerProps) {
   const ws = useWordSync() as any;
   const retimeEvenly =
-  (ws.retimeEvenly as ((dur: number) => void) | undefined) ?? undefined;
+    (ws.retimeEvenly as ((dur: number) => void) | undefined) ?? undefined;
 
   const speak = ws.speak as (
     backend: string,
@@ -299,72 +300,66 @@ function ClassroomPlayerNativeInner({
   const [voicesError, setVoicesError] = useState<string | null>(null);
 
   // keep local voice in sync with prop defaults
- useEffect(() => {
-  setCurrentVoiceName(voiceName || DEFAULT_VOICE);
-}, [voiceName]);
+  useEffect(() => {
+    setCurrentVoiceName(voiceName || DEFAULT_VOICE);
+  }, [voiceName]);
 
   // load voices from backend
-useEffect(() => {
-  if (!effectiveBackend) return;
-  let cancelled = false;
+  useEffect(() => {
+    if (!effectiveBackend) return;
+    let cancelled = false;
 
-  const run = async () => {
-    setVoicesLoading(true);
-    setVoicesError(null);
-    try {
-      const resp = (await listTtsVoices(
-        effectiveBackend
-      )) as unknown as { voices?: TtsVoiceInfo[] } | TtsVoiceInfo[];
+    const run = async () => {
+      setVoicesLoading(true);
+      setVoicesError(null);
+      try {
+        const resp = (await listTtsVoices(
+          effectiveBackend
+        )) as unknown as { voices?: TtsVoiceInfo[] } | TtsVoiceInfo[];
 
-      const arr: TtsVoiceInfo[] = Array.isArray(resp)
-        ? (resp as TtsVoiceInfo[])
-        : (resp.voices || []);
+        const arr: TtsVoiceInfo[] = Array.isArray(resp)
+          ? (resp as TtsVoiceInfo[])
+          : (resp.voices || []);
 
-      const names = arr
-        .map((v) => (typeof v === 'string' ? v : v.name))
-        .filter(Boolean) as string[];
+        const names = arr
+          .map((v) => (typeof v === 'string' ? v : v.name))
+          .filter(Boolean) as string[];
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      setVoiceOptions(names);
+        setVoiceOptions(names);
 
-      if (names.length && !names.includes(currentVoiceName)) {
-        const fallback = names[0] ?? initialVoice;
-        setCurrentVoiceName(fallback); // ✅ always a string
+        if (names.length && !names.includes(currentVoiceName)) {
+          const fallback = names[0] ?? initialVoice;
+          setCurrentVoiceName(fallback);
+        }
+      } catch (e: any) {
+        if (cancelled) return;
+        console.warn('[tts] listTtsVoices failed', e);
+        setVoicesError(e?.message || 'Failed to load voices');
+      } finally {
+        if (!cancelled) setVoicesLoading(false);
       }
-    } catch (e: any) {
-      if (cancelled) return;
-      console.warn('[tts] listTtsVoices failed', e);
-      setVoicesError(e?.message || 'Failed to load voices');
-    } finally {
-      if (!cancelled) setVoicesLoading(false);
-    }
-  };
+    };
 
-  void run();
-  return () => {
-    cancelled = true;
-  };
-}, [effectiveBackend]);
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveBackend]);
 
+  const handleChangeVoice = useCallback((v: string) => {
+    setCurrentVoiceName(v);
 
-  const handleChangeVoice = useCallback(
-    (v: string) => {
-      setCurrentVoiceName(v);
+    (async () => {
+      try {
+        await soundRef.current?.unloadAsync();
+      } catch {}
+      soundRef.current = null;
+    })().catch(() => {});
 
-      // If there's an existing sound, unload it so next Play uses new voice
-      (async () => {
-        try {
-          await soundRef.current?.unloadAsync();
-        } catch {}
-        soundRef.current = null;
-      })().catch(() => {});
-
-      // Reset key so next speak() call actually fires
-      requestedKeyRef.current = null;
-    },
-    []
-  );
+    requestedKeyRef.current = null;
+  }, []);
 
   // AV state
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -437,43 +432,84 @@ useEffect(() => {
     [setTime, markEnded, onPlayerLoadingChange]
   );
 
-  // load/unload sound
-useEffect(() => {
-  (async () => {
-    if (!audioUrl || audioUrl === lastLoadedUrlRef.current) return;
-    lastLoadedUrlRef.current = audioUrl;
+  // load/unload sound when audioUrl changes
+  useEffect(() => {
+    (async () => {
+      if (!audioUrl || audioUrl === lastLoadedUrlRef.current) return;
+      lastLoadedUrlRef.current = audioUrl;
 
-    // 🔁 new track → allow retiming again
-    retimedRef.current = false;
+      // new track → allow retiming again
+      retimedRef.current = false;
 
-    try {
-      if (soundRef.current) {
-        try {
-          await soundRef.current.unloadAsync();
-        } catch {}
-        soundRef.current = null;
+      try {
+        if (soundRef.current) {
+          try {
+            await soundRef.current.unloadAsync();
+          } catch {}
+          soundRef.current = null;
+        }
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: audioUrl },
+          { shouldPlay: false, progressUpdateIntervalMillis: 100 },
+          onSoundStatus
+        );
+        soundRef.current = sound;
+
+        // retime words to match actual duration, once per URL
+        if (retimeEvenly && !retimedRef.current && wordsRaw.length) {
+          try {
+            const st = await sound.getStatusAsync();
+            if (st.isLoaded && st.durationMillis != null) {
+              const durSec = st.durationMillis / 1000;
+              const wordsTail = Math.max(...wordsRaw.map((w) => w.end || 0));
+              const diff = Math.abs(durSec - wordsTail);
+              const rel = diff / Math.max(0.5, durSec);
+              if (diff > 0.05 || rel > 0.02) {
+                retimeEvenly(durSec);
+                retimedRef.current = true;
+              }
+            }
+          } catch {}
+        }
+
+        if (autoPlayArmedRef.current) {
+          try {
+            await sound.playAsync();
+            setIsPlayingAv(true);
+          } catch {}
+          autoPlayArmedRef.current = false;
+        }
+      } catch (e) {
+        console.warn('Failed to load sound', e);
       }
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: audioUrl },
-        { shouldPlay: false, progressUpdateIntervalMillis: 100 },
-        onSoundStatus
-      );
-      soundRef.current = sound;
+    })();
+  }, [audioUrl, onSoundStatus, retimeEvenly, wordsRaw]);
 
-      if (autoPlayArmedRef.current) {
-        try {
-          await sound.playAsync();
-          setIsPlayingAv(true);
-        } catch {}
-        autoPlayArmedRef.current = false;
-      }
-    } catch (e) {
-      console.warn('Failed to load sound', e);
-    }
-  })();
-}, [audioUrl, onSoundStatus]);
+  // 🔊 auto-start TTS (first time only; doesn't re-trigger on voice change)
+  useEffect(() => {
+    if (!effectiveBackend || audioUrl || loading) return;
+    const cur = pickSpeakSource();
+    if (!cur) return;
+    const key = speakKeyFor(cur);
+    if (requestedKeyRef.current === key) return;
+    onPlayerLoadingChange?.(true);
+    autoPlayArmedRef.current = true;
+    speak(effectiveBackend, { ssml: cur, voiceName: currentVoiceName }).catch(
+      () => {}
+    );
+  }, [
+    lessons,
+    ssml,
+    audioUrl,
+    loading,
+    effectiveBackend,
+    currentVoiceName,
+    pickSpeakSource,
+    speak,
+    onPlayerLoadingChange,
+  ]);
 
-
+  // cleanup on unmount
   useEffect(() => {
     return () => {
       (async () => {
@@ -485,9 +521,7 @@ useEffect(() => {
     };
   }, []);
 
- 
-
-  // play/pause
+  // play/pause handler
   const handlePlayClick = useCallback(async () => {
     const snd = soundRef.current;
 
@@ -497,7 +531,6 @@ useEffect(() => {
 
       try {
         await resumeAudioContext?.();
-        onRequestStart?.();
         onPlayerLoadingChange?.(true);
         await onBeforePlay?.();
       } catch (e) {
@@ -512,9 +545,10 @@ useEffect(() => {
         const key = speakKeyFor(cur);
         if (requestedKeyRef.current !== key) {
           requestedKeyRef.current = key;
-          speak(effectiveBackend, { ssml: cur, voiceName: currentVoiceName }).catch(
-            (e) => console.warn('[word-sync] speak() failed', e)
-          );
+          speak(effectiveBackend, {
+            ssml: cur,
+            voiceName: currentVoiceName,
+          }).catch((e) => console.warn('[word-sync] speak() failed', e));
         }
       }
       return;
@@ -536,7 +570,6 @@ useEffect(() => {
     }
   }, [
     resumeAudioContext,
-    onRequestStart,
     onPlayerLoadingChange,
     onBeforePlay,
     pickSpeakSource,
@@ -608,25 +641,22 @@ useEffect(() => {
     }
   }, [useJoined, onPrev, activeIndex]);
 
-  const handleNextClick = useCallback(
-    async () => {
-      if (useJoined) return;
-      if (typeof onNext === 'function') {
-        try {
-          const parentDidAdvance = await onNext();
-          if (parentDidAdvance) return;
-        } catch {}
-      }
-      if (typeof activeIndex !== 'number') {
-        setLessonIdx((i) =>
-          Math.min(i + 1, Math.max(totalLessonsForUi - 1, 0))
-        );
-      }
-    },
-    [useJoined, onNext, activeIndex, totalLessonsForUi]
-  );
+  const handleNextClick = useCallback(async () => {
+    if (useJoined) return;
+    if (typeof onNext === 'function') {
+      try {
+        const parentDidAdvance = await onNext();
+        if (parentDidAdvance) return;
+      } catch {}
+    }
+    if (typeof activeIndex !== 'number') {
+      setLessonIdx((i) =>
+        Math.min(i + 1, Math.max(totalLessonsForUi - 1, 0))
+      );
+    }
+  }, [useJoined, onNext, activeIndex, totalLessonsForUi]);
 
-  // build lines
+  // build lines from word timings
   const LINES = useMemo(() => {
     type Line = { text: string; start: number; end: number; indices: number[] };
     const arr: Line[] = [];
@@ -748,31 +778,6 @@ useEffect(() => {
     onPlayerLoadingChange?.(loading || isAdvancing);
   }, [loading, isAdvancing, onPlayerLoadingChange]);
 
-  // auto-start TTS (first time only; doesn't re-trigger on voice change)
-  useEffect(() => {
-    if (!effectiveBackend || audioUrl || loading) return;
-    const cur = pickSpeakSource();
-    if (!cur) return;
-    const key = speakKeyFor(cur);
-    if (requestedKeyRef.current === key) return;
-    requestedKeyRef.current = key;
-    onPlayerLoadingChange?.(true);
-    autoPlayArmedRef.current = true;
-    speak(effectiveBackend, { ssml: cur, voiceName: currentVoiceName }).catch(
-      () => {}
-    );
-  }, [
-    lessons,
-    ssml,
-    audioUrl,
-    loading,
-    effectiveBackend,
-    currentVoiceName,
-    pickSpeakSource,
-    speak,
-    onPlayerLoadingChange,
-  ]);
-
   // backdrop
   const { images, base } = useBackdropImages({
     course: course || null,
@@ -851,31 +856,6 @@ useEffect(() => {
     return [eqs, tbls].filter(Boolean).join('\n\n').trim();
   }, [currentLesson]);
 
-  useEffect(() => {
-  if (!mediaDur || !wordsRaw.length) return;
-  if (typeof retimeEvenly !== 'function') return;
-
-  // Run once per audio load
-  if (retimedRef.current) return;
-
-  try {
-    retimeEvenly(mediaDur); // stretch word timings to match audio length
-    const tail = Math.max(...wordsRaw.map((w) => w.end || 0));
-    console.log(
-      '[native] AFTER retime mediaDur=',
-      mediaDur.toFixed(3),
-      'tail=',
-      tail.toFixed(3),
-    );
-    retimedRef.current = true;
-  } catch (e) {
-    console.warn('[word-sync] retimeEvenly failed on native', e);
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [mediaDur, wordsRaw.length, retimeEvenly]);
-
-
-
   const Core = (
     <View style={tw`flex-1 bg-[#0b1220]`}>
       <TopBar
@@ -940,7 +920,7 @@ useEffect(() => {
 
         <Narration
           chromeTop={chromeTop}
-          chromeBottom={chromeBottom} 
+          chromeBottom={chromeBottom}
           words={wordsRaw}
           lines={LINES}
           activeLine={activeLine}
@@ -1049,28 +1029,27 @@ useEffect(() => {
     >
       {Core}
       <TranscriptDrawerInline
-  open={showTranscript}
-  title={titleForUi}
-  lines={LINES}
-  words={wordsRaw}
-  activeLine={activeLine}
-  readerScale={1}
-  loading={!!loading}
-  error={error ?? undefined}
-  onSeekToWord={(wi) => seekToWord(wi)}
-  onClose={() => setShowTranscript(false)}
-/>
+        open={showTranscript}
+        title={titleForUi}
+        lines={LINES}
+        words={wordsRaw}
+        activeLine={activeLine}
+        readerScale={1}
+        loading={!!loading}
+        error={error ?? undefined}
+        onSeekToWord={(wi: number) => seekToWord(wi)}
+        onClose={() => setShowTranscript(false)}
+      />
 
-<NotesDrawerInline
-  open={showNotes}
-  title={`${titleForUi} — Notes`}
-  markdown={
-    (currentLesson?.markdown || '').trim() ||
-    (notesMarkdown || '_No notes for this lesson yet._')
-  }
-  onClose={() => setShowNotes(false)}
-/>
-
+      <NotesDrawerInline
+        open={showNotes}
+        title={`${titleForUi} — Notes`}
+        markdown={
+          (currentLesson?.markdown || '').trim() ||
+          (notesMarkdown || '_No notes for this lesson yet._')
+        }
+        onClose={() => setShowNotes(false)}
+      />
     </Modal>
   ) : (
     <View
@@ -1081,28 +1060,28 @@ useEffect(() => {
       ]}
     >
       {Core}
-     <TranscriptDrawerInline
-  open={showTranscript}
-  title={titleForUi}
-  lines={LINES}
-  words={wordsRaw}
-  activeLine={activeLine}
-  readerScale={1}
-  loading={!!loading}
-  error={error ?? undefined}
-  onSeekToWord={(wi) => seekToWord(wi)}
-  onClose={() => setShowTranscript(false)}
-/>
+      <TranscriptDrawerInline
+        open={showTranscript}
+        title={titleForUi}
+        lines={LINES}
+        words={wordsRaw}
+        activeLine={activeLine}
+        readerScale={1}
+        loading={!!loading}
+        error={error ?? undefined}
+        onSeekToWord={(wi: number) => seekToWord(wi)}
+        onClose={() => setShowTranscript(false)}
+      />
 
-<NotesDrawerInline
-  open={showNotes}
-  title={`${titleForUi} — Notes`}
-  markdown={
-    (currentLesson?.markdown || '').trim() ||
-    (notesMarkdown || '_No notes for this lesson yet._')
-  }
-  onClose={() => setShowNotes(false)}
-/>
+      <NotesDrawerInline
+        open={showNotes}
+        title={`${titleForUi} — Notes`}
+        markdown={
+          (currentLesson?.markdown || '').trim() ||
+          (notesMarkdown || '_No notes for this lesson yet._')
+        }
+        onClose={() => setShowNotes(false)}
+      />
 
       <ThemeSheetInline
         open={showThemeSheet}
@@ -1155,7 +1134,6 @@ function TranscriptDrawerInline({
       <SafeAreaView
         style={[tw`flex-1`, { backgroundColor: 'rgba(0,0,0,0.6)' }]}
       >
-        {/* Tap anywhere on the dark overlay to close */}
         <Pressable style={tw`flex-1`} onPress={onClose} />
 
         <View
@@ -1227,7 +1205,6 @@ function NotesDrawerInline({
       <SafeAreaView
         style={[tw`flex-1`, { backgroundColor: 'rgba(0,0,0,0.6)' }]}
       >
-        {/* Tap anywhere on the dark overlay to close */}
         <Pressable style={tw`flex-1`} onPress={onClose} />
 
         <View
@@ -1301,7 +1278,6 @@ function ThemeSheetInline({
             </Pressable>
           </View>
 
-          {/* highlight styles */}
           <Text style={tw`text-slate-300 text-xs mb-2`}>Highlight style</Text>
           <View style={tw`flex-col mb-3`}>
             {templates.map((t) => {
@@ -1331,7 +1307,6 @@ function ThemeSheetInline({
             })}
           </View>
 
-          {/* colors */}
           <Text style={tw`text-slate-300 text-xs mb-2`}>
             Highlight color
           </Text>
