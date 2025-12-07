@@ -730,6 +730,7 @@ doc.font('Helvetica').fontSize(10).fillColor('#374151')
 
 
 
+
 // Unified admin financial feed (payments + tutor withdrawals)
 // ?kind=all|payments|withdrawals  (default: all)
 export async function listFinancialFeed(req, res) {
@@ -755,7 +756,11 @@ export async function listFinancialFeed(req, res) {
           p.capture_id,
           p.mpesa_reference,
           p.payer_email,
-         
+          COALESCE(
+            NULLIF(p.meta->>'msisdn',''),
+            NULLIF(p.meta->>'phone',''),
+            NULLIF(p.meta->>'phoneNumber','')
+          )                                AS phone,
           p.package_id,
           pk.credits,
           pk.offer,
@@ -793,6 +798,11 @@ export async function listFinancialFeed(req, res) {
       `);
     }
 
+    // If somehow no kind matched, return empty list safely
+    if (!parts.length) {
+      return res.json({ success: true, transactions: [] });
+    }
+
     const unionSql = parts.join(' UNION ALL ');
     const finalSql = `
       ${unionSql}
@@ -803,7 +813,7 @@ export async function listFinancialFeed(req, res) {
     const { rows } = await pool.query(finalSql, [limit]);
     return res.json({ success: true, transactions: rows });
   } catch (err) {
-    console.error('[admin][listFinancialFeed]', err);
+    console.error('[admin][listFinancialFeed] error:', err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 }

@@ -19,9 +19,41 @@ const AUDIO_ENCODING = 'MP3';
 const MAX_SSML_BYTES = 3800;
 
 // Prefer v1beta1 when available
-const tts = textToSpeech?.v1beta1?.TextToSpeechClient
-  ? new textToSpeech.v1beta1.TextToSpeechClient()
-  : new textToSpeech.TextToSpeechClient();
+// Prefer v1beta1 when available, and support JSON creds via env (Railway)
+function createTtsClient() {
+  const hasJson = !!process.env.GOOGLE_TTS_CREDENTIALS_JSON;
+
+  if (hasJson) {
+    try {
+      const creds = JSON.parse(process.env.GOOGLE_TTS_CREDENTIALS_JSON);
+
+      const clientConfig = {
+        credentials: {
+          client_email: creds.client_email,
+          private_key: creds.private_key,
+        },
+        projectId: creds.project_id,
+      };
+
+      console.info('[ttsSvc] Using GOOGLE_TTS_CREDENTIALS_JSON for Google TTS auth');
+
+      return textToSpeech?.v1beta1?.TextToSpeechClient
+        ? new textToSpeech.v1beta1.TextToSpeechClient(clientConfig)
+        : new textToSpeech.TextToSpeechClient(clientConfig);
+    } catch (err) {
+      console.error('[ttsSvc] Failed to parse GOOGLE_TTS_CREDENTIALS_JSON, falling back to ADC', err);
+    }
+  } else {
+    console.info('[ttsSvc] GOOGLE_TTS_CREDENTIALS_JSON not set, using ADC / GOOGLE_APPLICATION_CREDENTIALS');
+  }
+
+  // Fallback: Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS, gcloud, etc.)
+  return textToSpeech?.v1beta1?.TextToSpeechClient
+    ? new textToSpeech.v1beta1.TextToSpeechClient()
+    : new textToSpeech.TextToSpeechClient();
+}
+
+const tts = createTtsClient();
 
 // ─────────────────────────────────────────────────────────
 // SSML helpers (Azure → GCP normalization)
