@@ -22,6 +22,7 @@ import {
   // misc
   sha1,
   fairTimerSec,
+   ENABLE_LESSON_IMAGES,
 } from './aiCourseCore.js';
 
 /* ─────────────────────────────────────────────────────────

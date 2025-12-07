@@ -288,7 +288,7 @@ export function useRobotSpeaker() {
   const reset = useCallback(() => {
     // eslint-disable-next-line no-console
     console.debug(NS, 'RESET');
-    abortRef.current?.abort('reset');
+    // abortRef.current?.abort('reset');
     setData(null);
     setError(null);
     setLoading(false);
@@ -305,7 +305,7 @@ export function useRobotSpeaker() {
     return () => {
       // eslint-disable-next-line no-console
       console.debug(NS, 'UNMOUNT abort');
-      abortRef.current?.abort('unmount');
+      // abortRef.current?.abort('unmount');
     };
   }, []);
 

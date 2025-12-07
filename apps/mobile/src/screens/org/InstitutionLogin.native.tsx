@@ -22,7 +22,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import tw from '../../../tailwind';
 import CustomGoogleLoginButtonNative from '../CustomGoogleLoginButton.native';
-import ThemeToggle from '../ThemeToggle.native';
 import { useThemePref } from '../../theme/ThemeContext';
 
 import useInstitutionAuth from '@mytutorapp/shared/hooks/useInstitutionAuth';
@@ -93,7 +92,9 @@ function usePalette() {
     textSubtle: isDark ? 'rgba(255,255,255,0.60)' : 'rgba(61,88,115,0.75)',
     inputBg: isDark ? 'rgba(10,16,23,0.6)' : 'rgba(255,255,255,0.85)',
     inputBorder: isDark ? 'rgba(255,255,255,0.15)' : '#cedbe8',
-    inputPlaceholder: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(13,20,28,0.55)',
+    inputPlaceholder: isDark
+      ? 'rgba(255,255,255,0.65)'
+      : 'rgba(13,20,28,0.55)',
     surface(style?: any) {
       return [
         tw`rounded-2xl p-6`,
@@ -219,23 +220,24 @@ const InstitutionLoginNative: React.FC = () => {
       ? 'Instructor'
       : 'Learner';
 
-  const accountOptions: { key: AccountKind; label: string; helper: string }[] = [
-    {
-      key: 'institution',
-      label: 'Institution',
-      helper: 'Admins & coordinators',
-    },
-    {
-      key: 'instructor',
-      label: 'Instructor',
-      helper: 'Teachers & trainers',
-    },
-    {
-      key: 'learner',
-      label: 'Learner',
-      helper: 'Learners in this institution',
-    },
-  ];
+  const accountOptions: { key: AccountKind; label: string; helper: string }[] =
+    [
+      {
+        key: 'institution',
+        label: 'Institution',
+        helper: 'Admins & coordinators',
+      },
+      {
+        key: 'instructor',
+        label: 'Instructor',
+        helper: 'Teachers & trainers',
+      },
+      {
+        key: 'learner',
+        label: 'Learner',
+        helper: 'Learners in this institution',
+      },
+    ];
 
   const switchAccountKind = (kind: AccountKind) => {
     setAccountKind(kind);
@@ -262,10 +264,15 @@ const InstitutionLoginNative: React.FC = () => {
     navigateFn: async () => {
       const _saved = await readReturnTo(); // kept for deep invite links
       await clearReturnTo();
-     navigation.reset({
-      index: 0,
-      routes: [{ name: 'OrgHome' as never, params: _saved ? { next: _saved } : undefined }],
-    });
+      navigation.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'OrgHome' as never,
+            params: _saved ? { next: _saved } : undefined,
+          },
+        ],
+      });
     },
   });
 
@@ -374,10 +381,7 @@ const InstitutionLoginNative: React.FC = () => {
           style={[tw`absolute inset-0`, { backgroundColor: palette.overlayTint }]}
         />
 
-        {/* top bar */}
-        <View style={tw`px-5 pt-3 pb-1 items-end`}>
-          <ThemeToggle />
-        </View>
+        {/* Removed theme toggle top bar */}
 
         <ScrollView
           contentContainerStyle={tw`px-5 pb-12 pt-6`}
@@ -386,89 +390,96 @@ const InstitutionLoginNative: React.FC = () => {
           <View style={tw`w-full max-w-[520px] self-center`}>
             {/* Card */}
             <View style={palette.surface()}>
-             {/* NEW: Account type toggle (always fits inside card) */}
-            <View style={tw`mb-4`}>
-              <Text
-                style={[
-                  tw`text-xs font-semibold text-center mb-2`,
-                  { color: palette.textSubtle },
-                ]}
-              >
-                Who is logging in?
-              </Text>
+              {/* NEW: Account type toggle (always fits inside card) */}
+              <View style={tw`mb-4`}>
+                <Text
+                  style={[
+                    tw`text-xs font-semibold text-center mb-2`,
+                    { color: palette.textSubtle },
+                  ]}
+                >
+                  Who is logging in?
+                </Text>
 
-              <View
-                style={[
-                  {
-                    borderRadius: 16,
-                    overflow: 'hidden', // keeps children clipped inside
-                    backgroundColor: palette.isDark
-                      ? 'rgba(15,24,33,0.9)'
-                      : 'rgba(255,255,255,0.95)',
-                  },
-                ]}
-              >
-                {accountOptions.map((opt, idx) => {
-                  const selected = accountKind === opt.key;
-                  const isLast = idx === accountOptions.length - 1;
-                  return (
-                    <TouchableOpacity
-                      key={opt.key}
-                      onPress={() => switchAccountKind(opt.key)}
-                      style={[
-                        tw`flex-row items-center px-3 py-2`,
-                        selected && {
-                          backgroundColor: palette.isDark ? '#1b2430' : '#eef2ff',
-                        },
-                        !isLast && {
-                          borderBottomWidth: 0.5,
-                          borderBottomColor: palette.isDark
-                            ? 'rgba(148,163,184,0.5)'
-                            : 'rgba(148,163,184,0.6)',
-                        },
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                    >
-                      <View
+                <View
+                  style={[
+                    {
+                      borderRadius: 16,
+                      overflow: 'hidden', // keeps children clipped inside
+                      backgroundColor: palette.isDark
+                        ? 'rgba(15,24,33,0.9)'
+                        : 'rgba(255,255,255,0.95)',
+                    },
+                  ]}
+                >
+                  {accountOptions.map((opt, idx) => {
+                    const selected = accountKind === opt.key;
+                    const isLast = idx === accountOptions.length - 1;
+                    return (
+                      <TouchableOpacity
+                        key={opt.key}
+                        onPress={() => switchAccountKind(opt.key)}
                         style={[
-                          tw`mr-3 h-4 w-4 rounded-full items-center justify-center`,
-                          {
-                            borderWidth: 1,
-                            borderColor: selected ? '#4f46e5' : '#9ca3af',
-                            backgroundColor: selected ? '#4f46e5' : 'transparent',
+                          tw`flex-row items-center px-3 py-2`,
+                          selected && {
+                            backgroundColor: palette.isDark
+                              ? '#1b2430'
+                              : '#eef2ff',
+                          },
+                          !isLast && {
+                            borderBottomWidth: 0.5,
+                            borderBottomColor: palette.isDark
+                              ? 'rgba(148,163,184,0.5)'
+                              : 'rgba(148,163,184,0.6)',
                           },
                         ]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
                       >
-                        {selected && (
-                          <Text style={tw`text-[10px] text-white`}>✓</Text>
-                        )}
-                      </View>
+                        <View
+                          style={[
+                            tw`mr-3 h-4 w-4 rounded-full items-center justify-center`,
+                            {
+                              borderWidth: 1,
+                              borderColor: selected ? '#4f46e5' : '#9ca3af',
+                              backgroundColor: selected
+                                ? '#4f46e5'
+                                : 'transparent',
+                            },
+                          ]}
+                        >
+                          {selected && (
+                            <Text style={tw`text-[10px] text-white`}>✓</Text>
+                          )}
+                        </View>
 
-                      <View style={tw`flex-1`}>
-                        <Text
-                          style={[
-                            tw`text-xs font-semibold`,
-                            { color: selected ? '#4f46e5' : palette.textSoft },
-                          ]}
-                        >
-                          {opt.label}
-                        </Text>
-                        <Text
-                          style={[
-                            tw`text-[10px] mt-0.5`,
-                            { color: palette.textSubtle },
-                          ]}
-                        >
-                          {opt.helper}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
+                        <View style={tw`flex-1`}>
+                          <Text
+                            style={[
+                              tw`text-xs font-semibold`,
+                              {
+                                color: selected
+                                  ? '#4f46e5'
+                                  : palette.textSoft,
+                              },
+                            ]}
+                          >
+                            {opt.label}
+                          </Text>
+                          <Text
+                            style={[
+                              tw`text-[10px] mt-0.5`,
+                              { color: palette.textSubtle },
+                            ]}
+                          >
+                            {opt.helper}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
-            </View>
-
 
               {/* Title */}
               <Text
@@ -520,9 +531,7 @@ const InstitutionLoginNative: React.FC = () => {
                         style={[
                           tw`font-semibold`,
                           {
-                            color: active
-                              ? palette.text
-                              : palette.textSoft,
+                            color: active ? palette.text : palette.textSoft,
                           },
                         ]}
                       >
@@ -686,8 +695,8 @@ const InstitutionLoginNative: React.FC = () => {
                       </Text>
                     </TouchableOpacity>
 
-                    {canSignUp && (
-                      authMode === 'Login' ? (
+                    {canSignUp &&
+                      (authMode === 'Login' ? (
                         <TouchableOpacity
                           onPress={() => {
                             clearErrors();
@@ -709,8 +718,7 @@ const InstitutionLoginNative: React.FC = () => {
                             Already have an account?
                           </Text>
                         </TouchableOpacity>
-                      )
-                    )}
+                      ))}
                   </View>
 
                   {accountKind !== 'institution' && (

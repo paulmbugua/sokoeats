@@ -679,6 +679,8 @@ const onStart = useCallback(async () => {
   }
 
   setStarting(true);
+
+  // ⬇️ ensure we reuse the same knobs for both top list & sandbox
   const courseSize = sizeToCourseSize[sizePreset];
   const opts: any = {
     assignmentId: assignmentIdForAi,
@@ -714,14 +716,11 @@ const onStart = useCallback(async () => {
         return;
       }
 
-      dlog('onStart → startCustomTopic', { custom, opts });
-      await startCustomTopic(custom);
-      await waitForSelection();
-      if (selectedCourseRef.current?.id) {
-        opts.courseId = selectedCourseRef.current.id;
-      }
-      dlog('onStart → startWithAI (custom)', { opts });
-      await startWithAI(opts);
+      // ✅ IMPORTANT: pass the same knobs into startCustomTopic,
+      // and DO NOT call startWithAI again here.
+      dlog('onStart → startCustomTopic (sandbox)', { custom, opts });
+      await startCustomTopic(custom, opts);
+      await waitForSelection(); // just to ensure selectedCourseRef is hydrated
       return;
     }
 
@@ -735,7 +734,9 @@ const onStart = useCallback(async () => {
       } catch {
         try {
           await loadTopCourses?.();
-        } catch {/* ignore */}
+        } catch {
+          /* ignore */
+        }
       }
       await waitForCourses();
       course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
@@ -786,7 +787,7 @@ const onStart = useCallback(async () => {
   startWithAI,
   loadTopCourses,
   selectCourse,
-  requireAuth, 
+  requireAuth,
 ]);
 
   const onRequestStartGuarded = useCallback(() => {
