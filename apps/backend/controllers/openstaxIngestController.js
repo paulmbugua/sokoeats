@@ -541,3 +541,129 @@ export async function ingestOpenStax(req, res) {
     client.release();
   }
 }
+
+
+// At top of the file you already have:
+// import pool from '../config/db.js';
+// (keep that)
+
+export async function listOpenStax(req, res) {
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `
+      SELECT
+        c.id                                AS "courseId",
+        c.title                             AS "title",
+        c.subject                           AS "subject",
+        c.description                       AS "description",
+        c.thumbnail_url                     AS "thumbnailUrl",
+        c.created_at                        AS "createdAt",
+        cc.id                               AS "collectionId",
+        -- count items in this collection that belong to OpenStax
+        (
+          SELECT COUNT(*)
+          FROM catalog_collection_items ci
+          JOIN third_party_catalog t
+            ON t.slug = ci.catalog_slug
+          WHERE ci.collection_id = cc.id
+            AND t.provider = 'openstax'
+        )                                   AS "items",
+        b.web_url                           AS "bookUrl",
+        b.license                           AS "licenseText",
+        b.license_url                       AS "licenseUrl"
+      FROM courses c
+      LEFT JOIN catalog_collection cc
+        ON LOWER(cc.title) = LOWER(c.title)
+      LEFT JOIN oer_books b
+        ON LOWER(b.title) = LOWER(c.title)
+      WHERE c.provider = 'openstax'
+      ORDER BY c.created_at DESC
+      LIMIT 100
+      `
+    );
+
+    return res.json({ ok: true, items: r.rows });
+  } catch (e) {
+    console.error('[oer][list] openstax', e);
+    return res.status(500).json({ error: 'failed to list openstax uploads' });
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteOpenStax(req, res) {
+  const client = await pool.connect();
+  const { courseId } = req.params || {};
+
+  if (!courseId) {
+    return res.status(400).json({ error: 'courseId is required' });
+  }
+
+  try {
+    await client.query('BEGIN');
+
+    const courseRes = await client.query(
+      `SELECT id, title FROM courses WHERE id = $1 AND provider = 'openstax' LIMIT 1`,
+      [courseId]
+    );
+    if (!courseRes.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'OpenStax course not found' });
+    }
+    const { title } = courseRes.rows[0];
+
+    // Best-effort: remove the collection and its item links
+    const collRes = await client.query(
+      `SELECT id FROM catalog_collection WHERE LOWER(title) = LOWER($1) LIMIT 1`,
+      [title]
+    );
+
+    if (collRes.rowCount) {
+      const collId = collRes.rows[0].id;
+
+      await client.query(
+        `DELETE FROM catalog_collection_items WHERE collection_id = $1`,
+        [collId]
+      );
+
+      await client.query(
+        `DELETE FROM catalog_collection WHERE id = $1`,
+        [collId]
+      );
+    }
+
+    // Keep third_party_catalog pages and oer_books row, but "tag" the book as deleted by
+    // mutating the slug to avoid future conflicts (best-effort, ignore errors)
+    try {
+      await client.query(
+        `
+        UPDATE oer_books
+           SET updated_at = now(),
+               slug = slug || '-deleted-' || to_char(now(), 'YYYYMMDDHH24MISS')
+         WHERE LOWER(title) = LOWER($1)
+        `,
+        [title]
+      );
+    } catch (e) {
+      console.warn('[oer][delete] openstax: could not mark oer_books deleted', e.message);
+    }
+
+    // Finally remove the course itself
+    await client.query(
+      `DELETE FROM courses WHERE id = $1 AND provider = 'openstax'`,
+      [courseId]
+    );
+
+    await client.query('COMMIT');
+    return res.json({ ok: true });
+  } catch (e) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
+    console.error('[oer][delete] openstax', e);
+    return res.status(500).json({ error: 'failed to delete openstax course' });
+  } finally {
+    client.release();
+  }
+}

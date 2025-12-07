@@ -119,8 +119,12 @@ export async function ingestYouTube(req, res) {
     await client.query('BEGIN');
 
     // Ensure unique indexes for idempotent upserts/links
-    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS ux_tpc_provider_slug ON third_party_catalog(provider, slug)`);
-    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS ux_cci_collection_slug ON catalog_collection_items(collection_id, catalog_slug)`);
+    await client.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS ux_tpc_provider_slug ON third_party_catalog(provider, slug)`
+    );
+    await client.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS ux_cci_collection_slug ON catalog_collection_items(collection_id, catalog_slug)`
+    );
 
     // 1) Upsert collection by case-insensitive title
     const existing = await client.query(
@@ -194,6 +198,118 @@ export async function ingestYouTube(req, res) {
     try { await pool.query('ROLLBACK'); } catch {}
     console.error('[oer][ingest] youtube', e);
     return res.status(500).json({ error: 'failed to ingest youtube videos' });
+  } finally {
+    client.release();
+  }
+}
+
+/* ======================= NEW: list + delete ======================= */
+
+/**
+ * GET /api/oer/youtube
+ * Lists YouTube-backed catalog collections for the admin UI.
+ */
+export async function listYouTube(req, res) {
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `
+      SELECT
+        cc.id AS "collectionId",
+        cc.title AS "title",
+        cc.subject AS "subject",
+        cc.description AS "description",
+        cc.thumbnail_url AS "thumbnailUrl",
+        cc.created_at AS "createdAt",
+        (
+          SELECT COUNT(*)
+          FROM catalog_collection_items ci
+          JOIN third_party_catalog t
+            ON t.slug = ci.catalog_slug
+          WHERE ci.collection_id = cc.id
+            AND t.provider = 'youtube'
+        ) AS "items"
+      FROM catalog_collection cc
+      WHERE EXISTS (
+        SELECT 1
+        FROM catalog_collection_items ci
+        JOIN third_party_catalog t
+          ON t.slug = ci.catalog_slug
+        WHERE ci.collection_id = cc.id
+          AND t.provider = 'youtube'
+      )
+      ORDER BY cc.created_at DESC
+      LIMIT 100
+      `
+    );
+
+    return res.json({ ok: true, items: r.rows });
+  } catch (e) {
+    console.error('[oer][list] youtube', e);
+    return res.status(500).json({ error: 'failed to list youtube collections' });
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * DELETE /api/oer/youtube/:collectionId
+ * Removes the DayBreak-side collection + links.
+ * It **does not** touch YouTube or the base third_party_catalog entries.
+ */
+export async function deleteYouTube(req, res) {
+  const client = await pool.connect();
+  const { collectionId } = req.params || {};
+
+  if (!collectionId) {
+    return res.status(400).json({ error: 'collectionId is required' });
+  }
+
+  try {
+    await client.query('BEGIN');
+
+    // Make sure this collection is actually a YouTube-backed one
+    const exists = await client.query(
+      `
+      SELECT cc.id, cc.title
+      FROM catalog_collection cc
+      WHERE cc.id = $1
+        AND EXISTS (
+          SELECT 1
+          FROM catalog_collection_items ci
+          JOIN third_party_catalog t
+            ON t.slug = ci.catalog_slug
+          WHERE ci.collection_id = cc.id
+            AND t.provider = 'youtube'
+        )
+      LIMIT 1
+      `,
+      [collectionId]
+    );
+
+    if (!exists.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'YouTube collection not found' });
+    }
+
+    // Drop item links for this collection
+    await client.query(
+      `DELETE FROM catalog_collection_items WHERE collection_id = $1`,
+      [collectionId]
+    );
+
+    // Delete the catalog_collection row itself
+    await client.query(
+      `DELETE FROM catalog_collection WHERE id = $1`,
+      [collectionId]
+    );
+
+    await client.query('COMMIT');
+    return res.json({ ok: true });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    console.error('[oer][delete] youtube', e);
+    return res.status(500).json({ error: 'failed to delete youtube collection' });
   } finally {
     client.release();
   }

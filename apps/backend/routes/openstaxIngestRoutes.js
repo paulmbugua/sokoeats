@@ -1,14 +1,23 @@
-// apps/backend/routes/openstaxIngestRoutes.js
 import { Router } from 'express';
-import { ingestOpenStax } from '../controllers/openstaxIngestController.js';
+import {
+  ingestOpenStax,
+  listOpenStax,
+  deleteOpenStax,
+} from '../controllers/openstaxIngestController.js';
 import { adminAuth } from '../middleware/adminAuth.js';
 
 const router = Router();
 
-// POST /api/oer/ingest/openstax
+// Ingest / re-ingest
 router.post('/oer/ingest/openstax', adminAuth, ingestOpenStax);
 
-// Optional: quick health check to verify the route is mounted
+// List existing uploads (for admin UI)
+router.get('/oer/openstax', adminAuth, listOpenStax);
+
+// Delete one upload by course id
+router.delete('/oer/openstax/:courseId', adminAuth, deleteOpenStax);
+
+// Optional: quick health check
 router.get('/oer/ingest/health', (req, res) => {
   res.json({ ok: true, route: 'openstax ingest' });
 });
