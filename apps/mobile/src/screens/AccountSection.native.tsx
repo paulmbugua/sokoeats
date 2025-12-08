@@ -11,6 +11,7 @@ import {
   Alert,
   Linking,
   ScrollView,
+  Platform,
 } from 'react-native';
 import {
   useNavigation,
@@ -749,8 +750,9 @@ const AccountSectionNative: React.FC = () => {
                         setSessionFormErrors(rest);
                       }
                     }}
-                    dropdownIconColor="#64748b"
-                    style={tw`text-slate-900 dark:text:white`}
+                    style={tw`text-slate-900 dark:text-white`}
+                    dropdownIconColor={Platform.OS === 'android' ? '#64748b' : undefined}
+                    mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                   >
                     <Picker.Item label="Select Session Type" value="" />
                     {formData.pricing &&

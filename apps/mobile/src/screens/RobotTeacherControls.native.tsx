@@ -5,7 +5,8 @@ import {
   Text,
   TextInput,
   Pressable,
- } from "react-native";
+  Platform,
+} from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import tw from "../../tailwind";
 
@@ -44,8 +45,9 @@ const CourseSelect = React.memo(function CourseSelect({
           if (!hasOptions && !v) return;
           onChange(String(v));
         }}
-        dropdownIconColor="#64748b"
         style={tw`-ml-1 text-sm text-[#0d141c] dark:text-white`}
+        dropdownIconColor={Platform.OS === "android" ? "#64748b" : undefined}
+        mode={Platform.OS === "android" ? "dropdown" : "dialog"}
       >
         <Picker.Item
           label={hasOptions ? placeholder : "No courses available"}
@@ -131,16 +133,17 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
     onStart,
     onRefreshSelectedAI,
     onOpenShare,
-    totalLessons, setTotalLessons,
-  quizCount, setQuizCount,
-  overrideLessons, setOverrideLessons,
-  overrideQuiz, setOverrideQuiz,
-    
+    totalLessons,
+    setTotalLessons,
+    quizCount,
+    setQuizCount,
+    overrideLessons,
+    setOverrideLessons,
+    overrideQuiz,
+    setOverrideQuiz,
   } = props;
 
   // ⬇️ Contribute to the screen’s global pull-to-refresh:
-  // When the user pulls down anywhere on the screen (Option A),
-  // we’ll refresh the selected course’s AI content (if applicable).
   useRegisterScreenRefresh(
     React.useCallback(async () => {
       if (!isLockedLearner && selectedCourse?.id) {
@@ -155,7 +158,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
   const defaultPresetKey: SizePresetKey = PRESETS[0]?.key ?? "standard";
 
   return (
-    <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-3 md:p-4`}>
+    <View
+      style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-3 md:p-4`}
+    >
       {showMinimalControls ? (
         <View style={tw`gap-3`}>
           <Text style={tw`text-sm text-[#49739c] dark:text-white/70`}>
@@ -164,7 +169,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
 
           <View>
             <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Course</Text>
-            <View style={tw`mt-1 h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}>
+            <View
+              style={tw`mt-1 h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}
+            >
               <Text style={tw`text-[#0d141c] dark:text-white`}>
                 {selectedCourse?.title || "Assigned course"}
               </Text>
@@ -173,7 +180,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
 
           <View style={tw`flex-row items-end gap-2`}>
             <Pressable
-              onPress={() => { if (canStartMinimal) onStart(); }}
+              onPress={() => {
+                if (canStartMinimal) onStart();
+              }}
               disabled={!canStartMinimal}
               accessibilityRole="button"
               accessibilityLabel="Start with AI"
@@ -184,7 +193,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   : `opacity-60 bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
               )}
             >
-              <Text style={tw`${canStartMinimal ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-sm font-semibold`}>
+              <Text
+                style={tw`${
+                  canStartMinimal
+                    ? "text-white"
+                    : "text-[#0d141c] dark:text-white"
+                } text-sm font-semibold`}
+              >
                 {busy ? "Preparing…" : hasAIContent ? "Continue lesson" : "Start with A.I"}
               </Text>
             </Pressable>
@@ -197,7 +212,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
             <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Course</Text>
             <View style={tw`mt-1`}>
               {isLockedLearner ? (
-                <View style={tw`h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}>
+                <View
+                  style={tw`h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}
+                >
                   <Text style={tw`text-[#0d141c] dark:text-white`}>
                     {selectedCourse?.title || "Assigned course"}
                   </Text>
@@ -236,7 +253,11 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                       disabled && `opacity-50`
                     )}
                   >
-                    <Text style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'}`}>
+                    <Text
+                      style={tw`${
+                        active ? "text-white" : "text-[#0d141c] dark:text-white"
+                      }`}
+                    >
                       {t.label} ({t.lessons})
                     </Text>
                   </Pressable>
@@ -275,7 +296,11 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                         disabled && `opacity-50`
                       )}
                     >
-                      <Text style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'}`}>
+                      <Text
+                        style={tw`${
+                          active ? "text-white" : "text-[#0d141c] dark:text-white"
+                        }`}
+                      >
                         {p.label}
                       </Text>
                     </Pressable>
@@ -290,7 +315,10 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   value={String(minutes)}
                   onChangeText={(txt) => {
                     if (knobsDisabled) return;
-                    const n = Math.max(8, Math.min(600, Number(txt.replace(/[^\d]/g, "")) || 0));
+                    const n = Math.max(
+                      8,
+                      Math.min(600, Number(txt.replace(/[^\d]/g, "")) || 0)
+                    );
                     setMinutes(n);
                     const found = [...PRESETS].reverse().find((x) => n >= x.min);
                     const key: SizePresetKey = found?.key ?? defaultPresetKey;
@@ -300,7 +328,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   placeholderTextColor="rgba(148,163,184,0.8)"
                   style={tw.style(
                     `h-9 w-20 rounded-xl px-2 border text-[12px] bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text-white`,
-                    knobsDisabled ? `opacity-50 border-[#cedbe8] dark:border-white/15` : `border-[#cedbe8] dark:border-white/15`
+                    knobsDisabled
+                      ? `opacity-50 border-[#cedbe8] dark:border-white/15`
+                      : `border-[#cedbe8] dark:border-white/15`
                   )}
                 />
               </View>
@@ -310,7 +340,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
           {/* Level */}
           <View>
             <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Level</Text>
-            <View style={tw`mt-1 flex-row rounded-lg overflow-hidden border border-[#cedbe8] dark:border-white/15`}>
+            <View
+              style={tw`mt-1 flex-row rounded-lg overflow-hidden border border-[#cedbe8] dark:border-white/15`}
+            >
               {(["beginner", "intermediate", "advanced"] as const).map((lv) => {
                 const active = classLevel === lv;
                 const disabled = isLockedLearner;
@@ -324,11 +356,17 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                     accessibilityLabel={lv}
                     style={tw.style(
                       `flex-1 px-3 py-2`,
-                      active ? `bg-indigo-50 dark:bg-white/15` : `bg-white dark:bg-[#172534]`,
+                      active ? `bg-indigo-50 dark:bg:white/15` : `bg-white dark:bg-[#172534]`,
                       disabled && `opacity-50`
                     )}
                   >
-                    <Text style={tw`capitalize text-[11px] ${active ? 'text-indigo-700 dark:text-white' : 'text-[#0d141c] dark:text-white/80'}`}>
+                    <Text
+                      style={tw`capitalize text-[11px] ${
+                        active
+                          ? "text-indigo-700 dark:text-white"
+                          : "text-[#0d141c] dark:text-white/80"
+                      }`}
+                    >
                       {lv}
                     </Text>
                   </Pressable>
@@ -340,7 +378,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
           {/* Start / Refresh / Share */}
           <View style={tw`flex-row items-end gap-2`}>
             <Pressable
-              onPress={() => { if (canStartMain) onStart(); }}
+              onPress={() => {
+                if (canStartMain) onStart();
+              }}
               disabled={!canStartMain}
               accessibilityRole="button"
               accessibilityLabel="Start with AI"
@@ -351,7 +391,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   : `opacity-60 bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
               )}
             >
-              <Text style={tw`${canStartMain ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-sm font-semibold`}>
+              <Text
+                style={tw`${
+                  canStartMain
+                    ? "text-white"
+                    : "text-[#0d141c] dark:text:white"
+                } text-sm font-semibold`}
+              >
                 {busy ? "Preparing…" : hasAIContent ? "Continue lesson" : "Start with A.I"}
               </Text>
             </Pressable>
@@ -363,7 +409,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 accessibilityLabel="Refresh AI"
                 style={tw`h-10 px-3 rounded-xl items-center justify-center border bg-slate-50 dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`}
               >
-                <Text style={tw`text-[#0d141c] dark:text-white`}>Refresh AI</Text>
+                <Text style={tw`text-[#0d141c] dark:text:white`}>Refresh AI</Text>
               </Pressable>
             ) : null}
 
@@ -381,7 +427,11 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   !selectedCourse?.id && !customTitle.trim() && `opacity-60`
                 )}
               >
-                <Text style={tw`${selectedCourse?.id ? 'text-white' : 'text-[#0d141c] dark:text-white'}`}>
+                <Text
+                  style={tw`${
+                    selectedCourse?.id ? "text-white" : "text-[#0d141c] dark:text-white"
+                  }`}
+                >
                   Share with learners
                 </Text>
               </Pressable>
@@ -411,7 +461,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               max={500}
               disabled={knobsDisabled}
               onChange={(v) => {
-                setOverrideLessons(true);           // ✅ start using custom lessons
+                setOverrideLessons(true); // ✅ start using custom lessons
                 setTotalLessons(Math.max(1, v));
               }}
             />
@@ -422,44 +472,50 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               max={400}
               disabled={knobsDisabled}
               onChange={(v) => {
-                setOverrideQuiz(true);              // ✅ start using custom quiz size
+                setOverrideQuiz(true); // ✅ start using custom quiz size
                 setQuizCount(Math.max(4, v));
               }}
             />
-
           </View>
+
           <View style={tw`mt-1 flex-row flex-wrap items-center gap-2`}>
-          {(overrideLessons || overrideQuiz) && (
-            <Pressable
-              onPress={() => {
-                setOverrideLessons(false);
-                setOverrideQuiz(false);
-                // snap the visible fields to current track defaults
-                setTotalLessons(trackLessons);
-                setQuizCount(Math.max(4, Math.floor(trackLessons * 2)));
-              }}
-              style={tw`px-3 py-1.5 rounded-full bg-slate-100 dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15`}
-            >
-              <Text style={tw`text-[#0d141c] dark:text-white text-xs`}>Use track defaults</Text>
-            </Pressable>
-          )}
-        </View>
+            {(overrideLessons || overrideQuiz) && (
+              <Pressable
+                onPress={() => {
+                  setOverrideLessons(false);
+                  setOverrideQuiz(false);
+                  // snap the visible fields to current track defaults
+                  setTotalLessons(trackLessons);
+                  setQuizCount(Math.max(4, Math.floor(trackLessons * 2)));
+                }}
+                style={tw`px-3 py-1.5 rounded-full bg-slate-100 dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15`}
+              >
+                <Text style={tw`text-[#0d141c] dark:text:white text-xs`}>
+                  Use track defaults
+                </Text>
+              </Pressable>
+            )}
+          </View>
 
           {/* Custom topic */}
           {!isLockedLearner && (
             <View style={tw`mt-1`}>
-              <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Or type any topic</Text>
+              <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                Or type any topic
+              </Text>
               <TextInput
                 value={customTitle}
                 onChangeText={setCustomTitle}
                 placeholder="e.g., Linear Algebra crash course"
                 placeholderTextColor="rgba(148,163,184,0.8)"
-                style={tw`mt-1 h-11 rounded-xl px-3 border border-[#cedbe8] dark:border-white/15 bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text-white`}
+                style={tw`mt-1 h-11 rounded-xl px-3 border border-[#cedbe8] dark:border-white/15 bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text:white`}
               />
               <View style={tw`mt-2 items-start`}>
                 <Pressable
                   disabled={!canTeach}
-                  onPress={() => { if (canTeach) onStart(); }}
+                  onPress={() => {
+                    if (canTeach) onStart();
+                  }}
                   accessibilityRole="button"
                   accessibilityLabel="Teach me"
                   style={tw.style(
@@ -469,7 +525,11 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                       : `opacity-60 bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
                   )}
                 >
-                  <Text style={tw`${canTeach ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-sm font-semibold`}>
+                  <Text
+                    style={tw`${
+                      canTeach ? "text-white" : "text-[#0d141c] dark:text:white"
+                    } text-sm font-semibold`}
+                  >
                     Teach me
                   </Text>
                 </Pressable>
@@ -503,20 +563,25 @@ function LabeledNumber({
 }) {
   return (
     <View>
-      <Text style={tw`text-sm text-[#0d141c] dark:text-white mb-1`}>{label}</Text>
+      <Text style={tw`text-sm text-[#0d141c] dark:text:white mb-1`}>{label}</Text>
       <TextInput
         keyboardType="number-pad"
         value={String(value)}
         onChangeText={(txt) => {
           if (disabled) return;
-          const n = Math.max(min, Math.min(max, Number(txt.replace(/[^\d]/g, "")) || 0));
+          const n = Math.max(
+            min,
+            Math.min(max, Number(txt.replace(/[^\d]/g, "")) || 0)
+          );
           onChange(n);
         }}
         editable={!disabled}
         placeholderTextColor="rgba(148,163,184,0.8)"
         style={tw.style(
-          `h-11 rounded-xl px-3 border text-sm bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text-white`,
-          disabled ? `opacity-50 border-[#cedbe8] dark:border-white/15` : `border-[#cedbe8] dark:border-white/15`
+          `h-11 rounded-xl px-3 border text-sm bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text:white`,
+          disabled
+            ? `opacity-50 border-[#cedbe8] dark:border-white/15`
+            : `border-[#cedbe8] dark:border-white/15`
         )}
       />
     </View>

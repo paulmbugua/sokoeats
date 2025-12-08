@@ -16,8 +16,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
 import tw from '../../../tailwind';
 import { useNavigation } from '@react-navigation/native';
- import type { MainStackParamList } from '../../navigation/types';
- import type { StackNavigationProp } from '@react-navigation/stack';
+import type { MainStackParamList } from '../../navigation/types';
+import type { StackNavigationProp } from '@react-navigation/stack';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
@@ -75,7 +75,6 @@ const pickCourseId = (obj: any): string | null =>
   null;
 
 export default function OrgShareDialogNative({
-  
   open,
   onClose,
   onCancel,
@@ -88,7 +87,7 @@ export default function OrgShareDialogNative({
 }: Props) {
   const { backendUrl, token, orgToken } = useShopContext();
   const { org, activeOrgId, orgTier } = useOrg();
-const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
+  const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
   const planKey = (
     orgTier ||
     (org as any)?.subscription?.tier ||
@@ -234,7 +233,12 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
         ...assignOpts,
       } as any;
 
-      const resp = await ensureOrgShareableAssignment(backendUrl, bearer, activeOrgId, payload);
+      const resp = await ensureOrgShareableAssignment(
+        backendUrl,
+        bearer,
+        activeOrgId,
+        payload
+      );
       const code =
         resp?.assignment?.invite_code ??
         resp?.assignment?.inviteCode ??
@@ -270,12 +274,18 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
             onResolvedCourseId?.(cid2);
           }
         } catch (e2: any) {
-          const m = e2?.response?.data?.message || e2?.message || 'Failed to create invite.';
+          const m =
+            e2?.response?.data?.message ||
+            e2?.message ||
+            'Failed to create invite.';
           setErr(m);
           Alert.alert('Error', m);
         }
       } else {
-        const m = e?.response?.data?.message || e?.message || 'Failed to share course.';
+        const m =
+          e?.response?.data?.message ||
+          e?.message ||
+          'Failed to share course.';
         setErr(m);
         Alert.alert('Error', m);
       }
@@ -283,10 +293,25 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
       setBusy(false);
     }
   }, [
-    orgToken, token, backendUrl, activeOrgId,
-    canCreate, courseId, courseTitle,
-    dueDate, timerH, timerM, isStarter, passMark, maxAttempts,
-    totalLessons, quizCount, minutes, quizType, inviteBase, onResolvedCourseId
+    orgToken,
+    token,
+    backendUrl,
+    activeOrgId,
+    canCreate,
+    courseId,
+    courseTitle,
+    dueDate,
+    timerH,
+    timerM,
+    isStarter,
+    passMark,
+    maxAttempts,
+    totalLessons,
+    quizCount,
+    minutes,
+    quizType,
+    inviteBase,
+    onResolvedCourseId,
   ]);
 
   const copy = async () => {
@@ -299,12 +324,16 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
 
   const openLink = () => {
     if (!inviteLink) return;
-    Linking.openURL(inviteLink).catch(() => Alert.alert('Error', 'Unable to open link.'));
+    Linking.openURL(inviteLink).catch(() =>
+      Alert.alert('Error', 'Unable to open link.')
+    );
   };
 
   const emailShare = () => {
     if (!inviteLink) return;
-    const href = `mailto:?subject=${encodeURIComponent('Course invite')}&body=${encodeURIComponent(inviteLink)}`;
+    const href = `mailto:?subject=${encodeURIComponent(
+      'Course invite'
+    )}&body=${encodeURIComponent(inviteLink)}`;
     Linking.openURL(href).catch(() => {});
   };
 
@@ -389,7 +418,9 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
               <View style={tw`gap-3`}>
                 {/* Title override */}
                 <View>
-                  <Text style={tw`text-white/70 text-[10px] mb-1`}>Title (optional override)</Text>
+                  <Text style={tw`text-white/70 text-[10px] mb-1`}>
+                    Title (optional override)
+                  </Text>
                   <TextInput
                     placeholder="e.g., Algebra Essentials — Cohort A"
                     placeholderTextColor="rgba(255,255,255,0.6)"
@@ -415,7 +446,11 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
                   <View>
                     <Text style={tw`text-white/70 text-[10px] mb-1`}>
                       Timer (duration){' '}
-                      {isStarter && <Text style={tw`text-white/60 text-3xs`}>• Starter fixed at 30 min</Text>}
+                      {isStarter && (
+                        <Text style={tw`text-white/60 text-3xs`}>
+                          • Starter fixed at 30 min
+                        </Text>
+                      )}
                     </Text>
 
                     <View style={tw`flex-row items-center gap-2`}>
@@ -424,11 +459,18 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
                           enabled={!lockTimer}
                           selectedValue={timerH}
                           onValueChange={(v) => setTimerH(Number(v))}
-                          dropdownIconColor="#fff"
                           style={tw`text-white bg-black/40 rounded-lg border border-white/10`}
+                          dropdownIconColor={
+                            Platform.OS === 'android' ? '#ffffff' : undefined
+                          }
+                          mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                         >
                           {Array.from({ length: 13 }).map((_, h) => (
-                            <Picker.Item key={h} label={`${h} ${h === 1 ? 'hour' : 'hours'}`} value={h} />
+                            <Picker.Item
+                              key={h}
+                              label={`${h} ${h === 1 ? 'hour' : 'hours'}`}
+                              value={h}
+                            />
                           ))}
                         </Picker>
                       </View>
@@ -438,21 +480,31 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
                           enabled={!lockTimer}
                           selectedValue={timerM}
                           onValueChange={(v) => setTimerM(Number(v))}
-                          dropdownIconColor="#fff"
                           style={tw`text-white bg-black/40 rounded-lg border border-white/10`}
+                          dropdownIconColor={
+                            Platform.OS === 'android' ? '#ffffff' : undefined
+                          }
+                          mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                         >
-                          {[0,5,10,15,20,25,30,35,40,45,50,55].map((m) => (
-                            <Picker.Item key={m} label={`${m} ${m === 1 ? 'minute' : 'minutes'}`} value={m} />
+                          {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+                            <Picker.Item
+                              key={m}
+                              label={`${m} ${m === 1 ? 'minute' : 'minutes'}`}
+                              value={m}
+                            />
                           ))}
                         </Picker>
                       </View>
 
                       <Text style={tw`text-white/70 text-3xs`}>
-                        {String(timerH ?? 0).padStart(2, '0')}:{String(timerM ?? 0).padStart(2, '0')}:00
+                        {String(timerH ?? 0).padStart(2, '0')}:
+                        {String(timerM ?? 0).padStart(2, '0')}:00
                       </Text>
                     </View>
 
-                    <Text style={tw`text-white/60 text-3xs mt-1`}>Set both to 0 for no time limit.</Text>
+                    <Text style={tw`text-white/60 text-3xs mt-1`}>
+                      Set both to 0 for no time limit.
+                    </Text>
                   </View>
                 </View>
 
@@ -460,25 +512,38 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
                 <View>
                   <Text style={tw`text-white/70 text-[10px] mb-1`}>
                     Max quiz attempts
-                    {isStarter && <Text style={tw`text-white/60 text-3xs`}> • Starter locked to 1</Text>}
+                    {isStarter && (
+                      <Text style={tw`text-white/60 text-3xs`}>
+                        {' '}
+                        • Starter locked to 1
+                      </Text>
+                    )}
                   </Text>
                   <View style={tw`flex-row items-center gap-2`}>
                     <View style={tw`flex-1`}>
                       <NumberInput
                         value={maxAttempts}
-                        setValue={(n) => setMaxAttempts(Math.max(1, Math.min(10, Number(n) || 1)))}
+                        setValue={(n) =>
+                          setMaxAttempts(
+                            Math.max(1, Math.min(10, Number(n) || 1))
+                          )
+                        }
                         min={1}
                         max={10}
                         disabled={lockAttempts}
                       />
                     </View>
-                    <Text style={tw`text-white/60 text-3xs`}>Learners can retry up to this number.</Text>
+                    <Text style={tw`text-white/60 text-3xs`}>
+                      Learners can retry up to this number.
+                    </Text>
                   </View>
                 </View>
 
                 {/* Question type */}
                 <View>
-                  <Text style={tw`text-white/70 text-[10px] mb-1`}>Question type</Text>
+                  <Text style={tw`text-white/70 text-[10px] mb-1`}>
+                    Question type
+                  </Text>
                   <View style={tw`flex-row gap-2`}>
                     <Choice
                       label="Multiple choice (MCQ)"
@@ -498,17 +563,25 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
 
                 {/* Due date */}
                 <View>
-                  <Text style={tw`text-white/70 text-[10px] mb-1`}>Due date (defaults to today)</Text>
+                  <Text style={tw`text-white/70 text-[10px] mb-1`}>
+                    Due date (defaults to today)
+                  </Text>
                   <TouchableOpacity
                     onPress={() => setShowDatePicker(true)}
                     style={tw`px-3 py-2 rounded-lg border border-white/10 bg-black/40`}
                   >
                     <Text style={tw`text-white`}>
                       {dueDate
-                        ? `${dueDate.getFullYear()}-${String(dueDate.getMonth()+1).padStart(2,'0')}-${String(dueDate.getDate()).padStart(2,'0')}`
+                        ? `${dueDate.getFullYear()}-${String(
+                            dueDate.getMonth() + 1
+                          ).padStart(2, '0')}-${String(
+                            dueDate.getDate()
+                          ).padStart(2, '0')}`
                         : 'Pick a date'}
                     </Text>
-                    <Text style={tw`text-white/60 text-3xs mt-1`}>Deadline is end of day (23:59:59).</Text>
+                    <Text style={tw`text-white/60 text-3xs mt-1`}>
+                      Deadline is end of day (23:59:59).
+                    </Text>
                   </TouchableOpacity>
 
                   {showDatePicker && (
@@ -532,52 +605,65 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
                     showsHorizontalScrollIndicator={false}
                     style={tw`flex-1 px-3 py-2 rounded-lg border border-white/10 bg-black/40`}
                   >
-                    <Text selectable style={tw`text-white`}>{inviteLink}</Text>
+                    <Text selectable style={tw`text-white`}>
+                      {inviteLink}
+                    </Text>
                   </ScrollView>
-                  <TouchableOpacity onPress={copy} style={tw`px-3 rounded-lg bg-white/10 items-center justify-center`}>
+                  <TouchableOpacity
+                    onPress={copy}
+                    style={tw`px-3 rounded-lg bg-white/10 items-center justify-center`}
+                  >
                     <Text style={tw`text-white text-[10px]`}>Copy</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={openLink} style={tw`px-3 rounded-lg bg-white/10 items-center justify-center`}>
+                  <TouchableOpacity
+                    onPress={openLink}
+                    style={tw`px-3 rounded-lg bg-white/10 items-center justify-center`}
+                  >
                     <Text style={tw`text-white text-[10px]`}>Open</Text>
                   </TouchableOpacity>
                 </View>
 
                 {/* Share helpers (parity) */}
                 <View style={tw`flex-row flex-wrap gap-2 mt-1`}>
-                  <TouchableOpacity onPress={emailShare} style={tw`px-3 py-1.5 rounded-lg bg-white/10`}>
+                  <TouchableOpacity
+                    onPress={emailShare}
+                    style={tw`px-3 py-1.5 rounded-lg bg-white/10`}
+                  >
                     <Text style={tw`text-white text-[11px]`}>Email</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={whatsappShare} style={tw`px-3 py-1.5 rounded-lg bg-white/10`}>
+                  <TouchableOpacity
+                    onPress={whatsappShare}
+                    style={tw`px-3 py-1.5 rounded-lg bg-white/10`}
+                  >
                     <Text style={tw`text-white text-[11px]`}>WhatsApp</Text>
                   </TouchableOpacity>
                 </View>
 
-                <Text style={tw`text-white/60 text-3xs`}>Share this link with your learners.</Text>
+                <Text style={tw`text-white/60 text-3xs`}>
+                  Share this link with your learners.
+                </Text>
 
                 {!!(createdCourseId || courseId) && (
                   <View style={tw`mt-2`}>
                     <TouchableOpacity
                       onPress={() => {
                         onClose();
-                        // Navigate to OrgPortal → Assign tab carrying courseId
                         try {
-                          // breadcrumbs (optional; native-safe via AsyncStorage)
                           if (createdCourseId) {
-                            // store for later if you read it somewhere else
+                            // optionally store breadcrumbs here
                           }
                         } catch {}
-                        // @ts-ignore – your navigator route should accept params
-                        // like { tab: 'assign', from: 'share', courseId }
-                        // Update if your route signature differs.
                         navigation.navigate('OrgElearnPortal', {
-                        tab: 'assign',
-                        from: 'share',
-                        courseId: createdCourseId || (courseId ?? undefined),
-                      });
+                          tab: 'assign',
+                          from: 'share',
+                          courseId: createdCourseId || (courseId ?? undefined),
+                        });
                       }}
                       style={tw`self-start px-3 py-1.5 rounded-lg bg-indigo-600`}
                     >
-                      <Text style={tw`text-white text-[11px] font-semibold`}>Open Assign pane</Text>
+                      <Text style={tw`text-white text-[11px] font-semibold`}>
+                        Open Assign pane
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -587,7 +673,9 @@ const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
 
           {/* Footer */}
           {!inviteLink && (
-            <View style={tw`mt-3 pt-2 border-t border-white/10 flex-row justify-end`}>
+            <View
+              style={tw`mt-3 pt-2 border-t border-white/10 flex-row justify-end`}
+            >
               <TouchableOpacity
                 onPress={handleShare}
                 disabled={busy || !canCreate}
@@ -623,6 +711,13 @@ const Choice: React.FC<{ label: string; active: boolean; onPress: () => void }> 
       active ? 'bg-emerald-600/15 border-emerald-500' : 'bg-white/5 border-white/10'
     )}
   >
-    <Text style={tw.style('text-[10px]', active ? 'text-white' : 'text-white/80')}>{label}</Text>
+    <Text
+      style={tw.style(
+        'text-[10px]',
+        active ? 'text-white' : 'text-white/80'
+      )}
+    >
+      {label}
+    </Text>
   </TouchableOpacity>
 );

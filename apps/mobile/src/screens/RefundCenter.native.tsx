@@ -12,6 +12,7 @@ import {
   Linking,
   AccessibilityInfo,
   findNodeHandle,
+  Platform,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker"; // yarn add @react-native-picker/picker
 import { useColorScheme } from "react-native";
@@ -117,7 +118,9 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
 
   return (
     <View
-      className={`rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-4 ${className || ""}`}
+      className={`rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-4 ${
+        className || ""
+      }`}
     >
       {!isOpen ? (
         <View className="flex-row items-center justify-end">
@@ -144,10 +147,18 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
             <View className="mt-3 rounded-xl p-3 bg-[#f6f9fc] dark:bg-[#0b1620] border border-[#cedbe8] dark:border-[#182430]">
               <Text className="font-semibold mb-1 text-slate-900 dark:text-white">Refund policy (summary)</Text>
               <View className="pl-3">
-                <Text className="text-sm leading-5 text-slate-700 dark:text-white/80">• Requests within 7 days of purchase are usually eligible.</Text>
-                <Text className="text-sm leading-5 text-slate-700 dark:text-white/80">• We review course progress and usage to determine eligibility.</Text>
-                <Text className="text-sm leading-5 text-slate-700 dark:text-white/80">• Abuse, repeated refunds, or completed certificates may be ineligible.</Text>
-                <Text className="text-sm leading-5 text-slate-700 dark:text-white/80">• Approved refunds are returned to the original method or as tokens (your choice).</Text>
+                <Text className="text-sm leading-5 text-slate-700 dark:text-white/80">
+                  • Requests within 7 days of purchase are usually eligible.
+                </Text>
+                <Text className="text-sm leading-5 text-slate-700 dark:text-white/80">
+                  • We review course progress and usage to determine eligibility.
+                </Text>
+                <Text className="text-sm leading-5 text-slate-700 dark:text-white/80">
+                  • Abuse, repeated refunds, or completed certificates may be ineligible.
+                </Text>
+                <Text className="text-sm leading-5 text-slate-700 dark:text-white/80">
+                  • Approved refunds are returned to the original method or as tokens (your choice).
+                </Text>
               </View>
             </View>
           )}
@@ -170,7 +181,9 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
             {/* Row 1 */}
             <View className="flex-col md:flex-row md:gap-3">
               <View className="mb-3">
-                <Text className="text-sm font-medium mb-1 text-slate-800 dark:text-white">Transaction / Order ID</Text>
+                <Text className="text-sm font-medium mb-1 text-slate-800 dark:text-white">
+                  Transaction / Order ID
+                </Text>
                 <TextInput
                   value={txId}
                   onChangeText={setTxId}
@@ -200,7 +213,11 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
                 <Picker
                   selectedValue={reason}
                   onValueChange={(v) => setReason(String(v))}
-                  dropdownIconColor={isDark ? "#fff" : "#000"}
+                  style={{ color: isDark ? "#ffffff" : "#0f172a" }}
+                  dropdownIconColor={
+                    Platform.OS === "android" ? (isDark ? "#ffffff" : "#64748b") : undefined
+                  }
+                  mode={Platform.OS === "android" ? "dropdown" : "dialog"}
                 >
                   <Picker.Item label="Accidental purchase" value="accidental_purchase" />
                   <Picker.Item label="Duplicate charge" value="duplicate_charge" />
@@ -213,7 +230,9 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
 
             {/* Details */}
             <View className="mt-3">
-              <Text className="text-sm font-medium mb-1 text-slate-800 dark:text-white">Additional details</Text>
+              <Text className="text-sm font-medium mb-1 text-slate-800 dark:text-white">
+                Additional details
+              </Text>
               <TextInput
                 value={details}
                 onChangeText={setDetails}
@@ -225,7 +244,9 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
 
             {/* Attachment URL */}
             <View className="mt-3">
-              <Text className="text-sm font-medium mb-1 text-slate-800 dark:text-white">Attachment URL (optional)</Text>
+              <Text className="text-sm font-medium mb-1 text-slate-800 dark:text-white">
+                Attachment URL (optional)
+              </Text>
               <TextInput
                 value={attachmentUrl}
                 onChangeText={setAttachmentUrl}
@@ -248,7 +269,13 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
                       : "bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-darkCard"
                   }`}
                 >
-                  <Text className={resolution === "original" ? "text-white font-semibold" : "text-slate-800 dark:text-white"}>
+                  <Text
+                    className={
+                      resolution === "original"
+                        ? "text-white font-semibold"
+                        : "text-slate-800 dark:text-white"
+                    }
+                  >
                     Original method
                   </Text>
                 </Pressable>
@@ -260,7 +287,13 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
                       : "bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-darkCard"
                   }`}
                 >
-                  <Text className={resolution === "tokens" ? "text-white font-semibold" : "text-slate-800 dark:text-white"}>
+                  <Text
+                    className={
+                      resolution === "tokens"
+                        ? "text-white font-semibold"
+                        : "text-slate-800 dark:text-white"
+                    }
+                  >
                     Tokens
                   </Text>
                 </Pressable>
@@ -270,14 +303,14 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
             {/* Agree row */}
             <View
               ref={agreeRowRef}
-              className={`mt-3 rounded-xl px-3 py-2 ${
-                agreeErr ? "border border-rose-400" : ""
-              }`}
+              className={`mt-3 rounded-xl px-3 py-2 ${agreeErr ? "border border-rose-400" : ""}`}
               accessible
               accessibilityLabel="Agree to refund policy"
             >
               <View className="flex-row items-center justify-between">
-                <Text className="text-sm text-slate-800 dark:text-white">I agree to the refund policy</Text>
+                <Text className="text-sm text-slate-800 dark:text-white">
+                  I agree to the refund policy
+                </Text>
                 <Switch
                   value={agree}
                   onValueChange={(v) => {
@@ -298,7 +331,9 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
               <Pressable
                 disabled={busy}
                 onPress={submit}
-                className={`h-10 px-4 rounded-xl bg-indigo-600 ${busy ? "opacity-60" : ""}`}
+                className={`h-10 px-4 rounded-xl bg-indigo-600 ${
+                  busy ? "opacity-60" : ""
+                }`}
               >
                 <Text className="text-white font-semibold leading-10">
                   {busy ? "Submitting…" : "Submit refund request"}
@@ -313,7 +348,9 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
                   });
                 }}
               >
-                <Text className="text-xs underline text-[#49739c]">Need help? Contact support</Text>
+                <Text className="text-xs underline text-[#49739c]">
+                  Need help? Contact support
+                </Text>
               </Pressable>
             </View>
 

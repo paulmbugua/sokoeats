@@ -1375,6 +1375,7 @@ const startCourse = async () => {
                             ? '#0f172a'
                             : undefined
                         }
+                        mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                       >
                         <Picker.Item
                           label="Not Started"

@@ -308,6 +308,7 @@ const ClassVaultUploadScreen: React.FC = () => {
             dropdownIconColor={pickerIconColor}
             // ↓ slimmer: matches other placeholders better
             style={tw`px-3 py-1 text-[13px] text-[#0d141c] dark:text-white`}
+            mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
           >
             {countries.length === 0 && <Picker.Item label="Loading countries…" value="" />}
             {countries.length > 0 && <Picker.Item label="Select Country…" value="" />}
@@ -336,6 +337,7 @@ const ClassVaultUploadScreen: React.FC = () => {
             dropdownIconColor={pickerIconColor}
             // ↓ same slimmer style as country
             style={tw`px-3 py-1 text-[13px] text-[#0d141c] dark:text-white`}
+            mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
           >
             <Picker.Item label="Select Subject Category…" value="" />
             {SUBJECT_CATEGORIES.map((s) => (
