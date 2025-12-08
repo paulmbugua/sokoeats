@@ -24,10 +24,30 @@ const FALLBACK_AVATAR = (name = 'Tutor') =>
 const HERO_BG =
   'https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?q=80&w=2000&auto=format&fit=crop';
 
-const SUBJECTS = ['Math', 'Science', 'Programming', 'Art', 'Wellness', 'Languages'] as const;
+// --- Limits (desktop vs mobile) ---
+const FEATURED_TUTOR_LIMIT_DESKTOP = 12;
+const FEATURED_TUTOR_LIMIT_MOBILE = 6;
 
-const VISIBLE_LIMIT = 6;
+const FEATURED_VIDEOS_LIMIT_DESKTOP = 8;
+const FEATURED_VIDEOS_LIMIT_MOBILE = 4;
+
+const FEATURED_COURSES_LIMIT_DESKTOP = 8;
+const FEATURED_COURSES_LIMIT_MOBILE = 4;
+
+const FREE_COURSES_LIMIT_DESKTOP = 4;
+const FREE_COURSES_LIMIT_MOBILE = 4;
+
+const FREE_VIDEOS_LIMIT_DESKTOP = 4;
+const FREE_VIDEOS_LIMIT_MOBILE = 4;
+
+const RECOMMENDED_COURSES_LIMIT_DESKTOP = 8;
+const RECOMMENDED_COURSES_LIMIT_MOBILE = 4;
+
+// Internal helper for featured tutor memo
+const FEATURED_TUTOR_LIMIT = FEATURED_TUTOR_LIMIT_DESKTOP;
+
 const DEBOUNCE_MS = 250;
+
 // 👉 Path base for the OER reader page
 const OER_READER_ROUTE_BASE = '/oer/collections';
 const getOerReaderPath = (c: { id?: string | number; slug?: string }) =>
@@ -44,14 +64,13 @@ const hrefForItem = (it: HomeCard) => {
   const id = encodeURIComponent(String(it.id ?? it.slug ?? ''));
   const kind = String(it.content_kind ?? it.kind ?? '').toLowerCase();
 
-  if (kind === 'video') return `/oer/collections/${id}`;   // open playlist/video flow
-  if (kind === 'text')  return `/oer/${id}`;              // open HTML reader
+  if (kind === 'video') return `/oer/collections/${id}`; // open playlist/video flow
+  if (kind === 'text') return `/oer/${id}`; // open HTML reader
 
   // sensible defaults (keeps all OER in the OER readers)
   if (kind === 'pdf' || kind === 'book') return `/oer/${id}`;
   return `/oer/${id}`;
 };
-
 
 // OER readers
 const getOerDocHref = (c: any) => `/oer/${encodeURIComponent(String(c?.slug ?? c?.id ?? ''))}`;
@@ -248,7 +267,6 @@ const isOerLike = (c: any) => {
   return false;
 };
 
-
 // Build href per item
 // ✅ Route builder
 const getHrefForItem = (c: any) => {
@@ -267,7 +285,6 @@ const getHrefForItem = (c: any) => {
   // 3) Everything else (including non-OER “text/PDF-ish”) → normal course details
   return `/courses/${encodeURIComponent(String(c?.id ?? ''))}`;
 };
-
 
 // Dev logger that STILL returns href in prod
 const debugHrefFor = (item: any, section: string) => {
@@ -312,9 +329,9 @@ const HomePage: React.FC = () => {
   useEffectOnceInStrict(() => {
     if (!backendUrl) return;
     console.log('[HomePage] Initial featured/recommended fetch');
-    void fetchFeaturedCourses({ limit: VISIBLE_LIMIT, minCount: 1 });
-    void fetchFeaturedVideos({ limit: VISIBLE_LIMIT, minCount: 1 });
-    void fetchRecommendedCourses({ limit: VISIBLE_LIMIT, minCount: 1 });
+    void fetchFeaturedCourses({ limit: FEATURED_COURSES_LIMIT_DESKTOP * 2, minCount: 1 });
+    void fetchFeaturedVideos({ limit: FEATURED_VIDEOS_LIMIT_DESKTOP, minCount: 1 });
+    void fetchRecommendedCourses({ limit: RECOMMENDED_COURSES_LIMIT_DESKTOP, minCount: 1 });
   }, [backendUrl, fetchFeaturedCourses, fetchFeaturedVideos, fetchRecommendedCourses]);
 
   // Track changes
@@ -352,8 +369,6 @@ const HomePage: React.FC = () => {
     return FALLBACK_AVATAR(fallbackName ?? p?.name ?? 'Tutor');
   };
 
-  const getTutorAvg = (p: any) => Number((p?.avgRating ?? p?.rating) ?? 0);
-
   const featuredTutors = useMemo(() => {
     const rows: {
       id: string;
@@ -363,28 +378,29 @@ const HomePage: React.FC = () => {
       category?: string;
       ratingAvg: number;
       ratingCount: number;
-    }[] = [];
-    SUBJECTS.forEach((subject) => {
-      const matches = tutorProfiles.filter((p) =>
-        (p.category ?? '').toLowerCase().includes(subject.toLowerCase())
-      );
-      if (matches.length === 0) return;
+    }[] = tutorProfiles.map((p: any) => {
+      const image = resolveTutorImage(p, p?.name || 'Tutor');
+      const { avg, count } = extractRating(p);
 
-      const best = matches.reduce((a, b) => (getTutorAvg(b) > getTutorAvg(a) ? b : a));
-      const image = resolveTutorImage(best, best?.name || 'Tutor');
-      const { avg, count } = extractRating(best);
-
-      rows.push({
-        id: (best as any).user_id ?? (best as any).id ?? String(best?.name ?? subject),
-        name: (best as any).name ?? 'Tutor',
-        subject,
+      return {
+        id: p.user_id ?? p.id ?? String(p.name ?? 'Tutor'),
+        name: p.name ?? 'Tutor',
+        subject: p.category ?? 'Tutor',
         image,
-        category: (best as any).category,
+        category: p.category,
         ratingAvg: avg,
         ratingCount: count,
-      });
+      };
     });
-    return rows.slice(0, VISIBLE_LIMIT);
+
+    // Sort by rating (highest first), then by rating count
+    rows.sort((a, b) => {
+      if (b.ratingAvg !== a.ratingAvg) return b.ratingAvg - a.ratingAvg;
+      return b.ratingCount - a.ratingCount;
+    });
+
+    // Take up to 12
+    return rows.slice(0, FEATURED_TUTOR_LIMIT);
   }, [tutorProfiles, backendUrl]);
 
   const coursePrice = (c: Course) =>
@@ -509,17 +525,17 @@ const HomePage: React.FC = () => {
 
   // 1) Featured VIDEOS: mix recorded_videos + OER video-only collections (tutors first)
   const recordedFeatured = useMemo(
-    () => featuredVideos.filter((v: any) => isVideoish(v)).slice(0, VISIBLE_LIMIT),
+    () => featuredVideos.filter((v: any) => isVideoish(v)).slice(0, FEATURED_VIDEOS_LIMIT_DESKTOP),
     [featuredVideos]
   );
 
   // We'll keep at least 2 OER collections for the Free Videos section (if available),
   // and also ensure at most half of Featured tiles are OER (so tutors stay prioritized).
   const featuredVideosMixed = useMemo(() => {
-    const oerPool = oerVideos.slice(0, VISIBLE_LIMIT * 2);
+    const oerPool = oerVideos.slice(0, FEATURED_VIDEOS_LIMIT_DESKTOP * 2);
 
-    const need = Math.max(0, VISIBLE_LIMIT - recordedFeatured.length);
-    const maxOerShare = Math.ceil(VISIBLE_LIMIT / 2); // <= half of Featured can be OER
+    const need = Math.max(0, FEATURED_VIDEOS_LIMIT_DESKTOP - recordedFeatured.length);
+    const maxOerShare = Math.ceil(FEATURED_VIDEOS_LIMIT_DESKTOP / 2); // <= half of Featured can be OER
     const reserveForFree = Math.min(2, Math.max(0, oerPool.length)); // keep ≥2 for Free grid when possible
     const availableOerForFeatured = Math.max(0, oerPool.length - reserveForFree);
 
@@ -538,7 +554,7 @@ const HomePage: React.FC = () => {
       (c) => ({ kind: 'oerCollection', data: c } as MixedVideoItem)
     );
 
-    const mixed = interleave(a, b, VISIBLE_LIMIT) as MixedVideoItem[];
+    const mixed = interleave(a, b, FEATURED_VIDEOS_LIMIT_DESKTOP) as MixedVideoItem[];
 
     console.log('[HomePage] featuredVideosMixed sizes', {
       recorded: a.length,
@@ -568,17 +584,20 @@ const HomePage: React.FC = () => {
 
   // 2) Featured COURSES: mix normal courses (courses table) + OER docs (PDF/HTML/books) (tutors first)
   const featuredNormalCourses = useMemo(
-    () => featuredCourses.slice(0, VISIBLE_LIMIT * 2),
+    () => featuredCourses.slice(0, FEATURED_COURSES_LIMIT_DESKTOP * 2),
     [featuredCourses]
   );
 
-  const freeOerDocs = useMemo(() => oerDocs.slice(0, VISIBLE_LIMIT * 2), [oerDocs]);
+  const freeOerDocs = useMemo(
+    () => oerDocs.slice(0, FEATURED_COURSES_LIMIT_DESKTOP * 2),
+    [oerDocs]
+  );
 
   const featuredCoursesDisplay = useMemo(() => {
     const mixed = interleave<any, OerCollection>(
       featuredNormalCourses,
       freeOerDocs,
-      VISIBLE_LIMIT
+      FEATURED_COURSES_LIMIT_DESKTOP
     );
     console.log('[HomePage] featuredCoursesDisplay sizes', {
       normalCourses: featuredNormalCourses.length,
@@ -608,7 +627,10 @@ const HomePage: React.FC = () => {
     console.log('[HomePage] Free Courses section', {
       allOerDocs: oerDocs.length,
       usedInFeatured: usedFreeDocIds.size,
-      rendered: Math.min(VISIBLE_LIMIT, Math.max(0, oerDocs.length - usedFreeDocIds.size)),
+      rendered: Math.min(
+        FREE_COURSES_LIMIT_DESKTOP,
+        Math.max(0, oerDocs.length - usedFreeDocIds.size)
+      ),
     });
   }, [oerDocs, usedFreeDocIds]);
 
@@ -617,7 +639,7 @@ const HomePage: React.FC = () => {
       allOerVideoCols: oerVideos.length,
       usedInFeatured: usedOerVideoCollectionIds.size,
       rendered: Math.min(
-        VISIBLE_LIMIT,
+        FREE_VIDEOS_LIMIT_DESKTOP,
         Math.max(0, oerVideos.length - usedOerVideoCollectionIds.size)
       ),
     });
@@ -722,7 +744,7 @@ const HomePage: React.FC = () => {
                   No featured tutors yet.
                 </p>
               )}
-              {featuredTutors.slice(0, VISIBLE_LIMIT).map((t, idx) => (
+              {featuredTutors.slice(0, FEATURED_TUTOR_LIMIT_MOBILE).map((t, idx) => (
                 <motion.div
                   key={`${t.id}-${t.subject}`}
                   variants={fadeInScale}
@@ -761,7 +783,7 @@ const HomePage: React.FC = () => {
                   No featured tutors yet.
                 </p>
               )}
-              {featuredTutors.slice(0, VISIBLE_LIMIT).map((t, idx) => (
+              {featuredTutors.slice(0, FEATURED_TUTOR_LIMIT_DESKTOP).map((t, idx) => (
                 <motion.div
                   key={`${t.id}-${t.subject}`}
                   variants={fadeInScale}
@@ -814,7 +836,7 @@ const HomePage: React.FC = () => {
               {featuredVideosMixed.length === 0 && (
                 <p className="text-darkTextSecondary px-1">No videos to show yet.</p>
               )}
-              {featuredVideosMixed.map((item, idx) => {
+              {featuredVideosMixed.slice(0, FEATURED_VIDEOS_LIMIT_MOBILE).map((item, idx) => {
                 if (item.kind === 'recorded') {
                   const v = item.data;
                   const subject =
@@ -976,7 +998,7 @@ const HomePage: React.FC = () => {
                 </p>
               )}
 
-              {featuredVideosMixed.map((item, idx) => {
+              {featuredVideosMixed.slice(0, FEATURED_VIDEOS_LIMIT_DESKTOP).map((item, idx) => {
                 if (item.kind === 'recorded') {
                   const v = item.data;
                   const subject =
@@ -1152,74 +1174,76 @@ const HomePage: React.FC = () => {
                   No featured courses yet.
                 </p>
               )}
-              {featuredCoursesDisplay.slice(0, VISIBLE_LIMIT).map((c: any, idx: number) => {
-                const cid = String(c.id);
-                const base = extractRating(c);
-                const r = courseRatings[cid] ?? base;
-                const free = isFreeCourse(c);
+              {featuredCoursesDisplay
+                .slice(0, FEATURED_COURSES_LIMIT_MOBILE)
+                .map((c: any, idx: number) => {
+                  const cid = String(c.id);
+                  const base = extractRating(c);
+                  const r = courseRatings[cid] ?? base;
+                  const free = isFreeCourse(c);
 
-                const href = debugHrefFor(c, 'FeaturedCourses');
+                  const href = debugHrefFor(c, 'FeaturedCourses');
 
-                return (
-                  <motion.div
-                    key={`featc-m-${cid}`}
-                    variants={fadeInScale}
-                    transition={{ delay: 0.02 * idx }}
-                    whileHover={{ y: -3 }}
-                  >
-                    <Link
-                      to={href}
-                      className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
-                      onMouseEnter={() => {
-                        if (isRealCourse(c)) prefetchCourseOnHover(String(c.id));
-                      }}
-                      onClick={() => debugHrefFor(c, 'click:FeaturedCourses')}
+                  return (
+                    <motion.div
+                      key={`featc-m-${cid}`}
+                      variants={fadeInScale}
+                      transition={{ delay: 0.02 * idx }}
+                      whileHover={{ y: -3 }}
                     >
-                      <CourseHero course={c} backendUrl={backendUrl} />
-                      <div className="p-3">
-                        <h4 className="font-semibold text-sm truncate">{c.title}</h4>
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <StarRow avg={r.avg} />
-                          {r.count > 0 && (
-                            <span className="text-[11px] text-darkTextSecondary">
-                              ({r.count})
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-darkTextSecondary line-clamp-2 mt-1">
-                          {c.description ||
-                            (free
-                              ? 'Open & free to start learning.'
-                              : 'Learn with a top-rated course.')}
-                        </p>
-                        <div className="mt-2 text-[12px] text-darkTextSecondary">
-                          {free ? (
-                            <>
-                              <span className="inline-flex items-center rounded bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2 h-6 mr-2">
-                                Free
+                      <Link
+                        to={href}
+                        className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                        onMouseEnter={() => {
+                          if (isRealCourse(c)) prefetchCourseOnHover(String(c.id));
+                        }}
+                        onClick={() => debugHrefFor(c, 'click:FeaturedCourses')}
+                      >
+                        <CourseHero course={c} backendUrl={backendUrl} />
+                        <div className="p-3">
+                          <h4 className="font-semibold text-sm truncate">{c.title}</h4>
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <StarRow avg={r.avg} />
+                            {r.count > 0 && (
+                              <span className="text-[11px] text-darkTextSecondary">
+                                ({r.count})
                               </span>
-                              <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-6">
-                                Level: {c.level ?? '—'}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-6 mr-2">
-                                Level: {c.level ?? '—'}
-                              </span>
-                              {c.price != null && isRealCourse(c) && (
-                                <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-6">
-                                  {coursePrice(c)}
+                            )}
+                          </div>
+                          <p className="text-xs text-darkTextSecondary line-clamp-2 mt-1">
+                            {c.description ||
+                              (free
+                                ? 'Open & free to start learning.'
+                                : 'Learn with a top-rated course.')}
+                          </p>
+                          <div className="mt-2 text-[12px] text-darkTextSecondary">
+                            {free ? (
+                              <>
+                                <span className="inline-flex items-center rounded bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2 h-6 mr-2">
+                                  Free
                                 </span>
-                              )}
-                            </>
-                          )}
+                                <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-6">
+                                  Level: {c.level ?? '—'}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-6 mr-2">
+                                  Level: {c.level ?? '—'}
+                                </span>
+                                {c.price != null && isRealCourse(c) && (
+                                  <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-6">
+                                    {coursePrice(c)}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </Link>
-                  </motion.div>
-                );
-              })}
+                      </Link>
+                    </motion.div>
+                  );
+                })}
             </div>
 
             {/* Desktop */}
@@ -1229,74 +1253,76 @@ const HomePage: React.FC = () => {
                   No featured courses yet.
                 </p>
               )}
-              {featuredCoursesDisplay.slice(0, VISIBLE_LIMIT).map((c: any, idx: number) => {
-                const cid = String(c.id);
-                const base = extractRating(c);
-                const r = courseRatings[cid] ?? base;
-                const free = isFreeCourse(c);
+              {featuredCoursesDisplay
+                .slice(0, FEATURED_COURSES_LIMIT_DESKTOP)
+                .map((c: any, idx: number) => {
+                  const cid = String(c.id);
+                  const base = extractRating(c);
+                  const r = courseRatings[cid] ?? base;
+                  const free = isFreeCourse(c);
 
-                const href = debugHrefFor(c, 'FeaturedCourses');
+                  const href = debugHrefFor(c, 'FeaturedCourses');
 
-                return (
-                  <motion.div
-                    key={`featc-${cid}`}
-                    variants={fadeInScale}
-                    transition={{ delay: 0.02 * idx }}
-                    whileHover={{ y: -4 }}
-                  >
-                    <Link
-                      to={href}
-                      className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
-                      onMouseEnter={() => {
-                        if (isRealCourse(c)) prefetchCourseOnHover(cid);
-                      }}
-                      onClick={() => debugHrefFor(c, 'click:FeaturedCourses')}
+                  return (
+                    <motion.div
+                      key={`featc-${cid}`}
+                      variants={fadeInScale}
+                      transition={{ delay: 0.02 * idx }}
+                      whileHover={{ y: -4 }}
                     >
-                      <CourseHero course={c} backendUrl={backendUrl} />
-                      <div className="p-4">
-                        <h4 className="font-semibold truncate">{c.title}</h4>
-                        <div className="mt-1 flex items-center gap-2">
-                          <StarRow avg={r.avg} />
-                          {r.count > 0 && (
-                            <span className="text-xs text-darkTextSecondary">
-                              ({r.count})
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-darkTextSecondary line-clamp-2 mt-1">
-                          {c.description ||
-                            (free
-                              ? 'Open & free to start learning.'
-                              : 'Learn with a top-rated course.')}
-                        </p>
-                        <div className="mt-3 text-sm text-darkTextSecondary">
-                          {free ? (
-                            <>
-                              <span className="inline-flex items-center rounded bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2 h-7 mr-2">
-                                Free
+                      <Link
+                        to={href}
+                        className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                        onMouseEnter={() => {
+                          if (isRealCourse(c)) prefetchCourseOnHover(cid);
+                        }}
+                        onClick={() => debugHrefFor(c, 'click:FeaturedCourses')}
+                      >
+                        <CourseHero course={c} backendUrl={backendUrl} />
+                        <div className="p-4">
+                          <h4 className="font-semibold truncate">{c.title}</h4>
+                          <div className="mt-1 flex items-center gap-2">
+                            <StarRow avg={r.avg} />
+                            {r.count > 0 && (
+                              <span className="text-xs text-darkTextSecondary">
+                                ({r.count})
                               </span>
-                              <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-7">
-                                Level: {c.level ?? '—'}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-7 mr-2">
-                                Level: {c.level ?? '—'}
-                              </span>
-                              {c.price != null && isRealCourse(c) && (
-                                <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-7">
-                                  {coursePrice(c)}
+                            )}
+                          </div>
+                          <p className="text-sm text-darkTextSecondary line-clamp-2 mt-1">
+                            {c.description ||
+                              (free
+                                ? 'Open & free to start learning.'
+                                : 'Learn with a top-rated course.')}
+                          </p>
+                          <div className="mt-3 text-sm text-darkTextSecondary">
+                            {free ? (
+                              <>
+                                <span className="inline-flex items-center rounded bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2 h-7 mr-2">
+                                  Free
                                 </span>
-                              )}
-                            </>
-                          )}
+                                <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-7">
+                                  Level: {c.level ?? '—'}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-7 mr-2">
+                                  Level: {c.level ?? '—'}
+                                </span>
+                                {c.price != null && isRealCourse(c) && (
+                                  <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-7">
+                                    {coursePrice(c)}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </Link>
-                  </motion.div>
-                );
-              })}
+                      </Link>
+                    </motion.div>
+                  );
+                })}
             </div>
           </motion.section>
 
@@ -1329,51 +1355,53 @@ const HomePage: React.FC = () => {
                         No free courses yet.
                       </p>
                     )}
-                    {freeFiltered.slice(0, VISIBLE_LIMIT).map((c: OerCollection, idx: number) => {
-                      const cid = String(c.id);
-                      const base = extractRating(c);
-                      const r = courseRatings[cid] ?? base;
+                    {freeFiltered
+                      .slice(0, FREE_COURSES_LIMIT_MOBILE)
+                      .map((c: OerCollection, idx: number) => {
+                        const cid = String(c.id);
+                        const base = extractRating(c);
+                        const r = courseRatings[cid] ?? base;
 
-                      const href = debugHrefFor(c, 'FreeCourses');
+                        const href = debugHrefFor(c, 'FreeCourses');
 
-                      return (
-                        <motion.div
-                          key={`free-m-${cid}`}
-                          variants={fadeInScale}
-                          transition={{ delay: 0.02 * idx }}
-                          whileHover={{ y: -3 }}
-                        >
-                          <Link
-                            to={href}
-                            className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                        return (
+                          <motion.div
+                            key={`free-m-${cid}`}
+                            variants={fadeInScale}
+                            transition={{ delay: 0.02 * idx }}
+                            whileHover={{ y: -3 }}
                           >
-                            <CourseHero course={c as any} backendUrl={backendUrl} />
-                            <div className="p-3">
-                              <h4 className="font-semibold text-sm truncate">{c.title}</h4>
-                              <div className="mt-1 flex items-center gap-1.5">
-                                <StarRow avg={r.avg} />
-                                {r.count > 0 && (
-                                  <span className="text-[11px] text-darkTextSecondary">
-                                    ({r.count})
+                            <Link
+                              to={href}
+                              className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                            >
+                              <CourseHero course={c as any} backendUrl={backendUrl} />
+                              <div className="p-3">
+                                <h4 className="font-semibold text-sm truncate">{c.title}</h4>
+                                <div className="mt-1 flex items-center gap-1.5">
+                                  <StarRow avg={r.avg} />
+                                  {r.count > 0 && (
+                                    <span className="text-[11px] text-darkTextSecondary">
+                                      ({r.count})
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-darkTextSecondary line-clamp-2 mt-1">
+                                  {c.description || 'Open & free to start learning.'}
+                                </p>
+                                <div className="mt-2 text-[12px]">
+                                  <span className="inline-flex items-center rounded bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2 h-6 mr-2">
+                                    Free
                                   </span>
-                                )}
+                                  <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-6">
+                                    Level: {(c as any).level ?? '—'}
+                                  </span>
+                                </div>
                               </div>
-                              <p className="text-xs text-darkTextSecondary line-clamp-2 mt-1">
-                                {c.description || 'Open & free to start learning.'}
-                              </p>
-                              <div className="mt-2 text-[12px]">
-                                <span className="inline-flex items-center rounded bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2 h-6 mr-2">
-                                  Free
-                                </span>
-                                <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-6">
-                                  Level: {(c as any).level ?? '—'}
-                                </span>
-                              </div>
-                            </div>
-                          </Link>
-                        </motion.div>
-                      );
-                    })}
+                            </Link>
+                          </motion.div>
+                        );
+                      })}
                   </div>
 
                   {/* Desktop */}
@@ -1383,51 +1411,53 @@ const HomePage: React.FC = () => {
                         No free courses yet.
                       </p>
                     )}
-                    {freeFiltered.slice(0, VISIBLE_LIMIT).map((c: OerCollection, idx: number) => {
-                      const cid = String(c.id);
-                      const base = extractRating(c);
-                      const r = courseRatings[cid] ?? base;
+                    {freeFiltered
+                      .slice(0, FREE_COURSES_LIMIT_DESKTOP)
+                      .map((c: OerCollection, idx: number) => {
+                        const cid = String(c.id);
+                        const base = extractRating(c);
+                        const r = courseRatings[cid] ?? base;
 
-                      const href = debugHrefFor(c, 'FreeCourses');
+                        const href = debugHrefFor(c, 'FreeCourses');
 
-                      return (
-                        <motion.div
-                          key={`free-${cid}`}
-                          variants={fadeInScale}
-                          transition={{ delay: 0.02 * idx }}
-                          whileHover={{ y: -4 }}
-                        >
-                          <Link
-                            to={href}
-                            className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                        return (
+                          <motion.div
+                            key={`free-${cid}`}
+                            variants={fadeInScale}
+                            transition={{ delay: 0.02 * idx }}
+                            whileHover={{ y: -4 }}
                           >
-                            <CourseHero course={c as any} backendUrl={backendUrl} />
-                            <div className="p-4">
-                              <h4 className="font-semibold truncate">{c.title}</h4>
-                              <div className="mt-1 flex items-center gap-2">
-                                <StarRow avg={r.avg} />
-                                {r.count > 0 && (
-                                  <span className="text-xs text-darkTextSecondary">
-                                    ({r.count})
+                            <Link
+                              to={href}
+                              className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                            >
+                              <CourseHero course={c as any} backendUrl={backendUrl} />
+                              <div className="p-4">
+                                <h4 className="font-semibold truncate">{c.title}</h4>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <StarRow avg={r.avg} />
+                                  {r.count > 0 && (
+                                    <span className="text-xs text-darkTextSecondary">
+                                      ({r.count})
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-darkTextSecondary line-clamp-2 mt-1">
+                                  {c.description || 'Open & free to start learning.'}
+                                </p>
+                                <div className="mt-3 text-sm">
+                                  <span className="inline-flex items-center rounded bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2 h-7 mr-2">
+                                    Free
                                   </span>
-                                )}
+                                  <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-7">
+                                    Level: {(c as any).level ?? '—'}
+                                  </span>
+                                </div>
                               </div>
-                              <p className="text-sm text-darkTextSecondary line-clamp-2 mt-1">
-                                {c.description || 'Open & free to start learning.'}
-                              </p>
-                              <div className="mt-3 text-sm">
-                                <span className="inline-flex items-center rounded bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2 h-7 mr-2">
-                                  Free
-                                </span>
-                                <span className="inline-flex items-center rounded bg-[#e7edf4] dark:bg-[#172534] px-2 h-7">
-                                  Level: {(c as any).level ?? '—'}
-                                </span>
-                              </div>
-                            </div>
-                          </Link>
-                        </motion.div>
-                      );
-                    })}
+                            </Link>
+                          </motion.div>
+                        );
+                      })}
                   </div>
                 </>
               );
@@ -1463,45 +1493,47 @@ const HomePage: React.FC = () => {
                         No free videos to show yet.
                       </p>
                     )}
-                    {freeVideoCols.slice(0, VISIBLE_LIMIT).map((col: OerCollection, idx: number) => {
-                      const href = debugHrefFor(col, 'FreeVideos');
+                    {freeVideoCols
+                      .slice(0, FREE_VIDEOS_LIMIT_MOBILE)
+                      .map((col: OerCollection, idx: number) => {
+                        const href = debugHrefFor(col, 'FreeVideos');
 
-                      return (
-                        <motion.div
-                          key={`col-m-${col.id}`}
-                          variants={fadeInScale}
-                          transition={{ delay: 0.02 * idx }}
-                          whileHover={{ y: -3 }}
-                        >
-                          <Link
-                            to={hrefForItem({ id: col.id, kind: 'video' })}
-                            className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                        return (
+                          <motion.div
+                            key={`col-m-${col.id}`}
+                            variants={fadeInScale}
+                            transition={{ delay: 0.02 * idx }}
+                            whileHover={{ y: -3 }}
                           >
-                            {col.thumbnail_url ? (
-                              <img
-                                src={col.thumbnail_url}
-                                alt={col.title}
-                                className="w-full aspect-video object-cover"
-                              />
-                            ) : (
-                              <div className="w-full aspect-video bg-black/70" />
-                            )}
-                            <div className="p-4">
-                              <h4 className="font-semibold truncate">{col.title}</h4>
-                              <p className="text-sm text-darkTextSecondary mt-1">
-                                Free Video Collection • {col.items_count ?? 0} item
-                                {(col.items_count ?? 0) === 1 ? '' : 's'}
-                              </p>
-                              <div className="mt-3">
-                                <span className="inline-flex items-center justify-center rounded-xl h-9 px-4 bg-primary text-white text-sm font-semibold hover:brightness-110">
-                                  View Collection
-                                </span>
+                            <Link
+                              to={hrefForItem({ id: col.id, kind: 'video' })}
+                              className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                            >
+                              {col.thumbnail_url ? (
+                                <img
+                                  src={col.thumbnail_url}
+                                  alt={col.title}
+                                  className="w-full aspect-video object-cover"
+                                />
+                              ) : (
+                                <div className="w-full aspect-video bg-black/70" />
+                              )}
+                              <div className="p-4">
+                                <h4 className="font-semibold truncate">{col.title}</h4>
+                                <p className="text-sm text-darkTextSecondary mt-1">
+                                  Free Video Collection • {col.items_count ?? 0} item
+                                  {(col.items_count ?? 0) === 1 ? '' : 's'}
+                                </p>
+                                <div className="mt-3">
+                                  <span className="inline-flex items-center justify-center rounded-xl h-9 px-4 bg-primary text-white text-sm font-semibold hover:brightness-110">
+                                    View Collection
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          </Link>
-                        </motion.div>
-                      );
-                    })}
+                            </Link>
+                          </motion.div>
+                        );
+                      })}
                   </div>
 
                   {/* Desktop */}
@@ -1511,52 +1543,54 @@ const HomePage: React.FC = () => {
                         No free videos to show yet.
                       </p>
                     )}
-                    {freeVideoCols.slice(0, VISIBLE_LIMIT).map((col: OerCollection, idx: number) => {
-                      const href = debugHrefFor(col, 'FreeVideos');
+                    {freeVideoCols
+                      .slice(0, FREE_VIDEOS_LIMIT_DESKTOP)
+                      .map((col: OerCollection, idx: number) => {
+                        const href = debugHrefFor(col, 'FreeVideos');
 
-                      return (
-                        <motion.div
-                          key={`col-${col.id}`}
-                          variants={fadeInScale}
-                          transition={{ delay: 0.02 * idx }}
-                          whileHover={{ y: -4 }}
-                        >
-                          <Link
-                            to={hrefForItem({ id: col.id, kind: 'video' })}
-                            className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                        return (
+                          <motion.div
+                            key={`col-${col.id}`}
+                            variants={fadeInScale}
+                            transition={{ delay: 0.02 * idx }}
+                            whileHover={{ y: -4 }}
                           >
-                            {col.thumbnail_url ? (
-                              <img
-                                src={col.thumbnail_url}
-                                alt={col.title}
-                                className="w-full aspect-video object-cover"
-                              />
-                            ) : (
-                              <div className="w-full aspect-video bg-black/70" />
-                            )}
-                            <div className="p-4">
-                              <h4 className="font-semibold truncate">{col.title}</h4>
-                              <p className="text-sm text-darkTextSecondary mt-1">
-                                Free Video Collection • {col.items_count ?? 0} item
-                                {(col.items_count ?? 0) === 1 ? '' : 's'}
-                              </p>
-                              <div className="mt-3">
-                                <span className="inline-flex items-center justify-center rounded-lg h-9 px-4 bg-primary text-white text-sm font-medium hover:brightness-110">
-                                  View Collection
-                                </span>
+                            <Link
+                              to={hrefForItem({ id: col.id, kind: 'video' })}
+                              className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                            >
+                              {col.thumbnail_url ? (
+                                <img
+                                  src={col.thumbnail_url}
+                                  alt={col.title}
+                                  className="w-full aspect-video object-cover"
+                                />
+                              ) : (
+                                <div className="w-full aspect-video bg-black/70" />
+                              )}
+                              <div className="p-4">
+                                <h4 className="font-semibold truncate">{col.title}</h4>
+                                <p className="text-sm text-darkTextSecondary mt-1">
+                                  Free Video Collection • {col.items_count ?? 0} item
+                                  {(col.items_count ?? 0) === 1 ? '' : 's'}
+                                </p>
+                                <div className="mt-3">
+                                  <span className="inline-flex items-center justify-center rounded-lg h-9 px-4 bg-primary text-white text-sm font-medium hover:brightness-110">
+                                    View Collection
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          </Link>
-                        </motion.div>
-                      );
-                    })}
+                            </Link>
+                          </motion.div>
+                        );
+                      })}
                   </div>
                 </>
               );
             })()}
           </motion.section>
 
-          {/* ⭐ Recommended Courses (NO VIDEOS) – optional/unchanged */}
+          {/* ⭐ Recommended Courses (NO VIDEOS) – updated limits */}
           <motion.section
             className="mt-12"
             variants={sectionStagger}
@@ -1578,48 +1612,50 @@ const HomePage: React.FC = () => {
                   No recommendations yet.
                 </p>
               )}
-              {recommendedCoursesOnly.slice(0, VISIBLE_LIMIT).map((c, idx) => {
-                const cid = String(c.id);
-                const base = extractRating(c);
-                const r = courseRatings[cid] ?? base;
-                return (
-                  <motion.div
-                    key={`recc-m-${cid}`}
-                    variants={fadeInScale}
-                    transition={{ delay: 0.02 * idx }}
-                    whileHover={{ y: -3 }}
-                  >
-                    <Link
-                      to={getHrefForItem(c)}
-                      className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
-                      onMouseEnter={() => {
-                        if (isRealCourse(c)) prefetchCourseOnHover(String(c.id));
-                      }}
+              {recommendedCoursesOnly
+                .slice(0, RECOMMENDED_COURSES_LIMIT_MOBILE)
+                .map((c, idx) => {
+                  const cid = String(c.id);
+                  const base = extractRating(c);
+                  const r = courseRatings[cid] ?? base;
+                  return (
+                    <motion.div
+                      key={`recc-m-${cid}`}
+                      variants={fadeInScale}
+                      transition={{ delay: 0.02 * idx }}
+                      whileHover={{ y: -3 }}
                     >
-                      <CourseHero course={c} backendUrl={backendUrl} />
-                      <div className="p-3">
-                        <h4 className="font-semibold text-sm truncate">{c.title}</h4>
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <StarRow avg={r.avg} />
-                          {r.count > 0 && (
-                            <span className="text-[11px] text-darkTextSecondary">
-                              ({r.count})
+                      <Link
+                        to={getHrefForItem(c)}
+                        className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                        onMouseEnter={() => {
+                          if (isRealCourse(c)) prefetchCourseOnHover(String(c.id));
+                        }}
+                      >
+                        <CourseHero course={c} backendUrl={backendUrl} />
+                        <div className="p-3">
+                          <h4 className="font-semibold text-sm truncate">{c.title}</h4>
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <StarRow avg={r.avg} />
+                            {r.count > 0 && (
+                              <span className="text-[11px] text-darkTextSecondary">
+                                ({r.count})
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-darkTextSecondary line-clamp-2 mt-1">
+                            {c.description || 'Top picks based on quality and popularity.'}
+                          </p>
+                          <div className="mt-2">
+                            <span className="inline-flex items-center justify-center rounded-lg h-8 px-3 bg-primary text-white text-xs font-medium hover:brightness-110">
+                              View Course
                             </span>
-                          )}
+                          </div>
                         </div>
-                        <p className="text-xs text-darkTextSecondary line-clamp-2 mt-1">
-                          {c.description || 'Top picks based on quality and popularity.'}
-                        </p>
-                        <div className="mt-2">
-                          <span className="inline-flex items-center justify-center rounded-lg h-8 px-3 bg-primary text-white text-xs font-medium hover:brightness-110">
-                            View Course
-                          </span>
-                        </div>
-                      </div>
-                    </Link>
-                  </motion.div>
-                );
-              })}
+                      </Link>
+                    </motion.div>
+                  );
+                })}
             </div>
 
             {/* Desktop */}
@@ -1629,48 +1665,50 @@ const HomePage: React.FC = () => {
                   No recommendations yet.
                 </p>
               )}
-              {recommendedCoursesOnly.slice(0, VISIBLE_LIMIT).map((c, idx) => {
-                const cid = String(c.id);
-                const base = extractRating(c);
-                const r = courseRatings[cid] ?? base;
-                return (
-                  <motion.div
-                    key={`recc-${cid}`}
-                    variants={fadeInScale}
-                    transition={{ delay: 0.02 * idx }}
-                    whileHover={{ y: -4 }}
-                  >
-                    <Link
-                      to={getHrefForItem(c)}
-                      className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
-                      onMouseEnter={() => {
-                        if (isRealCourse(c)) prefetchCourseOnHover(String(c.id));
-                      }}
+              {recommendedCoursesOnly
+                .slice(0, RECOMMENDED_COURSES_LIMIT_DESKTOP)
+                .map((c, idx) => {
+                  const cid = String(c.id);
+                  const base = extractRating(c);
+                  const r = courseRatings[cid] ?? base;
+                  return (
+                    <motion.div
+                      key={`recc-${cid}`}
+                      variants={fadeInScale}
+                      transition={{ delay: 0.02 * idx }}
+                      whileHover={{ y: -4 }}
                     >
-                      <CourseHero course={c} backendUrl={backendUrl} />
-                      <div className="p-4">
-                        <h4 className="font-semibold truncate">{c.title}</h4>
-                        <div className="mt-1 flex items-center gap-2">
-                          <StarRow avg={r.avg} />
-                          {r.count > 0 && (
-                            <span className="text-xs text-darkTextSecondary">
-                              ({r.count})
+                      <Link
+                        to={getHrefForItem(c)}
+                        className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                        onMouseEnter={() => {
+                          if (isRealCourse(c)) prefetchCourseOnHover(String(c.id));
+                        }}
+                      >
+                        <CourseHero course={c} backendUrl={backendUrl} />
+                        <div className="p-4">
+                          <h4 className="font-semibold truncate">{c.title}</h4>
+                          <div className="mt-1 flex items-center gap-2">
+                            <StarRow avg={r.avg} />
+                            {r.count > 0 && (
+                              <span className="text-xs text-darkTextSecondary">
+                                ({r.count})
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-darkTextSecondary line-clamp-2 mt-1">
+                            {c.description || 'Top picks based on quality and popularity.'}
+                          </p>
+                          <div className="mt-3">
+                            <span className="inline-flex items-center justify-center rounded-lg h-9 px-4 bg-primary text-white text-sm font-medium hover:brightness-110">
+                              View Course
                             </span>
-                          )}
+                          </div>
                         </div>
-                        <p className="text-sm text-darkTextSecondary line-clamp-2 mt-1">
-                          {c.description || 'Top picks based on quality and popularity.'}
-                        </p>
-                        <div className="mt-3">
-                          <span className="inline-flex items-center justify-center rounded-lg h-9 px-4 bg-primary text-white text-sm font-medium hover:brightness-110">
-                            View Course
-                          </span>
-                        </div>
-                      </div>
-                    </Link>
-                  </motion.div>
-                );
-              })}
+                      </Link>
+                    </motion.div>
+                  );
+                })}
             </div>
           </motion.section>
         </div>
