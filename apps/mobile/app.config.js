@@ -158,7 +158,7 @@ export default function expoConfig({ config }) {
             kotlinVersion: '2.0.21',
             gradlePluginVersion: '8.10.2',
             javaVersion: 17,
-            newArchEnabled: true,
+            newArchEnabled: false,
           },
           ios: {
             deploymentTarget: '15.1',
