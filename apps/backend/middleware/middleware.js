@@ -34,10 +34,17 @@ function shouldBypass(req) {
   if (!rateLimitEnabled) return true;
   if (req.method === 'OPTIONS') return true;
   if (req.path === '/healthz') return true;
-  // NEW: Don't globally rate-limit admin GETs
+
+  // Don’t globally rate-limit admin GETs
   if (req.method === 'GET' && req.path.startsWith('/api/admin')) return true;
+
+  // NEW: do NOT rate-limit read-only ops at all
+  const m = (req.method || 'GET').toUpperCase();
+  if (m === 'GET' || m === 'HEAD') return true;
+
   return false;
 }
+
 
 
 function defaultKeyFn(req) {
@@ -215,17 +222,20 @@ function aiKeyFn(req) {
 /* ────────────────────────────────────────────────────────
  * Exports (same names) + strict AI limiter
  * ──────────────────────────────────────────────────────── */
-export const userLimiter         = makeLimiter({ windowMs: 60_000,  limit: isDev ? 1000 : 60  });
-export const reviewsLimiter      = makeLimiter({ windowMs: 60_000,  limit: isDev ? 2000 : 120 });
-export const progressLimiter     = makeLimiter({ windowMs: 30_000,  limit: isDev ? 1000 : 30  });
-export const certificatesLimiter = makeLimiter({ windowMs: 30_000,  limit: isDev ? 1000 : 20  });
+export const userLimiter = makeLimiter({
+  windowMs: 60_000,
+  limit: isDev ? 5000 : 600,  // 600 /api/user writes per minute
+  message: 'Too many /api/user requests, slow down a bit.',
+});
+export const progressLimiter     = makeLimiter({ windowMs: 30_000, limit: isDev ? 1000 : 300 });
+export const certificatesLimiter = makeLimiter({ windowMs: 30_000, limit: isDev ? 1000 : 200 });
+export const reviewsLimiter      = makeLimiter({ windowMs: 60_000, limit: isDev ? 2000 : 300 });
 
 // Mild global guard
 
 export const limiter = makeLimiter({
-  // Shrink the window and raise the limit so bursts are allowed
-  windowMs: 60_000,        // 1 minute instead of 15
-  limit: isDev ? 10_000 : 500,  // e.g. 500 req/ip/minute in prod
+  windowMs: 60_000,               // 1 minute
+  limit: isDev ? 10_000 : 1000,   // 1000 write-ops per IP/min in prod
   message: 'Too many requests from this client, please try again after a short while.',
 });
 
