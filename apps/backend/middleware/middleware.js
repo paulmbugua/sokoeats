@@ -221,11 +221,14 @@ export const progressLimiter     = makeLimiter({ windowMs: 30_000,  limit: isDev
 export const certificatesLimiter = makeLimiter({ windowMs: 30_000,  limit: isDev ? 1000 : 20  });
 
 // Mild global guard
+
 export const limiter = makeLimiter({
-  windowMs: 15 * 60_000,
-  limit: isDev ? 10_000 : 100,
-  message: 'Too many requests from this client, please try again after 15 minutes.',
+  // Shrink the window and raise the limit so bursts are allowed
+  windowMs: 60_000,        // 1 minute instead of 15
+  limit: isDev ? 10_000 : 500,  // e.g. 500 req/ip/minute in prod
+  message: 'Too many requests from this client, please try again after a short while.',
 });
+
 
 // Legacy simple AI limiter (kept for backward compatibility if anything else imports it)
 export const aiLimiter = makeLimiter({ windowMs: 60_000, limit: isDev ? 200 : 10 });
@@ -233,10 +236,11 @@ export const aiLimiter = makeLimiter({ windowMs: 60_000, limit: isDev ? 200 : 10
 // New: STRICT (but fair) per-user, per-bucket AI limiter
 export const aiLimiterStrict = makeLimiter({
   windowMs: 60_000,
-  limit: isDev ? 200 : 60,     // 60 req/user/min spread across buckets
+  limit: isDev ? 200 : 120,  // 120 AI calls/min/user
   keyFn: aiKeyFn,
   message: 'Too many AI requests, slow down briefly.',
 });
+
 
 // ────────────────────────────────────────────────────────
 // Login limiter: per ip|origin|email, skip successful attempts

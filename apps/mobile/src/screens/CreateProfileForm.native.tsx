@@ -599,14 +599,16 @@ export default function CreateProfileFormNative() {
                 errors.country ? invalidBorder : null,
               ]}
             >
-              <Picker
-                selectedValue={country}
-                onValueChange={(v) => {
-                  setCountry(v);
-                  clearFieldError('country');
-                }}
-                style={tw`bg-slate-50 dark:bg-[#0f1821] rounded-xl text-[#0d141c] dark:text-white`}
-              >
+                        <Picker
+            selectedValue={country || ''}
+            onValueChange={(v) => {
+              setCountry(v);
+              clearFieldError('country');
+            }}
+            style={tw`bg-slate-50 dark:bg-[#0f1821] rounded-xl text-[#0d141c] dark:text-white`}
+            mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
+          >
+
                 <Picker.Item label="Select your country" value="" />
                 {COUNTRIES.map((c) => (
                   <Picker.Item key={c.code} label={c.name} value={c.code} />
@@ -693,13 +695,15 @@ export default function CreateProfileFormNative() {
                   ]}
                 >
                   <Picker
-                    selectedValue={category}
+                    selectedValue={category || ''}
                     onValueChange={(v) => {
                       setCategory(v);
                       clearFieldError('category');
                     }}
                     style={tw`bg-slate-50 dark:bg-[#0f1821] rounded-xl text-[#0d141c] dark:text-white`}
+                    mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                   >
+
                     <Picker.Item label="Select a category…" value="" />
                     {CATEGORIES.map((c) => (
                       <Picker.Item key={c} label={c} value={c} />
@@ -723,15 +727,17 @@ export default function CreateProfileFormNative() {
                 <View>
                   <Text style={[smallLabel, tw`mb-1`]}>Payout Method</Text>
                   <View style={tw`rounded-xl border border-[#cedbe8] dark:border-white/10`}>
-                    <Picker
-                      selectedValue={payoutMethod}
-                      onValueChange={(v) => {
-                        setPayoutMethod(v as 'wise' | 'mpesa');
-                        clearFieldError('wiseEmail');
-                        clearFieldError('mpesaPhoneNumber');
-                      }}
-                      style={tw`bg-slate-50 dark:bg-[#0f1821] rounded-xl text-[#0d141c] dark:text-white`}
-                    >
+                   <Picker
+                    selectedValue={payoutMethod || 'wise'}
+                    onValueChange={(v) => {
+                      setPayoutMethod(v as 'wise' | 'mpesa');
+                      clearFieldError('wiseEmail');
+                      clearFieldError('mpesaPhoneNumber');
+                    }}
+                    style={tw`bg-slate-50 dark:bg-[#0f1821] rounded-xl text-[#0d141c] dark:text-white`}
+                    mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
+                  >
+
                       <Picker.Item label="Wise (USD)" value="wise" />
                       <Picker.Item label="M-Pesa (KES)" value="mpesa" />
                     </Picker>

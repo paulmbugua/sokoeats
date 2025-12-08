@@ -664,9 +664,7 @@ const LoginScreenNative: React.FC = () => {
                               color: role ? selectedTextColor : placeholderColor,
                             } as any,
                           ]}
-                          mode={
-                            Platform.OS === 'android' ? 'dialog' : 'dropdown'
-                          }
+                          mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                           prompt="Select role"
                           dropdownIconColor={dropdownIconColor}
                           itemStyle={pickerItemStyle}
@@ -973,9 +971,7 @@ const LoginScreenNative: React.FC = () => {
                         color: role ? selectedTextColor : placeholderColor,
                       } as any,
                     ]}
-                    mode={
-                      Platform.OS === 'android' ? 'dialog' : 'dropdown'
-                    }
+                   mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                     dropdownIconColor={dropdownIconColor}
                     itemStyle={pickerItemStyle}
                   >
@@ -1017,9 +1013,7 @@ const LoginScreenNative: React.FC = () => {
                               : placeholderColor,
                           } as any,
                         ]}
-                        mode={
-                          Platform.OS === 'android' ? 'dialog' : 'dropdown'
-                        }
+                        mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                         dropdownIconColor={dropdownIconColor}
                         itemStyle={pickerItemStyle}
                       >
@@ -1061,9 +1055,7 @@ const LoginScreenNative: React.FC = () => {
                               : placeholderColor,
                           } as any,
                         ]}
-                        mode={
-                          Platform.OS === 'android' ? 'dialog' : 'dropdown'
-                        }
+                        mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                         dropdownIconColor={dropdownIconColor}
                         itemStyle={pickerItemStyle}
                       >

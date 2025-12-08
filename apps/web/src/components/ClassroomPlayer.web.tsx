@@ -2,17 +2,15 @@
 /* eslint-disable no-console */
 /* eslint-disable react-hooks/exhaustive-deps */
 import React from 'react';
-import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NotesDrawer, TranscriptDrawer } from './SideDrawers';
 import type { HighlightTemplate } from './player/TemplateMenu';
 import { useWordSync } from '@mytutorapp/shared/hooks/useWordSync';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { listTtsVoices, type TtsVoiceInfo } from '@mytutorapp/shared/api/ttsAvatarApi';
-
+import { createPortal } from 'react-dom';
 import ClassroomBackdrop from './ClassroomBackdrop.web';
 import LessonOverlay from './LessonOverlay';
-
 import { ThemeProvider, useThemeTokens } from './player/ThemeContext';
 import TopBar from './player/TopBar';
 import Narration from './player/Narration';
@@ -505,10 +503,20 @@ function Container(props: Props) {
       aria-label="Lesson player"
       aria-busy={loading || isAdvancing}
     >
-      <div
-        className={`${isMax ? 'absolute inset-0 rounded-none' : 'relative rounded-2xl'} overflow-hidden shadow-xl ring-1 ring-white/10 bg-[#0b1220] ${isMax ? 'w-full h-full' : 'md:aspect-video aspect-[3/4]'}`}
-        style={frameStyle}
-      >
+        <div
+    className={
+      `${isMax
+        ? 'absolute inset-0 rounded-none'
+        : 'relative rounded-[1.5rem] md:rounded-[1.75rem]'
+      } overflow-hidden
+      shadow-[0_24px_80px_rgba(15,23,42,0.95)]
+      ring-1 ring-white/10
+      bg-[radial-gradient(circle_at_top,_rgba(129,140,248,0.25)_0,_transparent_55%),_radial-gradient(circle_at_bottom,_rgba(45,212,191,0.18)_0,_#020617_52%)]
+      ${isMax ? 'w-full h-full' : 'md:aspect-video aspect-[3/4]'}`
+    }
+    style={frameStyle}
+  >
+
         {/* Top bar */}
         <div ref={topBarRef} className="absolute top-0 inset-x-0 z-[60]" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
           <TopBar
@@ -613,7 +621,7 @@ function Container(props: Props) {
             lingerMs={6000}
             defaultPinned={false}
             rememberKey={`${course?.id || 'global'}:${lessonIdx}`}
-            portal
+            portal={!isMax}
             zIndex={10050}
             
           />
@@ -824,7 +832,12 @@ export default function ClassroomPlayer(props: Props) {
       <Container {...props} />
     </ThemeProvider>
   );
-  return props.maximized && typeof document !== 'undefined'
-    ? createPortal(core, document.body)
-    : core;
+
+  // ✅ Inline when not maximized, fullscreen overlay via portal when maximized
+  if (props.maximized && typeof document !== 'undefined') {
+    return createPortal(core, document.body);
+  }
+
+  return core;
 }
+

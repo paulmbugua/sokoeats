@@ -461,7 +461,7 @@ export default function ManageProfileFormNative() {
                 pickerStyle,
                 { color: updatedData.country ? selectedColor : placeholderColor },
               ]}
-              mode={Platform.OS === 'android' ? 'dialog' : 'dropdown'}
+              mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
               dropdownIconColor={selectedColor}
             >
               <Picker.Item label="Select your country" value="" color={placeholderColor} />
@@ -548,7 +548,7 @@ export default function ManageProfileFormNative() {
                       color: updatedData.category ? selectedColor : placeholderColor,
                     },
                   ]}
-                  mode={Platform.OS === 'android' ? 'dialog' : 'dropdown'}
+                  mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                   dropdownIconColor={selectedColor}
                 >
                   <Picker.Item label="Select a category…" value="" color={placeholderColor} />
@@ -570,7 +570,7 @@ export default function ManageProfileFormNative() {
                     pickerStyle,
                     { color: updatedData.status ? selectedColor : placeholderColor },
                   ]}
-                  mode={Platform.OS === 'android' ? 'dialog' : 'dropdown'}
+                  mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                   dropdownIconColor={selectedColor}
                 >
                   {['Online', 'Offline', 'Busy', 'Free', 'New'].map((opt) => (
@@ -697,7 +697,7 @@ export default function ManageProfileFormNative() {
                       color: updatedData.experienceLevel ? selectedColor : placeholderColor,
                     },
                   ]}
-                  mode={Platform.OS === 'android' ? 'dialog' : 'dropdown'}
+                  mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                   dropdownIconColor={selectedColor}
                 >
                   <Picker.Item
@@ -768,7 +768,7 @@ export default function ManageProfileFormNative() {
                     }))
                   }
                   style={[pickerStyle, { color: selectedColor }]}
-                  mode={Platform.OS === 'android' ? 'dialog' : 'dropdown'}
+                 mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                   dropdownIconColor={selectedColor}
                 >
                   <Picker.Item label="Wise (USD)" value="wise" />

@@ -14,6 +14,7 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
@@ -665,17 +666,17 @@ const CreateCourseScreen: React.FC = () => {
                   >
                     Level
                   </Text>
-                  <View
-                    style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-1`}
+                 <View
+                  style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-1`}
+                >
+                  <Picker
+                    selectedValue={formData.level || 'Beginner'}
+                    onValueChange={(val) => updateField('level', String(val))}
+                    style={tw`text-slate-900 dark:text-white`}
+                    dropdownIconColor="#0f172a"
+                    mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
                   >
-                    <Picker
-                      selectedValue={formData.level}
-                      onValueChange={(val) =>
-                        updateField('level', String(val))
-                      }
-                      dropdownIconColor="#0f172a"
-                      style={tw`text-slate-900 dark:text-white`}
-                    >
+
                       <Picker.Item label="Beginner" value="Beginner" />
                       <Picker.Item
                         label="Intermediate"
