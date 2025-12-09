@@ -160,12 +160,7 @@ export function useRobotSpeaker() {
       const ssmlLen = body?.ssml ? String(body.ssml).length : 0;
       const textLen = body?.text ? String(body.text).length : 0;
 
-      // Prevent overlap: abort the previous one if any
-      if (inflightRef.current && abortRef.current) {
-        // eslint-disable-next-line no-console
-        console.debug(NS, 'ABORT previous inflight (superseded)');
-        abortRef.current.abort('superseded');
-      }
+     
 
       // Cooldown after a failure
       const sinceFail = Date.now() - lastFailAtRef.current;

@@ -1,6 +1,7 @@
 // apps/web/src/components/ClassroomPlayer.web.tsx
 /* eslint-disable no-console */
 /* eslint-disable react-hooks/exhaustive-deps */
+import ReactDOM from 'react-dom';
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NotesDrawer, TranscriptDrawer } from './SideDrawers';
@@ -8,7 +9,7 @@ import type { HighlightTemplate } from './player/TemplateMenu';
 import { useWordSync } from '@mytutorapp/shared/hooks/useWordSync';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { listTtsVoices, type TtsVoiceInfo } from '@mytutorapp/shared/api/ttsAvatarApi';
-import { createPortal } from 'react-dom';
+
 import ClassroomBackdrop from './ClassroomBackdrop.web';
 import LessonOverlay from './LessonOverlay';
 import { ThemeProvider, useThemeTokens } from './player/ThemeContext';
@@ -825,19 +826,24 @@ function Container(props: Props) {
     </div>
   );
 }
-
 export default function ClassroomPlayer(props: Props) {
-  const core = (
+  const content = (
     <ThemeProvider>
       <Container {...props} />
     </ThemeProvider>
   );
 
-  // ✅ Inline when not maximized, fullscreen overlay via portal when maximized
-  if (props.maximized && typeof document !== 'undefined') {
-    return createPortal(core, document.body);
+  // When maximized, render the whole player into <body> so it truly
+  // sits on top of everything else in the app (old portal behaviour).
+  if (typeof document !== 'undefined' && props.maximized) {
+    return ReactDOM.createPortal(
+      <div className="fixed inset-0 z-[9999] pointer-events-auto">
+        {content}
+      </div>,
+      document.body
+    );
   }
 
-  return core;
+  // Normal inline rendering when not maximized
+  return content;
 }
-

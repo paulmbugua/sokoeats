@@ -9,12 +9,7 @@ import {
   Image,
   Alert,
   Modal,
-  Platform,
-  type StyleProp,
-  type ViewStyle,
-  type TextStyle,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import {
   useNavigation,
   StackActions,
@@ -44,6 +39,101 @@ type LoginRoute = RouteProp<MainStackParamList, 'Login'>;
 type AuthMode = 'Login' | 'Sign Up';
 type ResetMode = 'idle' | 'requesting' | 'verifying';
 type Role = '' | 'student' | 'tutor';
+
+type Option = { label: string; value: string };
+
+interface SelectFieldProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: Option[];
+  placeholder: string;
+  placeholderColor: string;
+  selectedTextColor: string;
+}
+
+const SelectField: React.FC<SelectFieldProps> = ({
+  value,
+  onChange,
+  options,
+  placeholder,
+  placeholderColor,
+  selectedTextColor,
+}) => {
+  const [open, setOpen] = useState(false);
+
+  const selectedLabel =
+    options.find((o) => o.value === value)?.label ?? value ?? '';
+
+  return (
+    <>
+      {/* Shell that looks like a TextInput */}
+      <TouchableOpacity
+        onPress={() => setOpen(true)}
+        style={tw`bg-slate-100 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 px-3 py-3 rounded-xl mb-4 flex-row items-center justify-between`}
+      >
+        <Text
+          style={{
+            color: value ? selectedTextColor : placeholderColor,
+          }}
+        >
+          {value ? selectedLabel : placeholder}
+        </Text>
+        <FontAwesome
+          name={open ? 'chevron-up' : 'chevron-down'}
+          size={14}
+          color={placeholderColor}
+        />
+      </TouchableOpacity>
+
+      {/* Simple JS-only dropdown modal */}
+      <Modal
+        transparent
+        visible={open}
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+      >
+        <View style={tw`flex-1 bg-black/40 justify-center px-6`}>
+          <View
+            style={tw`rounded-2xl bg-white dark:bg-[#0f1821] p-4 max-h-[80%]`}
+          >
+            <ScrollView>
+              {options.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  onPress={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                  }}
+                  style={tw`py-2`}
+                >
+                  <Text
+                    style={tw.style(
+                      'text-sm',
+                      opt.value === value
+                        ? 'font-semibold text-pink-600 dark:text-pink-400'
+                        : 'text-slate-700 dark:text-slate-100'
+                    )}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={() => setOpen(false)}
+              style={tw`mt-3 h-10 rounded-xl bg-slate-100 dark:bg-[#0b1016] items-center justify-center`}
+            >
+              <Text style={tw`text-sm text-slate-700 dark:text-slate-100`}>
+                Close
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+};
 
 const LoginScreenNative: React.FC = () => {
   const navigation = useNavigation<LoginNavProp>();
@@ -92,40 +182,41 @@ const LoginScreenNative: React.FC = () => {
   const [showRoleModal, setShowRoleModal] = useState<boolean>(false);
 
   /* ──────────────────────────────────────────────
-     Theme-aware picker text colours (parity with ManageProfileForm)
+     Theme-aware text colours (parity with ManageProfileForm)
   ─────────────────────────────────────────────── */
 
   const placeholderColor =
     resolvedScheme === 'dark' ? '#64748B' : '#94A3B8';
   const selectedTextColor =
     resolvedScheme === 'dark' ? '#E5E7EB' : '#0F172A';
-  const dropdownIconColor = selectedTextColor;
 
-  // Wrap pickers in a styled container to match TextInputs
-  const PICKER_MIN_HEIGHT = 52;
-  const pickerShell: ViewStyle = {
-    ...(tw`rounded-xl border border-[#cedbe8] dark:border-white/10 bg-slate-100 dark:bg-[#0b1016] mb-4` as any),
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    minHeight: PICKER_MIN_HEIGHT,
-    justifyContent: 'center',
-    paddingRight: Platform.OS === 'android' ? 28 : 12,
+  // Normalize countries that might be {code,name}, {value,label}, or [code,name]
+  const normCountry = (c: any) => {
+    const code = c?.code ?? c?.value ?? c?.[0] ?? '';
+    const name = c?.name ?? c?.label ?? c?.[1] ?? '';
+    return { code: String(code), name: String(name) };
   };
 
-  const pickerBaseStyle: any = Platform.select({
-    android: { height: PICKER_MIN_HEIGHT },
-    ios: { height: PICKER_MIN_HEIGHT },
-  });
+  const languageOptions = useMemo(
+    () =>
+      ['English', 'Swahili', 'French', 'Spanish', 'German'].map((lang) => ({
+        label: lang,
+        value: lang,
+      })),
+    []
+  );
 
-  const pickerItemStyle: TextStyle = Platform.select({
-    ios: { height: 44 },
-    android: {},
-  }) as TextStyle;
-
-  const pickerContainerStyle: StyleProp<ViewStyle> = [
-    tw`overflow-visible z-50`,
-    Platform.OS === 'android' ? { elevation: 6 } : { zIndex: 50 },
-  ];
+  const countryOptions = useMemo(
+    () =>
+      COUNTRIES.map((c) => {
+        const { code, name } = normCountry(c);
+        return {
+          label: name || '—',
+          value: code || name,
+        };
+      }),
+    []
+  );
 
   // ── Auth hook ─────────────────────────────────────────────
   const {
@@ -340,13 +431,6 @@ const LoginScreenNative: React.FC = () => {
     } catch {
       // ignore
     }
-  };
-
-  // Normalize countries that might be {code,name}, {value,label}, or [code,name]
-  const normCountry = (c: any) => {
-    const code = c?.code ?? c?.value ?? c?.[0] ?? '';
-    const name = c?.name ?? c?.label ?? c?.[1] ?? '';
-    return { code: String(code), name: String(name) };
   };
 
   const handleSwitchSignOut = async () => {
@@ -641,129 +725,71 @@ const LoginScreenNative: React.FC = () => {
                       style={tw`bg-slate-100 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 px-3 py-3 rounded-xl text-[#0d141c] dark:text-white mb-4`}
                     />
 
-                    {/* Role */}
-                    <View style={pickerContainerStyle}>
-                      <View style={pickerShell}>
-                        <Picker
-                          selectedValue={role}
-                          onValueChange={(v) => {
-                            const next = (v as Role) || '';
-                            setRole(next);
-                            if (next === 'student') {
-                              if (!languages.length)
-                                setLanguages(['English']);
-                            } else {
-                              setName('');
-                              setLanguages([]);
-                              setCountry('');
-                            }
-                          }}
-                          style={[
-                            pickerBaseStyle,
-                            {
-                              color: role ? selectedTextColor : placeholderColor,
-                            } as any,
-                          ]}
-                          mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-                          prompt="Select role"
-                          dropdownIconColor={dropdownIconColor}
-                          itemStyle={pickerItemStyle}
-                        >
-                          <Picker.Item
-                            label="Select role"
-                            value=""
-                            color={placeholderColor}
-                          />
-                          <Picker.Item label="Student" value="student" />
-                          <Picker.Item label="Tutor" value="tutor" />
-                        </Picker>
-                      </View>
+                    {/* Role – chips instead of native Picker */}
+                    <View style={tw`flex-row mb-4 gap-2`}>
+                      {(['student', 'tutor'] as Role[]).map((r) => {
+                        const active = role === r;
+                        return (
+                          <TouchableOpacity
+                            key={r}
+                            onPress={() => {
+                              const next = r;
+                              setRole(next);
+                              if (next === 'student') {
+                                if (!languages.length) {
+                                  setLanguages(['English']);
+                                }
+                              } else {
+                                setName('');
+                                setLanguages([]);
+                                setCountry('');
+                              }
+                            }}
+                            style={tw.style(
+                              'flex-1 h-11 rounded-xl border items-center justify-center',
+                              active
+                                ? 'bg-pink-600 border-pink-600'
+                                : 'bg-slate-100 dark:bg-[#0b1016] border-[#cedbe8] dark:border-white/10'
+                            )}
+                          >
+                            <Text
+                              style={tw.style(
+                                'text-sm font-semibold',
+                                active
+                                  ? 'text-white'
+                                  : 'text-slate-700 dark:text-slate-100'
+                              )}
+                            >
+                              {r === 'student' ? 'Student' : 'Tutor'}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
 
                     {role === 'student' && (
                       <>
                         {/* Language */}
-                        <View style={pickerContainerStyle}>
-                          <View style={pickerShell}>
-                            <Picker
-                              selectedValue={languages?.[0] ?? ''}
-                              onValueChange={(val) =>
-                                setLanguages(val ? [String(val)] : [])
-                              }
-                              style={[
-                                pickerBaseStyle,
-                                {
-                                  color: languages?.[0]
-                                    ? selectedTextColor
-                                    : placeholderColor,
-                                } as any,
-                              ]}
-                              mode="dropdown"
-                              prompt="Select your language"
-                              dropdownIconColor={dropdownIconColor}
-                              itemStyle={pickerItemStyle}
-                            >
-                              <Picker.Item
-                                label="Select your language"
-                                value=""
-                                color={placeholderColor}
-                              />
-                              {[
-                                'English',
-                                'Swahili',
-                                'French',
-                                'Spanish',
-                                'German',
-                              ].map((lang) => (
-                                <Picker.Item
-                                  key={lang}
-                                  label={lang}
-                                  value={lang}
-                                />
-                              ))}
-                            </Picker>
-                          </View>
-                        </View>
+                        <SelectField
+                          value={languages[0] || ''}
+                          onChange={(val) =>
+                            setLanguages(val ? [String(val)] : [])
+                          }
+                          options={languageOptions}
+                          placeholder="Select your language"
+                          placeholderColor={placeholderColor}
+                          selectedTextColor={selectedTextColor}
+                        />
 
                         {/* Country */}
-                        <View style={pickerContainerStyle}>
-                          <View style={pickerShell}>
-                            <Picker
-                              selectedValue={country ?? ''}
-                              onValueChange={(v) =>
-                                setCountry(String(v ?? ''))
-                              }
-                              style={[
-                                pickerBaseStyle,
-                                {
-                                  color: country
-                                    ? selectedTextColor
-                                    : placeholderColor,
-                                } as any,
-                              ]}
-                              mode="dropdown"
-                              prompt="Select your country"
-                              dropdownIconColor={dropdownIconColor}
-                              itemStyle={pickerItemStyle}
-                            >
-                              <Picker.Item
-                                label="Select your country"
-                                value=""
-                                color={placeholderColor}
-                              />
-                              {COUNTRIES.map((c) => {
-                                const { code, name } = normCountry(c);
-                                return (
-                                  <Picker.Item
-                                    key={code || name}
-                                    label={name || '—'}
-                                    value={code || name}
-                                  />
-                                );
-                              })}
-                            </Picker>
-                          </View>
-                        </View>
+                        <SelectField
+                          value={country}
+                          onChange={(val) => setCountry(String(val))}
+                          options={countryOptions}
+                          placeholder="Select your country"
+                          placeholderColor={placeholderColor}
+                          selectedTextColor={selectedTextColor}
+                        />
                       </>
                     )}
                   </>
@@ -845,7 +871,9 @@ const LoginScreenNative: React.FC = () => {
                       setResetMode('requesting');
                     }}
                   >
-                    <Text style={tw`text-pink-600 dark:text-pink-400 underline`}>
+                    <Text
+                      style={tw`text-pink-600 dark:text-pink-400 underline`}
+                    >
                       Forgot password?
                     </Text>
                   </TouchableOpacity>
@@ -943,47 +971,50 @@ const LoginScreenNative: React.FC = () => {
                 </View>
               )}
 
-              {/* Role (modal) */}
-              <View style={pickerContainerStyle}>
-                <View style={pickerShell}>
-                  <Picker
-                    selectedValue={role}
-                    onValueChange={(v) => {
-                      const next = (v as Role) || '';
-                      setRole(next);
-                      if (next === 'student') {
-                        if (!languages.length) setLanguages(['English']);
-                        if (
-                          !name.trim() &&
-                          auth?.currentUser?.displayName
-                        ) {
-                          setName(auth.currentUser.displayName);
+              {/* Role (modal) – chips */}
+              <View style={tw`flex-row mb-4 gap-2`}>
+                {(['student', 'tutor'] as Role[]).map((r) => {
+                  const active = role === r;
+                  return (
+                    <TouchableOpacity
+                      key={r}
+                      onPress={() => {
+                        const next = r;
+                        setRole(next);
+                        if (next === 'student') {
+                          if (!languages.length) setLanguages(['English']);
+                          if (
+                            !name.trim() &&
+                            auth?.currentUser?.displayName
+                          ) {
+                            setName(auth.currentUser.displayName);
+                          }
+                        } else {
+                          setName('');
+                          setLanguages([]);
+                          setCountry('');
                         }
-                      } else {
-                        setName('');
-                        setLanguages([]);
-                        setCountry('');
-                      }
-                    }}
-                    style={[
-                      pickerBaseStyle,
-                      {
-                        color: role ? selectedTextColor : placeholderColor,
-                      } as any,
-                    ]}
-                   mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-                    dropdownIconColor={dropdownIconColor}
-                    itemStyle={pickerItemStyle}
-                  >
-                    <Picker.Item
-                      label="Select role…"
-                      value=""
-                      color={placeholderColor}
-                    />
-                    <Picker.Item label="Student" value="student" />
-                    <Picker.Item label="Tutor" value="tutor" />
-                  </Picker>
-                </View>
+                      }}
+                      style={tw.style(
+                        'flex-1 h-11 rounded-xl border items-center justify-center',
+                        active
+                          ? 'bg-pink-600 border-pink-600'
+                          : 'bg-slate-100 dark:bg-[#0b1016] border-[#cedbe8] dark:border-white/10'
+                      )}
+                    >
+                      <Text
+                        style={tw.style(
+                          'text-sm font-semibold',
+                          active
+                            ? 'text-white'
+                            : 'text-slate-700 dark:text-slate-100'
+                        )}
+                      >
+                        {r === 'student' ? 'Student' : 'Tutor'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               {/* Student-only fields in modal */}
@@ -998,85 +1029,26 @@ const LoginScreenNative: React.FC = () => {
                   />
 
                   {/* Language */}
-                  <View style={pickerContainerStyle}>
-                    <View style={pickerShell}>
-                      <Picker
-                        selectedValue={languages[0] || ''}
-                        onValueChange={(val) =>
-                          setLanguages(val ? [val as string] : [])
-                        }
-                        style={[
-                          pickerBaseStyle,
-                          {
-                            color: languages[0]
-                              ? selectedTextColor
-                              : placeholderColor,
-                          } as any,
-                        ]}
-                        mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-                        dropdownIconColor={dropdownIconColor}
-                        itemStyle={pickerItemStyle}
-                      >
-                        <Picker.Item
-                          label="Select your language…"
-                          value=""
-                          color={placeholderColor}
-                        />
-                        {[
-                          'English',
-                          'Swahili',
-                          'French',
-                          'Spanish',
-                          'German',
-                        ].map((lang) => (
-                          <Picker.Item
-                            key={lang}
-                            label={lang}
-                            value={lang}
-                          />
-                        ))}
-                      </Picker>
-                    </View>
-                  </View>
+                  <SelectField
+                    value={languages[0] || ''}
+                    onChange={(val) =>
+                      setLanguages(val ? [String(val)] : [])
+                    }
+                    options={languageOptions}
+                    placeholder="Select your language…"
+                    placeholderColor={placeholderColor}
+                    selectedTextColor={selectedTextColor}
+                  />
 
                   {/* Country */}
-                  <View style={pickerContainerStyle}>
-                    <View style={pickerShell}>
-                      <Picker
-                        selectedValue={country}
-                        onValueChange={(v) =>
-                          setCountry((v as string) || '')
-                        }
-                        style={[
-                          pickerBaseStyle,
-                          {
-                            color: country
-                              ? selectedTextColor
-                              : placeholderColor,
-                          } as any,
-                        ]}
-                        mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-                        dropdownIconColor={dropdownIconColor}
-                        itemStyle={pickerItemStyle}
-                      >
-                        <Picker.Item
-                          label="Select your country…"
-                          value=""
-                          color={placeholderColor}
-                        />
-                        {COUNTRIES.map((c) => {
-                          const { code, name } = normCountry(c);
-                          return (
-                            <Picker.Item
-                              key={code || name}
-                              label={name || '—'}
-                              value={code || name}
-                            />
-                          );
-                        })}
-                      </Picker>
-                    </View>
-                  </View>
+                  <SelectField
+                    value={country}
+                    onChange={(val) => setCountry(String(val))}
+                    options={countryOptions}
+                    placeholder="Select your country…"
+                    placeholderColor={placeholderColor}
+                    selectedTextColor={selectedTextColor}
+                  />
                 </>
               )}
 

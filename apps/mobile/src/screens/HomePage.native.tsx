@@ -62,14 +62,8 @@ const FALLBACK_CARD = (title?: string) =>
     title || 'OER',
   )}&background=223649&color=ffffff&size=512`;
 
-const SUBJECTS = [
-  'Math',
-  'Science',
-  'Programming',
-  'Art',
-  'Wellness',
-  'Languages',
-] as const;
+// How many tutors to keep in the featured pool (we still slice to VISIBLE_LIMIT when rendering)
+const FEATURED_TUTOR_LIMIT = 12;
 
 const VISIBLE_LIMIT = 6;
 const DEBOUNCE_MS = 250;
@@ -822,9 +816,6 @@ const HomePageNative: React.FC = () => {
     [filteredProfiles],
   );
 
-  const getTutorAvg = (p: any) =>
-    Number((p?.avgRating ?? p?.rating) ?? 0);
-
   const featuredTutors = useMemo(() => {
     const rows: {
       id: string;
@@ -834,39 +825,29 @@ const HomePageNative: React.FC = () => {
       category?: string;
       ratingAvg: number;
       ratingCount: number;
-    }[] = [];
+    }[] = tutorProfiles.map((p: any) => {
+      const image = resolveTutorImage(p, backendUrl!);
+      const { avg, count } = extractRating(p);
 
-    SUBJECTS.forEach((subject) => {
-      const matches = tutorProfiles.filter((p: Profile) =>
-        (p.category ?? '')
-          .toLowerCase()
-          .includes(subject.toLowerCase()),
-      );
-      if (matches.length === 0) return;
-
-      const best = matches.reduce(
-        (a: Profile, b: Profile) =>
-          getTutorAvg(b) > getTutorAvg(a) ? b : a,
-      );
-      const image = resolveTutorImage(best, backendUrl!);
-      const { avg, count } = extractRating(best);
-
-      rows.push({
-        id: String(
-          (best as any).user_id ??
-            (best as any).id ??
-            '',
-        ),
-        name: best.name ?? 'Tutor',
-        subject,
+      return {
+        id: String(p.user_id ?? p.id ?? p.name ?? 'Tutor'),
+        name: p.name ?? 'Tutor',
+        subject: p.category ?? 'Tutor',
         image,
-        category: best.category,
+        category: p.category,
         ratingAvg: avg,
         ratingCount: count,
-      });
+      };
     });
 
-    return rows.slice(0, VISIBLE_LIMIT);
+    // Sort by rating (highest first), then by rating count
+    rows.sort((a, b) => {
+      if (b.ratingAvg !== a.ratingAvg) return b.ratingAvg - a.ratingAvg;
+      return b.ratingCount - a.ratingCount;
+    });
+
+    // Take up to FEATURED_TUTOR_LIMIT (e.g. 12)
+    return rows.slice(0, FEATURED_TUTOR_LIMIT);
   }, [tutorProfiles, backendUrl]);
 
   /* ----------------------- Ratings Prefetch (Courses) -------------------- */
@@ -1276,6 +1257,13 @@ const HomePageNative: React.FC = () => {
           >
             Featured Tutors
           </Text>
+          <TouchableOpacity
+            onPress={() => navAny.navigate('FindTutor')}
+          >
+            <Text style={tw`text-pink-600`}>
+              See All Tutors
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {featuredTutors.length === 0 ? (

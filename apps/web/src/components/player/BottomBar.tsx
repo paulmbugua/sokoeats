@@ -1,3 +1,4 @@
+// apps/web/src/components/player/BottomBar.tsx
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatTime } from './utils';
@@ -18,26 +19,65 @@ export function PrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 export default function BottomBar({
-  currentSec, durationSec, progress, onBack5, onFwd5,
-  onPlayPause, playing, loading,
-  volume, setVolume, toggleMute,
-  barRef, hoveringBar, setHoveringBar, scrubbing, setScrubbing,
-  setFromPointer, commitFromPointer, hoverPct, hoverSec,
+  currentSec,
+  durationSec,
+  progress,
+  onBack5,
+  onFwd5,
+  onPlayPause,
+  playing,
+  loading,
+  volume,
+  setVolume,
+  toggleMute,
+  barRef,
+  hoveringBar,
+  setHoveringBar,
+  scrubbing,
+  setScrubbing,
+  setFromPointer,
+  commitFromPointer,
+  hoverPct,
+  hoverSec,
   childrenTopFloating,
+  isMax = false,
 }: {
-  currentSec: number; durationSec: number; progress: number;
-  onBack5: () => void; onFwd5: () => void;
-  onPlayPause: () => void; playing: boolean; loading: boolean;
-  volume: number; setVolume: (n: number) => void; toggleMute: () => void;
+  currentSec: number;
+  durationSec: number;
+  progress: number;
+  onBack5: () => void;
+  onFwd5: () => void;
+  onPlayPause: () => void;
+  playing: boolean;
+  loading: boolean;
+  volume: number;
+  setVolume: (n: number) => void;
+  toggleMute: () => void;
   barRef: React.RefObject<HTMLDivElement | null>;
-  hoveringBar: boolean; setHoveringBar: (b: boolean) => void;
-  scrubbing: boolean; setScrubbing: (b: boolean) => void;
-  setFromPointer: (x: number) => void; commitFromPointer: (x: number) => void;
-  hoverPct: number; hoverSec: number;
+  hoveringBar: boolean;
+  setHoveringBar: (b: boolean) => void;
+  scrubbing: boolean;
+  setScrubbing: (b: boolean) => void;
+  setFromPointer: (x: number) => void;
+  commitFromPointer: (x: number) => void;
+  hoverPct: number;
+  hoverSec: number;
   childrenTopFloating?: React.ReactNode;
+  isMax?: boolean;
 }) {
-  const volDown = () => setVolume(Math.max(0, +(Math.max(0, volume - 0.1)).toFixed(3)));
-  const volUp = () => setVolume(Math.min(1, +(Math.min(1, volume + 0.1)).toFixed(3)));
+  const volDown = () =>
+    setVolume(Math.max(0, +(Math.max(0, volume - 0.1)).toFixed(3)));
+  const volUp = () =>
+    setVolume(Math.min(1, +(Math.min(1, volume + 0.1)).toFixed(3)));
+
+  const outerBase =
+    'bg-[linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.04)_100%)] bg-black/35 backdrop-blur-xl ring-1 ring-white/10 shadow-2xl';
+
+  const outerFrame = isMax
+    ? // Full-bleed at bottom when maximized
+      'mx-0 mb-0 rounded-none border-t border-white/10'
+    : // Floating pill when embedded
+      'mx-2 mb-2 rounded-2xl';
 
   return (
     <div className="mx-2 mb-2 rounded-2xl bg-[linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.04)_100%)] bg-black/35 backdrop-blur-xl ring-1 ring-white/10 shadow-2xl">
