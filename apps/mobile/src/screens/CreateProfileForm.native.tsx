@@ -20,7 +20,6 @@ import {
 } from 'react-native';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { Picker } from '@react-native-picker/picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -30,6 +29,7 @@ import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 
 import tw from '../../tailwind';
 import { useThemePref } from '../theme/ThemeContext';
+import SelectField from './SelectField.native';
 
 type RootStackParamList = { Home: undefined };
 type ViewRef = React.MutableRefObject<View | null>;
@@ -298,7 +298,7 @@ export default function CreateProfileFormNative() {
     const upload: UploadAsset = {
       uri: a.uri,
       name: a.fileName ?? undefined,
-      type: a.type ?? undefined,
+      type: guessVideoMime(a),
       duration: typeof a.duration === 'number' ? a.duration : undefined,
     };
     try {
@@ -340,7 +340,7 @@ export default function CreateProfileFormNative() {
     const upload: UploadAsset = {
       uri: a.uri,
       name: a.fileName ?? undefined,
-      type: a.type ?? undefined,
+      type: guessVideoMime(a),
       duration: typeof a.duration === 'number' ? a.duration : undefined,
     };
     try {
@@ -591,35 +591,21 @@ export default function CreateProfileFormNative() {
           {/* Age section removed */}
 
           {/* Country */}
-          <View ref={countryWrapRef} style={tw`gap-2`}>
-            <Text style={label}>Country</Text>
-            <View
-              style={[
-                tw`rounded-xl border border-[#cedbe8] dark:border-white/10`,
-                errors.country ? invalidBorder : null,
-              ]}
-            >
-                        <Picker
-            selectedValue={country || ''}
-            onValueChange={(v) => {
-              setCountry(v);
-              clearFieldError('country');
-            }}
-            style={tw`bg-slate-50 dark:bg-[#0f1821] rounded-xl text-[#0d141c] dark:text-white`}
-            mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-          >
-
-                <Picker.Item label="Select your country" value="" />
-                {COUNTRIES.map((c) => (
-                  <Picker.Item key={c.code} label={c.name} value={c.code} />
-                ))}
-              </Picker>
-            </View>
-            {!!errors.country && (
-              <Text style={tw`text-sm text-red-600 dark:text-red-400`}>
-                {errors.country}
-              </Text>
-            )}
+          <View ref={countryWrapRef}>
+            <SelectField
+              label="Country"
+              value={country || ''}
+              placeholder="Select your country"
+              options={COUNTRIES.map((c) => ({
+                label: c.name,
+                value: c.code,
+              }))}
+              onChange={(v) => {
+                setCountry(v);
+                clearFieldError('country');
+              }}
+              error={errors.country}
+            />
           </View>
 
           {/* School Grade / Year / Level */}
@@ -686,35 +672,21 @@ export default function CreateProfileFormNative() {
           {role === 'tutor' && (
             <View style={tw`gap-4 mt-2`}>
               {/* Category */}
-              <View ref={categoryWrapRef} style={tw`gap-2`}>
-                <Text style={label}>Select Subject or Skill Category</Text>
-                <View
-                  style={[
-                    tw`rounded-xl border border-[#cedbe8] dark:border-white/10`,
-                    errors.category ? invalidBorder : null,
-                  ]}
-                >
-                  <Picker
-                    selectedValue={category || ''}
-                    onValueChange={(v) => {
-                      setCategory(v);
-                      clearFieldError('category');
-                    }}
-                    style={tw`bg-slate-50 dark:bg-[#0f1821] rounded-xl text-[#0d141c] dark:text-white`}
-                    mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-                  >
-
-                    <Picker.Item label="Select a category…" value="" />
-                    {CATEGORIES.map((c) => (
-                      <Picker.Item key={c} label={c} value={c} />
-                    ))}
-                  </Picker>
-                </View>
-                {!!errors.category && (
-                  <Text style={tw`text-sm text-red-600 dark:text-red-400`}>
-                    {errors.category}
-                  </Text>
-                )}
+              <View ref={categoryWrapRef}>
+                <SelectField
+                  label="Select Subject or Skill Category"
+                  value={category || ''}
+                  placeholder="Select a category…"
+                  options={CATEGORIES.map((c) => ({
+                    label: c,
+                    value: c,
+                  }))}
+                  onChange={(v) => {
+                    setCategory(v);
+                    clearFieldError('category');
+                  }}
+                  error={errors.category}
+                />
               </View>
 
               {/* Payout Preferences */}
@@ -725,23 +697,19 @@ export default function CreateProfileFormNative() {
 
                 {/* Payout Method */}
                 <View>
-                  <Text style={[smallLabel, tw`mb-1`]}>Payout Method</Text>
-                  <View style={tw`rounded-xl border border-[#cedbe8] dark:border-white/10`}>
-                   <Picker
-                    selectedValue={payoutMethod || 'wise'}
-                    onValueChange={(v) => {
+                  <SelectField
+                    label="Payout Method"
+                    value={payoutMethod || 'wise'}
+                    options={[
+                      { label: 'Wise (USD)', value: 'wise' },
+                      { label: 'M-Pesa (KES)', value: 'mpesa' },
+                    ]}
+                    onChange={(v) => {
                       setPayoutMethod(v as 'wise' | 'mpesa');
                       clearFieldError('wiseEmail');
                       clearFieldError('mpesaPhoneNumber');
                     }}
-                    style={tw`bg-slate-50 dark:bg-[#0f1821] rounded-xl text-[#0d141c] dark:text-white`}
-                    mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-                  >
-
-                      <Picker.Item label="Wise (USD)" value="wise" />
-                      <Picker.Item label="M-Pesa (KES)" value="mpesa" />
-                    </Picker>
-                  </View>
+                  />
                 </View>
 
                 {/* Payout Currency */}

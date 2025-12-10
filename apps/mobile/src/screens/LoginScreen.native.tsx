@@ -27,6 +27,7 @@ import CustomGoogleLoginButtonNative from './CustomGoogleLoginButton.native';
 import { useShopContext } from '@mytutorapp/shared/context';
 import type { MainStackParamList } from '../navigation/types';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
+import SelectField, { type Option } from './SelectField.native';
 
 // 🔹 parity with web (Cancel role flow)
 import { signOut } from 'firebase/auth';
@@ -40,100 +41,6 @@ type AuthMode = 'Login' | 'Sign Up';
 type ResetMode = 'idle' | 'requesting' | 'verifying';
 type Role = '' | 'student' | 'tutor';
 
-type Option = { label: string; value: string };
-
-interface SelectFieldProps {
-  value: string;
-  onChange: (value: string) => void;
-  options: Option[];
-  placeholder: string;
-  placeholderColor: string;
-  selectedTextColor: string;
-}
-
-const SelectField: React.FC<SelectFieldProps> = ({
-  value,
-  onChange,
-  options,
-  placeholder,
-  placeholderColor,
-  selectedTextColor,
-}) => {
-  const [open, setOpen] = useState(false);
-
-  const selectedLabel =
-    options.find((o) => o.value === value)?.label ?? value ?? '';
-
-  return (
-    <>
-      {/* Shell that looks like a TextInput */}
-      <TouchableOpacity
-        onPress={() => setOpen(true)}
-        style={tw`bg-slate-100 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 px-3 py-3 rounded-xl mb-4 flex-row items-center justify-between`}
-      >
-        <Text
-          style={{
-            color: value ? selectedTextColor : placeholderColor,
-          }}
-        >
-          {value ? selectedLabel : placeholder}
-        </Text>
-        <FontAwesome
-          name={open ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color={placeholderColor}
-        />
-      </TouchableOpacity>
-
-      {/* Simple JS-only dropdown modal */}
-      <Modal
-        transparent
-        visible={open}
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
-      >
-        <View style={tw`flex-1 bg-black/40 justify-center px-6`}>
-          <View
-            style={tw`rounded-2xl bg-white dark:bg-[#0f1821] p-4 max-h-[80%]`}
-          >
-            <ScrollView>
-              {options.map((opt) => (
-                <TouchableOpacity
-                  key={opt.value}
-                  onPress={() => {
-                    onChange(opt.value);
-                    setOpen(false);
-                  }}
-                  style={tw`py-2`}
-                >
-                  <Text
-                    style={tw.style(
-                      'text-sm',
-                      opt.value === value
-                        ? 'font-semibold text-pink-600 dark:text-pink-400'
-                        : 'text-slate-700 dark:text-slate-100'
-                    )}
-                  >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <TouchableOpacity
-              onPress={() => setOpen(false)}
-              style={tw`mt-3 h-10 rounded-xl bg-slate-100 dark:bg-[#0b1016] items-center justify-center`}
-            >
-              <Text style={tw`text-sm text-slate-700 dark:text-slate-100`}>
-                Close
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </>
-  );
-};
 
 const LoginScreenNative: React.FC = () => {
   const navigation = useNavigation<LoginNavProp>();

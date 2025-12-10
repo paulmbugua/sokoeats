@@ -1,25 +1,25 @@
 // apps/mobile/src/screens/RobotTeacherControls.native.tsx
-import React, { useMemo, useState, useEffect } from "react";
+import React from "react";
 import {
   View,
   Text,
   TextInput,
   Pressable,
-  Platform,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import tw from "../../tailwind";
 
 export type SizePresetKey = "quick" | "standard" | "extended" | "intensive" | "marathon";
 export type TrackKey = "module" | "certificate" | "diploma" | "degree";
 type CourseOption = { id: string; title: string };
 
-type Option = { value: string; label: string };
-
 // ⬇️ Option A: global pull-to-refresh hooks/components
 import { RefreshableScrollView } from "../refresh/Refreshable";
 import { useRegisterScreenRefresh } from "../refresh/GlobalRefreshProvider";
 
+// ⬇️ New: SelectField import
+import SelectField, { type Option as SelectOption } from "./SelectField.native";
+
+/* ───────────────────────── CourseSelect (native) ───────────────────────── */
 /* ───────────────────────── CourseSelect (native) ───────────────────────── */
 const CourseSelect = React.memo(function CourseSelect({
   options,
@@ -27,40 +27,29 @@ const CourseSelect = React.memo(function CourseSelect({
   onChange,
   placeholder = "Select a course…",
 }: {
-  options: Option[];
+  options: SelectOption[];
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
 }) {
   const hasOptions = options && options.length > 0;
+  const effectivePlaceholder = hasOptions ? placeholder : "No courses available";
 
   return (
-    <View
-      style={tw`h-11 rounded-xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#172534] justify-center`}
-    >
-      <Picker
-        selectedValue={value || ""}
-        onValueChange={(v) => {
-          // avoid doing anything if we’re on the placeholder with no real options
-          if (!hasOptions && !v) return;
-          onChange(String(v));
-        }}
-        style={tw`-ml-1 text-sm text-[#0d141c] dark:text-white`}
-        dropdownIconColor={Platform.OS === "android" ? "#64748b" : undefined}
-        mode={Platform.OS === "android" ? "dropdown" : "dialog"}
-      >
-        <Picker.Item
-          label={hasOptions ? placeholder : "No courses available"}
-          value=""
-          color="rgba(148,163,184,0.9)" // subtle placeholder color
-        />
-
-        {hasOptions &&
-          options.map((o) => (
-            <Picker.Item key={o.value} label={o.label} value={o.value} />
-          ))}
-      </Picker>
-    </View>
+    <SelectField
+      // label is already rendered outside in the parent ("Course"), so omit here
+      value={value}
+      onChange={(v) => {
+        if (!hasOptions && !v) return;
+        onChange(String(v));
+      }}
+      options={options}
+      placeholder={effectivePlaceholder}
+      modalTitle={effectivePlaceholder}
+      // ❌ REMOVE these overrides – they break dark mode
+      // placeholderColor="#64748B"
+      // selectedTextColor="#0F172A"
+    />
   );
 });
 
@@ -223,7 +212,10 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 <CourseSelect
                   value={selectedCourse?.id || ""}
                   onChange={(id) => onSelectCourse(id)}
-                  options={(topCourses || []).map((c) => ({ value: c.id, label: c.title }))}
+                  options={(topCourses || []).map((c) => ({
+                    value: c.id,
+                    label: c.title,
+                  }))}
                   placeholder={(topCourses || []).length ? "Select a course…" : "Loading…"}
                 />
               )}
@@ -356,7 +348,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                     accessibilityLabel={lv}
                     style={tw.style(
                       `flex-1 px-3 py-2`,
-                      active ? `bg-indigo-50 dark:bg:white/15` : `bg-white dark:bg-[#172534]`,
+                      active ? `bg-indigo-50 dark:bg-white/10` : `bg-white dark:bg-[#172534]`,
                       disabled && `opacity-50`
                     )}
                   >
@@ -395,7 +387,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 style={tw`${
                   canStartMain
                     ? "text-white"
-                    : "text-[#0d141c] dark:text:white"
+                    : "text-[#0d141c] dark:text-white"
                 } text-sm font-semibold`}
               >
                 {busy ? "Preparing…" : hasAIContent ? "Continue lesson" : "Start with A.I"}
@@ -409,7 +401,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 accessibilityLabel="Refresh AI"
                 style={tw`h-10 px-3 rounded-xl items-center justify-center border bg-slate-50 dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`}
               >
-                <Text style={tw`text-[#0d141c] dark:text:white`}>Refresh AI</Text>
+                <Text style={tw`text-[#0d141c] dark:text-white`}>Refresh AI</Text>
               </Pressable>
             ) : null}
 
@@ -490,7 +482,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 }}
                 style={tw`px-3 py-1.5 rounded-full bg-slate-100 dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15`}
               >
-                <Text style={tw`text-[#0d141c] dark:text:white text-xs`}>
+                <Text style={tw`text-[#0d141c] dark:text-white text-xs`}>
                   Use track defaults
                 </Text>
               </Pressable>
@@ -508,7 +500,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 onChangeText={setCustomTitle}
                 placeholder="e.g., Linear Algebra crash course"
                 placeholderTextColor="rgba(148,163,184,0.8)"
-                style={tw`mt-1 h-11 rounded-xl px-3 border border-[#cedbe8] dark:border-white/15 bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text:white`}
+                style={tw`mt-1 h-11 rounded-xl px-3 border border-[#cedbe8] dark:border-white/15 bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text-white`}
               />
               <View style={tw`mt-2 items-start`}>
                 <Pressable
@@ -527,7 +519,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 >
                   <Text
                     style={tw`${
-                      canTeach ? "text-white" : "text-[#0d141c] dark:text:white"
+                      canTeach ? "text-white" : "text-[#0d141c] dark:text-white"
                     } text-sm font-semibold`}
                   >
                     Teach me
@@ -563,7 +555,7 @@ function LabeledNumber({
 }) {
   return (
     <View>
-      <Text style={tw`text-sm text-[#0d141c] dark:text:white mb-1`}>{label}</Text>
+      <Text style={tw`text-sm text-[#0d141c] dark:text-white mb-1`}>{label}</Text>
       <TextInput
         keyboardType="number-pad"
         value={String(value)}
@@ -578,7 +570,7 @@ function LabeledNumber({
         editable={!disabled}
         placeholderTextColor="rgba(148,163,184,0.8)"
         style={tw.style(
-          `h-11 rounded-xl px-3 border text-sm bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text:white`,
+          `h-11 rounded-xl px-3 border text-sm bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text-white`,
           disabled
             ? `opacity-50 border-[#cedbe8] dark:border-white/15`
             : `border-[#cedbe8] dark:border-white/15`

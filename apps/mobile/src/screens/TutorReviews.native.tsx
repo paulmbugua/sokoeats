@@ -12,7 +12,7 @@ type Props = {
 };
 
 const TutorReviews: React.FC<Props> = ({ tutorId, showComments = true }) => {
-  // (kept for parity; not directly used here but available if you resolve relative assets)
+  // kept for parity; not directly used here but available if you resolve relative assets
   const { backendUrl } = useShopContext();
   const { reviews, avgRating, totalReviews } = useTutorReviews(tutorId);
 
@@ -40,12 +40,18 @@ const TutorReviews: React.FC<Props> = ({ tutorId, showComments = true }) => {
   return (
     <View style={tw`w-full`}>
       {/* Header */}
-      <Text style={tw`text-xl font-semibold text-primary mb-3`}>Student Reviews</Text>
+      <Text
+        style={tw`text-xl font-semibold text-pink-600 dark:text-pink-400 mb-3`}
+      >
+        Student Reviews
+      </Text>
 
       {/* Summary: stars + count */}
       <View style={tw`flex-row items-center`}>
         <StarRow />
-        <Text style={tw`ml-2 text-sm text-darkTextSecondary`}>
+        <Text
+          style={tw`ml-2 text-sm text-slate-600 dark:text-slate-300`}
+        >
           ({totalReviews} {totalReviews === 1 ? 'review' : 'reviews'})
         </Text>
       </View>
@@ -56,15 +62,30 @@ const TutorReviews: React.FC<Props> = ({ tutorId, showComments = true }) => {
           {reviews.map((r) => (
             <View
               key={r.id}
-              style={tw`p-4 rounded-xl bg-white dark:bg-[#0f1821] border border-gray-200 dark:border-darkCard mb-4`}
+              style={tw`p-4 rounded-xl bg-white dark:bg-[#0f1821] border border-gray-200 dark:border-white/10 mb-4`}
             >
-              <Text style={tw`text-primary font-bold mb-1`}>
+              <Text
+                style={tw`text-pink-600 dark:text-pink-400 font-semibold mb-1`}
+              >
                 {/* match web: show student name label */}
                 {r.studentName ? `${r.studentName}:` : 'Student:'}
               </Text>
-              <Text style={tw`text-darkText dark:text-darkTextPrimary`}>{r.comment || ''}</Text>
+              <Text
+                style={tw`text-[#0d141c] dark:text-gray-200`}
+              >
+                {r.comment || ''}
+              </Text>
             </View>
           ))}
+        </View>
+      )}
+
+      {/* Optionally, you could show an empty-state message */}
+      {showComments && (!reviews || reviews.length === 0) && (
+        <View style={tw`mt-4`}>
+          <Text style={tw`text-sm text-slate-600 dark:text-slate-400`}>
+            No reviews yet. Be the first to review this tutor.
+          </Text>
         </View>
       )}
     </View>

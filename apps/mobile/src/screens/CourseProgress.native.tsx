@@ -1,5 +1,5 @@
-// apps/mobile/src/screens/CourseProgress.native.tsx
 /* eslint-disable prettier/prettier */
+// apps/mobile/src/screens/CourseProgress.native.tsx
 import React, {
   useEffect,
   useMemo,
@@ -17,7 +17,6 @@ import {
   Modal,
   Alert,
   Linking,
-  Platform,
 } from 'react-native';
 import debounce from 'lodash.debounce';
 import {
@@ -27,14 +26,16 @@ import {
   type NavigationProp,
 } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Picker } from '@react-native-picker/picker';
 
 import tw from '../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useCourses, useOerMeta } from '@mytutorapp/shared/hooks';
 import { useCourseProgress } from '@mytutorapp/shared/hooks/useCourseProgress';
 import { useCourseReviews } from '@mytutorapp/shared/hooks/useCourseReviews';
-import { downloadCertificateFile, downloadTranscriptFile } from '@mytutorapp/shared/api';
+import {
+  downloadCertificateFile,
+  downloadTranscriptFile,
+} from '@mytutorapp/shared/api';
 import { useWatchProgress } from '@mytutorapp/shared/hooks/useWatchProgress';
 import { useReadProgress } from '@mytutorapp/shared/hooks/useReadProgress';
 
@@ -45,8 +46,15 @@ import type {
   SyllabusItem,
 } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
+import SelectField, { type Option } from './SelectField.native';
 
 type Status = 'Not Started' | 'In Progress' | 'Completed';
+
+const STATUS_OPTIONS: Option[] = [
+  { label: 'Not Started', value: 'Not Started' },
+  { label: 'In Progress', value: 'In Progress' },
+  { label: 'Completed', value: 'Completed' },
+];
 
 /* ───────── Helpers ───────── */
 
@@ -121,7 +129,8 @@ const ChipButton: React.FC<{
   let style = 'bg-[#3d99f5]';
   let text = 'text-white';
   if (variant === 'outline') {
-    style = 'bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-slate-700';
+    style =
+      'bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-slate-700';
     text = 'text-slate-900 dark:text-white';
   }
   if (variant === 'ghost') {
@@ -266,7 +275,8 @@ const CourseReadingPanelInline: React.FC<{
   onSetStatus: (s: Status) => void;
 }> = ({ week, item, status, onSetStatus }) => {
   const hasAssignment = !!(item.assignment || '').trim();
-  const hasNotes = !!(item as any).notesUrl || Array.isArray((item as any).notesUrls);
+  const hasNotes =
+    !!(item as any).notesUrl || Array.isArray((item as any).notesUrls);
 
   return (
     <View
@@ -360,14 +370,14 @@ const CourseProgressScreen: React.FC = () => {
 
   /* ───────── Reviews ───────── */
 
-  const {
-    hasMyReview,
-    submit,
-    posting,
-  } = useCourseReviews(backendUrl, courseId, {
-    myStudentId: myId,
-    token: token ?? '',
-  });
+  const { hasMyReview, submit, posting } = useCourseReviews(
+    backendUrl,
+    courseId,
+    {
+      myStudentId: myId,
+      token: token ?? '',
+    },
+  );
 
   const [openReview, setOpenReview] = useState(false);
   const [rating, setRating] = useState(0);
@@ -423,24 +433,23 @@ const CourseProgressScreen: React.FC = () => {
   }, [syllabus, progressByWeek]);
 
   const suggestedWeek = useMemo(() => {
-  const inProg = syllabus.find(
-    (w) => (progressByWeek.get(w.week) ?? 'Not Started') === 'In Progress',
-  );
-  if (inProg) return inProg.week;
+    const inProg = syllabus.find(
+      (w) => (progressByWeek.get(w.week) ?? 'Not Started') === 'In Progress',
+    );
+    if (inProg) return inProg.week;
 
-  const notSt = syllabus.find(
-    (w) => (progressByWeek.get(w.week) ?? 'Not Started') === 'Not Started',
-  );
-  if (notSt) return notSt.week;
+    const notSt = syllabus.find(
+      (w) => (progressByWeek.get(w.week) ?? 'Not Started') === 'Not Started',
+    );
+    if (notSt) return notSt.week;
 
-  if (!syllabus.length) return undefined;
+    if (!syllabus.length) return undefined;
 
-  const last = syllabus[syllabus.length - 1];
-  if (!last) return undefined;
+    const last = syllabus[syllabus.length - 1];
+    if (!last) return undefined;
 
-  return last.week;
-}, [syllabus, progressByWeek]);
-
+    return last.week;
+  }, [syllabus, progressByWeek]);
 
   const [activeWeek, setActiveWeek] = useState<number | null>(null);
 
@@ -604,23 +613,18 @@ const CourseProgressScreen: React.FC = () => {
 
       const payload: any = { courseId, lessonsLearnt: lessons };
 
-      let r = await fetch(
-        `${backendUrl}/api/transcripts/generate`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(payload),
+      let r = await fetch(`${backendUrl}/api/transcripts/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-      );
+        body: JSON.stringify(payload),
+      });
 
       if (r.status === 404) {
         const rr = await fetch(
-          `${backendUrl}/api/oer/transcript/${encodeURIComponent(
-            courseId,
-          )}`,
+          `${backendUrl}/api/oer/transcript/${encodeURIComponent(courseId)}`,
           {
             headers: {
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -703,14 +707,11 @@ const CourseProgressScreen: React.FC = () => {
 
   const allWatched = useCallback(async () => {
     try {
-      const r = await fetch(
-        `${backendUrl}/api/progress/watch/${courseId}`,
-        {
-          headers: token
-            ? ({ Authorization: `Bearer ${token}` } as any)
-            : undefined,
-        },
-      );
+      const r = await fetch(`${backendUrl}/api/progress/watch/${courseId}`, {
+        headers: token
+          ? ({ Authorization: `Bearer ${token}` } as any)
+          : undefined,
+      });
       const rows: any[] = await r.json().catch(() => []);
       const reqs = syllabus.flatMap((s) =>
         getWeekVideos(s).map((v) => v.url),
@@ -768,8 +769,7 @@ const CourseProgressScreen: React.FC = () => {
 
       const d = await r.json().catch(() => ({}));
       const certId = extractCertId(d);
-      const anyUrl =
-        d?.download_url || d?.downloadUrl || d?.url || null;
+      const anyUrl = d?.download_url || d?.downloadUrl || d?.url || null;
       const fileName = `${slug(
         selectedCourse?.title || 'certificate',
       )}-${certId || 'certificate'}.pdf`;
@@ -816,24 +816,23 @@ const CourseProgressScreen: React.FC = () => {
       console.error('[CourseProgress.native] setStatus failed', e);
     }
   };
-const startCourse = async () => {
-  if (!syllabus.length) return;
 
-  const firstItem = syllabus[0];
-  if (!firstItem) return;
+  const startCourse = async () => {
+    if (!syllabus.length) return;
 
-  const first = firstItem.week;
-  const st = (progressByWeek.get(first) ?? 'Not Started') as Status;
-  if (st === 'Not Started') await setStatus(first, 'In Progress');
-  setActiveWeek(first);
-};
+    const firstItem = syllabus[0];
+    if (!firstItem) return;
 
+    const first = firstItem.week;
+    const st = (progressByWeek.get(first) ?? 'Not Started') as Status;
+    if (st === 'Not Started') await setStatus(first, 'In Progress');
+    setActiveWeek(first);
+  };
 
   const continueCourse = async () => {
     if (!suggestedWeek) return;
     const st = (progressByWeek.get(suggestedWeek) ?? 'Not Started') as Status;
-    if (st === 'Not Started')
-      await setStatus(suggestedWeek, 'In Progress');
+    if (st === 'Not Started') await setStatus(suggestedWeek, 'In Progress');
     setActiveWeek(suggestedWeek);
   };
 
@@ -860,24 +859,22 @@ const startCourse = async () => {
     counts.total > 0 && counts.completed === counts.total;
 
   const goPrev = () => {
-  if (activeWeek == null) return;
-  const idx = syllabus.findIndex((w) => w.week === activeWeek);
-  if (idx > 0) {
-    const prev = syllabus[idx - 1];
-    if (prev) setActiveWeek(prev.week);
-  }
-};
-
+    if (activeWeek == null) return;
+    const idx = syllabus.findIndex((w) => w.week === activeWeek);
+    if (idx > 0) {
+      const prev = syllabus[idx - 1];
+      if (prev) setActiveWeek(prev.week);
+    }
+  };
 
   const goNext = () => {
-  if (activeWeek == null) return;
-  const idx = syllabus.findIndex((w) => w.week === activeWeek);
-  if (idx < syllabus.length - 1) {
-    const next = syllabus[idx + 1];
-    if (next) setActiveWeek(next.week);
-  }
-};
-
+    if (activeWeek == null) return;
+    const idx = syllabus.findIndex((w) => w.week === activeWeek);
+    if (idx < syllabus.length - 1) {
+      const next = syllabus[idx + 1];
+      if (next) setActiveWeek(next.week);
+    }
+  };
 
   /* ───────── Early UI states (after hooks) ───────── */
 
@@ -1352,13 +1349,11 @@ const startCourse = async () => {
                       />
                     )}
 
-                    {/* Status picker */}
-                    <View
-                      style={tw`mt-1 rounded-xl border border-[#cedbe8] dark:border-slate-700 bg-white dark:bg-[#0f1821] px-1`}
-                    >
-                      <Picker
-                        selectedValue={current}
-                        onValueChange={(val) => {
+                    {/* Status selector (replaces Picker) */}
+                    <View style={tw`mt-1 w-40`}>
+                      <SelectField
+                        value={current}
+                        onChange={(val) => {
                           const next = val as Status;
                           if (next === 'Completed' && !canComplete) {
                             Alert.alert(
@@ -1369,27 +1364,10 @@ const startCourse = async () => {
                           }
                           setStatus(item.week, next);
                         }}
-                        style={tw`w-40 h-8 text-xs text-slate-900 dark:text-white`}
-                        dropdownIconColor={
-                          Platform.OS === 'android'
-                            ? '#0f172a'
-                            : undefined
-                        }
-                        mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-                      >
-                        <Picker.Item
-                          label="Not Started"
-                          value="Not Started"
-                        />
-                        <Picker.Item
-                          label="In Progress"
-                          value="In Progress"
-                        />
-                        <Picker.Item
-                          label="Completed"
-                          value="Completed"
-                        />
-                      </Picker>
+                        options={STATUS_OPTIONS}
+                        placeholder="Change status…"
+                        modalTitle="Change week status"
+                      />
                     </View>
                   </View>
                 </View>

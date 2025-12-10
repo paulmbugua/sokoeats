@@ -1,103 +1,99 @@
-// apps/mobile/src/components/player/ThemeContext.native.tsx
+/* eslint-disable prettier/prettier */
 import React, {
   createContext,
   useContext,
-  useState,
+  useEffect,
   useMemo,
-  type ReactNode,
+  useState,
 } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import type {ThemeTokens, HighlightTemplate } from './types.native';
+import { hexToRgb, pickTextOnBg } from './utils.native';
 
-export type HighlightTemplate =
-  | 'clean-stripe'
-  | 'underline-glow'
-  | 'karaoke-glow'
-  | 'boxed-pill'
-  | 'ribbon';
+const Ctx = createContext<ThemeTokens | null>(null);
 
-type ThemeContextValue = {
-  // Core tokens
-  hlHex: string;           // highlight color
-  genHex: string;          // general text color for "past" words
-  activeTextOnHl: string;  // text color on highlight
+const HL_KEY = 'classroomHlHex';
+const GEN_KEY = 'classroomGenHex';
+const TEMPLATE_KEY = 'classroomHighlightTemplate';
 
-  // Template
-  templateId: HighlightTemplate;
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [hlHex, setHlHex] = useState<string>('#22d3ee');
+  const [genHex, setGenHex] = useState<string>('#ffffff');
+  const [templateId, setTemplateId] = useState<HighlightTemplate>('ribbon');
 
-  // Mutators
-  setTemplateId: (t: HighlightTemplate) => void;
-  setHighlightColor: (hex: string) => void;
-  applyPreset: (key: string) => void;
-};
+  // Load persisted values on mount (native-friendly)
+  useEffect(() => {
+    let alive = true;
 
-const ThemeContext = createContext<ThemeContextValue | null>(null);
+    (async () => {
+      try {
+        const [savedHl, savedGen, savedTemplate] = await Promise.all([
+          AsyncStorage.getItem(HL_KEY),
+          AsyncStorage.getItem(GEN_KEY),
+          AsyncStorage.getItem(TEMPLATE_KEY),
+        ]);
 
-const DEFAULT_HL = '#f97316';       // orange-400-ish
-const DEFAULT_GEN = '#e5e7eb';      // slate-200
-const DEFAULT_ACTIVE_ON_HL = '#020617'; // slate-950
+        if (!alive) return;
+        if (savedHl) setHlHex(savedHl);
+        if (savedGen) setGenHex(savedGen);
+        if (savedTemplate && (['clean-stripe', 'underline-glow', 'karaoke-glow', 'boxed-pill', 'ribbon'] as HighlightTemplate[]).includes(savedTemplate as HighlightTemplate)) {
+          setTemplateId(savedTemplate as HighlightTemplate);
+        }
+      } catch {
+        // ignore, fall back to defaults
+      }
+    })();
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [hlHex, setHlHex] = useState(DEFAULT_HL);
-  const [genHex, setGenHex] = useState(DEFAULT_GEN);
-  const [activeTextOnHl, setActiveTextOnHl] = useState(DEFAULT_ACTIVE_ON_HL);
-  const [templateId, setTemplateId] =
-    useState<HighlightTemplate>('boxed-pill');
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  const applyPreset = (key: string) => {
-    switch (key) {
-      case 'sky':
-        setHlHex('#0ea5e9'); // sky-500
-        setGenHex('#e5e7eb');
-        setActiveTextOnHl('#020617');
-        break;
-      case 'lime':
-        setHlHex('#84cc16'); // lime-500
-        setGenHex('#e5e7eb');
-        setActiveTextOnHl('#020617');
-        break;
-      case 'violet':
-        setHlHex('#8b5cf6'); // violet-500
-        setGenHex('#e5e7eb');
-        setActiveTextOnHl('#f9fafb');
-        break;
-      case 'amber':
-        setHlHex('#fbbf24'); // amber-400
-        setGenHex('#e5e7eb');
-        setActiveTextOnHl('#020617');
-        break;
-      case 'rose':
-        setHlHex('#f97373'); // soft rose-ish
-        setGenHex('#e5e7eb');
-        setActiveTextOnHl('#020617');
-        break;
-      case 'default':
-      default:
-        setHlHex(DEFAULT_HL);
-        setGenHex(DEFAULT_GEN);
-        setActiveTextOnHl(DEFAULT_ACTIVE_ON_HL);
-        break;
-    }
-  };
+  // Persist updates
+  useEffect(() => {
+    AsyncStorage.setItem(HL_KEY, hlHex).catch(() => {});
+  }, [hlHex]);
 
-  const value = useMemo<ThemeContextValue>(
-    () => ({
-      hlHex,
-      genHex,
-      activeTextOnHl,
-      templateId,
-      setTemplateId,
-      setHighlightColor: setHlHex,
-      applyPreset,
-    }),
-    [hlHex, genHex, activeTextOnHl, templateId]
+  useEffect(() => {
+    AsyncStorage.setItem(GEN_KEY, genHex).catch(() => {});
+  }, [genHex]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(TEMPLATE_KEY, templateId).catch(() => {});
+  }, [templateId]);
+
+  const hlRgb = useMemo(() => hexToRgb(hlHex), [hlHex]);
+  const genRgb = useMemo(() => hexToRgb(genHex), [genHex]);
+  const activeTextOnHl = useMemo(
+    () => pickTextOnBg(hlHex),
+    [hlHex],
   );
 
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+  const value: ThemeTokens = {
+    hlHex,
+    genHex,
+    hlRgb,
+    genRgb,
+    activeTextOnHl,
+    templateId,
+    setTemplateId,
+    setHlHex,
+    setGenHex,
+  };
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
-export function useThemeTokens(): ThemeContextValue {
-  const ctx = useContext(ThemeContext);
+export function useThemeTokens() {
+  const ctx = useContext(Ctx);
   if (!ctx) {
-    throw new Error('useThemeTokens must be used within ThemeProvider');
+    throw new Error(
+      'useThemeTokens must be used inside <ThemeProvider>',
+    );
   }
   return ctx;
 }
+
+// 👇 so you can do:
+// import { useThemeTokens, type HighlightTemplate } from './ThemeContext.native';
+export type { HighlightTemplate };

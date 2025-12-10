@@ -7509,6 +7509,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"baseline-browser-mapping@npm:^2.9.5":
+  version: 2.9.5
+  resolution: "baseline-browser-mapping@npm:2.9.5"
+  bin:
+    baseline-browser-mapping: dist/cli.js
+  checksum: 10c0/581bd4f578a1b5ccd48ad0155f760c412803f02e97259deec99150b87c95766266b607b09aefa65da96dc5b925165706d675f10413630e767391e26a4f7afcdf
+  languageName: node
+  linkType: hard
+
 "basic-auth@npm:~2.0.1":
   version: 2.0.1
   resolution: "basic-auth@npm:2.0.1"
@@ -15771,6 +15780,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:^8.31.1"
     autoprefixer: "npm:^10.4.21"
     babel-plugin-transform-remove-console: "npm:^6.9.4"
+    baseline-browser-mapping: "npm:^2.9.5"
     eslint: "npm:^8"
     eslint-config-prettier: "npm:^10.1.1"
     eslint-import-resolver-typescript: "npm:^4.3.4"

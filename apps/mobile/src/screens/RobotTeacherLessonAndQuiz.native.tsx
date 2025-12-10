@@ -280,23 +280,10 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   const SAFE_V = (insets?.top ?? 0) + (insets?.bottom ?? 0);
 
   // ───────── Size: DOUBLE the compact/min heights, keep sane caps ─────────
-const PLAYER_SCALE = 1.5; // ⬅️ Double-size knob
+const maxPlayableHeight = Math.max(360, winH - OUTLINE_GAP - SAFE_V);
 
-const maxPlayableHeight = Math.max(320, winH - OUTLINE_GAP - SAFE_V);
-const autoHeight = Math.round(
-  maxWidth * (width < winH ? 9 / 14 : 9 / 16) * PLAYER_SCALE
-);
-
-// bigger compact baseline but still respect screen
-const minCompact = Math.max(380 * PLAYER_SCALE, Math.round(winH * 0.44 * PLAYER_SCALE));
-
-// allow near full height in compact mode; fullscreen still uses maxPlayableHeight
-const compactCap = Math.min(1200, Math.round(winH * 0.98));
-
-const desiredHeight = Math.min(
-  isMaximized ? maxPlayableHeight : Math.max(minCompact, autoHeight),
-  isMaximized ? maxPlayableHeight : compactCap
-);
+  // ✅ Always fill the reserved height (both compact + maximized)
+  const desiredHeight = maxPlayableHeight;
 
   // ───────────────────────────────────────────────────────
   // state

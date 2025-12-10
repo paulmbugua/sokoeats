@@ -12,13 +12,10 @@ import {
   TextInput,
   ScrollView,
   Pressable,
-  ActivityIndicator,
   Alert,
-  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
-import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import tw from '../../tailwind';
@@ -26,6 +23,7 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { useCourses } from '@mytutorapp/shared/hooks/useCourses';
 import type { CoursePayload, SyllabusItem } from '@mytutorapp/shared/types';
 import { uploadClassVaultAsset } from '@mytutorapp/shared/api/classVaultUploadApi';
+import SelectField, { type Option } from './SelectField.native';
 
 /* ───────── Constants / helpers ───────── */
 
@@ -81,6 +79,13 @@ function isDraft(obj: unknown): obj is CreateCourseDraft {
 
 type EditableSyllabusField = 'topic' | 'assignment' | 'videoUrl' | 'notesUrl';
 type FieldName = 'title' | 'description' | 'level' | 'duration' | 'prerequisites';
+
+const LEVEL_OPTIONS: Option[] = [
+  { label: 'Beginner', value: 'Beginner' },
+  { label: 'Intermediate', value: 'Intermediate' },
+  { label: 'Advanced', value: 'Advanced' },
+  { label: 'All Levels', value: 'All Levels' },
+];
 
 /* ───────── Screen ───────── */
 
@@ -666,28 +671,16 @@ const CreateCourseScreen: React.FC = () => {
                   >
                     Level
                   </Text>
-                 <View
-                  style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-1`}
-                >
-                  <Picker
-                    selectedValue={formData.level || 'Beginner'}
-                    onValueChange={(val) => updateField('level', String(val))}
-                    style={tw`text-slate-900 dark:text-white`}
-                    dropdownIconColor="#0f172a"
-                    mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
+                  <View
+                    style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-1 py-1`}
                   >
-
-                      <Picker.Item label="Beginner" value="Beginner" />
-                      <Picker.Item
-                        label="Intermediate"
-                        value="Intermediate"
-                      />
-                      <Picker.Item label="Advanced" value="Advanced" />
-                      <Picker.Item
-                        label="All Levels"
-                        value="All Levels"
-                      />
-                    </Picker>
+                    <SelectField
+                      value={formData.level || 'Beginner'}
+                      onChange={(val) => updateField('level', String(val))}
+                      options={LEVEL_OPTIONS}
+                      placeholder="Select level…"
+                      modalTitle="Select course level"
+                    />
                   </View>
                 </View>
               </View>
@@ -934,11 +927,10 @@ const CreateCourseScreen: React.FC = () => {
                                       Or upload video file
                                     </Text>
                                     {(uploadPct[`n-${index}`] ?? 0) > 0 && (
-                                        <Text style={tw`text-xs text-slate-500`}>
-                                          Uploading… {Math.round(uploadPct[`n-${index}`] ?? 0)}%
-                                        </Text>
-                                      )}
-
+                                      <Text style={tw`text-xs text-slate-500`}>
+                                        Uploading… {Math.round(uploadPct[`n-${index}`] ?? 0)}%
+                                      </Text>
+                                    )}
                                   </View>
                                   <Pressable
                                     onPress={async () => {
@@ -1010,12 +1002,11 @@ const CreateCourseScreen: React.FC = () => {
                                     >
                                       Or upload notes (PDF)
                                     </Text>
-                                   {(uploadPct[`v-${index}`] ?? 0) > 0 && (
-                                    <Text style={tw`text-xs text-slate-500`}>
-                                      Uploading… {Math.round(uploadPct[`v-${index}`] ?? 0)}%
-                                    </Text>
-                                  )}
-
+                                    {(uploadPct[`v-${index}`] ?? 0) > 0 && (
+                                      <Text style={tw`text-xs text-slate-500`}>
+                                        Uploading… {Math.round(uploadPct[`v-${index}`] ?? 0)}%
+                                      </Text>
+                                    )}
                                   </View>
                                   <Pressable
                                     onPress={async () => {

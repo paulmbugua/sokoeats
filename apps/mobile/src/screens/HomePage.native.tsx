@@ -33,9 +33,7 @@ import { useCourses } from '@mytutorapp/shared/hooks';
 import { fetchVideoReviews } from '@mytutorapp/shared/api/classVaultApi';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { pickImageForCourse } from '../../utils/subjectImages';
-import type {
-  MainStackParamList,
-} from '../navigation/types';
+import type { MainStackParamList } from '../navigation/types';
 import type {
   Profile,
   Course,
@@ -53,9 +51,6 @@ const FALLBACK_AVATAR = (name = 'Tutor') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(
     name,
   )}&background=223649&color=ffffff`;
-
-const HERO_BG =
-  'https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?q=80&w=2000&auto=format&fit=crop';
 
 const FALLBACK_CARD = (title?: string) =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(
@@ -146,9 +141,7 @@ const sStr = (v: any) => String(v ?? '').toLowerCase();
 const hasAny = (obj: any, keys: string[]) =>
   keys.some((k) => {
     const v = obj?.[k];
-    return (
-      v !== undefined && v !== null && String(v).length > 0
-    );
+    return v !== undefined && v !== null && String(v).length > 0;
   });
 
 /** TRUE if a record is a video / playlist / stream (paid or OER) */
@@ -235,30 +228,17 @@ const isDocish = (c: any): boolean => {
 };
 
 // “Real” course = from `courses` table (not a video, not an OER doc)
-const isRealCourse = (c: any) =>
-  !isVideoish(c) && !isDocish(c);
+const isRealCourse = (c: any) => !isVideoish(c) && !isDocish(c);
 
 // Strong OER detection for things that might not include content_kind
 const isOerLike = (c: any) => {
   const provider = sStr(c?.provider);
   const k = sStr(c?.kind);
-  const ck = sStr(
-    c?.content_kind ?? c?.contentKind ?? c?.type,
-  );
+  const ck = sStr(c?.content_kind ?? c?.contentKind ?? c?.type);
   if (provider === 'oer') return true;
-  if (
-    k === 'collection' ||
-    k === 'book' ||
-    k === 'doc' ||
-    k === 'oer'
-  )
+  if (k === 'collection' || k === 'book' || k === 'doc' || k === 'oer')
     return true;
-  if (
-    ck === 'doc' ||
-    ck === 'text' ||
-    ck === 'pdf' ||
-    ck === 'book'
-  )
+  if (ck === 'doc' || ck === 'text' || ck === 'pdf' || ck === 'book')
     return true;
   return false;
 };
@@ -269,19 +249,13 @@ const isFreeCourse = (c: any): boolean => {
   const price =
     c.price ?? c.cost ?? c.amount ?? c.listPrice ?? 0;
   const ss = String(price).trim().toLowerCase();
-  if (
-    ss === 'free' ||
-    ss === '$0' ||
-    ss === '0' ||
-    ss === '0.00'
-  )
+  if (ss === 'free' || ss === '$0' || ss === '0' || ss === '0.00')
     return true;
   const n = Number(price);
   return Number.isFinite(n) && n <= 0;
 };
 
-const idOrSlug = (c: any) =>
-  String(c?.slug ?? c?.id ?? '');
+const idOrSlug = (c: any) => String(c?.slug ?? c?.id ?? '');
 
 // Interleave arrays up to a limit
 function interleave<T, U>(
@@ -292,10 +266,7 @@ function interleave<T, U>(
   const out: Array<T | U> = [];
   let i = 0;
   let j = 0;
-  while (
-    out.length < limit &&
-    (i < a.length || j < b.length)
-  ) {
+  while (out.length < limit && (i < a.length || j < b.length)) {
     if (i < a.length) {
       const ai = a[i++];
       if (ai !== undefined) out.push(ai);
@@ -309,9 +280,7 @@ function interleave<T, U>(
   return out;
 }
 
-function unwrapCloudinaryFetch(
-  raw?: string | null,
-): string {
+function unwrapCloudinaryFetch(raw?: string | null): string {
   const s = String(raw ?? '').trim();
   if (!s) return '';
 
@@ -360,9 +329,7 @@ function unwrapCloudinaryFetch(
 /* -------------------- Absolute URL + thumbnail helpers ------------------- */
 
 const toWebBase = (base?: string) =>
-  (base || '')
-    .replace(/\/+$/, '')
-    .replace(/\/api$/i, '');
+  (base || '').replace(/\/+$/, '').replace(/\/api$/i, '');
 
 function toAbsUrl(
   backendUrl?: string,
@@ -380,10 +347,7 @@ function toAbsUrl(
   return `${root}/${raw}`;
 }
 
-function pickThumb(
-  obj: any,
-  backendUrl?: string,
-): string {
+function pickThumb(obj: any, backendUrl?: string): string {
   const candRaw =
     obj?.thumbnail_url ??
     obj?.thumb ??
@@ -461,9 +425,7 @@ const CardMedia: React.FC<{
       <View
         style={tw`w-full mb-3 overflow-hidden rounded-xl bg-slate-200 dark:bg-white/5`}
       >
-        <View
-          style={{ width: '100%', aspectRatio: 16 / 9 }}
-        />
+        <View style={{ width: '100%', aspectRatio: 16 / 9 }} />
       </View>
     );
   }
@@ -524,6 +486,11 @@ const usePressScale = (initial = 1) => {
   return { onIn, onOut, style };
 };
 
+/**
+ * SectionReveal:
+ * - Fades/slides in as it scrolls into view
+ * - Once fully revealed, stays visible (does NOT disappear when scrolling back)
+ */
 const SectionReveal: React.FC<
   React.PropsWithChildren<{
     scrollY: SharedValue<number>;
@@ -533,6 +500,7 @@ const SectionReveal: React.FC<
 > = ({ scrollY, offset = 140, duration = 500, children }) => {
   const yRef = useRef(0);
   const [, setMeasured] = useState(false);
+  const revealed = useSharedValue(0); // 0 = not yet fully revealed, 1 = locked visible
 
   const onLayout = useCallback((e: any) => {
     yRef.current = e.nativeEvent.layout.y;
@@ -541,22 +509,35 @@ const SectionReveal: React.FC<
 
   const aStyle = useAnimatedStyle(() => {
     const start = Math.max(0, yRef.current - offset);
-    const end = yRef.current + 20;
-    const o = interpolate(
+    const end = yRef.current + 40;
+
+    const progress = interpolate(
       scrollY.value,
       [start, end],
       [0, 1],
       Extrapolation.CLAMP,
     );
-    const ty = interpolate(
-      scrollY.value,
-      [start, end],
-      [16, 0],
-      Extrapolation.CLAMP,
-    );
+
+    // Lock as revealed once we've fully faded in
+    if (progress >= 0.99 && revealed.value === 0) {
+      revealed.value = 1;
+    }
+
+    const isRevealed = revealed.value === 1;
+
+    const opacity = isRevealed ? 1 : progress;
+    const translateY = isRevealed
+      ? 0
+      : interpolate(
+          scrollY.value,
+          [start, end],
+          [16, 0],
+          Extrapolation.CLAMP,
+        );
+
     return {
-      opacity: o,
-      transform: [{ translateY: ty }],
+      opacity,
+      transform: [{ translateY }],
     };
   });
 
@@ -571,13 +552,21 @@ const SectionReveal: React.FC<
   );
 };
 
+/**
+ * CardFadeIn:
+ * - Each card fades in
+ * - With index-based delay to create a cascading effect
+ */
 const CardFadeIn: React.FC<
-  React.PropsWithChildren<{}>
-> = ({ children }) => (
-  <Animated.View entering={FadeIn.duration(250)}>
-    {children}
-  </Animated.View>
-);
+  React.PropsWithChildren<{ index?: number }>
+> = ({ children, index = 0 }) => {
+  const delay = index * 60; // 60ms stagger per card
+  return (
+    <Animated.View entering={FadeIn.delay(delay).duration(280)}>
+      {children}
+    </Animated.View>
+  );
+};
 
 const SpringButton: React.FC<{
   onPress: () => void;
@@ -623,9 +612,7 @@ const HomePageNative: React.FC = () => {
           ? s.routes.map((r: any) => r.name)
           : [];
         if (names.includes(name)) return true;
-        const routes = Array.isArray(s?.routes)
-          ? s.routes
-          : [];
+        const routes = Array.isArray(s?.routes) ? s.routes : [];
         for (const r of routes) {
           if (r?.state && walk(r.state)) return true;
         }
@@ -638,8 +625,7 @@ const HomePageNative: React.FC = () => {
   };
 
   const goTutorProfile = (id: string) => {
-    if (hasRoute('Profile'))
-      navAny.navigate('Profile', { id });
+    if (hasRoute('Profile')) navAny.navigate('Profile', { id });
   };
 
   const goCourse = (id: string) => {
@@ -739,8 +725,6 @@ const HomePageNative: React.FC = () => {
     FOOTER_OVERLAY_PX,
     FOOTER_OVERLAY_PX + insets.bottom,
   );
-  const NAV_SPACER_PX = 12;
-  const HERO_HEIGHT_PX = 260;
 
   const { filteredProfiles, loading } = useHomePage();
   const {
@@ -855,8 +839,7 @@ const HomePageNative: React.FC = () => {
   const [courseRatings, setCourseRatings] = useState<
     Record<string, { avg: number; count: number }>
   >({});
-  const fetchingCourseIdsRef =
-    useRef<Set<string>>(new Set());
+  const fetchingCourseIdsRef = useRef<Set<string>>(new Set());
 
   const fetchCourseRatings = async (courseId: string) => {
     if (
@@ -969,8 +952,7 @@ const HomePageNative: React.FC = () => {
   const debouncedFetchVideoRating = useMemo(
     () =>
       debounce(
-        (vid: string | number) =>
-          void fetchVideoRating(vid),
+        (vid: string | number) => void fetchVideoRating(vid),
         DEBOUNCE_MS,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -989,34 +971,6 @@ const HomePageNative: React.FC = () => {
     onScroll: (e) => {
       scrollY.value = e.contentOffset.y;
     },
-  });
-
-  const heroStyle = useAnimatedStyle(() => {
-    const tY = interpolate(
-      scrollY.value,
-      [0, 180],
-      [0, -24],
-      Extrapolation.CLAMP,
-    );
-    const sc = interpolate(
-      scrollY.value,
-      [0, 180],
-      [1.02, 1],
-      Extrapolation.CLAMP,
-    );
-    return {
-      transform: [{ translateY: tY }, { scale: sc }],
-    };
-  });
-
-  const heroOverlayStyle = useAnimatedStyle(() => {
-    const o = interpolate(
-      scrollY.value,
-      [0, 160],
-      [0.3, 0.5],
-      Extrapolation.CLAMP,
-    );
-    return { opacity: o };
   });
 
   /* ---------------------------- OER mixing ------------------------------- */
@@ -1180,74 +1134,7 @@ const HomePageNative: React.FC = () => {
       onScroll={onScroll}
       scrollEventThrottle={16}
     >
-      {/* Hero */}
-      <View
-        style={[tw`w-full`, { marginTop: NAV_SPACER_PX }]}
-      >
-        <Animated.View
-          style={[
-            tw`w-full items-center justify-center px-4`,
-            { height: HERO_HEIGHT_PX },
-            heroStyle,
-          ]}
-        >
-          <Image
-            source={{ uri: HERO_BG }}
-            style={tw`absolute inset-0 w-full h-full`}
-            resizeMode="cover"
-            blurRadius={2}
-          />
-          <Animated.View
-            style={[
-              tw`absolute inset-0 bg-black`,
-              heroOverlayStyle,
-            ]}
-          />
-
-          <View
-            style={tw`w-full items-center justify-center px-4`}
-          >
-            <Text
-              style={tw`text-white text-3xl font-extrabold text-center`}
-            >
-              Unlock Your Potential with Expert Tutors
-            </Text>
-            <Text
-              style={tw`text-white/90 mt-2 text-center`}
-            >
-              Connect with top-rated tutors for
-              personalized learning experiences.
-            </Text>
-
-            <View style={tw`flex-row gap-3 mt-4`}>
-              <SpringButton
-                onPress={() => navAny.navigate('FindTutor')}
-                bg="bg-pink-600"
-              >
-                <Text
-                  style={tw`text-white font-semibold`}
-                >
-                  Find a Tutor
-                </Text>
-              </SpringButton>
-              <SpringButton
-                onPress={() =>
-                  navAny.navigate('RobotTutor')
-                }
-                bg="bg-white dark:bg-[#0f1821]"
-              >
-                <Text
-                  style={tw`font-semibold text-pink-600 dark:text-pink-300`}
-                >
-                  Learn with AI
-                </Text>
-              </SpringButton>
-            </View>
-          </View>
-        </Animated.View>
-      </View>
-
-      {/* Featured Tutors */}
+      {/* Featured Tutors – always visible, no SectionReveal */}
       <View style={tw`mt-6 px-4`}>
         <View
           style={tw`flex-row items-center justify-between`}
@@ -1273,62 +1160,58 @@ const HomePageNative: React.FC = () => {
             No featured tutors yet.
           </Text>
         ) : (
-          <SectionReveal scrollY={scrollY}>
-            <View style={tw`mt-3 flex-row flex-wrap -mx-1`}>
-              {featuredTutors
-                .slice(0, VISIBLE_LIMIT)
-                .map((t) => (
-                  <TouchableOpacity
-                    key={`${t.id}-${t.subject}`}
-                    onPress={() =>
-                      goTutorProfile(String(t.id))
-                    }
-                    style={tw`w-1/2 px-1 mb-3`}
-                    activeOpacity={0.9}
-                  >
-                    <CardFadeIn>
-                      <View
-                        style={tw`rounded-2xl p-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
-                      >
-                        <Image
-                          source={{ uri: t.image }}
-                          style={tw`w-16 h-16 rounded-full self-center`}
-                          resizeMode="cover"
-                        />
-                        <View
-                          style={tw`mt-2 items-center`}
+          <View style={tw`mt-3 flex-row flex-wrap -mx-1`}>
+            {featuredTutors
+              .slice(0, VISIBLE_LIMIT)
+              .map((t, idx) => (
+                <TouchableOpacity
+                  key={`${t.id}-${t.subject}`}
+                  onPress={() =>
+                    goTutorProfile(String(t.id))
+                  }
+                  style={tw`w-1/2 px-1 mb-3`}
+                  activeOpacity={0.9}
+                >
+                  <CardFadeIn index={idx}>
+                    <View
+                      style={tw`rounded-2xl p-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+                    >
+                      <Image
+                        source={{ uri: t.image }}
+                        style={tw`w-16 h-16 rounded-full self-center`}
+                        resizeMode="cover"
+                      />
+                      <View style={tw`mt-2 items-center`}>
+                        <Text
+                          numberOfLines={1}
+                          style={tw`text-[13px] font-medium text-[#0d141c] dark:text-white`}
                         >
-                          <Text
-                            numberOfLines={1}
-                            style={tw`text-[13px] font-medium text-[#0d141c] dark:text-white`}
-                          >
-                            {t.name}
-                          </Text>
-                          <Text
-                            numberOfLines={1}
-                            style={tw`text-[11px] text-slate-600 dark:text-slate-400`}
-                          >
-                            {t.subject}
-                          </Text>
-                          <Text
-                            style={tw`text-yellow-600 dark:text-yellow-400 text-[11px] mt-1`}
-                          >
-                            {starRow(t.ratingAvg)}{' '}
-                            {t.ratingCount > 0
-                              ? `(${t.ratingCount})`
-                              : ''}
-                          </Text>
-                        </View>
+                          {t.name}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={tw`text-[11px] text-slate-600 dark:text-slate-400`}
+                        >
+                          {t.subject}
+                        </Text>
+                        <Text
+                          style={tw`text-yellow-600 dark:text-yellow-400 text-[11px] mt-1`}
+                        >
+                          {starRow(t.ratingAvg)}{' '}
+                          {t.ratingCount > 0
+                            ? `(${t.ratingCount})`
+                            : ''}
+                        </Text>
                       </View>
-                    </CardFadeIn>
-                  </TouchableOpacity>
-                ))}
-            </View>
-          </SectionReveal>
+                    </View>
+                  </CardFadeIn>
+                </TouchableOpacity>
+              ))}
+          </View>
         )}
       </View>
 
-      {/* Featured Courses (mixed normal + OER docs) */}
+      {/* Featured Courses (mixed normal + OER docs) – 2-column grid */}
       <View style={tw`mt-6 px-4`}>
         <View
           style={tw`flex-row items-center justify-between`}
@@ -1356,10 +1239,10 @@ const HomePageNative: React.FC = () => {
             scrollY={scrollY}
             offset={160}
           >
-            <View style={tw`mt-3`}>
+            <View style={tw`mt-3 flex-row flex-wrap -mx-1`}>
               {featuredCoursesDisplay
                 .slice(0, VISIBLE_LIMIT)
-                .map((c: any) => {
+                .map((c: any, idx) => {
                   const cid = String(c.id);
                   const base = extractRating(c);
                   const r =
@@ -1380,10 +1263,11 @@ const HomePageNative: React.FC = () => {
                         navigateForItem(c)
                       }
                       activeOpacity={0.9}
+                      style={tw`w-1/2 px-1 mb-3`}
                     >
-                      <CardFadeIn>
+                      <CardFadeIn index={idx}>
                         <View
-                          style={tw`mb-3 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+                          style={tw`rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                         >
                           <CardMedia
                             src={thumb}
@@ -1463,7 +1347,7 @@ const HomePageNative: React.FC = () => {
         )}
       </View>
 
-      {/* Featured Videos (mixed recorded + OER collections) */}
+      {/* Featured Videos (mixed recorded + OER collections) – keep single column */}
       <View style={tw`mt-6 px-4`}>
         <View
           style={tw`flex-row items-center justify-between`}
@@ -1494,7 +1378,7 @@ const HomePageNative: React.FC = () => {
             <View style={tw`mt-3`}>
               {featuredVideosMixed
                 .slice(0, VISIBLE_LIMIT)
-                .map((item) => {
+                .map((item, idx) => {
                   if (item.kind === 'recorded') {
                     const v = item.data;
                     const subject =
@@ -1547,7 +1431,7 @@ const HomePageNative: React.FC = () => {
                         }
                         activeOpacity={0.9}
                       >
-                        <CardFadeIn>
+                        <CardFadeIn index={idx}>
                           <View
                             style={tw`mb-3 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                           >
@@ -1624,7 +1508,7 @@ const HomePageNative: React.FC = () => {
                       }
                       activeOpacity={0.9}
                     >
-                      <CardFadeIn>
+                      <CardFadeIn index={idx}>
                         <View
                           style={tw`mb-3 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                         >
@@ -1668,7 +1552,7 @@ const HomePageNative: React.FC = () => {
         )}
       </View>
 
-      {/* Free Courses (OER docs only) */}
+      {/* Free Courses (OER docs only) – 2-column grid */}
       <View style={tw`mt-6 px-4`}>
         <View
           style={tw`flex-row items-center justify-between`}
@@ -1696,10 +1580,10 @@ const HomePageNative: React.FC = () => {
             scrollY={scrollY}
             offset={160}
           >
-            <View style={tw`mt-3`}>
+            <View style={tw`mt-3 flex-row flex-wrap -mx-1`}>
               {freeCoursesToShow
                 .slice(0, VISIBLE_LIMIT)
-                .map((c) => {
+                .map((c, idx) => {
                   const cid = String(c.id);
                   const base = extractRating(c);
                   const r =
@@ -1730,10 +1614,11 @@ const HomePageNative: React.FC = () => {
                         goOerReader(cid)
                       }
                       activeOpacity={0.9}
+                      style={tw`w-1/2 px-1 mb-3`}
                     >
-                      <CardFadeIn>
+                      <CardFadeIn index={idx}>
                         <View
-                          style={tw`mb-3 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+                          style={tw`rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                         >
                           <CardMedia
                             src={thumb}
@@ -1786,7 +1671,7 @@ const HomePageNative: React.FC = () => {
         )}
       </View>
 
-      {/* Free Videos (remaining OER video collections) */}
+      {/* Free Videos (remaining OER video collections) – keep single column */}
       <View style={tw`mt-6 px-4`}>
         <View
           style={tw`flex-row items-center justify-between`}
@@ -1817,7 +1702,7 @@ const HomePageNative: React.FC = () => {
             <View style={tw`mt-3`}>
               {freeVideoCollections
                 .slice(0, VISIBLE_LIMIT)
-                .map((col) => {
+                .map((col, idx) => {
                   const thumb =
                     pickThumb(col, backendUrl) ||
                     FALLBACK_CARD(col.title);
@@ -1832,7 +1717,7 @@ const HomePageNative: React.FC = () => {
                       }
                       activeOpacity={0.9}
                     >
-                      <CardFadeIn>
+                      <CardFadeIn index={idx}>
                         <View
                           style={tw`mb-3 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                         >
@@ -1876,7 +1761,7 @@ const HomePageNative: React.FC = () => {
         )}
       </View>
 
-      {/* Recommended Courses (no videos) */}
+      {/* Recommended Courses (no videos) – 2-column grid */}
       <View style={tw`mt-6 px-4`}>
         <View
           style={tw`flex-row items-center justify-between`}
@@ -1904,10 +1789,10 @@ const HomePageNative: React.FC = () => {
             scrollY={scrollY}
             offset={160}
           >
-            <View style={tw`mt-3`}>
+            <View style={tw`mt-3 flex-row flex-wrap -mx-1`}>
               {recommendedCoursesOnly
                 .slice(0, VISIBLE_LIMIT)
-                .map((c: Course) => {
+                .map((c: Course, idx) => {
                   const cid = String(c.id);
                   const base = extractRating(c);
                   const r =
@@ -1925,10 +1810,11 @@ const HomePageNative: React.FC = () => {
                         navigateForItem(c)
                       }
                       activeOpacity={0.9}
+                      style={tw`w-1/2 px-1 mb-3`}
                     >
-                      <CardFadeIn>
+                      <CardFadeIn index={idx}>
                         <View
-                          style={tw`mb-3 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+                          style={tw`rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                         >
                           <CardMedia
                             src={thumb}
