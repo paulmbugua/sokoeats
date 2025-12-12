@@ -21,15 +21,16 @@ import tw from '../../tailwind';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Slider from '@react-native-community/slider';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useWordSync } from '@mytutorapp/shared/hooks/useWordSync';
+
 import {
   listTtsVoices,
   type TtsVoiceInfo,
 } from '@mytutorapp/shared/api/ttsAvatarApi';
 
-import SelectField from './SelectField.native';
 import Markdown from '@/screens/Markdown.native';
 
 import {
@@ -37,6 +38,7 @@ import {
   useThemeTokens,
   type HighlightTemplate,
 } from '../screens/player/ThemeContext.native';
+import VoiceSelectNative from '../screens/player/VoiceSelect.native';
 
 // ───────────────────────── Types ─────────────────────────
 
@@ -118,6 +120,51 @@ const ClassroomPlayerScreen: React.FC<Props> = (props) => {
 
 export default ClassroomPlayerScreen;
 
+// Put this near the top of InnerPlayer (before you use it)
+// Put this near the top of the file, before InnerPlayer
+function indexForTime(
+  ws: Array<{ start: number; end: number }>,
+  t: number,
+): number {
+  if (!ws.length) return 0;
+
+  const first = ws[0];
+  if (!first || typeof first.start !== 'number') return 0;
+  if (t <= first.start) return 0;
+
+  const last = ws[ws.length - 1];
+  if (!last || typeof last.end !== 'number') {
+    // If the last item is weirdly missing an end, just clamp to last index
+    return ws.length - 1;
+  }
+  if (t >= last.end) return ws.length - 1;
+
+  let lo = 0;
+  let hi = ws.length - 1;
+  let ans = ws.length - 1;
+
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const midWord = ws[mid];
+
+    if (!midWord) {
+      // Defensive: should not happen, but keeps TS happy
+      hi = mid - 1;
+      continue;
+    }
+
+    if (midWord.end >= t) {
+      ans = mid;
+      hi = mid - 1;
+    } else {
+      lo = mid + 1;
+    }
+  }
+
+  return Math.max(0, Math.min(ans, ws.length - 1));
+}
+
+
 // ───────────────────── Inner Player ─────────────────────
 
 const InnerPlayer: React.FC<Props> = (props) => {
@@ -146,6 +193,19 @@ const InnerPlayer: React.FC<Props> = (props) => {
   const isDark = scheme === 'dark';
   const { width } = useWindowDimensions();
 
+  useEffect(() => {
+    // Safe global audio mode for the player (once per mount)
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    }).catch(() => {
+      // ignore if not supported
+    });
+  }, []);
+
   const {
     hlHex,
     genHex,
@@ -154,26 +214,48 @@ const InnerPlayer: React.FC<Props> = (props) => {
     setTemplateId,
   } = useThemeTokens();
 
-  // Word sync (audio, timings)
+  // ── useWordSync: timing + audioUrl only (we handle audio via expo-av here) ──
   const {
     speak,
     loading,
     error,
     words: wordsRaw,
-    currentIndex,
-    isPlaying,
-    play,
-    pause,
-    seekToWord,
-    resumeAudioContext,
     sentenceGroups,
     clearForNewSession,
     volume,
     setVolume,
     endedTick,
+    markEnded,
+    audioUrl,
+    retimeEvenly, 
   } = useWordSync();
 
+  useEffect(() => {
+    if (!audioUrl) {
+      console.log('[ClassroomPlayer.native] audioUrl is null');
+    } else {
+      console.log(
+        '[ClassroomPlayer.native] audioUrl ready',
+        audioUrl,
+        'words:',
+        (wordsRaw || []).length,
+      );
+    }
+  }, [audioUrl, wordsRaw]);
+  
+  useEffect(() => {
+  // Reset retiming guard when a new audio file is loaded
+  retimedForDurationRef.current = null;
+}, [audioUrl]);
+
+
   const words = wordsRaw ?? [];
+  const wordsRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    wordsRef.current = words as any[];
+  }, [words]);
+
   const hasLessons = Array.isArray(lessons) && lessons.length > 0;
   const hasJoined = typeof ssml === 'string' && ssml.trim().length > 0;
   const useJoined = playJoinedIfAvailable && hasJoined;
@@ -188,6 +270,25 @@ const InnerPlayer: React.FC<Props> = (props) => {
   const [showTranscript, setShowTranscript] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [showThemeSheet, setShowThemeSheet] = useState(false);
+  const [maximized, setMaximized] = useState(false);
+
+  // Reader scale
+  const [userScale, setUserScale] = useState(1);
+
+  // Local playback state (expo-av)
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [nativeIsPlaying, setNativeIsPlaying] = useState(false);
+  const [nativePositionSec, setNativePositionSec] = useState(0); // REAL audio position
+  const [currentIndex, setCurrentIndex] = useState(0);           // active word index
+  const [audioDurationSec, setAudioDurationSec] = useState(0);   // REAL audio duration
+  const autoPlayRef = useRef(false);
+  const markEndedRef = useRef(markEnded);
+  const retimedForDurationRef = useRef<number | null>(null);
+
+
+  useEffect(() => {
+    markEndedRef.current = markEnded;
+  }, [markEnded]);
 
   // Theme: template persisted
   useEffect(() => {
@@ -203,8 +304,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
     AsyncStorage.setItem(TEMPLATE_KEY, templateId).catch(() => {});
   }, [templateId]);
 
-  // Reader scale
-  const [userScale, setUserScale] = useState(1);
+  // Reader scale persisted
   useEffect(() => {
     (async () => {
       try {
@@ -218,6 +318,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
       } catch {}
     })();
   }, []);
+
   useEffect(() => {
     AsyncStorage.setItem(SCALE_KEY, String(userScale)).catch(() => {});
   }, [userScale]);
@@ -246,7 +347,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
     AsyncStorage.setItem(VOICE_KEY, voice).catch(() => {});
   }, [voice]);
 
-  // load voices
+  // load voices from backend
   useEffect(() => {
     if (!effectiveBackend) return;
     let alive = true;
@@ -255,7 +356,9 @@ const InnerPlayer: React.FC<Props> = (props) => {
       try {
         setVoicesLoading(true);
         setVoicesError(null);
-        const list = await listTtsVoices(effectiveBackend, { onlyWavenet: true });
+        const list = await listTtsVoices(effectiveBackend, {
+          onlyWavenet: true,
+        });
         if (alive) setVoicesList(list || []);
       } catch (e: any) {
         if (alive) setVoicesError(e?.message || 'Failed to load voices');
@@ -279,8 +382,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
   const titleForUi = useMemo(() => {
     if (useJoined) return title;
     if (hasLessons) {
-      const total =
-        Math.max(lessons.length, outline.length) || 1;
+      const total = Math.max(lessons.length, outline.length) || 1;
       const base =
         lessons[uiLessonIdx]?.title ||
         `${title || 'AI Lesson'} — Lesson ${uiLessonIdx + 1}/${total}`;
@@ -289,28 +391,314 @@ const InnerPlayer: React.FC<Props> = (props) => {
     return title || 'AI Lesson';
   }, [useJoined, hasLessons, lessons, outline.length, uiLessonIdx, title]);
 
-  // speak when ssml/voice changes
-  const lastSpeakKey = useRef<string | null>(null);
+  // duration from aligner (we'll still keep this as a fallback)
+  const wordDurationSec = useMemo(
+    () =>
+      words.length
+        ? Math.max(...words.map((w: any) => w.end || 0))
+        : 0,
+    [words],
+  );
+
+  // 🔑 Display duration is the REAL audio duration if available,
+  // otherwise we fall back to the aligner-based wordDurationSec.
+  // 🔑 Display duration is the REAL audio duration if available,
+// otherwise we fall back to the aligner-based wordDurationSec.
+const durationSec = audioDurationSec || wordDurationSec || 0;
+
+// For the bottom bar we always use REAL audio time.
+// Highlight is computed separately from realPosSec.
+const currentSec = nativePositionSec;
+
+  const progress = durationSec
+    ? Math.max(0, Math.min(1, currentSec / durationSec))
+    : 0;
+
+  // expo-av: load/unload sound whenever audioUrl changes
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      // No audio URL? Unload any existing sound and reset state.
+      if (!audioUrl) {
+        if (sound) {
+          try {
+            await sound.unloadAsync();
+          } catch {}
+          setSound(null);
+        }
+        setNativeIsPlaying(false);
+        setNativePositionSec(0);
+        setCurrentIndex(0);
+        setAudioDurationSec(0);
+        return;
+      }
+
+      // We have a new URL. Dispose any previous sound instance.
+      if (sound) {
+        try {
+          await sound.unloadAsync();
+        } catch {}
+        setSound(null);
+      }
+
+      try {
+        console.log(
+          '[ClassroomPlayer.native] loading sound from',
+          audioUrl,
+        );
+
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          { uri: audioUrl },
+          { shouldPlay: false, volume },
+        );
+
+        if (cancelled) {
+          try {
+            await newSound.unloadAsync();
+          } catch {}
+          return;
+        }
+
+        newSound.setOnPlaybackStatusUpdate((status) => {
+          if (!status.isLoaded) return;
+
+          const realPosSec = (status.positionMillis ?? 0) / 1000;
+          const realDurSec = (status.durationMillis ?? 0) / 1000;
+
+          // Track the real audio duration and (once) retime the word timeline to match it
+          if (realDurSec && !Number.isNaN(realDurSec)) {
+            setAudioDurationSec(realDurSec);
+
+            const ws = wordsRef.current;
+            if (
+              ws &&
+              ws.length &&
+              !retimedForDurationRef.current &&
+              realDurSec > 0.5
+            ) {
+              const lastEnd = Number(ws[ws.length - 1]?.end ?? 0);
+              if (lastEnd > 0) {
+                const gap = realDurSec - lastEnd;
+                const rel = Math.abs(gap) / Math.max(0.5, realDurSec);
+                const TH_ABS = 0.05; // 50ms absolute tolerance
+                const TH_REL = 0.01; // 1% relative tolerance
+
+                // Only rescale if the timing tail clearly disagrees with the audio length
+                if (Math.abs(gap) > TH_ABS || rel > TH_REL) {
+                  // This rescales all word start/end to fill [0, realDurSec]
+                  retimeEvenly(realDurSec);
+                }
+
+                retimedForDurationRef.current = realDurSec;
+              }
+            }
+          }
+
+          // REAL playback position drives the UI timer
+          setNativePositionSec(realPosSec);
+
+        // REAL playback position drives the UI timer
+        setNativePositionSec(realPosSec);
+
+        // Map REAL audio time directly into the word timeline
+        const ws2 = wordsRef.current;
+        if (ws2 && ws2.length) {
+          const last = ws2[ws2.length - 1] as any;
+          const lastEnd =
+            typeof last?.end === 'number' ? Number(last.end) : wordDurationSec;
+
+          if (lastEnd > 0.1) {
+            // Clamp to the last word's end so we never "run past" the text
+            const t = Math.min(realPosSec, lastEnd);
+            const idx = indexForTime(ws2 as any, t);
+            setCurrentIndex((prev) => (prev === idx ? prev : idx));
+          }
+        }
+
+          if (status.didJustFinish) {
+            setNativeIsPlaying(false);
+            markEndedRef.current?.();
+          }
+        });
+
+        setSound(newSound);
+        setNativePositionSec(0);
+        setCurrentIndex(0);
+
+        // autoplay if requested
+        if (autoPlayRef.current) {
+          autoPlayRef.current = false;
+          try {
+            await newSound.playAsync();
+            setNativeIsPlaying(true);
+          } catch (e) {
+            console.warn(
+              '[ClassroomPlayer.native] autoplay failed',
+              e,
+            );
+          }
+        }
+      } catch (e) {
+        console.warn('[ClassroomPlayer.native] load sound error', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioUrl, volume]);
+
+  // keep expo-av volume in sync with hook volume
+  useEffect(() => {
+    if (sound) {
+      sound.setVolumeAsync(volume).catch(() => {});
+    }
+  }, [sound, volume]);
+
+  // Seek helpers: now driven purely by audio duration + word count
+  const seekToWordNative = useCallback(
+  async (idx: number) => {
+    if (!sound || !words.length) return;
+    const clamped = Math.max(0, Math.min(words.length - 1, idx));
+    const targetWord = words[clamped] as any;
+
+    const fallbackTotal =
+      audioDurationSec || wordDurationSec || 0;
+
+    const targetSec =
+      typeof targetWord?.start === 'number'
+        ? Math.max(0, targetWord.start)
+        : (fallbackTotal || 0) * (clamped / Math.max(1, words.length));
+
+    try {
+      await sound.setPositionAsync(targetSec * 1000);
+      setNativePositionSec(targetSec);
+      setCurrentIndex(clamped);
+    } catch (e) {
+      console.warn(
+        '[ClassroomPlayer.native] seekToWordNative failed',
+        e,
+      );
+    }
+  },
+  [sound, words, audioDurationSec, wordDurationSec],
+);
+
+
+  const seekToTime = useCallback(
+  (t: number) => {
+    if (!sound) return;
+    const totalDur = audioDurationSec || wordDurationSec || 0;
+    if (!totalDur) return;
+
+    const clamped = Math.max(0, Math.min(totalDur, t));
+
+    (async () => {
+      try {
+        await sound.setPositionAsync(clamped * 1000);
+        setNativePositionSec(clamped);
+
+        const ws = wordsRef.current;
+        if (ws && ws.length) {
+          const last = ws[ws.length - 1] as any;
+          const lastEnd =
+            typeof last?.end === 'number' ? Number(last.end) : wordDurationSec;
+
+          if (lastEnd > 0.1) {
+            const t2 = Math.min(clamped, lastEnd);
+            const idx = indexForTime(ws as any, t2);
+            setCurrentIndex(idx);
+          }
+        }
+      } catch (e) {
+        console.warn('[ClassroomPlayer.native] seekToTime failed', e);
+      }
+    })();
+  },
+  [sound, audioDurationSec, wordDurationSec],
+);
+
+
+  const nudgeSeconds = (d: number) =>
+    seekToTime(currentSec + d);
+
+  // play/pause (native)
+  const handlePlayPause = useCallback(async () => {
+    try {
+      if (!sound) {
+        return;
+      }
+      if (!nativeIsPlaying) {
+        if (!words.length) {
+          onRequestStart?.();
+          onPlayerLoadingChange?.(true);
+        }
+        await onBeforePlay?.();
+        await sound.playAsync();
+        setNativeIsPlaying(true);
+      } else {
+        await sound.pauseAsync();
+        setNativeIsPlaying(false);
+      }
+    } catch (e) {
+      console.warn('[ClassroomPlayer.native] play/pause failed', e);
+    }
+  }, [
+    sound,
+    nativeIsPlaying,
+    words.length,
+    onBeforePlay,
+    onRequestStart,
+    onPlayerLoadingChange,
+  ]);
+
+  // loading callback from hook
+  useEffect(() => {
+    onPlayerLoadingChange?.(loading);
+  }, [loading, onPlayerLoadingChange]);
+
+  // speak when ssml/voice changes (just trigger TTS; audio is picked up via audioUrl)
+  const lastSpeakKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!effectiveBackend) return;
-    const key = `${voice}|${effectiveSsml.length}|${uiLessonIdx}|${
+
+    const trimmed = (effectiveSsml || '').trim();
+    if (!trimmed) return;
+
+    const key = `${voice}|${trimmed.length}|${uiLessonIdx}|${
       useJoined ? 'joined' : 'per'
     }`;
-    if (!effectiveSsml || key === lastSpeakKey.current) return;
+
+    // ⬇️ If we've already requested this exact lesson+voice, don't call TTS again
+    if (key === lastSpeakKeyRef.current) return;
+    lastSpeakKeyRef.current = key;
 
     let cancelled = false;
 
     (async () => {
       try {
-        await pause();
+        // Stop any current playback (best-effort)
+        if (sound) {
+          try {
+            await sound.stopAsync();
+          } catch {}
+        }
+
         clearForNewSession();
-        if (!effectiveSsml.trim() || cancelled) return;
+        if (!trimmed || cancelled) return;
+
+        // Tell the audio-loader effect to auto-play when the new audioUrl arrives
+        autoPlayRef.current = true;
+
         await speak(effectiveBackend, {
-          ssml: effectiveSsml.trim(),
+          ssml: trimmed,
           voiceName: voice,
         });
-        lastSpeakKey.current = key;
+
+        if (cancelled) return;
       } catch (e) {
         console.warn('[ClassroomPlayer.native] speak failed', e);
       }
@@ -319,105 +707,17 @@ const InnerPlayer: React.FC<Props> = (props) => {
     return () => {
       cancelled = true;
     };
-  }, [effectiveBackend, effectiveSsml, uiLessonIdx, useJoined, voice, speak, pause, clearForNewSession]);
-
-  // duration / progress
-  const durationSec = useMemo(
-    () =>
-      words.length
-        ? Math.max(...words.map((w: any) => w.end || 0))
-        : 0,
-    [words],
-  );
-  const currentSec = useMemo(
-    () => (words as any)[currentIndex]?.start ?? 0,
-    [words, currentIndex],
-  );
-  const progress = durationSec
-    ? Math.max(0, Math.min(1, currentSec / durationSec))
-    : 0;
-
-  // Seek helpers
- function indexForTime(
-  ws: Array<{ start: number; end: number }>,
-  t: number,
-): number {
-  if (!ws.length) return 0;
-
-  const first = ws[0]!;
-  const last = ws[ws.length - 1]!;
-
-  if (t <= first.start) return 0;
-  if (t >= last.end) return ws.length - 1;
-
-  let lo = 0;
-  let hi = ws.length - 1;
-  let ans = ws.length - 1;
-
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const midWord = ws[mid]!; // non-null assertion
-
-    if (midWord.end >= t) {
-      ans = mid;
-      hi = mid - 1;
-    } else {
-      lo = mid + 1;
-    }
-  }
-  return Math.max(0, Math.min(ans, ws.length - 1));
-}
-
-  const seekToTime = useCallback(
-    (t: number) => {
-      if (!words.length) return;
-      const tt = Math.max(0, Math.min(durationSec, t));
-      try {
-        void resumeAudioContext();
-      } catch {}
-      const idx = indexForTime(words as any, tt);
-      seekToWord(idx);
-    },
-    [words, durationSec, resumeAudioContext, seekToWord, indexForTime],
-  );
-
-  const nudgeSeconds = (d: number) =>
-    seekToTime(Math.max(0, Math.min(durationSec, currentSec + d)));
-
-  // play/pause
-  const handlePlayPause = useCallback(async () => {
-    try {
-      await resumeAudioContext();
-      if (!isPlaying) {
-        if (!words.length) {
-          onRequestStart?.();
-          onPlayerLoadingChange?.(true);
-        }
-        await onBeforePlay?.();
-        await play();
-      } else {
-        pause();
-      }
-    } catch (e) {
-      console.warn('[ClassroomPlayer.native] play/pause failed', e);
-    }
   }, [
-    isPlaying,
-    words.length,
-    play,
-    pause,
-    resumeAudioContext,
-    onBeforePlay,
-    onRequestStart,
-    onPlayerLoadingChange,
+    effectiveBackend,
+    effectiveSsml,
+    uiLessonIdx,
+    useJoined,
+    voice,
+    speak,
+    clearForNewSession,
   ]);
 
-  // loading callback
-  useEffect(() => {
-    onPlayerLoadingChange?.(loading);
-  }, [loading, onPlayerLoadingChange]);
-
-  // ended / auto-next
+  // ended / auto-next (driven by markEnded → endedTick)
   const lastEndedTickRef = useRef(0);
   useEffect(() => {
     if (!endedTick || endedTick === lastEndedTickRef.current) return;
@@ -436,7 +736,6 @@ const InnerPlayer: React.FC<Props> = (props) => {
 
     if (!hasImmediateNext && !maybeMoreComing) return;
 
-    // Prefer parent onNext, else local index advance
     (async () => {
       if (typeof onNext === 'function') {
         try {
@@ -496,7 +795,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
     [lessons?.length, outline?.length],
   );
 
-  // Volume / mute
+  // Volume / mute (still using hook's volume + setVolume)
   const [mutedAt, setMutedAt] = useState<number | null>(null);
   const toggleMute = () => {
     if (mutedAt === null && volume > 0) {
@@ -520,7 +819,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
       {/* Background "glass" frame */}
       <View
         style={tw.style(
-          'flex-1 mx-3 my-2 rounded-3xl overflow-hidden',
+          'flex-1 rounded-3xl overflow-hidden',
           'bg-slate-900/90 dark:bg-black/90 border border-white/10',
           'shadow-[0_20px_60px_rgba(15,23,42,0.85)]',
         )}
@@ -534,7 +833,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
           voicesLoading={voicesLoading}
           voicesError={voicesError}
           onPlayPause={handlePlayPause}
-          playing={isPlaying}
+          playing={nativeIsPlaying}
           loading={loading}
           onToggleTranscript={() => setShowTranscript((s) => !s)}
           transcriptOpen={showTranscript}
@@ -542,45 +841,49 @@ const InnerPlayer: React.FC<Props> = (props) => {
           onToggleTheme={() => setShowThemeSheet(true)}
           lessonIndex={uiLessonIdx}
           totalLessons={totalLessonsForUi}
+          maximized={maximized}
+          onToggleMaximize={() => setMaximized((m) => !m)}
         />
 
         {/* Body */}
         <View style={tw`flex-1 px-3 pb-3 pt-1`}>
-          {/* Small chip row */}
-          <View style={tw`flex-row items-center justify-between mb-2`}>
-            <View
-              style={tw.style(
-                'px-3 py-1 rounded-full',
-                'bg-slate-800/80 dark:bg-slate-900/90 border border-white/10',
-              )}
-            >
-              <Text
-                style={tw`text-[11px] text-slate-100 dark:text-slate-200`}
-                numberOfLines={1}
-              >
-                {course?.title || course?.name || 'AI Course'}
-              </Text>
-            </View>
-            {hasLessons && (
+          {/* Small chip row (hidden in maximized mode) */}
+          {!maximized && (
+            <View style={tw`flex-row items-center justify-between mb-2`}>
               <View
                 style={tw.style(
-                  'px-3 py-1 rounded-full flex-row items-center gap-1',
+                  'px-3 py-1 rounded-full',
                   'bg-slate-800/80 dark:bg-slate-900/90 border border-white/10',
                 )}
               >
-                <Ionicons
-                  name="book-outline"
-                  size={14}
-                  color="#e5e7eb"
-                />
                 <Text
                   style={tw`text-[11px] text-slate-100 dark:text-slate-200`}
+                  numberOfLines={1}
                 >
-                  Lesson {uiLessonIdx + 1}/{totalLessonsForUi}
+                  {course?.title || course?.name || 'AI Course'}
                 </Text>
               </View>
-            )}
-          </View>
+              {hasLessons && (
+                <View
+                  style={tw.style(
+                    'px-3 py-1 rounded-full flex-row items-center gap-1',
+                    'bg-slate-800/80 dark:bg-slate-900/90 border border-white/10',
+                  )}
+                >
+                  <Ionicons
+                    name="book-outline"
+                    size={14}
+                    color="#e5e7eb"
+                  />
+                  <Text
+                    style={tw`text-[11px] text-slate-100 dark:text-slate-200`}
+                  >
+                    Lesson {uiLessonIdx + 1}/{totalLessonsForUi}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Main narration "stage" */}
           <NarrationStage
@@ -593,6 +896,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
             genHex={genHex}
             activeTextOnHl={activeTextOnHl}
             isDark={isDark}
+            maximized={maximized}
           />
 
           {/* Error / status */}
@@ -632,7 +936,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
           onBack5={() => nudgeSeconds(-5)}
           onFwd5={() => nudgeSeconds(5)}
           onPlayPause={handlePlayPause}
-          playing={isPlaying}
+          playing={nativeIsPlaying}
           loading={loading}
           volume={volume}
           volDown={volDown}
@@ -645,7 +949,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
           isBuildingNext={!!isBuildingNext}
           userScale={userScale}
           setUserScale={setUserScale}
-          hlHex={hlHex} 
+          hlHex={hlHex}
         />
       </View>
 
@@ -657,7 +961,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
         sentences={sentences}
         words={words as any}
         currentIndex={currentIndex}
-        seekToWord={seekToWord}
+        seekToWord={seekToWordNative}
       />
 
       {/* Notes modal */}
@@ -673,7 +977,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
         }
       />
 
-      {/* Theme sheet (templates + quick highlight presets) */}
+      {/* Theme sheet */}
       <ThemeSheet
         open={showThemeSheet}
         onClose={() => setShowThemeSheet(false)}
@@ -703,6 +1007,8 @@ function TopBarMobile({
   onToggleTheme,
   lessonIndex,
   totalLessons,
+  maximized,
+  onToggleMaximize,
 }: {
   title: string;
   voice: string;
@@ -719,6 +1025,8 @@ function TopBarMobile({
   onToggleTheme: () => void;
   lessonIndex: number;
   totalLessons: number;
+  maximized: boolean;
+  onToggleMaximize: () => void;
 }) {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
@@ -729,16 +1037,14 @@ function TopBarMobile({
     ? [voice]
     : [];
 
-  const selectOptions = voiceOptions.map((v) => ({
-    label: v,
-    value: v,
-  }));
-
-  const voiceLabel = voicesLoading
-    ? 'Loading voices…'
-    : voicesError
-    ? 'Voices unavailable'
-    : voice || 'Voice';
+  const voiceLabel =
+    voicesLoading
+      ? 'Loading voices…'
+      : voiceOptions.length
+      ? voice
+      : voicesError
+      ? 'Voices unavailable'
+      : voice || 'Voice';
 
   return (
     <View
@@ -771,15 +1077,14 @@ function TopBarMobile({
         </View>
       </View>
 
-      {/* Voice select (compact) */}
-      <View style={tw`w-32`}>
-        <SelectField
+      {/* Voice select (native pill) */}
+      <View style={tw`mr-1`}>
+        <VoiceSelectNative
           value={voice}
           onChange={setVoice}
-          options={selectOptions}
-          placeholder={voiceLabel}
-          placeholderColor="rgba(148,163,184,0.9)"
-          selectedTextColor={isDark ? '#e5e7eb' : '#0f172a'}
+          options={voiceOptions}
+          loading={!!voicesLoading}
+          error={voicesError ?? null}
         />
       </View>
 
@@ -828,29 +1133,19 @@ function TopBarMobile({
         />
       </Pressable>
 
+      {/* Maximize / minimize */}
       <Pressable
-        onPress={onPlayPause}
-        disabled={loading}
+        onPress={onToggleMaximize}
         style={tw.style(
-          'ml-2 h-9 px-3 rounded-full flex-row items-center justify-center',
-          loading
-            ? 'bg-slate-600/60'
-            : 'bg-white',
+          'h-9 w-9 rounded-full items-center justify-center',
+          'bg-white/10 dark:bg-white/10 ml-1',
         )}
       >
-        <Ionicons
-          name={playing ? 'pause' : 'play'}
-          size={14}
-          color={loading ? '#e5e7eb' : '#000'}
+        <MaterialIcons
+          name={maximized ? 'fullscreen-exit' : 'fullscreen'}
+          size={18}
+          color="#f9fafb"
         />
-        <Text
-          style={tw.style(
-            'text-xs font-semibold ml-1',
-            loading ? 'text-slate-200' : 'text-black',
-          )}
-        >
-          {playing ? 'Pause' : loading ? 'Loading' : 'Play'}
-        </Text>
       </Pressable>
     </View>
   );
@@ -868,6 +1163,7 @@ function NarrationStage({
   genHex,
   activeTextOnHl,
   isDark,
+  maximized,
 }: {
   sentences: SentenceGroup[];
   words: { text: string; start: number; end: number }[];
@@ -878,6 +1174,7 @@ function NarrationStage({
   genHex: string;
   activeTextOnHl: string;
   isDark: boolean;
+  maximized: boolean;
 }) {
   const activeSentenceIdx = useMemo(() => {
     if (!sentences?.length) return 0;
@@ -944,7 +1241,8 @@ function NarrationStage({
   return (
     <View
       style={tw.style(
-        'flex-1 mt-1 mb-2 rounded-3xl border border-white/10',
+        'flex-1 rounded-3xl border border-white/10',
+        maximized ? 'mt-0 mb-0' : 'mt-1 mb-2',
         'bg-slate-900/70 dark:bg-slate-950/80 px-4 py-4',
       )}
     >
@@ -1021,7 +1319,7 @@ function BottomBarMobile({
   isBuildingNext,
   userScale,
   setUserScale,
-  hlHex, 
+  hlHex,
 }: {
   currentSec: number;
   durationSec: number;
@@ -1043,7 +1341,7 @@ function BottomBarMobile({
   isBuildingNext: boolean;
   userScale: number;
   setUserScale: (n: number) => void;
-   hlHex: string; 
+  hlHex: string;
 }) {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
@@ -1121,9 +1419,7 @@ function BottomBarMobile({
               disabled={isBuildingNext}
               style={tw.style(
                 'px-2 py-1 rounded-full',
-                isBuildingNext
-                  ? 'bg-white/20'
-                  : 'bg-white',
+                isBuildingNext ? 'bg-white/20' : 'bg-white',
               )}
             >
               <Text
@@ -1204,9 +1500,7 @@ function BottomBarMobile({
           </Text>
           <Pressable
             onPress={() =>
-              setUserScale(
-                Math.max(minScale, userScale - 0.1),
-              )
+              setUserScale(Math.max(minScale, userScale - 0.1))
             }
             style={tw`h-7 w-7 rounded-full bg-white/10 items-center justify-center`}
           >
@@ -1214,9 +1508,7 @@ function BottomBarMobile({
           </Pressable>
           <Pressable
             onPress={() =>
-              setUserScale(
-                Math.min(maxScale, userScale + 0.1),
-              )
+              setUserScale(Math.min(maxScale, userScale + 0.1))
             }
             style={tw`ml-1 h-7 w-7 rounded-full bg-white/10 items-center justify-center`}
           >
@@ -1489,13 +1781,7 @@ function ThemeSheet({
                 >
                   <Pressable
                     onPress={() => {
-                      // We only know setHighlightColor exists in ThemeContext.native,
-                      // but since we don't import it here, user can wire presets
-                      // to that in ThemeContext if desired.
-                      // For now this sheet is visual; you can connect color change
-                      // via updating ThemeContext.
-                      // If ThemeContext exposes setHighlightColor, you can
-                      // pass it here and call it.
+                      // Hook up to ThemeContext's color setter if/when you expose it.
                     }}
                     style={[
                       tw`h-6 w-6 rounded-full border border-white/20`,

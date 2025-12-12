@@ -37,14 +37,17 @@ export const getTutorReviews = async (
   token: string,
   tutorId: string
 ): Promise<{ avgRating: number; totalReviews: number }> => {
-  const response = await axios.get(`${backendUrl}/api/reviews?tutorId=${encodeURIComponent(tutorId)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await axios.get(
+    `${backendUrl}/api/reviews?tutorId=${encodeURIComponent(tutorId)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
   return {
     avgRating: response.data.avgRating,
     totalReviews: response.data.totalReviews,
   };
 };
+
+/* ───────────────────────── M-Pesa helpers ───────────────────────── */
 
 export const initiatePayment = async (
   backendUrl: string,
@@ -88,4 +91,79 @@ export const updateMpesaReference = async (
     { headers: { Authorization: `Bearer ${token}` } }
   );
   return response.data;
+};
+
+/* ────────────────────── Paystack card charge (inline) ───────────────────── */
+
+export interface PaystackCardDetails {
+  number: string;      // may contain spaces, backend will strip
+  exp_month: string;   // "01".."12" or "1".."12"
+  exp_year: string;    // "2027" or "27" (backend normalises)
+  cvc: string;
+  name?: string;
+}
+
+export interface PaystackCardChargePayload {
+  packageId: string | number;
+  card: PaystackCardDetails;
+  email?: string;      // optional override; backend falls back to user.email
+}
+
+export interface PaystackCardChargeResponse {
+  ok?: boolean;
+  status?: string;
+  reference?: string;
+  tokensBalance?: number;
+  creditsPurchased?: number;
+  requiresAction?: boolean;
+  paystackStatus?: string;
+  message?: string;
+  raw?: unknown;
+  paystack?: unknown;
+}
+
+/**
+ * Inline card charge via Paystack: POST /api/paystack/card-charge
+ * Backend:
+ *   - creates payments row (PAYSTACK, Pending, USD)
+ *   - calls Paystack /charge
+ *   - on success, credits tokens + marks payment Completed
+ */
+export const paystackCardCharge = async (
+  backendUrl: string,
+  token: string,
+  payload: {
+    packageId: string;
+    card: {
+      number: string;
+      exp_month: string;
+      exp_year: string;
+      cvc: string;
+      name: string;
+    };
+  }
+): Promise<any> => {
+  const url = new URL('/api/paystack/card-charge', backendUrl).toString();
+  const res = await axios.post(url, payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  return res.data;
+};
+
+export const paystackSubmitOtp = async (
+  backendUrl: string,
+  token: string,
+  payload: { reference: string; otp: string }
+): Promise<any> => {
+  const url = new URL('/api/paystack/submit-otp', backendUrl).toString();
+  const res = await axios.post(url, payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  return res.data;
 };

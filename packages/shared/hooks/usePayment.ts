@@ -81,9 +81,21 @@ const usePayment = (): UsePaymentResult => {
 
   // --- Currency inference based on payment method or user pref ---
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
+
   const inferredCurrency: Currency = useMemo(() => {
-    if (selectedPaymentMethod === 'PayPal' || selectedPaymentMethod === 'Visa/MasterCard') return 'USD';
-    if (selectedPaymentMethod === 'M-Pesa' || selectedPaymentMethod === 'MPESA') return 'KES';
+    if (
+      selectedPaymentMethod === 'PayPal' ||
+      selectedPaymentMethod === 'Visa/MasterCard' ||
+      selectedPaymentMethod === 'Paystack' ||
+      selectedPaymentMethod === 'Card'
+    ) {
+      return 'USD';
+    }
+
+    if (selectedPaymentMethod === 'M-Pesa' || selectedPaymentMethod === 'MPESA') {
+      return 'KES';
+    }
+
     const pref = (profile as any)?.payoutCurrency;
     return (pref === 'KES' || pref === 'USD') ? pref : 'USD';
   }, [selectedPaymentMethod, profile]);
@@ -217,7 +229,7 @@ const usePayment = (): UsePaymentResult => {
 
   const updateError = (updateErr as Error)?.message ?? null;
 
-  // Placeholder for card/other checkout (PayPal handled by its own hook)
+  // Placeholder for other checkouts (Paystack is handled inline in the PaymentWidget)
   const handleCheckout = useCallback(() => {
     alert('Checkout coming soon…');
   }, []);

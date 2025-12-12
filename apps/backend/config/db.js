@@ -17,7 +17,8 @@ const cfg = process.env.DATABASE_URL
       database: process.env.DB_NAME,
     };
 
-          
+   
+    
   const wantSsl =
   process.env.PGSSL === 'require' ||
   (isProd && !!process.env.DATABASE_URL);

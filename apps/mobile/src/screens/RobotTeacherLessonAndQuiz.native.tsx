@@ -273,17 +273,24 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   }, [innerPlayerReady, hasRenderableLesson, onPlayerReady, onPlayerLoadingChange]);
 
   const { width, height: winH } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const horizontalPadding = 24;
-  const maxWidth = Math.min(width - horizontalPadding, 1088);
-  const OUTLINE_GAP = 24;
-  const SAFE_V = (insets?.top ?? 0) + (insets?.bottom ?? 0);
+const insets = useSafeAreaInsets();
+const horizontalPadding = 24;
+const maxWidth = Math.min(width - horizontalPadding, 1088);
+const OUTLINE_GAP = 24;
+const SAFE_V = (insets?.top ?? 0) + (insets?.bottom ?? 0);
 
-  // ───────── Size: DOUBLE the compact/min heights, keep sane caps ─────────
-const maxPlayableHeight = Math.max(360, winH - OUTLINE_GAP - SAFE_V);
+// ───────── More compact player height ─────────
+// Base maximum we are allowed to use (screen minus margins/safe-area)
+const baseMax = Math.max(280, winH - OUTLINE_GAP - SAFE_V);
 
-  // ✅ Always fill the reserved height (both compact + maximized)
-  const desiredHeight = maxPlayableHeight;
+// ~40–45% of the screen in normal mode, up to baseMax
+const compactHeight = Math.min(baseMax, winH * 0.60);
+
+// ~75% of the screen when maximized, up to baseMax
+const maximizedHeight = Math.min(baseMax, winH * 0.75);
+
+// Final height: smaller by default, taller only when maximized
+const desiredHeight = isMaximized ? maximizedHeight : compactHeight;
 
   // ───────────────────────────────────────────────────────
   // state
@@ -957,7 +964,7 @@ useEffect(() => {
                 alignSelf: 'center',
                 width: '100%',
                 maxWidth: 1088,        // keep as-is; width already spans mobile
-                height: desiredHeight, // doubled height
+                height: desiredHeight, // compact vs maximized height
                 overflow: 'hidden',
               },
             ]}

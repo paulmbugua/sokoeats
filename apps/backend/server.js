@@ -56,6 +56,7 @@ import certificateRoutes from './routes/certificateRoutes.js';
 import payoutRoutes from './routes/payoutRoutes.js';
 import { inflightLimiter } from './middleware/inflightLimiter.js';
 import orgExamsRoutes from './routes/orgExamsRoutes.js';
+import paystackRoutes from './routes/paystackRoutes.js';
 // Middleware
 import {
   morganMiddleware,
@@ -246,6 +247,7 @@ app.use('/api',                                        webhookRoutes);
 app.use('/api/paypal',                                 paypalRoutes);
 app.use('/api/payouts',                                payoutRoutes);
 app.use('/api/payment', refundRoutes);
+app.use('/api/paystack', paystackRoutes);
 
 
 // Tutor sessions / M-Pesa

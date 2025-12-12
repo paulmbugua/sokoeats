@@ -11,8 +11,7 @@ import {
   Alert,
   Linking,
   ScrollView,
-  Platform,
-} from 'react-native';
+ } from 'react-native';
 import {
   useNavigation,
   useRoute,
@@ -35,11 +34,11 @@ import type {
 } from '@mytutorapp/shared/types';
 
 import tw from '../../tailwind';
-import { Picker } from '@react-native-picker/picker';
 import DateTimePicker, { Event } from '@react-native-community/datetimepicker';
 import type { MainStackParamList, ActiveTab } from '../navigation/types';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { notifyNow } from '../../utils/notifications';
+import SelectField, { type Option as SelectOption } from './SelectField.native';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -247,6 +246,21 @@ const AccountSectionNative: React.FC = () => {
       else console.log(m);
     },
   });
+
+    // Build options for Session Type dropdown (from pricing map)
+  const sessionTypeOptions: SelectOption[] = useMemo(() => {
+    const pricingMap = formData.pricing as Record<string, number | string> | undefined;
+    if (!pricingMap) return [];
+
+    return Object.entries(pricingMap).map(([type, price]) => {
+      const label =
+        `${type.charAt(0).toUpperCase() + type.slice(1)} – ${price} Tokens`;
+      return { value: type, label };
+    });
+  }, [formData.pricing]);
+
+  const hasSessionTypes = sessionTypeOptions.length > 0;
+
 
   // Totals by currency (derived from transactions)
   const { lifetimeByCurrency, pendingWithdrawalsByCurrency, completedEarnings } =
@@ -726,52 +740,31 @@ const AccountSectionNative: React.FC = () => {
                     {sessionFormErrors.subject}
                   </Text>
                 )}
+                    {/* Session Type (from pricing map) */}
+                    <View style={tw`mt-1`}>
+                      <SelectField
+                        // no label here; we already have context from the form title
+                        value={formData.sessionType || ''}
+                        onChange={(sessionType) => {
+                          const sessionCost = String(
+                            (formData.pricing as Record<string, number | string>)?.[sessionType] ?? 0
+                          );
+                          setFormData({ ...formData, sessionType, sessionCost });
 
-                {/* Session Type (from pricing map) */}
-                <View
-                  style={tw.style(
-                    'bg-[#e7edf4] dark:bg-[#172534] border rounded-xl mb-1 overflow-hidden',
-                    sessionFormErrors.sessionType
-                      ? 'border-red-500'
-                      : 'border-[#cedbe8] dark:border-white/10'
-                  )}
-                >
-                  <Picker
-                    selectedValue={formData.sessionType || ''}
-                    onValueChange={(sessionType: string) => {
-                      const sessionCost = String(
-                        (formData.pricing as Record<string, number | string>)?.[
-                          sessionType
-                        ] ?? 0
-                      );
-                      setFormData({ ...formData, sessionType, sessionCost });
-                      if (sessionFormErrors.sessionType) {
-                        const { sessionType: _st, ...rest } = sessionFormErrors;
-                        setSessionFormErrors(rest);
-                      }
-                    }}
-                    style={tw`text-slate-900 dark:text-white`}
-                    dropdownIconColor={Platform.OS === 'android' ? '#64748b' : undefined}
-                    mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-                  >
-                    <Picker.Item label="Select Session Type" value="" />
-                    {formData.pricing &&
-                      Object.entries(formData.pricing).map(([type, price]) => (
-                        <Picker.Item
-                          key={type}
-                          label={`${type.charAt(0).toUpperCase() + type.slice(1)} – ${price} Tokens`}
-                          value={type}
-                        />
-                      ))}
-                  </Picker>
-                </View>
-                {sessionFormErrors.sessionType && (
-                  <Text
-                    style={tw`mb-2 text-[11px] text-red-600 dark:text-red-400`}
-                  >
-                    {sessionFormErrors.sessionType}
-                  </Text>
-                )}
+                          if (sessionFormErrors.sessionType) {
+                            const { sessionType: _st, ...rest } = sessionFormErrors;
+                            setSessionFormErrors(rest);
+                          }
+                        }}
+                        options={sessionTypeOptions}
+                        placeholder={
+                          hasSessionTypes ? 'Select Session Type' : 'No session types configured'
+                        }
+                        modalTitle="Select session type"
+                        error={sessionFormErrors.sessionType}
+                      />
+                    </View>
+
 
                 {/* Date */}
                 <TouchableOpacity

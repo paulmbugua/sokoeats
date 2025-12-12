@@ -238,7 +238,7 @@ export function useRobotSpeaker() {
 
         lastFailAtRef.current = Date.now();
         const code = extractErrorCode(e);
-        const friendly = toFriendlyError(code, e?.message || 'Failed to synthesize speech');
+        const friendly = toFriendlyError(code, e?.message || '');
         // eslint-disable-next-line no-console
         console.warn(NS, 'REQUEST error', {
           callId,

@@ -578,7 +578,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
   );
 
   return (
-    <View style={tw`relative`}>
+   <View style={tw.style('relative', 'flex-1')}>
       <ClassroomPlayer
   {...props}
   disableInternalBackdrop

@@ -751,27 +751,31 @@ export function useWordSync() {
   }, [currentIndex, syncSkewMs, useSentenceBlocks, sentenceGroups]);
 
   // Reset between sessions (no duplication, no drift carryover)
-  const clearForNewSession = useCallback(() => {
-    lastTimingSigRef.current = '';
-    microSkewRef.current = 0;
-    microScaleRef.current = 1;
-    anchorMediaRef.current = 0;
-    anchorWordRef.current = 0;
-    setWords([]);
-    setCurrentIndex(0);
-    const el = audioEl.current;
-    if (el) {
-      try {
-        el.pause();
-      } catch {}
-      try {
-        el.removeAttribute('src');
-      } catch {}
-      try {
-        el.load();
-      } catch {}
-    }
-  }, []);
+  // Reset between sessions (no duplication, no drift carryover)
+const clearForNewSession = useCallback(() => {
+  lastTimingSigRef.current = '';
+  microSkewRef.current = 0;
+  microScaleRef.current = 1;
+  anchorMediaRef.current = 0;
+  anchorWordRef.current = 0;
+
+  // Only clear if there's something to clear
+  setWords((prev) => (prev.length ? [] : prev));
+  setCurrentIndex((prev) => (prev !== 0 ? 0 : prev));
+
+  const el = audioEl.current;
+  if (el) {
+    try {
+      el.pause();
+    } catch {}
+    try {
+      el.removeAttribute('src');
+    } catch {}
+    try {
+      el.load();
+    } catch {}
+  }
+}, []);
 
   /* ─── Apply fresh TTS response → choose timing source; lock audio; retime if needed ─── */
   useEffect(() => {
