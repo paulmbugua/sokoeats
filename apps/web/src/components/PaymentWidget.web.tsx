@@ -76,6 +76,56 @@ function getPayoutCurrency(
   return undefined;
 }
 
+/* ───────────────────── Locale + FX helpers ───────────────────── */
+
+// Guess browser locale (client only)
+function getBrowserLocale(): string {
+  if (typeof navigator === 'undefined') return 'en-US';
+  return navigator.language || 'en-US';
+}
+
+// Map region codes → likely currency
+const regionToCurrency: Record<string, string> = {
+  US: 'USD',
+  KE: 'KES',
+  QA: 'QAR',
+  GB: 'GBP',
+  IE: 'EUR',
+  DE: 'EUR',
+  FR: 'EUR',
+  ES: 'EUR',
+  IT: 'EUR',
+  NL: 'EUR',
+  BE: 'EUR',
+  NG: 'NGN',
+  ZA: 'ZAR',
+  IN: 'INR',
+  UG: 'UGX', // Uganda
+  TZ: 'TZS', // Tanzania
+};
+
+function guessCurrencyFromLocale(locale: string): string {
+  const parts = locale.split(/[-_]/);
+  const region = parts[1]?.toUpperCase();
+
+  if (!region) return 'USD';
+  return regionToCurrency[region] || 'USD';
+}
+
+// Approximate FX table from USD → local (for UI hints only)
+const USD_ESTIMATE_RATES: Record<string, number> = {
+  USD: 1,
+  KES: 130,   // example for Kenya
+  QAR: 3.64,  // Qatar
+  EUR: 0.93,
+  GBP: 0.8,
+  NGN: 1500,
+  ZAR: 18,
+  INR: 83,
+  UGX: 3800,  // Uganda (approx)
+  TZS: 2800,  // Tanzania (approx)
+};
+
 const PaymentWidget: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -126,6 +176,66 @@ const PaymentWidget: React.FC<Props> = ({
   const [otp, setOtp] = useState('');
   const [otpReference, setOtpReference] = useState<string | null>(null);
   const [otpError, setOtpError] = useState<string | null>(null);
+
+  // Profile-aware locale + display currency
+  const [userLocale, setUserLocale] = useState<string>('en-US');
+  const [userDisplayCurrency, setUserDisplayCurrency] = useState<string>('USD');
+
+  useEffect(() => {
+    const navLocale = getBrowserLocale() || 'en-US';
+    let nextLocale = navLocale;
+    let nextCurrency: string | undefined;
+
+    // 1) Try time zone FIRST (current physical-ish location)
+    let tz: string | undefined;
+    try {
+      if (typeof Intl !== 'undefined') {
+        tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      }
+    } catch {
+      tz = undefined;
+    }
+
+    // Your special case: Chrome reporting Asia/Riyadh even though you're in Qatar.
+    if (tz === 'Asia/Qatar' || tz === 'Asia/Riyadh') {
+      nextLocale = navLocale.startsWith('ar') ? 'ar-QA' : 'en-QA';
+      nextCurrency = 'QAR';
+    }
+
+    // 2) If time zone didn’t decide, look at profile country
+    if (!nextCurrency) {
+      const countryRaw =
+        (profile as any)?.country ??
+        (profile as any)?.countryCode ??
+        (profile as any)?.country_code ??
+        null;
+
+      const country =
+        typeof countryRaw === 'string' ? countryRaw.trim().toUpperCase() : undefined;
+
+      if (country === 'QA' || country === 'QATAR') {
+        nextLocale = navLocale.startsWith('ar') ? 'ar-QA' : 'en-QA';
+        nextCurrency = 'QAR';
+      } else if (country === 'KE' || country === 'KENYA') {
+        nextLocale = 'en-KE';
+        nextCurrency = 'KES';
+      } else if (country === 'UG' || country === 'UGANDA') {
+        nextLocale = 'en-UG';
+        nextCurrency = 'UGX';
+      } else if (country === 'TZ' || country === 'TANZANIA') {
+        nextLocale = 'en-TZ';
+        nextCurrency = 'TZS';
+      }
+    }
+
+    // 3) Final fallback: guess from browser locale (en-US → USD, en-GB → GBP)
+    if (!nextCurrency) {
+      nextCurrency = guessCurrencyFromLocale(navLocale);
+    }
+
+    setUserLocale(nextLocale || 'en-US');
+    setUserDisplayCurrency((nextCurrency || 'USD').toUpperCase());
+  }, [profile]);
 
   // Clear OTP state when closing widget or changing payment method
   useEffect(() => {
@@ -207,6 +317,107 @@ const PaymentWidget: React.FC<Props> = ({
     return true;
   };
 
+  /* ───────────────────── Locale-aware price formatting ───────────────────── */
+
+  // Pretty price label with locale-aware estimate
+  const formatPrice = (pkg: PaymentPackage) => {
+    const baseCurrency = (pkg.currency || '').toUpperCase();
+    const basePrice = Number(pkg.price || 0);
+
+    if (!Number.isFinite(basePrice) || basePrice <= 0) {
+      return `${baseCurrency} ${pkg.price}`;
+    }
+
+    // Non-USD packages (e.g. KES for M-Pesa) → format directly in that currency
+    if (baseCurrency !== 'USD') {
+      try {
+        return new Intl.NumberFormat(userLocale, {
+          style: 'currency',
+          currency: baseCurrency,
+          currencyDisplay: 'symbol',
+        }).format(basePrice);
+      } catch {
+        if (baseCurrency === 'KES') {
+          return `KSh ${basePrice.toLocaleString('en-KE')}`;
+        }
+        return `${baseCurrency} ${basePrice.toFixed(2)}`;
+      }
+    }
+
+    // USD packages – canonical billing currency
+    const localCurrency = (userDisplayCurrency || 'USD').toUpperCase();
+    const rate = USD_ESTIMATE_RATES[localCurrency];
+
+    // If local display currency is also USD or unsupported → show only USD
+    if (!rate || localCurrency === 'USD') {
+      return new Intl.NumberFormat(userLocale, {
+        style: 'currency',
+        currency: 'USD',
+        currencyDisplay: 'symbol',
+      }).format(basePrice);
+    }
+
+    const localAmount = basePrice * rate;
+    try {
+      return new Intl.NumberFormat(userLocale, {
+        style: 'currency',
+        currency: localCurrency,
+        currencyDisplay: 'symbol',
+      }).format(localAmount);
+    } catch {
+      return `${localCurrency} ${localAmount.toFixed(2)}`;
+    }
+  };
+
+  // Shorter label specifically for the Pay button
+  const formatPayButtonLabel = (pkg: PaymentPackage) => {
+    const baseCurrency = (pkg.currency || '').toUpperCase();
+    const basePrice = Number(pkg.price || 0);
+
+    if (!Number.isFinite(basePrice) || basePrice <= 0) {
+      return 'Pay';
+    }
+
+    // If package itself is non-USD (e.g. KES)
+    if (baseCurrency !== 'USD') {
+      try {
+        const label = new Intl.NumberFormat(userLocale, {
+          style: 'currency',
+          currency: baseCurrency,
+          currencyDisplay: 'symbol',
+        }).format(basePrice);
+        return `Pay ${label}`;
+      } catch {
+        return `Pay ${baseCurrency} ${basePrice.toFixed(2)}`;
+      }
+    }
+
+    // USD package → show local-only label if possible
+    const localCurrency = (userDisplayCurrency || 'USD').toUpperCase();
+    const rate = USD_ESTIMATE_RATES[localCurrency];
+
+    if (!rate || localCurrency === 'USD') {
+      const usdLabel = new Intl.NumberFormat(userLocale, {
+        style: 'currency',
+        currency: 'USD',
+        currencyDisplay: 'symbol',
+      }).format(basePrice);
+      return `Pay ${usdLabel}`;
+    }
+
+    const localAmount = basePrice * rate;
+    try {
+      const localLabel = new Intl.NumberFormat(userLocale, {
+        style: 'currency',
+        currency: localCurrency,
+        currencyDisplay: 'symbol',
+      }).format(localAmount);
+      return `Pay ${localLabel}`;
+    } catch {
+      return `Pay ${localCurrency} ${localAmount.toFixed(2)}`;
+    }
+  };
+
   /* ───────────────────── Debounced Paystack card submit ───────────────────── */
 
   const handleCardPay = useMemo(
@@ -249,7 +460,7 @@ const PaymentWidget: React.FC<Props> = ({
             },
           };
 
-         const data = await paystackCardCharge(backendUrl, token, payload);
+          const data = await paystackCardCharge(backendUrl, token, payload);
           const anyData = data as any;
 
           // 1) Immediate success (webhook and DB already updated)
@@ -259,13 +470,12 @@ const PaymentWidget: React.FC<Props> = ({
             return;
           }
 
-          // 2) Redirect-based auth (the case you’re seeing: status === "open_url")
+          // 2) Redirect-based auth (status === "open_url")
           if (
             anyData.paystackStatus === 'open_url' &&
             (anyData.authUrl || anyData.raw?.data?.url)
           ) {
             const redirectUrl = anyData.authUrl || anyData.raw.data.url;
-            // Optional: small toast before redirect
             alert('Redirecting you to your bank to verify this payment…');
             window.location.href = redirectUrl;
             return;
@@ -289,7 +499,6 @@ const PaymentWidget: React.FC<Props> = ({
               anyData.displayText ||
               'Payment failed. Please check your card details or try another method.'
           );
-
         } catch (err: any) {
           console.error('[paystack][card-charge] error', err);
           setCardError(
@@ -427,12 +636,6 @@ const PaymentWidget: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayedPackages, selectedPackage]);
 
-  // Pretty price label
-  const formatPrice = (pkg: PaymentPackage) =>
-    (pkg.currency || '').toUpperCase() === 'USD'
-      ? `$ ${Number(pkg.price).toFixed(2)}`
-      : `KSh ${Number(pkg.price).toLocaleString('en-KE')}`;
-
   if (!isOpen) return null;
 
   return (
@@ -518,7 +721,7 @@ const PaymentWidget: React.FC<Props> = ({
             <div className="flex items-center justify-between">
               <h4 className="text-base font-semibold">Choose your package</h4>
               <span className="text-xs rounded px-2 py-0.5 bg-gray-100 dark:bg-[#172534]">
-                Showing: {inferredCurrency}
+                Base: {inferredCurrency} · Local: {userDisplayCurrency}
               </span>
             </div>
 
@@ -675,7 +878,7 @@ const PaymentWidget: React.FC<Props> = ({
                     <span className="text-xs font-semibold px-2 py-1 rounded bg-pink-100 text-pink-700 dark:bg-[#1b1d2a]">
                       {selectedPackage.credits} Tokens ·{' '}
                       {selectedPackage.currency.toUpperCase() === 'USD'
-                        ? `$${Number(selectedPackage.price).toFixed(2)}`
+                        ? formatPrice(selectedPackage)
                         : 'USD only'}
                     </span>
                   )}
@@ -767,8 +970,10 @@ const PaymentWidget: React.FC<Props> = ({
                           <Spinner />
                           <span>Processing…</span>
                         </>
+                      ) : selectedPackage ? (
+                        <>{formatPayButtonLabel(selectedPackage)}</>
                       ) : (
-                        <>Pay {Number(selectedPackage.price).toFixed(2)} USD</>
+                        <>Pay</>
                       )}
                     </button>
 

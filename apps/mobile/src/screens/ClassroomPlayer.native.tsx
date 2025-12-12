@@ -291,14 +291,21 @@ const InnerPlayer: React.FC<Props> = (props) => {
   }, [markEnded]);
 
   // Theme: template persisted
+    // Theme: template persisted (default = "no color highlight")
   useEffect(() => {
     (async () => {
       try {
         const saved = await AsyncStorage.getItem(TEMPLATE_KEY);
-        if (saved) setTemplateId(saved as HighlightTemplate);
+        if (saved) {
+          setTemplateId(saved as HighlightTemplate);
+        } else {
+          // default: no color highlight
+          setTemplateId('none' as HighlightTemplate);
+        }
       } catch {}
     })();
   }, [setTemplateId]);
+
 
   useEffect(() => {
     AsyncStorage.setItem(TEMPLATE_KEY, templateId).catch(() => {});
@@ -1728,13 +1735,15 @@ function ThemeSheet({
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
 
-  const templates: { id: HighlightTemplate; label: string }[] = [
+    const templates: { id: HighlightTemplate; label: string }[] = [
+    { id: 'none' as HighlightTemplate, label: 'No color highlight' },
     { id: 'clean-stripe', label: 'Clean Stripe' },
     { id: 'underline-glow', label: 'Underline Glow' },
     { id: 'karaoke-glow', label: 'Karaoke Glow' },
     { id: 'boxed-pill', label: 'Boxed Pill' },
     { id: 'ribbon', label: 'Ribbon' },
   ];
+
 
   return (
     <Modal
