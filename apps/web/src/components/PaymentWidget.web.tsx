@@ -7,8 +7,7 @@ import Spinner from './Spinner.web';
 import { usePayment, useHomePage } from '@mytutorapp/shared/hooks';
 import { Link } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { paystackCardCharge, paystackSubmitOtp } from '@mytutorapp/shared/api';
-
+import { paystackCreateOrder } from '@mytutorapp/shared/api';
 import type {
   PaymentPackage,
   UpdatedProfileData,
@@ -25,12 +24,19 @@ type Props = {
   showTutorPreview?: boolean;
 };
 
-const TutorRating = ({ rating, totalReviews }: { rating: number; totalReviews: number }) => {
+const TutorRating = ({
+  rating,
+  totalReviews,
+}: {
+  rating: number;
+  totalReviews: number;
+}) => {
   const rounded = Math.round(rating * 2) / 2;
   const stars = [];
   for (let i = 1; i <= 5; i++) {
     if (rounded >= i) stars.push(<FaStar key={i} className="text-yellow-500" />);
-    else if (rounded + 0.5 === i) stars.push(<FaStarHalfAlt key={i} className="text-yellow-500" />);
+    else if (rounded + 0.5 === i)
+      stars.push(<FaStarHalfAlt key={i} className="text-yellow-500" />);
     else stars.push(<FaRegStar key={i} className="text-yellow-500" />);
   }
   return (
@@ -58,7 +64,8 @@ function getPayoutCurrency(
   if (!p) return undefined;
 
   // camelCase (UpdatedProfileData/ProfileData)
-  const camel = (p as UpdatedProfileData | ProfileData | { payoutCurrency?: string }).payoutCurrency;
+  const camel = (p as UpdatedProfileData | ProfileData | { payoutCurrency?: string })
+    .payoutCurrency;
   const c1 = normalizeCurrency(camel);
   if (c1) return c1;
 
@@ -100,14 +107,13 @@ const regionToCurrency: Record<string, string> = {
   NG: 'NGN',
   ZA: 'ZAR',
   IN: 'INR',
-  UG: 'UGX', // Uganda
-  TZ: 'TZS', // Tanzania
+  UG: 'UGX',
+  TZ: 'TZS',
 };
 
 function guessCurrencyFromLocale(locale: string): string {
   const parts = locale.split(/[-_]/);
   const region = parts[1]?.toUpperCase();
-
   if (!region) return 'USD';
   return regionToCurrency[region] || 'USD';
 }
@@ -115,15 +121,15 @@ function guessCurrencyFromLocale(locale: string): string {
 // Approximate FX table from USD → local (for UI hints only)
 const USD_ESTIMATE_RATES: Record<string, number> = {
   USD: 1,
-  KES: 130,   // example for Kenya
-  QAR: 3.64,  // Qatar
+  KES: 130,
+  QAR: 3.64,
   EUR: 0.93,
   GBP: 0.8,
   NGN: 1500,
   ZAR: 18,
   INR: 83,
-  UGX: 3800,  // Uganda (approx)
-  TZS: 2800,  // Tanzania (approx)
+  UGX: 3800,
+  TZS: 2800,
 };
 
 const PaymentWidget: React.FC<Props> = ({
@@ -162,20 +168,8 @@ const PaymentWidget: React.FC<Props> = ({
 
   const { token, backendUrl } = useShopContext();
 
-  /* ───────────────────────── Card form state (Paystack) ───────────────────────── */
-
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState(''); // MM/YY
-  const [cardCvc, setCardCvc] = useState('');
-  const [cardName, setCardName] = useState('');
-  const [cardError, setCardError] = useState<string | null>(null);
+  /* ───────────────────────── Paystack hosted checkout state ───────────────────────── */
   const [cardProcessing, setCardProcessing] = useState(false);
-
-  // OTP step state
-  const [needsOtp, setNeedsOtp] = useState(false);
-  const [otp, setOtp] = useState('');
-  const [otpReference, setOtpReference] = useState<string | null>(null);
-  const [otpError, setOtpError] = useState<string | null>(null);
 
   // Profile-aware locale + display currency
   const [userLocale, setUserLocale] = useState<string>('en-US');
@@ -196,7 +190,7 @@ const PaymentWidget: React.FC<Props> = ({
       tz = undefined;
     }
 
-    // Your special case: Chrome reporting Asia/Riyadh even though you're in Qatar.
+    // Qatar special-case (Chrome sometimes reports Asia/Riyadh)
     if (tz === 'Asia/Qatar' || tz === 'Asia/Riyadh') {
       nextLocale = navLocale.startsWith('ar') ? 'ar-QA' : 'en-QA';
       nextCurrency = 'QAR';
@@ -237,89 +231,8 @@ const PaymentWidget: React.FC<Props> = ({
     setUserDisplayCurrency((nextCurrency || 'USD').toUpperCase());
   }, [profile]);
 
-  // Clear OTP state when closing widget or changing payment method
-  useEffect(() => {
-    if (!isOpen) {
-      setNeedsOtp(false);
-      setOtp('');
-      setOtpReference(null);
-      setOtpError(null);
-      setCardError(null);
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    setNeedsOtp(false);
-    setOtp('');
-    setOtpReference(null);
-    setOtpError(null);
-  }, [selectedPaymentMethod]);
-
-  // Format card number as "XXXX XXXX XXXX XXXX"
-  const handleCardNumberChange = (value: string) => {
-    const digits = value.replace(/\D/g, '').slice(0, 19);
-    const groups = digits.match(/.{1,4}/g) || [];
-    setCardNumber(groups.join(' '));
-  };
-
-  // Format expiry as "MM/YY"
-  const handleCardExpiryChange = (value: string) => {
-    const digits = value.replace(/\D/g, '').slice(0, 4);
-    let formatted = digits;
-    if (digits.length >= 3) {
-      formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    }
-    setCardExpiry(formatted);
-  };
-
-  const handleCardCvcChange = (value: string) => {
-    const digits = value.replace(/\D/g, '').slice(0, 4);
-    setCardCvc(digits);
-  };
-
-  // Very light client-side validation
-  const validateCardForm = (): boolean => {
-    const numberDigits = cardNumber.replace(/\s+/g, '');
-    if (numberDigits.length < 13 || numberDigits.length > 19) {
-      setCardError('Please enter a valid card number.');
-      return false;
-    }
-
-    const [mmStr, yyStr] = cardExpiry.split('/');
-    const mm = Number(mmStr);
-    const yy = Number(yyStr);
-
-    if (!mm || !yy || mm < 1 || mm > 12) {
-      setCardError('Please enter a valid expiry date.');
-      return false;
-    }
-
-    const now = new Date();
-    const currentYear2 = Number(String(now.getFullYear()).slice(-2));
-    const currentMonth = now.getMonth() + 1;
-
-    if (yy < currentYear2 || (yy === currentYear2 && mm < currentMonth)) {
-      setCardError('This card appears to be expired.');
-      return false;
-    }
-
-    if (cardCvc.length < 3 || cardCvc.length > 4) {
-      setCardError('Please enter a valid CVV.');
-      return false;
-    }
-
-    if (!cardName.trim()) {
-      setCardError('Please enter the name on the card.');
-      return false;
-    }
-
-    setCardError(null);
-    return true;
-  };
-
   /* ───────────────────── Locale-aware price formatting ───────────────────── */
 
-  // Pretty price label with locale-aware estimate
   const formatPrice = (pkg: PaymentPackage) => {
     const baseCurrency = (pkg.currency || '').toUpperCase();
     const basePrice = Number(pkg.price || 0);
@@ -328,7 +241,7 @@ const PaymentWidget: React.FC<Props> = ({
       return `${baseCurrency} ${pkg.price}`;
     }
 
-    // Non-USD packages (e.g. KES for M-Pesa) → format directly in that currency
+    // Non-USD packages → format directly in that currency
     if (baseCurrency !== 'USD') {
       try {
         return new Intl.NumberFormat(userLocale, {
@@ -337,9 +250,7 @@ const PaymentWidget: React.FC<Props> = ({
           currencyDisplay: 'symbol',
         }).format(basePrice);
       } catch {
-        if (baseCurrency === 'KES') {
-          return `KSh ${basePrice.toLocaleString('en-KE')}`;
-        }
+        if (baseCurrency === 'KES') return `KSh ${basePrice.toLocaleString('en-KE')}`;
         return `${baseCurrency} ${basePrice.toFixed(2)}`;
       }
     }
@@ -369,14 +280,11 @@ const PaymentWidget: React.FC<Props> = ({
     }
   };
 
-  // Shorter label specifically for the Pay button
   const formatPayButtonLabel = (pkg: PaymentPackage) => {
     const baseCurrency = (pkg.currency || '').toUpperCase();
     const basePrice = Number(pkg.price || 0);
 
-    if (!Number.isFinite(basePrice) || basePrice <= 0) {
-      return 'Pay';
-    }
+    if (!Number.isFinite(basePrice) || basePrice <= 0) return 'Pay';
 
     // If package itself is non-USD (e.g. KES)
     if (baseCurrency !== 'USD') {
@@ -418,165 +326,43 @@ const PaymentWidget: React.FC<Props> = ({
     }
   };
 
-  /* ───────────────────── Debounced Paystack card submit ───────────────────── */
+  /* ───────────────────── Paystack hosted checkout ───────────────────── */
 
-  const handleCardPay = useMemo(
+  const handlePaystackHosted = useMemo(
     () =>
       debounce(async () => {
         if (!selectedPackage) {
-          setCardError('Please select a package first.');
+          alert('Select a package');
           return;
         }
         if ((selectedPackage.currency || '').toUpperCase() !== 'USD') {
-          setCardError('Please select a USD package to pay with card.');
+          alert('Please select a USD package for card checkout.');
           return;
         }
         if (!backendUrl || !token) {
-          setCardError('Missing backend URL or login. Please sign in again.');
+          alert('Sign in again');
           return;
         }
-        if (!validateCardForm()) return;
 
+        setCardProcessing(true);
         try {
-          setCardProcessing(true);
-          setCardError(null);
-          setNeedsOtp(false);
-          setOtp('');
-          setOtpReference(null);
-          setOtpError(null);
-
-          const numberDigits = cardNumber.replace(/\s+/g, '');
-          const [mmStr, yyStrRaw] = cardExpiry.split('/');
-          const yyStr = yyStrRaw?.length === 2 ? `20${yyStrRaw}` : yyStrRaw;
-
-          const payload = {
-            packageId: String(selectedPackage.id),
-            card: {
-              number: numberDigits,
-              exp_month: mmStr,
-              exp_year: yyStr,
-              cvc: cardCvc,
-              name: cardName.trim(),
-            },
-          };
-
-          const data = await paystackCardCharge(backendUrl, token, payload);
-          const anyData = data as any;
-
-          // 1) Immediate success (webhook and DB already updated)
-          if (anyData.ok || anyData.status === 'success') {
-            alert('Payment successful! Your tokens will be updated shortly.');
-            onClose();
-            return;
-          }
-
-          // 2) Redirect-based auth (status === "open_url")
-          if (
-            anyData.paystackStatus === 'open_url' &&
-            (anyData.authUrl || anyData.raw?.data?.url)
-          ) {
-            const redirectUrl = anyData.authUrl || anyData.raw.data.url;
-            alert('Redirecting you to your bank to verify this payment…');
-            window.location.href = redirectUrl;
-            return;
-          }
-
-          // 3) Other “requiresAction” flows (OTP etc.)
-          if (anyData.requiresAction) {
-            setCardError(
-              anyData.message ||
-                anyData.gatewayResponse ||
-                anyData.displayText ||
-                'Additional verification required. Please complete verification to finish payment.'
-            );
-            return;
-          }
-
-          // 4) Generic failure
-          setCardError(
-            anyData.message ||
-              anyData.gatewayResponse ||
-              anyData.displayText ||
-              'Payment failed. Please check your card details or try another method.'
-          );
-        } catch (err: any) {
-          console.error('[paystack][card-charge] error', err);
-          setCardError(
-            err?.response?.data?.message ||
-              err?.message ||
-              'Unable to process payment at the moment.'
-          );
-        } finally {
-          setCardProcessing(false);
-        }
-      }, 300),
-    [
-      selectedPackage,
-      backendUrl,
-      token,
-      cardNumber,
-      cardExpiry,
-      cardCvc,
-      cardName,
-      onClose,
-      // validateCardForm closed over
-    ]
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  );
-
-  /* ───────────────────── Debounced OTP submit ───────────────────── */
-
-  const handleOtpSubmit = useMemo(
-    () =>
-      debounce(async () => {
-        if (!otpReference) {
-          setOtpError('Missing payment reference. Please try the card payment again.');
-          return;
-        }
-        if (!otp.trim()) {
-          setOtpError('Please enter the OTP sent by your bank.');
-          return;
-        }
-        if (!backendUrl || !token) {
-          setOtpError('Missing backend URL or login. Please sign in again.');
-          return;
-        }
-
-        try {
-          setCardProcessing(true);
-          setOtpError(null);
-
-          const data = await paystackSubmitOtp(backendUrl, token, {
-            reference: otpReference,
-            otp: otp.trim(),
+          const o = await paystackCreateOrder(backendUrl, token, {
+            packageId: selectedPackage.id,
           });
 
-          if ((data as any).ok || (data as any).status === 'success') {
-            alert('Payment successful! Your tokens will be updated shortly.');
-            onClose();
-          } else if ((data as any).requiresAction) {
-            setOtpError(
-              (data as any).message ||
-                'We could not confirm your OTP. Please double-check and try again.'
-            );
-          } else {
-            setOtpError(
-              (data as any).message ||
-                'Payment failed after OTP. Please try another card or payment method.'
-            );
-          }
-        } catch (err: any) {
-          console.error('[paystack][submit-otp] error', err);
-          setOtpError(
-            err?.response?.data?.message ||
-              err?.message ||
-              'Unable to verify OTP at the moment.'
+          // hosted checkout (PCI-safe)
+          window.location.href = o.authorization_url;
+        } catch (e: any) {
+          alert(
+            e?.response?.data?.message ||
+              e?.message ||
+              'Unable to start Paystack checkout.'
           );
         } finally {
           setCardProcessing(false);
         }
       }, 300),
-    [otpReference, otp, backendUrl, token, onClose]
+    [backendUrl, token, selectedPackage]
   );
 
   /* ───────────────────────── Existing debounced actions ───────────────────── */
@@ -596,10 +382,9 @@ const PaymentWidget: React.FC<Props> = ({
       debouncedCheckout.cancel();
       debouncedInitiate.cancel();
       debouncedUpdateRef.cancel();
-      handleCardPay.cancel();
-      handleOtpSubmit.cancel();
+      handlePaystackHosted.cancel();
     };
-  }, [debouncedCheckout, debouncedInitiate, debouncedUpdateRef, handleCardPay, handleOtpSubmit]);
+  }, [debouncedCheckout, debouncedInitiate, debouncedUpdateRef, handlePaystackHosted]);
 
   /* -------------------------------------------------------
    * Default UX based on payout currency
@@ -636,16 +421,48 @@ const PaymentWidget: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayedPackages, selectedPackage]);
 
+  /* ───────────────────── KES-at-checkout hint values ───────────────────── */
+
+  const paystackBaseUsdText = useMemo(() => {
+    if (!selectedPackage) return null;
+    if ((selectedPackage.currency || '').toUpperCase() !== 'USD') return null;
+
+    const usd = Number(selectedPackage.price || 0);
+    if (!Number.isFinite(usd) || usd <= 0) return null;
+
+    return new Intl.NumberFormat(userLocale, {
+      style: 'currency',
+      currency: 'USD',
+    }).format(usd);
+  }, [selectedPackage, userLocale]);
+
+  const paystackKesEstimateText = useMemo(() => {
+    if (!selectedPackage) return null;
+    if ((selectedPackage.currency || '').toUpperCase() !== 'USD') return null;
+
+    const usd = Number(selectedPackage.price || 0);
+    if (!Number.isFinite(usd) || usd <= 0) return null;
+
+    const fx = USD_ESTIMATE_RATES.KES || 130;
+    const kes = usd * fx;
+
+    // show nice "KES 1,560"
+    const kesPretty = new Intl.NumberFormat('en-KE', {
+      style: 'currency',
+      currency: 'KES',
+      currencyDisplay: 'code',
+      maximumFractionDigits: 0,
+    }).format(kes);
+
+    return { fx, kesPretty };
+  }, [selectedPackage]);
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-        aria-hidden
-      />
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
 
       {/* Slide-over panel */}
       <aside
@@ -732,27 +549,23 @@ const PaymentWidget: React.FC<Props> = ({
                     key={pkg.id}
                     onClick={() => handlePackageSelection(pkg)}
                     className={`w-full text-left p-3 rounded-lg border transition
-                                ${
-                                  selectedPackage?.id === pkg.id
-                                    ? 'border-pink-500 bg-pink-50 dark:bg-[#1b1d2a]'
-                                    : 'border-gray-200 dark:border-darkCard hover:bg-gray-50 dark:hover:bg-[#121927]'
-                                }`}
+                      ${
+                        selectedPackage?.id === pkg.id
+                          ? 'border-pink-500 bg-pink-50 dark:bg-[#1b1d2a]'
+                          : 'border-gray-200 dark:border-darkCard hover:bg-gray-50 dark:hover:bg-[#121927]'
+                      }`}
                   >
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">{pkg.credits} Tokens</p>
                         <p className="text-xs text-gray-500">{pkg.offer}</p>
                       </div>
-                      <span className="text-sm font-bold text-pink-600">
-                        {formatPrice(pkg)}
-                      </span>
+                      <span className="text-sm font-bold text-pink-600">{formatPrice(pkg)}</span>
                     </div>
                   </button>
                 ))
               ) : (
-                <p className="text-sm text-gray-500">
-                  No {inferredCurrency} packages available.
-                </p>
+                <p className="text-sm text-gray-500">No {inferredCurrency} packages available.</p>
               )}
             </div>
           </div>
@@ -766,19 +579,15 @@ const PaymentWidget: React.FC<Props> = ({
               <button
                 onClick={() => handlePaymentSelection('Paystack')}
                 className={`w-full h-14 bg-white dark:bg-[#0f1821] border rounded-md flex items-center justify-center
-                            hover:opacity-90 transition
-                            ${
-                              selectedPaymentMethod === 'Paystack'
-                                ? 'border-pink-500'
-                                : 'border-gray-200 dark:border-darkCard'
-                            }`}
+                  hover:opacity-90 transition
+                  ${
+                    selectedPaymentMethod === 'Paystack'
+                      ? 'border-pink-500'
+                      : 'border-gray-200 dark:border-darkCard'
+                  }`}
               >
                 {assets.visamaster ? (
-                  <img
-                    src={assets.visamaster}
-                    alt="Pay with card"
-                    className="h-10 object-contain"
-                  />
+                  <img src={assets.visamaster} alt="Pay with card" className="h-10 object-contain" />
                 ) : (
                   <span className="text-sm font-semibold">Card</span>
                 )}
@@ -787,13 +596,12 @@ const PaymentWidget: React.FC<Props> = ({
               <button
                 onClick={() => handlePaymentSelection('M-Pesa')}
                 className={`w-full h-14 bg-white dark:bg-[#0f1821] border rounded-md flex items-center justify-center
-                            hover:opacity-90 transition
-                            ${
-                              selectedPaymentMethod === 'M-Pesa' ||
-                              selectedPaymentMethod === 'MPESA'
-                                ? 'border-pink-500'
-                                : 'border-gray-200 dark:border-darkCard'
-                            }`}
+                  hover:opacity-90 transition
+                  ${
+                    selectedPaymentMethod === 'M-Pesa' || selectedPaymentMethod === 'MPESA'
+                      ? 'border-pink-500'
+                      : 'border-gray-200 dark:border-darkCard'
+                  }`}
               >
                 <img src={assets.mpesa} alt="M-Pesa" className="h-10 object-contain" />
               </button>
@@ -824,9 +632,10 @@ const PaymentWidget: React.FC<Props> = ({
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     placeholder="2547XXXXXXXX"
                     className="w-full mt-1 p-2 border rounded outline-none focus:ring-2 focus:ring-pink-500
-                               bg-white dark:bg-[#0f1821] border-gray-200 dark:border-darkCard text-sm"
+                      bg-white dark:bg-[#0f1821] border-gray-200 dark:border-darkCard text-sm"
                   />
                 </label>
+
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => debouncedInitiate()}
@@ -835,6 +644,7 @@ const PaymentWidget: React.FC<Props> = ({
                   >
                     {initiatingPayment ? <Spinner /> : 'Initiate STK Push'}
                   </button>
+
                   <button
                     onClick={async () => {
                       await handleCompletePayment();
@@ -856,9 +666,10 @@ const PaymentWidget: React.FC<Props> = ({
                       onChange={(e) => setMpesaReference(e.target.value)}
                       placeholder="Enter reference"
                       className="w-full mt-1 p-2 border rounded outline-none focus:ring-2 focus:ring-pink-500
-                                 bg-white dark:bg-[#0f1821] border-gray-200 dark:border-darkCard text-sm"
+                        bg-white dark:bg-[#0f1821] border-gray-200 dark:border-darkCard text-sm"
                     />
                   </label>
+
                   <button
                     onClick={() => debouncedUpdateRef()}
                     className="w-full mt-2 bg-orange-600 text-white py-2 rounded hover:bg-orange-700 text-sm"
@@ -869,153 +680,79 @@ const PaymentWidget: React.FC<Props> = ({
               </div>
             )}
 
-            {/* Card form (Paystack-backed), USD only */}
+            {/* Paystack hosted checkout (USD only) */}
             {selectedPaymentMethod === 'Paystack' && (
               <div className="mt-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-500">Pay securely with your card</p>
-                  {selectedPackage && (
-                    <span className="text-xs font-semibold px-2 py-1 rounded bg-pink-100 text-pink-700 dark:bg-[#1b1d2a]">
-                      {selectedPackage.credits} Tokens ·{' '}
-                      {selectedPackage.currency.toUpperCase() === 'USD'
-                        ? formatPrice(selectedPackage)
-                        : 'USD only'}
-                    </span>
-                  )}
-                </div>
+                <p className="text-sm text-gray-500">
+                  You’ll be redirected to Paystack to complete a secure card payment.
+                </p>
 
-                {(!selectedPackage || selectedPackage.currency.toUpperCase() !== 'USD') && (
+                {/* ✅ Confusion-killer copy */}
+                {selectedPackage && (selectedPackage.currency || '').toUpperCase() === 'USD' && (
+                  <div className="rounded-md border border-gray-200 dark:border-darkCard bg-gray-50 dark:bg-[#121927] p-3">
+                    <div className="text-xs leading-5 text-gray-700 dark:text-gray-200">
+                      <div>
+                        Base (USD): <b>{paystackBaseUsdText ?? '—'}</b>
+                      </div>
+                      <div>
+                        You’ll be charged in KES at checkout:{' '}
+                        <b>
+                          {paystackKesEstimateText?.kesPretty ?? 'KES —'}
+                        </b>{' '}
+                        <span className="opacity-70">
+                          (rate: {paystackKesEstimateText?.fx ?? 130})
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[11px] opacity-70">
+                        Final KES amount is shown by Paystack.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Keep your existing local display info if you want */}
+                {selectedPackage && (
+                  <div className="text-xs opacity-80">
+                    Local display: <b>{formatPrice(selectedPackage)}</b>
+                  </div>
+                )}
+
+                {(!selectedPackage ||
+                  (selectedPackage.currency || '').toUpperCase() !== 'USD') && (
                   <div className="mt-2 text-xs text-orange-600">
                     Please select a USD package to continue with card payment.
                   </div>
                 )}
 
-                {selectedPackage && selectedPackage.currency.toUpperCase() === 'USD' && (
-                  <>
-                    <div className="grid gap-3 mt-2">
-                      <label className="block text-xs font-medium text-gray-500">
-                        Card number
-                        <div className="mt-1 flex items-center rounded-md border border-gray-200 dark:border-darkCard bg-white dark:bg-[#0f1821] px-3 py-2 focus-within:ring-2 focus-within:ring-pink-500">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            autoComplete="cc-number"
-                            value={cardNumber}
-                            onChange={(e) => handleCardNumberChange(e.target.value)}
-                            placeholder="1234 5678 9012 3456"
-                            className="flex-1 bg-transparent outline-none text-sm"
-                          />
-                          {assets.visamaster && (
-                            <img
-                              src={assets.visamaster}
-                              alt="Cards"
-                              className="h-5 ml-2 opacity-70"
-                            />
-                          )}
-                        </div>
-                      </label>
+                <button
+                  onClick={() => handlePaystackHosted()}
+                  disabled={
+                    cardProcessing ||
+                    !selectedPackage ||
+                    (selectedPackage.currency || '').toUpperCase() !== 'USD'
+                  }
+                  className="mt-2 w-full py-2 rounded-md font-semibold text-white bg-pink-500 hover:bg-pink-600 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {cardProcessing ? (
+                    <>
+                      <Spinner />
+                      <span>Redirecting…</span>
+                    </>
+                  ) : selectedPackage ? (
+                    <>{formatPayButtonLabel(selectedPackage)}</>
+                  ) : (
+                    <>Pay</>
+                  )}
+                </button>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <label className="block text-xs font-medium text-gray-500">
-                          Expiry (MM/YY)
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            autoComplete="cc-exp"
-                            value={cardExpiry}
-                            onChange={(e) => handleCardExpiryChange(e.target.value)}
-                            placeholder="08/28"
-                            className="mt-1 w-full rounded-md border border-gray-200 dark:border-darkCard bg-white dark:bg-[#0f1821] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-pink-500"
-                          />
-                        </label>
-
-                        <label className="block text-xs font-medium text-gray-500">
-                          CVV
-                          <input
-                            type="password"
-                            inputMode="numeric"
-                            autoComplete="cc-csc"
-                            value={cardCvc}
-                            onChange={(e) => handleCardCvcChange(e.target.value)}
-                            placeholder="123"
-                            className="mt-1 w-full rounded-md border border-gray-200 dark:border-darkCard bg-white dark:bg-[#0f1821] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-pink-500"
-                          />
-                        </label>
-                      </div>
-
-                      <label className="block text-xs font-medium text-gray-500">
-                        Name on card
-                        <input
-                          type="text"
-                          autoComplete="cc-name"
-                          value={cardName}
-                          onChange={(e) => setCardName(e.target.value)}
-                          placeholder="As shown on card"
-                          className="mt-1 w-full rounded-md border border-gray-200 dark:border-darkCard bg-white dark:bg-[#0f1821] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-pink-500"
-                        />
-                      </label>
-                    </div>
-
-                    {cardError && (
-                      <div className="mt-2 text-xs text-red-500">{cardError}</div>
-                    )}
-
-                    <button
-                      onClick={() => handleCardPay()}
-                      disabled={cardProcessing}
-                      className="mt-3 w-full py-2 rounded-md font-semibold text-white bg-pink-500 hover:bg-pink-600 transition disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {cardProcessing ? (
-                        <>
-                          <Spinner />
-                          <span>Processing…</span>
-                        </>
-                      ) : selectedPackage ? (
-                        <>{formatPayButtonLabel(selectedPackage)}</>
-                      ) : (
-                        <>Pay</>
-                      )}
-                    </button>
-
-                    {/* OTP block */}
-                    {needsOtp && (
-                      <div className="mt-4 p-3 rounded-md bg-gray-50 dark:bg-[#121927] border border-dashed border-pink-400/60">
-                        <p className="text-[11px] text-gray-600 dark:text-gray-300">
-                          Your bank requires a one-time password (OTP) to complete this card
-                          payment. Enter the code you received via SMS, email, or your banking app.
-                        </p>
-                        <div className="mt-2 flex gap-2">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={otp}
-                            onChange={(e) => setOtp(e.target.value.replace(/\s+/g, ''))}
-                            placeholder="Enter OTP"
-                            className="flex-1 rounded-md border border-gray-200 dark:border-darkCard bg-white dark:bg-[#0f1821] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-pink-500"
-                          />
-                          <button
-                            onClick={() => handleOtpSubmit()}
-                            disabled={cardProcessing || !otp.trim()}
-                            className="px-3 py-2 rounded-md bg-pink-600 hover:bg-pink-700 text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-2"
-                          >
-                            {cardProcessing ? <Spinner /> : 'Submit OTP'}
-                          </button>
-                        </div>
-                        {otpError && (
-                          <div className="mt-1 text-[11px] text-red-500">{otpError}</div>
-                        )}
-                      </div>
-                    )}
-
-                    <p className="mt-2 text-[11px] text-gray-400 dark:text-gray-500">
-                      Your card details are processed securely via our payment provider. We don&apos;t
-                      store your full card number or CVV.
-                    </p>
-                  </>
-                )}
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                  We don&apos;t collect or store your card details. Payment is handled by Paystack.
+                </p>
               </div>
             )}
           </div>
+
+          {void _showMpesaModal}
         </div>
       </aside>
     </div>

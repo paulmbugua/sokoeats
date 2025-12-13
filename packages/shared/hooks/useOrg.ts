@@ -1,8 +1,15 @@
 // packages/shared/hooks/useOrg.ts
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { fetchCurrentUser, getMyOrg } from '@mytutorapp/shared/api/orgApi';
+import {
+  fetchCurrentUser,
+  getMyOrg,
+  fetchOrgPricingTable,
+  type OrgCurrency,
+  type OrgPricingTable,
+} from '@mytutorapp/shared/api/orgApi';
 import type { OrgMembership, CurrentUser, OrgTier } from '@mytutorapp/shared/types';
 import type { OrgResp } from '@mytutorapp/shared/api/orgApi';
 
@@ -22,11 +29,14 @@ const memoryStorage: KV = (() => {
   };
 })();
 
-export function useOrg() {
+export function useOrg(opts?: { currency?: OrgCurrency }) {
+
   const { backendUrl, token, orgToken, userId, storage: ctxStorage } = useShopContext() as any;
   const storage: KV = (ctxStorage as KV) || memoryStorage;
 
   const authToken: string | undefined = orgToken || token;
+
+  
 
   // State
   const [membership, setMembership] = useState<OrgMembership | OrgMembership[] | null>(null);
@@ -40,6 +50,29 @@ export function useOrg() {
   // Loading flags
   const [loadingMembership, setLoadingMembership] = useState(false);
   const [loadingOrg, setLoadingOrg] = useState(false);
+
+    const [pricingCurrency, setPricingCurrency] = useState<OrgCurrency>(
+    (opts?.currency ?? 'USD') as OrgCurrency
+  );
+
+  // Keep in sync if caller passes a different currency later
+  useEffect(() => {
+    if (opts?.currency && opts.currency !== pricingCurrency) {
+      setPricingCurrency(opts.currency);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opts?.currency]);
+
+ const pricingQuery = useQuery({
+  queryKey: ['orgPricingTable', backendUrl, pricingCurrency, authToken],
+  queryFn: () => fetchOrgPricingTable(backendUrl, pricingCurrency, authToken),
+  enabled: !!backendUrl && !!pricingCurrency && !!authToken, // if protected
+  staleTime: 60_000,
+});
+
+
+  const orgPricingTable: OrgPricingTable | null = (pricingQuery.data ?? null) as any;
+
 
   // ─────────────────────────────────────────────────────────
   // Initial storage prime (works on both web & native)
@@ -215,8 +248,15 @@ export function useOrg() {
     isStarterTier,
     isProTier,
     isEnterpriseTier,
+    pricingCurrency,
+    setPricingCurrency,
+    orgPricingTable,
+    orgPricingLoading: pricingQuery.isLoading,
+    orgPricingError: pricingQuery.error,
+    refreshPricing: pricingQuery.refetch,
 
     // Optional: expose role early for gating
     role: localRole || (primaryMembership?.role ?? undefined),
   };
 }
+

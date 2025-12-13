@@ -25,11 +25,12 @@ import {
   getOrgAssignmentsForLearner,
   type OrgAssignmentRow,
   getOrgAssignmentSubmissions,
+  OrgPricingTable,
 } from '@mytutorapp/shared/api/orgApi';
 
-
-import usePayPalCheckout from '@mytutorapp/shared/hooks/usePayPalCheckout';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
+import { assets } from '../..//assets/assets';
+import PlanPurchaseModalWeb from './PlanPurchaseModal.web';
 
 import type { OrgTier } from '@mytutorapp/shared/types';
 import { BrandingAssignPane, AnalyticsPane } from './OrgPortalPanes';
@@ -37,7 +38,7 @@ import { BrandingAssignPane, AnalyticsPane } from './OrgPortalPanes';
 type TabKey = 'branding' | 'assign' | 'analytics';
 type Period = 'month' | 'term' | 'year';
 type BillingCycle = 'monthly' | 'annual';
-type PayMethod = 'PayPal' | 'M-Pesa';
+type PayMethod = 'Paystack' | 'M-Pesa';
 
 type OrgAnalyticsSummary = {
   /** All graded learning events (Robot Teacher, exams, assignments) */
@@ -248,26 +249,25 @@ function Pill({ children }: { children: React.ReactNode }) {
 }
 
 /** ─────────────────────────────────────────────────────────
- * Plan purchase modal (kept here so PayPal hook stays put)
+ * Plan purchase modal (M-Pesa + Paystack only)
  * ───────────────────────────────────────────────────────── */
 function PlanPurchaseModal({
   open,
   onClose,
   tier,
   orgName,
-  orgId,
-  backendUrl,
-  authToken,
   onCheckout,
-  onActivated,
+
+  // ✅ NEW
+  pricing,
+  pricingLoading,
+  pricingCurrency,
+  onCurrencyChange,
 }: {
   open: boolean;
   onClose: () => void;
   tier: 'pro' | 'enterprise';
   orgName?: string | null;
-  orgId: string;
-  backendUrl: string;
-  authToken: string;
   onCheckout: (opts: {
     method: PayMethod;
     cycle: BillingCycle;
@@ -275,84 +275,52 @@ function PlanPurchaseModal({
     phone?: string;
     reference?: string;
   }) => void;
-  onActivated?: () => Promise<void> | void;
+
+  // ✅ NEW
+ pricing: OrgPricingTable | null;
+  pricingLoading: boolean;
+  pricingCurrency: 'USD' | 'KES';
+  onCurrencyChange: (c: 'USD' | 'KES') => void;
 }) {
+
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const [method, setMethod] = useState<PayMethod>('M-Pesa'); // default to KES flow
   const [phone, setPhone] = useState('');
   const [reference, setReference] = useState('');
 
-  const ORG_PRICING_CENTS = {
-    USD: {
-      pro: { monthly: 99_00, yearly: 990_00 },
-      enterprise: { monthly: 399_00, yearly: 3990_00 },
-    },
-    KES: {
-      pro: { monthly: 13_500_00, yearly: 13_00 },
-      enterprise: { monthly: 55_000_00, yearly: 55_00 },
-    },
-  } as const;
-
-  const billCycleKey: 'monthly' | 'yearly' =
+  
+    const billCycleKey: 'monthly' | 'yearly' =
     cycle === 'annual' ? 'yearly' : 'monthly';
-  const currency: 'USD' | 'KES' = method === 'M-Pesa' ? 'KES' : 'USD';
-  const priceCents = ORG_PRICING_CENTS[currency][tier][billCycleKey];
 
-  function formatPrice(
-    cur: 'USD' | 'KES',
-    cents: number,
-    key: 'monthly' | 'yearly'
-  ) {
+  const currency: 'USD' | 'KES' = method === 'M-Pesa' ? 'KES' : 'USD';
+
+  // ✅ pull from pricing table
+  const priceCents: number | null =
+    pricing?.tiers?.[tier]?.[billCycleKey] ?? null;
+
+  const seatsForPlan: number | null =
+    pricing?.tiers?.[tier]?.seats ?? null;
+
+
+    function formatPrice(cur: 'USD' | 'KES', cents: number | null, key: 'monthly' | 'yearly') {
     const suffix = key === 'monthly' ? '/ mo' : '/ yr';
+    if (cents == null) return `— ${suffix}`;
     if (cur === 'USD') return `$ ${(cents / 100).toFixed(2)} ${suffix}`;
     return `KSh ${Math.round(cents / 100).toLocaleString('en-KE')} ${suffix}`;
   }
+
 
   const priceLabel = formatPrice(currency, priceCents, billCycleKey);
   const amountLabel = `${tier.toUpperCase()} • ${
     cycle === 'monthly' ? 'Monthly' : 'Annual'
   } • ${priceLabel}`;
 
-  // PayPal: keep created paymentId so we can confirm after approval
-  const payPaymentIdRef = useRef<string | null>(null);
-
-  const { containerRef, ready, error } = usePayPalCheckout({
-    // Called by the PayPal Buttons SDK to create the order
-    createOrder: async () => {
-      const init = await initOrgSubscription(backendUrl, authToken, orgId, {
-        tier,
-        cycle: billCycleKey,
-        method: 'PAYPAL',
-      });
-      payPaymentIdRef.current = init.paymentId;
-      return init.orderId!; // use the REAL order created by your backend
-    },
-    // Called after payer approves in PayPal
-    onApproved: async () => {
-      if (!payPaymentIdRef.current) throw new Error('Missing paymentId');
-      await confirmOrgSubscription(
-        backendUrl,
-        authToken,
-        payPaymentIdRef.current!
-      );
-      payPaymentIdRef.current = null;
-
-      try {
-        await onActivated?.();
-      } catch {}
-
-      alert('PayPal payment captured. Subscription activated ✅');
-      onClose();
-    },
-  });
-
   if (!open) return null;
 
-  // COMPACT, RESPONSIVE MODAL
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-2 sm:p-4">
       <div className="relative z-10 w-full max-w-lg sm:max-w-xl md:max-w-2xl rounded-2xl bg-white text-[#0d141c] dark:bg-[#0f1821] dark:text-white ring-1 ring-[#cedbe8] dark:ring-white/10 overflow-hidden">
-        {/* Header (compact) */}
+        {/* Header */}
         <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-slate-200 dark:border-white/10">
           <div className="min-w-0">
             <div className="text-[11px] sm:text-xs text-slate-500 dark:text-white/60 truncate">
@@ -370,13 +338,12 @@ function PlanPurchaseModal({
           </button>
         </div>
 
-        {/* Scrollable body */}
+        {/* Body */}
         <div className="max-h-[85vh] overflow-y-auto px-3 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-4">
-          {/* Grid: controls (L) | plan (R) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-            {/* LEFT: Controls */}
+            {/* LEFT */}
             <div className="space-y-3">
-              {/* Billing cycle */}
+              {/* Billing */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs sm:text-sm text-slate-600 dark:text-white/70">
                   Billing:
@@ -405,22 +372,25 @@ function PlanPurchaseModal({
                 </div>
               </div>
 
-              {/* Payment method */}
+              {/* Method */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs sm:text-sm text-slate-600 dark:text-white/70">
                   Pay with:
                 </span>
                 <div className="inline-flex rounded-lg overflow-hidden ring-1 ring-slate-200 dark:ring-white/10 text-xs sm:text-sm">
                   <button
-                    onClick={() => setMethod('PayPal')}
+                    onClick={() => {
+                      setMethod('Paystack');
+                      onCurrencyChange('USD');
+                    }}
                     className={`px-2.5 sm:px-3 py-1.5 ${
-                      method === 'PayPal'
+                      method === 'Paystack'
                         ? 'bg-slate-200 dark:bg-white/10'
                         : 'bg-transparent hover:bg-slate-100 dark:hover:bg-white/5'
                     }`}
                     title="Charges in USD"
                   >
-                    PayPal
+                    Paystack
                   </button>
                   <button
                     onClick={() => setMethod('M-Pesa')}
@@ -437,11 +407,10 @@ function PlanPurchaseModal({
               </div>
 
               <p className="text-[11px] text-slate-500 dark:text-white/60">
-                <span className="font-medium">Note:</span> M-Pesa charges in{' '}
-                <b>KES</b>. PayPal charges in <b>USD</b>.
+                <span className="font-medium">Note:</span> M-Pesa charges in <b>KES</b>. Paystack charges in <b>USD</b>.
               </p>
 
-              {/* M-Pesa panel */}
+              {/* M-Pesa */}
               {method === 'M-Pesa' && (
                 <div className="rounded-xl ring-1 ring-slate-200 bg-slate-50 dark:ring-white/10 dark:bg-white/5 p-3 sm:p-4 space-y-3">
                   <h4 className="text-sm font-semibold text-slate-800 dark:text-white">
@@ -488,7 +457,6 @@ function PlanPurchaseModal({
                     </button>
                   </div>
 
-                  {/* Collapsible “Reference” (saves space on phones) */}
                   <details className="group rounded-lg bg-slate-50 dark:bg-white/5 ring-1 ring-slate-200 dark:ring-white/10">
                     <summary className="cursor-pointer list-none px-3 py-2 text-xs sm:text-sm text-slate-700 dark:text-white/80 flex items-center justify-between">
                       Having issues? Enter M-Pesa reference
@@ -523,30 +491,34 @@ function PlanPurchaseModal({
                 </div>
               )}
 
-              {/* PayPal panel */}
-              {method === 'PayPal' && (
-                <div className="rounded-xl ring-1 ring-slate-200 dark:ring-white/10 bg-slate-50 dark:bg-white/5 p-3 sm:p-4">
+              {/* Paystack */}
+              {method === 'Paystack' && (
+                <div className="rounded-xl ring-1 ring-slate-200 dark:ring-white/10 bg-slate-50 dark:bg-white/5 p-3 sm:p-4 space-y-2">
                   <h4 className="text-sm font-semibold text-slate-800 dark:text-white">
-                    PayPal (USD)
+                    Paystack (USD)
                   </h4>
+
                   <p className="text-[11px] text-slate-600 dark:text-white/70">
-                    Pay securely for <b>{amountLabel}</b>.
+                    You’ll be redirected to Paystack to pay for <b>{amountLabel}</b>.
                   </p>
 
-                  <div ref={containerRef} className="mt-2 sm:mt-3" />
-                  {!ready && !error && (
-                    <div className="mt-2 text-[11px] text-slate-500 dark:text-white/60">
-                      Loading PayPal…
-                    </div>
-                  )}
-                  {error && (
-                    <div className="mt-2 text-xs text-red-500">{String(error)}</div>
-                  )}
+                  <button
+                    onClick={() =>
+                      onCheckout({ method: 'Paystack', cycle, plan: tier })
+                    }
+                    className="w-full px-3 py-2 rounded bg-slate-900 hover:bg-slate-800 text-white text-sm"
+                  >
+                    Continue to Paystack
+                  </button>
+
+                  <p className="text-[11px] text-slate-500 dark:text-white/60">
+                    After payment, you’ll return here and your subscription will activate automatically.
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* RIGHT: Plan summary */}
+            {/* RIGHT */}
             <div className="space-y-3">
               <div className="rounded-xl ring-1 ring-slate-200 dark:ring-white/10 bg-slate-50 dark:bg-white/5 p-3 sm:p-4 space-y-3">
                 <div className="flex items-start justify-between gap-3">
@@ -558,13 +530,11 @@ function PlanPurchaseModal({
                       {priceLabel}
                     </div>
                     <div className="text-[11px] text-slate-500 dark:text-white/60">
-                      {billCycleKey === 'monthly' ? 'per month' : 'per year'} •{' '}
-                      {currency}
+                      {billCycleKey === 'monthly' ? 'per month' : 'per year'} • {currency}
                     </div>
                   </div>
                 </div>
 
-                {/* Collapsible features to keep compact on mobile */}
                 <details className="group rounded-lg bg-white dark:bg-white/5 ring-1 ring-slate-200 dark:ring-white/10">
                   <summary className="cursor-pointer list-none px-3 py-2 text-xs sm:text-sm text-slate-800 dark:text-white/80 flex items-center justify-between">
                     Plan features
@@ -591,7 +561,6 @@ function PlanPurchaseModal({
                   </ul>
                 </details>
 
-                {/* Quick amount tag (always visible) */}
                 <div className="text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
                   Selected: <b>{amountLabel}</b>
                 </div>
@@ -611,6 +580,7 @@ function PlanPurchaseModal({
     </div>
   );
 }
+
 
 export default function OrgElearnPortal() {
   const navigate = useNavigate();
@@ -639,7 +609,9 @@ const isSubmissionsView = !isLearnerView && viewParam === 'submissions';
   const { backendUrl, token: userToken, orgToken } = useShopContext();
   const authToken = orgToken || userToken;
 
-  const { role } = (useOrg?.() ?? {}) as { org?: Org | null; role?: string | null };
+    const { role } = useOrg({ currency: 'USD' }); // role doesn't depend on pricing currency
+
+
   const isInstructor = role === 'instructor';
 
   const [tab, setTab] = useState<TabKey>(
@@ -1472,8 +1444,8 @@ useEffect(() => {
       }
       const apiCycle: 'monthly' | 'yearly' =
         opts.cycle === 'annual' ? 'yearly' : 'monthly';
-      const apiMethod: 'MPESA' | 'PAYPAL' =
-        opts.method === 'M-Pesa' ? 'MPESA' : 'PAYPAL';
+      const apiMethod: 'MPESA' | 'PAYSTACK' =
+        opts.method === 'M-Pesa' ? 'MPESA' : 'PAYSTACK';
 
       try {
         // M-Pesa flow
@@ -1578,6 +1550,45 @@ useEffect(() => {
             return;
           }
         }
+
+        // ✅ Paystack flow  <-- ADD THIS BLOCK HERE
+        if (apiMethod === 'PAYSTACK') {
+          const init = await initOrgSubscription(backendUrl, authToken, org.id, {
+            tier: target,
+            cycle: apiCycle,
+            method: 'PAYSTACK',
+
+          } as any);
+
+          const authUrl =
+            (init as any).authorizationUrl ||
+            (init as any).authorization_url ||
+            '';
+
+          const paymentId =
+            (init as any).paymentId ||
+            (init as any).payment_id ||
+            '';
+
+          if (!authUrl) {
+            alert('Paystack init failed: missing authorization URL');
+            return;
+          }
+
+          try {
+            if (paymentId) {
+              sessionStorage.setItem('org:lastPaystackPaymentId', String(paymentId));
+              sessionStorage.setItem('org:lastPaystackOrgId', String(org.id));
+              sessionStorage.setItem('org:lastPaystackTier', String(target));
+              sessionStorage.setItem('org:lastPaystackCycle', String(apiCycle));
+              sessionStorage.setItem('org:lastPaystackAt', String(Date.now()));
+            }
+          } catch {}
+
+          window.location.href = authUrl; // ✅ SAME TAB
+          return;
+        }
+
         // PAYPAL handled via the PayPal Buttons in the modal
       } catch (err: any) {
         const msg =
@@ -2757,31 +2768,32 @@ useEffect(() => {
 
       {/* Modals – only for owners/admins (not learner view) */}
       {!isLearnerView && org && authToken && canUpgradePlan && (
-        <>
-          <PlanPurchaseModal
-            open={showProModal}
-            onClose={() => setShowProModal(false)}
-            tier="pro"
-            orgName={org?.name}
-            orgId={org?.id!}
-            backendUrl={backendUrl}
-            authToken={authToken!}
-            onCheckout={(opts) => handleCheckout('pro', opts)}
-            onActivated={refreshOrgAfterPayment}
-          />
-          <PlanPurchaseModal
-            open={showEnterpriseModal}
-            onClose={() => setShowEnterpriseModal(false)}
-            tier="enterprise"
-            orgName={org?.name}
-            orgId={org?.id!}
-            backendUrl={backendUrl}
-            authToken={authToken!}
-            onCheckout={(opts) => handleCheckout('enterprise', opts)}
-            onActivated={refreshOrgAfterPayment}
-          />
-        </>
-      )}
+          <>
+            <PlanPurchaseModalWeb
+              open={showProModal}
+              onClose={() => setShowProModal(false)}
+              tier="pro"
+              orgName={org?.name}
+              assets={{
+                visamaster: assets?.visamaster, // adjust keys to your assets file
+                mpesa: assets?.mpesa,
+              }}
+              onCheckout={(opts) => handleCheckout('pro', opts)}
+            />
+
+            <PlanPurchaseModalWeb
+              open={showEnterpriseModal}
+              onClose={() => setShowEnterpriseModal(false)}
+              tier="enterprise"
+              orgName={org?.name}
+              assets={{
+                visamaster: assets?.visamaster,
+                mpesa: assets?.mpesa,
+              }}
+              onCheckout={(opts) => handleCheckout('enterprise', opts)}
+            />
+          </>
+        )}
     </div>
   );
 }

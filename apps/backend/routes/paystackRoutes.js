@@ -6,6 +6,7 @@ import {
   cardCharge,
   submitOtpCharge,
 } from '../controllers/paystackController.js';
+import { verifyAndFinalize } from '../controllers/paystackVerifyController.js';
 import anyAuth from '../middleware/anyAuth.js';
 
 const router = express.Router();
@@ -13,6 +14,7 @@ const router = express.Router();
 router.post('/create-order', anyAuth, createOrder);
 router.post('/card-charge', anyAuth, cardCharge);
 router.post('/submit-otp', anyAuth, submitOtpCharge);
+router.get('/verify/:reference', verifyAndFinalize); // remove anyAuth
 
 // Raw body is important for signature verification
 router.post('/webhook', express.raw({ type: '*/*' }), handlePaystackWebhook);

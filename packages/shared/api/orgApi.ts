@@ -85,6 +85,20 @@ export type OrgAssignmentRow = {
   status?: string | null;
 };
 
+// ─────────────────────────────────────────────────────────
+// Org Pricing (portal display)
+// ─────────────────────────────────────────────────────────
+export type OrgTierKey = 'starter' | 'pro' | 'enterprise';
+export type OrgCurrency = 'USD' | 'KES';
+
+export type OrgPricingTable = {
+  currency: OrgCurrency;
+  tiers: Record<
+    OrgTierKey,
+    { seats: number; monthly: number | null; yearly: number | null }
+  >;
+};
+
 
 export type OrgAssignmentsResponse = {
   ok: boolean;
@@ -194,7 +208,7 @@ export type OrgLearnersProgressResponse = {
 /* ─────────────────────────────────────────────────────────
  * Subscriptions
  * ───────────────────────────────────────────────────────── */
-export type OrgSubscribeMethod = 'MPESA' | 'PAYPAL';
+export type OrgSubscribeMethod = 'MPESA' | 'PAYSTACK';
 export type OrgSubscribeInitBody = {
   tier: Extract<OrgTier, 'pro' | 'enterprise'>;
   cycle: OrgCycle;
@@ -211,8 +225,10 @@ export type OrgSubscribeInitResp = {
     cycle: string;
   };
   checkoutRequestId?: string; // MPESA
-  orderId?: string; // PayPal
+  authorizationUrl?: string;  // PAYSTACK
+  reference?: string;         // PAYSTACK
 };
+
 
 /* ─────────────────────────────────────────────────────────
  * Me / Org basics
@@ -767,4 +783,21 @@ export async function getOrgAssignmentSubmissions(
 
   const res = await axios.get(url, { headers: authHeaders(token) });
   return res.data;
+}
+
+/** Public pricing table for portal display (no auth) */
+export async function fetchOrgPricingTable(
+  backendUrl: string,
+  currency: 'USD' | 'KES',
+  token?: string
+) {
+  const base = String(backendUrl || '').replace(/\/+$/, '');
+  const url = `${base}/api/orgs/pricing`;
+
+  const r = await axios.get(url, {
+    params: { currency },
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  return r.data;
 }

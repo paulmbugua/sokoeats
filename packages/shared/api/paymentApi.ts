@@ -167,3 +167,61 @@ export const paystackSubmitOtp = async (
   });
   return res.data;
 };
+
+
+export type PaystackCreateOrderResp = {
+  paymentId: number;
+  reference: string;
+  authorization_url: string;
+  access_code?: string;
+  // optional echoes
+  priceUsd?: string;
+  credits?: number;
+  offer?: string;
+};
+
+export type PaystackVerifyResp = {
+  ok: boolean;
+  status: 'success' | 'pending' | 'failed' | string;
+  tokensBalance?: number;
+  creditsPurchased?: number;
+  alreadyCompleted?: boolean;
+  message?: string;
+  raw?: unknown;
+};
+
+export const paystackCreateOrder = async (
+  backendUrl: string,
+  token: string,
+  payload: { packageId: string | number }
+): Promise<PaystackCreateOrderResp> => {
+  const url = new URL('/api/paystack/create-order', backendUrl).toString();
+  const res = await axios.post(url, payload, {
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  });
+  return res.data;
+};
+
+// If you kept verify protected, token is required; if you removed anyAuth, token can be optional.
+export const paystackVerify = async (
+  backendUrl: string,
+  reference: string,
+  token?: string
+): Promise<PaystackVerifyResp> => {
+  const url = new URL(`/api/paystack/verify/${encodeURIComponent(reference)}`, backendUrl).toString();
+  const res = await axios.get(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  return res.data;
+};
+
+// Optional: use your existing wallet/me endpoint if you have one.
+// Replace endpoint if yours differs.
+export const getMyWallet = async (
+  backendUrl: string,
+  token: string
+): Promise<{ tokens: number }> => {
+  const url = new URL('/api/me', backendUrl).toString();
+  const res = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
+  return { tokens: (res.data?.tokens ?? 0) as number };
+};

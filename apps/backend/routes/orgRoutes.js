@@ -3,7 +3,7 @@ import express from 'express';
 import multer from 'multer';
 
 import requireAuth from '../middleware/auth.js';
-
+import { getOrgPricing } from '../controllers/orgPricingController.js';
 import {
   initOrgSubscription,
   confirmOrgSubscription,
@@ -184,6 +184,8 @@ router.get(
   getOrgAssignmentSubmissions
 );
 
+// Public: portal needs this before login sometimes
+router.get('/pricing', getOrgPricing);
 
 /* ─────────────────────── Bootstrap + billing + misc ──────────────────────── */
 

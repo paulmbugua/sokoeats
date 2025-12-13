@@ -970,8 +970,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
             isBuildingNext={isBuildingNext}
             onPlayerReady={() => { setPlayerReady(true); }}
             onPlayerLoadingChange={(loading: boolean) => { setPlayerLoading(loading); }}
-
             lessonsArr={lessonsArr}
+            
             voiceName={voiceName || defaultVoice}
             courseTitle={selectedCourse?.title || (customTitle || 'AI Lesson')}
             isMaximized={isMaximized}
@@ -1048,6 +1048,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
             // allow child to trigger start (parity with web)
             onStart={onStart}
             hasJoined={hasJoined}
+            canAutoStart={false}
 
             // ✅ results navigation parity with web (use native Results screen)
             onViewResults={(courseId: string, courseTitle: string, g: { scorePct: number; passMark: number; passed: boolean }) => {

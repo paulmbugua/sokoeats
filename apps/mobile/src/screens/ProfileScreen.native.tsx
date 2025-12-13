@@ -1391,60 +1391,61 @@ const ProfileScreen: React.FC = () => {
                 </Pressable>
               </View>
             </View>
-          ) : (
+              ) : (
+      <View style={tw`gap-3`}>
+        {/* Session tokens card */}
+        <View
+          style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4 flex-row items-center justify-between`}
+        >
+          <View style={tw`flex-row items-center gap-3`}>
             <View
-              style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4 flex-row items-center justify-between`}
-            >
-              <View
-                style={tw`flex-row items-center gap-3`}
+              style={tw`w-12 h-12 rounded-lg bg-[#e7edf4] dark:bg-[#172534]`}
+            />
+            <View>
+              <Text
+                style={tw`font-medium text-[#0d141c] dark:text-white`}
               >
-                <View
-                  style={tw`w-12 h-12 rounded-lg bg-[#e7edf4] dark:bg-[#172534]`}
-                />
-                <View>
-                  <Text
-                    style={tw`font-medium text-[#0d141c] dark:text-white`}
-                  >
-                    Session tokens
-                  </Text>
-                  <Text
-                    style={tw`text-sm text-[#49739c]`}
-                  >
-                    Balance:{' '}
-                    <Text style={tw`font-semibold`}>
-                      {tokens}
-                    </Text>
-                    {refreshingTokens && (
-                      <Text style={tw`opacity-60`}>
-                        {' '}
-                        (updating…)
-                      </Text>
-                    )}
-                  </Text>
-                </View>
-              </View>
-              <Pressable
-                onPress={() => setOpenPayment(true)}
-                style={tw`rounded-xl h-10 px-4 bg-[#3d99f5] items-center justify-center`}
-              >
-                <Text
-                  style={tw`text-white font-semibold`}
-                >
-                  Buy tokens
-                </Text>
-              </Pressable>
+                Session tokens
+              </Text>
+              <Text style={tw`text-sm text-[#49739c]`}>
+                Balance:{' '}
+                <Text style={tw`font-semibold`}>{tokens}</Text>
+                {refreshingTokens && (
+                  <Text style={tw`opacity-60`}> (updating…)</Text>
+                )}
+              </Text>
             </View>
-          )}
+          </View>
+
+          <Pressable
+            onPress={() => setOpenPayment(true)}
+            style={tw`rounded-xl h-10 px-4 bg-[#3d99f5] items-center justify-center`}
+          >
+            <Text style={tw`text-white font-semibold`}>
+              Buy tokens
+            </Text>
+          </Pressable>
         </View>
 
-        {!isTutor && (
-          <PaymentWidget
-            isOpen={openPayment}
-            onClose={handlePaymentClose}
-            title="Top up your tokens"
-            showTutorPreview={false}
-          />
-        )}
+                {/* PaymentWidget MUST be outside the flex-row card */}
+                {openPayment && (
+                <PaymentWidget
+                  isOpen={openPayment}
+                  onClose={handlePaymentClose}
+                  title="Top up your tokens"
+                  variant="inline"
+                  showTutorPreview={false}
+                  icons={{
+                    visamaster: require('../../assets/visamaster.png'),
+                    mpesa: require('../../assets/mpesa.png'),
+                  }}
+                />
+              )}
+
+              </View>
+            )}
+          
+        </View>
 
         {/* Refund Center (students) */}
         {isStudent && (

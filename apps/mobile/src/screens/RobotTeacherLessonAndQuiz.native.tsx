@@ -103,7 +103,8 @@ interface LessonAndQuizProps {
   onPlayerLoadingChange?: (loading: boolean) => void;
   onToggleMaximized: () => void;
   onStart?: () => Promise<void> | void;     // ← add
-   hasJoined?: boolean;                       // ← add
+   hasJoined?: boolean;   
+   canAutoStart?: boolean;                    // ← add
   course: any;
   outline: any[];
   backendUrl: string;
@@ -202,7 +203,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   onPlayerReady,
   onStart,          // ← add
   hasJoined,        // ← add
-
+  canAutoStart = false,
   aiCertMsg,
   claim,
   tryGenerateCertificate,
@@ -995,9 +996,15 @@ useEffect(() => {
               showFloatingThemeButton={false}
               playerHeight={desiredHeight}
               onRequestStart={async () => {
-                if ((displaySsml && displaySsml.trim()) || (lessonsArr?.length ?? 0) > 0) return;
+                // ✅ Never auto-generate unless parent explicitly allows it
+                if (!canAutoStart) return;
+
+                // ✅ If we already have something to play, do nothing
+                if (hasRenderableLesson) return;
+
                 await onStart?.();
               }}
+
             />
           </View>
         </View>

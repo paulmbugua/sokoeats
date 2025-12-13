@@ -9,6 +9,9 @@ import {
   getRandomProfile,
   getTutorReviews,
   initiatePayment,
+  paystackCreateOrder,
+  paystackVerify,
+  getMyWallet,
   completePayment as apiCompletePayment,
   updateMpesaReference as apiUpdateMpesaReference,
 } from '@mytutorapp/shared/api';
@@ -17,6 +20,36 @@ import type { AxiosResponse } from 'axios';
 interface InitiateResponse { transactionId?: string }
 interface CompleteResponse { payment: { status: string; mpesa_reference: string }; tokens: number }
 interface UpdateRefResponse { message: string }
+type PaystackStartVars = { packageId: string | number };
+type PaystackStartResp = { reference: string; authorization_url: string; paymentId: number };
+
+type PaystackFinalizeVars = { reference: string };
+type PaystackFinalizeResp = { ok: boolean; status: string; tokensBalance?: number; creditsPurchased?: number; alreadyCompleted?: boolean };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** retry verify because webhook might be slightly delayed */
+async function verifyWithRetry(
+  backendUrl: string,
+  reference: string,
+  token?: string,
+  attempts = 8,
+  delayMs = 900
+) {
+  let last: any = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const v = await paystackVerify(backendUrl, reference, token);
+      last = v;
+      if (v?.ok && (v.status === 'success' || v.status === 'Completed')) return v;
+      // some servers respond {ok:false,status:'pending'} while webhook finishes
+    } catch (e) {
+      last = e;
+    }
+    await sleep(delayMs);
+  }
+  return last;
+}
 
 type Currency = 'USD' | 'KES';
 
@@ -58,7 +91,9 @@ interface UsePaymentResult {
   mpesaReference: string
   setMpesaReference: (ref: string) => void
   handleUpdateMpesaReference: () => Promise<void>
-
+  startPaystackCheckout: () => Promise<PaystackStartResp | null>;
+  finalizePaystack: (reference: string) => Promise<PaystackFinalizeResp>;
+  paystackRef: string | null;
   handleCheckout: () => void
 }
 
@@ -130,6 +165,8 @@ const usePayment = (): UsePaymentResult => {
     setSelectedPackage(null);
   }, [inferredCurrency]);
 
+  
+
   const handlePackageSelection = useCallback((pkg: PaymentPackage | null) => {
     setSelectedPackage(pkg);
   }, []);
@@ -144,6 +181,53 @@ const usePayment = (): UsePaymentResult => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [transactionReference, setTransactionReference] = useState<string | null>(null);
   const [mpesaReference, setMpesaReference] = useState('');
+
+    const [paystackRef, setPaystackRef] = useState<string | null>(null);
+
+  const startPaystackMutation = useMutation<PaystackStartResp, Error, PaystackStartVars>({
+    mutationFn: async (vars) => {
+      const r = await paystackCreateOrder(backendUrl, token, { packageId: vars.packageId });
+      return { reference: r.reference, authorization_url: r.authorization_url, paymentId: r.paymentId };
+    },
+  });
+
+  useEffect(() => {
+  setPaystackRef(null);
+}, [selectedPaymentMethod, inferredCurrency]);
+
+
+  const finalizePaystackMutation = useMutation<PaystackFinalizeResp, Error, PaystackFinalizeVars>({
+    mutationFn: async (vars) => {
+      const v = await verifyWithRetry(backendUrl, vars.reference, token);
+      if (v?.ok) return v as PaystackFinalizeResp;
+      throw new Error(v?.message || 'Payment not confirmed yet.');
+    },
+  });
+
+  const refreshWallet = useCallback(async () => {
+    // if you have a dedicated wallet context refresh, call it instead.
+    // this is a safe fallback:
+    await getMyWallet(backendUrl, token).catch(() => null);
+  }, [backendUrl, token]);
+
+    const startPaystackCheckout = useCallback(async () => {
+    if (!selectedPackage) { alert('Please select a package first.'); return null; }
+    if (!backendUrl || !token) { alert('Please sign in again.'); return null; }
+
+    // IMPORTANT: Paystack charges KES; you can keep package as USD intent if you want,
+    // but you should NOT collect card details in client anymore.
+    const data = await startPaystackMutation.mutateAsync({ packageId: selectedPackage.id });
+    setPaystackRef(data.reference);
+    return data; // { reference, authorization_url, paymentId }
+  }, [selectedPackage, backendUrl, token, startPaystackMutation]);
+
+  const finalizePaystack = useCallback(async (reference: string) => {
+    const v = await finalizePaystackMutation.mutateAsync({ reference });
+    await refreshWallet();
+    return v;
+  }, [finalizePaystackMutation, refreshWallet]);
+
+
 
   // --- Initiate payment (MPESA only) ---
   type InitiateVars = { amount: number; packageId: string | number; paymentMethod: string; phone: string };
@@ -272,6 +356,9 @@ const usePayment = (): UsePaymentResult => {
     mpesaReference,
     setMpesaReference,
     handleUpdateMpesaReference,
+    startPaystackCheckout,
+    finalizePaystack,
+    paystackRef,
 
     handleCheckout,
   };
