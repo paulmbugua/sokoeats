@@ -43,7 +43,6 @@ const AntiCheatGuard: React.FC<Props> = ({
 
   const lockNotifiedRef = React.useRef(false);
 
-  // ✅ Compute elapsedS first (used by remainingS and pct)
   const elapsedS = (() => {
     const n = Number(elapsedMs);
     return Math.max(0, Math.floor(Number.isFinite(n) ? n / 1000 : 0));
@@ -52,38 +51,37 @@ const AntiCheatGuard: React.FC<Props> = ({
   const timerSec = Number(policy?.timerSec ?? 0);
   const safeTimer = Number.isFinite(timerSec) ? timerSec : 0;
 
-  // ✅ Now it’s safe to compute remainingS and pct
   const remainingS = Math.max(0, Math.floor(safeTimer - elapsedS));
-  const pct = safeTimer > 0
-   ? Math.min(100, Math.max(0, (remainingS / Math.max(1, safeTimer)) * 100))
-   : 0;
+  const pct =
+    safeTimer > 0
+      ? Math.min(100, Math.max(0, (remainingS / Math.max(1, safeTimer)) * 100))
+      : 0;
 
-  // Trigger lock if backgrounds exceed policy
-    React.useEffect(() => {
+  React.useEffect(() => {
     if (!quizActive || backgrounds <= maxBg) {
       lockNotifiedRef.current = false;
     }
   }, [quizActive, backgrounds, maxBg]);
 
-  // Trigger lock ONCE when crossing the threshold
   React.useEffect(() => {
     if (!quizActive) return;
     if (policy?.maxBackgrounds != null && backgrounds > policy.maxBackgrounds) {
       if (!lockNotifiedRef.current) {
         lockNotifiedRef.current = true;
-        // ⚠️ Prefer letting the parent show UI; avoid alert storms here
-        // alert('Quiz locked: page/app was switched too many times. Submitting your answers.');
         onTooManyBackgrounds?.();
       }
     }
   }, [quizActive, backgrounds, policy?.maxBackgrounds, onTooManyBackgrounds]);
 
-  // Badges
   const Badge = ({
     children,
     tone = 'muted',
     title,
-  }: { children: React.ReactNode; tone?: 'ok' | 'warn' | 'danger' | 'muted'; title?: string }) => {
+  }: {
+    children: React.ReactNode;
+    tone?: 'ok' | 'warn' | 'danger' | 'muted';
+    title?: string;
+  }) => {
     const cls =
       tone === 'ok'
         ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-500/30'
@@ -92,10 +90,17 @@ const AntiCheatGuard: React.FC<Props> = ({
         : tone === 'danger'
         ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/10 dark:text-red-200 dark:ring-red-500/30'
         : 'bg-gray-50 text-gray-700 ring-gray-200 dark:bg-white/5 dark:text-white/80 dark:ring-white/10';
+
     return (
       <span
         title={title}
-        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ${cls}`}
+        className={[
+          // ✅ key mobile safety bits: truncate + min-w-0 + max-w-full
+          'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1',
+          'min-w-0 max-w-full',
+          'whitespace-nowrap overflow-hidden text-ellipsis',
+          cls,
+        ].join(' ')}
       >
         {children}
       </span>
@@ -104,41 +109,60 @@ const AntiCheatGuard: React.FC<Props> = ({
 
   const bgTone: 'ok' | 'warn' | 'danger' =
     backgrounds > maxBg ? 'danger' : backgrounds === maxBg ? 'warn' : 'ok';
+
   const susTone: 'ok' | 'warn' | 'danger' =
-    suspicions >= maxSus ? 'danger' : suspicions >= Math.max(1, Math.floor(maxSus * 0.7)) ? 'warn' : 'ok';
+    suspicions >= maxSus
+      ? 'danger'
+      : suspicions >= Math.max(1, Math.floor(maxSus * 0.7))
+      ? 'warn'
+      : 'ok';
 
   return (
-    <div className="rounded-2xl bg-white ring-1 ring-gray-200 p-4 mb-3 shadow-sm dark:bg-[#0f1821] dark:ring-white/10">
+    <div className="rounded-2xl bg-white ring-1 ring-gray-200 p-3 sm:p-4 mb-3 shadow-sm dark:bg-[#0f1821] dark:ring-white/10">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-md">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        {/* Left: title + device */}
+        <div className="flex items-start sm:items-center gap-3 min-w-0">
+          <div className="inline-flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-md shrink-0">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M12 2l7 3v6c0 5-3.4 9.7-7 11-3.6-1.3-7-6-7-11V5l7-3z" />
             </svg>
           </div>
-          <div>
-            <h3 className="text-lg font-bold text-darkText dark:text-white">Quiz Integrity</h3>
-            <div className="mt-0.5 text-xs text-gray-600 dark:text-white/70">
-              Device:&nbsp;
-              <span className="font-medium text-darkText dark:text-white">
-                {deviceId ? deviceId.slice(0, 12) : 'binding…'}
+
+          <div className="min-w-0">
+            <h3 className="text-base sm:text-lg font-bold text-darkText dark:text-white">
+              Quiz Integrity
+            </h3>
+            <div className="mt-0.5 text-[11px] sm:text-xs text-gray-600 dark:text-white/70 min-w-0">
+              <span>Device:&nbsp;</span>
+              <span className="font-medium text-darkText dark:text-white break-all">
+                {deviceId ? deviceId.slice(0, 18) : 'binding…'}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Quick badges */}
-        <div className="flex items-center gap-2">
-          <Badge tone={bgTone} title="Number of times the tab/app lost focus">
-            Exits: {backgrounds}/{maxBg}
-          </Badge>
-          <Badge tone={susTone} title="Suspicion level accumulated for unusual actions">
-            Suspicion: {suspicions}/{maxSus}
-          </Badge>
-          <Badge tone="muted" title="Anti-cheat heartbeat interval">
-            {policy?.heartbeatSec ?? 15}s heartbeat
-          </Badge>
+        {/* ✅ Badges: grid on mobile so heartbeat stays inside screen */}
+        <div className="w-full sm:w-auto">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2">
+            <Badge tone={bgTone} title="Number of times the tab/app lost focus">
+              <span className="truncate">Exits: {backgrounds}/{maxBg}</span>
+            </Badge>
+
+            <Badge tone={susTone} title="Suspicion level accumulated for unusual actions">
+              <span className="truncate">Suspicion: {suspicions}/{maxSus}</span>
+            </Badge>
+
+            {/* Heartbeat: short label on xs, full label on sm+ */}
+            <Badge tone="muted" title="Anti-cheat heartbeat interval">
+              <span className="sm:hidden truncate">
+                HB: {policy?.heartbeatSec ?? 15}s
+              </span>
+              <span className="hidden sm:inline truncate">
+                {policy?.heartbeatSec ?? 15}s heartbeat
+              </span>
+            </Badge>
+          </div>
         </div>
       </div>
 
@@ -167,9 +191,15 @@ const AntiCheatGuard: React.FC<Props> = ({
         <MetricCard
           label="Remaining"
           value={fmtHMS(remainingS)}
-          tone={safeTimer > 0
-            ? (remainingS <= 60 ? 'danger' : remainingS <= 180 ? 'warn' : 'ok')
-            : 'muted'}
+          tone={
+            safeTimer > 0
+              ? remainingS <= 60
+                ? 'danger'
+                : remainingS <= 180
+                ? 'warn'
+                : 'ok'
+              : 'muted'
+          }
         />
         <MetricCard label="Focus exits" value={`${backgrounds}/${maxBg}`} tone={bgTone} />
         <MetricCard label="Suspicion" value={`${suspicions}/${maxSus}`} tone={susTone} />
@@ -238,6 +268,7 @@ function MetricCard({
       : tone === 'danger'
       ? 'ring-red-200 dark:ring-red-500/30'
       : 'ring-gray-200 dark:ring-white/10';
+
   const bg =
     tone === 'ok'
       ? 'bg-emerald-50 dark:bg-emerald-500/10'
@@ -249,8 +280,12 @@ function MetricCard({
 
   return (
     <div className={`rounded-xl p-3 text-center ring-1 ${ring} ${bg}`}>
-      <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-white/60">{label}</div>
-      <div className="mt-0.5 text-lg font-semibold text-darkText dark:text-white">{value}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-white/60">
+        {label}
+      </div>
+      <div className="mt-0.5 text-lg font-semibold text-darkText dark:text-white">
+        {value}
+      </div>
     </div>
   );
 }

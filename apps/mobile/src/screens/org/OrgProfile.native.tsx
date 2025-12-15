@@ -6,13 +6,11 @@ import {
   Text,
   TouchableOpacity,
   Alert,
-  Linking,
   TextInput,
   Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import Animated, {
@@ -268,7 +266,14 @@ const OrgProfileNative: React.FC = () => {
   // learner photo mapping state
   const [photoAdmCode, setPhotoAdmCode] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
+    const [bulkPhotoUploading, setBulkPhotoUploading] = useState(false);
+  const [bulkPhotoProg, setBulkPhotoProg] = useState<{ done: number; total: number }>({
+    done: 0,
+    total: 0,
+  });
 
+
+  
   const seatCap = useCallback((tier?: string) => {
     switch ((tier || 'starter').toLowerCase()) {
       case 'enterprise':
@@ -394,6 +399,126 @@ const OrgProfileNative: React.FC = () => {
     }
     navigation.replace('InstitutionLogin', { logoutOrg: true });
   };
+
+    const basenameFromFilename = (filename?: string | null) => {
+  if (typeof filename !== 'string' || filename.trim().length === 0) return '';
+
+  // remove query/hash
+  const clean = filename.split('?')[0]?.split('#')[0] ?? '';
+  if (!clean) return '';
+
+  // take last path segment
+  const last = (clean.split('/').pop() ?? clean).trim();
+  if (!last) return '';
+
+  // strip extension
+  const noExt = last.replace(/\.[^/.]+$/, '').trim();
+  return noExt;
+};
+
+
+  const inferAdmissionCodeFromAsset = (asset: any) => {
+    // expo-image-picker asset usually has fileName on iOS; on Android often not.
+    // fallback to the URI last segment.
+    return (
+      basenameFromFilename(asset?.fileName) ||
+      basenameFromFilename(asset?.uri) ||
+      ''
+    );
+  };
+
+  const mimeFromAsset = (asset: any) => {
+    const mt = asset?.mimeType;
+    if (typeof mt === 'string' && mt.includes('/')) return mt;
+    // best effort from extension
+    const uri = String(asset?.uri || '');
+    if (/\.(png)$/i.test(uri)) return 'image/png';
+    if (/\.(webp)$/i.test(uri)) return 'image/webp';
+    return 'image/jpeg';
+  };
+const handleBulkUploadLearnerPhotos = useCallback(async () => {
+  const orgId = org?.id;
+  if (!orgId || !orgToken) {
+    Alert.alert('Learner photos', 'Organization is not loaded yet.');
+    return;
+  }
+    // Multi-select where supported
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.85,
+      allowsMultipleSelection: true,
+      // selectionLimit is not available in all expo versions; omit to avoid TS issues
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const assets = result.assets || [];
+    setBulkPhotoUploading(true);
+    setBulkPhotoProg({ done: 0, total: assets.length });
+
+    const successes: string[] = [];
+    const failures: string[] = [];
+
+    try {
+      for (let i = 0; i < assets.length; i++) {
+        const a: any = assets[i];
+        const code = inferAdmissionCodeFromAsset(a);
+
+        setBulkPhotoProg({ done: i + 1, total: assets.length });
+
+
+        if (!code) {
+          failures.push(`${a?.fileName || a?.uri || `Image #${i + 1}`} (no admission code in filename)`);
+          continue;
+        }
+
+        try {
+          const file: any = {
+            uri: a.uri,
+            name: a.fileName || `${code}.jpg`,
+            type: mimeFromAsset(a),
+          };
+
+          const res: any = await uploadAsset(backendUrl, orgToken, file, 'image');
+          const photoUrl =
+            typeof res === 'string'
+              ? res
+              : res?.url || res?.secure_url || res?.data?.url || '';
+
+          if (!photoUrl) throw new Error('Upload completed but no URL was returned.');
+
+          await setOrgLearnerPhotoByAdmission(backendUrl, orgToken, org.id, {
+            admission_code: code,
+            photo_url: photoUrl,
+          });
+
+          successes.push(code);
+        } catch (err: any) {
+          const msg =
+            err?.response?.data?.message ||
+            err?.message ||
+            'Failed to map this photo.';
+          failures.push(`${a?.fileName || a?.uri || `${code}`} (${msg})`);
+        }
+      }
+    } finally {
+      setBulkPhotoProg({ done: assets.length, total: assets.length });
+      setBulkPhotoUploading(false);
+    }
+
+    let alertMsg = '';
+    if (successes.length) {
+      alertMsg += `Mapped ${successes.length} photo(s):\n${successes.join(', ')}`;
+    }
+    if (failures.length) {
+      alertMsg += `${successes.length ? '\n\n' : ''}Failed for ${failures.length} file(s):\n${failures.join('\n')}`;
+    }
+    if (alertMsg) Alert.alert('Bulk photo upload', alertMsg);
+
+    // refresh roster is optional here; mapping doesn't change roster list,
+    // but if your UI shows photos later you may want it.
+  }, [backendUrl, org?.id, orgToken]);
+
 
   // Create membership invite (normalize to {url})
   const handleCreateMembershipInvite = useCallback(
@@ -1127,41 +1252,57 @@ const OrgProfileNative: React.FC = () => {
           </Animated.View>
         </View>
 
-        {/* Learner photos (manual mapping) */}
+        {/* Learner photos (bulk + manual mapping) */}
         <View style={tw`px-4 mt-4`}>
           <Animated.View
             entering={FadeInDown.delay(160).duration(380)}
             style={palette.surface()}
           >
             <View style={tw`flex-row items-center justify-between`}>
-              <Text
-                style={[tw`text-lg font-bold`, { color: palette.text }]}
-              >
+              <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>
                 Learner photos
               </Text>
-              <Text
-                style={[
-                  tw`text-[10px]`,
-                  { color: palette.textSubtle },
-                ]}
-              >
-                Map a photo to an admission code
+              <Text style={[tw`text-[10px]`, { color: palette.textSubtle }]}>
+                Map profile photos to learners
               </Text>
             </View>
 
-            <Text
-              style={[
-                tw`mt-2 text-[11px]`,
-                { color: palette.textSubtle },
-              ]}
-            >
-              For bulk CSV imports and bulk photo mapping, use the web portal on desktop.
-              Here you can quickly map a single learner photo to an Admission No/Code.
-            </Text>
+            {/* Bulk upload */}
+            <View style={tw`mt-3`}>
+              <TouchableOpacity
+                onPress={handleBulkUploadLearnerPhotos}
+                disabled={bulkPhotoUploading || photoUploading}
+                style={[
+                  tw`h-10 px-4 rounded-xl flex-row items-center justify-center`,
+                  { backgroundColor: palette.divider },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Bulk upload photos by filename"
+              >
+                <Ionicons name="images-outline" size={16} color={palette.text} />
+                <Text style={[tw`ml-2 text-[11px] font-semibold`, { color: palette.text }]}>
+                  {bulkPhotoUploading
+                    ? `Uploading… (${bulkPhotoProg.done}/${bulkPhotoProg.total})`
+                    : 'Bulk upload photos by filename'}
+                </Text>
+              </TouchableOpacity>
 
+              <Text style={[tw`mt-2 text-[10px]`, { color: palette.textSubtle }]}>
+                Name each image as the learner Admission No/Code, e.g.{' '}
+                <Text style={{ fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }) }}>
+                  ADM-2025-001.jpg
+                </Text>
+                . The app extracts the code (before the extension) and maps automatically.
+              </Text>
+              <Text style={[tw`mt-1 text-[10px]`, { color: palette.textSubtle }]}>
+                Note: multi-select support depends on device/OS. If you can’t pick multiple, repeat the action.
+              </Text>
+            </View>
+
+            {/* Single manual mapping */}
             <View
               style={[
-                tw`mt-3 rounded-2xl p-3`,
+                tw`mt-4 rounded-2xl p-3`,
                 {
                   backgroundColor: palette.divider,
                   borderColor: palette.border,
@@ -1169,14 +1310,10 @@ const OrgProfileNative: React.FC = () => {
                 },
               ]}
             >
-              <Text
-                style={[
-                  tw`text-[10px] mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
+              <Text style={[tw`text-[10px] mb-1`, { color: palette.textMuted }]}>
                 Admission No / Code
               </Text>
+
               <TextInput
                 value={photoAdmCode}
                 onChangeText={setPhotoAdmCode}
@@ -1188,39 +1325,25 @@ const OrgProfileNative: React.FC = () => {
 
               <TouchableOpacity
                 onPress={handleUploadLearnerPhoto}
-                disabled={photoUploading}
+                disabled={photoUploading || bulkPhotoUploading}
                 style={[
                   tw`mt-3 h-10 px-4 rounded-xl flex-row items-center justify-center`,
-                  { backgroundColor: palette.divider },
+                  { backgroundColor: palette.isDark ? 'rgba(255,255,255,0.06)' : '#ffffff' },
                 ]}
               >
-                <Ionicons
-                  name="cloud-upload-outline"
-                  size={16}
-                  color={palette.text}
-                />
-                <Text
-                  style={[
-                    tw`ml-2 text-[11px] font-semibold`,
-                    { color: palette.text },
-                  ]}
-                >
-                  {photoUploading ? 'Uploading…' : 'Pick photo & upload'}
+                <Ionicons name="cloud-upload-outline" size={16} color={palette.text} />
+                <Text style={[tw`ml-2 text-[11px] font-semibold`, { color: palette.text }]}>
+                  {photoUploading ? 'Uploading…' : 'Upload single photo'}
                 </Text>
               </TouchableOpacity>
 
-              <Text
-                style={[
-                  tw`mt-2 text-[10px]`,
-                  { color: palette.textSubtle },
-                ]}
-              >
-                Use clear passport-style photos. If the admission code does not exist, the
-                backend will return an error so you can correct it.
+              <Text style={[tw`mt-2 text-[10px]`, { color: palette.textSubtle }]}>
+                • Use clear passport-style photos. • If the admission code does not exist, the backend should return an error.
               </Text>
             </View>
           </Animated.View>
         </View>
+
 
         {/* Branding */}
         <View style={tw`px-4 mt-4`}>

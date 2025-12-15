@@ -354,57 +354,30 @@ const PaymentWidget: React.FC<Props> = ({
     requestClose();
   }, [awaitingPaystackReturn, refreshAfterPayment, requestClose]);
 
-  useEffect(() => {
-  const sub = RNLinking.addEventListener('url', (e) => {
-    const url = String(e?.url || '');
-    if (!url.startsWith('daybreak://paystack/callback')) return;
+ 
+const openPaystackAuth = useCallback(
+  async (redirectUrl: string) => {
+    const returnUrl = Linking.createURL('paystack/callback'); // -> daybreak://paystack/callback
 
-    try {
-      const parsed = new URL(url);
-      const reference = parsed.searchParams.get('reference') || parsed.searchParams.get('trxref') || undefined;
-      const kind = parsed.searchParams.get('kind') || undefined;
+    const res = await WebBrowser.openAuthSessionAsync(
+      String(redirectUrl),
+      String(returnUrl),
+    );
 
-      navigation.navigate('PaystackCallback' as any, { reference, kind } as any);
-    } catch {
-      // ignore parse errors
+    if (res?.type === 'success' && res?.url) {
+      const qp = (Linking.parse(res.url)?.queryParams ?? {}) as any;
+      const reference = String(qp?.reference || qp?.trxref || '').trim();
+
+      navigation.navigate('PaystackCallback' as any, {
+        reference,
+        kind: qp?.kind ? String(qp.kind) : undefined,
+        paymentId: qp?.paymentId ? String(qp.paymentId) : undefined,
+      } as any);
     }
+  },
+  [navigation],
+);
 
-    handlePaystackReturn().catch(() => {});
-  });
-
-  return () => sub.remove();
-}, [handlePaystackReturn, navigation]);
-
-
-  const openPaystackAuth = useCallback(
-    async (redirectUrl: string) => {
-     const returnUrl = Linking.createURL('paystack/callback');
-
-
-      try {
-        setAwaitingPaystackReturn(true);
-
-        const res = await WebBrowser.openAuthSessionAsync(
-          String(redirectUrl),
-          String(returnUrl),
-        );
-
-        if (res?.type === 'success') {
-          await handlePaystackReturn();
-          return;
-        }
-
-        if (res?.type === 'dismiss' || res?.type === 'cancel') {
-          setAwaitingPaystackReturn(false);
-          return;
-        }
-      } catch (e: any) {
-        setAwaitingPaystackReturn(false);
-        Alert.alert('Payment', e?.message || 'Unable to open payment page.');
-      }
-    },
-    [handlePaystackReturn],
-  );
 
   const handlePaystackHosted = useMemo(
     () =>

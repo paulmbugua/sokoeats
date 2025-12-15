@@ -153,6 +153,26 @@ export default function PaystackCallbackNative() {
     };
   }, [route.params]);
 
+  useEffect(() => {
+  const sub = Linking.addEventListener('url', ({ url }) => {
+    try {
+      const qp = Linking.parse(url)?.queryParams ?? {};
+      const merged = { ...(route.params ?? {}), ...(qp as any) };
+
+      const ref = pickReference(merged);
+      resolveFlowNative(merged).then((flow) => {
+        setReference(ref);
+        setIsOrg(flow.isOrg);
+        setEffectivePaymentId(flow.effectivePaymentId);
+        setKind(flow.kind || '');
+      });
+    } catch {}
+  });
+
+  return () => sub.remove();
+}, [route.params]);
+
+
   const retry = () => {
     setStatus('verifying');
     setMessage('Retrying confirmation…');

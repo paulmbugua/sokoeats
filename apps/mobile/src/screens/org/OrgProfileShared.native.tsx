@@ -3,13 +3,14 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   Linking,
   Platform,
 } from 'react-native';
 import tw from '../../../tailwind';
 import { useThemePref } from '../../theme/ThemeContext';
-
+import { Ionicons } from '@expo/vector-icons';
+import type { ViewStyle, StyleProp } from 'react-native';
 /* ----------------------------- shared types ----------------------------- */
 
 export type MiniUser = {
@@ -84,12 +85,6 @@ export const tierTone = (t?: string) => {
   };
 };
 
-/**
- * Web `cardBase` is just a class string; in native we generally use your palette.surface()
- * from the screen. If you want a shared helper, you can treat this as a hint, but most
- * screens should keep using their local palette.surface() for layout.
- */
-
 /* -------------------------- shared UI components ------------------------- */
 
 export const Skeleton: React.FC<{ style?: any }> = ({ style }) => (
@@ -116,6 +111,11 @@ function usePersonPalette() {
     text: isDark ? '#e5f0ff' : '#0d141c',
     textMuted: isDark ? 'rgba(148,163,184,0.95)' : '#49739c',
     dangerBg: '#dc2626',
+    dangerBgPressed: '#b91c1c',
+    chipBg: isDark ? 'rgba(231,237,244,0.08)' : '#e7edf4',
+    chipBgPressed: isDark ? 'rgba(231,237,244,0.12)' : '#dfe7ef',
+    icon: isDark ? '#e5f0ff' : '#0d141c',
+    iconMuted: isDark ? 'rgba(148,163,184,0.95)' : '#49739c',
     monoText: {
       fontFamily: Platform.select({
         ios: 'Menlo',
@@ -125,6 +125,37 @@ function usePersonPalette() {
     },
   };
 }
+
+/* ----------------------------- icon button ----------------------------- */
+
+const IconBtn: React.FC<{
+  onPress?: () => void;
+  disabled?: boolean;
+  label: string;
+  bg: string;
+  bgPressed: string;
+  children: React.ReactNode;
+}> = ({ onPress, disabled, label, bg, bgPressed, children }) => {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }): StyleProp<ViewStyle> => [
+        tw`h-8 w-8 rounded-xl items-center justify-center`,
+        {
+          backgroundColor: pressed ? bgPressed : bg,
+          opacity: disabled ? 0.45 : 1,
+        },
+      ]}
+    >
+      {children}
+    </Pressable>
+  );
+};
+
+/* ------------------------------ PersonRow ------------------------------ */
 
 export const PersonRow: React.FC<{
   u: MiniUser;
@@ -156,6 +187,8 @@ export const PersonRow: React.FC<{
     Linking.openURL(url).catch(() => {});
   };
 
+  const hasEmail = !!u.email?.trim();
+
   return (
     <View
       style={[
@@ -175,33 +208,20 @@ export const PersonRow: React.FC<{
             },
           ]}
         >
-          <Text
-            style={[
-              tw`text-xs font-semibold`,
-              { color: palette.text },
-            ]}
-          >
+          <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>
             {getInitials(u.name, u.email)}
           </Text>
         </View>
 
+        {/* Give name maximum width */}
         <View style={tw`flex-1 min-w-0`}>
-          <Text
-            numberOfLines={1}
-            style={[
-              tw`text-sm font-medium`,
-              { color: palette.text },
-            ]}
-          >
+          <Text numberOfLines={1} style={[tw`text-sm font-medium`, { color: palette.text }]}>
             {label}
           </Text>
           {!!u.email && (
             <Text
               numberOfLines={1}
-              style={[
-                tw`text-xs mt-0.5`,
-                { color: palette.textMuted },
-              ]}
+              style={[tw`text-xs mt-0.5`, { color: palette.textMuted }]}
             >
               {u.email}
             </Text>
@@ -209,67 +229,37 @@ export const PersonRow: React.FC<{
         </View>
       </View>
 
-      {/* Right: actions */}
+      {/* Right: ICON actions only */}
       <View style={tw`flex-row items-center gap-1.5 ml-2`}>
-        {!!u.email && (
-          <>
-            <TouchableOpacity
-              onPress={openEmail}
-              accessibilityRole="button"
-              accessibilityLabel="Email"
-              style={[
-                tw`h-8 px-3 rounded-xl items-center justify-center`,
-                { backgroundColor: palette.divider },
-              ]}
-            >
-              <Text
-                style={[
-                  tw`text-xs font-semibold`,
-                  { color: palette.text },
-                ]}
-              >
-                Email
-              </Text>
-            </TouchableOpacity>
+        <IconBtn
+          label={hasEmail ? 'Email' : 'No email'}
+          onPress={hasEmail ? openEmail : undefined}
+          disabled={!hasEmail}
+          bg={palette.chipBg}
+          bgPressed={palette.chipBgPressed}
+        >
+          <Ionicons name="mail-outline" size={18} color={palette.icon} />
+        </IconBtn>
 
-            <TouchableOpacity
-              onPress={openWhatsApp}
-              accessibilityRole="button"
-              accessibilityLabel="WhatsApp"
-              style={[
-                tw`h-8 px-3 rounded-xl items-center justify-center`,
-                { backgroundColor: palette.divider },
-              ]}
-            >
-              <Text
-                style={[
-                  tw`text-xs font-semibold`,
-                  { color: palette.text },
-                ]}
-              >
-                WhatsApp
-              </Text>
-            </TouchableOpacity>
-          </>
-        )}
+        <IconBtn
+          label="WhatsApp"
+          onPress={openWhatsApp}
+          bg={palette.chipBg}
+          bgPressed={palette.chipBgPressed}
+        >
+          <Ionicons name="logo-whatsapp" size={18} color={palette.icon} />
+        </IconBtn>
 
         {onRemove && (
-          <TouchableOpacity
-            disabled={removing}
+          <IconBtn
+            label="Remove from organization"
             onPress={doRemove}
-            accessibilityRole="button"
-            accessibilityLabel="Remove from organization"
-            style={[
-              tw`h-8 px-3 rounded-xl items-center justify-center`,
-              { backgroundColor: palette.dangerBg },
-            ]}
+            disabled={removing}
+            bg={palette.dangerBg}
+            bgPressed={palette.dangerBgPressed}
           >
-            <Text
-              style={tw`text-xs font-semibold text-white`}
-            >
-              {removing ? 'Removing…' : 'Remove'}
-            </Text>
-          </TouchableOpacity>
+            <Ionicons name="trash-outline" size={18} color="#fff" />
+          </IconBtn>
         )}
       </View>
     </View>

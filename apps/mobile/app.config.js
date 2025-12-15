@@ -5,24 +5,21 @@ export default function expoConfig({ config }) {
   const isEAS = process.env.EAS_BUILD === 'true';
   const isDev = process.env.NODE_ENV !== 'production' && !isEAS;
   const isDevClient = process.env.EXPO_DEV_CLIENT === 'true';
-  const enableGooglePlugin = isEAS || isDevClient; // include plugin for EAS builds or Dev Client builds
+  const enableGooglePlugin = isEAS || isDevClient;
 
   // ─────────────────────────────────────────────────────────
-  // Multi-backend catalog (includes your mobile hotspot IP)
-  // Select one with env: BACKEND=hotspot  (or others below)
+  // Multi-backend catalog
   // ─────────────────────────────────────────────────────────
   const BACKENDS = {
-    androidEmu: 'http://10.0.2.2:4000', // Android emulator
-    iosSim: 'http://localhost:4000', // iOS simulator
-    hotspot: 'http://10.254.198.47:4000', // ← your mobile hotspot (IPv4)
-    lan1:
-      process.env.EXPO_PUBLIC_BACKEND_URL || 'http://192.168.137.1:4000', // optional LAN
+    androidEmu: 'http://10.0.2.2:4000',
+    iosSim: 'http://localhost:4000',
+    hotspot: 'http://10.254.198.47:4000',
+    lan1: process.env.EXPO_PUBLIC_BACKEND_URL || 'http://192.168.137.1:4000',
     prod:
       process.env.EXPO_PUBLIC_PROD_BACKEND_URL ||
       'https://server.daybreaklearner.com',
   };
 
-  // Pick default via env BACKEND=hotspot | androidEmu | iosSim | lan1 | prod
   const DEFAULT_BACKEND = process.env.BACKEND || 'hotspot';
 
   return {
@@ -34,7 +31,7 @@ export default function expoConfig({ config }) {
     runtimeVersion: { policy: 'sdkVersion' },
     userInterfaceStyle: 'automatic',
 
-    // paths are relative to apps/mobile/
+    // paths relative to apps/mobile/
     icon: './assets/icon.png',
     splash: {
       image: './assets/splash.png',
@@ -49,7 +46,6 @@ export default function expoConfig({ config }) {
       package: 'com.paulmbugua2.mytutorapp',
       versionCode: 1,
 
-      // Permissions (adjust as needed)
       permissions: [
         'INTERNET',
         'CAMERA',
@@ -60,9 +56,8 @@ export default function expoConfig({ config }) {
 
       googleServicesFile: './google-services.json',
 
-      // Default notification visuals & channel
       notification: {
-        icon: './assets/notification-icon.png', // 24x24 transparent PNG
+        icon: './assets/notification-icon.png',
         color: '#FF6B00',
         defaultChannel: 'default',
       },
@@ -73,12 +68,18 @@ export default function expoConfig({ config }) {
         backgroundColor: '#FFFFFF',
       },
 
-      // Deep link scheme
+      // Deep link: daybreak://paystack/callback
       intentFilters: [
         {
           action: 'VIEW',
           category: ['BROWSABLE', 'DEFAULT'],
-          data: [{ scheme: 'daybreak' }],
+          data: [
+            {
+              scheme: 'daybreak',
+              host: 'paystack',
+              pathPrefix: '/callback',
+            },
+          ],
         },
       ],
     },
@@ -87,16 +88,10 @@ export default function expoConfig({ config }) {
       ...config.ios,
       bundleIdentifier: 'com.paulmbugua2.mytutorapp',
       buildNumber: '1.0.0',
-
-      // Keep only what the plugin doesn't inject
       infoPlist: {
         ...(config?.ios?.infoPlist ?? {}),
-        // Background audio for narration
         UIBackgroundModes: [
-          ...new Set([
-            ...(config?.ios?.infoPlist?.UIBackgroundModes ?? []),
-            'audio',
-          ]),
+          ...new Set([...(config?.ios?.infoPlist?.UIBackgroundModes ?? []), 'audio']),
         ],
       },
     },
@@ -109,10 +104,8 @@ export default function expoConfig({ config }) {
     },
 
     plugins: [
-      // Routing
       'expo-router',
 
-      // System UI & splash
       [
         'expo-system-ui',
         { lightBackgroundColor: '#FFFFFF', darkBackgroundColor: '#000000' },
@@ -126,9 +119,9 @@ export default function expoConfig({ config }) {
         },
       ],
 
-      // Core features
       'expo-notifications',
       'expo-web-browser',
+
       [
         'expo-location',
         {
@@ -137,22 +130,18 @@ export default function expoConfig({ config }) {
         },
       ],
 
-      // 🔊 Media / assets
       'expo-asset',
       'expo-audio',
       'expo-video',
 
-      // Build properties (pin to avoid prebuild drift)
       [
         'expo-build-properties',
         {
           android: {
-            // Networking & optimizations
-            usesCleartextTraffic: isDev, // allow http in dev
+            usesCleartextTraffic: isDev,
             enableProguardInReleaseBuilds: true,
             enableShrinkResourcesInReleaseBuilds: true,
 
-            // Toolchain/SDK pins
             compileSdkVersion: 35,
             targetSdkVersion: 35,
             kotlinVersion: '2.0.21',
@@ -166,7 +155,6 @@ export default function expoConfig({ config }) {
         },
       ],
 
-      // Google Sign-In (include when building native code: EAS or Dev Client)
       enableGooglePlugin && [
         '@react-native-google-signin/google-signin',
         {
@@ -183,11 +171,9 @@ export default function expoConfig({ config }) {
     extra: {
       ...config.extra,
 
-      // Legacy single var (kept for compatibility with your codebase/tools)
       EXPO_PUBLIC_BACKEND_URL:
         process.env.EXPO_PUBLIC_BACKEND_URL ?? 'http://10.0.2.2:4000',
-      EXPO_PUBLIC_PROD_BACKEND_URL:
-        process.env.EXPO_PUBLIC_PROD_BACKEND_URL,
+      EXPO_PUBLIC_PROD_BACKEND_URL: process.env.EXPO_PUBLIC_PROD_BACKEND_URL,
 
       EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:
         process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
@@ -202,9 +188,8 @@ export default function expoConfig({ config }) {
 
       eas: { projectId: '015ecf54-6bf2-4727-9283-1525689ccade' },
 
-      // New: multi-backend support
       BACKENDS,
-      DEFAULT_BACKEND: DEFAULT_BACKEND,
+      DEFAULT_BACKEND,
     },
 
     updates: {

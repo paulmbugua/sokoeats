@@ -70,6 +70,7 @@ import OrgExamResultsPortal from './pages/org/OrgExamResultsPortal.web';
 // org change-password page
 import OrgChangePassword from './pages/org/OrgChangePassword.web';
 import PaystackCallbackWeb from '@/pages/PaystackCallback.web';
+import PaystackCallbackRedirectWeb from '@/pages/PaystackCallbackRedirect.web';
 
 /* ───────────────────────────
    Per-user "first login" helpers
@@ -424,6 +425,8 @@ const App: React.FC<{}> = () => {
           <Route path="/payment-flow" element={<PaymentFlow />} />
           <Route path="/unsubscribe" element={<UnsubscribePage />} />
           <Route path="/paystack/callback" element={<PaystackCallbackWeb />} />
+          <Route path="/paystack/callback" element={<PaystackCallbackRedirectWeb />} />
+
          
           {/* Org public routes */}
           <Route path="/org/login" element={<InstitutionLogin />} />
