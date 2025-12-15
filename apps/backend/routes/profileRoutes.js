@@ -19,7 +19,7 @@ import {
   getRandomProfile,
    createProfileJson,
   updateProfileVideoJson,
-  
+  searchTutors,
 } from '../controllers/profileController.js';
 
 const router = express.Router();
@@ -43,6 +43,9 @@ router.get('/user/:userId', getProfileByUserId);
 
 // Route to get a profile with recommendations (placed before generic /:id)
 router.get('/:id/recommendations', getProfileWithRecommendations);
+
+router.get('/search', searchTutors); // public search
+
 
 // Now the routes that use the generic id parameter
 router.patch(

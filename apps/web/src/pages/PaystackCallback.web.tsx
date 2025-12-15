@@ -1,149 +1,281 @@
+// apps/web/src/pages/PaystackCallback.web.tsx
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { paystackVerify } from '@mytutorapp/shared/api';
 import { confirmOrgSubscription } from '@mytutorapp/shared/api/orgApi';
 
+type Status = 'verifying' | 'success' | 'failed';
+
+/* ----------------------- small helpers ----------------------- */
+
+function safeGetSession(key: string): string {
+  try {
+    return sessionStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+}
+
+function safeSetSession(key: string, val: string) {
+  try {
+    sessionStorage.setItem(key, val);
+  } catch {}
+}
+
+function safeRemoveSession(keys: string[]) {
+  try {
+    for (const k of keys) sessionStorage.removeItem(k);
+  } catch {}
+}
+
+function addOrSetQuery(path: string, params: Record<string, string>) {
+  try {
+    const u = new URL(path, window.location.origin);
+    for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+    return `${u.pathname}${u.search}${u.hash}`;
+  } catch {
+    const hasQ = path.includes('?');
+    const q = new URLSearchParams(params).toString();
+    return path + (hasQ ? '&' : '?') + q;
+  }
+}
+
+function looksLikeJwt(s: string) {
+  const t = String(s || '').trim();
+  return t.startsWith('eyJ') && t.split('.').length === 3;
+}
+
+async function fetchWalletBalance(backendUrl: string, authToken: string): Promise<number | null> {
+  if (!backendUrl || !authToken) return null;
+  try {
+    const r = await fetch(`${backendUrl.replace(/\/+$/, '')}/api/account/balance`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+
+    const bal = Number(j?.balance ?? j?.tokens ?? j?.data?.balance ?? j?.data?.tokens ?? NaN);
+    return Number.isFinite(bal) ? bal : null;
+  } catch {
+    return null;
+  }
+}
+
+function emitWalletUpdated(balance: number) {
+  // Persist for next page load + broadcast for live listeners
+  safeSetSession('wallet:lastBalance', String(balance));
+  try {
+    window.dispatchEvent(new CustomEvent('wallet:updated', { detail: { balance } }));
+  } catch {}
+}
+
+/**
+ * Decide what flow we are in WITHOUT mixing them.
+ *
+ * ORG flow is ONLY when we have a paymentId (query or session) OR kind=org.
+ * Token flow is everything else.
+ */
+function resolveFlow(params: URLSearchParams) {
+  const kind = (params.get('kind') || '').toLowerCase();
+  const qPaymentId = params.get('paymentId') || '';
+
+  const sPaymentId = safeGetSession('org:lastPaystackPaymentId') || '';
+  const effectivePaymentId = qPaymentId || sPaymentId;
+
+  const isOrg = Boolean(effectivePaymentId) || kind === 'org';
+
+  return {
+    isOrg,
+    kind,
+    qPaymentId,
+    effectivePaymentId,
+  };
+}
+
+/* ----------------------- Component ----------------------- */
+
 export default function PaystackCallbackWeb() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
 
-  const reference = params.get('reference') || params.get('trxref') || '';
-  const paymentId = params.get('paymentId') || ''; // 👈 org payments include this
-  const kind = params.get('kind') || ''; // 'org' (optional)
+  const reference = (params.get('reference') || params.get('trxref') || '').trim();
 
   const { backendUrl, token, orgToken } = useShopContext();
-  const authToken = orgToken || token;
 
-  const [status, setStatus] = useState<'verifying' | 'success' | 'failed'>('verifying');
+  // ✅ STRICT separation:
+  // - packages use `token`
+  // - org subscriptions use `orgToken`
+  const pkgToken = (token || '').trim();
+  const orgAuthToken = (orgToken || '').trim();
+
+  const [status, setStatus] = useState<Status>('verifying');
   const [message, setMessage] = useState('Finishing payment…');
 
+  const { isOrg, effectivePaymentId, kind } = resolveFlow(params);
+
   const retry = () => {
-  // re-run this same callback URL fresh
-  setStatus('verifying');
-  setMessage('Retrying confirmation…');
-
-  // simplest: reload (works, but heavier)
-  window.location.reload();
-
-  // better alternative (no full reload):
-  // navigate(0);
-};
-
+    setStatus('verifying');
+    setMessage('Retrying confirmation…');
+    window.location.reload();
+    // or: navigate(0);
+  };
 
   useEffect(() => {
     let alive = true;
 
     (async () => {
       try {
-        if (!reference) {
+        if (!reference || looksLikeJwt(reference)) {
           setStatus('failed');
-          setMessage('Missing Paystack reference.');
+          setMessage('Missing Paystack reference in callback URL.');
           return;
         }
 
-        // ───────────────────────── ORG FLOW ─────────────────────────
-        let effectivePaymentId = paymentId;
-
-        if (!effectivePaymentId) {
-        try {
-            effectivePaymentId = sessionStorage.getItem('org:lastPaystackPaymentId') || '';
-        } catch {}
-        }
-
-        if (effectivePaymentId) {
-        if (!authToken) {
+        // ==============================
+        // ORG FLOW (uses orgToken ONLY)
+        // ==============================
+        if (isOrg) {
+          if (!effectivePaymentId) {
             setStatus('failed');
-            setMessage('You must be logged in to activate your institution subscription.');
+            setMessage('Missing institution paymentId.');
             return;
+          }
+          if (!orgAuthToken) {
+            setStatus('failed');
+            setMessage('You must be logged in (institution) to activate your subscription.');
+            return;
+          }
+
+          await confirmOrgSubscription(backendUrl, orgAuthToken, effectivePaymentId, reference);
+
+          // ✅ keep your cleanup snippet (org upgrading plans depend on it)
+          safeRemoveSession([
+            'org:lastPaystackPaymentId',
+            'org:lastPaystackOrgId',
+            'org:lastPaystackTier',
+            'org:lastPaystackCycle',
+            'org:lastPaystackAt',
+          ]);
+
+          if (!alive) return;
+          setStatus('success');
+          setMessage('Payment verified. Subscription activated ✅');
+
+          setTimeout(() => navigate('/org/portal', { replace: true }), 800);
+          return;
         }
 
-        await confirmOrgSubscription(backendUrl, authToken, effectivePaymentId, reference);
+        // ==============================
+        // TOKEN / PACKAGE FLOW (uses token ONLY)
+        // ==============================
+        if (!pkgToken) {
+          setStatus('failed');
+          setMessage('You must be logged in to verify a token purchase.');
+          return;
+        }
 
-        try {
-            sessionStorage.removeItem('org:lastPaystackPaymentId');
-            sessionStorage.removeItem('org:lastPaystackOrgId');
-            sessionStorage.removeItem('org:lastPaystackTier');
-            sessionStorage.removeItem('org:lastPaystackCycle');
-            sessionStorage.removeItem('org:lastPaystackAt');
-        } catch {}
+        // ✅ Correct arg order: (backendUrl, reference, token?)
+        await paystackVerify(backendUrl, reference, pkgToken);
+
+        // Refresh/broadcast wallet so Account updates instantly
+        const bal = await fetchWalletBalance(backendUrl, pkgToken);
+        if (bal != null) emitWalletUpdated(bal);
 
         if (!alive) return;
         setStatus('success');
-        setMessage('Payment verified. Subscription activated ✅');
+        setMessage('Payment verified ✅ Redirecting to your account…');
 
-        setTimeout(() => navigate('/org/portal', { replace: true }), 800);
-        return;
-        }
+        const next = addOrSetQuery('/account', { afterPaystack: '1', focus: 'tokens' });
 
+        safeRemoveSession(['paystack:returnTo', 'paystack:returnToAt']);
 
-        // ───────────────────────── TOKEN FLOW ───────────────────────
-        // Your existing verify endpoint (used elsewhere)
-        await paystackVerify(backendUrl, authToken || '', reference);
-
-        if (!alive) return;
-        setStatus('success');
-        setMessage('Payment verified ✅ You can return to the app.');
-
+        setTimeout(() => navigate(next, { replace: true }), 650);
       } catch (e: any) {
         if (!alive) return;
+
         setStatus('failed');
-        setMessage(e?.response?.data?.message || e?.message || 'Verification failed.');
+
+        // ✅ Keep errors unmixed (org vs token)
+        if (isOrg) {
+          setMessage(
+            e?.response?.data?.message ||
+              e?.message ||
+              'Failed to confirm subscription payment'
+          );
+        } else {
+          setMessage(
+            e?.response?.data?.message ||
+              e?.message ||
+              'Token payment verification failed.'
+          );
+        }
       }
     })();
 
     return () => {
       alive = false;
     };
-  }, [backendUrl, authToken, reference, paymentId, navigate]);
+  }, [backendUrl, reference, isOrg, effectivePaymentId, orgAuthToken, pkgToken, navigate]);
+
+  /* ----------------------- UI: never mix links ----------------------- */
+
+  const primaryLink = isOrg ? (
+    <Link to="/org/portal" className="px-3 py-2 rounded-xl text-sm bg-slate-900 text-white">
+      Go to Institution Portal
+    </Link>
+  ) : (
+    <Link to="/account" className="px-3 py-2 rounded-xl text-sm bg-slate-900 text-white">
+      Go to Account
+    </Link>
+  );
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-[#0f1821] ring-1 ring-slate-200 dark:ring-white/10 p-5">
         <h1 className="text-lg font-semibold">
           Paystack callback
+          <span className="ml-2 text-xs opacity-60">
+            ({isOrg ? 'Institution plan' : 'Token top-up'})
+          </span>
         </h1>
 
         <p className="mt-2 text-sm opacity-80">
           Status: <b>{status}</b>
         </p>
 
-        <p className="mt-2 text-sm">
-          {message}
-        </p>
+        <p className="mt-2 text-sm">{message}</p>
 
         <div className="mt-4 flex gap-2">
-        <Link
-            to="/org/portal"
-            className="px-3 py-2 rounded-xl text-sm bg-slate-900 text-white"
-        >
-            Go to Institution Portal
-        </Link>
+          {primaryLink}
 
-        {(status === 'failed') && (
+          {status === 'failed' && (
             <button
-            onClick={retry}
-            className="px-3 py-2 rounded-xl text-sm bg-slate-100 dark:bg-white/10"
+              onClick={retry}
+              className="px-3 py-2 rounded-xl text-sm bg-slate-100 dark:bg-white/10"
             >
-            Retry confirmation
+              Retry confirmation
             </button>
-        )}
+          )}
 
-        <Link
-            to="/"
-            className="px-3 py-2 rounded-xl text-sm bg-slate-100 dark:bg-white/10"
-        >
+          <Link to="/" className="px-3 py-2 rounded-xl text-sm bg-slate-100 dark:bg-white/10">
             Home
-        </Link>
+          </Link>
         </div>
 
         {!!reference && (
           <div className="mt-4 text-[11px] opacity-60">
             Ref: <span className="font-mono">{reference}</span>
-            {paymentId ? (
+            {isOrg && effectivePaymentId ? (
               <>
-                {' '}• PaymentId: <span className="font-mono">{paymentId}</span>
-                {kind ? <> • Kind: <span className="font-mono">{kind}</span></> : null}
+                {' '}
+                • PaymentId: <span className="font-mono">{effectivePaymentId}</span>
+                {kind ? (
+                  <>
+                    {' '}
+                    • Kind: <span className="font-mono">{kind}</span>
+                  </>
+                ) : null}
               </>
             ) : null}
           </div>

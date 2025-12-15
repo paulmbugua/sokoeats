@@ -1,12 +1,13 @@
 // packages/shared/hooks/useOrg.ts
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { useShopContext } from '@mytutorapp/shared/context';
 import {
   fetchCurrentUser,
   getMyOrg,
   fetchOrgPricingTable,
+  getMyOrgOrBootstrap,
   type OrgCurrency,
   type OrgPricingTable,
 } from '@mytutorapp/shared/api/orgApi';
@@ -32,9 +33,10 @@ const memoryStorage: KV = (() => {
 export function useOrg(opts?: { currency?: OrgCurrency }) {
 
   const { backendUrl, token, orgToken, userId, storage: ctxStorage } = useShopContext() as any;
-  const storage: KV = (ctxStorage as KV) || memoryStorage;
+  const storage: KV = useMemo(() => (ctxStorage as KV) || memoryStorage, [ctxStorage]);
 
-  const authToken: string | undefined = orgToken || token;
+
+  const authToken: string | undefined = orgToken
 
   
 
@@ -50,6 +52,9 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
   // Loading flags
   const [loadingMembership, setLoadingMembership] = useState(false);
   const [loadingOrg, setLoadingOrg] = useState(false);
+  const [orgChecked, setOrgChecked] = useState(false);
+  const triedBootstrapRef = useRef(false);
+
 
     const [pricingCurrency, setPricingCurrency] = useState<OrgCurrency>(
     (opts?.currency ?? 'USD') as OrgCurrency
@@ -142,40 +147,62 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
   }, [backendUrl, authToken]);
 
   const fetchOrg = useCallback(async (): Promise<void> => {
-    if (!authToken) return;
-    setLoadingOrg(true);
-    try {
-      const o = await getMyOrg(backendUrl, authToken);
-      setOrg(o ?? null);
+  if (!authToken) {
+    setOrg(null);
+    setOrgChecked(true);
+    return;
+  }
 
-      // Update storage from server shape when available (works on web & native)
-      if (o?.id) {
-        setActiveOrgId(prev => prev ?? o.id);
-        await storage.setItem('org:activeId', o.id);
-      }
+  setLoadingOrg(true);
+  try {
+    const o = await getMyOrg(backendUrl, authToken);
+    setOrg(o ?? null);
+    setOrgChecked(true);
 
-      const myRole = ((o as any)?.my_role || (o as any)?.role || '')
-        .toString()
-        .toLowerCase();
-
-      if (myRole) {
-        // ✅ ALWAYS overwrite with the server truth
-        setLocalRole(myRole);
-        await storage.setItem('org:role', myRole);
-      } else {
-        // Optional: clear when server gives no role
-        setLocalRole(undefined);
-        await storage.removeItem('org:role');
-      }
-    } catch (e) {
-      if (axios.isAxiosError(e)) {
-        console.warn('[useOrg] fetchOrg failed', e.response?.status, e.message);
-      }
-      setOrg(null);
-    } finally {
-      setLoadingOrg(false);
+    if (o?.id) {
+      setActiveOrgId(prev => prev ?? o.id);
+      await storage.setItem('org:activeId', o.id);
     }
-  }, [backendUrl, authToken, storage]);
+
+    const myRole = ((o as any)?.my_role || (o as any)?.role || '')
+      .toString()
+      .toLowerCase();
+
+    if (myRole) {
+      setLocalRole(myRole);
+      await storage.setItem('org:role', myRole);
+    } else {
+      setLocalRole(undefined);
+      await storage.removeItem('org:role');
+    }
+  } catch (e) {
+    if (axios.isAxiosError(e)) {
+      const status = e.response?.status;
+      console.warn('[useOrg] fetchOrg failed', status, e.message);
+
+      // ✅ If org not found, try bootstrap ONCE then retry
+      if (status === 404 && !triedBootstrapRef.current) {
+        triedBootstrapRef.current = true;
+        try {
+          const o2 = await getMyOrgOrBootstrap(backendUrl, authToken);
+          setOrg(o2 ?? null);
+        } catch (e2) {
+          console.warn('[useOrg] getMyOrgOrBootstrap failed', (e2 as any)?.message || e2);
+          setOrg(null);
+        } finally {
+          setOrgChecked(true);
+        }
+        return;
+      }
+    }
+
+    setOrg(null);
+    setOrgChecked(true);
+  } finally {
+    setLoadingOrg(false);
+  }
+}, [backendUrl, authToken, storage]);
+
 
   useEffect(() => {
     if (!authToken) {
@@ -254,6 +281,9 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
     orgPricingLoading: pricingQuery.isLoading,
     orgPricingError: pricingQuery.error,
     refreshPricing: pricingQuery.refetch,
+    orgChecked,
+    orgNotFound: orgChecked && !org && !loadingOrg,
+
 
     // Optional: expose role early for gating
     role: localRole || (primaryMembership?.role ?? undefined),

@@ -1006,7 +1006,7 @@ Sections (absolute numbering shown):
 ${outlineStr}
 Write one self-contained lesson per section with a hook, goals, core concept, worked example, pitfall, a micro-check, and a recap.`,
         temperature: 0.35,
-        maxTokens: 2400,
+        maxTokens: 4800,
         schema: LESSON_PACK_SCHEMA,
         tries: 3
       })

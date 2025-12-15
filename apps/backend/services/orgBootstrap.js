@@ -112,13 +112,14 @@ export async function ensureOrgForUser(userId) {
 
     // Ensure subscription exists
     await client.query(
-      `
-      INSERT INTO org_subscriptions (org_id, tier, seats, active, created_at)
-      VALUES ($1,'starter',50,TRUE,NOW())
-      ON CONFLICT (org_id) DO NOTHING
-      `,
-      [orgRow.id]
-    );
+  `
+  INSERT INTO org_subscriptions (org_id, tier, seats, active, created_at)
+  VALUES ($1,'starter',50,TRUE,NOW())
+  ON CONFLICT (org_id) WHERE active = TRUE DO NOTHING
+  `,
+  [orgRow.id]
+);
+
 
     await client.query('COMMIT');
     return orgRow;

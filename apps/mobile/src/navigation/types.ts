@@ -116,5 +116,10 @@ export type MainStackParamList = {
         grade?: { scorePct: number; passMark: number; passed: boolean };
       }
     | undefined;
+    
+   PaystackCallback:
+    | { reference?: string; trxref?: string; paymentId?: string; kind?: string }
+    | undefined;
+   
 };
 

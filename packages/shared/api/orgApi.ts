@@ -16,6 +16,12 @@ function authHeaders(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
 
+function clientPlatformHeader() {
+  const isNative =
+    typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative';
+  return { 'x-client-platform': isNative ? 'native' : 'web' };
+}
+
 /* ─────────────────────────────────────────────────────────
  * Local shapes (light coupling to shared/types)
  * ───────────────────────────────────────────────────────── */
@@ -409,14 +415,16 @@ export async function initOrgSubscription(
   orgId: string,
   body: OrgSubscribeInitBody
 ): Promise<OrgSubscribeInitResp> {
-  const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(
-    orgId
-  )}/subscribe/init`;
+  const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/subscribe/init`;
   const res = await axios.post<OrgSubscribeInitResp>(url, body, {
-    headers: authHeaders(token),
+    headers: {
+      ...authHeaders(token),
+      ...clientPlatformHeader(), // ✅ ADD THIS
+    },
   });
   return res.data;
 }
+
 
 export function confirmOrgSubscription(
   backendUrl: string,

@@ -17,6 +17,7 @@ import {
   Animated,
   Easing,
   useWindowDimensions,
+  type ImageSourcePropType,
 } from 'react-native';
 import debounce from 'lodash.debounce';
 import tw from '../../tailwind';
@@ -28,7 +29,7 @@ import * as WebBrowser from 'expo-web-browser';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { usePayment } from '@mytutorapp/shared/hooks';
-import { paystackCardCharge, paystackSubmitOtp } from '@mytutorapp/shared/api';
+import { paystackCreateOrder } from '@mytutorapp/shared/api';
 
 import type {
   PaymentPackage,
@@ -40,7 +41,6 @@ import type {
 } from '@mytutorapp/shared/types';
 
 import type { MainStackParamList } from '../navigation/types';
-import type { ImageSourcePropType } from 'react-native';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -156,23 +156,6 @@ function safeTimeZone(): string | undefined {
   }
 }
 
-/* ───────────────────── Card helpers ───────────────────── */
-
-const formatCardNumber = (value: string) => {
-  const digits = value.replace(/\D/g, '').slice(0, 19);
-  const groups = digits.match(/.{1,4}/g) || [];
-  return groups.join(' ');
-};
-
-const formatExpiry = (value: string) => {
-  const digits = value.replace(/\D/g, '').slice(0, 4);
-  if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return digits;
-};
-
-const onlyDigitsMax = (value: string, max: number) =>
-  value.replace(/\D/g, '').slice(0, max);
-
 /* ───────────────────── Stars (native) ───────────────────── */
 
 const TutorRating = ({
@@ -257,7 +240,7 @@ const PaymentWidget: React.FC<Props> = ({
     mpesaReference,
     setMpesaReference,
     handleUpdateMpesaReference,
-    handleCheckout,
+    handleCheckout, // kept for any future methods
     inferredCurrency, // 'USD' | 'KES'
   } = usePayment();
 
@@ -292,7 +275,6 @@ const PaymentWidget: React.FC<Props> = ({
     [panelW, translateX],
   );
 
-  // ✅ unified close behavior
   const requestClose = useCallback(() => {
     if (variant === 'inline') {
       onClose();
@@ -305,7 +287,6 @@ const PaymentWidget: React.FC<Props> = ({
   }, [animateOut, onClose, variant]);
 
   useEffect(() => {
-    // Only relevant for modal mode
     if (variant !== 'modal') return;
 
     if (isOpen) {
@@ -361,8 +342,9 @@ const PaymentWidget: React.FC<Props> = ({
     setCtxTokens,
   ]);
 
-  /* ───────────────────────── Paystack redirect return handling ───────────────────────── */
+  /* ───────────────────────── Paystack hosted checkout (WEB-like) ───────────────────────── */
 
+  const [cardProcessing, setCardProcessing] = useState(false);
   const [awaitingPaystackReturn, setAwaitingPaystackReturn] = useState(false);
 
   const handlePaystackReturn = useCallback(async () => {
@@ -373,18 +355,35 @@ const PaymentWidget: React.FC<Props> = ({
   }, [awaitingPaystackReturn, refreshAfterPayment, requestClose]);
 
   useEffect(() => {
-    const sub = RNLinking.addEventListener('url', () => {
-      handlePaystackReturn().catch(() => {});
-    });
-    return () => sub.remove();
-  }, [handlePaystackReturn]);
+  const sub = RNLinking.addEventListener('url', (e) => {
+    const url = String(e?.url || '');
+    if (!url.startsWith('daybreak://paystack/callback')) return;
+
+    try {
+      const parsed = new URL(url);
+      const reference = parsed.searchParams.get('reference') || parsed.searchParams.get('trxref') || undefined;
+      const kind = parsed.searchParams.get('kind') || undefined;
+
+      navigation.navigate('PaystackCallback' as any, { reference, kind } as any);
+    } catch {
+      // ignore parse errors
+    }
+
+    handlePaystackReturn().catch(() => {});
+  });
+
+  return () => sub.remove();
+}, [handlePaystackReturn, navigation]);
+
 
   const openPaystackAuth = useCallback(
     async (redirectUrl: string) => {
-      const returnUrl = Linking.createURL('paystack-return');
+     const returnUrl = Linking.createURL('paystack/callback');
+
 
       try {
         setAwaitingPaystackReturn(true);
+
         const res = await WebBrowser.openAuthSessionAsync(
           String(redirectUrl),
           String(returnUrl),
@@ -401,10 +400,70 @@ const PaymentWidget: React.FC<Props> = ({
         }
       } catch (e: any) {
         setAwaitingPaystackReturn(false);
-        Alert.alert('Payment', e?.message || 'Unable to open verification page.');
+        Alert.alert('Payment', e?.message || 'Unable to open payment page.');
       }
     },
     [handlePaystackReturn],
+  );
+
+  const handlePaystackHosted = useMemo(
+    () =>
+      debounce(async () => {
+        if (!selectedPackage) {
+          Alert.alert('Payment', 'Select a package first.');
+          return;
+        }
+
+        if (String(selectedPackage.currency || '').toUpperCase() !== 'USD') {
+          Alert.alert('Payment', 'Please select a USD package for card checkout.');
+          return;
+        }
+
+        if (!backendUrl || !token) {
+          Alert.alert('Payment', 'Missing backend URL or login. Please sign in again.');
+          return;
+        }
+
+        setCardProcessing(true);
+        try {
+          const o: any = await paystackCreateOrder(backendUrl, token, {
+            packageId: selectedPackage.id,
+          });
+
+          const authUrl =
+            o?.authorization_url ||
+            o?.authorizationUrl ||
+            o?.data?.authorization_url ||
+            o?.data?.authorizationUrl;
+
+          if (!authUrl) {
+            throw new Error('Missing Paystack authorization URL.');
+          }
+
+          Alert.alert(
+            'Continue in browser',
+            'We’ll open Paystack to complete a secure card payment. When you return, we’ll refresh your wallet.',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => setAwaitingPaystackReturn(false) },
+              {
+                text: 'Open',
+                onPress: async () => {
+                  await openPaystackAuth(String(authUrl));
+                },
+              },
+            ],
+          );
+        } catch (e: any) {
+          console.error('[paystack][create-order] error', e);
+          Alert.alert(
+            'Payment',
+            e?.response?.data?.message || e?.message || 'Unable to start Paystack checkout.',
+          );
+        } finally {
+          setCardProcessing(false);
+        }
+      }, 300),
+    [backendUrl, token, selectedPackage, openPaystackAuth],
   );
 
   /* ───────────────────────── Profile-aware locale + display currency ───────────────────────── */
@@ -455,104 +514,6 @@ const PaymentWidget: React.FC<Props> = ({
     setUserLocale(nextLocale || 'en-US');
     setUserDisplayCurrency((nextCurrency || 'USD').toUpperCase());
   }, [profile]);
-
-  /* ───────────────────────── Card form state (Paystack) ───────────────────────── */
-
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState(''); // MM/YY
-  const [cardCvc, setCardCvc] = useState('');
-  const [cardName, setCardName] = useState('');
-  const [cardError, setCardError] = useState<string | null>(null);
-  const [cardProcessing, setCardProcessing] = useState(false);
-
-  // OTP step
-  const [needsOtp, setNeedsOtp] = useState(false);
-  const [otp, setOtp] = useState('');
-  const [otpReference, setOtpReference] = useState<string | null>(null);
-  const [otpError, setOtpError] = useState<string | null>(null);
-
-  const payoutPref = useMemo(() => getPayoutCurrency(profile as any), [profile]);
-
-  // Default selection when opened (KES -> M-Pesa, else Paystack)
-  useEffect(() => {
-    // inline has no "mounted" notion; so base it on isOpen
-    const active = variant === 'modal' ? mounted : isOpen;
-    if (!active) return;
-
-    if (payoutPref === 'KES') {
-      handlePaymentSelection('M-Pesa');
-      setShowMpesaModal(true);
-    } else {
-      handlePaymentSelection('Paystack');
-      setShowMpesaModal(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, isOpen, payoutPref, variant]);
-
-  // Clear transient state on close / method change
-  useEffect(() => {
-    const active = variant === 'modal' ? mounted : isOpen;
-
-    if (!active) {
-      setNeedsOtp(false);
-      setOtp('');
-      setOtpReference(null);
-      setOtpError(null);
-      setCardError(null);
-      setCardProcessing(false);
-      setAwaitingPaystackReturn(false);
-    }
-  }, [mounted, isOpen, variant]);
-
-  useEffect(() => {
-    setNeedsOtp(false);
-    setOtp('');
-    setOtpReference(null);
-    setOtpError(null);
-  }, [selectedPaymentMethod]);
-
-  const validateCardForm = (): boolean => {
-    const numberDigits = cardNumber.replace(/\s+/g, '');
-    if (numberDigits.length < 13 || numberDigits.length > 19) {
-      setCardError('Please enter a valid card number.');
-      return false;
-    }
-
-    const [mmStr = '', yyStr = ''] = cardExpiry.split('/');
-    if (!/^\d{2}$/.test(mmStr) || !/^\d{2}$/.test(yyStr)) {
-      setCardError('Please enter expiry as MM/YY.');
-      return false;
-    }
-    const mm = Number(mmStr);
-    const yy2 = Number(yyStr);
-
-    if (!mm || !yy2 || mm < 1 || mm > 12) {
-      setCardError('Please enter a valid expiry date.');
-      return false;
-    }
-
-    const now = new Date();
-    const currentYear2 = Number(String(now.getFullYear()).slice(-2));
-    const currentMonth = now.getMonth() + 1;
-
-    if (yy2 < currentYear2 || (yy2 === currentYear2 && mm < currentMonth)) {
-      setCardError('This card appears to be expired.');
-      return false;
-    }
-
-    if (cardCvc.length < 3 || cardCvc.length > 4) {
-      setCardError('Please enter a valid CVV.');
-      return false;
-    }
-
-    if (!cardName.trim()) {
-      setCardError('Please enter the name on the card.');
-      return false;
-    }
-
-    setCardError(null);
-    return true;
-  };
 
   /* ───────────────────── Locale-aware price formatting ───────────────────── */
 
@@ -611,6 +572,49 @@ const PaymentWidget: React.FC<Props> = ({
     return `Pay ${label}`;
   };
 
+  /* ───────────────────── KES-at-checkout hint values (WEB-like copy) ───────────────────── */
+
+  const paystackBaseUsdText = useMemo(() => {
+    if (!selectedPackage) return null;
+    if (String(selectedPackage.currency || '').toUpperCase() !== 'USD') return null;
+
+    const usd = Number(selectedPackage.price || 0);
+    if (!Number.isFinite(usd) || usd <= 0) return null;
+
+    try {
+      return new Intl.NumberFormat(userLocale, {
+        style: 'currency',
+        currency: 'USD',
+      }).format(usd);
+    } catch {
+      return `USD ${usd.toFixed(2)}`;
+    }
+  }, [selectedPackage, userLocale]);
+
+  const paystackKesEstimateText = useMemo(() => {
+    if (!selectedPackage) return null;
+    if (String(selectedPackage.currency || '').toUpperCase() !== 'USD') return null;
+
+    const usd = Number(selectedPackage.price || 0);
+    if (!Number.isFinite(usd) || usd <= 0) return null;
+
+    const fx = USD_ESTIMATE_RATES.KES || 130;
+    const kes = usd * fx;
+
+    try {
+      const kesPretty = new Intl.NumberFormat('en-KE', {
+        style: 'currency',
+        currency: 'KES',
+        currencyDisplay: 'code',
+        maximumFractionDigits: 0,
+      }).format(kes);
+
+      return { fx, kesPretty };
+    } catch {
+      return { fx, kesPretty: `KES ${Math.round(kes).toLocaleString('en-KE')}` };
+    }
+  }, [selectedPackage]);
+
   /* ───────────────────── Debounced actions ───────────────────── */
 
   const debouncedCheckout = useMemo(() => debounce(handleCheckout, 300), [handleCheckout]);
@@ -623,204 +627,14 @@ const PaymentWidget: React.FC<Props> = ({
     [handleUpdateMpesaReference],
   );
 
-  const handleCardPay = useMemo(
-    () =>
-      debounce(async () => {
-        if (!selectedPackage) {
-          setCardError('Please select a package first.');
-          return;
-        }
-        if (String(selectedPackage.currency || '').toUpperCase() !== 'USD') {
-          setCardError('Please select a USD package to pay with card.');
-          return;
-        }
-        if (!backendUrl || !token) {
-          setCardError('Missing backend URL or login. Please sign in again.');
-          return;
-        }
-        if (!validateCardForm()) return;
-
-        try {
-          setCardProcessing(true);
-          setCardError(null);
-          setNeedsOtp(false);
-          setOtp('');
-          setOtpReference(null);
-          setOtpError(null);
-
-          const numberDigits = cardNumber.replace(/\s+/g, '');
-          const expiry = String(cardExpiry || '').trim();
-          const parts = expiry.split('/');
-          const mm = String(parts[0] || '').padStart(2, '0');
-          const yyRaw = String(parts[1] || '').trim();
-
-          const expYear = yyRaw.length === 2 ? `20${yyRaw}` : yyRaw;
-
-          if (mm.length !== 2 || !/^\d{2}$/.test(mm)) {
-            setCardError('Please enter a valid expiry month.');
-            setCardProcessing(false);
-            return;
-          }
-          if (!/^\d{4}$/.test(expYear)) {
-            setCardError('Please enter a valid expiry year.');
-            setCardProcessing(false);
-            return;
-          }
-
-          const payload = {
-            packageId: String(selectedPackage.id),
-            card: {
-              number: numberDigits,
-              exp_month: mm,
-              exp_year: expYear,
-              cvc: cardCvc,
-              name: cardName.trim(),
-            },
-          };
-
-          const data = await paystackCardCharge(backendUrl, token, payload);
-          const anyData = data as any;
-
-          // 1) Immediate success
-          if (anyData.ok || anyData.status === 'success') {
-            Alert.alert('Payment successful', 'Your tokens will update shortly.');
-            await refreshAfterPayment();
-            requestClose();
-            return;
-          }
-
-          // 2) Redirect-based auth
-          const redirectUrl = anyData.authUrl || anyData?.raw?.data?.url;
-          if (anyData.paystackStatus === 'open_url' && redirectUrl) {
-            Alert.alert(
-              'Continue in browser',
-              'We’ll open your bank verification page. When you return, we’ll refresh your wallet.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Open',
-                  onPress: async () => {
-                    await openPaystackAuth(String(redirectUrl));
-                  },
-                },
-              ],
-            );
-            return;
-          }
-
-          // 3) OTP / extra verification (best-effort)
-          const ref =
-            anyData.otpReference ||
-            anyData.reference ||
-            anyData?.raw?.data?.reference ||
-            null;
-
-          if (anyData.requiresOtp || anyData.requires_otp || anyData.nextStep === 'otp') {
-            setNeedsOtp(true);
-            setOtpReference(ref);
-            setCardError(
-              anyData.message ||
-                anyData.gatewayResponse ||
-                'Your bank requires an OTP to complete this payment.',
-            );
-            return;
-          }
-
-          if (anyData.requiresAction) {
-            setCardError(
-              anyData.message ||
-                anyData.gatewayResponse ||
-                anyData.displayText ||
-                'Additional verification required. Please complete verification to finish payment.',
-            );
-            return;
-          }
-
-          setCardError(
-            anyData.message ||
-              anyData.gatewayResponse ||
-              anyData.displayText ||
-              'Payment failed. Please check your card details or try another method.',
-          );
-        } catch (err: any) {
-          console.error('[paystack][card-charge] error', err);
-          setCardError(
-            err?.response?.data?.message || err?.message || 'Unable to process payment at the moment.',
-          );
-        } finally {
-          setCardProcessing(false);
-        }
-      }, 300),
-    [
-      selectedPackage,
-      backendUrl,
-      token,
-      cardNumber,
-      cardExpiry,
-      cardCvc,
-      cardName,
-      refreshAfterPayment,
-      requestClose,
-      openPaystackAuth,
-    ],
-  );
-
-  const handleOtpSubmit = useMemo(
-    () =>
-      debounce(async () => {
-        if (!otpReference) {
-          setOtpError('Missing payment reference. Please try the card payment again.');
-          return;
-        }
-        if (!otp.trim()) {
-          setOtpError('Please enter the OTP sent by your bank.');
-          return;
-        }
-        if (!backendUrl || !token) {
-          setOtpError('Missing backend URL or login. Please sign in again.');
-          return;
-        }
-
-        try {
-          setCardProcessing(true);
-          setOtpError(null);
-
-          const data = await paystackSubmitOtp(backendUrl, token, {
-            reference: otpReference,
-            otp: otp.trim(),
-          });
-
-          const anyData = data as any;
-          if (anyData.ok || anyData.status === 'success') {
-            Alert.alert('Payment successful', 'Your tokens will update shortly.');
-            await refreshAfterPayment();
-            requestClose();
-          } else if (anyData.requiresAction) {
-            setOtpError(anyData.message || 'We could not confirm your OTP. Please try again.');
-          } else {
-            setOtpError(anyData.message || 'Payment failed after OTP. Please try another method.');
-          }
-        } catch (err: any) {
-          console.error('[paystack][submit-otp] error', err);
-          setOtpError(
-            err?.response?.data?.message || err?.message || 'Unable to verify OTP at the moment.',
-          );
-        } finally {
-          setCardProcessing(false);
-        }
-      }, 300),
-    [otpReference, otp, backendUrl, token, refreshAfterPayment, requestClose],
-  );
-
   useEffect(() => {
     return () => {
       debouncedCheckout.cancel();
       debouncedInitiate.cancel();
       debouncedUpdateRef.cancel();
-      handleCardPay.cancel();
-      handleOtpSubmit.cancel();
+      handlePaystackHosted.cancel();
     };
-  }, [debouncedCheckout, debouncedInitiate, debouncedUpdateRef, handleCardPay, handleOtpSubmit]);
+  }, [debouncedCheckout, debouncedInitiate, debouncedUpdateRef, handlePaystackHosted]);
 
   /* ───────────────────────── Packages filtering by inferredCurrency ───────────────────────── */
 
@@ -840,6 +654,34 @@ const PaymentWidget: React.FC<Props> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, isOpen, variant, displayedPackages, selectedPackage]);
+
+  /* ───────────────────────── Default UX based on payout currency ───────────────────────── */
+
+  const payoutPref = useMemo(() => getPayoutCurrency(profile as any), [profile]);
+
+  useEffect(() => {
+    const active = variant === 'modal' ? mounted : isOpen;
+    if (!active) return;
+
+    if (payoutPref === 'KES') {
+      handlePaymentSelection('M-Pesa');
+      setShowMpesaModal(true);
+    } else {
+      handlePaymentSelection('Paystack');
+      setShowMpesaModal(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, isOpen, payoutPref, variant]);
+
+  // Clear transient state on close
+  useEffect(() => {
+    const active = variant === 'modal' ? mounted : isOpen;
+
+    if (!active) {
+      setAwaitingPaystackReturn(false);
+      setCardProcessing(false);
+    }
+  }, [mounted, isOpen, variant]);
 
   /* ───────────────────────── Policy navigation (native screens) ───────────────────────── */
 
@@ -1119,12 +961,12 @@ const PaymentWidget: React.FC<Props> = ({
           </View>
         )}
 
-        {/* Card panel */}
+        {/* Paystack hosted checkout panel (USD only, web-like) */}
         {selectedPaymentMethod === 'Paystack' && (
           <View style={tw`mt-4`}>
             <View style={tw`flex-row items-center justify-between`}>
               <Text style={tw`text-sm text-[#49739c] dark:text-white/60`}>
-                Pay securely with your card
+                You’ll be redirected to Paystack to complete a secure card payment.
               </Text>
 
               {awaitingPaystackReturn && (
@@ -1136,198 +978,148 @@ const PaymentWidget: React.FC<Props> = ({
               )}
             </View>
 
+            {/* Confusion-killer copy (same idea as web) */}
+            {selectedPackage && String(selectedPackage.currency || '').toUpperCase() === 'USD' && (
+              <View style={tw`mt-3 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#121927] p-3`}>
+                <Text style={tw`text-[12px] leading-5 text-[#0d141c] dark:text-white/80`}>
+                  Base (USD): <Text style={tw`font-extrabold`}>{paystackBaseUsdText ?? '—'}</Text>
+                  {'\n'}
+                  You’ll be charged in KES at checkout:{' '}
+                  <Text style={tw`font-extrabold`}>
+                    {paystackKesEstimateText?.kesPretty ?? 'KES —'}
+                  </Text>{' '}
+                  <Text style={tw`opacity-70`}>
+                    (rate: {paystackKesEstimateText?.fx ?? 130})
+                  </Text>
+                  {'\n'}
+                  <Text style={tw`text-[11px] opacity-70`}>
+                    Final KES amount is shown by Paystack.
+                  </Text>
+                </Text>
+              </View>
+            )}
+
+            {selectedPackage && (
+              <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/50`}>
+                Local display: <Text style={tw`font-semibold`}>{formatLocalPriceOnly(selectedPackage)}</Text>
+              </Text>
+            )}
+
             {(!selectedPackage || String(selectedPackage.currency || '').toUpperCase() !== 'USD') && (
               <Text style={tw`mt-2 text-[12px] text-orange-600`}>
                 Please select a USD package to continue with card payment.
               </Text>
             )}
 
-            {selectedPackage && String(selectedPackage.currency || '').toUpperCase() === 'USD' && (
-              <>
-                <View style={tw`mt-3 gap-3`}>
-                  <View>
-                    <Text style={tw`text-[12px] font-semibold text-[#49739c] dark:text-white/60`}>
-                      Card number
-                    </Text>
-                    <TextInput
-                      value={cardNumber}
-                      onChangeText={v => setCardNumber(formatCardNumber(v))}
-                      placeholder="1234 5678 9012 3456"
-                      keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
-                      placeholderTextColor={tw.color('text-white/50') || '#94a3b8'}
-                      style={tw`mt-1 h-12 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#0b1620] px-3 text-[#0d141c] dark:text-white`}
-                    />
-                  </View>
-
-                  <View style={tw`flex-row gap-3`}>
-                    <View style={tw`flex-1`}>
-                      <Text style={tw`text-[12px] font-semibold text-[#49739c] dark:text-white/60`}>
-                        Expiry (MM/YY)
-                      </Text>
-                      <TextInput
-                        value={cardExpiry}
-                        onChangeText={v => setCardExpiry(formatExpiry(v))}
-                        placeholder="08/28"
-                        keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
-                        placeholderTextColor={tw.color('text-white/50') || '#94a3b8'}
-                        style={tw`mt-1 h-12 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#0b1620] px-3 text-[#0d141c] dark:text-white`}
-                      />
-                    </View>
-
-                    <View style={tw`flex-1`}>
-                      <Text style={tw`text-[12px] font-semibold text-[#49739c] dark:text-white/60`}>
-                        CVV
-                      </Text>
-                      <TextInput
-                        value={cardCvc}
-                        onChangeText={v => setCardCvc(onlyDigitsMax(v, 4))}
-                        placeholder="123"
-                        secureTextEntry
-                        keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
-                        placeholderTextColor={tw.color('text-white/50') || '#94a3b8'}
-                        style={tw`mt-1 h-12 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#0b1620] px-3 text-[#0d141c] dark:text-white`}
-                      />
-                    </View>
-                  </View>
-
-                  <View>
-                    <Text style={tw`text-[12px] font-semibold text-[#49739c] dark:text-white/60`}>
-                      Name on card
-                    </Text>
-                    <TextInput
-                      value={cardName}
-                      onChangeText={setCardName}
-                      placeholder="As shown on card"
-                      placeholderTextColor={tw.color('text-white/50') || '#94a3b8'}
-                      style={tw`mt-1 h-12 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#0b1620] px-3 text-[#0d141c] dark:text-white`}
-                    />
-                  </View>
+            <Pressable
+              onPress={() => handlePaystackHosted()}
+              disabled={
+                cardProcessing ||
+                !selectedPackage ||
+                String(selectedPackage.currency || '').toUpperCase() !== 'USD'
+              }
+              style={tw`mt-3 h-12 rounded-2xl items-center justify-center ${
+                cardProcessing ||
+                !selectedPackage ||
+                String(selectedPackage.currency || '').toUpperCase() !== 'USD'
+                  ? 'bg-gray-300 dark:bg-gray-700'
+                  : 'bg-[#3d99f5]'
+              }`}
+            >
+              {cardProcessing ? (
+                <View style={tw`flex-row items-center gap-2`}>
+                  <ActivityIndicator />
+                  <Text style={tw`text-white font-extrabold`}>Redirecting…</Text>
                 </View>
-
-                {!!cardError && <Text style={tw`mt-2 text-[12px] text-red-600`}>{cardError}</Text>}
-
-                <Pressable
-                  onPress={() => handleCardPay()}
-                  disabled={cardProcessing}
-                  style={tw`mt-3 h-12 rounded-2xl items-center justify-center ${
-                    cardProcessing ? 'bg-gray-300 dark:bg-gray-700' : 'bg-[#3d99f5]'
-                  }`}
-                >
-                  {cardProcessing ? (
-                    <View style={tw`flex-row items-center gap-2`}>
-                      <ActivityIndicator />
-                      <Text style={tw`text-white font-extrabold`}>Processing…</Text>
-                    </View>
-                  ) : (
-                    <Text style={tw`text-white font-extrabold`}>{payButtonLabel(selectedPackage)}</Text>
-                  )}
-                </Pressable>
-
-                {needsOtp && (
-                  <View
-                    style={tw`mt-4 rounded-2xl border border-[#3d99f5]/50 bg-[#eaf3ff] dark:bg-[#121927] p-3`}
-                  >
-                    <Text style={tw`text-[11px] text-[#0b3a70] dark:text-white/80`}>
-                      Your bank requires a one-time password (OTP). Enter the code you received.
-                    </Text>
-
-                    <View style={tw`mt-2 flex-row gap-2`}>
-                      <TextInput
-                        value={otp}
-                        onChangeText={v => setOtp(v.replace(/\s+/g, ''))}
-                        placeholder="Enter OTP"
-                        keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
-                        placeholderTextColor={tw.color('text-white/50') || '#94a3b8'}
-                        style={tw`flex-1 h-12 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0b1620] px-3 text-[#0d141c] dark:text-white`}
-                      />
-                      <Pressable
-                        onPress={() => handleOtpSubmit()}
-                        disabled={cardProcessing || !otp.trim()}
-                        style={tw`h-12 px-4 rounded-2xl items-center justify-center ${
-                          cardProcessing || !otp.trim()
-                            ? 'bg-gray-300 dark:bg-gray-700'
-                            : 'bg-[#3d99f5]'
-                        }`}
-                      >
-                        {cardProcessing ? (
-                          <ActivityIndicator />
-                        ) : (
-                          <Text style={tw`text-white font-extrabold text-sm`}>Submit</Text>
-                        )}
-                      </Pressable>
-                    </View>
-
-                    {!!otpError && <Text style={tw`mt-1 text-[11px] text-red-600`}>{otpError}</Text>}
-                  </View>
-                )}
-
-                <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/50`}>
-                  Card details are processed securely via our payment provider. We don’t store your full
-                  card number or CVV.
+              ) : (
+                <Text style={tw`text-white font-extrabold`}>
+                  {payButtonLabel(selectedPackage)}
                 </Text>
-              </>
-            )}
+              )}
+            </Pressable>
+
+            <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/50`}>
+              We don’t collect or store your card details. Payment is handled by Paystack.
+            </Text>
           </View>
         )}
+
+        {/* Generic checkout button for other methods (kept for future) */}
+        {selectedPaymentMethod &&
+          selectedPaymentMethod !== 'MPESA' &&
+          selectedPaymentMethod !== 'M-Pesa' &&
+          selectedPaymentMethod !== 'Paystack' && (
+            <Pressable
+              onPress={() => debouncedCheckout()}
+              disabled={!selectedPackage}
+              style={tw`mt-4 h-12 rounded-2xl items-center justify-center ${
+                selectedPackage ? 'bg-[#3d99f5]' : 'bg-gray-300 dark:bg-gray-700'
+              }`}
+            >
+              <Text style={tw`text-white font-extrabold`}>
+                {`Buy ${selectedPackage?.credits || 0} Tokens`}
+              </Text>
+            </Pressable>
+          )}
       </View>
     </>
   );
-/* ───────────────────────── INLINE MODE (no Modal) ───────────────────────── */
 
-if (variant === 'inline') {
-  if (!isOpen) return null;
+  /* ───────────────────────── INLINE MODE (no Modal) ───────────────────────── */
 
-  const INLINE_MAX_H = maxInlineHeight ?? Math.min(720, screenH * 0.85);
+  if (variant === 'inline') {
+    if (!isOpen) return null;
 
-  return (
-    <View
-      style={tw`mt-3 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] overflow-hidden`}
-    >
-      {/* Header */}
+    const INLINE_MAX_H = maxInlineHeight ?? Math.min(720, screenH * 0.85);
+
+    return (
       <View
-        style={tw`flex-row items-center justify-between px-4 py-3 border-b border-[#cedbe8] dark:border-white/10`}
+        style={tw`mt-3 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] overflow-hidden`}
       >
-        <Text style={tw`text-base font-semibold text-[#0d141c] dark:text-white`}>
-          {title}
-        </Text>
-
-        <Pressable
-          onPress={requestClose}
-          style={tw`rounded-lg px-3 py-2 bg-[#e7edf4] dark:bg-[#172534]`}
+        {/* Header */}
+        <View
+          style={tw`flex-row items-center justify-between px-4 py-3 border-b border-[#cedbe8] dark:border-white/10`}
         >
-          <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
-            Close
+          <Text style={tw`text-base font-semibold text-[#0d141c] dark:text-white`}>
+            {title}
           </Text>
-        </Pressable>
+
+          <Pressable
+            onPress={requestClose}
+            style={tw`rounded-lg px-3 py-2 bg-[#e7edf4] dark:bg-[#172534]`}
+          >
+            <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+              Close
+            </Text>
+          </Pressable>
+        </View>
+
+        <ScrollView
+          nestedScrollEnabled
+          style={{ maxHeight: INLINE_MAX_H }}
+          contentContainerStyle={tw`px-4 pt-3 pb-6`}
+          keyboardShouldPersistTaps="handled"
+        >
+          {renderContent()}
+        </ScrollView>
       </View>
+    );
+  }
 
-      <ScrollView
-        nestedScrollEnabled // ✅ Android nested scroll
-        style={{ maxHeight: INLINE_MAX_H }}
-        contentContainerStyle={tw`px-4 pt-3 pb-6`}
-        keyboardShouldPersistTaps="handled"
-      >
-        {renderContent()}
-      </ScrollView>
-    </View>
-  );
-}
-
-
-  /* ───────────────────────── MODAL MODE (existing) ───────────────────────── */
+  /* ───────────────────────── MODAL MODE ───────────────────────── */
 
   if (!mounted) return null;
 
   return (
     <Modal
-    visible={mounted}
-    transparent
-    animationType="none"
-    onRequestClose={requestClose}
-    presentationStyle="overFullScreen"   // ✅ iOS overlay behavior
-    statusBarTranslucent                // ✅ Android: cover status bar area
-    hardwareAccelerated                 // ✅ Android perf
-  >
+      visible={mounted}
+      transparent
+      animationType="none"
+      onRequestClose={requestClose}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      hardwareAccelerated
+    >
       <View style={tw`flex-1`}>
         {/* Backdrop */}
         <Pressable onPress={requestClose} style={tw`absolute inset-0 bg-black/50`} />
@@ -1354,13 +1146,12 @@ if (variant === 'inline') {
           </View>
 
           <ScrollView
-          nestedScrollEnabled
-          contentContainerStyle={tw`px-4 pt-3 pb-6`}
-          keyboardShouldPersistTaps="handled"
-        >
-          {renderContent()}
-        </ScrollView>
-
+            nestedScrollEnabled
+            contentContainerStyle={tw`px-4 pt-3 pb-6`}
+            keyboardShouldPersistTaps="handled"
+          >
+            {renderContent()}
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>

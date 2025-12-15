@@ -1,60 +1,113 @@
+// FindTutor.web.tsx
+
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { IconProp } from '@fortawesome/fontawesome-svg-core';
-import { faMagnifyingGlass, faChevronLeft, faChevronRight } from '@fortawesome/free-solid-svg-icons';
+import {
+  faMagnifyingGlass,
+  faChevronLeft,
+  faChevronRight,
+} from '@fortawesome/free-solid-svg-icons';
+
 import { useHomePage } from '@mytutorapp/shared/hooks';
 import type { Profile } from '@mytutorapp/shared/types';
-import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
+import { COUNTRIES, countryName } from '@mytutorapp/shared/utils/countries';
 
 const FALLBACK_AVATAR = (name = 'Tutor') =>
-  `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e7edf4&color=0d141c`;
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    name
+  )}&background=e7edf4&color=0d141c`;
 
-const SUBJECTS = ['Math', 'Science', 'Programming', 'Art', 'Wellness', 'Languages', 'English', 'History'] as const;
+const SUBJECTS = [
+  'Math',
+  'Science',
+  'Programming',
+  'Art',
+  'Wellness',
+  'Languages',
+  'English',
+  'History',
+] as const;
+
 const RATINGS = [5, 4.5, 4, 3.5, 3] as const;
-const AVAILABILITY = ['Weekdays', 'Weekends', 'Evenings', 'Mornings'] as const;
+const AVAILABILITY = ['Online', 'Offline', 'Busy', 'Free Session', 'New'] as const;
 const LANGS_COMMON = ['English', 'Spanish', 'French', 'Arabic', 'Chinese', 'German'] as const;
 
-type PriceRangeKey = 'any' | '0-20' | '20-40' | '40-60' | '60+';
-const PRICE_RANGES: Record<PriceRangeKey, (n: number) => boolean> = {
-  any: () => true,
-  '0-20': (n) => n >= 0 && n < 20,
-  '20-40': (n) => n >= 20 && n < 40,
-  '40-60': (n) => n >= 40 && n < 60,
-  '60+': (n) => n >= 60,
-};
+const PER_PAGE = 6;
 
 /* utils */
-const getRating = (p: any) => Number((p?.avgRating ?? p?.rating) ?? 0);
-const getHourly = (p: any) =>
-  typeof p?.pricing?.hourly === 'number'
-    ? p.pricing.hourly
-    : typeof p?.pricing?.price === 'number'
-    ? p.pricing.price
-    : undefined;
-
 const normalizeStr = (v: unknown): string => {
   if (v == null) return '';
   if (typeof v === 'string') return v.toLowerCase().trim();
   if (typeof v === 'number' || typeof v === 'boolean') return String(v).toLowerCase().trim();
   if (Array.isArray(v)) return v.map(normalizeStr).join(' ').trim();
-  if (typeof v === 'object') {
-    const o = v as Record<string, unknown>;
-    const preferred = o.bio ?? o.overview ?? o.summary ?? o.title ?? o.name ?? o.label ?? o.text;
-    return preferred ? normalizeStr(preferred) : Object.values(o).map(normalizeStr).join(' ').trim();
-  }
+  if (typeof v === 'object') return Object.values(v as any).map(normalizeStr).join(' ').trim();
   return '';
 };
 
+const getRating = (p: any) => Number((p?.avgRating ?? p?.rating) ?? 0);
+
+const getTokens = (p: any) => {
+  const x =
+    p?.pricing?.tokens ??
+    p?.pricing?.tokenPrice ??
+    p?.pricing?.tokensPerHour ??
+    p?.pricing?.hourlyTokens ??
+    p?.pricing?.privateSessionTokens ??
+    p?.pricing?.groupSessionTokens;
+
+  const n = Number(x);
+  return Number.isFinite(n) ? n : undefined;
+};
+
+const normalizeStatus = (s: any) => {
+  const v = String(s || '').trim().toLowerCase();
+  if (!v) return '';
+  if (v === 'online') return 'Online';
+  if (v === 'offline') return 'Offline';
+  if (v === 'busy') return 'Busy';
+  if (v === 'free' || v === 'free session' || v === 'free_session') return 'Free Session';
+  if (v === 'new') return 'New';
+  return String(s || '').trim();
+};
+
+const statusColorClass = (status: string) =>
+  status === 'Online' ? 'bg-green-500' :
+  status === 'Busy' ? 'bg-yellow-500' :
+  status === 'Free Session' ? 'bg-purple-500' :
+  status === 'New' ? 'bg-sky-500' :
+  status === 'Offline' ? 'bg-gray-500' :
+  'bg-gray-500';
+
+/**
+ * "New" heuristic (super simple):
+ * - If backend adds is_new boolean, it will use it.
+ * - Else if created_at exists, it treats <= 7 days as New.
+ */
+const isNewTutor = (p: any) => {
+  if (p?.is_new === true) return true;
+
+  const created = p?.created_at || p?.createdAt;
+  if (!created) return false;
+
+  const t = new Date(created).getTime();
+  if (!Number.isFinite(t)) return false;
+
+  const days = (Date.now() - t) / (1000 * 60 * 60 * 24);
+  return days <= 7;
+};
+ 
 const getDescriptionText = (p: any): string => {
   const d = p?.description;
   if (typeof d === 'string') {
-    // try to parse JSON-encoded description to pull bio if present
     try {
       const asObj = JSON.parse(d);
-      if (asObj && typeof asObj === 'object' && typeof (asObj as any).bio === 'string') return (asObj as any).bio;
+      if (asObj && typeof asObj === 'object' && typeof (asObj as any).bio === 'string') {
+        return (asObj as any).bio;
+      }
     } catch {
-      /* plain string, fall through */
+      /* ignore */
     }
     return d;
   }
@@ -65,31 +118,31 @@ const getDescriptionText = (p: any): string => {
   return '';
 };
 
-const tutorMatchesSubject = (p: Profile, subject: string) => {
-  const cat = normalizeStr((p as any).category);
-  const subj = normalizeStr(subject);
-  if (cat.includes(subj)) return true;
-  if (Array.isArray((p as any).expertise)) {
-    return (p as any).expertise.some((e: any) => normalizeStr(String(e)).includes(subj));
-  }
+const hasAvailability = (p: any, option: string) => {
+  if (!option) return true;
+
+  const opt = normalizeStatus(option);
+
+  // Special: New
+  if (opt === 'New') return isNewTutor(p);
+
+  // Primary: status match
+  const s = normalizeStatus(p?.status);
+  if (s && s === opt) return true;
+
+  // Optional: if you stored alternate status fields
+  const s2 = normalizeStatus(p?.availability);
+  if (s2 && s2 === opt) return true;
+
   return false;
 };
 
-const hasAvailability = (p: any, option: string) => {
-  const opt = normalizeStr(option);
-  const a = p?.availability;
-  if (typeof a === 'string') return normalizeStr(a).includes(opt);
-  if (Array.isArray(a)) return a.some((x) => normalizeStr(String(x)).includes(opt));
-  const slots = p?.availableSlots;
-  if (Array.isArray(slots)) return slots.some((x: any) => normalizeStr(String(x)).includes(opt));
-  return true;
-};
 
 const hasLanguage = (p: any, lang: string) => {
   if (!lang) return true;
   const list = p?.languages;
   if (Array.isArray(list)) {
-    return list.map((x) => normalizeStr(String(x))).includes(normalizeStr(lang));
+    return list.map((x: any) => normalizeStr(String(x))).includes(normalizeStr(lang));
   }
   return true;
 };
@@ -98,57 +151,41 @@ const resolveImage = (p: any, backendUrl?: string, fallbackName?: string) => {
   const g0 = Array.isArray(p?.gallery) ? p.gallery[0] : undefined;
   if (typeof g0 === 'string' && g0.length > 0) {
     if (g0.startsWith('http://') || g0.startsWith('https://')) return g0;
-    if (g0.startsWith('/') && backendUrl) {
-      return `${backendUrl.replace(/\/+$/, '')}${g0}`;
-    }
+    if (g0.startsWith('/') && backendUrl) return `${backendUrl.replace(/\/+$/, '')}${g0}`;
   }
   return FALLBACK_AVATAR(fallbackName ?? p?.name ?? 'Tutor');
 };
 
-const getDescriptionObj = (raw: any): Record<string, any> => {
-  if (!raw) return {};
-  if (typeof raw === 'object') return raw;
-  if (typeof raw === 'string') {
-    try { return JSON.parse(raw); } catch { /* ignore */ }
-  }
-  return {};
-};
-
-const PER_PAGE = 6;
-
-// Gracefully derive a flat list of country labels from COUNTRIES
-const COUNTRY_OPTIONS: string[] = Array.isArray(COUNTRIES)
-  ? (COUNTRIES as any[]).map((c) => {
-      if (typeof c === 'string') return c;
-      if (c && typeof c === 'object') {
-        return (c as any).label || (c as any).name || (c as any).value || '';
-      }
-      return '';
-    }).filter(Boolean)
-  : [];
-
 const FindTutor: React.FC = () => {
-  const { filteredProfiles, loading, handleSearch } = useHomePage();
+  const {
+    filteredProfiles, // ✅ already server-filtered by q/subject/country/minRating/maxPrice
+    loading,
+    handleSearch,     // ✅ triggers server search (debounced inside hook)
+    uiFilters,
+    setSubjectFilter,
+    setCountryFilter,
+    setMinRatingFilter,
+    setMaxTokensFilter,
+    clearFilters,
+    searchMeta,
+  } = useHomePage();
+
   const backendUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
 
-  // Filters
+  // local-only UI state (NOT sent to server)
   const [query, setQuery] = useState('');
-  const [subject, setSubject] = useState<string>('');
-  const [availability, setAvailability] = useState<string>('');
-  const [minRating, setMinRating] = useState<number>(0);
-  const [priceKey, setPriceKey] = useState<PriceRangeKey>('any');
-  const [language, setLanguage] = useState<string>('');
-  const [country, setCountry] = useState<string>(''); // NEW: global country list
-
+  const [availability, setAvailability] = useState<string>(''); // local-only
+  const [language, setLanguage] = useState<string>('');         // local-only
   const [page, setPage] = useState(1);
+  const [live, setLive] = useState(false); 
 
-  // Derived tutors
+  // Tutors already filtered by server
   const tutors = useMemo(
-    () => (filteredProfiles.filter((p) => p.role === 'tutor') as unknown as Profile[]),
+    () => (filteredProfiles.filter((p) => String((p as any).role || '').toLowerCase() === 'tutor') as Profile[]),
     [filteredProfiles]
   );
 
-  // All available languages from data (merge with common list)
+  // languages from current result set (plus common)
   const languagesSet = useMemo(() => {
     const set = new Set<string>();
     LANGS_COMMON.forEach((l) => set.add(l));
@@ -163,62 +200,29 @@ const FindTutor: React.FC = () => {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [tutors]);
 
-  const filtered = useMemo(() => {
-    const q = normalizeStr(query);
-
-    return tutors.filter((pp: any) => {
-      const p = pp as any;
-
-      if (q) {
-        const inName = normalizeStr(p?.name).includes(q);
-        const inCat = normalizeStr(p?.category).includes(q);
-        const inDesc = normalizeStr(getDescriptionText(p)).includes(q);
-        const inExpertise =
-          Array.isArray(p?.expertise) &&
-          p.expertise.some((e: any) => normalizeStr(String(e)).includes(q));
-        if (!inName && !inCat && !inDesc && !inExpertise) return false;
-      }
-      if (subject && !tutorMatchesSubject(p, subject)) return false;
+  // local-only filtering (availability/language only)
+  const locallyFiltered = useMemo(() => {
+    return tutors.filter((p: any) => {
       if (availability && !hasAvailability(p, availability)) return false;
-      if (minRating > 0 && getRating(p) < minRating) return false;
-
-      const hourly = getHourly(p);
-      if (priceKey !== 'any' && typeof hourly === 'number' && !PRICE_RANGES[priceKey](hourly)) {
-        return false;
-      }
       if (language && !hasLanguage(p, language)) return false;
-
-      // Country filter (using top-level country or description.country)
-      if (country) {
-        const wanted = normalizeStr(country);
-        const desc = getDescriptionObj(p.description);
-        const profCountry =
-          normalizeStr(p.country) ||
-          normalizeStr(desc.country);
-
-        if (!profCountry || !profCountry.includes(wanted)) {
-          return false;
-        }
-      }
-
       return true;
     });
-  }, [tutors, query, subject, availability, minRating, priceKey, language, country]);
+  }, [tutors, availability, language]);
 
-  // Pagination
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  // pagination (client-side paging of current server result set)
+  const totalPages = Math.max(1, Math.ceil(locallyFiltered.length / PER_PAGE));
   const pageSafe = Math.min(page, totalPages);
-  const pageItems = filtered.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
+  const pageItems = locallyFiltered.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
 
   const onReset = () => {
     setQuery('');
-    setSubject('');
     setAvailability('');
-    setMinRating(0);
-    setPriceKey('any');
     setLanguage('');
-    setCountry('');
+    clearFilters(); // ✅ clears server-side filters too
     setPage(1);
+
+    // optional: trigger server refresh back to default list
+    handleSearch?.('');
   };
 
   if (loading) {
@@ -236,7 +240,6 @@ const FindTutor: React.FC = () => {
     >
       <main className="flex-1 flex justify-center py-5 px-4 lg:px-10">
         <div className="flex flex-col w-full max-w-[960px]">
-
           {/* Header */}
           <section className="px-4">
             <div className="flex flex-wrap justify-between gap-3">
@@ -245,10 +248,20 @@ const FindTutor: React.FC = () => {
                 <p className="text-[#49739c] dark:text-darkTextSecondary text-sm">
                   Explore our community of expert tutors ready to help you achieve your learning goals.
                 </p>
+
+                {/* Optional debug chip (safe to remove) */}
+                {searchMeta?.aiUsed != null && (
+                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
+                    Search: {searchMeta.aiUsed ? 'AI' : 'Direct'} • {searchMeta.rows ?? tutors.length} results
+                  </p>
+                )}
               </div>
+
               <div className="flex items-end">
                 <button
-                  onClick={onReset}
+                  onClick={() => {
+                    onReset();
+                  }}
                   className="rounded-xl h-9 px-4 bg-[#e7edf4] dark:bg-[#172534] text-sm"
                 >
                   Reset filters
@@ -256,23 +269,41 @@ const FindTutor: React.FC = () => {
               </div>
             </div>
 
-            {/* Search */}
+            {/* Search (server-driven) */}
             <div className="mt-3">
               <label className="flex h-12 w-full">
                 <div className="flex items-stretch rounded-xl h-full w-full">
                   <div className="text-[#49739c] flex bg-[#e7edf4] dark:bg-[#172534] items-center justify-center pl-4 rounded-l-xl">
                     <FontAwesomeIcon icon={faMagnifyingGlass as IconProp} />
                   </div>
+
                   <input
-                    placeholder="Search for a subject or tutor"
+                    placeholder='Search e.g. "Kenya math tutor", "Grade 3", "certified english"'
                     className="form-input w-full rounded-r-xl h-full px-4 bg-[#e7edf4] dark:bg-[#172534] text-[#0d141c] dark:text-darkTextPrimary outline-none border-0 placeholder:text-[#49739c]"
                     value={query}
                     onChange={(e) => {
-                      setQuery(e.target.value);
+                      const v = e.target.value;
+                      setQuery(v);
                       setPage(1);
-                      handleSearch?.(e.target.value);
+
+                      // ✅ Optional live mode (smart-gated)
+                      if (live) {
+                        const trimmed = v.trim();
+                        // block single-digit + super short noise
+                        if (/^\d$/.test(trimmed)) return;
+                        if (trimmed.length < 2) return;
+                        handleSearch?.(v);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        setPage(1);
+                        handleSearch?.(query);
+                      }
                     }}
                   />
+
                 </div>
               </label>
             </div>
@@ -281,68 +312,105 @@ const FindTutor: React.FC = () => {
           {/* Sticky Filters */}
           <div className="sticky top-0 z-10 mt-4 px-4 py-3 bg-slate-50/90 dark:bg-darkBg/80 backdrop-blur border-y border-[#e7edf4] dark:border-darkCard">
             <div className="flex gap-3 flex-wrap">
-              {/* Subject */}
+              {/* Subject (server) */}
               <select
                 className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-                value={subject}
-                onChange={(e) => { setSubject(e.target.value); setPage(1); }}
+                value={uiFilters.subject}
+                onChange={(e) => {
+                  setSubjectFilter(e.target.value);
+                  setPage(1);
+                }}
               >
                 <option value="">Subject</option>
-                {SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
+                {SUBJECTS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
               </select>
 
-              {/* Availability */}
+              {/* Availability (local) */}
               <select
                 className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
                 value={availability}
-                onChange={(e) => { setAvailability(e.target.value); setPage(1); }}
+                onChange={(e) => {
+                  setAvailability(e.target.value);
+                  setPage(1);
+                }}
               >
                 <option value="">Availability</option>
-                {AVAILABILITY.map((a) => <option key={a} value={a}>{a}</option>)}
+                {AVAILABILITY.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
               </select>
 
-              {/* Price */}
+               {/* Tokens */}
               <select
-                className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-                value={priceKey}
-                onChange={(e) => { setPriceKey(e.target.value as PriceRangeKey); setPage(1); }}
-              >
-                <option value="any">Price</option>
-                <option value="0-20">$0–$20/hr</option>
-                <option value="20-40">$20–$40/hr</option>
-                <option value="40-60">$40–$60/hr</option>
-                <option value="60+">$60+/hr</option>
-              </select>
+              className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
+              value={uiFilters.maxTokens > 0 ? String(uiFilters.maxTokens) : '0'}
+              onChange={(e) => {
+                setMaxTokensFilter(Number(e.target.value || 0));
+                setPage(1);
+              }}
+            >
+              <option value="0">Tokens</option>
+              <option value="10">≤ 10 tokens</option>
+              <option value="20">≤ 20 tokens</option>
+              <option value="40">≤ 40 tokens</option>
+              <option value="60">≤ 60 tokens</option>
+              <option value="999999">60+ tokens</option>
+            </select>
 
-              {/* Language */}
+              {/* Language (local) */}
               <select
                 className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
                 value={language}
-                onChange={(e) => { setLanguage(e.target.value); setPage(1); }}
+                onChange={(e) => {
+                  setLanguage(e.target.value);
+                  setPage(1);
+                }}
               >
                 <option value="">Language</option>
-                {languagesSet.map((l) => <option key={l} value={l}>{l}</option>)}
+                {languagesSet.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
               </select>
 
-              {/* Rating */}
+              {/* Rating (server) */}
               <select
                 className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-                value={String(minRating || '')}
-                onChange={(e) => { setMinRating(Number(e.target.value || 0)); setPage(1); }}
+                value={String(uiFilters.minRating || '')}
+                onChange={(e) => {
+                  setMinRatingFilter(Number(e.target.value || 0));
+                  setPage(1);
+                }}
               >
                 <option value="">Rating</option>
-                {RATINGS.map((r) => <option key={r} value={r}>{r}★ & up</option>)}
+                {RATINGS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}★ & up
+                  </option>
+                ))}
               </select>
 
-              {/* Country (from shared COUNTRIES list) */}
+              {/* Country (server) — ISO2 code value, label name */}
               <select
                 className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-                value={country}
-                onChange={(e) => { setCountry(e.target.value); setPage(1); }}
+                value={uiFilters.country} // ISO2
+                onChange={(e) => {
+                  setCountryFilter(e.target.value); // ISO2 code
+                  setPage(1);
+                }}
               >
                 <option value="">Country</option>
-                {COUNTRY_OPTIONS.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -354,69 +422,110 @@ const FindTutor: React.FC = () => {
           {/* Results */}
           <div className="p-4 space-y-4">
             {pageItems.length === 0 && (
-              <p className="text-[#49739c] dark:text-darkTextSecondary px-1">No tutors match your filters.</p>
+              <p className="text-[#49739c] dark:text-darkTextSecondary px-1">
+                No tutors match your filters.
+              </p>
             )}
 
-            {pageItems.map((t) => {
+            {pageItems.map((t: any) => {
               const rating = getRating(t);
-              const hourly = getHourly(t);
-              const img = resolveImage(t, backendUrl, t.name);
-              const sub = (t as any).category ?? 'Subject';
+              const tokens = getTokens(t);
+              const img = resolveImage(t, backendUrl, t?.name);
+              const sub = t?.category ?? 'Subject';
+              const status = normalizeStatus(t?.status);
+              const chipClass = statusColorClass(status);
+              const showNew = isNewTutor(t);
 
-              // Use the tutor's bio from description; remove static fallback
+
               const bioRaw = getDescriptionText(t);
               const desc = bioRaw ? String(bioRaw).slice(0, 140) : '';
 
               return (
                 <div
-                  key={(t as any).user_id ?? t.name}
+                  key={t?.user_id ?? t?.id ?? t?.name}
                   className="flex flex-col md:flex-row items-stretch justify-between gap-4 rounded-xl"
                 >
                   <div className="flex flex-col gap-1 flex-[2_2_0px]">
                     <p className="text-darkText dark:text-darkTextPrimary text-sm font-medium">{sub}</p>
 
-                    <Link
-                      to={`/profile/${(t as any).user_id}`}
-                      className="text-base font-bold leading-tight text-darkText dark:text-darkTextPrimary hover:underline"
-                    >
-                      {t.name ?? 'Tutor'}
-                    </Link>
+                    <div className="flex items-center gap-2">
+                          {/* status dot */}
+                          {(() => {
+                            const status = normalizeStatus(t?.status);
+                            return status ? (
+                              <span
+                                className={`inline-block size-2 rounded-full ${statusColorClass(status)}`}
+                                title={status}
+                              />
+                            ) : null;
+                          })()}
+
+                          <Link
+                            to={`/profile/${t?.user_id ?? t?.id}`}
+                            className="text-base font-bold leading-tight text-darkText dark:text-darkTextPrimary hover:underline"
+                          >
+                            {t?.name ?? 'Tutor'}
+                          </Link>
+                        </div>
+
 
                     <div className="flex flex-wrap items-center gap-3 text-sm text-darkText dark:text-darkTextPrimary">
-                      <span className="font-semibold">
-                        {rating ? `${rating.toFixed(1)}★` : 'No rating'}
-                      </span>
-                      <span>•</span>
-                      <span className="font-semibold">
-                        {typeof hourly === 'number' ? `$${hourly}/hr` : 'Ask for price'}
-                      </span>
-                      {Array.isArray((t as any).languages) && (t as any).languages.length > 0 && (
-                        <>
-                          <span>•</span>
-                          <span>
-                            Languages: {(t as any).languages.slice(0, 3).join(', ')}
-                            {(t as any).languages.length > 3 ? '…' : ''}
-                          </span>
-                        </>
-                      )}
+                      {(() => {
+                        const parts: string[] = [];
+                        parts.push(rating ? `${rating.toFixed(1)}★` : 'No rating');
+                        if (typeof tokens === 'number') parts.push(`${tokens} tokens`);
+                        if (Array.isArray(t?.languages) && t.languages.length > 0) {
+                          const langs = t.languages.slice(0, 3).join(', ');
+                          const more = t.languages.length > 3 ? '…' : '';
+                          parts.push(`Languages: ${langs}${more}`);
+                        }
+                        if (t?.country) parts.push(countryName(t.country) || String(t.country));
+
+                        return parts.map((txt, i) => (
+                          <React.Fragment key={i}>
+                            {i > 0 && <span>•</span>}
+                            <span className="font-semibold">{txt}</span>
+                          </React.Fragment>
+                        ));
+                      })()}
                     </div>
 
-                    {desc && (
-                      <p className="text-darkText dark:text-darkTextPrimary text-sm mt-1">
-                        {desc}
-                      </p>
-                    )}
+                    {desc && <p className="text-darkText dark:text-darkTextPrimary text-sm mt-1">{desc}</p>}
                   </div>
 
                   <Link
-                    to={`/profile/${(t as any).user_id}`}
-                    className="w-full md:flex-1 rounded-xl overflow-hidden ring-1 ring-[#e7edf4] dark:ring-darkCard"
+                    to={`/profile/${t?.user_id ?? t?.id}`}
+                    className="w-full md:flex-1 rounded-xl overflow-hidden ring-1 ring-[#e7edf4] dark:ring-darkCard relative"
                   >
                     <div
                       className="w-full bg-center bg-no-repeat aspect-video bg-cover"
                       style={{ backgroundImage: `url("${img}")` }}
                     />
+
+                    {/* ✅ Status chip (same feel as ProfileDetailPage) */}
+                    {(status || showNew) && (
+                      <div className="absolute top-3 left-3 flex items-center gap-2">
+                        {status ? (
+                          <span
+                            className={`inline-block px-3 py-1 text-xs rounded-full text-white ${chipClass} shadow`}
+                          >
+                            {status}
+                          </span>
+                        ) : null}
+
+                        {/* ✅ New badge (if New, we show it even if status is something else) */}
+                        {showNew && status !== 'New' && (
+                          <span className="inline-block px-3 py-1 text-xs rounded-full text-white bg-sky-500 shadow">
+                            New
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ✅ subtle gradient for readability */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-black/10 pointer-events-none" />
                   </Link>
+
                 </div>
               );
             })}

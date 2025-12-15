@@ -8,6 +8,8 @@ import {
   profileUpdateValidationSchema,
 } from '../validators/profileValidators.js';
 import { normalizePayoutFromBody } from '../utils/payout.js';
+import { aiParseTutorSearch } from '../services/aiTutorSearchService.js';
+import { resolveCountryIso2FromText } from '../utils/countries.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -73,11 +75,16 @@ const getPublicIdFromUrl = url => {
   const [, afterUpload] = url.split('/upload/');
   return afterUpload.replace(/\.[^/.]+$/, '');
 };
+// Normalize country input to ISO2 (e.g. "ke" -> "KE", "Kenya" -> "KE")
+function normIso2(input) {
+  const s = String(input || '').trim();
+  if (!s) return '';
+  if (s.length === 2) return s.toUpperCase();
 
-function normIso2(s) {
-  return (s || '').trim().toUpperCase().slice(0, 2);
+  // If user typed a country name, reuse your resolver
+  const iso = resolveCountryIso2FromText(s);
+  return iso ? String(iso).toUpperCase() : '';
 }
-
 
 // ─── 1. Create Profile (multipart/form-data) ─────────────────────────────────
 //
@@ -1016,5 +1023,304 @@ export const getRandomProfile = async (req, res) => {
   } catch (err) {
     console.error('getRandomProfile error:', err);
     res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+export const searchTutors = async (req, res) => {
+  const rid = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  const t0 = Date.now();
+
+  const dev = process.env.NODE_ENV !== 'production';
+  const log = (...args) => dev && console.log(...args);
+
+  try {
+    const {
+      q = '',
+      country,
+      subject,
+      gradeBand,
+      status,
+      experienceLevel,
+      minRating,
+      maxTokens,
+      maxPrice,
+      certified,
+      limit: limitStr,
+      offset: offsetStr,
+    } = req.query;
+
+    const limit = Math.min(50, Math.max(1, Number(limitStr) || 12));
+    const offset = Math.max(0, Number(offsetStr) || 0);
+
+    const rawQ = String(q || '').trim();
+
+    // Use AI only for longer multi-word queries (as you had)
+    const shouldUseAi =
+      rawQ.length >= 6 && /[a-zA-Z]/.test(rawQ) && /\s/.test(rawQ);
+
+    log(`\n[searchTutors:${rid}] incoming`, {
+      rawQ,
+      shouldUseAi,
+      ui: {
+        country,
+        subject,
+        gradeBand,
+        status,
+        experienceLevel,
+        minRating,
+        maxTokens,
+        maxPrice,
+        certified,
+        limit,
+        offset,
+      },
+    });
+
+    // ---- AI parse (optional)
+    let ai = null;
+    let aiMs = 0;
+
+    if (shouldUseAi) {
+      const tAi = Date.now();
+      ai = await aiParseTutorSearch(rawQ);
+      aiMs = Date.now() - tAi;
+      log(`[searchTutors:${rid}] ai parsed (${aiMs}ms)`, ai);
+    }
+
+    // If AI used: use ai.keywords; else use rawQ as keywords
+    const aiKeywords = (ai?.keywords || '').toString().trim();
+    const effectiveKeywords = shouldUseAi && ai ? aiKeywords : rawQ;
+
+    // merge (explicit query params win over AI)
+    const merged = {
+      keywords: effectiveKeywords,
+      country: (country || ai?.country || '').toString().trim().toUpperCase(),
+      subject: (subject || ai?.subject || '').toString().trim(),
+      gradeBand: (gradeBand || ai?.gradeBand || '').toString().trim(),
+      status: (status || ai?.status || '').toString().trim().toLowerCase(),
+      experienceLevel: (experienceLevel || ai?.experienceLevel || '').toString().trim(),
+      minRating: Number(minRating ?? ai?.minRating ?? 0) || 0,
+      maxTokens: Number(maxTokens ?? maxPrice ?? ai?.maxTokens ?? ai?.maxPrice ?? 0) || 0,
+      maxPrice: Number(maxPrice ?? ai?.maxPrice ?? 0) || 0,
+      certified: String(certified ?? '').length
+        ? String(certified) === 'true' || String(certified) === '1'
+        : Boolean(ai?.certified),
+    };
+
+    // guards
+    if (!['', 'online', 'offline'].includes(merged.status)) merged.status = '';
+    if (merged.minRating < 0) merged.minRating = 0;
+    if (merged.maxPrice < 0) merged.maxPrice = 0;
+
+    // ✅ country-name typed in search box (Kenya) → ISO2 country filter
+    if (!merged.country) {
+      const iso = resolveCountryIso2FromText(rawQ);
+      if (iso) {
+        merged.country = iso;
+
+        // If user basically typed only a country, don’t also use it as kw
+        if (!shouldUseAi && rawQ.split(/\s+/).length === 1) {
+          merged.keywords = '';
+        }
+      }
+    }
+
+    log(`[searchTutors:${rid}] merged`, merged);
+
+    // ────────────────────────────────────────────────────────────────
+    // KW decision (prevents "grade 3" from killing results)
+    // ────────────────────────────────────────────────────────────────
+    let kw = String(merged.keywords || '').trim();
+
+    const aiUsed = Boolean(ai);
+    const hasStructured =
+      Boolean(merged.country) ||
+      Boolean(merged.subject) ||
+      Boolean(merged.gradeBand) ||
+      Boolean(merged.status) ||
+      Boolean(merged.experienceLevel) ||
+      merged.minRating > 0 ||
+      merged.maxTokens > 0 ||
+      Boolean(merged.certified);
+
+
+    const norm = (s) =>
+      String(s || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (aiUsed && hasStructured && merged.gradeBand) {
+      const raw = norm(rawQ);
+      const k = norm(kw);
+      const gb = norm(merged.gradeBand);
+      if (k === raw || k === gb) kw = '';
+    }
+
+    log(`[searchTutors:${rid}] kw decision`, {
+      rawQ,
+      aiUsed,
+      gradeBand: merged.gradeBand,
+      mergedKeywords: merged.keywords,
+      kwUsed: kw,
+    });
+
+    // ────────────────────────────────────────────────────────────────
+    // Build SQL
+    // ────────────────────────────────────────────────────────────────
+    const conditions = [
+      `role = 'tutor'`,
+      `COALESCE(status,'offline') <> 'hidden'`,
+    ];
+    const values = [];
+    let idx = 1;
+
+    if (merged.country) {
+      conditions.push(`country = $${idx++}`);
+      values.push(merged.country);
+    }
+
+    if (merged.subject) {
+      conditions.push(`LOWER(COALESCE(category,'')) LIKE $${idx++}`);
+      values.push(`%${merged.subject.toLowerCase()}%`);
+    }
+
+    if (merged.status) {
+      conditions.push(`LOWER(COALESCE(status,'')) = $${idx++}`);
+      values.push(merged.status);
+    }
+
+    if (merged.experienceLevel) {
+      conditions.push(`experience_level = $${idx++}`);
+      values.push(merged.experienceLevel);
+    }
+
+    if (merged.certified) {
+      conditions.push(`certified = true`);
+    }
+
+    // grade band: free-form text[] (grade_bands) + fallback school_grade text
+    if (merged.gradeBand) {
+      conditions.push(`(
+        EXISTS (
+          SELECT 1
+          FROM unnest(COALESCE(grade_bands, ARRAY[]::text[])) gb
+          WHERE LOWER(gb) = LOWER($${idx})
+             OR LOWER(gb) LIKE LOWER($${idx + 1})
+        )
+        OR LOWER(COALESCE(school_grade,'')) LIKE LOWER($${idx + 1})
+      )`);
+
+      values.push(merged.gradeBand);
+      values.push(`%${merged.gradeBand}%`);
+      idx += 2;
+    }
+
+    // ✅ tokens: maxTokens across pricing JSON keys (safe parse; no cast crashes)
+if (merged.maxTokens > 0) {
+  const num = (k) =>
+    `CASE WHEN (pricing->>'${k}') ~ '^[0-9]+(\\.[0-9]+)?$' THEN (pricing->>'${k}')::numeric END`;
+
+  conditions.push(`(
+    COALESCE(
+      NULLIF(${num('tokens')}, 0),
+      NULLIF(${num('tokenPrice')}, 0),
+      NULLIF(${num('tokensPerHour')}, 0),
+      NULLIF(${num('hourlyTokens')}, 0),
+      NULLIF(${num('privateSessionTokens')}, 0),
+      NULLIF(${num('groupSessionTokens')}, 0),
+      NULLIF(${num('lectureTokens')}, 0),
+      NULLIF(${num('workshopTokens')}, 0),
+      0
+    ) <= $${idx++}
+  )`);
+  values.push(merged.maxTokens);
+}
+
+
+    // rating
+    if (merged.minRating > 0) {
+      conditions.push(`(
+        CASE WHEN COALESCE(rating_count,0) > 0
+          THEN (rating_total::numeric / rating_count::numeric)
+          ELSE 0
+        END
+      ) >= $${idx++}`);
+      values.push(merged.minRating);
+    }
+
+    // keyword text-ish search
+    if (kw) {
+      conditions.push(`(
+        LOWER(COALESCE(name,'')) LIKE $${idx}
+        OR LOWER(COALESCE(category,'')) LIKE $${idx}
+        OR LOWER(COALESCE(description->>'bio','')) LIKE $${idx}
+      )`);
+      values.push(`%${kw.toLowerCase()}%`);
+      idx += 1;
+    }
+
+    const sql = `
+      SELECT
+        id, user_id, role, name, age, languages, gallery, video,
+        status, category, pricing, description, experience_level,
+        certified, country, school_grade, grade_bands,
+        CASE WHEN COALESCE(rating_count,0) > 0
+          THEN (rating_total::numeric / rating_count::numeric)
+          ELSE NULL
+        END AS "avgRating"
+      FROM profiles
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY
+        "avgRating" DESC NULLS LAST,
+        id DESC
+      LIMIT $${idx++}
+      OFFSET $${idx++};
+    `;
+
+    values.push(limit, offset);
+
+    log(`[searchTutors:${rid}] sql`, {
+      whereCount: conditions.length,
+      paramsCount: values.length,
+      limit,
+      offset,
+      kw,
+      sqlPreview: sql.replace(/\s+/g, ' ').trim().slice(0, 260) + '...',
+      valuesPreview: values.map((v) =>
+        typeof v === 'string' ? (v.length > 80 ? v.slice(0, 80) + '…' : v) : v
+      ),
+    });
+
+    const tDb = Date.now();
+    const { rows } = await pool.query(sql, values);
+    const dbMs = Date.now() - tDb;
+
+    log(`[searchTutors:${rid}] done`, {
+      aiUsed,
+      aiMs,
+      dbMs,
+      rows: rows.length,
+      totalMs: Date.now() - t0,
+    });
+
+    return res.json({
+      success: true,
+      parsed: ai ? merged : null,
+      profiles: rows,
+      limit,
+      offset,
+      meta: dev ? { rid, aiMs, dbMs, aiUsed } : undefined,
+    });
+  } catch (err) {
+    console.error(`[searchTutors:${rid}] error`, {
+      message: err?.message,
+      code: err?.code,
+      hint: err?.hint,
+      position: err?.position,
+      stack: err?.stack,
+      tookMs: Date.now() - t0,
+    });
+    return res.status(500).json({ message: 'Failed to search tutors.', rid });
   }
 };

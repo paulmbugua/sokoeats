@@ -142,6 +142,8 @@ const corsOptions = {
     'X-Requested-With',
     'Accept',
     'Origin',
+    'X-Client-Platform',
+    'X-Platform',
   ],
   exposedHeaders: [
     'Content-Disposition',

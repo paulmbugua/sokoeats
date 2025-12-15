@@ -1,177 +1,186 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback, useState } from 'react';
 import type { Profile } from '@mytutorapp/shared/types';
-import { fetchTutorProfiles, fetchTutorReviews } from '@mytutorapp/shared/api';
+import { fetchTutorProfiles } from '@mytutorapp/shared/api';
+import { searchTutorsApi } from '@mytutorapp/shared/api/profileApi';
 import { useShopContext } from '@mytutorapp/shared/context';
 import useAppQuery from './useAppQuery';
 
-type Filters = Record<string, string[]>;
-const SUBJECTS = ['Math', 'Science', 'Programming', 'Art', 'Wellness', 'Languages'] as const;
+const dev =
+  typeof process !== 'undefined'
+    ? process.env.NODE_ENV !== 'production'
+    : false;
 
-const getField = (obj: Record<string, unknown>, key: string): unknown => {
-  if (key.includes('.')) {
-    return key.split('.').reduce<unknown>(
-      (acc, seg) =>
-        acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[seg] : undefined,
-      obj
-    );
-  }
-  const snake = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-  return obj[key] ?? (obj as any)[snake];
+type UiFilters = {
+  country: string;
+  subject: string;
+  minRating: number;
+  maxTokens: number; // ✅
 };
+
+const DEFAULT_UI: UiFilters = {
+  country: '',
+  subject: '',
+  minRating: 0,
+  maxTokens: 0,
+};
+
 
 const throttle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const useHomePage = () => {
-  const { backendUrl } = useShopContext();
+type SearchMeta = {
+  usingServer: boolean;
+  aiUsed?: boolean;
+  rows?: number;
 
-  // ✅ useAppQuery with positional args (queryKey, queryFn, options)
-  const {
-    data,
-    isLoading: loading,
-    refetch: reloadProfiles,
-  } = useAppQuery<Profile[]>(
-    ['tutorProfiles', backendUrl],
+  parsed?: any;
+  limit?: number;
+  offset?: number;
+
+  serverError?: string;
+  ms?: number;
+};
+
+const cleanBase = (u?: string) => String(u || '').replace(/\/+$/, '');
+
+// ✅ optionally pass a fallback baseUrl (handy for web pages)
+const useHomePage = (opts?: { backendUrl?: string }) => {
+  const ctx = useShopContext();
+  const backendUrl = cleanBase(ctx?.backendUrl) || cleanBase(opts?.backendUrl);
+
+  const [rawQ, setRawQ] = useState('');
+  const [q, setQ] = useState('');
+  const [uiFilters, setUiFilters] = useState<UiFilters>(DEFAULT_UI);
+
+  const [searchMeta, setSearchMeta] = useState<SearchMeta>({ usingServer: true });
+
+  useEffect(() => {
+    const t = setTimeout(() => setQ(rawQ.trim()), 250);
+    return () => clearTimeout(t);
+  }, [rawQ]);
+
+ const queryKey = useMemo(
+  () => [
+    'tutorSearch',
+    backendUrl,
+    q,
+    uiFilters.country,
+    uiFilters.subject,
+    uiFilters.minRating,
+    uiFilters.maxTokens,
+  ],
+  [backendUrl, q, uiFilters.country, uiFilters.subject, uiFilters.minRating, uiFilters.maxTokens]
+);
+
+
+  const { data, isLoading: loading, refetch: reloadProfiles } = useAppQuery<Profile[]>(
+    queryKey,
     async (): Promise<Profile[]> => {
-      if (!backendUrl) return []; // guest mode safety
-      const baseProfiles = await fetchTutorProfiles(backendUrl);
+      if (!backendUrl) return [];
 
-      // Group tutors by SUBJECTS to pick a small sample for rating lookups
-      const bySubject: Record<string, Profile[]> = {};
-      SUBJECTS.forEach((s) => (bySubject[s] = []));
-      for (const p of baseProfiles) {
-        if ((p as any).role !== 'tutor') continue;
-        const cat = String((p as any)?.category || '').toLowerCase();
-        for (const s of SUBJECTS) {
-          if (cat.includes(s.toLowerCase())) {
-            bySubject[s].push(p);
-            break;
-          }
-        }
+      const limit = 48;
+      const offset = 0;
+
+      const params: Record<string, any> = { q, limit, offset };
+      if (uiFilters.country) params.country = uiFilters.country;
+      if (uiFilters.subject) params.subject = uiFilters.subject;
+      if (uiFilters.minRating > 0) params.minRating = uiFilters.minRating;
+      if (uiFilters.maxTokens > 0) params.maxTokens = uiFilters.maxTokens; // ✅
+
+
+      const t0 = Date.now();
+
+      try {
+        if (dev) console.debug('[useHomePage] searchTutorsApi params:', params);
+
+        const resp: any = await searchTutorsApi(backendUrl, params);
+        const ms = Date.now() - t0;
+
+        // ✅ robust response parsing
+        const profiles = Array.isArray(resp)
+          ? resp
+          : Array.isArray(resp?.profiles)
+          ? resp.profiles
+          : Array.isArray(resp?.rows)
+          ? resp.rows
+          : [];
+
+        setSearchMeta({
+          usingServer: true,
+          parsed: resp?.parsed ?? null,
+          limit: resp?.limit ?? limit,
+          offset: resp?.offset ?? offset,
+          rows: profiles.length,
+          ms,
+        });
+
+        return profiles.filter((p: any) => String(p?.role || '').toLowerCase() === 'tutor');
+      } catch (err: any) {
+        const ms = Date.now() - t0;
+        const msg =
+          err?.response?.data?.message ||
+          err?.message ||
+          'searchTutorsApi failed';
+
+        setSearchMeta({ usingServer: false, serverError: msg, ms });
+        console.error('[useHomePage] searchTutorsApi failed → fallback:', msg);
+
+        await throttle(100);
+        const fallback = await fetchTutorProfiles(backendUrl);
+        return (fallback || []).filter((p: any) => String(p?.role || '').toLowerCase() === 'tutor');
       }
-
-      const candidates: Profile[] = [];
-      for (const s of SUBJECTS) candidates.push(...bySubject[s].slice(0, 5));
-      const candidateIds = new Set(
-        candidates.map((p) => (p as any).user_id ?? (p as any).id)
-      );
-
-      // Limited-concurrency review fetch for candidates only
-      const queue = candidates.slice();
-      const results = new Map<string | number, { avg: number; total: number }>();
-      const CONCURRENCY = 3;
-
-      async function worker() {
-        while (queue.length) {
-          const p = queue.shift()!;
-          try {
-            const rid = (p as any).user_id ?? (p as any).id;
-            const review = await fetchTutorReviews(backendUrl, rid); // (backendUrl, id)
-            results.set(rid, {
-              avg: Number(review?.avgRating ?? 0),
-              total: Number(review?.totalReviews ?? 0),
-            });
-          } catch {
-            /* ignore per-candidate failure */
-          }
-          await throttle(120);
-        }
-      }
-
-      const workerCount = Math.min(CONCURRENCY, queue.length);
-      await Promise.all(Array.from({ length: workerCount }).map(() => worker()));
-
-      // Merge ratings back into base list
-      return baseProfiles.map((p) => {
-        if ((p as any).role !== 'tutor') return p;
-        const rid = (p as any).user_id ?? (p as any).id;
-        if (candidateIds.has(rid)) {
-          const hit = results.get(rid);
-          return {
-            ...p,
-            avgRating: Number(hit?.avg ?? 0),
-            totalReviews: Number(hit?.total ?? 0),
-          } as Profile;
-        }
-        return { ...p, avgRating: 0, totalReviews: 0 } as Profile;
-      });
     },
     {
-      enabled: Boolean(backendUrl), // allow unauthenticated visitors (backendUrl present)
+      enabled: Boolean(backendUrl),
       retry: false,
+      staleTime: 15_000,
     }
   );
 
-  // Ensure strong typing for downstream usage
-  const profiles: Profile[] = data ?? [];
+  const filteredProfiles: Profile[] = data ?? [];
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState<Filters>({});
-
-  const handleSearch = useCallback((term: string) => setSearchTerm(term), []);
-  const onFilterChange = useCallback((filterType: string, value: string) => {
-    setFilters((prev) => {
-      const existing = prev[filterType] || [];
-      if (existing.includes(value)) {
-        const next = { ...prev };
-        delete next[filterType];
-        return next;
-      }
-      return { ...prev, [filterType]: [value] };
-    });
+  const handleSearch = useCallback((term: string) => {
+    setRawQ(term ?? '');
   }, []);
+
+  const setCountryFilter = useCallback((iso2: string) => {
+    setUiFilters((prev) => ({ ...prev, country: String(iso2 || '').toUpperCase().trim() }));
+  }, []);
+
+  const setSubjectFilter = useCallback((subject: string) => {
+    setUiFilters((prev) => ({ ...prev, subject: String(subject || '').trim() }));
+  }, []);
+
+  const setMinRatingFilter = useCallback((n: number) => {
+    const v = Number(n || 0);
+    setUiFilters((prev) => ({ ...prev, minRating: Number.isFinite(v) ? v : 0 }));
+  }, []);
+
+  const setMaxTokensFilter = useCallback((n: number) => {
+  const v = Number(n || 0);
+  setUiFilters((prev) => ({ ...prev, maxTokens: Number.isFinite(v) ? v : 0 }));
+}, []);
+
+
   const clearFilters = useCallback(() => {
-    setSearchTerm('');
-    setFilters({});
+    setRawQ('');
+    setQ('');
+    setUiFilters(DEFAULT_UI);
   }, []);
-
-  const filteredProfiles = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    return profiles.filter((p: Profile) => {
-      const r = p as any;
-
-      if (q) {
-        const nameMatch = String(getField(r, 'name') ?? '').toLowerCase().includes(q);
-        const catMatch = String(getField(r, 'category') ?? '').toLowerCase().includes(q);
-        if (!(nameMatch || catMatch)) return false;
-      }
-
-      for (const [key, values] of Object.entries(filters)) {
-        if (!values.length) continue;
-        const sel = values[0].toLowerCase();
-
-        if (key === 'rating') {
-          const want = parseInt(values[0], 10);
-          const rounded = Math.round(Number((r as any).avgRating ?? 0));
-          if (rounded !== want) return false;
-          continue;
-        }
-
-        if (key === 'status') {
-          const raw = String(getField(r, 'status') ?? '').toLowerCase();
-          const norm = raw === 'online' || raw === 'new' ? 'free' : raw;
-          if (norm !== sel) return false;
-          continue;
-        }
-
-        if (key === 'category') {
-          const cat = String(getField(r, 'category') ?? '').toLowerCase();
-          if (!(cat.includes(sel) || sel.includes(cat))) return false;
-          continue;
-        }
-      }
-
-      return true;
-    });
-  }, [profiles, searchTerm, filters]);
 
   return {
     filteredProfiles,
-    filters,
     loading,
     handleSearch,
-    onFilterChange,
+
+    uiFilters,
+    setSubjectFilter,
+    setCountryFilter,
+    setMinRatingFilter,
+    setMaxTokensFilter,
     clearFilters,
+
     reloadProfiles,
+    searchMeta,
   };
 };
 

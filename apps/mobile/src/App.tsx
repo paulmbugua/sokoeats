@@ -74,6 +74,7 @@ import VerifyCertificatePrintPage from './screens/VerifyCertificatePrintScreen.n
 
 // Payments
 import PaymentFlow from './screens/PaymentFlow.native';
+import PaystackCallbackNative from './screens/PaystackCallback.native';
 
 // Organizations
 import OrgHomeRouterNative from './screens/org/OrgHomeRouter.native';
@@ -235,7 +236,8 @@ const App: React.FC = () => {
   const isFirstLogin = useIsFirstLogin();
   const markSeen = useMarkFirstLoginSeen();
 
-  const { filters, handleSearch, clearFilters } = useHomePage();
+  const { uiFilters, handleSearch, clearFilters } = useHomePage();
+
 
   React.useEffect(() => {
     let mounted = true;
@@ -328,6 +330,9 @@ const App: React.FC = () => {
             component={FulfillmentPolicy}
           />
           <Stack.Screen name="PaymentFlow" component={PaymentFlow} />
+          <Stack.Screen name="PaystackCallback" component={PaystackCallbackNative} />
+
+
 
           {/* Public verify routes */}
           <Stack.Screen
@@ -422,27 +427,24 @@ const App: React.FC = () => {
 
           {/* ClassVault listing (public entry; filtered UI inside) */}
           <Stack.Screen name="ClassVaultLibrary">
-            {() => {
-              const classVaultFilters = React.useMemo(
-                () => ({
-                  category:
-                    (filters as any)?.videoCategory ??
-                    (filters as any)?.category,
-                  ageGroup:
-                    (filters as any)?.videoAgeGroup ??
-                    (filters as any)?.ageGroup,
-                }),
-                [filters]
-              );
+              {() => {
+                const classVaultFilters = React.useMemo(
+                  () => ({
+                    category: (uiFilters as any)?.videoCategory ?? (uiFilters as any)?.category,
+                    ageGroup: (uiFilters as any)?.videoAgeGroup ?? (uiFilters as any)?.ageGroup,
+                  }),
+                  [uiFilters]
+                );
 
-              return (
-                <ClassVaultListScreen
-                  filters={classVaultFilters}
-                  clearFilters={clearFilters}
-                />
-              );
-            }}
-          </Stack.Screen>
+                return (
+                  <ClassVaultListScreen
+                    filters={classVaultFilters}
+                    clearFilters={clearFilters}
+                  />
+                );
+              }}
+            </Stack.Screen>
+
 
           <Stack.Screen
             name="ClassVaultDetail"

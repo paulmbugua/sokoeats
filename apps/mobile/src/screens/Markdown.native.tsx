@@ -86,22 +86,32 @@ export default function Markdown({
   const styles = { ...defaultMarkdownStyles(1), ...(markdownStyle || {}) };
 
   // Inline rules: use node.key (or a safe fallback) instead of parent.key
-  const inlineRules =
-    inline
-      ? {
-          paragraph: (node: any, _children: any) => (
-            <Text
-              // FIX: safe key
-              key={node?.key ?? `p-${Math.random().toString(36).slice(2)}`}
-              style={tw`text-slate-200`}
-            >
-              {_children}
-            </Text>
-          ),
-          // view wrapper -> fragment to avoid extra <View> in buttons
-          view: (_node: any, _children: any) => <>{_children}</>,
-        }
-      : undefined;
+  // inside Markdown.native.tsx
+
+const inlineRules =
+  inline
+    ? {
+        paragraph: (node: any, _children: any) => (
+          <Text
+            key={node?.key ?? `p-${Math.random().toString(36).slice(2)}`}
+            style={tw`text-slate-200`}
+          >
+            {_children}
+          </Text>
+        ),
+
+        // ✅ IMPORTANT: never return a Fragment for inline markdown nodes
+        view: (node: any, _children: any) => (
+          <Text
+            key={node?.key ?? `v-${Math.random().toString(36).slice(2)}`}
+            style={tw`text-slate-200`}
+          >
+            {_children}
+          </Text>
+        ),
+      }
+    : undefined;
+
 
   return (
     <View style={className ? tw`${className}` : undefined}>

@@ -2,6 +2,14 @@
 import axios from 'axios';
 import type { PaymentPackage } from '@mytutorapp/shared/types';
 
+
+function clientPlatformHeader() {
+  const isNative =
+    typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative';
+  return { 'x-client-platform': isNative ? 'native' : 'web' };
+}
+
+
 export const getPaymentPackages = async (
   backendUrl: string,
   token: string,
@@ -129,40 +137,25 @@ export interface PaystackCardChargeResponse {
  *   - calls Paystack /charge
  *   - on success, credits tokens + marks payment Completed
  */
-export const paystackCardCharge = async (
-  backendUrl: string,
-  token: string,
-  payload: {
-    packageId: string;
-    card: {
-      number: string;
-      exp_month: string;
-      exp_year: string;
-      cvc: string;
-      name: string;
-    };
-  }
-): Promise<any> => {
+export const paystackCardCharge = async (backendUrl: string, token: string, payload: any) => {
   const url = new URL('/api/paystack/card-charge', backendUrl).toString();
   const res = await axios.post(url, payload, {
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      ...clientPlatformHeader(), // ✅
     },
   });
   return res.data;
 };
 
-export const paystackSubmitOtp = async (
-  backendUrl: string,
-  token: string,
-  payload: { reference: string; otp: string }
-): Promise<any> => {
+export const paystackSubmitOtp = async (backendUrl: string, token: string, payload: any) => {
   const url = new URL('/api/paystack/submit-otp', backendUrl).toString();
   const res = await axios.post(url, payload, {
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      ...clientPlatformHeader(), // ✅
     },
   });
   return res.data;
@@ -197,10 +190,15 @@ export const paystackCreateOrder = async (
 ): Promise<PaystackCreateOrderResp> => {
   const url = new URL('/api/paystack/create-order', backendUrl).toString();
   const res = await axios.post(url, payload, {
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...clientPlatformHeader(), // ✅ ADD THIS
+    },
   });
   return res.data;
 };
+
 
 // If you kept verify protected, token is required; if you removed anyAuth, token can be optional.
 export const paystackVerify = async (

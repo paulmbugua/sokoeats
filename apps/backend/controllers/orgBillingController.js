@@ -11,7 +11,40 @@ import { normalizePhoneNumber } from '../utils/phoneUtils.js';
 const PAYSTACK_SECRET_KEY = (process.env.PAYSTACK_SECRET_KEY || '').trim();
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
-const PAYSTACK_CALLBACK_URL = (process.env.PAYSTACK_CALLBACK_URL || '').trim(); 
+const PAYSTACK_CALLBACK_URL_WEB = (
+  process.env.PAYSTACK_CALLBACK_URL_WEB ||
+  process.env.PAYSTACK_CALLBACK_URL || // backward compat
+  ''
+).trim();
+
+const PAYSTACK_CALLBACK_URL_NATIVE = (
+  process.env.PAYSTACK_CALLBACK_URL_NATIVE || ''
+).trim();
+
+function inferClientPlatform(req) {
+  const hinted =
+    String(req?.get?.('x-client-platform') || req?.get?.('x-platform') || '').toLowerCase() ||
+    String(req?.query?.platform || req?.body?.platform || '').toLowerCase();
+
+  if (['native', 'mobile', 'expo', 'android', 'ios'].includes(hinted)) return 'native';
+  if (['web', 'browser'].includes(hinted)) return 'web';
+
+  const ua = String(req?.get?.('user-agent') || '');
+  if (/okhttp|dalvik|android|iphone|ipad|ios|expo|reactnative/i.test(ua)) return 'native';
+
+  return 'web';
+}
+
+function resolvePaystackCallbackBase(req) {
+  const platform = inferClientPlatform(req);
+
+  if (platform === 'native' && PAYSTACK_CALLBACK_URL_NATIVE) return PAYSTACK_CALLBACK_URL_NATIVE;
+  if (platform === 'web' && PAYSTACK_CALLBACK_URL_WEB) return PAYSTACK_CALLBACK_URL_WEB;
+
+  // fallback order
+  return PAYSTACK_CALLBACK_URL_WEB || PAYSTACK_CALLBACK_URL_NATIVE || '';
+}
+
 // e.g. http://localhost:5173/paystack/callback  (or https://www.daybreaklearner.com/paystack/callback)
 
 function buildCallbackUrl(base, params) {
@@ -60,7 +93,7 @@ async function paystackInitTransaction({
       currency: 'KES',
       reference: reference || undefined,
       callback_url: callback_url || undefined,
-      channels: ['card'],
+     
       metadata: metadata || undefined,
     }),
   });
@@ -350,10 +383,13 @@ export async function initOrgSubscription(req, res) {
       ]
     );
 
-      const callback_url = buildCallbackUrl(PAYSTACK_CALLBACK_URL, {
-      kind: 'org',
-      paymentId: payment.id, // so your callback page can confirm without sessionStorage
-    });
+      const callbackBase = resolvePaystackCallbackBase(req);
+
+      const callback_url = buildCallbackUrl(callbackBase, {
+        kind: 'org',
+        paymentId: payment.id, // callback page confirms without sessionStorage
+      });
+
 
 
     const init = await paystackInitTransaction({

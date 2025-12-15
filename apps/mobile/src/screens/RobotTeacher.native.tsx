@@ -570,12 +570,25 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   }, [clearTopCoursesCacheNow, loadTopCourses, params.courseId]);
 
   // Lesson list with stable id (parity with web)
-  const lessonsArr = useMemo(() => {
-    const L = typeof getLessonAt === 'function' ? getLessonAt(currentIdx) : null;
-    if (!L) return [];
-    const stableId = (L as any).id ?? `${selectedCourse?.id || 'course'}:${currentIdx ?? 0}`;
-    return [{ ...L, id: stableId }];
-  }, [getLessonAt, currentIdx, selectedCourse?.id]);
+ const lessonsArr = useMemo(() => {
+  const total = Math.max(1, Number(safeLessons ?? 1));
+  const out: any[] = [];
+
+  for (let i = 0; i < total; i++) {
+    const L = typeof getLessonAt === 'function' ? getLessonAt(i) : null;
+
+    // Keep indices aligned. If not built yet, keep placeholder with empty ssml.
+    out.push({
+      id: (L as any)?.id ?? `${selectedCourse?.id || 'course'}:${i}`,
+      title: (L as any)?.title ?? outline?.[i]?.title ?? `Lesson ${i + 1}`,
+      ssml: (L as any)?.ssml ?? '',
+      markdown: (L as any)?.markdown ?? '',
+    });
+  }
+
+  return out;
+}, [getLessonAt, safeLessons, selectedCourse?.id, outline]);
+
 
   useEffect(() => {
     if (hasAIContent) setIsMaximized(true);
@@ -619,7 +632,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   // Prefetch policy: warm exactly N lessons once, then stop
   // ─────────────────────────────────────────────────────────
   const PREFETCH_BUFFER = 2;
-  const prefetchDoneRef = useRef(false);
+  const prefetchedIdxRef = useRef<number | null>(null);
 
   const canBuildMore = useCallback(() => {
     const h = hasNextLesson as unknown as boolean | (() => boolean) | undefined;
@@ -809,15 +822,26 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   // ─────────────────────────────────────────────────────────
   // onBeforePlay / onEnded wrappers (SSML lock + prefetch)
   // ─────────────────────────────────────────────────────────
-  const onBeforePlayWrapped = useCallback(async () => {
+    const onBeforePlayWrapped = useCallback(async () => {
     dlog('Classroom onBeforePlay (policy)');
     if (!lockedSsml) setLockedSsml(rawDisplaySsml);
+
+    // keep any internal AI hook behavior (TTS warmup, etc.)
     await aiOnBeforePlay?.();
-    if (!prefetchDoneRef.current) {
-      await prefetchAhead(PREFETCH_BUFFER);
-      prefetchDoneRef.current = true;
-    }
-  }, [lockedSsml, rawDisplaySsml, aiOnBeforePlay, prefetchAhead]);
+  }, [lockedSsml, rawDisplaySsml, aiOnBeforePlay]);
+
+
+    const onRequestStartWrapped = useCallback(async () => {
+    const idx = Number(currentIdx ?? 0);
+
+    // only once per lesson index
+    if (prefetchedIdxRef.current === idx) return;
+
+    dlog('Prefetch@70% → prefetchAhead', { idx, buffer: PREFETCH_BUFFER });
+
+    await prefetchAhead(PREFETCH_BUFFER);
+    prefetchedIdxRef.current = idx;
+  }, [currentIdx, prefetchAhead]);
 
   const onEndedWrapped = useCallback(() => {
     dlog('Classroom onEnded (policy) — no further background generation');
@@ -971,7 +995,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
             onPlayerReady={() => { setPlayerReady(true); }}
             onPlayerLoadingChange={(loading: boolean) => { setPlayerLoading(loading); }}
             lessonsArr={lessonsArr}
-            
+            activeIndex={currentIdx ?? 0} 
             voiceName={voiceName || defaultVoice}
             courseTitle={selectedCourse?.title || (customTitle || 'AI Lesson')}
             isMaximized={isMaximized}
@@ -983,6 +1007,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
 
             onBeforePlay={onBeforePlayWrapped}
             onEnded={onEndedWrapped}
+            onRequestStart={onRequestStartWrapped} 
 
             themeOpen={themeOpen}
             onThemeOpenChange={(open: boolean) => { dlog('themeOpen →', open); setThemeOpen(open); }}

@@ -115,3 +115,9 @@ export const updateProfileVideoJson = async (
     },
   });
 };
+
+export async function searchTutorsApi(backendUrl: string, params: Record<string, any>) {
+  const base = (backendUrl || '').replace(/\/+$/, '');
+  const { data } = await axios.get(`${base}/api/profile/search`, { params });
+  return data;
+}

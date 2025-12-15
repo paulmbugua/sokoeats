@@ -261,6 +261,7 @@ const {
               </p>
 
               <ul className="mt-6 space-y-3 text-sm">
+                 <li>• Exam Results &amp; Reports cards</li>
                 <li>• Custom certificates &amp; branding</li>
                 <li>• Timed assignments &amp; pass marks</li>
                 <li>• Termly &amp; yearly analytics</li>

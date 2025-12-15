@@ -215,3 +215,12 @@ export const getRecommendedCourses = async (
   ];
   return tryRoutes<Course>(base, routes, params);
 };
+
+export async function searchCoursesApi(
+  backendUrl: string,
+  params: Record<string, any>
+) {
+  const base = (backendUrl || '').replace(/\/+$/, '');
+  const { data } = await axios.get(`${base}/api/courses/search`, { params });
+  return data;
+}

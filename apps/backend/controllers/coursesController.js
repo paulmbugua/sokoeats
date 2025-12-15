@@ -2,6 +2,7 @@
 import pool from '../config/db.js';
 import { cacheDeleteByPattern } from '../utils/redisCache.js';
 
+
 function cleanTitle(raw) { return String(raw || '').replace(/\s+/g, ' ').trim(); }
 
 const SIZE_ALIASES = {
@@ -216,3 +217,5 @@ export async function createAiSandboxCourse(req, res) {
     return res.status(500).json({ error: 'FAILED_CREATE_AI_COURSE' });
   }
 }
+
+

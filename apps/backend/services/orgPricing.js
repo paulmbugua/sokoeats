@@ -9,13 +9,15 @@ export const ORG_SEATS = {
 export const ORG_PRICING = {
   USD: {
     pro:        { monthly: 99_00,   yearly: 990_00 },   // $99 / $990
-    enterprise: { monthly: 399_00,  yearly: 3990_00 },  // $399 / $3990
+    enterprise: { monthly: 1_00,  yearly: 3990_00 },  // $399 / $3990
   },
   KES: {
     pro:        { monthly: 13500_00, yearly: 135000_00 },   // 13,500 / 135,000
     enterprise: { monthly: 55000_00, yearly: 550000_00 },   // 55,000 / 550,000
   },
 };
+
+
 
 export function resolvePrice(tier, cycle, currency) {
   const cu = (currency || '').toUpperCase();

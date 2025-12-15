@@ -13,11 +13,72 @@ const PAYSTACK_SECRET_KEY = (process.env.PAYSTACK_SECRET_KEY || '').trim();
 const PAYSTACK_BASE       = 'https://api.paystack.co';
 const PAYSTACK_CURRENCY   = (process.env.PAYSTACK_CURRENCY || 'KES').toUpperCase();
 
+const PAYSTACK_CALLBACK_URL_WEB = (
+  process.env.PAYSTACK_CALLBACK_URL_WEB ||
+  process.env.PAYSTACK_CALLBACK_URL || // backward compat
+  ''
+).trim();
+
+const PAYSTACK_CALLBACK_URL_NATIVE = (
+  process.env.PAYSTACK_CALLBACK_URL_NATIVE || ''
+).trim();
+
+function inferClientPlatform(req) {
+  const hinted =
+    String(req?.get?.('x-client-platform') || req?.get?.('x-platform') || '').toLowerCase() ||
+    String(req?.query?.platform || req?.body?.platform || '').toLowerCase();
+
+  if (['native', 'mobile', 'expo', 'android', 'ios'].includes(hinted)) return 'native';
+  if (['web', 'browser'].includes(hinted)) return 'web';
+
+  const ua = String(req?.get?.('user-agent') || '');
+  if (/okhttp|dalvik|android|iphone|ipad|ios|expo|reactnative/i.test(ua)) return 'native';
+
+  return 'web';
+}
+
+function resolvePaystackCallbackBase(req) {
+  const platform = inferClientPlatform(req);
+
+  if (platform === 'native' && PAYSTACK_CALLBACK_URL_NATIVE) return PAYSTACK_CALLBACK_URL_NATIVE;
+  if (platform === 'web' && PAYSTACK_CALLBACK_URL_WEB) return PAYSTACK_CALLBACK_URL_WEB;
+
+  return PAYSTACK_CALLBACK_URL_WEB || PAYSTACK_CALLBACK_URL_NATIVE || '';
+}
+
+
 if (!PAYSTACK_SECRET_KEY) throw new Error('[paystack] Missing PAYSTACK_SECRET_KEY');
 
 // HARD GUARD: your Paystack account currency is KES
 if (PAYSTACK_CURRENCY !== 'KES') {
   throw new Error(`[paystack] PAYSTACK_CURRENCY must be KES, got ${PAYSTACK_CURRENCY}`);
+}
+
+function buildCallbackUrl(req, base, params = {}) {
+  // base should be something like: http://localhost:5173/paystack/callback
+  // or: https://yourdomain.com/paystack/callback
+ const fallbackBase =
+  resolvePaystackCallbackBase(req) ||
+  process.env.WEB_URL ||
+  process.env.FRONTEND_URL ||
+  req?.get?.('origin') ||
+  `${req.protocol}://${req.get('host')}/paystack/callback`;
+
+
+  const finalBase = (base && String(base).trim()) ? String(base).trim() : fallbackBase;
+
+  // Ensure it ends with the callback path (optional safety)
+  const u = new URL(finalBase);
+
+  // If you passed only domain in env, you can force the path:
+  // u.pathname = '/paystack/callback';
+
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue;
+    u.searchParams.set(k, String(v));
+  }
+
+  return u.toString();
 }
 
 /* ----------------------- shared helpers ----------------------- */
@@ -157,9 +218,11 @@ export async function createOrder(req, res) {
       amount: amountMinor,
       currency: 'KES',
       reference,
-      callback_url: buildCallbackUrl(process.env.PAYSTACK_CALLBACK_URL || '', { kind: 'tokens' }),
+      callback_url: buildCallbackUrl(req, resolvePaystackCallbackBase(req), { kind: 'tokens' }),
 
-      channels: ['card'],
+
+
+      
       metadata: {
         paymentId: paymentRow.id,
         userId,

@@ -98,6 +98,7 @@ interface LessonAndQuizProps {
   lessonsArr: any[];
   voiceName: string;
   currentIdx: number;
+   activeIndex?: number;
   courseTitle: string;
   isMaximized: boolean;
   onPlayerLoadingChange?: (loading: boolean) => void;
@@ -110,6 +111,8 @@ interface LessonAndQuizProps {
   backendUrl: string;
   onBeforePlay: () => Promise<void> | void;
   onEnded: () => void;
+  onRequestStart?: (meta?: { reason?: string; courseId?: string; lessonId?: string }) => void;
+  onRequestEnd?: (meta?: { reason?: string; ok?: boolean; error?: string }) => void;
   themeOpen: boolean;
   onThemeOpenChange: (open: boolean) => void;
   // outline → quiz
@@ -221,6 +224,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   onViewResults,
   isAdmin = false,
   currentIdx,
+  activeIndex,
   onPlayerLoadingChange,
 }) => {
   // Prop sanity
@@ -772,7 +776,7 @@ useEffect(() => {
         if (enforcedQuizType === 'short') {
           return { questionId: qid, answerText: String(v ?? '').trim() };
         }
-        const idx = typeof v === 'number' ? v : Number(v);
+        const idx = typeof activeIndex === 'number' ? activeIndex : currentIdx;
         return { questionId: qid, choiceIndex: Number.isFinite(idx) ? idx : -1 };
       });
 

@@ -3,6 +3,7 @@ import pool from '../config/db.js';
 import Joi from 'joi';
 import { sendNotification } from '../utils/sendNotification.js';
 import { initiateB2CPayment } from '../services/mpesaService.js';
+import { aiParseCourseSearch } from '../services/aiCourseSearch.js';
 
 /* ===========================
    Joi Schemas
@@ -856,5 +857,248 @@ export const purchaseCourse = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   } finally {
     client.release();
+  }
+};
+
+// apps/backend/controllers/courseController.js
+
+export const searchCourses = async (req, res) => {
+  const rid = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  const t0 = Date.now();
+
+  const dev = process.env.NODE_ENV !== 'production';
+  const log = (...args) => dev && console.log(...args);
+
+  try {
+    const {
+      q = '',
+      subject,
+      gradeBand,     // free-form
+      level,         // Beginner/Intermediate/Advanced/All Levels
+      minRating,
+      maxPrice,
+      isOer,
+      limit: limitStr,
+      offset: offsetStr,
+    } = req.query;
+
+    const limitN = Math.min(50, Math.max(1, Number(limitStr) || 12));
+    const offsetN = Math.max(0, Number(offsetStr) || 0);
+
+    const rawQ = String(q || '').trim();
+
+    // same idea: only use AI for longer multi-word queries
+    const shouldUseAi =
+      rawQ.length >= 6 && /[a-zA-Z]/.test(rawQ) && /\s/.test(rawQ);
+
+    log(`\n[searchCourses:${rid}] incoming`, {
+      rawQ,
+      shouldUseAi,
+      ui: { subject, gradeBand, level, minRating, maxPrice, isOer, limitN, offsetN },
+    });
+
+    // ── AI parse (optional)
+    let ai = null;
+    let aiMs = 0;
+
+    if (shouldUseAi) {
+      const tAi = Date.now();
+      ai = await aiParseCourseSearch(rawQ);
+      aiMs = Date.now() - tAi;
+      log(`[searchCourses:${rid}] ai parsed (${aiMs}ms)`, ai);
+    }
+
+    // effective keywords: if ai used → ai.keywords, else rawQ
+    const aiKeywords = (ai?.keywords || '').toString().trim();
+    const effectiveKeywords = shouldUseAi && ai ? aiKeywords : rawQ;
+
+    // merge (explicit query params win)
+    const merged = {
+      keywords: effectiveKeywords,
+
+      subject: (subject || ai?.subject || '').toString().trim(),
+      gradeBand: (gradeBand || ai?.gradeBand || '').toString().trim(),
+      level: (level || ai?.level || '').toString().trim(),
+
+      minRating: Number(minRating ?? ai?.minRating ?? 0) || 0,
+      maxPrice: Number(maxPrice ?? ai?.maxPrice ?? 0) || 0,
+
+      isOer: String(isOer ?? '').length
+        ? String(isOer) === 'true' || String(isOer) === '1'
+        : Boolean(ai?.isOer),
+    };
+
+    if (merged.minRating < 0) merged.minRating = 0;
+    if (merged.maxPrice < 0) merged.maxPrice = 0;
+
+    // if OER selected, force price to 0 (your DB may store 0 or NULL; we handle both)
+    if (merged.isOer) merged.maxPrice = 0;
+
+    // ────────────────────────────────────────────────────────────────
+    // KW decision (prevents gradeBand from killing results)
+    // ────────────────────────────────────────────────────────────────
+    let kw = String(merged.keywords || '').trim();
+
+    const aiUsed = Boolean(ai);
+    const hasStructured =
+      Boolean(merged.subject) ||
+      Boolean(merged.gradeBand) ||
+      Boolean(merged.level) ||
+      merged.minRating > 0 ||
+      merged.maxPrice > 0 ||
+      Boolean(merged.isOer);
+
+    const norm = (s) =>
+      String(s || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (aiUsed && hasStructured && merged.gradeBand) {
+      const raw = norm(rawQ);
+      const k = norm(kw);
+      const gb = norm(merged.gradeBand);
+      if (k === raw || k === gb) kw = '';
+    }
+
+    log(`[searchCourses:${rid}] merged`, merged);
+    log(`[searchCourses:${rid}] kw decision`, { rawQ, aiUsed, gradeBand: merged.gradeBand, kwUsed: kw });
+
+    // ────────────────────────────────────────────────────────────────
+    // Build SQL
+    // ────────────────────────────────────────────────────────────────
+    const conditions = [];
+    const values = [];
+    let idx = 1;
+
+    // keep your “AI exclusion” rule
+    conditions.push(aiExclusionClause('c', req));
+
+    // IMPORTANT: course search should allow:
+    // - OER courses (often have no tutor)
+    // - tutor-uploaded courses (should have tutor)
+    // so we gate it like:
+    //   if isOer filter is ON → only OER
+    //   else → allow either tutor courses OR OER (so mixed results are possible)
+    if (merged.isOer) {
+      conditions.push(`COALESCE(c.is_oer, FALSE) = TRUE`);
+    } else {
+      conditions.push(`(${hasTutor('c')} OR COALESCE(c.is_oer, FALSE) = TRUE)`);
+    }
+
+    if (merged.subject) {
+      conditions.push(`(
+        LOWER(COALESCE(c.subject,'')) = LOWER($${idx})
+        OR LOWER(COALESCE(c.title,'')) LIKE LOWER($${idx + 1})
+        OR LOWER(COALESCE(c.description,'')) LIKE LOWER($${idx + 1})
+      )`);
+      values.push(merged.subject);
+      values.push(`%${merged.subject}%`);
+      idx += 2;
+    }
+
+    // difficulty level (Beginner/Intermediate/Advanced/All Levels) — optional
+    if (merged.level) {
+      conditions.push(`LOWER(COALESCE(c.level,'')) = LOWER($${idx++})`);
+      values.push(merged.level);
+    }
+
+    // gradeBand (free-form): we match across common text fields + size_meta
+    // (this lets you support “Grade 3”, “Primary”, “Academy”, etc even without a dedicated column)
+    if (merged.gradeBand) {
+      conditions.push(`(
+        LOWER(COALESCE(c.title,'')) LIKE LOWER($${idx})
+        OR LOWER(COALESCE(c.description,'')) LIKE LOWER($${idx})
+        OR LOWER(COALESCE(c.level,'')) LIKE LOWER($${idx}) -- some of your rows have blank level; safe
+        OR LOWER(COALESCE(c.size_meta::text,'')) LIKE LOWER($${idx})
+      )`);
+      values.push(`%${merged.gradeBand}%`);
+      idx += 1;
+    }
+
+    // price (tokens) — only when user asked for a cap AND not OER
+    if (!merged.isOer && merged.maxPrice > 0) {
+      conditions.push(`COALESCE(c.price, 0) <= $${idx++}`);
+      values.push(merged.maxPrice);
+    }
+
+    // rating
+    if (merged.minRating > 0) {
+      conditions.push(`COALESCE(c.avg_rating, 0) >= $${idx++}`);
+      values.push(merged.minRating);
+    }
+
+    // keyword search
+    if (kw) {
+      conditions.push(`(
+        LOWER(COALESCE(c.title,'')) LIKE $${idx}
+        OR LOWER(COALESCE(c.description,'')) LIKE $${idx}
+        OR LOWER(COALESCE(c.subject,'')) LIKE $${idx}
+      )`);
+      values.push(`%${kw.toLowerCase()}%`);
+      idx += 1;
+    }
+
+    const sql = `
+      SELECT
+        c.id, c.tutor_id, c.title, c.description, c.level, c.duration, c.price,
+        c.syllabus, c.prerequisites,
+        c.created_at, c.updated_at,
+        COALESCE(c.avg_rating, 0)::float AS avg_rating,
+        COALESCE(c.ratings_count, 0)     AS ratings_count,
+        COALESCE(c.is_oer, FALSE)        AS is_oer,
+        c.subject, c.price_label, c.thumbnail_url,
+        c.provider, c.source_kind, c.content_kind,
+        c.size_meta
+      FROM courses c
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY
+        COALESCE(c.avg_rating, 0) DESC,
+        COALESCE(c.ratings_count, 0) DESC,
+        c.created_at DESC
+      LIMIT $${idx++}
+      OFFSET $${idx++};
+    `;
+
+    values.push(limitN, offsetN);
+
+    log(`[searchCourses:${rid}] sql`, {
+      whereCount: conditions.length,
+      paramsCount: values.length,
+      limitN,
+      offsetN,
+      kw,
+      sqlPreview: sql.replace(/\s+/g, ' ').trim().slice(0, 260) + '...',
+      valuesPreview: values.map((v) => (typeof v === 'string' ? (v.length > 80 ? v.slice(0, 80) + '…' : v) : v)),
+    });
+
+    const tDb = Date.now();
+    const { rows } = await pool.query(sql, values);
+    const dbMs = Date.now() - tDb;
+
+    log(`[searchCourses:${rid}] done`, {
+      aiUsed,
+      aiMs,
+      dbMs,
+      rows: rows.length,
+      totalMs: Date.now() - t0,
+    });
+
+    return res.json({
+      success: true,
+      parsed: ai ? merged : null,
+      courses: rows,
+      limit: limitN,
+      offset: offsetN,
+      meta: dev ? { rid, aiMs, dbMs, aiUsed } : undefined,
+    });
+  } catch (err) {
+    console.error(`[searchCourses:${rid}] error`, {
+      message: err?.message,
+      code: err?.code,
+      stack: err?.stack,
+      tookMs: Date.now() - t0,
+    });
+    return res.status(500).json({ message: 'Failed to search courses.', rid });
   }
 };

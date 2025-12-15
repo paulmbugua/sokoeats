@@ -11,12 +11,14 @@ import {
   ScrollView,
   Alert,
   Image,
+  Modal,
 } from 'react-native';
 import debounce from 'lodash.debounce';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useCourses, useEnrollments, useOerCourses } from '@mytutorapp/shared/hooks';
+import { useEnrollments, useOerCourses, useWrapOerBook } from '@mytutorapp/shared/hooks';
+import useCourseSearch from '@mytutorapp/shared/hooks/useCourseSearch';
 import type { Course } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -85,28 +87,6 @@ function coerceObj<T = any>(v: unknown): T | undefined {
   }
   return undefined;
 }
-
-const getWebAppBase = (backendBase?: string | null): string => {
-  // 1) Prefer explicit env if you set it (recommended)
-  // @ts-ignore - adjust to how you read env in Expo
-  const envWeb = process.env.EXPO_PUBLIC_WEB_APP_BASE_URL as string | undefined;
-  if (envWeb && /^https?:\/\//i.test(envWeb)) {
-    return envWeb.replace(/\/+$/, '');
-  }
-
-  // 2) Fallback: derive from backend (api.yourapp.com -> yourapp.com)
-  if (!backendBase) return '';
-  try {
-    const u = new URL(backendBase);
-    if (u.pathname.startsWith('/api')) u.pathname = '';
-    if (u.hostname.startsWith('api.')) {
-      u.hostname = u.hostname.slice(4);
-    }
-    return `${u.protocol}//${u.host}`;
-  } catch {
-    return backendBase.replace(/\/+api\/?$/i, '');
-  }
-};
 
 // Canonical way to pull tutor's user id from many possible shapes
 function getTutorUserId(c: any): string | undefined {
@@ -185,65 +165,7 @@ function wasUploadedByTutor(c: any): boolean {
   return hasTutorLink;
 }
 
-/* Duration / Price filtering */
-type PriceKey = 'any' | '0-20' | '20-40' | '40-60' | '60+';
-const PRICE_RANGES: Record<PriceKey, (n?: number) => boolean> = {
-  any: () => true,
-  '0-20': (n) => typeof n === 'number' && n >= 0 && n < 20,
-  '20-40': (n) => typeof n === 'number' && n >= 20 && n < 40,
-  '40-60': (n) => typeof n === 'number' && n >= 40 && n < 60,
-  '60+': (n) => typeof n === 'number' && n >= 60,
-};
-
-type DurationKey = 'any' | '<1h' | '1–3h' | '3–6h' | '6h+';
-
-/** best-effort parser: "2h 30m", "150m", "1.5h", "90 min", numbers = hours */
-function parseDurationToHours(d?: unknown): number | undefined {
-  if (!d) return undefined;
-  if (typeof d === 'number' && Number.isFinite(d)) return d;
-
-  const str = String(d).toLowerCase().trim();
-  if (!str) return undefined;
-
-  const hMatch = /(\d+(?:\.\d+)?)\s*h/.exec(str);
-  const mMatch = /(\d+)\s*m/.exec(str);
-  const h = hMatch ? parseFloat(hMatch[1] ?? '0') : 0;
-  const m = mMatch ? parseFloat(mMatch[1] ?? '0') : 0;
-  if (hMatch || mMatch) return h + m / 60;
-
-  const minOnly = /(\d+)\s*min/.exec(str);
-  if (minOnly) return parseFloat(minOnly[1] ?? '0') / 60;
-
-  const plain = parseFloat(str);
-  return Number.isFinite(plain) ? plain : undefined;
-}
-
-function durationPredicate(key: DurationKey): (hours?: number) => boolean {
-  switch (key) {
-    case '<1h':
-      return (h) => typeof h === 'number' && h < 1;
-    case '1–3h':
-      return (h) => typeof h === 'number' && h >= 1 && h < 3;
-    case '3–6h':
-      return (h) => typeof h === 'number' && h >= 3 && h < 6;
-    case '6h+':
-      return (h) => typeof h === 'number' && h >= 6;
-    default:
-      return () => true;
-  }
-}
-
-const toPriceNumber = (v?: unknown): number | undefined => {
-  if (typeof v === 'number') return v;
-  if (typeof v === 'string') {
-    const m = v.replace(/[^\d.]/g, '');
-    const n = parseFloat(m);
-    return Number.isFinite(n) ? n : undefined;
-  }
-  return undefined;
-};
-
-/* ----------------------------- API URL & Routes ----------------------------- */
+/* ----------------------------- API URL ----------------------------- */
 const makeApiUrl = (base?: string) => (path: string) => {
   const b = (base || '').replace(/\/+$/, '');
   const p = path.startsWith('/') ? path : `/${path}`;
@@ -258,15 +180,15 @@ const toWebBase = (base?: string) => (base || '').replace(/\/+$/, '').replace(/\
 
 const resolveThumbUri = (backendBase?: string | null, raw?: string | null) => {
   if (!raw) return undefined;
-  const s = String(raw).trim();
-  if (/^https?:\/\//i.test(s)) return s;
+  const st = String(raw).trim();
+  if (/^https?:\/\//i.test(st)) return st;
   if (!backendBase) return undefined;
 
   const webBase = toWebBase(backendBase);
   const base = webBase.replace(/\/+$/, '');
 
-  if (s.startsWith('/')) return `${base}${s}`;
-  return `${base}/${s}`;
+  if (st.startsWith('/')) return `${base}${st}`;
+  return `${base}/${st}`;
 };
 
 /* --------------------- OER Video Collection helpers --------------------- */
@@ -313,7 +235,6 @@ const isDocKind = (c: OerCollection): boolean => {
   return kind === 'doc' || kind === 'docs';
 };
 
-// Normalize varied payloads
 function toArray<T = any>(val: any): T[] {
   if (Array.isArray(val)) return val;
   if (val == null) return [];
@@ -365,18 +286,11 @@ const OerVideoCard: React.FC<{
         style={tw`w-full h-36 rounded-lg bg-slate-200 dark:bg-white/5`}
         resizeMode="cover"
       />
-      <Text
-        style={tw`mt-2 font-semibold text-sm text-slate-900 dark:text-white`}
-        numberOfLines={2}
-      >
+      <Text style={tw`mt-2 font-semibold text-sm text-slate-900 dark:text-white`} numberOfLines={2}>
         {col.title}
       </Text>
-      <Text
-        style={tw`text-xs text-[#49739c] dark:text-white/70 mt-0.5`}
-        numberOfLines={1}
-      >
-        {(col.subject ?? '—')} • {col.items_count ?? 0} item
-        {(col.items_count ?? 0) === 1 ? '' : 's'}
+      <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-0.5`} numberOfLines={1}>
+        {(col.subject ?? '—')} • {col.items_count ?? 0} item{(col.items_count ?? 0) === 1 ? '' : 's'}
       </Text>
       <View style={tw`mt-2`}>
         <Text
@@ -393,7 +307,8 @@ const OerBookCard: React.FC<{
   book: any;
   backendBase?: string | null;
   onReader: () => void;
-}> = ({ book, backendBase, onReader }) => {
+  onRobot?: () => void;
+}> = ({ book, backendBase, onReader, onRobot }) => {
   const thumbRaw = book.thumbnail_url || book.cover_url;
 
   const thumb =
@@ -404,14 +319,13 @@ const OerBookCard: React.FC<{
 
   return (
     <View style={tw`w-1/2 pr-2 mb-3`}>
-      <View
-        style={tw`rounded-xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-3`}
-      >
+      <View style={tw`rounded-xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-3`}>
         <Image
           source={{ uri: thumb }}
           style={tw`w-full h-36 rounded-lg bg-slate-200 dark:bg-white/5`}
           resizeMode="cover"
         />
+
         <View style={tw`mt-2 flex-row items-start justify-between`}>
           <Text
             style={tw`font-semibold text-sm text-slate-900 dark:text-white flex-1 pr-2`}
@@ -425,10 +339,8 @@ const OerBookCard: React.FC<{
             BOOK
           </Text>
         </View>
-        <Text
-          style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`}
-          numberOfLines={1}
-        >
+
+        <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`} numberOfLines={1}>
           {book.subject ?? '—'}
           {book.level ? ` • ${book.level}` : ''}
         </Text>
@@ -440,6 +352,17 @@ const OerBookCard: React.FC<{
           >
             <Text style={tw`text-white text-xs font-semibold`}>Reader</Text>
           </Pressable>
+
+          {!!onRobot && (
+            <Pressable
+              style={tw`h-10 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center mt-2`}
+              onPress={onRobot}
+            >
+              <Text style={tw`text-[#0d141c] dark:text-white text-xs font-semibold`}>
+                Learn with RobotTeacher
+              </Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </View>
@@ -449,177 +372,154 @@ const OerBookCard: React.FC<{
 /* --------------------------------- Screen -------------------------------- */
 const MyCoursesNative: React.FC = () => {
   const navigation = useNavigation<Nav>();
- const { backendUrl, token, profile, role: ctxRole } = useShopContext();
-const rawRole = (profile as any)?.role ?? ctxRole ?? '';
-const roleStr = String(rawRole || '').toLowerCase();
+  const { backendUrl, token, profile, role: ctxRole } = useShopContext();
 
-console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', roleStr);
+  const rawRole = (profile as any)?.role ?? ctxRole ?? '';
+  const roleStr = String(rawRole || '').toLowerCase();
+
   const { resolvedScheme } = useThemePref();
   const isDark = resolvedScheme === 'dark';
-
-  const navAny = navigation as unknown as {
-    navigate: (...args: any[]) => void;
-    getState: () => any;
-  };
-
-  const hasRoute = (name: string): boolean => {
-    try {
-      const state = navigation.getState?.();
-      const walk = (s: any): boolean => {
-        if (!s) return false;
-        const names = Array.isArray(s?.routeNames)
-          ? s.routeNames
-          : Array.isArray(s?.routes)
-          ? s.routes.map((r: any) => r.name)
-          : [];
-        if (names.includes(name)) return true;
-        const routes = Array.isArray(s?.routes) ? s.routes : [];
-        for (const r of routes) {
-          if (r?.state && walk(r.state)) return true;
-        }
-        return false;
-      };
-      return walk(state);
-    } catch {
-      return false;
-    }
-  };
-
-  const goCollection = (id: string, kind: 'video' | 'doc') => {
-    const candidates =
-      kind === 'video'
-        ? ['OerCollection', 'VideoCollection', 'CollectionDetail', 'Videos']
-        : ['OerCollection', 'DocCollection', 'CollectionDetail', 'Courses'];
-
-    for (const name of candidates) {
-      if (hasRoute(name)) {
-        if (name === 'Videos' || name === 'Courses') {
-          // Index pages – optional "free" flag for docs
-          navAny.navigate(name, kind === 'doc' ? { free: 1 } : undefined);
-        } else {
-          // Dedicated collection detail screen
-          navAny.navigate(name, { id });
-        }
-        return;
-      }
-    }
-
-    // Fallback – treat collection like a course if needed
-    if (hasRoute('CourseDetail')) {
-      navAny.navigate('CourseDetail', { id });
-    }
-  };
-
-  // 📄 OER reader navigation (mirror HomePage behavior)
-  const goOerReader = (idOrSlug: string | number) => {
-    const id = String(idOrSlug);
-    if (hasRoute('OerReaderFull')) {
-      navAny.navigate('OerReaderFull', { id });
-      return;
-    }
-    // Fallback: treat as doc collection
-    goCollection(id, 'doc');
-  };
-
-  const api = React.useMemo(() => makeApiUrl(backendUrl || ''), [backendUrl]);
-  const myId = String(profile?.id ?? '');
   const insets = useSafeAreaInsets();
 
-  // Courses catalog
-  const { courses = [], loading, error, fetchCourses } = useCourses({
-    backendUrl: backendUrl ?? '',
-    token: token ?? '',
-  });
+  const navAny = navigation as unknown as { navigate: (...args: any[]) => void; getState: () => any };
 
-  // My enrollments
+  const myId = String(profile?.id ?? '');
+
+  const api = React.useMemo(() => makeApiUrl(backendUrl || ''), [backendUrl]);
+
+  // Tabs
+  const [tab, setTab] = useState<TabKey>('library');
+
+  /* ------------------ Web-like: useCourseSearch for Courses tab ------------------ */
+  const {
+    courses: searchedCourses,
+    loading: courseSearchLoading,
+    handleSearch: handleCourseSearch,
+    uiFilters: courseFilters,
+    setSubjectFilter: setCourseSubject,
+    setGradeBandFilter: setCourseGradeBand,
+    setLevelFilter: setCourseLevel,
+    setMinRatingFilter: setCourseMinRating,
+    setMaxPriceFilter: setCourseMaxPrice,
+    setIsOerFilter: setCourseIsOer,
+    clearFilters: clearCourseFilters,
+    searchMeta: courseSearchMeta,
+  } = useCourseSearch({ backendUrl: backendUrl ?? '' });
+
+  const courseSearchError =
+    (courseSearchMeta as any)?.error ||
+    (courseSearchMeta as any)?.err ||
+    (courseSearchMeta as any)?.message ||
+    null;
+
+  // Search box (debounced)
+  const [searchText, setSearchText] = useState('');
+  const debouncedSearch = useRef(
+    debounce((q: string) => {
+      try {
+        handleCourseSearch(q);
+      } catch {}
+    }, 250),
+  );
+
+  useEffect(() => () => debouncedSearch.current.cancel(), []);
+
+  useEffect(() => {
+    // Initial load for courses tab (and safe to preload)
+    try {
+      setCourseIsOer(false);
+      handleCourseSearch('');
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendUrl]);
+
+  useEffect(() => {
+    debouncedSearch.current(searchText);
+  }, [searchText]);
+
+  // Extra local-only duration filter (string contains)
+  const [duration, setDuration] = useState('');
+
+  // Filters modal
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [draftSubject, setDraftSubject] = useState('');
+  const [draftGradeBand, setDraftGradeBand] = useState('');
+  const [draftLevel, setDraftLevel] = useState('');
+  const [draftMinRating, setDraftMinRating] = useState(''); // string input
+  const [draftMaxPrice, setDraftMaxPrice] = useState('');
+  const [draftDuration, setDraftDuration] = useState('');
+
+  const openFilters = useCallback(() => {
+    setDraftSubject(String(courseFilters?.subject ?? ''));
+    setDraftGradeBand(String(courseFilters?.gradeBand ?? ''));
+    setDraftLevel(String(courseFilters?.level ?? ''));
+    setDraftMinRating(
+      (courseFilters?.minRating ?? 0) > 0 ? String(courseFilters?.minRating ?? 0) : '',
+    );
+    setDraftMaxPrice(
+      (courseFilters?.maxPrice ?? 0) > 0 ? String(courseFilters?.maxPrice ?? 0) : '',
+    );
+    setDraftDuration(duration);
+    setFiltersOpen(true);
+  }, [courseFilters, duration]);
+
+  const applyFilters = useCallback(() => {
+    const minR = Number(draftMinRating || 0);
+    const maxP = Number(draftMaxPrice || 0);
+
+    setCourseSubject(draftSubject.trim());
+    setCourseGradeBand(draftGradeBand.trim());
+    setCourseLevel(draftLevel.trim());
+    setCourseMinRating(Number.isFinite(minR) ? minR : 0);
+    setCourseMaxPrice(Number.isFinite(maxP) ? maxP : 0);
+
+    setDuration(draftDuration.trim());
+
+    // Re-run search with current query text
+    try {
+      setCourseIsOer(false);
+      handleCourseSearch(searchText);
+    } catch {}
+
+    setFiltersOpen(false);
+  }, [
+    draftSubject,
+    draftGradeBand,
+    draftLevel,
+    draftMinRating,
+    draftMaxPrice,
+    draftDuration,
+    setCourseSubject,
+    setCourseGradeBand,
+    setCourseLevel,
+    setCourseMinRating,
+    setCourseMaxPrice,
+    setCourseIsOer,
+    handleCourseSearch,
+    searchText,
+  ]);
+
+  const clearAll = useCallback(() => {
+    clearCourseFilters();
+    setDuration('');
+    setSearchText('');
+    try {
+      setCourseIsOer(false);
+      handleCourseSearch('');
+    } catch {}
+  }, [clearCourseFilters, handleCourseSearch, setCourseIsOer]);
+
+  /* Enrollments */
   const { enrollments, fetchMine } = useEnrollments({
     backendUrl: backendUrl ?? '',
     token: token ?? '',
     studentId: 'me' as unknown as string | number,
   });
 
-  // OER books (free)
-  const { courses: oerCourses = [], loading: oerLoading, error: oerError } = useOerCourses();
-
-  // Tabs
-  const [tab, setTab] = useState<TabKey>('library');
-
-  // Chip filters (courses tab)
-  const [subject, setSubject] = useState<string>('');
-  const [level, setLevel] = useState<string>('');
-  const [durationKey, setDurKey] = useState<DurationKey>('any');
-  const [priceKey, setPriceKey] = useState<PriceKey>('any');
-
-  // ------------------ Available Classes (Vault) filters ------------------
-  const CLASS_SUBJECTS = [
-    'Math',
-    'Science',
-    'Programming',
-    'Art',
-    'Wellness',
-    'Languages',
-  ] as const;
-  const CLASS_GRADES = ['Any', 'Primary', 'Middle', 'High', 'College'] as const;
-  const TOP_COUNTRIES = [
-    'United States',
-    'United Kingdom',
-    'Canada',
-    'India',
-    'Kenya',
-    'France',
-    'South Africa',
-    'Nigeria',
-    'Qatar',
-  ] as const;
-
-  const [classSubject, setClassSubject] = useState<string>(''); // '' == Any subject
-  const [classGrade, setClassGrade] = useState<string>(''); // '' == Any grade
-  const [classCountry, setClassCountry] = useState<string>(''); // '' == Any country
-
-  // ClassVault filters (for the Library tab)
-  const [vaultFilters, setVaultFilters] = useState<ClassVaultFilters>({});
-  const clearVaultFilters = useCallback(() => {
-    setClassSubject('');
-    setClassGrade('');
-    setClassCountry('');
-    setVaultFilters({});
-  }, []);
-
-  // ✅ Keep ClassVaultListScreen in sync with our filter chips (match ClassVaultFilters shape)
-  useEffect(() => {
-    setVaultFilters({
-      category: classSubject ? [classSubject] : undefined, // maps to subject
-      ageGroup: classGrade ? [classGrade] : undefined, // maps to grade
-      country: classCountry || undefined,
-    });
-  }, [classSubject, classGrade, classCountry]);
-
-  // Ratings cache { [courseId]: { avg, count, my } }
-  const [ratings, setRatings] = useState<
-    Record<string, { avg: number; count: number; my: boolean }>
-  >({});
-  const [openReview, setOpenReview] = useState<{ id: string; title: string } | null>(null);
-  const [reviewRating, setReviewRating] = useState(0);
-  const [reviewComment, setReviewComment] = useState('');
-  const [posting, setPosting] = useState(false);
-
-  // Tutor name cache { [userId]: name }
-  const [tutorNameById, setTutorNameById] = useState<Record<string, string>>({});
-
-  // OER Video collections state (Library tab)
-  const [oerVideoCols, setOerVideoCols] = useState<OerCollection[]>([]);
-  const [loadingVCols, setLoadingVCols] = useState(false);
-  const [errVCols, setErrVCols] = useState<string | null>(null);
-
-  // Fetch courses + mine
-  useEffect(() => {
-    void fetchCourses();
-  }, [fetchCourses]);
   useEffect(() => {
     if (token) void fetchMine();
   }, [token, fetchMine]);
 
-  // Fast lookup for enrolled course ids
   const enrolledCourseIds = useMemo(() => {
     const set = new Set<string>();
     for (const e of enrollments as any[]) {
@@ -629,106 +529,58 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
     return set;
   }, [enrollments]);
 
-  // Build data-driven chips
-  const subjectsList = useMemo(() => {
-    const s = new Set<string>();
-    (courses as Course[]).forEach((c: any) => {
-      const cand = (c.subject ?? c.category ?? '').toString().trim();
-      if (cand) s.add(cand);
-    });
-    return Array.from(s).sort((a, b) => a.localeCompare(b));
-  }, [courses]);
+  /* Tutor name cache */
+  const [tutorNameById, setTutorNameById] = useState<Record<string, string>>({});
 
-  const levelsList = useMemo(() => {
-    const s = new Set<string>();
-    (courses as Course[]).forEach((c: any) => c.level && s.add(String(c.level)));
-    if (s.size === 0) ['Beginner', 'Intermediate', 'Advanced'].forEach((x) => s.add(x));
-    return Array.from(s).sort((a, b) => a.localeCompare(b));
-  }, [courses]);
-
-  // 1) Hard filter out OER/wrapped items; keep only tutor-uploaded
-  const baseFilteredRows = useMemo(() => {
-    return (courses as Course[]).filter((c: any) => !isOerCourse(c) && wasUploadedByTutor(c));
-  }, [courses]);
-
-  // Client-side filters (courses tab)
-  const filteredRows = useMemo(() => {
-    const durOk = durationPredicate(durationKey);
-    return baseFilteredRows.filter((c: any) => {
-      if (subject) {
-        const subj = (c.subject ?? c.category ?? c.title ?? '').toString().toLowerCase();
-        if (!subj.includes(subject.toLowerCase())) return false;
-      }
-      if (level) {
-        const cLevel = String(c.level ?? '').toLowerCase();
-        if (!cLevel || !cLevel.includes(level.toLowerCase())) return false;
-      }
-      const hours = parseDurationToHours(c.duration);
-      if (!durOk(hours)) return false;
-
-      const pnum = toPriceNumber(c.price);
-      if (!PRICE_RANGES[priceKey](pnum)) return false;
-
-      return true;
-    });
-  }, [baseFilteredRows, subject, level, durationKey, priceKey]);
-
-  /* ---------- Tutor name resolution & filtering ---------- */
   const tutorUserIdsInCourses = useMemo(() => {
     const set = new Set<string>();
-    (filteredRows as any[]).forEach((c) => {
+    (searchedCourses as any[]).forEach((c) => {
       const id = getTutorUserId(c);
       if (id) set.add(id);
     });
     return Array.from(set);
-  }, [filteredRows]);
+  }, [searchedCourses]);
 
   useEffect(() => {
+    // seed from embedded user objects
     const seed: Record<string, string> = {};
-    (filteredRows as any[]).forEach((c) => {
+    (searchedCourses as any[]).forEach((c) => {
       const u = coerceObj<{ id?: string | number; name?: string }>((c as any).user);
       const id = u?.id != null ? String(u.id) : '';
-      if (id && typeof u?.name === 'string' && !tutorNameById[id]) {
-        seed[id] = u.name;
-      }
+      if (id && typeof u?.name === 'string' && !tutorNameById[id]) seed[id] = u.name;
     });
     if (Object.keys(seed).length) setTutorNameById((prev) => ({ ...prev, ...seed }));
-  }, [filteredRows, tutorNameById]);
-
-  const missingTutorUserIds = useMemo(
-    () => tutorUserIdsInCourses.filter((id) => !tutorNameById[id]),
-    [tutorUserIdsInCourses, tutorNameById],
-  );
+  }, [searchedCourses, tutorNameById]);
 
   const fetchTutorNamesByUserIds = useCallback(
     async (ids: string[]): Promise<Record<string, string>> => {
       if (!ids.length) return {};
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers.Authorization = `Bearer ${token}`;
+
       try {
-        const url = api(`/api/profile?userIds=${encodeURIComponent(ids.join(','))}`);
+        // ✅ Standardize: makeApiUrl injects /api, so path should be "/profile..."
+        const url = api(`/profile?userIds=${encodeURIComponent(ids.join(','))}`);
         const res = await fetch(url, { headers });
         if (!res.ok) return {};
+
         const payload = await res.json();
         const out: Record<string, string> = {};
-        const pickIdLocal = (it: any) =>
-          String(it?.user_id ?? it?.userId ?? it?.user ?? it?.id ?? '');
+
+        const pickIdLocal = (it: any) => String(it?.user_id ?? it?.userId ?? it?.user ?? it?.id ?? '');
         const pickNameLocal = (it: any) =>
           it?.name ?? it?.fullName ?? it?.displayName ?? it?.username ?? '—';
+
         const add = (it: any) => {
           const id = pickIdLocal(it);
           const name = pickNameLocal(it);
           if (id && name && name !== '—') out[id] = name;
         };
+
         if (Array.isArray(payload)) payload.forEach(add);
         else if (payload && typeof payload === 'object') {
           const arr =
-            payload.profiles ??
-            payload.items ??
-            payload.data ??
-            payload.results ??
-            payload.rows ??
-            payload.users;
+            payload.profiles ?? payload.items ?? payload.data ?? payload.results ?? payload.rows ?? payload.users;
           if (Array.isArray(arr)) arr.forEach(add);
           else for (const v of Object.values(payload)) if (v && typeof v === 'object') add(v);
         }
@@ -738,6 +590,11 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
       }
     },
     [token, api],
+  );
+
+  const missingTutorUserIds = useMemo(
+    () => tutorUserIdsInCourses.filter((id) => !tutorNameById[id]),
+    [tutorUserIdsInCourses, tutorNameById],
   );
 
   useEffect(() => {
@@ -764,12 +621,30 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
     [tutorNameById],
   );
 
-  const displayRows = useMemo(
-    () => filteredRows.filter((c) => !!resolveTutorName(c)),
-    [filteredRows, resolveTutorName],
-  );
+  // ✅ Course list like web: searchedCourses -> safety filter -> duration contains -> require tutor name
+  const filteredRows = useMemo(() => {
+    const rows = (searchedCourses ?? []) as any[];
+    return rows
+      .filter((c) => !isOerCourse(c) && wasUploadedByTutor(c))
+      .filter((c) => {
+        if (!duration) return true;
+        const d = String(c?.duration ?? '').toLowerCase();
+        return d.includes(duration.toLowerCase());
+      });
+  }, [searchedCourses, duration]);
+
+  const displayRows = useMemo(() => filteredRows.filter((c) => !!resolveTutorName(c)), [
+    filteredRows,
+    resolveTutorName,
+  ]);
 
   /* ----------------------- Ratings prefetch (courses) ----------------------- */
+  const [ratings, setRatings] = useState<Record<string, { avg: number; count: number; my: boolean }>>({});
+  const [openReview, setOpenReview] = useState<{ id: string; title: string } | null>(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [posting, setPosting] = useState(false);
+
   const fetchCourseRatings = useCallback(
     async (courseId: string) => {
       try {
@@ -795,6 +670,8 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
     }, 200),
   );
 
+  useEffect(() => () => debouncedFetchCourseRatings.current.cancel(), []);
+
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     for (const it of viewableItems) {
       const id = String(it?.item?.id ?? '');
@@ -802,7 +679,92 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
     }
   }).current;
 
-  /* ----------------------- OER Video Collections fetch ----------------------- */
+  /* ------------------------------- OER (books + wrap) ------------------------------- */
+  const { courses: oerCourses = [], loading: oerLoading, error: oerError } = useOerCourses();
+  const { wrapBook } = useWrapOerBook();
+
+  const oerBooks = useMemo(() => (oerCourses as any[]).filter((c) => c?.kind === 'book'), [oerCourses]);
+
+  /* ------------------------------- Library tab (Vault + OER videos) ------------------------------- */
+  const CLASS_SUBJECTS = ['Math', 'Science', 'Programming', 'Art', 'Wellness', 'Languages'] as const;
+  const CLASS_GRADES = ['Any', 'Primary', 'Middle', 'High', 'College'] as const;
+  const TOP_COUNTRIES = ['United States', 'United Kingdom', 'Canada', 'India', 'Kenya', 'France', 'South Africa', 'Nigeria', 'Qatar'] as const;
+
+  const [classSubject, setClassSubject] = useState<string>(''); // '' == Any subject
+  const [classGrade, setClassGrade] = useState<string>(''); // '' == Any grade
+  const [classCountry, setClassCountry] = useState<string>(''); // '' == Any country
+
+  const [vaultFilters, setVaultFilters] = useState<ClassVaultFilters>({});
+  const clearVaultFilters = useCallback(() => {
+    setClassSubject('');
+    setClassGrade('');
+    setClassCountry('');
+    setVaultFilters({});
+  }, []);
+
+  useEffect(() => {
+    setVaultFilters({
+      category: classSubject ? [classSubject] : undefined,
+      ageGroup: classGrade ? [classGrade] : undefined,
+      country: classCountry || undefined,
+    });
+  }, [classSubject, classGrade, classCountry]);
+
+  const hasRoute = (name: string): boolean => {
+    try {
+      const state = navigation.getState?.();
+      const walk = (st: any): boolean => {
+        if (!st) return false;
+        const names = Array.isArray(st?.routeNames)
+          ? st.routeNames
+          : Array.isArray(st?.routes)
+          ? st.routes.map((r: any) => r.name)
+          : [];
+        if (names.includes(name)) return true;
+        const routes = Array.isArray(st?.routes) ? st.routes : [];
+        for (const r of routes) if (r?.state && walk(r.state)) return true;
+        return false;
+      };
+      return walk(state);
+    } catch {
+      return false;
+    }
+  };
+
+  const goCollection = (id: string, kind: 'video' | 'doc') => {
+    const candidates =
+      kind === 'video'
+        ? ['OerCollection', 'VideoCollection', 'CollectionDetail', 'Videos']
+        : ['OerCollection', 'DocCollection', 'CollectionDetail', 'Courses'];
+
+    for (const name of candidates) {
+      if (hasRoute(name)) {
+        if (name === 'Videos' || name === 'Courses') {
+          navAny.navigate(name, kind === 'doc' ? { free: 1 } : undefined);
+        } else {
+          navAny.navigate(name, { id });
+        }
+        return;
+      }
+    }
+
+    if (hasRoute('CourseDetail')) navAny.navigate('CourseDetail', { id });
+  };
+
+  const goOerReader = (idOrSlug: string | number) => {
+    const id = String(idOrSlug);
+    if (hasRoute('OerReaderFull')) {
+      navAny.navigate('OerReaderFull', { id });
+      return;
+    }
+    goCollection(id, 'doc');
+  };
+
+  // OER Video collections state
+  const [oerVideoCols, setOerVideoCols] = useState<OerCollection[]>([]);
+  const [loadingVCols, setLoadingVCols] = useState(false);
+  const [errVCols, setErrVCols] = useState<string | null>(null);
+
   useEffect(() => {
     if (!backendUrl) return;
     const ac = new AbortController();
@@ -817,24 +779,16 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
           if (r.ok) arr = toArray<OerCollection>(await r.json().catch(() => []));
         }
         if (arr.length === 0) {
-          // Fallback: no kind filter, so we must classify ourselves
           r = await fetch(api('/oer/collections?limit=48'), { signal: ac.signal });
           if (r.ok) {
             const all = toArray<OerCollection>(await r.json().catch(() => []));
-            arr = all.filter(
-              (c) => isOerVideoCollectionStrict(c) && !isDocKind(c) && !isOpenStaxDoc(c),
-            );
+            arr = all.filter((c) => isOerVideoCollectionStrict(c) && !isDocKind(c) && !isOpenStaxDoc(c));
           }
         }
-
-        // For kind=video / kind=videos, the API already filtered by video,
-        // so we just need to drop docs/OpenStax if they ever sneak in.
         const cleaned = arr.filter((c) => !isDocKind(c) && !isOpenStaxDoc(c));
-
         setOerVideoCols(cleaned);
       } catch (e: any) {
-        if (!ac.signal.aborted)
-          setErrVCols(String(e?.message || e) || 'Failed to fetch collections');
+        if (!ac.signal.aborted) setErrVCols(String(e?.message || e) || 'Failed to fetch collections');
       } finally {
         if (!ac.signal.aborted) setLoadingVCols(false);
       }
@@ -842,37 +796,38 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
     return () => ac.abort();
   }, [backendUrl, api]);
 
-  /* ------------------------------- OER Books data ------------------------------- */
-  const oerBooks = useMemo(() => {
-    return (oerCourses as any[]).filter((c) => c?.kind === 'book');
-  }, [oerCourses]);
+  const filteredOerVideos = useMemo(() => {
+    if (!classSubject) return oerVideoCols;
+    const key = classSubject.toLowerCase();
+    return oerVideoCols.filter((c) => (c.subject ?? '').toString().toLowerCase().includes(key));
+  }, [oerVideoCols, classSubject]);
 
-  /* ------------------------------ Rendering ------------------------------ */
+  const renderOerVideoItem = ({ item }: { item: OerCollection }) => {
+    const idOrSlug = String(item.slug ?? item.id);
+    return <OerVideoCard col={item} backendBase={backendUrl} onPress={() => goCollection(idOrSlug, 'video')} />;
+  };
 
+  /* --------------------------------- Guards --------------------------------- */
   if (token && roleStr === 'tutor' && !profile) {
-  return (
-    <SafeAreaView
-      style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
-      edges={['top', 'bottom']}
-    >
-      <View style={tw`flex-1 items-center justify-center`}>
-        <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
-        <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>
-          Checking your account…
-        </Text>
-      </View>
-    </SafeAreaView>
-  );
-}
-  // Course card (Courses tab)
+    return (
+      <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
+        <View style={tw`flex-1 items-center justify-center`}>
+          <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
+          <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>Checking your account…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* ----------------------------- Course card ----------------------------- */
   const renderCourseCard = ({ item }: { item: Course }) => {
-    const cid = String(item.id);
+    const cid = String((item as any).id);
     const tutorName = resolveTutorName(item);
     const priceDisplay =
-      typeof item.price === 'number'
-        ? `$${item.price}`
-        : typeof item.price === 'string'
-        ? item.price
+      typeof (item as any).price === 'number'
+        ? `$${(item as any).price}`
+        : typeof (item as any).price === 'string'
+        ? (item as any).price
         : '—';
 
     const isEnrolled = enrolledCourseIds.has(cid);
@@ -882,94 +837,54 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
       <Pressable
         style={tw`rounded-xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-3 mb-3`}
         onPress={() =>
-        navigation.navigate(
-          isEnrolled ? 'CourseProgress' : 'CourseDetails',
-          { courseId: cid },
-        )
-      }
+          navigation.navigate(isEnrolled ? 'CourseProgress' : 'CourseDetails', { courseId: cid })
+        }
       >
         <View style={tw`flex-row items-start justify-between`}>
-          <Text
-            style={tw`font-semibold text-sm flex-1 pr-2 text-slate-900 dark:text-white`}
-            numberOfLines={2}
-          >
-            {item.title}
+          <Text style={tw`font-semibold text-sm flex-1 pr-2 text-slate-900 dark:text-white`} numberOfLines={2}>
+            {(item as any).title}
           </Text>
-          <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
-            {item.level ?? '—'}
-          </Text>
+          <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>{(item as any).level ?? '—'}</Text>
         </View>
 
-        <Text
-          style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`}
-          numberOfLines={1}
-        >
+        <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`} numberOfLines={1}>
           {tutorName ?? '—'}
         </Text>
 
         <View style={tw`flex-row items-center justify-between mt-2`}>
-          <Text
-            style={tw`text-xs text-[#49739c] dark:text-white/70`}
-            numberOfLines={1}
-          >
-            {String(item.duration ?? '—')}
+          <Text style={tw`text-xs text-[#49739c] dark:text-white/70`} numberOfLines={1}>
+            {String((item as any).duration ?? '—')}
           </Text>
-          <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
-            {priceDisplay}
-          </Text>
+          <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>{priceDisplay}</Text>
         </View>
 
         <View style={tw`flex-row items-center justify-between mt-2`}>
           <View>
-            {r ? (
-              <StarRow avg={r.avg} count={r.count} />
-            ) : (
-              <Text
-                style={tw`text-xs text-[#49739c] dark:text-white/70 opacity-70`}
-              >
-                —
-              </Text>
-            )}
+            {r ? <StarRow avg={r.avg} count={r.count} /> : <Text style={tw`text-xs text-[#49739c] dark:text-white/70 opacity-70`}>—</Text>}
           </View>
 
           {isEnrolled ? (
             r?.my ? (
               <Pressable
                 style={tw`h-9 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
-                onPress={() =>
-                  navigation.navigate('CourseProgress', { courseId: cid })
-                }
+                onPress={() => navigation.navigate('CourseProgress', { courseId: cid })}
               >
-                <Text
-                  style={tw`text-xs font-semibold text-slate-900 dark:text-white`}
-                >
-                  Enrolled
-                </Text>
+                <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>Enrolled</Text>
               </Pressable>
             ) : (
               <Pressable
                 style={tw`h-9 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
-                onPress={() => setOpenReview({ id: cid, title: item.title })}
+                onPress={() => setOpenReview({ id: cid, title: (item as any).title })}
               >
-                <Text
-                  style={tw`text-xs font-semibold text-slate-900 dark:text-white`}
-                >
-                  Review
-                </Text>
+                <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>Review</Text>
               </Pressable>
             )
           ) : (
             <Pressable
               style={tw`h-9 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
-              onPress={() =>
-                navigation.navigate('CourseDetails', { courseId: cid })
-              }
+              onPress={() => navigation.navigate('CourseDetails', { courseId: cid })}
             >
-              <Text
-                style={tw`text-xs font-semibold text-slate-900 dark:text-white`}
-              >
-                View
-              </Text>
+              <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>View</Text>
             </Pressable>
           )}
         </View>
@@ -977,42 +892,31 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
     );
   };
 
-  // Tabs header (pills)
+  /* ----------------------------- Tabs header ----------------------------- */
   const headerTabs = (
-    <View
-      style={tw`flex-row self-start rounded-xl p-1 bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10`}
-    >
+    <View style={tw`flex-row self-start rounded-xl p-1 bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10`}>
       <Pressable
         onPress={() => setTab('library')}
-        style={tw.style(
-          'h-9 px-3 rounded-lg items-center justify-center',
-          tab === 'library' && 'bg-white dark:bg-[#0f1821]',
-        )}
+        style={tw.style('h-9 px-3 rounded-lg items-center justify-center', tab === 'library' && 'bg-white dark:bg-[#0f1821]')}
       >
         <Text
           style={tw.style(
             'text-xs font-semibold',
-            tab === 'library'
-              ? 'text-slate-900 dark:text-white'
-              : 'text-slate-700 dark:text-white/70',
+            tab === 'library' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-white/70',
           )}
         >
           Explore Videos &amp; Notes
         </Text>
       </Pressable>
+
       <Pressable
         onPress={() => setTab('courses')}
-        style={tw.style(
-          'h-9 px-3 rounded-lg items-center justify-center',
-          tab === 'courses' && 'bg-white dark:bg-[#0f1821]',
-        )}
+        style={tw.style('h-9 px-3 rounded-lg items-center justify-center', tab === 'courses' && 'bg-white dark:bg-[#0f1821]')}
       >
         <Text
           style={tw.style(
             'text-xs font-semibold',
-            tab === 'courses'
-              ? 'text-slate-900 dark:text-white'
-              : 'text-slate-700 dark:text-white/70',
+            tab === 'courses' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-white/70',
           )}
         >
           Explore Courses
@@ -1021,182 +925,33 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
     </View>
   );
 
-  /* --------------------------- OER Videos UI (uses same filters as Vault) --------------------------- */
-  const filteredOerVideos = useMemo(() => {
-    if (!classSubject) return oerVideoCols; // unified: subject filter applies to both vault & OER videos
-    const key = classSubject.toLowerCase();
-    return oerVideoCols.filter((c) =>
-      (c.subject ?? '').toString().toLowerCase().includes(key),
-    );
-  }, [oerVideoCols, classSubject]);
-
-  const renderOerVideoItem = ({ item }: { item: OerCollection }) => {
-    const idOrSlug = String(item.slug ?? item.id);
-    return (
-      <OerVideoCard
-        col={item}
-        backendBase={backendUrl}
-        onPress={() => goCollection(idOrSlug, 'video')}
-      />
-    );
-  };
-
-  /* --------------------------- COURSES TAB LIST --------------------------- */
+  /* ----------------------------- Courses header (web-like) ----------------------------- */
   const CoursesListHeader = (
     <View>
-      {/* Title */}
-      <View style={tw`mt-3 mb-1`}>
-        <Text
-          style={tw`text-[20px] font-bold text-slate-900 dark:text-white px-0`}
-        >
-          Explore Courses
-        </Text>
-        <Text
-          style={tw`text-[#49739c] dark:text-white/70 text-xs px-0`}
-        >
+      <View style={tw`mt-3 mb-2`}>
+        <Text style={tw`text-[20px] font-bold text-slate-900 dark:text-white px-0`}>Explore Courses</Text>
+        <Text style={tw`text-[#49739c] dark:text-white/70 text-xs px-0`}>
           Find the perfect course to enhance your skills and knowledge.
         </Text>
       </View>
 
-      {/* Filters */}
-      <View style={tw`px-0`}>
-        {/* Subject */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={tw`py-2 pr-2`}
-        >
-          <Chip
-            label={subject ? `Subject: ${subject}` : 'Any subject'}
-            active={!!subject}
-            onPress={() => setSubject('')}
-          />
-          {subjectsList.map((s) => (
-            <Chip
-              key={s}
-              label={s}
-              active={subject === s}
-              onPress={() => setSubject(s)}
-            />
-          ))}
-        </ScrollView>
-
-        {/* Level */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={tw`py-1 pr-2`}
-        >
-          <Chip
-            label={level ? `Level: ${level}` : 'Any level'}
-            active={!!level}
-            onPress={() => setLevel('')}
-          />
-          {levelsList.map((lv) => (
-            <Chip
-              key={lv}
-              label={lv}
-              active={level === lv}
-              onPress={() => setLevel(lv)}
-            />
-          ))}
-        </ScrollView>
-
-        {/* Duration */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={tw`py-1 pr-2`}
-        >
-          {(['any', '<1h', '1–3h', '3–6h', '6h+'] as DurationKey[]).map((k) => (
-            <Chip
-              key={k}
-              label={k === 'any' ? 'Any duration' : k}
-              active={durationKey === k}
-              onPress={() => setDurKey(k)}
-            />
-          ))}
-        </ScrollView>
-
-        {/* Price */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={tw`py-1 pr-2`}
-        >
-          {(['any', '0-20', '20-40', '40-60', '60+'] as PriceKey[]).map((k) => (
-            <Chip
-              key={k}
-              label={k === 'any' ? 'Any price' : k === '60+' ? '$60+' : `$${k}`}
-              active={priceKey === k}
-              onPress={() => setPriceKey(k)}
-            />
-          ))}
-        </ScrollView>
-
-        {/* Search + Reset (search reserved for future) */}
-        <View style={tw`rounded-xl overflow-hidden mt-1`}>
-          <View
-            style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] h-10 px-3 rounded-xl`}
-          >
-            <Text
-              style={tw`text-base mr-2 text-[#0d141c] dark:text-white`}
-            >
-              🔎
-            </Text>
-            <TextInput
-              placeholder="Search course title"
-              placeholderTextColor={isDark ? '#9fb3d1' : '#49739c'}
-              onChangeText={() => {
-                /* reserved */
-              }}
-              style={tw`flex-1 text-[#0d141c] dark:text-white`}
-              editable={false}
-            />
-            <Pressable
-              onPress={() => {
-                setSubject('');
-                setLevel('');
-                setDurKey('any');
-                setPriceKey('any');
-              }}
-              style={tw`ml-2 px-3 h-7 rounded-full bg-white/70 dark:bg-white/10 items-center justify-center`}
-            >
-              <Text style={tw`text-xs text-[#0d141c] dark:text-white`}>
-                Reset
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-
-      {/* My Free OER Books */}
-      <View style={tw`mt-4`}>
-        <Text
-          style={tw`text-base font-bold text-slate-900 dark:text-white mb-2 px-0`}
-        >
-          My Free OER Books
-        </Text>
+      {/* OER Books */}
+      <View style={tw`mt-2`}>
+        <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-2 px-0`}>My Free OER Books</Text>
 
         {oerLoading && (
           <View style={tw`py-2`}>
-            <Text style={tw`text-sm text-[#49739c] dark:text-white/70`}>
-              Loading books…
-            </Text>
+            <Text style={tw`text-sm text-[#49739c] dark:text-white/70`}>Loading books…</Text>
           </View>
         )}
         {!!oerError && !oerLoading && (
           <View style={tw`py-2`}>
-            <Text style={tw`text-sm text-red-600 dark:text-red-400`}>
-              Failed to load OER books.
-            </Text>
+            <Text style={tw`text-sm text-red-600 dark:text-red-400`}>Failed to load OER books.</Text>
           </View>
         )}
         {!oerLoading && !oerError && oerBooks.length === 0 && (
           <View style={tw`py-2`}>
-            <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
-              No OER books available.
-            </Text>
+            <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>No OER books available.</Text>
           </View>
         )}
 
@@ -1211,6 +966,16 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
                     book={c}
                     backendBase={backendUrl}
                     onReader={() => goOerReader(idOrSlug)}
+                    onRobot={async () => {
+                      try {
+                        const res = await wrapBook(idOrSlug);
+                        const courseId = String((res as any)?.courseId ?? '');
+                        if (!courseId) throw new Error('Missing wrapped course id');
+                        navigation.navigate('CourseProgress', { courseId });
+                      } catch (e: any) {
+                        Alert.alert('Error', e?.message || 'Failed to start book course');
+                      }
+                    }}
                   />
                 );
               })}
@@ -1219,146 +984,227 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
         )}
       </View>
 
+      {/* Search + Filters row */}
+      <View style={tw`mt-3`}>
+        <View style={tw`flex-row items-center`}>
+          <View style={tw`flex-1 rounded-xl overflow-hidden`}>
+            <View style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] h-11 px-3 rounded-xl`}>
+              <Text style={tw`text-base mr-2 text-[#0d141c] dark:text-white`}>🔎</Text>
+              <TextInput
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="Search courses…"
+                placeholderTextColor={isDark ? '#9fb3d1' : '#49739c'}
+                style={tw`flex-1 text-[#0d141c] dark:text-white`}
+                autoCapitalize="none"
+              />
+            </View>
+          </View>
+
+          <Pressable
+            onPress={() => {
+              try {
+                handleCourseSearch(searchText);
+              } catch {}
+            }}
+            style={tw`ml-2 h-11 px-4 rounded-xl bg-[#3d99f5] items-center justify-center`}
+          >
+            <Text style={tw`text-white text-xs font-semibold`}>Search</Text>
+          </Pressable>
+        </View>
+
+        <View style={tw`flex-row items-center mt-2`}>
+          <Pressable
+            onPress={openFilters}
+            style={tw`h-10 px-4 rounded-xl bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
+          >
+            <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>Filters</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={clearAll}
+            style={tw`ml-2 h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
+          >
+            <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>Clear</Text>
+          </Pressable>
+        </View>
+
+        {/* Active filter chips */}
+        <View style={tw`mt-3 flex-row flex-wrap`}>
+          {!!courseFilters?.subject && (
+            <Chip label={`Subject: ${courseFilters.subject}`} active onPress={() => setCourseSubject('')} />
+          )}
+          {!!courseFilters?.gradeBand && (
+            <Chip label={`Grade: ${courseFilters.gradeBand}`} active onPress={() => setCourseGradeBand('')} />
+          )}
+          {!!courseFilters?.level && (
+            <Chip label={`Level: ${courseFilters.level}`} active onPress={() => setCourseLevel('')} />
+          )}
+          {(courseFilters?.minRating ?? 0) > 0 && (
+            <Chip label={`Min★: ${courseFilters?.minRating}`} active onPress={() => setCourseMinRating(0)} />
+          )}
+          {(courseFilters?.maxPrice ?? 0) > 0 && (
+            <Chip label={`Max$: ${courseFilters?.maxPrice}`} active onPress={() => setCourseMaxPrice(0)} />
+          )}
+          {!!duration && <Chip label={`Duration: ${duration}`} active onPress={() => setDuration('')} />}
+        </View>
+
+        {!!courseSearchError && (
+          <View style={tw`mt-2`}>
+            <Text style={tw`text-sm text-red-600 dark:text-red-400`}>Failed to load courses.</Text>
+          </View>
+        )}
+      </View>
+
       <View style={tw`h-[1px] bg-[#cedbe8] dark:bg-white/10 my-4`} />
     </View>
   );
 
+  /* ----------------------------- Filters Modal ----------------------------- */
+  const FiltersModal = (
+    <Modal visible={filtersOpen} animationType="fade" transparent onRequestClose={() => setFiltersOpen(false)}>
+      <View style={tw`flex-1 bg-black/40 items-center justify-center p-4`}>
+        <View style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-white/10`}>
+          <Text style={tw`text-lg font-bold text-slate-900 dark:text-white`}>Filters</Text>
+          <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1 mb-3`}>
+            Matches the web page: subject / grade band / level / min rating / max price / duration.
+          </Text>
+
+          {[
+            { label: 'Subject', value: draftSubject, set: setDraftSubject, ph: 'e.g., Math, English' },
+            { label: 'Grade band', value: draftGradeBand, set: setDraftGradeBand, ph: 'e.g., K-5, 6-8, 9-12' },
+            { label: 'Level', value: draftLevel, set: setDraftLevel, ph: 'Beginner / Intermediate / Advanced' },
+            { label: 'Min rating (1-5)', value: draftMinRating, set: setDraftMinRating, ph: 'e.g., 4' },
+            { label: 'Max price', value: draftMaxPrice, set: setDraftMaxPrice, ph: 'e.g., 50' },
+            { label: 'Duration contains', value: draftDuration, set: setDraftDuration, ph: 'e.g., 10 weeks' },
+          ].map((f) => (
+            <View key={f.label} style={tw`mb-3`}>
+              <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white mb-1`}>{f.label}</Text>
+              <TextInput
+                value={f.value}
+                onChangeText={f.set}
+                placeholder={f.ph}
+                placeholderTextColor={isDark ? '#9fb3d1' : '#7a8aa0'}
+                style={tw`w-full text-sm rounded-lg p-2 bg-[#e7edf4] dark:bg-[#172534] text-slate-900 dark:text-white`}
+              />
+            </View>
+          ))}
+
+          <View style={tw`flex-row justify-end gap-2 mt-2`}>
+            <Pressable
+              onPress={() => setFiltersOpen(false)}
+              style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
+            >
+              <Text style={tw`text-sm text-slate-900 dark:text-white`}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={applyFilters}
+              style={tw`h-10 px-4 rounded-xl bg-[#3d99f5] items-center justify-center`}
+            >
+              <Text style={tw`text-sm text-white font-semibold`}>Apply</Text>
+            </Pressable>
+          </View>
+
+          <Pressable
+            onPress={() => {
+              setDraftSubject('');
+              setDraftGradeBand('');
+              setDraftLevel('');
+              setDraftMinRating('');
+              setDraftMaxPrice('');
+              setDraftDuration('');
+            }}
+            style={tw`mt-3 self-start`}
+          >
+            <Text style={tw`text-xs text-[#49739c] dark:text-white/70 underline`}>Reset fields</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  /* ----------------------------- Render ----------------------------- */
   return (
-    <SafeAreaView
-      style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
-      edges={['top', 'bottom']}
-    >
+    <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
       <View style={tw`flex-1`}>
         {/* Header */}
         <View style={tw`px-4 pt-4 pb-2`}>
-          <Text style={tw`text-[28px] font-extrabold text-[#0d141c] dark:text-white`}>
-            My Courses
-          </Text>
+          <Text style={tw`text-[28px] font-extrabold text-[#0d141c] dark:text-white`}>My Courses</Text>
           <Text style={tw`text-[#49739c] dark:text-white/70 text-xs mt-1`}>
             Access your learning library or discover structured courses to level up.
           </Text>
-
           <View style={tw`mt-3`}>{headerTabs}</View>
         </View>
 
-        {/* Content switches by tab */}
         {tab === 'library' ? (
           <ScrollView
             style={tw`flex-1`}
-            contentContainerStyle={[
-              tw`px-4 pb-6`,
-              { paddingBottom: (insets.bottom || 12) + 24 },
-            ]}
+            contentContainerStyle={[tw`px-4 pb-6`, { paddingBottom: (insets.bottom || 12) + 24 }]}
             showsVerticalScrollIndicator={false}
           >
-            {/* Available Classes (ClassVault) */}
-            <Text
-              style={tw`text-base font-bold text-slate-900 dark:text-white mb-2`}
-            >
-              Available Classes
+            {/* Purchased / Saved videos (Vault) */}
+            <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-2`}>
+              My Purchased &amp; Saved Videos
             </Text>
 
             {/* Unified filters control BOTH ClassVault and OER video collections */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`pb-2`}
-            >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`pb-2`}>
               <Chip
                 label={classSubject ? `Subject: ${classSubject}` : 'Any subject'}
                 active={!!classSubject}
                 onPress={() => setClassSubject('')}
               />
-              {CLASS_SUBJECTS.map((s) => (
-                <Chip
-                  key={s}
-                  label={s}
-                  active={classSubject === s}
-                  onPress={() => setClassSubject(s)}
-                />
+              {CLASS_SUBJECTS.map((subj) => (
+                <Chip key={subj} label={subj} active={classSubject === subj} onPress={() => setClassSubject(subj)} />
               ))}
             </ScrollView>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`pb-2`}
-            >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`pb-2`}>
               <Chip
                 label={classGrade ? `Grade: ${classGrade}` : 'Any grade'}
                 active={!!classGrade}
                 onPress={() => setClassGrade('')}
               />
               {CLASS_GRADES.filter((g) => g !== 'Any').map((g) => (
-                <Chip
-                  key={g}
-                  label={g}
-                  active={classGrade === g}
-                  onPress={() => setClassGrade(g)}
-                />
+                <Chip key={g} label={g} active={classGrade === g} onPress={() => setClassGrade(g)} />
               ))}
             </ScrollView>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`pb-2`}
-            >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`pb-2`}>
               <Chip
                 label={classCountry ? `Country: ${classCountry}` : 'Any country'}
                 active={!!classCountry}
                 onPress={() => setClassCountry('')}
               />
               {TOP_COUNTRIES.map((c) => (
-                <Chip
-                  key={c}
-                  label={c}
-                  active={classCountry === c}
-                  onPress={() => setClassCountry(c)}
-                />
+                <Chip key={c} label={c} active={classCountry === c} onPress={() => setClassCountry(c)} />
               ))}
             </ScrollView>
 
-            {/* ClassVault list – no fixed height, let it expand within the main scroll */}
             <View style={tw`rounded-xl overflow-hidden mt-1`}>
-              <ClassVaultListScreen
-                filters={vaultFilters}
-                clearFilters={clearVaultFilters}
-              />
+              <ClassVaultListScreen filters={vaultFilters} clearFilters={clearVaultFilters} />
             </View>
 
-            {/* Free OER Video Collections – SAME filters (classSubject) */}
+            {/* Free OER Video Collections */}
             <View style={tw`mt-5`}>
-              <Text
-                style={tw`text-base font-bold text-slate-900 dark:text-white mb-2`}
-              >
+              <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-2`}>
                 Free OER Video Collections
               </Text>
 
               {loadingVCols && (
                 <View style={tw`py-4 items-center`}>
                   <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
-                  <Text
-                    style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}
-                  >
-                    Loading collections…
-                  </Text>
+                  <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>Loading collections…</Text>
                 </View>
               )}
 
               {errVCols && !loadingVCols && (
-                <Text
-                  style={tw`py-2 text-xs text-red-500 dark:text-red-400`}
-                >
-                  {errVCols}
-                </Text>
+                <Text style={tw`py-2 text-xs text-red-500 dark:text-red-400`}>{errVCols}</Text>
               )}
 
               {!loadingVCols && !errVCols && (
                 filteredOerVideos.length === 0 ? (
-                  <Text
-                    style={tw`text-xs text-[#49739c] dark:text-white/70`}
-                  >
+                  <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
                     No free OER video collections yet.
                   </Text>
                 ) : (
@@ -1376,21 +1222,10 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
           </ScrollView>
         ) : (
           <View style={tw`flex-1`}>
-            {/* Courses tab */}
-            {loading ? (
+            {courseSearchLoading ? (
               <View style={tw`py-6 items-center`}>
                 <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
-                <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>
-                  Loading courses…
-                </Text>
-              </View>
-            ) : error ? (
-              <View style={tw`py-6 items-center px-4`}>
-                <Text
-                  style={tw`text-sm text-red-600 dark:text-red-400 text-center`}
-                >
-                  Failed to load courses.
-                </Text>
+                <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>Loading courses…</Text>
               </View>
             ) : displayRows.length === 0 ? (
               <FlatList
@@ -1398,29 +1233,21 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
                 ListHeaderComponent={
                   <View style={tw`px-4`}>
                     {CoursesListHeader}
-                    <Text
-                      style={tw`text-sm text-[#49739c] dark:text-white/70 text-center mb-4`}
-                    >
+                    <Text style={tw`text-sm text-[#49739c] dark:text-white/70 text-center mb-4`}>
                       No courses match your filters.
                     </Text>
                   </View>
                 }
                 renderItem={null as any}
                 keyExtractor={() => 'x'}
-                contentContainerStyle={[
-                  tw`pb-6`,
-                  { paddingBottom: (insets.bottom || 12) + 24 },
-                ]}
+                contentContainerStyle={[tw`pb-6`, { paddingBottom: (insets.bottom || 12) + 24 }]}
               />
             ) : (
               <FlatList
-                data={displayRows}
-                keyExtractor={(item) => String(item.id)}
-                renderItem={renderCourseCard}
-                contentContainerStyle={[
-                  tw`pb-6 px-4`,
-                  { paddingBottom: (insets.bottom || 12) + 24 },
-                ]}
+                data={displayRows as any}
+                keyExtractor={(item) => String((item as any).id)}
+                renderItem={renderCourseCard as any}
+                contentContainerStyle={[tw`pb-6 px-4`, { paddingBottom: (insets.bottom || 12) + 24 }]}
                 onViewableItemsChanged={onViewableItemsChanged}
                 viewabilityConfig={{ itemVisiblePercentThreshold: 40 }}
                 ListHeaderComponent={<View>{CoursesListHeader}</View>}
@@ -1430,34 +1257,23 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
           </View>
         )}
 
+        {/* Filters modal */}
+        {FiltersModal}
+
         {/* Review modal */}
         {openReview && (
-          <View
-            style={tw`absolute inset-0 bg-black/40 items-center justify-center p-4`}
-          >
+          <View style={tw`absolute inset-0 bg-black/40 items-center justify-center p-4`}>
             <View
               style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-white/10`}
             >
-              <Text
-                style={tw`text-lg font-bold mb-1 text-slate-900 dark:text-white`}
-              >
-                Rate this course
-              </Text>
-              <Text
-                style={tw`text-sm text-[#49739c] dark:text-white/70 mb-3`}
-              >
-                {openReview.title}
-              </Text>
+              <Text style={tw`text-lg font-bold mb-1 text-slate-900 dark:text-white`}>Rate this course</Text>
+              <Text style={tw`text-sm text-[#49739c] dark:text-white/70 mb-3`}>{openReview.title}</Text>
 
               <View style={tw`flex-row items-center gap-2 mb-3`}>
                 {[1, 2, 3, 4, 5].map((n) => (
                   <Pressable key={n} onPress={() => setReviewRating(n)}>
                     <Text
-                      style={
-                        n <= reviewRating
-                          ? tw`text-yellow-500 text-2xl`
-                          : tw`text-[#49739c] dark:text-white/60 text-2xl`
-                      }
+                      style={n <= reviewRating ? tw`text-yellow-500 text-2xl` : tw`text-[#49739c] dark:text-white/60 text-2xl`}
                     >
                       ★
                     </Text>
@@ -1475,51 +1291,34 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
                 placeholderTextColor={isDark ? '#9fb3d1' : '#7a8aa0'}
               />
 
-              <View
-                style={tw`mt-4 flex-row items-center gap-2 justify-end`}
-              >
+              <View style={tw`mt-4 flex-row items-center gap-2 justify-end`}>
                 <Pressable
                   onPress={() => setOpenReview(null)}
                   style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
                 >
-                  <Text
-                    style={tw`text-sm text-slate-900 dark:text-white`}
-                  >
-                    Cancel
-                  </Text>
+                  <Text style={tw`text-sm text-slate-900 dark:text-white`}>Cancel</Text>
                 </Pressable>
+
                 <Pressable
                   disabled={posting || reviewRating < 1}
                   onPress={async () => {
                     if (!openReview || reviewRating < 1) return;
                     setPosting(true);
                     try {
-                      const res = await fetch(
-                        `${backendUrl}/api/reviews/courses/${openReview.id}`,
-                        {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                          },
-                          body: JSON.stringify({
-                            rating: reviewRating,
-                            comment: reviewComment,
-                          }),
+                      const res = await fetch(`${backendUrl}/api/reviews/courses/${openReview.id}`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          ...(token ? { Authorization: `Bearer ${token}` } : {}),
                         },
-                      );
+                        body: JSON.stringify({ rating: reviewRating, comment: reviewComment }),
+                      });
                       if (!res.ok)
-                        throw new Error(
-                          (await res.text().catch(() => '')) ||
-                            'Failed to submit review',
-                        );
+                        throw new Error((await res.text().catch(() => '')) || 'Failed to submit review');
                       await fetchCourseRatings(openReview.id);
                       setOpenReview(null);
                     } catch (e: any) {
-                      Alert.alert(
-                        'Error',
-                        e?.message || 'Failed to submit review',
-                      );
+                      Alert.alert('Error', e?.message || 'Failed to submit review');
                     } finally {
                       setPosting(false);
                     }
@@ -1529,9 +1328,7 @@ console.log('[MyCourses] token?', !!token, 'profile?', !!profile, 'roleStr:', ro
                     (posting || reviewRating < 1) && 'opacity-60',
                   )}
                 >
-                  <Text style={tw`text-white text-sm font-semibold`}>
-                    {posting ? 'Saving…' : 'Submit'}
-                  </Text>
+                  <Text style={tw`text-white text-sm font-semibold`}>{posting ? 'Saving…' : 'Submit'}</Text>
                 </Pressable>
               </View>
             </View>

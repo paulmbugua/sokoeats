@@ -16,7 +16,7 @@ const router = express.Router();
  *  PUBLIC course lists
  *  --------------------------------------------------------------------------- */
 router.get('/', courseController.getCourses);
-
+router.get('/search', courseController.searchCourses);
 /** Feature & recommendation endpoints (PUBLIC) — must come BEFORE '/:id' */
 router.get('/featured/courses', courseController.getFeaturedCourses);
 router.get('/featured/videos', courseController.getFeaturedVideos);
@@ -57,5 +57,7 @@ router.post('/:id/purchase', authUser, courseController.purchaseCourse);
 // Update/delete: allow either site tutor or org instructor (via anyAuth)
 router.patch('/:id', anyAuth, courseController.updateCourse);
 router.delete('/:id', anyAuth, courseController.deleteCourse);
+
+
 
 export default router;

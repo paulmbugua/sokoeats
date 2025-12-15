@@ -11,20 +11,21 @@ import {
   ScrollView,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Modal,
+  Switch,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import type { MainStackParamList } from '../navigation/types';
 import tw from '../../tailwind';
+
 import { useHomePage } from '@mytutorapp/shared/hooks';
 import type { Profile } from '@mytutorapp/shared/types';
-import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
+import { COUNTRIES, countryName } from '@mytutorapp/shared/utils/countries';
 
 /* ───────── Constants ───────── */
 const FALLBACK_AVATAR = (name = 'Tutor') =>
-  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-    name,
-  )}&background=e7edf4&color=0d141c`;
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e7edf4&color=0d141c`;
 
 const SUBJECTS = [
   'Math',
@@ -36,145 +37,98 @@ const SUBJECTS = [
   'English',
   'History',
 ] as const;
-const RATINGS = [5, 4.5, 4, 3.5, 3] as const;
-const PRICES = ['any', '0-20', '20-40', '40-60', '60+'] as const;
 
-// Availability, Languages
-const AVAILABILITY = ['Weekdays', 'Weekends', 'Evenings', 'Mornings'] as const;
-const LANGS_COMMON = [
-  'English',
-  'Spanish',
-  'French',
-  'Arabic',
-  'Chinese',
-  'German',
+const RATINGS = [5, 4.5, 4, 3.5, 3] as const;
+
+// Web parity
+const AVAILABILITY = ['Online', 'Offline', 'Busy', 'Free Session', 'New'] as const;
+const LANGS_COMMON = ['English', 'Spanish', 'French', 'Arabic', 'Chinese', 'German'] as const;
+
+const TOKENS_OPTIONS = [
+  { label: 'Tokens', value: 0 },
+  { label: '≤ 10', value: 10 },
+  { label: '≤ 20', value: 20 },
+  { label: '≤ 40', value: 40 },
+  { label: '≤ 60', value: 60 },
+  { label: '60+', value: 999999 },
 ] as const;
 
-type PriceRangeKey = (typeof PRICES)[number];
-const PRICE_RANGES: Record<PriceRangeKey, (n: number) => boolean> = {
-  any: () => true,
-  '0-20': (n) => n >= 0 && n < 20,
-  '20-40': (n) => n >= 20 && n < 40,
-  '40-60': (n) => n >= 40 && n < 60,
-  '60+': (n) => n >= 60,
-};
-
-/** ── Flatten shared COUNTRIES list to labels ────────────────────────── */
-const COUNTRY_OPTIONS: string[] = Array.isArray(COUNTRIES)
-  ? (COUNTRIES as any[])
-      .map((c) => {
-        if (typeof c === 'string') return c;
-        if (c && typeof c === 'object') {
-          return (
-            (c as any).label || (c as any).name || (c as any).value || ''
-          );
-        }
-        return '';
-      })
-      .filter(Boolean)
-  : [];
+const PER_PAGE = 6;
 
 /* ───────── Utils ───────── */
-const normalize = (s?: string) => (s || '').toLowerCase().trim();
 const normalizeStr = (v: unknown): string => {
   if (v == null) return '';
   if (typeof v === 'string') return v.toLowerCase().trim();
-  if (typeof v === 'number' || typeof v === 'boolean')
-    return String(v).toLowerCase().trim();
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v).toLowerCase().trim();
   if (Array.isArray(v)) return v.map(normalizeStr).join(' ').trim();
-  if (typeof v === 'object') {
-    const o = v as Record<string, unknown>;
-    const preferred =
-      o.bio ?? o.overview ?? o.summary ?? o.title ?? o.name ?? o.label ?? o.text;
-    return preferred
-      ? normalizeStr(preferred)
-      : Object.values(o)
-          .map(normalizeStr)
-          .join(' ')
-          .trim();
-  }
+  if (typeof v === 'object') return Object.values(v as any).map(normalizeStr).join(' ').trim();
   return '';
 };
-const getRating = (p: Partial<Profile> & Record<string, any>) =>
-  Number((p?.avgRating ?? (p as any)?.rating) ?? 0);
-const getHourly = (
-  p: Partial<Profile> & Record<string, any>,
-): number | undefined =>
-  typeof p?.pricing?.hourly === 'number'
-    ? p.pricing.hourly
-    : typeof p?.pricing?.price === 'number'
-    ? p.pricing.price
-    : undefined;
 
-const tutorMatchesSubject = (p: Profile, subject: string) => {
-  if (!subject) return true;
-  const cat = normalize((p as any).category);
-  const subj = normalize(subject);
-  if (cat.includes(subj)) return true;
-  if (Array.isArray((p as any).expertise)) {
-    return (p as any).expertise.some((e: any) =>
-      normalize(String(e)).includes(subj),
-    );
+const getRating = (p: any) => {
+  const avg = p?.avgRating;
+  if (avg != null) return Number(avg) || 0;
+
+  const total = Number(p?.rating_total);
+  const count = Number(p?.rating_count);
+
+  if (Number.isFinite(total) && Number.isFinite(count) && count > 0) {
+    return total / count;
   }
-  return false;
+
+  const r = p?.rating;
+  return Number(r) || 0;
 };
 
-const hasAvailability = (p: any, option: string) => {
-  if (!option) return true;
-  const opt = normalizeStr(option);
-  const a = p?.availability;
-  if (typeof a === 'string') return normalizeStr(a).includes(opt);
-  if (Array.isArray(a))
-    return a.some((x) => normalizeStr(String(x)).includes(opt));
-  const slots = p?.availableSlots;
-  if (Array.isArray(slots))
-    return slots.some((x: any) => normalizeStr(String(x)).includes(opt));
-  return true;
+
+const getTokens = (p: any) => {
+  const x =
+    p?.pricing?.tokens ??
+    p?.pricing?.tokenPrice ??
+    p?.pricing?.tokensPerHour ??
+    p?.pricing?.hourlyTokens ??
+    p?.pricing?.privateSessionTokens ??
+    p?.pricing?.groupSessionTokens;
+
+  const n = Number(x);
+  return Number.isFinite(n) ? n : undefined;
 };
 
-const hasLanguage = (p: any, lang: string) => {
-  if (!lang) return true;
-  const list = p?.languages;
-  if (Array.isArray(list)) {
-    return list
-      .map((x) => normalizeStr(String(x)))
-      .includes(normalizeStr(lang));
-  }
-  return true;
+const normalizeStatus = (s: any) => {
+  const v = String(s || '').trim().toLowerCase();
+  if (!v) return '';
+  if (v === 'online') return 'Online';
+  if (v === 'offline') return 'Offline';
+  if (v === 'busy') return 'Busy';
+  if (v === 'free' || v === 'free session' || v === 'free_session') return 'Free Session';
+  if (v === 'new') return 'New';
+  return String(s || '').trim();
 };
 
-const resolveImage = (p: any, backendUrl?: string, fallbackName?: string) => {
-  const g0 = Array.isArray(p?.gallery) ? p.gallery[0] : undefined;
-  if (typeof g0 === 'string' && g0.length > 0) {
-    if (/^https?:\/\//i.test(g0)) return g0;
-    if (g0.startsWith('/') && backendUrl)
-      return `${backendUrl.replace(/\/+$/, '')}${g0}`;
-  }
-  return FALLBACK_AVATAR(fallbackName ?? p?.name ?? 'Tutor');
+const STATUS_BG: Record<string, string> = {
+  Online: 'bg-green-500',
+  Busy: 'bg-yellow-500',
+  'Free Session': 'bg-purple-500',
+  New: 'bg-sky-500',
+  Offline: 'bg-gray-500',
 };
 
-const getDescriptionObj = (raw: any): Record<string, any> => {
-  if (!raw) return {};
-  if (typeof raw === 'object') return raw;
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw);
-    } catch {}
-  }
-  return {};
+const isNewTutor = (p: any) => {
+  if (p?.is_new === true) return true;
+  const created = p?.created_at || p?.createdAt;
+  if (!created) return false;
+  const t = new Date(created).getTime();
+  if (!Number.isFinite(t)) return false;
+  const days = (Date.now() - t) / (1000 * 60 * 60 * 24);
+  return days <= 7;
 };
 
-/** Extract a tutor’s bio from `description` (object OR JSON string OR plain string) */
 const getDescriptionText = (p: any): string => {
   const d = p?.description;
   if (typeof d === 'string') {
     try {
       const asObj = JSON.parse(d);
-      if (
-        asObj &&
-        typeof asObj === 'object' &&
-        typeof (asObj as any).bio === 'string'
-      ) {
+      if (asObj && typeof asObj === 'object' && typeof (asObj as any).bio === 'string') {
         return (asObj as any).bio;
       }
     } catch {}
@@ -185,6 +139,39 @@ const getDescriptionText = (p: any): string => {
     if (bio) return String(bio);
   }
   return '';
+};
+
+const hasAvailability = (p: any, option: string) => {
+  if (!option) return true;
+  const opt = normalizeStatus(option);
+
+  if (opt === 'New') return isNewTutor(p);
+
+  const s = normalizeStatus(p?.status);
+  if (s && s === opt) return true;
+
+  const s2 = normalizeStatus(p?.availability);
+  if (s2 && s2 === opt) return true;
+
+  return false;
+};
+
+const hasLanguage = (p: any, lang: string) => {
+  if (!lang) return true;
+  const list = p?.languages;
+  if (Array.isArray(list)) {
+    return list.map((x: any) => normalizeStr(String(x))).includes(normalizeStr(lang));
+  }
+  return true;
+};
+
+const resolveImage = (p: any, backendUrl?: string, fallbackName?: string) => {
+  const g0 = Array.isArray(p?.gallery) ? p.gallery[0] : undefined;
+  if (typeof g0 === 'string' && g0.length > 0) {
+    if (/^https?:\/\//i.test(g0)) return g0;
+    if (g0.startsWith('/') && backendUrl) return `${backendUrl.replace(/\/+$/, '')}${g0}`;
+  }
+  return FALLBACK_AVATAR(fallbackName ?? p?.name ?? 'Tutor');
 };
 
 /* ───────── Small UI bits ───────── */
@@ -203,17 +190,16 @@ const Chip: React.FC<{
     <Text
       style={tw.style(
         'text-sm',
-        active
-          ? 'text-white font-semibold'
-          : 'text-[#0d141c] dark:text-white/90',
+        active ? 'text-white font-semibold' : 'text-[#0d141c] dark:text-white/90',
       )}
+      numberOfLines={1}
     >
       {label}
     </Text>
   </Pressable>
 );
 
-const TutorRow = React.memo(function TutorRow({
+const TutorCard = React.memo(function TutorCard({
   item,
   onPress,
   backendUrl,
@@ -223,12 +209,24 @@ const TutorRow = React.memo(function TutorRow({
   backendUrl?: string;
 }) {
   const rating = getRating(item);
-  const hourly = getHourly(item);
+  const tokens = getTokens(item);
   const img = resolveImage(item, backendUrl, item.name);
   const sub = (item as any).category ?? 'Subject';
 
+  const status = normalizeStatus((item as any).status);
+  const showNew = isNewTutor(item);
+  const chipBg = STATUS_BG[status] ?? 'bg-gray-500';
+
   const bioRaw = getDescriptionText(item);
   const desc = bioRaw ? String(bioRaw).slice(0, 140) : '';
+
+  const langs =
+    Array.isArray((item as any).languages) && (item as any).languages.length > 0
+      ? (item as any).languages.slice(0, 3).join(', ') + ((item as any).languages.length > 3 ? '…' : '')
+      : '';
+
+  const ccode = String((item as any).country ?? (item as any).country_code ?? '').trim();
+  const cname = ccode ? (countryName?.(ccode) || ccode) : '';
 
   return (
     <View style={tw`mb-4`}>
@@ -236,113 +234,168 @@ const TutorRow = React.memo(function TutorRow({
         style={tw`flex-row items-stretch justify-between gap-4 rounded-2xl bg-white dark:bg-[#0b1016] p-3 border border-[#e2edf5] dark:border-white/5 shadow-sm`}
       >
         <View style={tw`flex-1`}>
-          <Text
-            style={tw`text-xs font-medium text-[#49739c] dark:text-white/70`}
-          >
-            {sub}
-          </Text>
-          <Pressable onPress={() => onPress(item.user_id)} style={tw`mt-0.5`}>
-            <Text
-              style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}
-            >
-              {item.name ?? 'Tutor'}
-            </Text>
-          </Pressable>
+          <Text style={tw`text-xs font-medium text-[#49739c] dark:text-white/70`}>{sub}</Text>
 
-          <View
-            style={tw`flex-row flex-wrap items-center gap-x-3 gap-y-1 mt-1`}
-          >
-            {/* Rating */}
-            <Text
-              style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}
-            >
+          <View style={tw`flex-row items-center gap-2 mt-0.5`}>
+            {status ? (
+              <View style={tw.style('w-2 h-2 rounded-full', chipBg)} />
+            ) : null}
+
+            <Pressable onPress={() => onPress((item as any).user_id ?? (item as any).id)}>
+              <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
+                {item.name ?? 'Tutor'}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={tw`flex-row flex-wrap items-center gap-x-3 gap-y-1 mt-1`}>
+            <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
               {rating ? `${rating.toFixed(1)}★` : 'No rating'}
             </Text>
 
-            {/* Hourly price – only if defined, no "Ask for price" */}
-            {typeof hourly === 'number' && (
-              <Text
-                style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}
-              >
-                ${hourly}/hr
+            {typeof tokens === 'number' ? (
+              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+                {tokens} tokens
               </Text>
-            )}
+            ) : null}
 
-            {/* Languages – no leading dot */}
-            {Array.isArray((item as any).languages) &&
-              (item as any).languages.length > 0 && (
-                <Text
-                  style={tw`text-sm text-[#0d141c] dark:text-white/90`}
-                >
-                  Languages: {(item as any).languages.slice(0, 3).join(', ')}
-                  {(item as any).languages.length > 3 ? '…' : ''}
-                </Text>
-              )}
+            {langs ? (
+              <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>
+                Languages: {langs}
+              </Text>
+            ) : null}
+
+            {cname ? (
+              <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>
+                {cname}
+              </Text>
+            ) : null}
           </View>
 
           {desc ? (
-            <Text
-              style={tw`text-sm mt-1 text-[#0d141c] dark:text-white/90`}
-            >
+            <Text style={tw`text-sm mt-1 text-[#0d141c] dark:text-white/90`}>
               {desc}
             </Text>
           ) : null}
         </View>
 
+        {/* Image + overlay chips */}
         <Pressable
-          onPress={() => onPress(item.user_id)}
+          onPress={() => onPress((item as any).user_id ?? (item as any).id)}
           style={tw`w-36 rounded-xl overflow-hidden`}
         >
-          <Image
-            source={{ uri: img }}
-            style={tw`w-full aspect-video`}
-            resizeMode="cover"
-          />
+          <View style={tw`relative`}>
+            <Image source={{ uri: img }} style={tw`w-full aspect-video`} resizeMode="cover" />
+
+            {/* subtle overlay for readability */}
+            <View style={tw`absolute inset-0 bg-black/10`} />
+
+            {(status || showNew) ? (
+              <View style={tw`absolute top-2 left-2 flex-row items-center gap-2`}>
+                {status ? (
+                  <View style={tw.style('px-2.5 py-1 rounded-full', chipBg)}>
+                    <Text style={tw`text-[10px] font-bold text-white`}>{status}</Text>
+                  </View>
+                ) : null}
+
+                {showNew && status !== 'New' ? (
+                  <View style={tw`px-2.5 py-1 rounded-full bg-sky-500`}>
+                    <Text style={tw`text-[10px] font-bold text-white`}>New</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
         </Pressable>
       </View>
     </View>
   );
 });
 
-/* ───────── Screen ───────── */
-const PER_CHUNK = 12;
+/* ───────── Countries normalized for modal ───────── */
+type CountryOpt = { code: string; name: string };
+const COUNTRY_LIST: CountryOpt[] = Array.isArray(COUNTRIES)
+  ? (COUNTRIES as any[])
+      .map((c) => {
+        if (!c) return null;
+        if (typeof c === 'string') return { code: c, name: c };
+        const code = String((c as any).code ?? (c as any).value ?? (c as any).iso2 ?? '').trim();
+        const name = String((c as any).name ?? (c as any).label ?? code).trim();
+        if (!code && !name) return null;
+        return { code: code || name, name: name || code };
+      })
+      .filter(Boolean) as CountryOpt[]
+  : [];
 
+/* ───────── Screen ───────── */
 const FindTutorScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
-  const { filteredProfiles, loading, handleSearch } = useHomePage();
-  const backendUrl = undefined as unknown as string | undefined;
-
   const insets = useSafeAreaInsets();
-  const FOOTER_OFFSET = 80;
   const bottomPad = Math.max(insets.bottom, 16);
   const topPad = Math.max(insets.top, 12);
 
-  // Core search (debounced)
-  const [query, setQuery] = useState<string>('');
+  // ---- Server-driven search + filters (like web) ----
+  const home = useHomePage() as any;
+
+  const filteredProfiles: Profile[] = (home?.filteredProfiles ?? []) as Profile[];
+  const loading: boolean = Boolean(home?.loading);
+  const handleSearch: ((q: string) => void) | undefined = home?.handleSearch;
+
+  const uiFilters = (home?.uiFilters ?? {}) as {
+    subject?: string;
+    country?: string;   // ISO2
+    minRating?: number;
+    maxTokens?: number;
+  };
+
+  const setSubjectFilter: ((v: string) => void) | undefined = home?.setSubjectFilter;
+  const setCountryFilter: ((v: string) => void) | undefined = home?.setCountryFilter;
+  const setMinRatingFilter: ((n: number) => void) | undefined = home?.setMinRatingFilter;
+  const setMaxTokensFilter: ((n: number) => void) | undefined = home?.setMaxTokensFilter;
+
+  const clearFilters: (() => void) | undefined = home?.clearFilters;
+  const searchMeta = home?.searchMeta as any;
+
+  // backendUrl optional (for relative gallery urls) — if you store it in context you can wire it here
+  const backendUrl = undefined as unknown as string | undefined;
+
+  // local-only UI state (NOT sent to server)
+  const [query, setQuery] = useState('');
+  const [availability, setAvailability] = useState<string>(''); // local-only
+  const [language, setLanguage] = useState<string>(''); // local-only
+  const [page, setPage] = useState(1);
+  const [live, setLive] = useState(false);
+
+  // Country modal (server filter writes ISO2 to setCountryFilter)
+  const [countryModal, setCountryModal] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
+
+  // Live mode debounce
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!live) return;
 
-  // Filters
-  const [subject, setSubject] = useState<string>('');
-  const [availability, setAvailability] = useState<string>(''); // NEW
-  const [minRating, setMinRating] = useState<number>(0);
-  const [priceKey, setPriceKey] = useState<PriceRangeKey>('any');
-  const [language, setLanguage] = useState<string>(''); // NEW
-  const [country, setCountry] = useState<string>(''); // NEW (no region now)
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => {
+      const trimmed = query.trim();
+      if (/^\d$/.test(trimmed)) return;
+      if (trimmed.length < 2 && trimmed.length !== 0) return;
+      handleSearch?.(query);
+    }, 250);
 
-  // Progressive render
-  const [visible, setVisible] = useState<number>(PER_CHUNK);
-  const [loadingMore, setLoadingMore] = useState(false);
+    return () => {
+      if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    };
+  }, [query, live, handleSearch]);
 
-  // Tutors only
+  // Tutors already server-filtered; we just ensure role is tutor
   const tutors = useMemo<Profile[]>(
     () =>
-      (filteredProfiles as Profile[]).filter(
-        (p: Profile) => p.role === 'tutor',
-      ),
+      (filteredProfiles || []).filter((p: any) => String(p?.role || '').toLowerCase() === 'tutor'),
     [filteredProfiles],
   );
 
-  // All available languages from data (merge with common list)
+  // languages from current result set (plus common)
   const languagesSet = useMemo(() => {
     const set = new Set<string>();
     LANGS_COMMON.forEach((l) => set.add(l));
@@ -357,418 +410,432 @@ const FindTutorScreen: React.FC = () => {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [tutors]);
 
-  // Debounce search
-  useEffect(() => {
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    searchTimeout.current = setTimeout(() => {
-      handleSearch?.(query);
-    }, 250);
-    return () => {
-      if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    };
-  }, [query, handleSearch]);
-
-  // Filtering (includes bio, expertise, availability, language, country)
-  const filtered = useMemo(() => {
-    const q = normalizeStr(query);
-    return tutors.filter((pp: Profile & Record<string, any>) => {
-      const p = pp as any;
-
-      if (q) {
-        const inName = normalizeStr(p?.name).includes(q);
-        const inCat = normalizeStr(p?.category).includes(q);
-        const inDesc = normalizeStr(getDescriptionText(p)).includes(q);
-        const inExpertise =
-          Array.isArray(p?.expertise) &&
-          p.expertise.some((e: any) =>
-            normalizeStr(String(e)).includes(q),
-          );
-        if (!inName && !inCat && !inDesc && !inExpertise) return false;
-      }
-
-      if (subject && !tutorMatchesSubject(p, subject)) return false;
+  // local-only filtering (availability/language only)
+  const locallyFiltered = useMemo(() => {
+    return tutors.filter((p: any) => {
       if (availability && !hasAvailability(p, availability)) return false;
-      if (minRating > 0 && getRating(p) < minRating) return false;
-
-      const hourly = getHourly(p);
-      if (
-        priceKey !== 'any' &&
-        typeof hourly === 'number' &&
-        !PRICE_RANGES[priceKey](hourly)
-      )
-        return false;
-
       if (language && !hasLanguage(p, language)) return false;
-
-      // Country filter (top-level p.country OR description.country)
-      if (country) {
-        const wanted = normalizeStr(country);
-        const desc = getDescriptionObj(p.description);
-        const profCountry =
-          normalizeStr(p.country) || normalizeStr(desc.country);
-
-        if (!profCountry || !profCountry.includes(wanted)) {
-          return false;
-        }
-      }
-
       return true;
     });
-  }, [
-    tutors,
-    query,
-    subject,
-    availability,
-    minRating,
-    priceKey,
-    language,
-    country,
-  ]);
+  }, [tutors, availability, language]);
 
-  const data = filtered.slice(0, visible);
+  // Pagination (client-side paging of current server result set)
+  const totalPages = Math.max(1, Math.ceil(locallyFiltered.length / PER_PAGE));
+  const pageSafe = Math.min(page, totalPages);
+  const pageItems = locallyFiltered.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
 
-  // Scroll-triggered "load more"
-  const onScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-      const pad = 160;
-      const reachedBottom =
-        contentOffset.y + layoutMeasurement.height + pad >= contentSize.height;
-
-      if (
-        reachedBottom &&
-        !loadingMore &&
-        data.length < filtered.length
-      ) {
-        setLoadingMore(true);
-        requestAnimationFrame(() => {
-          setVisible((v) => Math.min(filtered.length, v + PER_CHUNK));
-          setLoadingMore(false);
-        });
-      }
-    },
-    [data.length, filtered.length, loadingMore],
-  );
+  // for page dots (don’t render 50 buttons)
+  const pageWindow = useMemo(() => {
+    const max = 7;
+    if (totalPages <= max) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    const out: number[] = [];
+    const start = Math.max(1, pageSafe - 2);
+    const end = Math.min(totalPages, start + (max - 1));
+    for (let n = start; n <= end; n++) out.push(n);
+    if (!out.includes(1)) out.unshift(1);
+    if (!out.includes(totalPages)) out.push(totalPages);
+    // de-dupe
+    return Array.from(new Set(out));
+  }, [totalPages, pageSafe]);
 
   const onReset = () => {
     setQuery('');
-    setSubject('');
     setAvailability('');
-    setMinRating(0);
-    setPriceKey('any');
     setLanguage('');
-    setCountry('');
-    setVisible(PER_CHUNK);
+    setPage(1);
+    setCountrySearch('');
+    clearFilters?.();
+    handleSearch?.('');
   };
 
-  const goProfile = (userId?: string | number) =>
-    userId && navigation.navigate('Profile', { id: String(userId) });
+  const goProfile = (userId?: string | number) => {
+    if (!userId) return;
+    navigation.navigate('Profile', { id: String(userId) });
+  };
 
-  return (
-    <SafeAreaView
-      style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
-      edges={['top', 'bottom']}
-    >
-      {/* Soft background orbs */}
-      <View style={tw`absolute inset-0`}>
-        <View
-          style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-pink-500/12 dark:bg-pink-500/10`}
-        />
-        <View
-          style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/10`}
-        />
-      </View>
+  const currentCountryLabel = useMemo(() => {
+    const code = String(uiFilters?.country || '').trim();
+    if (!code) return '';
+    const found = COUNTRY_LIST.find((c) => String(c.code).toUpperCase() === code.toUpperCase());
+    return found?.name || countryName?.(code) || code;
+  }, [uiFilters?.country]);
 
-      {loading ? (
+  const countryFilteredList = useMemo(() => {
+    const q = normalizeStr(countrySearch);
+    if (!q) return COUNTRY_LIST.slice(0, 220); // keep modal snappy
+    return COUNTRY_LIST.filter((c) => {
+      const hay = `${c.code} ${c.name}`.toLowerCase();
+      return hay.includes(q);
+    }).slice(0, 250);
+  }, [countrySearch]);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
         <View style={tw`flex-1 items-center justify-center`}>
           <ActivityIndicator />
-          <Text
-            style={tw`mt-2 text-[#49739c] dark:text-white/70`}
-          >
-            Loading tutors…
+          <Text style={tw`mt-2 text-[#49739c] dark:text-white/70`}>Loading tutors…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
+      {/* Soft background orbs */}
+      <View style={tw`absolute inset-0`}>
+        <View style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-pink-500/12 dark:bg-pink-500/10`} />
+        <View style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/10`} />
+      </View>
+
+      <ScrollView
+        style={tw`flex-1`}
+        contentContainerStyle={[
+          tw`pb-6`,
+          { paddingTop: topPad, paddingBottom: bottomPad + 80 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={tw`px-4 pt-2 pb-2`}>
+          <View style={tw`flex-row items-end justify-between`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`text-xs tracking-[2px] uppercase text-pink-500/80 dark:text-pink-400`}>
+                DayBreak Tutors
+              </Text>
+              <Text style={tw`text-[28px] font-extrabold text-[#0d141c] dark:text-white mt-1`}>
+                Find a tutor
+              </Text>
+              <Text style={tw`text-sm text-[#49739c] dark:text-white/70 mt-1`}>
+                Explore expert tutors ready to help you achieve your learning goals.
+              </Text>
+
+              {/* Optional meta (like web debug chip) */}
+              {searchMeta?.aiUsed != null ? (
+                <Text style={tw`text-[11px] mt-1 text-[#49739c] dark:text-white/60`}>
+                  Search: {searchMeta.aiUsed ? 'AI' : 'Direct'} • {searchMeta.rows ?? tutors.length} results
+                </Text>
+              ) : null}
+            </View>
+
+            <Pressable
+              onPress={onReset}
+              style={tw`rounded-full h-9 px-4 bg-[#e7edf4] dark:bg-[#172534] justify-center`}
+            >
+              <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>Reset</Text>
+            </Pressable>
+          </View>
+
+          {/* Search (server-driven) */}
+          <View style={tw`mt-3 rounded-xl overflow-hidden`}>
+            <View style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] h-12 px-3`}>
+              <Text style={tw`text-base mr-2`}>🔎</Text>
+              <TextInput
+                placeholder='Search e.g. "Kenya math tutor", "Grade 3", "certified english"'
+                placeholderTextColor="#49739c"
+                value={query}
+                onChangeText={(t) => {
+                  setQuery(t);
+                  setPage(1);
+                }}
+                onSubmitEditing={() => {
+                  setPage(1);
+                  handleSearch?.(query);
+                }}
+                style={tw`flex-1 text-[#0d141c] dark:text-white`}
+                returnKeyType="search"
+              />
+            </View>
+          </View>
+
+          {/* Live toggle */}
+          <View style={tw`mt-2 flex-row items-center justify-between`}>
+            <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+              Live search (auto-search while typing)
+            </Text>
+            <Switch value={live} onValueChange={setLive} />
+          </View>
+        </View>
+
+        {/* Filters */}
+        <View style={tw`px-4`}>
+          <Text style={tw`text-[18px] font-bold text-[#0d141c] dark:text-white`}>Filters</Text>
+
+          {/* Subject (server) */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-2 pr-2`}>
+            <Chip
+              label={uiFilters?.subject ? `Subject: ${uiFilters.subject}` : 'Subject'}
+              active={!!uiFilters?.subject}
+              onPress={() => {
+                setSubjectFilter?.('');
+                setPage(1);
+              }}
+            />
+            {SUBJECTS.map((s) => (
+              <Chip
+                key={s}
+                label={s}
+                active={uiFilters?.subject === s}
+                onPress={() => {
+                  setSubjectFilter?.(s);
+                  setPage(1);
+                }}
+              />
+            ))}
+          </ScrollView>
+
+          {/* Availability (local) */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-1 pr-2`}>
+            <Chip
+              label={availability ? `Availability: ${availability}` : 'Availability'}
+              active={!!availability}
+              onPress={() => {
+                setAvailability('');
+                setPage(1);
+              }}
+            />
+            {AVAILABILITY.map((a) => (
+              <Chip
+                key={a}
+                label={a}
+                active={availability === a}
+                onPress={() => {
+                  setAvailability(a);
+                  setPage(1);
+                }}
+              />
+            ))}
+          </ScrollView>
+
+          {/* Tokens (server) */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-1 pr-2`}>
+            {TOKENS_OPTIONS.map((o) => {
+              const active = Number(uiFilters?.maxTokens || 0) === o.value;
+              return (
+                <Chip
+                  key={String(o.value)}
+                  label={o.label}
+                  active={active}
+                  onPress={() => {
+                    setMaxTokensFilter?.(o.value);
+                    setPage(1);
+                  }}
+                />
+              );
+            })}
+          </ScrollView>
+
+          {/* Language (local) */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-1 pr-2`}>
+            <Chip
+              label={language ? `Language: ${language}` : 'Language'}
+              active={!!language}
+              onPress={() => {
+                setLanguage('');
+                setPage(1);
+              }}
+            />
+            {languagesSet.map((l) => (
+              <Chip
+                key={l}
+                label={l}
+                active={language === l}
+                onPress={() => {
+                  setLanguage(l);
+                  setPage(1);
+                }}
+              />
+            ))}
+          </ScrollView>
+
+          {/* Rating (server) */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-1 pr-2`}>
+            <Chip
+              label={uiFilters?.minRating ? `Rating: ≥ ${uiFilters.minRating}★` : 'Rating'}
+              active={!!uiFilters?.minRating}
+              onPress={() => {
+                setMinRatingFilter?.(0);
+                setPage(1);
+              }}
+            />
+            {RATINGS.map((r) => (
+              <Chip
+                key={String(r)}
+                label={`${r}★ & up`}
+                active={Number(uiFilters?.minRating || 0) === r}
+                onPress={() => {
+                  setMinRatingFilter?.(r);
+                  setPage(1);
+                }}
+              />
+            ))}
+          </ScrollView>
+
+          {/* Country (server, ISO2) */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-1 pr-2`}>
+            <Chip
+              label={uiFilters?.country ? `Country: ${currentCountryLabel}` : 'Country'}
+              active={!!uiFilters?.country}
+              onPress={() => {
+                // open modal to select, like web select dropdown
+                setCountryModal(true);
+              }}
+            />
+            {uiFilters?.country ? (
+              <Chip
+                label="Clear country"
+                active={false}
+                onPress={() => {
+                  setCountryFilter?.('');
+                  setPage(1);
+                }}
+              />
+            ) : null}
+          </ScrollView>
+        </View>
+
+        {/* Results header */}
+        <View style={tw`px-4 pt-3 pb-1 flex-row items-center justify-between`}>
+          <Text style={tw`text-[18px] font-bold text-[#0d141c] dark:text-white`}>Tutors</Text>
+          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
+            {locallyFiltered.length} result{locallyFiltered.length === 1 ? '' : 's'}
           </Text>
         </View>
-      ) : (
-        <ScrollView
-          style={tw`flex-1`}
-          contentContainerStyle={[
-            tw`pb-6`,
-            {
-              paddingTop: topPad,
-              paddingBottom: bottomPad + FOOTER_OFFSET, // ✅ nothing hidden behind footer
-            },
-          ]}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Title / Reset */}
-          <View style={tw`px-4 pt-2 pb-2`}>
-            <View style={tw`flex-row items-end justify-between`}>
-              <View style={tw`flex-1 pr-3`}>
-                <Text
-                  style={tw`text-xs tracking-[2px] uppercase text-pink-500/80 dark:text-pink-400`}
-                >
-                  DayBreak Tutors
-                </Text>
-                <Text
-                  style={tw`text-[28px] font-extrabold text-[#0d141c] dark:text-white mt-1`}
-                >
-                  Find a tutor
-                </Text>
-                <Text
-                  style={tw`text-sm text-[#49739c] dark:text-white/70 mt-1`}
-                >
-                  Explore our community of expert tutors ready to help you
-                  achieve your goals.
-                </Text>
-              </View>
+
+        {/* Results */}
+        <View style={tw`px-4`}>
+          {pageItems.length === 0 ? (
+            <Text style={tw`text-[#49739c] dark:text-white/70`}>
+              No tutors match your filters.
+            </Text>
+          ) : (
+            pageItems.map((item: any) => (
+              <TutorCard
+                key={String(item?.user_id ?? item?.id ?? item?.name)}
+                item={item}
+                onPress={goProfile}
+                backendUrl={backendUrl}
+              />
+            ))
+          )}
+        </View>
+
+        {/* Pagination (like web) */}
+        {totalPages > 1 ? (
+          <View style={tw`px-4 pt-2`}>
+            <View style={tw`flex-row items-center justify-center gap-2`}>
               <Pressable
-                onPress={onReset}
-                style={tw`rounded-full h-9 px-4 bg-[#e7edf4] dark:bg-[#172534] justify-center`}
+                onPress={() => setPage((p) => Math.max(1, p - 1))}
+                style={tw`h-10 px-3 rounded-full bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
               >
-                <Text
-                  style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}
-                >
-                  Reset
-                </Text>
+                <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>‹</Text>
+              </Pressable>
+
+              {pageWindow.map((n) => {
+                const active = n === pageSafe;
+                return (
+                  <Pressable
+                    key={String(n)}
+                    onPress={() => setPage(n)}
+                    style={tw.style(
+                      'h-10 w-10 rounded-full items-center justify-center',
+                      active ? 'bg-[#e7edf4] dark:bg-[#172534]' : 'bg-transparent',
+                    )}
+                  >
+                    <Text style={tw.style('text-sm', active ? 'font-extrabold text-[#0d141c] dark:text-white' : 'text-[#49739c] dark:text-white/70')}>
+                      {n}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+
+              <Pressable
+                onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
+                style={tw`h-10 px-3 rounded-full bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
+              >
+                <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>›</Text>
               </Pressable>
             </View>
 
-            {/* Search bar */}
-            <View style={tw`mt-3 rounded-xl overflow-hidden`}>
-              <View
-                style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] h-12 px-3`}
-              >
+            <Text style={tw`text-[11px] text-center mt-2 text-[#49739c] dark:text-white/60`}>
+              Page {pageSafe} of {totalPages}
+            </Text>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      {/* Country modal */}
+      <Modal visible={countryModal} transparent animationType="fade" onRequestClose={() => setCountryModal(false)}>
+        <Pressable
+          onPress={() => setCountryModal(false)}
+          style={tw`flex-1 bg-black/40 items-center justify-center p-4`}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={tw`w-full max-w-[520px] rounded-2xl bg-white dark:bg-[#0b1016] border border-[#e2edf5] dark:border-white/10 p-3`}
+          >
+            <View style={tw`flex-row items-center justify-between`}>
+              <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>Select country</Text>
+              <Pressable onPress={() => setCountryModal(false)} style={tw`px-3 py-2`}>
+                <Text style={tw`text-sm font-bold text-[#49739c] dark:text-white/70`}>Close</Text>
+              </Pressable>
+            </View>
+
+            <View style={tw`mt-2 rounded-xl overflow-hidden`}>
+              <View style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] h-11 px-3`}>
                 <Text style={tw`text-base mr-2`}>🔎</Text>
                 <TextInput
-                  placeholder="Search for a subject or tutor"
+                  placeholder="Search country…"
                   placeholderTextColor="#49739c"
-                  value={query}
-                  onChangeText={(t) => {
-                    setQuery(t);
-                    setVisible(PER_CHUNK);
-                  }}
+                  value={countrySearch}
+                  onChangeText={setCountrySearch}
                   style={tw`flex-1 text-[#0d141c] dark:text-white`}
-                  returnKeyType="search"
                 />
               </View>
             </View>
-          </View>
 
-          {/* Quick filters */}
-          <View style={tw`px-4`}>
-            <Text
-              style={tw`text-[18px] font-bold text-[#0d141c] dark:text-white`}
-            >
-              Quick filters
-            </Text>
-
-            {/* Subjects */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`py-2 pr-2`}
-            >
-              <Chip
-                label={subject ? `Subject: ${subject}` : 'Any subject'}
-                active={!!subject}
+            <ScrollView style={tw`mt-2 max-h-[380px]`} keyboardShouldPersistTaps="handled">
+              {/* Clear */}
+              <Pressable
                 onPress={() => {
-                  setSubject('');
-                  setVisible(PER_CHUNK);
+                  setCountryFilter?.('');
+                  setPage(1);
+                  setCountryModal(false);
                 }}
-              />
-              {SUBJECTS.map((s) => (
-                <Chip
-                  key={s}
-                  label={s}
-                  active={subject === s}
-                  onPress={() => {
-                    setSubject(s);
-                    setVisible(PER_CHUNK);
-                  }}
-                />
-              ))}
+                style={tw`px-3 py-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534]`}
+              >
+                <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>Any country</Text>
+              </Pressable>
+
+              <View style={tw`h-2`} />
+
+              {countryFilteredList.map((c) => {
+                const active = String(uiFilters?.country || '').toUpperCase() === String(c.code || '').toUpperCase();
+                return (
+                  <Pressable
+                    key={c.code}
+                    onPress={() => {
+                      setCountryFilter?.(c.code);
+                      setPage(1);
+                      setCountryModal(false);
+                    }}
+                    style={tw.style(
+                      'px-3 py-3 rounded-xl mb-2',
+                      active ? 'bg-primary' : 'bg-white dark:bg-[#0f1821]',
+                      'border border-[#e2edf5] dark:border-white/10',
+                    )}
+                  >
+                    <Text style={tw.style('text-sm font-bold', active ? 'text-white' : 'text-[#0d141c] dark:text-white')}>
+                      {c.name} <Text style={tw.style(active ? 'text-white/90' : 'text-[#49739c] dark:text-white/60')}>({c.code})</Text>
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
-
-            {/* Availability */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`py-1 pr-2`}
-            >
-              <Chip
-                label={
-                  availability ? `Time: ${availability}` : 'Any time'
-                }
-                active={!!availability}
-                onPress={() => {
-                  setAvailability('');
-                  setVisible(PER_CHUNK);
-                }}
-              />
-              {AVAILABILITY.map((a) => (
-                <Chip
-                  key={a}
-                  label={a}
-                  active={availability === a}
-                  onPress={() => {
-                    setAvailability(a);
-                    setVisible(PER_CHUNK);
-                  }}
-                />
-              ))}
-            </ScrollView>
-
-            {/* Language */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`py-1 pr-2`}
-            >
-              <Chip
-                label={language ? `Lang: ${language}` : 'Any language'}
-                active={!!language}
-                onPress={() => {
-                  setLanguage('');
-                  setVisible(PER_CHUNK);
-                }}
-              />
-              {languagesSet.map((l) => (
-                <Chip
-                  key={l}
-                  label={l}
-                  active={language === l}
-                  onPress={() => {
-                    setLanguage(l);
-                    setVisible(PER_CHUNK);
-                  }}
-                />
-              ))}
-            </ScrollView>
-
-            {/* Ratings */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`py-1 pr-2`}
-            >
-              <Chip
-                label={minRating ? `≥ ${minRating}★` : 'Any rating'}
-                active={!!minRating}
-                onPress={() => {
-                  setMinRating(0);
-                  setVisible(PER_CHUNK);
-                }}
-              />
-              {RATINGS.map((r) => (
-                <Chip
-                  key={String(r)}
-                  label={`${r}★ & up`}
-                  active={minRating === r}
-                  onPress={() => {
-                    setMinRating(r);
-                    setVisible(PER_CHUNK);
-                  }}
-                />
-              ))}
-            </ScrollView>
-
-            {/* Price */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`py-1 pr-2`}
-            >
-              {PRICES.map((p) => (
-                <Chip
-                  key={p}
-                  label={
-                    p === 'any'
-                      ? 'Any price'
-                      : p === '60+'
-                      ? '$60+/hr'
-                      : `$${p}/hr`
-                  }
-                  active={priceKey === p}
-                  onPress={() => {
-                    setPriceKey(p);
-                    setVisible(PER_CHUNK);
-                  }}
-                />
-              ))}
-            </ScrollView>
-
-            {/* Country (from shared COUNTRIES list, no region) */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`py-1 pr-2`}
-            >
-              <Chip
-                label={country ? `Country: ${country}` : 'Any country'}
-                active={!!country}
-                onPress={() => {
-                  setCountry('');
-                  setVisible(PER_CHUNK);
-                }}
-              />
-              {COUNTRY_OPTIONS.map((c) => (
-                <Chip
-                  key={c}
-                  label={c}
-                  active={country === c}
-                  onPress={() => {
-                    setCountry(c);
-                    setVisible(PER_CHUNK);
-                  }}
-                />
-              ))}
-            </ScrollView>
-          </View>
-
-          {/* Tutors */}
-          <View style={tw`px-4 pt-3 pb-1`}>
-            <Text
-              style={tw`text-[18px] font-bold text-[#0d141c] dark:text-white`}
-            >
-              Tutors
-            </Text>
-          </View>
-
-          <View style={tw`px-4`}>
-            {data.length === 0 ? (
-              <Text style={tw`text-[#49739c] dark:text-white/70`}>
-                No tutors match your filters.
-              </Text>
-            ) : (
-              data.map((item) => (
-                <TutorRow
-                  key={String(
-                    (item as any)?.user_id ?? (item as any)?.id,
-                  )}
-                  item={item as any}
-                  onPress={goProfile}
-                  backendUrl={backendUrl}
-                />
-              ))
-            )}
-
-            {/* Load more indicator */}
-            {data.length < filtered.length && (
-              <View style={tw`py-4 items-center`}>
-                <ActivityIndicator />
-                <Text
-                  style={tw`mt-2 text-[#49739c] dark:text:white/70`}
-                >
-                  Loading more…
-                </Text>
-              </View>
-            )}
-          </View>
-        </ScrollView>
-      )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
