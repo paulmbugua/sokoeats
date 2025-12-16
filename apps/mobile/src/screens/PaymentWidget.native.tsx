@@ -357,7 +357,9 @@ const PaymentWidget: React.FC<Props> = ({
  
 const openPaystackAuth = useCallback(
   async (redirectUrl: string) => {
-    const returnUrl = Linking.createURL('paystack/callback'); // -> daybreak://paystack/callback
+    const returnUrl = Linking.createURL('paystack/callback', { scheme: 'daybreak' });
+    console.log('[PAYSTACK][returnUrl]', returnUrl);
+
 
     const res = await WebBrowser.openAuthSessionAsync(
       String(redirectUrl),

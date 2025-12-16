@@ -1047,7 +1047,8 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
 
             {/* Logout + Delete Account — spaced apart */}
             <div className="px-4 py-4">
-              <div className="flex items-center gap-24">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+
                 <button
                   onClick={onLogout}
                   className="h-10 px-4 rounded-xl font-bold bg-[#e7edf4] dark:bg-[#172534]"

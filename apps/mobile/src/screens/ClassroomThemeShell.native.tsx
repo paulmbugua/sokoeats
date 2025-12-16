@@ -35,6 +35,7 @@ type ClassroomThemeShellProps = Record<string, any> & {
   themeOpen?: boolean;
   onThemeOpenChange?: (open: boolean) => void;
   showFloatingThemeButton?: boolean;
+  onWordSync?: (p: { words: any[]; currentIndex: number }) => void;
 
   /** index + navigation parity with web */
   activeIndex?: number;
@@ -581,6 +582,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
    <View style={tw.style('relative', 'flex-1')}>
       <ClassroomPlayer
   {...props}
+   onWordSync={props.onWordSync}
   disableInternalBackdrop
   backdropOverride={backdropOverride}
   onToggleThemePanel={() => setShowTheme((s) => !s)}

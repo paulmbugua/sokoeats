@@ -1,14 +1,15 @@
 // apps/mobile/src/screens/RobotTeacherControls.native.tsx
 import React from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-} from "react-native";
+import { View, Text, TextInput, Pressable } from "react-native";
 import tw from "../../tailwind";
+import { MaterialIcons } from "@expo/vector-icons";
 
-export type SizePresetKey = "quick" | "standard" | "extended" | "intensive" | "marathon";
+export type SizePresetKey =
+  | "quick"
+  | "standard"
+  | "extended"
+  | "intensive"
+  | "marathon";
 export type TrackKey = "module" | "certificate" | "diploma" | "degree";
 type CourseOption = { id: string; title: string };
 
@@ -19,7 +20,6 @@ import { useRegisterScreenRefresh } from "../refresh/GlobalRefreshProvider";
 // ⬇️ New: SelectField import
 import SelectField, { type Option as SelectOption } from "./SelectField.native";
 
-/* ───────────────────────── CourseSelect (native) ───────────────────────── */
 /* ───────────────────────── CourseSelect (native) ───────────────────────── */
 const CourseSelect = React.memo(function CourseSelect({
   options,
@@ -37,7 +37,6 @@ const CourseSelect = React.memo(function CourseSelect({
 
   return (
     <SelectField
-      // label is already rendered outside in the parent ("Course"), so omit here
       value={value}
       onChange={(v) => {
         if (!hasOptions && !v) return;
@@ -46,9 +45,6 @@ const CourseSelect = React.memo(function CourseSelect({
       options={options}
       placeholder={effectivePlaceholder}
       modalTitle={effectivePlaceholder}
-      // ❌ REMOVE these overrides – they break dark mode
-      // placeholderColor="#64748B"
-      // selectedTextColor="#0F172A"
     />
   );
 });
@@ -60,36 +56,54 @@ interface ControlsPanelProps {
   canShareUi: boolean;
   restrictStarter: boolean;
   knobsDisabled: boolean;
+
   topCourses: CourseOption[];
   selectedCourse: CourseOption | null;
   onSelectCourse: (id: string) => void;
+
   PRESETS: ReadonlyArray<{ key: SizePresetKey; label: string; min: number }>;
   TRACKS: ReadonlyArray<{ key: TrackKey; label: string; lessons: number }>;
   trackLessons: number;
+
   sizePreset: SizePresetKey;
   setSizePreset: (k: SizePresetKey) => void;
+
   minutes: number;
   setMinutes: (n: number) => void;
+
   classLevel: "beginner" | "intermediate" | "advanced";
   setClassLevel: (lv: "beginner" | "intermediate" | "advanced") => void;
+
   programTrack: TrackKey;
   setProgramTrack: (k: TrackKey) => void;
+
   capMinutes: (m?: number) => number;
+
   customTitle: string;
   setCustomTitle: (s: string) => void;
+
   busy: boolean;
   hasAIContent: boolean;
+
   onStart: () => Promise<void> | void;
   onRefreshSelectedAI: () => Promise<void> | void;
   onOpenShare: () => void;
+
   totalLessons: number;
   setTotalLessons: (n: number) => void;
+
   quizCount: number;
   setQuizCount: (n: number) => void;
+
   overrideLessons: boolean;
   setOverrideLessons: (b: boolean) => void;
+
   overrideQuiz: boolean;
   setOverrideQuiz: (b: boolean) => void;
+
+  // ✅ only define once
+  onOpenOverlay?: () => void;
+  overlayAvailable?: boolean;
 }
 
 /* ───────────────────────────── Panel (native) ───────────────────────────── */
@@ -130,6 +144,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
     setOverrideLessons,
     overrideQuiz,
     setOverrideQuiz,
+    onOpenOverlay,
+    overlayAvailable, // ✅ FIX: destructure it
   } = props;
 
   // ⬇️ Contribute to the screen’s global pull-to-refresh:
@@ -157,7 +173,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
           </Text>
 
           <View>
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Course</Text>
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+              Course
+            </Text>
             <View
               style={tw`mt-1 h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}
             >
@@ -189,16 +207,25 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                     : "text-[#0d141c] dark:text-white"
                 } text-sm font-semibold`}
               >
-                {busy ? "Preparing…" : hasAIContent ? "Continue lesson" : "Start with A.I"}
+                {busy
+                  ? "Preparing…"
+                  : hasAIContent
+                  ? "Continue lesson"
+                  : "Start with A.I"}
               </Text>
             </Pressable>
           </View>
         </View>
       ) : (
-        <RefreshableScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={tw`gap-3`}>
+        <RefreshableScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={tw`gap-3`}
+        >
           {/* Course */}
           <View>
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Course</Text>
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+              Course
+            </Text>
             <View style={tw`mt-1`}>
               {isLockedLearner ? (
                 <View
@@ -224,7 +251,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
 
           {/* Program track */}
           <View>
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Program track</Text>
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+              Program track
+            </Text>
             <View style={tw`mt-1 flex-row flex-wrap gap-2`}>
               {TRACKS.map((t) => {
                 const active = programTrack === t.key;
@@ -263,7 +292,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
 
           {/* Lesson size + minutes */}
           <View>
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Lesson size</Text>
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+              Lesson size
+            </Text>
             <View style={tw`mt-1 gap-2`}>
               <View style={tw`flex-row flex-wrap gap-2`}>
                 {PRESETS.map((p) => {
@@ -301,7 +332,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               </View>
 
               <View style={tw`flex-row items-center gap-2`}>
-                <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Minutes</Text>
+                <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                  Minutes
+                </Text>
                 <TextInput
                   keyboardType="number-pad"
                   value={String(minutes)}
@@ -385,12 +418,14 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
             >
               <Text
                 style={tw`${
-                  canStartMain
-                    ? "text-white"
-                    : "text-[#0d141c] dark:text-white"
+                  canStartMain ? "text-white" : "text-[#0d141c] dark:text-white"
                 } text-sm font-semibold`}
               >
-                {busy ? "Preparing…" : hasAIContent ? "Continue lesson" : "Start with A.I"}
+                {busy
+                  ? "Preparing…"
+                  : hasAIContent
+                  ? "Continue lesson"
+                  : "Start with A.I"}
               </Text>
             </Pressable>
 
@@ -453,7 +488,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               max={500}
               disabled={knobsDisabled}
               onChange={(v) => {
-                setOverrideLessons(true); // ✅ start using custom lessons
+                setOverrideLessons(true);
                 setTotalLessons(Math.max(1, v));
               }}
             />
@@ -464,7 +499,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               max={400}
               disabled={knobsDisabled}
               onChange={(v) => {
-                setOverrideQuiz(true); // ✅ start using custom quiz size
+                setOverrideQuiz(true);
                 setQuizCount(Math.max(4, v));
               }}
             />
@@ -476,7 +511,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 onPress={() => {
                   setOverrideLessons(false);
                   setOverrideQuiz(false);
-                  // snap the visible fields to current track defaults
                   setTotalLessons(trackLessons);
                   setQuizCount(Math.max(4, Math.floor(trackLessons * 2)));
                 }}
@@ -502,6 +536,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 placeholderTextColor="rgba(148,163,184,0.8)"
                 style={tw`mt-1 h-11 rounded-xl px-3 border border-[#cedbe8] dark:border-white/15 bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text-white`}
               />
+
               <View style={tw`mt-2 items-start`}>
                 <Pressable
                   disabled={!canTeach}
@@ -526,6 +561,34 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   </Text>
                 </Pressable>
               </View>
+
+              {/* ✅ SINGLE OVERLAY ICON — fixed right after Teach me */}
+              <View style={tw`mt-2 flex-row items-center`}>
+                <Pressable
+                  onPress={() => {
+                    if (overlayAvailable && onOpenOverlay) onOpenOverlay();
+                  }}
+                  disabled={!overlayAvailable || !onOpenOverlay}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open lesson overlay"
+                  style={tw.style(
+                    `h-10 w-10 rounded-xl items-center justify-center border`,
+                    overlayAvailable
+                      ? `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
+                      : `bg-slate-100 dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-50`
+                  )}
+                >
+                  <MaterialIcons
+                    name="layers"
+                    size={20}
+                    color={overlayAvailable ? "#49739c" : "#94a3b8"}
+                  />
+                </Pressable>
+
+                <Text style={tw`ml-2 text-[12px] text-[#49739c] dark:text-white/70`}>
+                  {overlayAvailable ? "Overlay" : "No overlay for this lesson"}
+                </Text>
+              </View>
             </View>
           )}
         </RefreshableScrollView>
@@ -533,8 +596,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
     </View>
   );
 });
-ControlsPanel.displayName = "RobotTeacherControls";
 
+ControlsPanel.displayName = "RobotTeacherControls";
 export default ControlsPanel;
 
 /* ────────────────────────── Small helper input ────────────────────────── */

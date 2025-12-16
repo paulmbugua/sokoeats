@@ -120,6 +120,15 @@ export type MainStackParamList = {
    PaystackCallback:
     | { reference?: string; trxref?: string; paymentId?: string; kind?: string }
     | undefined;
-   
+    
+     PaystackCheckout:
+    | {
+        authorizationUrl: string;
+        reference: string;
+        paymentId?: string;
+        kind?: string;
+      }
+    | undefined;
+
 };
 

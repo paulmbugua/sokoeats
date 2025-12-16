@@ -100,6 +100,7 @@ interface LessonAndQuizProps {
   currentIdx: number;
    activeIndex?: number;
   courseTitle: string;
+  onOverlayState?: (s: { words: any[]; currentIndex: number; lesson: any | null }) => void;
   isMaximized: boolean;
   onPlayerLoadingChange?: (loading: boolean) => void;
   onToggleMaximized: () => void;
@@ -164,6 +165,7 @@ interface LessonAndQuizProps {
   onViewResults: (courseId: string, courseTitle: string, grade: any) => void;
   /** Admins can reveal short-answer solutions; learners cannot */
   isAdmin?: boolean;
+  
 }
 
 const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
@@ -226,6 +228,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   currentIdx,
   activeIndex,
   onPlayerLoadingChange,
+  onOverlayState,
 }) => {
   // Prop sanity
   if (typeof generateQuizNow !== 'function') {
@@ -245,16 +248,53 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     bumpSuspicion,
   } = useAttemptIntegrity(backendUrl, token);
 
-  useEffect(() => {
-    forwardedReadyRef.current = false;
-    setInnerPlayerReady(false);
-    onPlayerLoadingChange?.(true);
-  }, [
-    displaySsml,
-    currentIdx,
-    lessonsArr?.[0]?.id,
-    onPlayerLoadingChange,
-  ]);
+  const onPlayerLoadingChangeRef = useRef(onPlayerLoadingChange);
+
+useEffect(() => {
+  onPlayerLoadingChangeRef.current = onPlayerLoadingChange;
+}, [onPlayerLoadingChange]);
+
+useEffect(() => {
+  forwardedReadyRef.current = false;
+  setInnerPlayerReady(false);
+  onPlayerLoadingChangeRef.current?.(true);
+}, [displaySsml, currentIdx, lessonsArr?.[0]?.id]);
+
+  
+useEffect(() => {
+  lessonsArrRef.current = Array.isArray(lessonsArr) ? lessonsArr : [];
+}, [lessonsArr]);
+
+useEffect(() => {
+  currentIdxRef.current = Number(currentIdx ?? 0);
+}, [currentIdx]);
+
+const lastEmitRef = useRef(0);
+const SENT_END = /[.!?…]+["')\]]?$/;
+
+const handleWordSync = useCallback(
+  (p: { words: any[]; currentIndex: number }) => {
+    if (!onOverlayState) return;
+
+    const now = Date.now();
+    const w = p.words?.[p.currentIndex]?.text ?? '';
+    const shouldEmit = SENT_END.test(String(w)) || (now - lastEmitRef.current > 250);
+    if (!shouldEmit) return;
+
+    lastEmitRef.current = now;
+
+    const idx = currentIdxRef.current;
+    const arr = lessonsArrRef.current;
+    const lessonForOverlay = arr[idx] ?? arr[0] ?? null;
+
+    onOverlayState({
+      words: p.words || [],
+      currentIndex: Number(p.currentIndex) || 0,
+      lesson: lessonForOverlay,
+    });
+  },
+  [onOverlayState]
+);
 
   useEffect(() => {
     (async () => {
@@ -271,11 +311,12 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   }, [lessonsArr, displaySsml]);
 
   useEffect(() => {
-    if (innerPlayerReady && hasRenderableLesson && !forwardedReadyRef.current) {
-      forwardedReadyRef.current = true;
-      onPlayerReady?.();
-    }
-  }, [innerPlayerReady, hasRenderableLesson, onPlayerReady, onPlayerLoadingChange]);
+  if (innerPlayerReady && hasRenderableLesson && !forwardedReadyRef.current) {
+    forwardedReadyRef.current = true;
+    onPlayerReady?.();
+  }
+}, [innerPlayerReady, hasRenderableLesson, onPlayerReady]);
+
 
   const { width, height: winH } = useWindowDimensions();
 const insets = useSafeAreaInsets();
@@ -308,7 +349,8 @@ const desiredHeight = isMaximized ? maximizedHeight : compactHeight;
   const startingAttemptRef = useRef(false);
   const submittingRef = useRef(false);
   const shownLockAlertRef = React.useRef(false);
-
+const lessonsArrRef = useRef<any[]>([]);
+const currentIdxRef = useRef<number>(0);
   const [pendingQuizGen, setPendingQuizGen] = useState(false);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPlayClickRef = useRef(0);
@@ -770,15 +812,21 @@ useEffect(() => {
       }
 
       // payload
-      const payloadAnswers = (quiz?.questions || []).map((q: any) => {
-        const qid = q?.id;
-        const v = qid ? workingAnswers[qid] : undefined;
-        if (enforcedQuizType === 'short') {
-          return { questionId: qid, answerText: String(v ?? '').trim() };
-        }
-        const idx = typeof activeIndex === 'number' ? activeIndex : currentIdx;
-        return { questionId: qid, choiceIndex: Number.isFinite(idx) ? idx : -1 };
-      });
+     const payloadAnswers = viewQuestions.map((q: any) => {
+  const qid = q?.id;
+  const v = qid ? workingAnswers[qid] : undefined;
+
+  if (enforcedQuizType === 'short') {
+    return { questionId: qid, answerText: String(v ?? '').trim() };
+  }
+
+  const choiceIndex =
+    typeof v === 'number' ? v :
+    typeof v === 'string' ? Number(v) : -1;
+
+  return { questionId: qid, choiceIndex: Number.isFinite(choiceIndex) ? choiceIndex : -1 };
+});
+
 
       // submit attempt (regular + org)
       await submitAttempt(assignmentKey, payloadAnswers);
@@ -999,6 +1047,7 @@ useEffect(() => {
               onThemeOpenChange={onThemeOpenChange}
               showFloatingThemeButton={false}
               playerHeight={desiredHeight}
+              onWordSync={handleWordSync}   
               onRequestStart={async () => {
                 // ✅ Never auto-generate unless parent explicitly allows it
                 if (!canAutoStart) return;
@@ -1012,7 +1061,8 @@ useEffect(() => {
             />
           </View>
         </View>
-              
+      
+      
 
       {/* Outline + Generate */}
       {Array.isArray(outline) && outline.length > 0 && (

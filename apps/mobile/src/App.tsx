@@ -1,6 +1,7 @@
 // apps/mobile/src/App.tsx
 import * as React from 'react';
 import type { ReactNode } from 'react';
+import * as Linking from 'expo-linking';
 import { View } from 'react-native'; // StatusBar intentionally handled by the root; none here
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -75,6 +76,7 @@ import VerifyCertificatePrintPage from './screens/VerifyCertificatePrintScreen.n
 // Payments
 import PaymentFlow from './screens/PaymentFlow.native';
 import PaystackCallbackNative from './screens/PaystackCallback.native';
+import PaystackCheckoutNative from './screens/PaystackCheckout.native';
 
 // Organizations
 import OrgHomeRouterNative from './screens/org/OrgHomeRouter.native';
@@ -237,6 +239,19 @@ const App: React.FC = () => {
   const markSeen = useMarkFirstLoginSeen();
 
   const { uiFilters, handleSearch, clearFilters } = useHomePage();
+  React.useEffect(() => {
+  (async () => {
+    const initial = await Linking.getInitialURL();
+    console.log('[PAYSTACK][initialURL]', initial);
+  })();
+
+  const sub = Linking.addEventListener('url', ({ url }) => {
+    console.log('[PAYSTACK][eventURL]', url);
+  });
+
+  return () => sub.remove();
+}, []);
+
 
 
   React.useEffect(() => {
@@ -330,7 +345,9 @@ const App: React.FC = () => {
             component={FulfillmentPolicy}
           />
           <Stack.Screen name="PaymentFlow" component={PaymentFlow} />
+          <Stack.Screen name="PaystackCheckout" component={PaystackCheckoutNative} />
           <Stack.Screen name="PaystackCallback" component={PaystackCallbackNative} />
+
 
 
 

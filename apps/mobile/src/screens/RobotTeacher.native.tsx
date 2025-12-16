@@ -8,10 +8,13 @@ import {
   ScrollView,
   Alert,
   Modal,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, NavigationProp } from '@react-navigation/native';
 import tw from '../../tailwind';
+import { RefreshableScrollView } from '../refresh/Refreshable';
+import LessonOverlayNative, { type LessonOverlayHandle } from './LessonOverlay.native';
 
 import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
 import { useAiCourse } from '@mytutorapp/shared/hooks';
@@ -146,7 +149,8 @@ function CourseList({
       </View>
 
       {/* Horizontal chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" style={tw`md:hidden -mx-1 px-1 pb-2`}>
+      <RefreshableScrollView
+  screenId="robot-tutor" horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" style={tw`md:hidden -mx-1 px-1 pb-2`}>
         <View style={tw`flex-row gap-2`}>
           {visible.length ? (
             visible.map((l, i) => {
@@ -172,11 +176,12 @@ function CourseList({
             <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>No courses found.</Text>
           )}
         </View>
-      </ScrollView>
+      </RefreshableScrollView>
 
       {/* Vertical list (tablet/desktop widths) */}
       <View style={tw`hidden md:flex`}>
-        <ScrollView
+        <RefreshableScrollView
+       screenId="robot-tutor"
           style={tw`max-h-[70vh]`}
           contentContainerStyle={[tw`pr-1`, { paddingBottom: 16 }]}
           keyboardShouldPersistTaps="always"
@@ -214,7 +219,7 @@ function CourseList({
           ) : (
             <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>No courses found. Try another search.</Text>
           )}
-        </ScrollView>
+        </RefreshableScrollView>
       </View>
     </View>
   );
@@ -247,6 +252,18 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
 
   const [isMaximized, setIsMaximized] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+const [overlayState, setOverlayState] = useState<{
+  words: any[];
+  currentIndex: number;
+  lesson: any | null;
+} | null>(null);
+
+const overlayRef = useRef<LessonOverlayHandle | null>(null);
+
+const openOverlay = useCallback(() => {
+  overlayRef.current?.toggle();
+}, []);
+
 
   const effectiveVoice = voiceName || defaultVoice;
   const { backendUrl, token, role: globalRole } = useShopContext();
@@ -337,13 +354,12 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
 
   // timer
   const [localRemainingMs, setLocalRemainingMs] = useState<number | null>(null);
-  useEffect(() => {
-    if (localRemainingMs == null || localRemainingMs <= 0) return;
-    const id = setInterval(() => {
-      setLocalRemainingMs((ms) => (ms == null ? null : Math.max(0, ms - 1000)));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [localRemainingMs]);
+ useEffect(() => {
+  const id = setInterval(() => {
+    setLocalRemainingMs(ms => (ms == null ? null : Math.max(0, ms - 1000)));
+  }, 1000);
+  return () => clearInterval(id);
+}, []);
 
   const timerSec =
     Number(
@@ -578,16 +594,29 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     const L = typeof getLessonAt === 'function' ? getLessonAt(i) : null;
 
     // Keep indices aligned. If not built yet, keep placeholder with empty ssml.
-    out.push({
-      id: (L as any)?.id ?? `${selectedCourse?.id || 'course'}:${i}`,
-      title: (L as any)?.title ?? outline?.[i]?.title ?? `Lesson ${i + 1}`,
-      ssml: (L as any)?.ssml ?? '',
-      markdown: (L as any)?.markdown ?? '',
-    });
+    // ✅ include overlay payload (formulas/tables/snippets/charts) if present from getLessonAt()
+out.push({
+  id: (L as any)?.id ?? `${selectedCourse?.id || 'course'}:${i}`,
+  title: (L as any)?.title ?? outline?.[i]?.title ?? `Lesson ${i + 1}`,
+  ssml: (L as any)?.ssml ?? '',
+  markdown: (L as any)?.markdown ?? '',
+  formulas: (L as any)?.formulas ?? [],
+  tables: (L as any)?.tables ?? [],
+  snippets: (L as any)?.snippets ?? [],
+  charts: (L as any)?.charts ?? [],
+});
+
   }
 
   return out;
 }, [getLessonAt, safeLessons, selectedCourse?.id, outline]);
+
+const currentLessonForOverlay = lessonsArr?.[Number(currentIdx ?? 0)] ?? null;
+const overlayAvailable =
+  !!(currentLessonForOverlay?.formulas?.length ||
+     currentLessonForOverlay?.tables?.length ||
+     currentLessonForOverlay?.snippets?.length ||
+     currentLessonForOverlay?.charts?.length);
 
 
   useEffect(() => {
@@ -627,6 +656,19 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     }
     return false;
   }, [currentIdx, ai]);
+
+  const handlePlayerReady = useCallback(() => {
+  setPlayerReady(true);
+}, []);
+
+const handlePlayerLoadingChange = useCallback((loading: boolean) => {
+  setPlayerLoading(loading);
+}, []);
+
+const handleToggleMaximized = useCallback(() => {
+  setIsMaximized(v => !v);
+}, []);
+
 
   // ─────────────────────────────────────────────────────────
   // Prefetch policy: warm exactly N lessons once, then stop
@@ -849,9 +891,11 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     aiOnEnded?.();
   }, [aiOnEnded]);
 
-  return (
-    <SafeAreaView edges={['bottom']} style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
-      <ScrollView
+ return (
+  <SafeAreaView edges={['bottom']} style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
+    <View style={tw`flex-1`}>
+      <RefreshableScrollView
+  screenId="robot-tutor"
         contentContainerStyle={[
           tw`px-3 py-4 md:px-5 md:py-6`,
           { paddingBottom: (insets?.bottom ?? 0) + 24 },
@@ -933,6 +977,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
             showMinimalControls={showMinimalControls}
             isLockedLearner={isLockedLearner}
             canShareUi={canShareUi}
+            onOpenOverlay={openOverlay}
+            overlayAvailable={overlayAvailable}
             restrictStarter={restrictStarter}
             knobsDisabled={knobsDisabled}
             onOpenShare={() => { setIsMaximized(false); setShareOpen(true); }}
@@ -985,111 +1031,107 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
           />
 
           {/* Classroom / Outline / Quiz */}
-          <LessonAndQuizPane
-            compactPlayer={true}
-            showCourseList={showCourseList}
-            displaySsml={displaySsml}
-            onNext={goNext}
-            onPrev={goPrev}                 // ◀️ parity with web
-            isBuildingNext={isBuildingNext}
-            onPlayerReady={() => { setPlayerReady(true); }}
-            onPlayerLoadingChange={(loading: boolean) => { setPlayerLoading(loading); }}
-            lessonsArr={lessonsArr}
-            activeIndex={currentIdx ?? 0} 
-            voiceName={voiceName || defaultVoice}
-            courseTitle={selectedCourse?.title || (customTitle || 'AI Lesson')}
-            isMaximized={isMaximized}
-            onToggleMaximized={() => setIsMaximized((v: boolean) => !v)}
-            course={selectedCourse || null}
-            currentIdx={currentIdx ?? 0}
-            outline={outline}
-            backendUrl={backendUrl}
+           <LessonAndQuizPane
+              compactPlayer={true}
+              showCourseList={showCourseList}
+              displaySsml={displaySsml}
+              onPlayerReady={handlePlayerReady}
+              onPlayerLoadingChange={handlePlayerLoadingChange}
+              onToggleMaximized={handleToggleMaximized}
+              onNext={goNext}
+              onPrev={goPrev}
+              isBuildingNext={isBuildingNext}
+              lessonsArr={lessonsArr}
+              activeIndex={currentIdx ?? 0}
+              voiceName={voiceName || defaultVoice}
+              courseTitle={selectedCourse?.title || (customTitle || 'AI Lesson')}
+              isMaximized={isMaximized}
+              course={selectedCourse || null}
+              currentIdx={currentIdx ?? 0}
+              outline={outline}
+              backendUrl={backendUrl}
+              onBeforePlay={onBeforePlayWrapped}
+              onEnded={onEndedWrapped}
+              onRequestStart={onRequestStartWrapped}
+              themeOpen={themeOpen}
+              onThemeOpenChange={(open: boolean) => {
+                dlog('themeOpen →', open);
+                setThemeOpen(open);
+              }}
+              isOrgFlow={isOrgFlow}
+              assignmentId={assignmentId}
+              timerSec={timerSec}
+              generateQuizNow={async (
+                count?: number,
+                _courseSize?: string,
+                _programTrack?: string,
+                _totalLessons?: number,
+                assignmentIdFromChild?: string,
+                quizType?: 'mcq' | 'short',
+                opts?: { lessonIndex?: number }
+              ) => {
+                const n = typeof count === 'number' ? count : safeQuiz;
+                await generateQuizNow(
+                  n,
+                  sizeToCourseSize[sizePreset] as any,
+                  programTrack as any,
+                  safeLessons,
+                  assignmentIdFromChild ?? assignmentId,
+                  quizType,
+                  opts
+                );
+              }}
+              safeLessons={safeLessons}
+              safeQuiz={safeQuiz}
+              quiz={quiz}
+              answers={answers}
+              onAnswer={handleAnswer}
+              allAnswered={allAnswered}
+              grade={grade}
+              gradeNow={async () => {
+                await gradeNow();
+              }}
+              token={token || ''}
+              requireAuth={requireAuth}
+              isOrgFlowFlag={isOrgFlow}
+              skus={skus}
+              aiCertLoading={aiCertLoading}
+              aiCertError={aiCertError}
+              aiCertMsg={aiCertMsg}
+              claim={async (code: string) => {
+                await claim(code);
+              }}
+              tryGenerateCertificate={tryGenerateCertificate}
+              generateAICert={generateAICert}
+              paymentOpen={paymentOpen}
+              setPaymentOpen={setPaymentOpen}
+              certUrl={certUrl}
+              setCertUrl={setCertUrl}
+              downUrl={downUrl}
+              setDownUrl={setDownUrl}
+              localRemainingMs={localRemainingMs}
+              setLocalRemainingMs={setLocalRemainingMs}
+              displayRemainingMs={displayRemainingMs}
+              disableQuiz={disableQuiz}
+              onStart={onStart}
+              hasJoined={hasJoined}
+              canAutoStart={false}
+              onViewResults={(courseId: string, courseTitle: string, g: { scorePct: number; passMark: number; passed: boolean }) => {
+                dlog('navigate → Results', { courseId, courseTitle, grade: g });
+                navigation.navigate('Results' as any, {
+                  courseId,
+                  courseTitle,
+                  grade: {
+                    scorePct: g.scorePct,
+                    passMark: g.passMark,
+                    passed: g.passed,
+                  },
+                } as any);
+              }}
+              onOverlayState={setOverlayState}
+            />
 
-            onBeforePlay={onBeforePlayWrapped}
-            onEnded={onEndedWrapped}
-            onRequestStart={onRequestStartWrapped} 
-
-            themeOpen={themeOpen}
-            onThemeOpenChange={(open: boolean) => { dlog('themeOpen →', open); setThemeOpen(open); }}
-
-            isOrgFlow={isOrgFlow}
-            assignmentId={assignmentId}
-            timerSec={timerSec}
-            generateQuizNow={async (
-              count?: number,
-              _courseSize?: string,
-              _programTrack?: string,
-              _totalLessons?: number,
-              assignmentIdFromChild?: string,
-              quizType?: 'mcq' | 'short',
-              opts?: { lessonIndex?: number }
-            ) => {
-              const n = typeof count === 'number' ? count : safeQuiz;
-              await generateQuizNow(
-                n,
-                sizeToCourseSize[sizePreset] as any,
-                programTrack as any,
-                safeLessons,
-                assignmentIdFromChild ?? assignmentId,
-                quizType,
-                opts
-              );
-            }}
-
-            safeLessons={safeLessons}
-            safeQuiz={safeQuiz}
-
-            quiz={quiz}
-            answers={answers}
-            onAnswer={handleAnswer}
-            allAnswered={allAnswered}
-            grade={grade}
-            gradeNow={async () => { await gradeNow(); }}
-            token={token || ''}
-            requireAuth={requireAuth}
-
-            // cert + payments
-            isOrgFlowFlag={isOrgFlow}
-            skus={skus}
-            aiCertLoading={aiCertLoading}
-            aiCertError={aiCertError}
-            aiCertMsg={aiCertMsg}
-            claim={async (code: string) => { await claim(code); }}
-            tryGenerateCertificate={tryGenerateCertificate}
-            generateAICert={generateAICert}
-            paymentOpen={paymentOpen}
-            setPaymentOpen={setPaymentOpen}
-            certUrl={certUrl}
-            setCertUrl={setCertUrl}
-            downUrl={downUrl}
-            setDownUrl={setDownUrl}
-
-            // timer + lock
-            localRemainingMs={localRemainingMs}
-            setLocalRemainingMs={setLocalRemainingMs}
-            displayRemainingMs={displayRemainingMs}
-            disableQuiz={disableQuiz}
-
-            // allow child to trigger start (parity with web)
-            onStart={onStart}
-            hasJoined={hasJoined}
-            canAutoStart={false}
-
-            // ✅ results navigation parity with web (use native Results screen)
-            onViewResults={(courseId: string, courseTitle: string, g: { scorePct: number; passMark: number; passed: boolean }) => {
-              dlog('navigate → Results', { courseId, courseTitle, grade: g });
-              navigation.navigate('Results' as any, {
-                courseId,
-                courseTitle,
-                grade: {
-                  scorePct: g.scorePct,
-                  passMark: g.passMark,
-                  passed: g.passed,
-                },
-              } as any);
-            }}
-          />
-        </View>
+          </View>
 
         {/* RIGHT (course list) */}
         {showCourseList && (
@@ -1119,7 +1161,18 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
             />
           </View>
         )}
-      </ScrollView>
+      </RefreshableScrollView>
+      {/* ✅ GLOBAL OVERLAY LAYER (outside ScrollView, above everything) */}
+      <View pointerEvents="box-none" style={[StyleSheet.absoluteFillObject, { zIndex: 999999, elevation: 999999 }]}>
+        <LessonOverlayNative
+          lesson={currentLessonForOverlay}
+          rememberKey={`robotTutor:${selectedCourse?.id || customTitle || 'free'}`}
+          zIndex={999999}
+          ref={overlayRef}
+        />
+      </View>
+
+    </View>
     </SafeAreaView>
   );
 };

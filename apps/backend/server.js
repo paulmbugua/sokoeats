@@ -57,6 +57,8 @@ import payoutRoutes from './routes/payoutRoutes.js';
 import { inflightLimiter } from './middleware/inflightLimiter.js';
 import orgExamsRoutes from './routes/orgExamsRoutes.js';
 import paystackRoutes from './routes/paystackRoutes.js';
+import { handlePaystackWebhook } from './controllers/paystackController.js';
+
 // Middleware
 import {
   morganMiddleware,
@@ -84,6 +86,8 @@ if (process.env.START_WEBHOOK_WORKER === 'true') {
   }
 }
 
+
+
 // ────────────────────────────────────────────────────────────────────────────────
 // Handle unhandled promise rejections
 // ────────────────────────────────────────────────────────────────────────────────
@@ -92,6 +96,32 @@ process.on('unhandledRejection', (err) => {
 });
 
 const app = express();
+const BUILD = process.env.RAILWAY_GIT_COMMIT_SHA
+  || process.env.GIT_SHA
+  || process.env.APP_BUILD
+  || 'dev';
+
+app.use((req, res, next) => {
+  res.setHeader('x-daybreak-build', BUILD);
+  next();
+});
+
+app.use((req, _res, next) => {
+  const url = req.originalUrl || req.url || '';
+  if (url.includes('paystack')) {
+    console.log('[PAYSTACK][REQ]', {
+      method: req.method,
+      url,
+      host: req.get('host'),
+      origin: req.get('origin'),
+      proto: req.get('x-forwarded-proto'),
+      secure: req.secure,
+      ip: req.ip,
+    });
+  }
+  next();
+});
+
 const server = http.createServer(app);
 const port = Number(process.env.PORT ?? 4000);
 const isProduction = process.env.NODE_ENV === 'production';
@@ -175,6 +205,16 @@ app.post(
   },
   webhooks
 );
+// ✅ Paystack webhook must be RAW (before express.json)
+app.post(
+  '/api/paystack/webhook',
+  bodyParser.raw({ type: '*/*' }),
+  (req, _res, next) => {
+    req.rawBody = req.body; // Buffer
+    next();
+  },
+  (req, res) => handlePaystackWebhook(req, res)
+);
 
 // ─── 4) Global middleware ───────────────────────────────────────────────────────
 app.use(helmetMiddleware);
@@ -196,6 +236,45 @@ app.post('/api/auth/login',                loginLimiter, (req, _res, next) => ne
 app.post('/api/institutions/auth/login',   loginLimiter, (req, _res, next) => next());
 
 app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+
+app.get('/__build', (_req, res) => {
+  res.json({
+    build: BUILD,
+    nodeEnv: process.env.NODE_ENV,
+    time: new Date().toISOString(),
+  });
+});
+
+
+// ✅ Paystack return endpoints (support both /paystack/return and /api/paystack/return)
+function redirectToDeepLink(req, res) {
+  console.log('[PAYSTACK][RETURN] hit', {
+    url: req.originalUrl,
+    query: req.query,
+  });
+
+  const deep = new URL('daybreak://paystack/callback');
+
+  for (const [k, v] of Object.entries(req.query || {})) {
+    if (v == null) continue;
+    deep.searchParams.set(k, String(v));
+  }
+
+  if (!deep.searchParams.get('reference') && deep.searchParams.get('trxref')) {
+    deep.searchParams.set('reference', deep.searchParams.get('trxref'));
+  }
+
+  const loc = deep.toString();
+  console.log('[PAYSTACK][RETURN] redirecting →', loc);
+
+  res.setHeader('x-daybreak-paystack-return', '1');
+  return res.redirect(302, loc);
+}
+
+app.get('/paystack/return', redirectToDeepLink);
+app.get('/api/paystack/return', redirectToDeepLink);
+
+
 
 // ─── 5) Socket.IO setup ─────────────────────────────────────────────────────────
 const io = new Server(server, {
@@ -224,7 +303,8 @@ if (isProduction) {
   app.use((req, res, next) => {
      const skipRedirect =
       req.path === '/healthz' ||
-      req.path === '/api/paypal/webhook' ||           // ← do not redirect
+      req.path === '/api/paypal/webhook' ||   
+      req.path === '/api/paystack/webhook' ||        // ← do not redirect
       req.headers['x-railway-healthcheck'];
     if (skipRedirect) {
       return next();
@@ -415,9 +495,19 @@ io.on('connection', (socket) => {
 app.use(errorLogger);
 
 // 404 handler
+// 404 handler (must be AFTER all routes, BEFORE 500 handler)
 app.use((req, res) => {
+  const url = req.originalUrl || req.url || '';
+  if (url.includes('paystack')) {
+    console.log('[PAYSTACK][404]', {
+      method: req.method,
+      url,
+      host: req.get('host'),
+    });
+  }
   res.status(404).json({ message: 'Route Not Found' });
 });
+
 
 // 500 handler
 app.use((err, req, res, next) => {

@@ -8,10 +8,10 @@ import {
   Modal,
   useColorScheme,
   useWindowDimensions,
+   ActivityIndicator, 
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import tw from '../../tailwind';
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Slider from '@react-native-community/slider';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -61,6 +61,7 @@ type Props = {
   onPrev?: () => Promise<boolean> | boolean;
   isBuildingNext?: boolean;
   onEnded?: () => void;
+ onWordSync?: (p: { words: any[]; currentIndex: number }) => void;
 
   course?: any | null;
   outline?: OutlineSection[];
@@ -144,6 +145,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
     onPrev,
     isBuildingNext,
     course,
+    onWordSync,
     outline = [],
     backendUrlOverride,
     playJoinedIfAvailable = false,
@@ -194,10 +196,27 @@ const InnerPlayer: React.FC<Props> = (props) => {
   } = useWordSync();
 
   const words = wordsRaw ?? [];
+ 
   const wordsRef = useRef<any[]>([]);
   useEffect(() => {
     wordsRef.current = words as any[];
   }, [words]);
+
+const [currentIndex, setCurrentIndex] = useState(0);
+  // ✅ Keep latest callback without re-triggering sync effect
+const onWordSyncRef = useRef<typeof onWordSync>(onWordSync);
+
+useEffect(() => {
+  onWordSyncRef.current = onWordSync;
+}, [onWordSync]);
+
+useEffect(() => {
+  const fn = onWordSyncRef.current;
+  if (!fn) return;
+
+  fn({ words: words || [], currentIndex: Number(currentIndex) || 0 });
+}, [words, currentIndex]); // ✅ IMPORTANT: do NOT depend on onWordSync here
+
 
   // Which lesson index (local vs controlled)
   const [lessonIdx, setLessonIdx] = useState(0);
@@ -211,7 +230,8 @@ const InnerPlayer: React.FC<Props> = (props) => {
   const [showNotes, setShowNotes] = useState(false);
   const [showThemeSheet, setShowThemeSheet] = useState(false);
   const [maximized, setMaximized] = useState(false);
-  const [topBarH, setTopBarH] = useState(0);
+  const [topBarH, setTopBarH] = useState(56);
+
 
   // Reader scale
   const [userScale, setUserScale] = useState(1);
@@ -220,7 +240,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [nativeIsPlaying, setNativeIsPlaying] = useState(false);
   const [nativePositionSec, setNativePositionSec] = useState(0);
-  const [currentIndex, setCurrentIndex] = useState(0);
+    
   const [audioDurationSec, setAudioDurationSec] = useState(0);
 
   const autoPlayRef = useRef(false);
@@ -321,6 +341,12 @@ const InnerPlayer: React.FC<Props> = (props) => {
     if (hasLessons) return (lessons[uiLessonIdx]?.ssml || '').trim();
     return (ssml || '').trim();
   }, [useJoined, ssml, hasLessons, lessons, uiLessonIdx]);
+
+  const displayWords = useMemo(() => {
+  const plain = ssmlToPlainText(effectiveSsml ?? '');
+  return applyPunctuationToWords(words as any, plain) as any;
+}, [words, effectiveSsml]);
+
 
   const lessonContentKey = useMemo(() => {
   if (useJoined) return `joined:${course?.id ?? title ?? 'joined'}`;
@@ -628,21 +654,21 @@ const nextIsReady = useCallback(() => {
   const pending = pendingNextRef.current;
   if (!pending) return;
 
-  // We only act when prewarm finished and next lesson is actually present
   if (isBuildingNext) return;
   if (!nextIsReady()) return;
 
-  // ✅ switch to next lesson and autoplay
   pendingNextRef.current = null;
   autoPlayRef.current = true;
 
-  if (typeof activeIndex !== 'number') {
-    setLessonIdx((i) => Math.min(i + 1, Math.max(lessons.length - 1, 0)));
-  } else {
-    // controlled index: parent must update activeIndex (we can't set it here)
-    // If your parent uses activeIndex, it should advance it when prewarm completes.
+  // ✅ advance even in controlled mode
+  if (typeof onNext === 'function') {
+    onNext();
+    return;
   }
-}, [isBuildingNext, nextIsReady, activeIndex, lessons.length]);
+
+  // fallback uncontrolled
+  setLessonIdx((i) => Math.min(i + 1, Math.max(lessons.length - 1, 0)));
+}, [isBuildingNext, nextIsReady, onNext, lessons.length]);
 
 
   // loading callback from hook
@@ -887,16 +913,15 @@ const nextIsReady = useCallback(() => {
           {/* Main narration stage */}
           <NarrationStage
             sentences={sentences}
-            words={words as any}
+            words={displayWords as any}
             currentIndex={currentIndex}
             fontSize={stageFontSize}
-            templateId={templateId}
-            hlHex={hlHex}
-            genHex={genHex}
-            activeTextOnHl={activeTextOnHl}
             isDark={isDark}
             maximized={maximized}
+            fallbackSsml={effectiveSsml}
           />
+
+
 
           {/* Status */}
           {loading && !words.length && !error ? (
@@ -942,8 +967,8 @@ const nextIsReady = useCallback(() => {
           hlHex={hlHex}
         />
       </View>
-
-      {/* Transcript */}
+     
+           {/* Transcript */}
       <TranscriptModal
         open={showTranscript}
         onClose={() => setShowTranscript(false)}
@@ -1148,38 +1173,128 @@ function TitleChip({ title }: { title: string }) {
 }
 
 // ───────────────────── Narration Stage ─────────────────────
+function normalizeForMatch(s: string) {
+  return (s || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^a-z0-9']/g, ''); // keep letters/numbers/apostrophe
+}
+
+function applyPunctuationToWords(
+  timedWords: Array<{ text: string; start: number; end: number }>,
+  plainText: string
+) {
+  const plainTokens = (plainText || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+
+  if (!timedWords?.length || !plainTokens.length) return timedWords || [];
+
+  // If timed words already contain punctuation, don't meddle.
+  const timedHasPunc = timedWords.some(w => /[.!?;,:"')\]]/.test(w?.text || ''));
+  const plainHasPunc = /[.!?;,:"')\]]/.test(plainText || '');
+  if (timedHasPunc || !plainHasPunc) return timedWords;
+
+  const out = timedWords.map(w => ({ ...w }));
+  let j = 0;
+
+  for (let i = 0; i < out.length; i++) {
+    const base = normalizeForMatch(out[i]?.text || '');
+    if (!base) continue;
+
+    // advance until we find a matching token in the plain text
+    while (j < plainTokens.length && normalizeForMatch(plainTokens[j] ?? '') !== base) {
+  j++;
+}
+
+if (j < plainTokens.length) {
+  const wi = out[i];
+  if (!wi) continue;
+
+  const token = plainTokens[j];
+  if (token != null) {
+    wi.text = token;
+  }
+  j++;
+}
+
+  }
+
+  return out;
+}
+
+function ssmlToPlainText(ssml: string) {
+  return (ssml || '')
+    .replace(/<break[^>]*\/>/gi, ' ')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<p[^>]*>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
 
 function NarrationStage({
   sentences,
   words,
   currentIndex,
   fontSize,
-  templateId,
-  hlHex,
-  genHex,
-  activeTextOnHl,
   isDark,
   maximized,
+  fallbackSsml,
 }: {
   sentences: SentenceGroup[];
   words: { text: string; start: number; end: number }[];
   currentIndex: number;
   fontSize: number;
-  templateId: HighlightTemplate;
-  hlHex: string;
-  genHex: string;
-  activeTextOnHl: string;
   isDark: boolean;
   maximized: boolean;
+  fallbackSsml?: string; // ✅ new
 }) {
+  const baseTextColor = isDark ? '#F9FAFB' : '#0F172A';
+  const dimmedColor = isDark ? '#94a3b8' : '#4b5563';
+
+  const hasTimedText = !!(sentences?.length && words?.length);
+
+  // ✅ If we don't have words/sentences yet, show the fallback SSML as plain text
+  if (!hasTimedText) {
+    const plain = ssmlToPlainText(fallbackSsml || '');
+    return (
+      <View
+        style={tw.style(
+          'flex-1 rounded-3xl border border-white/10',
+          maximized ? 'mt-0 mb-0' : 'mt-1 mb-2',
+          'bg-slate-900/70 dark:bg-slate-950/80 px-4 py-4',
+        )}
+      >
+        <ScrollView
+          contentContainerStyle={tw`flex-1 justify-center`}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text
+            style={{
+              textAlign: 'center',
+              fontSize,
+              lineHeight: fontSize * 1.35,
+              color: baseTextColor,
+            }}
+          >
+            {plain || '...'}
+          </Text>
+        </ScrollView>
+      </View>
+    );
+  }
+
   const activeSentenceIdx = useMemo(() => {
-    if (!sentences?.length) return 0;
     const idx = sentences.findIndex((s) => s.indices.includes(currentIndex));
     return idx === -1 ? 0 : idx;
   }, [sentences, currentIndex]);
 
   const visibleSentenceIndices = useMemo(() => {
-    if (!sentences.length) return [];
     const idx = activeSentenceIdx;
     const arr: number[] = [];
     if (idx > 0) arr.push(idx - 1);
@@ -1187,50 +1302,6 @@ function NarrationStage({
     if (idx + 1 < sentences.length) arr.push(idx + 1);
     return arr;
   }, [sentences, activeSentenceIdx]);
-
-  const baseTextColor = isDark ? '#F9FAFB' : '#0F172A';
-  const dimmedColor = isDark ? '#94a3b8' : '#4b5563';
-
-  const activeWordStyle = (): any => {
-    switch (templateId) {
-      case 'boxed-pill':
-        return {
-          backgroundColor: hlHex,
-          color: activeTextOnHl,
-          paddingHorizontal: 6,
-          paddingVertical: 2,
-          borderRadius: 999,
-        };
-      case 'karaoke-glow':
-        return {
-          color: activeTextOnHl,
-          textShadowColor: hlHex,
-          textShadowOffset: { width: 0, height: 0 },
-          textShadowRadius: 6,
-          fontWeight: '600',
-        };
-      case 'underline-glow':
-        return {
-          color: activeTextOnHl,
-          borderBottomWidth: 2,
-          borderBottomColor: hlHex,
-          paddingBottom: 1,
-        };
-      case 'ribbon':
-        return {
-          backgroundColor: hlHex,
-          color: activeTextOnHl,
-          paddingHorizontal: 6,
-          borderRadius: 8,
-        };
-      case 'clean-stripe':
-      default:
-        return {
-          color: activeTextOnHl,
-          fontWeight: '600',
-        };
-    }
-  };
 
   return (
     <View
@@ -1254,31 +1325,13 @@ function NarrationStage({
                 fontSize,
                 lineHeight: fontSize * 1.35,
                 color: isActiveSentence ? baseTextColor : dimmedColor,
+                marginBottom: sIdx === visibleSentenceIndices[visibleSentenceIndices.length - 1] ? 0 : fontSize * 0.4,
               }}
             >
-              {s.indices.map((wi, i) => {
-                const w = words[wi];
-                if (!w) return null;
-                const isActiveWord = wi === currentIndex;
-
-                return (
-                  <Text
-                    key={`${wi}-${i}`}
-                    style={[
-                      {
-                        color: isActiveWord
-                          ? activeTextOnHl
-                          : isActiveSentence
-                          ? baseTextColor
-                          : dimmedColor,
-                      },
-                      isActiveWord && activeWordStyle(),
-                    ]}
-                  >
-                    {(i === 0 ? '' : ' ') + (w.text || '')}
-                  </Text>
-                );
-              })}
+              {s.indices
+                .map((wi) => words[wi]?.text)
+                .filter(Boolean)
+                .join(' ')}
             </Text>
           );
         })}
@@ -1286,6 +1339,7 @@ function NarrationStage({
     </View>
   );
 }
+
 
 // ───────────────────── Bottom Bar ─────────────────────
 
@@ -1370,24 +1424,39 @@ function BottomBarMobile({
         </Text>
 
         <View style={tw`flex-row items-center ml-auto`}>
-          {onPrev && (
-            <Pressable onPress={onPrev} style={tw`px-2 py-1 rounded-full bg-white/10 mr-1`}>
-              <Text style={tw`text-[11px] text-slate-100`}>Prev</Text>
-            </Pressable>
-          )}
+        {onPrev ? (
+          <Pressable
+            onPress={onPrev}
+            accessibilityRole="button"
+            accessibilityLabel="Previous lesson"
+            style={tw`h-9 w-9 rounded-full bg-white/10 items-center justify-center mr-1`}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="chevron-back" size={18} color="#f9fafb" />
+          </Pressable>
+        ) : null}
 
-          {onNext && (
-            <Pressable
-              onPress={onNext}
-              disabled={isBuildingNext}
-              style={tw.style('px-2 py-1 rounded-full', isBuildingNext ? 'bg-white/20' : 'bg-white')}
-            >
-              <Text style={tw.style('text-[11px]', isBuildingNext ? 'text-slate-800' : 'text-black')}>
-                {isBuildingNext ? 'Building…' : 'Next'}
-              </Text>
-            </Pressable>
-          )}
-        </View>
+        {onNext ? (
+          <Pressable
+            onPress={onNext}
+            disabled={isBuildingNext}
+            accessibilityRole="button"
+            accessibilityLabel={isBuildingNext ? 'Building next lesson' : 'Next lesson'}
+            style={tw.style(
+              'h-9 w-9 rounded-full items-center justify-center',
+              isBuildingNext ? 'bg-white/10 opacity-70' : 'bg-white'
+            )}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {isBuildingNext ? (
+              <ActivityIndicator />
+            ) : (
+              <Ionicons name="chevron-forward" size={18} color="#000" />
+            )}
+          </Pressable>
+        ) : null}
+      </View>
+
       </View>
 
       {/* Row 2: scrubber */}

@@ -120,6 +120,20 @@ export default function PaystackCallbackNative() {
   const padTop = Math.max(insets.top, 12);
   const padBottom = Math.max(insets.bottom, 16);
 
+  useEffect(() => {
+  (async () => {
+    const initial = await Linking.getInitialURL();
+    console.log('[PAYSTACK][initialURL]', initial);
+  })();
+
+  const sub = Linking.addEventListener('url', ({ url }) => {
+    console.log('[PAYSTACK][eventURL]', url);
+  });
+
+  return () => sub.remove();
+}, []);
+
+
   // Resolve reference + flow from route params OR deep link
   useEffect(() => {
     let alive = true;
