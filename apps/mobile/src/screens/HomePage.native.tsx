@@ -3,11 +3,11 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { View, Text, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, Image, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import debounce from 'lodash.debounce';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import type { SharedValue } from 'react-native-reanimated';
-import { RefreshControl } from 'react-native';
+
 
 import Animated, {
   Extrapolation,
@@ -21,7 +21,7 @@ import Animated, {
 import { Video, ResizeMode } from 'expo-av';
 
 import { useHomePage } from '@mytutorapp/shared/hooks';
-import { useCourses } from '@mytutorapp/shared/hooks';
+import { useCourses, useClassVault } from '@mytutorapp/shared/hooks';
 import { fetchVideoReviews } from '@mytutorapp/shared/api/classVaultApi';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { pickImageForCourse } from '../../utils/subjectImages';
@@ -417,6 +417,8 @@ const HomePageNative: React.FC = () => {
     }
   };
 
+
+
   const goTutorProfile = (id: string) => {
     if (hasRoute('Profile')) navAny.navigate('Profile', { id });
   };
@@ -473,7 +475,21 @@ const HomePageNative: React.FC = () => {
     return goCourse(String(c?.id ?? id));
   };
 
-  const { backendUrl } = useShopContext();
+  const { backendUrl, token, role } = useShopContext();
+  const {
+  purchasedIds,
+  purchase,
+  refresh: refreshClassVault,
+} = useClassVault('', ''); // ✅ just to get purchasedIds + purchase flow
+
+const [buyingId, setBuyingId] = useState<number | null>(null);
+
+
+
+const isUnlocked = useCallback(
+  (id: number) => Boolean(purchasedIds && purchasedIds.has(id)),
+  [purchasedIds],
+);
   const insets = useSafeAreaInsets();
 
   const FOOTER_OVERLAY_PX = 84;
@@ -514,6 +530,7 @@ const onRefresh = useCallback(async () => {
       fetchFeaturedCourses({ limit: VISIBLE_LIMIT, minCount: 1 }),
       fetchFeaturedVideos({ limit: VISIBLE_LIMIT, minCount: 1 }),
       fetchRecommendedCourses({ limit: VISIBLE_LIMIT, minCount: 1 }),
+      refreshClassVault?.(),
       // if your useHomePage hook exposes something like refetch, you can also call it:
       // (home as any)?.refetch?.(),
     ]);
@@ -685,7 +702,6 @@ const onRefresh = useCallback(async () => {
     const reserveForFree = Math.min(2, Math.max(0, oerPool.length));
     const availableOerForFeatured = Math.max(0, oerPool.length - reserveForFree);
     const useOerCount = Math.max(0, Math.min(need, maxOerShare, availableOerForFeatured));
-
     const a = featuredRecordedVideos.map((v) => ({ kind: 'recorded', data: v } as MixedVideoItem));
     const b = oerPool.slice(0, useOerCount).map((c) => ({ kind: 'oerCollection', data: c } as MixedVideoItem));
     return interleave(a, b, VISIBLE_LIMIT) as MixedVideoItem[];
@@ -729,6 +745,85 @@ const onRefresh = useCallback(async () => {
     () => (recommendedCourses as Course[]).filter((c: any) => !isVideoish(c)),
     [recommendedCourses],
   );
+  const handleRecordedVideoPress = useCallback(
+  (v: RecordedVideo) => {
+    const vid = Number((v as any)?.id ?? 0);
+    if (!vid) return;
+
+    // Tutors: just open detail (they're managing content, not buying)
+    if (String(role || '').toLowerCase() === 'tutor') {
+      goRecordedVideo(vid);
+      return;
+    }
+
+    // Unlocked: open and it will auto-play full video in detail screen
+    if (isUnlocked(vid)) {
+      goRecordedVideo(vid);
+      return;
+    }
+
+    // Not logged in
+    if (!token) {
+      Alert.alert('Login required', 'Please login to purchase and watch this class.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Login', onPress: () => navAny.navigate('Login') },
+      ]);
+      return;
+    }
+
+    // Locked: prompt purchase
+    const price = Number((v as any)?.price ?? 0) || 0;
+    const title = String((v as any)?.title ?? 'this class');
+
+    Alert.alert(
+      'Unlock to Watch',
+      `“${title}” is locked.\n\nUnlock for ${price} tokens to play and download.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Buy Tokens',
+          onPress: () => {
+            // If your stack has BuyTokens, go there
+            try {
+              navAny.navigate('BuyTokens');
+            } catch {
+              // fallback: open ClassVaultLibrary
+              goVideosIndex();
+            }
+          },
+        },
+        {
+          text: buyingId === vid ? 'Purchasing…' : 'Unlock',
+          onPress: async () => {
+            if (buyingId === vid) return;
+            try {
+              setBuyingId(vid);
+              await purchase?.(v as any);
+
+              Alert.alert('Unlocked', `“${title}” is now unlocked.`, [
+                { text: 'Play now', onPress: () => goRecordedVideo(vid) },
+              ]);
+            } catch (err: any) {
+              const msg = String(err?.message ?? 'Purchase failed');
+              if (msg.includes('Insufficient tokens')) {
+                Alert.alert('Insufficient Tokens', 'Not enough tokens. Would you like to buy more?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Buy Tokens', onPress: () => navAny.navigate('BuyTokens') },
+                ]);
+              } else {
+                Alert.alert('Error', msg);
+              }
+            } finally {
+              setBuyingId(null);
+            }
+          },
+        },
+      ],
+    );
+  },
+  [role, token, isUnlocked, purchase, buyingId, navAny, goRecordedVideo, goVideosIndex],
+);
+
 
   const { resolvedScheme } = useThemePref();
 
@@ -886,6 +981,7 @@ const onRefresh = useCallback(async () => {
                 {featuredVideosMixed.slice(0, VISIBLE_LIMIT).map((item, idx) => {
                   if (item.kind === 'recorded') {
                     const v = item.data;
+                     const unlocked = isUnlocked(Number(v.id));
                     const subject = (v as any).subject ?? (v as any).category ?? (v as any).topic ?? v.title ?? 'Video';
                     const grade = (v as any).grade_level ?? (v as any).grade ?? (v as any).level ?? '—';
                     const priceTokens = Number.isFinite(Number((v as any).price)) ? Number((v as any).price) : 0;
@@ -896,10 +992,11 @@ const onRefresh = useCallback(async () => {
 
                     return (
                       <TouchableOpacity
-                        key={`vid-rec-${String(v.id)}`}
-                        onPress={() => goRecordedVideo(Number(v.id))}
-                        activeOpacity={0.9}
-                      >
+                          key={`vid-rec-${String(v.id)}`}
+                          onPress={() => handleRecordedVideoPress(v)}
+                          activeOpacity={0.9}
+                        >
+
                         <CardFadeIn index={idx}>
                           <View style={tw`mb-3 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
                             <CardMedia src={thumb} title={(v as any).title || subject} previewUrl={previewUrl} />
@@ -915,7 +1012,9 @@ const onRefresh = useCallback(async () => {
                             <Text style={tw`text-slate-700 dark:text-slate-200 text-sm mt-2`}>
                               <Text style={tw`font-medium`}>Price:</Text> {priceTokens.toFixed(0)} tokens
                             </Text>
-                            <Text style={tw`text-pink-600 dark:text-pink-400 mt-2`}>Purchase →</Text>
+                            <Text style={tw`text-pink-600 dark:text-pink-400 mt-2`}>
+                              {unlocked ? 'Play →' : buyingId === Number(v.id) ? 'Unlocking…' : 'Unlock →'}
+                            </Text>
                           </View>
                         </CardFadeIn>
                       </TouchableOpacity>

@@ -1,5 +1,5 @@
 // apps/mobile/src/screens/ClassVaultUploadScreen.native.tsx
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,6 @@ import {
   Platform,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { Picker } from '@react-native-picker/picker';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -24,6 +23,9 @@ import useUploadClassVault, {
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 import type { MainStackParamList } from '../navigation/types';
 import { useThemePref } from '../theme/ThemeContext';
+
+// ✅ use the same selector as CreateProfile
+import SelectField from './SelectField.native';
 
 /* ────────────────────── Subject categories (minimal) ────────────────────── */
 const SUBJECT_CATEGORIES = [
@@ -97,34 +99,31 @@ const ClassVaultUploadScreen: React.FC = () => {
   const [country, setCountry] = useState<string>(''); // iso2 lower-case
   const [title, setTitle] = useState<string>('');
   const [subject, setSubject] = useState<(typeof SUBJECT_CATEGORIES)[number] | ''>('');
-  const [gradeLevel, setGradeLevel] = useState<string>(''); // manual text
+  const [gradeLevel, setGradeLevel] = useState<string>('');
   const [price, setPrice] = useState<string>('');
-  const [duration, setDuration] = useState<string>(''); // optional minutes
-  const [tags, setTags] = useState<string>(''); // user tags
-
-  const countries = useMemo(
-    () =>
-      (Array.isArray(COUNTRIES) ? COUNTRIES : [])
-        .map((c: any) => {
-          const raw = String(c?.code ?? c?.iso2 ?? c?.alpha2 ?? c?.id ?? '').trim();
-          const name = String(c?.name ?? c?.label ?? c?.country ?? c?.title ?? '').trim();
-          return { code: raw.toLowerCase(), label: name };
-        })
-        .filter((c) => c.code && c.label),
-    [],
-  );
-
-  useEffect(() => {
-    if (!country && countries.length > 0) {
-      setCountry(countries[0]?.code ?? '');
-    }
-  }, [countries, country]);
+  const [duration, setDuration] = useState<string>('');
+  const [tags, setTags] = useState<string>('');
 
   const placeholderColor = resolvedScheme === 'dark' ? '#64748b' : '#9ca3af';
-  const pickerIconColor = resolvedScheme === 'dark' ? '#e5e7eb' : '#0f172a';
+
+  // ✅ SelectField options
+  const countryOptions = useMemo(() => {
+    const arr = Array.isArray(COUNTRIES) ? COUNTRIES : [];
+    return arr
+      .map((c: any) => {
+        const code = String(c?.code ?? c?.iso2 ?? c?.alpha2 ?? '').trim().toLowerCase();
+        const label = String(c?.name ?? c?.label ?? c?.country ?? c?.title ?? '').trim();
+        return code && label ? { label, value: code } : null;
+      })
+      .filter(Boolean) as { label: string; value: string }[];
+  }, []);
+
+  const subjectOptions = useMemo(
+    () => SUBJECT_CATEGORIES.map((s) => ({ label: s, value: s })),
+    []
+  );
 
   /* ────────────────────── Role gates ────────────────────── */
-
   if (role === null) {
     return (
       <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
@@ -163,7 +162,6 @@ const ClassVaultUploadScreen: React.FC = () => {
   }
 
   /* ────────────────────── File picker ────────────────────── */
-
   const pickFile = async (): Promise<void> => {
     try {
       const typeFilter = fileType === 'video' ? ['video/*'] : ['application/pdf'];
@@ -182,7 +180,7 @@ const ClassVaultUploadScreen: React.FC = () => {
 
       const { uri, name, mimeType } = asset;
 
-      setProgress(1); // start indicator
+      setProgress(1);
 
       const { url } = await handleFileUpload({
         fileType,
@@ -205,7 +203,6 @@ const ClassVaultUploadScreen: React.FC = () => {
   };
 
   /* ────────────────────── Submit ────────────────────── */
-
   const onSubmit = async (): Promise<void> => {
     if (!country || !title || !subject || !gradeLevel.trim() || !price || !uploadedUrl) {
       Alert.alert(
@@ -231,13 +228,14 @@ const ClassVaultUploadScreen: React.FC = () => {
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
+
     const auto = deriveAutoTags(country, subject || '', gradeLevel);
     const tagSet = Array.from(new Set([...userTags, ...auto]));
 
     const payload: CreateRecordedVideoPayload = {
       title,
       subject,
-      grade_level: gradeLevel, // manual human label
+      grade_level: gradeLevel,
       price: priceNum,
       duration: durationNum,
       tags: tagSet,
@@ -258,7 +256,6 @@ const ClassVaultUploadScreen: React.FC = () => {
   };
 
   /* ────────────────────── UI ────────────────────── */
-
   return (
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
       <ScrollView
@@ -273,14 +270,10 @@ const ClassVaultUploadScreen: React.FC = () => {
       >
         {/* Header */}
         <View style={tw`mb-4 items-center`}>
-          <Text
-            style={tw`text-2xl font-extrabold text-[#0d141c] dark:text-white text-center`}
-          >
+          <Text style={tw`text-2xl font-extrabold text-[#0d141c] dark:text-white text-center`}>
             Upload to ClassVault
           </Text>
-          <Text
-            style={tw`mt-1 text-sm text-slate-700 dark:text-slate-300 text-center`}
-          >
+          <Text style={tw`mt-1 text-sm text-slate-700 dark:text-slate-300 text-center`}>
             Share your best lessons and earn tokens when students purchase.
           </Text>
         </View>
@@ -298,24 +291,15 @@ const ClassVaultUploadScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Country */}
-        <View
-          style={tw`rounded-2xl mb-3 border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] overflow-hidden`}
-        >
-          <Picker
-            selectedValue={country}
-            onValueChange={(v) => setCountry(String(v))}
-            dropdownIconColor={pickerIconColor}
-            // ↓ slimmer: matches other placeholders better
-            style={tw`px-3 py-1 text-[13px] text-[#0d141c] dark:text-white`}
-            mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-          >
-            {countries.length === 0 && <Picker.Item label="Loading countries…" value="" />}
-            {countries.length > 0 && <Picker.Item label="Select Country…" value="" />}
-            {countries.map((c) => (
-              <Picker.Item key={c.code} label={c.label} value={c.code} />
-            ))}
-          </Picker>
+        {/* ✅ Country (SelectField) */}
+        <View style={tw`mb-3`}>
+          <SelectField
+            label="Country *"
+            value={country}
+            placeholder="Select your country"
+            options={countryOptions}
+            onChange={(v) => setCountry(String(v).toLowerCase())}
+          />
         </View>
 
         {/* Title */}
@@ -327,23 +311,15 @@ const ClassVaultUploadScreen: React.FC = () => {
           style={tw`rounded-2xl mb-3 px-3 py-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white`}
         />
 
-        {/* Subject Category */}
-        <View
-          style={tw`rounded-2xl mb-3 border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] overflow-hidden`}
-        >
-          <Picker
-            selectedValue={subject}
-            onValueChange={(v) => setSubject(v as (typeof SUBJECT_CATEGORIES)[number])}
-            dropdownIconColor={pickerIconColor}
-            // ↓ same slimmer style as country
-            style={tw`px-3 py-1 text-[13px] text-[#0d141c] dark:text-white`}
-            mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-          >
-            <Picker.Item label="Select Subject Category…" value="" />
-            {SUBJECT_CATEGORIES.map((s) => (
-              <Picker.Item key={s} label={s} value={s} />
-            ))}
-          </Picker>
+        {/* ✅ Subject Category (SelectField) */}
+        <View style={tw`mb-3`}>
+          <SelectField
+            label="Subject Category *"
+            value={subject}
+            placeholder="Select a subject category"
+            options={subjectOptions}
+            onChange={(v) => setSubject(v as any)}
+          />
         </View>
 
         {/* Grade / Level */}
@@ -489,10 +465,7 @@ const ClassVaultUploadScreen: React.FC = () => {
           onPress={onSubmit}
           disabled={uploadingMeta}
           activeOpacity={0.9}
-          style={tw.style(
-            'rounded-2xl mb-2 px-4 py-3 bg-pink-600',
-            uploadingMeta && 'opacity-60',
-          )}
+          style={tw.style('rounded-2xl mb-2 px-4 py-3 bg-pink-600', uploadingMeta && 'opacity-60')}
         >
           {uploadingMeta ? (
             <ActivityIndicator color="#ffffff" />
@@ -503,7 +476,6 @@ const ClassVaultUploadScreen: React.FC = () => {
           )}
         </TouchableOpacity>
 
-        {/* Bottom spacer */}
         <View style={{ height: Math.max(insets.bottom, 16) }} />
       </ScrollView>
     </SafeAreaView>

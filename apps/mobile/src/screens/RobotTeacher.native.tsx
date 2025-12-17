@@ -32,9 +32,13 @@ import OrgShareDialog from '@/screens/org/OrgShareDialog.native';
 // ─────────────────────────────────────────────────────────
 // Utils / Debug
 // ─────────────────────────────────────────────────────────
-const dbgEnabled = () => __DEV__;
+const DBG_ROBOT_TEACHER =
+  __DEV__ && Boolean((globalThis as any)?.__DBG_ROBOT_TEACHER__);
+
 export const dlog = (...args: any[]) => {
-  if (dbgEnabled()) console.log('[RobotTeacher]', ...args);
+  if (!DBG_ROBOT_TEACHER) return;
+  // eslint-disable-next-line no-console
+  console.log('[RobotTeacher]', ...args);
 };
 
 // ─────────────────────────────────────────────────────────
@@ -148,35 +152,41 @@ function CourseList({
         </TouchableOpacity>
       </View>
 
-      {/* Horizontal chips */}
-      <RefreshableScrollView
-  screenId="robot-tutor" horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" style={tw`md:hidden -mx-1 px-1 pb-2`}>
-        <View style={tw`flex-row gap-2`}>
-          {visible.length ? (
-            visible.map((l, i) => {
-              const active = l.id === activeId;
-              return (
-                <TouchableOpacity
-                  key={l.id}
-                  onPress={() => onSelect(l.id)}
-                  style={tw.style(
-                    'px-3 py-2 rounded-full border',
-                    active
-                      ? 'bg-indigo-600 border-indigo-600'
-                      : 'bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15'
-                  )}
-                >
-                  <Text style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs`}>
-                    {String(i + 1).padStart(2, '0')} • {l.title}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })
-          ) : (
-            <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>No courses found.</Text>
+     {/* Horizontal chips */}
+<RefreshableScrollView
+  screenId="robot-tutor"
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  keyboardShouldPersistTaps="always"
+  style={tw`md:hidden -mx-1 px-1 pb-2`}
+  contentContainerStyle={tw`flex-row gap-2 items-start`}
+>
+  {visible.length ? (
+    visible.map((l, i) => {
+      const active = l.id === activeId;
+      return (
+        <TouchableOpacity
+          key={l.id}
+          onPress={() => onSelect(l.id)}
+          style={tw.style(
+            'px-3 py-2 rounded-full border',
+            active
+              ? 'bg-indigo-600 border-indigo-600'
+              : 'bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15',
+            // ✅ prevents the chip from stretching taller/wider than its content
+            'self-start'
           )}
-        </View>
-      </RefreshableScrollView>
+        >
+          <Text style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs`}>
+            {String(i + 1).padStart(2, '0')} • {l.title}
+          </Text>
+        </TouchableOpacity>
+      );
+    })
+  ) : (
+    <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>No courses found.</Text>
+  )}
+</RefreshableScrollView>
 
       {/* Vertical list (tablet/desktop widths) */}
       <View style={tw`hidden md:flex`}>
@@ -239,16 +249,22 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<RobotTeacherRoute>();
 
-  const params = (route.params ?? {}) as {
-    assignmentId?: string | null;
-    courseId?: string | null;
-    qt?: 'mcq' | 'short' | string | null;
-  };
-  const urlQuizTypeHint = normQt(params.qt);
+  const params = useMemo(
+  () =>
+    (route.params ?? {}) as {
+      assignmentId?: string | null;
+      courseId?: string | null;
+      qt?: 'mcq' | 'short' | string | null;
+    },
+  [route.params]
+);
 
-  useEffect(() => {
-    dlog('mounted', { DBG_ENABLED: dbgEnabled(), params });
-  }, [params]);
+// (Optional) keep a single log ONLY when debugging is explicitly enabled
+useEffect(() => {
+  dlog('mounted', { params });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
 
   const [isMaximized, setIsMaximized] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -277,6 +293,7 @@ const openOverlay = useCallback(() => {
     if (!isThemeControlled) setInternalThemeOpen(v);
     onThemeOpenChange?.(v);
   };
+ const urlQuizTypeHint = useMemo(() => normQt(params?.qt), [params?.qt]);
 
   const ai = useAiCourse(backendUrl, token || undefined, {
     urlQuizTypeHint,
@@ -446,10 +463,7 @@ const openOverlay = useCallback(() => {
     setQuizCount(16);
   }, [restrictStarter, trackLessons, isLockedLearner]);
 
-  useEffect(() => {
-    dlog('env', { backendUrl, tokenPresent: Boolean(token), canShareUi, isInstructor, activeOrgId, isOrgFlow });
-  }, [backendUrl, token, canShareUi, isInstructor, activeOrgId, isOrgFlow]);
-
+ 
   // load top courses on mount
   useEffect(() => {
     (async () => {
@@ -891,147 +905,165 @@ const handleToggleMaximized = useCallback(() => {
     aiOnEnded?.();
   }, [aiOnEnded]);
 
+const bottomPad = (insets?.bottom ?? 0) + 24;
+
+const scrollContentContainerStyle = useMemo(
+  () => [tw`px-3 py-4 md:px-5 md:py-6`, { paddingBottom: bottomPad }],
+  [bottomPad]
+);
+
+const scrollContentInset = useMemo(
+  () => ({ bottom: bottomPad }),
+  [bottomPad]
+);
+
+
  return (
   <SafeAreaView edges={['bottom']} style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
     <View style={tw`flex-1`}>
       <RefreshableScrollView
-  screenId="robot-tutor"
-        contentContainerStyle={[
-          tw`px-3 py-4 md:px-5 md:py-6`,
-          { paddingBottom: (insets?.bottom ?? 0) + 24 },
-        ]}
+        screenId="robot-tutor"
+        contentContainerStyle={scrollContentContainerStyle}
         keyboardShouldPersistTaps="always"
         keyboardDismissMode="on-drag"
         nestedScrollEnabled
         removeClippedSubviews={false}
         contentInsetAdjustmentBehavior="automatic"
-        contentInset={{ bottom: (insets?.bottom ?? 0) + 24 }}
+        contentInset={scrollContentInset}
       >
-
-        {/* LEFT (main) */}
-        <View style={tw`${showCourseList ? 'md:w-2/3' : 'md:w-full'} w-full`}>
-          <View style={tw`mb-4`}>
-            <Text style={tw`text-[#0d141c] dark:text-white font-black text-2xl md:text-3xl`}>AI Tutor Studio</Text>
-            <Text style={tw`text-[#49739c] dark:text-white/80 mt-1`}>
-              Free lesson (audio + captions + slides) and quiz. Score <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>≥ 70%</Text> to unlock your certificate
-              {isOrgFlow ? ' — covered by your organization' : ''}.
-            </Text>
-          </View>
-
-          {/* Share dialog near header */}
-          <Modal visible={canShareUi && shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
-            <OrgShareDialog
-              open={canShareUi && shareOpen}
-              onClose={() => setShareOpen(false)}
-              courseId={selectedCourse?.id || null}
-              courseTitle={selectedCourse?.title || (customTitle || null)}
-              totalLessons={safeLessons}
-              quizCount={safeQuiz}
-              minutes={capMinutes(minutes)}
-            />
-          </Modal>
-
-          {degraded && (
-            <View style={tw`rounded-xl p-3 bg-yellow-50 border border-yellow-300 mb-3`}>
-              <Text style={tw`text-yellow-700 dark:text-yellow-200 text-sm`}>
-                High demand fallback: content may be simplified, but your progress still counts.
+        <View style={tw`flex-col md:flex-row gap-4`}>
+          {/* LEFT (main) */}
+          <View style={tw`${showCourseList ? 'md:w-2/3' : 'md:w-full'} w-full`}>
+            <View style={tw`mb-4`}>
+              <Text style={tw`text-[#0d141c] dark:text-white font-black text-2xl md:text-3xl`}>
+                AI Tutor Studio
+              </Text>
+              <Text style={tw`text-[#49739c] dark:text-white/80 mt-1`}>
+                Free lesson (audio + captions + slides) and quiz. Score{' '}
+                <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>≥ 70%</Text> to unlock your certificate
+                {isOrgFlow ? ' — covered by your organization' : ''}.
               </Text>
             </View>
-          )}
 
-          {/* Step indicator */}
-          <View style={tw`flex-row flex-wrap items-center gap-2 mb-3`}>
-            {[
-              { k: 'course', label: 'Choose' },
-              { k: 'outline', label: 'Outline' },
-              { k: 'lessons', label: 'Lessons' },
-              { k: 'quiz', label: 'Quiz' },
-              { k: 'cert', label: 'Certificate' },
-            ].map((s, i) => {
-              const active =
-                (i === 0 && !outline.length) ||
-                (i === 1 && step === 'outlining') ||
-                (i === 2 && (step === 'narrating' || hasAIContent)) ||
-                (i === 3 && (quiz?.questions?.length || step === 'quizzing')) ||
-                (i === 4 && Boolean(grade?.passed));
-              return (
-                <View
-                  key={s.k}
-                  style={tw.style(
-                    'px-2 py-1 rounded-full border',
-                    active
-                      ? 'bg-indigo-50 dark:bg-indigo-600/30 border-indigo-600'
-                      : 'bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/10'
-                  )}
-                >
-                  <Text style={tw`text-[#0d141c] dark:text-white text-[11px]`}>
-                    {i + 1}. {s.label}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+            {/* Share dialog near header */}
+            <Modal
+              visible={canShareUi && shareOpen}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShareOpen(false)}
+            >
+              <OrgShareDialog
+                open={canShareUi && shareOpen}
+                onClose={() => setShareOpen(false)}
+                courseId={selectedCourse?.id || null}
+                courseTitle={selectedCourse?.title || (customTitle || null)}
+                totalLessons={safeLessons}
+                quizCount={safeQuiz}
+                minutes={capMinutes(minutes)}
+              />
+            </Modal>
 
-          {/* Controls */}
-          <ControlsPanel
-            showMinimalControls={showMinimalControls}
-            isLockedLearner={isLockedLearner}
-            canShareUi={canShareUi}
-            onOpenOverlay={openOverlay}
-            overlayAvailable={overlayAvailable}
-            restrictStarter={restrictStarter}
-            knobsDisabled={knobsDisabled}
-            onOpenShare={() => { setIsMaximized(false); setShareOpen(true); }}
-            busy={preparingNow || starting}
-            topCourses={(topCourses || []).map((c: TopCourse) => ({ id: c.id, title: c.title }))}
-            selectedCourse={selectedCourse ? { id: selectedCourse.id, title: selectedCourse.title } : null}
-            onSelectCourse={(id) => {
-              const found = (topCourses || []).find((c: TopCourse) => c.id === id) || null;
-              dlog('CourseSelect.onChange/Select →', { id, foundTitle: found?.title });
-              setActiveRunId(null);
-              setUiPreparing(false);
-              setPlayerReady(false);
-              setPlayerLoading(false);
-              setLockedSsml(null);
-              selectCourse(found);
-            }}
+            {degraded && (
+              <View style={tw`rounded-xl p-3 bg-yellow-50 border border-yellow-300 mb-3`}>
+                <Text style={tw`text-yellow-700 dark:text-yellow-200 text-sm`}>
+                  High demand fallback: content may be simplified, but your progress still counts.
+                </Text>
+              </View>
+            )}
 
-            PRESETS={PRESETS}
-            TRACKS={TRACKS}
-            trackLessons={trackLessons}
-            sizePreset={sizePreset}
-            setSizePreset={setSizePreset}
-            minutes={minutes}
-            setMinutes={setMinutes}
-            classLevel={classLevel}
-            setClassLevel={setClassLevel}
-            programTrack={programTrack}
-            setProgramTrack={setProgramTrack}
-            capMinutes={capMinutes}
+            {/* Step indicator */}
+            <View style={tw`flex-row flex-wrap items-center gap-2 mb-3`}>
+              {[
+                { k: 'course', label: 'Choose' },
+                { k: 'outline', label: 'Outline' },
+                { k: 'lessons', label: 'Lessons' },
+                { k: 'quiz', label: 'Quiz' },
+                { k: 'cert', label: 'Certificate' },
+              ].map((s, i) => {
+                const active =
+                  (i === 0 && !outline.length) ||
+                  (i === 1 && step === 'outlining') ||
+                  (i === 2 && (step === 'narrating' || hasAIContent)) ||
+                  (i === 3 && (quiz?.questions?.length || step === 'quizzing')) ||
+                  (i === 4 && Boolean(grade?.passed));
+                return (
+                  <View
+                    key={s.k}
+                    style={tw.style(
+                      'px-2 py-1 rounded-full border',
+                      active
+                        ? 'bg-indigo-50 dark:bg-indigo-600/30 border-indigo-600'
+                        : 'bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/10'
+                    )}
+                  >
+                    <Text style={tw`text-[#0d141c] dark:text-white text-[11px]`}>
+                      {i + 1}. {s.label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
 
-            // override toggles
-            totalLessons={totalLessons}
-            setTotalLessons={setTotalLessons}
-            quizCount={quizCount}
-            setQuizCount={setQuizCount}
-            overrideLessons={overrideLessons}
-            setOverrideLessons={setOverrideLessons}
-            overrideQuiz={overrideQuiz}
-            setOverrideQuiz={setOverrideQuiz}
+            {/* Controls */}
+            <ControlsPanel
+              showMinimalControls={showMinimalControls}
+              isLockedLearner={isLockedLearner}
+              canShareUi={canShareUi}
+              onOpenOverlay={openOverlay}
+              overlayAvailable={overlayAvailable}
+              restrictStarter={restrictStarter}
+              knobsDisabled={knobsDisabled}
+              onOpenShare={() => {
+                setIsMaximized(false);
+                setShareOpen(true);
+              }}
+              busy={preparingNow || starting}
+              topCourses={(topCourses || []).map((c: TopCourse) => ({ id: c.id, title: c.title }))}
+              selectedCourse={selectedCourse ? { id: selectedCourse.id, title: selectedCourse.title } : null}
+              onSelectCourse={(id) => {
+                const found = (topCourses || []).find((c: TopCourse) => c.id === id) || null;
+                dlog('CourseSelect.onChange/Select →', { id, foundTitle: found?.title });
 
-            customTitle={customTitle}
-            setCustomTitle={(s: string) => {
-              setCustomTitle(s);
-              if (s.trim()) selectCourse(null);
-            }}
+                setActiveRunId(null);
+                setUiPreparing(false);
+                setPlayerReady(false);
+                setPlayerLoading(false);
+                setLockedSsml(null);
 
-            hasAIContent={hasAIContent}
-            onStart={onStart}
-            onRefreshSelectedAI={refreshSelectedAI}
-          />
+                selectCourse(found);
+              }}
+              PRESETS={PRESETS}
+              TRACKS={TRACKS}
+              trackLessons={trackLessons}
+              sizePreset={sizePreset}
+              setSizePreset={setSizePreset}
+              minutes={minutes}
+              setMinutes={setMinutes}
+              classLevel={classLevel}
+              setClassLevel={setClassLevel}
+              programTrack={programTrack}
+              setProgramTrack={setProgramTrack}
+              capMinutes={capMinutes}
+              totalLessons={totalLessons}
+              setTotalLessons={setTotalLessons}
+              quizCount={quizCount}
+              setQuizCount={setQuizCount}
+              overrideLessons={overrideLessons}
+              setOverrideLessons={setOverrideLessons}
+              overrideQuiz={overrideQuiz}
+              setOverrideQuiz={setOverrideQuiz}
+              customTitle={customTitle}
+              setCustomTitle={(s: string) => {
+                setCustomTitle(s);
+                if (s.trim()) selectCourse(null);
+              }}
+              hasAIContent={hasAIContent}
+              onStart={onStart}
+              onRefreshSelectedAI={refreshSelectedAI}
+            />
 
-          {/* Classroom / Outline / Quiz */}
-           <LessonAndQuizPane
+            {/* Classroom / Outline / Quiz */}
+            <LessonAndQuizPane
               compactPlayer={true}
               showCourseList={showCourseList}
               displaySsml={displaySsml}
@@ -1083,6 +1115,7 @@ const handleToggleMaximized = useCallback(() => {
               }}
               safeLessons={safeLessons}
               safeQuiz={safeQuiz}
+              overrideLessons={overrideLessons} 
               quiz={quiz}
               answers={answers}
               onAnswer={handleAnswer}
@@ -1118,52 +1151,59 @@ const handleToggleMaximized = useCallback(() => {
               canAutoStart={false}
               onViewResults={(courseId: string, courseTitle: string, g: { scorePct: number; passMark: number; passed: boolean }) => {
                 dlog('navigate → Results', { courseId, courseTitle, grade: g });
-                navigation.navigate('Results' as any, {
-                  courseId,
-                  courseTitle,
-                  grade: {
-                    scorePct: g.scorePct,
-                    passMark: g.passMark,
-                    passed: g.passed,
-                  },
-                } as any);
+                navigation.navigate(
+                  'Results' as any,
+                  {
+                    courseId,
+                    courseTitle,
+                    grade: {
+                      scorePct: g.scorePct,
+                      passMark: g.passMark,
+                      passed: g.passed,
+                    },
+                  } as any
+                );
               }}
               onOverlayState={setOverlayState}
             />
-
           </View>
 
-        {/* RIGHT (course list) */}
-        {showCourseList && (
-          <View style={tw`w-full md:w-1/3 mt-4 md:mt-0 md:pl-4`}>
-            <CourseList
-              items={(topCourses || []).map((c: TopCourse) => ({
-                id: c.id,
-                title: c.title,
-                blurb: getCourseBlurb(c),
-              }))}
-              activeId={selectedCourse?.id || null}
-              onSelect={(id) => {
-                const found = (topCourses || []).find((c: TopCourse) => c.id === id) || null;
-                dlog('CourseList.onSelect', { id, title: found?.title });
+          {/* RIGHT (course list) */}
+          {showCourseList && (
+            <View style={tw`w-full md:w-1/3`}>
+              <CourseList
+                items={(topCourses || []).map((c: TopCourse) => ({
+                  id: c.id,
+                  title: c.title,
+                  blurb: getCourseBlurb(c),
+                }))}
+                activeId={selectedCourse?.id || null}
+                onSelect={(id) => {
+                  const found = (topCourses || []).find((c: TopCourse) => c.id === id) || null;
+                  dlog('CourseList.onSelect', { id, title: found?.title });
 
-                setActiveRunId(null);
-                setUiPreparing(false);
-                setPlayerReady(false);
-                setPlayerLoading(false);
-                setLockedSsml(null);
+                  setActiveRunId(null);
+                  setUiPreparing(false);
+                  setPlayerReady(false);
+                  setPlayerLoading(false);
+                  setLockedSsml(null);
 
-                selectCourse(found);
-              }}
-              onRefresh={refreshCourseList}
-              onLoadMore={handleLoadMore}
-              hasMore={Boolean(hasMoreCourses)}
-            />
-          </View>
-        )}
+                  selectCourse(found);
+                }}
+                onRefresh={refreshCourseList}
+                onLoadMore={handleLoadMore}
+                hasMore={Boolean(hasMoreCourses)}
+              />
+            </View>
+          )}
+        </View>
       </RefreshableScrollView>
+
       {/* ✅ GLOBAL OVERLAY LAYER (outside ScrollView, above everything) */}
-      <View pointerEvents="box-none" style={[StyleSheet.absoluteFillObject, { zIndex: 999999, elevation: 999999 }]}>
+      <View
+        pointerEvents="box-none"
+        style={[StyleSheet.absoluteFillObject, { zIndex: 999999, elevation: 999999 }]}
+      >
         <LessonOverlayNative
           lesson={currentLessonForOverlay}
           rememberKey={`robotTutor:${selectedCourse?.id || customTitle || 'free'}`}
@@ -1171,10 +1211,10 @@ const handleToggleMaximized = useCallback(() => {
           ref={overlayRef}
         />
       </View>
-
     </View>
-    </SafeAreaView>
-  );
+  </SafeAreaView>
+);
+
 };
 
 export default RobotTeacher;

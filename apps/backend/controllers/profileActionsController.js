@@ -1,4 +1,5 @@
 import pool from '../config/db.js';
+import { notifyNewMessage } from '../services/pushService.js';
 
 // Add to Favorites
 export const addToFavorites = async (req, res) => {
@@ -28,40 +29,45 @@ export const addToFavorites = async (req, res) => {
 };
 
 // Send Message (no socket emits here)
+// Send Message (with push)
 export const sendMessage = async (req, res) => {
   try {
     const { recipientId, content } = req.body;
     const authSenderId = req.user.id;
+
     if (!authSenderId || !recipientId || !content) {
       return res
         .status(400)
         .json({ message: 'Sender ID, recipient ID, and content are required' });
     }
 
-    // Lookup profiles
+    // Lookup sender profile id + name (we’ll use name for notification title)
     const senderProfileResult = await pool.query(
-      'SELECT id FROM profiles WHERE user_id = $1',
+      'SELECT id, name FROM profiles WHERE user_id = $1',
       [authSenderId],
     );
     if (senderProfileResult.rows.length === 0) {
       return res.status(404).json({ message: 'Sender profile not found.' });
     }
+
     const senderProfileId = senderProfileResult.rows[0].id;
+    const senderName = senderProfileResult.rows[0].name || 'New message';
+
+    // recipientId is already a profile id
     const recipientProfileId = recipientId;
 
     // Upsert conversation
     let conversation = await pool.query(
       `SELECT id FROM conversations 
-         WHERE (sender_id = $1 AND recipient_id = $2)
-            OR (sender_id = $2 AND recipient_id = $1)`,
+       WHERE (sender_id = $1 AND recipient_id = $2)
+          OR (sender_id = $2 AND recipient_id = $1)`,
       [senderProfileId, recipientProfileId],
     );
 
     let conversationId;
     if (conversation.rows.length === 0) {
       const newConv = await pool.query(
-        `INSERT INTO conversations 
-           (sender_id, recipient_id, unread_count) 
+        `INSERT INTO conversations (sender_id, recipient_id, unread_count) 
          VALUES ($1, $2, 1) 
          RETURNING id`,
         [senderProfileId, recipientProfileId],
@@ -71,7 +77,7 @@ export const sendMessage = async (req, res) => {
       conversationId = conversation.rows[0].id;
       await pool.query(
         `UPDATE conversations 
-           SET unread_count = unread_count + 1, updated_at = NOW() 
+         SET unread_count = unread_count + 1, updated_at = NOW() 
          WHERE id = $1 AND recipient_id = $2`,
         [conversationId, recipientProfileId],
       );
@@ -79,8 +85,7 @@ export const sendMessage = async (req, res) => {
 
     // Insert message
     const messageResult = await pool.query(
-      `INSERT INTO messages 
-         (conversation_id, sender_id, content) 
+      `INSERT INTO messages (conversation_id, sender_id, content) 
        VALUES ($1, $2, $3) 
        RETURNING *`,
       [conversationId, senderProfileId, content],
@@ -88,13 +93,24 @@ export const sendMessage = async (req, res) => {
 
     // Touch updated_at
     await pool.query(
-      `UPDATE conversations 
-         SET updated_at = NOW() 
-       WHERE id = $1`,
+      `UPDATE conversations SET updated_at = NOW() WHERE id = $1`,
       [conversationId],
     );
 
-    // Response only—no req.io.emit() calls here
+    // ✅ SEND PUSH HERE (after message is saved)
+    // Don’t block the response if Expo is slow:
+    void notifyNewMessage({
+      recipientProfileId: String(recipientProfileId),
+      title: senderName,
+      body: String(content).slice(0, 140),
+      data: {
+        screen: 'Messages',
+        params: { studentId: String(senderProfileId) },
+        conversationId: String(conversationId),
+      },
+    }).catch((e) => console.error('[push] notifyNewMessage failed', e));
+
+
     res.status(201).json({
       message: 'Message sent successfully',
       data: messageResult.rows[0],
@@ -104,6 +120,7 @@ export const sendMessage = async (req, res) => {
     res.status(500).json({ message: 'Failed to send message', error });
   }
 };
+
 
 // Get Conversations with Pagination
 export const getConversations = async (req, res) => {

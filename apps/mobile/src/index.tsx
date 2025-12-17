@@ -4,7 +4,8 @@ import * as Linking from 'expo-linking';
 
 import axios from 'axios';
 import React, { useEffect, useRef } from 'react';
-import { LogBox, StatusBar, StyleSheet } from 'react-native';
+import { LogBox, StatusBar, StyleSheet, Platform } from 'react-native';
+
 import { registerRootComponent } from 'expo';
 import Constants from 'expo-constants';
 import { ThemeProvider, useThemePref } from './theme/ThemeContext';
@@ -152,45 +153,53 @@ const RootInner = () => {
   // ⬇️ Use app-scoped axios + only register when we have a session
   const { http, token, orgToken } = useShopContext() as any;
 
-  useEffect(() => {
-    let cleanup = () => {};
-    let cancelled = false;
+useEffect(() => {
+  let cleanup = () => {};
+  let cancelled = false;
 
-    (async () => {
-      // Only try when we have some session
-      if (!token && !orgToken) return;
+  (async () => {
+    // Only try when we have some session
+    if (!token && !orgToken) return;
 
-      const pushToken = await registerForPushToken();
-      if (!pushToken) return;
+    const pushToken = await registerForPushToken();
+    if (!pushToken || cancelled) return;
 
-      try {
-        await http.post('/api/notifications/register', { token: pushToken });
-      } catch (e: any) {
-        // Quietly ignore 404/401 in dev; no need to warn users
-        if (__DEV__) {
-          const status = e?.response?.status;
-          if (status !== 404) console.warn('Token register failed', e?.message || e);
-        }
+    try {
+      await http.post('/api/push/register', {
+        expoPushToken: pushToken,
+        platform: Platform.OS,
+      });
+      if (__DEV__) console.log('[push] registered:', pushToken);
+    } catch (e: any) {
+      // Quietly ignore in dev; but do log unexpected statuses
+      if (__DEV__) {
+        const status = e?.response?.status;
+        console.warn('[push] register failed', status, e?.message || e);
       }
-    })();
+    }
+  })();
 
-    cleanup = initNotificationListeners({
-      onReceive: () => {}, // optional: update in-app badges/toasts
-      onRespond: (resp) => {
-        const data = resp.notification.request.content.data as any;
-        if (data?.screen) {
-          navRef.current?.dispatch(
-            CommonActions.navigate({
-              name: String(data.screen),
-              params: data.params ?? undefined,
-            })
-          );
-        }
-      },
-    });
+  cleanup = initNotificationListeners({
+    onReceive: () => {},
+    onRespond: (resp) => {
+      const data = resp.notification.request.content.data as any;
+      if (data?.screen) {
+        navRef.current?.dispatch(
+          CommonActions.navigate({
+            name: String(data.screen),
+            params: data.params ?? undefined,
+          }),
+        );
+      }
+    },
+  });
 
-    return () => cleanup();
-  }, [navRef, http, token, orgToken]);
+  return () => {
+    cancelled = true;
+    cleanup();
+  };
+}, [navRef, http, token, orgToken]);
+
 
   return (
     <>

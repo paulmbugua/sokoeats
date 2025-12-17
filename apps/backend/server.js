@@ -58,6 +58,10 @@ import { inflightLimiter } from './middleware/inflightLimiter.js';
 import orgExamsRoutes from './routes/orgExamsRoutes.js';
 import paystackRoutes from './routes/paystackRoutes.js';
 import { handlePaystackWebhook } from './controllers/paystackController.js';
+import pushRoutes from './routes/pushRoutes.js';
+import { notifyNewMessage } from './services/pushService.js';
+import messagesRoutes from './routes/messagesRoutes.js';
+
 
 // Middleware
 import {
@@ -321,6 +325,8 @@ if (isProduction) {
 app.use('/api/user',              userLimiter,         userRouter);
 app.use('/api/profile',                                profileRoutes);
 app.use('/api/profileActions',                         profileActionsRoutes);
+app.use('/api/push',                                    pushRoutes);
+app.use('/api',                                         messagesRoutes);
 
 
 // Payments & webhooks
@@ -412,79 +418,99 @@ io.on('connection', (socket) => {
   });
 
   socket.on('sendMessage', async (data, callback) => {
-    const { recipientId, content, senderId, senderName } = data;
-    console.log('sendMessage data:', { senderId, recipientId, content, senderName });
+  const { recipientId, content, senderId } = data;
 
-    const getProfileById = async (profileId) => {
-      const result = await pool.query('SELECT id FROM profiles WHERE id = $1', [profileId]);
-      return result.rows.length > 0 ? result.rows[0].id : null;
-    };
+  const getProfileById = async (profileId) => {
+    const result = await pool.query('SELECT id FROM profiles WHERE id = $1', [profileId]);
+    return result.rows.length > 0 ? result.rows[0].id : null;
+  };
 
-    try {
-      const senderProfileId = await getProfileById(senderId);
-      const recipientProfileId = await getProfileById(recipientId);
+  try {
+    const senderProfileId = await getProfileById(senderId);
+    const recipientProfileId = await getProfileById(recipientId);
 
-      if (!senderProfileId || !recipientProfileId) {
-        console.error('Sender or recipient profile not found.');
-        return callback && callback({ status: 'error', message: 'Sender or recipient profile not found.' });
-      }
+    if (!senderProfileId || !recipientProfileId) {
+      return callback?.({ status: 'error', message: 'Sender or recipient profile not found.' });
+    }
 
-      // Find or create conversation
-      let conversation = await pool.query(
-        `SELECT id FROM conversations 
-         WHERE (sender_id = $1 AND recipient_id = $2)
-            OR (sender_id = $2 AND recipient_id = $1)`,
+    // Find or create conversation
+    let conversation = await pool.query(
+      `SELECT id FROM conversations
+       WHERE (sender_id = $1 AND recipient_id = $2)
+          OR (sender_id = $2 AND recipient_id = $1)`,
+      [senderProfileId, recipientProfileId]
+    );
+
+    let conversationId;
+    if (conversation.rows.length === 0) {
+      const newConversation = await pool.query(
+        `INSERT INTO conversations (sender_id, recipient_id, unread_count)
+         VALUES ($1, $2, 1) RETURNING id`,
         [senderProfileId, recipientProfileId]
       );
-
-      let conversationId;
-      if (conversation.rows.length === 0) {
-        const newConversation = await pool.query(
-          `INSERT INTO conversations (sender_id, recipient_id, unread_count) 
-           VALUES ($1, $2, 1) RETURNING id`,
-          [senderProfileId, recipientProfileId]
-        );
-        conversationId = newConversation.rows[0].id;
-      } else {
-        conversationId = conversation.rows[0].id;
-        await pool.query(
-          `UPDATE conversations 
-           SET unread_count = unread_count + 1, updated_at = NOW() 
-           WHERE id = $1 AND recipient_id = $2`,
-          [conversationId, recipientProfileId]
-        );
-      }
-
-      // Store message
+      conversationId = newConversation.rows[0].id;
+    } else {
+      conversationId = conversation.rows[0].id;
       await pool.query(
-        `INSERT INTO messages (conversation_id, sender_id, content)
-         VALUES ($1, $2, $3)`,
-        [conversationId, senderProfileId, content]
+        `UPDATE conversations
+         SET unread_count = unread_count + 1, updated_at = NOW()
+         WHERE id = $1 AND recipient_id = $2`,
+        [conversationId, recipientProfileId]
       );
-
-      // Emit events
-      io.to(String(recipientId)).emit('messageReceived', {
-        recipientId: String(recipientProfileId),
-        content,
-        senderId: String(senderProfileId),
-        senderName,
-        unread: true,
-      });
-
-      io.to(String(senderId)).emit('messageReceived', {
-        recipientId: String(recipientProfileId),
-        content,
-        senderId: String(senderProfileId),
-        senderName: 'You',
-        unread: false,
-      });
-
-      callback && callback({ status: 'success', message: 'Message sent successfully' });
-    } catch (error) {
-      console.error('Error sending message:', error);
-      callback && callback({ status: 'error', message: 'Failed to send message' });
     }
-  });
+
+    // Store message
+    await pool.query(
+      `INSERT INTO messages (conversation_id, sender_id, content)
+       VALUES ($1, $2, $3)`,
+      [conversationId, senderProfileId, content]
+    );
+
+    // Emit realtime events (socket rooms are profile ids)
+    io.to(String(recipientProfileId)).emit('messageReceived', {
+      recipientId: String(recipientProfileId),
+      content,
+      senderId: String(senderProfileId),
+      senderName: null,
+      unread: true,
+      conversationId: String(conversationId),
+    });
+
+    io.to(String(senderProfileId)).emit('messageReceived', {
+      recipientId: String(recipientProfileId),
+      content,
+      senderId: String(senderProfileId),
+      senderName: 'You',
+      unread: false,
+      conversationId: String(conversationId),
+    });
+
+    // ✅ PUSH NOTIFICATION (must be inside this async handler)
+    // Fetch sender name from DB (don’t trust client payload)
+    const senderNameRes = await pool.query(
+      'SELECT name FROM profiles WHERE id = $1',
+      [senderProfileId]
+    );
+    const senderNameDb = senderNameRes.rows[0]?.name || 'New message';
+
+    // Don’t block socket response if Expo is slow
+    void notifyNewMessage({
+      recipientProfileId: recipientProfileId,
+      title: senderNameDb,
+      body: String(content || 'You have a new message').slice(0, 140),
+      data: {
+        screen: 'Messages',
+        params: { studentId: String(senderProfileId) },
+      },
+    }).catch((e) => console.warn('[push] notifyNewMessage failed', e?.message || e));
+
+    callback?.({ status: 'success', message: 'Message sent successfully' });
+  } catch (error) {
+    console.error('Error sending message:', error);
+    callback?.({ status: 'error', message: 'Failed to send message' });
+  }
+});
+
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);

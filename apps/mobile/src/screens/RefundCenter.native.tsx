@@ -14,14 +14,24 @@ import {
   findNodeHandle,
   Platform,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker"; // yarn add @react-native-picker/picker
 import { useColorScheme } from "react-native";
+
+// ✅ same selector used in CreateProfile
+import SelectField from "./SelectField.native";
 
 type RefundCenterProps = {
   backendUrl: string;
   token?: string | null;
   className?: string;
 };
+
+const REASON_OPTIONS = [
+  { label: "Accidental purchase", value: "accidental_purchase" },
+  { label: "Duplicate charge", value: "duplicate_charge" },
+  { label: "Didn’t receive service", value: "didnt_receive_service" },
+  { label: "Quality issue", value: "quality_issue" },
+  { label: "Other", value: "other" },
+] as const;
 
 const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, className }) => {
   const scheme = useColorScheme();
@@ -32,7 +42,7 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
   // form states
   const [txId, setTxId] = useState("");
   const [amount, setAmount] = useState("");
-  const [reason, setReason] = useState("accidental_purchase");
+  const [reason, setReason] = useState<string>("accidental_purchase");
   const [details, setDetails] = useState("");
   const [resolution, setResolution] = useState<"original" | "tokens">("original");
   const [attachmentUrl, setAttachmentUrl] = useState("");
@@ -68,13 +78,10 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
       setShowPolicy(true);
       setAgreeErr(true);
 
-      // Scroll and announce the “agree” row
       requestAnimationFrame(() => {
         if (agreeRowRef.current && scrollRef.current) {
-          // Try to announce first for accessibility
           const h = findNodeHandle(agreeRowRef.current);
           if (h) AccessibilityInfo.setAccessibilityFocus?.(h);
-          // A simple scroll-to-bottom fallback (reliable across RN versions)
           scrollRef.current.scrollToEnd({ animated: true });
         }
       });
@@ -137,7 +144,10 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
           {/* Header row */}
           <View className="flex-row items-center justify-between">
             <Text className="font-semibold text-slate-900 dark:text-white">Refund Request</Text>
-            <Pressable onPress={() => setIsOpen(false)} className="px-3 py-2 rounded-lg bg-[#e7edf4] dark:bg-[#172534]">
+            <Pressable
+              onPress={() => setIsOpen(false)}
+              className="px-3 py-2 rounded-lg bg-[#e7edf4] dark:bg-[#172534]"
+            >
               <Text className="text-sm text-slate-900 dark:text-white">Close ✕</Text>
             </Pressable>
           </View>
@@ -206,26 +216,15 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
               </View>
             </View>
 
-            {/* Reason (Picker) */}
+            {/* ✅ Reason (SelectField instead of Picker) */}
             <View className="mt-1">
-              <Text className="text-sm font-medium mb-1 text-slate-800 dark:text-white">Reason</Text>
-              <View className="rounded-xl border border-[#cedbe8] dark:border-darkCard bg-slate-50 dark:bg-[#0f1821]">
-                <Picker
-                  selectedValue={reason}
-                  onValueChange={(v) => setReason(String(v))}
-                  style={{ color: isDark ? "#ffffff" : "#0f172a" }}
-                  dropdownIconColor={
-                    Platform.OS === "android" ? (isDark ? "#ffffff" : "#64748b") : undefined
-                  }
-                  mode={Platform.OS === "android" ? "dropdown" : "dialog"}
-                >
-                  <Picker.Item label="Accidental purchase" value="accidental_purchase" />
-                  <Picker.Item label="Duplicate charge" value="duplicate_charge" />
-                  <Picker.Item label="Didn’t receive service" value="didnt_receive_service" />
-                  <Picker.Item label="Quality issue" value="quality_issue" />
-                  <Picker.Item label="Other" value="other" />
-                </Picker>
-              </View>
+              <SelectField
+                label="Reason"
+                value={reason}
+                placeholder="Select a reason…"
+                options={REASON_OPTIONS as any}
+                onChange={(v) => setReason(String(v))}
+              />
             </View>
 
             {/* Details */}
@@ -331,9 +330,7 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
               <Pressable
                 disabled={busy}
                 onPress={submit}
-                className={`h-10 px-4 rounded-xl bg-indigo-600 ${
-                  busy ? "opacity-60" : ""
-                }`}
+                className={`h-10 px-4 rounded-xl bg-indigo-600 ${busy ? "opacity-60" : ""}`}
               >
                 <Text className="text-white font-semibold leading-10">
                   {busy ? "Submitting…" : "Submit refund request"}

@@ -27,6 +27,7 @@ import {
   faChalkboardUser,
   faUsers,
   faUser,
+   faUserGear,
   faMessage,
   faBell,
   faVideo,
@@ -575,6 +576,19 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
                   <span className="lg:ml-2">My profile</span>
                 </span>
               </Link>
+              <Link
+                to="/account"
+                className="px-3 py-2 rounded-xl hover:bg-[#e7edf4] dark:hover:bg-[#172534] text-sm"
+                title="Account"
+              >
+                <span className="flex items-center">
+                  <span className="hidden lg:inline-flex w-5 shrink-0 justify-center">
+                    <FontAwesomeIcon icon={faUserGear as IconProp} aria-hidden />
+                  </span>
+                  <span className="lg:ml-2">Account</span>
+                </span>
+              </Link>
+
 
               <Link
                 to="/messages"

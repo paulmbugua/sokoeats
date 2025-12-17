@@ -11,7 +11,7 @@ import {
   Linking,
   Platform,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+// ❌ removed Picker
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
 import tw from '../../../tailwind';
@@ -25,6 +25,9 @@ import {
   createOrgAssignment,
   ensureOrgShareableAssignment,
 } from '@mytutorapp/shared/api/orgApi';
+
+// ✅ same selector pattern as CreateProfile
+import SelectField from '@/screens/SelectField.native';
 
 type Props = {
   open: boolean;
@@ -73,6 +76,17 @@ const pickCourseId = (obj: any): string | null =>
   obj?.courseId ??
   obj?.course_id ??
   null;
+
+// ✅ options for SelectField (instead of Picker)
+const HOUR_OPTIONS = Array.from({ length: 13 }).map((_, h) => ({
+  label: `${h} ${h === 1 ? 'hour' : 'hours'}`,
+  value: String(h),
+}));
+
+const MINUTE_OPTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => ({
+  label: `${m} ${m === 1 ? 'minute' : 'minutes'}`,
+  value: String(m),
+}));
 
 export default function OrgShareDialogNative({
   open,
@@ -453,53 +467,41 @@ export default function OrgShareDialogNative({
                       )}
                     </Text>
 
-                    <View style={tw`flex-row items-center gap-2`}>
-                      <View style={tw`flex-1`}>
-                        <Picker
-                          enabled={!lockTimer}
-                          selectedValue={timerH}
-                          onValueChange={(v) => setTimerH(Number(v))}
-                          style={tw`text-white bg-black/40 rounded-lg border border-white/10`}
-                          dropdownIconColor={
-                            Platform.OS === 'android' ? '#ffffff' : undefined
-                          }
-                          mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-                        >
-                          {Array.from({ length: 13 }).map((_, h) => (
-                            <Picker.Item
-                              key={h}
-                              label={`${h} ${h === 1 ? 'hour' : 'hours'}`}
-                              value={h}
-                            />
-                          ))}
-                        </Picker>
+                    <View style={tw`flex-row items-start gap-2`}>
+                      {/* ✅ Hours (SelectField) */}
+                      <View
+                        style={tw.style('flex-1', lockTimer && 'opacity-60')}
+                        pointerEvents={lockTimer ? 'none' : 'auto'}
+                      >
+                        <SelectField
+                          label="Hours"
+                          value={String(timerH ?? 0)}
+                          placeholder="Hours"
+                          options={HOUR_OPTIONS}
+                          onChange={(v) => setTimerH(Number(v))}
+                        />
                       </View>
 
-                      <View style={tw`flex-1`}>
-                        <Picker
-                          enabled={!lockTimer}
-                          selectedValue={timerM}
-                          onValueChange={(v) => setTimerM(Number(v))}
-                          style={tw`text-white bg-black/40 rounded-lg border border-white/10`}
-                          dropdownIconColor={
-                            Platform.OS === 'android' ? '#ffffff' : undefined
-                          }
-                          mode={Platform.OS === 'android' ? 'dropdown' : 'dialog'}
-                        >
-                          {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
-                            <Picker.Item
-                              key={m}
-                              label={`${m} ${m === 1 ? 'minute' : 'minutes'}`}
-                              value={m}
-                            />
-                          ))}
-                        </Picker>
+                      {/* ✅ Minutes (SelectField) */}
+                      <View
+                        style={tw.style('flex-1', lockTimer && 'opacity-60')}
+                        pointerEvents={lockTimer ? 'none' : 'auto'}
+                      >
+                        <SelectField
+                          label="Minutes"
+                          value={String(timerM ?? 0)}
+                          placeholder="Minutes"
+                          options={MINUTE_OPTIONS}
+                          onChange={(v) => setTimerM(Number(v))}
+                        />
                       </View>
 
-                      <Text style={tw`text-white/70 text-3xs`}>
-                        {String(timerH ?? 0).padStart(2, '0')}:
-                        {String(timerM ?? 0).padStart(2, '0')}:00
-                      </Text>
+                      <View style={tw`pt-6`}>
+                        <Text style={tw`text-white/70 text-3xs`}>
+                          {String(timerH ?? 0).padStart(2, '0')}:
+                          {String(timerM ?? 0).padStart(2, '0')}:00
+                        </Text>
+                      </View>
                     </View>
 
                     <Text style={tw`text-white/60 text-3xs mt-1`}>
@@ -541,9 +543,7 @@ export default function OrgShareDialogNative({
 
                 {/* Question type */}
                 <View>
-                  <Text style={tw`text-white/70 text-[10px] mb-1`}>
-                    Question type
-                  </Text>
+                  <Text style={tw`text-white/70 text-[10px] mb-1`}>Question type</Text>
                   <View style={tw`flex-row gap-2`}>
                     <Choice
                       label="Multiple choice (MCQ)"
@@ -572,11 +572,10 @@ export default function OrgShareDialogNative({
                   >
                     <Text style={tw`text-white`}>
                       {dueDate
-                        ? `${dueDate.getFullYear()}-${String(
-                            dueDate.getMonth() + 1
-                          ).padStart(2, '0')}-${String(
-                            dueDate.getDate()
-                          ).padStart(2, '0')}`
+                        ? `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(
+                            2,
+                            '0'
+                          )}-${String(dueDate.getDate()).padStart(2, '0')}`
                         : 'Pick a date'}
                     </Text>
                     <Text style={tw`text-white/60 text-3xs mt-1`}>
@@ -625,16 +624,10 @@ export default function OrgShareDialogNative({
 
                 {/* Share helpers (parity) */}
                 <View style={tw`flex-row flex-wrap gap-2 mt-1`}>
-                  <TouchableOpacity
-                    onPress={emailShare}
-                    style={tw`px-3 py-1.5 rounded-lg bg-white/10`}
-                  >
+                  <TouchableOpacity onPress={emailShare} style={tw`px-3 py-1.5 rounded-lg bg-white/10`}>
                     <Text style={tw`text-white text-[11px]`}>Email</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={whatsappShare}
-                    style={tw`px-3 py-1.5 rounded-lg bg-white/10`}
-                  >
+                  <TouchableOpacity onPress={whatsappShare} style={tw`px-3 py-1.5 rounded-lg bg-white/10`}>
                     <Text style={tw`text-white text-[11px]`}>WhatsApp</Text>
                   </TouchableOpacity>
                 </View>
@@ -648,16 +641,11 @@ export default function OrgShareDialogNative({
                     <TouchableOpacity
                       onPress={() => {
                         onClose();
-                        try {
-                          if (createdCourseId) {
-                            // optionally store breadcrumbs here
-                          }
-                        } catch {}
                         navigation.navigate('OrgElearnPortal', {
                           tab: 'assign',
                           from: 'share',
                           courseId: createdCourseId || (courseId ?? undefined),
-                        });
+                        } as any);
                       }}
                       style={tw`self-start px-3 py-1.5 rounded-lg bg-indigo-600`}
                     >
@@ -673,9 +661,7 @@ export default function OrgShareDialogNative({
 
           {/* Footer */}
           {!inviteLink && (
-            <View
-              style={tw`mt-3 pt-2 border-t border-white/10 flex-row justify-end`}
-            >
+            <View style={tw`mt-3 pt-2 border-t border-white/10 flex-row justify-end`}>
               <TouchableOpacity
                 onPress={handleShare}
                 disabled={busy || !canCreate}
@@ -711,12 +697,7 @@ const Choice: React.FC<{ label: string; active: boolean; onPress: () => void }> 
       active ? 'bg-emerald-600/15 border-emerald-500' : 'bg-white/5 border-white/10'
     )}
   >
-    <Text
-      style={tw.style(
-        'text-[10px]',
-        active ? 'text-white' : 'text-white/80'
-      )}
-    >
+    <Text style={tw.style('text-[10px]', active ? 'text-white' : 'text-white/80')}>
       {label}
     </Text>
   </TouchableOpacity>

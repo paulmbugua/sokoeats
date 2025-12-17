@@ -1,5 +1,6 @@
 // apps/mobile/src/screens/ClassVaultDetailScreen.native.tsx
-import React, { useEffect, useRef, useState } from 'react';
+/* eslint-disable prettier/prettier */
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +11,8 @@ import {
   ScrollView,
   Modal,
   TextInput,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import {
   RouteProp,
@@ -17,6 +20,7 @@ import {
   useNavigation,
   NavigationProp,
 } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEvent } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import tw from '../../tailwind';
@@ -28,18 +32,21 @@ import {
 } from '@mytutorapp/shared/api/classVaultApi';
 import type { MainStackParamList } from '../navigation/types';
 import type { VideoReview } from '@mytutorapp/shared/types';
+import { useThemePref } from '../theme/ThemeContext';
 
 type DetailRoute = RouteProp<MainStackParamList, 'ClassVaultDetail'>;
 
 export default function ClassVaultDetailScreen() {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const { backendUrl, token, profile } = useShopContext();
+  const insets = useSafeAreaInsets();
+  const { resolvedScheme } = useThemePref();
+
   const {
     params: { id: videoId },
   } = useRoute<DetailRoute>();
 
-  const { video, resources, unlockContent, error } =
-    useClassVaultDetail(videoId);
+  const { video, resources, unlockContent, error } = useClassVaultDetail(videoId);
   const [unlockError, setUnlockError] = useState<string>('');
 
   // ------- Reviews state (parity with web) -------
@@ -60,6 +67,7 @@ export default function ClassVaultDetailScreen() {
   // Reset unlock guard when switching videos
   useEffect(() => {
     didRequestUnlockRef.current = false;
+    promptedRef.current = false;
   }, [videoId]);
 
   // Fetch protected URLs once per id
@@ -73,11 +81,9 @@ export default function ClassVaultDetailScreen() {
 
   // Reviews
   const myId = profile?.id ? String(profile.id) : '';
-  const hasMyReview = myId
-    ? reviews.some((r) => String(r.student_id) === myId)
-    : false;
+  const hasMyReview = myId ? reviews.some((r) => String(r.student_id) === myId) : false;
 
-  const loadReviews = async (): Promise<void> => {
+  const loadReviews = useCallback(async (): Promise<void> => {
     try {
       setLoadingReviews(true);
       setReviewsError('');
@@ -88,18 +94,16 @@ export default function ClassVaultDetailScreen() {
     } finally {
       setLoadingReviews(false);
     }
-  };
+  }, [backendUrl, videoId]);
 
   useEffect(() => {
     void loadReviews();
-  }, [backendUrl, videoId]);
+  }, [loadReviews]);
 
   // always returns string (never undefined)
   const resolveUrl = (maybeUrl?: string): string => {
     if (!maybeUrl) return '';
-    if (maybeUrl.startsWith('http://') || maybeUrl.startsWith('https://')) {
-      return maybeUrl;
-    }
+    if (maybeUrl.startsWith('http://') || maybeUrl.startsWith('https://')) return maybeUrl;
     return `${backendUrl}${maybeUrl}`;
   };
 
@@ -123,17 +127,15 @@ export default function ClassVaultDetailScreen() {
     reviews.length > 0
       ? Number(
           (
-            reviews.reduce((s, r) => s + Number(r.rating), 0) /
-            reviews.length
+            reviews.reduce((s, r) => s + Number(r.rating), 0) / reviews.length
           ).toFixed(2),
         )
       : 0;
 
   // ---------- expo-video player (hooks MUST be unconditional) ----------
-  // Create once, attach later; we'll swap sources as URLs resolve.
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
-    p.timeUpdateEventInterval = 1; // seconds (frequency for `timeUpdate`)
+    p.timeUpdateEventInterval = 1;
     if (fullVideoUrl) p.play();
   });
 
@@ -144,9 +146,7 @@ export default function ClassVaultDetailScreen() {
       try {
         await player.pause();
         await player.replace(videoUri || null);
-        if (!cancelled && fullVideoUrl) {
-          player.play();
-        }
+        if (!cancelled && fullVideoUrl) player.play();
       } catch {
         // ignore
       }
@@ -173,291 +173,280 @@ export default function ClassVaultDetailScreen() {
     }
   }, [currentTime, duration, hasMyReview]);
 
+  // ---------- Theme-aware styles ----------
+  const placeholderColor = resolvedScheme === 'dark' ? '#9CA3AF' : '#64748B';
+
+  const bg = resolvedScheme === 'dark' ? '#0b1016' : '#f8fafc';
+  const screenBg = tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`;
+
+  const card = tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821]`;
+  const titleText = tw`text-[#0d141c] dark:text-white`;
+  const subtleText = tw`text-slate-700 dark:text-slate-300`;
+  const labelText = tw`text-[#49739c] dark:text-gray-200`;
+
+  const input = tw`w-full p-3 rounded-xl bg-slate-50 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white`;
+
+  const primaryBtn = tw`px-3 py-2 rounded-xl bg-pink-600`;
+  const primaryBtnText = tw`text-white text-sm font-semibold`;
+
+  const softBtn = tw`px-4 py-2 rounded-xl bg-slate-200 dark:bg-white/10`;
+  const softBtnText = tw`font-semibold text-[#0d141c] dark:text-white`;
+
+  // ✅ Footer guard (so bottom content isn't hidden behind FooterNav)
+  const FOOTER_GUARD = 96;
+  const bottomPad = Math.max(insets.bottom, 16) + FOOTER_GUARD;
+
   // ---------- Early returns (AFTER all hooks) ----------
   if (error) {
     return (
-      <View
-        style={tw`flex-1 bg-gray-900 justify-center items-center p-4`}
-      >
-        <Text style={tw`text-red-500 text-center`}>{error}</Text>
-      </View>
+      <SafeAreaView style={screenBg} edges={['top', 'left', 'right']}>
+        <StatusBar
+          barStyle={resolvedScheme === 'dark' ? 'light-content' : 'dark-content'}
+          backgroundColor={bg}
+        />
+        <View style={tw`flex-1 items-center justify-center px-4`}>
+          <Text style={tw`text-red-600 dark:text-red-400 text-center`}>{error}</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!video) {
     return (
-      <View
-        style={tw`flex-1 bg-gray-900 justify-center items-center`}
-      >
-        <ActivityIndicator
-          size="large"
-          color={tw.color('pink-500')}
+      <SafeAreaView style={screenBg} edges={['top', 'left', 'right']}>
+        <StatusBar
+          barStyle={resolvedScheme === 'dark' ? 'light-content' : 'dark-content'}
+          backgroundColor={bg}
         />
-      </View>
+        <View style={tw`flex-1 items-center justify-center`}>
+          <ActivityIndicator
+            size="large"
+            color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   // ---------- Main UI ----------
   return (
-    <ScrollView
-      contentContainerStyle={tw`bg-gray-900 p-4`}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* Title */}
-      <Text
-        style={tw`text-2xl text-white font-bold mb-4 text-center`}
+    <SafeAreaView style={screenBg} edges={['top', 'left', 'right']}>
+      <StatusBar
+        barStyle={resolvedScheme === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={bg}
+      />
+
+      <ScrollView
+        style={tw`flex-1`}
+        contentContainerStyle={[tw`px-4 pt-4`, { paddingBottom: bottomPad }]}
+        scrollIndicatorInsets={{ bottom: bottomPad }}
+        contentInset={Platform.OS === 'ios' ? { bottom: bottomPad } : undefined}
+        contentInsetAdjustmentBehavior="never"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.select({ ios: 'on-drag', android: 'none' })}
       >
-        {video.title}
-      </Text>
-
-      {/* Video / Preview */}
-      {videoUri !== '' && (
-        <View
-          style={tw`w-full h-56 mb-6 bg-black rounded-lg overflow-hidden`}
-        >
-          <VideoView
-            player={player}
-            style={tw`w-full h-full`}
-            nativeControls
-            allowsFullscreen
-            allowsPictureInPicture
-            contentFit="contain"
-          />
-        </View>
-      )}
-
-      {/* Metadata */}
-      <View style={tw`mb-6`}>
-        <Text style={tw`text-gray-400 mb-1`}>Subject</Text>
-        <Text style={tw`text-white mb-3`}>
-          {video.subject ?? '—'}
+        {/* Title */}
+        <Text style={[tw`text-2xl font-extrabold text-center mb-4`, titleText]}>
+          {video.title}
         </Text>
 
-        <Text style={tw`text-gray-400 mb-1`}>Grade Level</Text>
-        <Text style={tw`text-white mb-3`}>
-          {video.grade_level ?? '—'}
-        </Text>
-
-        {video.description ? (
-          <>
-            <Text style={tw`text-gray-400 mb-1`}>Description</Text>
-            <Text style={tw`text-white mb-3`}>
-              {video.description}
-            </Text>
-          </>
-        ) : null}
-
-        {video.tags?.length ? (
-          <>
-            <Text style={tw`text-gray-400 mb-1`}>Tags</Text>
-            <View style={tw`flex-row flex-wrap mb-3`}>
-              {video.tags.map((tag: string) => (
-                <Text
-                  key={tag}
-                  style={tw`text-sm text-white bg-gray-800 px-2 py-1 rounded mr-2 mb-2`}
-                >
-                  {tag}
-                </Text>
-              ))}
-            </View>
-          </>
-        ) : null}
-      </View>
-
-      {/* Rating summary + “Rate this video” opener */}
-      <View style={tw`rounded-xl border border-gray-800 p-4 mb-4`}>
-        <View style={tw`flex-row items-center`}>
-          <Text style={tw`text-slate-200`}>
-            <Text style={tw`font-semibold`}>Rating:</Text> ★ {avgRating} (
-            {reviews.length})
-          </Text>
-          {loadingReviews && (
-            <Text style={tw`ml-2 text-slate-400`}>Loading…</Text>
-          )}
-          {!!reviewsError && (
-            <Text style={tw`ml-2 text-red-400`}>
-              {reviewsError}
-            </Text>
-          )}
-          {!hasMyReview && (
-            <TouchableOpacity
-              onPress={() => setShowPrompt(true)}
-              style={tw`ml-auto px-3 py-1 rounded bg-pink-600`}
-            >
-              <Text
-                style={tw`text-white text-sm font-semibold`}
-              >
-                Rate this video
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {/* ——— Download / Purchase Buttons ——— */}
-
-      {/* PDF Button */}
-      {video.pdf_url && (
-        <TouchableOpacity
-          onPress={() => {
-            if (!pdfUri) {
-              navigation.navigate('BuyTokens');
-              return;
-            }
-            openLink(pdfUri, 'PDF');
-          }}
-          style={tw.style(
-            'w-full py-3 mb-4 rounded-lg',
-            pdfUri ? 'bg-gray-800' : 'bg-gray-700',
-          )}
-        >
-          <Text
-            style={tw`text-center text-white font-medium`}
-          >
-            {pdfUri
-              ? 'Download Class Notes (PDF)'
-              : 'Purchase to Access PDF'}
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Full Video Button */}
-      <TouchableOpacity
-        onPress={() => {
-          if (fullVideoUrl) openLink(fullVideoUrl, 'Video');
-          else navigation.navigate('BuyTokens');
-        }}
-        style={tw.style(
-          'w-full py-3 rounded-lg',
-          fullVideoUrl ? 'bg-gray-800' : 'bg-gray-700',
+        {/* Video / Preview */}
+        {videoUri !== '' && (
+          <View style={[tw`w-full h-56 mb-5 rounded-2xl overflow-hidden`, card]}>
+            <VideoView
+              player={player}
+              style={tw`w-full h-full`}
+              nativeControls
+              allowsFullscreen
+              allowsPictureInPicture
+              contentFit="contain"
+            />
+          </View>
         )}
-      >
-        <Text style={tw`text-center text-white font-medium`}>
-          {fullVideoUrl
-            ? 'Download Full Video'
-            : 'Purchase to Access Video'}
-        </Text>
-      </TouchableOpacity>
 
-      {/* Unlock error */}
-      {unlockError ? (
-        <Text
-          style={tw`mt-4 text-sm text-yellow-400 text-center`}
-        >
-          {unlockError}
-        </Text>
-      ) : null}
+        {/* Metadata card */}
+        <View style={[tw`p-4 mb-4`, card]}>
+          <Text style={[tw`text-xs font-semibold mb-1`, labelText]}>Subject</Text>
+          <Text style={[tw`mb-3`, titleText]}>{video.subject ?? '—'}</Text>
 
-      {/* Review Prompt Modal */}
-      <Modal
-        visible={showPrompt && !hasMyReview}
-        transparent
-        animationType="fade"
-      >
-        <View
-          style={tw`flex-1 bg-black/60 justify-center items-center p-4`}
-        >
-          <View
-            style={tw`w-full max-w-md rounded-2xl bg-gray-900 border border-gray-800 p-5`}
-          >
-            <Text
-              style={tw`text-lg font-bold text-white mb-3`}
-            >
-              How was it?
+          <Text style={[tw`text-xs font-semibold mb-1`, labelText]}>Grade Level</Text>
+          <Text style={[tw`mb-3`, titleText]}>{video.grade_level ?? '—'}</Text>
+
+          {video.description ? (
+            <>
+              <Text style={[tw`text-xs font-semibold mb-1`, labelText]}>Description</Text>
+              <Text style={[tw`mb-3`, subtleText]}>{video.description}</Text>
+            </>
+          ) : null}
+
+          {video.tags?.length ? (
+            <>
+              <Text style={[tw`text-xs font-semibold mb-2`, labelText]}>Tags</Text>
+              <View style={tw`flex-row flex-wrap`}>
+                {video.tags.map((tag: string) => (
+                  <Text
+                    key={tag}
+                    style={tw`text-xs text-[#0d141c] dark:text-white bg-[#e7edf4] dark:bg-[#172534] px-2 py-1 rounded-full mr-2 mb-2`}
+                  >
+                    {tag}
+                  </Text>
+                ))}
+              </View>
+            </>
+          ) : null}
+        </View>
+
+        {/* Rating summary + opener */}
+        <View style={[tw`p-4 mb-4`, card]}>
+          <View style={tw`flex-row items-center`}>
+            <Text style={[tw`text-sm`, subtleText]}>
+              <Text style={[tw`font-semibold`, titleText]}>Rating:</Text> ★ {avgRating} ({reviews.length})
             </Text>
 
-            <Text style={tw`text-slate-300 mb-1`}>
-              Rating (1–5)
-            </Text>
-            <TextInput
-              placeholder="1 to 5"
-              placeholderTextColor="#94a3b8"
-              keyboardType="numeric"
-              value={rating}
-              onChangeText={setRating}
-              style={tw`w-full p-3 rounded-xl bg-gray-800 text-white mb-3`}
-            />
+            {loadingReviews && (
+              <Text style={tw`ml-2 text-slate-500 dark:text-slate-400`}>Loading…</Text>
+            )}
+            {!!reviewsError && (
+              <Text style={tw`ml-2 text-red-600 dark:text-red-400`}>{reviewsError}</Text>
+            )}
 
-            <Text style={tw`text-slate-300 mb-1`}>
-              Comment (optional)
-            </Text>
-            <TextInput
-              placeholder="What did you think?"
-              placeholderTextColor="#94a3b8"
-              multiline
-              maxLength={500}
-              value={comment}
-              onChangeText={setComment}
-              style={tw`w-full h-24 p-3 rounded-xl bg-gray-800 text-white`}
-            />
-
-            <View style={tw`flex-row justify-end mt-4`}>
+            {!hasMyReview && (
               <TouchableOpacity
-                onPress={() => setShowPrompt(false)}
-                style={tw`px-4 py-2 rounded bg-gray-700 mr-2`}
+                onPress={() => setShowPrompt(true)}
+                activeOpacity={0.9}
+                style={[tw`ml-auto`, primaryBtn]}
               >
-                <Text style={tw`text-white`}>Cancel</Text>
+                <Text style={primaryBtnText}>Rate this video</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                disabled={saving}
-                onPress={async () => {
-                  const n = Number(rating);
-                  if (!Number.isFinite(n) || n < 1 || n > 5) {
-                    Alert.alert(
-                      'Invalid rating',
-                      'Please enter a number from 1 to 5.',
-                    );
-                    return;
-                  }
-                  if (!token) {
-                    Alert.alert(
-                      'Login required',
-                      'You must be logged in to review.',
-                    );
-                    return;
-                  }
-                  try {
-                    setSaving(true);
-                    await submitVideoReview(
-                      backendUrl,
-                      token,
-                      videoId,
-                      {
-                        rating: n,
-                        comment:
-                          comment.trim() || undefined,
-                      },
-                    );
-                    setShowPrompt(false);
-                    setComment('');
-                    setRating('');
-                    await loadReviews();
-                  } catch {
-                    Alert.alert(
-                      'Error',
-                      'Failed to submit review',
-                    );
-                  } finally {
-                    setSaving(false);
-                  }
-                }}
-                style={tw.style(
-                  'px-4 py-2 rounded',
-                  saving
-                    ? 'bg-pink-600 opacity-70'
-                    : 'bg-pink-600',
-                )}
-              >
-                <Text
-                  style={tw`text-white font-semibold`}
-                >
-                  {saving ? 'Saving…' : 'Submit'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            )}
           </View>
         </View>
-      </Modal>
-    </ScrollView>
+
+        {/* PDF Button */}
+        {video.pdf_url ? (
+          <TouchableOpacity
+            onPress={() => {
+              if (!pdfUri) {
+                navigation.navigate('BuyTokens');
+                return;
+              }
+              openLink(pdfUri, 'PDF');
+            }}
+            activeOpacity={0.9}
+            style={tw.style(
+              'w-full py-3 mb-3 rounded-2xl border',
+              pdfUri
+                ? 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
+                : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10',
+            )}
+          >
+            <Text style={[tw`text-center font-semibold`, titleText]}>
+              {pdfUri ? 'Download Class Notes (PDF)' : 'Purchase to Access PDF'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Full Video Button */}
+        <TouchableOpacity
+          onPress={() => {
+            if (fullVideoUrl) openLink(fullVideoUrl, 'Video');
+            else navigation.navigate('BuyTokens');
+          }}
+          activeOpacity={0.9}
+          style={tw.style(
+            'w-full py-3 rounded-2xl border',
+            fullVideoUrl
+              ? 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
+              : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10',
+          )}
+        >
+          <Text style={[tw`text-center font-semibold`, titleText]}>
+            {fullVideoUrl ? 'Download Full Video' : 'Purchase to Access Video'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Unlock error */}
+        {unlockError ? (
+          <Text style={tw`mt-3 text-sm text-amber-700 dark:text-amber-300 text-center`}>
+            {unlockError}
+          </Text>
+        ) : null}
+
+        {/* Review Prompt Modal */}
+        <Modal visible={showPrompt && !hasMyReview} transparent animationType="fade">
+          <View style={tw`flex-1 bg-black/60 justify-center items-center p-4`}>
+            <View style={[tw`w-full max-w-md p-5`, card]}>
+              <Text style={[tw`text-lg font-bold mb-3`, titleText]}>How was it?</Text>
+
+              <Text style={[tw`mb-1 text-sm font-semibold`, labelText]}>Rating (1–5)</Text>
+              <TextInput
+                placeholder="1 to 5"
+                placeholderTextColor={placeholderColor}
+                keyboardType="numeric"
+                value={rating}
+                onChangeText={setRating}
+                style={[input, tw`mb-3`]}
+              />
+
+              <Text style={[tw`mb-1 text-sm font-semibold`, labelText]}>Comment (optional)</Text>
+              <TextInput
+                placeholder="What did you think?"
+                placeholderTextColor={placeholderColor}
+                multiline
+                maxLength={500}
+                value={comment}
+                onChangeText={setComment}
+                style={[input, tw`h-24`]}
+                textAlignVertical="top"
+              />
+
+              <View style={tw`flex-row justify-end mt-4`}>
+                <TouchableOpacity
+                  onPress={() => setShowPrompt(false)}
+                  activeOpacity={0.9}
+                  style={[softBtn, tw`mr-2`]}
+                >
+                  <Text style={softBtnText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  disabled={saving}
+                  activeOpacity={0.9}
+                  onPress={async () => {
+                    const n = Number(rating);
+                    if (!Number.isFinite(n) || n < 1 || n > 5) {
+                      Alert.alert('Invalid rating', 'Please enter a number from 1 to 5.');
+                      return;
+                    }
+                    if (!token) {
+                      Alert.alert('Login required', 'You must be logged in to review.');
+                      return;
+                    }
+                    try {
+                      setSaving(true);
+                      await submitVideoReview(backendUrl, token, videoId, {
+                        rating: n,
+                        comment: comment.trim() || undefined,
+                      });
+                      setShowPrompt(false);
+                      setComment('');
+                      setRating('');
+                      await loadReviews();
+                    } catch {
+                      Alert.alert('Error', 'Failed to submit review');
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                  style={tw.style('px-4 py-2 rounded-xl bg-pink-600', saving && 'opacity-70')}
+                >
+                  <Text style={tw`text-white font-semibold`}>{saving ? 'Saving…' : 'Submit'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </ScrollView>
+    </SafeAreaView>
   );
 }

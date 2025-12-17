@@ -132,6 +132,8 @@ interface LessonAndQuizProps {
   ) => Promise<void> | void;
   safeLessons: number;
   safeQuiz: number;
+  overrideLessons?: boolean;
+
   // quiz
   quiz: any;
   answers: Record<string, number | string>;
@@ -195,6 +197,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   safeLessons,
   safeQuiz,
   quiz,
+  overrideLessons,
   answers,
   onAnswer,
   grade,
@@ -577,13 +580,13 @@ const currentIdxRef = useRef<number>(0);
   }, [quiz?.timerSec, markActive, quizActive, setLocalRemainingMs]);
 
   const displayLessons = orgMeta?.totalLessons ?? safeLessons ?? outline?.length ?? 0;
+
+   const userOverrodeLessons = !!overrideLessons && !isOrgFlow; 
+  const minOptsForDisplay = userOverrodeLessons ? {} : { lessonIndex: currentIdx };
   const requestedQForDisplay = Number(orgMeta?.quizSize ?? safeQuiz ?? 0);
   // enforce min rule per lesson
-  const displayQuestions = applyMinPerLesson(
-    requestedQForDisplay,
-    displayLessons,
-    { lessonIndex: currentIdx }
-  );
+const displayQuestions = applyMinPerLesson(requestedQForDisplay, displayLessons, minOptsForDisplay);
+
   const displayTimerSec = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
 
   const baseMs = useMemo(() => {
@@ -852,9 +855,10 @@ useEffect(() => {
 
   // Non-org: did the user manually set lesson count?
   const manualLessonsSelected = useMemo(
-    () => !isOrgFlow && Number.isFinite(Number(safeLessons)) && Number(safeLessons) > 0,
-    [isOrgFlow, safeLessons]
-  );
+  () => userOverrodeLessons && Number.isFinite(Number(safeLessons)) && Number(safeLessons) > 0,
+  [userOverrodeLessons, safeLessons]
+);
+
 
   const startQuiz = useCallback(async () => {
     if (!confirmInfo) return;
@@ -894,8 +898,8 @@ useEffect(() => {
         (safeQuiz ?? undefined) ??
         Number(confirmInfo.questions || 0);
 
-      const minOpts = manualLessonsSelected ? {} : { lessonIndex: currentIdx };
-      const desiredQ = applyMinPerLesson(Number(desiredRequested || 0), displayLessons, minOpts);
+      const minOpts = userOverrodeLessons ? {} : { lessonIndex: currentIdx };
+      const desiredQ = applyMinPerLesson(Number(desiredRequested || 0), displayLessons, minOpts)
 
       // Respect org-locked quiz size by not overriding it
       const passNumQ =
