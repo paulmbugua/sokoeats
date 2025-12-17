@@ -219,10 +219,8 @@ export async function createOrder(req, res) {
       currency: 'KES',
       reference,
       callback_url: buildCallbackUrl(req, resolvePaystackCallbackBase(req), { kind: 'tokens' }),
-
-
-
-      
+      channels: ['card'],
+           
       metadata: {
         paymentId: paymentRow.id,
         userId,

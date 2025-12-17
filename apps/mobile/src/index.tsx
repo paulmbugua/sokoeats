@@ -1,5 +1,6 @@
 // apps/mobile/src/index.tsx
 import 'react-native-gesture-handler';
+import * as Linking from 'expo-linking';
 
 import axios from 'axios';
 import React, { useEffect, useRef } from 'react';
@@ -129,6 +130,18 @@ queryClient.getQueryCache().subscribe((event: any) => {
   }
 });
 
+const linking = {
+  prefixes: ['daybreak://', Linking.createURL('/')],
+  config: {
+    screens: {
+      PaystackCallback: 'paystack/callback',
+      // (optional) if you ever deep-link to checkout too
+      // PaystackCheckout: 'paystack/checkout',
+    },
+  },
+};
+
+
 /* ──────────────────────────────────────────────────────────
    Root composition (ThemeProvider only)
 ────────────────────────────────────────────────────────── */
@@ -187,9 +200,14 @@ const RootInner = () => {
         barStyle={resolvedScheme === 'dark' ? 'light-content' : 'dark-content'}
       />
       <GlobalRefreshProvider>
-        <NavigationContainer ref={navRef} theme={resolvedScheme === 'dark' ? NavDark : NavLight}>
-          <App />
-        </NavigationContainer>
+        <NavigationContainer
+            ref={navRef}
+            theme={resolvedScheme === 'dark' ? NavDark : NavLight}
+            linking={linking}
+          >
+            <App />
+          </NavigationContainer>
+
       </GlobalRefreshProvider>
     </>
   );

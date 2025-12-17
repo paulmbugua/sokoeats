@@ -1,6 +1,8 @@
 /// <reference path="../declarations.d.ts" />
+/* eslint-disable prettier/prettier */
+
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useMemo, useEffect, useRef, useState,useCallback } from 'react';
+import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,14 +13,14 @@ import {
   Alert,
   Linking,
   ScrollView,
- } from 'react-native';
+} from 'react-native';
 import {
   useNavigation,
   useRoute,
   NavigationProp,
   RouteProp,
 } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Spinner from './Spinner.native';
 import useAccountSection from '@mytutorapp/shared/hooks/useAccountSection';
@@ -39,6 +41,11 @@ import type { MainStackParamList, ActiveTab } from '../navigation/types';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { notifyNow } from '../../utils/notifications';
 import SelectField, { type Option as SelectOption } from './SelectField.native';
+import { useThemePref } from '../theme/ThemeContext';
+
+// ✅ Same global pull-to-refresh wrappers as ProfileScreen
+import { RefreshableScrollView } from '../refresh/Refreshable';
+import { useRegisterScreenRefresh } from '../refresh/GlobalRefreshProvider';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -72,7 +79,6 @@ function parseAccountPath(path: string): MainStackParamList['Account'] {
   const [, q = ''] = path.split('?');
   const p = new URLSearchParams(q);
 
-  // pricing comes in as JSON -> coerce to Record<string, string>
   const pricingString = p.get('pricing');
   let pricing: Record<string, string> | undefined;
   if (pricingString) {
@@ -84,9 +90,7 @@ function parseAccountPath(path: string): MainStackParamList['Account'] {
         );
         pricing = Object.fromEntries(entries);
       }
-    } catch {
-      // ignore malformed pricing
-    }
+    } catch {}
   }
 
   const rawTab = p.get('tab');
@@ -118,14 +122,11 @@ type HookResult = ReturnType<typeof useAccountSection> & {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
 
-  // review modal data
   showRatingModal: boolean;
   setShowRatingModal: (b: boolean) => void;
   ratingData: { rating: string; comment: string };
   setRatingData: (v: { rating: string; comment: string }) => void;
 };
-
-// --- Session form validation types (web parity) -----------------------------
 
 type SessionFormErrors = {
   tutorId?: string;
@@ -149,21 +150,34 @@ const buildSessionBannerFromErrors = (errs: SessionFormErrors) => {
 };
 
 const AccountSectionNative: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { backendUrl } = useShopContext();
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'Account'>>();
+  const { resolvedScheme } = useThemePref();
 
-  // Track which session IDs have missing-reason errors (for red borders)
+  // theme colors
+  const placeholderColor = resolvedScheme === 'dark' ? '#64748B' : '#94A3B8';
+  const selectedTextColor = resolvedScheme === 'dark' ? '#E5E7EB' : '#0F172A';
+
+  // shared styles (theme-aware)
+  const sectionBase =
+    tw`rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`;
+  const cardAlt =
+    tw`p-4 rounded-xl bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-white/10`;
+  const helperText =
+    tw`text-xs text-slate-600 dark:text-slate-400`;
+  const inputBase =
+    tw`w-full px-3 py-3 rounded-xl bg-slate-100 dark:bg-slate-900/60 text-[#0d141c] dark:text-white border border-slate-200 dark:border-white/10`;
+  const tabOn = tw`px-3 py-2 rounded-xl bg-[#3d99f5]`;
+  const tabOff = tw`px-3 py-2 rounded-xl bg-slate-200 dark:bg-white/5`;
+
   const [cancelError, setCancelError] = useState<Record<string, boolean>>({});
-
-  // 🔴 Session form validation state (web parity)
   const [sessionFormErrors, setSessionFormErrors] = useState<SessionFormErrors>({});
   const [sessionBanner, setSessionBanner] = useState<string>('');
 
-  // Strongly-typed params alias (includes optional tab)
   const params: MainStackParamList['Account'] = route.params ?? {};
 
-  // Build hook queryParams (web parity)
   const queryParams = useMemo(() => {
     const qp = new URLSearchParams();
     if (params.action) qp.set('action', params.action);
@@ -196,7 +210,6 @@ const AccountSectionNative: React.FC = () => {
     }
   };
 
-  // Hook
   const {
     loading,
     user,
@@ -214,7 +227,6 @@ const AccountSectionNative: React.FC = () => {
     setFormData,
     cancelReasons,
     handleAcceptSession,
-    handleCancelSession,
     handleSessionCreation,
     handleCompletePending,
     handleConfirmComplete,
@@ -234,12 +246,10 @@ const AccountSectionNative: React.FC = () => {
     queryParams,
   }) as HookResult;
 
-  // Derive a safe role string without `any`
   const rawRole = (user as unknown as { role?: string } | undefined)?.role;
   const role: 'student' | 'tutor' | 'unknown' =
     rawRole === 'student' || rawRole === 'tutor' ? rawRole : 'unknown';
 
-  // Withdrawal hook (web parity)
   const { withdraw, isSubmitting: isWithdrawing } = useWithdrawal({
     notify: (m, t) => {
       if (t === 'error') console.error(m);
@@ -247,22 +257,17 @@ const AccountSectionNative: React.FC = () => {
     },
   });
 
-    // Build options for Session Type dropdown (from pricing map)
   const sessionTypeOptions: SelectOption[] = useMemo(() => {
     const pricingMap = formData.pricing as Record<string, number | string> | undefined;
     if (!pricingMap) return [];
-
-    return Object.entries(pricingMap).map(([type, price]) => {
-      const label =
-        `${type.charAt(0).toUpperCase() + type.slice(1)} – ${price} Tokens`;
-      return { value: type, label };
-    });
+    return Object.entries(pricingMap).map(([type, price]) => ({
+      value: type,
+      label: `${type.charAt(0).toUpperCase() + type.slice(1)} – ${price} Tokens`,
+    }));
   }, [formData.pricing]);
 
   const hasSessionTypes = sessionTypeOptions.length > 0;
 
-
-  // Totals by currency (derived from transactions)
   const { lifetimeByCurrency, pendingWithdrawalsByCurrency, completedEarnings } =
     useMemo(() => {
       const sums: Record<string, number> = {};
@@ -275,12 +280,8 @@ const AccountSectionNative: React.FC = () => {
           sums[curr] = (sums[curr] || 0) + Math.max(0, Number(tx.amount) || 0);
           earningsTx.push(tx);
         }
-        if (
-          tx.type === 'Withdrawal Request' &&
-          (tx.status || 'Pending') === 'Pending'
-        ) {
-          pending[curr] =
-            (pending[curr] || 0) + Math.max(0, Number(tx.amount) || 0);
+        if (tx.type === 'Withdrawal Request' && (tx.status || 'Pending') === 'Pending') {
+          pending[curr] = (pending[curr] || 0) + Math.max(0, Number(tx.amount) || 0);
         }
       }
 
@@ -299,12 +300,10 @@ const AccountSectionNative: React.FC = () => {
       (pendingWithdrawalsByCurrency[payoutCurrency] || 0)
   );
 
-  // 🔔 Track earnings increases → "New earnings" notification
   const earningsLastSeenRef = useRef<number | null>(null);
   useEffect(() => {
     const current = earnings?.available ?? approxAvailable;
     const prev = earningsLastSeenRef.current;
-
     if (prev != null && current > prev + 0.009) {
       void notifyNow(
         'New earnings available',
@@ -312,50 +311,36 @@ const AccountSectionNative: React.FC = () => {
           current,
           String(payoutCurrency)
         )}.`,
-        {
-          screen: 'Account',
-          params: { tab: 'earnings' },
-        }
+        { screen: 'Account', params: { tab: 'earnings' } }
       );
     }
-
     earningsLastSeenRef.current = current;
   }, [earnings?.available, approxAvailable, payoutCurrency]);
 
-  // Withdrawal form
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
   const minAmount = MIN_WITHDRAW[payoutCurrency];
 
-  // Sync tab from params (web-style ?tab=)
   useEffect(() => {
     const desired = params.tab;
-    if (desired && desired !== activeTab) {
-      setActiveTab(desired);
-    }
+    if (desired && desired !== activeTab) setActiveTab(desired);
   }, [params.tab, activeTab, setActiveTab]);
 
-  // Debounce review submission
   const debouncedReviewSubmission = useMemo(
     () => debounce(handleReviewSubmission, 300),
     [handleReviewSubmission]
   );
-  useEffect(
-    () => () => debouncedReviewSubmission.cancel(),
-    [debouncedReviewSubmission]
+  useEffect(() => () => debouncedReviewSubmission.cancel(), [debouncedReviewSubmission]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab === 'earnings') {
+        refetchTransactions();
+        refetchAccount();
+        refetchEarnings();
+      }
+    }, [activeTab, refetchTransactions, refetchAccount, refetchEarnings])
   );
 
-  
-  useFocusEffect(
-  useCallback(() => {
-    if (activeTab === 'earnings') {
-      refetchTransactions();
-      refetchAccount();
-      refetchEarnings();
-    }
-  }, [activeTab, refetchTransactions, refetchAccount, refetchEarnings])
-);
-
-  // Sort sessions by date
   const sortedSessions = useMemo(
     () =>
       [...sessions].sort(
@@ -364,45 +349,8 @@ const AccountSectionNative: React.FC = () => {
     [sessions]
   );
 
-  // 🔔 Track session status transitions → notify tutor when lesson becomes completed
-  const previousSessionStatusRef = useRef<Map<string, string>>(new Map());
-  useEffect(() => {
-    if (!Array.isArray(sessions)) return;
-
-    const prevMap = previousSessionStatusRef.current;
-    const nextMap = new Map<string, string>();
-
-    for (const s of sessions) {
-      const id = String(s.id);
-      const prevStatus = prevMap.get(id);
-      const currentStatus = s.status;
-
-      if (
-        role === 'tutor' &&
-        prevStatus &&
-        prevStatus !== 'completed' &&
-        currentStatus === 'completed'
-      ) {
-        const counterpartName = s.student_name || 'your student';
-
-        void notifyNow(
-          'Lesson completed',
-          `Your lesson with ${counterpartName} is now marked as completed.`,
-          {
-            screen: 'Account',
-            params: { tab: 'sessions' },
-          }
-        );
-      }
-
-      nextMap.set(id, currentStatus);
-    }
-
-    previousSessionStatusRef.current = nextMap;
-  }, [sessions, role]);
-
-  // Scroll-to-new-session logic
-  const sessionsScrollRef = useRef<ScrollView>(null);
+  // ✅ Use ONE scroll view ref (like Profile) so “scrollToEnd” works with the main scroll
+  const scrollRef = useRef<ScrollView | null>(null);
   const [justCreated, setJustCreated] = useState(false);
 
   useEffect(() => {
@@ -412,31 +360,15 @@ const AccountSectionNative: React.FC = () => {
       return;
     }
     const t = setTimeout(() => {
-      sessionsScrollRef.current?.scrollToEnd({ animated: true });
+      scrollRef.current?.scrollToEnd({ animated: true });
       setJustCreated(false);
     }, 50);
     return () => clearTimeout(t);
   }, [justCreated, activeTab, setActiveTab]);
 
-  // 🔒 Date picker state must be above any early returns
   const [showDatePicker, setShowDatePicker] = useState(false);
   const dateValue = formData.date ? new Date(String(formData.date)) : new Date();
 
-  // ✅ Theme-responsive loading state
-  if (loading) {
-    return (
-      <SafeAreaView
-        style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
-        edges={['top', 'bottom']}
-      >
-        <View style={tw`flex-1 justify-center items-center`}>
-          <Spinner />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Tabs to show for the current role
   const availableTabs: ActiveTab[] = [
     'overview',
     'transactions',
@@ -445,44 +377,62 @@ const AccountSectionNative: React.FC = () => {
     ...(role === 'tutor' ? (['earnings'] as const) : []),
   ];
 
-  // --- Session form validate (native version of web's validateSessionForm) ----
   const validateSessionForm = (): boolean => {
     const errs: SessionFormErrors = {};
-
     if (!formData.tutorId) {
-      errs.tutorId =
-        'Choose a tutor by visiting their profile and tapping "Create Session".';
+      errs.tutorId = 'Choose a tutor by visiting their profile and tapping "Create Session".';
     }
-    if (!formData.subject?.trim()) {
-      errs.subject = 'Enter the subject or topic for this session.';
-    }
-    if (!formData.sessionType) {
-      errs.sessionType = 'Select a session type.';
-    }
-    if (!formData.date) {
-      errs.date = 'Pick a preferred date for the session.';
-    }
+    if (!formData.subject?.trim()) errs.subject = 'Enter the subject or topic for this session.';
+    if (!formData.sessionType) errs.sessionType = 'Select a session type.';
+    if (!formData.date) errs.date = 'Pick a preferred date for the session.';
 
     setSessionFormErrors(errs);
     setSessionBanner(buildSessionBannerFromErrors(errs));
-
     return Object.keys(errs).length === 0;
   };
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  // ✅ Pull-to-refresh action (same idea as Profile’s refreshAccountState)
+  const refreshAccountState = useCallback(async () => {
+    try {
+      await Promise.allSettled([
+        refetchAccount(),
+        refetchTransactions(),
+        refetchEarnings(),
+      ]);
+    } catch {
+      // ignore
+    }
+  }, [refetchAccount, refetchTransactions, refetchEarnings]);
+
+  // ✅ Register this screen with GlobalRefreshProvider
+  useRegisterScreenRefresh(refreshAccountState);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
+        <View style={tw`flex-1 justify-center items-center`}>
+          <Spinner />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const topPad = Math.max(12, insets.top + 12);
 
   return (
-    <SafeAreaView
-      style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
-      edges={['top', 'bottom']}
-    >
-      <View style={tw`flex-1 px-4 pb-6`}>
+    <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
+      <RefreshableScrollView
+        ref={scrollRef}
+        style={tw`flex-1`}
+        contentContainerStyle={[
+          tw`px-4 pb-12`,
+          { paddingTop: topPad, paddingBottom: Math.max(24, insets.bottom + 24) },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Header */}
-        <View
-          style={tw`mt-4 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 flex-row items-center`}
-        >
+        <View style={[tw`flex-row items-center`, sectionBase]}>
           {role !== 'student' && (
             <Image
               source={{
@@ -492,21 +442,24 @@ const AccountSectionNative: React.FC = () => {
                     : `${backendUrl}${user.profileImage}`
                   : 'https://ui-avatars.com/api/?name=Tutor&background=e7edf4&color=0d141c',
               }}
-              style={tw`w-16 h-16 rounded-full mr-4 bg-[#e7edf4] dark:bg:white/5`}
+              style={tw`w-16 h-16 rounded-full mr-4 bg-slate-200 dark:bg-white/5`}
             />
           )}
+
           <View style={tw`flex-1`}>
-            <Text style={tw`text-[20px] font-extrabold text-slate-900 dark:text-white`}>
+            <Text style={tw`text-[20px] font-extrabold text-[#0d141c] dark:text-white`}>
               {user?.name || 'User Name'}
             </Text>
-            <Text style={tw`text-xs text-[#49739c] dark:text:white/70 mt-0.5`}>
+
+            <Text style={tw`text-xs text-slate-600 dark:text-slate-400 mt-0.5`}>
               {user?.email ?? ''}
             </Text>
+
             {role === 'student' && (
-              <Text style={tw`text-xs text-[#49739c] dark:text:white/70 mt-1`}>
+              <Text style={tw`text-xs text-slate-600 dark:text-slate-400 mt-1`}>
                 Tokens:{' '}
-                <Text style={tw`font-semibold text-slate-900 dark:text:white`}>
-                  {user.tokens ?? 0}
+                <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                  {user?.tokens ?? 0}
                 </Text>
               </Text>
             )}
@@ -515,7 +468,7 @@ const AccountSectionNative: React.FC = () => {
 
         {/* Tabs */}
         <View
-          style={tw`flex-row flex-wrap gap-2 mt-4 border-b border-[#cedbe8] dark:border-white/10 pb-2`}
+          style={tw`flex-row flex-wrap gap-2 mt-4 border-b border-slate-200 dark:border-white/10 pb-2`}
           accessibilityRole="tablist"
         >
           {availableTabs.map((tab) => {
@@ -526,15 +479,13 @@ const AccountSectionNative: React.FC = () => {
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isActive }}
                 onPress={() => setActiveTab(tab)}
-                style={tw.style(
-                  'px-3 py-2 rounded-xl',
-                  isActive ? 'bg-[#3d99f5]' : 'bg-[#e7edf4] dark:bg-[#172534]'
-                )}
+                style={isActive ? tabOn : tabOff}
+                activeOpacity={0.9}
               >
                 <Text
                   style={tw.style(
                     'text-xs font-semibold',
-                    isActive ? 'text-white' : 'text-[#0d141c] dark:text:white/80'
+                    isActive ? 'text-white' : 'text-[#0d141c] dark:text-slate-200'
                   )}
                 >
                   {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -545,19 +496,11 @@ const AccountSectionNative: React.FC = () => {
         </View>
 
         {/* Content */}
-        <ScrollView
-          style={tw`mt-4 flex-1`}
-          contentContainerStyle={tw`pb-12`}
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={tw`mt-4`}>
           {/* Overview */}
           {activeTab === 'overview' && (
-            <View
-              style={tw`rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
-            >
-              <Text
-                style={tw`text-base text-[#49739c] dark:text:white/70 text-center`}
-              >
+            <View style={sectionBase}>
+              <Text style={tw`text-base text-slate-600 dark:text-slate-400 text-center`}>
                 Welcome to your account overview.
               </Text>
             </View>
@@ -566,100 +509,44 @@ const AccountSectionNative: React.FC = () => {
           {/* Transactions */}
           {activeTab === 'transactions' && (
             <View>
-              <Text
-                style={tw`text-xl font-bold text-slate-900 dark:text:white mb-3`}
-              >
+              <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-3`}>
                 Transaction History
               </Text>
+
               {transactions.length > 0 ? (
                 transactions.map((tx) => (
                   <View
                     key={String(tx.id)}
                     style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3`}
                   >
-                    <View style={tw`flex-row flex-wrap`}>
-                      <View style={tw`w-full mb-1`}>
-                        <Text
-                          style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                        >
-                          <Text
-                            style={tw`font-semibold text-slate-900 dark:text:white`}
-                          >
-                            Type:{' '}
-                          </Text>
-                          {tx.type}
-                        </Text>
-                      </View>
-                      <View style={tw`w-full mb-1`}>
-                        <Text
-                          style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                        >
-                          <Text
-                            style={tw`font-semibold text-slate-900 dark:text:white`}
-                          >
-                            Amount:{' '}
-                          </Text>
-                          {currencyFmt(
-                            Math.abs(Number(tx.amount)),
-                            String(tx.currency ?? 'USD').toUpperCase()
-                          )}
-                        </Text>
-                      </View>
-                      <View style={tw`w-full mb-1`}>
-                        <Text
-                          style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                        >
-                          <Text
-                            style={tw`font-semibold text-slate-900 dark:text:white`}
-                          >
-                            Kind:{' '}
-                          </Text>
-                          {Number(tx.amount) > 0 ? 'Earning' : 'Deduction'}
-                        </Text>
-                      </View>
-                      <View style={tw`w-full mb-1`}>
-                        <Text
-                          style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                        >
-                          <Text
-                            style={tw`font-semibold text-slate-900 dark:text:white`}
-                          >
-                            Status:{' '}
-                          </Text>
-                          {tx.status || 'N/A'}
-                        </Text>
-                      </View>
-                      <View style={tw`w-full mb-1`}>
-                        <Text
-                          style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                        >
-                          <Text
-                            style={tw`font-semibold text-slate-900 dark:text:white`}
-                          >
-                            Description:{' '}
-                          </Text>
-                          {tx.description || 'N/A'}
-                        </Text>
-                      </View>
-                      <View style={tw`w-full mb-1`}>
-                        <Text
-                          style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                        >
-                          <Text
-                            style={tw`font-semibold text-slate-900 dark:text:white`}
-                          >
-                            Date:{' '}
-                          </Text>
-                          {new Date(tx.date).toLocaleDateString()}
-                        </Text>
-                      </View>
-                    </View>
+                    <Text style={helperText}>
+                      <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Type: </Text>
+                      {tx.type}
+                    </Text>
+                    <Text style={helperText}>
+                      <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Amount: </Text>
+                      {currencyFmt(Math.abs(Number(tx.amount)), String(tx.currency ?? 'USD').toUpperCase())}
+                    </Text>
+                    <Text style={helperText}>
+                      <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Kind: </Text>
+                      {Number(tx.amount) > 0 ? 'Earning' : 'Deduction'}
+                    </Text>
+                    <Text style={helperText}>
+                      <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Status: </Text>
+                      {tx.status || 'N/A'}
+                    </Text>
+                    <Text style={helperText}>
+                      <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Description: </Text>
+                      {tx.description || 'N/A'}
+                    </Text>
+                    <Text style={helperText}>
+                      <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Date: </Text>
+                      {new Date(tx.date).toLocaleDateString()}
+                    </Text>
                   </View>
                 ))
               ) : (
-                <Text style={tw`text-xs text-[#49739c] dark:text:white/70`}>
-                  No transactions found.
-                </Text>
+                <Text style={helperText}>No transactions found.</Text>
               )}
             </View>
           )}
@@ -668,17 +555,10 @@ const AccountSectionNative: React.FC = () => {
           {activeTab === 'sessions' && role === 'student' && (
             <>
               {/* Create Session Form */}
-              <View
-                style={tw`max-w-[680px] self-center w-full p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-4`}
-              >
-                {/* Top error banner (web parity) */}
+              <View style={[sectionBase, tw`max-w-[680px] self-center w-full mb-4`]}>
                 {!!sessionBanner && (
-                  <View
-                    style={tw`mb-3 rounded-lg border border-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-2`}
-                  >
-                    <Text style={tw`text-xs text-red-800 dark:text-red-100`}>
-                      {sessionBanner}
-                    </Text>
+                  <View style={tw`mb-3 rounded-lg border border-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-2`}>
+                    <Text style={tw`text-xs text-red-800 dark:text-red-100`}>{sessionBanner}</Text>
                   </View>
                 )}
 
@@ -691,33 +571,25 @@ const AccountSectionNative: React.FC = () => {
                         : 'bg-amber-50 border-amber-500 dark:bg-amber-900/20'
                     )}
                   >
-                    <Text
-                      style={tw`text-xs text-amber-800 dark:text-amber-100`}
-                    >
-                      To create a session, visit a tutor’s profile and tap
-                      “Create Session.”
+                    <Text style={tw`text-xs text-amber-800 dark:text-amber-100`}>
+                      To create a session, visit a tutor’s profile and tap “Create Session.”
                     </Text>
                     {sessionFormErrors.tutorId && (
-                      <Text
-                        style={tw`mt-1 text-[11px] text-red-700 dark:text-red-200`}
-                      >
+                      <Text style={tw`mt-1 text-[11px] text-red-700 dark:text-red-200`}>
                         {sessionFormErrors.tutorId}
                       </Text>
                     )}
                   </View>
                 )}
-                <Text
-                  style={tw`text-lg font-bold text-slate-900 dark:text:white mb-3`}
-                >
-                  {formData.tutorName
-                    ? `Session with ${formData.tutorName}`
-                    : 'Create a Session'}
+
+                <Text style={tw`text-lg font-bold text-[#0d141c] dark:text-white mb-3`}>
+                  {formData.tutorName ? `Session with ${formData.tutorName}` : 'Create a Session'}
                 </Text>
 
                 {/* Subject */}
                 <TextInput
                   placeholder="Subject"
-                  placeholderTextColor="#93a3b0"
+                  placeholderTextColor={placeholderColor}
                   value={formData.subject}
                   onChangeText={(t) => {
                     setFormData({ ...formData, subject: t });
@@ -726,67 +598,55 @@ const AccountSectionNative: React.FC = () => {
                       setSessionFormErrors(rest);
                     }
                   }}
-                  style={tw.style(
-                    'w-full p-3 rounded-xl text-slate-900 dark:text:white bg-[#e7edf4] dark:bg-[#172534] border mb-1',
-                    sessionFormErrors.subject
-                      ? 'border-red-500'
-                      : 'border-[#cedbe8] dark:border-white/10'
-                  )}
+                  style={tw.style(inputBase, sessionFormErrors.subject ? 'border-red-500' : '')}
                 />
                 {sessionFormErrors.subject && (
-                  <Text
-                    style={tw`mb-2 text-[11px] text-red-600 dark:text-red-400`}
-                  >
+                  <Text style={tw`mb-2 text-[11px] text-red-600 dark:text-red-400`}>
                     {sessionFormErrors.subject}
                   </Text>
                 )}
-                    {/* Session Type (from pricing map) */}
-                    <View style={tw`mt-1`}>
-                      <SelectField
-                        // no label here; we already have context from the form title
-                        value={formData.sessionType || ''}
-                        onChange={(sessionType) => {
-                          const sessionCost = String(
-                            (formData.pricing as Record<string, number | string>)?.[sessionType] ?? 0
-                          );
-                          setFormData({ ...formData, sessionType, sessionCost });
 
-                          if (sessionFormErrors.sessionType) {
-                            const { sessionType: _st, ...rest } = sessionFormErrors;
-                            setSessionFormErrors(rest);
-                          }
-                        }}
-                        options={sessionTypeOptions}
-                        placeholder={
-                          hasSessionTypes ? 'Select Session Type' : 'No session types configured'
-                        }
-                        modalTitle="Select session type"
-                        error={sessionFormErrors.sessionType}
-                      />
-                    </View>
+                {/* Session Type */}
+                <View style={tw`mt-1`}>
+                  <SelectField
+                    value={formData.sessionType || ''}
+                    onChange={(sessionType) => {
+                      const sessionCost = String(
+                        (formData.pricing as Record<string, number | string>)?.[sessionType] ?? 0
+                      );
+                      setFormData({ ...formData, sessionType, sessionCost });
 
+                      if (sessionFormErrors.sessionType) {
+                        const { sessionType: _st, ...rest } = sessionFormErrors;
+                        setSessionFormErrors(rest);
+                      }
+                    }}
+                    options={sessionTypeOptions}
+                    placeholder={hasSessionTypes ? 'Select Session Type' : 'No session types configured'}
+                    modalTitle="Select session type"
+                    error={sessionFormErrors.sessionType}
+                    placeholderColor={placeholderColor}
+                    selectedTextColor={selectedTextColor}
+                  />
+                </View>
 
                 {/* Date */}
                 <TouchableOpacity
                   onPress={() => setShowDatePicker(true)}
-                  style={tw.style(
-                    'bg-[#e7edf4] dark:bg-[#172534] border rounded-xl p-3',
-                    sessionFormErrors.date
-                      ? 'border-red-500'
-                      : 'border-[#cedbe8] dark:border-white/10'
-                  )}
+                  style={tw.style(inputBase, tw`mt-2`, sessionFormErrors.date ? 'border-red-500' : '')}
+                  activeOpacity={0.9}
                 >
-                  <Text style={tw`text-sm text-slate-900 dark:text:white`}>
+                  <Text style={tw`text-sm text-[#0d141c] dark:text-white`}>
                     {formData.date || 'Select date'}
                   </Text>
                 </TouchableOpacity>
+
                 {sessionFormErrors.date && (
-                  <Text
-                    style={tw`mt-1 mb-2 text-[11px] text-red-600 dark:text-red-400`}
-                  >
+                  <Text style={tw`mt-1 mb-2 text-[11px] text-red-600 dark:text-red-400`}>
                     {sessionFormErrors.date}
                   </Text>
                 )}
+
                 {showDatePicker && (
                   <DateTimePicker
                     value={dateValue}
@@ -795,10 +655,7 @@ const AccountSectionNative: React.FC = () => {
                     onChange={(_e: Event, d?: Date) => {
                       setShowDatePicker(false);
                       if (d) {
-                        setFormData({
-                          ...formData,
-                          date: d.toISOString().slice(0, 10),
-                        });
+                        setFormData({ ...formData, date: d.toISOString().slice(0, 10) });
                         if (sessionFormErrors.date) {
                           const { date, ...rest } = sessionFormErrors;
                           setSessionFormErrors(rest);
@@ -811,7 +668,6 @@ const AccountSectionNative: React.FC = () => {
                 {/* Submit */}
                 <TouchableOpacity
                   onPress={async () => {
-                    // reset previous errors/banner
                     setSessionFormErrors({});
                     setSessionBanner('');
 
@@ -820,194 +676,107 @@ const AccountSectionNative: React.FC = () => {
 
                     await handleSessionCreation();
                     setJustCreated(true);
+
                     await notifyNow(
                       'Lesson requested',
                       formData.tutorName
                         ? `Your lesson request with ${formData.tutorName} has been sent.`
                         : 'Your lesson request has been sent to the tutor.',
-                      {
-                        screen: 'Account',
-                        params: { tab: 'sessions' },
-                      }
+                      { screen: 'Account', params: { tab: 'sessions' } }
                     );
                   }}
                   style={tw`mt-4 py-3 rounded-xl bg-[#3d99f5] items-center justify-center`}
+                  activeOpacity={0.9}
                 >
-                  <Text style={tw`text-white text-sm font-semibold`}>
-                    Create Session
-                  </Text>
+                  <Text style={tw`text-white text-sm font-semibold`}>Create Session</Text>
                 </TouchableOpacity>
               </View>
 
-              {/* Sessions list */}
-              <ScrollView
-                ref={sessionsScrollRef}
-                style={tw`max-w-[880px] self-center w-full`}
-                contentContainerStyle={tw`p-0`}
-              >
-                <View
-                  style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
-                >
-                  <Text
-                    style={tw`text-xl font-bold text-slate-900 dark:text:white mb-2`}
-                  >
+              {/* Sessions list (no nested ScrollView) */}
+              <View style={tw`max-w-[880px] self-center w-full`}>
+                <View style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
+                  <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-2`}>
                     Your Sessions
                   </Text>
+
                   {sortedSessions.length > 0 ? (
                     sortedSessions.map((session) => (
-                      <View
-                        key={String(session.id)}
-                        style={tw`p-4 rounded-xl bg-[#e7edf4] dark:bg-[#0b1620] border border-[#cedbe8] dark:border-white/10 mb-3`}
-                      >
-                        <View style={tw`flex-row flex-wrap`}>
-                          <View style={tw`w-full mb-1`}>
-                            <Text
-                              style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                            >
-                              <Text
-                                style={tw`font-semibold text-slate-900 dark:text:white`}
-                              >
-                                Tutor:{' '}
-                              </Text>
-                              {session.tutor_name || 'N/A'}
-                            </Text>
-                          </View>
-                          <View style={tw`w-full mb-1`}>
-                            <Text
-                              style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                            >
-                              <Text
-                                style={tw`font-semibold text-slate-900 dark:text:white`}
-                              >
-                                Type:{' '}
-                              </Text>
-                              {session.sessionType || 'N/A'}
-                            </Text>
-                          </View>
-                          <View style={tw`w-full mb-1`}>
-                            <Text
-                              style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                            >
-                              <Text
-                                style={tw`font-semibold text-slate-900 dark:text:white`}
-                              >
-                                Subject:{' '}
-                              </Text>
-                              {session.subject || 'N/A'}
-                            </Text>
-                          </View>
-                          <View style={tw`w-full mb-1`}>
-                            <Text
-                              style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                            >
-                              <Text
-                                style={tw`font-semibold text-slate-900 dark:text:white`}
-                              >
-                                Cost:{' '}
-                              </Text>
-                              {session.amount} tokens
-                            </Text>
-                          </View>
-                          <View style={tw`w-full mb-1`}>
-                            <Text
-                              style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                            >
-                              <Text
-                                style={tw`font-semibold text-slate-900 dark:text:white`}
-                              >
-                                Date:{' '}
-                              </Text>
-                              {new Date(session.date).toLocaleDateString()}
-                            </Text>
-                          </View>
-                          <View style={tw`w-full mb-1`}>
-                            <Text
-                              style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                            >
-                              <Text
-                                style={tw`font-semibold text-slate-900 dark:text:white`}
-                              >
-                                Status:{' '}
-                              </Text>
-                              {session.status.charAt(0).toUpperCase() +
-                                session.status.slice(1)}
-                            </Text>
-                          </View>
-                        </View>
+                      <View key={String(session.id)} style={[cardAlt, tw`mb-3`]}>
+                        <Text style={helperText}>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Tutor: </Text>
+                          {session.tutor_name || 'N/A'}
+                        </Text>
+                        <Text style={helperText}>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Type: </Text>
+                          {session.sessionType || 'N/A'}
+                        </Text>
+                        <Text style={helperText}>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Subject: </Text>
+                          {session.subject || 'N/A'}
+                        </Text>
+                        <Text style={helperText}>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Cost: </Text>
+                          {session.amount} tokens
+                        </Text>
+                        <Text style={helperText}>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Date: </Text>
+                          {new Date(session.date).toLocaleDateString()}
+                        </Text>
+                        <Text style={helperText}>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Status: </Text>
+                          {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                        </Text>
 
                         {session.status === 'accepted' && (
                           <>
                             {session.zoom_links?.length ? (
                               <View style={tw`mt-3`}>
-                                <Text
-                                  style={tw`text-xs font-semibold text-emerald-600 dark:text-emerald-300 mb-1`}
-                                >
+                                <Text style={tw`text-xs font-semibold text-emerald-600 dark:text-emerald-300 mb-1`}>
                                   Zoom Links:
                                 </Text>
                                 {session.zoom_links.map((link, i) => (
-                                  <TouchableOpacity
-                                    key={String(i)}
-                                    onPress={() => Linking.openURL(link)}
-                                  >
-                                    <Text
-                                      style={tw`text-xs text-[#3d99f5] dark:text-[#7fb5ff] underline`}
-                                    >
+                                  <TouchableOpacity key={String(i)} onPress={() => Linking.openURL(link)}>
+                                    <Text style={tw`text-xs text-[#3d99f5] dark:text-[#7fb5ff] underline`}>
                                       Join Meeting Part {i + 1}
                                     </Text>
                                   </TouchableOpacity>
                                 ))}
                               </View>
                             ) : (
-                              <Text
-                                style={tw`mt-3 text-xs text-[#49739c] dark:text:white/70 italic`}
-                              >
+                              <Text style={tw`mt-3 text-xs text-slate-600 dark:text-slate-400 italic`}>
                                 Please wait for the tutor to create Zoom links.
                               </Text>
                             )}
 
-                            {/* Reason + Cancel */}
                             <TextInput
                               placeholder="Reason for cancellation"
-                              placeholderTextColor="#93a3b0"
+                              placeholderTextColor={placeholderColor}
                               value={cancelReasons[String(session.id)] || ''}
                               onChangeText={(t) => {
-                                setCancelError((prev) => ({
-                                  ...prev,
-                                  [String(session.id)]: false,
-                                }));
+                                setCancelError((prev) => ({ ...prev, [String(session.id)]: false }));
                                 handleCancelReasonChange(String(session.id), t);
                               }}
                               style={tw.style(
-                                'mt-3 w-full p-3 rounded-xl text-slate-900 dark:text:white bg-white dark:bg-[#0f1821] border',
-                                cancelError[String(session.id)]
-                                  ? 'border-red-500'
-                                  : 'border-[#cedbe8] dark:border-white/10'
+                                inputBase,
+                                tw`mt-3`,
+                                cancelError[String(session.id)] ? 'border-red-500' : ''
                               )}
                               multiline
                             />
+
                             <TouchableOpacity
                               style={tw`mt-3 px-4 py-2 rounded-lg bg-rose-600 items-center justify-center`}
                               onPress={() => {
-                                const reason =
-                                  (cancelReasons[String(session.id)] || '').trim();
+                                const reason = (cancelReasons[String(session.id)] || '').trim();
                                 if (!reason) {
-                                  setCancelError((prev) => ({
-                                    ...prev,
-                                    [String(session.id)]: true,
-                                  }));
+                                  setCancelError((prev) => ({ ...prev, [String(session.id)]: true }));
                                   return;
                                 }
-                                // role is 'student' here
-                                confirmCancelSession(
-                                  String(session.id),
-                                  role,
-                                  session.status
-                                );
+                                confirmCancelSession(String(session.id), role, session.status);
                               }}
+                              activeOpacity={0.9}
                             >
-                              <Text style={tw`text-white text-sm font-semibold`}>
-                                Cancel Session
-                              </Text>
+                              <Text style={tw`text-white text-sm font-semibold`}>Cancel Session</Text>
                             </TouchableOpacity>
                           </>
                         )}
@@ -1019,108 +788,61 @@ const AccountSectionNative: React.FC = () => {
                               await handleConfirmComplete(String(session.id));
                               await notifyNow(
                                 'Lesson confirmed completed',
-                                `You confirmed your lesson with ${
-                                  session.tutor_name || 'your tutor'
-                                } as completed.`,
-                                {
-                                  screen: 'Account',
-                                  params: { tab: 'sessions' },
-                                }
+                                `You confirmed your lesson with ${session.tutor_name || 'your tutor'} as completed.`,
+                                { screen: 'Account', params: { tab: 'sessions' } }
                               );
                             }}
+                            activeOpacity={0.9}
                           >
-                            <Text style={tw`text-white text-sm font-semibold`}>
-                              Confirm Completion
-                            </Text>
+                            <Text style={tw`text-white text-sm font-semibold`}>Confirm Completion</Text>
                           </TouchableOpacity>
                         )}
+
                         {session.status === 'completed' && (
-                          <Text
-                            style={tw`mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-300`}
-                          >
+                          <Text style={tw`mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-300`}>
                             Session Completed
                           </Text>
                         )}
                         {session.status === 'cancelled' && (
-                          <Text
-                            style={tw`mt-3 text-xs text-rose-500 dark:text-rose-300`}
-                          >
+                          <Text style={tw`mt-3 text-xs text-rose-500 dark:text-rose-300`}>
                             Session Cancelled
                           </Text>
                         )}
                       </View>
                     ))
                   ) : (
-                    <Text
-                      style={tw`text-xs text-[#49739c] dark:text:white/70 text-center`}
-                    >
+                    <Text style={tw`text-xs text-slate-600 dark:text-slate-400 text-center`}>
                       No sessions yet.
                     </Text>
                   )}
                 </View>
-              </ScrollView>
+              </View>
             </>
           )}
 
-          {/* Tutor Sessions */}
+          {/* Tutor Sessions (no nested ScrollView) */}
           {activeTab === 'sessions' && role === 'tutor' && (
-            <ScrollView
-              ref={sessionsScrollRef}
-              style={tw`max-w-[880px] self-center w-full`}
-              contentContainerStyle={tw`p-0`}
-            >
-              <View
-                style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
-              >
-                <Text
-                  style={tw`text-xl font-bold text-slate-900 dark:text:white mb-2`}
-                >
+            <View style={tw`max-w-[880px] self-center w-full`}>
+              <View style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
+                <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-2`}>
                   Your Upcoming Sessions
                 </Text>
+
                 {sortedSessions.length > 0 ? (
                   sortedSessions.map((session) => (
-                    <View
-                      key={String(session.id)}
-                      style={tw`p-4 rounded-xl bg-[#e7edf4] dark:bg-[#0b1620] border border-[#cedbe8] dark:border-white/10 mb-3`}
-                    >
-                      <View style={tw`flex-row flex-wrap`}>
-                        <View style={tw`w-full mb-1`}>
-                          <Text
-                            style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                          >
-                            <Text
-                              style={tw`font-semibold text-slate-900 dark:text:white`}
-                            >
-                              Student:{' '}
-                            </Text>
-                            {session.student_name || 'N/A'}
-                          </Text>
-                        </View>
-                        <View style={tw`w-full mb-1`}>
-                          <Text
-                            style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                          >
-                            <Text
-                              style={tw`font-semibold text-slate-900 dark:text:white`}
-                            >
-                              Type:{' '}
-                            </Text>
-                            {session.sessionType || 'N/A'}
-                          </Text>
-                        </View>
-                        <View style={tw`w-full mb-1`}>
-                          <Text
-                            style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                          >
-                            <Text
-                              style={tw`font-semibold text-slate-900 dark:text:white`}
-                            >
-                              Date:{' '}
-                            </Text>
-                            {new Date(session.date).toLocaleDateString()}
-                          </Text>
-                        </View>
-                      </View>
+                    <View key={String(session.id)} style={[cardAlt, tw`mb-3`]}>
+                      <Text style={helperText}>
+                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Student: </Text>
+                        {session.student_name || 'N/A'}
+                      </Text>
+                      <Text style={helperText}>
+                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Type: </Text>
+                        {session.sessionType || 'N/A'}
+                      </Text>
+                      <Text style={helperText}>
+                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Date: </Text>
+                        {new Date(session.date).toLocaleDateString()}
+                      </Text>
 
                       {session.status === 'upcoming' && (
                         <View style={tw`mt-3`}>
@@ -1130,37 +852,26 @@ const AccountSectionNative: React.FC = () => {
                               await handleAcceptSession(String(session.id));
                               await notifyNow(
                                 'Lesson accepted',
-                                `You accepted a lesson with ${
-                                  session.student_name || 'the student'
-                                }.`,
-                                {
-                                  screen: 'Account',
-                                  params: { tab: 'sessions' },
-                                }
+                                `You accepted a lesson with ${session.student_name || 'the student'}.`,
+                                { screen: 'Account', params: { tab: 'sessions' } }
                               );
                             }}
+                            activeOpacity={0.9}
                           >
-                            <Text style={tw`text-white text-sm font-semibold`}>
-                              Accept
-                            </Text>
+                            <Text style={tw`text-white text-sm font-semibold`}>Accept</Text>
                           </TouchableOpacity>
 
                           <TextInput
                             placeholder="Reason for cancellation"
-                            placeholderTextColor="#93a3b0"
+                            placeholderTextColor={placeholderColor}
                             value={cancelReasons[String(session.id)] || ''}
                             onChangeText={(t) => {
-                              setCancelError((prev) => ({
-                                ...prev,
-                                [String(session.id)]: false,
-                              }));
+                              setCancelError((prev) => ({ ...prev, [String(session.id)]: false }));
                               handleCancelReasonChange(String(session.id), t);
                             }}
                             style={tw.style(
-                              'min-h-[42px] p-3 rounded-xl text-slate-900 dark:text:white bg-white dark:bg-[#0f1821] border',
-                              cancelError[String(session.id)]
-                                ? 'border-red-500'
-                                : 'border-[#cedbe8] dark:border-white/10'
+                              inputBase,
+                              cancelError[String(session.id)] ? 'border-red-500' : ''
                             )}
                             multiline
                           />
@@ -1168,25 +879,16 @@ const AccountSectionNative: React.FC = () => {
                           <TouchableOpacity
                             style={tw`mt-2 px-4 py-2 rounded-lg bg-rose-600 items-center justify-center`}
                             onPress={() => {
-                              const reason =
-                                (cancelReasons[String(session.id)] || '').trim();
+                              const reason = (cancelReasons[String(session.id)] || '').trim();
                               if (!reason) {
-                                setCancelError((prev) => ({
-                                  ...prev,
-                                  [String(session.id)]: true,
-                                }));
+                                setCancelError((prev) => ({ ...prev, [String(session.id)]: true }));
                                 return;
                               }
-                              confirmCancelSession(
-                                String(session.id),
-                                role,
-                                session.status
-                              );
+                              confirmCancelSession(String(session.id), role, session.status);
                             }}
+                            activeOpacity={0.9}
                           >
-                            <Text style={tw`text-white text-sm font-semibold`}>
-                              Cancel
-                            </Text>
+                            <Text style={tw`text-white text-sm font-semibold`}>Cancel</Text>
                           </TouchableOpacity>
                         </View>
                       )}
@@ -1200,10 +902,9 @@ const AccountSectionNative: React.FC = () => {
                                 studentId: String(session.student_id),
                               })
                             }
+                            activeOpacity={0.9}
                           >
-                            <Text style={tw`text-white text-sm font-semibold`}>
-                              Chat with Student
-                            </Text>
+                            <Text style={tw`text-white text-sm font-semibold`}>Chat with Student</Text>
                           </TouchableOpacity>
 
                           {!session.zoom_links?.length ? (
@@ -1218,26 +919,18 @@ const AccountSectionNative: React.FC = () => {
                                   session.tutor_name || ''
                                 )
                               }
+                              activeOpacity={0.9}
                             >
-                              <Text style={tw`text-white text-sm font-semibold`}>
-                                Create Zoom Links
-                              </Text>
+                              <Text style={tw`text-white text-sm font-semibold`}>Create Zoom Links</Text>
                             </TouchableOpacity>
                           ) : (
                             <View style={tw`mt-3`}>
-                              <Text
-                                style={tw`text-xs font-semibold text-emerald-600 dark:text-emerald-300 mb-1`}
-                              >
+                              <Text style={tw`text-xs font-semibold text-emerald-600 dark:text-emerald-300 mb-1`}>
                                 Zoom Links:
                               </Text>
                               {session.zoom_links.map((link, i) => (
-                                <TouchableOpacity
-                                  key={String(i)}
-                                  onPress={() => Linking.openURL(link)}
-                                >
-                                  <Text
-                                    style={tw`text-xs text-[#3d99f5] dark:text-[#7fb5ff] underline`}
-                                  >
+                                <TouchableOpacity key={String(i)} onPress={() => Linking.openURL(link)}>
+                                  <Text style={tw`text-xs text-[#3d99f5] dark:text-[#7fb5ff] underline`}>
                                     Join Meeting Part {i + 1}
                                   </Text>
                                 </TouchableOpacity>
@@ -1251,101 +944,80 @@ const AccountSectionNative: React.FC = () => {
                               await handleCompletePending(String(session.id));
                               await notifyNow(
                                 'Lesson marked complete',
-                                `You marked the lesson with ${
-                                  session.student_name || 'the student'
-                                } as complete (awaiting confirmation).`,
-                                {
-                                  screen: 'Account',
-                                  params: { tab: 'sessions' },
-                                }
+                                `You marked the lesson with ${session.student_name || 'the student'} as complete (awaiting confirmation).`,
+                                { screen: 'Account', params: { tab: 'sessions' } }
                               );
                             }}
+                            activeOpacity={0.9}
                           >
-                            <Text style={tw`text-white text-sm font-semibold`}>
-                              Mark as Complete-Pending
-                            </Text>
+                            <Text style={tw`text-white text-sm font-semibold`}>Mark as Complete-Pending</Text>
                           </TouchableOpacity>
                         </>
                       )}
 
                       {session.status === 'completed_pending' && (
-                        <Text
-                          style={tw`mt-3 text-xs font-semibold text-fuchsia-500 dark:text-fuchsia-300`}
-                        >
+                        <Text style={tw`mt-3 text-xs font-semibold text-fuchsia-500 dark:text-fuchsia-300`}>
                           Complete-Pending
                         </Text>
                       )}
                       {session.status === 'completed' && (
-                        <Text
-                          style={tw`mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-300`}
-                        >
+                        <Text style={tw`mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-300`}>
                           Session Completed
                         </Text>
                       )}
                       {session.status === 'cancelled' && (
-                        <Text
-                          style={tw`mt-3 text-xs text-rose-500 dark:text-rose-300`}
-                        >
+                        <Text style={tw`mt-3 text-xs text-rose-500 dark:text-rose-300`}>
                           Session Cancelled
                         </Text>
                       )}
                     </View>
                   ))
                 ) : (
-                  <Text
-                    style={tw`text-xs text-[#49739c] dark:text:white/70 text-center`}
-                  >
+                  <Text style={tw`text-xs text-slate-600 dark:text-slate-400 text-center`}>
                     No upcoming sessions.
                   </Text>
                 )}
               </View>
-            </ScrollView>
+            </View>
           )}
 
           {/* Reviews (student) */}
           {activeTab === 'reviews' && role === 'student' && (
-            <View
-              style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
-            >
-              <Text
-                style={tw`text-xl font-bold text-slate-900 dark:text:white mb-3`}
-              >
-                Post a Review
-              </Text>
+            <View style={sectionBase}>
+              <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-3`}>Post a Review</Text>
 
               <TextInput
                 placeholder="Tutor ID"
-                placeholderTextColor="#93a3b0"
+                placeholderTextColor={placeholderColor}
                 value={formData.tutorId}
                 onChangeText={(t) => setFormData({ ...formData, tutorId: t })}
-                style={tw`w-full p-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10 text-slate-900 dark:text:white mb-3`}
+                style={tw.style(inputBase, tw`mb-3`)}
               />
 
               <TextInput
                 placeholder="Comment"
-                placeholderTextColor="#93a3b0"
+                placeholderTextColor={placeholderColor}
                 value={formData.comment}
                 onChangeText={(t) => setFormData({ ...formData, comment: t })}
-                style={tw`w-full p-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10 text-slate-900 dark:text:white mb-3`}
+                style={tw.style(inputBase, tw`mb-3`)}
                 multiline
               />
 
               <TextInput
                 placeholder="Rating (1-5)"
-                placeholderTextColor="#93a3b0"
+                placeholderTextColor={placeholderColor}
                 keyboardType="numeric"
                 value={String(formData.rating ?? '')}
                 onChangeText={(t) => setFormData({ ...formData, rating: t })}
-                style={tw`w-full p-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10 text-slate-900 dark:text:white mb-3`}
+                style={tw.style(inputBase, tw`mb-3`)}
               />
 
               <TouchableOpacity
                 onPress={() => debouncedReviewSubmission()}
                 style={tw`w-full py-3 rounded-xl bg-rose-600 items-center justify-center`}
+                activeOpacity={0.9}
               >
-                <Text style={tw`text-white text-sm font-semibold`}>
-                  Submit Review
-                </Text>
+                <Text style={tw`text-white text-sm font-semibold`}>Submit Review</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -1356,119 +1028,76 @@ const AccountSectionNative: React.FC = () => {
               {/* Summary Card */}
               <View style={tw`p-5 rounded-2xl bg-[#3d99f5]`}>
                 <Text style={tw`text-xs text-white/90`}>Payout Currency</Text>
-                <Text style={tw`mt-1 text-2xl font-extrabold text-white`}>
-                  {payoutCurrency}
-                </Text>
+                <Text style={tw`mt-1 text-2xl font-extrabold text-white`}>{payoutCurrency}</Text>
+
                 <View style={tw`mt-4 flex-row gap-3`}>
                   <View style={tw`flex-1`}>
                     <Text style={tw`text-[11px] text-white/90`}>Lifetime</Text>
                     <Text style={tw`text-lg font-bold text-white`}>
-                      {currencyFmt(
-                        earnings?.total ??
-                          lifetimeByCurrency[payoutCurrency] ??
-                          0,
-                        String(payoutCurrency)
-                      )}
+                      {currencyFmt(earnings?.total ?? lifetimeByCurrency[payoutCurrency] ?? 0, String(payoutCurrency))}
                     </Text>
                   </View>
                   <View style={tw`flex-1`}>
                     <Text style={tw`text-[11px] text-white/90`}>Pending</Text>
                     <Text style={tw`text-lg font-bold text-white`}>
-                      {currencyFmt(
-                        earnings?.pending ??
-                          pendingWithdrawalsByCurrency[payoutCurrency] ??
-                          0,
-                        String(payoutCurrency)
-                      )}
+                      {currencyFmt(earnings?.pending ?? pendingWithdrawalsByCurrency[payoutCurrency] ?? 0, String(payoutCurrency))}
                     </Text>
                   </View>
                 </View>
+
                 <Text style={tw`mt-3 text-[11px] text-white/90`}>
                   Available:{' '}
                   <Text style={tw`font-semibold`}>
-                    {currencyFmt(
-                      earnings?.available ?? approxAvailable,
-                      String(payoutCurrency)
-                    )}
+                    {currencyFmt(earnings?.available ?? approxAvailable, String(payoutCurrency))}
                   </Text>
                 </Text>
               </View>
 
               {/* Withdrawal Form */}
-              <View
-                style={tw`p-5 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
-              >
-                <Text
-                  style={tw`text-lg font-bold text-slate-900 dark:text:white`}
-                >
+              <View style={sectionBase}>
+                <Text style={tw`text-lg font-bold text-[#0d141c] dark:text-white`}>
                   Withdraw Earnings
                 </Text>
-                <Text
-                  style={tw`mt-1 text-[11px] text-[#49739c] dark:text:white/70`}
-                >
-                  Minimum:{' '}
-                  {currencyFmt(minAmount, String(payoutCurrency))} • Balance
-                  shown is an approximation based on your transactions.
+                <Text style={helperText}>
+                  Minimum: {currencyFmt(minAmount, String(payoutCurrency))} • Balance shown is an approximation based on your transactions.
                 </Text>
 
                 <View style={tw`mt-4`}>
                   <View style={tw`flex-row gap-3`}>
                     <View style={tw`flex-1`}>
-                      <Text
-                        style={tw`text-[11px] text-[#49739c] dark:text:white/70 mb-1`}
-                      >
-                        Currency
-                      </Text>
-                      <TextInput
-                        editable={false}
-                        value={String(payoutCurrency)}
-                        style={tw`w-full p-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10 text-slate-900 dark:text:white`}
-                      />
+                      <Text style={helperText}>Currency</Text>
+                      <TextInput editable={false} value={String(payoutCurrency)} style={inputBase} />
                     </View>
                     <View style={tw`flex-1`}>
-                      <Text
-                        style={tw`text-[11px] text-[#49739c] dark:text:white/70 mb-1`}
-                      >
-                        Amount
-                      </Text>
+                      <Text style={helperText}>Amount</Text>
                       <TextInput
                         keyboardType="decimal-pad"
                         placeholder={String(minAmount)}
-                        placeholderTextColor="#93a3b0"
+                        placeholderTextColor={placeholderColor}
                         value={withdrawAmount}
                         onChangeText={setWithdrawAmount}
-                        style={tw`w-full p-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10 text-slate-900 dark:text:white`}
+                        style={inputBase}
                       />
                     </View>
                   </View>
 
                   <TouchableOpacity
-                    disabled={
-                      isWithdrawing ||
-                      !withdrawAmount ||
-                      Number(withdrawAmount) < minAmount
-                    }
+                    disabled={isWithdrawing || !withdrawAmount || Number(withdrawAmount) < minAmount}
                     onPress={async () => {
                       const amt = Number(withdrawAmount);
                       if (!Number.isFinite(amt) || amt < minAmount) return;
-                      await withdraw({
-                        currency: payoutCurrency,
-                        amount: amt,
-                      });
+
+                      await withdraw({ currency: payoutCurrency, amount: amt });
                       setWithdrawAmount('');
+
                       await refetchTransactions();
                       await refetchAccount();
                       await refetchEarnings();
+
                       await notifyNow(
                         'Withdrawal requested',
-                        `Your withdrawal request of ${currencyFmt(
-                          amt,
-                          String(payoutCurrency)
-                        )} has been submitted.`,
-                        {
-                          screen: 'Account',
-                          params: { tab: 'earnings' },
-                        }
+                        `Your withdrawal request of ${currencyFmt(amt, String(payoutCurrency))} has been submitted.`,
+                        { screen: 'Account', params: { tab: 'earnings' } }
                       );
                     }}
                     style={tw.style(
@@ -1477,6 +1106,7 @@ const AccountSectionNative: React.FC = () => {
                         ? 'bg-[#3d99f5]'
                         : 'bg-[#3d99f5] opacity-60'
                     )}
+                    activeOpacity={0.9}
                   >
                     <Text style={tw`text-white text-sm font-semibold`}>
                       {isWithdrawing ? 'Submitting…' : 'Request Withdrawal'}
@@ -1487,76 +1117,42 @@ const AccountSectionNative: React.FC = () => {
 
               {/* Recent Earnings */}
               <View>
-                <Text
-                  style={tw`text-xl font-bold text-slate-900 dark:text:white mb-3`}
-                >
+                <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-3`}>
                   Recent Earnings
                 </Text>
+
                 {completedEarnings.length > 0 ? (
                   completedEarnings.slice(0, 10).map((tx) => (
                     <View
                       key={String(tx.id)}
                       style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3`}
                     >
-                      <View style={tw`flex-row flex-wrap`}>
-                        <View style={tw`w-full mb-1`}>
-                          <Text
-                            style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                          >
-                            <Text
-                              style={tw`font-semibold text-slate-900 dark:text:white`}
-                            >
-                              Amount:{' '}
-                            </Text>
-                            {currencyFmt(
-                              Number(tx.amount) || 0,
-                              String(tx.currency ?? payoutCurrency)
-                            )}
-                          </Text>
-                        </View>
-                        <View style={tw`w-full mb-1`}>
-                          <Text
-                            style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                          >
-                            <Text
-                              style={tw`font-semibold text-slate-900 dark:text:white`}
-                            >
-                              Date:{' '}
-                            </Text>
-                            {new Date(tx.date).toLocaleDateString()}
-                          </Text>
-                        </View>
-                        <View style={tw`w-full mb-1`}>
-                          <Text
-                            style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                          >
-                            <Text
-                              style={tw`font-semibold text-slate-900 dark:text:white`}
-                            >
-                              Description:{' '}
-                            </Text>
-                            {tx.description}
-                          </Text>
-                        </View>
-                      </View>
+                      <Text style={helperText}>
+                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Amount: </Text>
+                        {currencyFmt(Number(tx.amount) || 0, String(tx.currency ?? payoutCurrency))}
+                      </Text>
+                      <Text style={helperText}>
+                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Date: </Text>
+                        {new Date(tx.date).toLocaleDateString()}
+                      </Text>
+                      <Text style={helperText}>
+                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Description: </Text>
+                        {tx.description}
+                      </Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={tw`text-xs text-[#49739c] dark:text:white/70`}>
-                    No earnings found.
-                  </Text>
+                  <Text style={helperText}>No earnings found.</Text>
                 )}
               </View>
 
               {/* Withdrawal Activity */}
               <View>
-                <Text
-                  style={tw`text-xl font-bold text-slate-900 dark:text:white mb-3`}
-                >
+                <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-3`}>
                   Withdrawal Activity
                 </Text>
-                {transactions.filter((t) => t.type?.startsWith('Withdrawal'))
-                  .length > 0 ? (
+
+                {transactions.filter((t) => t.type?.startsWith('Withdrawal')).length > 0 ? (
                   transactions
                     .filter((t) => t.type?.startsWith('Withdrawal'))
                     .slice(0, 10)
@@ -1565,79 +1161,32 @@ const AccountSectionNative: React.FC = () => {
                         key={String(tx.id)}
                         style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3`}
                       >
-                        <View style={tw`flex-row flex-wrap`}>
-                          <View style={tw`w-full mb-1`}>
-                            <Text
-                              style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                            >
-                              <Text
-                                style={tw`font-semibold text-slate-900 dark:text:white`}
-                              >
-                                Type:{' '}
-                              </Text>
-                              {tx.type}
-                            </Text>
-                          </View>
-                          <View style={tw`w-full mb-1`}>
-                            <Text
-                              style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                            >
-                              <Text
-                                style={tw`font-semibold text-slate-900 dark:text:white`}
-                              >
-                                Amount:{' '}
-                              </Text>
-                              {currencyFmt(
-                                Math.abs(Number(tx.amount)),
-                                String(
-                                  tx.currency ?? payoutCurrency
-                                ).toUpperCase()
-                              )}
-                            </Text>
-                          </View>
-                          <View style={tw`w-full mb-1`}>
-                            <Text
-                              style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                            >
-                              <Text
-                                style={tw`font-semibold text-slate-900 dark:text:white`}
-                              >
-                                Status:{' '}
-                              </Text>
-                              {tx.status || 'Pending'}
-                            </Text>
-                          </View>
-                          <View style={tw`w-full mb-1`}>
-                            <Text
-                              style={tw`text-xs text-[#49739c] dark:text:white/70`}
-                            >
-                              <Text
-                                style={tw`font-semibold text-slate-900 dark:text:white`}
-                              >
-                                Date:{' '}
-                              </Text>
-                              {new Date(tx.date).toLocaleDateString()}
-                            </Text>
-                          </View>
-                        </View>
-                        {tx.description ? (
-                          <Text
-                            style={tw`mt-1 text-xs text-[#49739c] dark:text:white/70`}
-                          >
-                            {tx.description}
-                          </Text>
-                        ) : null}
+                        <Text style={helperText}>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Type: </Text>
+                          {tx.type}
+                        </Text>
+                        <Text style={helperText}>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Amount: </Text>
+                          {currencyFmt(Math.abs(Number(tx.amount)), String(tx.currency ?? payoutCurrency).toUpperCase())}
+                        </Text>
+                        <Text style={helperText}>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Status: </Text>
+                          {tx.status || 'Pending'}
+                        </Text>
+                        <Text style={helperText}>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Date: </Text>
+                          {new Date(tx.date).toLocaleDateString()}
+                        </Text>
+                        {!!tx.description && <Text style={helperText}>{tx.description}</Text>}
                       </View>
                     ))
                 ) : (
-                  <Text style={tw`text-xs text-[#49739c] dark:text:white/70`}>
-                    No withdrawal activity yet.
-                  </Text>
+                  <Text style={helperText}>No withdrawal activity yet.</Text>
                 )}
               </View>
             </View>
           )}
-        </ScrollView>
+        </View>
 
         {/* Rating Modal */}
         <Modal
@@ -1646,74 +1195,56 @@ const AccountSectionNative: React.FC = () => {
           animationType="fade"
           onRequestClose={() => setShowRatingModal(false)}
         >
-          <View
-            style={tw`absolute inset-0 bg-black/60 justify-center items-center`}
-          >
-            <View
-              style={tw`w-11/12 max-w-md p-6 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
-            >
-              <Text
-                style={tw`text-xl font-bold text-slate-900 dark:text:white mb-4`}
-              >
+          <View style={tw`absolute inset-0 bg-black/60 justify-center items-center`}>
+            <View style={tw`w-11/12 max-w-md p-6 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
+              <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-4`}>
                 Rate Your Tutor
               </Text>
 
               <View style={tw`mb-4`}>
-                <Text
-                  style={tw`text-xs text-[#49739c] dark:text:white/70 mb-1`}
-                >
-                  Rating (1–5)
-                </Text>
+                <Text style={helperText}>Rating (1–5)</Text>
                 <TextInput
                   keyboardType="numeric"
                   value={ratingData.rating}
-                  onChangeText={(v) =>
-                    setRatingData({ ...ratingData, rating: v })
-                  }
-                  style={tw`w-full p-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10 text-slate-900 dark:text:white`}
+                  onChangeText={(v) => setRatingData({ ...ratingData, rating: v })}
+                  placeholderTextColor={placeholderColor}
+                  style={inputBase}
                 />
               </View>
 
               <View style={tw`mb-4`}>
-                <Text
-                  style={tw`text-xs text-[#49739c] dark:text:white/70 mb-1`}
-                >
-                  Comment
-                </Text>
+                <Text style={helperText}>Comment</Text>
                 <TextInput
                   multiline
                   value={ratingData.comment}
-                  onChangeText={(t) =>
-                    setRatingData({ ...ratingData, comment: t })
-                  }
+                  onChangeText={(t) => setRatingData({ ...ratingData, comment: t })}
                   placeholder="Leave a comment (optional)…"
-                  placeholderTextColor="#93a3b0"
-                  style={tw`h-24 w-full p-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10 text-slate-900 dark:text:white`}
+                  placeholderTextColor={placeholderColor}
+                  style={tw.style(inputBase, tw`h-24`)}
                 />
               </View>
 
               <View style={tw`flex-row justify-end`}>
                 <TouchableOpacity
                   onPress={() => setShowRatingModal(false)}
-                  style={tw`px-4 py-2 rounded-lg bg-[#e7edf4] dark:bg-[#172534] mr-2`}
+                  style={tw`px-4 py-2 rounded-lg bg-slate-200 dark:bg-white/5 mr-2`}
+                  activeOpacity={0.9}
                 >
-                  <Text style={tw`text-sm text-[#0d141c] dark:text:white`}>
-                    Cancel
-                  </Text>
+                  <Text style={tw`text-sm text-[#0d141c] dark:text-white`}>Cancel</Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
                   onPress={handleReviewSubmission}
                   style={tw`px-4 py-2 rounded-lg bg-rose-600`}
+                  activeOpacity={0.9}
                 >
-                  <Text style={tw`text-sm text-white font-semibold`}>
-                    Submit Rating
-                  </Text>
+                  <Text style={tw`text-sm text-white font-semibold`}>Submit Rating</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
         </Modal>
-      </View>
+      </RefreshableScrollView>
     </SafeAreaView>
   );
 };

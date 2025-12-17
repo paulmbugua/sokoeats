@@ -398,6 +398,8 @@ const ProfileScreen: React.FC = () => {
     navigation.navigate('CourseProgress', { courseId });
   const goResults = () =>
     navigation.navigate('Results' as any);
+  const goAccount = () => navigation.navigate('Account', {});
+
 
   // /api/user/me fallback (email/role)
   const [meEmail, setMeEmail] = useState<string | null>(null);
@@ -1029,6 +1031,15 @@ const ProfileScreen: React.FC = () => {
                 Home
               </Text>
             </Pressable>
+             <Pressable
+            onPress={goAccount}
+            style={tw`px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534]`}
+          >
+            <Text style={tw`text-sm font-medium text-[#0d141c] dark:text-white`}>
+              Account
+            </Text>
+          </Pressable>
+
 
             <Pressable
               onPress={goAccountSessions}

@@ -53,7 +53,7 @@ const TOKENS_OPTIONS = [
   { label: '60+', value: 999999 },
 ] as const;
 
-const PER_PAGE = 6;
+const PER_PAGE = 20;
 
 /* ───────── Utils ───────── */
 const normalizeStr = (v: unknown): string => {

@@ -34,7 +34,7 @@ const RATINGS = [5, 4.5, 4, 3.5, 3] as const;
 const AVAILABILITY = ['Online', 'Offline', 'Busy', 'Free Session', 'New'] as const;
 const LANGS_COMMON = ['English', 'Spanish', 'French', 'Arabic', 'Chinese', 'German'] as const;
 
-const PER_PAGE = 6;
+const PER_PAGE = 20;
 
 /* utils */
 const normalizeStr = (v: unknown): string => {

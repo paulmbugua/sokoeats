@@ -80,6 +80,7 @@ async function paystackInitTransaction({
   reference,
   callback_url,
   metadata,
+  channels,
 }) {
   const r = await fetch(`${PAYSTACK_BASE}/transaction/initialize`, {
     method: 'POST',
@@ -93,7 +94,7 @@ async function paystackInitTransaction({
       currency: 'KES',
       reference: reference || undefined,
       callback_url: callback_url || undefined,
-     
+      channels: Array.isArray(channels) && channels.length ? channels : ['card'],
       metadata: metadata || undefined,
     }),
   });
@@ -397,6 +398,7 @@ export async function initOrgSubscription(req, res) {
       amount_minor: expectedKesMinor,
       reference,
       callback_url,
+      channels: ['card'],
       metadata: {
         kind: 'org',
         paymentId: String(payment.id),

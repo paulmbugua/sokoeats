@@ -239,20 +239,7 @@ const App: React.FC = () => {
   const markSeen = useMarkFirstLoginSeen();
 
   const { uiFilters, handleSearch, clearFilters } = useHomePage();
-  React.useEffect(() => {
-  (async () => {
-    const initial = await Linking.getInitialURL();
-    console.log('[PAYSTACK][initialURL]', initial);
-  })();
-
-  const sub = Linking.addEventListener('url', ({ url }) => {
-    console.log('[PAYSTACK][eventURL]', url);
-  });
-
-  return () => sub.remove();
-}, []);
-
-
+  
 
   React.useEffect(() => {
     let mounted = true;
