@@ -3900,6 +3900,7 @@ __metadata:
   dependencies:
     "@ffmpeg-installer/ffmpeg": "npm:^1.1.0"
     "@ffprobe-installer/ffprobe": "npm:^2.1.2"
+    "@google-cloud/speech": "npm:^7.2.1"
     "@google-cloud/text-to-speech": "npm:^6.4.0"
     "@react-oauth/google": "npm:^0.12.1"
     "@types/fluent-ffmpeg": "npm:^2"
