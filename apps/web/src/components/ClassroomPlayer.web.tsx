@@ -131,7 +131,11 @@ function Container(props: Props) {
     try { return localStorage.getItem('classroomVoiceName') || voiceName || 'en-US-Wavenet-C'; }
     catch { return voiceName || 'en-US-Wavenet-C'; }
   });
-  React.useEffect(()=>{ if (voiceName && voiceName !== voice) setVoice(voiceName); },[voiceName]);
+  React.useEffect(() => {
+  if (!voiceName) return;
+  setVoice((prev) => (prev === voiceName ? prev : voiceName));
+}, [voiceName]);
+
   React.useEffect(()=>{ try { localStorage.setItem('classroomVoiceName', voice); } catch {} },[voice]);
   const [templateId, setTemplateId] = React.useState<HighlightTemplate>(() => {
   try {
@@ -361,9 +365,20 @@ function Container(props: Props) {
     onPlayerLoadingChange,
   ]);
 
-  React.useEffect(() => {
-    onPlayerLoadingChange?.(loading || isAdvancing);
-  }, [loading, isAdvancing, onPlayerLoadingChange]);
+ const onPlayerLoadingChangeRef = React.useRef<Props['onPlayerLoadingChange']>(undefined);
+
+React.useEffect(() => {
+  onPlayerLoadingChangeRef.current = onPlayerLoadingChange;
+}, [onPlayerLoadingChange]);
+
+const lastReportedLoadingRef = React.useRef<boolean | null>(null);
+
+React.useEffect(() => {
+  const v = Boolean(loading || isAdvancing);
+  if (lastReportedLoadingRef.current === v) return; // ✅ only emit when it actually changes
+  lastReportedLoadingRef.current = v;
+  onPlayerLoadingChangeRef.current?.(v);
+}, [loading, isAdvancing]);
 
   // Overlay spacing
   const [lockedTopH, setLockedTopH] = React.useState<number | null>(null);

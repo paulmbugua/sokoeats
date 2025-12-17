@@ -133,6 +133,20 @@ function indexForTime(ws: Array<{ start: number; end: number }>, t: number): num
   return Math.max(0, Math.min(ans, ws.length - 1));
 }
 
+function hasUsefulPunctuation(arr: Array<{ text?: string }>) {
+  return (arr || []).some((w) => {
+    const t = (w?.text || '').trim();
+    if (!t) return false;
+
+    // punctuation-only tokens like "..." or "—"
+    if (/^[\p{P}\p{S}]+$/u.test(t)) return true;
+
+    // sentence / clause punctuation (IGNORE apostrophes inside words)
+    return /[.!?…,:;(){}\[\]]/.test(t);
+  });
+}
+
+
 // ───────────────────── Inner Player ─────────────────────
 
 const InnerPlayer: React.FC<Props> = (props) => {
@@ -342,10 +356,14 @@ useEffect(() => {
     return (ssml || '').trim();
   }, [useJoined, ssml, hasLessons, lessons, uiLessonIdx]);
 
-  const displayWords = useMemo(() => {
+ const displayWords = useMemo(() => {
+  const alreadyDecorated = hasUsefulPunctuation(words as any);
+  if (alreadyDecorated) return words as any;
+
   const plain = ssmlToPlainText(effectiveSsml ?? '');
   return applyPunctuationToWords(words as any, plain) as any;
 }, [words, effectiveSsml]);
+
 
 
   const lessonContentKey = useMemo(() => {
@@ -847,6 +865,32 @@ const nextIsReady = useCallback(() => {
   const volUp = () => setVolume(Math.min(1, +(Math.min(1, volume + 0.1)).toFixed(3)));
 
   const sentences = (sentenceGroups || []) as SentenceGroup[];
+  const [stableTimed, setStableTimed] = useState<{
+  words: any[];
+  sentences: SentenceGroup[];
+  key: string;
+} | null>(null);
+
+const liveReady = !!(sentences?.length && words?.length);
+
+useEffect(() => {
+  if (!liveReady) return;
+
+  setStableTimed((prev) => {
+    if (prev?.key === lessonContentKey) return prev;
+    return {
+      words: displayWords as any,
+      sentences: sentences as any,
+      key: lessonContentKey,
+    };
+  });
+}, [liveReady, lessonContentKey]);
+
+
+const renderWords = liveReady ? (displayWords as any) : stableTimed?.words ?? [];
+const renderSentences = liveReady ? (sentences as any) : stableTimed?.sentences ?? [];
+const shouldShowFallback = !liveReady && !stableTimed;
+
 
   return (
     <View style={tw`flex-1`}>
@@ -911,15 +955,16 @@ const nextIsReady = useCallback(() => {
           ) : null}
 
           {/* Main narration stage */}
-          <NarrationStage
-            sentences={sentences}
-            words={displayWords as any}
-            currentIndex={currentIndex}
-            fontSize={stageFontSize}
-            isDark={isDark}
-            maximized={maximized}
-            fallbackSsml={effectiveSsml}
-          />
+         <NarrationStage
+          sentences={renderSentences}
+          words={renderWords}
+          currentIndex={currentIndex}
+          fontSize={stageFontSize}
+          isDark={isDark}
+          maximized={maximized}
+          fallbackSsml={shouldShowFallback ? effectiveSsml : ''}
+        />
+
 
 
 
@@ -973,8 +1018,9 @@ const nextIsReady = useCallback(() => {
         open={showTranscript}
         onClose={() => setShowTranscript(false)}
         title={lessonHeadingForUi}
-        sentences={sentences}
-        words={words as any}
+        sentences={renderSentences}
+        words={renderWords}
+
         currentIndex={currentIndex}
         seekToWord={seekToWordNative}
       />
@@ -1177,49 +1223,91 @@ function normalizeForMatch(s: string) {
   return (s || '')
     .normalize('NFKC')
     .toLowerCase()
-    .replace(/[^a-z0-9']/g, ''); // keep letters/numbers/apostrophe
+    .replace(/[^\p{L}\p{N}']/gu, '');
 }
+
 
 function applyPunctuationToWords(
   timedWords: Array<{ text: string; start: number; end: number }>,
   plainText: string
 ) {
-  const plainTokens = (plainText || '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean);
+  const raw = (plainText || '').replace(/\s+/g, ' ').trim();
+  const plainTokens = raw ? raw.split(' ').filter(Boolean) : [];
 
   if (!timedWords?.length || !plainTokens.length) return timedWords || [];
 
   // If timed words already contain punctuation, don't meddle.
-  const timedHasPunc = timedWords.some(w => /[.!?;,:"')\]]/.test(w?.text || ''));
-  const plainHasPunc = /[.!?;,:"')\]]/.test(plainText || '');
+  const timedHasPunc = hasUsefulPunctuation(timedWords as any);
+
+  const plainHasPunc = /[\p{P}\p{S}]/u.test(plainText || '');
+
   if (timedHasPunc || !plainHasPunc) return timedWords;
 
-  const out = timedWords.map(w => ({ ...w }));
+  const out = timedWords.map((w) => ({ ...w }));
+
+  const isPuncOnly = (t: string) => normalizeForMatch(t) === '' && /^[\p{P}\p{S}]+$/u.test(t);
+
+
+  const peel = (t: string) => {
+    const leading = (t.match(/^[\p{P}\p{S}]+/u)?.[0]) ?? '';
+    const trailing = (t.match(/[\p{P}\p{S}]+$/u)?.[0]) ?? '';
+
+    const core = t.slice(leading.length, t.length - trailing.length);
+    return { leading, core, trailing };
+  };
+
   let j = 0;
+  let lastMatchedI: number | null = null;
 
   for (let i = 0; i < out.length; i++) {
-    const base = normalizeForMatch(out[i]?.text || '');
+    const wi = out[i];
+    if (!wi) continue;
+
+    const base = normalizeForMatch(wi.text || '');
     if (!base) continue;
 
-    // advance until we find a matching token in the plain text
-    while (j < plainTokens.length && normalizeForMatch(plainTokens[j] ?? '') !== base) {
-  j++;
-}
+    // Attach punctuation-only tokens to the previous matched word
+    while (j < plainTokens.length) {
+      const tok = plainTokens[j];
+      if (!tok || !isPuncOnly(tok)) break;
 
-if (j < plainTokens.length) {
-  const wi = out[i];
-  if (!wi) continue;
+      if (lastMatchedI != null) {
+        const prev = out[lastMatchedI];
+        if (prev) prev.text = (prev.text || '') + tok;
+      }
+      j++;
+    }
 
-  const token = plainTokens[j];
-  if (token != null) {
-    wi.text = token;
-  }
-  j++;
-}
+    // Advance until we find a token whose CORE matches this word
+    while (j < plainTokens.length) {
+      const tok = plainTokens[j];
+      if (!tok) {
+        j++;
+        continue;
+      }
+      if (isPuncOnly(tok)) break;
 
+      const { core } = peel(tok);
+      if (normalizeForMatch(core) === base) break;
+      j++;
+    }
+
+    const tok = plainTokens[j];
+    if (tok && !isPuncOnly(tok)) {
+      const { leading, core, trailing } = peel(tok);
+
+      wi.text = `${leading}${core}${trailing}`;
+      lastMatchedI = i;
+      j++;
+
+      // Immediately attach following punctuation-only tokens
+      while (j < plainTokens.length) {
+        const tok2 = plainTokens[j];
+        if (!tok2 || !isPuncOnly(tok2)) break;
+        wi.text = (wi.text || '') + tok2;
+        j++;
+      }
+    }
   }
 
   return out;

@@ -276,6 +276,7 @@ const lastEmitRef = useRef(0);
 const SENT_END = /[.!?…]+["')\]]?$/;
 
 const handleWordSync = useCallback(
+  
   (p: { words: any[]; currentIndex: number }) => {
     if (!onOverlayState) return;
 

@@ -25,20 +25,44 @@ export function useAttemptIntegrity(backendUrl: string, token?: string) {
   const startTsRef = useRef<number>(0);
   const appStateRef = useRef(AppState.currentState);
 
-  // Supply your device id from outside if you prefer; else call setDeviceId(...)
-  const bindDeviceId = useCallback((id: string) => setDeviceId(id), []);
+  // ✅ keep latest values for heartbeat without re-creating startHeartbeat every tick
+  const attemptIdRef = useRef<string | null>(null);
+  const deviceIdRef = useRef<string>('');
+  const elapsedMsRef = useRef(0);
+  const backgroundsRef = useRef(0);
+  const suspicionsRef = useRef(0);
+  const tokenRef = useRef<string | undefined>(token);
+  const backendUrlRef = useRef<string>(backendUrl);
+
+  useEffect(() => { attemptIdRef.current = attemptId; }, [attemptId]);
+  useEffect(() => { deviceIdRef.current = deviceId; }, [deviceId]);
+  useEffect(() => { elapsedMsRef.current = elapsedMs; }, [elapsedMs]);
+  useEffect(() => { backgroundsRef.current = backgrounds; }, [backgrounds]);
+  useEffect(() => { suspicionsRef.current = suspicions; }, [suspicions]);
+  useEffect(() => { tokenRef.current = token; }, [token]);
+  useEffect(() => { backendUrlRef.current = backendUrl; }, [backendUrl]);
+
+  // ✅ IMPORTANT: idempotent setter (prevents render-loops if parent calls this often)
+  const bindDeviceId = useCallback((id: string) => {
+    const next = (id || '').trim();
+    setDeviceId((prev) => (prev === next ? prev : next));
+  }, []);
 
   const start = useCallback(async (opts: StartOpts) => {
     if (!token) { setError('No token'); return null; }
     setError(null);
+
     const res = await startAttemptApi(backendUrl, token, opts);
+
     setAttempt(res);
     setAttemptId(res.attemptId);
     setQuizActive(true);
+
     startTsRef.current = Date.now();
     setElapsedMs(0);
     setBackgrounds(0);
     setSuspicions(0);
+
     return res;
   }, [backendUrl, token]);
 
@@ -46,10 +70,9 @@ export function useAttemptIntegrity(backendUrl: string, token?: string) {
   useEffect(() => {
     if (!quizActive) return;
     const id = setInterval(() => {
-   const base = startTsRef.current || Date.now();
-   setElapsedMs(Date.now() - base);
- }, 1000);
- 
+      const base = startTsRef.current || Date.now();
+      setElapsedMs(Date.now() - base);
+    }, 1000);
     return () => clearInterval(id);
   }, [quizActive]);
 
@@ -66,25 +89,38 @@ export function useAttemptIntegrity(backendUrl: string, token?: string) {
     return () => { try { sub.remove(); } catch {} };
   }, [quizActive]);
 
-  // heartbeat
   const stopHeartbeat = useCallback(() => {
-    if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
   }, []);
 
+  // ✅ startHeartbeat no longer depends on elapsedMs/backgrounds/suspicions (no interval thrash)
   const startHeartbeat = useCallback(() => {
-    if (!quizActive || !attemptId || !token) return;
+    if (!quizActive || !attemptId) return;
+    if (!token) return;
+
     stopHeartbeat();
+
     const every = Math.max(5, Number(attempt?.heartbeatSec || 15)) * 1000;
+
     heartbeatRef.current = setInterval(() => {
-      heartbeatAttemptApi(backendUrl, token, {
-        attemptId,
-        deviceId,
-        elapsedMs,
-        backgrounds,
-        suspicions,
+      const t = tokenRef.current;
+      const b = backendUrlRef.current;
+      const aId = attemptIdRef.current;
+
+      if (!t || !b || !aId) return;
+
+      heartbeatAttemptApi(b, t, {
+        attemptId: aId,
+        deviceId: deviceIdRef.current,
+        elapsedMs: elapsedMsRef.current,
+        backgrounds: backgroundsRef.current,
+        suspicions: suspicionsRef.current,
       }).catch(() => {});
     }, every);
-  }, [quizActive, attemptId, token, backendUrl, deviceId, elapsedMs, backgrounds, suspicions, attempt?.heartbeatSec, stopHeartbeat]);
+  }, [quizActive, attemptId, token, attempt?.heartbeatSec, stopHeartbeat]);
 
   useEffect(() => {
     if (quizActive && attemptId) startHeartbeat();
@@ -93,14 +129,13 @@ export function useAttemptIntegrity(backendUrl: string, token?: string) {
 
   const bumpSuspicion = useCallback((delta = 1) => setSuspicions((s) => s + delta), []);
   const markNotActive = useCallback(() => setQuizActive(false), []);
-   const markActive = useCallback(() => {
-   if (!startTsRef.current) {
-     // local start (non-org flow or pre-start visual activation)
-     startTsRef.current = Date.now();
-     setElapsedMs(0);
-   }
-   setQuizActive(true);
- }, []);
+  const markActive = useCallback(() => {
+    if (!startTsRef.current) {
+      startTsRef.current = Date.now();
+      setElapsedMs(0);
+    }
+    setQuizActive(true);
+  }, []);
 
   const submit = useCallback(async (assignmentId: string, answers: any[]) => {
     if (!token || !attemptId) { setError('No attempt or token'); return null; }

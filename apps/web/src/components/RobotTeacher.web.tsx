@@ -599,6 +599,13 @@ useEffect(() => {
     }
   };
 
+  const handlePlayerLoadingChange = useCallback((b: boolean) => {
+  if (activeRunId === null) return;
+  setPlayerLoading((prev) => (prev === b ? prev : b));
+  // ⛔ don’t setPreparing here; let your existing effect compute preparing
+}, [activeRunId]);
+
+
   const refreshCourseList = useCallback(async () => {
     const preserveIds = courseIdParam ? [courseIdParam] : [];
     dlog('refreshCourseList → clearTopCoursesCacheNow + reload', { preserveIds });
@@ -941,10 +948,8 @@ const onStart = useCallback(async () => {
             onBeforePlay={onBeforePlayWrapped}
             onEnded={onEndedWrapped}
             onStart={onStart}
-            onPlayerLoadingChange={(b) => {
-              if (activeRunId === null) return;
-              setPreparing(b);   // ⬅️ just mirror the player’s loading state
-            }}
+            onPlayerLoadingChange={handlePlayerLoadingChange}
+
 
 
             themeOpen={themeOpen}

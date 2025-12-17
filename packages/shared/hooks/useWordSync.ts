@@ -118,6 +118,89 @@ function normalizeTextForFallback(input?: string): string {
     .trim();
 }
 
+function ssmlVisibleText(input?: string): string {
+  return normalizeTextForFallback(input);
+}
+
+function decorateTimingsFromSource(timings: WordTiming[], sourceText?: string): WordTiming[] {
+  if (!timings?.length || !sourceText) return timings;
+
+  // If timings already have punctuation/symbols, don't touch them.
+ const timingsHavePunc = timings.some((w) => {
+  const t = (w?.text || '').trim();
+  if (!t) return false;
+  if (/^[\p{P}\p{S}]+$/u.test(t)) return true;
+  return /[.!?…,:;(){}\[\]]/.test(t);
+});
+if (timingsHavePunc) return timings;
+
+
+  const visible = ssmlVisibleText(sourceText);
+  if (!visible) return timings;
+
+  const tokens = visible.split(/\s+/).filter(Boolean);
+
+  const norm = (s: string) =>
+    (s || '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}']/gu, '');
+
+  const isPuncOnly = (t: string) => norm(t) === '' && /[\p{P}\p{S}]/u.test(t);
+
+  const peel = (t: string) => {
+    const leading = (t.match(/^[\p{P}\p{S}]+/u)?.[0]) ?? '';
+    const trailing = (t.match(/[\p{P}\p{S}]+$/u)?.[0]) ?? '';
+    const core = t.slice(leading.length, t.length - trailing.length);
+    return { leading, core, trailing };
+  };
+
+  const out = timings.map((w) => ({ ...w }));
+  let j = 0;
+  let lastMatched = -1;
+
+  for (let i = 0; i < out.length; i++) {
+    const base = norm(out[i]?.text || '');
+    if (!base) continue;
+
+    // Attach punctuation-only tokens that appear before the next word
+    while (j < tokens.length && isPuncOnly(tokens[j])) {
+      const p = tokens[j];
+      if (lastMatched >= 0) out[lastMatched].text = (out[lastMatched].text || '') + p;
+      else out[i].text = p + (out[i].text || '');
+      j++;
+    }
+
+    // Advance until we find a token whose CORE matches the current timing word
+    while (j < tokens.length) {
+      const tok = tokens[j];
+      if (!tok) { j++; continue; }
+      if (isPuncOnly(tok)) break;
+      const { core } = peel(tok);
+      if (norm(core) === base) break;
+      j++;
+    }
+
+    const tok = tokens[j];
+    if (tok && !isPuncOnly(tok)) {
+      const { leading, core, trailing } = peel(tok);
+      out[i].text = `${leading}${core}${trailing}`;
+      lastMatched = i;
+      j++;
+
+      // Immediately attach punctuation-only tokens after the word
+      while (j < tokens.length && isPuncOnly(tokens[j])) {
+        out[i].text = (out[i].text || '') + tokens[j];
+        j++;
+      }
+    }
+  }
+
+  return out;
+}
+
+
+
 function approximateFromVisemes(
   visemes: Viseme[] | undefined,
   ssmlOrText?: string,
@@ -873,9 +956,15 @@ const clearForNewSession = useCallback(() => {
 
 
       if (cancelled) return;
+        
+    const ex: ExtendedSpeakResp = resp as ExtendedSpeakResp;
+    const sourceText = ex.ssml ?? ex.text ?? ex.rawText ?? '';
 
-      setWords(nextWords);
-      setCurrentIndex(0);
+    nextWords = decorateTimingsFromSource(nextWords, sourceText);
+
+    setWords(nextWords);
+    setCurrentIndex(0);
+
 
       // Preferred audio URL
       let src: string | null = null;
