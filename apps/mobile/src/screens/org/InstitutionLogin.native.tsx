@@ -44,6 +44,15 @@ type AccountKind = 'institution' | 'instructor' | 'learner';
    ─────────────────────────────────────────────────────────── */
 const RETURN_TO_PRIMARY = 'auth:returnTo';
 const RETURN_TO_ALIASES = [RETURN_TO_PRIMARY, 'auth:returnTo:org'];
+const MUST_CHANGE_KEY = 'org:mustChangePassword';
+
+const setMustChangeFlagNative = async (value: boolean) => {
+  try {
+    if (value) await AsyncStorage.setItem(MUST_CHANGE_KEY, '1');
+    else await AsyncStorage.removeItem(MUST_CHANGE_KEY);
+  } catch {}
+};
+
 
 const normalizeOrgNext = (v?: string) => {
   if (!v) return v;
@@ -145,6 +154,7 @@ const InstitutionLoginNative: React.FC = () => {
   // NEW: institution | instructor | learner selector
   const [accountKind, setAccountKind] = useState<AccountKind>('institution');
   const canSignUp = accountKind === 'institution';
+  const showSignUpTab = canSignUp;
 
   const [name, setName] = useState(''); // sign-up only
   const [email, setEmail] = useState('');
@@ -191,20 +201,7 @@ const InstitutionLoginNative: React.FC = () => {
     })();
   }, []);
 
-  // If already signed in as an institution member, go straight to OrgProfile
-  useEffect(() => {
-    (async () => {
-      if (orgToken) {
-        await clearReturnTo();
-        navigation.dispatch(
-          CommonActions.reset({
-            index: 0,
-            routes: [{ name: 'OrgProfile' }],
-          })
-        );
-      }
-    })();
-  }, [orgToken, navigation]);
+  
 
   // Keep Sign Up disabled for non-institution accounts
   useEffect(() => {
@@ -252,29 +249,50 @@ const InstitutionLoginNative: React.FC = () => {
       : `Create your ${base} account`;
   }, [authMode, accountKind]);
 
-  const {
-    handleGoogleLoginSuccess,
-    handleGoogleLoginFailure,
-    loginWithEmail,
-    registerWithEmail,
-    sendResetOTP,
-    resetPasswordWithOTP,
-  } = useInstitutionAuth({
-    alertFn: (msg) => console.log('[institution-auth]', msg),
-    navigateFn: async () => {
-      const _saved = await readReturnTo(); // kept for deep invite links
-      await clearReturnTo();
+ const {
+  handleGoogleLoginSuccess,
+  handleGoogleLoginFailure,
+  loginWithEmail,
+  registerWithEmail,
+  sendResetOTP,
+  resetPasswordWithOTP,
+} = useInstitutionAuth({
+  alertFn: (msg) => console.log('[institution-auth]', msg),
+
+  // ✅ native persists the flag here (before navigation)
+  onAuthMeta: async ({ mustChangePassword }) => {
+    await setMustChangeFlagNative(mustChangePassword);
+  },
+
+  // ✅ IMPORTANT: accept `dest` and route properly
+  navigateFn: async (dest?: string) => {
+    const saved = await readReturnTo(); // deep links / invites
+    await clearReturnTo();
+
+    if (dest === '/org/change-password') {
       navigation.reset({
         index: 0,
         routes: [
           {
-            name: 'OrgHome' as never,
-            params: _saved ? { next: _saved } : undefined,
+            name: 'OrgChangePassword',
+            params: { returnTo: saved },
           },
         ],
       });
-    },
-  });
+      return;
+    }
+
+    navigation.reset({
+      index: 0,
+      routes: [
+        {
+          name: 'OrgHome',
+          params: saved ? { next: saved } : undefined,
+        },
+      ],
+    });
+  },
+});
 
   // ── Handlers ──────────────────────────────────────────────
   const onSubmit = async () => {
@@ -507,40 +525,56 @@ const InstitutionLoginNative: React.FC = () => {
               )}
 
               {/* Auth mode switch */}
-              <View style={tw`flex-row bg-white/10 rounded-xl p-1 mb-4`}>
-                {(['Login', 'Sign Up'] as const).map((m) => {
-                  const active = authMode === m;
-                  const disabled = m === 'Sign Up' && !canSignUp;
-                  return (
-                    <TouchableOpacity
-                      key={m}
-                      onPress={() => {
-                        if (disabled) return;
-                        clearErrors();
-                        setAuthMode(m);
-                      }}
-                      style={tw.style(
-                        'flex-1 h-10 rounded-lg items-center justify-center',
-                        active ? 'bg-white/15' : '',
-                        disabled ? 'opacity-40' : ''
-                      )}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active, disabled }}
+             <View style={tw`flex-row bg-white/10 rounded-xl p-1 mb-4`}>
+                {/* Login tab (always visible) */}
+                <TouchableOpacity
+                  onPress={() => {
+                    clearErrors();
+                    setAuthMode('Login');
+                  }}
+                  style={tw.style(
+                    'flex-1 h-10 rounded-lg items-center justify-center',
+                    authMode === 'Login' ? 'bg-white/15' : ''
+                  )}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: authMode === 'Login' }}
+                >
+                  <Text
+                    style={[
+                      tw`font-semibold`,
+                      { color: authMode === 'Login' ? palette.text : palette.textSoft },
+                    ]}
+                  >
+                    Login
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Sign Up tab (ONLY when Institution selected) */}
+                {showSignUpTab && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      clearErrors();
+                      setAuthMode('Sign Up');
+                    }}
+                    style={tw.style(
+                      'flex-1 h-10 rounded-lg items-center justify-center',
+                      authMode === 'Sign Up' ? 'bg-white/15' : ''
+                    )}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: authMode === 'Sign Up' }}
+                  >
+                    <Text
+                      style={[
+                        tw`font-semibold`,
+                        { color: authMode === 'Sign Up' ? palette.text : palette.textSoft },
+                      ]}
                     >
-                      <Text
-                        style={[
-                          tw`font-semibold`,
-                          {
-                            color: active ? palette.text : palette.textSoft,
-                          },
-                        ]}
-                      >
-                        {m}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                      Sign Up
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
+
 
               {/* Forms */}
               {resetMode !== 'idle' ? (

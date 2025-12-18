@@ -222,6 +222,7 @@ export async function createOrder(req, res) {
       channels: ['card'],
            
       metadata: {
+          kind: 'tokens',
         paymentId: paymentRow.id,
         userId,
         packageId: pkg.id,
@@ -290,63 +291,55 @@ export async function submitOtpCharge(req, res) {
 /* ------------------------ Paystack webhook (capture) ------------------------ */
 export const handlePaystackWebhook = async (req, res) => {
   const sig = req.headers['x-paystack-signature'];
-  const raw = req.body; // Buffer
+const raw = req.rawBody ?? req.body;
 
-  // Must ACK fast; do minimal work before returning 200.
+
   try {
     const hash = crypto.createHmac('sha512', PAYSTACK_SECRET_KEY).update(raw).digest('hex');
     if (!sig || hash !== sig) return res.status(400).send('Invalid signature');
 
     const event = JSON.parse(raw.toString('utf8'));
 
-    // We only care about successful charge notifications
     if (event?.event !== 'charge.success') return res.sendStatus(200);
 
     const reference = event?.data?.reference;
     if (!reference) return res.sendStatus(200);
 
-    // Trimmed log (no payload dump)
-    console.log('[paystack][webhook] charge.success', {
-      reference,
-      currency: String(event?.data?.currency || '').toUpperCase(),
-      providerId: event?.data?.id != null ? String(event.data.id) : null,
+    const currency = String(event?.data?.currency || '').toUpperCase();
+    const providerId = event?.data?.id != null ? String(event.data.id) : null;
+
+    // metadata can be absent sometimes; guard hard
+    const md = event?.data?.metadata || {};
+    const kind = String(md.kind || '').toLowerCase(); // 'org' | 'tokens'
+
+    console.log('[paystack][webhook] charge.success', { reference, currency, providerId, kind });
+
+    // ACK Paystack immediately
+    res.sendStatus(200);
+
+    // finalize asynchronously (still in-process, just not blocking the webhook response)
+    setImmediate(async () => {
+      const fauxReq = { params: { reference } };
+      const fauxRes = {
+        status: () => fauxRes,
+        json: () => null,
+        send: () => null,
+        sendStatus: () => null,
+      };
+
+      try {
+        if (kind === 'org') {
+          await verifyAndFinalizeOrg(fauxReq, fauxRes);
+        } else {
+          // default to tokens finalizer
+          await verifyAndFinalizeHandler(fauxReq, fauxRes);
+        }
+      } catch (e) {
+        console.error('[paystack][webhook] finalize error', { reference, message: e?.message });
+      }
     });
-
-    const kind = String(event?.data?.metadata?.kind || '').toLowerCase();
-
-try {
-  if (kind === 'org') {
-    await verifyAndFinalizeOrg({ params: { reference } }, fauxRes);
-  } else {
-    await verifyAndFinalizePackage({ params: { reference } }, fauxRes);
-  }
-} catch (e) {
-  console.error('[paystack][webhook] finalize error', { message: e?.message });
-}
-
-    /**
-     * Mandatory finalizer:
-     * - do NOT credit here
-     * - delegate to verifyAndFinalize which row-locks + validates currency + amount
-     */
-    const fauxReq = { params: { reference } };
-    const fauxRes = {
-      status: () => fauxRes,
-      json: () => null,
-      send: () => null,
-      sendStatus: () => null,
-    };
-
-    // Best-effort finalize; never fail webhook delivery to Paystack
-    try {
-      await verifyAndFinalizeHandler(fauxReq, fauxRes);
-    } catch (e) {
-      console.error('[paystack][webhook] finalize error', { message: e?.message });
-    }
-
-    return res.sendStatus(200);
   } catch (e) {
     console.error('[paystack][webhook] handler error', { message: e?.message });
-    return res.sendStatus(200);
+    return res.sendStatus(200); // never fail webhook delivery
   }
 };

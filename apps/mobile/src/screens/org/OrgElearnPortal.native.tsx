@@ -15,7 +15,9 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+
+
 import * as DocumentPicker from 'expo-document-picker';
 
 import tw from '../../../tailwind';
@@ -363,6 +365,7 @@ const OrgElearnPortalNative: React.FC = () => {
 
   const canBrandingRole = !isInstructor && !isLearnerView && !isSubmissionsView;
   const canUpgradePlan = !isInstructor && !isLearnerView && !isSubmissionsView;
+  
 
   // branding form
   const [form, setForm] = useState<any>({
@@ -464,6 +467,45 @@ const OrgElearnPortalNative: React.FC = () => {
     canWebhooks,
     hasPrioritySupport,
   } = useFeatureGates(tier);
+
+ type AndroidPickerEvent = { type?: 'set' | 'dismissed' | 'neutralButtonPressed' | string };
+
+type AndroidOpenOptions = {
+  value: Date;
+  mode: 'date' | 'time';
+  is24Hour?: boolean;
+  onChange: (event: AndroidPickerEvent, date?: Date) => void;
+  // keep it flexible for lib options / future props
+  [key: string]: any;
+};
+
+const openAndroid = DateTimePickerAndroid.open as unknown as (opts: AndroidOpenOptions) => void;
+
+const openAndroidDateTime = useCallback((initial: Date, onDone: (d: Date) => void) => {
+  openAndroid({
+    value: initial,
+    mode: 'date',
+    is24Hour: true,
+    onChange: (event, pickedDate) => {
+      if (event?.type === 'dismissed' || !pickedDate) return;
+
+      openAndroid({
+        value: pickedDate,
+        mode: 'time',
+        is24Hour: true,
+        onChange: (event2, pickedTime) => {
+          if (event2?.type === 'dismissed' || !pickedTime) return;
+
+          const merged = new Date(pickedDate);
+          merged.setHours(pickedTime.getHours(), pickedTime.getMinutes(), 0, 0);
+          onDone(merged);
+        },
+      });
+    },
+  });
+}, []);
+
+
 
   // keep per-tier payment state (so pro/enterprise don’t conflict)
 const proPaymentIdRef = useRef<string | null>(null);
@@ -1095,8 +1137,27 @@ const handlePlanCheckout = useCallback(
   }, []);
 
   /* deadline pickers */
-  const handleLegacyDeadlinePress = () => setLegacyDuePickerOpen(true);
-  const handleAiDeadlinePress = () => setAiDuePickerOpen(true);
+ const handleLegacyDeadlinePress = () => {
+  if (Platform.OS === 'android') {
+    openAndroidDateTime(legacyDueDate ?? new Date(), (d) => {
+      setLegacyDueDate(d);
+      setLegacyDueAt(d.toISOString());
+    });
+    return;
+  }
+  setLegacyDuePickerOpen(true);
+};
+
+const handleAiDeadlinePress = () => {
+  if (Platform.OS === 'android') {
+    openAndroidDateTime(aiDueDate ?? new Date(), (d) => {
+      setAiDueDate(d);
+      setDueAt(d.toISOString());
+    });
+    return;
+  }
+  setAiDuePickerOpen(true);
+};
 
   const handleLegacyDueChange = (_event: any, selected?: Date) => {
     setLegacyDuePickerOpen(false);
@@ -1868,7 +1929,7 @@ const handlePlanCheckout = useCallback(
                   <TextInput
                     value={form.address_line1 ?? ''}
                     onChangeText={(v) => setForm((f: any) => ({ ...f, address_line1: v }))}
-                    placeholder="P.O. Box 123, Town"
+                    placeholder="123 Main Street"
                     placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
                     style={tw`mt-1 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 rounded px-3 py-2 text-[#0d141c] dark:text-white`}
                   />
@@ -1888,7 +1949,7 @@ const handlePlanCheckout = useCallback(
                   <TextInput
                     value={form.phone_number ?? ''}
                     onChangeText={(v) => setForm((f: any) => ({ ...f, phone_number: v }))}
-                    placeholder="+254 7xx xxx xxx"
+                    placeholder="+00 123 456 789"
                     placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
                     style={tw`mt-1 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 rounded px-3 py-2 text-[#0d141c] dark:text-white`}
                   />
@@ -1898,7 +1959,7 @@ const handlePlanCheckout = useCallback(
                   <TextInput
                     value={form.contact_email ?? ''}
                     onChangeText={(v) => setForm((f: any) => ({ ...f, contact_email: v }))}
-                    placeholder="info@school.ac.ke"
+                    placeholder="info@school.example"
                     placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
                     style={tw`mt-1 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 rounded px-3 py-2 text-[#0d141c] dark:text-white`}
                   />
@@ -1908,7 +1969,7 @@ const handlePlanCheckout = useCallback(
                   <TextInput
                     value={form.website_url ?? ''}
                     onChangeText={(v) => setForm((f: any) => ({ ...f, website_url: v }))}
-                    placeholder="https://school.ac.ke"
+                    placeholder="https://school.example"
                     placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
                     style={tw`mt-1 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 rounded px-3 py-2 text-[#0d141c] dark:text-white`}
                   />
@@ -2536,22 +2597,24 @@ const handlePlanCheckout = useCallback(
 
 
         {/* native date/time pickers */}
-        {legacyDuePickerOpen && (
-          <DateTimePicker
-            value={legacyDueDate ?? new Date()}
-            mode="datetime"
-            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            onChange={handleLegacyDueChange}
-          />
-        )}
-        {aiDuePickerOpen && (
-          <DateTimePicker
-            value={aiDueDate ?? new Date()}
-            mode="datetime"
-            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            onChange={handleAiDueChange}
-          />
-        )}
+       {Platform.OS === 'ios' && legacyDuePickerOpen && (
+        <DateTimePicker
+          value={legacyDueDate ?? new Date()}
+          mode="datetime"
+          display="inline"
+          onChange={handleLegacyDueChange}
+        />
+      )}
+
+      {Platform.OS === 'ios' && aiDuePickerOpen && (
+        <DateTimePicker
+          value={aiDueDate ?? new Date()}
+          mode="datetime"
+          display="inline"
+          onChange={handleAiDueChange}
+        />
+      )}
+
       </View>
     </SafeAreaView>
   );

@@ -83,6 +83,8 @@ import OrgHomeRouterNative from './screens/org/OrgHomeRouter.native';
 import OrgLearnerHomeNative from './screens/org/OrgLearnerHome.native';
 import OrgInstructorHomeNative from './screens/org/OrgInstructorHome.native';
 import OrgExamResultsPortal from './screens/org/OrgExamResultsPortal.native'; // if you have this
+import OrgChangePasswordNative from './screens/org/OrgChangePassword.native';
+
 
 const Stack = createStackNavigator<MainStackParamList>();
 
@@ -366,6 +368,15 @@ const App: React.FC = () => {
               </OrgProtectedRoute>
             )}
           </Stack.Screen>
+
+          <Stack.Screen name="OrgChangePassword">
+            {() => (
+              <OrgProtectedRoute>
+                <OrgChangePasswordNative />
+              </OrgProtectedRoute>
+            )}
+          </Stack.Screen>
+
 
           {/* Org learner home (role-guarded) */}
           <Stack.Screen name="OrgLearnerHome">

@@ -8,61 +8,70 @@ export const mpesaCallback = async (req, res) => {
   let client;
   try {
     client = await pool.connect();
-    client.on('error', err => {
-      console.error('⚠️ PG CLIENT ERROR (ignored):', err.message);
-    });
+    client.on('error', (err) => console.error('⚠️ PG CLIENT ERROR (ignored):', err.message));
     await client.query('BEGIN');
 
-    const stkCallback = req.body.Body?.stkCallback;
-    if (!stkCallback) {
+    const stk = req.body?.Body?.stkCallback;
+    if (!stk) {
       console.warn('Invalid STK callback, no Body.stkCallback');
       await client.query('ROLLBACK');
-      return res.status(400).json({ message: 'Invalid callback payload' });
+      return res.status(200).send('OK');
     }
 
-    const { CheckoutRequestID, ResultCode, CallbackMetadata } = stkCallback;
-    console.log('Received STK Callback:', CheckoutRequestID, 'ResultCode:', ResultCode);
+    const {
+      CheckoutRequestID,
+      ResultCode,
+      ResultDesc,
+      CallbackMetadata,
+    } = stk;
 
-    if (ResultCode === 0) {
-      // Success: extract the M-Pesa receipt but _do not_ change status here
-      const items = CallbackMetadata?.Item || [];
-      const receiptItem = items.find(i => i.Name === 'MpesaReceiptNumber');
-      const mpesaReference = receiptItem?.Value || null;
-      console.log('✅ Extracted MpesaReference:', mpesaReference);
+    const items = CallbackMetadata?.Item || [];
+    const receipt = items.find((i) => i.Name === 'MpesaReceiptNumber')?.Value || null;
+    const amountKes = items.find((i) => i.Name === 'Amount')?.Value ?? null;
 
-      // Only update the reference field; leave status = 'Pending'
-      const { rowCount, rows } = await client.query(
-        `UPDATE payments
-           SET mpesa_reference = COALESCE(mpesa_reference, $1),
-               updated_at = NOW()
-         WHERE transaction_id = $2
-           AND status = 'Pending'
-         RETURNING *;`,
-        [mpesaReference, CheckoutRequestID]
-      );
-      if (!rowCount) {
-        console.warn('No pending payment found for TX:', CheckoutRequestID);
-        await client.query('ROLLBACK');
-        return res.status(404).json({ message: 'Payment not found or already processed.' });
-      }
-      console.log('💾 Updated payment record (reference only):', rows[0]);
-    } else {
-      // Failure: you may still mark status = 'Failed' if you wish,
-      // or leave as-is so confirm endpoint handles timeouts.
-      console.log(`❌ STK Push returned error code ${ResultCode} for ${CheckoutRequestID}`);
+    const paidKesInt =
+      Number.isFinite(Number(amountKes)) ? Math.max(0, Math.round(Number(amountKes))) : null;
+    const paidKesMinor = paidKesInt != null ? paidKesInt * 100 : null;
+
+    const patch = {
+      mpesaResultCode: Number.isFinite(Number(ResultCode)) ? Number(ResultCode) : null,
+      mpesaResultDesc: ResultDesc ? String(ResultDesc).slice(0, 500) : null,
+      mpesaReceiptNumber: receipt,
+      paidKesInt,
+      paidKesMinor,
+      checkoutRequestId: CheckoutRequestID || null,
+    };
+
+    // Update receipt + meta, but keep status Pending (confirm endpoint finalizes)
+    const { rowCount, rows } = await client.query(
+      `UPDATE payments
+          SET mpesa_reference = COALESCE(mpesa_reference, $1),
+              meta = COALESCE(meta,'{}'::jsonb) || $3::jsonb,
+              updated_at = NOW()
+        WHERE transaction_id = $2
+          AND status = 'Pending'
+        RETURNING *;`,
+      [receipt, CheckoutRequestID, JSON.stringify(patch)]
+    );
+
+    if (!rowCount) {
+      console.warn('No pending payment found for TX:', CheckoutRequestID);
+      await client.query('ROLLBACK');
+      return res.status(200).send('OK');
     }
+
+    console.log('💾 Updated payment record (reference + meta):', rows[0]);
 
     await client.query('COMMIT');
-    res.status(200).send('OK');
+    return res.status(200).send('OK');
   } catch (err) {
     console.error('❌ Error processing STK callback:', err);
     try { await client?.query('ROLLBACK'); } catch {}
-    res.status(500).json({ message: 'Failed to process STK callback' });
+    return res.status(200).send('OK');
   } finally {
     client?.release();
   }
 };
-
 
 export const b2cResult = async (req, res) => {
   console.log('📬 B2C Result Callback:', JSON.stringify(req.body, null, 2));

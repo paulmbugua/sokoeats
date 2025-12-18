@@ -1120,84 +1120,81 @@ const ProfileScreen: React.FC = () => {
             </View>
           )}
 
-        {/* Identity card */}
-        <View
-          style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
-        >
-          <View
-            style={tw`flex-row items-center justify-between`}
-          >
-            <View
-              style={tw`flex-row items-center gap-4`}
-            >
-              <View style={tw`items-center`}>
-                <Image
-                  source={{ uri: avatarUrl }}
-                  style={tw`h-24 w-24 rounded-full`}
-                />
-                <Pressable
-                  onPress={handleChangeAvatar}
-                  disabled={avatarUploading}
-                  style={tw`mt-2 rounded-xl h-8 px-3 items-center justify-center bg-[#e7edf4] dark:bg-[#172534]`}
-                >
-                  <Text
-                    style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}
-                  >
-                    {avatarUploading
-                      ? 'Uploading…'
-                      : 'Change photo'}
-                  </Text>
-                </Pressable>
-              </View>
-              <View>
+       {/* Identity card */}
+      <View
+        style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
+      >
+        <View style={tw`flex-row items-start justify-between`}>
+          {/* Left: Avatar + identity (allow shrink) */}
+          <View style={tw`flex-row items-start gap-4 flex-1 min-w-0`}>
+            {/* Avatar column: fixed size, never expands */}
+            <View style={tw`items-center shrink-0`}>
+              <Image source={{ uri: avatarUrl }} style={tw`h-20 w-20 rounded-full`} />
+
+              <Pressable
+                onPress={handleChangeAvatar}
+                disabled={avatarUploading}
+                style={tw`mt-2 rounded-xl h-8 px-3 items-center justify-center bg-[#e7edf4] dark:bg-[#172534]`}
+              >
                 <Text
-                  style={tw`text-[20px] font-bold text-[#0d141c] dark:text-white`}
+                  numberOfLines={1}
+                  style={tw`text-[11px] font-semibold text-[#0d141c] dark:text-white`}
                 >
-                  {p.name || 'You'}
+                  {avatarUploading ? 'Uploading…' : 'Change photo'}
                 </Text>
-                <Text
-                  style={tw`text-sm text-[#49739c] dark:text-white/70`}
-                >
-                  {resolvedRole}
-                </Text>
-                {!!resolvedEmail && (
-                  <Text
-                    style={tw`text-xs text-[#49739c] dark:text-white/70 mt-0.5`}
-                  >
-                    {resolvedEmail}
-                  </Text>
-                )}
-              </View>
+              </Pressable>
             </View>
-            <Pressable
-              onPress={onEditOrCreateProfile}
-              disabled={loadingProfile}
-              style={tw`hidden md:flex rounded-xl h-10 px-4 items-center justify-center ${
-                shouldEmphasizeCta
-                  ? 'bg-[#3d99f5]'
-                  : 'bg-[#e7edf4] dark:bg-[#172534]'
-              }`}
-            >
+
+            {/* Text block: takes remaining width + clamps */}
+            <View style={tw`flex-1 min-w-0 pt-0.5`}>
               <Text
-                style={tw`font-bold ${
-                  shouldEmphasizeCta ? 'text-white' : ''
-                }`}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={tw`text-[18px] font-bold text-[#0d141c] dark:text-white`}
               >
-                {ctaLabel}
+                {p.name || 'You'}
               </Text>
-            </Pressable>
+
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={tw`text-sm text-[#49739c] dark:text-white/70 mt-0.5`}
+              >
+                {resolvedRole}
+              </Text>
+
+              {!!resolvedEmail && (
+                <Text
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  style={tw`text-xs text-[#49739c] dark:text-white/70 mt-0.5`}
+                >
+                  {resolvedEmail}
+                </Text>
+              )}
+            </View>
           </View>
-          {isTutor &&
-            !hasAnyProfile &&
-            !loadingProfile && (
-              <Text
-                style={tw`mt-2 text-sm text-blue-600 dark:text-blue-400 font-medium`}
-              >
-                👉 Please create your tutor profile to get
-                started!
-              </Text>
-            )}
+
+          {/* CTA (kept for md+ only, won’t affect mobile width) */}
+          <Pressable
+            onPress={onEditOrCreateProfile}
+            disabled={loadingProfile}
+            style={tw`hidden md:flex rounded-xl h-10 px-4 items-center justify-center ${
+              shouldEmphasizeCta ? 'bg-[#3d99f5]' : 'bg-[#e7edf4] dark:bg-[#172534]'
+            }`}
+          >
+            <Text style={tw`font-bold ${shouldEmphasizeCta ? 'text-white' : 'text-[#0d141c] dark:text-white'}`}>
+              {ctaLabel}
+            </Text>
+          </Pressable>
         </View>
+
+        {isTutor && !hasAnyProfile && !loadingProfile && (
+          <Text style={tw`mt-2 text-sm text-blue-600 dark:text-blue-400 font-medium`}>
+            👉 Please create your tutor profile to get started!
+          </Text>
+        )}
+      </View>
 
         {/* Personal information */}
         <Text

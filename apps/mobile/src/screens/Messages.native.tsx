@@ -18,9 +18,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { FontAwesome } from '@expo/vector-icons';
 import { useMessages } from '@mytutorapp/shared/hooks';
 import {
-  registerForPushToken,
-  initNotificationListeners,
-  notifyNow,
+    notifyNow,
 } from '../../utils/notifications';
 import tw from '../../tailwind';
 import chat from '../../assets/chat.png';
@@ -110,31 +108,7 @@ const MessagesNative: React.FC = () => {
   const msgKey = (m: any) =>
     String(m?.id ?? m?.timestamp ?? `${m?.sender_id ?? ''}:${m?.created_at ?? ''}`);
 
-  // ✅ Init notifications: request permission, ensure channel, log token, attach listeners (StrictMode-safe)
-  const didInitPushRef = useRef(false);
-  useEffect(() => {
-    if (didInitPushRef.current) return;
-    didInitPushRef.current = true;
-
-    let cleanup = () => {};
-    (async () => {
-      const t = await registerForPushToken();
-      console.log('[push] token:', t);
-
-      cleanup = initNotificationListeners({
-        onRespond: (r) => {
-          const data = r.notification.request.content.data as any;
-          console.log('[push] tapped:', data);
-        },
-      });
-
-      // Optional one-time check:
-      // await notifyNow('DayBreak', 'Notifications are enabled ✅');
-    })();
-
-    return () => cleanup();
-  }, []);
-
+  
   // Auto-open via route param (like web’s ?studentId)
   useEffect(() => {
     const { studentId } = route.params ?? {};
@@ -302,23 +276,8 @@ const MessagesNative: React.FC = () => {
           </Text>
         )}
 
-        {/* ✅ Right actions: Bell test + Home */}
+        {/* Right actions: Home */}
         <View style={tw`flex-row items-center -mr-2`}>
-          <TouchableOpacity
-            onPress={() =>
-              notifyNow('DayBreak test', 'If you see this, local notifications work ✅')
-            }
-            accessibilityLabel="Test notification"
-            accessibilityHint="Send a test local notification"
-            style={tw`p-2 mr-1`}
-          >
-            <FontAwesome
-              name="bell"
-              size={20}
-              color={tw.color(`text-slate-600 dark:text-slate-300`) as string}
-            />
-          </TouchableOpacity>
-
           <TouchableOpacity
             onPress={() => navigation.navigate('Home')}
             accessibilityLabel="Go Home"

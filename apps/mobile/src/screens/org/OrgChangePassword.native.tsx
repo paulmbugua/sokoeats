@@ -1,5 +1,5 @@
-// apps/mobile/src/screens/org/OrgChangePassword.native.tsx
-import React, { useState } from 'react';
+/* eslint-disable prettier/prettier */
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,24 +11,77 @@ import {
   useNavigation,
   useRoute,
   type RouteProp,
+  type NavigationProp,
 } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import tw from '../../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { institutionChangePassword } from '@mytutorapp/shared/api/institutionAuth';
+import { useThemePref } from '../../theme/ThemeContext';
+import type { MainStackParamList } from '../../navigation/types';
 
 const MUST_CHANGE_KEY = 'org:mustChangePassword';
 
-type OrgStackParamList = {
-  OrgChangePassword: {
-    from?: string;
-  } | undefined;
-};
+type ChangePwdRoute = RouteProp<MainStackParamList, 'OrgChangePassword'>;
+
+/* ───────────────────────────────────────────────────────────
+   Palette (adapts to theme) – same spirit as InstitutionLogin
+   ─────────────────────────────────────────────────────────── */
+function usePalette() {
+  const { resolvedScheme } = useThemePref();
+  const isDark = resolvedScheme === 'dark';
+
+  return {
+    isDark,
+    pageBg: isDark ? '#0b1016' : '#f8fafc',
+    card: isDark ? '#0f1821' : '#ffffff',
+    border: isDark ? 'rgba(255,255,255,0.10)' : '#cedbe8',
+    text: isDark ? '#ffffff' : '#0d141c',
+    textSoft: isDark ? 'rgba(255,255,255,0.75)' : '#3d5873',
+    textSubtle: isDark ? 'rgba(255,255,255,0.60)' : 'rgba(61,88,115,0.75)',
+    inputBg: isDark ? 'rgba(10,16,23,0.6)' : 'rgba(255,255,255,0.92)',
+    inputBorder: isDark ? 'rgba(255,255,255,0.15)' : '#cedbe8',
+    inputPlaceholder: isDark
+      ? 'rgba(255,255,255,0.65)'
+      : 'rgba(13,20,28,0.55)',
+
+    surface(style?: any) {
+      return [
+        tw`w-full max-w-md self-center rounded-2xl p-6`,
+        { backgroundColor: this.card, borderColor: this.border, borderWidth: 1 },
+        style,
+      ];
+    },
+
+    input() {
+      return [
+        tw`w-full px-3 py-3 rounded-xl`,
+        {
+          backgroundColor: this.inputBg,
+          borderColor: this.inputBorder,
+          borderWidth: 1,
+          color: this.text,
+        },
+      ];
+    },
+
+    primaryBtn: tw`mt-2 w-full items-center justify-center rounded-xl h-11 px-5 bg-indigo-600 shadow-sm`,
+
+    ghostBtn() {
+      return [
+        tw`mt-3 px-4 py-2 rounded-xl items-center justify-center`,
+        { borderColor: this.inputBorder, borderWidth: 1 },
+      ];
+    },
+  };
+}
 
 const OrgChangePasswordNative: React.FC = () => {
-  const navigation = useNavigation<any>();
-  const route = useRoute<RouteProp<OrgStackParamList, 'OrgChangePassword'>>();
-  const { backendUrl, orgToken } = useShopContext() as any;
+  const navigation = useNavigation<NavigationProp<MainStackParamList>>();
+  const route = useRoute<ChangePwdRoute>();
+  const { backendUrl, orgToken, orgLogout } = useShopContext();
+  const palette = usePalette();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -37,20 +90,37 @@ const OrgChangePasswordNative: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  const returnTo = useMemo(() => route.params?.returnTo || '/org', [route.params]);
+
   // If org session is gone, ask them to log in again
   if (!orgToken) {
     return (
-      <View style={tw`flex-1 bg-[#0b1220] items-center justify-center px-6`}>
-        <Text style={tw`text-sm text-red-400 text-center`}>
-          Session expired. Please log in again.
-        </Text>
-        <TouchableOpacity
-          onPress={() => navigation.replace('OrgLogin')}
-          style={tw`mt-3 px-4 py-2 rounded-xl bg-indigo-600`}
-        >
-          <Text style={tw`text-white font-semibold`}>Go to login</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView
+        style={[tw`flex-1 items-center justify-center px-6`, { backgroundColor: palette.pageBg }]}
+        edges={['top', 'right', 'left', 'bottom']}
+      >
+        <View style={palette.surface({ maxWidth: 520 })}>
+          <Text style={[tw`text-sm text-center`, { color: palette.textSoft }]}>
+            Session expired. Please log in again.
+          </Text>
+
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                await orgLogout?.();
+              } catch {}
+              navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'InstitutionLogin', params: { logoutOrg: true } }],
+                });
+
+            }}
+            style={[tw`mt-4 h-11 rounded-xl items-center justify-center bg-indigo-600`]}
+          >
+            <Text style={tw`text-white font-semibold`}>Go to login</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -73,117 +143,125 @@ const OrgChangePasswordNative: React.FC = () => {
     try {
       setBusy(true);
 
-      // 🔐 Call backend to change the password
-      await institutionChangePassword(
-        backendUrl,
-        orgToken,
-        currentPassword,
-        newPassword
-      );
+      await institutionChangePassword(backendUrl, orgToken, currentPassword, newPassword);
 
-      // ✅ Clear the must-change flag for this session (native uses AsyncStorage)
+      // clear must-change flag (native uses AsyncStorage)
       try {
         await AsyncStorage.removeItem(MUST_CHANGE_KEY);
-      } catch {
-        // ignore
-      }
+      } catch {}
 
       setSuccess(true);
 
       setTimeout(() => {
-        const from = route.params?.from || 'OrgElearnPortal';
-        navigation.replace(from as any);
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'OrgHome', params: { next: returnTo } }],
+        });
       }, 800);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to change password');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to change password';
+      setError(msg);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <View style={tw`flex-1 bg-[#0b1220] px-4 py-8 justify-center`}>
-      <View
-        style={tw`w-full max-w-md self-center rounded-2xl bg-white/5 border border-white/10 p-6`}
-      >
-        <Text style={tw`text-xl font-semibold text-center text-white mb-2`}>
-          Update your password
-        </Text>
-        <Text
-          style={tw`text-xs text-center text-white/60 mb-4`}
-        >
-          For security, your institution asked you to change the temporary
-          password before using the portal.
-        </Text>
+    <SafeAreaView
+      style={[tw`flex-1`, { backgroundColor: palette.pageBg }]}
+      edges={['top', 'right', 'left', 'bottom']}
+    >
+      <View style={tw`flex-1 px-4 py-8 justify-center`}>
+        <View style={palette.surface()}>
+          <Text style={[tw`text-xl font-semibold text-center mb-2`, { color: palette.text }]}>
+            Update your password
+          </Text>
 
-        {error && (
-          <View
-            style={tw`mb-4 rounded-lg bg-red-900/60 border border-red-500/40 px-3 py-2`}
-          >
-            <Text style={tw`text-sm text-red-100`}>{error}</Text>
-          </View>
-        )}
+          <Text style={[tw`text-xs text-center mb-4`, { color: palette.textSubtle }]}>
+            For security, your institution asked you to change the temporary password
+            before using the portal.
+          </Text>
 
-        {success && (
-          <View
-            style={tw`mb-4 rounded-lg bg-emerald-900/60 border border-emerald-500/40 px-3 py-2`}
-          >
-            <Text style={tw`text-sm text-emerald-100`}>
-              Password updated. Redirecting…
-            </Text>
-          </View>
-        )}
-
-        <View style={tw`gap-4`}>
-          <TextInput
-            secureTextEntry
-            style={tw`mt-1 w-full px-3 py-2 rounded-xl bg-[#0f1821] text-white border border-white/10`}
-            placeholder="Current password"
-            placeholderTextColor="#9CA3AF"
-            value={currentPassword}
-            onChangeText={setCurrentPassword}
-          />
-          <TextInput
-            secureTextEntry
-            style={tw`mt-1 w-full px-3 py-2 rounded-xl bg-[#0f1821] text-white border border-white/10`}
-            placeholder="New password (min. 8 characters)"
-            placeholderTextColor="#9CA3AF"
-            value={newPassword}
-            onChangeText={setNewPassword}
-          />
-          <TextInput
-            secureTextEntry
-            style={tw`mt-1 w-full px-3 py-2 rounded-xl bg-[#0f1821] text-white border border-white/10`}
-            placeholder="Confirm new password"
-            placeholderTextColor="#9CA3AF"
-            value={confirmNewPassword}
-            onChangeText={setConfirmNewPassword}
-          />
-
-          <TouchableOpacity
-            disabled={busy}
-            onPress={handleSubmit}
-            style={tw.style(
-              'mt-2 inline-flex w-full items-center justify-center rounded-xl h-11 px-5 bg-indigo-600 shadow-sm',
-              busy && 'opacity-60'
-            )}
-          >
-            {busy ? (
-              <View style={tw`flex-row items-center`}>
-                <ActivityIndicator color="#fff" />
-                <Text style={tw`ml-2 text-white font-semibold`}>
-                  Updating…
-                </Text>
-              </View>
-            ) : (
-              <Text style={tw`text-white font-semibold`}>
-                Change password
+          {!!error && (
+            <View
+              style={[
+                tw`mb-4 rounded-lg px-3 py-2`,
+                {
+                  backgroundColor: palette.isDark ? 'rgba(127,29,29,0.35)' : 'rgba(254,226,226,0.9)',
+                  borderColor: palette.isDark ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.35)',
+                  borderWidth: 1,
+                },
+              ]}
+            >
+              <Text style={[tw`text-sm`, { color: palette.isDark ? '#fecaca' : '#991b1b' }]}>
+                {error}
               </Text>
-            )}
-          </TouchableOpacity>
+            </View>
+          )}
+
+          {success && (
+            <View
+              style={[
+                tw`mb-4 rounded-lg px-3 py-2`,
+                {
+                  backgroundColor: palette.isDark ? 'rgba(6,78,59,0.35)' : 'rgba(209,250,229,0.9)',
+                  borderColor: palette.isDark ? 'rgba(16,185,129,0.35)' : 'rgba(16,185,129,0.35)',
+                  borderWidth: 1,
+                },
+              ]}
+            >
+              <Text style={[tw`text-sm`, { color: palette.isDark ? '#a7f3d0' : '#065f46' }]}>
+                Password updated. Redirecting…
+              </Text>
+            </View>
+          )}
+
+          <View style={tw`gap-4`}>
+            <TextInput
+              secureTextEntry
+              style={palette.input()}
+              placeholder="Current password"
+              placeholderTextColor={palette.inputPlaceholder}
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+            />
+
+            <TextInput
+              secureTextEntry
+              style={palette.input()}
+              placeholder="New password (min. 8 characters)"
+              placeholderTextColor={palette.inputPlaceholder}
+              value={newPassword}
+              onChangeText={setNewPassword}
+            />
+
+            <TextInput
+              secureTextEntry
+              style={palette.input()}
+              placeholder="Confirm new password"
+              placeholderTextColor={palette.inputPlaceholder}
+              value={confirmNewPassword}
+              onChangeText={setConfirmNewPassword}
+            />
+
+            <TouchableOpacity
+              disabled={busy}
+              onPress={handleSubmit}
+              style={tw.style(palette.primaryBtn, busy && 'opacity-60')}
+            >
+              {busy ? (
+                <View style={tw`flex-row items-center`}>
+                  <ActivityIndicator color="#fff" />
+                  <Text style={tw`ml-2 text-white font-semibold`}>Updating…</Text>
+                </View>
+              ) : (
+                <Text style={tw`text-white font-semibold`}>Change password</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 

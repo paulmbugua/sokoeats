@@ -8,10 +8,15 @@ import {
   Alert,
   TextInput,
   Platform,
+  Share,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Clipboard from 'expo-clipboard';
+
 import { useNavigation } from '@react-navigation/native';
 import Animated, {
   FadeIn,
@@ -37,6 +42,7 @@ import {
 } from '@mytutorapp/shared/api/orgInstructorsApi';
 import {
   createOrgLearner as apiCreateOrgLearner,
+  uploadOrgLearnersCsv as apiUploadOrgLearnersCsv,
 } from '@mytutorapp/shared/api/orgLearnersApi';
 
 import ThemeToggle from '../ThemeToggle.native';
@@ -181,6 +187,117 @@ async function tryFetchRoster(backendUrl: string, token: string, orgId: string) 
   return { instructors: [] as MiniUser[], learners: [] as MiniUser[] };
 }
 
+const confirmAsync = (title: string, message: string) =>
+  new Promise<boolean>((resolve) => {
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+      { text: 'Remove', style: 'destructive', onPress: () => resolve(true) },
+    ]);
+  });
+
+/* ---------------- CSV helpers (native parity) ---------------- */
+const csvEscape = (v: unknown) => {
+  const s = v == null ? '' : String(v);
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+};
+
+async function shareOrCopyCsv(filename: string, csv: string) {
+  try {
+    const FS: any = FileSystem as any;
+    const dir: string | null = FS.cacheDirectory ?? FS.documentDirectory ?? null;
+
+    if (dir) {
+      const uri = dir + filename;
+
+      // default UTF-8 is fine; avoids EncodingType typing issues
+      await FileSystem.writeAsStringAsync(uri, csv);
+
+      // Share file (works without expo-sharing)
+      await Share.share(
+        Platform.select({
+          ios: { url: uri, title: filename },
+          android: { message: filename, url: uri, title: filename } as any,
+          default: { message: csv, title: filename },
+        }) as any,
+      );
+
+      return;
+    }
+  } catch {
+    // fall back below
+  }
+
+  // Fallback: copy to clipboard
+  try {
+    await Clipboard.setStringAsync(csv);
+    Alert.alert('CSV copied', 'CSV content copied to clipboard (file sharing not available).');
+  } catch {
+    Alert.alert('CSV', 'Could not share or copy CSV on this device.');
+  }
+}
+
+
+async function downloadCsvNative(filename: string, rows: (string | null | undefined)[][]) {
+  const csv = rows.map((r) => r.map(csvEscape).join(',')).join('\r\n');
+  await shareOrCopyCsv(filename, csv);
+}
+
+async function tryUploadLearnersCsvNative(
+  backendUrl: string,
+  token: string,
+  orgId: string,
+  picked: { uri: string; name: string; mimeType?: string | null },
+) {
+  // First try shared API (if it supports RN file objects)
+  try {
+    const fileLike: any = {
+      uri: picked.uri,
+      name: picked.name,
+      type: picked.mimeType || 'text/csv',
+    };
+    const resp: any = await apiUploadOrgLearnersCsv(backendUrl, token, orgId, fileLike);
+    return resp;
+  } catch {
+    // fallback to direct fetch with candidate endpoints
+  }
+
+  const base = backendUrl.replace(/\/+$/, '');
+  const candidates = [
+    `${base}/api/orgs/${orgId}/learners/csv`,
+    `${base}/api/organizations/${orgId}/learners/csv`,
+    `${base}/api/orgs/${orgId}/learners/upload-csv`,
+    `${base}/api/organizations/${orgId}/learners/upload-csv`,
+    `${base}/api/orgs/${orgId}/learners/import`,
+    `${base}/api/organizations/${orgId}/learners/import`,
+  ];
+
+  const form = new FormData();
+  form.append('file', {
+    uri: picked.uri,
+    name: picked.name,
+    type: picked.mimeType || 'text/csv',
+  } as any);
+
+  for (const url of candidates) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // NOTE: do NOT set Content-Type for multipart; RN will set boundary
+        } as any,
+        body: form as any,
+      });
+      if (r.ok) return await r.json();
+    } catch {
+      // try next
+    }
+  }
+
+  throw new Error('CSV upload failed (no working upload endpoint found).');
+}
+
 /* ---------------- micro UI ---------------- */
 const StatCard: React.FC<{
   label: string;
@@ -239,6 +356,149 @@ const usePressScale = () => {
   return { style, onIn, onOut };
 };
 
+const ActionPill: React.FC<{
+  label: string;
+  onPress?: () => void;
+  disabled?: boolean;
+  palette: ReturnType<typeof usePalette>;
+  icon?: keyof typeof Ionicons.glyphMap;
+}> = ({ label, onPress, disabled, palette, icon }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    disabled={disabled}
+    activeOpacity={0.85}
+    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    style={[
+      tw`px-3 py-2 rounded-full mr-2 mb-2 flex-row items-center`,
+      {
+        backgroundColor: palette.divider,
+        opacity: disabled ? 0.5 : 1,
+        maxWidth: '100%',
+        alignSelf: 'flex-start',
+      },
+    ]}
+    accessibilityRole="button"
+  >
+    {!!icon && <Ionicons name={icon} size={14} color={palette.text} />}
+    <Text
+      style={[
+        tw`text-[11px] font-semibold`,
+        {
+          color: palette.text,
+          marginLeft: icon ? 6 : 0,
+          flexShrink: 1,
+          flexWrap: 'wrap',
+        },
+      ]}
+    >
+      {label}
+    </Text>
+  </TouchableOpacity>
+);
+
+
+const ChipBtn: React.FC<{
+  label: string;
+  onPress?: () => void;
+  disabled?: boolean;
+  palette: ReturnType<typeof usePalette>;
+  active?: boolean;
+}> = ({ label, onPress, disabled, palette, active }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    disabled={disabled}
+    accessibilityRole="button"
+    style={[
+      tw`px-3 py-1.5 rounded-full mr-2 mb-2`,
+      {
+        backgroundColor: active
+          ? (palette.isDark ? 'rgba(34,197,94,0.18)' : '#dcfce7')
+          : palette.divider,
+        opacity: disabled ? 0.5 : 1,
+      },
+    ]}
+  >
+    <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>
+      {label}
+    </Text>
+  </TouchableOpacity>
+);
+
+const PaginationStrip: React.FC<{
+  palette: ReturnType<typeof usePalette>;
+  total: number;
+  page: number;
+  pageSize: number;
+  onPage: (p: number) => void;
+  onPageSize: (s: number) => void;
+  noun: string;
+}> = ({ palette, total, page, pageSize, onPage, onPageSize, noun }) => {
+  const totalPages = Math.max(1, Math.ceil((total || 0) / (pageSize || 1)));
+  const start = total ? (page - 1) * pageSize + 1 : 0;
+  const end = total ? Math.min(page * pageSize, total) : 0;
+  const rangeText = total
+    ? `Showing ${start}–${end} of ${total} ${noun}`
+    : `No ${noun} yet`;
+
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
+
+  return (
+    <View style={tw`mt-3`}>
+      <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>
+        {rangeText}
+      </Text>
+
+      <View style={tw`mt-2 flex-row flex-wrap items-center`}>
+        <View style={tw`flex-row items-center mr-2`}>
+          <Text style={[tw`text-[10px] mr-2`, { color: palette.textSubtle }]}>
+            Rows:
+          </Text>
+          {[10, 25, 50].map((s) => (
+            <ChipBtn
+              key={String(s)}
+              label={String(s)}
+              palette={palette}
+              active={pageSize === s}
+              onPress={() => {
+                onPageSize(s);
+                onPage(1);
+              }}
+            />
+          ))}
+        </View>
+
+        {totalPages > 1 && (
+          <View style={tw`flex-row items-center mt-1`}>
+            <ChipBtn
+              label="‹ Prev"
+              palette={palette}
+              disabled={!canPrev}
+              onPress={() => onPage(Math.max(1, page - 1))}
+            />
+            <View
+              style={[
+                tw`px-3 py-1.5 rounded-full`,
+                { backgroundColor: palette.divider },
+              ]}
+            >
+              <Text style={[tw`text-[11px]`, { color: palette.textMuted }]}>
+                Page {page} of {totalPages}
+              </Text>
+            </View>
+            <ChipBtn
+              label="Next ›"
+              palette={palette}
+              disabled={!canNext}
+              onPress={() => onPage(Math.min(totalPages, page + 1))}
+            />
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
+
 /* ---------------- screen ---------------- */
 const OrgProfileNative: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -266,14 +526,21 @@ const OrgProfileNative: React.FC = () => {
   // learner photo mapping state
   const [photoAdmCode, setPhotoAdmCode] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
-    const [bulkPhotoUploading, setBulkPhotoUploading] = useState(false);
+  const [bulkPhotoUploading, setBulkPhotoUploading] = useState(false);
   const [bulkPhotoProg, setBulkPhotoProg] = useState<{ done: number; total: number }>({
     done: 0,
     total: 0,
   });
 
+  // A–H parity: pagination state
+  const [instructorPage, setInstructorPage] = useState(1);
+  const [learnerPage, setLearnerPage] = useState(1);
+  const [instructorPageSize, setInstructorPageSize] = useState(10);
+  const [learnerPageSize, setLearnerPageSize] = useState(10);
 
-  
+  // CSV uploading state (learners import)
+  const [csvUploading, setCsvUploading] = useState(false);
+
   const seatCap = useCallback((tier?: string) => {
     switch ((tier || 'starter').toLowerCase()) {
       case 'enterprise':
@@ -290,21 +557,17 @@ const OrgProfileNative: React.FC = () => {
       if (!orgToken || !orgId) return;
       try {
         const roster = await apiRoster(backendUrl, orgToken, orgId);
-        setInstructors(
-          Array.isArray(roster?.instructors) ? roster.instructors : [],
-        );
-        setLearners(
-          Array.isArray(roster?.learners) ? roster.learners : [],
-        );
+        setInstructors(Array.isArray(roster?.instructors) ? roster.instructors : []);
+        setLearners(Array.isArray(roster?.learners) ? roster.learners : []);
+        setInstructorPage(1);
+        setLearnerPage(1);
       } catch {
         try {
           const roster = await tryFetchRoster(backendUrl, orgToken, orgId);
-          setInstructors(
-            Array.isArray(roster?.instructors) ? roster.instructors : [],
-          );
-          setLearners(
-            Array.isArray(roster?.learners) ? roster.learners : [],
-          );
+          setInstructors(Array.isArray(roster?.instructors) ? roster.instructors : []);
+          setLearners(Array.isArray(roster?.learners) ? roster.learners : []);
+          setInstructorPage(1);
+          setLearnerPage(1);
         } catch {
           // ignore
         }
@@ -358,7 +621,6 @@ const OrgProfileNative: React.FC = () => {
     Math.round(((seatsUsed || 0) / (seatsMax || 1)) * 100),
   );
 
-  // 🔧 tierTone fix: it returns { bg, text, ring }, not { color }
   const tierColors = tierTone(org?.tier);
 
   const hasGroupingLabels =
@@ -366,13 +628,44 @@ const OrgProfileNative: React.FC = () => {
     !!org?.dorm_label?.trim() ||
     !!org?.club_label?.trim();
 
+  // pagination derived (A–H parity)
+  const totalInstructorPages = useMemo(() => {
+    if (!instructors.length) return 1;
+    return Math.max(1, Math.ceil(instructors.length / instructorPageSize));
+  }, [instructors.length, instructorPageSize]);
+
+  const totalLearnerPages = useMemo(() => {
+    if (!learners.length) return 1;
+    return Math.max(1, Math.ceil(learners.length / learnerPageSize));
+  }, [learners.length, learnerPageSize]);
+
+  useEffect(() => {
+    if (instructorPage > totalInstructorPages) setInstructorPage(totalInstructorPages);
+  }, [totalInstructorPages, instructorPage]);
+
+  useEffect(() => {
+    if (learnerPage > totalLearnerPages) setLearnerPage(totalLearnerPages);
+  }, [totalLearnerPages, learnerPage]);
+
+  const paginatedInstructors = useMemo(() => {
+    if (!instructors.length) return [];
+    const start = (instructorPage - 1) * instructorPageSize;
+    return instructors.slice(start, start + instructorPageSize);
+  }, [instructors, instructorPage, instructorPageSize]);
+
+  const paginatedLearners = useMemo(() => {
+    if (!learners.length) return [];
+    const start = (learnerPage - 1) * learnerPageSize;
+    return learners.slice(start, start + learnerPageSize);
+  }, [learners, learnerPage, learnerPageSize]);
+
   const exitOrgMode = async () => {
     try {
       await AsyncStorage.multiRemove([
         'auth:mode',
         'auth:orgId',
         'auth:returnTo:org',
-        'auth:returnTo', // parity with web
+        'auth:returnTo',
       ]);
     } catch {
       // ignore
@@ -380,7 +673,6 @@ const OrgProfileNative: React.FC = () => {
     navigation.replace('ProfileSelf');
   };
 
-  // Full org logout (context + storage) → go to InstitutionLogin
   const logoutInstitution = async () => {
     try {
       await orgLogout?.();
@@ -400,26 +692,17 @@ const OrgProfileNative: React.FC = () => {
     navigation.replace('InstitutionLogin', { logoutOrg: true });
   };
 
-    const basenameFromFilename = (filename?: string | null) => {
-  if (typeof filename !== 'string' || filename.trim().length === 0) return '';
-
-  // remove query/hash
-  const clean = filename.split('?')[0]?.split('#')[0] ?? '';
-  if (!clean) return '';
-
-  // take last path segment
-  const last = (clean.split('/').pop() ?? clean).trim();
-  if (!last) return '';
-
-  // strip extension
-  const noExt = last.replace(/\.[^/.]+$/, '').trim();
-  return noExt;
-};
-
+  const basenameFromFilename = (filename?: string | null) => {
+    if (typeof filename !== 'string' || filename.trim().length === 0) return '';
+    const clean = filename.split('?')[0]?.split('#')[0] ?? '';
+    if (!clean) return '';
+    const last = (clean.split('/').pop() ?? clean).trim();
+    if (!last) return '';
+    const noExt = last.replace(/\.[^/.]+$/, '').trim();
+    return noExt;
+  };
 
   const inferAdmissionCodeFromAsset = (asset: any) => {
-    // expo-image-picker asset usually has fileName on iOS; on Android often not.
-    // fallback to the URI last segment.
     return (
       basenameFromFilename(asset?.fileName) ||
       basenameFromFilename(asset?.uri) ||
@@ -430,24 +713,23 @@ const OrgProfileNative: React.FC = () => {
   const mimeFromAsset = (asset: any) => {
     const mt = asset?.mimeType;
     if (typeof mt === 'string' && mt.includes('/')) return mt;
-    // best effort from extension
     const uri = String(asset?.uri || '');
     if (/\.(png)$/i.test(uri)) return 'image/png';
     if (/\.(webp)$/i.test(uri)) return 'image/webp';
     return 'image/jpeg';
   };
-const handleBulkUploadLearnerPhotos = useCallback(async () => {
-  const orgId = org?.id;
-  if (!orgId || !orgToken) {
-    Alert.alert('Learner photos', 'Organization is not loaded yet.');
-    return;
-  }
-    // Multi-select where supported
+
+  const handleBulkUploadLearnerPhotos = useCallback(async () => {
+    const orgId = org?.id;
+    if (!orgId || !orgToken) {
+      Alert.alert('Learner photos', 'Organization is not loaded yet.');
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.85,
       allowsMultipleSelection: true,
-      // selectionLimit is not available in all expo versions; omit to avoid TS issues
     });
 
     if (result.canceled || !result.assets?.length) return;
@@ -466,9 +748,10 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
 
         setBulkPhotoProg({ done: i + 1, total: assets.length });
 
-
         if (!code) {
-          failures.push(`${a?.fileName || a?.uri || `Image #${i + 1}`} (no admission code in filename)`);
+          failures.push(
+            `${a?.fileName || a?.uri || `Image #${i + 1}`} (no admission code in filename)`,
+          );
           continue;
         }
 
@@ -514,57 +797,51 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
       alertMsg += `${successes.length ? '\n\n' : ''}Failed for ${failures.length} file(s):\n${failures.join('\n')}`;
     }
     if (alertMsg) Alert.alert('Bulk photo upload', alertMsg);
-
-    // refresh roster is optional here; mapping doesn't change roster list,
-    // but if your UI shows photos later you may want it.
   }, [backendUrl, org?.id, orgToken]);
 
-
-  // Create membership invite (normalize to {url})
   const handleCreateMembershipInvite = useCallback(
     async (role: 'instructor' | 'learner', email?: string) => {
       if (!org?.id) throw new Error('Organization is not loaded yet.');
-      if (!orgToken)
-        throw new Error('You are not authenticated for this organization.');
+      if (!orgToken) throw new Error('You are not authenticated for this organization.');
+
       const resp = (await createOrgMembershipInvite(
         backendUrl,
         orgToken,
         org.id,
         { role, email },
       )) as any;
+
       const url = resp?.invite_url;
       if (!url) throw new Error('Invite created but no URL was returned.');
 
-      // best-effort roster refresh
       try {
         await refreshRoster(org.id);
-      } catch {
-        // ignore
-      }
+      } catch {}
+
       return { url };
     },
     [backendUrl, org?.id, orgToken, refreshRoster],
   );
 
-  // Remove member (optimistic updates)
+  // A–H parity: confirm before remove + keep optimistic updates
   const handleRemoveMember = useCallback(
     async (u: MiniUser) => {
       if (!org?.id || !orgToken) return;
+
+      const label = u.name || u.email || `User #${u.id}`;
+      const ok = await confirmAsync(
+        'Remove member',
+        `Remove ${label} from ${org?.name || 'this organization'}?\n\nThey will lose portal access.`,
+      );
+      if (!ok) return;
+
       try {
         await removeOrgMember(backendUrl, orgToken, org.id, u.id);
 
-        // Optimistic UI updates
-        setInstructors((prev) =>
-          prev.filter((x) => String(x.id) !== String(u.id)),
-        );
-        const wasLearner = learners.some(
-          (x) => String(x.id) === String(u.id),
-        );
-        setLearners((prev) =>
-          prev.filter((x) => String(x.id) !== String(u.id)),
-        );
-        if (wasLearner)
-          setSeatsUsed((s) => Math.max(0, (s || 0) - 1));
+        setInstructors((prev) => prev.filter((x) => String(x.id) !== String(u.id)));
+        const wasLearner = learners.some((x) => String(x.id) === String(u.id));
+        setLearners((prev) => prev.filter((x) => String(x.id) !== String(u.id)));
+        if (wasLearner) setSeatsUsed((s) => Math.max(0, (s || 0) - 1));
       } catch (e: any) {
         const msg =
           e?.response?.data?.message ||
@@ -573,10 +850,9 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
         Alert.alert('Remove member', msg);
       }
     },
-    [backendUrl, org?.id, orgToken, learners],
+    [backendUrl, org?.id, org?.name, orgToken, learners],
   );
 
-  // create instructor (no CSV, native)
   const handleCreateInstructor = useCallback(
     async (payload: {
       name: string;
@@ -584,22 +860,14 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
       subject?: string;
       staff_code?: string;
     }) => {
-      if (!org?.id || !orgToken) {
-        throw new Error('Organization or token missing.');
-      }
-      const resp = await apiCreateOrgInstructor(
-        backendUrl,
-        orgToken,
-        org.id,
-        payload,
-      );
+      if (!org?.id || !orgToken) throw new Error('Organization or token missing.');
+      const resp = await apiCreateOrgInstructor(backendUrl, orgToken, org.id, payload);
       await refreshRoster(org.id);
       return { tempPassword: (resp as any)?.tempPassword ?? null };
     },
     [backendUrl, org?.id, orgToken, refreshRoster],
   );
 
-  // create learner (native, no CSV)
   const handleCreateLearner = useCallback(
     async (payload: {
       name: string;
@@ -611,29 +879,156 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
       dormitory?: string;
       club?: string;
     }) => {
-      if (!org?.id || !orgToken) {
-        throw new Error('Organization or token missing.');
-      }
-      const resp = await apiCreateOrgLearner(
-        backendUrl,
-        orgToken,
-        org.id,
-        payload,
-      );
+      if (!org?.id || !orgToken) throw new Error('Organization or token missing.');
+      const resp = await apiCreateOrgLearner(backendUrl, orgToken, org.id, payload);
       await refreshRoster(org.id);
       return { tempPassword: (resp as any)?.tempPassword ?? null };
     },
     [backendUrl, org?.id, orgToken, refreshRoster],
   );
 
-  // press feedback
-  const portalBtn = usePressScale();
-  const exitBtn = usePressScale();
-  const logoutBtn = usePressScale();
+  // A–H parity: Download login sheet (CSV)
+  const downloadRosterCsv = useCallback(async () => {
+    if (!org) {
+      Alert.alert('Login sheet', 'Organization not loaded yet.');
+      return;
+    }
+    if (!instructors.length && !learners.length) {
+      Alert.alert('Login sheet', 'No instructors or learners to export yet.');
+      return;
+    }
 
-  const bottomPad = Math.max(24, insets.bottom + 24);
+    const rows: (string | null | undefined)[][] = [];
+    rows.push([
+      'Type',
+      'Name',
+      'Email',
+      'Staff code',
+      'Admission code',
+      'Class / Stream',
+      'Guardian email',
+      'Temp password',
+    ]);
 
-  // Single learner photo upload (manual mapping)
+    instructors.forEach((u) => {
+      rows.push([
+        'Instructor',
+        u.name,
+        u.email,
+        (u as any).staff_code,
+        null,
+        null,
+        null,
+        (u as any).temp_password,
+      ]);
+    });
+
+    learners.forEach((u) => {
+      rows.push([
+        'Learner',
+        u.name,
+        u.email,
+        null,
+        (u as any).admission_code,
+        (u as any).class_label,
+        (u as any).guardian_email,
+        (u as any).temp_password,
+      ]);
+    });
+
+    const slug = org.slug || org.name || org.id;
+    await downloadCsvNative(`login-sheet-${slug}.csv`, rows);
+  }, [org, instructors, learners]);
+
+  // A–H parity: Sample learners CSV
+  const downloadLearnerSampleCsv = useCallback(async () => {
+    const rows: (string | null | undefined)[][] = [
+      [
+        'name',
+        'email',
+        'admission_code',
+        'class_label',
+        'guardian_email',
+        'house',
+        'dormitory',
+        'club',
+      ],
+      [
+        'Aisha Mwangi',
+        'aisha.mwangi@students.your-school.edu',
+        'ADM-2025-001',
+        'Grade 7 Blue',
+        'parent1@example.com',
+        'Taifa',
+        'North Wing',
+        'Science Club',
+      ],
+      [
+        'Omar Ali',
+        'omar.ali@students.your-school.edu',
+        'ADM-2025-002',
+        'Grade 7 Blue',
+        'parent2@example.com',
+        'Nyayo',
+        'South Wing',
+        'Debate Club',
+      ],
+    ];
+    await downloadCsvNative('learners-sample.csv', rows);
+  }, []);
+
+  // A–H parity: Import learners CSV (native)
+  const handleCsvImport = useCallback(async () => {
+    if (!org?.id || !orgToken) {
+      Alert.alert('Import CSV', 'Organization not loaded yet.');
+      return;
+    }
+    if (csvUploading) return;
+
+    try {
+      setCsvUploading(true);
+
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel', '*/*'],
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+
+      if (res.canceled || !res.assets?.length) return;
+
+     const a = res.assets?.[0];
+      if (!a?.uri) return;
+
+      const picked = {
+        uri: a.uri,
+        name: a.name ?? 'learners.csv',
+        mimeType: a.mimeType ?? 'text/csv',
+      };
+
+
+      const resp: any = await tryUploadLearnersCsvNative(
+        backendUrl,
+        orgToken,
+        org.id,
+        picked,
+      );
+
+      const created = Number(resp?.createdCount ?? resp?.created ?? 0);
+      const reused = Number(resp?.reusedCount ?? resp?.reused ?? resp?.updated ?? 0);
+
+      Alert.alert(
+        'CSV processed',
+        `New learners: ${created}\nExisting reused/updated: ${reused}\n\nNext: Download the login sheet (CSV) to share credentials + temp passwords.`,
+      );
+
+      await refreshRoster(org.id);
+    } catch (e: any) {
+      Alert.alert('Import CSV', e?.message || 'Failed to upload CSV.');
+    } finally {
+      setCsvUploading(false);
+    }
+  }, [backendUrl, org?.id, orgToken, csvUploading, refreshRoster]);
+
   const handleUploadLearnerPhoto = useCallback(async () => {
     if (!org?.id || !orgToken) {
       Alert.alert('Learner photo', 'Organization is not loaded yet.');
@@ -672,9 +1067,7 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
 
       const file: any = {
         uri: picked.uri,
-        name:
-          (picked as any).fileName ||
-          `learner-${code}.jpg`,
+        name: (picked as any).fileName || `learner-${code}.jpg`,
         type: picked.mimeType || 'image/jpeg',
       };
 
@@ -684,27 +1077,33 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
           ? res
           : res?.url || res?.secure_url || res?.data?.url || '';
 
-      if (!photoUrl) {
-        throw new Error('Upload completed but no URL was returned.');
-      }
+      if (!photoUrl) throw new Error('Upload completed but no URL was returned.');
 
       await setOrgLearnerPhotoByAdmission(backendUrl, orgToken, org.id, {
         admission_code: code,
         photo_url: photoUrl,
       });
 
-      Alert.alert('Learner photo', 'Photo mapped to learner. Future report cards will use it.');
+      Alert.alert(
+        'Learner photo',
+        'Photo mapped to learner. Future report cards will use it.',
+      );
     } catch (e: any) {
       Alert.alert(
         'Learner photo',
-        e?.response?.data?.message ||
-          e?.message ||
-          'Failed to upload learner photo.',
+        e?.response?.data?.message || e?.message || 'Failed to upload learner photo.',
       );
     } finally {
       setPhotoUploading(false);
     }
   }, [backendUrl, org?.id, orgToken, photoAdmCode]);
+
+  // press feedback
+  const portalBtn = usePressScale();
+  const exitBtn = usePressScale();
+  const logoutBtn = usePressScale();
+
+  const bottomPad = Math.max(24, insets.bottom + 24);
 
   /* ---------------- render ---------------- */
 
@@ -720,14 +1119,10 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
 
         <View style={tw`flex-1 items-center justify-center p-6`}>
           <View style={palette.softSurface()}>
-            <Text
-              style={[tw`text-xl font-bold`, { color: palette.text }]}
-            >
+            <Text style={[tw`text-xl font-bold`, { color: palette.text }]}>
               Institution Profile
             </Text>
-            <Text
-              style={[tw`text-sm mt-2`, { color: palette.textMuted }]}
-            >
+            <Text style={[tw`text-sm mt-2`, { color: palette.textMuted }]}>
               Please sign in as an institution to continue.
             </Text>
             <TouchableOpacity
@@ -736,9 +1131,7 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
               accessibilityRole="button"
               accessibilityLabel="Open institution login"
             >
-              <Text style={tw`text-white font-semibold`}>
-                Institution Login
-              </Text>
+              <Text style={tw`text-white font-semibold`}>Institution Login</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -783,18 +1176,13 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                     />
                   )}
                   <View style={tw`ml-3 flex-1 min-w-0`}>
-                    <View
-                      style={tw`flex-row items-center flex-wrap min-w-0`}
-                    >
+                    <View style={tw`flex-row items-center flex-wrap min-w-0`}>
                       {loading ? (
                         <Skeleton style={tw`h-6 w-40 rounded`} />
                       ) : (
                         <Text
                           numberOfLines={1}
-                          style={[
-                            tw`text-[20px] font-extrabold`,
-                            { color: palette.text },
-                          ]}
+                          style={[tw`text-[20px] font-extrabold`, { color: palette.text }]}
                         >
                           {org?.name || 'Institution'}
                         </Text>
@@ -803,47 +1191,23 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                         <View
                           style={[
                             tw`ml-2 px-2 py-0.5 rounded-full flex-row items-center`,
-                            {
-                              // 🔧 use tierColors.bg instead of tier.color
-                              backgroundColor: palette.chipBg(
-                                tierColors.bg,
-                              ),
-                            },
+                            { backgroundColor: palette.chipBg(tierColors.bg) },
                           ]}
                         >
                           <View
                             style={[
                               tw`h-1.5 w-1.5 rounded-full mr-1`,
-                              {
-                                backgroundColor: palette.chipDot(
-                                  tierColors.bg,
-                                ),
-                              },
+                              { backgroundColor: palette.chipDot(tierColors.bg) },
                             ]}
                           />
-                          <Text
-                            style={[
-                              tw`text-[10px] font-semibold`,
-                              { color: palette.text },
-                            ]}
-                          >
+                          <Text style={[tw`text-[10px] font-semibold`, { color: palette.text }]}>
                             {(org?.tier || 'starter').toUpperCase()}
                           </Text>
                         </View>
                       )}
                     </View>
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        tw`text-xs mt-0.5`,
-                        { color: palette.textMuted },
-                      ]}
-                    >
-                      {loading
-                        ? ' '
-                        : org?.slug
-                        ? `@${org.slug}`
-                        : '—'}
+                    <Text numberOfLines={1} style={[tw`text-xs mt-0.5`, { color: palette.textMuted }]}>
+                      {loading ? ' ' : org?.slug ? `@${org.slug}` : '—'}
                     </Text>
                   </View>
                 </View>
@@ -853,10 +1217,7 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                   <Animated.View style={portalBtn.style}>
                     <TouchableOpacity
                       onPress={() =>
-                        navigation.navigate('OrgElearnPortal', {
-                          tab: 'branding',
-                          from: 'profile',
-                        })
+                        navigation.navigate('OrgElearnPortal', { tab: 'branding', from: 'profile' })
                       }
                       onPressIn={portalBtn.onIn}
                       onPressOut={portalBtn.onOut}
@@ -864,16 +1225,8 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                       accessibilityRole="button"
                       accessibilityLabel="Open organization portal"
                     >
-                      <Ionicons
-                        name="play-circle-outline"
-                        size={16}
-                        color="#fff"
-                      />
-                      <Text
-                        style={tw`text-white text-xs font-semibold ml-1`}
-                      >
-                        Portal
-                      </Text>
+                      <Ionicons name="play-circle-outline" size={16} color="#fff" />
+                      <Text style={tw`text-white text-xs font-semibold ml-1`}>Portal</Text>
                     </TouchableOpacity>
                   </Animated.View>
 
@@ -889,17 +1242,8 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                       accessibilityRole="button"
                       accessibilityLabel="Exit organization mode"
                     >
-                      <Ionicons
-                        name="swap-horizontal-outline"
-                        size={14}
-                        color={palette.text}
-                      />
-                      <Text
-                        style={[
-                          tw`text-[11px] font-medium ml-1`,
-                          { color: palette.text },
-                        ]}
-                      >
+                      <Ionicons name="swap-horizontal-outline" size={14} color={palette.text} />
+                      <Text style={[tw`text-[11px] font-medium ml-1`, { color: palette.text }]}>
                         Exit org
                       </Text>
                     </TouchableOpacity>
@@ -911,17 +1255,11 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
               <View style={tw`mt-4 gap-3`}>
                 <StatCard
                   label="Seats used"
-                  value={
-                    loading ? ' ' : `${seatsUsed}/${seatsMax}`
-                  }
+                  value={loading ? ' ' : `${seatsUsed}/${seatsMax}`}
                   palette={palette}
                 />
                 <View style={palette.smallSurface()}>
-                  <Text
-                    style={[tw`text-[10px]`, { color: palette.textMuted }]}
-                  >
-                    Usage
-                  </Text>
+                  <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>Usage</Text>
                   {loading ? (
                     <>
                       <Skeleton style={tw`h-6 w-24 mt-2 rounded`} />
@@ -929,12 +1267,7 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                     </>
                   ) : (
                     <>
-                      <Text
-                        style={[
-                          tw`text-2xl font-extrabold mt-1`,
-                          { color: palette.text },
-                        ]}
-                      >
+                      <Text style={[tw`text-2xl font-extrabold mt-1`, { color: palette.text }]}>
                         {seatPct}%
                       </Text>
                       <ProgressBar pct={seatPct} palette={palette} />
@@ -943,26 +1276,14 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                 </View>
 
                 <View style={palette.smallSurface()}>
-                  <Text
-                    style={[tw`text-[10px]`, { color: palette.textMuted }]}
-                  >
-                    Plan
-                  </Text>
-                  <Text
-                    style={[
-                      tw`text-2xl font-extrabold mt-1`,
-                      { color: palette.text },
-                    ]}
-                  >
+                  <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>Plan</Text>
+                  <Text style={[tw`text-2xl font-extrabold mt-1`, { color: palette.text }]}>
                     {loading ? ' ' : (org?.tier || 'starter').toUpperCase()}
                   </Text>
                   {!loading && (
                     <TouchableOpacity
                       onPress={() =>
-                        navigation.navigate('OrgElearnPortal', {
-                          tab: 'branding',
-                          from: 'profile',
-                        })
+                        navigation.navigate('OrgElearnPortal', { tab: 'branding', from: 'profile' })
                       }
                       style={[
                         tw`mt-2 h-8 px-3 rounded-2xl items-center justify-center`,
@@ -971,12 +1292,7 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                       accessibilityRole="button"
                       accessibilityLabel="Manage plan in branding"
                     >
-                      <Text
-                        style={[
-                          tw`text-[11px] font-semibold`,
-                          { color: palette.text },
-                        ]}
-                      >
+                      <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>
                         Manage plan
                       </Text>
                     </TouchableOpacity>
@@ -984,30 +1300,15 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                 </View>
 
                 <View style={palette.smallSurface()}>
-                  <Text
-                    style={[tw`text-[10px]`, { color: palette.textMuted }]}
-                  >
-                    Certificates
-                  </Text>
+                  <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>Certificates</Text>
                   {loading ? (
                     <Skeleton style={tw`h-4 w-40 mt-2 rounded`} />
                   ) : (
                     <>
-                      <Text
-                        numberOfLines={2}
-                        style={[
-                          tw`mt-1 text-xs font-semibold`,
-                          { color: palette.text },
-                        ]}
-                      >
+                      <Text numberOfLines={2} style={[tw`mt-1 text-xs font-semibold`, { color: palette.text }]}>
                         {org?.certificate_title || 'Certificate of Completion'}
                       </Text>
-                      <Text
-                        style={[
-                          tw`mt-1 text-[11px]`,
-                          { color: palette.textSubtle },
-                        ]}
-                      >
+                      <Text style={[tw`mt-1 text-[11px]`, { color: palette.textSubtle }]}>
                         Signature & pass marks live in Branding.
                       </Text>
                     </>
@@ -1021,231 +1322,209 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
         {/* People */}
         <View style={tw`px-4 mt-4`}>
           {/* Instructors */}
-          <Animated.View
-            entering={FadeInDown.delay(60).duration(380)}
-            style={palette.surface(tw`mb-4`)}
-          >
-            <View style={tw`flex-row items-center justify-between`}>
-              <Text
-                style={[tw`text-lg font-bold`, { color: palette.text }]}
-              >
-                Instructors
-              </Text>
-              <View style={tw`flex-row items-center`}>
-                <TouchableOpacity
-                  onPress={() => setAddInstructorOpen(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add instructor"
-                >
-                  <Text
-                    style={[
-                      tw`underline text-xs mr-3`,
-                      { color: palette.textMuted },
-                    ]}
-                  >
-                    Add instructor
-                  </Text>
-                </TouchableOpacity>
+          <Animated.View entering={FadeInDown.delay(60).duration(380)} style={palette.surface(tw`mb-4`)}>
+            <View>
+              <View style={tw`flex-row items-center justify-between`}>
+                <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Instructors</Text>
 
-                <TouchableOpacity
+                <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}>
+                  <Text style={[tw`text-[10px] font-semibold`, { color: palette.textMuted }]}>
+                    {instructors.length}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={tw`mt-3 flex-row flex-wrap`}>
+                <ActionPill
+                  palette={palette}
+                  label="Add"
+                  icon="person-add-outline"
+                  onPress={() => setAddInstructorOpen(true)}
+                />
+
+                <ActionPill
+                  palette={palette}
+                  label="Invite"
+                  icon="mail-outline"
                   onPress={() => {
                     setInviteRole('instructor');
                     setInviteOpen(true);
                   }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Invite instructor"
-                >
-                  <Text
-                    style={[
-                      tw`underline text-xs mr-3`,
-                      { color: palette.textMuted },
-                    ]}
-                  >
-                    Invite instructor
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                />
+
+                <ActionPill
+                  palette={palette}
+                  label="Login sheet CSV"
+                  icon="download-outline"
+                  onPress={downloadRosterCsv}
+                />
+
+                <ActionPill
+                  palette={palette}
+                  label="Assign"
+                  icon="clipboard-outline"
+                  disabled={!instructors.length}
                   onPress={() =>
-                    navigation.navigate('OrgElearnPortal', {
-                      tab: 'assign',
-                      from: 'profile',
-                    })
+                    navigation.navigate('OrgElearnPortal', { tab: 'assign', from: 'profile' })
                   }
-                  accessibilityRole="button"
-                  accessibilityLabel="Assign courses in portal"
-                >
-                  <Text
-                    style={[
-                      tw`underline text-xs`,
-                      { color: palette.textMuted },
-                    ]}
-                  >
-                    Assign in portal
-                  </Text>
-                </TouchableOpacity>
+                />
               </View>
             </View>
 
+
             {loading ? (
               <View style={tw`mt-3`}>
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton
-                    key={i}
-                    style={tw`h-10 w-full mb-2 rounded-2xl`}
-                  />
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} style={tw`h-10 w-full mb-2 rounded-2xl`} />
                 ))}
               </View>
             ) : instructors.length ? (
-              <View style={tw`mt-3`}>
-                {instructors.slice(0, 8).map((u) => (
-                  <PersonRow
-                    key={String(u.id)}
-                    u={u}
-                    // 🔧 palette prop removed – PersonRow doesn’t accept it
-                    onRemove={() => handleRemoveMember(u)}
-                  />
-                ))}
-                {instructors.length > 8 && (
-                  <Text
-                    style={[
-                      tw`text-[10px] mt-2`,
-                      { color: palette.textSubtle },
-                    ]}
-                  >
-                    Showing 8 of {instructors.length}
-                  </Text>
-                )}
-              </View>
+              <>
+                <View style={tw`mt-3`}>
+                  {paginatedInstructors.map((u) => (
+                    <PersonRow
+                      key={String(u.id)}
+                      u={u}
+                      onRemove={() => handleRemoveMember(u)}
+                    />
+                  ))}
+                </View>
+
+                <PaginationStrip
+                  palette={palette}
+                  total={instructors.length}
+                  page={instructorPage}
+                  pageSize={instructorPageSize}
+                  noun="instructors"
+                  onPage={setInstructorPage}
+                  onPageSize={setInstructorPageSize}
+                />
+              </>
             ) : (
               <View
                 style={[
                   tw`mt-4 rounded-3xl p-6 items-center`,
-                  {
-                    borderWidth: 1,
-                    borderStyle: 'dashed',
-                    borderColor: palette.dashed,
-                  },
+                  { borderWidth: 1, borderStyle: 'dashed', borderColor: palette.dashed },
                 ]}
               >
                 <Text style={tw`text-2xl`}>👩🏽‍🏫</Text>
-                <Text
-                  style={[tw`text-sm mt-2`, { color: palette.text }]}
-                >
-                  No instructors yet.
-                </Text>
-                <Text
-                  style={[
-                    tw`text-[11px] mt-1 text-center`,
-                    { color: palette.textSubtle },
-                  ]}
-                >
-                  Use invites or the web portal to add instructors and share login details.
+                <Text style={[tw`text-sm mt-2`, { color: palette.text }]}>No instructors yet.</Text>
+                <Text style={[tw`text-[11px] mt-1 text-center`, { color: palette.textSubtle }]}>
+                  Use invites or direct add to enroll instructors. Share login details via email or WhatsApp.
                 </Text>
               </View>
             )}
           </Animated.View>
 
           {/* Learners */}
-          <Animated.View
-            entering={FadeInDown.delay(120).duration(380)}
-            style={palette.surface()}
-          >
-            <View style={tw`flex-row items-center justify-between`}>
-              <Text
-                style={[tw`text-lg font-bold`, { color: palette.text }]}
-              >
-                Learners
-              </Text>
-              <View style={tw`flex-row items-center gap-3`}>
-                <TouchableOpacity
-                  onPress={() => setAddLearnerOpen(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add learner"
-                >
-                  <Text
-                    style={[
-                      tw`underline text-xs`,
-                      { color: palette.textMuted },
-                    ]}
-                  >
-                    Add learner
-                  </Text>
-                </TouchableOpacity>
+          <Animated.View entering={FadeInDown.delay(120).duration(380)} style={palette.surface()}>
+              <View>
+                <View style={tw`flex-row items-center justify-between`}>
+                  <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Learners</Text>
 
-                <TouchableOpacity
-                  onPress={() => {
-                    setInviteRole('learner');
-                    setInviteOpen(true);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Invite learner"
-                >
-                  <Text
-                    style={[
-                      tw`underline text-xs`,
-                      { color: palette.textMuted },
-                    ]}
-                  >
-                    Invite learners
-                  </Text>
-                </TouchableOpacity>
+                  <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}>
+                    <Text style={[tw`text-[10px] font-semibold`, { color: palette.textMuted }]}>
+                      {learners.length}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={tw`mt-3 flex-row flex-wrap`}>
+                  <ActionPill
+                    palette={palette}
+                    label={csvUploading ? 'Uploading…' : 'Import CSV'}
+                    icon="cloud-upload-outline"
+                    disabled={csvUploading}
+                    onPress={handleCsvImport}
+                  />
+
+                  <ActionPill
+                    palette={palette}
+                    label="Sample CSV"
+                    icon="document-text-outline"
+                    onPress={downloadLearnerSampleCsv}
+                  />
+
+                  <ActionPill
+                    palette={palette}
+                    label="Add"
+                    icon="person-add-outline"
+                    onPress={() => setAddLearnerOpen(true)}
+                  />
+
+                  <ActionPill
+                    palette={palette}
+                    label="Invite"
+                    icon="mail-outline"
+                    onPress={() => {
+                      setInviteRole('learner');
+                      setInviteOpen(true);
+                    }}
+                  />
+
+                  <ActionPill
+                    palette={palette}
+                    label="Login sheet CSV"
+                    icon="download-outline"
+                    onPress={downloadRosterCsv}
+                  />
+                </View>
               </View>
-            </View>
+
+
+            {/* CSV help text (web parity) */}
+            <Text style={[tw`mt-2 text-[10px]`, { color: palette.textSubtle }]}>
+              CSV columns: <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>name</Text>,{' '}
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>email</Text>,{' '}
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>admission_code</Text>,{' '}
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>class_label</Text>,{' '}
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>guardian_email</Text>,{' '}
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>house</Text>,{' '}
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>dormitory</Text>,{' '}
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>club</Text>. Existing learners match by{' '}
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>admission_code</Text> or{' '}
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>email</Text>.
+            </Text>
 
             {loading ? (
               <View style={tw`mt-3`}>
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton
-                    key={i}
-                    style={tw`h-10 w-full mb-2 rounded-2xl`}
-                  />
+                  <Skeleton key={i} style={tw`h-10 w-full mb-2 rounded-2xl`} />
                 ))}
               </View>
             ) : learners.length ? (
-              <View style={tw`mt-3`}>
-                {learners.slice(0, 12).map((u) => (
-                  <PersonRow
-                    key={String(u.id)}
-                    u={u}
-                    // 🔧 palette prop removed here as well
-                    onRemove={() => handleRemoveMember(u)}
-                  />
-                ))}
-                {learners.length > 12 && (
-                  <Text
-                    style={[
-                      tw`text-[10px] mt-2`,
-                      { color: palette.textSubtle },
-                    ]}
-                  >
-                    Showing 12 of {learners.length}
-                  </Text>
-                )}
-              </View>
+              <>
+                <View style={tw`mt-3`}>
+                  {paginatedLearners.map((u) => (
+                    <PersonRow
+                      key={String(u.id)}
+                      u={u}
+                      onRemove={() => handleRemoveMember(u)}
+                    />
+                  ))}
+                </View>
+
+                <PaginationStrip
+                  palette={palette}
+                  total={learners.length}
+                  page={learnerPage}
+                  pageSize={learnerPageSize}
+                  noun="learners"
+                  onPage={setLearnerPage}
+                  onPageSize={setLearnerPageSize}
+                />
+              </>
             ) : (
               <View
                 style={[
                   tw`mt-4 rounded-3xl p-6 items-center`,
-                  {
-                    borderWidth: 1,
-                    borderStyle: 'dashed',
-                    borderColor: palette.dashed,
-                  },
+                  { borderWidth: 1, borderStyle: 'dashed', borderColor: palette.dashed },
                 ]}
               >
                 <Text style={tw`text-2xl`}>🎓</Text>
-                <Text
-                  style={[tw`text-sm mt-2`, { color: palette.text }]}
-                >
-                  No learners yet.
-                </Text>
-                <Text
-                  style={[
-                    tw`text-[11px] mt-1 text-center`,
-                    { color: palette.textSubtle },
-                  ]}
-                >
-                  Use invites, direct add, or CSV import from the web portal to enroll learners.
+                <Text style={[tw`text-sm mt-2`, { color: palette.text }]}>No learners yet.</Text>
+                <Text style={[tw`text-[11px] mt-1 text-center`, { color: palette.textSubtle }]}>
+                  Use invites, direct add, or CSV import to enroll learners.
                 </Text>
               </View>
             )}
@@ -1254,10 +1533,7 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
 
         {/* Learner photos (bulk + manual mapping) */}
         <View style={tw`px-4 mt-4`}>
-          <Animated.View
-            entering={FadeInDown.delay(160).duration(380)}
-            style={palette.surface()}
-          >
+          <Animated.View entering={FadeInDown.delay(160).duration(380)} style={palette.surface()}>
             <View style={tw`flex-row items-center justify-between`}>
               <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>
                 Learner photos
@@ -1289,7 +1565,15 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
 
               <Text style={[tw`mt-2 text-[10px]`, { color: palette.textSubtle }]}>
                 Name each image as the learner Admission No/Code, e.g.{' '}
-                <Text style={{ fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }) }}>
+                <Text
+                  style={{
+                    fontFamily: Platform.select({
+                      ios: 'Menlo',
+                      android: 'monospace',
+                      default: 'monospace',
+                    }),
+                  }}
+                >
                   ADM-2025-001.jpg
                 </Text>
                 . The app extracts the code (before the extension) and maps automatically.
@@ -1328,7 +1612,11 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                 disabled={photoUploading || bulkPhotoUploading}
                 style={[
                   tw`mt-3 h-10 px-4 rounded-xl flex-row items-center justify-center`,
-                  { backgroundColor: palette.isDark ? 'rgba(255,255,255,0.06)' : '#ffffff' },
+                  {
+                    backgroundColor: palette.isDark
+                      ? 'rgba(255,255,255,0.06)'
+                      : '#ffffff',
+                  },
                 ]}
               >
                 <Ionicons name="cloud-upload-outline" size={16} color={palette.text} />
@@ -1344,40 +1632,21 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
           </Animated.View>
         </View>
 
-
         {/* Branding */}
         <View style={tw`px-4 mt-4`}>
-          <Animated.View
-            entering={FadeInDown.delay(200).duration(380)}
-            style={palette.surface()}
-          >
+          <Animated.View entering={FadeInDown.delay(200).duration(380)} style={palette.surface()}>
             <View style={tw`flex-row items-center justify-between`}>
-              <Text
-                style={[tw`text-lg font-bold`, { color: palette.text }]}
-              >
-                Branding
-              </Text>
+              <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Branding</Text>
               <TouchableOpacity
                 onPress={() =>
-                  navigation.navigate('OrgElearnPortal', {
-                    tab: 'branding',
-                    from: 'profile',
-                  })
+                  navigation.navigate('OrgElearnPortal', { tab: 'branding', from: 'profile' })
                 }
                 style={tw`h-8 px-3 rounded-2xl bg-emerald-600 items-center justify-center flex-row`}
                 accessibilityRole="button"
                 accessibilityLabel="Edit branding in portal"
               >
-                <Ionicons
-                  name="color-palette-outline"
-                  size={14}
-                  color="#fff"
-                />
-                <Text
-                  style={tw`text-white text-xs font-semibold ml-1`}
-                >
-                  Edit
-                </Text>
+                <Ionicons name="color-palette-outline" size={14} color="#fff" />
+                <Text style={tw`text-white text-xs font-semibold ml-1`}>Edit</Text>
               </TouchableOpacity>
             </View>
 
@@ -1393,24 +1662,13 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                   },
                 ]}
               >
-                <Text
-                  style={[tw`text-[10px]`, { color: palette.textMuted }]}
-                >
-                  Logo
-                </Text>
+                <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>Logo</Text>
                 {loading ? (
-                  <Skeleton
-                    style={tw`h-20 w-20 mt-2 rounded-2xl`}
-                  />
+                  <Skeleton style={tw`h-20 w-20 mt-2 rounded-2xl`} />
                 ) : (
                   <Image
-                    source={{
-                      uri: resolveAsset(org?.logo_url, backendUrl),
-                    }}
-                    style={[
-                      tw`h-20 w-20 mt-2 rounded-2xl`,
-                      { backgroundColor: palette.bg },
-                    ]}
+                    source={{ uri: resolveAsset(org?.logo_url, backendUrl) }}
+                    style={[tw`h-20 w-20 mt-2 rounded-2xl`, { backgroundColor: palette.bg }]}
                     contentFit="contain"
                     transition={220}
                   />
@@ -1428,24 +1686,15 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                   },
                 ]}
               >
-                <Text
-                  style={[tw`text-[10px]`, { color: palette.textMuted }]}
-                >
+                <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>
                   Registrar Signature
                 </Text>
                 {loading ? (
-                  <Skeleton
-                    style={tw`h-16 w-40 mt-2 rounded-2xl`}
-                  />
+                  <Skeleton style={tw`h-16 w-40 mt-2 rounded-2xl`} />
                 ) : (
                   <Image
-                    source={{
-                      uri: resolveAsset(org?.signature_url, backendUrl),
-                    }}
-                    style={[
-                      tw`h-16 mt-2 rounded-2xl`,
-                      { backgroundColor: palette.bg },
-                    ]}
+                    source={{ uri: resolveAsset(org?.signature_url, backendUrl) }}
+                    style={[tw`h-16 mt-2 rounded-2xl`, { backgroundColor: palette.bg }]}
                     contentFit="contain"
                     transition={220}
                   />
@@ -1463,22 +1712,11 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                   },
                 ]}
               >
-                <Text
-                  style={[tw`text-[10px]`, { color: palette.textMuted }]}
-                >
-                  Email domain
-                </Text>
+                <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>Email domain</Text>
                 {loading ? (
-                  <Skeleton
-                    style={tw`h-5 w-40 mt-2 rounded-xl`}
-                  />
+                  <Skeleton style={tw`h-5 w-40 mt-2 rounded-xl`} />
                 ) : (
-                  <Text
-                    style={[
-                      tw`mt-1 text-xs`,
-                      { color: palette.text },
-                    ]}
-                  >
+                  <Text style={[tw`mt-1 text-xs`, { color: palette.text }]}>
                     {org?.email_domain?.trim() || 'Not restricted'}
                   </Text>
                 )}
@@ -1495,64 +1733,29 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                   },
                 ]}
               >
-                <Text
-                  style={[tw`text-[10px]`, { color: palette.textMuted }]}
-                >
-                  School contact
-                </Text>
+                <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>School contact</Text>
                 {loading ? (
-                  <Skeleton
-                    style={tw`h-10 w-full mt-2 rounded-xl`}
-                  />
+                  <Skeleton style={tw`h-10 w-full mt-2 rounded-xl`} />
                 ) : (
                   <View style={tw`mt-2`}>
                     {!!org?.address_line1 && (
-                      <Text
-                        style={[
-                          tw`text-xs`,
-                          { color: palette.text },
-                        ]}
-                      >
-                        {org.address_line1}
-                      </Text>
+                      <Text style={[tw`text-xs`, { color: palette.text }]}>{org.address_line1}</Text>
                     )}
                     {!!org?.address_line2 && (
-                      <Text
-                        style={[
-                          tw`text-xs`,
-                          { color: palette.text },
-                        ]}
-                      >
-                        {org.address_line2}
-                      </Text>
+                      <Text style={[tw`text-xs`, { color: palette.text }]}>{org.address_line2}</Text>
                     )}
                     {!!org?.phone_number && (
-                      <Text
-                        style={[
-                          tw`text-[11px] mt-1`,
-                          { color: palette.textSubtle },
-                        ]}
-                      >
+                      <Text style={[tw`text-[11px] mt-1`, { color: palette.textSubtle }]}>
                         Tel: {org.phone_number}
                       </Text>
                     )}
                     {!!org?.contact_email && (
-                      <Text
-                        style={[
-                          tw`text-[11px]`,
-                          { color: palette.textSubtle },
-                        ]}
-                      >
+                      <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
                         Email: {org.contact_email}
                       </Text>
                     )}
                     {!!org?.website_url && (
-                      <Text
-                        style={[
-                          tw`text-[11px]`,
-                          { color: palette.textSubtle },
-                        ]}
-                      >
+                      <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
                         Website: {org.website_url}
                       </Text>
                     )}
@@ -1560,12 +1763,7 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                       !org?.phone_number &&
                       !org?.contact_email &&
                       !org?.website_url && (
-                        <Text
-                          style={[
-                            tw`text-[11px]`,
-                            { color: palette.textSubtle },
-                          ]}
-                        >
+                        <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
                           Not set yet.
                         </Text>
                       )}
@@ -1580,87 +1778,39 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                     <View
                       style={[
                         tw`rounded-2xl px-3 py-2 mb-2`,
-                        {
-                          backgroundColor: palette.divider,
-                          borderColor: palette.border,
-                          borderWidth: 1,
-                        },
+                        { backgroundColor: palette.divider, borderColor: palette.border, borderWidth: 1 },
                       ]}
                     >
-                      <Text
-                        style={[
-                          tw`text-[10px] uppercase tracking-wide`,
-                          { color: palette.textSubtle },
-                        ]}
-                      >
+                      <Text style={[tw`text-[10px] uppercase tracking-wide`, { color: palette.textSubtle }]}>
                         House label
                       </Text>
-                      <Text
-                        style={[
-                          tw`mt-1 text-xs`,
-                          { color: palette.text },
-                        ]}
-                      >
-                        {org.house_label}
-                      </Text>
+                      <Text style={[tw`mt-1 text-xs`, { color: palette.text }]}>{org.house_label}</Text>
                     </View>
                   )}
                   {!!org?.dorm_label?.trim() && (
                     <View
                       style={[
                         tw`rounded-2xl px-3 py-2 mb-2`,
-                        {
-                          backgroundColor: palette.divider,
-                          borderColor: palette.border,
-                          borderWidth: 1,
-                        },
+                        { backgroundColor: palette.divider, borderColor: palette.border, borderWidth: 1 },
                       ]}
                     >
-                      <Text
-                        style={[
-                          tw`text-[10px] uppercase tracking-wide`,
-                          { color: palette.textSubtle },
-                        ]}
-                      >
+                      <Text style={[tw`text-[10px] uppercase tracking-wide`, { color: palette.textSubtle }]}>
                         Dorm label
                       </Text>
-                      <Text
-                        style={[
-                          tw`mt-1 text-xs`,
-                          { color: palette.text },
-                        ]}
-                      >
-                        {org.dorm_label}
-                      </Text>
+                      <Text style={[tw`mt-1 text-xs`, { color: palette.text }]}>{org.dorm_label}</Text>
                     </View>
                   )}
                   {!!org?.club_label?.trim() && (
                     <View
                       style={[
                         tw`rounded-2xl px-3 py-2`,
-                        {
-                          backgroundColor: palette.divider,
-                          borderColor: palette.border,
-                          borderWidth: 1,
-                        },
+                        { backgroundColor: palette.divider, borderColor: palette.border, borderWidth: 1 },
                       ]}
                     >
-                      <Text
-                        style={[
-                          tw`text-[10px] uppercase tracking-wide`,
-                          { color: palette.textSubtle },
-                        ]}
-                      >
+                      <Text style={[tw`text-[10px] uppercase tracking-wide`, { color: palette.textSubtle }]}>
                         Club label
                       </Text>
-                      <Text
-                        style={[
-                          tw`mt-1 text-xs`,
-                          { color: palette.text },
-                        ]}
-                      >
-                        {org.club_label}
-                      </Text>
+                      <Text style={[tw`mt-1 text-xs`, { color: palette.text }]}>{org.club_label}</Text>
                     </View>
                   )}
                 </View>
@@ -1671,61 +1821,25 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
 
         {/* Quick actions - modern card */}
         <View style={tw`px-4 mt-4`}>
-          <Animated.View
-            entering={FadeInDown.delay(220).duration(380)}
-            style={palette.softSurface()}
-          >
+          <Animated.View entering={FadeInDown.delay(220).duration(380)} style={palette.softSurface()}>
             <View style={tw`flex-row items-center justify-between`}>
               <View>
-                <Text
-                  style={[
-                    tw`text-lg font-bold`,
-                    { color: palette.text },
-                  ]}
-                >
-                  Quick actions
-                </Text>
-                <Text
-                  style={[
-                    tw`text-xs mt-1`,
-                    { color: palette.textSubtle },
-                  ]}
-                >
+                <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Quick actions</Text>
+                <Text style={[tw`text-xs mt-1`, { color: palette.textSubtle }]}>
                   Jump straight into your portal tools.
                 </Text>
               </View>
-              <View
-                style={[
-                  tw`px-2 py-1 rounded-full flex-row items-center`,
-                  { backgroundColor: palette.divider },
-                ]}
-              >
-                <View
-                  style={[
-                    tw`h-1.5 w-1.5 rounded-full mr-1`,
-                    { backgroundColor: '#22c55e' },
-                  ]}
-                />
-                <Text
-                  style={[
-                    tw`text-[10px] font-medium`,
-                    { color: palette.textMuted },
-                  ]}
-                >
-                  Live
-                </Text>
+              <View style={[tw`px-2 py-1 rounded-full flex-row items-center`, { backgroundColor: palette.divider }]}>
+                <View style={[tw`h-1.5 w-1.5 rounded-full mr-1`, { backgroundColor: '#22c55e' }]} />
+                <Text style={[tw`text-[10px] font-medium`, { color: palette.textMuted }]}>Live</Text>
               </View>
             </View>
 
             <View style={tw`mt-3 flex-row flex-wrap gap-2`}>
-              {/* Open portal – narrower width */}
               <Animated.View style={[portalBtn.style, tw`flex-[0.7]`]}>
                 <TouchableOpacity
                   onPress={() =>
-                    navigation.navigate('OrgElearnPortal', {
-                      tab: 'branding',
-                      from: 'profile',
-                    })
+                    navigation.navigate('OrgElearnPortal', { tab: 'branding', from: 'profile' })
                   }
                   onPressIn={portalBtn.onIn}
                   onPressOut={portalBtn.onOut}
@@ -1733,43 +1847,24 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                   accessibilityRole="button"
                   accessibilityLabel="Open portal"
                 >
-                  <Ionicons
-                    name="grid-outline"
-                    size={16}
-                    color="#fff"
-                  />
-                  <Text
-                    style={tw`ml-2 text-[11px] font-semibold text-white text-center flex-shrink`}
-                  >
+                  <Ionicons name="grid-outline" size={16} color="#fff" />
+                  <Text style={tw`ml-2 text-[11px] font-semibold text-white text-center flex-shrink`}>
                     Open portal
                   </Text>
                 </TouchableOpacity>
               </Animated.View>
 
-              {/* Create assignment – wider */}
               <View style={tw`flex-[1.3]`}>
                 <TouchableOpacity
                   onPress={() =>
-                    navigation.navigate('OrgElearnPortal', {
-                      tab: 'assign',
-                      from: 'profile',
-                    })
+                    navigation.navigate('OrgElearnPortal', { tab: 'assign', from: 'profile' })
                   }
                   style={tw`flex-row items-center justify-center h-11 px-4 rounded-2xl bg-transparent border border-indigo-500/50`}
                   accessibilityRole="button"
                   accessibilityLabel="Create assignment"
                 >
-                  <Ionicons
-                    name="create-outline"
-                    size={18}
-                    color={palette.text}
-                  />
-                  <Text
-                    style={[
-                      tw`ml-2 text-[11px] font-semibold text-center flex-shrink`,
-                      { color: palette.text },
-                    ]}
-                  >
+                  <Ionicons name="create-outline" size={18} color={palette.text} />
+                  <Text style={[tw`ml-2 text-[11px] font-semibold text-center flex-shrink`, { color: palette.text }]}>
                     Create assignment
                   </Text>
                 </TouchableOpacity>
@@ -1782,33 +1877,14 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
         <View style={tw`px-4 mt-6 mb-4`}>
           <View style={tw`flex-row items-center justify-between`}>
             <View style={tw`flex-row items-center`}>
-              <View
-                style={[
-                  tw`h-8 w-8 rounded-2xl items-center justify-center mr-2`,
-                  { backgroundColor: palette.divider },
-                ]}
-              >
-                <Ionicons
-                  name="shield-checkmark-outline"
-                  size={16}
-                  color={palette.text}
-                />
+              <View style={[tw`h-8 w-8 rounded-2xl items-center justify-center mr-2`, { backgroundColor: palette.divider }]}>
+                <Ionicons name="shield-checkmark-outline" size={16} color={palette.text} />
               </View>
               <View>
-                <Text
-                  style={[
-                    tw`text-[10px] font-semibold uppercase tracking-[1px]`,
-                    { color: palette.textSubtle },
-                  ]}
-                >
+                <Text style={[tw`text-[10px] font-semibold uppercase tracking-[1px]`, { color: palette.textSubtle }]}>
                   Session
                 </Text>
-                <Text
-                  style={[
-                    tw`text-[11px] mt-0.5`,
-                    { color: palette.textMuted },
-                  ]}
-                >
+                <Text style={[tw`text-[11px] mt-0.5`, { color: palette.textMuted }]}>
                   Signed in as institution admin
                 </Text>
               </View>
@@ -1824,9 +1900,7 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                 style={[
                   tw`h-8 px-3 rounded-full flex-row items-center justify-center`,
                   {
-                    backgroundColor: palette.isDark
-                      ? 'rgba(248,113,113,0.12)'
-                      : '#fef2f2',
+                    backgroundColor: palette.isDark ? 'rgba(248,113,113,0.12)' : '#fef2f2',
                     borderColor: '#fb7185',
                     borderWidth: 1,
                   },
@@ -1834,17 +1908,8 @@ const handleBulkUploadLearnerPhotos = useCallback(async () => {
                 accessibilityRole="button"
                 accessibilityLabel="Logout of institution account"
               >
-                <Ionicons
-                  name="log-out-outline"
-                  size={16}
-                  color="#fb7185"
-                />
-                <Text
-                  style={[
-                    tw`ml-1 text-[11px] font-semibold`,
-                    { color: '#fb7185' },
-                  ]}
-                >
+                <Ionicons name="log-out-outline" size={16} color="#fb7185" />
+                <Text style={[tw`ml-1 text-[11px] font-semibold`, { color: '#fb7185' }]}>
                   Logout
                 </Text>
               </TouchableOpacity>

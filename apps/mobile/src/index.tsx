@@ -5,6 +5,7 @@ import * as Linking from 'expo-linking';
 import axios from 'axios';
 import React, { useEffect, useRef } from 'react';
 import { LogBox, StatusBar, StyleSheet, Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
 
 import { registerRootComponent } from 'expo';
 import Constants from 'expo-constants';
@@ -154,11 +155,9 @@ const RootInner = () => {
   const { http, token, orgToken } = useShopContext() as any;
 
 useEffect(() => {
-  let cleanup = () => {};
   let cancelled = false;
 
   (async () => {
-    // Only try when we have some session
     if (!token && !orgToken) return;
 
     const pushToken = await registerForPushToken();
@@ -171,7 +170,6 @@ useEffect(() => {
       });
       if (__DEV__) console.log('[push] registered:', pushToken);
     } catch (e: any) {
-      // Quietly ignore in dev; but do log unexpected statuses
       if (__DEV__) {
         const status = e?.response?.status;
         console.warn('[push] register failed', status, e?.message || e);
@@ -179,26 +177,39 @@ useEffect(() => {
     }
   })();
 
-  cleanup = initNotificationListeners({
-    onReceive: () => {},
-    onRespond: (resp) => {
-      const data = resp.notification.request.content.data as any;
-      if (data?.screen) {
-        navRef.current?.dispatch(
-          CommonActions.navigate({
-            name: String(data.screen),
-            params: data.params ?? undefined,
-          }),
-        );
-      }
-    },
-  });
-
   return () => {
     cancelled = true;
-    cleanup();
   };
-}, [navRef, http, token, orgToken]);
+}, [http, token, orgToken]);
+
+useEffect(() => {
+  const handleResp = (resp: Notifications.NotificationResponse) => {
+    const data = resp.notification.request.content.data as any;
+    if (data?.screen) {
+      navRef.current?.dispatch(
+        CommonActions.navigate({
+          name: String(data.screen),
+          params: data.params ?? undefined,
+        }),
+      );
+    }
+  };
+
+  let cleanup = () => {};
+
+  (async () => {
+    const last = await Notifications.getLastNotificationResponseAsync();
+    if (last) handleResp(last);
+  })();
+
+  cleanup = initNotificationListeners({
+    onReceive: () => {},
+    onRespond: handleResp,
+  });
+
+  return () => cleanup();
+}, [navRef]);
+
 
 
   return (

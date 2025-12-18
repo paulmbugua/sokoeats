@@ -1,4 +1,4 @@
-// apps/mobile/src/utils/notifications.ts
+// apps/mobile/utils/notifications.ts
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';

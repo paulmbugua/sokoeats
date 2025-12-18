@@ -11,7 +11,6 @@ import {
   Linking,
   Platform,
 } from 'react-native';
-// ❌ removed Picker
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
 import tw from '../../../tailwind';
@@ -26,15 +25,15 @@ import {
   ensureOrgShareableAssignment,
 } from '@mytutorapp/shared/api/orgApi';
 
-// ✅ same selector pattern as CreateProfile
 import SelectField from '@/screens/SelectField.native';
+import { useThemePref } from '../../theme/ThemeContext';
 
 type Props = {
   open: boolean;
   onClose: () => void;
   onCancel?: () => void;
   courseId: string | null | undefined;
-  onResolvedCourseId?: (courseId: string) => void; // ⬅️ NEW (parity with web)
+  onResolvedCourseId?: (courseId: string) => void;
   courseTitle?: string | null;
   totalLessons?: number;
   quizCount?: number;
@@ -69,7 +68,6 @@ const endOfDayIso = (d: Date | null): string | null => {
   return copy.toISOString();
 };
 
-// pick courseId from multiple shapes (parity with web)
 const pickCourseId = (obj: any): string | null =>
   obj?.assignment?.courseId ??
   obj?.assignment?.course_id ??
@@ -77,7 +75,6 @@ const pickCourseId = (obj: any): string | null =>
   obj?.course_id ??
   null;
 
-// ✅ options for SelectField (instead of Picker)
 const HOUR_OPTIONS = Array.from({ length: 13 }).map((_, h) => ({
   label: `${h} ${h === 1 ? 'hour' : 'hours'}`,
   value: String(h),
@@ -87,6 +84,110 @@ const MINUTE_OPTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) =>
   label: `${m} ${m === 1 ? 'minute' : 'minutes'}`,
   value: String(m),
 }));
+
+/* ───────────────────────────────────────────────────────────
+   Palette (theme aware)
+   ─────────────────────────────────────────────────────────── */
+function usePalette() {
+  const { resolvedScheme } = useThemePref();
+  const isDark = resolvedScheme === 'dark';
+
+  return {
+    isDark,
+
+    // backdrop / modal
+    veil: isDark ? 'rgba(0,0,0,0.62)' : 'rgba(15,23,42,0.45)',
+
+    // card surface
+    cardBg: isDark ? '#0f1821' : '#ffffff',
+    border: isDark ? 'rgba(255,255,255,0.10)' : '#cedbe8',
+
+    // text
+    text: isDark ? '#ffffff' : '#0d141c',
+    textSoft: isDark ? 'rgba(255,255,255,0.75)' : '#3d5873',
+    textSubtle: isDark ? 'rgba(255,255,255,0.60)' : 'rgba(61,88,115,0.75)',
+
+    // inputs
+    inputBg: isDark ? 'rgba(10,16,23,0.6)' : 'rgba(248,250,252,0.95)',
+    inputBorder: isDark ? 'rgba(255,255,255,0.12)' : '#d7e3ee',
+    placeholder: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(13,20,28,0.45)',
+
+    // soft chips / buttons
+    chipBg: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
+    chipBgPressed: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.10)',
+
+    // divider
+    divider: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.08)',
+
+    // accents
+    primary: '#4f46e5',
+    success: '#059669',
+    successPressed: '#047857',
+    warnText: isDark ? '#fbbf24' : '#b45309',
+
+    // helpers
+    fieldStyle(disabled?: boolean) {
+      return tw.style('px-3 py-2 rounded-lg border', disabled && 'opacity-60', {
+        backgroundColor: this.inputBg,
+        borderColor: this.inputBorder,
+        color: this.text,
+      });
+    },
+    card(style?: any) {
+      return [
+        tw`mx-4 mb-8 rounded-2xl p-3`,
+        { backgroundColor: this.cardBg, borderColor: this.border, borderWidth: 1 },
+        style,
+      ];
+    },
+    iconBtn() {
+      return [
+        tw`h-8 w-8 rounded-xl items-center justify-center`,
+        { borderColor: this.border, borderWidth: 1, backgroundColor: this.chipBg },
+      ];
+    },
+    primaryBtn(disabled?: boolean) {
+      return [
+        tw`px-4 py-2 rounded-xl items-center justify-center`,
+        { backgroundColor: this.success, opacity: disabled ? 0.6 : 1 },
+      ];
+    },
+  };
+}
+
+/* ------- small UI bits ------- */
+const Choice: React.FC<{
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  palette: ReturnType<typeof usePalette>;
+}> = ({ label, active, onPress, palette }) => {
+  const bg = active
+    ? palette.isDark
+      ? 'rgba(79,70,229,0.18)'
+      : 'rgba(79,70,229,0.10)'
+    : palette.chipBg;
+
+  const border = active
+    ? 'rgba(79,70,229,0.65)'
+    : palette.border;
+
+  const text = active ? palette.text : palette.textSoft;
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[
+        tw`flex-1 rounded-xl p-3 border`,
+        { backgroundColor: bg, borderColor: border },
+      ]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      <Text style={[tw`text-[11px] font-medium`, { color: text }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+};
 
 export default function OrgShareDialogNative({
   open,
@@ -102,6 +203,8 @@ export default function OrgShareDialogNative({
   const { backendUrl, token, orgToken } = useShopContext();
   const { org, activeOrgId, orgTier } = useOrg();
   const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
+  const palette = usePalette();
+
   const planKey = (
     orgTier ||
     (org as any)?.subscription?.tier ||
@@ -140,12 +243,11 @@ export default function OrgShareDialogNative({
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const [inviteLink, setInviteLink] = useState('');
-  const [createdCourseId, setCreatedCourseId] = useState<string | null>(null); // ⬅️ NEW
+  const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [quizType, setQuizType] = useState<'mcq' | 'short'>('mcq');
 
-  // Build app origin for join links (native has no window.location)
   const inviteBase = useMemo(() => {
     if (backendUrl && backendUrl.length > 0) {
       const base = backendUrl.replace(/\/+$/, '');
@@ -158,7 +260,6 @@ export default function OrgShareDialogNative({
   useEffect(() => {
     if (!open) return;
 
-    // init values on (re)open
     setInviteLink('');
     setCreatedCourseId(null);
     setErr('');
@@ -200,6 +301,7 @@ export default function OrgShareDialogNative({
   const handleShare = useCallback(async () => {
     setErr('');
     const bearer = orgToken || token;
+
     if (!bearer) {
       Alert.alert('Sign in required', 'Please sign in to share.');
       return;
@@ -223,7 +325,9 @@ export default function OrgShareDialogNative({
       : requestedTimer;
 
     const effectivePass = passMark === '' ? null : Number(passMark);
-    const effectiveAttempts = isStarter ? 1 : Math.max(1, Math.min(10, Number(maxAttempts) || 1));
+    const effectiveAttempts = isStarter
+      ? 1
+      : Math.max(1, Math.min(10, Number(maxAttempts) || 1));
 
     setBusy(true);
     try {
@@ -253,10 +357,12 @@ export default function OrgShareDialogNative({
         activeOrgId,
         payload
       );
+
       const code =
         resp?.assignment?.invite_code ??
         resp?.assignment?.inviteCode ??
         resp?.assignment?.code;
+
       if (!code) throw new Error('Invite code missing');
 
       const cid = pickCourseId(resp);
@@ -269,6 +375,7 @@ export default function OrgShareDialogNative({
     } catch (e: any) {
       const status = e?.response?.status;
       const canFallback = !!courseId && (status === 404 || status === 501 || status === 400);
+
       if (canFallback) {
         try {
           const legacy = await createOrgAssignment(backendUrl, bearer, activeOrgId, {
@@ -279,6 +386,7 @@ export default function OrgShareDialogNative({
             max_attempts: effectiveAttempts,
             due_at: dueAtISO,
           } as any);
+
           const code = legacy.invite_code || legacy.inviteCode || legacy.code;
           setInviteLink(`${inviteBase}/${code}`);
 
@@ -288,18 +396,12 @@ export default function OrgShareDialogNative({
             onResolvedCourseId?.(cid2);
           }
         } catch (e2: any) {
-          const m =
-            e2?.response?.data?.message ||
-            e2?.message ||
-            'Failed to create invite.';
+          const m = e2?.response?.data?.message || e2?.message || 'Failed to create invite.';
           setErr(m);
           Alert.alert('Error', m);
         }
       } else {
-        const m =
-          e?.response?.data?.message ||
-          e?.message ||
-          'Failed to share course.';
+        const m = e?.response?.data?.message || e?.message || 'Failed to share course.';
         setErr(m);
         Alert.alert('Error', m);
       }
@@ -338,23 +440,27 @@ export default function OrgShareDialogNative({
 
   const openLink = () => {
     if (!inviteLink) return;
-    Linking.openURL(inviteLink).catch(() =>
-      Alert.alert('Error', 'Unable to open link.')
-    );
+    Linking.openURL(inviteLink).catch(() => Alert.alert('Error', 'Unable to open link.'));
   };
 
   const emailShare = () => {
     if (!inviteLink) return;
-    const href = `mailto:?subject=${encodeURIComponent(
-      'Course invite'
-    )}&body=${encodeURIComponent(inviteLink)}`;
+    const href = `mailto:?subject=${encodeURIComponent('Course invite')}&body=${encodeURIComponent(
+      inviteLink
+    )}`;
     Linking.openURL(href).catch(() => {});
   };
 
-  const whatsappShare = () => {
+  const whatsappShare = async () => {
     if (!inviteLink) return;
-    const href = `https://wa.me/?text=${encodeURIComponent(inviteLink)}`;
-    Linking.openURL(href).catch(() => {});
+    const deep = `whatsapp://send?text=${encodeURIComponent(inviteLink)}`;
+    const web = `https://wa.me/?text=${encodeURIComponent(inviteLink)}`;
+    try {
+      const can = await Linking.canOpenURL(deep);
+      await Linking.openURL(can ? deep : web);
+    } catch {
+      Linking.openURL(web).catch(() => {});
+    }
   };
 
   const NumberInput = ({
@@ -383,15 +489,11 @@ export default function OrgShareDialogNative({
         if (typeof max === 'number' && v > max) v = max;
         setValue(v);
       }}
-      placeholderTextColor="rgba(255,255,255,0.6)"
-      style={tw.style(
-        'px-3 py-2 rounded-lg border border-white/10 bg-black/40 text-white',
-        disabled && 'opacity-60'
-      )}
+      placeholderTextColor={palette.placeholder}
+      style={palette.fieldStyle(disabled)}
     />
   );
 
-  // RN DateTimePicker safe onChange
   const handleDueChange = (_e: unknown, selectedDate?: Date) => {
     setShowDatePicker(false);
     if (selectedDate) setDueDate(selectedDate);
@@ -399,30 +501,30 @@ export default function OrgShareDialogNative({
 
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={tw`flex-1 bg-black/60`}>
+      <View style={[tw`flex-1`, { backgroundColor: palette.veil }]}>
         <TouchableOpacity style={tw`flex-1`} activeOpacity={1} onPress={onClose} />
 
-        <View style={tw`mx-4 mb-8 rounded-xl bg-[#0f1821] p-3 border border-white/10`}>
+        <View style={palette.card()}>
           {/* Header */}
           <View style={tw`flex-row items-start justify-between`}>
             <View style={tw`flex-1 pr-2`}>
-              <Text style={tw`text-white/70 text-[10px]`}>Share course with learners</Text>
-              <Text style={tw`text-white font-semibold text-sm`} numberOfLines={1}>
+              <Text style={[tw`text-[10px]`, { color: palette.textSubtle }]}>
+                Share course with learners
+              </Text>
+              <Text style={[tw`font-semibold text-sm`, { color: palette.text }]} numberOfLines={1}>
                 {courseTitle || 'Selected course'}
               </Text>
+
               {(typeof totalLessons === 'number' || typeof quizCount === 'number') && (
-                <Text style={tw`text-white/60 text-3xs mt-0.5`}>
+                <Text style={[tw`text-3xs mt-0.5`, { color: palette.textSubtle }]}>
                   {typeof totalLessons === 'number' ? `${totalLessons} lessons` : '—'}
                   {typeof quizCount === 'number' ? ` • ${quizCount} questions` : ''}
                 </Text>
               )}
             </View>
 
-            <TouchableOpacity
-              onPress={handleCancel}
-              style={tw`h-8 w-8 rounded-md border border-white/20 items-center justify-center`}
-            >
-              <Text style={tw`text-white text-base`}>×</Text>
+            <TouchableOpacity onPress={handleCancel} style={palette.iconBtn()}>
+              <Text style={[tw`text-base`, { color: palette.text }]}>×</Text>
             </TouchableOpacity>
           </View>
 
@@ -432,22 +534,24 @@ export default function OrgShareDialogNative({
               <View style={tw`gap-3`}>
                 {/* Title override */}
                 <View>
-                  <Text style={tw`text-white/70 text-[10px] mb-1`}>
+                  <Text style={[tw`text-[10px] mb-1`, { color: palette.textSubtle }]}>
                     Title (optional override)
                   </Text>
                   <TextInput
                     placeholder="e.g., Algebra Essentials — Cohort A"
-                    placeholderTextColor="rgba(255,255,255,0.6)"
+                    placeholderTextColor={palette.placeholder}
                     value={titleOverride}
                     onChangeText={setTitleOverride}
-                    style={tw`px-3 py-2 rounded-lg border border-white/10 bg-black/40 text-white`}
+                    style={palette.fieldStyle()}
                   />
                 </View>
 
                 {/* Pass mark / Timer */}
                 <View style={tw`gap-3`}>
                   <View>
-                    <Text style={tw`text-white/70 text-[10px] mb-1`}>Pass mark (%)</Text>
+                    <Text style={[tw`text-[10px] mb-1`, { color: palette.textSubtle }]}>
+                      Pass mark (%)
+                    </Text>
                     <NumberInput
                       value={passMark}
                       setValue={setPassMark}
@@ -458,17 +562,16 @@ export default function OrgShareDialogNative({
                   </View>
 
                   <View>
-                    <Text style={tw`text-white/70 text-[10px] mb-1`}>
+                    <Text style={[tw`text-[10px] mb-1`, { color: palette.textSubtle }]}>
                       Timer (duration){' '}
                       {isStarter && (
-                        <Text style={tw`text-white/60 text-3xs`}>
+                        <Text style={[tw`text-3xs`, { color: palette.textSubtle }]}>
                           • Starter fixed at 30 min
                         </Text>
                       )}
                     </Text>
 
                     <View style={tw`flex-row items-start gap-2`}>
-                      {/* ✅ Hours (SelectField) */}
                       <View
                         style={tw.style('flex-1', lockTimer && 'opacity-60')}
                         pointerEvents={lockTimer ? 'none' : 'auto'}
@@ -482,7 +585,6 @@ export default function OrgShareDialogNative({
                         />
                       </View>
 
-                      {/* ✅ Minutes (SelectField) */}
                       <View
                         style={tw.style('flex-1', lockTimer && 'opacity-60')}
                         pointerEvents={lockTimer ? 'none' : 'auto'}
@@ -497,14 +599,14 @@ export default function OrgShareDialogNative({
                       </View>
 
                       <View style={tw`pt-6`}>
-                        <Text style={tw`text-white/70 text-3xs`}>
-                          {String(timerH ?? 0).padStart(2, '0')}:
-                          {String(timerM ?? 0).padStart(2, '0')}:00
+                        <Text style={[tw`text-3xs`, { color: palette.textSubtle }]}>
+                          {String(timerH ?? 0).padStart(2, '0')}:{String(timerM ?? 0).padStart(2, '0')}
+                          :00
                         </Text>
                       </View>
                     </View>
 
-                    <Text style={tw`text-white/60 text-3xs mt-1`}>
+                    <Text style={[tw`text-3xs mt-1`, { color: palette.textSubtle }]}>
                       Set both to 0 for no time limit.
                     </Text>
                   </View>
@@ -512,30 +614,30 @@ export default function OrgShareDialogNative({
 
                 {/* Max attempts */}
                 <View>
-                  <Text style={tw`text-white/70 text-[10px] mb-1`}>
+                  <Text style={[tw`text-[10px] mb-1`, { color: palette.textSubtle }]}>
                     Max quiz attempts
                     {isStarter && (
-                      <Text style={tw`text-white/60 text-3xs`}>
+                      <Text style={[tw`text-3xs`, { color: palette.textSubtle }]}>
                         {' '}
                         • Starter locked to 1
                       </Text>
                     )}
                   </Text>
+
                   <View style={tw`flex-row items-center gap-2`}>
                     <View style={tw`flex-1`}>
                       <NumberInput
                         value={maxAttempts}
                         setValue={(n) =>
-                          setMaxAttempts(
-                            Math.max(1, Math.min(10, Number(n) || 1))
-                          )
+                          setMaxAttempts(Math.max(1, Math.min(10, Number(n) || 1)))
                         }
                         min={1}
                         max={10}
                         disabled={lockAttempts}
                       />
                     </View>
-                    <Text style={tw`text-white/60 text-3xs`}>
+
+                    <Text style={[tw`text-3xs`, { color: palette.textSubtle }]}>
                       Learners can retry up to this number.
                     </Text>
                   </View>
@@ -543,34 +645,44 @@ export default function OrgShareDialogNative({
 
                 {/* Question type */}
                 <View>
-                  <Text style={tw`text-white/70 text-[10px] mb-1`}>Question type</Text>
+                  <Text style={[tw`text-[10px] mb-1`, { color: palette.textSubtle }]}>
+                    Question type
+                  </Text>
+
                   <View style={tw`flex-row gap-2`}>
                     <Choice
+                      palette={palette}
                       label="Multiple choice (MCQ)"
                       active={quizType === 'mcq'}
                       onPress={() => setQuizType('mcq')}
                     />
                     <Choice
+                      palette={palette}
                       label="Short answers (typed)"
                       active={quizType === 'short'}
                       onPress={() => setQuizType('short')}
                     />
                   </View>
-                  <Text style={tw`text-white/60 text-3xs mt-1`}>
+
+                  <Text style={[tw`text-3xs mt-1`, { color: palette.textSubtle }]}>
                     You can change this later per assignment if needed.
                   </Text>
                 </View>
 
                 {/* Due date */}
                 <View>
-                  <Text style={tw`text-white/70 text-[10px] mb-1`}>
+                  <Text style={[tw`text-[10px] mb-1`, { color: palette.textSubtle }]}>
                     Due date (defaults to today)
                   </Text>
+
                   <TouchableOpacity
                     onPress={() => setShowDatePicker(true)}
-                    style={tw`px-3 py-2 rounded-lg border border-white/10 bg-black/40`}
+                    style={[
+                      tw`px-3 py-2 rounded-lg border`,
+                      { backgroundColor: palette.inputBg, borderColor: palette.inputBorder },
+                    ]}
                   >
-                    <Text style={tw`text-white`}>
+                    <Text style={{ color: palette.text }}>
                       {dueDate
                         ? `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(
                             2,
@@ -578,7 +690,7 @@ export default function OrgShareDialogNative({
                           )}-${String(dueDate.getDate()).padStart(2, '0')}`
                         : 'Pick a date'}
                     </Text>
-                    <Text style={tw`text-white/60 text-3xs mt-1`}>
+                    <Text style={[tw`text-3xs mt-1`, { color: palette.textSubtle }]}>
                       Deadline is end of day (23:59:59).
                     </Text>
                   </TouchableOpacity>
@@ -593,46 +705,79 @@ export default function OrgShareDialogNative({
                   )}
                 </View>
 
-                {!!err && <Text style={tw`text-amber-300 text-[10px]`}>{err}</Text>}
+                {!!err && <Text style={[tw`text-[10px]`, { color: palette.warnText }]}>{err}</Text>}
               </View>
             ) : (
               <View style={tw`gap-2`}>
-                <Text style={tw`text-white/70 text-[10px]`}>Invite link</Text>
+                <Text style={[tw`text-[10px]`, { color: palette.textSubtle }]}>Invite link</Text>
+
                 <View style={tw`flex-row items-stretch gap-2`}>
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
-                    style={tw`flex-1 px-3 py-2 rounded-lg border border-white/10 bg-black/40`}
+                    style={[
+                      tw`flex-1 px-3 py-2 rounded-lg border`,
+                      { backgroundColor: palette.inputBg, borderColor: palette.inputBorder },
+                    ]}
                   >
-                    <Text selectable style={tw`text-white`}>
+                    <Text selectable style={{ color: palette.text }}>
                       {inviteLink}
                     </Text>
                   </ScrollView>
+
                   <TouchableOpacity
                     onPress={copy}
-                    style={tw`px-3 rounded-lg bg-white/10 items-center justify-center`}
+                    style={[
+                      tw`px-3 rounded-lg items-center justify-center`,
+                      { backgroundColor: palette.chipBg },
+                    ]}
                   >
-                    <Text style={tw`text-white text-[10px]`}>Copy</Text>
+                    <Text style={[tw`text-[10px] font-semibold`, { color: palette.text }]}>
+                      Copy
+                    </Text>
                   </TouchableOpacity>
+
                   <TouchableOpacity
                     onPress={openLink}
-                    style={tw`px-3 rounded-lg bg-white/10 items-center justify-center`}
+                    style={[
+                      tw`px-3 rounded-lg items-center justify-center`,
+                      { backgroundColor: palette.chipBg },
+                    ]}
                   >
-                    <Text style={tw`text-white text-[10px]`}>Open</Text>
+                    <Text style={[tw`text-[10px] font-semibold`, { color: palette.text }]}>
+                      Open
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
-                {/* Share helpers (parity) */}
+                {/* Share helpers */}
                 <View style={tw`flex-row flex-wrap gap-2 mt-1`}>
-                  <TouchableOpacity onPress={emailShare} style={tw`px-3 py-1.5 rounded-lg bg-white/10`}>
-                    <Text style={tw`text-white text-[11px]`}>Email</Text>
+                  <TouchableOpacity
+                    onPress={emailShare}
+                    style={[
+                      tw`px-3 py-1.5 rounded-lg`,
+                      { backgroundColor: palette.chipBg },
+                    ]}
+                  >
+                    <Text style={[tw`text-[11px] font-medium`, { color: palette.text }]}>
+                      Email
+                    </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={whatsappShare} style={tw`px-3 py-1.5 rounded-lg bg-white/10`}>
-                    <Text style={tw`text-white text-[11px]`}>WhatsApp</Text>
+
+                  <TouchableOpacity
+                    onPress={whatsappShare}
+                    style={[
+                      tw`px-3 py-1.5 rounded-lg`,
+                      { backgroundColor: palette.chipBg },
+                    ]}
+                  >
+                    <Text style={[tw`text-[11px] font-medium`, { color: palette.text }]}>
+                      WhatsApp
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
-                <Text style={tw`text-white/60 text-3xs`}>
+                <Text style={[tw`text-3xs`, { color: palette.textSubtle }]}>
                   Share this link with your learners.
                 </Text>
 
@@ -641,13 +786,19 @@ export default function OrgShareDialogNative({
                     <TouchableOpacity
                       onPress={() => {
                         onClose();
-                        navigation.navigate('OrgElearnPortal', {
-                          tab: 'assign',
-                          from: 'share',
-                          courseId: createdCourseId || (courseId ?? undefined),
-                        } as any);
+                        navigation.navigate(
+                          'OrgElearnPortal',
+                          {
+                            tab: 'assign',
+                            from: 'share',
+                            courseId: createdCourseId || (courseId ?? undefined),
+                          } as any
+                        );
                       }}
-                      style={tw`self-start px-3 py-1.5 rounded-lg bg-indigo-600`}
+                      style={[
+                        tw`self-start px-3 py-1.5 rounded-lg`,
+                        { backgroundColor: palette.primary },
+                      ]}
                     >
                       <Text style={tw`text-white text-[11px] font-semibold`}>
                         Open Assign pane
@@ -661,14 +812,11 @@ export default function OrgShareDialogNative({
 
           {/* Footer */}
           {!inviteLink && (
-            <View style={tw`mt-3 pt-2 border-t border-white/10 flex-row justify-end`}>
+            <View style={[tw`mt-3 pt-2 flex-row justify-end`, { borderTopWidth: 1, borderTopColor: palette.divider }]}>
               <TouchableOpacity
                 onPress={handleShare}
                 disabled={busy || !canCreate}
-                style={tw.style(
-                  'px-4 py-2 rounded-lg bg-emerald-600',
-                  (busy || !canCreate) && 'opacity-60'
-                )}
+                style={palette.primaryBtn(busy || !canCreate)}
               >
                 <Text style={tw`text-white font-semibold`}>
                   {busy ? 'Creating…' : 'Create invite'}
@@ -683,22 +831,3 @@ export default function OrgShareDialogNative({
     </Modal>
   );
 }
-
-/* ------- small UI bits ------- */
-const Choice: React.FC<{ label: string; active: boolean; onPress: () => void }> = ({
-  label,
-  active,
-  onPress,
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={tw.style(
-      'flex-1 rounded-md p-3 border',
-      active ? 'bg-emerald-600/15 border-emerald-500' : 'bg-white/5 border-white/10'
-    )}
-  >
-    <Text style={tw.style('text-[10px]', active ? 'text-white' : 'text-white/80')}>
-      {label}
-    </Text>
-  </TouchableOpacity>
-);

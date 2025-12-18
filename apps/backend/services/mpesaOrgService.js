@@ -9,16 +9,9 @@ import {
 } from '../utils/mpesa.js';
 
 /**
- * STK Push for Organization Subscription
- * Mirrors student flow but scoped to org_subscription_payments.
- *
- * @param {Object} params
- * @param {string} params.phone              - Admin payer MSISDN (any accepted format; will be normalized)
- * @param {number} params.amount             - Integer KES amount
- * @param {string} params.accountReference   - Up to ~12 chars preferred (e.g. ORG:123:PRO)
- * @param {string} params.description        - Transaction description
- * @param {string} [params.callbackUrl]      - Override; defaults to MPESA_ORG_CALLBACK_URL
- * @returns {Promise<Object>}                - Daraja response { MerchantRequestID, CheckoutRequestID, ... }
+ * STK Push for Organization Subscription (NO DB writes)
+ * - amount must be integer KES
+ * - callbackUrl must be absolute URL (Daraja requires it)
  */
 export async function stkPushOrgSubscription({
   phone,
@@ -28,10 +21,20 @@ export async function stkPushOrgSubscription({
   callbackUrl,
 }) {
   if (!phone) throw new Error('phone is required');
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error('amount must be a positive number');
+
+  const amountInt = Math.max(1, Math.round(Number(amount)));
+  if (!Number.isFinite(amountInt) || amountInt <= 0) {
+    throw new Error('amount must be a positive integer KES');
+  }
+
+  const cb = String(callbackUrl || process.env.MPESA_ORG_CALLBACK_URL || '').trim();
+  if (!cb) {
+    // This is a common silent-fail cause on Daraja
+    throw new Error('MPESA_ORG_CALLBACK_URL is missing');
+  }
 
   const accessToken = await getAccessToken();
-  const ts  = mpesaTimestamp();
+  const ts = mpesaTimestamp();
   const pwd = mpesaPassword(ts);
   const msisdn = normalizePhoneNumber(phone);
 
@@ -40,13 +43,13 @@ export async function stkPushOrgSubscription({
     Password: pwd,
     Timestamp: ts,
     TransactionType: 'CustomerPayBillOnline',
-    Amount: Math.max(1, Math.round(Number(amount))),
+    Amount: amountInt,
     PartyA: msisdn,
     PartyB: shortcode,
     PhoneNumber: msisdn,
-    CallBackURL: (callbackUrl || process.env.MPESA_ORG_CALLBACK_URL || '').trim(),
-    AccountReference: (accountReference || 'OrgSub').slice(0, 12),
-    TransactionDesc: (description || 'Organization subscription').slice(0, 100),
+    CallBackURL: cb,
+    AccountReference: String(accountReference || 'OrgSub').slice(0, 12),
+    TransactionDesc: String(description || 'Organization subscription').slice(0, 100),
   };
 
   const url = `${MPESA_BASE}/mpesa/stkpush/v1/processrequest`;
@@ -54,5 +57,5 @@ export async function stkPushOrgSubscription({
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
-  return data;
+  return data; // { MerchantRequestID, CheckoutRequestID, ResponseCode, ... }
 }

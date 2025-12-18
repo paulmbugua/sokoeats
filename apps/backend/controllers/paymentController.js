@@ -1,15 +1,138 @@
-import { stkPush } from '../services/mpesaService.js';
+// apps/backend/controllers/paymentsController.js (or your existing controller file)
+
+import { stkPushC2B } from '../services/mpesaService.js';
 import validatePayment from '../validators/paymentValidation.js';
 import { normalizePhoneNumber } from '../utils/phoneUtils.js';
 import pool from '../config/db.js';
 
-// Fetch available packages
+/* ------------------------------------------------------------------ */
+/* Shared confirm helper (SINGLE source of truth for “complete+credit”)*/
+/* ------------------------------------------------------------------ */
+function normStatus(s) {
+  return String(s || '').trim().toLowerCase();
+}
+
+function isSettledPaymentStatus(s) {
+  const v = normStatus(s);
+  // your payments_status_check allows both Success + Completed
+  return v === 'completed' || v === 'success';
+}
+
+function isPendingPaymentStatus(s) {
+  return normStatus(s) === 'pending';
+}
+
+async function confirmMpesaPaymentTx(client, payRow) {
+  // idempotent (Success/Completed are both treated as settled)
+  if (isSettledPaymentStatus(payRow.status)) {
+    return { ok: true, alreadyCompleted: true, payment: payRow };
+  }
+
+  if (!isPendingPaymentStatus(payRow.status)) {
+    return {
+      ok: false,
+      status: String(payRow.status),
+      message: `Payment already ${payRow.status}`,
+    };
+  }
+
+  // needs receipt (callback not arrived yet)
+  if (!payRow.mpesa_reference) {
+    return { ok: false, status: 'pending', message: 'not-success-yet' };
+  }
+
+  // meta parsing
+  let meta = {};
+  try {
+    meta =
+      typeof payRow.meta === 'string'
+        ? JSON.parse(payRow.meta)
+        : payRow.meta || {};
+  } catch {
+    meta = {};
+  }
+
+  const expectedMinor = Number(meta.expectedKesMinor);
+  const paidMinor = meta.paidKesMinor != null ? Number(meta.paidKesMinor) : null;
+
+  // fail closed (don’t throw -> don’t 500)
+  if (!Number.isFinite(expectedMinor) || expectedMinor <= 0) {
+    await client.query(
+      `UPDATE payments
+          SET status='Failed',
+              meta = COALESCE(meta,'{}'::jsonb) ||
+                    jsonb_build_object('failReason','missing_expectedKesMinor'),
+              updated_at=NOW()
+        WHERE id=$1 AND status='Pending'`,
+      [payRow.id],
+    );
+    return { ok: false, status: 'failed', message: 'missing-expectedKesMinor' };
+  }
+
+  // if we have paid amount, enforce it
+  if (paidMinor != null && paidMinor !== expectedMinor) {
+    await client.query(
+      `UPDATE payments
+          SET status='Failed',
+              meta = COALESCE(meta,'{}'::jsonb) ||
+                    jsonb_build_object(
+                      'failReason','amount_mismatch',
+                      'expectedMinor',$2,
+                      'paidMinor',$3
+                    ),
+              updated_at=NOW()
+        WHERE id=$1 AND status='Pending'`,
+      [payRow.id, expectedMinor, paidMinor],
+    );
+
+    return {
+      ok: false,
+      status: 'failed',
+      message: 'amount-mismatch',
+      expectedMinor,
+      paidMinor,
+    };
+  }
+
+  // mark completed first (row locked by caller)
+  const upd = await client.query(
+    `UPDATE payments
+        SET status='Completed',
+            updated_at=NOW()
+      WHERE id=$1 AND status='Pending'
+      RETURNING *`,
+    [payRow.id],
+  );
+
+  const completedPay = upd.rows[0];
+
+  // credit tokens (safe because status flipped inside txn)
+  const pkg = await client.query(
+    `SELECT credits FROM packages WHERE id=$1`,
+    [completedPay.package_id],
+  );
+  if (!pkg.rowCount) throw new Error('Package not found for payment');
+
+  const u = await client.query(
+    `UPDATE users
+        SET tokens = tokens + $1
+      WHERE id = $2
+      RETURNING tokens`,
+    [pkg.rows[0].credits, completedPay.user_id],
+  );
+
+  return { ok: true, payment: completedPay, tokens: u.rows[0].tokens };
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Fetch available packages                                            */
+/* ------------------------------------------------------------------ */
 export const getPackages = async (req, res) => {
   try {
     const q = (req.query.currency || '').toUpperCase();
     const params = [];
-    let sql =
-      'SELECT id, credits, price, currency, offer FROM packages';
+    let sql = 'SELECT id, credits, price, currency, offer FROM packages';
 
     if (q === 'USD' || q === 'KES') {
       sql += ' WHERE currency = $1';
@@ -19,25 +142,27 @@ export const getPackages = async (req, res) => {
     sql += ' ORDER BY credits ASC';
 
     const result = await pool.query(sql, params);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'No packages found' });
-    }
+    if (!result.rows.length) return res.status(404).json({ message: 'No packages found' });
     return res.status(200).json(result.rows);
   } catch (error) {
-    console.error('Error fetching packages:', error.message);
+    console.error('Error fetching packages:', error?.message || error);
     return res.status(500).json({ message: 'Failed to fetch packages' });
   }
 };
 
-// Initialize M-Pesa payment
+/* ------------------------------------------------------------------ */
+/* Initialize M-Pesa payment (KES-only, creates DB row first)           */
+/* ------------------------------------------------------------------ */
+// ✅ UPDATED: initializeMpesaPayment with idempotency key support
 export const initializeMpesaPayment = async (req, res) => {
   console.log('Initializing MPESA payment. Original request body:', req.body);
 
-  // Normalize the phone number before validation
-  req.body.phone = normalizePhoneNumber(req.body.phone);
+  // Normalize phone number early
+  const rawPhone = req.body?.phone;
+  req.body.phone = normalizePhoneNumber(rawPhone);
   console.log('Normalized phone number:', req.body.phone);
 
-  // Validate payment data
+  // Validate request shape (even if validator expects amount; server is source of truth)
   const { error, value } = validatePayment(req.body);
   if (error) {
     console.error('Validation error:', error.details);
@@ -47,325 +172,305 @@ export const initializeMpesaPayment = async (req, res) => {
     });
   }
 
-  const { amount, phone, packageId, paymentMethod } = value;
-  console.log('Validated payment details:', {
-    amount,
-    phone,
-    packageId,
-    paymentMethod,
-  });
+  const { phone, packageId, paymentMethod } = value;
 
-  // Retrieve the authenticated user's id using optional chaining
   const userId = req.user?.id;
-  if (!userId) {
-    console.error('Unauthorized access: req.user is undefined or missing id');
-    return res
-      .status(401)
-      .json({ message: 'Unauthorized: User not authenticated' });
-  }
-  console.log('Authenticated user id:', userId);
+  if (!userId) return res.status(401).json({ message: 'Unauthorized: User not authenticated' });
+
+  // ✅ NEW: idempotency key (optional)
+  const idemKey = String(req.get('x-idempotency-key') || '').trim() || null;
 
   try {
-    // Check if the package exists in the database
-    const packageResult = await pool.query(
-      'SELECT * FROM packages WHERE id = $1',
-      [packageId],
+    if (String(paymentMethod || '').toUpperCase() !== 'MPESA') {
+      return res.status(400).json({ message: 'Invalid payment method. Use MPESA.' });
+    }
+
+    // Load package (server is source of truth)
+    const pkgRes = await pool.query(
+      'SELECT id, price, currency, credits, offer FROM packages WHERE id = $1',
+      [packageId]
     );
-    if (packageResult.rows.length === 0) {
-      console.error('Package not found for packageId:', packageId);
-      return res.status(404).json({ message: 'Package not found' });
-    }
-    console.log('Package found:', packageResult.rows[0]);
+    const pkg = pkgRes.rows[0];
+    if (!pkg) return res.status(404).json({ message: 'Package not found' });
 
-    let paymentResponse;
-    let transactionId;
-
-    // Process M-Pesa Payment
-    // Inside your initializeMpesaPayment controller:
-    if (paymentMethod === 'MPESA') {
-      console.log('Processing MPESA payment for user:', userId);
-      const stkRequestBody = { phone, amount, packageId };
-      console.log('STK Push Request Body:', stkRequestBody);
-
-      // Override req.body with the STK push payload
-      req.body = stkRequestBody;
-
-      // Now call stkPush with the full req, which contains req.user
-      let responseData;
-      try {
-        responseData = await stkPush(req, {
-          status: () => ({ json: (data) => data }),
-        });
-        console.log('Raw STK Push response:', responseData);
-      } catch (stkError) {
-        console.error('Error during stkPush call:', stkError);
-        throw stkError;
-      }
-
-      paymentResponse = responseData.data;
-      transactionId = paymentResponse?.CheckoutRequestID;
-      console.log('Parsed STK Push response:', paymentResponse);
-    } else {
-      console.error('Invalid payment method provided:', paymentMethod);
-      return res.status(400).json({ message: 'Invalid payment method' });
-    }
-
-    if (!transactionId) {
-      console.error(
-        'Failed to initialize payment. M-Pesa response invalid:',
-        paymentResponse,
-      );
-      return res.status(500).json({
-        message: 'Failed to initialize payment. M-Pesa response invalid.',
-        response: paymentResponse,
+    // KES-only guard
+    const pkgCurrency = String(pkg.currency || '').toUpperCase();
+    if (pkgCurrency !== 'KES') {
+      return res.status(400).json({
+        message: 'MPESA requires KES packages (server enforces this)',
+        packageCurrency: pkgCurrency,
       });
     }
 
-    console.log(
-      'Payment initialized successfully. Transaction ID:',
-      transactionId,
+    // Daraja requires integer KES
+    const priceKesMajor = Number(pkg.price);
+    if (!Number.isFinite(priceKesMajor) || priceKesMajor <= 0) {
+      return res.status(400).json({ message: 'Invalid package price' });
+    }
+
+    const amountKesInt = Math.max(1, Math.round(priceKesMajor)); // integer KES
+    const expectedKesMinor = amountKesInt * 100;
+
+    // ✅ NEW: if idemKey exists, reuse a prior pending row for this user+package+idemKey
+    if (idemKey) {
+      const existing = await pool.query(
+        `SELECT id, transaction_id, status, meta
+           FROM payments
+          WHERE user_id=$1
+            AND package_id=$2
+            AND payment_method='MPESA'
+            AND status='Pending'
+            AND (meta->>'idemKey') = $3
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [userId, packageId, idemKey]
+      );
+
+      if (existing.rowCount) {
+        const row = existing.rows[0];
+        return res.status(200).json({
+          paymentId: row.id,
+          transactionId: row.transaction_id,
+          message: 'Payment already initialized (idempotent).',
+          reuse: true,
+          charge: { currency: 'KES', expectedKesInt: amountKesInt, expectedKesMinor },
+          package: { id: pkg.id, credits: pkg.credits, offer: pkg.offer },
+        });
+      }
+    }
+
+    // Create Pending row FIRST
+    const ins = await pool.query(
+      `
+      INSERT INTO payments (user_id, package_id, amount, currency, payment_method, provider, status, meta)
+      VALUES ($1, $2, $3, 'KES', 'MPESA', 'MPESA', 'Pending',
+        jsonb_build_object(
+          'kind','tokens',
+          'expectedKesInt',$4,
+          'expectedKesMinor',$5,
+          'idemKey',$6
+        )
+      )
+      RETURNING id
+      `,
+      [userId, packageId, amountKesInt.toFixed(2), amountKesInt, expectedKesMinor, idemKey]
     );
+
+    const paymentId = ins.rows[0]?.id;
+    if (!paymentId) return res.status(500).json({ message: 'Failed to create payment record' });
+
+    // Call STK Push (NO DB writes in service)
+    let stk;
+    try {
+      stk = await stkPushC2B({
+        phone,
+        amount: amountKesInt,
+        // callbackUrl: process.env.MPESA_CALLBACK_URL,
+      });
+    } catch (stkError) {
+      console.error('Error during stkPushC2B call:', stkError?.response?.data || stkError?.message || stkError);
+
+      await pool.query(
+        `UPDATE payments
+            SET status='Failed',
+                meta = COALESCE(meta,'{}'::jsonb) || jsonb_build_object('failReason','stk_push_failed'),
+                updated_at=NOW()
+          WHERE id=$1`,
+        [paymentId]
+      );
+
+      return res.status(502).json({
+        message: 'Failed to process payment (STK push failed)',
+        error: stkError?.message || 'stk_push_failed',
+      });
+    }
+
+    const checkoutId = stk?.CheckoutRequestID || stk?.data?.CheckoutRequestID || null;
+    if (!checkoutId) {
+      await pool.query(
+        `UPDATE payments
+            SET status='Failed',
+                meta = COALESCE(meta,'{}'::jsonb) || jsonb_build_object('failReason','missing_checkout_request_id'),
+                updated_at=NOW()
+          WHERE id=$1`,
+        [paymentId]
+      );
+      return res.status(502).json({ message: 'Invalid response from M-Pesa (missing CheckoutRequestID)' });
+    }
+
+    // Persist CheckoutRequestID
+    await pool.query(
+      `UPDATE payments SET transaction_id=$1, updated_at=NOW() WHERE id=$2`,
+      [checkoutId, paymentId]
+    );
+
     return res.status(200).json({
-      transactionId,
-      message:
-        'Payment initialized successfully. Complete the transaction on your phone.',
+      paymentId,
+      transactionId: checkoutId,
+      message: 'Payment initialized successfully. Complete the transaction on your phone.',
+      charge: { currency: 'KES', expectedKesInt: amountKesInt, expectedKesMinor },
+      package: { id: pkg.id, credits: pkg.credits, offer: pkg.offer },
+      idemKey: idemKey || undefined,
     });
   } catch (err) {
-    console.error('Payment initialization error:', err.message);
-    return res
-      .status(500)
-      .json({ message: 'Failed to initialize payment', error: err.message });
+    console.error('Payment initialization error:', err?.message || err);
+    return res.status(500).json({ message: 'Failed to initialize payment', error: err?.message || 'unknown' });
   }
 };
 
-// Handle successful M-Pesa payment
-export const handleMpesaPaymentSuccess = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { packageId } = req.body;
-
-    // Check if the user and package exist
-    const user = await pool.query('SELECT * FROM users WHERE id = $1', [
-      userId,
-    ]);
-    const selectedPackage = await pool.query(
-      'SELECT * FROM packages WHERE id = $1',
-      [packageId],
-    );
-
-    if (user.rows.length === 0) {
-      return res.status(404).json({ message: 'User not found.' });
-    }
-    if (selectedPackage.rows.length === 0) {
-      return res.status(404).json({ message: 'Package not found.' });
-    }
-
-    // Update user tokens
-    const newTokens = user.rows[0].tokens + selectedPackage.rows[0].credits;
-    await pool.query('UPDATE users SET tokens = $1 WHERE id = $2', [
-      newTokens,
-      userId,
-    ]);
-
-    res.status(200).json({
-      message: 'Payment successful and tokens updated.',
-      tokens: newTokens,
-    });
-  } catch (error) {
-    console.error('Error processing payment success:', error.message);
-    res.status(500).json({ message: 'Internal server error.' });
-  }
-};
-
-// Deduct tokens for a service
-export const useTokensForService = async (req, res) => {
-  const { userId, requiredTokens } = req.body;
-  try {
-    const user = await pool.query('SELECT * FROM users WHERE id = $1', [
-      userId,
-    ]);
-    if (user.rows.length === 0) {
-      return res.status(404).json({ message: 'User not found.' });
-    }
-    if (user.rows[0].tokens < requiredTokens) {
-      return res.status(400).json({ message: 'Insufficient tokens.' });
-    }
-
-    const newTokens = user.rows[0].tokens - requiredTokens;
-    await pool.query('UPDATE users SET tokens = $1 WHERE id = $2', [
-      newTokens,
-      userId,
-    ]);
-
-    res.status(200).json({
-      message: 'Tokens deducted successfully.',
-      tokens: newTokens,
-    });
-  } catch (error) {
-    console.error('Error deducting tokens:', error.message);
-    res.status(500).json({ message: 'Internal server error.' });
-  }
-};
-
-// Fetch user transactions
-export const getTransactions = async (req, res) => {
-  try {
-    const transactions = await pool.query(
-      'SELECT * FROM transactions WHERE user_id = $1 ORDER BY date DESC',
-      [req.user.id],
-    );
-    res.status(200).json({ success: true, data: transactions.rows });
-  } catch (error) {
-    console.error('Error fetching transactions:', error.message);
-    res.status(500).json({ message: 'Internal server error.' });
-  }
-};
-
-// Confirm an M-Pesa payment
+/* ------------------------------------------------------------------ */
+/* Confirm MPESA (idempotent, row-locked, validates optional paid amt) */
+/* ------------------------------------------------------------------ */
 export const confirmMpesaPayment = async (req, res) => {
-  try {
-    // Expect the transaction reference in the request body
-    const { transactionReference } = req.body;
-    if (!transactionReference) {
-      return res
-        .status(400)
-        .json({ message: 'Missing transaction reference.' });
-    }
+  const { transactionReference } = req.body || {};
+  if (!transactionReference) {
+    return res.status(400).json({ message: 'Missing transaction reference.' });
+  }
 
-    // Look up the payment record with status 'Pending'
-    const paymentResult = await pool.query(
-      "SELECT * FROM payments WHERE transaction_id = $1 AND status = 'Pending'",
-      [transactionReference],
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const p = await client.query(
+      `SELECT * FROM payments WHERE transaction_id=$1 FOR UPDATE`,
+      [String(transactionReference).trim()]
     );
 
-    if (paymentResult.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ message: 'Payment record not found or already processed.' });
+    if (!p.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Payment not found.' });
     }
-    const payment = paymentResult.rows[0];
 
-    // Check that the mpesa_reference is present
-    if (!payment.mpesa_reference) {
-      return res.status(400).json({
-        message: 'Payment not completed yet. M-Pesa reference is missing.',
+    const pay = p.rows[0];
+
+    // If callback hasn't arrived yet, keep pending (FE can poll)
+    if (String(pay.status).toLowerCase() === 'pending' && !pay.mpesa_reference) {
+      await client.query('COMMIT');
+      return res.status(200).json({
+        ok: false,
+        status: 'pending',
+        message: 'not-success-yet',
+        transactionId: pay.transaction_id,
       });
     }
 
-    // Update payment status to 'Completed'
-    const updateResult = await pool.query(
-      `UPDATE payments
-       SET status = 'Completed'
-       WHERE transaction_id = $1 AND status = 'Pending'
-       RETURNING *`,
-      [transactionReference],
-    );
+    const result = await confirmMpesaPaymentTx(client, pay);
 
-    // Retrieve package credits from the packages table using payment.package_id.
-    const packageResult = await pool.query(
-      'SELECT credits FROM packages WHERE id = $1',
-      [payment.package_id],
-    );
-    if (packageResult.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ message: 'Package not found for payment.' });
-    }
-    const packageCredits = packageResult.rows[0].credits;
+    await client.query('COMMIT');
 
-    // Update the user's token balance by adding the package's credits.
-    const updateUserResult = await pool.query(
-      `UPDATE users
-       SET tokens = tokens + $1
-       WHERE id = $2
-       RETURNING tokens`,
-      [packageCredits, payment.user_id],
-    );
+    if (!result.ok && result.status === 'pending') return res.status(200).json(result);
+    if (!result.ok && result.status === 'failed') return res.status(400).json(result);
+    if (!result.ok) return res.status(400).json(result);
 
-    res.status(200).json({
-      message: 'Payment confirmed and tokens credited.',
-      payment: updateResult.rows[0],
-      tokens: updateUserResult.rows[0].tokens,
+    return res.status(200).json({
+      ...result,
+      message: result.alreadyCompleted ? 'Already confirmed.' : 'Payment confirmed and tokens credited.',
     });
-  } catch (error) {
-    console.error('Error completing payment:', error.message || error);
-    res.status(500).json({ message: 'Internal server error.' });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    console.error('Error confirming payment:', e);
+    return res.status(500).json({ message: 'Internal server error.', error: e?.message || String(e) });
+  } finally {
+    client.release();
   }
 };
 
+/* ------------------------------------------------------------------ */
+/* Manual fallback if callback didn’t update DB                         */
+/* - patches receipt + optional paid amount into meta                   */
+/* - then delegates to same confirm logic (idempotent)                  */
+/* ------------------------------------------------------------------ */
 export const updateMpesaReference = async (req, res) => {
+  const { transactionReference, mpesaReference, paidKesInt } = req.body || {};
+  if (!transactionReference || !mpesaReference) {
+    return res.status(400).json({ message: 'Missing required parameters.' });
+  }
+
+  const client = await pool.connect();
   try {
-    const { transactionReference, mpesaReference } = req.body;
-    if (!transactionReference || !mpesaReference) {
-      return res.status(400).json({ message: 'Missing required parameters.' });
-    }
+    await client.query('BEGIN');
 
-    // Look up the pending payment record by transaction_reference
-    const paymentResult = await pool.query(
-      "SELECT * FROM payments WHERE transaction_id = $1 AND status = 'Pending'",
-      [transactionReference],
+    const p = await client.query(
+      `SELECT * FROM payments WHERE transaction_id=$1 FOR UPDATE`,
+      [String(transactionReference).trim()]
     );
-    if (paymentResult.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ message: 'Payment record not found or already processed.' });
-    }
-    const payment = paymentResult.rows[0];
 
-    // Compare the mpesa_reference from the payment record with the one provided by the platform user.
-    if (payment.mpesa_reference !== mpesaReference) {
-      return res
-        .status(400)
-        .json({ message: 'M-Pesa reference does not match our records.' });
+    if (!p.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Payment record not found.' });
     }
 
-    // If they match, update the payment status to 'Completed'
-    const updateResult = await pool.query(
+    const pay = p.rows[0];
+
+    // idempotent: if already completed, do NOT re-credit
+    if (String(pay.status).toLowerCase() === 'completed') {
+      await client.query('COMMIT');
+      return res.status(200).json({
+        ok: true,
+        alreadyCompleted: true,
+        message: 'Already completed.',
+        payment: pay,
+      });
+    }
+
+    if (String(pay.status).toLowerCase() !== 'pending') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: `Payment already ${pay.status}` });
+    }
+
+    // Prevent overriding an existing receipt with a different one
+    const incomingReceipt = String(mpesaReference).trim();
+    const existingReceipt = pay.mpesa_reference ? String(pay.mpesa_reference).trim() : null;
+    if (existingReceipt && existingReceipt !== incomingReceipt) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        message: 'Payment already has an M-Pesa receipt on record. Cannot override.',
+        existingMpesaReference: existingReceipt,
+      });
+    }
+
+    const paidInt = Number.isFinite(Number(paidKesInt)) ? Math.max(0, Math.round(Number(paidKesInt))) : null;
+    const paidMinor = paidInt != null ? paidInt * 100 : null;
+
+    const patch = {
+      manualReceiptUpdate: true,
+      manualReceiptAt: new Date().toISOString(),
+      mpesaReceiptNumber: incomingReceipt,
+      paidKesInt: paidInt,
+      paidKesMinor: paidMinor,
+    };
+
+    // Patch receipt + meta, keep status Pending (confirm step finalizes)
+    await client.query(
       `UPDATE payments
-       SET status = 'Completed'
-       WHERE transaction_id = $1 AND status = 'Pending'
-       RETURNING *`,
-      [transactionReference],
+          SET mpesa_reference = COALESCE(mpesa_reference, $2),
+              meta = COALESCE(meta,'{}'::jsonb) || $3::jsonb,
+              updated_at=NOW()
+        WHERE id=$1 AND status='Pending'`,
+      [pay.id, incomingReceipt, JSON.stringify(patch)]
     );
-    if (updateResult.rowCount === 0) {
-      return res
-        .status(404)
-        .json({ message: 'Payment record not found or already processed.' });
-    }
-    const updatedPayment = updateResult.rows[0];
-    console.log('Payment updated:', updatedPayment);
 
-    // Retrieve package credits from the packages table using updatedPayment.package_id.
-    const packageResult = await pool.query(
-      'SELECT credits FROM packages WHERE id = $1',
-      [updatedPayment.package_id],
-    );
-    if (packageResult.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ message: 'Package not found for payment.' });
-    }
-    const packageCredits = packageResult.rows[0].credits;
-    console.log('Package credits retrieved:', packageCredits);
+    // Re-read locked row and finalize via shared logic
+    const fresh = await client.query(`SELECT * FROM payments WHERE id=$1 FOR UPDATE`, [pay.id]);
+    const result = await confirmMpesaPaymentTx(client, fresh.rows[0]);
 
-    // Update the user's token balance by adding the package's credits.
-    const updateUserResult = await pool.query(
-      `UPDATE users
-       SET tokens = tokens + $1
-       WHERE id = $2
-       RETURNING tokens`,
-      [packageCredits, updatedPayment.user_id],
-    );
-    console.log('User tokens updated to:', updateUserResult.rows[0].tokens);
+    await client.query('COMMIT');
 
-    res.status(200).json({
-      message:
-        'M-Pesa reference verified and payment marked as Completed. Tokens credited.',
-      payment: updatedPayment,
-      tokens: updateUserResult.rows[0].tokens,
+    if (!result.ok && result.status === 'pending') return res.status(200).json(result);
+    if (!result.ok && result.status === 'failed') return res.status(400).json(result);
+    if (!result.ok) return res.status(400).json(result);
+
+    return res.status(200).json({
+      ...result,
+      message: result.alreadyCompleted
+        ? 'Already confirmed.'
+        : 'M-Pesa reference saved and payment confirmed. Tokens credited.',
     });
   } catch (error) {
-    console.error('Error updating M-Pesa reference:', error.message || error);
-    res.status(500).json({ message: 'Internal server error.' });
+    try { await client.query('ROLLBACK'); } catch {}
+    console.error('Error updating M-Pesa reference:', error);
+    return res.status(500).json({ message: 'Internal server error.', error: error?.message || String(error) });
+  } finally {
+    client.release();
   }
 };

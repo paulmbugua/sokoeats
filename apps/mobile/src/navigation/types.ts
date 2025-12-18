@@ -130,5 +130,12 @@ export type MainStackParamList = {
       }
     | undefined;
 
+    OrgChangePassword:
+  | {
+      returnTo?: string; // web-style path e.g. "/org?assignmentId=..."
+    }
+  | undefined;
+
+
 };
 

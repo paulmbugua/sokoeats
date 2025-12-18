@@ -212,13 +212,11 @@ app.post(
 // ✅ Paystack webhook must be RAW (before express.json)
 app.post(
   '/api/paystack/webhook',
-  bodyParser.raw({ type: '*/*' }),
-  (req, _res, next) => {
-    req.rawBody = req.body; // Buffer
-    next();
-  },
-  (req, res) => handlePaystackWebhook(req, res)
+  bodyParser.raw({ type: 'application/json', limit: '1mb' }),
+  (req, _res, next) => { req.rawBody = req.body; next(); },
+  handlePaystackWebhook
 );
+
 
 // ─── 4) Global middleware ───────────────────────────────────────────────────────
 app.use(helmetMiddleware);

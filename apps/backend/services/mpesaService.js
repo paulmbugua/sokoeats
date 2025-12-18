@@ -26,70 +26,56 @@ const pool = new Pool({
  * Handles M-Pesa STK push request for student payments.
  * Inserts a record into the payments table with status "Pending".
  */
-export async function stkPush(req, res) {
-  console.log('STK Push Request Body:', req.body);
+// apps/backend/services/mpesaService.js
+import axios from 'axios';
+import { normalizePhoneNumber } from '../utils/phoneUtils.js';
+import {
+  getAccessToken,
+  mpesaTimestamp,
+  mpesaPassword,
+  shortcode,
+  MPESA_BASE,
+} from '../utils/mpesa.js';
 
-  // Expect payload to include: phone, amount, packageId
-  const { phone, amount, packageId } = req.body;
-  const normalizedPhone = normalizePhoneNumber(phone);
+export async function stkPushC2B({ phone, amount, callbackUrl }) {
+  if (!phone) throw new Error('phone is required');
 
-  // Strictly use authenticated user for userId
-  const userId = req.user?.id;
-  if (!userId) {
-    console.error('User not authenticated. req.user is missing.');
-    return res.status(401).json({ error: 'User not authenticated' });
+  const amountInt = Math.max(1, Math.round(Number(amount)));
+  if (!Number.isFinite(amountInt) || amountInt <= 0) {
+    throw new Error('amount must be a positive integer KES');
   }
-  console.log('Using userId:', userId);
 
-  try {
-    const accessToken = await getAccessToken();
-    const payload = {
-      BusinessShortCode: shortcode,
-      Password: password,
-      Timestamp: timestamp,
-      TransactionType: 'CustomerPayBillOnline',
-      Amount: amount,
-      PartyA: normalizedPhone,
-      PartyB: shortcode,
-      PhoneNumber: normalizedPhone,
-      CallBackURL: callbackURL,
-      AccountReference: 'TutorAppPayment',
-      TransactionDesc: 'Tutor Payment',
-    };
+  const cb = String(callbackUrl || process.env.MPESA_CALLBACK_URL || '').trim();
+  if (!cb) throw new Error('MPESA_CALLBACK_URL is missing');
 
-    console.log('STK Push Payload:', payload);
+  const accessToken = await getAccessToken();
+  const ts = mpesaTimestamp();
+  const pwd = mpesaPassword(ts);
+  const msisdn = normalizePhoneNumber(phone);
 
-    const response = await axios.post(
-      'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
-      payload,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
-    );
+  const payload = {
+    BusinessShortCode: shortcode,
+    Password: pwd,
+    Timestamp: ts,
+    TransactionType: 'CustomerPayBillOnline',
+    Amount: amountInt,
+    PartyA: msisdn,
+    PartyB: shortcode,
+    PhoneNumber: msisdn,
+    CallBackURL: cb,
+    AccountReference: 'TutorAppPayment',
+    TransactionDesc: 'Tutor Payment',
+  };
 
-    console.log('M-Pesa STK Push Response:', response.data);
+  const url = `${MPESA_BASE}/mpesa/stkpush/v1/processrequest`;
+  const { data } = await axios.post(url, payload, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
 
-    // Save payment record in PostgreSQL without phone_number
-    const client = await pool.connect();
-    try {
-      await client.query(
-        `INSERT INTO payments 
-          (user_id, package_id, amount, payment_method, transaction_id, status)
-         VALUES ($1, $2, $3, 'MPESA', $4, 'Pending')`,
-        [userId, packageId, amount, response.data.CheckoutRequestID],
-      );
-      console.log('Payment record inserted for user:', userId);
-    } finally {
-      client.release();
-    }
-
-    return res.status(200).json({
-      message: 'STK Push Sent',
-      data: response.data,
-    });
-  } catch (error) {
-    console.error('STK Push Error:', error.response?.data || error.message);
-    return res.status(500).json({ error: 'Failed to process payment' });
-  }
+  return data; 
 }
+
+   
 
 /**
  * B2C Payout (for tutor payouts)

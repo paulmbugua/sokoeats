@@ -208,6 +208,7 @@ async function activateOrgSubscriptionTx(client, payRow) {
 /* POST /api/orgs/:orgId/subscribe/init                               */
 /* Body: { tier, cycle, method: 'MPESA'|'PAYSTACK', phone? }          */
 /* ------------------------------------------------------------------ */
+// ✅ UPDATED: initOrgSubscription with idempotency key support (both MPESA + PAYSTACK)
 export async function initOrgSubscription(req, res) {
   const userId = req.user?.id;
   const userEmailFromAuth = req.user?.email || null;
@@ -224,6 +225,7 @@ export async function initOrgSubscription(req, res) {
   const v = validateOrgSubInit({ tier, cycle, method, phone });
   if (!v.ok) return res.status(400).json({ message: v.message });
 
+  // membership check
   const mem = await pool.query(
     `SELECT role
        FROM org_memberships
@@ -232,59 +234,146 @@ export async function initOrgSubscription(req, res) {
   );
   if (!mem.rowCount) return res.status(403).json({ message: 'Forbidden' });
 
-  // ✅ Base/intent currency is ALWAYS USD
+  // ✅ NEW: idempotency key (optional)
+  const idemKey = String(req.get('x-idempotency-key') || '').trim() || null;
+
+  // NOTE:
+  // - PAYSTACK keeps USD intent
+  // - MPESA is KES-only
+
   let amount_cents;
+  let intentCurrency = 'USD';
+
   try {
-    ({ amount_cents } = resolvePrice(tier, cycle, 'USD'));
+    if (method === 'MPESA') {
+      ({ amount_cents } = resolvePrice(tier, cycle, 'KES')); // KES minor
+      intentCurrency = 'KES';
+    } else {
+      ({ amount_cents } = resolvePrice(tier, cycle, 'USD')); // USD cents
+      intentCurrency = 'USD';
+    }
   } catch (e) {
-    return res.status(400).json({ message: 'Invalid plan selection', error: e?.message || 'bad-price' });
+    return res.status(400).json({
+      message: 'Invalid plan selection',
+      error: e?.message || 'bad-price',
+    });
   }
+
   if (!Number.isFinite(amount_cents) || Number(amount_cents) <= 0) {
     return res.status(400).json({ message: 'Invalid price for selection' });
   }
 
-  // create pending payment intent (USD)
+  // ✅ NEW: reuse prior pending payment for same org+tier+cycle+provider+idemKey
+  if (idemKey) {
+    const existing = await pool.query(
+      `SELECT *
+         FROM org_subscription_payments
+        WHERE org_id=$1
+          AND tier=$2
+          AND cycle=$3
+          AND provider=$4
+          AND status='pending'
+          AND (meta->>'idemKey') = $5
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [orgId, tier, cycle, method, idemKey]
+    );
+
+    if (existing.rowCount) {
+      const pay = existing.rows[0];
+
+      // Return a shape matching the method branch so FE can continue
+      if (method === 'MPESA') {
+        const meta =
+          typeof pay.meta === 'string'
+            ? (() => { try { return JSON.parse(pay.meta); } catch { return {}; } })()
+            : (pay.meta || {});
+        const expectedKesMinor =
+          Number.isFinite(Number(meta?.expectedKesMinor)) ? Number(meta.expectedKesMinor) : null;
+        const expectedKesInt =
+          Number.isFinite(Number(meta?.expectedKesInt)) ? Number(meta.expectedKesInt) : null;
+
+        return res.json({
+          paymentId: pay.id,
+          method: 'MPESA',
+          reuse: true,
+          charge: { currency: 'KES', expectedKesMinor, expectedKesInt },
+          checkoutRequestId: pay.provider_txn_id || null,
+          idemKey,
+        });
+      }
+
+      // PAYSTACK
+      const meta =
+        typeof pay.meta === 'string'
+          ? (() => { try { return JSON.parse(pay.meta); } catch { return {}; } })()
+          : (pay.meta || {});
+      const expectedKesMinor =
+        Number.isFinite(Number(meta?.chargeAmountMinor)) ? Number(meta.chargeAmountMinor) : null;
+      const expectedKesMajor =
+        expectedKesMinor != null ? (expectedKesMinor / 100).toFixed(2) : null;
+
+      return res.json({
+        paymentId: pay.id,
+        method: 'PAYSTACK',
+        reuse: true,
+        quote: { amount_cents, currency: 'USD', tier, cycle },
+        charge: {
+          currency: 'KES',
+          expectedKesMinor,
+          expectedKesMajor,
+          fxUsdToKes: FX_USD_TO_GATEWAY,
+        },
+        authorizationUrl: meta?.authorization_url || undefined, // may not exist in meta; FE can re-init if missing
+        reference: pay.provider_order_id || null,
+        idemKey,
+      });
+    }
+  }
+
+  // ✅ Create pending row first (now includes idemKey in meta)
   const ins = await pool.query(
     `INSERT INTO org_subscription_payments
        (org_id, tier, cycle, currency, amount_cents, provider, status, meta)
-     VALUES ($1,$2,$3,'USD',$4,$5,'pending', '{}'::jsonb)
+     VALUES ($1,$2,$3,$4,$5,$6,'pending',
+       jsonb_build_object('idemKey',$7)
+     )
      RETURNING *`,
-    [orgId, tier, cycle, amount_cents, method]
+    [orgId, tier, cycle, intentCurrency, amount_cents, method, idemKey]
   );
   const payment = ins.rows[0];
 
   try {
-    // ───────────────────────── MPESA ─────────────────────────
+    // ───────────────────────── MPESA (KES ONLY) ─────────────────────────
     if (method === 'MPESA') {
-      // You can either:
-      // A) Keep your KES pricing table in orgPricing (old way), or
-      // B) Convert USD → KES (same as Paystack) for consistent pricing across methods.
-      //
-      // This implementation uses B (USD→KES conversion), matching your request.
-      const kesMinor = usdCentsToKesMinor(amount_cents);
-      const kesMajorRounded = Math.max(1, Math.round(kesMinor / 100));
+      const kesMinor = Number(amount_cents); // KES minor
+      const amountKesInt = Math.max(1, Math.round(kesMinor / 100)); // integer KES
+      const expectedKesMinor = amountKesInt * 100;
 
       await pool.query(
         `UPDATE org_subscription_payments
             SET meta = COALESCE(meta,'{}'::jsonb) ||
                       jsonb_build_object(
-                        'intentCurrency','USD',
-                        'intentAmountUsd', to_jsonb(($2::numeric)/100),
+                        'kind','org',
+                        'orgId',$2,
+                        'tier',$3,
+                        'cycle',$4,
+                        'expectedKesMinor',$5::int,
+                        'expectedKesInt',$6::int,
                         'chargeCurrency','KES',
-                        'chargeAmountMinor', to_jsonb($3::int),
-                        'fxUsdToKes', to_jsonb($4::numeric)
+                        'idemKey',$7
                       ),
                 updated_at=NOW()
           WHERE id=$1`,
-        [payment.id, amount_cents, kesMinor, FX_USD_TO_GATEWAY]
+        [payment.id, String(orgId), tier, cycle, expectedKesMinor, amountKesInt, idemKey]
       );
 
       let stk;
       try {
         stk = await stkPushOrgSubscription({
           phone,
-          amount: kesMajorRounded,
-          accountReference: `ORG:${orgId}:${tier}:${cycle}`,
+          amount: amountKesInt,
+          accountReference: `ORG:${orgId}:${tier}:${cycle}`.slice(0, 12),
           description: `${tier.toUpperCase()} ${cycle} subscription`,
         });
       } catch (e) {
@@ -327,15 +416,14 @@ export async function initOrgSubscription(req, res) {
 
       return res.json({
         paymentId: payment.id,
-        method,
-        quote: { amount_cents, currency: 'USD', tier, cycle },
-        charge: { currency: 'KES', expectedKesMinor: kesMinor, fxUsdToKes: FX_USD_TO_GATEWAY },
+        method: 'MPESA',
+        charge: { currency: 'KES', expectedKesMinor, expectedKesInt: amountKesInt },
         checkoutRequestId: checkoutId,
+        idemKey: idemKey || undefined,
       });
     }
 
-    // ─────────────────────── PAYSTACK (KES charge) ───────────────────────
-    // Email required
+    // ─────────────────────── PAYSTACK (unchanged + idemKey stored) ───────────────────────
     let email = userEmailFromAuth;
     if (!email) {
       const u = await pool.query(`SELECT email FROM users WHERE id=$1`, [userId]);
@@ -348,18 +436,17 @@ export async function initOrgSubscription(req, res) {
           WHERE id=$1`,
         [payment.id, 'Missing user email for Paystack initialize']
       );
-      return res.status(400).json({ message: 'Your account email is missing. Please update your profile email.' });
+      return res
+        .status(400)
+        .json({ message: 'Your account email is missing. Please update your profile email.' });
     }
 
-    // Reference tied to this payment
     const reference = `ps_org_${payment.id}_${Date.now()}`;
 
-    // Convert USD intent → KES charge
     const expectedKesMinor = usdCentsToKesMinor(amount_cents);
     const expectedKesMajor = (expectedKesMinor / 100).toFixed(2);
     const intentUsdMajor = (Number(amount_cents) / 100).toFixed(2);
 
-    // Persist FX audit into meta + save reference
     await pool.query(
       `UPDATE org_subscription_payments
           SET provider_order_id=$2,
@@ -370,28 +457,19 @@ export async function initOrgSubscription(req, res) {
                       'chargeCurrency','KES',
                       'chargeAmountKes', to_jsonb(($4)::numeric),
                       'chargeAmountMinor', to_jsonb(($5)::int),
-                      'fxUsdToKes', to_jsonb(($6)::numeric)
+                      'fxUsdToKes', to_jsonb(($6)::numeric),
+                      'idemKey',$7
                     ),
               updated_at=NOW()
         WHERE id=$1`,
-      [
-        payment.id,
-        reference,
-        intentUsdMajor,
-        expectedKesMajor,
-        expectedKesMinor,
-        FX_USD_TO_GATEWAY,
-      ]
+      [payment.id, reference, intentUsdMajor, expectedKesMajor, expectedKesMinor, FX_USD_TO_GATEWAY, idemKey]
     );
 
-      const callbackBase = resolvePaystackCallbackBase(req);
-
-      const callback_url = buildCallbackUrl(callbackBase, {
-        kind: 'org',
-        paymentId: payment.id, // callback page confirms without sessionStorage
-      });
-
-
+    const callbackBase = resolvePaystackCallbackBase(req);
+    const callback_url = buildCallbackUrl(callbackBase, {
+      kind: 'org',
+      paymentId: payment.id,
+    });
 
     const init = await paystackInitTransaction({
       email,
@@ -409,6 +487,7 @@ export async function initOrgSubscription(req, res) {
         intentUsd: intentUsdMajor,
         fxUsdToKes: FX_USD_TO_GATEWAY,
         expectedKesMinor,
+        idemKey: idemKey || undefined,
       },
     });
 
@@ -429,18 +508,25 @@ export async function initOrgSubscription(req, res) {
       charge: { currency: 'KES', expectedKesMinor, expectedKesMajor, fxUsdToKes: FX_USD_TO_GATEWAY },
       authorizationUrl: init.authorization_url,
       reference: init.reference,
+      idemKey: idemKey || undefined,
     });
   } catch (err) {
     console.error('[orgBilling][init] error', err?.message || err);
+
     await pool.query(
       `UPDATE org_subscription_payments
           SET status='failed', error_message=$2, updated_at=NOW()
         WHERE id=$1`,
       [payment.id, err?.message || 'unknown']
     );
-    return res.status(502).json({ message: 'Failed to initialize payment', error: err?.message || 'unknown' });
+
+    return res.status(502).json({
+      message: 'Failed to initialize payment',
+      error: err?.message || 'unknown',
+    });
   }
 }
+
 
 /* ------------------------------------------------------------------ */
 /* POST /api/orgs/subscriptions/:paymentId/confirm                     */
@@ -450,15 +536,14 @@ export async function initOrgSubscription(req, res) {
 export async function confirmOrgSubscription(req, res) {
   const userId = req.user?.id;
   const { paymentId } = req.params;
-  const { provider_reference } = req.body || {};
+  const { provider_reference } = req.body || {}; // Paystack ref OR MpesaReceiptNumber (optional)
 
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
   const client = await pool.connect();
 
   // helper: build jsonb patch safely
-  const jsonbPatch = (obj) =>
-    JSON.stringify(obj, (_k, v) => (v === undefined ? null : v));
+  const jsonbPatch = (obj) => JSON.stringify(obj, (_k, v) => (v === undefined ? null : v));
 
   try {
     await client.query('BEGIN');
@@ -487,7 +572,7 @@ export async function confirmOrgSubscription(req, res) {
     }
 
     // idempotent
-    if (pay.status === 'completed') {
+    if (String(pay.status).toLowerCase() === 'completed') {
       const sub = await client.query(
         `SELECT *
            FROM org_subscriptions
@@ -497,25 +582,181 @@ export async function confirmOrgSubscription(req, res) {
         [pay.org_id]
       );
       await client.query('COMMIT');
-      return res.json({ ok: true, alreadyCompleted: true, subscription: sub.rows[0] || null });
+      return res.json({
+        ok: true,
+        alreadyCompleted: true,
+        subscription: sub.rows[0] || null,
+      });
     }
 
-    if (pay.status !== 'pending') {
+    if (String(pay.status).toLowerCase() !== 'pending') {
       await client.query('ROLLBACK');
       return res.status(400).json({ message: `Payment already ${pay.status}` });
     }
 
     const provider = String(pay.provider || '').toUpperCase();
-    if (provider === 'MPESA') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ message: 'MPESA confirm logic unchanged — keep your existing code block here.' });
+
+    // meta can come as object or string (defensive)
+    let meta = {};
+    try {
+      meta = typeof pay.meta === 'string' ? JSON.parse(pay.meta) : (pay.meta || {});
+    } catch {
+      meta = {};
     }
+
+    // ───────────────────────── MPESA confirm (KES-only) ─────────────────────────
+    if (provider === 'MPESA') {
+      // We expect:
+      // - pay.provider_txn_id = CheckoutRequestID (set at init time)
+      // - org STK callback updates mpesa_reference (MpesaReceiptNumber) and/or meta fields
+      //
+      // NOTE: M-Pesa does not have a "verify endpoint" like Paystack.
+      // Source of truth is your callback -> DB record.
+
+      // 1) If callback hasn't arrived yet, keep pending (return 200 so FE can poll)
+      // Try to infer "success" from:
+      // - mpesa_reference exists (best)
+      // - meta.mpesaResultCode === 0 (if you store it)
+      const mpesaReceipt = String(pay.mpesa_reference || '').trim() || null;
+      const resultCode =
+        meta?.mpesaResultCode != null ? Number(meta.mpesaResultCode) : null;
+
+      const isSuccess = !!mpesaReceipt || resultCode === 0;
+
+      if (!isSuccess) {
+        // Optional: if callback stored a failure code, mark failed (only if you store it)
+        // If you don't store failures, just keep pending.
+        if (resultCode != null && resultCode !== 0) {
+          await client.query(
+            `UPDATE org_subscription_payments
+                SET status='failed',
+                    error_message=$2,
+                    meta = COALESCE(meta,'{}'::jsonb) || $3::jsonb,
+                    updated_at=NOW()
+              WHERE id=$1 AND status='pending'`,
+            [
+              pay.id,
+              `mpesa_failed_result_code_${resultCode}`,
+              jsonbPatch({ failReason: 'mpesa_result_failed', mpesaResultCode: resultCode }),
+            ]
+          );
+          await client.query('COMMIT');
+          return res.status(400).json({
+            ok: false,
+            status: 'failed',
+            message: 'mpesa-failed',
+            mpesaResultCode: resultCode,
+          });
+        }
+
+        await client.query('COMMIT');
+        return res.json({
+          ok: false,
+          status: 'pending',
+          message: 'not-success-yet',
+          checkoutRequestId: pay.provider_txn_id || null,
+        });
+      }
+
+      // 2) Amount validation (KES minor)
+      // Prefer meta.expectedKesMinor (set during init)
+      // Fallback: if currency is KES, use amount_cents (KES minor) from row
+      const expectedMinor =
+        Number.isFinite(Number(meta?.expectedKesMinor)) ? Number(meta.expectedKesMinor) :
+        (String(pay.currency || '').toUpperCase() === 'KES' && Number.isFinite(Number(pay.amount_cents))
+          ? Number(pay.amount_cents)
+          : null);
+
+      if (!Number.isFinite(expectedMinor) || expectedMinor <= 0) {
+        // Can't safely validate -> fail closed (or keep pending). I recommend fail.
+        await client.query(
+          `UPDATE org_subscription_payments
+              SET status='failed',
+                  error_message=$2,
+                  meta = COALESCE(meta,'{}'::jsonb) || $3::jsonb,
+                  updated_at=NOW()
+            WHERE id=$1 AND status='pending'`,
+          [
+            pay.id,
+            'missing expectedKesMinor for mpesa amount validation',
+            jsonbPatch({ failReason: 'missing_expected_amount' }),
+          ]
+        );
+        await client.query('COMMIT');
+        return res.status(400).json({ ok: false, status: 'failed', message: 'missing-expected-amount' });
+      }
+
+      // If you stored the paid amount in callback meta, validate it too.
+      // Otherwise we can only validate "expected exists" + receipt exists.
+      const paidMinorFromMeta = Number.isFinite(Number(meta?.paidKesMinor)) ? Number(meta.paidKesMinor) : null;
+      if (paidMinorFromMeta != null && paidMinorFromMeta !== expectedMinor) {
+        await client.query(
+          `UPDATE org_subscription_payments
+              SET status='failed',
+                  error_message=$2,
+                  meta = COALESCE(meta,'{}'::jsonb) || $3::jsonb,
+                  updated_at=NOW()
+            WHERE id=$1 AND status='pending'`,
+          [
+            pay.id,
+            'amount mismatch',
+            jsonbPatch({
+              failReason: 'amount_mismatch',
+              expectedMinor,
+              paidMinor: paidMinorFromMeta,
+              gotCurrency: 'KES',
+            }),
+          ]
+        );
+
+        await client.query('COMMIT');
+        return res.status(400).json({
+          ok: false,
+          status: 'failed',
+          message: 'amount-mismatch',
+          expectedMinor,
+          paidMinor: paidMinorFromMeta,
+        });
+      }
+
+      // 3) Mark payment completed
+      const providerTxnId = String(pay.provider_txn_id || '').trim() || null; // CheckoutRequestID
+      const finalRef = mpesaReceipt || (provider_reference ? String(provider_reference).trim() : null);
+
+      await client.query(
+        `UPDATE org_subscription_payments
+            SET status='completed',
+                provider_order_id=COALESCE(provider_order_id, $2),
+                meta = COALESCE(meta,'{}'::jsonb) || $3::jsonb,
+                updated_at=NOW()
+          WHERE id=$1 AND status='pending'`,
+        [
+          pay.id,
+          finalRef,
+          jsonbPatch({
+            capturedCurrency: 'KES',
+            capturedAmountMinor: expectedMinor, // best we can assert from our pricing
+            mpesaStatus: 'success',
+            provider: 'MPESA',
+            providerId: providerTxnId,
+          }),
+        ]
+      );
+
+      // 4) Activate subscription
+      const fresh = await client.query(`SELECT * FROM org_subscription_payments WHERE id=$1`, [paymentId]);
+      const sub = await activateOrgSubscriptionTx(client, fresh.rows[0]);
+
+      await client.query('COMMIT');
+      return res.json({ ok: true, subscription: sub });
+    }
+
+    // ───────────────────────── PAYSTACK confirm (your existing flow) ─────────────────────────
     if (provider !== 'PAYSTACK') {
       await client.query('ROLLBACK');
       return res.status(400).json({ message: 'Unsupported provider' });
     }
 
-    // PAYSTACK confirm
     const reference = String(provider_reference || pay.provider_order_id || '').trim();
     if (!reference) {
       await client.query('ROLLBACK');
@@ -549,21 +790,8 @@ export async function confirmOrgSubscription(req, res) {
       return res.status(400).json({ message: `currency-mismatch (expected KES, got ${gotCurrency})` });
     }
 
-    // meta can come as object or string (defensive)
-    let meta = {};
-    try {
-      meta = typeof pay.meta === 'string' ? JSON.parse(pay.meta) : (pay.meta || {});
-    } catch {
-      meta = {};
-    }
-
-    const expectedMinor = Number.isFinite(Number(meta?.chargeAmountMinor))
-      ? Number(meta.chargeAmountMinor)
-      : null;
-
-    const paidMinor = Number.isFinite(Number(v.amount))
-      ? Number(v.amount)
-      : null;
+    const expectedMinor = Number.isFinite(Number(meta?.chargeAmountMinor)) ? Number(meta.chargeAmountMinor) : null;
+    const paidMinor = Number.isFinite(Number(v.amount)) ? Number(v.amount) : null;
 
     if (expectedMinor == null || expectedMinor <= 0 || paidMinor == null || paidMinor !== expectedMinor) {
       await client.query(
@@ -589,7 +817,6 @@ export async function confirmOrgSubscription(req, res) {
       return res.status(400).json({ message: 'amount-mismatch', expectedMinor, paidMinor });
     }
 
-    // mark payment completed (single update, typed jsonb patch)
     const providerTxnId = String(v.transactionId || '');
     const finalRef = String(v.reference || reference);
 
@@ -615,11 +842,7 @@ export async function confirmOrgSubscription(req, res) {
       ]
     );
 
-    // Activate subscription
-    const fresh = await client.query(
-      `SELECT * FROM org_subscription_payments WHERE id=$1`,
-      [paymentId]
-    );
+    const fresh = await client.query(`SELECT * FROM org_subscription_payments WHERE id=$1`, [paymentId]);
     const sub = await activateOrgSubscriptionTx(client, fresh.rows[0]);
 
     await client.query('COMMIT');
