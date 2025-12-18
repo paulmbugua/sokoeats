@@ -81,6 +81,10 @@ type Props = {
 
   // ✅ optional alias support (your shell already passes this sometimes)
   onLoadingChange?: (loading: boolean) => void;
+
+  gateMode?: 'narration' | 'notes_only';
+  gateNotice?: { reason?: string; resetsAt?: string | null; remainingMinutes?: number | null } | null;
+  gateUsage?: Array<{ bucket?: string; remainingSeconds?: number; limitSeconds?: number; resetsAt?: string | null }>;
 };
 
 
@@ -175,6 +179,11 @@ const InnerPlayer: React.FC<Props> = (props) => {
   } = props;
   const loadingCb = onPlayerLoadingChange ?? onLoadingChange;
 
+  const narrationLocked = props.gateMode === 'notes_only';
+  const gateReset = props.gateNotice?.resetsAt
+    ? new Date(props.gateNotice.resetsAt).toLocaleString()
+    : null;
+
   const { backendUrl } = useShopContext();
   const effectiveBackend = backendUrlOverride || backendUrl;
   const scheme = useColorScheme();
@@ -241,10 +250,14 @@ useEffect(() => {
   const useJoined = playJoinedIfAvailable && hasJoined;
 
   const [showTranscript, setShowTranscript] = useState(false);
-  const [showNotes, setShowNotes] = useState(false);
+  const [showNotes, setShowNotes] = useState(() => narrationLocked);
   const [showThemeSheet, setShowThemeSheet] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const [topBarH, setTopBarH] = useState(56);
+
+  useEffect(() => {
+    if (narrationLocked) setShowNotes(true);
+  }, [narrationLocked]);
 
 
   // Reader scale
@@ -605,6 +618,8 @@ const nextIsReady = useCallback(() => {
       if (now - lastPlayTapRef.current < 350) return;
       lastPlayTapRef.current = now;
 
+      if (narrationLocked) return;
+
       if (nativeIsPlaying) {
         autoPlayRef.current = false;
         if (sound) await sound.pauseAsync();
@@ -924,7 +939,16 @@ const shouldShowFallback = !liveReady && !stableTimed;
           maximized={maximized}
           onToggleMaximize={() => setMaximized((m) => !m)}
           onHeight={setTopBarH}
+          disablePlay={narrationLocked}
+          gateNotice={props.gateNotice}
         />
+
+        {narrationLocked && (
+          <View style={tw`bg-amber-500/80 px-3 py-2`}>
+            <Text style={tw`text-white font-semibold`}>Narration quota reached / locked.</Text>
+            <Text style={tw`text-white`}>{gateReset ? `Resets on: ${gateReset}` : 'Narration is currently unavailable.'}</Text>
+          </View>
+        )}
 
         {/* Title chip */}
         {topBarH > 0 ? (
@@ -1092,6 +1116,8 @@ function TopBarMobile({
   maximized,
   onToggleMaximize,
   onHeight,
+  disablePlay = false,
+  gateNotice,
 }: {
   title: string;
   subtitle?: string;
@@ -1112,6 +1138,8 @@ function TopBarMobile({
   maximized: boolean;
   onToggleMaximize: () => void;
   onHeight?: (h: number) => void;
+  disablePlay?: boolean;
+  gateNotice?: { reason?: string; resetsAt?: string | null } | null;
 }) {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
@@ -1497,10 +1525,10 @@ function BottomBarMobile({
 
         <Pressable
           onPress={onPlayPause}
-          disabled={loading}
-          style={tw.style('h-9 w-9 rounded-full items-center justify-center mr-1', loading ? 'bg-slate-600/60' : 'bg-white')}
+          disabled={loading || disablePlay}
+          style={tw.style('h-9 w-9 rounded-full items-center justify-center mr-1', loading || disablePlay ? 'bg-slate-600/60' : 'bg-white')}
         >
-          <Ionicons name={playing ? 'pause' : 'play'} size={18} color={loading ? '#e5e7eb' : '#000'} />
+          <Ionicons name={playing ? 'pause' : 'play'} size={18} color={loading || disablePlay ? '#e5e7eb' : '#000'} />
         </Pressable>
 
         <Pressable onPress={onFwd5} style={tw`h-9 w-9 rounded-full bg-white/10 items-center justify-center mr-2`}>

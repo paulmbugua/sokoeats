@@ -46,6 +46,10 @@ type Props = {
   onBeforePlay?: () => Promise<void> | void;
 
   activeIndex?: number;
+
+  gateMode?: 'narration' | 'notes_only';
+  gateNotice?: { reason?: string; resetsAt?: string | null; remainingMinutes?: number | null } | null;
+  gateUsage?: Array<{ bucket?: string; remainingSeconds?: number; limitSeconds?: number; resetsAt?: string | null }>;
 };
 
 // --- helpers -----------------------------------------------------------------
@@ -155,8 +159,16 @@ function Container(props: Props) {
   const [voicesLoading, setVoicesLoading] = React.useState(false);
   const [voicesError, setVoicesError] = React.useState<string | null>(null);
   const [showTranscript, setShowTranscript] = React.useState(false);
-  const [showNotes, setShowNotes] = React.useState(false);
+  const [showNotes, setShowNotes] = React.useState(() => props.gateMode === 'notes_only');
   const [showAudioDebug, setShowAudioDebug] = React.useState(false);
+
+  const narrationLocked = props.gateMode === 'notes_only';
+  const gateNotice = props.gateNotice;
+  const gateReset = gateNotice?.resetsAt ? new Date(gateNotice.resetsAt).toLocaleString() : null;
+
+  React.useEffect(() => {
+    if (narrationLocked) setShowNotes(true);
+  }, [narrationLocked]);
 
   React.useEffect(() => {
     let alive = true;
@@ -226,6 +238,7 @@ function Container(props: Props) {
   const lastPlayClickRef = React.useRef(0);
   const handlePlayClick = React.useCallback(async () => {
     const now = Date.now(); if (now - lastPlayClickRef.current < 400) return; lastPlayClickRef.current = now;
+    if (narrationLocked) return;
     try {
       await resumeAudioContext();
       if (!isPlaying) {
@@ -519,6 +532,16 @@ React.useEffect(() => {
       aria-label="Lesson player"
       aria-busy={loading || isAdvancing}
     >
+      {narrationLocked && (
+        <div className="mb-2 rounded-xl bg-amber-500/80 text-white px-4 py-3 text-sm flex items-center gap-2">
+          <span className="font-semibold">Narration quota reached / locked.</span>
+          <span>
+            {gateReset
+              ? `Resets on: ${gateReset}`
+              : 'Narration is temporarily unavailable. Switch to notes.'}
+          </span>
+        </div>
+      )}
         <div
     className={
       `${isMax
@@ -545,6 +568,8 @@ React.useEffect(() => {
             onPlayPause={handlePlayClick}
             playing={isPlaying}
             loading={loading}
+            disablePlay={narrationLocked}
+            gateNotice={gateNotice}
             onToggleTranscript={() => setShowTranscript((s: boolean) => !s)}
             transcriptOpen={showTranscript}
             onToggleThemePanel={onToggleThemePanel}

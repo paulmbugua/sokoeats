@@ -31,6 +31,9 @@ import type {
   AiQuizRequest,
   DbCourseSize,
   AiOutlineResponse,
+  LessonGateMode,
+  LessonGateNotice,
+  LessonGateUsage,
 } from '@mytutorapp/shared/types';
 
 export type StartState =
@@ -174,6 +177,9 @@ export function useAiCourse(
 
   const [degradedNotice, setDegradedNotice] =
     useState<{ degraded: boolean; reason: string } | null>(null);
+  const [gateMode, setGateMode] = useState<LessonGateMode>('narration');
+  const [gateNotice, setGateNotice] = useState<LessonGateNotice | null>(null);
+  const [gateUsage, setGateUsage] = useState<LessonGateUsage[]>([]);
   const [certificate, setCertificate] = useState<Certificate | null>(null);
 
   const [hasMoreCourses, setHasMoreCourses] = useState<boolean>(false);
@@ -424,8 +430,12 @@ const ensureLesson = useCallback(
         { token }
       );
 
+      setGateMode((pack as any)?.mode || 'narration');
+      setGateNotice((pack as any)?.notice || null);
+      setGateUsage((pack as any)?.usage || []);
+
       const L = pack?.lessons?.[0] as LessonLite | undefined;
-      if (!L?.ssml) {
+      if (!L?.ssml && (pack as any)?.mode !== 'notes_only') {
         if (DBG) {
           console.error('[ai] ensureLesson: lesson build returned empty ssml', {
             index,
@@ -1073,6 +1083,9 @@ const prefetchAround = useCallback(async (index: number) => {
     joinedSsml,
     ssml,
     degradedNotice,
+    gateMode,
+    gateNotice,
+    gateUsage,
 
     quiz,
     answers,

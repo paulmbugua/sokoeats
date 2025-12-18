@@ -19,6 +19,12 @@ import {
   quizSchema,
   gradeSchema,
 } from '../validators/aiCoursesValidator.js';
+import {
+  narrationPreflight,
+  finalizeNarrationUsage,
+  buildGateNotice,
+  blankLessonsFromOutline,
+} from '../services/narrationGate.js';
 
 /* ─────────────────────────────────────────────────────────
  * Helpers
@@ -304,6 +310,44 @@ export async function generateLessonSSML(req, res) {
         await cacheBustCourse(courseId);
       }
 
+      const orgId =
+        res?.locals?.assignment?.orgId ||
+        req.body?.orgId ||
+        req.get('x-org-id') ||
+        null;
+
+      const estimateText = Array.isArray(outline)
+        ? outline.map((s) => `${s?.title || ''} ${Array.isArray(s?.keyPoints) ? s.keyPoints.join(' ') : ''}`).join(' ')
+        : '';
+
+      const gate = await narrationPreflight({
+        userId: req.user?.id || req.body?.userId || null,
+        orgId,
+        courseId,
+        estimateText,
+      });
+
+      if (!gate?.ok) {
+        const notice = buildGateNotice(gate);
+        const lessons = blankLessonsFromOutline(outline, start, count);
+
+        const payload = {
+          mode: 'notes_only',
+          notice,
+          usage: gate?.usage || [],
+          lessons,
+          joinedSsml: '',
+          quiz: { questions: [] },
+        };
+
+        console.log('[api:lesson-ssml] gate blocked narration', {
+          reason: notice?.reason,
+          resetsAt: notice?.resetsAt,
+        });
+
+        return res.status(200).json(payload);
+      }
+
       const { status, data, headers } = await generateLessonSSMLService({
         courseId,
         outline,
@@ -319,6 +363,48 @@ export async function generateLessonSSML(req, res) {
         }
       );
       setHeaders(res, headers);
+
+      // Attach gating metadata
+      data.mode = 'narration';
+      data.notice = data.notice || buildGateNotice(gate);
+      data.usage = data.usage || gate?.usage || [];
+
+      // Compute actual usage + settle reservation
+      let actualSeconds = 0;
+      if (Array.isArray(data?.lessons)) {
+        actualSeconds = data.lessons.reduce(
+          (sum, lesson) => sum + (Number(lesson?.estSeconds) || 0),
+          0
+        );
+      }
+      if (!actualSeconds && typeof data?.joinedSsml === 'string') {
+        actualSeconds = Math.round(data.joinedSsml.length / 20);
+      }
+      if (!actualSeconds && gate?.reserveMin) {
+        actualSeconds = Number(gate.reserveMin) * 60;
+      }
+
+      if (gate?.reservation) {
+        try {
+          const settled = await finalizeNarrationUsage({
+            reservation: gate.reservation,
+            actualSeconds,
+          });
+          if (settled?.updates?.length) {
+            data.usage = settled.updates.map((u) => ({
+              bucket: u.bucket,
+              remainingSeconds:
+                typeof u.limit_seconds === 'number'
+                  ? Math.max(0, Number(u.limit_seconds) - Number(u.used_seconds || 0) - Number(u.reserved_seconds || 0))
+                  : undefined,
+              limitSeconds: u.limit_seconds || undefined,
+              resetsAt: u.period_end || null,
+            }));
+          }
+        } catch (e) {
+          console.warn('[api:lesson-ssml] finalizeNarrationUsage failed', e?.message || e);
+        }
+      }
 
       // If degraded but payload exists, send 206 so clients can consume it.
       let statusOut = status;

@@ -242,6 +242,9 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     lessons,
     ssml,
     joinedSsml,
+    gateMode,
+    gateNotice,
+    gateUsage,
     quiz,
     answers,
     grade,
@@ -944,6 +947,9 @@ const onStart = useCallback(async () => {
             currentIdx={currentIdx}
             backendUrl={backendUrl}
             hasJoined={hasJoined}
+            gateMode={gateMode}
+            gateNotice={gateNotice}
+            gateUsage={gateUsage}
             displaySsml={displaySsml}
             onBeforePlay={onBeforePlayWrapped}
             onEnded={onEndedWrapped}

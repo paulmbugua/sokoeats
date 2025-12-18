@@ -4,7 +4,7 @@ import type {
   TopCourse,
   AiOutlineResponse,
   AiOutlineSection,
-  LessonPack,
+  GenerateLessonSSMLResponse,
   Quiz,
   GradeRequest,
   GradeResult,
@@ -14,6 +14,7 @@ import type {
   AiOutlineRequest,
   AiLessonSSMLRequest,
   AiQuizRequest,
+  LessonGateMode,
 } from '@mytutorapp/shared/types';
 
 type Jsonish = Record<string, unknown> | Array<unknown> | undefined;
@@ -83,6 +84,22 @@ type CommonOpts = {
   programTrack?: string; // will be sent as X-Program-Track
   timeoutMs?: number;    // optional client-side timeout (auto AbortController)
 };
+
+export function normalizeLessonGate<T extends { mode?: LessonGateMode; lessons?: any[]; joinedSsml?: string }>(
+  data: T
+): T & { mode: LessonGateMode } {
+  const mode: LessonGateMode = data?.mode === 'notes_only' ? 'notes_only' : 'narration';
+  const normalized: any = { ...data, mode };
+
+  if (mode === 'notes_only') {
+    normalized.joinedSsml = '';
+    if (Array.isArray(normalized.lessons)) {
+      normalized.lessons = normalized.lessons.map((l: any) => ({ ...l, ssml: '' }));
+    }
+  }
+
+  return normalized;
+}
 
 // Create a derived AbortSignal that auto-aborts after timeoutMs.
 // The returned cancel() must be called after fetch resolves/rejects to clear timers.
@@ -312,14 +329,14 @@ export async function createLessonSSML(
   backendUrl: string,
   body: AiLessonSSMLRequest,
   opts?: CommonOpts
-): Promise<LessonPack> {
+): Promise<GenerateLessonSSMLResponse> {
   const base = normalizeBase(backendUrl);
  const headers = buildHeaders(opts?.token, true, opts?.programTrack);
 
 
   const { signal, cancel } = withTimeoutSignal(opts?.signal, opts?.timeoutMs);
   try {
-    return await fetchJson<LessonPack>(
+    const resp = await fetchJson<GenerateLessonSSMLResponse>(
       `${base}/api/ai/lesson-ssml`,
       {
         method: 'POST',
@@ -330,6 +347,7 @@ export async function createLessonSSML(
       'SSML generation failed',
       '[api:lesson-ssml]'
     );
+    return normalizeLessonGate(resp);
   } finally {
     cancel();
   }

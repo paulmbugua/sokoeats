@@ -38,6 +38,8 @@ export default function TopBar({
   isMax,
   templateId,
   setTemplateId,
+  disablePlay = false,
+  gateNotice,
 }: {
   title: string;
   voice: string;
@@ -55,6 +57,8 @@ export default function TopBar({
   setTemplateId: (t: HighlightTemplate) => void;
   onToggleMax: () => void;
   isMax: boolean;
+  disablePlay?: boolean;
+  gateNotice?: { reason?: string; resetsAt?: string | null } | null;
 }) {
   const outerBase =
     'overflow-visible bg-[linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.04)_100%)] bg-black/30 backdrop-blur-xl ring-1 ring-white/10 shadow-lg';
@@ -90,10 +94,16 @@ export default function TopBar({
             onClick={onPlayPause}
             title={playing ? 'Pause' : 'Play'}
             aria-label={playing ? 'Pause' : 'Play'}
-            disabled={loading}
+            disabled={loading || disablePlay}
           >
             {playing ? 'Pause' : 'Play'}
           </PrimaryButton>
+
+          {disablePlay && (
+            <span className="text-[12px] text-amber-100/90" title={gateNotice?.reason || 'Narration locked'}>
+              Narration locked{gateNotice?.resetsAt ? ` · Resets ${new Date(gateNotice.resetsAt).toLocaleString()}` : ''}
+            </span>
+          )}
 
           <IconButton
             onClick={onToggleTranscript}
