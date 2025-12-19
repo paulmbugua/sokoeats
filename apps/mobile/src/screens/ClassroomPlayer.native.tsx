@@ -1022,6 +1022,7 @@ const shouldShowFallback = !liveReady && !stableTimed;
           onPlayPause={handlePlayPause}
           playing={nativeIsPlaying}
           loading={loading}
+          disablePlay={narrationLocked}
           volume={volume}
           volDown={volDown}
           volUp={volUp}
@@ -1034,6 +1035,7 @@ const shouldShowFallback = !liveReady && !stableTimed;
           userScale={userScale}
           setUserScale={setUserScale}
           hlHex={hlHex}
+         
         />
       </View>
      
@@ -1481,6 +1483,7 @@ function BottomBarMobile({
   userScale,
   setUserScale,
   hlHex,
+  disablePlay = false,
 }: {
   currentSec: number;
   durationSec: number;
@@ -1503,6 +1506,7 @@ function BottomBarMobile({
   userScale: number;
   setUserScale: (n: number) => void;
   hlHex: string;
+  disablePlay?: boolean;
 }) {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';

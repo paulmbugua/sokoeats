@@ -1,4 +1,0 @@
-yarn run v1.22.22
-$ eslint . --ext .ts,.tsx
-Multiple projects found, consider using a single `tsconfig` with `references` to speed up, or use `noWarnOnMultipleProjects` to suppress this warning
-Done in 15.18s.

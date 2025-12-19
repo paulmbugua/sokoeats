@@ -1,12 +1,16 @@
 import axios from 'axios';
 import pkg from 'pg';
 import {
-  getAccessToken,
   password,
   shortcode,
   b2cShortcode,
   callbackURL,
   timeoutURL,
+  getAccessToken,
+  mpesaTimestamp,
+  mpesaPassword,
+
+  MPESA_BASE,
   resultURL,
   timestamp,
   initiatorName,
@@ -21,21 +25,6 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-/**
- * STK Push (C2B) Payment
- * Handles M-Pesa STK push request for student payments.
- * Inserts a record into the payments table with status "Pending".
- */
-// apps/backend/services/mpesaService.js
-import axios from 'axios';
-import { normalizePhoneNumber } from '../utils/phoneUtils.js';
-import {
-  getAccessToken,
-  mpesaTimestamp,
-  mpesaPassword,
-  shortcode,
-  MPESA_BASE,
-} from '../utils/mpesa.js';
 
 export async function stkPushC2B({ phone, amount, callbackUrl }) {
   if (!phone) throw new Error('phone is required');
