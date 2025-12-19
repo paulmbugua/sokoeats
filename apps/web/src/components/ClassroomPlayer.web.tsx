@@ -247,7 +247,18 @@ function Container(props: Props) {
         await play();
       } else { pause(); }
     } catch {}
-  }, [isPlaying, onBeforePlay, play, pause, resumeAudioContext, words.length, onRequestStart, onPlayerLoadingChange]);
+  }, [
+    isPlaying,
+    onBeforePlay,
+    play,
+    pause,
+    resumeAudioContext,
+    words.length,
+    onRequestStart,
+    onPlayerLoadingChange,
+    playDisabled,
+    switchToNotes,
+  ]);
 
   // Seek helpers
   function indexForTime(ws: Array<{ start: number; end: number }>, t: number) {
@@ -462,7 +473,7 @@ React.useEffect(() => {
       if (e.key.toLowerCase() === 't') {
         setShowTranscript((s) => !s);
       } else if (e.key.toLowerCase() === 'n') {
-        setShowNotes((s) => !s);
+        setActiveTab((t) => (t === 'notes' ? (narrationLocked ? 'notes' : 'narration') : 'notes'));
       } else if (e.key.toLowerCase() === 'd') {
         setShowAudioDebug((s) => !s);
       } else if (e.code === 'Space') {
@@ -478,7 +489,7 @@ React.useEffect(() => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [handlePlayClick]);
+  }, [handlePlayClick, narrationLocked]);
 
   // A11y: screen-reader friendly explicit slider for seek (overlay but visually hidden)
   const onA11ySeek = (v: number) => {
@@ -739,7 +750,7 @@ React.useEffect(() => {
             onFwd5={() => nudgeSeconds(5)}
             onPlayPause={handlePlayClick}
             playing={isPlaying}
-            loading={loading}
+            loading={loading || playDisabled}
             volume={volume}
             setVolume={setVolume}
             toggleMute={toggleMute}

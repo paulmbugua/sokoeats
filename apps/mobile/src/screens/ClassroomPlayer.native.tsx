@@ -400,6 +400,13 @@ useEffect(() => {
     return lessonT || outlineT || `Lesson ${uiLessonIdx + 1}/${total}`;
   }, [useJoined, title, lessons, outline, uiLessonIdx]);
 
+  const notesMarkdown = useMemo(() => {
+    if (hasLessons && lessons[uiLessonIdx]) {
+      return lessons[uiLessonIdx]?.markdown || '_No notes for this lesson yet._';
+    }
+    return '_No notes for this lesson yet._';
+  }, [hasLessons, lessons, uiLessonIdx]);
+
   // duration from aligner (fallback)
   const wordDurationSec = useMemo(
     () => (words.length ? Math.max(...words.map((w: any) => w.end || 0)) : 0),
@@ -668,6 +675,7 @@ const nextIsReady = useCallback(() => {
       console.warn('[ClassroomPlayer.native] play/generate failed', e);
     }
   }, [
+    canNarrate,
     nativeIsPlaying,
     sound,
     effectiveSsml,
@@ -681,6 +689,8 @@ const nextIsReady = useCallback(() => {
     effectiveBackend,
     speak,
     clearForNewSession,
+    audioDurationSec,
+    nativePositionSec,
   ]);
 
   useEffect(() => {
@@ -932,7 +942,10 @@ const shouldShowFallback = !liveReady && !stableTimed;
           loading={loading}
           onToggleTranscript={() => setShowTranscript((s) => !s)}
           transcriptOpen={showTranscript}
-          onToggleNotes={() => setShowNotes((s) => !s)}
+          onToggleNotes={() => {
+            if (isNotesTab) switchToNarration();
+            else switchToNotes();
+          }}
           onToggleTheme={() => setShowThemeSheet(true)}
           lessonIndex={uiLessonIdx}
           totalLessons={totalLessonsForUi}
@@ -959,56 +972,135 @@ const shouldShowFallback = !liveReady && !stableTimed;
 
         {/* Body */}
         <View style={[tw`flex-1 px-3 pb-3`, { paddingTop: 44 }]}>
-          {/* Small chip row (hidden in maximized mode) */}
-          {!maximized ? (
-            <View style={tw`flex-row items-center justify-end mb-2`}>
-              {hasLessons ? (
-                <View
-                  style={tw.style(
-                    'px-3 py-1 rounded-full flex-row items-center gap-1',
-                    'bg-slate-800/80 dark:bg-slate-900/90 border border-white/10',
-                  )}
-                >
-                  <Ionicons name="book-outline" size={14} color="#e5e7eb" />
-                  <Text style={tw`text-[11px] text-slate-100 dark:text-slate-200`}>
-                    Lesson {uiLessonIdx + 1}/{totalLessonsForUi}
+          <View style={tw`flex-row gap-2 mb-3`}>
+            <Pressable
+              onPress={switchToNarration}
+              disabled={narrationLocked}
+              style={tw.style(
+                'flex-1 flex-row items-center justify-center gap-2 px-3 py-2 rounded-2xl border',
+                activeTab === 'narration'
+                  ? 'bg-white text-black'
+                  : 'bg-slate-800/70 border-white/10',
+                narrationLocked && 'opacity-60'
+              )}
+            >
+              <Ionicons
+                name={narrationLocked ? 'lock-closed' : 'musical-notes'}
+                size={16}
+                color={activeTab === 'narration' ? '#0f172a' : '#e5e7eb'}
+              />
+              <Text
+                style={tw.style(
+                  'text-sm font-semibold',
+                  activeTab === 'narration' ? 'text-slate-900' : 'text-slate-100'
+                )}
+              >
+                Narration
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={switchToNotes}
+              style={tw.style(
+                'flex-1 flex-row items-center justify-center gap-2 px-3 py-2 rounded-2xl border',
+                activeTab === 'notes'
+                  ? 'bg-white text-black'
+                  : 'bg-slate-800/70 border-white/10'
+              )}
+            >
+              <Ionicons
+                name="document-text-outline"
+                size={16}
+                color={activeTab === 'notes' ? '#0f172a' : '#e5e7eb'}
+              />
+              <Text
+                style={tw.style(
+                  'text-sm font-semibold',
+                  activeTab === 'notes' ? 'text-slate-900' : 'text-slate-100'
+                )}
+              >
+                Notes
+              </Text>
+            </Pressable>
+          </View>
+
+          {isNotesTab ? (
+            <ScrollView style={tw`flex-1`} contentContainerStyle={tw`gap-3 pb-4`}>
+              <View
+                style={tw.style(
+                  'p-3 rounded-2xl',
+                  narrationLocked ? 'bg-amber-500/20 border border-amber-300/50' : 'bg-slate-800/60'
+                )}
+              >
+                <Text style={tw`text-sm font-semibold text-slate-100`}>Notes only</Text>
+                <Text style={tw`text-xs text-slate-200 mt-1`}>{notesSubtitle}</Text>
+              </View>
+
+              <View style={tw`p-3 rounded-2xl bg-black/30 border border-white/10`}>
+                <Markdown>{notesMarkdown}</Markdown>
+              </View>
+
+              <View style={tw`p-3 rounded-2xl bg-indigo-900/50 border border-indigo-500/30`}>
+                <Text style={tw`text-sm font-semibold text-white`}>Continue learning</Text>
+                <Text style={tw`text-xs text-indigo-100 mt-1`}>{notesCtaLabel}</Text>
+                {narrationLocked ? (
+                  <Text style={tw`text-[11px] text-indigo-100/80 mt-1`}>
+                    Narration is locked for this course. {notesSubtitle}
                   </Text>
+                ) : null}
+              </View>
+            </ScrollView>
+          ) : (
+            <>
+              {/* Small chip row (hidden in maximized mode) */}
+              {!maximized ? (
+                <View style={tw`flex-row items-center justify-end mb-2`}>
+                  {hasLessons ? (
+                    <View
+                      style={tw.style(
+                        'px-3 py-1 rounded-full flex-row items-center gap-1',
+                        'bg-slate-800/80 dark:bg-slate-900/90 border border-white/10',
+                      )}
+                    >
+                      <Ionicons name="book-outline" size={14} color="#e5e7eb" />
+                      <Text style={tw`text-[11px] text-slate-100 dark:text-slate-200`}>
+                        Lesson {uiLessonIdx + 1}/{totalLessonsForUi}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
-            </View>
-          ) : null}
 
-          {/* Main narration stage */}
-         <NarrationStage
-          sentences={renderSentences}
-          words={renderWords}
-          currentIndex={currentIndex}
-          fontSize={stageFontSize}
-          isDark={isDark}
-          maximized={maximized}
-          fallbackSsml={shouldShowFallback ? effectiveSsml : ''}
-        />
+              {/* Main narration stage */}
+              <NarrationStage
+                sentences={renderSentences}
+                words={renderWords}
+                currentIndex={currentIndex}
+                fontSize={stageFontSize}
+                isDark={isDark}
+                maximized={maximized}
+                fallbackSsml={shouldShowFallback ? effectiveSsml : ''}
+              />
 
+              {/* Status */}
+              {loading && !words.length && !error ? (
+                <View style={tw`mt-3 items-center`}>
+                  <View style={tw`px-3 py-1.5 rounded-full bg-black/60 border border-white/15 flex-row items-center`}>
+                    <View style={tw`h-3 w-3 rounded-full border-2 border-white/30 border-t-white mr-2`} />
+                    <Text style={tw`text-xs text-slate-100`}>Generating lesson narration…</Text>
+                  </View>
+                </View>
+              ) : null}
 
-
-
-          {/* Status */}
-          {loading && !words.length && !error ? (
-            <View style={tw`mt-3 items-center`}>
-              <View style={tw`px-3 py-1.5 rounded-full bg-black/60 border border-white/15 flex-row items-center`}>
-                <View style={tw`h-3 w-3 rounded-full border-2 border-white/30 border-t-white mr-2`} />
-                <Text style={tw`text-xs text-slate-100`}>Generating lesson narration…</Text>
-              </View>
-            </View>
-          ) : null}
-
-          {error && !loading ? (
-            <View style={tw`mt-3 items-center`}>
-              <View style={tw`px-3 py-1.5 rounded-full bg-red-950/80 border border-red-500/60`}>
-                <Text style={tw`text-xs text-red-100`}>{error}</Text>
-              </View>
-            </View>
-          ) : null}
+              {error && !loading ? (
+                <View style={tw`mt-3 items-center`}>
+                  <View style={tw`px-3 py-1.5 rounded-full bg-red-950/80 border border-red-500/60`}>
+                    <Text style={tw`text-xs text-red-100`}>{error}</Text>
+                  </View>
+                </View>
+              ) : null}
+            </>
+          )}
         </View>
 
         {/* Bottom bar */}
@@ -1049,18 +1141,6 @@ const shouldShowFallback = !liveReady && !stableTimed;
 
         currentIndex={currentIndex}
         seekToWord={seekToWordNative}
-      />
-
-      {/* Notes */}
-      <NotesModal
-        open={showNotes}
-        onClose={() => setShowNotes(false)}
-        title={lessonHeadingForUi}
-        markdown={
-          hasLessons
-            ? lessons[uiLessonIdx]?.markdown || '_No notes for this lesson yet._'
-            : '_No notes for this lesson yet._'
-        }
       />
 
       {/* Theme */}
