@@ -104,7 +104,31 @@ async function confirmMpesaPaymentTx(client, payRow) {
     [payRow.id],
   );
 
-  const completedPay = upd.rows[0];
+  let completedPay = upd.rows[0];
+
+  // If nothing was updated, re-read the row defensively (idempotent confirms)
+  if (!upd.rowCount) {
+    const reread = await client.query(
+      `SELECT * FROM payments WHERE id=$1 FOR UPDATE`,
+      [payRow.id],
+    );
+
+    const current = reread.rows[0];
+    if (!current) {
+      return { ok: false, status: 'missing', message: 'Payment not found' };
+    }
+
+    if (isSettledPaymentStatus(current.status)) {
+      return { ok: true, alreadyCompleted: true, payment: current };
+    }
+
+    // Not pending/settled — treat as failure without double-crediting
+    return {
+      ok: false,
+      status: String(current.status || 'unknown'),
+      message: 'Payment not in a completable state',
+    };
+  }
 
   // credit tokens (safe because status flipped inside txn)
   const pkg = await client.query(

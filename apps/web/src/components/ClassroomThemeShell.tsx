@@ -37,6 +37,9 @@ type ClassroomThemeShellProps = Record<string, any> & {
   showFloatingThemeButton?: boolean;
   activeIndex?: number;
   onPrev?: () => Promise<boolean> | boolean;
+  gateMode?: 'narration' | 'notes_only';
+  gateNotice?: { reason?: string; resetsAt?: string | null; remainingMinutes?: number | null } | null;
+  gateUsage?: Array<{ bucket?: string; remainingSeconds?: number; limitSeconds?: number; resetsAt?: string | null }>;
 };
 
 const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (props) => {

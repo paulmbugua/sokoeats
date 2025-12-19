@@ -314,6 +314,9 @@ const openOverlay = useCallback(() => {
     error,
     ttsLoading,
     ttsError,
+    gateMode,
+    gateNotice,
+    gateUsage,
     loadTopCourses,
     selectCourse,
     startWithAI,
@@ -1082,6 +1085,9 @@ const scrollContentInset = useMemo(
               currentIdx={currentIdx ?? 0}
               outline={outline}
               backendUrl={backendUrl}
+              gateMode={gateMode}
+              gateNotice={gateNotice}
+              gateUsage={gateUsage}
               onBeforePlay={onBeforePlayWrapped}
               onEnded={onEndedWrapped}
               onRequestStart={onRequestStartWrapped}
