@@ -47,6 +47,10 @@ type ClassroomThemeShellProps = Record<string, any> & {
   /** loading callback – we support both names for safety */
   onPlayerLoadingChange?: (loading: boolean) => void;
   onLoadingChange?: (loading: boolean) => void;
+
+  gateMode?: 'narration' | 'notes_only';
+  gateNotice?: { reason?: string; resetsAt?: string | null; remainingMinutes?: number | null } | null;
+  gateUsage?: Array<{ bucket?: string; remainingSeconds?: number; limitSeconds?: number; resetsAt?: string | null }>;
 };
 
 /* --------------------------- storage helpers --------------------------- */

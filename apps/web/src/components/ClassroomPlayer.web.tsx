@@ -46,6 +46,10 @@ type Props = {
   onBeforePlay?: () => Promise<void> | void;
 
   activeIndex?: number;
+
+  gateMode?: 'narration' | 'notes_only';
+  gateNotice?: { reason?: string; resetsAt?: string | null; remainingMinutes?: number | null } | null;
+  gateUsage?: Array<{ bucket?: string; remainingSeconds?: number; limitSeconds?: number; resetsAt?: string | null }>;
 };
 
 // --- helpers -----------------------------------------------------------------
@@ -155,8 +159,49 @@ function Container(props: Props) {
   const [voicesLoading, setVoicesLoading] = React.useState(false);
   const [voicesError, setVoicesError] = React.useState<string | null>(null);
   const [showTranscript, setShowTranscript] = React.useState(false);
-  const [showNotes, setShowNotes] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<'narration' | 'notes'>(() =>
+    props.gateMode === 'notes_only' ? 'notes' : 'narration'
+  );
   const [showAudioDebug, setShowAudioDebug] = React.useState(false);
+
+  const narrationLocked = props.gateMode === 'notes_only';
+  const gateNotice = props.gateNotice;
+  const gateReset = gateNotice?.resetsAt ? new Date(gateNotice.resetsAt).toLocaleString() : null;
+  const showNotes = activeTab === 'notes';
+  const playDisabled = narrationLocked || activeTab === 'notes';
+
+  React.useEffect(() => {
+    if (narrationLocked) setActiveTab('notes');
+  }, [narrationLocked]);
+
+  const isOrgCourse = React.useMemo(
+    () => Boolean(course?.orgId || (course as any)?.org_id || (course as any)?.org?.id),
+    [course]
+  );
+  const notesCtaLabel = React.useMemo(() => {
+    if (isOrgCourse) {
+      return narrationLocked && gateNotice?.reason === 'tier_locked'
+        ? 'Narration is available on Pro/Enterprise.'
+        : 'Buy extra narration hours';
+    }
+    return 'Unlock narration by purchasing the certificate';
+  }, [gateNotice?.reason, isOrgCourse, narrationLocked]);
+  const notesSubtitle = narrationLocked
+    ? gateReset
+      ? `Resets on: ${gateReset}`
+      : 'Narration is temporarily unavailable.'
+    : 'Read the lesson notes anytime.';
+
+  React.useEffect(() => {
+    if (playDisabled && isPlaying) {
+      pause().catch(() => {});
+    }
+  }, [playDisabled, isPlaying, pause]);
+
+  const switchToNarration = React.useCallback(() => {
+    if (!narrationLocked) setActiveTab('narration');
+  }, [narrationLocked]);
+  const switchToNotes = React.useCallback(() => setActiveTab('notes'), []);
 
   React.useEffect(() => {
     let alive = true;
@@ -226,6 +271,7 @@ function Container(props: Props) {
   const lastPlayClickRef = React.useRef(0);
   const handlePlayClick = React.useCallback(async () => {
     const now = Date.now(); if (now - lastPlayClickRef.current < 400) return; lastPlayClickRef.current = now;
+    if (playDisabled) { switchToNotes(); return; }
     try {
       await resumeAudioContext();
       if (!isPlaying) {
@@ -234,7 +280,18 @@ function Container(props: Props) {
         await play();
       } else { pause(); }
     } catch {}
-  }, [isPlaying, onBeforePlay, play, pause, resumeAudioContext, words.length, onRequestStart, onPlayerLoadingChange]);
+  }, [
+    isPlaying,
+    onBeforePlay,
+    play,
+    pause,
+    resumeAudioContext,
+    words.length,
+    onRequestStart,
+    onPlayerLoadingChange,
+    playDisabled,
+    switchToNotes,
+  ]);
 
   // Seek helpers
   function indexForTime(ws: Array<{ start: number; end: number }>, t: number) {
@@ -449,7 +506,7 @@ React.useEffect(() => {
       if (e.key.toLowerCase() === 't') {
         setShowTranscript((s) => !s);
       } else if (e.key.toLowerCase() === 'n') {
-        setShowNotes((s) => !s);
+        setActiveTab((t) => (t === 'notes' ? (narrationLocked ? 'notes' : 'narration') : 'notes'));
       } else if (e.key.toLowerCase() === 'd') {
         setShowAudioDebug((s) => !s);
       } else if (e.code === 'Space') {
@@ -465,7 +522,7 @@ React.useEffect(() => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [handlePlayClick]);
+  }, [handlePlayClick, narrationLocked]);
 
   // A11y: screen-reader friendly explicit slider for seek (overlay but visually hidden)
   const onA11ySeek = (v: number) => {
@@ -519,6 +576,50 @@ React.useEffect(() => {
       aria-label="Lesson player"
       aria-busy={loading || isAdvancing}
     >
+      {narrationLocked && (
+        <div className="mb-2 rounded-xl bg-amber-500/80 text-white px-4 py-3 text-sm flex items-center gap-2">
+          <span className="font-semibold">Narration quota reached / locked.</span>
+          <span>
+            {gateReset
+              ? `Resets on: ${gateReset}`
+              : 'Narration is temporarily unavailable. Switch to notes.'}
+          </span>
+        </div>
+      )}
+      <div className="mb-3 flex gap-2">
+        <button
+          type="button"
+          onClick={switchToNarration}
+          disabled={narrationLocked}
+          className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+            activeTab === 'narration'
+              ? 'bg-white text-slate-900'
+              : 'bg-slate-800/70 text-white border-white/20'
+          } ${narrationLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+          aria-pressed={activeTab === 'narration'}
+        >
+          {narrationLocked ? 'Narration (Locked)' : 'Narration'}
+        </button>
+        <button
+          type="button"
+          onClick={switchToNotes}
+          className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+            activeTab === 'notes'
+              ? 'bg-white text-slate-900'
+              : 'bg-slate-800/70 text-white border-white/20'
+          }`}
+          aria-pressed={activeTab === 'notes'}
+        >
+          Notes
+        </button>
+      </div>
+      {showNotes && (
+        <div className="mb-3 rounded-xl border border-indigo-400/40 bg-indigo-900/50 px-4 py-3 text-white">
+          <div className="font-semibold">Notes only</div>
+          <div className="text-sm opacity-90">{notesSubtitle}</div>
+          <div className="text-sm mt-1">{notesCtaLabel}</div>
+        </div>
+      )}
         <div
     className={
       `${isMax
@@ -545,6 +646,8 @@ React.useEffect(() => {
             onPlayPause={handlePlayClick}
             playing={isPlaying}
             loading={loading}
+            disablePlay={playDisabled}
+            gateNotice={gateNotice}
             onToggleTranscript={() => setShowTranscript((s: boolean) => !s)}
             transcriptOpen={showTranscript}
             onToggleThemePanel={onToggleThemePanel}
@@ -714,7 +817,7 @@ React.useEffect(() => {
             onFwd5={() => nudgeSeconds(5)}
             onPlayPause={handlePlayClick}
             playing={isPlaying}
-            loading={loading}
+            loading={loading || playDisabled}
             volume={volume}
             setVolume={setVolume}
             toggleMute={toggleMute}

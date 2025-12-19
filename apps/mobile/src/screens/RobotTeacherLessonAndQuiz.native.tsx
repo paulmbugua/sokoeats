@@ -105,9 +105,12 @@ interface LessonAndQuizProps {
   onPlayerLoadingChange?: (loading: boolean) => void;
   onToggleMaximized: () => void;
   onStart?: () => Promise<void> | void;     // ← add
-   hasJoined?: boolean;   
+   hasJoined?: boolean;
    canAutoStart?: boolean;                    // ← add
   course: any;
+  gateMode?: 'narration' | 'notes_only';
+  gateNotice?: { reason?: string; resetsAt?: string | null; remainingMinutes?: number | null } | null;
+  gateUsage?: Array<{ bucket?: string; remainingSeconds?: number; limitSeconds?: number; resetsAt?: string | null }>;
   outline: any[];
   backendUrl: string;
   onBeforePlay: () => Promise<void> | void;
@@ -187,6 +190,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   backendUrl,
   onBeforePlay,
   onEnded,
+  gateMode,
+  gateNotice,
+  gateUsage,
   themeOpen,
   onThemeOpenChange,
   isOrgFlow,

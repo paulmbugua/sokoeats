@@ -718,6 +718,21 @@ export interface AiQuizRequest extends AiSizingKnobs {
   lessonIndex?: number;
 }
 
+export type LessonGateMode = 'narration' | 'notes_only';
+export type LessonGateNotice = {
+  reason: string;
+  resetsAt?: string | null;
+  remainingMinutes?: number | null;
+};
+
+export type LessonGateUsage = {
+  bucket?: string;
+  remainingSeconds?: number;
+  limitSeconds?: number;
+  reservedSeconds?: number;
+  resetsAt?: string | null;
+};
+
 export type AiOutlineResponse = {
   outline: AiOutlineSection[];
 };
@@ -735,8 +750,15 @@ export type LessonPack = {
   joinedSsml: string;
   quiz: Quiz;
   notice?: { degraded: boolean; reason: string };
+  mode?: LessonGateMode;
+  usage?: LessonGateUsage[];
 };
-export type LessonSSMLResponse = LessonPack;
+export type GenerateLessonSSMLResponse = LessonPack & {
+  mode: LessonGateMode;
+  notice?: LessonGateNotice | null;
+  usage?: LessonGateUsage[];
+};
+export type LessonSSMLResponse = GenerateLessonSSMLResponse;
 
 export type QuizQuestion = {
   id: string;

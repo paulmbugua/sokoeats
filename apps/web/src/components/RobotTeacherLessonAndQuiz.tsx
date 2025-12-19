@@ -70,6 +70,9 @@ interface LessonAndQuizProps {
   backendUrl: string;
   onBeforePlay: () => Promise<void> | void;
   onEnded: () => void;
+  gateMode?: 'narration' | 'notes_only';
+  gateNotice?: { reason?: string; resetsAt?: string | null; remainingMinutes?: number | null } | null;
+  gateUsage?: Array<{ bucket?: string; remainingSeconds?: number; limitSeconds?: number; resetsAt?: string | null }>;
   themeOpen: boolean;
   onThemeOpenChange: (open: boolean) => void;
   // outline → quiz
@@ -144,6 +147,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   hasJoined,
   onStart,
   onEnded,
+  gateMode,
+  gateNotice,
+  gateUsage,
   themeOpen,
   onThemeOpenChange,
   isOrgFlow,
@@ -922,6 +928,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
             playJoinedIfAvailable={hasJoined}
             onBeforePlay={guardedBeforePlay}
             onEnded={onEnded}
+            gateMode={gateMode}
+            gateNotice={gateNotice}
+            gateUsage={gateUsage}
             onNext={onNext}
             onPrev={onPrev}
             isBuildingNext={isBuildingNext}
