@@ -250,53 +250,14 @@ useEffect(() => {
   const useJoined = playJoinedIfAvailable && hasJoined;
 
   const [showTranscript, setShowTranscript] = useState(false);
-  const [activeTab, setActiveTab] = useState<'narration' | 'notes'>(
-    () => (narrationLocked ? 'notes' : 'narration')
-  );
+  const [showNotes, setShowNotes] = useState(() => narrationLocked);
   const [showThemeSheet, setShowThemeSheet] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const [topBarH, setTopBarH] = useState(56);
 
   useEffect(() => {
-    if (narrationLocked) setActiveTab('notes');
+    if (narrationLocked) setShowNotes(true);
   }, [narrationLocked]);
-
-  const isNotesTab = activeTab === 'notes';
-  const canNarrate = activeTab === 'narration' && !narrationLocked;
-  const isOrgCourse = useMemo(
-    () => Boolean(course?.orgId || course?.org_id || course?.org?.id),
-    [course]
-  );
-  const notesCtaLabel = useMemo(() => {
-    if (isOrgCourse) {
-      return narrationLocked && props.gateNotice?.reason === 'tier_locked'
-        ? 'Upgrade to Pro/Enterprise'
-        : 'Buy extra narration hours';
-    }
-    return 'Unlock narration by purchasing the certificate';
-  }, [isOrgCourse, narrationLocked, props.gateNotice?.reason]);
-
-  const notesSubtitle = narrationLocked
-    ? gateReset
-      ? `Resets on: ${gateReset}`
-      : 'Narration is currently unavailable.'
-    : 'Read the lesson notes anytime.';
-
-  const switchToNarration = useCallback(() => {
-    if (!narrationLocked) setActiveTab('narration');
-  }, [narrationLocked]);
-  const switchToNotes = useCallback(() => setActiveTab('notes'), []);
-
-  useEffect(() => {
-    if (isNotesTab && nativeIsPlaying) {
-      (async () => {
-        try {
-          if (sound) await sound.pauseAsync();
-        } catch {}
-        setNativeIsPlaying(false);
-      })();
-    }
-  }, [isNotesTab, nativeIsPlaying, sound]);
 
 
   // Reader scale
@@ -664,10 +625,7 @@ const nextIsReady = useCallback(() => {
       if (now - lastPlayTapRef.current < 350) return;
       lastPlayTapRef.current = now;
 
-      if (!canNarrate) {
-        setActiveTab('notes');
-        return;
-      }
+      if (narrationLocked) return;
 
       if (nativeIsPlaying) {
         autoPlayRef.current = false;
@@ -994,7 +952,7 @@ const shouldShowFallback = !liveReady && !stableTimed;
           maximized={maximized}
           onToggleMaximize={() => setMaximized((m) => !m)}
           onHeight={setTopBarH}
-          disablePlay={!canNarrate}
+          disablePlay={narrationLocked}
           gateNotice={props.gateNotice}
         />
 
@@ -1145,32 +1103,32 @@ const shouldShowFallback = !liveReady && !stableTimed;
           )}
         </View>
 
-        {!isNotesTab ? (
-          <BottomBarMobile
-            currentSec={currentSec}
-            durationSec={durationSec}
-            progress={progress}
-            onSeek={seekToTime}
-            onBack5={() => nudgeSeconds(-5)}
-            onFwd5={() => nudgeSeconds(5)}
-            onPlayPause={handlePlayPause}
-            playing={nativeIsPlaying}
-            loading={loading}
-            volume={volume}
-            volDown={volDown}
-            volUp={volUp}
-            toggleMute={toggleMute}
-            onPrev={hasLessons ? handlePrev : undefined}
-            onNext={hasLessons ? handleNext : undefined}
-            lessonIndex={uiLessonIdx}
-            totalLessons={totalLessonsForUi}
-            isBuildingNext={!!isBuildingNext}
-            userScale={userScale}
-            setUserScale={setUserScale}
-            hlHex={hlHex}
-            disablePlay={!canNarrate}
-          />
-        ) : null}
+        {/* Bottom bar */}
+        <BottomBarMobile
+          currentSec={currentSec}
+          durationSec={durationSec}
+          progress={progress}
+          onSeek={seekToTime}
+          onBack5={() => nudgeSeconds(-5)}
+          onFwd5={() => nudgeSeconds(5)}
+          onPlayPause={handlePlayPause}
+          playing={nativeIsPlaying}
+          loading={loading}
+          disablePlay={narrationLocked}
+          volume={volume}
+          volDown={volDown}
+          volUp={volUp}
+          toggleMute={toggleMute}
+          onPrev={hasLessons ? handlePrev : undefined}
+          onNext={hasLessons ? handleNext : undefined}
+          lessonIndex={uiLessonIdx}
+          totalLessons={totalLessonsForUi}
+          isBuildingNext={!!isBuildingNext}
+          userScale={userScale}
+          setUserScale={setUserScale}
+          hlHex={hlHex}
+         
+        />
       </View>
      
            {/* Transcript */}
