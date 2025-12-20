@@ -65,6 +65,10 @@ import OrgHomeRouter from './pages/org/OrgHomeRouter.web';
 import OerReaderFull from './pages/OerReaderFull.web';
 import OerCollectionReader from './pages/OerCollectionReader.web';
 import OrgExamResultsPortal from './pages/org/OrgExamResultsPortal.web';
+import OrgAttendancePage from './pages/org/OrgAttendance.web';
+import OrgFeesPage from './pages/org/OrgFees.web';
+import OrgNewslettersPage from './pages/org/OrgNewsletters.web';
+import OrgAnnouncementsPage from './pages/org/OrgAnnouncements.web';
 
 // org change-password page
 import OrgChangePassword from './pages/org/OrgChangePassword.web';
@@ -422,6 +426,38 @@ const App: React.FC<{}> = () => {
           />
 
           <Route path="/org/exams" element={<OrgExamResultsPortal />} />
+          <Route
+            path="/org/attendance"
+            element={
+              <OrgInstructorOnlyRoute>
+                <OrgAttendancePage />
+              </OrgInstructorOnlyRoute>
+            }
+          />
+          <Route
+            path="/org/fees"
+            element={
+              <OrgAdminOnlyRoute>
+                <OrgFeesPage />
+              </OrgAdminOnlyRoute>
+            }
+          />
+          <Route
+            path="/org/newsletters"
+            element={
+              <OrgAdminOnlyRoute>
+                <OrgNewslettersPage />
+              </OrgAdminOnlyRoute>
+            }
+          />
+          <Route
+            path="/org/announcements"
+            element={
+              <OrgAdminOnlyRoute>
+                <OrgAnnouncementsPage />
+              </OrgAdminOnlyRoute>
+            }
+          />
           <Route path="/org/change-password" element={<OrgChangePassword />} />
         </Route>
 

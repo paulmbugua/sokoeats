@@ -18,6 +18,7 @@ export { default as useTutorReviews } from './useTutorReviews';
 export { default as useUploadClassVault } from './useUploadClassVault';
 export { default as useAppQuery } from './useAppQuery';
 export { default as useTheme, ThemeProvider, useThemeProvider } from './useTheme';
+export { useOrgProTools } from './useOrgProTools';
 export * from './useAchievements';
 export * from './useCertificates';
 export * from './useCourseProgress';
