@@ -57,6 +57,11 @@ export type MainStackParamList = {
 
   OrgProfile: undefined;
 
+  OrgAttendance: undefined;
+  OrgFees: undefined;
+  OrgNewsletters: undefined;
+  OrgAnnouncements: undefined;
+
   OrgExamResultsPortal:
     | { view?: 'learner' | 'admin'; studentId?: string | number | null }
     | undefined;

@@ -51,6 +51,24 @@ import {
   getOrgAssignmentSubmissions,
 } from '../controllers/orgLegacyAssignmentsController.js';
 
+import {
+  createAttendanceSession,
+  upsertAttendanceEntries,
+  getAttendanceReport,
+  createFeeCharge,
+  bulkFeeCharges,
+  recordFeePayment,
+  getFeeBalances,
+  getFeeStatement,
+  createNewsletter,
+  generateNewsletterContent,
+  saveNewsletterContent,
+  sendNewsletter,
+  listNewsletters,
+  createAnnouncement,
+  listAnnouncements,
+} from '../controllers/orgProToolsController.js';
+
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -199,6 +217,26 @@ router.post('/:orgId/upgrade', requireAuth, async (req, res) => {
     seats: tier === 'starter' ? 50 : tier === 'pro' ? 500 : 5000,
   });
 });
+
+/* ─────────────────────── Pro/Enterprise org tools ─────────────────────── */
+router.post('/:orgId/attendance/sessions', requireAuth, createAttendanceSession);
+router.post('/:orgId/attendance/entries', requireAuth, upsertAttendanceEntries);
+router.get('/:orgId/attendance/report', requireAuth, getAttendanceReport);
+
+router.post('/:orgId/fees/charges', requireAuth, createFeeCharge);
+router.post('/:orgId/fees/charges/bulk', requireAuth, bulkFeeCharges);
+router.post('/:orgId/fees/payments', requireAuth, recordFeePayment);
+router.get('/:orgId/fees/balances', requireAuth, getFeeBalances);
+router.get('/:orgId/fees/learners/:learnerId/statement', requireAuth, getFeeStatement);
+
+router.post('/:orgId/newsletters', requireAuth, createNewsletter);
+router.post('/:orgId/newsletters/generate', requireAuth, generateNewsletterContent);
+router.put('/:orgId/newsletters/:id', requireAuth, saveNewsletterContent);
+router.post('/:orgId/newsletters/:id/send', requireAuth, sendNewsletter);
+router.get('/:orgId/newsletters', requireAuth, listNewsletters);
+
+router.post('/:orgId/announcements', requireAuth, createAnnouncement);
+router.get('/:orgId/announcements', requireAuth, listAnnouncements);
 
 router.post('/:orgId/reports/test-send', requireAuth, (_req, res) =>
   res.json({ ok: true }),
