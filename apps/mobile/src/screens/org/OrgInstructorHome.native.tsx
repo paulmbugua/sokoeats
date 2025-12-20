@@ -830,6 +830,42 @@ const OrgInstructorHomeNative: React.FC = () => {
             )}
           </Animated.View>
 
+          {/* Pro tools shortcuts */}
+          <View style={[tw`mt-4 rounded-3xl p-4`, { backgroundColor: palette.softCard, borderColor: palette.border, borderWidth: 1 }]}>
+            <Text style={[tw`text-base font-semibold`, { color: palette.text }]}>Pro tools</Text>
+            <Text style={[tw`text-xs mt-1`, { color: palette.textMuted }]}>Attendance, fees, newsletters, and announcements.</Text>
+            <View style={tw`mt-3 gap-2`}>
+              <TouchableOpacity
+                style={[tw`rounded-2xl px-3 py-3`, { backgroundColor: palette.card, borderColor: palette.border, borderWidth: 1 }]}
+                onPress={() => navigation.navigate('OrgAttendance')}
+              >
+                <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>Attendance</Text>
+                <Text style={[tw`text-xs mt-1`, { color: palette.textSubtle }]}>Create sessions and bulk mark learners.</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[tw`rounded-2xl px-3 py-3`, { backgroundColor: palette.card, borderColor: palette.border, borderWidth: 1 }]}
+                onPress={() => navigation.navigate('OrgFees')}
+              >
+                <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>Fees & balances</Text>
+                <Text style={[tw`text-xs mt-1`, { color: palette.textSubtle }]}>Charges, payments, and printable statements.</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[tw`rounded-2xl px-3 py-3`, { backgroundColor: palette.card, borderColor: palette.border, borderWidth: 1 }]}
+                onPress={() => navigation.navigate('OrgNewsletters')}
+              >
+                <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>Newsletters</Text>
+                <Text style={[tw`text-xs mt-1`, { color: palette.textSubtle }]}>Draft Markdown updates for each term.</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[tw`rounded-2xl px-3 py-3`, { backgroundColor: palette.card, borderColor: palette.border, borderWidth: 1 }]}
+                onPress={() => navigation.navigate('OrgAnnouncements')}
+              >
+                <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>Announcements</Text>
+                <Text style={[tw`text-xs mt-1`, { color: palette.textSubtle }]}>Post pinned notices to org audiences.</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* Bottom shortcuts */}
           <Animated.View
             entering={FadeInDown.delay(240).duration(320)}

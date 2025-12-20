@@ -84,6 +84,10 @@ import OrgLearnerHomeNative from './screens/org/OrgLearnerHome.native';
 import OrgInstructorHomeNative from './screens/org/OrgInstructorHome.native';
 import OrgExamResultsPortal from './screens/org/OrgExamResultsPortal.native'; // if you have this
 import OrgChangePasswordNative from './screens/org/OrgChangePassword.native';
+import OrgAttendanceNative from './screens/org/OrgAttendance.native';
+import OrgFeesNative from './screens/org/OrgFees.native';
+import OrgNewslettersNative from './screens/org/OrgNewsletters.native';
+import OrgAnnouncementsNative from './screens/org/OrgAnnouncements.native';
 
 const Stack = createStackNavigator<MainStackParamList>();
 
@@ -369,6 +373,44 @@ const App: React.FC = () => {
             {() => (
               <OrgProtectedRoute>
                 <OrgExamResultsPortal />
+              </OrgProtectedRoute>
+            )}
+          </Stack.Screen>
+
+          {/* Org pro tools */}
+          <Stack.Screen name="OrgAttendance">
+            {() => (
+              <OrgProtectedRoute>
+                <OrgInstructorOnlyGuard>
+                  <OrgAttendanceNative />
+                </OrgInstructorOnlyGuard>
+              </OrgProtectedRoute>
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="OrgFees">
+            {() => (
+              <OrgProtectedRoute>
+                <OrgAdminOnlyGuard>
+                  <OrgFeesNative />
+                </OrgAdminOnlyGuard>
+              </OrgProtectedRoute>
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="OrgNewsletters">
+            {() => (
+              <OrgProtectedRoute>
+                <OrgAdminOnlyGuard>
+                  <OrgNewslettersNative />
+                </OrgAdminOnlyGuard>
+              </OrgProtectedRoute>
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="OrgAnnouncements">
+            {() => (
+              <OrgProtectedRoute>
+                <OrgAdminOnlyGuard>
+                  <OrgAnnouncementsNative />
+                </OrgAdminOnlyGuard>
               </OrgProtectedRoute>
             )}
           </Stack.Screen>

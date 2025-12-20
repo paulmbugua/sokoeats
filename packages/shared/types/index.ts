@@ -16,6 +16,7 @@ export type PayoutMethod = 'wise' | 'mpesa';
 export type PayoutCurrency = 'USD' | 'KES';
 export type OrgCycle = 'monthly' | 'yearly';
 export type OrgTier = 'starter' | 'pro' | 'enterprise';
+export type { AttendanceStatus, OrgAttendanceEntry, OrgAttendanceSession, OrgFeeCharge, OrgFeePayment, OrgFeeStatement, OrgNewsletter, OrgAnnouncement } from './orgPro';
 
 // UI-friendly strings (for display forms etc.)
 export type Pricing = {
