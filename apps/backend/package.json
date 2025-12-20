@@ -14,7 +14,6 @@
     "server:ipv4": "nodemon --dns-result-order=ipv4first server.js",
     "lint": "yarn exec eslint . --ext .js,.mjs,.cjs --no-cache",
     "lint:fix": "yarn exec eslint . --ext .js,.mjs,.cjs --fix --no-cache",
-
     "format": "prettier --write ."
   },
   "author": "",
