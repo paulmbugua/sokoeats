@@ -672,6 +672,79 @@ const OrgProfilePage: React.FC = () => {
 
       {/* Content */}
       <div className="max-w-screen-xl mx-auto px-4 sm:px-6 pb-8">
+        {/* Pro tools summary */}
+        <section className={`${cardBase} p-4 sm:p-5 mb-4`}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-[#49739c] dark:text-darkTextSecondary">Pro &amp; Enterprise</p>
+              <h2 className="text-lg font-bold">Org tools hub</h2>
+              <p className="text-sm text-[#49739c] dark:text-darkTextSecondary">
+                Attendance, fees &amp; balances, newsletters, and announcements for your institution.
+              </p>
+            </div>
+            <Link
+              to="/org/portal?tab=tools"
+              className="inline-flex h-10 items-center rounded-xl bg-[#3d99f5] px-4 text-sm font-semibold text-white shadow hover:bg-[#2e7ad2] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3d99f5]"
+            >
+              Open in portal
+            </Link>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Link
+              to="/org/attendance"
+              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold">Attendance</div>
+                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">Create sessions and bulk mark learners.</p>
+                </div>
+                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
+              </div>
+            </Link>
+
+            <Link
+              to="/org/fees"
+              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold">Fees &amp; balances</div>
+                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">Charges, payments, and statements.</p>
+                </div>
+                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
+              </div>
+            </Link>
+
+            <Link
+              to="/org/newsletters"
+              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold">Newsletters</div>
+                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">Draft, preview, and archive updates.</p>
+                </div>
+                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
+              </div>
+            </Link>
+
+            <Link
+              to="/org/announcements"
+              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold">Announcements</div>
+                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">Pinned notices for learners and instructors.</p>
+                </div>
+                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
+              </div>
+            </Link>
+          </div>
+        </section>
+
         {/* People */}
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Instructors */}

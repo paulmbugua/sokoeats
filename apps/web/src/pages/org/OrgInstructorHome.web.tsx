@@ -25,6 +25,7 @@ const OrgInstructorHome: React.FC = () => {
     'Your Institution';
 
   const tierLabel: string = (org?.tier && String(org.tier).toUpperCase()) || 'STARTER';
+  const isProTier = (org?.tier || '').toLowerCase() === 'pro' || (org?.tier || '').toLowerCase() === 'enterprise';
 
   const handleLogout = useCallback(async () => {
     if (orgLogout) {
@@ -288,6 +289,64 @@ const OrgInstructorHome: React.FC = () => {
             &amp; results area to directly capture marks, auto-grade, and generate rich PDF report
             cards for guardians.
           </p>
+        </section>
+
+        {/* Pro tools */}
+        <section className="rounded-3xl border border-slate-200/70 dark:border-darkCard bg-white/90 dark:bg-[#020617] px-4 sm:px-5 py-4 sm:py-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm sm:text-base font-semibold">Pro tools</h2>
+              <p className="text-xs sm:text-sm text-mutedGray dark:text-darkTextSecondary">
+                Attendance, balances, newsletters, and announcements for your institution.
+              </p>
+            </div>
+            {!isProTier && (
+              <span className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-100 dark:ring-amber-700/60">
+                Upgrade to unlock
+              </span>
+            )}
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {[{
+              title: 'Attendance',
+              body: 'Create sessions and mark learners at scale.',
+              href: '/org/attendance',
+            },
+            {
+              title: 'Fees & balances',
+              body: 'Charges, payments, and printable statements.',
+              href: '/org/fees',
+            },
+            {
+              title: 'Newsletters',
+              body: 'Draft term updates with AI assistance.',
+              href: '/org/newsletters',
+            },
+            {
+              title: 'Announcements',
+              body: 'Post pinned notices to learners and instructors.',
+              href: '/org/announcements',
+            }].map((card) => (
+              <Link
+                key={card.title}
+                to={card.href}
+                className={`rounded-2xl border px-3 py-3 text-left shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-slate-800 ${
+                  isProTier
+                    ? 'border-slate-200 bg-white hover:-translate-y-0.5 hover:shadow-md dark:bg-[#0b1420]'
+                    : 'border-dashed border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/10 dark:text-amber-100'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold">{card.title}</div>
+                    <p className="text-xs text-mutedGray dark:text-darkTextSecondary">{card.body}</p>
+                  </div>
+                  {!isProTier && <span className="text-[11px] font-semibold">Locked</span>}
+                </div>
+              </Link>
+            ))}
+          </div>
         </section>
 
         {/* Instructor signature section – mirrors portal backend flow */}

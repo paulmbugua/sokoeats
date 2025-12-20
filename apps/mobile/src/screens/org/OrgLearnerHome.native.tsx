@@ -130,6 +130,7 @@ const OrgLearnerHomeNative: React.FC = () => {
   const orgName: string = org?.name || org?.org_name || 'Your Institution';
 
   const planLabel: string = org?.tier ? String(org.tier).toUpperCase() : 'STARTER';
+  const isProTier = (org?.tier || '').toLowerCase() === 'pro' || (org?.tier || '').toLowerCase() === 'enterprise';
 
   const portalLabel: string = role ? `${String(role).toUpperCase()} PORTAL` : 'LEARNER PORTAL';
 
@@ -614,6 +615,37 @@ const OrgLearnerHomeNative: React.FC = () => {
               <Text style={[tw`mt-1 text-xs`, { color: palette.textMuted }]}>
                 Check your quiz results from Robot Tutor and legacy exams. Certificates are
                 currently available for Robot Tutor quizzes only.
+              </Text>
+            </TouchableOpacity>
+
+            {/* Announcements & newsletters */}
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate('OrgElearnPortal', {
+                  ...assignNavParams,
+                  tab: 'tools',
+                  from: 'learner',
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Open announcements and newsletters"
+              style={[
+                tw`rounded-2xl px-3 py-3`,
+                {
+                  borderWidth: 1,
+                  borderColor: isProTier ? palette.border : '#f59e0b',
+                  backgroundColor: isProTier ? palette.softCard : '#78350f1f',
+                },
+              ]}
+            >
+              <View style={tw`flex-row items-center justify-between gap-2`}>
+                <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>Announcements &amp; newsletters</Text>
+                <Text style={[tw`text-[11px]`, { color: palette.isDark ? '#c7d2fe' : '#4f46e5' }]}> 
+                  {isProTier ? 'Open →' : 'Locked'}
+                </Text>
+              </View>
+              <Text style={[tw`mt-1 text-xs`, { color: palette.textMuted }]}>
+                See pinned notices and term newsletters from your institution. {isProTier ? '' : 'Pro/Enterprise unlocks the feed.'}
               </Text>
             </TouchableOpacity>
 

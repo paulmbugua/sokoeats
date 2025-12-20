@@ -56,7 +56,7 @@ import type { OrgTier } from '@mytutorapp/shared/types';
 import { useThemePref } from '../../theme/ThemeContext';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 
-type TabKey = 'branding' | 'assign' | 'analytics';
+type TabKey = 'branding' | 'assign' | 'analytics' | 'tools';
 type Period = 'month' | 'term' | 'year';
 
 const PAY_DEBUG = true; // turn off later
@@ -364,6 +364,7 @@ const OrgElearnPortalNative: React.FC = () => {
   const [org, setOrg] = useState<Org | null>(null);
   const tier: OrgTier = (org?.tier as OrgTier) || 'starter';
   const tierMeta = ORG_TIERS[tier];
+  const isProTier = tier === 'pro' || tier === 'enterprise';
   const seatsMax = tierMeta.seats;
 
   const [seatsUsed, setSeatsUsed] = useState<number>(0);
@@ -1296,8 +1297,8 @@ const OrgElearnPortalNative: React.FC = () => {
   const nearLimit = seatPct >= 90;
 
   const visibleTabs: TabKey[] = canBrandingRole
-    ? ['branding', 'assign', 'analytics']
-    : ['assign', 'analytics'];
+    ? ['branding', 'assign', 'analytics', 'tools']
+    : ['assign', 'analytics', 'tools'];
 
   // Learner: legacy-only filter (same as your existing logic)
   const legacyAssignments = useMemo(
@@ -2885,6 +2886,75 @@ const OrgElearnPortalNative: React.FC = () => {
                       </View>
                     )}
                   </View>
+                </View>
+              )}
+              {/* PRO TOOLS */}
+              {tab === 'tools' && (
+                <View
+                  style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
+                >
+                  <View style={tw`flex-row items-center justify-between mb-3`}>
+                    <View>
+                      <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold`}>Org tools</Text>
+                      <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+                        Attendance, balances, newsletters, and announcements.
+                      </Text>
+                    </View>
+                    <View style={tw`px-2 py-1 rounded-full bg-[#e7edf4] dark:bg-white/10`}>
+                      <Text style={tw`text-[11px] font-semibold text-[#0d141c] dark:text-white`}>Pro & Enterprise</Text>
+                    </View>
+                  </View>
+
+                  {!isProTier && (
+                    <View style={tw`rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/20`}>
+                      <Text style={tw`text-sm font-semibold text-amber-800 dark:text-amber-100`}>
+                        Upgrade to unlock org tools
+                      </Text>
+                      <Text style={tw`text-xs text-amber-700 dark:text-amber-200`}>
+                        These shortcuts are available on Pro and Enterprise.
+                      </Text>
+                    </View>
+                  )}
+
+                  {[{
+                    title: 'Attendance',
+                    body: 'Create sessions and mark learners quickly.',
+                    route: 'OrgAttendance',
+                  },
+                  {
+                    title: 'Fees & balances',
+                    body: 'Charge fees, record payments, and view statements.',
+                    route: 'OrgFees',
+                  },
+                  {
+                    title: 'Newsletters',
+                    body: 'Draft term updates and archive sends.',
+                    route: 'OrgNewsletters',
+                  },
+                  {
+                    title: 'Announcements',
+                    body: 'Post pinned notices for learners and instructors.',
+                    route: 'OrgAnnouncements',
+                  }].map((card) => (
+                    <TouchableOpacity
+                      key={card.title}
+                      disabled={!isProTier}
+                      onPress={() => navigation.navigate(card.route as any)}
+                      style={tw`mt-2 rounded-2xl px-3 py-3 border ${
+                        isProTier
+                          ? 'border-[#cedbe8] bg-[#f8fbff] dark:border-white/10 dark:bg-[#111b28]'
+                          : 'border-dashed border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20'
+                      }`}
+                    >
+                      <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>{card.title}</Text>
+                      <Text style={tw`mt-1 text-xs text-[#49739c] dark:text-white/70`}>{card.body}</Text>
+                      {!isProTier && (
+                        <Text style={tw`mt-1 text-[11px] font-semibold text-amber-700 dark:text-amber-200`}>
+                          Locked – upgrade to use
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
                 </View>
               )}
             </>

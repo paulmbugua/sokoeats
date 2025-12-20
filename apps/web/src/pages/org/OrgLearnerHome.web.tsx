@@ -30,6 +30,7 @@ const OrgLearnerHome: React.FC = () => {
   const orgName: string = org?.name || org?.org_name || 'Your Institution';
 
   const planLabel: string = org?.tier ? org.tier.toString().toUpperCase() : 'STARTER';
+  const isProTier = (org?.tier || '').toLowerCase() === 'pro' || (org?.tier || '').toLowerCase() === 'enterprise';
 
   const portalLabel = role ? `${String(role).toUpperCase()} PORTAL` : 'LEARNER PORTAL';
 
@@ -391,6 +392,28 @@ const OrgLearnerHome: React.FC = () => {
                 <p className="mt-1 text-xs text-white/70">
                   Check your quiz results from Robot Tutor and legacy exams. Certificates are
                   currently available for Robot Tutor quizzes only.
+                </p>
+              </div>
+            </Link>
+
+            {/* Announcements & newsletters */}
+            <Link
+              to="/org/portal?tab=tools"
+              className={`group rounded-xl px-3 py-3 flex flex-col justify-between transition border ${
+                isProTier
+                  ? 'bg-white/5 hover:bg-white/10 border-white/10'
+                  : 'bg-amber-900/20 border-amber-500/30'
+              }`}
+            >
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-semibold">Announcements &amp; newsletters</h4>
+                  <span className="text-[11px] text-indigo-300 group-hover:translate-x-0.5 transition">
+                    {isProTier ? 'Open →' : 'Locked'}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-white/70">
+                  Stay updated with institution notices and end-of-term newsletters. Pro/Enterprise unlocks the full feed.
                 </p>
               </div>
             </Link>

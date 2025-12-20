@@ -52,7 +52,7 @@ export type MainStackParamList = {
   OrgInstructorHome: undefined;
 
   OrgElearnPortal:
-    | { tab?: 'branding' | 'assign' | 'analytics'; from?: string; courseId?: string }
+    | { tab?: 'branding' | 'assign' | 'analytics' | 'tools'; from?: string; courseId?: string }
     | undefined;
 
   OrgProfile: undefined;

@@ -34,7 +34,7 @@ import PlanPurchaseModalWeb from './PlanPurchaseModal.web';
 import type { OrgTier } from '@mytutorapp/shared/types';
 import { BrandingAssignPane, AnalyticsPane } from './OrgPortalPanes';
 
-type TabKey = 'branding' | 'assign' | 'analytics';
+type TabKey = 'branding' | 'assign' | 'analytics' | 'tools';
 type Period = 'month' | 'term' | 'year';
 type BillingCycle = 'monthly' | 'annual';
 type PayMethod = 'Paystack' | 'M-Pesa';
@@ -262,6 +262,7 @@ export default function OrgElearnPortal() {
   const [org, setOrg] = useState<Org | null>(null);
   const tier: OrgTier = (org?.tier as OrgTier) || 'starter';
   const tierMeta = ORG_TIERS[tier];
+  const isProTier = tier === 'pro' || tier === 'enterprise';
   const seatsMax = tierMeta.seats;
   const [seatsUsed, setSeatsUsed] = useState<number>(0);
 
@@ -1138,8 +1139,8 @@ export default function OrgElearnPortal() {
   const seatPct = Math.min(100, Math.round(((seatsUsed || 0) / seatsMax) * 100));
   const nearLimit = seatPct >= 90;
   const visibleTabs: TabKey[] = isInstructor
-    ? ['assign', 'analytics']
-    : ['branding', 'assign', 'analytics'];
+    ? ['assign', 'analytics', 'tools']
+    : ['branding', 'assign', 'analytics', 'tools'];
 
   const copyLink = async () => {
     try {
@@ -2156,6 +2157,80 @@ export default function OrgElearnPortal() {
                     )}
                   </section>
                 </>
+              )}
+              {tab === 'tools' && (
+                <section className="space-y-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold">Org tools</h2>
+                      <p className="text-sm text-[#49739c] dark:text-darkTextSecondary">
+                        Attendance, balances, newsletters, and announcements live here.
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center rounded-full bg-[#e7edf4] px-2.5 py-1 text-xs font-semibold text-[#0d141c] ring-1 ring-[#3d99f5]/50 dark:bg-[#172534] dark:text-white">
+                      Pro &amp; Enterprise
+                    </span>
+                  </div>
+
+                  {!isProTier && (
+                    <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-600 dark:bg-amber-900/20 dark:text-amber-100">
+                      <div className="font-semibold">Upgrade to unlock org tools</div>
+                      <p className="text-sm">These tools are available on Pro and Enterprise plans.</p>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/org/profile')}
+                        className="mt-2 inline-flex items-center gap-2 rounded-lg bg-[#3d99f5] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2e7ad2]"
+                      >
+                        View plans
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {[
+                      {
+                        title: 'Attendance',
+                        body: 'Create sessions and bulk mark learners with notes.',
+                        onClick: () => navigate('/org/attendance'),
+                      },
+                      {
+                        title: 'Fees & balances',
+                        body: 'Charge fees, record payments, and download statements.',
+                        onClick: () => navigate('/org/fees'),
+                      },
+                      {
+                        title: 'Newsletters',
+                        body: 'Draft and archive end-of-term updates with AI help.',
+                        onClick: () => navigate('/org/newsletters'),
+                      },
+                      {
+                        title: 'Announcements',
+                        body: 'Post pinned notices to learners and instructors.',
+                        onClick: () => navigate('/org/announcements'),
+                      },
+                    ].map((card) => (
+                      <button
+                        key={card.title}
+                        type="button"
+                        onClick={card.onClick}
+                        disabled={!isProTier}
+                        className={`rounded-2xl border px-4 py-3 text-left transition shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3d99f5] dark:border-white/10 ${
+                          isProTier
+                            ? 'border-[#d9e5f2] bg-white hover:-translate-y-0.5 hover:shadow-md dark:bg-[#0b1420]'
+                            : 'border-dashed border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/10 dark:text-amber-100'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-sm font-semibold">{card.title}</div>
+                            <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">{card.body}</p>
+                          </div>
+                          {!isProTier && <span className="text-[11px] font-semibold">Locked</span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
               )}
             </>
           )}
