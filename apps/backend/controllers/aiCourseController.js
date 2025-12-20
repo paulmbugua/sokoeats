@@ -25,6 +25,8 @@ import {
   buildGateNotice,
   blankLessonsFromOutline,
 } from '../services/narrationGate.js';
+import { getEntitlement } from './_entitlements.js';
+
 
 /* ─────────────────────────────────────────────────────────
  * Helpers
@@ -131,6 +133,30 @@ function isAbortLike(err) {
     err?.code === 'UND_ERR_ABORTED'
   );
 }
+
+async function hasCertificateEntitlement(userId, courseId) {
+  if (!userId || !courseId) return false;
+  try {
+    const ent = await getEntitlement(pool, userId, courseId);
+    return !!(ent && (ent.can_certificate || ent.tier));
+  } catch {
+    return false;
+  }
+}
+
+async function notesAllowed({ userId, orgId }) {
+  if (orgId) return true;
+  return !!userId; // any authenticated user
+}
+
+function notesPreview(markdown = '', maxChars = 400) {
+  const s = String(markdown || '').trim();
+  if (!s) return '';
+  if (s.length <= maxChars) return s;
+  return `${s.slice(0, maxChars).trim()}...\n\n> 🔒 Unlock full notes with Certificate.`;
+}
+
+
 
 /* ─────────────────────────────────────────────────────────
  * Controllers (thin): validate → gate → call service → set headers
@@ -324,6 +350,8 @@ export async function generateOutline(req, res) {
   }
 }
 
+
+
 export async function generateLessonSSML(req, res) {
   try {
     await withGate(async () => {
@@ -463,25 +491,38 @@ const estimateText = Array.isArray(outline)
 
 
       if (!gate?.ok) {
-        const notice = buildGateNotice(gate);
-        const lessons = blankLessonsFromOutline(outline, start, count);
+  const notice = buildGateNotice(gate);
 
-        const payload = {
-          mode: 'notes_only',
-          notice,
-          usage: gate?.usage || [],
-          lessons,
-          joinedSsml: '',
-          quiz: { questions: [] },
-        };
+  // reuse the userId you already defined above (don’t redeclare)
+  const canNotes = await notesAllowed({ userId, courseId, orgId });
 
-        console.log('[api:lesson-ssml] gate blocked narration', {
-          reason: notice?.reason,
-          resetsAt: notice?.resetsAt,
-        });
+  const lessonsOut = blankLessonsFromOutline(outline, start, count).map((l) => ({
+    ...l,
+    // choose ONE policy:
+    // 1) hide notes completely:
+    // markdown: canNotes ? l.markdown : '',
+    // 2) show preview teaser:
+    markdown: canNotes ? l.markdown : notesPreview(l.markdown),
+  }));
 
-        return res.status(200).json(payload);
-      }
+  const payload = {
+    mode: 'notes_only',
+    notice,
+    usage: gate?.usage || [],
+    lessons: lessonsOut,
+    joinedSsml: '',
+    quiz: { questions: [] },
+  };
+
+  console.log('[api:lesson-ssml] gate blocked narration', {
+    reason: notice?.reason,
+    resetsAt: notice?.resetsAt,
+    canNotes,
+  });
+
+  return res.status(200).json(payload);
+}
+
 
       const { status, data, headers } = await generateLessonSSMLService(
         {

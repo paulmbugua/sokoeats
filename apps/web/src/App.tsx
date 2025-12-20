@@ -1,53 +1,50 @@
 // apps/web/src/App.tsx
 import React, { ReactNode } from 'react';
-import { Routes, Route, Navigate, useLocation, useNavigate, Link } from 'react-router-dom';
-import RobotTutorPage from './pages/RobotTutor.web';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+
 import SiteLayout from './layouts/SiteLayout.web';
+import Spinner from './components/Spinner.web';
+import CookieConsentBanner from './components/CookieConsentBanner.web';
+import AuthBusyOverlay from './components/AuthBusyOverlay';
+
 import Landing from './pages/Landing.web';
-import InstitutionLogin from './pages/org/InstitutionLogin.web';
-import OrgProfilePage from './pages/org/OrgProfile.web';
 import HomePage from './pages/HomePage.web';
 import FindTutor from './pages/FindTutor.web';
+import RobotTutorPage from './pages/RobotTutor.web';
+import HelpPage from './pages/HelpPage.web';
+import ResourcesPage from './pages/Resources.web';
+import ProfileDetailPage from './pages/ProfileDetailPage.web';
+import ProfilePage from './pages/Profile.web';
+import LoginPage from './pages/LoginPage.web';
+
 import RefundsAndCancellations from './pages/RefundsAndCancellations';
-import UnsubscribePage from './pages/Unsubscribe';
 import FulfillmentPolicy from './pages/FulfillmentPolicy';
 import PaymentFlow from './pages/PaymentFlow';
-import LoginPage from './pages/LoginPage.web';
-import ProfileDetailPage from './pages/ProfileDetailPage.web';
-import OrgElearnPortal from './pages/org/OrgElearnPortal';
-import OrgInviteLanding from './pages/org/OrgInviteLanding';
-import ResultsPage from './pages/Results.web';
-import Messages from './pages/Messages.web';
-import MyEnrollmentsPage from './pages/MyEnrollments.web';
-import ProfilePage from './pages/Profile.web';
-import ResourcesPage from './pages/Resources.web';
-import AccountSection from './components/AccountSection.web';
-import CookieConsentBanner from './components/CookieConsentBanner.web';
+import UnsubscribePage from './pages/Unsubscribe';
 import CookiePolicy from './pages/CookiePolicy.web';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import AntiSpamPolicy from './pages/AntiSpamPolicy';
 import ComplaintsFeedback from './pages/ComplaintsFeedback';
-import Spinner from './components/Spinner.web';
-import HelpPage from './pages/HelpPage.web';
-import CourseDetails from './pages/CourseDetails.web';
+
+import Messages from './pages/Messages.web';
+import ResultsPage from './pages/Results.web';
+
 import MyCourses from './pages/MyCourses.web';
+import CourseDetails from './pages/CourseDetails.web';
 import EditCoursePage from './components/EditCourse.web';
-import AuthBusyOverlay from './components/AuthBusyOverlay';
-// ClassVault
-import ClassVaultList from './components/ClassVaultList.web';
-import ClassVaultDetail from './components/ClassVaultDetail.web';
-import ClassVaultUpload from './components/ClassVaultUpload.web';
-
-import { useShopContext } from '@mytutorapp/shared/context';
-// org role hook
-import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
-
-// Course lifecycle
+import MyEnrollmentsPage from './pages/MyEnrollments.web';
 import CreateCourse from './components/CreateCourse.web';
 import CourseEnrollment from './components/CourseEnrollment.web';
 import CourseProgress from './components/CourseProgress.web';
 import AchievementsList from './components/AchievementsList.web';
+
+import AccountSection from './components/AccountSection.web';
+
+// ClassVault
+import ClassVaultList from './components/ClassVaultList.web';
+import ClassVaultDetail from './components/ClassVaultDetail.web';
+import ClassVaultUpload from './components/ClassVaultUpload.web';
 
 // Public verify views
 import VerifyCertificatePage from './components/VerifyCertificate.web';
@@ -57,23 +54,31 @@ import VerifyCertificatePrintPage from './components/VerifyCertificatePrint.web'
 import CreateProfileForm from './components/CreateProfileForm.web';
 import ManageProfileForm from './components/ManageProfileForm.web';
 
-// role-specific org homes
+// Org pages
+import InstitutionLogin from './pages/org/InstitutionLogin.web';
+import OrgInviteLanding from './pages/org/OrgInviteLanding';
+import OrgHomeRouter from './pages/org/OrgHomeRouter.web';
+import OrgElearnPortal from './pages/org/OrgElearnPortal';
+import OrgProfilePage from './pages/org/OrgProfile.web';
 import OrgLearnerHome from './pages/org/OrgLearnerHome.web';
 import OrgInstructorHome from './pages/org/OrgInstructorHome.web';
-import OrgHomeRouter from './pages/org/OrgHomeRouter.web';
-
-import OerReaderFull from './pages/OerReaderFull.web';
-import OerCollectionReader from './pages/OerCollectionReader.web';
 import OrgExamResultsPortal from './pages/org/OrgExamResultsPortal.web';
 import OrgAttendancePage from './pages/org/OrgAttendance.web';
 import OrgFeesPage from './pages/org/OrgFees.web';
 import OrgNewslettersPage from './pages/org/OrgNewsletters.web';
 import OrgAnnouncementsPage from './pages/org/OrgAnnouncements.web';
-
-// org change-password page
 import OrgChangePassword from './pages/org/OrgChangePassword.web';
+
+// OER
+import OerReaderFull from './pages/OerReaderFull.web';
+import OerCollectionReader from './pages/OerCollectionReader.web';
+
+// Paystack callback pages
 import PaystackCallbackWeb from '@/pages/PaystackCallback.web';
 import PaystackCallbackRedirectWeb from '@/pages/PaystackCallbackRedirect.web';
+
+import { useShopContext } from '@mytutorapp/shared/context';
+import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 
 /* ───────────────────────────
    Per-user "first login" helpers
@@ -255,7 +260,7 @@ const OrgProtectedLayout: React.FC = () => (
   </OrgProtectedRoute>
 );
 
-/* Org admin-only guard for /org/profile */
+/* Org admin-only guard for /org/profile (and other admin-only tools) */
 const OrgAdminOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { role, loading, isLoading } = (useOrg?.() ?? {}) as any;
   const location = useLocation();
@@ -271,13 +276,8 @@ const OrgAdminOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
   if (isOrgAdmin) return <>{children}</>;
 
   // Block cross-access:
-  if (isInstructor) {
-    return <Navigate to="/org/instructor" replace state={{ from: location }} />;
-  }
-
-  if (isLearner) {
-    return <Navigate to="/org/learn" replace state={{ from: location }} />;
-  }
+  if (isInstructor) return <Navigate to="/org/instructor" replace state={{ from: location }} />;
+  if (isLearner) return <Navigate to="/org/learn" replace state={{ from: location }} />;
 
   // Unknown / weird → safest is org login
   return <Navigate to="/org/login" replace state={{ from: location }} />;
@@ -298,16 +298,9 @@ const OrgLearnerOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   if (isLearner) return <>{children}</>;
 
-  // Prevent admin + instructor from landing on learner home
-  if (isInstructor) {
-    return <Navigate to="/org/instructor" replace state={{ from: location }} />;
-  }
+  if (isInstructor) return <Navigate to="/org/instructor" replace state={{ from: location }} />;
+  if (isOrgAdmin) return <Navigate to="/org/profile" replace state={{ from: location }} />;
 
-  if (isOrgAdmin) {
-    return <Navigate to="/org/profile" replace state={{ from: location }} />;
-  }
-
-  // Unknown → kick to org login
   return <Navigate to="/org/login" replace state={{ from: location }} />;
 };
 
@@ -326,23 +319,16 @@ const OrgInstructorOnlyRoute: React.FC<{ children: ReactNode }> = ({ children })
 
   if (isInstructor) return <>{children}</>;
 
-  // Prevent admin + learner from landing on instructor home
-  if (isOrgAdmin) {
-    return <Navigate to="/org/profile" replace state={{ from: location }} />;
-  }
+  if (isOrgAdmin) return <Navigate to="/org/profile" replace state={{ from: location }} />;
+  if (isLearner) return <Navigate to="/org/learn" replace state={{ from: location }} />;
 
-  if (isLearner) {
-    return <Navigate to="/org/learn" replace state={{ from: location }} />;
-  }
-
-  // Unknown → safest is org login
   return <Navigate to="/org/login" replace state={{ from: location }} />;
 };
 
 /* ───────────────────────────
    App
    ─────────────────────────── */
-const App: React.FC<{}> = () => {
+const App: React.FC = () => {
   const { initializing } = useShopContext();
   if (initializing) return <Spinner />;
 
@@ -355,12 +341,15 @@ const App: React.FC<{}> = () => {
           <Route path="/home" element={<HomePage />} />
           <Route path="/find-tutor" element={<FindTutor />} />
           <Route path="/robot-teach" element={<RobotTutorPage />} />
+
           <Route path="/refunds" element={<RefundsAndCancellations />} />
           <Route path="/fulfillment" element={<FulfillmentPolicy />} />
           <Route path="/payment-flow" element={<PaymentFlow />} />
           <Route path="/unsubscribe" element={<UnsubscribePage />} />
+
+          {/* Paystack callback (fix duplicate path bug) */}
           <Route path="/paystack/callback" element={<PaystackCallbackWeb />} />
-          <Route path="/paystack/callback" element={<PaystackCallbackRedirectWeb />} />
+          <Route path="/paystack/callback/redirect" element={<PaystackCallbackRedirectWeb />} />
 
           {/* Org public routes */}
           <Route path="/org/login" element={<InstitutionLogin />} />
@@ -368,14 +357,16 @@ const App: React.FC<{}> = () => {
 
           {/* Public content */}
           <Route path="/help" element={<HelpPage />} />
+          <Route path="/resources" element={<ResourcesPage />} />
           <Route path="/profile/:id" element={<ProfileDetailPage />} />
+
           <Route path="/cookie-policy" element={<CookiePolicy />} />
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/anti-spam-policy" element={<AntiSpamPolicy />} />
           <Route path="/complaints-feedback" element={<ComplaintsFeedback />} />
-          <Route path="/resources" element={<ResourcesPage />} />
 
+          {/* OER */}
           <Route path="/oer/:id" element={<OerReaderFull />} />
           <Route path="/oer/collections/:id" element={<OerCollectionReader />} />
 
@@ -389,10 +380,10 @@ const App: React.FC<{}> = () => {
 
         {/* Org portal (protected; no first-login bounce) */}
         <Route element={<OrgProtectedLayout />}>
-          {/* /org now uses separate OrgHomeRouter.web.tsx */}
+          {/* /org uses OrgHomeRouter */}
           <Route path="/org" element={<OrgHomeRouter />} />
 
-          {/* keep portal at /org/portal so existing “portal UI” is reachable */}
+          {/* keep portal reachable */}
           <Route path="/org/portal" element={<OrgElearnPortal />} />
 
           {/* Admin-only profile */}
@@ -426,6 +417,7 @@ const App: React.FC<{}> = () => {
           />
 
           <Route path="/org/exams" element={<OrgExamResultsPortal />} />
+
           <Route
             path="/org/attendance"
             element={
@@ -434,6 +426,8 @@ const App: React.FC<{}> = () => {
               </OrgInstructorOnlyRoute>
             }
           />
+
+          {/* Fees (admin tool) */}
           <Route
             path="/org/fees"
             element={
@@ -442,7 +436,18 @@ const App: React.FC<{}> = () => {
               </OrgAdminOnlyRoute>
             }
           />
+
+          {/* Fees actions (wired destinations) */}
           <Route
+            path="/org/fees/*"
+            element={
+              <OrgAdminOnlyRoute>
+                <OrgFeesPage />
+              </OrgAdminOnlyRoute>
+            }
+          />
+
+         <Route
             path="/org/newsletters"
             element={
               <OrgAdminOnlyRoute>
@@ -450,6 +455,7 @@ const App: React.FC<{}> = () => {
               </OrgAdminOnlyRoute>
             }
           />
+
           <Route
             path="/org/announcements"
             element={
@@ -458,6 +464,7 @@ const App: React.FC<{}> = () => {
               </OrgAdminOnlyRoute>
             }
           />
+
           <Route path="/org/change-password" element={<OrgChangePassword />} />
         </Route>
 
@@ -465,22 +472,29 @@ const App: React.FC<{}> = () => {
         <Route element={<ProtectedLayout />}>
           <Route path="/account" element={<AccountSection />} />
           <Route path="/messages" element={<Messages />} />
+
           <Route path="/courses/:courseId" element={<CourseDetails />} />
           <Route path="/courses/:id/edit" element={<EditCoursePage />} />
+
           {/* ClassVault */}
           <Route path="/class-vault/upload" element={<ClassVaultUpload />} />
           <Route path="/class-vault/:id" element={<ClassVaultDetail />} />
           <Route path="/class-vault" element={<ClassVaultList />} />
+
           <Route path="/results" element={<ResultsPage />} />
+
           {/* Enrollments */}
           <Route path="/my-courses" element={<MyEnrollmentsPage />} />
-          {/* Course lifecycle (protected) */}
+
+          {/* Course lifecycle */}
           <Route path="/create-course" element={<CreateCourse />} />
           <Route path="/enroll/:courseId" element={<CourseEnrollment />} />
           <Route path="/progress/:courseId" element={<CourseProgress />} />
           <Route path="/courses/:courseId/progress" element={<CourseProgress />} />
+
           <Route path="/achievements" element={<AchievementsList />} />
-          {/* Profile pages (protected) */}
+
+          {/* Profile (protected) */}
           <Route path="/profile/me" element={<ProfilePage />} />
           <Route path="/settings/create" element={<CreateProfileForm />} />
           <Route path="/settings/manage" element={<ManageProfileForm />} />

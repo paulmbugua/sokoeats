@@ -13,7 +13,18 @@ let _entShapeCache = null;
  *  - whether user_id exists and is NOT NULL
  *  - whether student_id exists
  *  - whether purchased_at exists
+ * 
+ 
  */
+
+async function resolveUserUuidFromNumeric(db, userIdNum) {
+  const { rows } = await db.query(
+    `SELECT id FROM profiles WHERE user_id = $1 LIMIT 1`,
+    [userIdNum]
+  );
+  return rows?.[0]?.id ? String(rows[0].id) : null;
+}
+
 async function getEntShape(db) {
   if (_entShapeCache) return _entShapeCache;
 
@@ -65,6 +76,27 @@ export async function getEntitlement(db, userId, courseId) {
     );
     return rows[0] || null;
   }
+
+  // Numeric caller but table uses user_id UUID → try map via profiles.user_id -> profiles.id
+if (!isUuid(uid) && shape.hasUserId && !shape.hasStudentId) {
+  const idNum = Number(uid);
+  if (!Number.isFinite(idNum)) return null;
+
+  const userUuid = await resolveUserUuidFromNumeric(db, idNum);
+  if (!userUuid) return null;
+
+  const { rows } = await db.query(
+    `
+    SELECT tier, can_certificate, can_transcript
+      FROM course_entitlements
+     WHERE user_id = $1::uuid AND course_id = $2::uuid
+     LIMIT 1
+    `,
+    [userUuid, cid]
+  );
+  return rows[0] || null;
+}
+
 
   // Numeric caller + table has student_id
   if (!isUuid(uid) && shape.hasStudentId) {

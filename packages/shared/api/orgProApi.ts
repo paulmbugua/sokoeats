@@ -79,9 +79,16 @@ export async function apiCreateFeeCharge(
 export async function apiBulkFeeCharges(
   backendUrl: string,
   orgId: string,
-  payload: { learner_ids: string[]; amount_cents: number; currency?: string; description?: string; class_label?: string; due_date?: string },
+  payload: {
+    learner_ids: string[];
+    amount_cents: number;
+    currency?: string;
+    description?: string;
+    class_label?: string;
+    due_date?: string;
+  },
   token?: string,
-): Promise<{ inserted: OrgFeeCharge[] }> {
+): Promise<{ inserted: OrgFeeCharge[]; failed?: { learner_id: string; reason: string }[] }> {
   const { data } = await axios.post(
     url(backendUrl, `/api/orgs/${orgId}/fees/charges/bulk`),
     payload,
@@ -89,6 +96,7 @@ export async function apiBulkFeeCharges(
   );
   return data;
 }
+
 
 export async function apiRecordFeePayment(
   backendUrl: string,

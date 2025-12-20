@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { getEntitlement } from '../controllers/_entitlements.js';
 
 const PLAN_LIMITS_MIN = { pro: 1000, enterprise: 10000 };
-const DAILY_CAP_SECONDS = 3 * 60;
+const DAILY_CAP_SECONDS = 10 * 60;
 const ANON_DAILY_CAP_SECONDS = 3 * 60;
 
 // how long a reservation is allowed to sit before auto-release

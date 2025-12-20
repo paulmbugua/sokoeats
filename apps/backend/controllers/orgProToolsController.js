@@ -135,39 +135,86 @@ export async function createFeeCharge(req, res) {
   }
 }
 
+
 export async function bulkFeeCharges(req, res) {
+  const client = await pool.connect();
   try {
     const orgId = normalizeOrgId(req);
     await requireOrgTier(orgId, PRO_ONLY);
-    const { learner_ids, amount_cents, currency = 'USD', description, class_label, due_date } =
-      req.body || {};
-    if (!Array.isArray(learner_ids) || !amount_cents) {
+
+    const {
+      learner_ids,
+      amount_cents,
+      currency = 'USD',
+      description,
+      class_label,
+      due_date,
+    } = req.body || {};
+
+    if (!Array.isArray(learner_ids) || learner_ids.length === 0 || !amount_cents) {
       return res.status(400).json({ message: 'learner_ids[] and amount_cents required' });
     }
-    const inserted = [];
-    for (const learnerId of learner_ids) {
-      const { rows } = await pool.query(
-        `INSERT INTO org_fee_charges (org_id, learner_id, amount_cents, currency, description, class_label, due_date, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         RETURNING *`,
-        [
-          orgId,
-          learnerId,
-          amount_cents,
-          currency,
-          description || null,
-          class_label || null,
-          due_date || null,
-          req.user?.id ?? null,
-        ],
-      );
-      inserted.push(rows[0]);
+
+    // normalize and drop obvious junk
+    const ids = learner_ids
+      .map((x) => String(x || '').trim())
+      .filter((x) => x && x !== 'undefined' && x !== 'null');
+
+    if (ids.length === 0) {
+      return res.status(400).json({ message: 'No valid learner_ids provided' });
     }
-    res.json({ inserted });
+
+    const inserted = [];
+    const failed = [];
+
+    await client.query('BEGIN');
+
+    for (const learnerId of ids) {
+      try {
+        const { rows } = await client.query(
+          `INSERT INTO org_fee_charges
+             (org_id, learner_id, amount_cents, currency, description, class_label, due_date, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           RETURNING *`,
+          [
+            orgId,
+            learnerId,
+            Number(amount_cents),
+            currency,
+            description || null,
+            class_label || null,
+            due_date || null,
+            req.user?.id ?? null,
+          ],
+        );
+
+        inserted.push(rows[0]);
+      } catch (err) {
+        // DO NOT crash the whole bulk request because of one bad learner
+        failed.push({
+          learner_id: learnerId,
+          reason: err?.message || 'insert failed',
+        });
+      }
+    }
+
+    await client.query('COMMIT');
+
+    // Important: even if some failed, return 200 with details
+    return res.json({ inserted, failed });
   } catch (e) {
-    res.status(e.status || 500).json({ message: e.message || 'Unable to create bulk charges' });
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore */
+    }
+    console.error('[bulkFeeCharges] error', e);
+    return res.status(e.status || 500).json({ message: e.message || 'Unable to create bulk charges' });
+  } finally {
+    client.release();
   }
 }
+
 
 export async function recordFeePayment(req, res) {
   try {
@@ -201,18 +248,31 @@ export async function recordFeePayment(req, res) {
 }
 
 export async function getFeeBalances(req, res) {
+  const orgId = normalizeOrgId(req);
+
   try {
-    const orgId = normalizeOrgId(req);
     await requireOrgTier(orgId, PRO_ONLY);
-    const { rows } = await pool.query(
-      `SELECT learner_id,
-              COALESCE(SUM(ch.amount_cents),0) AS charges,
-              COALESCE((SELECT SUM(p.amount_cents) FROM org_fee_payments p WHERE p.org_id = ch.org_id AND p.learner_id = ch.learner_id),0) AS payments
-       FROM org_fee_charges ch
-       WHERE ch.org_id = $1
-       GROUP BY learner_id`,
-      [orgId],
-    );
+
+    // ✅ helpful debug breadcrumb
+    console.log('[getFeeBalances] orgId=', orgId, 'userId=', req.user?.id);
+
+    // ✅ safer + faster than correlated subquery
+    // Cast learner_id to text on BOTH sides to avoid uuid/text mismatch.
+    const sql = `
+      SELECT
+        ch.learner_id::text AS learner_id,
+        COALESCE(SUM(ch.amount_cents), 0)::bigint AS charges,
+        COALESCE(SUM(p.amount_cents), 0)::bigint AS payments
+      FROM org_fee_charges ch
+      LEFT JOIN org_fee_payments p
+        ON p.org_id = ch.org_id
+       AND p.learner_id::text = ch.learner_id::text
+      WHERE ch.org_id = $1
+      GROUP BY ch.learner_id::text
+      ORDER BY ch.learner_id::text
+    `;
+
+    const { rows } = await pool.query(sql, [orgId]);
 
     const balances = rows.map((r) => ({
       learner_id: r.learner_id,
@@ -221,33 +281,57 @@ export async function getFeeBalances(req, res) {
       balance: Number(r.charges || 0) - Number(r.payments || 0),
     }));
 
-    res.json({ balances });
+    return res.json({ balances });
   } catch (e) {
-    res.status(e.status || 500).json({ message: e.message || 'Unable to load balances' });
+    // ✅ print real PG error details
+    console.error('[getFeeBalances] ERROR', {
+      orgId,
+      message: e?.message,
+      code: e?.code,
+      detail: e?.detail,
+      hint: e?.hint,
+      where: e?.where,
+      schema: e?.schema,
+      table: e?.table,
+      column: e?.column,
+      constraint: e?.constraint,
+      stack: e?.stack,
+    });
+
+    return res.status(e.status || 500).json({
+      message: e.message || 'Unable to load balances',
+      pg: {
+        code: e?.code,
+        detail: e?.detail,
+        hint: e?.hint,
+      },
+    });
   }
 }
+
 
 export async function getFeeStatement(req, res) {
   try {
     const orgId = normalizeOrgId(req);
     await requireOrgTier(orgId, PRO_ONLY);
+
     const learnerId = req.params.learnerId || req.query.learner_id;
     if (!learnerId) return res.status(400).json({ message: 'learnerId required' });
 
     const charges = await pool.query(
       `SELECT id, amount_cents, currency, description, class_label, due_date, created_at
        FROM org_fee_charges
-       WHERE org_id = $1 AND learner_id = $2
+       WHERE org_id = $1 AND learner_id::text = $2
        ORDER BY created_at DESC`,
-      [orgId, learnerId],
+      [orgId, String(learnerId)],
     );
 
     const payments = await pool.query(
       `SELECT id, amount_cents, currency, method, reference, note, received_at, created_at
        FROM org_fee_payments
-       WHERE org_id = $1 AND learner_id = $2
+       WHERE org_id = $1 AND learner_id::text = $2
        ORDER BY received_at DESC NULLS LAST`,
-      [orgId, learnerId],
+      [orgId, String(learnerId)],
     );
 
     const totalCharges = charges.rows.reduce((acc, c) => acc + Number(c.amount_cents || 0), 0);
@@ -259,9 +343,17 @@ export async function getFeeStatement(req, res) {
       balance: totalCharges - totalPayments,
     });
   } catch (e) {
+    console.error('[getFeeStatement] error', {
+      message: e?.message,
+      code: e?.code,
+      detail: e?.detail,
+      hint: e?.hint,
+      stack: e?.stack,
+    });
     res.status(e.status || 500).json({ message: e.message || 'Unable to load statement' });
   }
 }
+
 
 // ───────────────────────── Newsletters ─────────────────────────
 function buildNewsletterDraft(termLabel, title) {
