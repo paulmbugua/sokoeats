@@ -40,7 +40,7 @@ type OrgExamMarksTabProps = {
   saveSheet: (
     sessionId: string,
     classLabel: string | undefined,
-    rows: OrgExamResultRow[],
+    rows: OrgExamResultRow[]
   ) => void | Promise<void>;
 };
 
@@ -161,23 +161,20 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
 
       setAiBusy(true);
       try {
-        const resp = await fetch(
-          `${backendUrl}/api/orgs/${orgId}/exams/sheet/ai-compute`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-            },
-            body: JSON.stringify({
-              sessionId: selectedSessionId,
-              classLabel,
-              rows: sheetRows, // send current rows
-              targetColumnKey: targetKey || undefined,
-              instructions,
-            }),
+        const resp = await fetch(`${backendUrl}/api/orgs/${orgId}/exams/sheet/ai-compute`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
-        );
+          body: JSON.stringify({
+            sessionId: selectedSessionId,
+            classLabel,
+            rows: sheetRows, // send current rows
+            targetColumnKey: targetKey || undefined,
+            instructions,
+          }),
+        });
 
         const data = await resp.json().catch(() => null);
 
@@ -185,19 +182,14 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
           // eslint-disable-next-line no-console
           console.error('[handleAiFillColumn] error response', data);
           window.alert(
-            data?.message ||
-              'AI sheet update failed. Please check your instructions and try again.',
+            data?.message || 'AI sheet update failed. Please check your instructions and try again.'
           );
           return;
         }
 
         if (Array.isArray(data.rows) && data.rows.length) {
           // Use existing saveSheet pipeline so behaviour stays consistent
-          await saveSheet(
-            selectedSessionId,
-            classLabel || undefined,
-            data.rows,
-          );
+          await saveSheet(selectedSessionId, classLabel || undefined, data.rows);
         } else {
           window.alert('AI did not return any updated rows.');
         }
@@ -209,7 +201,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
         setAiBusy(false);
       }
     },
-    [backendUrl, orgId, authToken, selectedSessionId, classLabel, sheetRows, saveSheet],
+    [backendUrl, orgId, authToken, selectedSessionId, classLabel, sheetRows, saveSheet]
   );
 
   // ✨ Free-form AI prompt that can add / rename / fill extra columns
@@ -244,24 +236,20 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
         form.append('files', file);
       });
 
-      const resp = await fetch(
-        `${backendUrl}/api/orgs/${orgId}/exams/sheet/ai-extract-doc`,
-        {
-          method: 'POST',
-          headers: {
-            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-          },
-          body: form,
+      const resp = await fetch(`${backendUrl}/api/orgs/${orgId}/exams/sheet/ai-extract-doc`, {
+        method: 'POST',
+        headers: {
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
-      );
+        body: form,
+      });
 
       const data = await resp.json().catch(() => null);
       if (!resp.ok || !data?.ok) {
         // eslint-disable-next-line no-console
         console.error('[handleAiSheetCommand] ai-extract-doc error', data);
         window.alert(
-          data?.message ||
-            'AI document extraction failed. Please check the file and try again.',
+          data?.message || 'AI document extraction failed. Please check the file and try again.'
         );
         return;
       }
@@ -305,8 +293,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
           </p>
           <p className="text-[11px] text-[#49739c] dark:text-darkTextSecondary">
             Roster learners: {rosterLoading ? 'Loading…' : rosterLearners.length || '0'} •&nbsp;
-            Selectable for this class:{' '}
-            {classLabel.trim() ? visibleLearnerCount : 'all'}
+            Selectable for this class: {classLabel.trim() ? visibleLearnerCount : 'all'}
           </p>
         </div>
 
@@ -328,10 +315,10 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                 {rosterLoading
                   ? 'Loading learners…'
                   : rosterLearners.length
-                  ? classLabel.trim()
-                    ? 'Select learner for this class…'
-                    : 'Select learner…'
-                  : 'No learners in roster'}
+                    ? classLabel.trim()
+                      ? 'Select learner for this class…'
+                      : 'Select learner…'
+                    : 'No learners in roster'}
               </option>
               {learnerOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -360,12 +347,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
             <button
               className="h-9 px-3 rounded-xl bg-[#3d99f5] text-white text-xs sm:text-sm font-semibold disabled:opacity-50"
               onClick={onAddRowFromRoster}
-              disabled={
-                !selectedSessionId ||
-                !newStudentId ||
-                !newSubject.trim() ||
-                rosterLoading
-              }
+              disabled={!selectedSessionId || !newStudentId || !newSubject.trim() || rosterLoading}
             >
               + Add row
             </button>
@@ -391,10 +373,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
               type="button"
               className="h-9 px-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534] text-[11px] sm:text-xs font-semibold text-[#0f172a] dark:text-darkTextPrimary"
               onClick={() => {
-                const label = window.prompt(
-                  'New column title (e.g. "Effort", "Homework %"):',
-                  '',
-                );
+                const label = window.prompt('New column title (e.g. "Effort", "Homework %"):', '');
                 if (!label) return;
 
                 const trimmed = label.trim();
@@ -427,7 +406,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
               </span>
               <select
                 className="h-9 rounded-xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] text-[11px] sm:text-xs px-2 min-w-[110px] text-gray-900 dark:text-darkTextPrimary"
-                value={aiColumnKey || (extraColumnKeys[0] || '')}
+                value={aiColumnKey || extraColumnKeys[0] || ''}
                 onChange={(e) => setAiColumnKey(e.target.value)}
                 disabled={!extraColumnKeys.length}
               >
@@ -453,12 +432,11 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                   !extraColumnKeys.length
                 }
                 onClick={async () => {
-                  const effectiveKey =
-                    aiColumnKey || (extraColumnKeys[0] || '');
+                  const effectiveKey = aiColumnKey || extraColumnKeys[0] || '';
 
                   if (!effectiveKey) {
                     window.alert(
-                      'No target column selected. Please add or choose an extra column first.',
+                      'No target column selected. Please add or choose an extra column first.'
                     );
                     return;
                   }
@@ -468,7 +446,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                       .prompt(
                         `What should AI do for column "${effectiveKey}"?\n` +
                           'Example: "Fill Effort A–E based on percent ranges."',
-                        '',
+                        ''
                       )
                       ?.trim() || '';
 
@@ -491,17 +469,16 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                   !extraColumnKeys.length
                 }
                 onClick={async () => {
-                  const effectiveKey =
-                    aiColumnKey || (extraColumnKeys[0] || '');
+                  const effectiveKey = aiColumnKey || extraColumnKeys[0] || '';
                   if (!effectiveKey) {
                     window.alert(
-                      'No target column selected. Please add or choose an extra column first.',
+                      'No target column selected. Please add or choose an extra column first.'
                     );
                     return;
                   }
 
                   const confirmDelete = window.confirm(
-                    `AI will remove the entire "${effectiveKey}" column from this sheet (all rows). Continue?`,
+                    `AI will remove the entire "${effectiveKey}" column from this sheet (all rows). Continue?`
                   );
                   if (!confirmDelete) return;
 
@@ -536,8 +513,8 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
             <p className="text-[10px] text-[#64748b] dark:text-slate-400 mt-0.5">
               Describe changes in plain English. Example: <br />
               <span className="italic">
-                “Add a Homework /40 column and fill 38 for student 105, 35 for 106.
-                Set Effort A–E based on the % score. Delete the old ‘Comments’ column.”
+                “Add a Homework /40 column and fill 38 for student 105, 35 for 106. Set Effort A–E
+                based on the % score. Delete the old ‘Comments’ column.”
               </span>
             </p>
 
@@ -553,9 +530,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                     <button
                       type="button"
                       className="text-[#ef4444]"
-                      onClick={() =>
-                        setAiFiles((prev) => prev.filter((x) => x !== f))
-                      }
+                      onClick={() => setAiFiles((prev) => prev.filter((x) => x !== f))}
                     >
                       ×
                     </button>
@@ -588,13 +563,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
             <button
               type="button"
               className="h-9 px-3 rounded-xl bg-[#0f172a] dark:bg-white text-white dark:text-[#0f172a] text-[11px] sm:text-xs font-semibold disabled:opacity-50"
-              disabled={
-                aiBusy ||
-                !backendUrl ||
-                !orgId ||
-                !selectedSessionId ||
-                !sheetRows.length
-              }
+              disabled={aiBusy || !backendUrl || !orgId || !selectedSessionId || !sheetRows.length}
               onClick={handleAiSheetCommand}
               title="Run AI across this sheet. Changes will be saved into the JSON 'extra' column and regular score fields."
             >
@@ -658,8 +627,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                     : null;
 
                 const meta = learnerById.get(Number(r.student_user_id));
-                const admissionCode =
-                  (r as any).admission_code ?? meta?.admission_code ?? null;
+                const admissionCode = (r as any).admission_code ?? meta?.admission_code ?? null;
 
                 const displayName =
                   (r as any).student_name ||
@@ -673,13 +641,10 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                 let rowIndex = sheetRows.indexOf(r);
                 if (rowIndex === -1) {
                   rowIndex = sheetRows.findIndex(
-                    (x) =>
-                      x.student_user_id === r.student_user_id &&
-                      x.subject === r.subject,
+                    (x) => x.student_user_id === r.student_user_id && x.subject === r.subject
                   );
                 }
-                const safeIndex =
-                  rowIndex === -1 ? filteredSheetRows.indexOf(r) : rowIndex;
+                const safeIndex = rowIndex === -1 ? filteredSheetRows.indexOf(r) : rowIndex;
 
                 return (
                   <tr
@@ -699,9 +664,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      <div className="font-medium text-xs sm:text-sm">
-                        {displayName}
-                      </div>
+                      <div className="font-medium text-xs sm:text-sm">{displayName}</div>
                       {displayEmail && (
                         <div className="text-[11px] text-[#49739c] dark:text-darkTextSecondary">
                           {displayEmail}
@@ -720,11 +683,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                           const copy = [...sheetRows];
                           if (safeIndex < 0 || safeIndex >= copy.length) return;
                           copy[safeIndex] = { ...copy[safeIndex], score: val };
-                          void saveSheet(
-                            selectedSessionId,
-                            classLabel || undefined,
-                            copy,
-                          );
+                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
                         }}
                       />
                     </td>
@@ -738,11 +697,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                           const copy = [...sheetRows];
                           if (safeIndex < 0 || safeIndex >= copy.length) return;
                           copy[safeIndex] = { ...copy[safeIndex], max_score: val };
-                          void saveSheet(
-                            selectedSessionId,
-                            classLabel || undefined,
-                            copy,
-                          );
+                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
                         }}
                       />
                     </td>
@@ -770,11 +725,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                             ...copy[safeIndex],
                             remark: val,
                           };
-                          void saveSheet(
-                            selectedSessionId,
-                            classLabel || undefined,
-                            copy,
-                          );
+                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
                         }}
                       />
                     </td>
@@ -798,19 +749,14 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                               if (safeIndex < 0 || safeIndex >= copy.length) return;
                               const current = (copy[safeIndex] as any) || {};
                               const currentExtra =
-                                current.extra &&
-                                typeof current.extra === 'object'
+                                current.extra && typeof current.extra === 'object'
                                   ? current.extra
                                   : {};
                               (copy[safeIndex] as any) = {
                                 ...current,
                                 extra: { ...currentExtra, [key]: val },
                               };
-                              void saveSheet(
-                                selectedSessionId,
-                                classLabel || undefined,
-                                copy,
-                              );
+                              void saveSheet(selectedSessionId, classLabel || undefined, copy);
                             }}
                           />
                         </td>
@@ -822,11 +768,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                       <input
                         className="w-16 h-8 rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 text-[11px] text-gray-900 dark:text-darkTextPrimary placeholder:text-gray-500 dark:placeholder:text-darkTextSecondary"
                         placeholder="Init."
-                        value={
-                          (r as any).teacher_initials ??
-                          (r as any).teacherInitials ??
-                          ''
-                        }
+                        value={(r as any).teacher_initials ?? (r as any).teacherInitials ?? ''}
                         onChange={(e) => {
                           const val = e.target.value;
                           const copy = [...sheetRows];
@@ -835,11 +777,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                             ...copy[safeIndex],
                             teacher_initials: val,
                           };
-                          void saveSheet(
-                            selectedSessionId,
-                            classLabel || undefined,
-                            copy,
-                          );
+                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
                         }}
                       />
                     </td>
@@ -868,8 +806,8 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                   colSpan={totalCols}
                   className="px-3 py-4 text-sm text-[#49739c] dark:text-darkTextSecondary"
                 >
-                  No marks yet for this exam/class. Start by adding rows using the
-                  learner selector above.
+                  No marks yet for this exam/class. Start by adding rows using the learner selector
+                  above.
                 </td>
               </tr>
             )}
@@ -920,9 +858,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                 </span>
                 <button
                   type="button"
-                  onClick={() =>
-                    setMarksPage((p) => Math.min(totalMarksPages, p + 1))
-                  }
+                  onClick={() => setMarksPage((p) => Math.min(totalMarksPages, p + 1))}
                   disabled={marksPage === totalMarksPages}
                   className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
                     marksPage === totalMarksPages

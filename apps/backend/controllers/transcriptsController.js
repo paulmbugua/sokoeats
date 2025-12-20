@@ -13,28 +13,36 @@ const genSchema = Joi.object({
   overallPct: Joi.number().min(0).max(100).optional(),
   passMark: Joi.number().min(0).max(100).optional(),
 
-  lessonsLearnt: Joi.array().items(
-    Joi.alternatives().try(
-      Joi.string().trim(),
-      Joi.object({ title: Joi.string().allow(''), label: Joi.string().allow('') })
-    )
-  ).optional(),
-
-  sections: Joi.array().items(
-    Joi.object({
-      sectionTitle: Joi.string().allow('').optional(),
-      items: Joi.array().items(
+  lessonsLearnt: Joi.array()
+    .items(
+      Joi.alternatives().try(
+        Joi.string().trim(),
         Joi.object({
-          label: Joi.string().allow('').required(),
-          scorePct: Joi.number().min(0).max(100).required(),
-        })
-      ).default([]),
-    })
-  ).optional(),
+          title: Joi.string().allow(''),
+          label: Joi.string().allow(''),
+        }),
+      ),
+    )
+    .optional(),
+
+  sections: Joi.array()
+    .items(
+      Joi.object({
+        sectionTitle: Joi.string().allow('').optional(),
+        items: Joi.array()
+          .items(
+            Joi.object({
+              label: Joi.string().allow('').required(),
+              scorePct: Joi.number().min(0).max(100).required(),
+            }),
+          )
+          .default([]),
+      }),
+    )
+    .optional(),
 
   force: Joi.boolean().optional(),
 });
-
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -63,7 +71,7 @@ async function hasOrgCoverForCourse(userId, courseId) {
          AND q.passed      = TRUE
        LIMIT 1
     `,
-    [userId, courseId]
+    [userId, courseId],
   );
   return q.rowCount > 0;
 }
@@ -71,7 +79,7 @@ async function hasOrgCoverForCourse(userId, courseId) {
 /** NEW: Best-effort fetch of lesson titles the learner actually attempted */
 async function loadAttemptedLessonTitles(db, userId, courseId) {
   const uidText = String(userId);
-  const uidNum  = Number(uidText);
+  const uidNum = Number(uidText);
   const out = new Set();
 
   // Try PERSONAL lesson attempts (uuid)
@@ -112,7 +120,7 @@ async function loadAttemptedLessonTitles(db, userId, courseId) {
       }
     } catch (e) {
       // Table/column not found in this deployment → ignore silently
-      if (!['42P01','42703','22P02'].includes(String(e?.code))) throw e;
+      if (!['42P01', '42703', '22P02'].includes(String(e?.code))) throw e;
     }
   };
 
@@ -142,7 +150,7 @@ async function loadAttemptedLessonTitles(db, userId, courseId) {
              AND qa.submitted_at IS NOT NULL
         ) t WHERE rn = 1
         `,
-        [uidText, courseId]
+        [uidText, courseId],
       );
       for (const row of r.rows || []) {
         const t = (row.title || '').trim();
@@ -159,7 +167,7 @@ async function loadAttemptedLessonTitles(db, userId, courseId) {
 // Compute overallPct, passMark, and a breakdown from latest attempts (+ lessons section).
 async function loadTranscriptScores(db, userId, courseId) {
   const uidText = String(userId);
-  const uidNum  = Number(uidText);
+  const uidNum = Number(uidText);
 
   // --- PERSONAL ATTEMPTS (latest per quiz) ---
   const personalUserSql = `
@@ -205,7 +213,9 @@ async function loadTranscriptScores(db, userId, courseId) {
   } catch (e) {
     if (e?.code === '42703' || e?.code === '22P02') {
       if (Number.isFinite(uidNum)) {
-        personal = await db.query(personalStudentSql, [uidNum, courseId]).catch(() => ({ rows: [] }));
+        personal = await db
+          .query(personalStudentSql, [uidNum, courseId])
+          .catch(() => ({ rows: [] }));
       }
     } else {
       throw e;
@@ -232,7 +242,9 @@ async function loadTranscriptScores(db, userId, courseId) {
   `;
   let org = { rows: [] };
   if (/^[0-9a-f-]{36}$/i.test(uidText)) {
-    org = await db.query(orgSql, [uidText, courseId]).catch(() => ({ rows: [] }));
+    org = await db
+      .query(orgSql, [uidText, courseId])
+      .catch(() => ({ rows: [] }));
   }
 
   const rows = personal.rows.length ? personal.rows : org.rows;
@@ -262,17 +274,19 @@ async function loadTranscriptScores(db, userId, courseId) {
     pass_mark: toPct(r.pass_mark),
   }));
 
-  const sum        = normalized.reduce((s, r) => s + r.score_pct, 0);
+  const sum = normalized.reduce((s, r) => s + r.score_pct, 0);
   const overallPct = Math.round((sum / normalized.length) * 100) / 100;
-  const passMark   = Math.max(...normalized.map((r) => r.pass_mark)) || 70;
+  const passMark = Math.max(...normalized.map((r) => r.pass_mark)) || 70;
 
-  const sections = [{
-    sectionTitle: 'Quiz Scores',
-    items: normalized.map((r) => ({
-      label: r.title || `Quiz ${r.quiz_id}`,
-      scorePct: Math.round(r.score_pct * 100) / 100,
-    })),
-  }];
+  const sections = [
+    {
+      sectionTitle: 'Quiz Scores',
+      items: normalized.map((r) => ({
+        label: r.title || `Quiz ${r.quiz_id}`,
+        scorePct: Math.round(r.score_pct * 100) / 100,
+      })),
+    },
+  ];
 
   // NEW: Always append Lessons Attempted if any
   const lessons = await loadAttemptedLessonTitles(db, userId, courseId);
@@ -303,7 +317,7 @@ async function hasExtendedByIssuance(userId, courseId) {
          )
        LIMIT 1
     `,
-    [userId, courseId]
+    [userId, courseId],
   );
   return q.rowCount > 0;
 }
@@ -325,11 +339,14 @@ function publicIdFromTranscriptUrl(u) {
 // Ensure “Lessons Attempted” section is present (append or replace)
 function ensureLessonsSection(existingSections, lessonTitles) {
   const sections = Array.isArray(existingSections) ? [...existingSections] : [];
-  const idx = sections.findIndex(
-    (s) => String(s?.sectionTitle || '').toLowerCase().includes('lesson')
+  const idx = sections.findIndex((s) =>
+    String(s?.sectionTitle || '')
+      .toLowerCase()
+      .includes('lesson'),
   );
-  const items = Array.from(new Set((lessonTitles || []).map((t) => (t || '').trim()).filter(Boolean)))
-    .map((label) => ({ label, scorePct: 100 }));
+  const items = Array.from(
+    new Set((lessonTitles || []).map((t) => (t || '').trim()).filter(Boolean)),
+  ).map((label) => ({ label, scorePct: 100 }));
 
   if (!items.length) return sections;
 
@@ -359,7 +376,8 @@ export async function generateTranscript(req, res) {
     const { courseId } = value;
 
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    if (!isUuid(courseId)) return res.status(400).json({ error: 'Invalid courseId' });
+    if (!isUuid(courseId))
+      return res.status(400).json({ error: 'Invalid courseId' });
 
     // Define once and reuse everywhere (avoid “Cannot redeclare 'base'”)
     const base = (
@@ -368,10 +386,12 @@ export async function generateTranscript(req, res) {
 
     // Only treat client fields as overrides if actually provided in the payload.
     const provided = (k) => Object.prototype.hasOwnProperty.call(value, k);
-    const clientOverallPct = provided('overallPct') ? value.overallPct : undefined;
-    const clientPassMark   = provided('passMark')   ? value.passMark   : undefined;
-    const clientSections   = provided('sections')   ? value.sections   : undefined;
-    const force            = value.force === true;
+    const clientOverallPct = provided('overallPct')
+      ? value.overallPct
+      : undefined;
+    const clientPassMark = provided('passMark') ? value.passMark : undefined;
+    const clientSections = provided('sections') ? value.sections : undefined;
+    const force = value.force === true;
 
     // 1) Eligibility
     const [orgCovered, ent] = await Promise.all([
@@ -388,7 +408,10 @@ export async function generateTranscript(req, res) {
         try {
           await upsertEntitlement(pool, { userId, courseId, extended: true });
         } catch (e) {
-          console.warn('[transcripts] upsertEntitlement (auto-heal) failed:', e?.message);
+          console.warn(
+            '[transcripts] upsertEntitlement (auto-heal) failed:',
+            e?.message,
+          );
         }
       }
     }
@@ -396,31 +419,38 @@ export async function generateTranscript(req, res) {
     if (!canTranscript) {
       return res.status(402).json({
         error: 'EXTENDED_REQUIRED',
-        message: 'Transcripts are included with the Extended certificate (or org coverage).',
+        message:
+          'Transcripts are included with the Extended certificate (or org coverage).',
       });
     }
 
     // 3) Existing transcript logic (idempotent unless overrides/force)
     const existingQ = await pool.query(
       `SELECT * FROM transcripts WHERE student_id = $1 AND course_id = $2 ORDER BY created_at DESC LIMIT 1`,
-      [userId, courseId]
+      [userId, courseId],
     );
 
     const hasOverrides =
       clientOverallPct !== undefined ||
-      clientPassMark   !== undefined ||
+      clientPassMark !== undefined ||
       Array.isArray(clientSections);
 
     if (existingQ.rowCount && !hasOverrides && !force) {
       const row = existingQ.rows[0];
       const download_url = `${base}/api/transcripts/${row.id}/download`;
-      console.log('[transcripts] reuse existing (no overrides/no force)', { id: row.id });
+      console.log('[transcripts] reuse existing (no overrides/no force)', {
+        id: row.id,
+      });
       return res.json({ ...row, download_url });
     }
 
     // 4) Minimal info for the PDF
-    const u = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId]);
-    const c = await pool.query(`SELECT title FROM courses WHERE id = $1`, [courseId]);
+    const u = await pool.query(`SELECT name FROM users WHERE id = $1`, [
+      userId,
+    ]);
+    const c = await pool.query(`SELECT title FROM courses WHERE id = $1`, [
+      courseId,
+    ]);
     const studentName = u.rows[0]?.name || 'Student';
     const courseTitle = c.rows[0]?.title || 'Course';
 
@@ -428,39 +458,51 @@ export async function generateTranscript(req, res) {
     let tr;
     if (existingQ.rowCount) {
       tr = existingQ.rows[0];
-      console.log('[transcripts] regenerating existing transcript', { id: tr.id, hasOverrides, force });
+      console.log('[transcripts] regenerating existing transcript', {
+        id: tr.id,
+        hasOverrides,
+        force,
+      });
     } else {
       const inserted = await pool.query(
         `INSERT INTO transcripts (id, student_id, course_id, url)
          VALUES (gen_random_uuid(), $1, $2, '')
          RETURNING *`,
-        [userId, courseId]
+        [userId, courseId],
       );
       tr = inserted.rows[0];
       console.log('[transcripts] inserted new transcript row', { id: tr.id });
     }
 
     // 6) Compute stats (client overrides win), and ALWAYS add Lessons Attempted
-    const serverStats   = await loadTranscriptScores(pool, userId, courseId);
-    const lessonTitles  = await loadAttemptedLessonTitles(pool, userId, courseId); // ensure even on client override
-    const overallPct    = clientOverallPct ?? serverStats.overallPct;
-    const passMark      = clientPassMark   ?? serverStats.passMark;
+    const serverStats = await loadTranscriptScores(pool, userId, courseId);
+    const lessonTitles = await loadAttemptedLessonTitles(
+      pool,
+      userId,
+      courseId,
+    ); // ensure even on client override
+    const overallPct = clientOverallPct ?? serverStats.overallPct;
+    const passMark = clientPassMark ?? serverStats.passMark;
 
     let sections = clientSections ?? serverStats.sections;
-    sections     = ensureLessonsSection(sections, lessonTitles);
+    sections = ensureLessonsSection(sections, lessonTitles);
 
-   // 🔽 TITLES ONLY for "Lessons Learnt"
-  const toLabels = (arr) =>
-    Array.isArray(arr)
-      ? arr
-          .map(x => (typeof x === 'string' ? x : (x?.title || x?.label || '')))
-          .map(s => String(s).trim())
-          .filter(Boolean)
-      : [];
-  const clientLessonsLearnt = provided('lessonsLearnt') ? value.lessonsLearnt : undefined;
-  const lessonsLearnt = (toLabels(clientLessonsLearnt).length
-    ? toLabels(clientLessonsLearnt)
-    : lessonTitles);
+    // 🔽 TITLES ONLY for "Lessons Learnt"
+    const toLabels = (arr) =>
+      Array.isArray(arr)
+        ? arr
+            .map((x) =>
+              typeof x === 'string' ? x : x?.title || x?.label || '',
+            )
+            .map((s) => String(s).trim())
+            .filter(Boolean)
+        : [];
+    const clientLessonsLearnt = provided('lessonsLearnt')
+      ? value.lessonsLearnt
+      : undefined;
+    const lessonsLearnt = toLabels(clientLessonsLearnt).length
+      ? toLabels(clientLessonsLearnt)
+      : lessonTitles;
 
     console.log('[transcripts] stats resolved', {
       transcriptId: tr.id,
@@ -471,10 +513,14 @@ export async function generateTranscript(req, res) {
       from: {
         clientOverallPct,
         clientPassMark,
-        clientSections: Array.isArray(clientSections) ? clientSections.length : 0,
+        clientSections: Array.isArray(clientSections)
+          ? clientSections.length
+          : 0,
         serverOverallPct: serverStats.overallPct,
         serverPassMark: serverStats.passMark,
-        serverSections: Array.isArray(serverStats.sections) ? serverStats.sections.length : 0,
+        serverSections: Array.isArray(serverStats.sections)
+          ? serverStats.sections.length
+          : 0,
       },
     });
 
@@ -490,14 +536,16 @@ export async function generateTranscript(req, res) {
       passMark,
       lessonsLearnt,
       sections,
-      previewNote: false,   // hide "(Preview – watermark removed after payment)"
-      watermarkText: null,  // no watermark text at all
+      previewNote: false, // hide "(Preview – watermark removed after payment)"
+      watermarkText: null, // no watermark text at all
       verificationUrl,
     });
 
     if (!buffer || !buffer.length) {
       console.error('[transcripts] empty PDF buffer generated');
-      return res.status(500).json({ error: 'Failed to generate transcript PDF' });
+      return res
+        .status(500)
+        .json({ error: 'Failed to generate transcript PDF' });
     }
 
     // 8) Upload to Cloudinary (overwrite same public_id)
@@ -517,14 +565,19 @@ export async function generateTranscript(req, res) {
           } else {
             resolve(result?.secure_url);
           }
-        }
+        },
       );
       Readable.from(buffer).pipe(upload);
     });
 
-    const uploadTimeoutMs = Number(process.env.TRANSCRIPT_UPLOAD_TIMEOUT_MS || 45000);
+    const uploadTimeoutMs = Number(
+      process.env.TRANSCRIPT_UPLOAD_TIMEOUT_MS || 45000,
+    );
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Cloudinary upload timed out')), uploadTimeoutMs)
+      setTimeout(
+        () => reject(new Error('Cloudinary upload timed out')),
+        uploadTimeoutMs,
+      ),
     );
 
     const url = await Promise.race([uploadPromise, timeoutPromise]);
@@ -536,14 +589,17 @@ export async function generateTranscript(req, res) {
     // 9) Persist URL
     const updated = await pool.query(
       `UPDATE transcripts SET url = $1 WHERE id = $2 RETURNING *`,
-      [url, tr.id]
+      [url, tr.id],
     );
     const row = updated.rows[0];
 
     // 10) Build download_url (owner-checked server stream)
     const download_url = `${base}/api/transcripts/${row.id}/download`;
 
-    console.log('[transcripts] generate done', { id: row.id, ms: Date.now() - t0 });
+    console.log('[transcripts] generate done', {
+      id: row.id,
+      ms: Date.now() - t0,
+    });
     return res.json({ ...row, download_url });
   } catch (err) {
     try {
@@ -556,7 +612,9 @@ export async function generateTranscript(req, res) {
     } catch {
       logErr('[transcripts.generate] error (no cfg)', err);
     }
-    return res.status(500).json({ error: err?.message || 'Internal server error' });
+    return res
+      .status(500)
+      .json({ error: err?.message || 'Internal server error' });
   }
 }
 
@@ -573,7 +631,9 @@ export async function getTranscript(req, res) {
     return res.json(q.rows[0]);
   } catch (err) {
     logErr('[transcripts.get] error', err);
-    return res.status(500).json({ error: err?.message || 'Internal server error' });
+    return res
+      .status(500)
+      .json({ error: err?.message || 'Internal server error' });
   }
 }
 
@@ -594,13 +654,16 @@ export async function downloadTranscript(req, res) {
       `SELECT id, student_id, course_id, url
          FROM transcripts
         WHERE id = $1`,
-      [id]
+      [id],
     );
-    if (!rows.length) return res.status(404).json({ error: 'Transcript not found' });
+    if (!rows.length)
+      return res.status(404).json({ error: 'Transcript not found' });
 
     const tr = rows[0];
-    if (tr.student_id !== studentId) return res.status(403).json({ error: 'Forbidden' });
-    if (!tr.url) return res.status(400).json({ error: 'Transcript has no file URL yet' });
+    if (tr.student_id !== studentId)
+      return res.status(403).json({ error: 'Forbidden' });
+    if (!tr.url)
+      return res.status(400).json({ error: 'Transcript has no file URL yet' });
 
     const suggestedFilename = `transcript-${tr.id}.pdf`;
 
@@ -613,19 +676,25 @@ export async function downloadTranscript(req, res) {
       if (upstream.status !== 200) {
         const xErr = upstream.headers?.['x-cld-error'];
         const err = new Error(
-          xErr ? `Cloudinary error: ${xErr}` : `Upstream fetch failed (${upstream.status})`
+          xErr
+            ? `Cloudinary error: ${xErr}`
+            : `Upstream fetch failed (${upstream.status})`,
         );
         err.status = upstream.status;
         throw err;
       }
 
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${suggestedFilename}"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${suggestedFilename}"`,
+      );
       const len = upstream.headers['content-length'];
       if (len) res.setHeader('Content-Length', len);
       upstream.data.on('error', (e) => {
         logErr('[transcripts] stream error', e);
-        if (!res.headersSent) res.status(502).end('Failed to fetch transcript file');
+        if (!res.headersSent)
+          res.status(502).end('Failed to fetch transcript file');
         else res.end();
       });
       upstream.data.pipe(res);
@@ -643,28 +712,36 @@ export async function downloadTranscript(req, res) {
       // Fall back to signed URLs
       const cfg = cloudinary.config() || {};
       if (!cfg.api_key || !cfg.api_secret) {
-        console.error('[transcripts] Missing Cloudinary API credentials for private download URL', {
-          cloud_name: cfg.cloud_name,
-          has_api_key: !!cfg.api_key,
-          has_api_secret: !!cfg.api_secret,
-        });
+        console.error(
+          '[transcripts] Missing Cloudinary API credentials for private download URL',
+          {
+            cloud_name: cfg.cloud_name,
+            has_api_key: !!cfg.api_key,
+            has_api_secret: !!cfg.api_secret,
+          },
+        );
         return res.status(502).json({
           error:
             'Cloudinary private download requires API credentials. Set CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET and restart the server.',
         });
       }
 
-      const publicId = publicIdFromTranscriptUrl(tr.url) || `transcripts/${tr.id}`;
+      const publicId =
+        publicIdFromTranscriptUrl(tr.url) || `transcripts/${tr.id}`;
 
       const tryPrivateDownload = async (dlType) => {
-        const privateUrl = cloudinary.utils.private_download_url(publicId, 'pdf', {
-          resource_type: 'image',
-          type: dlType, // 'upload' | 'authenticated' | 'private'
-          attachment: true,
-          attachment_filename: suggestedFilename,
-          expires_at: Math.floor(Date.now() / 1000) + 5 * 60,
-          sign_url: true,
-        });
+        const privateUrl = cloudinary.utils.private_download_url(
+          publicId,
+          'pdf',
+          {
+            resource_type: 'image',
+            type: dlType, // 'upload' | 'authenticated' | 'private'
+            attachment: true,
+            attachment_filename: suggestedFilename,
+            expires_at: Math.floor(Date.now() / 1000) + 5 * 60,
+            sign_url: true,
+          },
+        );
         await streamUrlToClient(privateUrl, `private-download-${dlType}`);
       };
 
@@ -676,10 +753,13 @@ export async function downloadTranscript(req, res) {
           return;
         } catch (e2) {
           if (e2?.status && (e2.status === 401 || e2.status === 404)) {
-            console.warn('[transcripts] private_download_url failed; trying next type', {
-              type: t,
-              status: e2?.status,
-            });
+            console.warn(
+              '[transcripts] private_download_url failed; trying next type',
+              {
+                type: t,
+                status: e2?.status,
+              },
+            );
             continue;
           }
           throw e2;
@@ -701,11 +781,16 @@ export async function downloadTranscript(req, res) {
         sign_url: true,
         version,
       });
-      await streamUrlToClient(signedDeliveryUrl, 'signed-delivery-authenticated');
+      await streamUrlToClient(
+        signedDeliveryUrl,
+        'signed-delivery-authenticated',
+      );
     }
   } catch (err) {
     logErr('[transcripts.download] error', err);
     const status = (err && err.status) || 500;
-    return res.status(status).json({ error: err?.message || 'Download failed' });
+    return res
+      .status(status)
+      .json({ error: err?.message || 'Download failed' });
   }
 }

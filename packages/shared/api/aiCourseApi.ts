@@ -26,20 +26,18 @@ function normalizeBase(url: string) {
 function buildHeaders(
   token?: string,
   isJson = true,
-  programTrack?: string
+  programTrack?: string,
+   anonId?: string
 ): Record<string, string> {
   const h: Record<string, string> = { Accept: 'application/json' };
   if (isJson) h['Content-Type'] = 'application/json';
 
   // ✅ Only attach Authorization when we have a real token
-  const safeToken =
-    typeof token === 'string' ? token.trim() : '';
+  const safeToken = typeof token === 'string' ? token.trim() : '';
+  const safeAnon = typeof anonId === 'string' ? anonId.trim() : '';
+  if (safeAnon) h['X-Anon-Id'] = safeAnon;
 
-  if (
-    safeToken &&
-    safeToken.toLowerCase() !== 'null' &&
-    safeToken.toLowerCase() !== 'undefined'
-  ) {
+  if (safeToken && safeToken.toLowerCase() !== 'null' && safeToken.toLowerCase() !== 'undefined') {
     h['Authorization'] = `Bearer ${safeToken}`;
   }
 
@@ -50,7 +48,6 @@ function buildHeaders(
 
   return h;
 }
-
 
 // -------------------- Debug switch --------------------
 const DBG_AI = ((): boolean => {
@@ -81,13 +78,15 @@ export class HttpError extends Error {
 type CommonOpts = {
   signal?: AbortSignal;
   token?: string;
-  programTrack?: string; // will be sent as X-Program-Track
-  timeoutMs?: number;    // optional client-side timeout (auto AbortController)
+  programTrack?: string;
+  timeoutMs?: number;
+  anonId?: string; // ✅ NEW
 };
 
-export function normalizeLessonGate<T extends { mode?: LessonGateMode; lessons?: any[]; joinedSsml?: string }>(
-  data: T
-): T & { mode: LessonGateMode } {
+
+export function normalizeLessonGate<
+  T extends { mode?: LessonGateMode; lessons?: any[]; joinedSsml?: string },
+>(data: T): T & { mode: LessonGateMode } {
   const mode: LessonGateMode = data?.mode === 'notes_only' ? 'notes_only' : 'narration';
   const normalized: any = { ...data, mode };
 
@@ -102,26 +101,26 @@ export function normalizeLessonGate<T extends { mode?: LessonGateMode; lessons?:
 }
 
 // Create a derived AbortSignal that auto-aborts after timeoutMs.
-// The returned cancel() must be called after fetch resolves/rejects to clear timers.
 function withTimeoutSignal(
   baseSignal: AbortSignal | undefined,
   timeoutMs: number | undefined
 ): { signal?: AbortSignal; cancel: () => void } {
   if (!timeoutMs || timeoutMs <= 0) return { signal: baseSignal, cancel: () => {} };
+
   const ctrl = new AbortController();
   const onAbort = () => ctrl.abort();
-  let timer: ReturnType<typeof setTimeout> | undefined;
 
   // tie parent cancellation
   if (baseSignal) {
     if (baseSignal.aborted) ctrl.abort();
     else baseSignal.addEventListener('abort', onAbort, { once: true });
   }
+
   // timeout
-  timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 
   const cancel = () => {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
     if (baseSignal) baseSignal.removeEventListener('abort', onAbort as any);
   };
 
@@ -146,7 +145,7 @@ async function fetchJson<T>(
   errorPrefix?: string,
   tagLabel?: string
 ): Promise<T> {
-  const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
   let res: Response;
   let text = '';
   try {
@@ -157,19 +156,29 @@ async function fetchJson<T>(
     const url =
       typeof input === 'string'
         ? input
-        : (typeof input === 'object' && input && 'url' in input ? (input as any).url : '');
+        : typeof input === 'object' && input && 'url' in input
+          ? (input as any).url
+          : '';
     const tag =
       tagLabel ??
-      (url.includes('/api/ai/lesson-ssml') ? '[api:lesson-ssml]' :
-       url.includes('/api/ai/outline')     ? '[api:outline]'      :
-       url.includes('/api/ai/quiz')        ? '[api:quiz]'         :
-       url.includes('/api/ai/grade')       ? '[api:grade]'        :
-       url.includes('/api/ai/cache/clear-course') ? '[api:cache-course]' :
-       url.includes('/api/ai/cache/clear-top-courses') ? '[api:cache-top]' :
-       url.includes('/api/courses/ai-sandbox') ? '[api:ai-sandbox]' : '[api]');
+      (url.includes('/api/ai/lesson-ssml')
+        ? '[api:lesson-ssml]'
+        : url.includes('/api/ai/outline')
+          ? '[api:outline]'
+          : url.includes('/api/ai/quiz')
+            ? '[api:quiz]'
+            : url.includes('/api/ai/grade')
+              ? '[api:grade]'
+              : url.includes('/api/ai/cache/clear-course')
+                ? '[api:cache-course]'
+                : url.includes('/api/ai/cache/clear-top-courses')
+                  ? '[api:cache-top]'
+                  : url.includes('/api/courses/ai-sandbox')
+                    ? '[api:ai-sandbox]'
+                    : '[api]');
     throw new HttpError(err?.message || 'Network error', 0, { tag, url });
   }
-  const t1 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
   try {
     let url = '';
@@ -189,7 +198,8 @@ async function fetchJson<T>(
           const o = parsed as Record<string, unknown>;
           const meta: Record<string, unknown> = {};
           if (Array.isArray(o.outline)) meta.outlineLen = o.outline.length;
-          if (typeof o.joinedSsml === 'string') meta.joinedSsmlBytes = (o.joinedSsml as string).length;
+          if (typeof o.joinedSsml === 'string')
+            meta.joinedSsmlBytes = (o.joinedSsml as string).length;
           if (typeof o.courseId === 'string') meta.courseId = o.courseId as string;
           if (typeof o.level === 'string') meta.level = o.level as string;
           if (typeof o.courseSize === 'string') meta.courseSize = o.courseSize as string;
@@ -202,14 +212,21 @@ async function fetchJson<T>(
 
     const tag =
       tagLabel ??
-      (url.includes('/api/ai/lesson-ssml')        ? '[api:lesson-ssml]' :
-       url.includes('/api/ai/outline')            ? '[api:outline]'     :
-       url.includes('/api/ai/quiz')               ? '[api:quiz]'        :
-       url.includes('/api/ai/grade')              ? '[api:grade]'       :
-       url.includes('/api/ai/cache/clear-course') ? '[api:cache-course]':
-       url.includes('/api/ai/cache/clear-top-courses') ? '[api:cache-top]':
-       url.includes('/api/courses/ai-sandbox')    ? '[api:ai-sandbox]'  :
-       '[api]');
+      (url.includes('/api/ai/lesson-ssml')
+        ? '[api:lesson-ssml]'
+        : url.includes('/api/ai/outline')
+          ? '[api:outline]'
+          : url.includes('/api/ai/quiz')
+            ? '[api:quiz]'
+            : url.includes('/api/ai/grade')
+              ? '[api:grade]'
+              : url.includes('/api/ai/cache/clear-course')
+                ? '[api:cache-course]'
+                : url.includes('/api/ai/cache/clear-top-courses')
+                  ? '[api:cache-top]'
+                  : url.includes('/api/courses/ai-sandbox')
+                    ? '[api:ai-sandbox]'
+                    : '[api]');
 
     if (DBG_AI) {
       console.log(`${tag} ${meth} ${url}`, {
@@ -222,7 +239,8 @@ async function fetchJson<T>(
 
     if (!res.ok) {
       // Conditionally log error bodies when debugging
-      if (DBG_AI) console.error(`${tag} ERROR ${res.status} ${meth} ${url} — body:`, text || '(empty)');
+      if (DBG_AI)
+        console.error(`${tag} ERROR ${res.status} ${meth} ${url} — body:`, text || '(empty)');
       const retryAfter = Number(res.headers.get('Retry-After') || '');
       const msg = text || res.statusText || `HTTP ${res.status}`;
       throw new HttpError(
@@ -302,7 +320,8 @@ export async function createOutline(
   opts?: CommonOpts
 ): Promise<AiOutlineResponse> {
   const base = normalizeBase(backendUrl);
-  const headers = buildHeaders(opts?.token, true, opts?.programTrack);
+  const headers = buildHeaders(opts?.token, true, opts?.programTrack, opts?.anonId);
+
   const { signal, cancel } = withTimeoutSignal(opts?.signal, opts?.timeoutMs);
   try {
     return await fetchJson<AiOutlineResponse>(
@@ -321,7 +340,6 @@ export async function createOutline(
   }
 }
 
-
 /* ────────────────────────────────────────────────────────────
  * POST /api/ai/lesson-ssml
  * ─────────────────────────────────────────────────────────── */
@@ -331,8 +349,9 @@ export async function createLessonSSML(
   opts?: CommonOpts
 ): Promise<GenerateLessonSSMLResponse> {
   const base = normalizeBase(backendUrl);
- const headers = buildHeaders(opts?.token, true, opts?.programTrack);
 
+  // ✅ PASS anonId into headers
+  const headers = buildHeaders(opts?.token, true, opts?.programTrack, opts?.anonId);
 
   const { signal, cancel } = withTimeoutSignal(opts?.signal, opts?.timeoutMs);
   try {
@@ -341,7 +360,10 @@ export async function createLessonSSML(
       {
         method: 'POST',
         headers,
-        body: JSON.stringify(body),
+
+        // ✅ OPTIONAL but recommended: also send anonId in body (backend already accepts it)
+        body: JSON.stringify({ ...body, anonId: opts?.anonId }),
+
         signal,
       },
       'SSML generation failed',
@@ -362,7 +384,7 @@ export async function createQuiz(
   opts?: CommonOpts
 ): Promise<{ quiz: Quiz }> {
   const base = normalizeBase(backendUrl);
-const headers = buildHeaders(opts?.token, true, opts?.programTrack);
+  const headers = buildHeaders(opts?.token, true, opts?.programTrack, opts?.anonId);
 
 
   const { signal, cancel } = withTimeoutSignal(opts?.signal, opts?.timeoutMs);
@@ -432,7 +454,7 @@ export async function createCoursePackage(
   opts?: CommonOpts
 ): Promise<CoursePackage> {
   const base = normalizeBase(backendUrl);
- const headers = buildHeaders(opts?.token, true, opts?.programTrack);
+  const headers = buildHeaders(opts?.token, true, opts?.programTrack, opts?.anonId);
 
 
   const { signal, cancel } = withTimeoutSignal(opts?.signal, opts?.timeoutMs);
@@ -485,7 +507,7 @@ export async function createAiSandboxCourse(
           assignmentId: titleOrInit.assignmentId,
         };
 
- const headers = buildHeaders(opts?.token, true, opts?.programTrack);
+  const headers = buildHeaders(opts?.token, true, opts?.programTrack);
 
   const { signal, cancel } = withTimeoutSignal(opts?.signal, opts?.timeoutMs);
 
@@ -505,7 +527,6 @@ export async function createAiSandboxCourse(
     cancel();
   }
 }
-
 
 /* ────────────────────────────────────────────────────────────
  * POST /api/ai/cache/clear-course

@@ -27,7 +27,9 @@ export async function stkPushOrgSubscription({
     throw new Error('amount must be a positive integer KES');
   }
 
-  const cb = String(callbackUrl || process.env.MPESA_ORG_CALLBACK_URL || '').trim();
+  const cb = String(
+    callbackUrl || process.env.MPESA_ORG_CALLBACK_URL || '',
+  ).trim();
   if (!cb) {
     // This is a common silent-fail cause on Daraja
     throw new Error('MPESA_ORG_CALLBACK_URL is missing');
@@ -49,7 +51,10 @@ export async function stkPushOrgSubscription({
     PhoneNumber: msisdn,
     CallBackURL: cb,
     AccountReference: String(accountReference || 'OrgSub').slice(0, 12),
-    TransactionDesc: String(description || 'Organization subscription').slice(0, 100),
+    TransactionDesc: String(description || 'Organization subscription').slice(
+      0,
+      100,
+    ),
   };
 
   const url = `${MPESA_BASE}/mpesa/stkpush/v1/processrequest`;

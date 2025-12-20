@@ -6,7 +6,9 @@ const VERSION = 'oer@v1.2';
 
 // Helpers
 function isUuid(s = '') {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    s,
+  );
 }
 
 async function findBook(key) {
@@ -18,7 +20,7 @@ async function findBook(key) {
          OR slug = $1
          OR lower(title) = lower($1)
       LIMIT 1`,
-    [key]
+    [key],
   );
   return rows[0] || null;
 }
@@ -30,13 +32,15 @@ export async function listCollections(req, res) {
     const offset = Math.max(Number(req.query.offset) || 0, 0);
 
     // Accept ?kind=text|doc|video (doc aliases to text)
-    const rawKind = String(req.query.kind ?? '').toLowerCase().trim();
+    const rawKind = String(req.query.kind ?? '')
+      .toLowerCase()
+      .trim();
     const normalizedKind =
       rawKind === 'video'
         ? 'video'
         : rawKind === 'doc' || rawKind === 'text'
-        ? 'text'
-        : null;
+          ? 'text'
+          : null;
 
     const params = [];
     let p = 0;
@@ -143,7 +147,11 @@ export async function listCollections(req, res) {
     const enableRaster = String(req.query.raster || '') === '1';
     const mapped = rows.map((r) => ({
       ...r,
-      thumbnail_url: rasterizeIfSvg(r.thumbnail_url, { enable: enableRaster, w: 800, force: true }),
+      thumbnail_url: rasterizeIfSvg(r.thumbnail_url, {
+        enable: enableRaster,
+        w: 800,
+        force: true,
+      }),
     }));
 
     return res.json(mapped);
@@ -156,7 +164,7 @@ export async function listCollections(req, res) {
 /* -------------------------- Collection item listing ----------------------- */
 export async function getCollectionItems(req, res) {
   try {
-    const key = String((req.params.idOrTitle ?? req.params.id ?? '')).trim();
+    const key = String(req.params.idOrTitle ?? req.params.id ?? '').trim();
     if (!key) return res.status(400).json({ error: 'collection key required' });
 
     const where = isUuid(key) ? 'c.id = $1' : 'LOWER(c.title) = LOWER($1)';
@@ -179,7 +187,11 @@ export async function getCollectionItems(req, res) {
     const enableRaster = String(req.query.raster || '') === '1';
     const out = rows.map((it) => ({
       ...it,
-     thumbnail_url: rasterizeIfSvg(it.thumbnail_url, { enable: enableRaster, w: 800, force: true }),
+      thumbnail_url: rasterizeIfSvg(it.thumbnail_url, {
+        enable: enableRaster,
+        w: 800,
+        force: true,
+      }),
     }));
 
     res.json(out);
@@ -270,7 +282,14 @@ export async function listCourses(req, res) {
     const { rows } = await pool.query(sql, args);
     const durMs = Date.now() - t0;
 
-    console.log('[oer] listCourses rows', rows.length, 'durMs', durMs, 'sample:', rows[0]);
+    console.log(
+      '[oer] listCourses rows',
+      rows.length,
+      'durMs',
+      durMs,
+      'sample:',
+      rows[0],
+    );
 
     const enableRaster = String(req.query.raster || '') === '1';
 
@@ -280,7 +299,11 @@ export async function listCourses(req, res) {
       title: r.title,
       description: r.description ?? '',
       subject: r.subject ?? null,
-     thumbnail_url: rasterizeIfSvg(r.thumbnail_url, { enable: enableRaster, w: 800, force: true }),
+      thumbnail_url: rasterizeIfSvg(r.thumbnail_url, {
+        enable: enableRaster,
+        w: 800,
+        force: true,
+      }),
       level: r.level || 'All Levels',
       price: 0,
       priceLabel: 'Free',
@@ -296,7 +319,11 @@ export async function listCourses(req, res) {
       }, {});
       console.log('[oer] listCourses kindCounts', counts, VERSION);
     } else {
-      console.warn('[oer] listCourses empty result', subject ? { subject } : '(no filter)', VERSION);
+      console.warn(
+        '[oer] listCourses empty result',
+        subject ? { subject } : '(no filter)',
+        VERSION,
+      );
     }
 
     return res.json(out);
@@ -320,7 +347,11 @@ export async function getBook(req, res) {
     if (book.pdf_url && /^https?:\/\//i.test(book.pdf_url)) {
       try {
         const host = new URL(book.pdf_url).hostname;
-        if ((process.env.PDF_PROXY_ALLOWLIST || '').toLowerCase().includes(host.toLowerCase())) {
+        if (
+          (process.env.PDF_PROXY_ALLOWLIST || '')
+            .toLowerCase()
+            .includes(host.toLowerCase())
+        ) {
           book.pdf_url = `${base}/api/proxy/pdf?u=${encodeURIComponent(book.pdf_url)}`;
         }
       } catch {}
@@ -328,7 +359,10 @@ export async function getBook(req, res) {
 
     // Rasterize cover for RN if requested
     const enableRaster = String(req.query.raster || '') === '1';
-    book.cover_url = rasterizeIfSvg(book.cover_url, { enable: enableRaster, w: 800 });
+    book.cover_url = rasterizeIfSvg(book.cover_url, {
+      enable: enableRaster,
+      w: 800,
+    });
 
     return res.json(book);
   } catch (e) {
@@ -341,7 +375,7 @@ export async function getBook(req, res) {
 /** GET /api/oer/courses/:idOrTitle  */
 export async function getCourse(req, res) {
   try {
-    const key = String((req.params.idOrTitle ?? req.params.id ?? '')).trim();
+    const key = String(req.params.idOrTitle ?? req.params.id ?? '').trim();
     if (!key) return res.status(400).json({ error: 'course key required' });
 
     const enableRaster = String(req.query.raster || '') === '1';
@@ -354,7 +388,11 @@ export async function getCourse(req, res) {
         title: book.title,
         description: '',
         subject: null,
-        thumbnail_url: rasterizeIfSvg(book.cover_url, { enable: enableRaster, w: 800, force: true }),
+        thumbnail_url: rasterizeIfSvg(book.cover_url, {
+          enable: enableRaster,
+          w: 800,
+          force: true,
+        }),
         provider: 'oer',
         level: 'All Levels',
         price: 0,
@@ -367,7 +405,11 @@ export async function getCourse(req, res) {
             videoUrl: null,
             notesUrl: book.web_url,
             notesUrls: [book.web_url],
-            thumbnail_url: rasterizeIfSvg(book.cover_url, { enable: enableRaster, w: 800, force: true }),
+            thumbnail_url: rasterizeIfSvg(book.cover_url, {
+              enable: enableRaster,
+              w: 800,
+              force: true,
+            }),
           },
         ],
         license: book.license,
@@ -395,9 +437,10 @@ export async function getCourse(req, res) {
        WHERE ${where}
        LIMIT 1
       `,
-      [key]
+      [key],
     );
-    if (col.length === 0) return res.status(404).json({ error: 'course not found' });
+    if (col.length === 0)
+      return res.status(404).json({ error: 'course not found' });
 
     // Items → syllabus
     const { rows: items } = await pool.query(
@@ -413,7 +456,7 @@ export async function getCourse(req, res) {
                 tpc.created_at ASC NULLS LAST,
                 tpc.title ASC
       `,
-      [col[0].id]
+      [col[0].id],
     );
 
     const syllabus = items.map((it, i) => {
@@ -424,19 +467,28 @@ export async function getCourse(req, res) {
         videoUrl: isVideo ? it.embed_url || it.source_url || null : null,
         notesUrl: !isVideo ? it.source_url || null : null,
         notesUrls: !isVideo && it.source_url ? [it.source_url] : undefined,
-        thumbnail_url: rasterizeIfSvg(it.thumbnail_url, { enable: enableRaster, w: 800, force: true }),
+        thumbnail_url: rasterizeIfSvg(it.thumbnail_url, {
+          enable: enableRaster,
+          w: 800,
+          force: true,
+        }),
       };
     });
 
     const level =
-      items.find((x) => x.grade_level && x.grade_level.trim())?.grade_level || 'All Levels';
+      items.find((x) => x.grade_level && x.grade_level.trim())?.grade_level ||
+      'All Levels';
 
     const course = {
       id: col[0].id,
       title: col[0].title,
       description: col[0].description,
       subject: col[0].subject,
-      thumbnail_url: rasterizeIfSvg(col[0].thumbnail_url, { enable: enableRaster, w: 800, force: true }),
+      thumbnail_url: rasterizeIfSvg(col[0].thumbnail_url, {
+        enable: enableRaster,
+        w: 800,
+        force: true,
+      }),
       provider: 'oer',
       level,
       price: 0,

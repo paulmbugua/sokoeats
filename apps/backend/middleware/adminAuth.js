@@ -20,7 +20,8 @@ export async function adminAuth(req, res, next) {
   try {
     const h = req.headers.authorization || '';
     const token = h.startsWith('Bearer ') ? h.slice(7) : null;
-    if (!token) return res.status(401).json({ success: false, message: 'Missing token' });
+    if (!token)
+      return res.status(401).json({ success: false, message: 'Missing token' });
 
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     const id = payload?.id;
@@ -39,18 +40,22 @@ export async function adminAuth(req, res, next) {
     // Numeric user id backed by DB role
     const userIdNum = Number(id);
     if (!Number.isFinite(userIdNum)) {
-      return res.status(403).json({ success: false, message: 'Invalid admin token' });
+      return res
+        .status(403)
+        .json({ success: false, message: 'Invalid admin token' });
     }
 
     const { rows } = await pool.query(
       'SELECT email, role FROM users WHERE id = $1 LIMIT 1',
-      [userIdNum]
+      [userIdNum],
     );
     const row = rows[0];
     const role = (row?.role || '').toLowerCase();
 
     if (!row || !ELEVATED.has(role)) {
-      return res.status(403).json({ success: false, message: 'Admin or Superadmin required' });
+      return res
+        .status(403)
+        .json({ success: false, message: 'Admin or Superadmin required' });
     }
 
     req.adminUserId = userIdNum;

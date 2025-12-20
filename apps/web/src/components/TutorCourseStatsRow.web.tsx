@@ -43,15 +43,11 @@ export default function TutorCourseStatsRow({ courseId, title }: Props) {
       <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
         <div className="rounded-xl border border-[#cedbe8] dark:border-darkCard p-3">
           <div className="text-[#49739c] dark:text-darkTextSecondary">Enrollments</div>
-          <div className="text-lg font-bold">
-            {loading && !ready ? '…' : enrollments.length}
-          </div>
+          <div className="text-lg font-bold">{loading && !ready ? '…' : enrollments.length}</div>
         </div>
         <div className="rounded-xl border border-[#cedbe8] dark:border-darkCard p-3">
           <div className="text-[#49739c] dark:text-darkTextSecondary">Avg completion</div>
-          <div className="text-lg font-bold">
-            {error ? '—' : `${avgPct}%`}
-          </div>
+          <div className="text-lg font-bold">{error ? '—' : `${avgPct}%`}</div>
         </div>
       </div>
 

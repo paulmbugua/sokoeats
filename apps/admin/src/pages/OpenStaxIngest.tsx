@@ -82,17 +82,14 @@ export default function OpenStaxIngest() {
       const formData = new FormData();
       formData.append('file', coverFile);
 
-      const res = await fetch(
-        `${backendUrl.replace(/\/$/, '')}/api/oer/upload-cover`,
-        {
-          method: 'POST',
-          headers: {
-            // NOTE: do NOT set Content-Type here; browser sets multipart boundary
-            ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
-          },
-          body: formData,
-        }
-      );
+      const res = await fetch(`${backendUrl.replace(/\/$/, '')}/api/oer/upload-cover`, {
+        method: 'POST',
+        headers: {
+          // NOTE: do NOT set Content-Type here; browser sets multipart boundary
+          ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        },
+        body: formData,
+      });
 
       if (!res.ok) {
         const txt = await res.text().catch(() => 'Failed to upload cover image');
@@ -116,15 +113,12 @@ export default function OpenStaxIngest() {
     if (!backendUrl) return;
     setListLoading(true);
     try {
-      const res = await fetch(
-        `${backendUrl.replace(/\/$/, '')}/api/oer/openstax`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
-          },
-        }
-      );
+      const res = await fetch(`${backendUrl.replace(/\/$/, '')}/api/oer/openstax`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        },
+      });
 
       if (!res.ok) {
         const txt = await res.text().catch(() => 'Failed to load OpenStax uploads');
@@ -188,9 +182,7 @@ export default function OpenStaxIngest() {
     try {
       setDeleteBusyId(book.courseId);
       const res = await fetch(
-        `${backendUrl.replace(/\/$/, '')}/api/oer/openstax/${encodeURIComponent(
-          book.courseId
-        )}`,
+        `${backendUrl.replace(/\/$/, '')}/api/oer/openstax/${encodeURIComponent(book.courseId)}`,
         {
           method: 'DELETE',
           headers: {
@@ -246,29 +238,26 @@ export default function OpenStaxIngest() {
       // upload cover if file was chosen, else fall back to URL field
       const finalThumb = await uploadCoverIfNeeded();
 
-      const res = await fetch(
-        `${backendUrl.replace(/\/$/, '')}/api/oer/ingest/openstax`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+      const res = await fetch(`${backendUrl.replace(/\/$/, '')}/api/oer/ingest/openstax`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        },
+        body: JSON.stringify({
+          collection: {
+            title: title.trim(),
+            description: desc || '',
+            subject: subject || null,
+            thumbnail_url: finalThumb || null,
           },
-          body: JSON.stringify({
-            collection: {
-              title: title.trim(),
-              description: desc || '',
-              subject: subject || null,
-              thumbnail_url: finalThumb || null,
-            },
-            license: {
-              text: licenseText || undefined,
-              url: licenseUrl || undefined,
-            },
-            bookUrl: cleaned,
-          }),
-        }
-      );
+          license: {
+            text: licenseText || undefined,
+            url: licenseUrl || undefined,
+          },
+          bookUrl: cleaned,
+        }),
+      });
 
       if (!res.ok) {
         const txt = await res.text().catch(() => 'Failed to ingest');
@@ -334,7 +323,10 @@ export default function OpenStaxIngest() {
       </div>
 
       {/* Form */}
-      <form onSubmit={onSubmit} className="space-y-5 rounded-2xl border border-gray-200/70 dark:border-darkCard bg-white/80 dark:bg-[#0b1220] p-5 shadow-sm">
+      <form
+        onSubmit={onSubmit}
+        className="space-y-5 rounded-2xl border border-gray-200/70 dark:border-darkCard bg-white/80 dark:bg-[#0b1220] p-5 shadow-sm"
+      >
         <div className="grid grid-cols-1 gap-4">
           <label className="text-sm font-medium">
             Title <span className="text-red-500">*</span>
@@ -411,9 +403,7 @@ export default function OpenStaxIngest() {
                   </span>
                 )}
                 {coverUploading && (
-                  <span className="text-[11px] text-indigo-500">
-                    Uploading cover…
-                  </span>
+                  <span className="text-[11px] text-indigo-500">Uploading cover…</span>
                 )}
               </div>
             </div>
@@ -461,8 +451,8 @@ export default function OpenStaxIngest() {
                 ? 'Saving changes…'
                 : 'Ingesting…'
               : isEditing
-              ? 'Save changes'
-              : 'Ingest OpenStax Book'}
+                ? 'Save changes'
+                : 'Ingest OpenStax Book'}
           </button>
           <span className="text-xs text-mutedGray dark:text-darkTextSecondary">
             We’ll scrape the HTML ToC and keep your course in sync with this URL.

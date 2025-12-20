@@ -69,7 +69,9 @@ export const register = async (
   const api = client(backendUrl, token);
 
   // >>> log what we send
-  try { console.log('[register] payload →', JSON.stringify(payload)); } catch {}
+  try {
+    console.log('[register] payload →', JSON.stringify(payload));
+  } catch {}
 
   try {
     const res = await api.post<AuthResponse>('/api/user/register', payload);
@@ -132,10 +134,7 @@ export const updateRole = async (
   }
 };
 
-export async function deleteAccount(
-  backendUrl: string,
-  token: string
-): Promise<void> {
+export async function deleteAccount(backendUrl: string, token: string): Promise<void> {
   try {
     const api = client(backendUrl, token);
     await api.delete<void>('/api/user/account');

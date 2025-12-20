@@ -32,8 +32,7 @@ import type { MainStackParamList } from '../../navigation/types';
 const LOGIN_BG =
   'https://images.unsplash.com/photo-1513258496099-48168024aec0?q=80&w=2000&auto=format&fit=crop';
 
-const WEB_BASE =
-  (process.env.EXPO_PUBLIC_WEB_ORIGIN as string) || 'https://daybreaklearner.com';
+const WEB_BASE = (process.env.EXPO_PUBLIC_WEB_ORIGIN as string) || 'https://daybreaklearner.com';
 
 type AuthMode = 'Login' | 'Sign Up';
 type ResetMode = 'idle' | 'requesting' | 'verifying';
@@ -52,7 +51,6 @@ const setMustChangeFlagNative = async (value: boolean) => {
     else await AsyncStorage.removeItem(MUST_CHANGE_KEY);
   } catch {}
 };
-
 
 const normalizeOrgNext = (v?: string) => {
   if (!v) return v;
@@ -101,9 +99,7 @@ function usePalette() {
     textSubtle: isDark ? 'rgba(255,255,255,0.60)' : 'rgba(61,88,115,0.75)',
     inputBg: isDark ? 'rgba(10,16,23,0.6)' : 'rgba(255,255,255,0.85)',
     inputBorder: isDark ? 'rgba(255,255,255,0.15)' : '#cedbe8',
-    inputPlaceholder: isDark
-      ? 'rgba(255,255,255,0.65)'
-      : 'rgba(13,20,28,0.55)',
+    inputPlaceholder: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(13,20,28,0.55)',
     surface(style?: any) {
       return [
         tw`rounded-2xl p-6`,
@@ -170,8 +166,7 @@ const InstitutionLoginNative: React.FC = () => {
   // ❗️Clear existing org-session when asked
   useEffect(() => {
     const shouldLogoutOrg =
-      (route.params as any)?.logoutOrg === true ||
-      (route.params as any)?.force === 'logout';
+      (route.params as any)?.logoutOrg === true || (route.params as any)?.force === 'logout';
     if (shouldLogoutOrg) {
       (async () => {
         await orgLogout();
@@ -201,8 +196,6 @@ const InstitutionLoginNative: React.FC = () => {
     })();
   }, []);
 
-  
-
   // Keep Sign Up disabled for non-institution accounts
   useEffect(() => {
     if (!canSignUp && authMode === 'Sign Up') {
@@ -211,30 +204,25 @@ const InstitutionLoginNative: React.FC = () => {
   }, [canSignUp, authMode]);
 
   const labelForKind = (kind: AccountKind) =>
-    kind === 'institution'
-      ? 'Institution'
-      : kind === 'instructor'
-      ? 'Instructor'
-      : 'Learner';
+    kind === 'institution' ? 'Institution' : kind === 'instructor' ? 'Instructor' : 'Learner';
 
-  const accountOptions: { key: AccountKind; label: string; helper: string }[] =
-    [
-      {
-        key: 'institution',
-        label: 'Institution',
-        helper: 'Admins & coordinators',
-      },
-      {
-        key: 'instructor',
-        label: 'Instructor',
-        helper: 'Teachers & trainers',
-      },
-      {
-        key: 'learner',
-        label: 'Learner',
-        helper: 'Learners in this institution',
-      },
-    ];
+  const accountOptions: { key: AccountKind; label: string; helper: string }[] = [
+    {
+      key: 'institution',
+      label: 'Institution',
+      helper: 'Admins & coordinators',
+    },
+    {
+      key: 'instructor',
+      label: 'Instructor',
+      helper: 'Teachers & trainers',
+    },
+    {
+      key: 'learner',
+      label: 'Learner',
+      helper: 'Learners in this institution',
+    },
+  ];
 
   const switchAccountKind = (kind: AccountKind) => {
     setAccountKind(kind);
@@ -244,55 +232,53 @@ const InstitutionLoginNative: React.FC = () => {
 
   const emailFormTitle = useMemo(() => {
     const base = labelForKind(accountKind);
-    return authMode === 'Login'
-      ? `${base} Login`
-      : `Create your ${base} account`;
+    return authMode === 'Login' ? `${base} Login` : `Create your ${base} account`;
   }, [authMode, accountKind]);
 
- const {
-  handleGoogleLoginSuccess,
-  handleGoogleLoginFailure,
-  loginWithEmail,
-  registerWithEmail,
-  sendResetOTP,
-  resetPasswordWithOTP,
-} = useInstitutionAuth({
-  alertFn: (msg) => console.log('[institution-auth]', msg),
+  const {
+    handleGoogleLoginSuccess,
+    handleGoogleLoginFailure,
+    loginWithEmail,
+    registerWithEmail,
+    sendResetOTP,
+    resetPasswordWithOTP,
+  } = useInstitutionAuth({
+    alertFn: (msg) => console.log('[institution-auth]', msg),
 
-  // ✅ native persists the flag here (before navigation)
-  onAuthMeta: async ({ mustChangePassword }) => {
-    await setMustChangeFlagNative(mustChangePassword);
-  },
+    // ✅ native persists the flag here (before navigation)
+    onAuthMeta: async ({ mustChangePassword }) => {
+      await setMustChangeFlagNative(mustChangePassword);
+    },
 
-  // ✅ IMPORTANT: accept `dest` and route properly
-  navigateFn: async (dest?: string) => {
-    const saved = await readReturnTo(); // deep links / invites
-    await clearReturnTo();
+    // ✅ IMPORTANT: accept `dest` and route properly
+    navigateFn: async (dest?: string) => {
+      const saved = await readReturnTo(); // deep links / invites
+      await clearReturnTo();
 
-    if (dest === '/org/change-password') {
+      if (dest === '/org/change-password') {
+        navigation.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'OrgChangePassword',
+              params: { returnTo: saved },
+            },
+          ],
+        });
+        return;
+      }
+
       navigation.reset({
         index: 0,
         routes: [
           {
-            name: 'OrgChangePassword',
-            params: { returnTo: saved },
+            name: 'OrgHome',
+            params: saved ? { next: saved } : undefined,
           },
         ],
       });
-      return;
-    }
-
-    navigation.reset({
-      index: 0,
-      routes: [
-        {
-          name: 'OrgHome',
-          params: saved ? { next: saved } : undefined,
-        },
-      ],
-    });
-  },
-});
+    },
+  });
 
   // ── Handlers ──────────────────────────────────────────────
   const onSubmit = async () => {
@@ -321,8 +307,8 @@ const InstitutionLoginNative: React.FC = () => {
           accountKind === 'institution'
             ? 'owner'
             : accountKind === 'instructor'
-            ? 'instructor'
-            : 'learner';
+              ? 'instructor'
+              : 'learner';
 
         await registerWithEmail({
           name: name.trim(),
@@ -395,16 +381,11 @@ const InstitutionLoginNative: React.FC = () => {
         imageStyle={{ opacity: palette.isDark ? 0.35 : 0.25 }}
       >
         {/* theme-aware veil for legibility */}
-        <View
-          style={[tw`absolute inset-0`, { backgroundColor: palette.overlayTint }]}
-        />
+        <View style={[tw`absolute inset-0`, { backgroundColor: palette.overlayTint }]} />
 
         {/* Removed theme toggle top bar */}
 
-        <ScrollView
-          contentContainerStyle={tw`px-5 pb-12 pt-6`}
-          keyboardShouldPersistTaps="handled"
-        >
+        <ScrollView contentContainerStyle={tw`px-5 pb-12 pt-6`} keyboardShouldPersistTaps="handled">
           <View style={tw`w-full max-w-[520px] self-center`}>
             {/* Card */}
             <View style={palette.surface()}>
@@ -420,15 +401,13 @@ const InstitutionLoginNative: React.FC = () => {
                 </Text>
 
                 <View
-                  style={[
-                    {
-                      borderRadius: 16,
-                      overflow: 'hidden', // keeps children clipped inside
-                      backgroundColor: palette.isDark
-                        ? 'rgba(15,24,33,0.9)'
-                        : 'rgba(255,255,255,0.95)',
-                    },
-                  ]}
+                  style={{
+                    borderRadius: 16,
+                    overflow: 'hidden', // keeps children clipped inside
+                    backgroundColor: palette.isDark
+                      ? 'rgba(15,24,33,0.9)'
+                      : 'rgba(255,255,255,0.95)',
+                  }}
                 >
                   {accountOptions.map((opt, idx) => {
                     const selected = accountKind === opt.key;
@@ -440,9 +419,7 @@ const InstitutionLoginNative: React.FC = () => {
                         style={[
                           tw`flex-row items-center px-3 py-2`,
                           selected && {
-                            backgroundColor: palette.isDark
-                              ? '#1b2430'
-                              : '#eef2ff',
+                            backgroundColor: palette.isDark ? '#1b2430' : '#eef2ff',
                           },
                           !isLast && {
                             borderBottomWidth: 0.5,
@@ -460,15 +437,11 @@ const InstitutionLoginNative: React.FC = () => {
                             {
                               borderWidth: 1,
                               borderColor: selected ? '#4f46e5' : '#9ca3af',
-                              backgroundColor: selected
-                                ? '#4f46e5'
-                                : 'transparent',
+                              backgroundColor: selected ? '#4f46e5' : 'transparent',
                             },
                           ]}
                         >
-                          {selected && (
-                            <Text style={tw`text-[10px] text-white`}>✓</Text>
-                          )}
+                          {selected && <Text style={tw`text-[10px] text-white`}>✓</Text>}
                         </View>
 
                         <View style={tw`flex-1`}>
@@ -476,20 +449,13 @@ const InstitutionLoginNative: React.FC = () => {
                             style={[
                               tw`text-xs font-semibold`,
                               {
-                                color: selected
-                                  ? '#4f46e5'
-                                  : palette.textSoft,
+                                color: selected ? '#4f46e5' : palette.textSoft,
                               },
                             ]}
                           >
                             {opt.label}
                           </Text>
-                          <Text
-                            style={[
-                              tw`text-[10px] mt-0.5`,
-                              { color: palette.textSubtle },
-                            ]}
-                          >
+                          <Text style={[tw`text-[10px] mt-0.5`, { color: palette.textSubtle }]}>
                             {opt.helper}
                           </Text>
                         </View>
@@ -501,31 +467,24 @@ const InstitutionLoginNative: React.FC = () => {
 
               {/* Title */}
               <Text
-                style={[
-                  tw`text-2xl font-bold text-center mb-1`,
-                  { color: palette.text },
-                ]}
+                style={[tw`text-2xl font-bold text-center mb-1`, { color: palette.text }]}
                 accessibilityRole="header"
               >
                 {emailFormTitle}
               </Text>
-              <Text
-                style={[tw`text-center mb-5`, { color: palette.textSoft }]}
-              >
+              <Text style={[tw`text-center mb-5`, { color: palette.textSoft }]}>
                 Branding • Assignments • Analytics
               </Text>
 
               {/* Error */}
               {!!error && (
-                <View
-                  style={tw`mb-4 rounded-lg bg-red-950/40 border border-red-700/40 px-3 py-2`}
-                >
+                <View style={tw`mb-4 rounded-lg bg-red-950/40 border border-red-700/40 px-3 py-2`}>
                   <Text style={tw`text-red-200 text-sm`}>{error}</Text>
                 </View>
               )}
 
               {/* Auth mode switch */}
-             <View style={tw`flex-row bg-white/10 rounded-xl p-1 mb-4`}>
+              <View style={tw`flex-row bg-white/10 rounded-xl p-1 mb-4`}>
                 {/* Login tab (always visible) */}
                 <TouchableOpacity
                   onPress={() => {
@@ -575,7 +534,6 @@ const InstitutionLoginNative: React.FC = () => {
                 )}
               </View>
 
-
               {/* Forms */}
               {resetMode !== 'idle' ? (
                 otpSent ? (
@@ -610,16 +568,10 @@ const InstitutionLoginNative: React.FC = () => {
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={handleResetPassword}
-                        style={[
-                          palette.primaryBtn,
-                          tw`flex-1`,
-                          busy && tw`opacity-60`,
-                        ]}
+                        style={[palette.primaryBtn, tw`flex-1`, busy && tw`opacity-60`]}
                         disabled={busy}
                       >
-                        <Text style={tw`text-white font-semibold`}>
-                          Reset Password
-                        </Text>
+                        <Text style={tw`text-white font-semibold`}>Reset Password</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -646,16 +598,10 @@ const InstitutionLoginNative: React.FC = () => {
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={handleSendOtp}
-                        style={[
-                          palette.primaryBtn,
-                          tw`flex-1`,
-                          busy && tw`opacity-60`,
-                        ]}
+                        style={[palette.primaryBtn, tw`flex-1`, busy && tw`opacity-60`]}
                         disabled={busy}
                       >
-                        <Text style={tw`text-white font-semibold`}>
-                          Send OTP
-                        </Text>
+                        <Text style={tw`text-white font-semibold`}>Send OTP</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -705,11 +651,7 @@ const InstitutionLoginNative: React.FC = () => {
                   <TouchableOpacity
                     onPress={onSubmit}
                     disabled={busy}
-                    style={[
-                      palette.primaryBtn,
-                      tw`w-full`,
-                      busy && tw`opacity-60`,
-                    ]}
+                    style={[palette.primaryBtn, tw`w-full`, busy && tw`opacity-60`]}
                     accessibilityRole="button"
                   >
                     <Text style={tw`text-white font-semibold`}>
@@ -724,9 +666,7 @@ const InstitutionLoginNative: React.FC = () => {
                         setResetMode('requesting');
                       }}
                     >
-                      <Text style={palette.linkText() as any}>
-                        Forgot password?
-                      </Text>
+                      <Text style={palette.linkText() as any}>Forgot password?</Text>
                     </TouchableOpacity>
 
                     {canSignUp &&
@@ -737,9 +677,7 @@ const InstitutionLoginNative: React.FC = () => {
                             setAuthMode('Sign Up');
                           }}
                         >
-                          <Text style={palette.linkText() as any}>
-                            Create account
-                          </Text>
+                          <Text style={palette.linkText() as any}>Create account</Text>
                         </TouchableOpacity>
                       ) : (
                         <TouchableOpacity
@@ -748,23 +686,15 @@ const InstitutionLoginNative: React.FC = () => {
                             setAuthMode('Login');
                           }}
                         >
-                          <Text style={palette.linkText() as any}>
-                            Already have an account?
-                          </Text>
+                          <Text style={palette.linkText() as any}>Already have an account?</Text>
                         </TouchableOpacity>
                       ))}
                   </View>
 
                   {accountKind !== 'institution' && (
-                    <Text
-                      style={[
-                        tw`mt-2 text-[11px] text-center`,
-                        { color: palette.textSubtle },
-                      ]}
-                    >
-                      Instructors and learners: please log in using the
-                      email/ID and password shared by your school or the
-                      invite link.
+                    <Text style={[tw`mt-2 text-[11px] text-center`, { color: palette.textSubtle }]}>
+                      Instructors and learners: please log in using the email/ID and password shared
+                      by your school or the invite link.
                     </Text>
                   )}
                 </View>
@@ -775,14 +705,7 @@ const InstitutionLoginNative: React.FC = () => {
                 <>
                   <View style={tw`my-6 flex-row items-center`}>
                     <View style={tw`flex-1 h-px bg-white/10`} />
-                    <Text
-                      style={[
-                        tw`mx-3 text-[10px]`,
-                        { color: palette.textSubtle },
-                      ]}
-                    >
-                      OR
-                    </Text>
+                    <Text style={[tw`mx-3 text-[10px]`, { color: palette.textSubtle }]}>OR</Text>
                     <View style={tw`flex-1 h-px bg-white/10`} />
                   </View>
 
@@ -790,21 +713,13 @@ const InstitutionLoginNative: React.FC = () => {
                     <CustomGoogleLoginButtonNative
                       onSuccess={async (idToken: string) => {
                         try {
-                          await handleGoogleLoginSuccess(
-                            idToken,
-                            name || undefined
-                          );
+                          await handleGoogleLoginSuccess(idToken, name || undefined);
                         } catch (e: any) {
-                          Alert.alert(
-                            'Google sign-in failed',
-                            e?.message || 'Please try again.'
-                          );
+                          Alert.alert('Google sign-in failed', e?.message || 'Please try again.');
                         }
                         // Navigation handled by navigateFn after token.
                       }}
-                      onFailure={(err?: Error) =>
-                        handleGoogleLoginFailure(err)
-                      }
+                      onFailure={(err?: Error) => handleGoogleLoginFailure(err)}
                     />
                   </View>
                 </>
@@ -812,12 +727,7 @@ const InstitutionLoginNative: React.FC = () => {
 
               {/* Helper: switch to regular DayBreak login */}
               <View style={tw`mt-6 items-center`}>
-                <Text
-                  style={[
-                    tw`text-xs`,
-                    { color: palette.textSubtle },
-                  ]}
-                >
+                <Text style={[tw`text-xs`, { color: palette.textSubtle }]}>
                   Not an institution?{' '}
                   <Text
                     style={palette.linkText() as any}
@@ -836,25 +746,15 @@ const InstitutionLoginNative: React.FC = () => {
               </View>
 
               {/* Policies */}
-              <Text
-                style={[
-                  tw`mt-6 text-center text-[10px]`,
-                  { color: palette.textSubtle },
-                ]}
-              >
+              <Text style={[tw`mt-6 text-center text-[10px]`, { color: palette.textSubtle }]}>
                 By continuing, you agree to our{' '}
-                <Text
-                  style={tw`underline`}
-                  onPress={() => Linking.openURL(`${WEB_BASE}/terms`)}
-                >
+                <Text style={tw`underline`} onPress={() => Linking.openURL(`${WEB_BASE}/terms`)}>
                   Terms
                 </Text>{' '}
                 and{' '}
                 <Text
                   style={tw`underline`}
-                  onPress={() =>
-                    Linking.openURL(`${WEB_BASE}/privacy-policy`)
-                  }
+                  onPress={() => Linking.openURL(`${WEB_BASE}/privacy-policy`)}
                 >
                   Privacy Policy
                 </Text>

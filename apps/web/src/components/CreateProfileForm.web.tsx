@@ -9,14 +9,16 @@ import CountrySelect from './CountrySelect';
 type PricingKeys = 'privateSession' | 'groupSession' | 'workshop' | 'lecture';
 const tokenRanges: Record<PricingKeys, { min: number; max: number }> = {
   privateSession: { min: 5, max: 50 },
-  groupSession:   { min: 5, max: 50 },   // intended per learner
-  workshop:       { min: 5, max: 100 },  // one-to-many, intensive
-  lecture:        { min: 5, max: 100 },  // one-to-many, lower interaction
+  groupSession: { min: 5, max: 50 }, // intended per learner
+  workshop: { min: 5, max: 100 }, // one-to-many, intensive
+  lecture: { min: 5, max: 100 }, // one-to-many, lower interaction
 };
 const pricingFields: PricingKeys[] = ['privateSession', 'groupSession', 'workshop', 'lecture'];
 
 // If your shared types include an UploadAsset, use it; otherwise:
-interface UploadAsset { url: string }
+interface UploadAsset {
+  url: string;
+}
 function isUploadAsset(obj: any): obj is UploadAsset {
   return obj != null && typeof obj.url === 'string';
 }
@@ -55,28 +57,45 @@ const CreateProfileForm: FC = () => {
   const {
     role,
     // basics
-    name, setName,
-    languages, handleLanguageSelect,
-    country, setCountry,
-    schoolGrade, setSchoolGrade,
-    category, setCategory,
-    bio, setBio,
-    expertise, setExpertise,
-    teachingStyle, setTeachingStyle,
-    pricing, handlePricingChange,
+    name,
+    setName,
+    languages,
+    handleLanguageSelect,
+    country,
+    setCountry,
+    schoolGrade,
+    setSchoolGrade,
+    category,
+    setCategory,
+    bio,
+    setBio,
+    expertise,
+    setExpertise,
+    teachingStyle,
+    setTeachingStyle,
+    pricing,
+    handlePricingChange,
 
     // media
-    images, setImages,
-    videoPreview, handleVideoChange, handleRemoveVideo,
+    images,
+    setImages,
+    videoPreview,
+    handleVideoChange,
+    handleRemoveVideo,
 
     // payout prefs (✅ currency is derived from method in the hook)
     payoutCurrency,
-    payoutMethod, setPayoutMethod,
-    wiseEmail, setWiseEmail,
-    mpesaPhoneNumber, setMpesaPhoneNumber,
+    payoutMethod,
+    setPayoutMethod,
+    wiseEmail,
+    setWiseEmail,
+    mpesaPhoneNumber,
+    setMpesaPhoneNumber,
 
     // submit
-    loading, handleSubmit, step,
+    loading,
+    handleSubmit,
+    step,
   } = useProfileForm({
     onSuccess: () => navigate('/'),
   });
@@ -85,10 +104,10 @@ const CreateProfileForm: FC = () => {
   const [banner, setBanner] = useState<string>('');
 
   const setFieldError = (key: string, message: string) => {
-    setErrors(prev => ({ ...prev, [key]: message }));
+    setErrors((prev) => ({ ...prev, [key]: message }));
   };
   const clearFieldError = (key: string) => {
-    setErrors(prev => {
+    setErrors((prev) => {
       if (!(key in prev)) return prev;
       const { [key]: _, ...rest } = prev;
       return rest;
@@ -103,7 +122,7 @@ const CreateProfileForm: FC = () => {
   const buildBannerFromErrors = (errs: Errors) => {
     const keys = Object.keys(errs);
     if (!keys.length) return '';
-    const items = keys.map(k => labelFor[k] || k);
+    const items = keys.map((k) => labelFor[k] || k);
     return `Please complete: ${items.join(' • ')}.`;
   };
 
@@ -114,7 +133,7 @@ const CreateProfileForm: FC = () => {
     if (!country) newErrors.country = 'Select your country.';
 
     // Languages
-    if (Object.values(languages).every(v => !v)) {
+    if (Object.values(languages).every((v) => !v)) {
       newErrors.languages = 'Select at least one language.';
     }
 
@@ -124,7 +143,8 @@ const CreateProfileForm: FC = () => {
 
       // Payout details
       if (payoutMethod === 'mpesa') {
-        if (!mpesaPhoneNumber?.trim()) newErrors.mpesaPhoneNumber = 'Enter your M-Pesa phone number.';
+        if (!mpesaPhoneNumber?.trim())
+          newErrors.mpesaPhoneNumber = 'Enter your M-Pesa phone number.';
       } else if (payoutMethod === 'wise') {
         if (!wiseEmail?.trim()) newErrors.wiseEmail = 'Enter your Wise account email.';
       }
@@ -159,13 +179,17 @@ const CreateProfileForm: FC = () => {
     // 1) Native HTML validation first
     if (form) {
       // Gather all invalids to show a precise banner and scroll/focus the first
-      const invalids = Array.from(form.querySelectorAll(':invalid')) as (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[];
+      const invalids = Array.from(form.querySelectorAll(':invalid')) as (
+        | HTMLInputElement
+        | HTMLSelectElement
+        | HTMLTextAreaElement
+      )[];
       if (invalids.length) {
         const tmpErrors: Errors = {};
         for (const el of invalids) {
           const key = el.getAttribute('name') || '';
           if (!key) continue;
-          }
+        }
         setErrors(tmpErrors);
         setBanner(buildBannerFromErrors(tmpErrors));
 
@@ -224,7 +248,8 @@ const CreateProfileForm: FC = () => {
   const smallLabel = 'text-sm text-[#49739c] dark:text-gray-300';
 
   const chipOn = 'bg-pink-500 text-white border-pink-500';
-  const chipOff = 'bg-[#e7edf4] text-[#49739c] dark:bg-[#172534] dark:text-gray-300 border-transparent';
+  const chipOff =
+    'bg-[#e7edf4] text-[#49739c] dark:bg-[#172534] dark:text-gray-300 border-transparent';
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-darkBg py-10 sm:py-16 px-3 sm:px-4">
@@ -277,7 +302,7 @@ const CreateProfileForm: FC = () => {
             type="text"
             placeholder="Your Name"
             value={name}
-            onChange={e => {
+            onChange={(e) => {
               setName(e.target.value);
               clearFieldError('name');
             }}
@@ -286,7 +311,11 @@ const CreateProfileForm: FC = () => {
             aria-describedby={errors.name ? 'err-name' : undefined}
             required
           />
-          {errors.name && <p id="err-name" className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.name}</p>}
+          {errors.name && (
+            <p id="err-name" className="text-sm text-red-600 dark:text-red-400 mt-1">
+              {errors.name}
+            </p>
+          )}
         </div>
 
         {/* Country */}
@@ -306,7 +335,11 @@ const CreateProfileForm: FC = () => {
             aria-invalid={!!errors.country}
             aria-describedby={errors.country ? 'err-country' : undefined}
           />
-          {errors.country && <p id="err-country" className="text-sm text-red-600 dark:text-red-400">{errors.country}</p>}
+          {errors.country && (
+            <p id="err-country" className="text-sm text-red-600 dark:text-red-400">
+              {errors.country}
+            </p>
+          )}
         </div>
 
         {/* School Grade (free text so it works globally) */}
@@ -317,7 +350,7 @@ const CreateProfileForm: FC = () => {
             type="text"
             placeholder="e.g., Grade 7, Form 2, Year 10, Freshman, TVET, ..."
             value={schoolGrade}
-            onChange={e => {
+            onChange={(e) => {
               setSchoolGrade(e.target.value);
               clearFieldError('schoolGrade');
             }}
@@ -326,16 +359,20 @@ const CreateProfileForm: FC = () => {
             aria-describedby={errors.schoolGrade ? 'err-schoolGrade' : undefined}
             required
           />
-          {errors.schoolGrade && <p id="err-schoolGrade" className="text-sm text-red-600 dark:text-red-400">{errors.schoolGrade}</p>}
+          {errors.schoolGrade && (
+            <p id="err-schoolGrade" className="text-sm text-red-600 dark:text-red-400">
+              {errors.schoolGrade}
+            </p>
+          )}
         </div>
 
         {/* Language Selection */}
         <div ref={langSectionRef} className="space-y-2 mt-4">
-          <label className={labelBase}>
-            Select Languages You Speak
-          </label>
-          <div className={`flex gap-2 flex-wrap rounded-xl p-2 ${errors.languages ? 'ring-1 ring-red-500' : ''}`}>
-            {Object.keys(languages).map(lang => (
+          <label className={labelBase}>Select Languages You Speak</label>
+          <div
+            className={`flex gap-2 flex-wrap rounded-xl p-2 ${errors.languages ? 'ring-1 ring-red-500' : ''}`}
+          >
+            {Object.keys(languages).map((lang) => (
               <button
                 key={lang}
                 type="button"
@@ -350,7 +387,9 @@ const CreateProfileForm: FC = () => {
               </button>
             ))}
           </div>
-          {errors.languages && <p className="text-sm text-red-600 dark:text-red-400">{errors.languages}</p>}
+          {errors.languages && (
+            <p className="text-sm text-red-600 dark:text-red-400">{errors.languages}</p>
+          )}
         </div>
 
         {/* Tutor-only */}
@@ -358,14 +397,12 @@ const CreateProfileForm: FC = () => {
           <>
             {/* Category */}
             <div className="space-y-2">
-              <label className={labelBase}>
-                Select Subject or Skill Category
-              </label>
+              <label className={labelBase}>Select Subject or Skill Category</label>
               <select
                 ref={categoryRef}
                 name="category"
                 value={category}
-                onChange={e => {
+                onChange={(e) => {
                   setCategory(e.target.value);
                   clearFieldError('category');
                 }}
@@ -374,7 +411,9 @@ const CreateProfileForm: FC = () => {
                 aria-describedby={errors.category ? 'err-category' : undefined}
                 required
               >
-                <option value="" disabled>Select a category</option>
+                <option value="" disabled>
+                  Select a category
+                </option>
                 <option value="Mathematics">Mathematics</option>
                 <option value="Sciences">Sciences</option>
                 <option value="Programming">Programming</option>
@@ -382,7 +421,11 @@ const CreateProfileForm: FC = () => {
                 <option value="Languages">Languages</option>
                 <option value="Wellness">Wellness</option>
               </select>
-              {errors.category && <p id="err-category" className="text-sm text-red-600 dark:text-red-400">{errors.category}</p>}
+              {errors.category && (
+                <p id="err-category" className="text-sm text-red-600 dark:text-red-400">
+                  {errors.category}
+                </p>
+              )}
             </div>
 
             {/* Payout Preferences */}
@@ -393,13 +436,11 @@ const CreateProfileForm: FC = () => {
 
               {/* Method (Wise or M-Pesa) */}
               <div>
-                <label className={`${smallLabel} block mb-1`}>
-                  Payout Method
-                </label>
+                <label className={`${smallLabel} block mb-1`}>Payout Method</label>
                 <select
                   name="payoutMethod"
                   value={payoutMethod}
-                  onChange={e => {
+                  onChange={(e) => {
                     setPayoutMethod(e.target.value as 'wise' | 'mpesa');
                     clearFieldError('wiseEmail');
                     clearFieldError('mpesaPhoneNumber');
@@ -414,32 +455,25 @@ const CreateProfileForm: FC = () => {
 
               {/* Currency (derived from method, read-only) */}
               <div>
-                <label className={`${smallLabel} block mb-1`}>
-                  Payout Currency
-                </label>
-                <input
-                  className={inputBase}
-                  value={payoutCurrency}
-                  readOnly
-                />
+                <label className={`${smallLabel} block mb-1`}>Payout Currency</label>
+                <input className={inputBase} value={payoutCurrency} readOnly />
                 <p className="text-xs mt-1 text-[#49739c] dark:text-gray-300">
-                  Wise pays out in USD to your Wise account. M-Pesa payouts settle in KES; FX conversion happens at payout time.
+                  Wise pays out in USD to your Wise account. M-Pesa payouts settle in KES; FX
+                  conversion happens at payout time.
                 </p>
               </div>
 
               {/* Method details */}
               {payoutMethod === 'wise' && (
                 <div>
-                  <label className={`${smallLabel} block mb-1`}>
-                    Wise account email
-                  </label>
+                  <label className={`${smallLabel} block mb-1`}>Wise account email</label>
                   <input
                     ref={wiseRef}
                     name="wiseEmail"
                     type="email"
                     placeholder="you@yourdomain.com"
                     value={wiseEmail}
-                    onChange={e => {
+                    onChange={(e) => {
                       setWiseEmail(e.target.value);
                       clearFieldError('wiseEmail');
                     }}
@@ -448,22 +482,24 @@ const CreateProfileForm: FC = () => {
                     aria-describedby={errors.wiseEmail ? 'err-wise' : undefined}
                     required
                   />
-                  {errors.wiseEmail && <p id="err-wise" className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.wiseEmail}</p>}
+                  {errors.wiseEmail && (
+                    <p id="err-wise" className="text-sm text-red-600 dark:text-red-400 mt-1">
+                      {errors.wiseEmail}
+                    </p>
+                  )}
                 </div>
               )}
 
               {payoutMethod === 'mpesa' && (
                 <div className="space-y-2">
-                  <label className={labelBase}>
-                    M-Pesa Phone Number
-                  </label>
+                  <label className={labelBase}>M-Pesa Phone Number</label>
                   <input
                     ref={mpesaRef}
                     name="mpesaPhoneNumber"
                     type="text"
                     placeholder="+2547XXXXXXXX"
                     value={mpesaPhoneNumber}
-                    onChange={e => {
+                    onChange={(e) => {
                       setMpesaPhoneNumber(e.target.value);
                       clearFieldError('mpesaPhoneNumber');
                     }}
@@ -472,7 +508,11 @@ const CreateProfileForm: FC = () => {
                     aria-describedby={errors.mpesaPhoneNumber ? 'err-mpesa' : undefined}
                     required
                   />
-                  {errors.mpesaPhoneNumber && <p id="err-mpesa" className="text-sm text-red-600 dark:text-red-400">{errors.mpesaPhoneNumber}</p>}
+                  {errors.mpesaPhoneNumber && (
+                    <p id="err-mpesa" className="text-sm text-red-600 dark:text-red-400">
+                      {errors.mpesaPhoneNumber}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -483,14 +523,16 @@ const CreateProfileForm: FC = () => {
                 Teaching Styles
               </h3>
               <div className="flex flex-wrap gap-3">
-                {['One-on-One', 'Group', 'Workshop', 'Lecture'].map(style => (
+                {['One-on-One', 'Group', 'Workshop', 'Lecture'].map((style) => (
                   <button
                     key={style}
                     type="button"
                     className={`p-2 rounded-lg text-sm sm:text-base ${teachingStyle.includes(style) ? chipOn : chipOff}`}
                     onClick={() =>
-                      setTeachingStyle(prev =>
-                        prev.includes(style) ? prev.filter(item => item !== style) : [...prev, style]
+                      setTeachingStyle((prev) =>
+                        prev.includes(style)
+                          ? prev.filter((item) => item !== style)
+                          : [...prev, style]
                       )
                     }
                   >
@@ -507,7 +549,7 @@ const CreateProfileForm: FC = () => {
                 name="bio"
                 placeholder="A short bio about yourself..."
                 value={bio}
-                onChange={e => setBio(e.target.value)}
+                onChange={(e) => setBio(e.target.value)}
                 className={`${inputBase} !min-h-[96px]`}
                 rows={3}
               />
@@ -519,30 +561,32 @@ const CreateProfileForm: FC = () => {
                 Expertise
               </h3>
               <div className="flex flex-wrap gap-3">
-                {['Exam Prep','Skill Building','Homework Help','Career Guidance'].map(skill => (
-                  <button
-                    key={skill}
-                    type="button"
-                    className={`p-2 rounded-lg text-sm sm:text-base ${expertise.includes(skill) ? chipOn : chipOff}`}
-                    onClick={() =>
-                      setExpertise(prev =>
-                        prev.includes(skill) ? prev.filter(item => item !== skill) : [...prev, skill]
-                      )
-                    }
-                  >
-                    {skill}
-                  </button>
-                ))}
+                {['Exam Prep', 'Skill Building', 'Homework Help', 'Career Guidance'].map(
+                  (skill) => (
+                    <button
+                      key={skill}
+                      type="button"
+                      className={`p-2 rounded-lg text-sm sm:text-base ${expertise.includes(skill) ? chipOn : chipOff}`}
+                      onClick={() =>
+                        setExpertise((prev) =>
+                          prev.includes(skill)
+                            ? prev.filter((item) => item !== skill)
+                            : [...prev, skill]
+                        )
+                      }
+                    >
+                      {skill}
+                    </button>
+                  )
+                )}
               </div>
             </div>
 
             {/* Pricing */}
             <div className="space-y-4">
-              <label className={labelBase}>
-                Set Your Rates (1 token = $1 USD)
-              </label>
+              <label className={labelBase}>Set Your Rates (1 token = $1 USD)</label>
               <div className="grid gap-4 sm:grid-cols-2">
-                {pricingFields.map(field => {
+                {pricingFields.map((field) => {
                   const { min, max } = tokenRanges[field];
                   const value = (pricing as Record<PricingKeys, string>)[field] || '';
                   const errKey = field;
@@ -556,7 +600,7 @@ const CreateProfileForm: FC = () => {
                         type="number"
                         placeholder={`Enter ${field.replace(/([A-Z])/g, ' $1')} Tokens`}
                         value={value}
-                        onChange={e => {
+                        onChange={(e) => {
                           handlePricingChange(field, e.target.value);
                           clearFieldError(errKey);
                         }}
@@ -568,7 +612,10 @@ const CreateProfileForm: FC = () => {
                         required
                       />
                       {errors[errKey] && (
-                        <p id={`err-${errKey}`} className="text-sm text-red-600 dark:text-red-400 mt-1">
+                        <p
+                          id={`err-${errKey}`}
+                          className="text-sm text-red-600 dark:text-red-400 mt-1"
+                        >
                           {errors[errKey]}
                         </p>
                       )}
@@ -577,15 +624,14 @@ const CreateProfileForm: FC = () => {
                 })}
               </div>
               <p className="text-xs text-[#49739c] dark:text-gray-300">
-                Tip: For group pricing, we recommend entering the price <strong>per learner</strong>. If you price per session instead, multiply by your target class size.
+                Tip: For group pricing, we recommend entering the price <strong>per learner</strong>
+                . If you price per session instead, multiply by your target class size.
               </p>
             </div>
 
             {/* Upload Profile Image */}
             <label htmlFor="image1" className="space-y-2 cursor-pointer">
-              <span className={labelBase}>
-                Upload Profile Image
-              </span>
+              <span className={labelBase}>Upload Profile Image</span>
               <div className="w-20 h-20 sm:w-24 sm:h-24 border border-[#cedbe8] dark:border-darkCard rounded-lg overflow-hidden bg-slate-50 dark:bg-[#0f1821] flex items-center justify-center">
                 {(() => {
                   const first = images[0];
@@ -602,7 +648,7 @@ const CreateProfileForm: FC = () => {
                 type="file"
                 accept="image/*"
                 hidden
-                onChange={e => {
+                onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) setImages([file]);
                 }}
@@ -611,9 +657,7 @@ const CreateProfileForm: FC = () => {
 
             {/* Introduction Video */}
             <div className="space-y-2">
-              <label className={labelBase}>
-                Introduction Video
-              </label>
+              <label className={labelBase}>Introduction Video</label>
               <div className="flex items-center justify-center sm:justify-start gap-4">
                 {videoPreview ? (
                   <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-slate-50 dark:bg-[#0f1821] rounded-lg overflow-hidden">
@@ -641,7 +685,7 @@ const CreateProfileForm: FC = () => {
                   type="file"
                   accept="video/*"
                   hidden
-                  onChange={e => {
+                  onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
                       handleVideoChange(e.target.files[0]);
                     }
@@ -659,9 +703,11 @@ const CreateProfileForm: FC = () => {
           disabled={loading}
         >
           {loading
-            ? (step === 'uploading' ? 'Uploading images…'
-              : step === 'creating' ? 'Creating profile…'
-              : 'Creating profile…')
+            ? step === 'uploading'
+              ? 'Uploading images…'
+              : step === 'creating'
+                ? 'Creating profile…'
+                : 'Creating profile…'
             : 'Create Profile'}
         </button>
       </form>

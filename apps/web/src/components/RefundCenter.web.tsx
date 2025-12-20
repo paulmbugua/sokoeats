@@ -19,76 +19,82 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
   const [attachmentUrl, setAttachmentUrl] = useState('');
   const [agree, setAgree] = useState(false);
   const [showPolicy, setShowPolicy] = useState(false);
-const agreeRowRef = useRef<HTMLDivElement | null>(null);
-const [agreeErr, setAgreeErr] = useState(false);
+  const agreeRowRef = useRef<HTMLDivElement | null>(null);
+  const [agreeErr, setAgreeErr] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const fmtErr = (e: unknown) =>
-    (typeof e === 'object' && e && (e as any).message) ? (e as any).message : String(e ?? 'Request failed');
+    typeof e === 'object' && e && (e as any).message
+      ? (e as any).message
+      : String(e ?? 'Request failed');
 
+  // replace submit() with this version
+  async function submit() {
+    setMsg(null);
+    setAgreeErr(false);
 
-// replace submit() with this version
-async function submit() {
-  setMsg(null);
-  setAgreeErr(false);
+    if (!token) {
+      setMsg({ kind: 'err', text: 'You must be logged in to request a refund.' });
+      return;
+    }
+    if (!txId.trim()) {
+      setMsg({ kind: 'err', text: 'Please enter your Transaction / Order ID.' });
+      return;
+    }
+    if (!agree) {
+      // make the control visible + prominent
+      if (!isOpen) setIsOpen(true);
+      setShowPolicy(true);
+      setAgreeErr(true);
+      // scroll focus to the checkbox row
+      setTimeout(() => {
+        agreeRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // also move keyboard focus to the checkbox
+        const input = agreeRowRef.current?.querySelector(
+          'input[type="checkbox"]'
+        ) as HTMLInputElement | null;
+        input?.focus();
+      }, 0);
+      setMsg({ kind: 'err', text: 'Please acknowledge the refund policy.' });
+      return;
+    }
 
-  if (!token) {
-    setMsg({ kind: 'err', text: 'You must be logged in to request a refund.' });
-    return;
+    setBusy(true);
+    try {
+      const r = await fetch(`${backendUrl.replace(/\/+$/, '')}/api/payment/refunds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          transactionId: txId.trim(),
+          amount: amount ? Number(amount) : undefined,
+          reason,
+          details,
+          resolution,
+          attachmentUrl: attachmentUrl || undefined,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.message || `HTTP ${r.status}`);
+
+      setMsg({
+        kind: 'ok',
+        text: 'Your refund request has been submitted. We’ll email you updates.',
+      });
+      setAmount('');
+      setDetails('');
+      setAttachmentUrl('');
+      setAgree(false);
+      setShowPolicy(false);
+      setIsOpen(false); // collapse after success
+    } catch (e) {
+      const text =
+        typeof e === 'object' && e && (e as any).message ? (e as any).message : 'Request failed';
+      setMsg({ kind: 'err', text });
+    } finally {
+      setBusy(false);
+    }
   }
-  if (!txId.trim()) {
-    setMsg({ kind: 'err', text: 'Please enter your Transaction / Order ID.' });
-    return;
-  }
-  if (!agree) {
-    // make the control visible + prominent
-    if (!isOpen) setIsOpen(true);
-    setShowPolicy(true);
-    setAgreeErr(true);
-    // scroll focus to the checkbox row
-    setTimeout(() => {
-      agreeRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // also move keyboard focus to the checkbox
-      const input = agreeRowRef.current?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-      input?.focus();
-    }, 0);
-    setMsg({ kind: 'err', text: 'Please acknowledge the refund policy.' });
-    return;
-  }
-
-  setBusy(true);
-  try {
-    const r = await fetch(`${backendUrl.replace(/\/+$/, '')}/api/payment/refunds`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        transactionId: txId.trim(),
-        amount: amount ? Number(amount) : undefined,
-        reason,
-        details,
-        resolution,
-        attachmentUrl: attachmentUrl || undefined,
-      }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j?.message || `HTTP ${r.status}`);
-
-    setMsg({ kind: 'ok', text: 'Your refund request has been submitted. We’ll email you updates.' });
-    setAmount('');
-    setDetails('');
-    setAttachmentUrl('');
-    setAgree(false);
-    setShowPolicy(false);
-    setIsOpen(false); // collapse after success
-  } catch (e) {
-    const text = (typeof e === 'object' && e && (e as any).message) ? (e as any).message : 'Request failed';
-    setMsg({ kind: 'err', text });
-  } finally {
-    setBusy(false);
-  }
-}
-
 
   return (
     <div
@@ -122,7 +128,9 @@ async function submit() {
                 <li>Requests within 7 days of purchase are usually eligible.</li>
                 <li>We review course progress and usage to determine eligibility.</li>
                 <li>Abuse, repeated refunds, or completed certificates may be ineligible.</li>
-                <li>Approved refunds are returned to the original method or as tokens (your choice).</li>
+                <li>
+                  Approved refunds are returned to the original method or as tokens (your choice).
+                </li>
               </ul>
             </div>
           )}
@@ -215,7 +223,10 @@ async function submit() {
               {busy ? 'Submitting…' : 'Submit refund request'}
             </button>
             <span className="text-xs text-[#49739c]">
-              Need help? <Link to="/support" className="underline">Contact support</Link>
+              Need help?{' '}
+              <Link to="/support" className="underline">
+                Contact support
+              </Link>
             </span>
           </div>
         </div>

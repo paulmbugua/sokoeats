@@ -18,7 +18,7 @@ const storage = {
   getItem: async (k: string) =>
     Promise.resolve(
       k === 'token'
-        ? localStorage.getItem('token') ?? localStorage.getItem('authToken')
+        ? (localStorage.getItem('token') ?? localStorage.getItem('authToken'))
         : localStorage.getItem(k)
     ),
   setItem: async (k: string, v: string) => {

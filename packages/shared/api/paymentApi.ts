@@ -2,13 +2,10 @@
 import axios from 'axios';
 import type { PaymentPackage } from '@mytutorapp/shared/types';
 
-
 function clientPlatformHeader() {
-  const isNative =
-    typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative';
+  const isNative = typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative';
   return { 'x-client-platform': isNative ? 'native' : 'web' };
 }
-
 
 export const getPaymentPackages = async (
   backendUrl: string,
@@ -25,15 +22,10 @@ export const getPaymentPackages = async (
   const packagesArray: PaymentPackage[] = Array.isArray(response.data) ? response.data : [];
 
   // Sort packages by credits ascending (or any custom order you want)
-  return packagesArray.sort(
-    (a, b) => Number(a.credits ?? 0) - Number(b.credits ?? 0)
-  );
+  return packagesArray.sort((a, b) => Number(a.credits ?? 0) - Number(b.credits ?? 0));
 };
 
-export const getRandomProfile = async (
-  backendUrl: string,
-  token: string
-) => {
+export const getRandomProfile = async (backendUrl: string, token: string) => {
   const response = await axios.get(`${backendUrl}/api/profile/random`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -75,16 +67,12 @@ export const completePayment = async (
   token: string,
   payload: { transactionReference: string }
 ) => {
-  return axios.put(
-    `${backendUrl}/api/payment/confirm`,
-    payload,
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
+  return axios.put(`${backendUrl}/api/payment/confirm`, payload, {
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
 };
 
 export const updateMpesaReference = async (
@@ -104,9 +92,9 @@ export const updateMpesaReference = async (
 /* ────────────────────── Paystack card charge (inline) ───────────────────── */
 
 export interface PaystackCardDetails {
-  number: string;      // may contain spaces, backend will strip
-  exp_month: string;   // "01".."12" or "1".."12"
-  exp_year: string;    // "2027" or "27" (backend normalises)
+  number: string; // may contain spaces, backend will strip
+  exp_month: string; // "01".."12" or "1".."12"
+  exp_year: string; // "2027" or "27" (backend normalises)
   cvc: string;
   name?: string;
 }
@@ -114,7 +102,7 @@ export interface PaystackCardDetails {
 export interface PaystackCardChargePayload {
   packageId: string | number;
   card: PaystackCardDetails;
-  email?: string;      // optional override; backend falls back to user.email
+  email?: string; // optional override; backend falls back to user.email
 }
 
 export interface PaystackCardChargeResponse {
@@ -161,7 +149,6 @@ export const paystackSubmitOtp = async (backendUrl: string, token: string, paylo
   return res.data;
 };
 
-
 export type PaystackCreateOrderResp = {
   paymentId: number;
   reference: string;
@@ -199,14 +186,16 @@ export const paystackCreateOrder = async (
   return res.data;
 };
 
-
 // If you kept verify protected, token is required; if you removed anyAuth, token can be optional.
 export const paystackVerify = async (
   backendUrl: string,
   reference: string,
   token?: string
 ): Promise<PaystackVerifyResp> => {
-  const url = new URL(`/api/paystack/verify/${encodeURIComponent(reference)}`, backendUrl).toString();
+  const url = new URL(
+    `/api/paystack/verify/${encodeURIComponent(reference)}`,
+    backendUrl
+  ).toString();
   const res = await axios.get(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });

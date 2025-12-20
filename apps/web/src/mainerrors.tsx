@@ -57,7 +57,6 @@ if (import.meta.env.PROD) {
   // );
 }
 
-
 const storage = {
   getItem: async (k: string) => Promise.resolve(localStorage.getItem(k)),
   setItem: async (k: string, v: string) => {
@@ -101,9 +100,7 @@ if (!container) {
                 </ChatProvider>
               </ShopContextProvider>
 
-              {import.meta.env.DEV && (
-                <ReactQueryDevtools initialIsOpen={false} />
-              )}
+              {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
             </QueryClientProvider>
           </BrowserRouter>
         </ErrorBoundary>

@@ -17,8 +17,8 @@ import {
   ScrollView,
   Platform,
   useWindowDimensions,
-  GestureResponderEvent, 
-  PanResponderGestureState, 
+  GestureResponderEvent,
+  PanResponderGestureState,
   Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -48,15 +48,7 @@ type Table = {
 type ChartItem = {
   id: string;
   title?: string;
-  kind?:
-    | 'bar'
-    | 'line'
-    | 'pie'
-    | 'histogram'
-    | 'scatter'
-    | 'box'
-    | 'heatmap'
-    | 'other';
+  kind?: 'bar' | 'line' | 'pie' | 'histogram' | 'scatter' | 'box' | 'heatmap' | 'other';
   alt?: string;
   url?: string;
   svg?: string;
@@ -135,7 +127,8 @@ function buildOverlayMarkdown(lesson?: LessonLike | null) {
 
   tables.forEach((t, i) => {
     const md = renderGfmTable(t);
-    if (md.trim()) blocks.push({ kind: 'Table', key: `T:${t.id || t.title || i}`, md: `### Table\n\n${md}` });
+    if (md.trim())
+      blocks.push({ kind: 'Table', key: `T:${t.id || t.title || i}`, md: `### Table\n\n${md}` });
   });
 
   snippets.forEach((s, i) => {
@@ -148,9 +141,7 @@ function buildOverlayMarkdown(lesson?: LessonLike | null) {
   });
 
   charts.forEach((c, i) => {
-    const label =
-      c.title ||
-      (c.kind ? c.kind.charAt(0).toUpperCase() + c.kind.slice(1) : 'Chart');
+    const label = c.title || (c.kind ? c.kind.charAt(0).toUpperCase() + c.kind.slice(1) : 'Chart');
     const caption = c.caption ? `\n\n_${c.caption}_` : '';
     const alt = c.alt ? `\n\n**Alt:** ${c.alt}` : '';
     const link = c.url ? `\n\n**Link:** ${c.url}` : '';
@@ -255,7 +246,11 @@ const LessonOverlayNative = React.memo(
 
     const clampAndSpringIntoBounds = useCallback(() => {
       const wNow = clamp(curRef.current.w, MIN_W, Math.max(MIN_W, Math.floor(W - M * 2)));
-      const hNow = clamp(curRef.current.h, MIN_H, Math.max(MIN_H, Math.floor(H - SAFE_TOP - SAFE_BOTTOM)));
+      const hNow = clamp(
+        curRef.current.h,
+        MIN_H,
+        Math.max(MIN_H, Math.floor(H - SAFE_TOP - SAFE_BOTTOM))
+      );
 
       const hiX = W - wNow - M;
       const hiY = H - hNow - SAFE_BOTTOM;
@@ -352,72 +347,71 @@ const LessonOverlayNative = React.memo(
       })();
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [rememberKey]);
-/* ── Drag (header only) ───────────────── */
-const dragResponder = useMemo(
-  () =>
-    PanResponder.create({
-      // don’t capture taps (so close button still works)
-      onStartShouldSetPanResponder: () => false,
-      onStartShouldSetPanResponderCapture: () => false,
+    /* ── Drag (header only) ───────────────── */
+    const dragResponder = useMemo(
+      () =>
+        PanResponder.create({
+          // don’t capture taps (so close button still works)
+          onStartShouldSetPanResponder: () => false,
+          onStartShouldSetPanResponderCapture: () => false,
 
-      // capture once the user actually drags (prevents ScrollView below)
-      onMoveShouldSetPanResponder: (evt, g) =>
-        (evt.nativeEvent.touches?.length ?? 0) === 1 &&
-        (Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2),
+          // capture once the user actually drags (prevents ScrollView below)
+          onMoveShouldSetPanResponder: (evt, g) =>
+            (evt.nativeEvent.touches?.length ?? 0) === 1 &&
+            (Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2),
 
-      onMoveShouldSetPanResponderCapture: (evt, g) =>
-        (evt.nativeEvent.touches?.length ?? 0) === 1 &&
-        (Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2),
+          onMoveShouldSetPanResponderCapture: (evt, g) =>
+            (evt.nativeEvent.touches?.length ?? 0) === 1 &&
+            (Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2),
 
-      onPanResponderTerminationRequest: () => false,
-      onShouldBlockNativeResponder: () => true,
+          onPanResponderTerminationRequest: () => false,
+          onShouldBlockNativeResponder: () => true,
 
-      onPanResponderGrant: () => {
-        translate.stopAnimation((v: any) => {
-          translate.setOffset({ x: v.x, y: v.y });
-          translate.setValue({ x: 0, y: 0 });
-        });
-      },
+          onPanResponderGrant: () => {
+            translate.stopAnimation((v: any) => {
+              translate.setOffset({ x: v.x, y: v.y });
+              translate.setValue({ x: 0, y: 0 });
+            });
+          },
 
-      // ✅ REAL FUNCTION (no Animated.event) → fixes “config.onPanResponderMove…”
-      onPanResponderMove: (_evt, g) => {
-        translate.setValue({ x: g.dx, y: g.dy });
-      },
+          // ✅ REAL FUNCTION (no Animated.event) → fixes “config.onPanResponderMove…”
+          onPanResponderMove: (_evt, g) => {
+            translate.setValue({ x: g.dx, y: g.dy });
+          },
 
-      onPanResponderRelease: () => {
-        translate.flattenOffset();
-        translate.stopAnimation((v: any) => {
-          curRef.current.x = v.x;
-          curRef.current.y = v.y;
+          onPanResponderRelease: () => {
+            translate.flattenOffset();
+            translate.stopAnimation((v: any) => {
+              curRef.current.x = v.x;
+              curRef.current.y = v.y;
 
-          clampAndSpringIntoBounds();
+              clampAndSpringIntoBounds();
 
-          if (rememberKey) {
-            AsyncStorage.setItem(
-              `overlay_box:${rememberKey}`,
-              JSON.stringify({
-                x: curRef.current.x,
-                y: curRef.current.y,
-                w: curRef.current.w,
-                h: curRef.current.h,
-              })
-            ).catch(() => {});
-          }
-        });
-      },
+              if (rememberKey) {
+                AsyncStorage.setItem(
+                  `overlay_box:${rememberKey}`,
+                  JSON.stringify({
+                    x: curRef.current.x,
+                    y: curRef.current.y,
+                    w: curRef.current.w,
+                    h: curRef.current.h,
+                  })
+                ).catch(() => {});
+              }
+            });
+          },
 
-      onPanResponderTerminate: () => {
-        translate.flattenOffset();
-        translate.stopAnimation((v: any) => {
-          curRef.current.x = v.x;
-          curRef.current.y = v.y;
-          clampAndSpringIntoBounds();
-        });
-      },
-    }),
-  [translate, clampAndSpringIntoBounds, rememberKey]
-);
-
+          onPanResponderTerminate: () => {
+            translate.flattenOffset();
+            translate.stopAnimation((v: any) => {
+              curRef.current.x = v.x;
+              curRef.current.y = v.y;
+              clampAndSpringIntoBounds();
+            });
+          },
+        }),
+      [translate, clampAndSpringIntoBounds, rememberKey]
+    );
 
     /* ── Resize (corner grip) ─────────────── */
     const resizeStartRef = useRef({ w: initialW, h: initialH });
@@ -506,151 +500,176 @@ const dragResponder = useMemo(
     // Nothing to show unless it’s open AND has content
     if (!open || !hasContent) return null;
 
-  return (
-  <View
-    pointerEvents="box-none"
-    style={[
-      {
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        zIndex,
-        elevation: zIndex,
-      },
-    ]}
-  >
-    {/* OUTER: translate */}
-    <Animated.View style={{ transform: translate.getTranslateTransform() }}>
-      {/* INNER: size */}
-      <Animated.View
-        {...pinchResponder.panHandlers}
-        style={[
-          tw`rounded-2xl overflow-hidden`,
-          {
-            width: wAnim,
-            height: hAnim,
-            backgroundColor: 'rgba(15,23,42,0.92)',
-            borderWidth: 1,
-            borderColor: 'rgba(148,163,184,0.18)',
-            shadowColor: '#000',
-            shadowOpacity: 0.25,
-            shadowRadius: 10,
-            shadowOffset: { width: 0, height: 6 },
-            ...(Platform.OS === 'android' ? { elevation: 14 } : null),
-          },
-        ]}
-        accessible
-        accessibilityLabel="Lesson overlay"
+    return (
+      <View
+        pointerEvents="box-none"
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          zIndex,
+          elevation: zIndex,
+        }}
       >
-        {/* Header (drag bar) */}
-        <View
-          {...dragResponder.panHandlers}
-          style={[
-            tw`flex-row items-center px-3`,
-            {
-              height: 44,
-              backgroundColor: 'rgba(2,6,23,0.55)',
-              borderBottomWidth: 1,
-              borderBottomColor: 'rgba(255,255,255,0.08)',
-            },
-          ]}
-        >
-          <View
+        {/* OUTER: translate */}
+        <Animated.View style={{ transform: translate.getTranslateTransform() }}>
+          {/* INNER: size */}
+          <Animated.View
+            {...pinchResponder.panHandlers}
             style={[
-              tw`rounded-full mr-2`,
-              { width: 40, height: 4, backgroundColor: 'rgba(148,163,184,0.5)' },
+              tw`rounded-2xl overflow-hidden`,
+              {
+                width: wAnim,
+                height: hAnim,
+                backgroundColor: 'rgba(15,23,42,0.92)',
+                borderWidth: 1,
+                borderColor: 'rgba(148,163,184,0.18)',
+                shadowColor: '#000',
+                shadowOpacity: 0.25,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 6 },
+                ...(Platform.OS === 'android' ? { elevation: 14 } : null),
+              },
             ]}
-          />
-          <Text numberOfLines={1} style={tw`text-white font-bold text-sm flex-1`}>
-            {lesson?.title ? `Overlay — ${lesson.title}` : 'Overlay'}
-          </Text>
-
-          <TouchableOpacity
-            onPress={apiClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close overlay"
-            style={tw`h-8 w-8 rounded-xl items-center justify-center`}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessible
+            accessibilityLabel="Lesson overlay"
           >
-            <Ionicons name="close" size={18} color="#f9fafb" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Content */}
-        <ScrollView
-          style={tw`flex-1`}
-          contentContainerStyle={tw`p-3 pb-10`}
-          keyboardShouldPersistTaps="handled"
-        >
-          {overlayItems.map((b) => (
+            {/* Header (drag bar) */}
             <View
-              key={b.key}
+              {...dragResponder.panHandlers}
               style={[
-                tw`rounded-2xl p-3 mb-3`,
+                tw`flex-row items-center px-3`,
                 {
+                  height: 44,
                   backgroundColor: 'rgba(2,6,23,0.55)',
-                  borderWidth: 1,
-                  borderColor: 'rgba(148,163,184,0.14)',
+                  borderBottomWidth: 1,
+                  borderBottomColor: 'rgba(255,255,255,0.08)',
                 },
               ]}
             >
-              <Markdown
-                markdownStyle={{
-                  body: { fontSize: 14, lineHeight: 20, color: '#e5e7eb' },
-                  heading1: { color: '#fff' },
-                  heading2: { color: '#fff' },
-                  heading3: { color: '#fff' },
-                  code_block: {
-                    fontSize: 12,
-                    backgroundColor: 'rgba(2,6,23,0.6)',
-                    padding: 10,
-                    borderRadius: 12,
-                  },
-                  fence: {
-                    fontSize: 12,
-                    backgroundColor: 'rgba(2,6,23,0.6)',
-                    padding: 10,
-                    borderRadius: 12,
-                  },
-                }}
+              <View
+                style={[
+                  tw`rounded-full mr-2`,
+                  { width: 40, height: 4, backgroundColor: 'rgba(148,163,184,0.5)' },
+                ]}
+              />
+              <Text numberOfLines={1} style={tw`text-white font-bold text-sm flex-1`}>
+                {lesson?.title ? `Overlay — ${lesson.title}` : 'Overlay'}
+              </Text>
+
+              <TouchableOpacity
+                onPress={apiClose}
+                accessibilityRole="button"
+                accessibilityLabel="Close overlay"
+                style={tw`h-8 w-8 rounded-xl items-center justify-center`}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                {b.md}
-              </Markdown>
+                <Ionicons name="close" size={18} color="#f9fafb" />
+              </TouchableOpacity>
             </View>
-          ))}
-        </ScrollView>
 
-        {/* Resize grip */}
-        <View
-          {...resizeResponder.panHandlers}
-          style={{
-            position: 'absolute',
-            right: 6,
-            bottom: 6,
-            width: 34,
-            height: 34,
-            borderRadius: 12,
-            backgroundColor: 'rgba(2,6,23,0.40)',
-            borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.08)',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          pointerEvents="box-only"
-          accessibilityLabel="Resize overlay"
-          accessible
-        >
-          <View style={{ position: 'absolute', right: 9, bottom: 10, width: 14, height: 2, backgroundColor: 'rgba(148,163,184,0.75)', transform: [{ rotate: '-35deg' }] }} />
-          <View style={{ position: 'absolute', right: 8, bottom: 16, width: 10, height: 2, backgroundColor: 'rgba(148,163,184,0.55)', transform: [{ rotate: '-35deg' }] }} />
-          <View style={{ position: 'absolute', right: 7, bottom: 22, width: 6, height: 2, backgroundColor: 'rgba(148,163,184,0.40)', transform: [{ rotate: '-35deg' }] }} />
-        </View>
-      </Animated.View>
-    </Animated.View>
-  </View>
-);
+            {/* Content */}
+            <ScrollView
+              style={tw`flex-1`}
+              contentContainerStyle={tw`p-3 pb-10`}
+              keyboardShouldPersistTaps="handled"
+            >
+              {overlayItems.map((b) => (
+                <View
+                  key={b.key}
+                  style={[
+                    tw`rounded-2xl p-3 mb-3`,
+                    {
+                      backgroundColor: 'rgba(2,6,23,0.55)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(148,163,184,0.14)',
+                    },
+                  ]}
+                >
+                  <Markdown
+                    markdownStyle={{
+                      body: { fontSize: 14, lineHeight: 20, color: '#e5e7eb' },
+                      heading1: { color: '#fff' },
+                      heading2: { color: '#fff' },
+                      heading3: { color: '#fff' },
+                      code_block: {
+                        fontSize: 12,
+                        backgroundColor: 'rgba(2,6,23,0.6)',
+                        padding: 10,
+                        borderRadius: 12,
+                      },
+                      fence: {
+                        fontSize: 12,
+                        backgroundColor: 'rgba(2,6,23,0.6)',
+                        padding: 10,
+                        borderRadius: 12,
+                      },
+                    }}
+                  >
+                    {b.md}
+                  </Markdown>
+                </View>
+              ))}
+            </ScrollView>
 
-
-    
+            {/* Resize grip */}
+            <View
+              {...resizeResponder.panHandlers}
+              style={{
+                position: 'absolute',
+                right: 6,
+                bottom: 6,
+                width: 34,
+                height: 34,
+                borderRadius: 12,
+                backgroundColor: 'rgba(2,6,23,0.40)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.08)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              pointerEvents="box-only"
+              accessibilityLabel="Resize overlay"
+              accessible
+            >
+              <View
+                style={{
+                  position: 'absolute',
+                  right: 9,
+                  bottom: 10,
+                  width: 14,
+                  height: 2,
+                  backgroundColor: 'rgba(148,163,184,0.75)',
+                  transform: [{ rotate: '-35deg' }],
+                }}
+              />
+              <View
+                style={{
+                  position: 'absolute',
+                  right: 8,
+                  bottom: 16,
+                  width: 10,
+                  height: 2,
+                  backgroundColor: 'rgba(148,163,184,0.55)',
+                  transform: [{ rotate: '-35deg' }],
+                }}
+              />
+              <View
+                style={{
+                  position: 'absolute',
+                  right: 7,
+                  bottom: 22,
+                  width: 6,
+                  height: 2,
+                  backgroundColor: 'rgba(148,163,184,0.40)',
+                  transform: [{ rotate: '-35deg' }],
+                }}
+              />
+            </View>
+          </Animated.View>
+        </Animated.View>
+      </View>
+    );
   })
 );
 

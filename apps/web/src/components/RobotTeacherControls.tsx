@@ -17,11 +17,19 @@ const CourseSelect: React.FC<{
   const ref = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
-    const onDocClick = (e: MouseEvent) => { if (!ref.current || ref.current.contains(e.target as Node)) return; setOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const onDocClick = (e: MouseEvent) => {
+      if (!ref.current || ref.current.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
     document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onKey); };
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
   }, []);
 
   const selected = React.useMemo(() => options.find((o) => o.value === value), [options, value]);
@@ -40,7 +48,11 @@ const CourseSelect: React.FC<{
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        {selected ? selected.label : <span className="text-gray-500 dark:text-white/60">{placeholder}</span>}
+        {selected ? (
+          selected.label
+        ) : (
+          <span className="text-gray-500 dark:text-white/60">{placeholder}</span>
+        )}
       </button>
 
       <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-white/60">
@@ -54,14 +66,19 @@ const CourseSelect: React.FC<{
         role="listbox"
       >
         {options.length === 0 ? (
-          <div className="px-3 py-2 text-sm text-gray-500 dark:text-white/60">No courses available</div>
+          <div className="px-3 py-2 text-sm text-gray-500 dark:text-white/60">
+            No courses available
+          </div>
         ) : (
           options.map((opt) => {
             const active = opt.value === value;
             return (
               <button
                 key={opt.value}
-                onClick={() => { onChange(opt.value); setOpen(false); }}
+                onClick={() => {
+                  onChange(opt.value);
+                  setOpen(false);
+                }}
                 role="option"
                 aria-selected={active}
                 className={`w-full text-left px-3 py-2 text-sm ${
@@ -160,7 +177,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
     setTotalLessons,
     quizCount,
     setQuizCount,
-    canStartNow, 
+    canStartNow,
   } = props;
 
   return (
@@ -195,7 +212,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
             >
               {busy ? 'Preparing…' : hasAIContent ? 'Continue lesson' : 'Start with A.I'}
             </button>
-
           </div>
         </div>
       ) : (
@@ -230,7 +246,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   return (
                     <button
                       key={t.key}
-                      onClick={() => { if (!isLockedLearner) setProgramTrack(t.key); }}
+                      onClick={() => {
+                        if (!isLockedLearner) setProgramTrack(t.key);
+                      }}
                       disabled={isLockedLearner}
                       className={`chip ${active ? 'chip-active' : ''} ${isLockedLearner ? 'opacity-50 pointer-events-none' : ''}`}
                       title={`${t.label}: ~${t.lessons} lessons`}
@@ -302,7 +320,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   return (
                     <button
                       key={lv}
-                      onClick={() => { if (!isLockedLearner) setClassLevel(lv); }}
+                      onClick={() => {
+                        if (!isLockedLearner) setClassLevel(lv);
+                      }}
                       disabled={isLockedLearner}
                       className={`flex-1 px-2.5 py-1.5 text-[11px] capitalize transition ${
                         active
@@ -324,7 +344,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               <button
                 type="button"
                 onClick={() => onStart?.()}
-                 disabled={busy || !canStartNow}
+                disabled={busy || !canStartNow}
                 className={`w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-semibold transition ring-1 ${
                   busy
                     ? 'opacity-60 cursor-not-allowed bg-indigo-50 text-indigo-700 ring-indigo-300 dark:bg-indigo-600/30 dark:text-white dark:ring-indigo-500'
@@ -335,10 +355,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 {busy ? 'Preparing…' : hasAIContent ? 'Continue lesson' : 'Start with A.I'}
               </button>
 
-
               {/* Hide these when locked */}
               {selectedCourse && !isLockedLearner && (
-                <button onClick={() => onRefreshSelectedAI()} className="chip" title="Clear this course’s cache (outline, narration, quiz) and regenerate">
+                <button
+                  onClick={() => onRefreshSelectedAI()}
+                  className="chip"
+                  title="Clear this course’s cache (outline, narration, quiz) and regenerate"
+                >
                   Refresh AI
                 </button>
               )}
@@ -349,7 +372,11 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   onClick={onOpenShare}
                   disabled={!selectedCourse?.id && !customTitle.trim()}
                   className={`chip ${selectedCourse?.id ? 'chip-active' : ''}`}
-                  title={selectedCourse?.id ? 'Share this course with your learners' : 'Select or generate a course first'}
+                  title={
+                    selectedCourse?.id
+                      ? 'Share this course with your learners'
+                      : 'Select or generate a course first'
+                  }
                 >
                   Share with learners
                 </button>
@@ -359,82 +386,98 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
 
           {/* Simple extra knobs row — hide in minimal */}
           {!showMinimalControls && (
-  <>
-    <div className="grid grid-cols-3 gap-2">
-      <label className="text-sm">Minutes
-        <input
-          type="number" min={3} max={5000} value={minutes}
-          onChange={e => {
-            if (knobsDisabled) return;
-            const v = Math.max(3, Number(e.target.value)||0);
-            setMinutes(v);
-            const next = [...PRESETS].reverse().find(x => v >= x.min) ?? PRESETS[0];
-            setSizePreset(next.key as SizePresetKey);
-          }}
-          disabled={knobsDisabled}
-          readOnly={knobsDisabled}
-          className={`input !py-2 !px-3 text-sm w-full ${knobsDisabled ? 'opacity-50 cursor-not-allowed' : ''}`} />
-      </label>
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="text-sm">
+                  Minutes
+                  <input
+                    type="number"
+                    min={3}
+                    max={5000}
+                    value={minutes}
+                    onChange={(e) => {
+                      if (knobsDisabled) return;
+                      const v = Math.max(3, Number(e.target.value) || 0);
+                      setMinutes(v);
+                      const next = [...PRESETS].reverse().find((x) => v >= x.min) ?? PRESETS[0];
+                      setSizePreset(next.key as SizePresetKey);
+                    }}
+                    disabled={knobsDisabled}
+                    readOnly={knobsDisabled}
+                    className={`input !py-2 !px-3 text-sm w-full ${knobsDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  />
+                </label>
 
-      <label className="text-sm">Lessons
-        <input
-          type="number" min={1} max={500} value={totalLessons}
-          onChange={e => {
-            if (knobsDisabled) return;
-            const v = Math.max(1, Number(e.target.value)||0);
-            /* ✅ start using custom lessons */
-            props.setOverrideLessons(true);
-            setTotalLessons(v);
-          }}
-          disabled={knobsDisabled}
-          readOnly={knobsDisabled}
-          className={`input !py-2 !px-3 text-sm w-full ${knobsDisabled ? 'opacity-50 cursor-not-allowed' : ''}`} />
-      </label>
+                <label className="text-sm">
+                  Lessons
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={totalLessons}
+                    onChange={(e) => {
+                      if (knobsDisabled) return;
+                      const v = Math.max(1, Number(e.target.value) || 0);
+                      /* ✅ start using custom lessons */
+                      props.setOverrideLessons(true);
+                      setTotalLessons(v);
+                    }}
+                    disabled={knobsDisabled}
+                    readOnly={knobsDisabled}
+                    className={`input !py-2 !px-3 text-sm w-full ${knobsDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  />
+                </label>
 
-      <label className="text-sm">Quiz questions
-        <input
-          type="number" min={4} max={400} value={quizCount}
-          onChange={e => {
-            if (knobsDisabled) return;
-            const v = Math.max(4, Number(e.target.value)||0);
-            /* ✅ start using custom quiz size */
-            props.setOverrideQuiz(true);
-            setQuizCount(v);
-          }}
-          disabled={knobsDisabled}
-          readOnly={knobsDisabled}
-          className={`input !py-2 !px-3 text-sm w-full ${knobsDisabled ? 'opacity-50 cursor-not-allowed' : ''}`} />
-      </label>
-    </div>
+                <label className="text-sm">
+                  Quiz questions
+                  <input
+                    type="number"
+                    min={4}
+                    max={400}
+                    value={quizCount}
+                    onChange={(e) => {
+                      if (knobsDisabled) return;
+                      const v = Math.max(4, Number(e.target.value) || 0);
+                      /* ✅ start using custom quiz size */
+                      props.setOverrideQuiz(true);
+                      setQuizCount(v);
+                    }}
+                    disabled={knobsDisabled}
+                    readOnly={knobsDisabled}
+                    className={`input !py-2 !px-3 text-sm w-full ${knobsDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  />
+                </label>
+              </div>
 
-    {/* “Use track defaults” chip — only when any override is active */}
-    <div className="mt-2 flex flex-wrap items-center gap-2">
-      {(props.overrideLessons || props.overrideQuiz) && (
-        <button
-          type="button"
-          onClick={() => {
-            props.setOverrideLessons(false);
-            props.setOverrideQuiz(false);
-            // snap visible fields back to current track defaults
-            setTotalLessons(trackLessons);
-            setQuizCount(Math.max(4, Math.floor(trackLessons * 2)));
-          }}
-          className="px-3 py-1.5 rounded-full text-xs bg-gray-100 dark:bg-[#172534] ring-1 ring-gray-200 dark:ring-white/15"
-          title="Revert to track defaults"
-        >
-          Use track defaults
-        </button>
-      )}
-    </div>
-  </>
-)}
-
+              {/* “Use track defaults” chip — only when any override is active */}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {(props.overrideLessons || props.overrideQuiz) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      props.setOverrideLessons(false);
+                      props.setOverrideQuiz(false);
+                      // snap visible fields back to current track defaults
+                      setTotalLessons(trackLessons);
+                      setQuizCount(Math.max(4, Math.floor(trackLessons * 2)));
+                    }}
+                    className="px-3 py-1.5 rounded-full text-xs bg-gray-100 dark:bg-[#172534] ring-1 ring-gray-200 dark:ring-white/15"
+                    title="Revert to track defaults"
+                  >
+                    Use track defaults
+                  </button>
+                )}
+              </div>
+            </>
+          )}
 
           {/* Custom topic */}
           {!isLockedLearner && (
             <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
               <div className="md:col-span-2">
-                <label className="text-xs text-gray-600 dark:text-white/70">Or type any topic</label>
+                <label className="text-xs text-gray-600 dark:text-white/70">
+                  Or type any topic
+                </label>
                 <input
                   value={customTitle}
                   onChange={(e) => setCustomTitle(e.currentTarget.value)}
@@ -443,33 +486,32 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 />
               </div>
               <div className="flex flex-col items-start">
-            <button
-              type="button"
-              className={`w-full md:w-auto px-4 py-2 rounded-xl text-sm font-semibold transition ring-1 ${
-                !customTitle.trim() || busy || !canStartNow
-                  ? 'opacity-60 cursor-not-allowed bg-indigo-50 text-indigo-700 ring-indigo-300 dark:bg-indigo-600/30 dark:text-white dark:ring-indigo-500'
-                  : 'bg-indigo-50 text-indigo-700 ring-indigo-300 hover:bg-indigo-100 dark:bg-indigo-600/40 dark:text-white dark:ring-indigo-500 dark:hover:bg-indigo-600/50'
-              }`}
-              onClick={() => onStart()}
-              disabled={!customTitle.trim() || busy || !canStartNow}
-              title="Spin up an AI sandbox course for this topic"
-            >
-              {busy ? 'Preparing…' : 'Teach me'}
-            </button>
+                <button
+                  type="button"
+                  className={`w-full md:w-auto px-4 py-2 rounded-xl text-sm font-semibold transition ring-1 ${
+                    !customTitle.trim() || busy || !canStartNow
+                      ? 'opacity-60 cursor-not-allowed bg-indigo-50 text-indigo-700 ring-indigo-300 dark:bg-indigo-600/30 dark:text-white dark:ring-indigo-500'
+                      : 'bg-indigo-50 text-indigo-700 ring-indigo-300 hover:bg-indigo-100 dark:bg-indigo-600/40 dark:text-white dark:ring-indigo-500 dark:hover:bg-indigo-600/50'
+                  }`}
+                  onClick={() => onStart()}
+                  disabled={!customTitle.trim() || busy || !canStartNow}
+                  title="Spin up an AI sandbox course for this topic"
+                >
+                  {busy ? 'Preparing…' : 'Teach me'}
+                </button>
 
-            {!selectedCourse && !customTitle.trim() && (
-              <p className="mt-1 text-xs text-red-500">
-                Pick a course or enter a custom topic first.
-              </p>
-            )}
-          </div>
-
+                {!selectedCourse && !customTitle.trim() && (
+                  <p className="mt-1 text-xs text-red-500">
+                    Pick a course or enter a custom topic first.
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </>
       )}
 
-      {(false /* error displayed in container when needed */) && (
+      {false /* error displayed in container when needed */ && (
         <p className="mt-2 text-xs text-red-600 dark:text-red-300">Error</p>
       )}
     </section>

@@ -11,12 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import tw from '../../../tailwind';
-import {
-  useRoute,
-  useNavigation,
-  RouteProp,
-  NavigationProp,
-} from '@react-navigation/native';
+import { useRoute, useNavigation, RouteProp, NavigationProp } from '@react-navigation/native';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrgInvite } from '@mytutorapp/shared/hooks';
 import { acceptOrgInvite, acceptOrgMembershipInvite } from '@mytutorapp/shared/api';
@@ -46,11 +41,11 @@ type Nav = NavigationProp<MainStackParamList>;
 // normalize & resolve quizType from varying shapes
 type QuizType = 'mcq' | 'short';
 const normalizeQuizType = (v: unknown): QuizType | null => {
-  const s = String(v ?? '').trim().toLowerCase();
+  const s = String(v ?? '')
+    .trim()
+    .toLowerCase();
   if (!s) return null;
-  if (
-    ['mcq', 'multiple', 'multiple_choice', 'multiple-choice', 'choice', 'choices'].includes(s)
-  )
+  if (['mcq', 'multiple', 'multiple_choice', 'multiple-choice', 'choice', 'choices'].includes(s))
     return 'mcq';
   if (
     [
@@ -176,13 +171,14 @@ const OrgInviteLandingNative: React.FC = () => {
       ? 'Join organization'
       : (meta as OrgInviteInfo | undefined)?.title_override || 'Assigned Course';
   const subtitle =
-    kind === 'membership' ? 'You have been invited to join this organization.' : 'Invitation to learn';
+    kind === 'membership'
+      ? 'You have been invited to join this organization.'
+      : 'Invitation to learn';
   const logoUrl = kind === 'assignment' ? (meta as OrgInviteInfo | undefined)?.logo_url : undefined;
   const signatureUrl =
     kind === 'assignment' ? (meta as OrgInviteInfo | undefined)?.signature_url : undefined;
-  const maxAttempts = kind === 'assignment'
-    ? (meta as OrgInviteInfo | undefined)?.max_attempts
-    : undefined;
+  const maxAttempts =
+    kind === 'assignment' ? (meta as OrgInviteInfo | undefined)?.max_attempts : undefined;
 
   const primaryCta = learnerToken
     ? kind === 'membership'
@@ -228,8 +224,7 @@ const OrgInviteLandingNative: React.FC = () => {
 
       const assignmentId =
         enrollment?.assignmentId ?? (meta as OrgInviteInfo | undefined)?.id ?? null;
-      const courseId =
-        enrollment?.courseId ?? (meta as OrgInviteInfo | undefined)?.course_id ?? '';
+      const courseId = enrollment?.courseId ?? (meta as OrgInviteInfo | undefined)?.course_id ?? '';
 
       if (!assignmentId) {
         throw new Error('Invite accepted, but no assignment found.');
@@ -262,16 +257,7 @@ const OrgInviteLandingNative: React.FC = () => {
     } finally {
       setAccepting(false);
     }
-  }, [
-    backendUrl,
-    learnerToken,
-    code,
-    navigation,
-    meta,
-    kind,
-    domainRestricted,
-    allowedDomains,
-  ]);
+  }, [backendUrl, learnerToken, code, navigation, meta, kind, domainRestricted, allowedDomains]);
 
   return (
     <View style={tw`flex-1 bg-[#0b1220] px-3 pt-6 pb-4`}>
@@ -379,9 +365,8 @@ const OrgInviteLandingNative: React.FC = () => {
                 <View style={tw`mt-3 rounded-lg bg-yellow-500/10 border border-yellow-400/20 p-3`}>
                   <Text style={tw`text-yellow-200 text-xs font-semibold`}>Restricted invite</Text>
                   <Text style={tw`text-yellow-200 text-xs mt-1`}>
-                    Only emails from{' '}
-                    <Text style={tw`font-bold`}>{allowedDomains.join(', ')}</Text> can accept this
-                    invite.
+                    Only emails from <Text style={tw`font-bold`}>{allowedDomains.join(', ')}</Text>{' '}
+                    can accept this invite.
                     {learnerToken
                       ? ' If this isn’t your organization email, sign out and sign back in with the permitted address.'
                       : ' Please sign in using an email on one of those domains.'}
@@ -432,8 +417,9 @@ const OrgInviteLandingNative: React.FC = () => {
                 <Text style={tw`mt-4 text-[12px] text-white/60`}>
                   {kind === 'membership' ? (
                     <>
-                      By joining, you’ll be added to <Text style={tw`font-semibold`}>{orgName}</Text>
-                      . Your admins may assign courses to you.
+                      By joining, you’ll be added to{' '}
+                      <Text style={tw`font-semibold`}>{orgName}</Text>. Your admins may assign
+                      courses to you.
                     </>
                   ) : (
                     <>

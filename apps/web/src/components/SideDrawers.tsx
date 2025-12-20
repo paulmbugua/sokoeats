@@ -9,7 +9,9 @@ try {
   remarkGfm = require('remark-gfm');
   remarkMath = require('remark-math');
   rehypeKatex = require('rehype-katex');
-} catch { /* optional */ }
+} catch {
+  /* optional */
+}
 
 /* ─────────────────────────────────────────────────────────
    Shared Markdown renderer — matches LessonOverlay styling
@@ -45,14 +47,26 @@ export const MarkdownPro: React.FC<{
       <ol className="my-2 space-y-1 text-slate-700 dark:text-slate-200" {...props} />
     ),
     code: (
-      props: (React.HTMLAttributes<HTMLElement> & { inline?: boolean; className?: string }) & { children?: React.ReactNode }
+      props: (React.HTMLAttributes<HTMLElement> & { inline?: boolean; className?: string }) & {
+        children?: React.ReactNode;
+      }
     ) => {
       const { inline, className, children, ...rest } = props;
       if (inline) {
-        return <code className={`px-1 py-0.5 rounded bg-zinc-900/5 dark:bg-white/10 ${className || ''}`} {...rest}>{children}</code>;
+        return (
+          <code
+            className={`px-1 py-0.5 rounded bg-zinc-900/5 dark:bg-white/10 ${className || ''}`}
+            {...rest}
+          >
+            {children}
+          </code>
+        );
       }
       return (
-        <code className={`block p-3 rounded-lg bg-zinc-900/5 dark:bg-white/10 overflow-x-auto text-[13px] ${className || ''}`} {...rest}>
+        <code
+          className={`block p-3 rounded-lg bg-zinc-900/5 dark:bg-white/10 overflow-x-auto text-[13px] ${className || ''}`}
+          {...rest}
+        >
           {children}
         </code>
       );
@@ -62,18 +76,32 @@ export const MarkdownPro: React.FC<{
         <table className="w-full table-auto border-separate border-spacing-0 text-sm" {...props} />
       </div>
     ),
-    thead: (props: React.HTMLAttributes<HTMLTableSectionElement>) => <thead className="text-left" {...props} />,
+    thead: (props: React.HTMLAttributes<HTMLTableSectionElement>) => (
+      <thead className="text-left" {...props} />
+    ),
     th: (props: React.ThHTMLAttributes<HTMLTableCellElement>) => (
-      <th className="px-3 py-2 font-semibold border-b border-black/10 dark:border-slate-700 bg-slate-100 text-slate-900
-                     dark:bg-slate-800 dark:text-slate-100" {...props} />
+      <th
+        className="px-3 py-2 font-semibold border-b border-black/10 dark:border-slate-700 bg-slate-100 text-slate-900
+                     dark:bg-slate-800 dark:text-slate-100"
+        {...props}
+      />
     ),
     td: (props: React.TdHTMLAttributes<HTMLTableCellElement>) => (
-      <td className="px-3 py-2 align-top border-b border-black/5 dark:border-slate-800
-                     text-slate-800 dark:text-slate-100" {...props} />
+      <td
+        className="px-3 py-2 align-top border-b border-black/5 dark:border-slate-800
+                     text-slate-800 dark:text-slate-100"
+        {...props}
+      />
     ),
-    hr: (props: React.HTMLAttributes<HTMLHRElement>) => <hr className="my-3 border-black/10 dark:border-slate-700" {...props} />,
-    em: (props: React.HTMLAttributes<HTMLElement>) => <em className="text-indigo-500 dark:text-indigo-300 not-italic font-medium" {...props} />,
-    strong: (props: React.HTMLAttributes<HTMLElement>) => <strong className="text-slate-900 dark:text-white font-semibold" {...props} />,
+    hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
+      <hr className="my-3 border-black/10 dark:border-slate-700" {...props} />
+    ),
+    em: (props: React.HTMLAttributes<HTMLElement>) => (
+      <em className="text-indigo-500 dark:text-indigo-300 not-italic font-medium" {...props} />
+    ),
+    strong: (props: React.HTMLAttributes<HTMLElement>) => (
+      <strong className="text-slate-900 dark:text-white font-semibold" {...props} />
+    ),
   };
 
   const zoomStyle: React.CSSProperties = {
@@ -121,7 +149,18 @@ export interface TranscriptDrawerProps {
   onSeekToWord: (wordIndex: number) => void;
 }
 export const TranscriptDrawer: React.FC<TranscriptDrawerProps> = ({
-  open, title, lines, words, activeLine, currentIndex, top, bottom, readerScale, loading, error, onSeekToWord,
+  open,
+  title,
+  lines,
+  words,
+  activeLine,
+  currentIndex,
+  top,
+  bottom,
+  readerScale,
+  loading,
+  error,
+  onSeekToWord,
 }) => (
   <AnimatePresence>
     {open && (
@@ -139,8 +178,10 @@ export const TranscriptDrawer: React.FC<TranscriptDrawerProps> = ({
       >
         <div className="h-full flex flex-col">
           <div className="px-4 py-3 border-b border-black/10 dark:border-slate-700">
-            <div className="font-semibold text-base sm:text-lg truncate
-                            bg-clip-text text-transparent bg-gradient-to-r from-softPink via-indigo-300 to-primary">
+            <div
+              className="font-semibold text-base sm:text-lg truncate
+                            bg-clip-text text-transparent bg-gradient-to-r from-softPink via-indigo-300 to-primary"
+            >
               {title}
             </div>
             <div className="mt-0.5 text-slate-600 dark:text-slate-300 text-[12px] sm:text-xs">
@@ -155,9 +196,11 @@ export const TranscriptDrawer: React.FC<TranscriptDrawerProps> = ({
                 <div
                   key={i}
                   className={`rounded-md px-3 sm:px-3.5 py-2 sm:py-2.5 leading-7 cursor-pointer transition
-                    ${active
-                      ? 'bg-slate-100 text-slate-900 ring-1 ring-black/10 dark:bg-slate-800 dark:text-white dark:ring-slate-700'
-                      : 'text-slate-800 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60'}`}
+                    ${
+                      active
+                        ? 'bg-slate-100 text-slate-900 ring-1 ring-black/10 dark:bg-slate-800 dark:text-white dark:ring-slate-700'
+                        : 'text-slate-800 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60'
+                    }`}
                   style={{ fontSize: `calc(1rem * ${readerScale})` }}
                   onClick={() => ln.indices.length && onSeekToWord(ln.indices[0])}
                   title="Seek to this line"
@@ -181,8 +224,16 @@ export const TranscriptDrawer: React.FC<TranscriptDrawerProps> = ({
                 </div>
               );
             })}
-            {loading && <div className="text-[12px] sm:text-xs text-slate-600 dark:text-slate-300 px-3">Generating TTS…</div>}
-            {error && !loading && <div className="text-[12px] sm:text-xs text-red-600 dark:text-red-300 px-3">{error}</div>}
+            {loading && (
+              <div className="text-[12px] sm:text-xs text-slate-600 dark:text-slate-300 px-3">
+                Generating TTS…
+              </div>
+            )}
+            {error && !loading && (
+              <div className="text-[12px] sm:text-xs text-red-600 dark:text-red-300 px-3">
+                {error}
+              </div>
+            )}
           </div>
         </div>
       </motion.div>
@@ -203,7 +254,13 @@ export interface NotesDrawerProps {
   isMax?: boolean;
 }
 export const NotesDrawer: React.FC<NotesDrawerProps> = ({
-  open, title, markdown, top, bottom, readerScale, isMax = false,
+  open,
+  title,
+  markdown,
+  top,
+  bottom,
+  readerScale,
+  isMax = false,
 }) => (
   <AnimatePresence>
     {open && (
@@ -220,8 +277,10 @@ export const NotesDrawer: React.FC<NotesDrawerProps> = ({
         style={{ top, bottom, scrollbarWidth: 'thin' as any }}
       >
         <div className="px-4 py-3 border-b border-black/10 dark:border-slate-700">
-          <div className="font-semibold text-base sm:text-lg truncate
-                          bg-clip-text text-transparent bg-gradient-to-r from-softPink via-indigo-300 to-primary">
+          <div
+            className="font-semibold text-base sm:text-lg truncate
+                          bg-clip-text text-transparent bg-gradient-to-r from-softPink via-indigo-300 to-primary"
+          >
             {title}
           </div>
           <div className="mt-0.5 text-slate-600 dark:text-slate-300 text-[12px] sm:text-xs">

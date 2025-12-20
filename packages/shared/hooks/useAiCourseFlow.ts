@@ -129,12 +129,30 @@ function getStatusCode(err: unknown): number {
   return typeof e.status === 'number'
     ? e.status
     : typeof e.code === 'number'
-    ? (e.code as number)
-    : 0;
+      ? (e.code as number)
+      : 0;
 }
 function getMessage(err: unknown): string | undefined {
   return (err as { message?: string })?.message;
 }
+
+function getOrCreateAnonId(): string {
+  const key = 'ANON_ID';
+  try {
+    if (typeof window !== 'undefined' && window?.localStorage) {
+      const existing = localStorage.getItem(key);
+      if (existing && existing.trim()) return existing.trim();
+
+      const fresh = `anon_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(key, fresh);
+      return fresh;
+    }
+  } catch {}
+
+  // RN / no localStorage: per-run fallback (still works, but resets on restart)
+  return `anon_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 
 // ---------- defaults (declare BEFORE any usage) ----------
 const DEFAULT_SIZE = {
@@ -149,11 +167,7 @@ const DEFAULT_SIZE = {
   voiceName: 'en-US-JennyNeural',
 };
 
-export function useAiCourse(
-  backendUrl: string,
-  authToken?: string,
-  flowHints?: FlowHints
-) {
+export function useAiCourse(backendUrl: string, authToken?: string, flowHints?: FlowHints) {
   const [topCourses, setTopCourses] = useState<TopCourse[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<TopCourse | null>(null);
   const [outline, setOutline] = useState<AiOutlineSection[]>([]);
@@ -163,6 +177,7 @@ export function useAiCourse(
   const [currentLessonIndex, setCurrentLessonIndex] = useState<number>(0);
   const [joinedSsml, setJoinedSsml] = useState<string>('');
   const [ssml, setSsml] = useState<string>('');
+  const anonId = useMemo(() => getOrCreateAnonId(), []);
 
   const { clear: clearQueue, playNext } = useTtsQueue((next) => {
     if (next?.trim()) setSsml(next);
@@ -175,8 +190,10 @@ export function useAiCourse(
   const [step, setStep] = useState<StartState>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  const [degradedNotice, setDegradedNotice] =
-    useState<{ degraded: boolean; reason: string } | null>(null);
+  const [degradedNotice, setDegradedNotice] = useState<{
+    degraded: boolean;
+    reason: string;
+  } | null>(null);
   const [gateMode, setGateMode] = useState<LessonGateMode>('narration');
   const [gateNotice, setGateNotice] = useState<LessonGateNotice | null>(null);
   const [gateUsage, setGateUsage] = useState<LessonGateUsage[]>([]);
@@ -190,7 +207,7 @@ export function useAiCourse(
   // Track/abort a single “run” of outline+lessons generation
   const runIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
-
+  const assignmentIdRef = useRef<string | null>(null);
   // Per-index lesson cache + in-flight dedupe
   const lessonCacheRef = useRef<Map<number, LessonLite>>(new Map());
   const inflightLessonsRef = useRef<Map<number, Promise<LessonLite>>>(new Map());
@@ -230,15 +247,14 @@ export function useAiCourse(
 
         const rows: TopCourse[] = Array.isArray(raw)
           ? raw
-          : (raw?.rows as TopCourse[]) ??
+          : ((raw?.rows as TopCourse[]) ??
             (raw?.courses as TopCourse[]) ??
             (raw?.data as TopCourse[]) ??
-            [];
+            []);
 
         const hasMoreFlag = raw?.hasMore ?? raw?.has_more ?? raw?.hasNext;
         const cursorPresent = raw?.nextCursor != null || typeof raw?.next_cursor !== 'undefined';
-        const normalizedHasMore: boolean =
-          Boolean(hasMoreFlag ?? cursorPresent) && rows.length > 0;
+        const normalizedHasMore: boolean = Boolean(hasMoreFlag ?? cursorPresent) && rows.length > 0;
         const normalizedCursor: string | null =
           raw?.nextCursor ?? raw?.next_cursor ?? raw?.cursor ?? null;
 
@@ -246,8 +262,7 @@ export function useAiCourse(
           const title = (t.title || '').toLowerCase();
           const blurb = (t.blurb || '').toLowerCase();
           return (
-            blurb.startsWith('ai sandbox course for:') ||
-            title.startsWith('ai sandbox course for:')
+            blurb.startsWith('ai sandbox course for:') || title.startsWith('ai sandbox course for:')
           );
         };
 
@@ -259,7 +274,7 @@ export function useAiCourse(
           const seen = new Set<string>();
           const deduped = merged.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
           deduped.sort((a, b) =>
-            (a.title || '').localeCompare((b.title || ''), undefined, {
+            (a.title || '').localeCompare(b.title || '', undefined, {
               sensitivity: 'base',
               numeric: true,
             })
@@ -294,7 +309,7 @@ export function useAiCourse(
       } catch {}
       abortRef.current = null;
       runIdRef.current++;
-
+      assignmentIdRef.current = null;
       setSelectedCourse(course);
 
       // clear old state & caches
@@ -351,168 +366,192 @@ export function useAiCourse(
     playNext();
   }, [playNext]);
 
-
   // ---------- per-index, deduped lesson builder ----------
   // ---------- per-index, deduped lesson builder ----------
-const ensureLesson = useCallback(
-  async (
-    index: number,
-    olOverride?: AiOutlineSection[],
-    courseIdOverride?: string
-  ): Promise<LessonLite> => {
-    if (index < 0) throw new Error('bad index');
+  const ensureLesson = useCallback(
+    async (
+      index: number,
+      olOverride?: AiOutlineSection[],
+      courseIdOverride?: string
+    ): Promise<LessonLite> => {
+      if (index < 0) throw new Error('bad index');
 
-    if (DBG) {
-      console.info('[ai] ensureLesson: enter', {
-        index,
-        hasOverrideOutline: !!olOverride?.length,
-        courseIdOverride,
-      });
-    }
+      if (DBG) {
+        console.info('[ai] ensureLesson: enter', {
+          index,
+          hasOverrideOutline: !!olOverride?.length,
+          courseIdOverride,
+        });
+      }
 
-    const ol = (olOverride && olOverride.length ? olOverride : outlineRef.current) || [];
+      const ol = (olOverride && olOverride.length ? olOverride : outlineRef.current) || [];
 
-    if (!ol || ol.length === 0) {
-      if (DBG) console.warn('[ai] ensureLesson: outline not ready yet', { index });
-      await sleep(50);
-      const re = outlineRef.current || [];
-      if (!re.length) {
-        const err: any = new Error('outline_not_ready');
-        err.code = 'OUTLINE_NOT_READY';
-        if (DBG) console.error('[ai] ensureLesson: outline still empty', { index });
+      if (!ol || ol.length === 0) {
+        if (DBG) console.warn('[ai] ensureLesson: outline not ready yet', { index });
+        await sleep(50);
+        const re = outlineRef.current || [];
+        if (!re.length) {
+          const err: any = new Error('outline_not_ready');
+          err.code = 'OUTLINE_NOT_READY';
+          if (DBG) console.error('[ai] ensureLesson: outline still empty', { index });
+          throw err;
+        }
+        return ensureLesson(index, re, courseIdOverride);
+      }
+
+      const courseId = courseIdOverride || selectedCourse?.id;
+      if (!courseId) {
+        const err: any = new Error('no_course_selected');
+        err.code = 'NO_COURSE';
+        if (DBG) console.error('[ai] ensureLesson: no courseId', { index });
         throw err;
       }
-      return ensureLesson(index, re, courseIdOverride);
-    }
 
-    const courseId = courseIdOverride || selectedCourse?.id;
-    if (!courseId) {
-      const err: any = new Error('no_course_selected');
-      err.code = 'NO_COURSE';
-      if (DBG) console.error('[ai] ensureLesson: no courseId', { index });
-      throw err;
-    }
-
-    const cached = lessonCacheRef.current.get(index);
-    if (cached) {
-      if (DBG) console.info('[ai] ensureLesson: using cached', { index });
-      return cached;
-    }
-
-    const inflight = inflightLessonsRef.current.get(index);
-    if (inflight) {
-      if (DBG) console.info('[ai] ensureLesson: awaiting inflight', { index });
-      return inflight;
-    }
-
-    const p = (async () => {
-      if (DBG) {
-        console.info('[ai] ensureLesson: createLessonSSML', {
-          index,
-          courseId,
-          voiceName: lastVoiceRef.current,
-          courseSize: lastSizeRef.current,
-        });
+      const cached = lessonCacheRef.current.get(index);
+      if (cached) {
+        if (DBG) console.info('[ai] ensureLesson: using cached', { index });
+        return cached;
       }
 
-      const pack = await createLessonSSML(
-        backendUrl,
-        {
-          courseId,
-          outline: ol,
-          voiceName: lastVoiceRef.current,
-          courseSize: lastSizeRef.current,
-          start: index,
-          count: 1,
-          programTrack: buildKnobs({ courseSize: lastSizeRef.current }).programTrack,
-          noPrewarm: 1,
-        } as any,
-        { token }
-      );
+      const inflight = inflightLessonsRef.current.get(index);
+      if (inflight) {
+        if (DBG) console.info('[ai] ensureLesson: awaiting inflight', { index });
+        return inflight;
+      }
 
-      setGateMode((pack as any)?.mode || 'narration');
-      setGateNotice((pack as any)?.notice || null);
-      setGateUsage((pack as any)?.usage || []);
-
-      const L = pack?.lessons?.[0] as LessonLite | undefined;
-      if (!L?.ssml && (pack as any)?.mode !== 'notes_only') {
+      const p = (async () => {
         if (DBG) {
-          console.error('[ai] ensureLesson: lesson build returned empty ssml', {
+          console.info('[ai] ensureLesson: createLessonSSML', {
             index,
-            pack,
+            courseId,
+            voiceName: lastVoiceRef.current,
+            courseSize: lastSizeRef.current,
           });
         }
-        throw new Error('lesson build failed');
-      }
 
-      if (DBG) {
-        console.info('[ai] lesson artifacts', {
-          id: L.id,
-          index,
-          ssmlLen: L.ssml.length,
-          formulas: L.formulas?.length || 0,
-          tables: L.tables?.length || 0,
-          charts: L.charts?.length || 0,
-          snippets: L.snippets?.length || 0,
-        });
-      }
+        const pack = await createLessonSSML(
+          backendUrl,
+          {
+            courseId,
+            outline: ol,
+            voiceName: lastVoiceRef.current,
+            courseSize: lastSizeRef.current,
+            start: index,
+            count: 1,
+            programTrack: buildKnobs({ courseSize: lastSizeRef.current }).programTrack,
+             assignmentId: assignmentIdRef.current ?? undefined,
+            noPrewarm: 1,
+          } as any,
+          { token,anonId }
+        );
 
-      if ((pack as any)?.notice) setDegradedNotice((pack as any).notice);
+       const mode = ((pack as any)?.mode as LessonGateMode | undefined) || 'narration';
 
-      lessonCacheRef.current.set(index, L);
-      setLessons((prev) => {
-        const seen = new Set(prev.map((x) => String(x.id)));
-        if (seen.has(String(L.id))) return prev;
-        return [...prev, L as AILesson];
-      });
+setGateMode(mode);
+setGateNotice(((pack as any)?.notice as LessonGateNotice) || null);
+setGateUsage(((pack as any)?.usage as LessonGateUsage[]) || []);
 
-      return L;
-    })().finally(() => inflightLessonsRef.current.delete(index));
+const maybeL = pack?.lessons?.[0] as LessonLite | undefined;
 
-    inflightLessonsRef.current.set(index, p);
-    return p;
-  },
-  [backendUrl, selectedCourse, token]
-);
+// Ensure we ALWAYS end up with a real LessonLite (never undefined)
+let L: LessonLite;
 
+if (maybeL) {
+  L = maybeL;
+} else if (mode === 'notes_only') {
+  // Notes-only mode may legitimately not have SSML; provide a safe placeholder lesson
+  const fallbackTitle = String(ol?.[index]?.title || `Lesson ${index + 1}`);
+  L = {
+    id: `${courseId}:notes_only:${index}`,
+    title: fallbackTitle,
+    ssml: '',
+    markdown: '_Notes are available, but narration is currently locked._',
+  };
+} else {
+  // Not notes_only and no lesson returned -> backend didn’t give what we need
+  throw new Error('lesson_missing');
+}
+
+// If narration is allowed, SSML must be present
+if (!L.ssml && mode !== 'notes_only') {
+  if (DBG) {
+    console.error('[ai] ensureLesson: lesson build returned empty ssml', {
+      index,
+      pack,
+    });
+  }
+  throw new Error('lesson build failed');
+}
+
+if (DBG) {
+  console.info('[ai] lesson artifacts', {
+    id: L.id,
+    index,
+    ssmlLen: (L.ssml || '').length,
+    formulas: L.formulas?.length || 0,
+    tables: L.tables?.length || 0,
+    charts: L.charts?.length || 0,
+    snippets: L.snippets?.length || 0,
+  });
+}
+
+if ((pack as any)?.notice) setDegradedNotice((pack as any).notice);
+
+lessonCacheRef.current.set(index, L);
+
+setLessons((prev) => {
+  const seen = new Set(prev.map((x) => String(x.id)));
+  if (seen.has(String(L.id))) return prev;
+  return [...prev, L as AILesson];
+});
+
+return L;
+  })().finally(() => inflightLessonsRef.current.delete(index));
+
+      inflightLessonsRef.current.set(index, p);
+      return p;
+    },
+    [backendUrl, selectedCourse, token]
+  );
 
   // Prefetch neighbors (call when play is armed or just started)
   const prefetchingRef = useRef(false);
-const prefetchedSet = useRef<Set<number>>(new Set());
+  const prefetchedSet = useRef<Set<number>>(new Set());
 
-const prefetchAround = useCallback(async (index: number) => {
-  if (prefetchingRef.current) return;
-  const next = index + 1;
-  if (prefetchedSet.current.has(next)) return;
-  prefetchingRef.current = true;
-  try {
-    await ensureLesson(next);
-    prefetchedSet.current.add(next);
-  } finally {
-    prefetchingRef.current = false;
-  }
-}, [ensureLesson]);
-
+  const prefetchAround = useCallback(
+    async (index: number) => {
+      if (prefetchingRef.current) return;
+      const next = index + 1;
+      if (prefetchedSet.current.has(next)) return;
+      prefetchingRef.current = true;
+      try {
+        await ensureLesson(next);
+        prefetchedSet.current.add(next);
+      } finally {
+        prefetchingRef.current = false;
+      }
+    },
+    [ensureLesson]
+  );
 
   // Jump to lesson by index, ensuring it exists first
   const goToLesson = useCallback(
-  async (index: number) => {
-    const ol = outlineRef.current ?? [];
-    if (ol.length === 0) return;
+    async (index: number) => {
+      const ol = outlineRef.current ?? [];
+      if (ol.length === 0) return;
 
-    const clamped = Math.max(0, Math.min(index, ol.length - 1));
-    try {
-      await ensureLesson(clamped);
-    } catch (e) {
-      if (DBG) console.warn('[ai] goToLesson ensureLesson failed', e);
-    }
+      const clamped = Math.max(0, Math.min(index, ol.length - 1));
+      try {
+        await ensureLesson(clamped);
+      } catch (e) {
+        if (DBG) console.warn('[ai] goToLesson ensureLesson failed', e);
+      }
 
-    setCurrentIdx(clamped);
-    if (DBG) console.info('[ai] goToLesson', { index: clamped, total: ol.length });
-  },
-  [ensureLesson] // ✅ keep callback fresh when ensureLesson changes
-);
-
+      setCurrentIdx(clamped);
+      if (DBG) console.info('[ai] goToLesson', { index: clamped, total: ol.length });
+    },
+    [ensureLesson] // ✅ keep callback fresh when ensureLesson changes
+  );
 
   // ---------- knobs ----------
   function buildKnobs(input?: {
@@ -549,172 +588,10 @@ const prefetchAround = useCallback(async (index: number) => {
     };
   }
 
-  
   // --- UPDATED startWithAI: outline → prime L0 (no streaming/full-pack) ---
- const startWithAI = useCallback(
-  async (opts?: {
-    courseId?: string;
-    courseSize?: CourseSize;
-    level?: 'beginner' | 'intermediate' | 'advanced';
-    minutes?: number;
-    voiceName?: string;
-    paragraphs?: number;
-    sentencesPerParagraph?: number;
-    programTrack?: ProgramTrack;
-    totalLessons?: number;
-    assignmentId?: string;
-  }) => {
-    const courseId = opts?.courseId || selectedCourse?.id;
-    if (!courseId) {
-      const msg = 'Could not resolve courseId for this run (custom topic?).';
-      if (DBG) console.warn('[ai] startWithAI: no courseId/selectedCourse', { opts, selectedCourse });
-      setError(msg);
-      setStep('error');
-      return;
-    }
-
-    if (DBG) {
-      console.info('[ai] startWithAI: enter', {
-        courseId,
-        opts,
-        hasAuthToken: !!token,
-      });
-    }
-
-    setError(null);
-    setStep('outlining');
-
-    const voice = opts?.voiceName || DEFAULT_SIZE.voiceName;
-    const knobs = buildKnobs({
-      courseSize: opts?.courseSize,
-      level: opts?.level,
-      minutes: opts?.minutes,
-      paragraphs: opts?.paragraphs,
-      sentencesPerParagraph: opts?.sentencesPerParagraph,
-      programTrack: opts?.programTrack,
-      totalLessons: opts?.totalLessons,
-    });
-
-    lastVoiceRef.current = voice;
-    lastSizeRef.current = knobs.courseSize;
-
-    runIdRef.current += 1;
-    const thisRun = runIdRef.current;
-
-    try {
-      abortRef.current?.abort('superseded');
-    } catch {}
-    abortRef.current = new AbortController();
-    const { signal } = abortRef.current;
-
-    // 1) Outline (with retries on 503/429)
-    let outlineResp: AiOutlineResponse | undefined;
-    let attempt = 0;
-    for (;;) {
-      try {
-        const outlineReq: AiOutlineRequest = {
-          courseId,
-          level: knobs.level,
-          courseSize: knobs.courseSize,
-          targetMinutes: knobs.targetMinutes,
-          paragraphs: knobs.paragraphs,
-          sentencesPerParagraph: knobs.sentencesPerParagraph,
-          programTrack: knobs.programTrack,
-          totalLessons: knobs.totalLessons,
-          assignmentId: opts?.assignmentId,
-        };
-
-        if (DBG) {
-          console.info('[ai] startWithAI: createOutline attempt', {
-            attempt,
-            outlineReq,
-          });
-        }
-
-        outlineResp = await createOutline(backendUrl, outlineReq, { signal, token });
-        break;
-      } catch (e: unknown) {
-        attempt++;
-        const status = getStatusCode(e);
-        if ((status !== 503 && status !== 429) || attempt >= MAX_RETRIES) {
-          if (DBG) {
-            console.error('[ai] startWithAI: createOutline failed', {
-              attempt,
-              status,
-              error: e,
-            });
-          }
-          throw e;
-        }
-        const delay = parseRetryAfter(e as RetryableError, 1500 * attempt);
-        if (DBG) {
-          console.warn('[ai] outline 503/429 retry', { attempt, delayMs: delay });
-        }
-        await sleep(delay);
-      }
-    }
-
-    const ol = outlineResp?.outline ?? [];
-    setOutline(ol);
-    outlineRef.current = ol;
-
-    if (DBG) {
-      console.info('[ai] startWithAI: outline ready', {
-        sections: ol.length,
-        runId: thisRun,
-      });
-    }
-
-    if (!Array.isArray(ol) || ol.length === 0) {
-      setStep('error');
-      setError('AI could not generate an outline for this course...');
-      if (DBG) {
-        console.warn('[ai] startWithAI: empty outline', { courseId });
-      }
-      return;
-    }
-
-    setStep('narrating');
-
-    // 2) PRIME the first lesson (fast!) — no joined playback
-    lessonCacheRef.current.clear();
-    inflightLessonsRef.current.clear();
-
-    try {
-      const L0 = await ensureLesson(0, ol, courseId); // ⬅️ pass courseId
-      setLessons([L0 as AILesson]);
-      setCurrentIdx(0);
-      setSsml(L0.ssml);
-      setJoinedSsml(''); // joined mode OFF
-      setStep('ready');
-
-      if (DBG) {
-        console.info('[ai] startWithAI: first lesson ready', {
-          lessonId: (L0 as any)?.id,
-          ssmlLen: (L0 as any)?.ssml?.length ?? 0,
-        });
-      }
-    } catch (e: unknown) {
-      const msg = getMessage(e) || 'AI failed to prepare the first lesson';
-      setError(msg);
-      setStep('error');
-      if (DBG) {
-        console.error('[ai] startWithAI: ensureLesson(0) failed', {
-          error: e,
-          message: msg,
-        });
-      }
-    }
-  },
-  [backendUrl, selectedCourse, token, ensureLesson]
-);
-
-
- const startCustomTopic = useCallback(
-  async (
-    title: string,
-    opts?: {
-      assignmentId?: string;
+  const startWithAI = useCallback(
+    async (opts?: {
+      courseId?: string;
       courseSize?: CourseSize;
       level?: 'beginner' | 'intermediate' | 'advanced';
       minutes?: number;
@@ -723,118 +600,281 @@ const prefetchAround = useCallback(async (index: number) => {
       sentencesPerParagraph?: number;
       programTrack?: ProgramTrack;
       totalLessons?: number;
-    }
-  ) => {
-    setError(null);
-
-    if (DBG) {
-      console.info('[ai] startCustomTopic: enter', {
-        title,
-        opts,
-        hasAuthToken: !!token,
-        backendUrl,
-      });
-    }
-
-    try {
-      const chosenSize: CourseSize = opts?.courseSize || DEFAULT_SIZE.courseSize;
-      const preset = SIZE_PRESETS[chosenSize];
-
-      const raw = await createAiSandboxCourse(
-        backendUrl,
-        {
-          title,
-          courseSize: chosenSize,
-          minutes: opts?.minutes ?? preset.minutes,
-          assignmentId: opts?.assignmentId,
-        } as any,
-        { token } as any
-      );
-
-      // 🔍 Normalize backend response shape
-      const sandbox = (raw as any)?.course || (raw as any)?.data || raw;
-
-      if (!sandbox || !sandbox.id) {
-        const msg = `Sandbox course missing id (got: ${JSON.stringify(raw)})`;
-        if (DBG) console.error('[ai] startCustomTopic: bad sandbox response', { raw });
+      assignmentId?: string;
+    }) => {
+      const courseId = opts?.courseId || selectedCourse?.id;
+      if (!courseId) {
+        const msg = 'Could not resolve courseId for this run (custom topic?).';
+        if (DBG)
+          console.warn('[ai] startWithAI: no courseId/selectedCourse', { opts, selectedCourse });
         setError(msg);
         setStep('error');
         return;
       }
 
-      const sandboxCourse: TopCourse = {
-        id: sandbox.id,
-        title: sandbox.title || sandbox.name || `AI sandbox: ${title}`,
-        blurb: sandbox.description || '',
-        rating: 0,
-        reviews: 0,
-      };
-
       if (DBG) {
-        console.info('[ai] startCustomTopic: sandbox normalized', {
-          sandbox,
-          sandboxCourse,
-          chosenSize,
+        console.info('[ai] startWithAI: enter', {
+          courseId,
+          opts,
+          hasAuthToken: !!token,
         });
       }
 
-      // ✅ Use the hook’s selectCourse so caches are reset correctly
-      setTopCourses((prev) => {
-        const seen = new Set(prev.map((x) => x.id));
-        if (seen.has(sandboxCourse.id)) return prev;
-        return [sandboxCourse, ...prev];
-      });
+      setError(null);
+      setStep('outlining');
 
-      selectCourse(sandboxCourse);
-
-      // Now kick off the usual flow with a guaranteed courseId
-      await startWithAI({
-        courseId: sandboxCourse.id,
-        assignmentId: opts?.assignmentId,
-        courseSize: chosenSize,
-        level: opts?.level || DEFAULT_SIZE.level,
-        voiceName: opts?.voiceName || DEFAULT_SIZE.voiceName,
-        paragraphs: opts?.paragraphs ?? preset.paragraphs,
-        sentencesPerParagraph:
-          opts?.sentencesPerParagraph ?? preset.sentencesPerParagraph,
+      const voice = opts?.voiceName || DEFAULT_SIZE.voiceName;
+      const knobs = buildKnobs({
+        courseSize: opts?.courseSize,
+        level: opts?.level,
+        minutes: opts?.minutes,
+        paragraphs: opts?.paragraphs,
+        sentencesPerParagraph: opts?.sentencesPerParagraph,
         programTrack: opts?.programTrack,
         totalLessons: opts?.totalLessons,
-        minutes: opts?.minutes ?? preset.minutes,
       });
 
+      lastVoiceRef.current = voice;
+      lastSizeRef.current = knobs.courseSize;
+
+      runIdRef.current += 1;
+      const thisRun = runIdRef.current;
+
+      try {
+        abortRef.current?.abort('superseded');
+      } catch {}
+      abortRef.current = new AbortController();
+      const { signal } = abortRef.current;
+
+      // 1) Outline (with retries on 503/429)
+      let outlineResp: AiOutlineResponse | undefined;
+      let attempt = 0;
+      for (;;) {
+        try {
+          const outlineReq: AiOutlineRequest = {
+            courseId,
+            level: knobs.level,
+            courseSize: knobs.courseSize,
+            targetMinutes: knobs.targetMinutes,
+            paragraphs: knobs.paragraphs,
+            sentencesPerParagraph: knobs.sentencesPerParagraph,
+            programTrack: knobs.programTrack,
+            totalLessons: knobs.totalLessons,
+            assignmentId: opts?.assignmentId,
+          };
+
+          if (DBG) {
+            console.info('[ai] startWithAI: createOutline attempt', {
+              attempt,
+              outlineReq,
+            });
+          }
+
+         outlineResp = await createOutline(backendUrl, outlineReq, { signal, token, anonId });
+
+          break;
+        } catch (e: unknown) {
+          attempt++;
+          const status = getStatusCode(e);
+          if ((status !== 503 && status !== 429) || attempt >= MAX_RETRIES) {
+            if (DBG) {
+              console.error('[ai] startWithAI: createOutline failed', {
+                attempt,
+                status,
+                error: e,
+              });
+            }
+            throw e;
+          }
+          const delay = parseRetryAfter(e as RetryableError, 1500 * attempt);
+          if (DBG) {
+            console.warn('[ai] outline 503/429 retry', { attempt, delayMs: delay });
+          }
+          await sleep(delay);
+        }
+      }
+
+      const ol = outlineResp?.outline ?? [];
+      setOutline(ol);
+      outlineRef.current = ol;
+
       if (DBG) {
-        console.info('[ai] startCustomTopic: startWithAI finished', {
+        console.info('[ai] startWithAI: outline ready', {
+          sections: ol.length,
+          runId: thisRun,
+        });
+      }
+
+      if (!Array.isArray(ol) || ol.length === 0) {
+        setStep('error');
+        setError('AI could not generate an outline for this course...');
+        if (DBG) {
+          console.warn('[ai] startWithAI: empty outline', { courseId });
+        }
+        return;
+      }
+      assignmentIdRef.current =
+      typeof opts?.assignmentId === 'string' && opts.assignmentId.trim()
+        ? opts.assignmentId.trim()
+        : null;
+
+      setStep('narrating');
+
+      // 2) PRIME the first lesson (fast!) — no joined playback
+      lessonCacheRef.current.clear();
+      inflightLessonsRef.current.clear();
+
+      try {
+        const L0 = await ensureLesson(0, ol, courseId); // ⬅️ pass courseId
+        setLessons([L0 as AILesson]);
+        setCurrentIdx(0);
+        setSsml(L0.ssml);
+        setJoinedSsml(''); // joined mode OFF
+        setStep('ready');
+
+        if (DBG) {
+          console.info('[ai] startWithAI: first lesson ready', {
+            lessonId: (L0 as any)?.id,
+            ssmlLen: (L0 as any)?.ssml?.length ?? 0,
+          });
+        }
+      } catch (e: unknown) {
+        const msg = getMessage(e) || 'AI failed to prepare the first lesson';
+        setError(msg);
+        setStep('error');
+        if (DBG) {
+          console.error('[ai] startWithAI: ensureLesson(0) failed', {
+            error: e,
+            message: msg,
+          });
+        }
+      }
+    },
+    [backendUrl, selectedCourse, token, ensureLesson]
+  );
+
+  const startCustomTopic = useCallback(
+    async (
+      title: string,
+      opts?: {
+        assignmentId?: string;
+        courseSize?: CourseSize;
+        level?: 'beginner' | 'intermediate' | 'advanced';
+        minutes?: number;
+        voiceName?: string;
+        paragraphs?: number;
+        sentencesPerParagraph?: number;
+        programTrack?: ProgramTrack;
+        totalLessons?: number;
+      }
+    ) => {
+      setError(null);
+
+      if (DBG) {
+        console.info('[ai] startCustomTopic: enter', {
+          title,
+          opts,
+          hasAuthToken: !!token,
+          backendUrl,
+        });
+      }
+
+      try {
+        const chosenSize: CourseSize = opts?.courseSize || DEFAULT_SIZE.courseSize;
+        const preset = SIZE_PRESETS[chosenSize];
+
+        const raw = await createAiSandboxCourse(
+          backendUrl,
+          {
+            title,
+            courseSize: chosenSize,
+            minutes: opts?.minutes ?? preset.minutes,
+            assignmentId: opts?.assignmentId,
+          } as any,
+          { token,anonId } as any
+        );
+
+        // 🔍 Normalize backend response shape
+        const sandbox = (raw as any)?.course || (raw as any)?.data || raw;
+
+        if (!sandbox || !sandbox.id) {
+          const msg = `Sandbox course missing id (got: ${JSON.stringify(raw)})`;
+          if (DBG) console.error('[ai] startCustomTopic: bad sandbox response', { raw });
+          setError(msg);
+          setStep('error');
+          return;
+        }
+
+        const sandboxCourse: TopCourse = {
+          id: sandbox.id,
+          title: sandbox.title || sandbox.name || `AI sandbox: ${title}`,
+          blurb: sandbox.description || '',
+          rating: 0,
+          reviews: 0,
+        };
+
+        if (DBG) {
+          console.info('[ai] startCustomTopic: sandbox normalized', {
+            sandbox,
+            sandboxCourse,
+            chosenSize,
+          });
+        }
+
+        // ✅ Use the hook’s selectCourse so caches are reset correctly
+        setTopCourses((prev) => {
+          const seen = new Set(prev.map((x) => x.id));
+          if (seen.has(sandboxCourse.id)) return prev;
+          return [sandboxCourse, ...prev];
+        });
+
+        selectCourse(sandboxCourse);
+
+        // Now kick off the usual flow with a guaranteed courseId
+        await startWithAI({
           courseId: sandboxCourse.id,
+          assignmentId: opts?.assignmentId,
+          courseSize: chosenSize,
+          level: opts?.level || DEFAULT_SIZE.level,
+          voiceName: opts?.voiceName || DEFAULT_SIZE.voiceName,
+          paragraphs: opts?.paragraphs ?? preset.paragraphs,
+          sentencesPerParagraph: opts?.sentencesPerParagraph ?? preset.sentencesPerParagraph,
+          programTrack: opts?.programTrack,
+          totalLessons: opts?.totalLessons,
+          minutes: opts?.minutes ?? preset.minutes,
         });
-      }
-    } catch (e: unknown) {
-      const msg = getMessage(e) || 'Failed to start custom topic';
-      setError(msg);
-      setStep('error');
-      if (DBG) {
-        console.error('[ai] startCustomTopic failed', {
-          error: e,
-          message: msg,
-        });
-      }
-    }
-  },
-  [backendUrl, startWithAI, token, selectCourse]
-);
 
-
+        if (DBG) {
+          console.info('[ai] startCustomTopic: startWithAI finished', {
+            courseId: sandboxCourse.id,
+          });
+        }
+      } catch (e: unknown) {
+        const msg = getMessage(e) || 'Failed to start custom topic';
+        setError(msg);
+        setStep('error');
+        if (DBG) {
+          console.error('[ai] startCustomTopic failed', {
+            error: e,
+            message: msg,
+          });
+        }
+      }
+    },
+    [backendUrl, startWithAI, token, selectCourse]
+  );
 
   // Player helpers
   const onBeforePlay = useCallback(async () => {
-  if (!(outlineRef.current?.length > 0)) {
-    if (DBG) console.info('[ai] onBeforePlay skipped: outline not ready');
-    return;
-  }
-  try {
-    await ensureLesson(currentIdx); // ensure current exists
-  } catch {}
-  prefetchAround(currentIdx); // quietly build next ones
-}, [currentIdx, ensureLesson, prefetchAround]);
+    if (!(outlineRef.current?.length > 0)) {
+      if (DBG) console.info('[ai] onBeforePlay skipped: outline not ready');
+      return;
+    }
+    try {
+      await ensureLesson(currentIdx); // ensure current exists
+    } catch {}
+    prefetchAround(currentIdx); // quietly build next ones
+  }, [currentIdx, ensureLesson, prefetchAround]);
 
   const [isBuildingNext, setIsBuildingNext] = useState(false);
 
@@ -898,7 +938,6 @@ const prefetchAround = useCallback(async (index: number) => {
       setQuiz(null);
 
       const size = courseSize || DEFAULT_SIZE.courseSize;
-     
 
       try {
         setQuiz(null);
@@ -916,10 +955,10 @@ const prefetchAround = useCallback(async (index: number) => {
 
         const qt: 'mcq' | 'short' = effectiveQt;
 
-         const wantedNumQ =
-     typeof numQuestions === 'number' && Number.isFinite(numQuestions)
-       ? Math.max(3, Math.min(30, Math.floor(numQuestions)))
-       : undefined;
+        const wantedNumQ =
+          typeof numQuestions === 'number' && Number.isFinite(numQuestions)
+            ? Math.max(3, Math.min(30, Math.floor(numQuestions)))
+            : undefined;
 
         const base = {
           courseId: selectedCourse.id,
@@ -933,15 +972,17 @@ const prefetchAround = useCallback(async (index: number) => {
           lessonIndex:
             typeof opts?.lessonIndex === 'number'
               ? Math.max(0, Math.min(opts.lessonIndex, safeOutline.length - 1))
-              : (programTrack ? currentIdx : undefined),
+              : programTrack
+                ? currentIdx
+                : undefined,
         };
 
         const quizReq: AiQuizRequest = {
-     ...base,
-     ...(wantedNumQ !== undefined ? { numQuestions: wantedNumQ } : {}),
-   };
+          ...base,
+          ...(wantedNumQ !== undefined ? { numQuestions: wantedNumQ } : {}),
+        };
 
-        const q = await createQuiz(backendUrl, quizReq, { token });
+        const q = await createQuiz(backendUrl, quizReq, { token, anonId });
         setQuiz(q.quiz);
         setAnswers({});
         if (DBG) console.info('[ai] quiz generated', { questions: q.quiz?.questions?.length || 0 });
@@ -1062,8 +1103,7 @@ const prefetchAround = useCallback(async (index: number) => {
   const clearTopCoursesCacheNow = useCallback(async () => {
     try {
       const res = await clearTopCoursesCache(backendUrl, { token });
-      if (DBG)
-        console.info('[ai] top-courses cache cleared', { removed: res?.removed ?? 0 });
+      if (DBG) console.info('[ai] top-courses cache cleared', { removed: res?.removed ?? 0 });
       return res?.removed ?? 0;
     } catch (e: unknown) {
       if (DBG) console.warn('[ai] clearTopCoursesCacheNow failed', e);
@@ -1111,7 +1151,7 @@ const prefetchAround = useCallback(async (index: number) => {
     startCustomTopic,
 
     // nav
-    goToLesson,                 // async now (ensures lesson first)
+    goToLesson, // async now (ensures lesson first)
     nextLesson: goNext,
     prevLesson: goPrev,
     hasNextLesson,

@@ -9,7 +9,7 @@ import type {
   GalleryImage,
   UpdateProfilePayload,
   PayoutCurrency, // 'USD' | 'KES'
-  PayoutMethod,   // 'wise' | 'mpesa'
+  PayoutMethod, // 'wise' | 'mpesa'
 } from '@mytutorapp/shared/types';
 import {
   fetchMyProfile,
@@ -38,9 +38,9 @@ export type UseManageProfileFormOptions = {
 
 const NOOP_NOTIFY: Required<Notifier> = {
   success: (m) => console.log('[success]', m),
-  error:   (m) => console.error('[error]', m),
-  info:    (m) => console.log('[info]', m),
-  warn:    (m) => console.warn('[warn]', m),
+  error: (m) => console.error('[error]', m),
+  info: (m) => console.log('[info]', m),
+  warn: (m) => console.warn('[warn]', m),
 };
 
 /* ---------------------------- Helpers ----------------------------- */
@@ -172,11 +172,7 @@ const useManageProfileForm = (
     // -----------------------------
     // 🔍 Derive role from backend + context
     // -----------------------------
-    const backendRole =
-      raw.role ||
-      raw.user_role ||
-      raw.account_type ||
-      raw.profile_role;
+    const backendRole = raw.role || raw.user_role || raw.account_type || raw.profile_role;
 
     let derivedRole: 'tutor' | 'student' | '' = '';
 
@@ -194,9 +190,10 @@ const useManageProfileForm = (
 
     let descObj: any = {};
     try {
-      descObj = typeof raw.description === 'string'
-        ? JSON.parse(raw.description || '{}')
-        : (raw.description || {});
+      descObj =
+        typeof raw.description === 'string'
+          ? JSON.parse(raw.description || '{}')
+          : raw.description || {};
     } catch {
       descObj = {};
     }
@@ -235,20 +232,17 @@ const useManageProfileForm = (
       });
     }
 
-    const rawCountry =
-      (raw.country ?? raw.country_code ?? descObj.country ?? '')
-        .toString()
-        .trim()
-        .toUpperCase()
-        .slice(0, 2); // ISO-3166-1 alpha-2
+    const rawCountry = (raw.country ?? raw.country_code ?? descObj.country ?? '')
+      .toString()
+      .trim()
+      .toUpperCase()
+      .slice(0, 2); // ISO-3166-1 alpha-2
 
-    const resolvedMethod: PayoutMethod =
-      ((payout_method as PayoutMethod) ||
-        (mpesa_phone_number ? 'mpesa' : 'wise')) as PayoutMethod;
+    const resolvedMethod: PayoutMethod = ((payout_method as PayoutMethod) ||
+      (mpesa_phone_number ? 'mpesa' : 'wise')) as PayoutMethod;
 
     const resolvedCurrency: PayoutCurrency =
-      (payout_currency as PayoutCurrency) ||
-      (resolvedMethod === 'mpesa' ? 'KES' : 'USD');
+      (payout_currency as PayoutCurrency) || (resolvedMethod === 'mpesa' ? 'KES' : 'USD');
 
     const finalData: UpdatedProfileData = {
       ...initialProfileData,
@@ -357,8 +351,7 @@ const useManageProfileForm = (
         finalVideo = await uploadAsset(backendUrl!, token!, updatedData.video as any, 'video');
       }
 
-      const computedCurrency: PayoutCurrency =
-        updatedData.payoutMethod === 'mpesa' ? 'KES' : 'USD';
+      const computedCurrency: PayoutCurrency = updatedData.payoutMethod === 'mpesa' ? 'KES' : 'USD';
 
       // 🔑 Age is now *optional* – only send if > 0
       const payload: UpdateProfilePayload = {
@@ -370,9 +363,7 @@ const useManageProfileForm = (
         ),
         pricing: updatedData.pricing,
         recommended: updatedData.recommended,
-        ...(updatedData.age && updatedData.age > 0
-          ? { age: String(updatedData.age) }
-          : {}),
+        ...(updatedData.age && updatedData.age > 0 ? { age: String(updatedData.age) } : {}),
         ...(role === 'tutor'
           ? {
               gallery: finalGallery,
@@ -399,7 +390,10 @@ const useManageProfileForm = (
       if (isDev) {
         console.debug('🔗 useManageProfileForm → backendUrl:', backendUrl);
         console.debug('🔐 useManageProfileForm → token(short):', short(token));
-        console.debug('📤 useManageProfileForm → payload being sent:', JSON.stringify(payload, null, 2));
+        console.debug(
+          '📤 useManageProfileForm → payload being sent:',
+          JSON.stringify(payload, null, 2)
+        );
       }
 
       const res = await apiUpdateProfile(backendUrl!, token!, payload);
@@ -454,8 +448,8 @@ const useManageProfileForm = (
       typeof (updatedData as any)[field] === 'boolean'
         ? toBool(valueRaw)
         : typeof (updatedData as any)[field] === 'number'
-        ? Number(valueRaw) || 0
-        : valueRaw;
+          ? Number(valueRaw) || 0
+          : valueRaw;
 
     setUpdatedData((prev) => ({ ...prev, [field]: next as any }));
   };
@@ -528,10 +522,7 @@ const useManageProfileForm = (
    * On web, if you want duration validation, call with { value, maxSeconds }.
    * On native, pass the file-like directly (validation skipped).
    */
-  const setVideo = async (
-    value: string | FileLike | null,
-    opts?: { maxSeconds?: number }
-  ) => {
+  const setVideo = async (value: string | FileLike | null, opts?: { maxSeconds?: number }) => {
     if (!value) {
       setUpdatedData((prev) => ({ ...prev, video: '' }));
       return;
@@ -638,7 +629,7 @@ const useManageProfileForm = (
 
     // media handlers (agnostic)
     setGalleryItem, // (index, string|fileLike|null)
-    setVideo,       // (value, { maxSeconds? })
+    setVideo, // (value, { maxSeconds? })
 
     // destructive ops
     handleDeleteImage,

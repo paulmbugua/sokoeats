@@ -123,7 +123,18 @@ const AssignmentSharePanelNative: React.FC<Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [token, activeOrgId, courseId, titleOverride, passMark, timerS, dueAt, maxAttempts, backendUrl, inviteBase]);
+  }, [
+    token,
+    activeOrgId,
+    courseId,
+    titleOverride,
+    passMark,
+    timerS,
+    dueAt,
+    maxAttempts,
+    backendUrl,
+    inviteBase,
+  ]);
 
   const copy = useCallback(async () => {
     if (!shareUrl) return;
@@ -168,8 +179,9 @@ const AssignmentSharePanelNative: React.FC<Props> = ({
   };
 
   // 🔧 Derive the correct event type from the component (no direct import needed)
-  type PickerOnChangeParams =
-    Parameters<NonNullable<React.ComponentProps<typeof DateTimePicker>['onChange']>>;
+  type PickerOnChangeParams = Parameters<
+    NonNullable<React.ComponentProps<typeof DateTimePicker>['onChange']>
+  >;
   type PickerEvent = PickerOnChangeParams[0];
 
   const handleDueChange = (_event: PickerEvent, selectedDate?: Date) => {
@@ -251,7 +263,11 @@ const AssignmentSharePanelNative: React.FC<Props> = ({
 
       {/* Action buttons */}
       <View style={tw`mt-2 flex-row flex-wrap`}>
-        <PrimaryButton title={creating ? 'Creating…' : 'Create invite'} onPress={onCreate} disabled={creating} />
+        <PrimaryButton
+          title={creating ? 'Creating…' : 'Create invite'}
+          onPress={onCreate}
+          disabled={creating}
+        />
 
         {!!shareUrl && (
           <>
@@ -296,21 +312,13 @@ export default AssignmentSharePanelNative;
 
 /* ───────────────── UI Bits ───────────────── */
 
-function BadgeSeats({
-  tier,
-  used,
-  total,
-}: {
-  tier?: string;
-  used: number | null;
-  total?: number;
-}) {
+function BadgeSeats({ tier, used, total }: { tier?: string; used: number | null; total?: number }) {
   const text =
     used == null
       ? `${tier ?? 'starter'}`
       : total
-      ? `${tier ?? 'starter'} · ${used}/${total} seats`
-      : `${tier ?? 'starter'} · ${used} seats used`;
+        ? `${tier ?? 'starter'} · ${used}/${total} seats`
+        : `${tier ?? 'starter'} · ${used} seats used`;
   return (
     <View style={tw`px-2 py-1 rounded-full bg-white/10`}>
       <Text style={tw`text-white text-xs`}>{text}</Text>

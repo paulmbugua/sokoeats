@@ -15,10 +15,7 @@ module.exports = function (api) {
             // Force single copies from the app's node_modules
             react: path.resolve(__dirname, 'node_modules/react'),
             'react-native': path.resolve(__dirname, 'node_modules/react-native'),
-            '@tanstack/react-query': path.resolve(
-              __dirname,
-              'node_modules/@tanstack/react-query'
-            ),
+            '@tanstack/react-query': path.resolve(__dirname, 'node_modules/@tanstack/react-query'),
 
             // Monorepo convenience (optional)
             '@mytutorapp/shared': path.resolve(__dirname, '../../packages/shared'),

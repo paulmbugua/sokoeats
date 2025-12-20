@@ -20,8 +20,8 @@ const parseQuery = (url: string): Record<string, string> => {
     const pairs = q.split('&').filter(Boolean);
     const entries = pairs.map((kv) => {
       const [kRaw, vRaw] = kv.split('=');
-      const k = decodeURIComponent(kRaw ?? '');   // ← ensure string
-      const v = decodeURIComponent(vRaw ?? '');   // ← ensure string
+      const k = decodeURIComponent(kRaw ?? ''); // ← ensure string
+      const v = decodeURIComponent(vRaw ?? ''); // ← ensure string
       return [k, v] as const;
     });
     return Object.fromEntries(entries);

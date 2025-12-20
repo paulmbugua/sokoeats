@@ -97,7 +97,6 @@
     "babel-plugin-module-resolver": "5.0.2",
     "babel-preset-expo": "~54.0.0",
     "cross-env": "^7.0.3",
-    "eslint": "^9.26.0",
     "eslint-plugin-react-native": "^5.0.0",
     "metro": "^0.83.1",
     "tailwindcss": "3.3.2",

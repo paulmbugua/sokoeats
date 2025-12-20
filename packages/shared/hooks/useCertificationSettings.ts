@@ -7,7 +7,7 @@ import {
   CertificationData,
 } from '@mytutorapp/shared/api';
 
-/**  
+/**
  * A single file, already encoded to base64
  */
 export interface Base64File {
@@ -22,23 +22,18 @@ export default function useCertificationSettings(
   profileId?: string
 ) {
   const [uploading, setUploading] = useState(false);
-  const [certificationData, setCertificationData] =
-    useState<CertificationData | null>(null);
+  const [certificationData, setCertificationData] = useState<CertificationData | null>(null);
 
   // 1) Fetch current status on mount / when profileId changes
   useEffect(() => {
     if (!profileId) return;
     getCertificationStatus(backendUrl, token, profileId)
       .then(setCertificationData)
-      .catch((err) =>
-        console.error('Error fetching certification status:', err)
-      );
+      .catch((err) => console.error('Error fetching certification status:', err));
   }, [backendUrl, token, profileId]);
 
   // 2) Upload handler takes *already-prepared* base64 files
-  const handleSubmit = async (
-    files: Base64File[]
-  ): Promise<CertificationData | null> => {
+  const handleSubmit = async (files: Base64File[]): Promise<CertificationData | null> => {
     if (!profileId) {
       console.error('Missing profileId');
       return null;
@@ -50,12 +45,7 @@ export default function useCertificationSettings(
 
     setUploading(true);
     try {
-      const updated = await uploadCertificationDocuments(
-        backendUrl,
-        token,
-        profileId,
-        files
-      );
+      const updated = await uploadCertificationDocuments(backendUrl, token, profileId, files);
       setCertificationData(updated);
       return updated;
     } catch (err) {

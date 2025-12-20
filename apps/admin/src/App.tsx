@@ -37,9 +37,7 @@ function AuthSplash() {
 /** Observe <html class="dark"> changes so we can sync Toastify theme */
 function useIsDark(): boolean {
   const [isDark, setIsDark] = React.useState<boolean>(() =>
-    typeof document !== 'undefined'
-      ? document.documentElement.classList.contains('dark')
-      : false
+    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
   );
   React.useEffect(() => {
     const el = document.documentElement;
@@ -86,8 +84,7 @@ function RequireRole({
   const effectiveToken = adminToken || token || '';
 
   // Soft fallback for role on hard refreshes
-  const lsRole =
-    (typeof window !== 'undefined' && (localStorage.getItem('role') || '')) || '';
+  const lsRole = (typeof window !== 'undefined' && (localStorage.getItem('role') || '')) || '';
 
   // If adminToken exists but role not populated yet, infer 'admin'
   const effectiveRole: Role =

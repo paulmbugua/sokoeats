@@ -35,32 +35,29 @@ function getEnv(key: string): string | undefined {
 }
 
 /** Helper: prefer plain, then VITE_, then EXPO_PUBLIC_ */
-const pick = (k: string) =>
-  getEnv(k) ??
-  getEnv(`VITE_${k}`) ??
-  getEnv(`EXPO_PUBLIC_${k}`);
+const pick = (k: string) => getEnv(k) ?? getEnv(`VITE_${k}`) ?? getEnv(`EXPO_PUBLIC_${k}`);
 
 const MODE = getEnv('MODE') || getEnv('NODE_ENV') || 'development';
-const PROD = (getEnv('PROD') === 'true') || MODE === 'production';
+const PROD = getEnv('PROD') === 'true' || MODE === 'production';
 
 // Core Firebase config — pick from either Vite or Expo public vars
-const apiKey             = pick('FIREBASE_API_KEY')              || '';
-const projectId          = pick('FIREBASE_PROJECT_ID')           || 'mytutorapp-d3c91';
-const appId              = pick('FIREBASE_APP_ID')               || '';
-const messagingSenderId  = pick('FIREBASE_MESSAGING_SENDER_ID')  || '';
-const storageBucket      = pick('FIREBASE_STORAGE_BUCKET')       || `${projectId}.appspot.com`;
+const apiKey = pick('FIREBASE_API_KEY') || '';
+const projectId = pick('FIREBASE_PROJECT_ID') || 'mytutorapp-d3c91';
+const appId = pick('FIREBASE_APP_ID') || '';
+const messagingSenderId = pick('FIREBASE_MESSAGING_SENDER_ID') || '';
+const storageBucket = pick('FIREBASE_STORAGE_BUCKET') || `${projectId}.appspot.com`;
 
 // Optional custom auth domain toggle (VITE_USE_CUSTOM_AUTH_DOMAIN=1)
-const USE_CUSTOM       = PROD && (getEnv('VITE_USE_CUSTOM_AUTH_DOMAIN') === '1' || pick('USE_CUSTOM_AUTH_DOMAIN') === '1');
-const ENV_AUTH_DOMAIN  = (pick('FIREBASE_AUTH_DOMAIN') || '').trim();
+const USE_CUSTOM =
+  PROD && (getEnv('VITE_USE_CUSTOM_AUTH_DOMAIN') === '1' || pick('USE_CUSTOM_AUTH_DOMAIN') === '1');
+const ENV_AUTH_DOMAIN = (pick('FIREBASE_AUTH_DOMAIN') || '').trim();
 
-const authDomain =
-  USE_CUSTOM && ENV_AUTH_DOMAIN
-    ? ENV_AUTH_DOMAIN
-    : PROJECT_DEFAULT_AUTH_DOMAIN;
+const authDomain = USE_CUSTOM && ENV_AUTH_DOMAIN ? ENV_AUTH_DOMAIN : PROJECT_DEFAULT_AUTH_DOMAIN;
 
 if (PROD && USE_CUSTOM && !ENV_AUTH_DOMAIN && typeof window !== 'undefined') {
-  console.warn('[firebase] Custom auth domain requested but FIREBASE_AUTH_DOMAIN is empty. Falling back to project domain.');
+  console.warn(
+    '[firebase] Custom auth domain requested but FIREBASE_AUTH_DOMAIN is empty. Falling back to project domain.'
+  );
 }
 
 const firebaseConfig = {

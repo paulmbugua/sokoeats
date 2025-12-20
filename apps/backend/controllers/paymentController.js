@@ -9,7 +9,9 @@ import pool from '../config/db.js';
 /* Shared confirm helper (SINGLE source of truth for “complete+credit”)*/
 /* ------------------------------------------------------------------ */
 function normStatus(s) {
-  return String(s || '').trim().toLowerCase();
+  return String(s || '')
+    .trim()
+    .toLowerCase();
 }
 
 function isSettledPaymentStatus(s) {
@@ -53,7 +55,8 @@ async function confirmMpesaPaymentTx(client, payRow) {
   }
 
   const expectedMinor = Number(meta.expectedKesMinor);
-  const paidMinor = meta.paidKesMinor != null ? Number(meta.paidKesMinor) : null;
+  const paidMinor =
+    meta.paidKesMinor != null ? Number(meta.paidKesMinor) : null;
 
   // fail closed (don’t throw -> don’t 500)
   if (!Number.isFinite(expectedMinor) || expectedMinor <= 0) {
@@ -131,10 +134,9 @@ async function confirmMpesaPaymentTx(client, payRow) {
   }
 
   // credit tokens (safe because status flipped inside txn)
-  const pkg = await client.query(
-    `SELECT credits FROM packages WHERE id=$1`,
-    [completedPay.package_id],
-  );
+  const pkg = await client.query(`SELECT credits FROM packages WHERE id=$1`, [
+    completedPay.package_id,
+  ]);
   if (!pkg.rowCount) throw new Error('Package not found for payment');
 
   const u = await client.query(
@@ -147,7 +149,6 @@ async function confirmMpesaPaymentTx(client, payRow) {
 
   return { ok: true, payment: completedPay, tokens: u.rows[0].tokens };
 }
-
 
 /* ------------------------------------------------------------------ */
 /* Fetch available packages                                            */
@@ -166,7 +167,8 @@ export const getPackages = async (req, res) => {
     sql += ' ORDER BY credits ASC';
 
     const result = await pool.query(sql, params);
-    if (!result.rows.length) return res.status(404).json({ message: 'No packages found' });
+    if (!result.rows.length)
+      return res.status(404).json({ message: 'No packages found' });
     return res.status(200).json(result.rows);
   } catch (error) {
     console.error('Error fetching packages:', error?.message || error);
@@ -197,22 +199,32 @@ export const initializeMpesaPayment = async (req, res) => {
   }
 
   const { phone, packageId, paymentMethod } = value;
+  
+  const packageIdInt = Number(packageId);
+if (!Number.isFinite(packageIdInt)) {
+  return res.status(400).json({ message: 'Invalid packageId' });
+}
 
   const userId = req.user?.id;
-  if (!userId) return res.status(401).json({ message: 'Unauthorized: User not authenticated' });
+  if (!userId)
+    return res
+      .status(401)
+      .json({ message: 'Unauthorized: User not authenticated' });
 
   // ✅ NEW: idempotency key (optional)
   const idemKey = String(req.get('x-idempotency-key') || '').trim() || null;
 
   try {
     if (String(paymentMethod || '').toUpperCase() !== 'MPESA') {
-      return res.status(400).json({ message: 'Invalid payment method. Use MPESA.' });
+      return res
+        .status(400)
+        .json({ message: 'Invalid payment method. Use MPESA.' });
     }
 
     // Load package (server is source of truth)
     const pkgRes = await pool.query(
       'SELECT id, price, currency, credits, offer FROM packages WHERE id = $1',
-      [packageId]
+      [packageIdInt],
     );
     const pkg = pkgRes.rows[0];
     if (!pkg) return res.status(404).json({ message: 'Package not found' });
@@ -247,7 +259,7 @@ export const initializeMpesaPayment = async (req, res) => {
             AND (meta->>'idemKey') = $3
           ORDER BY created_at DESC
           LIMIT 1`,
-        [userId, packageId, idemKey]
+        [userId, packageIdInt, idemKey],
       );
 
       if (existing.rowCount) {
@@ -257,31 +269,47 @@ export const initializeMpesaPayment = async (req, res) => {
           transactionId: row.transaction_id,
           message: 'Payment already initialized (idempotent).',
           reuse: true,
-          charge: { currency: 'KES', expectedKesInt: amountKesInt, expectedKesMinor },
+          charge: {
+            currency: 'KES',
+            expectedKesInt: amountKesInt,
+            expectedKesMinor,
+          },
           package: { id: pkg.id, credits: pkg.credits, offer: pkg.offer },
         });
       }
     }
 
-    // Create Pending row FIRST
-    const ins = await pool.query(
-      `
-      INSERT INTO payments (user_id, package_id, amount, currency, payment_method, provider, status, meta)
-      VALUES ($1, $2, $3, 'KES', 'MPESA', 'MPESA', 'Pending',
-        jsonb_build_object(
-          'kind','tokens',
-          'expectedKesInt',$4,
-          'expectedKesMinor',$5,
-          'idemKey',$6
-        )
-      )
-      RETURNING id
-      `,
-      [userId, packageId, amountKesInt.toFixed(2), amountKesInt, expectedKesMinor, idemKey]
-    );
+   
+    // Create Pending row FIRST  ✅ (typed + no toFixed string)
+const ins = await pool.query(
+  `
+  INSERT INTO payments (user_id, package_id, amount, currency, payment_method, provider, status, meta)
+  VALUES (
+    $1::int,
+    $2::int,
+    $3::numeric(12,2),
+    'KES',
+    'MPESA',
+    'MPESA',
+    'Pending',
+    jsonb_build_object(
+      'kind','tokens',
+      'expectedKesInt', $3::int,
+      'expectedKesMinor', $4::int,
+      'idemKey', $5::text
+    )
+  )
+  RETURNING id
+  `,
+  [userId, packageIdInt, amountKesInt, expectedKesMinor, idemKey]
+);
+
 
     const paymentId = ins.rows[0]?.id;
-    if (!paymentId) return res.status(500).json({ message: 'Failed to create payment record' });
+    if (!paymentId)
+      return res
+        .status(500)
+        .json({ message: 'Failed to create payment record' });
 
     // Call STK Push (NO DB writes in service)
     let stk;
@@ -292,7 +320,10 @@ export const initializeMpesaPayment = async (req, res) => {
         // callbackUrl: process.env.MPESA_CALLBACK_URL,
       });
     } catch (stkError) {
-      console.error('Error during stkPushC2B call:', stkError?.response?.data || stkError?.message || stkError);
+      console.error(
+        'Error during stkPushC2B call:',
+        stkError?.response?.data || stkError?.message || stkError,
+      );
 
       await pool.query(
         `UPDATE payments
@@ -300,7 +331,7 @@ export const initializeMpesaPayment = async (req, res) => {
                 meta = COALESCE(meta,'{}'::jsonb) || jsonb_build_object('failReason','stk_push_failed'),
                 updated_at=NOW()
           WHERE id=$1`,
-        [paymentId]
+        [paymentId],
       );
 
       return res.status(502).json({
@@ -309,7 +340,8 @@ export const initializeMpesaPayment = async (req, res) => {
       });
     }
 
-    const checkoutId = stk?.CheckoutRequestID || stk?.data?.CheckoutRequestID || null;
+    const checkoutId =
+      stk?.CheckoutRequestID || stk?.data?.CheckoutRequestID || null;
     if (!checkoutId) {
       await pool.query(
         `UPDATE payments
@@ -317,28 +349,38 @@ export const initializeMpesaPayment = async (req, res) => {
                 meta = COALESCE(meta,'{}'::jsonb) || jsonb_build_object('failReason','missing_checkout_request_id'),
                 updated_at=NOW()
           WHERE id=$1`,
-        [paymentId]
+        [paymentId],
       );
-      return res.status(502).json({ message: 'Invalid response from M-Pesa (missing CheckoutRequestID)' });
+      return res.status(502).json({
+        message: 'Invalid response from M-Pesa (missing CheckoutRequestID)',
+      });
     }
 
     // Persist CheckoutRequestID
     await pool.query(
       `UPDATE payments SET transaction_id=$1, updated_at=NOW() WHERE id=$2`,
-      [checkoutId, paymentId]
+      [checkoutId, paymentId],
     );
 
     return res.status(200).json({
       paymentId,
       transactionId: checkoutId,
-      message: 'Payment initialized successfully. Complete the transaction on your phone.',
-      charge: { currency: 'KES', expectedKesInt: amountKesInt, expectedKesMinor },
+      message:
+        'Payment initialized successfully. Complete the transaction on your phone.',
+      charge: {
+        currency: 'KES',
+        expectedKesInt: amountKesInt,
+        expectedKesMinor,
+      },
       package: { id: pkg.id, credits: pkg.credits, offer: pkg.offer },
       idemKey: idemKey || undefined,
     });
   } catch (err) {
     console.error('Payment initialization error:', err?.message || err);
-    return res.status(500).json({ message: 'Failed to initialize payment', error: err?.message || 'unknown' });
+    return res.status(500).json({
+      message: 'Failed to initialize payment',
+      error: err?.message || 'unknown',
+    });
   }
 };
 
@@ -357,7 +399,7 @@ export const confirmMpesaPayment = async (req, res) => {
 
     const p = await client.query(
       `SELECT * FROM payments WHERE transaction_id=$1 FOR UPDATE`,
-      [String(transactionReference).trim()]
+      [String(transactionReference).trim()],
     );
 
     if (!p.rowCount) {
@@ -368,7 +410,10 @@ export const confirmMpesaPayment = async (req, res) => {
     const pay = p.rows[0];
 
     // If callback hasn't arrived yet, keep pending (FE can poll)
-    if (String(pay.status).toLowerCase() === 'pending' && !pay.mpesa_reference) {
+    if (
+      String(pay.status).toLowerCase() === 'pending' &&
+      !pay.mpesa_reference
+    ) {
       await client.query('COMMIT');
       return res.status(200).json({
         ok: false,
@@ -382,18 +427,27 @@ export const confirmMpesaPayment = async (req, res) => {
 
     await client.query('COMMIT');
 
-    if (!result.ok && result.status === 'pending') return res.status(200).json(result);
-    if (!result.ok && result.status === 'failed') return res.status(400).json(result);
+    if (!result.ok && result.status === 'pending')
+      return res.status(200).json(result);
+    if (!result.ok && result.status === 'failed')
+      return res.status(400).json(result);
     if (!result.ok) return res.status(400).json(result);
 
     return res.status(200).json({
       ...result,
-      message: result.alreadyCompleted ? 'Already confirmed.' : 'Payment confirmed and tokens credited.',
+      message: result.alreadyCompleted
+        ? 'Already confirmed.'
+        : 'Payment confirmed and tokens credited.',
     });
   } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     console.error('Error confirming payment:', e);
-    return res.status(500).json({ message: 'Internal server error.', error: e?.message || String(e) });
+    return res.status(500).json({
+      message: 'Internal server error.',
+      error: e?.message || String(e),
+    });
   } finally {
     client.release();
   }
@@ -416,7 +470,7 @@ export const updateMpesaReference = async (req, res) => {
 
     const p = await client.query(
       `SELECT * FROM payments WHERE transaction_id=$1 FOR UPDATE`,
-      [String(transactionReference).trim()]
+      [String(transactionReference).trim()],
     );
 
     if (!p.rowCount) {
@@ -444,16 +498,21 @@ export const updateMpesaReference = async (req, res) => {
 
     // Prevent overriding an existing receipt with a different one
     const incomingReceipt = String(mpesaReference).trim();
-    const existingReceipt = pay.mpesa_reference ? String(pay.mpesa_reference).trim() : null;
+    const existingReceipt = pay.mpesa_reference
+      ? String(pay.mpesa_reference).trim()
+      : null;
     if (existingReceipt && existingReceipt !== incomingReceipt) {
       await client.query('ROLLBACK');
       return res.status(400).json({
-        message: 'Payment already has an M-Pesa receipt on record. Cannot override.',
+        message:
+          'Payment already has an M-Pesa receipt on record. Cannot override.',
         existingMpesaReference: existingReceipt,
       });
     }
 
-    const paidInt = Number.isFinite(Number(paidKesInt)) ? Math.max(0, Math.round(Number(paidKesInt))) : null;
+    const paidInt = Number.isFinite(Number(paidKesInt))
+      ? Math.max(0, Math.round(Number(paidKesInt)))
+      : null;
     const paidMinor = paidInt != null ? paidInt * 100 : null;
 
     const patch = {
@@ -471,17 +530,22 @@ export const updateMpesaReference = async (req, res) => {
               meta = COALESCE(meta,'{}'::jsonb) || $3::jsonb,
               updated_at=NOW()
         WHERE id=$1 AND status='Pending'`,
-      [pay.id, incomingReceipt, JSON.stringify(patch)]
+      [pay.id, incomingReceipt, JSON.stringify(patch)],
     );
 
     // Re-read locked row and finalize via shared logic
-    const fresh = await client.query(`SELECT * FROM payments WHERE id=$1 FOR UPDATE`, [pay.id]);
+    const fresh = await client.query(
+      `SELECT * FROM payments WHERE id=$1 FOR UPDATE`,
+      [pay.id],
+    );
     const result = await confirmMpesaPaymentTx(client, fresh.rows[0]);
 
     await client.query('COMMIT');
 
-    if (!result.ok && result.status === 'pending') return res.status(200).json(result);
-    if (!result.ok && result.status === 'failed') return res.status(400).json(result);
+    if (!result.ok && result.status === 'pending')
+      return res.status(200).json(result);
+    if (!result.ok && result.status === 'failed')
+      return res.status(400).json(result);
     if (!result.ok) return res.status(400).json(result);
 
     return res.status(200).json({
@@ -491,9 +555,14 @@ export const updateMpesaReference = async (req, res) => {
         : 'M-Pesa reference saved and payment confirmed. Tokens credited.',
     });
   } catch (error) {
-    try { await client.query('ROLLBACK'); } catch {}
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     console.error('Error updating M-Pesa reference:', error);
-    return res.status(500).json({ message: 'Internal server error.', error: error?.message || String(error) });
+    return res.status(500).json({
+      message: 'Internal server error.',
+      error: error?.message || String(error),
+    });
   } finally {
     client.release();
   }

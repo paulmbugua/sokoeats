@@ -1,25 +1,30 @@
 // apps/web/src/components/RequestDataDeletionForm.web.tsx
 
-import React, { useState } from 'react'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { IconProp } from '@fortawesome/fontawesome-svg-core'
-import { faUser, faEnvelope, faClipboardList, faPaperPlane } from '@fortawesome/free-solid-svg-icons'
-import { toast } from 'react-toastify'
+import React, { useState } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import type { IconProp } from '@fortawesome/fontawesome-svg-core';
+import {
+  faUser,
+  faEnvelope,
+  faClipboardList,
+  faPaperPlane,
+} from '@fortawesome/free-solid-svg-icons';
+import { toast } from 'react-toastify';
 
 const RequestDataDeletionForm: React.FC = () => {
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [details, setDetails] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [details, setDetails] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!name.trim() || !email.trim()) {
-      toast.error('Please fill in your name and email.')
-      return
+      toast.error('Please fill in your name and email.');
+      return;
     }
-    setSubmitting(true)
-    const subject = encodeURIComponent('Request for Personal Data Deletion')
+    setSubmitting(true);
+    const subject = encodeURIComponent('Request for Personal Data Deletion');
     const bodyLines = [
       `Hello DayBreak Data Privacy Team,`,
       ``,
@@ -30,13 +35,13 @@ const RequestDataDeletionForm: React.FC = () => {
       details.trim() ? `\nDetails:\n${details}` : '',
       ``,
       `Thank you,`,
-      `${name}`
-    ]
-    const body = encodeURIComponent(bodyLines.join('\n'))
-    window.location.href = `mailto:info@DayBreak.co.ke?subject=${subject}&body=${body}`
-    toast.info('Opening your email client...')
-    setSubmitting(false)
-  }
+      `${name}`,
+    ];
+    const body = encodeURIComponent(bodyLines.join('\n'));
+    window.location.href = `mailto:info@DayBreak.co.ke?subject=${subject}&body=${body}`;
+    toast.info('Opening your email client...');
+    setSubmitting(false);
+  };
 
   return (
     <form
@@ -54,7 +59,7 @@ const RequestDataDeletionForm: React.FC = () => {
           type="text"
           placeholder="Your Full Name"
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           className="flex-1 bg-transparent focus:outline-none placeholder-gray-400 text-white"
           required
         />
@@ -67,7 +72,7 @@ const RequestDataDeletionForm: React.FC = () => {
           type="email"
           placeholder="Your Email Address"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
           className="flex-1 bg-transparent focus:outline-none placeholder-gray-400 text-white"
           required
         />
@@ -79,7 +84,7 @@ const RequestDataDeletionForm: React.FC = () => {
         <textarea
           placeholder="Additional details (optional)"
           value={details}
-          onChange={e => setDetails(e.target.value)}
+          onChange={(e) => setDetails(e.target.value)}
           className="flex-1 bg-transparent focus:outline-none placeholder-gray-400 text-white resize-none h-24"
         />
       </div>
@@ -94,7 +99,7 @@ const RequestDataDeletionForm: React.FC = () => {
         {submitting ? 'Please wait…' : 'Send Deletion Request'}
       </button>
     </form>
-  )
-}
+  );
+};
 
-export default RequestDataDeletionForm
+export default RequestDataDeletionForm;

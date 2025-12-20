@@ -4,8 +4,8 @@ export interface CreateOrgInstructorPayload {
   name: string;
   email?: string;
   subject?: string;
-  staff_code?: string;  // snake_case
-  staffCode?: string;   // camelCase (UI currently sends this)
+  staff_code?: string; // snake_case
+  staffCode?: string; // camelCase (UI currently sends this)
 }
 
 export interface OrgInstructorResponse {
@@ -46,7 +46,7 @@ export async function createOrgInstructor(
   backendUrl: string,
   token: string,
   orgId: string | number,
-  payload: CreateOrgInstructorPayload,
+  payload: CreateOrgInstructorPayload
 ): Promise<OrgInstructorResponse> {
   const base = backendUrl.replace(/\/+$/, '');
   const resp = await fetch(`${base}/api/orgs/${orgId}/instructors`, {
@@ -80,7 +80,7 @@ export async function uploadOrgInstructorsCsv(
   backendUrl: string,
   token: string,
   orgId: string | number,
-  file: File,
+  file: File
 ): Promise<BulkInstructorsCsvResponse> {
   const base = backendUrl.replace(/\/+$/, '');
   const form = new FormData();

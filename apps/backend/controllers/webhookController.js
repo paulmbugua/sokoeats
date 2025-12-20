@@ -4,7 +4,6 @@ import pool from '../config/db.js';
 import { enqueueWebhook } from '../helpers/webhooks.js';
 import { v4 as uuidv4 } from 'uuid';
 
-
 export const handlePaystackWebhook = async (req, res) => {
   console.log('Webhook Event:', JSON.stringify(req.body, null, 2));
 
@@ -245,10 +244,9 @@ export const handleZoomWebhook = async (req, res) => {
   }
 };
 
-
 export async function testOrgWebhook(req, res) {
   try {
-    const orgId  = req.params.orgId;
+    const orgId = req.params.orgId;
     const userId = req.user?.id;
     const { overrideUrl } = req.body || {};
 
@@ -257,11 +255,13 @@ export async function testOrgWebhook(req, res) {
       `SELECT id, webhook_enabled, webhook_url, webhook_secret
          FROM organizations
         WHERE id = $1 AND owner_user_id = $2`,
-      [orgId, userId]
+      [orgId, userId],
     );
     const o = rows[0];
-    if (!o) return res.status(404).json({ ok: false, message: 'Org not found' });
-    if (!o.webhook_enabled) return res.status(400).json({ ok: false, message: 'Webhooks disabled' });
+    if (!o)
+      return res.status(404).json({ ok: false, message: 'Org not found' });
+    if (!o.webhook_enabled)
+      return res.status(400).json({ ok: false, message: 'Webhooks disabled' });
 
     const url = String(overrideUrl || o.webhook_url || '').trim();
     if (!/^https:\/\/.+/i.test(url)) {
@@ -282,7 +282,10 @@ export async function testOrgWebhook(req, res) {
     // sign(secret, ts, raw) => 't=<ts>,v1=<hmac_sha256(ts.raw)>'
     const ts = Math.floor(Date.now() / 1000);
     const sig = (() => {
-      const h = crypto.createHmac('sha256', o.webhook_secret || '').update(`${ts}.${body}`).digest('hex');
+      const h = crypto
+        .createHmac('sha256', o.webhook_secret || '')
+        .update(`${ts}.${body}`)
+        .digest('hex');
       return `t=${ts},v1=${h}`;
     })();
 
@@ -315,22 +318,24 @@ export async function testOrgWebhook(req, res) {
     return res.json({ ok: true });
   } catch (err) {
     console.error('[webhooks:test] error', err);
-    return res.status(500).json({ ok: false, message: 'Failed to enqueue test webhook' });
+    return res
+      .status(500)
+      .json({ ok: false, message: 'Failed to enqueue test webhook' });
   }
 }
-
 
 // POST /api/orgs/:orgId/webhooks/secret  (owner only)
 // Generates a new secret and returns it ONCE (plaintext).
 export async function createOrRotateWebhookSecret(req, res) {
   const orgId = req.params.orgId;
   const userId = req.user?.id;
-  if (!orgId || !userId) return res.status(401).json({ message: 'Unauthorized' });
+  if (!orgId || !userId)
+    return res.status(401).json({ message: 'Unauthorized' });
 
   // Ensure this user owns the org
   const { rows } = await pool.query(
     `SELECT id FROM organizations WHERE id=$1 AND owner_user_id=$2`,
-    [orgId, userId]
+    [orgId, userId],
   );
   if (!rows.length) return res.status(403).json({ message: 'Forbidden' });
 
@@ -339,7 +344,7 @@ export async function createOrRotateWebhookSecret(req, res) {
     `UPDATE organizations
         SET webhook_secret=$1, webhook_secret_rotated_at=NOW()
       WHERE id=$2`,
-    [secret, orgId]
+    [secret, orgId],
   );
 
   // Return plaintext ONCE so they can copy it.
@@ -351,18 +356,21 @@ export async function createOrRotateWebhookSecret(req, res) {
 export async function getWebhookSecretMeta(req, res) {
   const orgId = req.params.orgId;
   const userId = req.user?.id;
-  if (!orgId || !userId) return res.status(401).json({ message: 'Unauthorized' });
+  if (!orgId || !userId)
+    return res.status(401).json({ message: 'Unauthorized' });
 
   const { rows } = await pool.query(
     `SELECT webhook_secret, webhook_secret_rotated_at
        FROM organizations
       WHERE id=$1 AND owner_user_id=$2`,
-    [orgId, userId]
+    [orgId, userId],
   );
   if (!rows.length) return res.status(404).json({ message: 'Org not found' });
 
   const rec = rows[0];
-  const last4 = rec.webhook_secret ? String(rec.webhook_secret).slice(-4) : null;
+  const last4 = rec.webhook_secret
+    ? String(rec.webhook_secret).slice(-4)
+    : null;
   res.json({
     ok: true,
     present: !!rec.webhook_secret,

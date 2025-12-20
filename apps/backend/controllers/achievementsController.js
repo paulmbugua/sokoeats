@@ -1,5 +1,8 @@
 import pool from '../config/db.js'; // ← use your existing db pool
-import { manualAwardSchema, unlockAchievementSchema } from '../validators/achievements.js';
+import {
+  manualAwardSchema,
+  unlockAchievementSchema,
+} from '../validators/achievements.js';
 
 /**
  * Table schema (Option A):
@@ -36,7 +39,7 @@ export async function listStudentAchievements(req, res) {
          LEFT JOIN courses c ON c.id = a.course_id
         WHERE a.student_id = $1
         ORDER BY a.earned_at DESC`,
-      [studentId]
+      [studentId],
     );
 
     res.json(rows);
@@ -46,12 +49,14 @@ export async function listStudentAchievements(req, res) {
   }
 }
 
-
 // POST /api/achievements  { studentId, courseId?, title, iconUrl? }
 export async function awardAchievement(req, res) {
   try {
     const { error, value } = manualAwardSchema.validate(req.body);
-    if (error) return res.status(400).json({ error: error.details?.[0]?.message || error.message });
+    if (error)
+      return res
+        .status(400)
+        .json({ error: error.details?.[0]?.message || error.message });
 
     const { studentId, courseId, title, iconUrl } = value;
 
@@ -65,11 +70,13 @@ export async function awardAchievement(req, res) {
       DO NOTHING
       RETURNING *;
       `,
-      [studentId, courseId ?? null, title, iconUrl ?? null]
+      [studentId, courseId ?? null, title, iconUrl ?? null],
     );
 
     if (upsert.rowCount > 0) {
-      return res.status(201).json({ created: true, achievement: upsert.rows[0] });
+      return res
+        .status(201)
+        .json({ created: true, achievement: upsert.rows[0] });
     }
 
     // If conflict, fetch the existing row to return a consistent payload
@@ -77,7 +84,7 @@ export async function awardAchievement(req, res) {
       `SELECT * FROM achievements
         WHERE student_id = $1 AND course_id IS NOT DISTINCT FROM $2 AND title = $3
         LIMIT 1`,
-      [studentId, courseId ?? null, title]
+      [studentId, courseId ?? null, title],
     );
 
     return res.json({ created: false, achievement: existing.rows[0] });
@@ -86,7 +93,6 @@ export async function awardAchievement(req, res) {
     res.status(500).json({ error: 'Failed to award achievement' });
   }
 }
-
 
 export async function unlockAchievement(req, res) {
   try {
@@ -99,7 +105,7 @@ export async function unlockAchievement(req, res) {
     // idempotent: avoid duplicate (student_id, course_id, title)
     const existing = await pool.query(
       `SELECT id FROM achievements WHERE student_id = $1 AND course_id = $2 AND title = $3 LIMIT 1`,
-      [studentId, courseId, title]
+      [studentId, courseId, title],
     );
     if (existing.rowCount > 0) {
       const r = await pool.query(`SELECT * FROM achievements WHERE id = $1`, [
@@ -112,7 +118,7 @@ export async function unlockAchievement(req, res) {
       `INSERT INTO achievements (id, student_id, course_id, title, icon_url, earned_at)
        VALUES (gen_random_uuid(), $1, $2, $3, $4, now())
        RETURNING *`,
-      [studentId, courseId, title, iconUrl ?? null]
+      [studentId, courseId, title, iconUrl ?? null],
     );
 
     res.status(201).json({ created: true, achievement: ins.rows[0] });
@@ -131,7 +137,7 @@ export async function deleteAchievement(req, res) {
     // restrict delete to owner
     const check = await pool.query(
       `SELECT 1 FROM achievements WHERE id = $1 AND student_id = $2`,
-      [id, studentId]
+      [id, studentId],
     );
     if (check.rowCount === 0) {
       return res.status(404).json({ error: 'Achievement not found' });

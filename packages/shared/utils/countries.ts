@@ -8,15 +8,16 @@ export type CountryItem = { code: string; name: string };
 import raw from 'world-countries';
 
 export const COUNTRIES: CountryItem[] = (raw as Array<any>)
-  .map(c => ({
+  .map((c) => ({
     code: String(c.cca2 || '').toUpperCase(),
     name: String(c?.name?.common || '').trim(),
   }))
-  .filter(c => c.code.length === 2 && c.name.length > 0)
+  .filter((c) => c.code.length === 2 && c.name.length > 0)
   .sort((a, b) => a.name.localeCompare(b.name));
 
-export const COUNTRY_MAP: Record<string, string> =
-  Object.fromEntries(COUNTRIES.map(c => [c.code, c.name]));
+export const COUNTRY_MAP: Record<string, string> = Object.fromEntries(
+  COUNTRIES.map((c) => [c.code, c.name])
+);
 
 /** Utility: returns a valid ISO-3166-1 alpha-2 code or '' */
 export function normalizeCountryCode(input?: string | null): string {

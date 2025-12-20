@@ -1,9 +1,13 @@
 /** @type {import('tailwindcss').Config} */
-const path = require('node:path')
+const path = require('node:path');
 
-const plugins = []
-try { plugins.push(require('@tailwindcss/forms')) } catch {}
-try { plugins.push(require('@tailwindcss/typography')) } catch {}
+const plugins = [];
+try {
+  plugins.push(require('@tailwindcss/forms'));
+} catch {}
+try {
+  plugins.push(require('@tailwindcss/typography'));
+} catch {}
 
 module.exports = {
   darkMode: 'class',
@@ -35,10 +39,21 @@ module.exports = {
         darkTextSecondary: '#4f6b88',
       },
       fontFamily: {
-        sans: ['Poppins', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'Roboto', 'Arial', 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'],
+        sans: [
+          'Poppins',
+          'ui-sans-serif',
+          'system-ui',
+          'Segoe UI',
+          'Roboto',
+          'Arial',
+          'Noto Sans',
+          'Apple Color Emoji',
+          'Segoe UI Emoji',
+          'Segoe UI Symbol',
+        ],
         display: ['Montserrat', 'Poppins', 'ui-sans-serif', 'system-ui'],
       },
     },
   },
   plugins,
-}
+};

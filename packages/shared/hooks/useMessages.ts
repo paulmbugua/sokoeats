@@ -14,20 +14,20 @@ export type UseMessagesOptions = { notify?: Notifier };
 
 const NOOP_NOTIFY: Required<Notifier> = {
   success: (m) => console.log('[success]', m),
-  error:   (m) => console.error('[error]', m),
-  info:    (m) => console.log('[info]', m),
-  warn:    (m) => console.warn('[warn]', m),
+  error: (m) => console.error('[error]', m),
+  info: (m) => console.log('[info]', m),
+  warn: (m) => console.warn('[warn]', m),
 };
 
 /* ---------- Cross-platform event + ref shapes ---------- */
 type ScrollEventLike =
-  | { nativeEvent: { contentOffset: { y: number } } }               // RN
-  | { target?: { scrollTop?: number } }                              // web-ish
-  | { currentTarget?: { scrollTop?: number } };                      // web-ish
+  | { nativeEvent: { contentOffset: { y: number } } } // RN
+  | { target?: { scrollTop?: number } } // web-ish
+  | { currentTarget?: { scrollTop?: number } }; // web-ish
 
 type ScrollableRef =
-  | { scrollToEnd?: (opts?: { animated?: boolean }) => void }        // RN
-  | { scrollTop?: number; scrollHeight?: number }                    // HTML element-ish
+  | { scrollToEnd?: (opts?: { animated?: boolean }) => void } // RN
+  | { scrollTop?: number; scrollHeight?: number } // HTML element-ish
   | null;
 
 const useMessages = (options?: UseMessagesOptions) => {
@@ -37,13 +37,7 @@ const useMessages = (options?: UseMessagesOptions) => {
   const { token, profile: myProfile } = useShopContext();
 
   // 2) Chat methods & data
-  const {
-    fetchConversations,
-    fetchMessages,
-    chats,
-    markAsRead,
-    sendMessage,
-  } = useChatContext();
+  const { fetchConversations, fetchMessages, chats, markAsRead, sendMessage } = useChatContext();
 
   // 3) UI state
   const [activeChat, setActiveChat] = useState<Conversation | null>(null);
@@ -118,9 +112,7 @@ const useMessages = (options?: UseMessagesOptions) => {
   const handleScroll = (e: ScrollEventLike) => {
     if (isWeb) {
       const el =
-        (messageContainerRef.current as any) ||
-        (e as any).target ||
-        (e as any).currentTarget;
+        (messageContainerRef.current as any) || (e as any).target || (e as any).currentTarget;
       const top = el?.scrollTop ?? 0;
       if (typeof top === 'number' && top < 100) loadMoreMessages();
     } else {

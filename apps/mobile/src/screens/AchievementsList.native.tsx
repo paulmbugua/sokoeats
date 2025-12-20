@@ -99,10 +99,7 @@ const AchievementsList: React.FC<Props> = ({ studentId, title = 'Achievements' }
             <View style={tw`w-10 h-10 rounded bg-gray-200 dark:bg-gray-700 mr-3`} />
           )}
           <View style={tw`flex-1`}>
-            <Text
-              numberOfLines={1}
-              style={tw`font-semibold text-gray-900 dark:text-gray-100`}
-            >
+            <Text numberOfLines={1} style={tw`font-semibold text-gray-900 dark:text-gray-100`}>
               {item.title}
             </Text>
             <Text style={tw`text-xs text-blue-700 dark:text-blue-300`}>

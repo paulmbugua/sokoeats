@@ -5,7 +5,9 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ExpoFS from 'expo-file-system';
 import { useShopContext } from '@mytutorapp/shared/context';
 import Spinner from './Spinner.native';
-import useCertificationSettings, { Base64File } from '@mytutorapp/shared/hooks/useCertificationSettings';
+import useCertificationSettings, {
+  Base64File,
+} from '@mytutorapp/shared/hooks/useCertificationSettings';
 import tw from '../../tailwind';
 
 import type { ExpoFileSystem } from '@mytutorapp/shared/types';
@@ -26,8 +28,11 @@ const extOf = (name?: string) => {
 const CertificationSettingsNative: FC = () => {
   const { token, backendUrl, profile } = useShopContext();
   const profileId = profile?.id;
-  const { uploading, certificationData, handleSubmit } =
-    useCertificationSettings(backendUrl, token, profileId);
+  const { uploading, certificationData, handleSubmit } = useCertificationSettings(
+    backendUrl,
+    token,
+    profileId
+  );
 
   const [assets, setAssets] = useState<DocumentPicker.DocumentPickerAsset[]>([]);
   const isTutor = (profile?.role || '').toLowerCase() === 'tutor';

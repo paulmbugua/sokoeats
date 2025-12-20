@@ -7,8 +7,7 @@ import type {
 } from '@mytutorapp/shared/types';
 
 /* Helpers */
-const auth = (token?: string) =>
-  token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+const auth = (token?: string) => (token ? { headers: { Authorization: `Bearer ${token}` } } : {});
 
 const cleaned = (u: string) => u.replace(/\/+$/, '');
 const dev = typeof process !== 'undefined' ? process.env.NODE_ENV !== 'production' : false;
@@ -68,14 +67,8 @@ export const createCourse = async (
 };
 
 // Get All Courses (public-ish)
-export const getCourses = async (
-  backendUrl: string,
-  token?: string
-): Promise<Course[]> => {
-  const { data } = await axios.get<Course[]>(
-    `${cleaned(backendUrl)}/api/courses`,
-    auth(token)
-  );
+export const getCourses = async (backendUrl: string, token?: string): Promise<Course[]> => {
+  const { data } = await axios.get<Course[]>(`${cleaned(backendUrl)}/api/courses`, auth(token));
   return data;
 };
 
@@ -85,18 +78,12 @@ export const getCourseById = async (
   id: string,
   token?: string
 ): Promise<Course> => {
-  const { data } = await axios.get<Course>(
-    `${cleaned(backendUrl)}/api/courses/${id}`,
-    auth(token)
-  );
+  const { data } = await axios.get<Course>(`${cleaned(backendUrl)}/api/courses/${id}`, auth(token));
   return data;
 };
 
 // Get my courses (requires auth)
-export const getMyCourses = async (
-  backendUrl: string,
-  token: string
-): Promise<Course[]> => {
+export const getMyCourses = async (backendUrl: string, token: string): Promise<Course[]> => {
   const { data } = await axios.get<Course[]>(
     `${cleaned(backendUrl)}/api/courses/mine`,
     auth(token)
@@ -105,13 +92,8 @@ export const getMyCourses = async (
 };
 
 // Get courses for a specific tutor id (public/semi-public)
-export const getTutorCourses = async (
-  backendUrl: string,
-  tutorId: number
-): Promise<Course[]> => {
-  const { data } = await axios.get<Course[]>(
-    `${cleaned(backendUrl)}/api/courses/tutor/${tutorId}`
-  );
+export const getTutorCourses = async (backendUrl: string, tutorId: number): Promise<Course[]> => {
+  const { data } = await axios.get<Course[]>(`${cleaned(backendUrl)}/api/courses/tutor/${tutorId}`);
   return data;
 };
 
@@ -209,17 +191,11 @@ export const getRecommendedCourses = async (
   params?: { limit?: number; minCount?: number }
 ): Promise<Course[]> => {
   const base = cleaned(backendUrl);
-  const routes = [
-    '/api/courses/recommendations',
-    '/api/courses/suggested',
-  ];
+  const routes = ['/api/courses/recommendations', '/api/courses/suggested'];
   return tryRoutes<Course>(base, routes, params);
 };
 
-export async function searchCoursesApi(
-  backendUrl: string,
-  params: Record<string, any>
-) {
+export async function searchCoursesApi(backendUrl: string, params: Record<string, any>) {
   const base = (backendUrl || '').replace(/\/+$/, '');
   const { data } = await axios.get(`${base}/api/courses/search`, { params });
   return data;

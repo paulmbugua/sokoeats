@@ -28,7 +28,7 @@ const TUTOR_SEARCH_SCHEMA = {
     status: { type: 'string' },
     experienceLevel: { type: 'string' },
     minRating: { type: 'number' },
-    maxTokens: { type: 'number' },   // ✅ NEW
+    maxTokens: { type: 'number' }, // ✅ NEW
     certified: { type: 'boolean' },
   },
   required: [
@@ -39,12 +39,11 @@ const TUTOR_SEARCH_SCHEMA = {
     'status',
     'experienceLevel',
     'minRating',
-    'maxTokens',   // ✅ NEW
+    'maxTokens', // ✅ NEW
     'certified',
   ],
   additionalProperties: false,
 };
-
 
 function normIso2(s) {
   const v = (s || '').trim();
@@ -82,8 +81,14 @@ function titleCase(s) {
 
 function stripOnce(haystack, needle) {
   if (!needle) return haystack;
-  const re = new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'ig');
-  return String(haystack || '').replace(re, ' ').replace(/\s+/g, ' ').trim();
+  const re = new RegExp(
+    `\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+    'ig',
+  );
+  return String(haystack || '')
+    .replace(re, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -145,12 +150,21 @@ function extractSubjectHeuristic(qRaw) {
   const s = norm(q);
 
   const rules = [
-    { re: /\b(math|maths|mathematics|algebra|geometry|calculus)\b/i, subject: 'Math' },
+    {
+      re: /\b(math|maths|mathematics|algebra|geometry|calculus)\b/i,
+      subject: 'Math',
+    },
     { re: /\b(science|biology|chemistry|physics)\b/i, subject: 'Science' },
-    { re: /\b(programming|coding|computer science|javascript|python|react|node)\b/i, subject: 'Programming' },
+    {
+      re: /\b(programming|coding|computer science|javascript|python|react|node)\b/i,
+      subject: 'Programming',
+    },
     { re: /\b(art|drawing|painting|design)\b/i, subject: 'Art' },
     { re: /\b(wellness|health|fitness|mindfulness)\b/i, subject: 'Wellness' },
-    { re: /\b(language|languages|french|spanish|arabic|german|swahili)\b/i, subject: 'Languages' },
+    {
+      re: /\b(language|languages|french|spanish|arabic|german|swahili)\b/i,
+      subject: 'Languages',
+    },
     { re: /\b(english|grammar|writing|reading)\b/i, subject: 'English' },
     { re: /\b(history|geography|civics)\b/i, subject: 'History' },
   ];
@@ -187,9 +201,10 @@ function cleanKeywords({ keywords, gradeBand, subject }) {
   if (subject) k = stripOnce(k, subject);
 
   // also remove generic “grade/class/form/year/level + number” mentions
-  k = k.replace(/\b(grade|class|form|year|level)\s*[0-9]{1,3}\b/gi, ' ')
-       .replace(/\s+/g, ' ')
-       .trim();
+  k = k
+    .replace(/\b(grade|class|form|year|level)\s*[0-9]{1,3}\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
   return k;
 }
@@ -201,17 +216,16 @@ export async function aiParseTutorSearch(query) {
 
   if (!q) {
     return {
-  keywords: '',
-  subject: '',
-  country: '',
-  gradeBand: '',
-  status: '',
-  experienceLevel: '',
-  minRating: 0,
-  maxTokens: 0,   // ✅
-  certified: false,
-};
-
+      keywords: '',
+      subject: '',
+      country: '',
+      gradeBand: '',
+      status: '',
+      experienceLevel: '',
+      minRating: 0,
+      maxTokens: 0, // ✅
+      certified: false,
+    };
   }
 
   // ---- Heuristic first (very important for “Grade 3”)
@@ -223,7 +237,8 @@ export async function aiParseTutorSearch(query) {
 
   // If it’s basically ONLY a grade/system query, we skip OpenAI completely.
   // Examples: "Grade 3", "primary", "university"
-  const onlyGradeLike = norm(s.remainder).length === 0 && Boolean(heuristicGradeBand);
+  const onlyGradeLike =
+    norm(s.remainder).length === 0 && Boolean(heuristicGradeBand);
   if (onlyGradeLike) {
     const out = {
       keywords: '',
@@ -236,7 +251,11 @@ export async function aiParseTutorSearch(query) {
       maxPrice: 0,
       certified: false,
     };
-    console.log(`[${reqId}] heuristic-only`, { q, out, ms: Date.now() - started });
+    console.log(`[${reqId}] heuristic-only`, {
+      q,
+      out,
+      ms: Date.now() - started,
+    });
     return out;
   }
 
@@ -295,21 +314,38 @@ export async function aiParseTutorSearch(query) {
 
   // ---- Build output (AI + heuristic fallback)
   const out = {
-  keywords: typeof parsed.keywords === 'string' ? parsed.keywords.trim() : s.remainder.trim(),
-  subject: sanitizeSubject(typeof parsed.subject === 'string' ? parsed.subject.trim() : heuristicSubject),
-  country: normIso2(parsed.country),
-  gradeBand: typeof parsed.gradeBand === 'string' && parsed.gradeBand.trim()
-    ? parsed.gradeBand.trim()
-    : heuristicGradeBand,
-  status: typeof parsed.status === 'string' ? parsed.status.trim().toLowerCase() : '',
-  experienceLevel: typeof parsed.experienceLevel === 'string' ? parsed.experienceLevel.trim() : '',
-  minRating: Number.isFinite(Number(parsed.minRating)) ? Number(parsed.minRating) : 0,
-  maxTokens: Number.isFinite(Number(parsed.maxTokens)) ? Number(parsed.maxTokens) : 0, // ✅
-  certified: Boolean(parsed.certified),
-};
+    keywords:
+      typeof parsed.keywords === 'string'
+        ? parsed.keywords.trim()
+        : s.remainder.trim(),
+    subject: sanitizeSubject(
+      typeof parsed.subject === 'string'
+        ? parsed.subject.trim()
+        : heuristicSubject,
+    ),
+    country: normIso2(parsed.country),
+    gradeBand:
+      typeof parsed.gradeBand === 'string' && parsed.gradeBand.trim()
+        ? parsed.gradeBand.trim()
+        : heuristicGradeBand,
+    status:
+      typeof parsed.status === 'string'
+        ? parsed.status.trim().toLowerCase()
+        : '',
+    experienceLevel:
+      typeof parsed.experienceLevel === 'string'
+        ? parsed.experienceLevel.trim()
+        : '',
+    minRating: Number.isFinite(Number(parsed.minRating))
+      ? Number(parsed.minRating)
+      : 0,
+    maxTokens: Number.isFinite(Number(parsed.maxTokens))
+      ? Number(parsed.maxTokens)
+      : 0, // ✅
+    certified: Boolean(parsed.certified),
+  };
 
-if (out.maxTokens < 0) out.maxTokens = 0;
-
+  if (out.maxTokens < 0) out.maxTokens = 0;
 
   // guard
   if (!['', 'online', 'offline'].includes(out.status)) out.status = '';

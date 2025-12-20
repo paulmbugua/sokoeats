@@ -11,56 +11,62 @@ export default defineConfig({
   plugins: [react()],
 
   resolve: {
-  dedupe: [
-    // 🔑 make sure these are singletons
-    'react',
-    'react-dom',
-    '@tanstack/react-query',
-    '@tanstack/react-query-devtools',
+    dedupe: [
+      // 🔑 make sure these are singletons
+      'react',
+      'react-dom',
+      '@tanstack/react-query',
+      '@tanstack/react-query-devtools',
 
-    // your existing ones
-    'motion-dom',
-    'react-native-web',
-    'three',
-    'firebase',
-  ],
-  extensions: [
-    '.web.tsx', '.web.ts', '.web.js',
-    '.tsx', '.ts', '.js', '.jsx', '.json'
-  ],
-  alias: [
-    // RN → web
-    { find: /^react-native$/, replacement: 'react-native-web' },
-    { find: /^react-native\/(.*)$/, replacement: 'react-native-web/dist/exports/$1' },
+      // your existing ones
+      'motion-dom',
+      'react-native-web',
+      'three',
+      'firebase',
+    ],
+    extensions: ['.web.tsx', '.web.ts', '.web.js', '.tsx', '.ts', '.js', '.jsx', '.json'],
+    alias: [
+      // RN → web
+      { find: /^react-native$/, replacement: 'react-native-web' },
+      { find: /^react-native\/(.*)$/, replacement: 'react-native-web/dist/exports/$1' },
 
-    // Monorepo shared
-    { find: /^@shared$/, replacement: path.resolve(__dirname, '../../packages/shared/index.ts') },
-    { find: /^@shared\/(.*)$/, replacement: path.resolve(__dirname, '../../packages/shared/$1') },
-    { find: /^@mytutorapp\/shared$/, replacement: path.resolve(__dirname, '../../packages/shared/index.ts') },
-    { find: /^@mytutorapp\/shared\/(.*)$/, replacement: path.resolve(__dirname, '../../packages/shared/$1') },
+      // Monorepo shared
+      { find: /^@shared$/, replacement: path.resolve(__dirname, '../../packages/shared/index.ts') },
+      { find: /^@shared\/(.*)$/, replacement: path.resolve(__dirname, '../../packages/shared/$1') },
+      {
+        find: /^@mytutorapp\/shared$/,
+        replacement: path.resolve(__dirname, '../../packages/shared/index.ts'),
+      },
+      {
+        find: /^@mytutorapp\/shared\/(.*)$/,
+        replacement: path.resolve(__dirname, '../../packages/shared/$1'),
+      },
 
-    { find: /^react-toastify$/, replacement: path.resolve(__dirname, 'node_modules/react-toastify') },
+      {
+        find: /^react-toastify$/,
+        replacement: path.resolve(__dirname, 'node_modules/react-toastify'),
+      },
 
-    // ✅ explicit types barrel
-    { find: /^@mytutorapp\/shared\/types$/, replacement: path.resolve(__dirname, '../../packages/shared/types/index.ts') },
-    { find: /^@shared\/types$/, replacement: path.resolve(__dirname, '../../packages/shared/types/index.ts') },
+      // ✅ explicit types barrel
+      {
+        find: /^@mytutorapp\/shared\/types$/,
+        replacement: path.resolve(__dirname, '../../packages/shared/types/index.ts'),
+      },
+      {
+        find: /^@shared\/types$/,
+        replacement: path.resolve(__dirname, '../../packages/shared/types/index.ts'),
+      },
 
-    // App-local alias
-    { find: '@', replacement: path.resolve(__dirname, 'src') },
+      // App-local alias
+      { find: '@', replacement: path.resolve(__dirname, 'src') },
 
-    { find: 'three', replacement: path.resolve(__dirname, 'node_modules/three') },
-  ],
-},
-optimizeDeps: {
-  include: [
-    'framer-motion',
-    'motion-dom',
-    'react-native-web',
-    '@tanstack/react-query',
-  ],
-  exclude: ['react-native', 'three'],
-},
-
+      { find: 'three', replacement: path.resolve(__dirname, 'node_modules/three') },
+    ],
+  },
+  optimizeDeps: {
+    include: ['framer-motion', 'motion-dom', 'react-native-web', '@tanstack/react-query'],
+    exclude: ['react-native', 'three'],
+  },
 
   // If you want to import .glb without ?url, uncomment:
   // assetsInclude: ['**/*.glb', '**/*.gltf'],
@@ -77,10 +83,7 @@ optimizeDeps: {
   server: {
     port: 5173,
     fs: {
-      allow: [
-        path.resolve(__dirname),
-        path.resolve(__dirname, '../../packages/shared'),
-      ],
+      allow: [path.resolve(__dirname), path.resolve(__dirname, '../../packages/shared')],
     },
     proxy: {
       '/api': { target: BACKEND_TARGET, changeOrigin: true, secure: false },

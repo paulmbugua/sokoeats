@@ -31,7 +31,9 @@ export default function OrgJoinPage() {
         if (!stop) setLoading(false);
       }
     })();
-    return () => { stop = true; };
+    return () => {
+      stop = true;
+    };
   }, [backendUrl, code]);
 
   const onAccept = useCallback(async () => {
@@ -39,9 +41,9 @@ export default function OrgJoinPage() {
     // 👇 success handler: mark org-mode for invited users too
     localStorage.setItem('auth:mode', 'org');
     const orgId = res.enrollment?.orgId;
-  if (orgId) {
-    localStorage.setItem('auth:orgId', orgId);
-  }
+    if (orgId) {
+      localStorage.setItem('auth:orgId', orgId);
+    }
 
     // optional: clear returnTo saved earlier
     sessionStorage.removeItem('auth:returnTo');
@@ -53,7 +55,9 @@ export default function OrgJoinPage() {
   return (
     <div className="p-6">
       <h1 className="text-xl font-bold">Join {invite?.org?.name ?? 'Institution'}</h1>
-      <p className="mt-2 text-sm">You’ve been invited to access assignments/analytics for this institution.</p>
+      <p className="mt-2 text-sm">
+        You’ve been invited to access assignments/analytics for this institution.
+      </p>
       <button onClick={onAccept} className="mt-4 h-10 px-4 rounded-xl bg-emerald-600 text-white">
         Accept & Continue
       </button>

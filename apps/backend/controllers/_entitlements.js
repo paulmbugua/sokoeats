@@ -24,15 +24,15 @@ async function getEntShape(db) {
      WHERE table_schema = 'public'
        AND table_name   = 'course_entitlements'
        AND column_name IN ('user_id','student_id','purchased_at')
-    `
+    `,
   );
 
-
-  
-  const hasUserId     = rows.some((r) => r.column_name === 'user_id');
-  const userIdNotNull = rows.some((r) => r.column_name === 'user_id' && r.is_nullable === 'NO');
-  const hasStudentId  = rows.some((r) => r.column_name === 'student_id');
-  const hasPurchased  = rows.some((r) => r.column_name === 'purchased_at');
+  const hasUserId = rows.some((r) => r.column_name === 'user_id');
+  const userIdNotNull = rows.some(
+    (r) => r.column_name === 'user_id' && r.is_nullable === 'NO',
+  );
+  const hasStudentId = rows.some((r) => r.column_name === 'student_id');
+  const hasPurchased = rows.some((r) => r.column_name === 'purchased_at');
 
   _entShapeCache = { hasUserId, userIdNotNull, hasStudentId, hasPurchased };
   return _entShapeCache;
@@ -61,7 +61,7 @@ export async function getEntitlement(db, userId, courseId) {
        WHERE user_id = $1::uuid AND course_id = $2::uuid
        LIMIT 1
       `,
-      [uid, cid]
+      [uid, cid],
     );
     return rows[0] || null;
   }
@@ -78,7 +78,7 @@ export async function getEntitlement(db, userId, courseId) {
          WHERE student_id = $1::bigint AND course_id = $2::uuid
          LIMIT 1
         `,
-        [idNum, cid]
+        [idNum, cid],
       );
       return rows[0] || null;
     } catch (e) {
@@ -101,12 +101,16 @@ export async function getEntitlement(db, userId, courseId) {
  * @param {import('pg').Pool|import('pg').PoolClient} db
  * @param {{ userId: string|number, courseId: string, extended?: boolean }} args
  */
-export async function upsertEntitlement(db, { userId, courseId, extended = false }) {
+export async function upsertEntitlement(
+  db,
+  { userId, courseId, extended = false },
+) {
   const uid = String(userId ?? '').trim();
   const cid = String(courseId ?? '').trim();
-  if (!isUuid(cid)) throw new Error('upsertEntitlement: courseId must be a UUID');
+  if (!isUuid(cid))
+    throw new Error('upsertEntitlement: courseId must be a UUID');
 
-  const desiredTier     = extended ? 'extended' : 'standard';
+  const desiredTier = extended ? 'extended' : 'standard';
   const grantTranscript = !!extended;
 
   const shape = await getEntShape(db);
@@ -116,7 +120,9 @@ export async function upsertEntitlement(db, { userId, courseId, extended = false
     if (!shape.hasUserId) return; // table has no user_id column — nothing to do for this caller shape
 
     // Build purchased_at fragment only if the column exists
-    const purchasedSet = shape.hasPurchased ? `, purchased_at = COALESCE(ce.purchased_at, NOW())` : ``;
+    const purchasedSet = shape.hasPurchased
+      ? `, purchased_at = COALESCE(ce.purchased_at, NOW())`
+      : ``;
     const purchasedCols = shape.hasPurchased ? `, purchased_at` : ``;
     const purchasedVals = shape.hasPurchased ? `, NOW()` : ``;
 
@@ -151,7 +157,9 @@ export async function upsertEntitlement(db, { userId, courseId, extended = false
   if (!shape.hasStudentId) return;
 
   // Build purchased_at fragments conditionally
-  const purchasedSet = shape.hasPurchased ? `, purchased_at = COALESCE(ce.purchased_at, NOW())` : ``;
+  const purchasedSet = shape.hasPurchased
+    ? `, purchased_at = COALESCE(ce.purchased_at, NOW())`
+    : ``;
   const purchasedCols = shape.hasPurchased ? `, purchased_at` : ``;
   const purchasedVals = shape.hasPurchased ? `, NOW()` : ``;
 
@@ -172,7 +180,12 @@ export async function upsertEntitlement(db, { userId, courseId, extended = false
     )
     SELECT COUNT(*)::int AS touched FROM updated;
   `;
-  const upd = await db.query(updateSql, [idNum, cid, desiredTier, grantTranscript]);
+  const upd = await db.query(updateSql, [
+    idNum,
+    cid,
+    desiredTier,
+    grantTranscript,
+  ]);
   const touched = Number(upd?.rows?.[0]?.touched || 0);
 
   // 2) If nothing updated, consider INSERT.

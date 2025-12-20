@@ -17,14 +17,27 @@ import {
 } from '@mytutorapp/shared/api';
 import type { AxiosResponse } from 'axios';
 
-interface InitiateResponse { transactionId?: string }
-interface CompleteResponse { payment: { status: string; mpesa_reference: string }; tokens: number }
-interface UpdateRefResponse { message: string }
+interface InitiateResponse {
+  transactionId?: string;
+}
+interface CompleteResponse {
+  payment: { status: string; mpesa_reference: string };
+  tokens: number;
+}
+interface UpdateRefResponse {
+  message: string;
+}
 type PaystackStartVars = { packageId: string | number };
 type PaystackStartResp = { reference: string; authorization_url: string; paymentId: number };
 
 type PaystackFinalizeVars = { reference: string };
-type PaystackFinalizeResp = { ok: boolean; status: string; tokensBalance?: number; creditsPurchased?: number; alreadyCompleted?: boolean };
+type PaystackFinalizeResp = {
+  ok: boolean;
+  status: string;
+  tokensBalance?: number;
+  creditsPurchased?: number;
+  alreadyCompleted?: boolean;
+};
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -54,57 +67,54 @@ async function verifyWithRetry(
 type Currency = 'USD' | 'KES';
 
 interface UsePaymentResult {
-  packages: PaymentPackage[]
-  loadingPackages: boolean
-  packagesError: string | null
+  packages: PaymentPackage[];
+  loadingPackages: boolean;
+  packagesError: string | null;
 
-  selectedPackage: PaymentPackage | null
-  handlePackageSelection: (pkg: PaymentPackage | null) => void
+  selectedPackage: PaymentPackage | null;
+  handlePackageSelection: (pkg: PaymentPackage | null) => void;
 
-  profile: Profile | null
-  mainImage: string | null
-  loadingProfile: boolean
+  profile: Profile | null;
+  mainImage: string | null;
+  loadingProfile: boolean;
 
-  ratingData: RatingStats
-  loadingReviews: boolean
+  ratingData: RatingStats;
+  loadingReviews: boolean;
 
-  selectedPaymentMethod: string | null
-  handlePaymentSelection: (method: string) => void
-  inferredCurrency: Currency
+  selectedPaymentMethod: string | null;
+  handlePaymentSelection: (method: string) => void;
+  inferredCurrency: Currency;
 
-  phoneNumber: string
-  setPhoneNumber: (phone: string) => void
-  showMpesaModal: boolean
-  setShowMpesaModal: (show: boolean) => void
+  phoneNumber: string;
+  setPhoneNumber: (phone: string) => void;
+  showMpesaModal: boolean;
+  setShowMpesaModal: (show: boolean) => void;
 
-  initiatingPayment: boolean
-  initiateError: string | null
-  transactionReference: string | null
-  handleInitiateMpesaPayment: () => Promise<void>
+  initiatingPayment: boolean;
+  initiateError: string | null;
+  transactionReference: string | null;
+  handleInitiateMpesaPayment: () => Promise<void>;
 
-  confirmingPayment: boolean
-  confirmError: string | null
-  handleCompletePayment: () => Promise<void>
+  confirmingPayment: boolean;
+  confirmError: string | null;
+  handleCompletePayment: () => Promise<void>;
 
-  updatingReference: boolean
-  updateError: string | null
-  mpesaReference: string
-  setMpesaReference: (ref: string) => void
-  handleUpdateMpesaReference: () => Promise<void>
+  updatingReference: boolean;
+  updateError: string | null;
+  mpesaReference: string;
+  setMpesaReference: (ref: string) => void;
+  handleUpdateMpesaReference: () => Promise<void>;
   startPaystackCheckout: () => Promise<PaystackStartResp | null>;
   finalizePaystack: (reference: string) => Promise<PaystackFinalizeResp>;
   paystackRef: string | null;
-  handleCheckout: () => void
+  handleCheckout: () => void;
 }
 
 const usePayment = (): UsePaymentResult => {
   const { token, backendUrl } = useShopContext();
 
   // --- Random tutor (for trust block) ---
-  const {
-    data: profile = null,
-    isLoading: loadingProfile,
-  } = useAppQuery<Profile | null, Error>(
+  const { data: profile = null, isLoading: loadingProfile } = useAppQuery<Profile | null, Error>(
     ['randomProfile', token],
     async () => {
       const p = await getRandomProfile(backendUrl, token);
@@ -132,7 +142,7 @@ const usePayment = (): UsePaymentResult => {
     }
 
     const pref = (profile as any)?.payoutCurrency;
-    return (pref === 'KES' || pref === 'USD') ? pref : 'USD';
+    return pref === 'KES' || pref === 'USD' ? pref : 'USD';
   }, [selectedPaymentMethod, profile]);
 
   // --- Packages (fetch only for the inferred currency) ---
@@ -148,14 +158,12 @@ const usePayment = (): UsePaymentResult => {
   const packagesError = packagesErr?.message ?? null;
 
   // --- Reviews ---
-  const {
-    data: ratingData = { avgRating: 0, totalReviews: 0 },
-    isLoading: loadingReviews,
-  } = useAppQuery<RatingStats, Error>(
-    ['paymentReviews', token, profile?.id],
-    () => getTutorReviews(backendUrl, token, profile!.id),
-    { enabled: Boolean(profile?.id && token) }
-  );
+  const { data: ratingData = { avgRating: 0, totalReviews: 0 }, isLoading: loadingReviews } =
+    useAppQuery<RatingStats, Error>(
+      ['paymentReviews', token, profile?.id],
+      () => getTutorReviews(backendUrl, token, profile!.id),
+      { enabled: Boolean(profile?.id && token) }
+    );
 
   // --- Selection state ---
   const [selectedPackage, setSelectedPackage] = useState<PaymentPackage | null>(null);
@@ -164,8 +172,6 @@ const usePayment = (): UsePaymentResult => {
   useEffect(() => {
     setSelectedPackage(null);
   }, [inferredCurrency]);
-
-  
 
   const handlePackageSelection = useCallback((pkg: PaymentPackage | null) => {
     setSelectedPackage(pkg);
@@ -182,19 +188,22 @@ const usePayment = (): UsePaymentResult => {
   const [transactionReference, setTransactionReference] = useState<string | null>(null);
   const [mpesaReference, setMpesaReference] = useState('');
 
-    const [paystackRef, setPaystackRef] = useState<string | null>(null);
+  const [paystackRef, setPaystackRef] = useState<string | null>(null);
 
   const startPaystackMutation = useMutation<PaystackStartResp, Error, PaystackStartVars>({
     mutationFn: async (vars) => {
       const r = await paystackCreateOrder(backendUrl, token, { packageId: vars.packageId });
-      return { reference: r.reference, authorization_url: r.authorization_url, paymentId: r.paymentId };
+      return {
+        reference: r.reference,
+        authorization_url: r.authorization_url,
+        paymentId: r.paymentId,
+      };
     },
   });
 
   useEffect(() => {
-  setPaystackRef(null);
-}, [selectedPaymentMethod, inferredCurrency]);
-
+    setPaystackRef(null);
+  }, [selectedPaymentMethod, inferredCurrency]);
 
   const finalizePaystackMutation = useMutation<PaystackFinalizeResp, Error, PaystackFinalizeVars>({
     mutationFn: async (vars) => {
@@ -210,9 +219,15 @@ const usePayment = (): UsePaymentResult => {
     await getMyWallet(backendUrl, token).catch(() => null);
   }, [backendUrl, token]);
 
-    const startPaystackCheckout = useCallback(async () => {
-    if (!selectedPackage) { alert('Please select a package first.'); return null; }
-    if (!backendUrl || !token) { alert('Please sign in again.'); return null; }
+  const startPaystackCheckout = useCallback(async () => {
+    if (!selectedPackage) {
+      alert('Please select a package first.');
+      return null;
+    }
+    if (!backendUrl || !token) {
+      alert('Please sign in again.');
+      return null;
+    }
 
     // IMPORTANT: Paystack charges KES; you can keep package as USD intent if you want,
     // but you should NOT collect card details in client anymore.
@@ -221,16 +236,22 @@ const usePayment = (): UsePaymentResult => {
     return data; // { reference, authorization_url, paymentId }
   }, [selectedPackage, backendUrl, token, startPaystackMutation]);
 
-  const finalizePaystack = useCallback(async (reference: string) => {
-    const v = await finalizePaystackMutation.mutateAsync({ reference });
-    await refreshWallet();
-    return v;
-  }, [finalizePaystackMutation, refreshWallet]);
-
-
+  const finalizePaystack = useCallback(
+    async (reference: string) => {
+      const v = await finalizePaystackMutation.mutateAsync({ reference });
+      await refreshWallet();
+      return v;
+    },
+    [finalizePaystackMutation, refreshWallet]
+  );
 
   // --- Initiate payment (MPESA only) ---
-  type InitiateVars = { amount: number; packageId: string | number; paymentMethod: string; phone: string };
+  type InitiateVars = {
+    amount: number;
+    packageId: string | number;
+    paymentMethod: string;
+    phone: string;
+  };
   const initiateMutation = useMutation<InitiateResponse, Error, InitiateVars>({
     mutationFn: (vars) =>
       initiatePayment(backendUrl, token, {
@@ -240,14 +261,27 @@ const usePayment = (): UsePaymentResult => {
         phone: vars.phone,
       }),
   });
-  const { mutateAsync: initiateAsync, status: initiatingStatus, error: initiateErr } = initiateMutation;
+  const {
+    mutateAsync: initiateAsync,
+    status: initiatingStatus,
+    error: initiateErr,
+  } = initiateMutation;
   const initiatingPayment = initiatingStatus === 'pending';
 
   const handleInitiateMpesaPayment = useCallback(async () => {
-    if (!selectedPackage) { alert('Please select a package first.'); return; }
-    if (!phoneNumber) { alert('Please enter your phone number.'); return; }
+    if (!selectedPackage) {
+      alert('Please select a package first.');
+      return;
+    }
+    if (!phoneNumber) {
+      alert('Please enter your phone number.');
+      return;
+    }
     // Ensure we’re on KES packages
-    if (inferredCurrency !== 'KES') { alert('Please choose M-Pesa to pay in KSh.'); return; }
+    if (inferredCurrency !== 'KES') {
+      alert('Please choose M-Pesa to pay in KSh.');
+      return;
+    }
 
     try {
       const data = await initiateAsync({
@@ -274,17 +308,24 @@ const usePayment = (): UsePaymentResult => {
         (resp: AxiosResponse<CompleteResponse>) => resp.data
       ),
   });
-  const { mutateAsync: completeAsync, status: confirmingStatus, error: completeErr } = completeMutation;
+  const {
+    mutateAsync: completeAsync,
+    status: confirmingStatus,
+    error: completeErr,
+  } = completeMutation;
   const confirmingPayment = confirmingStatus === 'pending';
 
   const handleCompletePayment = useCallback(async () => {
-    if (!transactionReference) { alert('No transaction reference. Please initiate first.'); return; }
+    if (!transactionReference) {
+      alert('No transaction reference. Please initiate first.');
+      return;
+    }
     try {
       const data = await completeAsync(transactionReference);
       alert(
         `Payment status: ${data.payment.status}\n` +
-        `Ref: ${data.payment.mpesa_reference}\n` +
-        `Tokens: ${data.tokens}`
+          `Ref: ${data.payment.mpesa_reference}\n` +
+          `Tokens: ${data.tokens}`
       );
     } catch {
       alert('Failed to confirm payment.');
@@ -301,8 +342,14 @@ const usePayment = (): UsePaymentResult => {
   const updatingReference = updatingStatus === 'pending';
 
   const handleUpdateMpesaReference = useCallback(async () => {
-    if (!mpesaReference) { alert('Enter M-Pesa reference.'); return; }
-    if (!transactionReference) { alert('Initiate payment first.'); return; }
+    if (!mpesaReference) {
+      alert('Enter M-Pesa reference.');
+      return;
+    }
+    if (!transactionReference) {
+      alert('Initiate payment first.');
+      return;
+    }
     try {
       const data = await updateRefAsync(mpesaReference);
       alert(data.message);

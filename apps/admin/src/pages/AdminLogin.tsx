@@ -22,9 +22,7 @@ type AdminLoginResponse = {
   message?: string;
 };
 
-type TryResult =
-  | { ok: true; data: AdminLoginResponse }
-  | { ok: false; error: string };
+type TryResult = { ok: true; data: AdminLoginResponse } | { ok: false; error: string };
 
 /* ----------------------------- DEBUG HELPERS ----------------------------- */
 // Toggle: add ?debug=1 to the URL or localStorage.setItem('adminDebug','1')
@@ -216,7 +214,6 @@ export default function AdminLogin() {
 
       // Save dedicated admin JWT (ShopContext will attach it only for /api/admin/*)
       await setAdminToken(result.data.token);
-      
 
       // Keep local route-guard happy
       localStorage.setItem('role', role);
@@ -232,10 +229,7 @@ export default function AdminLogin() {
       toast.success(`Welcome back (${role})!`);
       nav('/transactions', { replace: true });
     } catch (err: any) {
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        'Login failed';
+      const msg = err?.response?.data?.message || err?.message || 'Login failed';
       toast.error(msg);
       if (DEBUG) logAxiosError('final-catch', err);
     } finally {
@@ -264,8 +258,8 @@ export default function AdminLogin() {
               <h2 className="app-heading">Admin Console</h2>
             </div>
             <p className="text-sm text-mutedGray dark:text-darkTextSecondary mt-1">
-              Sign in with your administrator credentials to access packages,
-              users, transactions, and receipts.
+              Sign in with your administrator credentials to access packages, users, transactions,
+              and receipts.
             </p>
           </div>
 
@@ -378,8 +372,8 @@ export default function AdminLogin() {
               DayBreak Learner • Admin
             </h3>
             <p className="mt-2 text-sm text-mutedGray dark:text-darkTextSecondary">
-              Manage prices and packages, review transactions, generate receipts,
-              and keep your platform humming. Only authorized staff are permitted.
+              Manage prices and packages, review transactions, generate receipts, and keep your
+              platform humming. Only authorized staff are permitted.
             </p>
             <ul className="mt-6 space-y-3 text-sm text-gray-700 dark:text-darkTextPrimary">
               <li className="flex items-center gap-2">
@@ -402,8 +396,8 @@ export default function AdminLogin() {
           </div>
 
           <div className="mt-8 text-xs text-mutedGray dark:text-darkTextSecondary">
-            By continuing, you agree to the acceptable use and administrative
-            access policy. All access attempts are monitored.
+            By continuing, you agree to the acceptable use and administrative access policy. All
+            access attempts are monitored.
           </div>
         </aside>
       </div>

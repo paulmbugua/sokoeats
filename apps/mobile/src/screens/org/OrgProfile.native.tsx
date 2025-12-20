@@ -1,15 +1,7 @@
 /* eslint-disable prettier/prettier */
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Alert,
-  TextInput,
-  Platform,
-  Share,
-} from 'react-native';
+import { View, Text, TouchableOpacity, Alert, TextInput, Platform, Share } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -36,33 +28,21 @@ import {
   createOrgMembershipInvite,
   removeOrgMember,
 } from '@mytutorapp/shared/api/orgApi';
-import { setOrgLearnerPhotoByAdmission } from '@mytutorapp/shared/api/orgLearnersApi';
 import {
-  createOrgInstructor as apiCreateOrgInstructor,
-} from '@mytutorapp/shared/api/orgInstructorsApi';
-import {
+  setOrgLearnerPhotoByAdmission,
   createOrgLearner as apiCreateOrgLearner,
   uploadOrgLearnersCsv as apiUploadOrgLearnersCsv,
 } from '@mytutorapp/shared/api/orgLearnersApi';
+import { createOrgInstructor as apiCreateOrgInstructor } from '@mytutorapp/shared/api/orgInstructorsApi';
 
 import ThemeToggle from '../ThemeToggle.native';
 import { useThemePref } from '../../theme/ThemeContext';
 
 // Shared native helpers + UI
-import {
-  MiniUser,
-  resolveAsset,
-  tierTone,
-  Skeleton,
-  PersonRow,
-} from './OrgProfileShared.native';
+import { MiniUser, resolveAsset, tierTone, Skeleton, PersonRow } from './OrgProfileShared.native';
 
 // Native modals
-import {
-  InviteModal,
-  AddInstructorModal,
-  AddLearnerModal,
-} from './OrgProfileModals.native';
+import { InviteModal, AddInstructorModal, AddLearnerModal } from './OrgProfileModals.native';
 
 /* ---------------- types ---------------- */
 type Org = {
@@ -219,7 +199,7 @@ async function shareOrCopyCsv(filename: string, csv: string) {
           ios: { url: uri, title: filename },
           android: { message: filename, url: uri, title: filename } as any,
           default: { message: csv, title: filename },
-        }) as any,
+        }) as any
       );
 
       return;
@@ -237,7 +217,6 @@ async function shareOrCopyCsv(filename: string, csv: string) {
   }
 }
 
-
 async function downloadCsvNative(filename: string, rows: (string | null | undefined)[][]) {
   const csv = rows.map((r) => r.map(csvEscape).join(',')).join('\r\n');
   await shareOrCopyCsv(filename, csv);
@@ -247,7 +226,7 @@ async function tryUploadLearnersCsvNative(
   backendUrl: string,
   token: string,
   orgId: string,
-  picked: { uri: string; name: string; mimeType?: string | null },
+  picked: { uri: string; name: string; mimeType?: string | null }
 ) {
   // First try shared API (if it supports RN file objects)
   try {
@@ -306,12 +285,7 @@ const StatCard: React.FC<{
 }> = ({ label, value, palette }) => (
   <View style={palette.smallSurface()}>
     <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>{label}</Text>
-    <Text
-      style={[
-        tw`text-2xl font-extrabold mt-1`,
-        { color: palette.text, letterSpacing: 0.2 },
-      ]}
-    >
+    <Text style={[tw`text-2xl font-extrabold mt-1`, { color: palette.text, letterSpacing: 0.2 }]}>
       {value}
     </Text>
   </View>
@@ -322,21 +296,10 @@ const ProgressBar: React.FC<{
   palette: ReturnType<typeof usePalette>;
 }> = ({ pct, palette }) => {
   const clamped = Math.max(0, Math.min(100, Math.round(pct)));
-  const bar =
-    clamped >= 90 ? '#ef4444' : clamped >= 70 ? '#f59e0b' : '#10b981';
+  const bar = clamped >= 90 ? '#ef4444' : clamped >= 70 ? '#f59e0b' : '#10b981';
   return (
-    <View
-      style={[
-        tw`h-2 rounded-full mt-2 overflow-hidden`,
-        { backgroundColor: palette.divider },
-      ]}
-    >
-      <View
-        style={[
-          tw`h-2 rounded-full`,
-          { width: `${clamped}%`, backgroundColor: bar },
-        ]}
-      />
+    <View style={[tw`h-2 rounded-full mt-2 overflow-hidden`, { backgroundColor: palette.divider }]}>
+      <View style={[tw`h-2 rounded-full`, { width: `${clamped}%`, backgroundColor: bar }]} />
     </View>
   );
 };
@@ -396,7 +359,6 @@ const ActionPill: React.FC<{
   </TouchableOpacity>
 );
 
-
 const ChipBtn: React.FC<{
   label: string;
   onPress?: () => void;
@@ -412,15 +374,15 @@ const ChipBtn: React.FC<{
       tw`px-3 py-1.5 rounded-full mr-2 mb-2`,
       {
         backgroundColor: active
-          ? (palette.isDark ? 'rgba(34,197,94,0.18)' : '#dcfce7')
+          ? palette.isDark
+            ? 'rgba(34,197,94,0.18)'
+            : '#dcfce7'
           : palette.divider,
         opacity: disabled ? 0.5 : 1,
       },
     ]}
   >
-    <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>
-      {label}
-    </Text>
+    <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>{label}</Text>
   </TouchableOpacity>
 );
 
@@ -436,24 +398,18 @@ const PaginationStrip: React.FC<{
   const totalPages = Math.max(1, Math.ceil((total || 0) / (pageSize || 1)));
   const start = total ? (page - 1) * pageSize + 1 : 0;
   const end = total ? Math.min(page * pageSize, total) : 0;
-  const rangeText = total
-    ? `Showing ${start}–${end} of ${total} ${noun}`
-    : `No ${noun} yet`;
+  const rangeText = total ? `Showing ${start}–${end} of ${total} ${noun}` : `No ${noun} yet`;
 
   const canPrev = page > 1;
   const canNext = page < totalPages;
 
   return (
     <View style={tw`mt-3`}>
-      <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>
-        {rangeText}
-      </Text>
+      <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>{rangeText}</Text>
 
       <View style={tw`mt-2 flex-row flex-wrap items-center`}>
         <View style={tw`flex-row items-center mr-2`}>
-          <Text style={[tw`text-[10px] mr-2`, { color: palette.textSubtle }]}>
-            Rows:
-          </Text>
+          <Text style={[tw`text-[10px] mr-2`, { color: palette.textSubtle }]}>Rows:</Text>
           {[10, 25, 50].map((s) => (
             <ChipBtn
               key={String(s)}
@@ -476,12 +432,7 @@ const PaginationStrip: React.FC<{
               disabled={!canPrev}
               onPress={() => onPage(Math.max(1, page - 1))}
             />
-            <View
-              style={[
-                tw`px-3 py-1.5 rounded-full`,
-                { backgroundColor: palette.divider },
-              ]}
-            >
+            <View style={[tw`px-3 py-1.5 rounded-full`, { backgroundColor: palette.divider }]}>
               <Text style={[tw`text-[11px]`, { color: palette.textMuted }]}>
                 Page {page} of {totalPages}
               </Text>
@@ -516,8 +467,7 @@ const OrgProfileNative: React.FC = () => {
 
   // invite sheet state
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteRole, setInviteRole] =
-    useState<'instructor' | 'learner'>('learner');
+  const [inviteRole, setInviteRole] = useState<'instructor' | 'learner'>('learner');
 
   // add-learner / add-instructor modals
   const [addInstructorOpen, setAddInstructorOpen] = useState(false);
@@ -573,7 +523,7 @@ const OrgProfileNative: React.FC = () => {
         }
       }
     },
-    [backendUrl, orgToken],
+    [backendUrl, orgToken]
   );
 
   useEffect(() => {
@@ -613,20 +563,15 @@ const OrgProfileNative: React.FC = () => {
 
   const logo = useMemo(
     () => resolveAsset(org?.logo_url, backendUrl, org?.name),
-    [org?.logo_url, backendUrl, org?.name],
+    [org?.logo_url, backendUrl, org?.name]
   );
 
-  const seatPct = Math.min(
-    100,
-    Math.round(((seatsUsed || 0) / (seatsMax || 1)) * 100),
-  );
+  const seatPct = Math.min(100, Math.round(((seatsUsed || 0) / (seatsMax || 1)) * 100));
 
   const tierColors = tierTone(org?.tier);
 
   const hasGroupingLabels =
-    !!org?.house_label?.trim() ||
-    !!org?.dorm_label?.trim() ||
-    !!org?.club_label?.trim();
+    !!org?.house_label?.trim() || !!org?.dorm_label?.trim() || !!org?.club_label?.trim();
 
   // pagination derived (A–H parity)
   const totalInstructorPages = useMemo(() => {
@@ -703,11 +648,7 @@ const OrgProfileNative: React.FC = () => {
   };
 
   const inferAdmissionCodeFromAsset = (asset: any) => {
-    return (
-      basenameFromFilename(asset?.fileName) ||
-      basenameFromFilename(asset?.uri) ||
-      ''
-    );
+    return basenameFromFilename(asset?.fileName) || basenameFromFilename(asset?.uri) || '';
   };
 
   const mimeFromAsset = (asset: any) => {
@@ -750,7 +691,7 @@ const OrgProfileNative: React.FC = () => {
 
         if (!code) {
           failures.push(
-            `${a?.fileName || a?.uri || `Image #${i + 1}`} (no admission code in filename)`,
+            `${a?.fileName || a?.uri || `Image #${i + 1}`} (no admission code in filename)`
           );
           continue;
         }
@@ -764,9 +705,7 @@ const OrgProfileNative: React.FC = () => {
 
           const res: any = await uploadAsset(backendUrl, orgToken, file, 'image');
           const photoUrl =
-            typeof res === 'string'
-              ? res
-              : res?.url || res?.secure_url || res?.data?.url || '';
+            typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || '';
 
           if (!photoUrl) throw new Error('Upload completed but no URL was returned.');
 
@@ -777,10 +716,7 @@ const OrgProfileNative: React.FC = () => {
 
           successes.push(code);
         } catch (err: any) {
-          const msg =
-            err?.response?.data?.message ||
-            err?.message ||
-            'Failed to map this photo.';
+          const msg = err?.response?.data?.message || err?.message || 'Failed to map this photo.';
           failures.push(`${a?.fileName || a?.uri || `${code}`} (${msg})`);
         }
       }
@@ -804,12 +740,10 @@ const OrgProfileNative: React.FC = () => {
       if (!org?.id) throw new Error('Organization is not loaded yet.');
       if (!orgToken) throw new Error('You are not authenticated for this organization.');
 
-      const resp = (await createOrgMembershipInvite(
-        backendUrl,
-        orgToken,
-        org.id,
-        { role, email },
-      )) as any;
+      const resp = (await createOrgMembershipInvite(backendUrl, orgToken, org.id, {
+        role,
+        email,
+      })) as any;
 
       const url = resp?.invite_url;
       if (!url) throw new Error('Invite created but no URL was returned.');
@@ -820,7 +754,7 @@ const OrgProfileNative: React.FC = () => {
 
       return { url };
     },
-    [backendUrl, org?.id, orgToken, refreshRoster],
+    [backendUrl, org?.id, orgToken, refreshRoster]
   );
 
   // A–H parity: confirm before remove + keep optimistic updates
@@ -831,7 +765,7 @@ const OrgProfileNative: React.FC = () => {
       const label = u.name || u.email || `User #${u.id}`;
       const ok = await confirmAsync(
         'Remove member',
-        `Remove ${label} from ${org?.name || 'this organization'}?\n\nThey will lose portal access.`,
+        `Remove ${label} from ${org?.name || 'this organization'}?\n\nThey will lose portal access.`
       );
       if (!ok) return;
 
@@ -843,29 +777,21 @@ const OrgProfileNative: React.FC = () => {
         setLearners((prev) => prev.filter((x) => String(x.id) !== String(u.id)));
         if (wasLearner) setSeatsUsed((s) => Math.max(0, (s || 0) - 1));
       } catch (e: any) {
-        const msg =
-          e?.response?.data?.message ||
-          e?.message ||
-          'Failed to remove member.';
+        const msg = e?.response?.data?.message || e?.message || 'Failed to remove member.';
         Alert.alert('Remove member', msg);
       }
     },
-    [backendUrl, org?.id, org?.name, orgToken, learners],
+    [backendUrl, org?.id, org?.name, orgToken, learners]
   );
 
   const handleCreateInstructor = useCallback(
-    async (payload: {
-      name: string;
-      email?: string;
-      subject?: string;
-      staff_code?: string;
-    }) => {
+    async (payload: { name: string; email?: string; subject?: string; staff_code?: string }) => {
       if (!org?.id || !orgToken) throw new Error('Organization or token missing.');
       const resp = await apiCreateOrgInstructor(backendUrl, orgToken, org.id, payload);
       await refreshRoster(org.id);
       return { tempPassword: (resp as any)?.tempPassword ?? null };
     },
-    [backendUrl, org?.id, orgToken, refreshRoster],
+    [backendUrl, org?.id, orgToken, refreshRoster]
   );
 
   const handleCreateLearner = useCallback(
@@ -884,7 +810,7 @@ const OrgProfileNative: React.FC = () => {
       await refreshRoster(org.id);
       return { tempPassword: (resp as any)?.tempPassword ?? null };
     },
-    [backendUrl, org?.id, orgToken, refreshRoster],
+    [backendUrl, org?.id, orgToken, refreshRoster]
   );
 
   // A–H parity: Download login sheet (CSV)
@@ -996,7 +922,7 @@ const OrgProfileNative: React.FC = () => {
 
       if (res.canceled || !res.assets?.length) return;
 
-     const a = res.assets?.[0];
+      const a = res.assets?.[0];
       if (!a?.uri) return;
 
       const picked = {
@@ -1005,20 +931,14 @@ const OrgProfileNative: React.FC = () => {
         mimeType: a.mimeType ?? 'text/csv',
       };
 
-
-      const resp: any = await tryUploadLearnersCsvNative(
-        backendUrl,
-        orgToken,
-        org.id,
-        picked,
-      );
+      const resp: any = await tryUploadLearnersCsvNative(backendUrl, orgToken, org.id, picked);
 
       const created = Number(resp?.createdCount ?? resp?.created ?? 0);
       const reused = Number(resp?.reusedCount ?? resp?.reused ?? resp?.updated ?? 0);
 
       Alert.alert(
         'CSV processed',
-        `New learners: ${created}\nExisting reused/updated: ${reused}\n\nNext: Download the login sheet (CSV) to share credentials + temp passwords.`,
+        `New learners: ${created}\nExisting reused/updated: ${reused}\n\nNext: Download the login sheet (CSV) to share credentials + temp passwords.`
       );
 
       await refreshRoster(org.id);
@@ -1044,7 +964,7 @@ const OrgProfileNative: React.FC = () => {
     if (!perm.granted) {
       Alert.alert(
         'Permission needed',
-        'Please allow photo library access to upload learner photos.',
+        'Please allow photo library access to upload learner photos.'
       );
       return;
     }
@@ -1073,9 +993,7 @@ const OrgProfileNative: React.FC = () => {
 
       const res: any = await uploadAsset(backendUrl, orgToken, file, 'image');
       const photoUrl =
-        typeof res === 'string'
-          ? res
-          : res?.url || res?.secure_url || res?.data?.url || '';
+        typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || '';
 
       if (!photoUrl) throw new Error('Upload completed but no URL was returned.');
 
@@ -1084,14 +1002,11 @@ const OrgProfileNative: React.FC = () => {
         photo_url: photoUrl,
       });
 
-      Alert.alert(
-        'Learner photo',
-        'Photo mapped to learner. Future report cards will use it.',
-      );
+      Alert.alert('Learner photo', 'Photo mapped to learner. Future report cards will use it.');
     } catch (e: any) {
       Alert.alert(
         'Learner photo',
-        e?.response?.data?.message || e?.message || 'Failed to upload learner photo.',
+        e?.response?.data?.message || e?.message || 'Failed to upload learner photo.'
       );
     } finally {
       setPhotoUploading(false);
@@ -1166,10 +1081,7 @@ const OrgProfileNative: React.FC = () => {
                   ) : (
                     <Image
                       source={{ uri: logo }}
-                      style={[
-                        tw`h-16 w-16 rounded-2xl`,
-                        { backgroundColor: palette.divider },
-                      ]}
+                      style={[tw`h-16 w-16 rounded-2xl`, { backgroundColor: palette.divider }]}
                       contentFit="cover"
                       transition={250}
                       accessibilityLabel="Organization logo"
@@ -1206,7 +1118,10 @@ const OrgProfileNative: React.FC = () => {
                         </View>
                       )}
                     </View>
-                    <Text numberOfLines={1} style={[tw`text-xs mt-0.5`, { color: palette.textMuted }]}>
+                    <Text
+                      numberOfLines={1}
+                      style={[tw`text-xs mt-0.5`, { color: palette.textMuted }]}
+                    >
                       {loading ? ' ' : org?.slug ? `@${org.slug}` : '—'}
                     </Text>
                   </View>
@@ -1305,7 +1220,10 @@ const OrgProfileNative: React.FC = () => {
                     <Skeleton style={tw`h-4 w-40 mt-2 rounded`} />
                   ) : (
                     <>
-                      <Text numberOfLines={2} style={[tw`mt-1 text-xs font-semibold`, { color: palette.text }]}>
+                      <Text
+                        numberOfLines={2}
+                        style={[tw`mt-1 text-xs font-semibold`, { color: palette.text }]}
+                      >
                         {org?.certificate_title || 'Certificate of Completion'}
                       </Text>
                       <Text style={[tw`mt-1 text-[11px]`, { color: palette.textSubtle }]}>
@@ -1322,7 +1240,10 @@ const OrgProfileNative: React.FC = () => {
         {/* People */}
         <View style={tw`px-4 mt-4`}>
           {/* Instructors */}
-          <Animated.View entering={FadeInDown.delay(60).duration(380)} style={palette.surface(tw`mb-4`)}>
+          <Animated.View
+            entering={FadeInDown.delay(60).duration(380)}
+            style={palette.surface(tw`mb-4`)}
+          >
             <View>
               <View style={tw`flex-row items-center justify-between`}>
                 <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Instructors</Text>
@@ -1371,7 +1292,6 @@ const OrgProfileNative: React.FC = () => {
               </View>
             </View>
 
-
             {loading ? (
               <View style={tw`mt-3`}>
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -1382,11 +1302,7 @@ const OrgProfileNative: React.FC = () => {
               <>
                 <View style={tw`mt-3`}>
                   {paginatedInstructors.map((u) => (
-                    <PersonRow
-                      key={String(u.id)}
-                      u={u}
-                      onRemove={() => handleRemoveMember(u)}
-                    />
+                    <PersonRow key={String(u.id)} u={u} onRemove={() => handleRemoveMember(u)} />
                   ))}
                 </View>
 
@@ -1410,7 +1326,8 @@ const OrgProfileNative: React.FC = () => {
                 <Text style={tw`text-2xl`}>👩🏽‍🏫</Text>
                 <Text style={[tw`text-sm mt-2`, { color: palette.text }]}>No instructors yet.</Text>
                 <Text style={[tw`text-[11px] mt-1 text-center`, { color: palette.textSubtle }]}>
-                  Use invites or direct add to enroll instructors. Share login details via email or WhatsApp.
+                  Use invites or direct add to enroll instructors. Share login details via email or
+                  WhatsApp.
                 </Text>
               </View>
             )}
@@ -1418,72 +1335,73 @@ const OrgProfileNative: React.FC = () => {
 
           {/* Learners */}
           <Animated.View entering={FadeInDown.delay(120).duration(380)} style={palette.surface()}>
-              <View>
-                <View style={tw`flex-row items-center justify-between`}>
-                  <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Learners</Text>
+            <View>
+              <View style={tw`flex-row items-center justify-between`}>
+                <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Learners</Text>
 
-                  <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}>
-                    <Text style={[tw`text-[10px] font-semibold`, { color: palette.textMuted }]}>
-                      {learners.length}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={tw`mt-3 flex-row flex-wrap`}>
-                  <ActionPill
-                    palette={palette}
-                    label={csvUploading ? 'Uploading…' : 'Import CSV'}
-                    icon="cloud-upload-outline"
-                    disabled={csvUploading}
-                    onPress={handleCsvImport}
-                  />
-
-                  <ActionPill
-                    palette={palette}
-                    label="Sample CSV"
-                    icon="document-text-outline"
-                    onPress={downloadLearnerSampleCsv}
-                  />
-
-                  <ActionPill
-                    palette={palette}
-                    label="Add"
-                    icon="person-add-outline"
-                    onPress={() => setAddLearnerOpen(true)}
-                  />
-
-                  <ActionPill
-                    palette={palette}
-                    label="Invite"
-                    icon="mail-outline"
-                    onPress={() => {
-                      setInviteRole('learner');
-                      setInviteOpen(true);
-                    }}
-                  />
-
-                  <ActionPill
-                    palette={palette}
-                    label="Login sheet CSV"
-                    icon="download-outline"
-                    onPress={downloadRosterCsv}
-                  />
+                <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}>
+                  <Text style={[tw`text-[10px] font-semibold`, { color: palette.textMuted }]}>
+                    {learners.length}
+                  </Text>
                 </View>
               </View>
 
+              <View style={tw`mt-3 flex-row flex-wrap`}>
+                <ActionPill
+                  palette={palette}
+                  label={csvUploading ? 'Uploading…' : 'Import CSV'}
+                  icon="cloud-upload-outline"
+                  disabled={csvUploading}
+                  onPress={handleCsvImport}
+                />
+
+                <ActionPill
+                  palette={palette}
+                  label="Sample CSV"
+                  icon="document-text-outline"
+                  onPress={downloadLearnerSampleCsv}
+                />
+
+                <ActionPill
+                  palette={palette}
+                  label="Add"
+                  icon="person-add-outline"
+                  onPress={() => setAddLearnerOpen(true)}
+                />
+
+                <ActionPill
+                  palette={palette}
+                  label="Invite"
+                  icon="mail-outline"
+                  onPress={() => {
+                    setInviteRole('learner');
+                    setInviteOpen(true);
+                  }}
+                />
+
+                <ActionPill
+                  palette={palette}
+                  label="Login sheet CSV"
+                  icon="download-outline"
+                  onPress={downloadRosterCsv}
+                />
+              </View>
+            </View>
 
             {/* CSV help text (web parity) */}
             <Text style={[tw`mt-2 text-[10px]`, { color: palette.textSubtle }]}>
-              CSV columns: <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>name</Text>,{' '}
+              CSV columns:{' '}
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>name</Text>,{' '}
               <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>email</Text>,{' '}
               <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>admission_code</Text>,{' '}
               <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>class_label</Text>,{' '}
               <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>guardian_email</Text>,{' '}
               <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>house</Text>,{' '}
               <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>dormitory</Text>,{' '}
-              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>club</Text>. Existing learners match by{' '}
-              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>admission_code</Text> or{' '}
-              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>email</Text>.
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>club</Text>. Existing
+              learners match by{' '}
+              <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>admission_code</Text>{' '}
+              or <Text style={[tw`font-semibold`, { color: palette.textMuted }]}>email</Text>.
             </Text>
 
             {loading ? (
@@ -1496,11 +1414,7 @@ const OrgProfileNative: React.FC = () => {
               <>
                 <View style={tw`mt-3`}>
                   {paginatedLearners.map((u) => (
-                    <PersonRow
-                      key={String(u.id)}
-                      u={u}
-                      onRemove={() => handleRemoveMember(u)}
-                    />
+                    <PersonRow key={String(u.id)} u={u} onRemove={() => handleRemoveMember(u)} />
                   ))}
                 </View>
 
@@ -1535,9 +1449,7 @@ const OrgProfileNative: React.FC = () => {
         <View style={tw`px-4 mt-4`}>
           <Animated.View entering={FadeInDown.delay(160).duration(380)} style={palette.surface()}>
             <View style={tw`flex-row items-center justify-between`}>
-              <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>
-                Learner photos
-              </Text>
+              <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Learner photos</Text>
               <Text style={[tw`text-[10px]`, { color: palette.textSubtle }]}>
                 Map profile photos to learners
               </Text>
@@ -1579,7 +1491,8 @@ const OrgProfileNative: React.FC = () => {
                 . The app extracts the code (before the extension) and maps automatically.
               </Text>
               <Text style={[tw`mt-1 text-[10px]`, { color: palette.textSubtle }]}>
-                Note: multi-select support depends on device/OS. If you can’t pick multiple, repeat the action.
+                Note: multi-select support depends on device/OS. If you can’t pick multiple, repeat
+                the action.
               </Text>
             </View>
 
@@ -1613,9 +1526,7 @@ const OrgProfileNative: React.FC = () => {
                 style={[
                   tw`mt-3 h-10 px-4 rounded-xl flex-row items-center justify-center`,
                   {
-                    backgroundColor: palette.isDark
-                      ? 'rgba(255,255,255,0.06)'
-                      : '#ffffff',
+                    backgroundColor: palette.isDark ? 'rgba(255,255,255,0.06)' : '#ffffff',
                   },
                 ]}
               >
@@ -1626,7 +1537,8 @@ const OrgProfileNative: React.FC = () => {
               </TouchableOpacity>
 
               <Text style={[tw`mt-2 text-[10px]`, { color: palette.textSubtle }]}>
-                • Use clear passport-style photos. • If the admission code does not exist, the backend should return an error.
+                • Use clear passport-style photos. • If the admission code does not exist, the
+                backend should return an error.
               </Text>
             </View>
           </Animated.View>
@@ -1739,10 +1651,14 @@ const OrgProfileNative: React.FC = () => {
                 ) : (
                   <View style={tw`mt-2`}>
                     {!!org?.address_line1 && (
-                      <Text style={[tw`text-xs`, { color: palette.text }]}>{org.address_line1}</Text>
+                      <Text style={[tw`text-xs`, { color: palette.text }]}>
+                        {org.address_line1}
+                      </Text>
                     )}
                     {!!org?.address_line2 && (
-                      <Text style={[tw`text-xs`, { color: palette.text }]}>{org.address_line2}</Text>
+                      <Text style={[tw`text-xs`, { color: palette.text }]}>
+                        {org.address_line2}
+                      </Text>
                     )}
                     {!!org?.phone_number && (
                       <Text style={[tw`text-[11px] mt-1`, { color: palette.textSubtle }]}>
@@ -1778,39 +1694,72 @@ const OrgProfileNative: React.FC = () => {
                     <View
                       style={[
                         tw`rounded-2xl px-3 py-2 mb-2`,
-                        { backgroundColor: palette.divider, borderColor: palette.border, borderWidth: 1 },
+                        {
+                          backgroundColor: palette.divider,
+                          borderColor: palette.border,
+                          borderWidth: 1,
+                        },
                       ]}
                     >
-                      <Text style={[tw`text-[10px] uppercase tracking-wide`, { color: palette.textSubtle }]}>
+                      <Text
+                        style={[
+                          tw`text-[10px] uppercase tracking-wide`,
+                          { color: palette.textSubtle },
+                        ]}
+                      >
                         House label
                       </Text>
-                      <Text style={[tw`mt-1 text-xs`, { color: palette.text }]}>{org.house_label}</Text>
+                      <Text style={[tw`mt-1 text-xs`, { color: palette.text }]}>
+                        {org.house_label}
+                      </Text>
                     </View>
                   )}
                   {!!org?.dorm_label?.trim() && (
                     <View
                       style={[
                         tw`rounded-2xl px-3 py-2 mb-2`,
-                        { backgroundColor: palette.divider, borderColor: palette.border, borderWidth: 1 },
+                        {
+                          backgroundColor: palette.divider,
+                          borderColor: palette.border,
+                          borderWidth: 1,
+                        },
                       ]}
                     >
-                      <Text style={[tw`text-[10px] uppercase tracking-wide`, { color: palette.textSubtle }]}>
+                      <Text
+                        style={[
+                          tw`text-[10px] uppercase tracking-wide`,
+                          { color: palette.textSubtle },
+                        ]}
+                      >
                         Dorm label
                       </Text>
-                      <Text style={[tw`mt-1 text-xs`, { color: palette.text }]}>{org.dorm_label}</Text>
+                      <Text style={[tw`mt-1 text-xs`, { color: palette.text }]}>
+                        {org.dorm_label}
+                      </Text>
                     </View>
                   )}
                   {!!org?.club_label?.trim() && (
                     <View
                       style={[
                         tw`rounded-2xl px-3 py-2`,
-                        { backgroundColor: palette.divider, borderColor: palette.border, borderWidth: 1 },
+                        {
+                          backgroundColor: palette.divider,
+                          borderColor: palette.border,
+                          borderWidth: 1,
+                        },
                       ]}
                     >
-                      <Text style={[tw`text-[10px] uppercase tracking-wide`, { color: palette.textSubtle }]}>
+                      <Text
+                        style={[
+                          tw`text-[10px] uppercase tracking-wide`,
+                          { color: palette.textSubtle },
+                        ]}
+                      >
                         Club label
                       </Text>
-                      <Text style={[tw`mt-1 text-xs`, { color: palette.text }]}>{org.club_label}</Text>
+                      <Text style={[tw`mt-1 text-xs`, { color: palette.text }]}>
+                        {org.club_label}
+                      </Text>
                     </View>
                   )}
                 </View>
@@ -1821,7 +1770,10 @@ const OrgProfileNative: React.FC = () => {
 
         {/* Quick actions - modern card */}
         <View style={tw`px-4 mt-4`}>
-          <Animated.View entering={FadeInDown.delay(220).duration(380)} style={palette.softSurface()}>
+          <Animated.View
+            entering={FadeInDown.delay(220).duration(380)}
+            style={palette.softSurface()}
+          >
             <View style={tw`flex-row items-center justify-between`}>
               <View>
                 <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Quick actions</Text>
@@ -1829,9 +1781,16 @@ const OrgProfileNative: React.FC = () => {
                   Jump straight into your portal tools.
                 </Text>
               </View>
-              <View style={[tw`px-2 py-1 rounded-full flex-row items-center`, { backgroundColor: palette.divider }]}>
+              <View
+                style={[
+                  tw`px-2 py-1 rounded-full flex-row items-center`,
+                  { backgroundColor: palette.divider },
+                ]}
+              >
                 <View style={[tw`h-1.5 w-1.5 rounded-full mr-1`, { backgroundColor: '#22c55e' }]} />
-                <Text style={[tw`text-[10px] font-medium`, { color: palette.textMuted }]}>Live</Text>
+                <Text style={[tw`text-[10px] font-medium`, { color: palette.textMuted }]}>
+                  Live
+                </Text>
               </View>
             </View>
 
@@ -1848,7 +1807,9 @@ const OrgProfileNative: React.FC = () => {
                   accessibilityLabel="Open portal"
                 >
                   <Ionicons name="grid-outline" size={16} color="#fff" />
-                  <Text style={tw`ml-2 text-[11px] font-semibold text-white text-center flex-shrink`}>
+                  <Text
+                    style={tw`ml-2 text-[11px] font-semibold text-white text-center flex-shrink`}
+                  >
                     Open portal
                   </Text>
                 </TouchableOpacity>
@@ -1864,7 +1825,12 @@ const OrgProfileNative: React.FC = () => {
                   accessibilityLabel="Create assignment"
                 >
                   <Ionicons name="create-outline" size={18} color={palette.text} />
-                  <Text style={[tw`ml-2 text-[11px] font-semibold text-center flex-shrink`, { color: palette.text }]}>
+                  <Text
+                    style={[
+                      tw`ml-2 text-[11px] font-semibold text-center flex-shrink`,
+                      { color: palette.text },
+                    ]}
+                  >
                     Create assignment
                   </Text>
                 </TouchableOpacity>
@@ -1877,11 +1843,21 @@ const OrgProfileNative: React.FC = () => {
         <View style={tw`px-4 mt-6 mb-4`}>
           <View style={tw`flex-row items-center justify-between`}>
             <View style={tw`flex-row items-center`}>
-              <View style={[tw`h-8 w-8 rounded-2xl items-center justify-center mr-2`, { backgroundColor: palette.divider }]}>
+              <View
+                style={[
+                  tw`h-8 w-8 rounded-2xl items-center justify-center mr-2`,
+                  { backgroundColor: palette.divider },
+                ]}
+              >
                 <Ionicons name="shield-checkmark-outline" size={16} color={palette.text} />
               </View>
               <View>
-                <Text style={[tw`text-[10px] font-semibold uppercase tracking-[1px]`, { color: palette.textSubtle }]}>
+                <Text
+                  style={[
+                    tw`text-[10px] font-semibold uppercase tracking-[1px]`,
+                    { color: palette.textSubtle },
+                  ]}
+                >
                   Session
                 </Text>
                 <Text style={[tw`text-[11px] mt-0.5`, { color: palette.textMuted }]}>

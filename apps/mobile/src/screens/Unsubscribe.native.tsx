@@ -1,13 +1,6 @@
 // apps/mobile/src/pages/Unsubscribe.native.tsx
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ScrollView,
-  Platform,
-} from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, Platform } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { MainStackParamList } from '../navigation/types';

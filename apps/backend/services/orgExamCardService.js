@@ -7,14 +7,12 @@ const percentOf = (score, max) => {
   return (s / m) * 100;
 };
 
-
 // Plain numeric rank – no st/nd/rd/th
 const computeOrdinalRank = (n) => {
   const num = Number(n);
   if (!Number.isFinite(num) || num <= 0) return null;
   return String(num); // "1", "2", "13" etc.
 };
-
 
 export async function getStudentExamCard({ orgId, sessionId, studentUserId }) {
   const client = await pool.connect();
@@ -41,7 +39,6 @@ export async function getStudentExamCard({ orgId, sessionId, studentUserId }) {
       limit 1`,
       [orgId],
     );
-
 
     if (!orgRes.rows.length) {
       await client.query('ROLLBACK');
@@ -89,10 +86,10 @@ export async function getStudentExamCard({ orgId, sessionId, studentUserId }) {
 
     const sessionMeta = sessionMetaRes.rows[0];
 
-   // In apps/backend/services/orgExamCardService.js
-// 2) Load all result rows for THIS learner in THIS exam
-const resultsRes = await client.query(
-  `
+    // In apps/backend/services/orgExamCardService.js
+    // 2) Load all result rows for THIS learner in THIS exam
+    const resultsRes = await client.query(
+      `
     select
       r.subject,
       r.score,
@@ -124,8 +121,8 @@ const resultsRes = await client.query(
       and r.student_user_id = $3
     order by r.subject asc
   `,
-  [orgId, sessionId, studentUserId],
-);
+      [orgId, sessionId, studentUserId],
+    );
 
     if (!resultsRes.rows.length) {
       await client.query('ROLLBACK');
@@ -235,53 +232,52 @@ const resultsRes = await client.query(
       subjectPositions[key] = { rank, size, meanPercent };
     }
 
-// 6) Build subject array + find best / weakest
-const subjects = [];
-let best = null;
-let weakest = null;
+    // 6) Build subject array + find best / weakest
+    const subjects = [];
+    let best = null;
+    let weakest = null;
 
-for (const r of resultsRes.rows) {
-  const pct = percentOf(r.score, r.max_score);
-  const key = (r.subject || '').toString().toLowerCase();
-  const pos = subjectPositions[key] || {
-    rank: null,
-    size: 0,
-    meanPercent: null,
-  };
+    for (const r of resultsRes.rows) {
+      const pct = percentOf(r.score, r.max_score);
+      const key = (r.subject || '').toString().toLowerCase();
+      const pos = subjectPositions[key] || {
+        rank: null,
+        size: 0,
+        meanPercent: null,
+      };
 
-  const extra =
-    r.extra && typeof r.extra === 'object' && !Array.isArray(r.extra)
-      ? r.extra
-      : null;
+      const extra =
+        r.extra && typeof r.extra === 'object' && !Array.isArray(r.extra)
+          ? r.extra
+          : null;
 
-  const enriched = {
-    subject: r.subject,
-    score: Number(r.score),
-    max_score: Number(r.max_score),
-    cat_score: r.cat_score != null ? Number(r.cat_score) : null,
-    exam_score: r.exam_score != null ? Number(r.exam_score) : null,
-    grade: r.grade,
-    percent: pct,
-    classRank: pos.rank,
-    classSize: pos.size,
-    classMeanPercent: pos.meanPercent,
-    remark: r.remark || null,
-    teacher_initials: r.teacher_initials || null,
-    extra, // ✅ carry extras (Effort, NextStep, Homework, etc.)
-  };
+      const enriched = {
+        subject: r.subject,
+        score: Number(r.score),
+        max_score: Number(r.max_score),
+        cat_score: r.cat_score != null ? Number(r.cat_score) : null,
+        exam_score: r.exam_score != null ? Number(r.exam_score) : null,
+        grade: r.grade,
+        percent: pct,
+        classRank: pos.rank,
+        classSize: pos.size,
+        classMeanPercent: pos.meanPercent,
+        remark: r.remark || null,
+        teacher_initials: r.teacher_initials || null,
+        extra, // ✅ carry extras (Effort, NextStep, Homework, etc.)
+      };
 
-  subjects.push(enriched);
+      subjects.push(enriched);
 
-  if (pct != null) {
-    if (!best || pct > best.percent) {
-      best = { subject: r.subject, percent: pct };
+      if (pct != null) {
+        if (!best || pct > best.percent) {
+          best = { subject: r.subject, percent: pct };
+        }
+        if (!weakest || pct < weakest.percent) {
+          weakest = { subject: r.subject, percent: pct };
+        }
+      }
     }
-    if (!weakest || pct < weakest.percent) {
-      weakest = { subject: r.subject, percent: pct };
-    }
-  }
-}
-
 
     // 7) Build simple progress/history series for this learner
     const historyRes = await client.query(
@@ -387,7 +383,7 @@ for (const r of resultsRes.rows) {
       }
     } catch (err) {
       // optional: log, but don't block report card if this fails
-      // eslint-disable-next-line no-console
+
       console.warn(
         '[getStudentExamCard] principal_remark query failed',
         err.message,
@@ -396,73 +392,71 @@ for (const r of resultsRes.rows) {
 
     await client.query('COMMIT');
 
-   const summary = {
-  totalScore,
-  totalMax,
-  totalPercent,
-  overallGrade: null,
-  classRank: overallRank,
-  classSize,
-  principalRemark,
-  overallRemark: null,
-};
+    const summary = {
+      totalScore,
+      totalMax,
+      totalPercent,
+      overallGrade: null,
+      classRank: overallRank,
+      classSize,
+      principalRemark,
+      overallRemark: null,
+    };
 
-// 🔹 Manual org-level title from settings (OrgExamSetupTab “Report card title”)
-const orgReportTitle = (orgRow.exam_report_title || '').toString().trim();
+    // 🔹 Manual org-level title from settings (OrgExamSetupTab “Report card title”)
+    const orgReportTitle = (orgRow.exam_report_title || '').toString().trim();
 
-// 🔹 Auto title based on term + exam, like before
-const autoTitle = [
-  sessionMeta.term_year,
-  sessionMeta.term_label,
-  '–',
-  sessionMeta.exam_label,
-  'Report Card',
-]
-  .filter(Boolean)
-  .join(' ')
-  .replace(/\s+/g, ' ')
-  .trim();
+    // 🔹 Auto title based on term + exam, like before
+    const autoTitle = [
+      sessionMeta.term_year,
+      sessionMeta.term_label,
+      '–',
+      sessionMeta.exam_label,
+      'Report Card',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-// 🔹 Final title: manual > auto > hard default
-const reportTitle = orgReportTitle || autoTitle || 'TERM REPORT CARD';
+    // 🔹 Final title: manual > auto > hard default
+    const reportTitle = orgReportTitle || autoTitle || 'TERM REPORT CARD';
 
-const classTeacherSig =
-  student.class_teacher_signature_url || // 👈 per-class (per learner)
-  org.instructor_signature_url ||        // org-level instructor sig
-  null;
+    const classTeacherSig =
+      student.class_teacher_signature_url || // 👈 per-class (per learner)
+      org.instructor_signature_url || // org-level instructor sig
+      null;
 
-
-return {
-  org,
-  student,
-  term: {
-    id: sessionMeta.term_id,
-    year: sessionMeta.term_year,
-    label: sessionMeta.term_label,
-  },
-  session: {
-    id: sessionMeta.session_id,
-    label: sessionMeta.exam_label,
-  },
-  subjects,
-  summary,
-  computed: {
-    bestSubject: best?.subject ?? null,
-    bestPercent: best?.percent ?? null,
-    weakestSubject: weakest?.subject ?? null,
-    weakestPercent: weakest?.percent ?? null,
-  },
-  progressSeries,
-  attendance,
-  reportTitle,
-  // 👇 NEW: flattened signature helpers for the PDF layer
-  class_teacher_signature_url: classTeacherSig,
-  instructor_signature_url: org.instructor_signature_url || null,
-  helpers: {
-    ordinalRank: computeOrdinalRank,
-  },
-};
-
+    return {
+      org,
+      student,
+      term: {
+        id: sessionMeta.term_id,
+        year: sessionMeta.term_year,
+        label: sessionMeta.term_label,
+      },
+      session: {
+        id: sessionMeta.session_id,
+        label: sessionMeta.exam_label,
+      },
+      subjects,
+      summary,
+      computed: {
+        bestSubject: best?.subject ?? null,
+        bestPercent: best?.percent ?? null,
+        weakestSubject: weakest?.subject ?? null,
+        weakestPercent: weakest?.percent ?? null,
+      },
+      progressSeries,
+      attendance,
+      reportTitle,
+      // 👇 NEW: flattened signature helpers for the PDF layer
+      class_teacher_signature_url: classTeacherSig,
+      instructor_signature_url: org.instructor_signature_url || null,
+      helpers: {
+        ordinalRank: computeOrdinalRank,
+      },
+    };
   } catch (err) {
     await pool.query('ROLLBACK').catch(() => {});
     throw err;

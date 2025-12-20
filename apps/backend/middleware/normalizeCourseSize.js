@@ -1,5 +1,11 @@
 // apps/backend/middleware/normalizeCourseSize.js
-const VALID = new Set(['mini', 'standard', 'extended', 'deep_dive', 'bootcamp']);
+const VALID = new Set([
+  'mini',
+  'standard',
+  'extended',
+  'deep_dive',
+  'bootcamp',
+]);
 const LEGACY_TO_NEW = Object.freeze({
   micro: 'mini',
   short: 'standard',
@@ -12,7 +18,10 @@ const LEGACY_TO_NEW = Object.freeze({
 
 function normKey(v) {
   if (v == null) return undefined;
-  return String(v).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return String(v)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
 }
 
 export function normalizeCourseSize(req, res, next) {
@@ -51,7 +60,8 @@ export function normalizeCourseSize(req, res, next) {
   const DEFAULT = envDefault && VALID.has(envDefault) ? envDefault : null;
 
   if (mapped) req.body.courseSize = mapped;
-  else if (DEFAULT && req.body.courseSize == null) req.body.courseSize = DEFAULT;
+  else if (DEFAULT && req.body.courseSize == null)
+    req.body.courseSize = DEFAULT;
 
   // drop legacy keys to prevent confusion
   if ('size' in req.body) delete req.body.size;
@@ -60,7 +70,9 @@ export function normalizeCourseSize(req, res, next) {
   // expose for downstream + quick debugging
   res.locals.courseSize = req.body.courseSize || null;
   if (res.locals.courseSize) {
-    try { res.set('X-Normalized-CourseSize', res.locals.courseSize); } catch {}
+    try {
+      res.set('X-Normalized-CourseSize', res.locals.courseSize);
+    } catch {}
   }
 
   if (process.env.NODE_ENV !== 'production') {

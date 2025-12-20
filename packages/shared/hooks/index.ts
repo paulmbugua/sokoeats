@@ -28,9 +28,9 @@ export * from './useAiCourseFlow';
 export * from './useAICertificates';
 export * from './useOrg';
 export * from './useOrgInvite';
-export * from './useInstitutionAuth';
+export { default as useInstitutionAuth } from './useInstitutionAuth';
+
 export * from './useOer';
 export * from './useOrgExams';
-
 
 export type { CreateRecordedVideoPayload } from './useUploadClassVault';

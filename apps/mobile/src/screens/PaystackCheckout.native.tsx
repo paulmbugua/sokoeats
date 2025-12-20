@@ -25,7 +25,7 @@ export default function PaystackCheckoutNative() {
       close3ds: 'https://standard.paystack.co/close',
       deepPrefix: 'daybreak://paystack/callback',
     }),
-    [],
+    []
   );
 
   const finish = useCallback(
@@ -36,7 +36,7 @@ export default function PaystackCheckoutNative() {
         paymentId,
       });
     },
-    [navigation, reference, kind, paymentId],
+    [navigation, reference, kind, paymentId]
   );
 
   if (!authorizationUrl || !reference) {

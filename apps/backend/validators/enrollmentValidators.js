@@ -6,11 +6,13 @@ export const enrollBodySchema = Joi.object({
 });
 
 export const studentParamsSchema = Joi.object({
-  studentId: Joi.alternatives().try(
-    Joi.string().valid('me'),                // ✅ allow "me"
-    Joi.number().integer().positive(),
-    Joi.string().pattern(/^\d+$/)
-  ).required(),
+  studentId: Joi.alternatives()
+    .try(
+      Joi.string().valid('me'), // ✅ allow "me"
+      Joi.number().integer().positive(),
+      Joi.string().pattern(/^\d+$/),
+    )
+    .required(),
 });
 
 export const courseParamsSchema = Joi.object({

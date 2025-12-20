@@ -24,19 +24,12 @@ type Props = {
   showTutorPreview?: boolean;
 };
 
-const TutorRating = ({
-  rating,
-  totalReviews,
-}: {
-  rating: number;
-  totalReviews: number;
-}) => {
+const TutorRating = ({ rating, totalReviews }: { rating: number; totalReviews: number }) => {
   const rounded = Math.round(rating * 2) / 2;
   const stars = [];
   for (let i = 1; i <= 5; i++) {
     if (rounded >= i) stars.push(<FaStar key={i} className="text-yellow-500" />);
-    else if (rounded + 0.5 === i)
-      stars.push(<FaStarHalfAlt key={i} className="text-yellow-500" />);
+    else if (rounded + 0.5 === i) stars.push(<FaStarHalfAlt key={i} className="text-yellow-500" />);
     else stars.push(<FaRegStar key={i} className="text-yellow-500" />);
   }
   return (
@@ -204,8 +197,7 @@ const PaymentWidget: React.FC<Props> = ({
         (profile as any)?.country_code ??
         null;
 
-      const country =
-        typeof countryRaw === 'string' ? countryRaw.trim().toUpperCase() : undefined;
+      const country = typeof countryRaw === 'string' ? countryRaw.trim().toUpperCase() : undefined;
 
       if (country === 'QA' || country === 'QATAR') {
         nextLocale = navLocale.startsWith('ar') ? 'ar-QA' : 'en-QA';
@@ -353,11 +345,7 @@ const PaymentWidget: React.FC<Props> = ({
           // hosted checkout (PCI-safe)
           window.location.href = o.authorization_url;
         } catch (e: any) {
-          alert(
-            e?.response?.data?.message ||
-              e?.message ||
-              'Unable to start Paystack checkout.'
-          );
+          alert(e?.response?.data?.message || e?.message || 'Unable to start Paystack checkout.');
         } finally {
           setCardProcessing(false);
         }
@@ -587,7 +575,11 @@ const PaymentWidget: React.FC<Props> = ({
                   }`}
               >
                 {assets.visamaster ? (
-                  <img src={assets.visamaster} alt="Pay with card" className="h-10 object-contain" />
+                  <img
+                    src={assets.visamaster}
+                    alt="Pay with card"
+                    className="h-10 object-contain"
+                  />
                 ) : (
                   <span className="text-sm font-semibold">Card</span>
                 )}
@@ -696,9 +688,7 @@ const PaymentWidget: React.FC<Props> = ({
                       </div>
                       <div>
                         You’ll be charged in KES at checkout:{' '}
-                        <b>
-                          {paystackKesEstimateText?.kesPretty ?? 'KES —'}
-                        </b>{' '}
+                        <b>{paystackKesEstimateText?.kesPretty ?? 'KES —'}</b>{' '}
                         <span className="opacity-70">
                           (rate: {paystackKesEstimateText?.fx ?? 130})
                         </span>
@@ -717,8 +707,7 @@ const PaymentWidget: React.FC<Props> = ({
                   </div>
                 )}
 
-                {(!selectedPackage ||
-                  (selectedPackage.currency || '').toUpperCase() !== 'USD') && (
+                {(!selectedPackage || (selectedPackage.currency || '').toUpperCase() !== 'USD') && (
                   <div className="mt-2 text-xs text-orange-600">
                     Please select a USD package to continue with card payment.
                   </div>

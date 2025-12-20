@@ -19,7 +19,7 @@ export * from './enrollmentsApi';
 export * from './payoutApi';
 export * from './aiCertificatesApi';
 export * from './aiCourseApi';
-export * from './orgApi';  
+export * from './orgApi';
 export * from './institutionAuth';
 export * from './uploadAsset';
 export * from './oerApi';

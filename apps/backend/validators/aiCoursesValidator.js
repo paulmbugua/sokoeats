@@ -8,14 +8,23 @@ const LEGACY_TO_NEW = {
   standard: 'standard',
   deep_dive: 'deep_dive',
 };
-const VALID_COURSE_SIZES = ['mini', 'standard', 'extended', 'deep_dive', 'bootcamp'];
+const VALID_COURSE_SIZES = [
+  'mini',
+  'standard',
+  'extended',
+  'deep_dive',
+  'bootcamp',
+];
 
 /** Optional long-form program tracks */
 const VALID_PROGRAM_TRACKS = ['module', 'certificate', 'diploma', 'degree'];
 
 function normKey(v) {
   if (v === undefined || v === null) return undefined;
-  return String(v).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return String(v)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
 }
 function normalizeCourseSize(v) {
   const k = normKey(v);
@@ -65,13 +74,19 @@ export const outlineSchema = Joi.object({
   targetMinutes: minutes.optional(),
 
   // New: either set program track or an explicit lesson count
-  programTrack: Joi.string().valid(...VALID_PROGRAM_TRACKS).optional(),
+  programTrack: Joi.string()
+    .valid(...VALID_PROGRAM_TRACKS)
+    .optional(),
   totalLessons: totalLessons.optional(),
 
   // New preferred field
-  courseSize: Joi.string().valid(...VALID_COURSE_SIZES).optional(),
+  courseSize: Joi.string()
+    .valid(...VALID_COURSE_SIZES)
+    .optional(),
   // Legacy alias (merged to courseSize)
-  size: Joi.string().valid('micro', 'short', 'standard', 'deep_dive').optional(),
+  size: Joi.string()
+    .valid('micro', 'short', 'standard', 'deep_dive')
+    .optional(),
 
   // Optional formatting / sizing hints
   paragraphs: paragraphs.optional(),
@@ -90,11 +105,17 @@ export const lessonSchema = Joi.object({
   level: level.optional(),
   targetMinutes: minutes.optional(),
 
-  programTrack: Joi.string().valid(...VALID_PROGRAM_TRACKS).optional(),
+  programTrack: Joi.string()
+    .valid(...VALID_PROGRAM_TRACKS)
+    .optional(),
   totalLessons: totalLessons.optional(),
 
-  courseSize: Joi.string().valid(...VALID_COURSE_SIZES).optional(),
-  size: Joi.string().valid('micro', 'short', 'standard', 'deep_dive').optional(),
+  courseSize: Joi.string()
+    .valid(...VALID_COURSE_SIZES)
+    .optional(),
+  size: Joi.string()
+    .valid('micro', 'short', 'standard', 'deep_dive')
+    .optional(),
 
   paragraphs: paragraphs.optional(),
   sentencesPerParagraph: sentencesPerParagraph.optional(),
@@ -110,16 +131,22 @@ export const quizSchema = Joi.object({
   courseId: Joi.string().uuid().required(),
   outline: Joi.array().items(outlineSection).min(1).required(),
 
- lessonIndex: Joi.number().integer().min(0).optional(),
+  lessonIndex: Joi.number().integer().min(0).optional(),
 
   level: level.optional(),
   targetMinutes: minutes.optional(),
 
-  programTrack: Joi.string().valid(...VALID_PROGRAM_TRACKS).optional(),
+  programTrack: Joi.string()
+    .valid(...VALID_PROGRAM_TRACKS)
+    .optional(),
   totalLessons: totalLessons.optional(),
 
-  courseSize: Joi.string().valid(...VALID_COURSE_SIZES).optional(),
-  size: Joi.string().valid('micro', 'short', 'standard', 'deep_dive').optional(),
+  courseSize: Joi.string()
+    .valid(...VALID_COURSE_SIZES)
+    .optional(),
+  size: Joi.string()
+    .valid('micro', 'short', 'standard', 'deep_dive')
+    .optional(),
 
   // Admin override for quiz type (single-type enforcement)
   quizType: Joi.string().valid('mcq', 'short').default('mcq').optional(),
@@ -168,7 +195,9 @@ export const gradeSchema = Joi.object({
     // optional pack-level type; controller will infer if missing
     quizType: Joi.string().valid('mcq', 'short').optional(),
     questions: Joi.array()
-      .items(Joi.alternatives().try(mcqQuestionForGrading, shortQuestionForGrading))
+      .items(
+        Joi.alternatives().try(mcqQuestionForGrading, shortQuestionForGrading),
+      )
       .min(1)
       .required(),
   }).required(),
@@ -179,8 +208,8 @@ export const gradeSchema = Joi.object({
     .items(
       Joi.object({
         questionId: idSchema.required(),
-        choiceIndex: Joi.number().integer().min(0).optional(),        // MCQ path
-        answerText: Joi.string().trim().optional(),                    // Short path
+        choiceIndex: Joi.number().integer().min(0).optional(), // MCQ path
+        answerText: Joi.string().trim().optional(), // Short path
         // aliases your controller already reads:
         text: Joi.string().trim().optional(),
         value: Joi.string().trim().optional(),
@@ -189,7 +218,7 @@ export const gradeSchema = Joi.object({
       })
         // Require at least one of these fields to be present
         .or('choiceIndex', 'answerText', 'text', 'value', 'free', 'written')
-        .unknown(true) // future-proofing
+        .unknown(true), // future-proofing
     )
     .min(1)
     .required(),

@@ -60,42 +60,42 @@ const CheckoutButtons: React.FC<Props> = ({
 };
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
+  btn: {
     alignItems: 'center',
-    gap: 8,
+    borderRadius: 10,
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  btnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  disabled: {
+    opacity: 0.6,
+  },
+  paypal: {
+    backgroundColor: '#ffc439',
+  },
+  paypalText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
   },
   price: {
     color: 'rgba(255,255,255,0.8)',
     fontSize: 14,
     marginRight: 4,
   },
-  btn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    minHeight: 36,
+  row: {
     alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
   stripe: {
     backgroundColor: '#4f46e5', // indigo-600
-  },
-  paypal: {
-    backgroundColor: '#ffc439',
-  },
-  btnText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  paypalText: {
-    color: '#000',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  disabled: {
-    opacity: 0.6,
   },
 });
 

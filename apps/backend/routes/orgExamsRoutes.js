@@ -36,11 +36,17 @@ router.post('/:orgId/exams/sheet', saveOrgExamSheet);
 
 // Student report card
 router.get('/:orgId/exams/student/:studentId/card', getOrgExamStudentCard);
-router.post('/:orgId/exams/student/:studentId/notify', sendOrgExamStudentCardEmail);
+router.post(
+  '/:orgId/exams/student/:studentId/notify',
+  sendOrgExamStudentCardEmail,
+);
 
 // Analytics
 router.get('/:orgId/exams/analytics', getOrgExamAnalytics);
-router.get('/:orgId/exams/student/:studentId/card.pdf', getOrgExamStudentCardPdf);
+router.get(
+  '/:orgId/exams/student/:studentId/card.pdf',
+  getOrgExamStudentCardPdf,
+);
 
 // AI + remarks
 router.post(
@@ -54,10 +60,7 @@ router.post(
 );
 
 // AI config helper
-router.post(
-  '/:orgId/exams/config/ai',
-  generateOrgExamConfigAi,
-);
+router.post('/:orgId/exams/config/ai', generateOrgExamConfigAi);
 
 // Class report PDF (booklet)
 router.get(
@@ -66,10 +69,7 @@ router.get(
 );
 
 // 🔹 AI compute/fill for the marks sheet
-router.post(
-  '/:orgId/exams/sheet/ai-compute',
-  generateOrgExamSheetAiCompute,
-);
+router.post('/:orgId/exams/sheet/ai-compute', generateOrgExamSheetAiCompute);
 
 router.post(
   '/:orgId/exams/sheet/ai-extract-doc',

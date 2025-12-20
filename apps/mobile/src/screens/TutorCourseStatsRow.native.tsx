@@ -20,7 +20,11 @@ type LocalStack = MainStackParamList & {
   EditCoursePage: { courseId: string };
   CourseDetails: { courseId: string };
   TutorCourseStudents?: { courseId: string };
-  Results?: { courseId?: string; courseTitle?: string; grade?: { scorePct: number; passMark: number; passed: boolean } };
+  Results?: {
+    courseId?: string;
+    courseTitle?: string;
+    grade?: { scorePct: number; passMark: number; passed: boolean };
+  };
 };
 
 export default function TutorCourseStatsRow({
@@ -63,7 +67,6 @@ export default function TutorCourseStatsRow({
     if (onManageStudentsPress) return onManageStudentsPress(courseId);
     // If you have a dedicated screen, prefer it:
     if ('TutorCourseStudents' in ({} as LocalStack)) {
-      
       navigation.navigate('TutorCourseStudents', { courseId });
       return;
     }
@@ -98,7 +101,11 @@ export default function TutorCourseStatsRow({
         <View className="flex-1 rounded-xl border border-[#cedbe8] dark:border-darkCard p-3">
           <Text className="text-[#49739c] dark:text-darkTextSecondary">Enrollments</Text>
           <View className="flex-row items-center mt-1">
-            {loading && !ready ? <ActivityIndicator /> : <Text className="text-lg font-bold">{enrollments.length}</Text>}
+            {loading && !ready ? (
+              <ActivityIndicator />
+            ) : (
+              <Text className="text-lg font-bold">{enrollments.length}</Text>
+            )}
           </View>
         </View>
 

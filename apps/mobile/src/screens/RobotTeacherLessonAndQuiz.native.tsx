@@ -10,6 +10,7 @@ import {
   Linking,
   useWindowDimensions,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import tw from '../../tailwind';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -24,6 +25,7 @@ import type { DbCourseSize, ProgramTrack } from '@mytutorapp/shared/types';
 import AntiCheatGuard from './AntiCheatGuard.native';
 import { useAttemptIntegrity } from '@mytutorapp/shared/hooks/useAttemptIntegrity';
 import { getStableDeviceId } from '@mytutorapp/shared/utils/deviceId';
+import { getCertificateCtaFromGate } from '@mytutorapp/shared/utils/gateCtaRule';
 
 // ─────────────────────────────────────────────────────────
 // fmt helpers
@@ -38,7 +40,10 @@ const fmtHMS = (totalSeconds: number) => {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(
+    2,
+    '0'
+  )}`;
 };
 const fmtHMSms = (ms: number) => fmtHMS(Math.floor(Math.max(0, ms) / 1000));
 
@@ -66,8 +71,7 @@ const extractCertId = (docOrUrl: any): string | null => {
   if (typeof direct === 'string' && direct) return direct;
   const u = String(docOrUrl?.download_url || docOrUrl?.downloadUrl || docOrUrl?.url || docOrUrl || '');
   const m =
-    u.match(/\/certificates\/([^/]+)\/(?:download|view|raw)?/i) ||
-    u.match(/[?&]certId=([^&]+)/i);
+    u.match(/\/certificates\/([^/]+)\/(?:download|view|raw)?/i) || u.match(/[?&]certId=([^&]+)/i);
   return m?.[1] ?? null;
 };
 const extractTranscriptId = (docOrUrl: any): string | null => {
@@ -98,19 +102,28 @@ interface LessonAndQuizProps {
   lessonsArr: any[];
   voiceName: string;
   currentIdx: number;
-   activeIndex?: number;
+  activeIndex?: number;
   courseTitle: string;
   onOverlayState?: (s: { words: any[]; currentIndex: number; lesson: any | null }) => void;
   isMaximized: boolean;
   onPlayerLoadingChange?: (loading: boolean) => void;
   onToggleMaximized: () => void;
-  onStart?: () => Promise<void> | void;     // ← add
-   hasJoined?: boolean;
-   canAutoStart?: boolean;                    // ← add
+  onStart?: () => Promise<void> | void;
+  hasJoined?: boolean;
+  canAutoStart?: boolean;
   course: any;
   gateMode?: 'narration' | 'notes_only';
-  gateNotice?: { reason?: string; resetsAt?: string | null; remainingMinutes?: number | null } | null;
-  gateUsage?: Array<{ bucket?: string; remainingSeconds?: number; limitSeconds?: number; resetsAt?: string | null }>;
+  gateNotice?: {
+    reason?: string;
+    resetsAt?: string | null;
+    remainingMinutes?: number | null;
+  } | null;
+  gateUsage?: Array<{
+    bucket?: string;
+    remainingSeconds?: number;
+    limitSeconds?: number;
+    resetsAt?: string | null;
+  }>;
   outline: any[];
   backendUrl: string;
   onBeforePlay: () => Promise<void> | void;
@@ -141,7 +154,7 @@ interface LessonAndQuizProps {
   quiz: any;
   answers: Record<string, number | string>;
   onAnswer: (qid: string, value: number | string) => void;
-  allAnswered: boolean; // (kept for compatibility)
+  allAnswered: boolean; // kept for compatibility
   grade: any;
   gradeNow: () => Promise<void> | void;
   token: string;
@@ -170,7 +183,6 @@ interface LessonAndQuizProps {
   onViewResults: (courseId: string, courseTitle: string, grade: any) => void;
   /** Admins can reveal short-answer solutions; learners cannot */
   isAdmin?: boolean;
-  
 }
 
 const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
@@ -215,8 +227,8 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   aiCertLoading,
   aiCertError,
   onPlayerReady,
-  onStart,          // ← add
-  hasJoined,        // ← add
+  onStart,
+  hasJoined,
   canAutoStart = false,
   aiCertMsg,
   claim,
@@ -239,79 +251,95 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   onPlayerLoadingChange,
   onOverlayState,
 }) => {
-  // Prop sanity
   if (typeof generateQuizNow !== 'function') {
     console.warn('[LessonAndQuizPane] generateQuizNow prop is missing or not a function.');
   }
 
+  // refs that are used by word-sync + effects
+  const lessonsArrRef = useRef<any[]>([]);
+  const currentIdxRef = useRef<number>(0);
+  const shownLockAlertRef = useRef(false);
+
+  // loading overlay (native parity with web)
+  const [preparing, setPreparing] = useState(false);
+
+  // player-ready forwarding (once)
   const [innerPlayerReady, setInnerPlayerReady] = useState(false);
   const forwardedReadyRef = useRef(false);
 
   const {
-    attempt, attemptId,
-    deviceId: boundDeviceId, bindDeviceId,
-    quizActive, markActive, markNotActive,
-    elapsedMs, backgrounds, suspicions,
+    attempt,
+    attemptId,
+    deviceId: boundDeviceId,
+    bindDeviceId,
+    quizActive,
+    markActive,
+    markNotActive,
+    elapsedMs,
+    backgrounds,
+    suspicions,
     start: startAttempt,
     submit: submitAttempt,
     bumpSuspicion,
   } = useAttemptIntegrity(backendUrl, token);
 
+  // Keep a stable ref to parent onPlayerLoadingChange
   const onPlayerLoadingChangeRef = useRef(onPlayerLoadingChange);
+  useEffect(() => {
+    onPlayerLoadingChangeRef.current = onPlayerLoadingChange;
+  }, [onPlayerLoadingChange]);
 
-useEffect(() => {
-  onPlayerLoadingChangeRef.current = onPlayerLoadingChange;
-}, [onPlayerLoadingChange]);
+  // Reset “ready” state when lesson changes
+  useEffect(() => {
+    forwardedReadyRef.current = false;
+    setInnerPlayerReady(false);
+    onPlayerLoadingChangeRef.current?.(true);
+    setPreparing(true);
+  }, [displaySsml, currentIdx, lessonsArr?.[0]?.id]);
 
-useEffect(() => {
-  forwardedReadyRef.current = false;
-  setInnerPlayerReady(false);
-  onPlayerLoadingChangeRef.current?.(true);
-}, [displaySsml, currentIdx, lessonsArr?.[0]?.id]);
+  useEffect(() => {
+    lessonsArrRef.current = Array.isArray(lessonsArr) ? lessonsArr : [];
+  }, [lessonsArr]);
 
-  
-useEffect(() => {
-  lessonsArrRef.current = Array.isArray(lessonsArr) ? lessonsArr : [];
-}, [lessonsArr]);
+  useEffect(() => {
+    currentIdxRef.current = Number(currentIdx ?? 0);
+  }, [currentIdx]);
 
-useEffect(() => {
-  currentIdxRef.current = Number(currentIdx ?? 0);
-}, [currentIdx]);
-
-const lastEmitRef = useRef(0);
-const SENT_END = /[.!?…]+["')\]]?$/;
-
-const handleWordSync = useCallback(
-  
-  (p: { words: any[]; currentIndex: number }) => {
-    if (!onOverlayState) return;
-
-    const now = Date.now();
-    const w = p.words?.[p.currentIndex]?.text ?? '';
-    const shouldEmit = SENT_END.test(String(w)) || (now - lastEmitRef.current > 250);
-    if (!shouldEmit) return;
-
-    lastEmitRef.current = now;
-
-    const idx = currentIdxRef.current;
-    const arr = lessonsArrRef.current;
-    const lessonForOverlay = arr[idx] ?? arr[0] ?? null;
-
-    onOverlayState({
-      words: p.words || [],
-      currentIndex: Number(p.currentIndex) || 0,
-      lesson: lessonForOverlay,
-    });
-  },
-  [onOverlayState]
-);
-
+  // attempt integrity: bind device id once
   useEffect(() => {
     (async () => {
       const id = await getStableDeviceId();
       bindDeviceId(id);
     })();
   }, [bindDeviceId]);
+
+  // overlay word sync throttling
+  const lastEmitRef = useRef(0);
+  const SENT_END = /[.!?…]+["')\]]?$/;
+
+  const handleWordSync = useCallback(
+    (p: { words: any[]; currentIndex: number }) => {
+      if (!onOverlayState) return;
+
+      const now = Date.now();
+      const w = p.words?.[p.currentIndex]?.text ?? '';
+      const shouldEmit = SENT_END.test(String(w)) || now - lastEmitRef.current > 250;
+      if (!shouldEmit) return;
+
+      lastEmitRef.current = now;
+
+      const idx = currentIdxRef.current;
+      const arr = lessonsArrRef.current;
+      const lessonForOverlay = arr[idx] ?? arr[0] ?? null;
+
+      onOverlayState({
+        words: p.words || [],
+        currentIndex: Number(p.currentIndex) || 0,
+        lesson: lessonForOverlay,
+      });
+    },
+    [onOverlayState]
+  );
 
   const hasRenderableLesson = useMemo(() => {
     const first = Array.isArray(lessonsArr) ? lessonsArr[0] : null;
@@ -321,32 +349,21 @@ const handleWordSync = useCallback(
   }, [lessonsArr, displaySsml]);
 
   useEffect(() => {
-  if (innerPlayerReady && hasRenderableLesson && !forwardedReadyRef.current) {
-    forwardedReadyRef.current = true;
-    onPlayerReady?.();
-  }
-}, [innerPlayerReady, hasRenderableLesson, onPlayerReady]);
-
+    if (innerPlayerReady && hasRenderableLesson && !forwardedReadyRef.current) {
+      forwardedReadyRef.current = true;
+      onPlayerReady?.();
+    }
+  }, [innerPlayerReady, hasRenderableLesson, onPlayerReady]);
 
   const { width, height: winH } = useWindowDimensions();
-const insets = useSafeAreaInsets();
-const horizontalPadding = 24;
-const maxWidth = Math.min(width - horizontalPadding, 1088);
-const OUTLINE_GAP = 24;
-const SAFE_V = (insets?.top ?? 0) + (insets?.bottom ?? 0);
+  const insets = useSafeAreaInsets();
+  const OUTLINE_GAP = 24;
+  const SAFE_V = (insets?.top ?? 0) + (insets?.bottom ?? 0);
 
-// ───────── More compact player height ─────────
-// Base maximum we are allowed to use (screen minus margins/safe-area)
-const baseMax = Math.max(280, winH - OUTLINE_GAP - SAFE_V);
-
-// ~40–45% of the screen in normal mode, up to baseMax
-const compactHeight = Math.min(baseMax, winH * 0.60);
-
-// ~75% of the screen when maximized, up to baseMax
-const maximizedHeight = Math.min(baseMax, winH * 0.75);
-
-// Final height: smaller by default, taller only when maximized
-const desiredHeight = isMaximized ? maximizedHeight : compactHeight;
+  const baseMax = Math.max(280, winH - OUTLINE_GAP - SAFE_V);
+  const compactHeight = Math.min(baseMax, winH * 0.6);
+  const maximizedHeight = Math.min(baseMax, winH * 0.75);
+  const desiredHeight = isMaximized ? maximizedHeight : compactHeight;
 
   // ───────────────────────────────────────────────────────
   // state
@@ -354,15 +371,18 @@ const desiredHeight = isMaximized ? maximizedHeight : compactHeight;
   const { tokens = 0, refreshUserDetails } = useShopContext();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmInfo, setConfirmInfo] = useState<{ lessons: number; questions: number; timeLabel: string } | null>(null);
+  const [confirmInfo, setConfirmInfo] = useState<{
+    lessons: number;
+    questions: number;
+    timeLabel: string;
+  } | null>(null);
 
   const startingAttemptRef = useRef(false);
   const submittingRef = useRef(false);
-  const shownLockAlertRef = React.useRef(false);
-const lessonsArrRef = useRef<any[]>([]);
-const currentIdxRef = useRef<number>(0);
+
   const [pendingQuizGen, setPendingQuizGen] = useState(false);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const lastPlayClickRef = useRef(0);
   const guardedBeforePlay = useCallback(async () => {
     const now = Date.now();
@@ -388,7 +408,9 @@ const currentIdxRef = useRef<number>(0);
 
   // working answers (number | string)
   const [retakeMode, setRetakeMode] = useState(false);
-  const [workingAnswers, setWorkingAnswers] = useState<Record<string, number | string | undefined>>({});
+  const [workingAnswers, setWorkingAnswers] = useState<Record<string, number | string | undefined>>(
+    {}
+  );
 
   // certificate persistence (AsyncStorage)
   const lsKey = useMemo(() => (course?.id ? `cert:last:${course.id}` : null), [course?.id]);
@@ -418,30 +440,46 @@ const currentIdxRef = useRef<number>(0);
       title.includes('extended') ||
       title.includes('transcript') ||
       /\b(ext|extended|xtra|plus)\b/.test(code) ||
-      tags.includes('extended') || tags.includes('transcript')
+      tags.includes('extended') ||
+      tags.includes('transcript')
     );
   };
 
+  // CTA banner parity with web (for narration lock)
+  const isLoggedIn = Boolean(token);
+  const certCta = useMemo(
+    () =>
+      getCertificateCtaFromGate({
+        gateMode,
+        reason: gateNotice?.reason,
+        isLoggedIn,
+      }),
+    [gateMode, gateNotice?.reason, isLoggedIn]
+  );
+
   // Small helper to call your backend consistently
-  const api = useCallback(async function <T = any>(path: string, init?: RequestInit): Promise<T> {
-    const r = await fetch(`${backendUrl}${path}`, {
-      ...init,
-      headers: {
-        ...(init?.headers || {}),
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    });
-    if (r.status === 204) return null as any;
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      const e: any = new Error((data as any)?.error || `Request failed: ${r.status}`);
-      e.status = r.status;
-      e.data = data;
-      throw e;
-    }
-    return data;
-  }, [backendUrl, token]);
+  const api = useCallback(
+    async function <T = any>(path: string, init?: RequestInit): Promise<T> {
+      const r = await fetch(`${backendUrl}${path}`, {
+        ...init,
+        headers: {
+          ...(init?.headers || {}),
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (r.status === 204) return null as any;
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const e: any = new Error((data as any)?.error || `Request failed: ${r.status}`);
+        e.status = r.status;
+        e.data = data;
+        throw e;
+      }
+      return data;
+    },
+    [backendUrl, token]
+  );
 
   // Check if the user has paid for this course's certificate (Standard/Extended)
   const checkPaymentStatus = useCallback(async () => {
@@ -453,19 +491,25 @@ const currentIdxRef = useRef<number>(0);
         setExtendedPaid(false);
         return;
       }
-      const s = await api<any>(`/api/certificates/status?courseId=${encodeURIComponent(courseId)}`).catch(() => null);
+      const s = await api<any>(
+        `/api/certificates/status?courseId=${encodeURIComponent(courseId)}`
+      ).catch(() => null);
 
       const tier = typeof s?.tier === 'string' ? s.tier.toLowerCase() : null;
       const hasExtended = s?.extended === true || s?.canTranscript === true || tier === 'extended';
       const hasAnyCert =
-        hasExtended || s?.paid === true || s?.hasCertificate === true || s?.canCertificate === true || tier === 'standard';
+        hasExtended ||
+        s?.paid === true ||
+        s?.hasCertificate === true ||
+        s?.canCertificate === true ||
+        tier === 'standard';
 
       setCertPaid(Boolean(hasAnyCert || downUrl));
       setExtendedPaid(Boolean(isOrgFlowFlag || hasExtended));
       setPaymentOk(Boolean(hasAnyCert || downUrl));
     } catch {
       setCertPaid(Boolean(downUrl));
-      setExtendedPaid(prev => Boolean(prev || isOrgFlowFlag));
+      setExtendedPaid((prev) => Boolean(prev || isOrgFlowFlag));
       setPaymentOk(Boolean(downUrl));
     }
   }, [api, course?.id, downUrl, isOrgFlowFlag]);
@@ -488,7 +532,9 @@ const currentIdxRef = useRef<number>(0);
   // quiz type helpers
   // ───────────────────────────────────────────────────────
   const normQt = (v: unknown): 'mcq' | 'short' | undefined => {
-    const s = String(v ?? '').trim().toLowerCase();
+    const s = String(v ?? '')
+      .trim()
+      .toLowerCase();
     if (s === 'short') return 'short';
     if (s === 'mcq') return 'mcq';
     return undefined;
@@ -525,7 +571,9 @@ const currentIdxRef = useRef<number>(0);
   }, [pendingQuizGen, quiz?.questions, enforcedQuizType]);
 
   // What we *ask* the generator to create (if org lock not known yet)
-  const desiredQuizType: 'mcq' | 'short' = (orgMeta?.quizType || urlQuizTypeHint || 'mcq') as 'mcq' | 'short';
+  const desiredQuizType: 'mcq' | 'short' = (orgMeta?.quizType || urlQuizTypeHint || 'mcq') as
+    | 'mcq'
+    | 'short';
 
   const assignmentKey = useMemo(() => {
     if (assignmentId) return String(assignmentId);
@@ -556,17 +604,9 @@ const currentIdxRef = useRef<number>(0);
         );
         if (!r.ok) return;
         const data = await r.json();
-        const lc =
-          data?.meta?.locked_config ??
-          data?.locked_config ??
-          data?.assignment?.locked_config ??
-          {};
+        const lc = data?.meta?.locked_config ?? data?.locked_config ?? data?.assignment?.locked_config ?? {};
         const t = Number(data?.meta?.timer_s ?? data?.timer_s);
-        const rawQt =
-          lc?.quizType ??
-          lc?.quiz_type ??
-          data?.quizType ??
-          data?.quiz_type;
+        const rawQt = lc?.quizType ?? lc?.quiz_type ?? data?.quizType ?? data?.quiz_type;
 
         setOrgMeta({
           quizSize: Number(lc?.quizSize ?? lc?.quiz_size) || undefined,
@@ -574,7 +614,9 @@ const currentIdxRef = useRef<number>(0);
           timer_s: Number.isFinite(t) ? t : undefined,
           quizType: normQt(rawQt),
         });
-      } catch {/* ignore */}
+      } catch {
+        /* ignore */
+      }
     })();
   }, [isOrgFlow, assignmentId, token, backendUrl]);
 
@@ -588,11 +630,10 @@ const currentIdxRef = useRef<number>(0);
 
   const displayLessons = orgMeta?.totalLessons ?? safeLessons ?? outline?.length ?? 0;
 
-   const userOverrodeLessons = !!overrideLessons && !isOrgFlow; 
+  const userOverrodeLessons = !!overrideLessons && !isOrgFlow;
   const minOptsForDisplay = userOverrodeLessons ? {} : { lessonIndex: currentIdx };
   const requestedQForDisplay = Number(orgMeta?.quizSize ?? safeQuiz ?? 0);
-  // enforce min rule per lesson
-const displayQuestions = applyMinPerLesson(requestedQForDisplay, displayLessons, minOptsForDisplay);
+  const displayQuestions = applyMinPerLesson(requestedQForDisplay, displayLessons, minOptsForDisplay);
 
   const displayTimerSec = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
 
@@ -607,15 +648,12 @@ const displayQuestions = applyMinPerLesson(requestedQForDisplay, displayLessons,
     return positive.length ? Math.max(...positive) : Math.max(...candidates);
   }, [displayRemainingMs, localRemainingMs, displayTimerSec]);
 
-  // ✅ define remainingMsTicker BEFORE using it in isLocked
   const remainingMsTicker = Math.max(0, baseMs - elapsedMs);
 
-  // let force unlock expire when ticker hits 0
   useEffect(() => {
     if (remainingMsTicker <= 0 && forceUnlock) setForceUnlock(false);
   }, [remainingMsTicker, forceUnlock]);
 
-  // ✅ single authoritative "hasTimer" and "isLocked"
   const hasTimer = displayTimerSec > 0;
   const isLocked = useMemo(() => {
     if (forceUnlock) return false;
@@ -631,7 +669,9 @@ const displayQuestions = applyMinPerLesson(requestedQForDisplay, displayLessons,
       try {
         const raw = await AsyncStorage.getItem(lsKey);
         if (raw) setPersistedCert(JSON.parse(raw));
-      } catch {/* ignore */}
+      } catch {
+        /* ignore */
+      }
     })();
   }, [lsKey]);
 
@@ -639,7 +679,6 @@ const displayQuestions = applyMinPerLesson(requestedQForDisplay, displayLessons,
     (async () => {
       if (!lsKey) return;
       if (!certUrl && !downUrl) return;
-      // Try to recover an id from either URL shape
       const certIdFromDown = downUrl?.match(/\/certificates\/([^/]+)\/download/)?.[1] ?? null;
       const certIdFromView = certUrl?.match(/\/certificates\/([^/]+)/)?.[1] ?? null;
       const certId = certIdFromDown || certIdFromView || null;
@@ -654,37 +693,37 @@ const displayQuestions = applyMinPerLesson(requestedQForDisplay, displayLessons,
       setPersistedCert(payload);
       try {
         await AsyncStorage.setItem(lsKey, JSON.stringify(payload));
-      } catch {/* ignore */}
+      } catch {
+        /* ignore */
+      }
     })();
   }, [lsKey, certUrl, downUrl, course?.id, courseTitle]);
 
   // hydrate workingAnswers whenever a (new) quiz arrives
-useEffect(() => {
-  const ids = (quiz?.questions || []).map((q: any) => q.id);
-  if (!ids.length) {
-    setWorkingAnswers({});
-    return;
-  }
-  setWorkingAnswers(() => {
-    const next: Record<string, number | string | undefined> = {};
-    const isMcq = enforcedQuizType === 'mcq';
-    for (const q of quiz.questions) {
-      const v = (answers && (answers as any)[q.id]) as number | string | undefined;
-      if (v === undefined) continue;
-      next[q.id] = isMcq ? Number(v) : String(v);
+  useEffect(() => {
+    const ids = (quiz?.questions || []).map((q: any) => q.id);
+    if (!ids.length) {
+      setWorkingAnswers({});
+      return;
     }
-    return next;
-  });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [quiz?.questions?.map((q: any) => q.id).join('|')]);
-
+    setWorkingAnswers(() => {
+      const next: Record<string, number | string | undefined> = {};
+      const isMcq = enforcedQuizType === 'mcq';
+      for (const q of quiz.questions) {
+        const v = (answers && (answers as any)[q.id]) as number | string | undefined;
+        if (v === undefined) continue;
+        next[q.id] = isMcq ? Number(v) : String(v);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quiz?.questions?.map((q: any) => q.id).join('|'), enforcedQuizType]);
 
   // Centralized certificate download (positional args)
   const handleDownloadCertificate = useCallback(async () => {
     try {
       if (!requireAuth('download_certificate', 'Please sign in to download your certificate.')) return;
 
-      // Try to resolve a certificate id from persisted state or URLs
       const certId =
         persistedCert?.certId ||
         downUrl?.match(/\/certificates\/([^/]+)\/download/)?.[1] ||
@@ -692,56 +731,97 @@ useEffect(() => {
         null;
 
       if (certId) {
-        const fileName = `${(courseTitle || 'certificate').trim().replace(/\s+/g, '-').toLowerCase()}-${certId}.pdf`;
+        const fileName = `${(courseTitle || 'certificate')
+          .trim()
+          .replace(/\s+/g, '-')
+          .toLowerCase()}-${certId}.pdf`;
         await downloadCertificateFile(backendUrl, token, certId, fileName);
         return;
       }
 
-      if (downUrl) { await Linking.openURL(downUrl); return; }
-      if (certUrl) { await Linking.openURL(certUrl); return; }
+      if (downUrl) return Linking.openURL(downUrl);
+      if (certUrl) return Linking.openURL(certUrl);
+
       Alert.alert('Download unavailable', 'No certificate URL found yet.');
     } catch (e) {
       console.error('[certificate] download failed', e);
       try {
-        if (downUrl) { await Linking.openURL(downUrl); return; }
-        if (certUrl) { await Linking.openURL(certUrl); return; }
+        if (downUrl) return Linking.openURL(downUrl);
+        if (certUrl) return Linking.openURL(certUrl);
       } catch {}
       Alert.alert('Download failed', 'Please try again in a moment.');
     }
   }, [backendUrl, token, requireAuth, persistedCert?.certId, downUrl, certUrl, courseTitle]);
 
   // Post-generate handler (auto-download + flags)
-  const handleGeneratedCert = useCallback(async (doc: any, assumeExtended: boolean) => {
-    if (!doc) return;
+  const handleGeneratedCert = useCallback(
+    async (doc: any, assumeExtended: boolean) => {
+      if (!doc) return;
 
-    setCertUrl(doc?.url ?? null);
-    const anyUrl = doc?.download_url ?? doc?.downloadUrl ?? doc?.url ?? null;
-    setDownUrl(anyUrl);
+      setCertUrl(doc?.url ?? null);
+      const anyUrl = doc?.download_url ?? doc?.downloadUrl ?? doc?.url ?? null;
+      setDownUrl(anyUrl);
 
-    setCertPaid(true);
-    if (assumeExtended || looksExtendedSku(doc)) setExtendedPaid(true);
+      setCertPaid(true);
+      if (assumeExtended || looksExtendedSku(doc)) setExtendedPaid(true);
 
-    const certId = extractCertId(doc);
-    const fileName = `${slug(courseTitle || 'certificate')}-${certId || 'certificate'}.pdf`;
-    try {
-      if (certId) {
-        await downloadCertificateFile(backendUrl, token, certId, fileName);
-      } else if (anyUrl) {
-        await Linking.openURL(anyUrl);
-      } else {
-        Alert.alert('Certificate generated', 'But no download link was returned.');
+      const certId = extractCertId(doc);
+      const fileName = `${slug(courseTitle || 'certificate')}-${certId || 'certificate'}.pdf`;
+      try {
+        if (certId) {
+          await downloadCertificateFile(backendUrl, token, certId, fileName);
+        } else if (anyUrl) {
+          await Linking.openURL(anyUrl);
+        } else {
+          Alert.alert('Certificate generated', 'But no download link was returned.');
+        }
+      } catch {
+        if (anyUrl) {
+          try {
+            await Linking.openURL(anyUrl);
+          } catch {}
+        }
       }
-    } catch {
-      if (anyUrl) { try { await Linking.openURL(anyUrl); } catch {} }
-    }
 
-    try { await refreshUserDetails?.(); } catch {}
-    try { await checkPaymentStatus(); } catch {}
-  }, [backendUrl, token, courseTitle, refreshUserDetails, checkPaymentStatus, setCertUrl, setDownUrl]);
+      try {
+        await refreshUserDetails?.();
+      } catch {}
+      try {
+        await checkPaymentStatus();
+      } catch {}
+    },
+    [backendUrl, token, courseTitle, refreshUserDetails, checkPaymentStatus, setCertUrl, setDownUrl]
+  );
 
   // keypad helpers (short answers)
-  const SUBS: Record<string, string> = { '0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋' };
-  const SUPS: Record<string, string> = { '0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻' };
+  const SUBS: Record<string, string> = {
+    '0': '₀',
+    '1': '₁',
+    '2': '₂',
+    '3': '₃',
+    '4': '₄',
+    '5': '₅',
+    '6': '₆',
+    '7': '₇',
+    '8': '₈',
+    '9': '₉',
+    '+': '₊',
+    '-': '₋',
+  };
+  const SUPS: Record<string, string> = {
+    '0': '⁰',
+    '1': '¹',
+    '2': '²',
+    '3': '³',
+    '4': '⁴',
+    '5': '⁵',
+    '6': '⁶',
+    '7': '⁷',
+    '8': '⁸',
+    '9': '⁹',
+    '+': '⁺',
+    '-': '⁻',
+  };
   const toSub = (s: string) => s.replace(/[0-9+\-]/g, (m) => SUBS[m] || m);
   const toSup = (s: string) => s.replace(/[0-9+\-]/g, (m) => SUPS[m] || m);
 
@@ -763,7 +843,7 @@ useEffect(() => {
     onAnswer?.(qid, next);
   };
 
-  // quiz normalization + validation
+  // all-answered (local authoritative)
   const allAnsweredLocal = useMemo(() => {
     const qArr = Array.isArray(quiz?.questions) ? viewQuestions : [];
     if (!qArr.length) return false;
@@ -775,7 +855,7 @@ useEffect(() => {
         ? typeof v === 'string' && v.trim() !== ''
         : typeof v === 'number' && Number.isFinite(v) && v >= 0;
     });
-  }, [quiz?.questions, workingAnswers, enforcedQuizType]);
+  }, [quiz?.questions, viewQuestions, workingAnswers, enforcedQuizType]);
 
   const canSubmit = !isLocked && allAnsweredLocal;
 
@@ -801,7 +881,7 @@ useEffect(() => {
           (quiz as any).questions = viewQuestions.map((q: any) => ({
             ...q,
             type: qt,
-            choices: qt === 'mcq' ? (Array.isArray(q?.choices) ? q.choices : []) : q?.choices
+            choices: qt === 'mcq' ? (Array.isArray(q?.choices) ? q.choices : []) : q?.choices,
           }));
         }
       } catch {}
@@ -821,24 +901,18 @@ useEffect(() => {
         }
       }
 
-      // payload
-     const payloadAnswers = viewQuestions.map((q: any) => {
-  const qid = q?.id;
-  const v = qid ? workingAnswers[qid] : undefined;
+      const payloadAnswers = viewQuestions.map((q: any) => {
+        const qid = q?.id;
+        const v = qid ? workingAnswers[qid] : undefined;
 
-  if (enforcedQuizType === 'short') {
-    return { questionId: qid, answerText: String(v ?? '').trim() };
-  }
+        if (enforcedQuizType === 'short') {
+          return { questionId: qid, answerText: String(v ?? '').trim() };
+        }
 
-  const choiceIndex =
-    typeof v === 'number' ? v :
-    typeof v === 'string' ? Number(v) : -1;
+        const choiceIndex = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : -1;
+        return { questionId: qid, choiceIndex: Number.isFinite(choiceIndex) ? choiceIndex : -1 };
+      });
 
-  return { questionId: qid, choiceIndex: Number.isFinite(choiceIndex) ? choiceIndex : -1 };
-});
-
-
-      // submit attempt (regular + org)
       await submitAttempt(assignmentKey, payloadAnswers);
       await gradeNow();
       setRetakeMode(false);
@@ -862,17 +936,15 @@ useEffect(() => {
 
   // Non-org: did the user manually set lesson count?
   const manualLessonsSelected = useMemo(
-  () => userOverrodeLessons && Number.isFinite(Number(safeLessons)) && Number(safeLessons) > 0,
-  [userOverrodeLessons, safeLessons]
-);
-
+    () => userOverrodeLessons && Number.isFinite(Number(safeLessons)) && Number(safeLessons) > 0,
+    [userOverrodeLessons, safeLessons]
+  );
 
   const startQuiz = useCallback(async () => {
     if (!confirmInfo) return;
     try {
       setConfirmOpen(false);
 
-      // ORG: start attempt on backend and seed timer from server
       if (isOrgFlow && typeof assignmentId === 'string' && assignmentId.length > 0) {
         if (!requireAuth('start_attempt', 'Please sign in to start your attempt.')) return;
 
@@ -892,28 +964,19 @@ useEffect(() => {
         setForceUnlock(true);
         markActive();
       } else {
-        // NON-ORG: local timer only
         const effective = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
         if (effective > 0) setLocalRemainingMs(effective * 1000);
         setForceUnlock(true);
         markActive();
       }
 
-      // Compute desired size with min-per-lesson rule
       const desiredRequested =
-        (orgMeta?.quizSize ?? undefined) ??
-        (safeQuiz ?? undefined) ??
-        Number(confirmInfo.questions || 0);
+        orgMeta?.quizSize ?? safeQuiz ?? Number(confirmInfo.questions || 0);
 
       const minOpts = userOverrodeLessons ? {} : { lessonIndex: currentIdx };
-      const desiredQ = applyMinPerLesson(Number(desiredRequested || 0), displayLessons, minOpts)
+      const desiredQ = applyMinPerLesson(Number(desiredRequested || 0), displayLessons, minOpts);
 
-      // Respect org-locked quiz size by not overriding it
-      const passNumQ =
-        (isOrgFlow && assignmentId && Number.isFinite(orgMeta?.quizSize))
-          ? undefined
-          : desiredQ;
-
+      const passNumQ = isOrgFlow && assignmentId && Number.isFinite(orgMeta?.quizSize) ? undefined : desiredQ;
       const passTotalLessons = manualLessonsSelected ? Number(safeLessons) : undefined;
 
       await Promise.resolve(
@@ -959,25 +1022,27 @@ useEffect(() => {
     desiredQuizType,
     currentIdx,
     quiz?.questions,
-    enforcedQuizType,
     safeQuiz,
     quiz?.timerSec,
     displayLessons,
     safeLessons,
     manualLessonsSelected,
+    userOverrodeLessons,
   ]);
 
   // Transcript generation (native)
   const downloadTranscript = useCallback(async () => {
     if (!requireAuth('download_transcript', 'Please sign in to download your transcript.')) return;
 
-    // Org: always allowed. Non-org: Extended required.
     if (!isOrgFlowFlag && !extendedPaid) {
       setPaymentOpen(true);
       return;
     }
     const courseId = course?.id;
-    if (!courseId) { Alert.alert('Transcript', 'Missing course ID.'); return; }
+    if (!courseId) {
+      Alert.alert('Transcript', 'Missing course ID.');
+      return;
+    }
 
     try {
       const payload: any = { courseId };
@@ -995,7 +1060,7 @@ useEffect(() => {
 
       const trId = extractTranscriptId(t);
       const anyUrl = t?.download_url ?? t?.url ?? null;
-      const fileName = `${slug(courseTitle || 'transcript')}-${(trId || 'transcript')}.pdf`;
+      const fileName = `${slug(courseTitle || 'transcript')}-${trId || 'transcript'}.pdf`;
       if (trId) {
         await downloadTranscriptFile(backendUrl, token, trId, fileName);
       } else if (anyUrl) {
@@ -1010,73 +1075,159 @@ useEffect(() => {
       }
       Alert.alert('Transcript', 'Could not generate/download transcript. Please try again.');
     }
-  }, [api, course?.id, isOrgFlowFlag, extendedPaid, requireAuth, setPaymentOpen, backendUrl, token, courseTitle, outline]);
+  }, [
+    api,
+    course?.id,
+    isOrgFlowFlag,
+    extendedPaid,
+    requireAuth,
+    setPaymentOpen,
+    backendUrl,
+    token,
+    courseTitle,
+    outline,
+  ]);
 
-  // ───────────────────────────────────────────────────────
-  // UI
-  // ───────────────────────────────────────────────────────
   const hasTranscriptAccess = Boolean(isOrgFlowFlag || extendedPaid);
+
+  // persisted cert pill visibility
+  const showPersistedCertPill = useMemo(() => {
+    if (hideCertPill) return false;
+    const p = persistedCert;
+    if (!p) return false;
+    const any = Boolean(p?.certUrl || p?.downUrl);
+    if (!any) return false;
+    return true;
+  }, [persistedCert, hideCertPill]);
 
   return (
     <>
-      {/* Player */}
-        <View style={tw`relative z-0 items-center`}>
-          <View
-            style={[
-              tw.style('rounded-[28px] border border-white/15 bg-white/5'),
-              {
-                alignSelf: 'center',
-                width: '100%',
-                maxWidth: 1088,        // keep as-is; width already spans mobile
-                height: desiredHeight, // compact vs maximized height
-                overflow: 'hidden',
-              },
-            ]}
-          >
-            <ClassroomThemeShell
-              ssml={displaySsml}
-              lessons={lessonsArr}
-              voiceName={voiceName}
-              title={courseTitle}
-              maximized={isMaximized}
-              onToggleMaximize={onToggleMaximized}
-              course={course}
-              outline={outline}
-              backendUrlOverride={backendUrl}
-              onPlayerReady={() => setInnerPlayerReady(true)}
-              onPlayerLoadingChange={onPlayerLoadingChange}
-              playing
-              playJoinedIfAvailable={!!hasJoined}
-              onBeforePlay={guardedBeforePlay}
-              onEnded={onEnded}
-              onNext={onNext}
-              onPrev={onPrev}
-              activeIndex={currentIdx}
-              isBuildingNext={isBuildingNext}
-              themeOpen={themeOpen}
-              plannedCount={safeLessons}
-              onThemeOpenChange={onThemeOpenChange}
-              showFloatingThemeButton={false}
-              playerHeight={desiredHeight}
-              onWordSync={handleWordSync}   
-              onRequestStart={async () => {
-                // ✅ Never auto-generate unless parent explicitly allows it
-                if (!canAutoStart) return;
+      {/* Gate CTA (parity with web) */}
+      {certCta.show && !isOrgFlowFlag ? (
+        <View style={tw`mb-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3`}>
+          <Text style={tw`text-amber-200 text-sm`}>
+            Narration is locked right now. Unlock it with a certificate.
+          </Text>
 
-                // ✅ If we already have something to play, do nothing
-                if (hasRenderableLesson) return;
-
-                await onStart?.();
+          <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
+            <TouchableOpacity
+              onPress={() => {
+                if (certCta.action === 'login') {
+                  requireAuth('buy_certificate', 'Please sign in to buy your certificate.');
+                  return;
+                }
+                setPaymentOpen(true);
               }}
-
-            />
+              style={tw`px-4 py-2 rounded-xl bg-indigo-600`}
+            >
+              <Text style={tw`text-white font-semibold`}>{certCta.label}</Text>
+            </TouchableOpacity>
           </View>
         </View>
-      
-      
+      ) : null}
+
+      {/* Persisted certificate pill (AsyncStorage) */}
+      {showPersistedCertPill ? (
+        <View style={tw`mb-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 p-3`}>
+          <Text style={tw`text-emerald-200 text-sm font-semibold`}>Certificate available</Text>
+          <Text style={tw`text-white/70 text-[12px] mt-1`}>
+            We found a previously generated certificate for this course.
+          </Text>
+
+          <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
+            {(persistedCert?.certUrl || certUrl) ? (
+              <TouchableOpacity
+                onPress={() => {
+                  const u = persistedCert?.certUrl || certUrl;
+                  if (u) Linking.openURL(u);
+                }}
+                style={tw`px-3 py-2 rounded-full bg-slate-800`}
+              >
+                <Text style={tw`text-white text-sm`}>View</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            <TouchableOpacity onPress={handleDownloadCertificate} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
+              <Text style={tw`text-white font-semibold`}>Download PDF</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setHideCertPill(true)} style={tw`px-3 py-2 rounded-full bg-slate-800`}>
+              <Text style={tw`text-white text-sm`}>Hide</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Player */}
+      <View style={tw`relative z-0 items-center`}>
+        <View
+          style={[
+            tw.style('rounded-[28px] border border-white/15 bg-white/5'),
+            {
+              alignSelf: 'center',
+              width: '100%',
+              maxWidth: 1088,
+              height: desiredHeight,
+              overflow: 'hidden',
+            },
+          ]}
+        >
+          <ClassroomThemeShell
+            ssml={displaySsml}
+            lessons={lessonsArr}
+            voiceName={voiceName}
+            title={courseTitle}
+            maximized={isMaximized}
+            onToggleMaximize={onToggleMaximized}
+            course={course}
+            outline={outline}
+            backendUrlOverride={backendUrl}
+            onPlayerReady={() => setInnerPlayerReady(true)}
+            onPlayerLoadingChange={(loading) => {
+              onPlayerLoadingChangeRef.current?.(loading);
+              if (!loading) setPreparing(false);
+            }}
+            playing
+            playJoinedIfAvailable={!!hasJoined}
+            onBeforePlay={guardedBeforePlay}
+            onEnded={onEnded}
+            onNext={onNext}
+            onPrev={onPrev}
+            activeIndex={currentIdx}
+            isBuildingNext={isBuildingNext}
+            themeOpen={themeOpen}
+            plannedCount={safeLessons}
+            onThemeOpenChange={onThemeOpenChange}
+            showFloatingThemeButton={false}
+            playerHeight={desiredHeight}
+            onWordSync={handleWordSync}
+            onRequestStart={async () => {
+              // ✅ Never auto-generate unless parent explicitly allows it
+              if (!canAutoStart) return;
+              // ✅ If we already have something to play, do nothing
+              if (hasRenderableLesson) return;
+
+              try {
+                setPreparing(true);
+                await onStart?.();
+              } finally {
+                // player loading callback will also clear this; keep safe
+                setPreparing(false);
+              }
+            }}
+          />
+
+          {preparing ? (
+            <View style={tw`absolute inset-0 items-center justify-center bg-black/35`}>
+              <ActivityIndicator />
+              <Text style={tw`text-white/80 text-xs mt-2`}>Preparing next section…</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
 
       {/* Outline + Generate */}
-      {Array.isArray(outline) && outline.length > 0 && (
+      {Array.isArray(outline) && outline.length > 0 ? (
         <View style={tw`mt-3 rounded-2xl bg-slate-900/60 border border-slate-800 p-4`}>
           <Text style={tw`text-white font-semibold mb-2`}>Lesson outline</Text>
           <View>
@@ -1084,10 +1235,7 @@ useEffect(() => {
               <View key={s?.id ?? `sec-${i}`} style={tw`mb-2`}>
                 <Text style={tw`text-white font-medium`}>{s?.title ?? `Lesson ${i + 1}`}</Text>
                 {(Array.isArray(s?.keyPoints) ? s.keyPoints : []).map((k: string, idx: number) => (
-                  <Text
-                    key={`${s?.id ?? i}-kp-${idx}`}
-                    style={tw`text-white/80 text-sm ml-3`}
-                  >
+                  <Text key={`${s?.id ?? i}-kp-${idx}`} style={tw`text-white/80 text-sm ml-3`}>
                     • {k}
                   </Text>
                 ))}
@@ -1108,7 +1256,7 @@ useEffect(() => {
             </TouchableOpacity>
           </View>
         </View>
-      )}
+      ) : null}
 
       <AntiCheatGuard
         deviceId={boundDeviceId}
@@ -1128,11 +1276,15 @@ useEffect(() => {
 
           if (canSubmit) {
             handleSubmit().finally(() => {
-              setTimeout(() => { shownLockAlertRef.current = false; }, 1500);
+              setTimeout(() => {
+                shownLockAlertRef.current = false;
+              }, 1500);
             });
           } else {
             Alert.alert('Quiz locked', 'Too many app switches. Please submit or retry.');
-            setTimeout(() => { shownLockAlertRef.current = false; }, 1500);
+            setTimeout(() => {
+              shownLockAlertRef.current = false;
+            }, 1500);
           }
         }}
         onBumpSuspicion={(d) => bumpSuspicion(d)}
@@ -1147,7 +1299,9 @@ useEffect(() => {
           <View style={tw.style('mt-2 px-2 py-1 rounded', isLocked ? 'bg-red-600/20' : 'bg-white/10')}>
             <Text style={tw`text-white text-xs text-center`}>
               {hasTimer
-                ? (isLocked ? 'Time up — quiz locked' : `Time left: ${fmtHMSms(remainingMsTicker)}`)
+                ? isLocked
+                  ? 'Time up — quiz locked'
+                  : `Time left: ${fmtHMSms(remainingMsTicker)}`
                 : `Time elapsed: ${Math.floor(elapsedMs / 1000)}s`}
             </Text>
           </View>
@@ -1160,22 +1314,20 @@ useEffect(() => {
                 {enforcedQuizType === 'short' ? 'Short (typed)' : 'Multiple choice (MCQ)'}
               </Text>
             </Text>
-            {enforcedQuizType === 'short' && !isLocked && (
-              <TouchableOpacity
-                onPress={() => setMathOpen((v) => !v)}
-                style={tw`mt-2 px-3 py-1.5 rounded-full bg-indigo-600`}
-              >
+            {enforcedQuizType === 'short' && !isLocked ? (
+              <TouchableOpacity onPress={() => setMathOpen((v) => !v)} style={tw`mt-2 px-3 py-1.5 rounded-full bg-indigo-600`}>
                 <Text style={tw`text-white text-sm`}>∑ Math keypad</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
 
           <Text style={tw`text-white/70 text-xs text-center mt-2 mb-2`}>Answer all to submit.</Text>
 
           <View>
             {viewQuestions.map((q: any, idx: number) => {
-              if (!q?.id) return null; // guard malformed
+              if (!q?.id) return null;
               const qType = enforcedQuizType;
+
               return (
                 <View key={q.id} style={tw`rounded-xl bg-white/5 border border-white/10 p-3 mb-3`}>
                   <Text style={tw`text-white text-[15px] font-medium mb-2`}>
@@ -1188,8 +1340,13 @@ useEffect(() => {
                       <TextInput
                         multiline
                         value={String(workingAnswers[q.id] ?? '')}
-                        onChangeText={(t) => { lastShortQidRef.current = q.id; handleAnswer(q.id, t); }}
-                        onFocus={() => { lastShortQidRef.current = q.id; }}
+                        onChangeText={(t) => {
+                          lastShortQidRef.current = q.id;
+                          handleAnswer(q.id, t);
+                        }}
+                        onFocus={() => {
+                          lastShortQidRef.current = q.id;
+                        }}
                         onContentSizeChange={(e) => {
                           const h = Math.min(320, Math.max(40, e.nativeEvent.contentSize.height));
                           setShortHeights((p) => ({ ...p, [q.id]: h }));
@@ -1197,36 +1354,47 @@ useEffect(() => {
                         placeholder="Type your answer"
                         placeholderTextColor="#94a3b8"
                         editable={!isLocked}
-                        style={tw.style(
-                          'text-white bg-slate-800/70 rounded-xl px-3 py-2',
-                          isLocked ? 'opacity-60' : ''
-                        )}
+                        style={[
+                          tw.style('text-white bg-slate-800/70 rounded-xl px-3 py-2', isLocked ? 'opacity-60' : ''),
+                          { minHeight: 44, height: shortHeights[q.id] ?? 44, textAlignVertical: 'top' },
+                        ]}
                       />
 
-                      {/* admin solution reveal */}
-                      {isAdmin && (
+                      {isAdmin ? (
                         <View style={tw`mt-2`}>
                           <Text style={tw`text-amber-300 text-[11px]`}>Admin: show answer</Text>
                           <View style={tw`mt-1`}>
-                            {q.answer ? <Text style={tw`text-white/80 text-xs`}><Text style={tw`font-bold`}>Answer:</Text> {String(q.answer)}</Text> : null}
-                            {Array.isArray(q.accept) && q.accept.length > 0 && (
-                              <Text style={tw`text-white/80 text-xs`}><Text style={tw`font-bold`}>Accept:</Text> {q.accept.join(', ')}</Text>
-                            )}
-                            {q.regex ? <Text style={tw`text-white/80 text-xs`}><Text style={tw`font-bold`}>Regex:</Text> {String(q.regex)}</Text> : null}
-                            {q.explanation ? <Text style={tw`text-white/80 text-xs mt-1`}><Text style={tw`font-bold`}>Explanation:</Text> {q.explanation}</Text> : null}
+                            {q.answer ? (
+                              <Text style={tw`text-white/80 text-xs`}>
+                                <Text style={tw`font-bold`}>Answer:</Text> {String(q.answer)}
+                              </Text>
+                            ) : null}
+                            {Array.isArray(q.accept) && q.accept.length > 0 ? (
+                              <Text style={tw`text-white/80 text-xs`}>
+                                <Text style={tw`font-bold`}>Accept:</Text> {q.accept.join(', ')}
+                              </Text>
+                            ) : null}
+                            {q.regex ? (
+                              <Text style={tw`text-white/80 text-xs`}>
+                                <Text style={tw`font-bold`}>Regex:</Text> {String(q.regex)}
+                              </Text>
+                            ) : null}
+                            {q.explanation ? (
+                              <Text style={tw`text-white/80 text-xs mt-1`}>
+                                <Text style={tw`font-bold`}>Explanation:</Text> {q.explanation}
+                              </Text>
+                            ) : null}
                           </View>
                         </View>
-                      )}
+                      ) : null}
                     </View>
                   ) : (
                     <View style={tw`gap-2`}>
-                      {/* MCQ choices */}
                       {Array.isArray(q.choices) && q.choices.length > 0 ? (
                         q.choices.map((c: string, i: number) => {
                           const raw = workingAnswers[q.id];
                           const current =
-                            typeof raw === 'string' ? Number(raw) :
-                            typeof raw === 'number' ? raw : NaN;
+                            typeof raw === 'string' ? Number(raw) : typeof raw === 'number' ? raw : NaN;
                           const isSelected = current === i;
 
                           return (
@@ -1248,7 +1416,9 @@ useEffect(() => {
                                 )
                               }
                             >
-                              <Text style={tw`text-white`}>{String(c || '')}</Text>
+                              <Text style={tw`text-white`}>
+                                <Markdown inline>{String(c || '')}</Markdown>
+                              </Text>
                             </Pressable>
                           );
                         })
@@ -1268,55 +1438,50 @@ useEffect(() => {
             <TouchableOpacity
               onPress={handleSubmit}
               disabled={!canSubmit}
-              style={tw.style(
-                'px-4 py-2 rounded-xl',
-                canSubmit ? 'bg-emerald-600' : 'bg-slate-700 opacity-60'
-              )}
+              style={tw.style('px-4 py-2 rounded-xl', canSubmit ? 'bg-emerald-600' : 'bg-slate-700 opacity-60')}
             >
               <Text style={tw`text-white font-semibold`}>Submit quiz</Text>
             </TouchableOpacity>
 
-            {grade && (
+            {grade ? (
               <Text style={tw`text-white/80 text-sm`}>
                 Score: <Text style={tw`font-semibold`}>{grade.scorePct}%</Text> (Pass mark {grade.passMark}%)
               </Text>
-            )}
+            ) : null}
 
-            {grade && course?.id && (
+            {grade && course?.id ? (
               <TouchableOpacity
                 onPress={() => onViewResults(course.id, courseTitle, grade)}
                 style={tw`px-3 py-2 rounded-full bg-slate-800`}
               >
                 <Text style={tw`text-white text-sm`}>View Results</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
 
-          {grade && grade.passed && !retakeMode && (
+          {grade && grade.passed && !retakeMode ? (
             <View style={tw`mt-3 rounded-xl bg-emerald-600/10 border border-emerald-500 p-3`}>
               <Text style={tw`text-emerald-200 text-sm`}>
-                {grade?.passed
-                  ? '🎉 Great job! You passed (≥ ' + grade.passMark + '%).'
-                  : '🎓 You’re eligible for a certificate.'}
+                {grade?.passed ? `🎉 Great job! You passed (≥ ${grade.passMark}%).` : `🎓 You’re eligible for a certificate.`}
               </Text>
 
               {isOrgFlowFlag ? (
                 <>
-                  <Text style={tw`text-white/70 text-xs mt-2`}>
-                    Covered by your organization — no payment needed.
-                  </Text>
+                  <Text style={tw`text-white/70 text-xs mt-2`}>Covered by your organization — no payment needed.</Text>
                   <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
                     <TouchableOpacity
                       onPress={async () => {
                         try {
                           const sku = (skus && skus[0]) || null;
                           if (sku) {
-                            try { await claim(sku.code); } catch {/* ignore */}
+                            try {
+                              await claim(sku.code);
+                            } catch {}
                           }
                           const doc =
                             (await tryGenerateCertificate().catch(() => null)) ||
                             (await generateAICert().catch(() => null));
-                          await handleGeneratedCert(doc, /* assumeExtended */ true);
+                          await handleGeneratedCert(doc, true);
                         } catch (e) {
                           console.error('[org] manual issue failed', e);
                           Alert.alert('Issue failed', 'Please try again.');
@@ -1330,35 +1495,27 @@ useEffect(() => {
                     {certUrl ? (
                       <>
                         <TouchableOpacity
-                          onPress={() => { if (certUrl) Linking.openURL(certUrl); }}
-
+                          onPress={() => {
+                            if (certUrl) Linking.openURL(certUrl);
+                          }}
                           style={tw`px-3 py-2 rounded-full bg-slate-800`}
                         >
                           <Text style={tw`text-white text-sm`}>View certificate</Text>
                         </TouchableOpacity>
-                        {downUrl ? (
-                          <TouchableOpacity
-                            onPress={handleDownloadCertificate}
-                            style={tw`px-4 py-2 rounded-xl bg-indigo-600`}
-                          >
-                            <Text style={tw`text-white font-semibold`}>Download PDF</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                        {/* New: Transcript (org always allowed) */}
-                        <TouchableOpacity
-                          onPress={downloadTranscript}
-                          style={tw`px-4 py-2 rounded-xl bg-indigo-600`}
-                        >
+
+                        <TouchableOpacity onPress={handleDownloadCertificate} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
+                          <Text style={tw`text-white font-semibold`}>Download PDF</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity onPress={downloadTranscript} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
                           <Text style={tw`text-white font-semibold`}>Download Transcript</Text>
                         </TouchableOpacity>
                       </>
                     ) : null}
                   </View>
-                  {!certUrl && (
-                    <Text style={tw`text-white/70 text-[12px] mt-2`}>
-                      Your certificate will be generated at no cost.
-                    </Text>
-                  )}
+                  {!certUrl ? (
+                    <Text style={tw`text-white/70 text-[12px] mt-2`}>Your certificate will be generated at no cost.</Text>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -1368,21 +1525,19 @@ useEffect(() => {
                     {aiCertError ? <Text style={tw`text-red-300 text-xs mt-1`}>{aiCertError}</Text> : null}
                     {aiCertMsg ? <Text style={tw`text-emerald-300 text-xs mt-1`}>{aiCertMsg}</Text> : null}
 
-                    {!paymentOk && (
+                    {!paymentOk ? (
                       <Text style={tw`text-white/70 text-[11px] mt-2`}>
                         Payment required to unlock <Text style={tw`font-semibold`}>Claim &amp; Generate</Text>.
                       </Text>
-                    )}
+                    ) : null}
 
-                    {/* Balance hint */}
                     <Text style={tw`text-white/70 text-[11px] mt-2`}>
                       Your balance: <Text style={tw`font-semibold`}>{Number(tokens) || 0}</Text> tokens
                     </Text>
 
                     <View style={tw`mt-2`}>
                       {(skus || []).map((sku) => {
-                        const price =
-                          Number(sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? 0);
+                        const price = Number(sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? 0);
                         const hasEnoughTokens = (Number(tokens) || 0) >= price;
                         const canClaimNow = Boolean(grade?.passed) && hasEnoughTokens;
                         const isExtended = looksExtendedSku(sku);
@@ -1408,22 +1563,20 @@ useEffect(() => {
                                     await claim(sku.code);
                                     const doc: any = await generateAICert();
 
-                                    // reflect purchase
                                     setCertPaid(true);
                                     if (isExtended) setExtendedPaid(true);
 
-                                    await handleGeneratedCert(doc, /* assumeExtended */ isExtended);
+                                    await handleGeneratedCert(doc, isExtended);
 
-                                    try { await refreshUserDetails?.(); } catch {}
+                                    try {
+                                      await refreshUserDetails?.();
+                                    } catch {}
                                   } catch (e) {
                                     console.error('[tokens] claim/generate failed', e);
                                     Alert.alert('Certificate', 'Could not generate certificate.');
                                   }
                                 }}
-                                style={tw.style(
-                                  'px-3 py-1.5 rounded',
-                                  canClaimNow ? 'bg-emerald-600' : 'bg-emerald-600/50'
-                                )}
+                                style={tw.style('px-3 py-1.5 rounded', canClaimNow ? 'bg-emerald-600' : 'bg-emerald-600/50')}
                               >
                                 <Text style={tw`text-white text-sm font-semibold`}>Claim &amp; Generate</Text>
                               </TouchableOpacity>
@@ -1433,26 +1586,21 @@ useEffect(() => {
                       })}
                     </View>
 
-                    {(skus?.length ?? 0) > 0 && (Number(tokens) || 0) < Number(skus?.[0]?.price_tokens ?? 0) && (
+                    {(skus?.length ?? 0) > 0 && (Number(tokens) || 0) < Number(skus?.[0]?.price_tokens ?? 0) ? (
                       <View style={tw`mt-2`}>
                         <Text style={tw`text-white/70 text-[11px]`}>
                           Not enough tokens? <Text style={tw`font-semibold`}>Top up and try again.</Text>
                         </Text>
                         <View style={tw`mt-2 flex-row gap-2`}>
-                          <TouchableOpacity
-                            onPress={() => setPaymentOpen(true)}
-                            style={tw`px-4 py-2 rounded-xl bg-indigo-600`}
-                          >
+                          <TouchableOpacity onPress={() => setPaymentOpen(true)} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
                             <Text style={tw`text-white font-semibold`}>Buy tokens</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
-                    )}
+                    ) : null}
                   </View>
 
-                  <Text style={tw`text-white/60 text-xs mt-3`}>
-                    Prefer paying with card or PayPal/M-Pesa?
-                  </Text>
+                  <Text style={tw`text-white/60 text-xs mt-3`}>Prefer paying with card or PayPal/M-Pesa?</Text>
                   <View style={tw`mt-1 flex-row flex-wrap items-center gap-2`}>
                     <TouchableOpacity onPress={() => setPaymentOpen(true)} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
                       <Text style={tw`text-white font-semibold`}>Pay with PayPal / M-Pesa</Text>
@@ -1460,25 +1608,23 @@ useEffect(() => {
 
                     {certUrl ? (
                       <TouchableOpacity
-                        onPress={() => { if (certUrl) Linking.openURL(certUrl); }}
-
+                        onPress={() => {
+                          if (certUrl) Linking.openURL(certUrl);
+                        }}
                         style={tw`px-3 py-2 rounded-full bg-slate-800`}
                       >
                         <Text style={tw`text-white text-sm`}>View certificate</Text>
                       </TouchableOpacity>
                     ) : null}
 
-                    {true ? (
-                      <TouchableOpacity
-                        onPress={handleDownloadCertificate}
-                        disabled={!(certUrl || downUrl || persistedCert?.certUrl || persistedCert?.downUrl)}
-                        style={tw`px-4 py-2 rounded-xl bg-indigo-600`}
-                      >
-                        <Text style={tw`text-white font-semibold`}>Download PDF</Text>
-                      </TouchableOpacity>
-                    ) : null}
+                    <TouchableOpacity
+                      onPress={handleDownloadCertificate}
+                      disabled={!(certUrl || downUrl || persistedCert?.certUrl || persistedCert?.downUrl)}
+                      style={tw.style('px-4 py-2 rounded-xl', 'bg-indigo-600')}
+                    >
+                      <Text style={tw`text-white font-semibold`}>Download PDF</Text>
+                    </TouchableOpacity>
 
-                    {/* New: Transcript button (gated by Extended for non-org) */}
                     <TouchableOpacity
                       onPress={downloadTranscript}
                       disabled={!hasTranscriptAccess}
@@ -1488,104 +1634,57 @@ useEffect(() => {
                     </TouchableOpacity>
                   </View>
 
-                  {!certUrl && (
+                  {!certUrl ? (
                     <Text style={tw`text-white/70 text-[12px] mt-2`}>
                       Once payment completes (tokens or fiat), we’ll generate your certificate instantly.
                     </Text>
-                  )}
+                  ) : null}
                 </>
               )}
             </View>
-          )}
+          ) : null}
 
-          {grade && !grade.passed && !retakeMode && (
+          {grade && !grade.passed && !retakeMode ? (
             <View style={tw`mt-3 rounded-xl bg-red-600/10 border border-red-500 p-3`}>
               <Text style={tw`text-red-200 text-sm`}>
                 You scored {grade.scorePct}%. Review the lesson and try again.
               </Text>
 
-              {/* Retry CTA (org flow) */}
-              {isOrgFlow && assignmentId ? (
-                <View style={tw`mt-3`}>
-                  <TouchableOpacity
-                    onPress={async () => {
+              {/* Retry CTA */}
+              <View style={tw`mt-3`}>
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (isOrgFlow && assignmentId) {
                       if (!requireAuth('start_attempt', 'Please sign in to retry.')) return;
                       if (startingAttemptRef.current) return;
                       startingAttemptRef.current = true;
+                    }
 
-                      try {
-                        if (isOrgFlow && typeof assignmentId === 'string' && assignmentId.length > 0) {
-                          const timerSecEff =
-                            (orgMeta?.timer_s ?? timerSec ?? 0) > 0 ? Number(orgMeta?.timer_s ?? timerSec) : 0;
+                    try {
+                      // (re)arm timer
+                      if (isOrgFlow && assignmentId) {
+                        const timerSecEff =
+                          (orgMeta?.timer_s ?? timerSec ?? 0) > 0 ? Number(orgMeta?.timer_s ?? timerSec) : 0;
 
-                          const att = await startAttempt({
-                            assignmentId,
-                            timerSec: timerSecEff,
-                            heartbeatSec: 15,
-                            maxBackgrounds: 2,
-                            maxSuspicion: 5,
-                          });
+                        const att = await startAttempt({
+                          assignmentId: assignmentId!,
+                          timerSec: timerSecEff,
+                          heartbeatSec: 15,
+                          maxBackgrounds: 2,
+                          maxSuspicion: 5,
+                        });
 
-                          const ms = (att?.remainingMs ?? 0) || (timerSecEff > 0 ? timerSecEff * 1000 : 0);
-                          if (ms > 0) setLocalRemainingMs(ms);
-                          setForceUnlock(true);
-                          markActive();
-                        } else {
-                          const effective = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
-                          if (effective > 0) setLocalRemainingMs(effective * 1000);
-                          setForceUnlock(true);
-                          markActive();
-                        }
-
-                        setRetakeMode(true);
-                        setWorkingAnswers({});
-
-                        // Retry with min rule
-                        const retryRequested = Number(displayQuestions || 0);
-                        const minOptsRetry = manualLessonsSelected ? {} : { lessonIndex: currentIdx };
-                        const retryQ = applyMinPerLesson(retryRequested, displayLessons, minOptsRetry);
-                        const passTotalLessonsRetry = manualLessonsSelected ? Number(safeLessons) : undefined;
-
-                        await generateQuizNow?.(
-                          retryQ,
-                          undefined,
-                          undefined,
-                          passTotalLessonsRetry,
-                          assignmentId,
-                          desiredQuizType,
-                          { lessonIndex: currentIdx }
-                        );
-
-                        setPendingQuizGen(true);
-                        if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
-                        pendingTimerRef.current = setTimeout(() => {
-                          if (!Array.isArray(quiz?.questions) || quiz.questions.length === 0) {
-                            Alert.alert('No questions', 'The quiz could not be generated. Please try again.');
-                          }
-                          setPendingQuizGen(false);
-                          pendingTimerRef.current = null;
-                        }, 8000);
-                      } catch (e) {
-                        console.error('[retry] failed', e);
-                        Alert.alert('Retry failed', 'Please try again.');
-                      } finally {
-                        startingAttemptRef.current = false;
+                        const ms = (att?.remainingMs ?? 0) || (timerSecEff > 0 ? timerSecEff * 1000 : 0);
+                        if (ms > 0) setLocalRemainingMs(ms);
+                      } else {
+                        const effective = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
+                        if (effective > 0) setLocalRemainingMs(effective * 1000);
                       }
-                    }}
-                    style={tw`px-4 py-2 rounded-xl bg-indigo-600`}
-                  >
-                    <Text style={tw`text-white font-semibold`}>Retry quiz</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={tw`mt-3`}>
-                  <TouchableOpacity
-                    onPress={async () => {
+
+                      setForceUnlock(true);
+                      markActive();
                       setRetakeMode(true);
                       setWorkingAnswers({});
-                      markActive();
-
-                      if (displayTimerSec > 0) setLocalRemainingMs(displayTimerSec * 1000);
 
                       const retryRequested = Number(displayQuestions || 0);
                       const minOptsRetry = manualLessonsSelected ? {} : { lessonIndex: currentIdx };
@@ -1593,7 +1692,7 @@ useEffect(() => {
                       const passTotalLessonsRetry = manualLessonsSelected ? Number(safeLessons) : undefined;
 
                       await generateQuizNow?.(
-                        retryQ,
+                        isOrgFlow && assignmentId && Number.isFinite(orgMeta?.quizSize) ? undefined : retryQ,
                         undefined,
                         undefined,
                         passTotalLessonsRetry,
@@ -1611,18 +1710,28 @@ useEffect(() => {
                         setPendingQuizGen(false);
                         pendingTimerRef.current = null;
                       }, 8000);
-                    }}
-                    style={tw`px-4 py-2 rounded-xl bg-indigo-600`}
-                  >
-                    <Text style={tw`text-white font-semibold`}>Retry quiz</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+                    } catch (e) {
+                      console.error('[retry] failed', e);
+                      Alert.alert('Retry failed', 'Please try again.');
+                    } finally {
+                      startingAttemptRef.current = false;
+                    }
+                  }}
+                  style={tw`px-4 py-2 rounded-xl bg-indigo-600`}
+                >
+                  <Text style={tw`text-white font-semibold`}>Retry quiz</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          )}
+          ) : null}
 
           {/* Math keypad (native modal) */}
-          <Modal visible={mathOpen && enforcedQuizType === 'short' && !isLocked} transparent animationType="fade" onRequestClose={() => setMathOpen(false)}>
+          <Modal
+            visible={mathOpen && enforcedQuizType === 'short' && !isLocked}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setMathOpen(false)}
+          >
             <View style={tw`flex-1 justify-end bg-black/40`}>
               <View style={tw`bg-slate-900 rounded-t-2xl border border-slate-800 p-3`}>
                 <View style={tw`flex-row items-center justify-between mb-2`}>
@@ -1633,7 +1742,9 @@ useEffect(() => {
                 </View>
 
                 <View style={tw`flex-row flex-wrap -m-1`}>
-                  {['π','×','÷','±','√','^','≤','≥','≈','∞','°','·','θ','α','β','γ','µ','∑','∫','≠','→','←','↔','∈','∉','∩','∪','∧','∨','⊂','⊆'].map((k) => (
+                  {[
+                    'π','×','÷','±','√','^','≤','≥','≈','∞','°','·','θ','α','β','γ','µ','∑','∫','≠','→','←','↔','∈','∉','∩','∪','∧','∨','⊂','⊆',
+                  ].map((k) => (
                     <TouchableOpacity key={k} onPress={() => insertSymbol(k)} style={tw`m-1 px-3 py-2 rounded-md bg-slate-800`}>
                       <Text style={tw`text-white text-base`}>{k}</Text>
                     </TouchableOpacity>
@@ -1649,9 +1760,7 @@ useEffect(() => {
                   </TouchableOpacity>
                 </View>
 
-                <Text style={tw`text-white/60 text-[11px] mt-2`}>
-                  Tip: focus a short-answer box first, then tap symbols.
-                </Text>
+                <Text style={tw`text-white/60 text-[11px] mt-2`}>Tip: focus a short-answer box first, then tap symbols.</Text>
               </View>
             </View>
           </Modal>
@@ -1671,14 +1780,22 @@ useEffect(() => {
       ) : null}
 
       {/* Payments (non-org) */}
-      {!isOrgFlowFlag && (
+      {!isOrgFlowFlag ? (
         <PaymentWidget
           isOpen={paymentOpen}
-          onClose={() => setPaymentOpen(false)}
+          onClose={async () => {
+            setPaymentOpen(false);
+            try {
+              await refreshUserDetails();
+            } catch {}
+            try {
+              await checkPaymentStatus();
+            } catch {}
+          }}
           title="Unlock Certificate"
           showTutorPreview={false}
         />
-      )}
+      ) : null}
     </>
   );
 };

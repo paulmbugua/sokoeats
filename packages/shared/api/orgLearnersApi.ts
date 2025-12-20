@@ -103,7 +103,7 @@ export async function createOrgLearner(
   backendUrl: string,
   token: string,
   orgId: string,
-  payload: CreateOrgLearnerPayload,
+  payload: CreateOrgLearnerPayload
 ): Promise<CreateOrgLearnerResponse> {
   const base = backendUrl.replace(/\/+$/, '');
 
@@ -128,7 +128,7 @@ export async function createOrgLearner(
       headers: {
         Authorization: `Bearer ${token}`,
       },
-    },
+    }
   );
 
   return res.data;
@@ -140,7 +140,7 @@ export async function uploadOrgLearnersCsv(
   backendUrl: string,
   token: string,
   orgId: string,
-  file: File,
+  file: File
 ): Promise<BulkCreateOrgLearnersCsvResponse> {
   const base = backendUrl.replace(/\/+$/, '');
   const fd = new FormData();
@@ -154,15 +154,13 @@ export async function uploadOrgLearnersCsv(
         Authorization: `Bearer ${token}`,
         'Content-Type': 'multipart/form-data',
       },
-    },
+    }
   );
 
   const data = res.data;
 
   // Approximate "reused" as learners where tempPassword is null/empty
-  const reusedCount = (data.created || []).filter(
-    (c) => !c.tempPassword,
-  ).length;
+  const reusedCount = (data.created || []).filter((c) => !c.tempPassword).length;
 
   return {
     ok: data.ok,
@@ -180,7 +178,7 @@ export async function setOrgLearnerPhotoByAdmission(
   backendUrl: string,
   token: string,
   orgId: string,
-  payload: SetOrgLearnerPhotoPayload,
+  payload: SetOrgLearnerPhotoPayload
 ): Promise<SetOrgLearnerPhotoResponse> {
   const base = backendUrl.replace(/\/+$/, '');
 
@@ -201,7 +199,7 @@ export async function setOrgLearnerPhotoByAdmission(
       headers: {
         Authorization: `Bearer ${token}`,
       },
-    },
+    }
   );
 
   return res.data;

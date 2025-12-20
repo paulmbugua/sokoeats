@@ -1,13 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import {
-  faPaperPlane,
-  faSmile,
-  faBars,
-  faTimes,
-  faHome,
-} from '@fortawesome/free-solid-svg-icons';
+import { faPaperPlane, faSmile, faBars, faTimes, faHome } from '@fortawesome/free-solid-svg-icons';
 import { useMessages } from '@mytutorapp/shared/hooks';
 import type { ChatMessage } from '@mytutorapp/shared/types/ShopContextTypes';
 import chatPlaceholder from '../assets/chat.png';
@@ -23,7 +17,7 @@ const Messages: React.FC = () => {
     setSidebarOpen,
     openChat,
     handleSendMessage,
-    handleScroll,          // keep only the scroll handler
+    handleScroll, // keep only the scroll handler
     chats,
     myProfile,
     messageContainerRef,
@@ -38,12 +32,10 @@ const Messages: React.FC = () => {
 
   // Auto-open chat if ?studentId=...
   useEffect(() => {
-    const params    = new URLSearchParams(location.search);
+    const params = new URLSearchParams(location.search);
     const studentId = params.get('studentId');
     if (studentId && !activeChat && chats.length > 0) {
-      const chatToOpen = chats.find(
-        (c) => String(c.recipientId) === studentId
-      );
+      const chatToOpen = chats.find((c) => String(c.recipientId) === studentId);
       if (chatToOpen) openChat(chatToOpen);
     }
   }, [location.search, chats, activeChat, openChat]);
@@ -137,9 +129,11 @@ const Messages: React.FC = () => {
                     onClick={() => openChat(chatItem)}
                     className={`
                       p-3 rounded-lg cursor-pointer transition
-                      ${hasUnread
-                        ? 'bg-softPink/10 ring-1 ring-softPink/30'
-                        : 'bg-white dark:bg-darkBg hover:bg-softGray/70 dark:hover:bg-darkCard/70'}
+                      ${
+                        hasUnread
+                          ? 'bg-softPink/10 ring-1 ring-softPink/30'
+                          : 'bg-white dark:bg-darkBg hover:bg-softGray/70 dark:hover:bg-darkCard/70'
+                      }
                       border border-[#f1f5f9] dark:border-darkBg
                     `}
                   >
@@ -248,25 +242,23 @@ const Messages: React.FC = () => {
               <div className="space-y-3">
                 {convertedMessages
                   .slice()
-                  .sort(
-                    (a, b) =>
-                      new Date(a.timestamp).getTime() -
-                      new Date(b.timestamp).getTime()
-                  )
+                  .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                   .map((msg) => {
                     const isSender = String(msg.sender) === String(myProfile.id);
                     const displayName = isSender ? 'You' : msg.sender_name;
                     return (
                       <div
-                        key={msg.id}  // use msg.id as the React key
+                        key={msg.id} // use msg.id as the React key
                         className={`flex ${isSender ? 'justify-end' : 'justify-start'}`}
                       >
                         <div
                           className={`
                             px-4 py-2 rounded-2xl max-w-xs shadow
-                            ${isSender
-                              ? 'bg-primary text-white'
-                              : 'bg-softGray text-darkText dark:bg-darkCard dark:text-darkTextPrimary'}
+                            ${
+                              isSender
+                                ? 'bg-primary text-white'
+                                : 'bg-softGray text-darkText dark:bg-darkCard dark:text-darkTextPrimary'
+                            }
                           `}
                         >
                           {!isSender && displayName && (

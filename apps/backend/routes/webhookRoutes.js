@@ -24,6 +24,10 @@ router.post('/webhook/paystack', express.json(), handlePaystackWebhook);
 router.post('/webhook/zoom', express.json(), handleZoomWebhook);
 
 router.get('/orgs/:orgId/webhooks/secret', requireAuth, getWebhookSecretMeta);
-router.post('/orgs/:orgId/webhooks/secret', requireAuth, createOrRotateWebhookSecret);
+router.post(
+  '/orgs/:orgId/webhooks/secret',
+  requireAuth,
+  createOrRotateWebhookSecret,
+);
 
 export default router;

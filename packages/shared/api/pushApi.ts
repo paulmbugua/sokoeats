@@ -3,7 +3,7 @@ export async function registerPushTokenApi(
   authToken: string,
   expoPushToken: string,
   platform: string,
-  deviceId?: string | null,
+  deviceId?: string | null
 ) {
   const res = await fetch(`${backendUrl}/api/push/register`, {
     method: 'POST',

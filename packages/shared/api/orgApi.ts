@@ -17,8 +17,7 @@ function authHeaders(token: string) {
 }
 
 function clientPlatformHeader() {
-  const isNative =
-    typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative';
+  const isNative = typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative';
   return { 'x-client-platform': isNative ? 'native' : 'web' };
 }
 
@@ -99,12 +98,8 @@ export type OrgCurrency = 'USD' | 'KES';
 
 export type OrgPricingTable = {
   currency: OrgCurrency;
-  tiers: Record<
-    OrgTierKey,
-    { seats: number; monthly: number | null; yearly: number | null }
-  >;
+  tiers: Record<OrgTierKey, { seats: number; monthly: number | null; yearly: number | null }>;
 };
-
 
 export type OrgAssignmentsResponse = {
   ok: boolean;
@@ -182,7 +177,6 @@ export type OrgAnalyticsResponse = {
   meta?: Record<string, any> | null;
 };
 
-
 export type CreateAssignmentBody = {
   courseId: string;
   title_override?: string | null;
@@ -231,28 +225,21 @@ export type OrgSubscribeInitResp = {
     cycle: string;
   };
   checkoutRequestId?: string; // MPESA
-  authorizationUrl?: string;  // PAYSTACK
-  reference?: string;         // PAYSTACK
+  authorizationUrl?: string; // PAYSTACK
+  reference?: string; // PAYSTACK
 };
-
 
 /* ─────────────────────────────────────────────────────────
  * Me / Org basics
  * ───────────────────────────────────────────────────────── */
-export async function fetchCurrentUser(
-  backendUrl: string,
-  token: string
-): Promise<CurrentUser> {
+export async function fetchCurrentUser(backendUrl: string, token: string): Promise<CurrentUser> {
   const url = `${baseUrl(backendUrl)}/api/user/me`;
   const res = await axios.get<CurrentUser>(url, { headers: authHeaders(token) });
   return res.data;
 }
 
 /** Resolve an assignment invite (public) */
-export async function resolveOrgInvite(
-  backendUrl: string,
-  code: string
-): Promise<OrgInviteInfo> {
+export async function resolveOrgInvite(backendUrl: string, code: string): Promise<OrgInviteInfo> {
   const url = `${baseUrl(backendUrl)}/api/orgs/invite/${encodeURIComponent(code)}`;
   const res = await axios.get<OrgInviteInfo>(url);
   return res.data;
@@ -265,11 +252,7 @@ export async function acceptOrgInvite(
   code: string
 ): Promise<AcceptInviteResp> {
   const url = `${baseUrl(backendUrl)}/api/orgs/accept-assignment`;
-  const res = await axios.post<AcceptInviteResp>(
-    url,
-    { code },
-    { headers: authHeaders(token) }
-  );
+  const res = await axios.post<AcceptInviteResp>(url, { code }, { headers: authHeaders(token) });
   return res.data;
 }
 
@@ -343,9 +326,7 @@ export async function sendOrgReportTest(
   orgId: string,
   to?: string
 ): Promise<{ ok: boolean }> {
-  const url = `${baseUrl(
-    backendUrl
-  )}/api/orgs/${encodeURIComponent(orgId)}/reports/test-send`;
+  const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/reports/test-send`;
   const res = await axios.post(url, { to }, { headers: authHeaders(token) });
   return res.data;
 }
@@ -358,28 +339,17 @@ export async function sendOrgReportRow(
   bucket: string,
   period: 'month' | 'term' | 'year'
 ): Promise<{ ok: boolean }> {
-  const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(
-    orgId
-  )}/reports/send`;
-  const res = await axios.post(
-    url,
-    { bucket, period },
-    { headers: authHeaders(token) }
-  );
+  const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/reports/send`;
+  const res = await axios.post(url, { bucket, period }, { headers: authHeaders(token) });
   return res.data;
 }
 
 /** Primary org for current user */
-export async function getMyOrg(
-  backendUrl: string,
-  token: string
-): Promise<OrgResp> {
+export async function getMyOrg(backendUrl: string, token: string): Promise<OrgResp> {
   const url = `${baseUrl(backendUrl)}/api/orgs/mine`;
   const res = await axios.get(url, { headers: authHeaders(token) });
   const data = res.data;
-  return (data && typeof data === 'object' && 'org' in data
-    ? (data as any).org
-    : data) as OrgResp;
+  return (data && typeof data === 'object' && 'org' in data ? (data as any).org : data) as OrgResp;
 }
 
 export async function bootstrapOrg(backendUrl: string, token: string) {
@@ -392,15 +362,11 @@ export async function getMyOrgOrBootstrap(backendUrl: string, token: string) {
   try {
     const url = `${baseUrl(backendUrl)}/api/orgs/mine`;
     const { data } = await axios.get(url, { headers: authHeaders(token) });
-    return (data && typeof data === 'object' && 'org' in data)
-      ? (data as any).org
-      : data;
+    return data && typeof data === 'object' && 'org' in data ? (data as any).org : data;
   } catch (e: any) {
     if (e?.response?.status === 404) {
       const boot = await bootstrapOrg(backendUrl, token);
-      return (boot && typeof boot === 'object' && 'org' in boot)
-        ? (boot as any).org
-        : boot;
+      return boot && typeof boot === 'object' && 'org' in boot ? (boot as any).org : boot;
     }
     throw e;
   }
@@ -425,7 +391,6 @@ export async function initOrgSubscription(
   return res.data;
 }
 
-
 export function confirmOrgSubscription(
   backendUrl: string,
   token: string,
@@ -447,11 +412,9 @@ export async function confirmOrgSubscription(
   const url = `${baseUrl(backendUrl)}/api/orgs/subscriptions/${encodeURIComponent(
     paymentId
   )}/confirm`;
-  const res = await axios.post(
-    url,
-    provider_reference ? { provider_reference } : {},
-    { headers: authHeaders(token) }
-  );
+  const res = await axios.post(url, provider_reference ? { provider_reference } : {}, {
+    headers: authHeaders(token),
+  });
   return res.data;
 }
 
@@ -479,11 +442,7 @@ export async function getOrgLearnersProgress(
 /* ─────────────────────────────────────────────────────────
  * Roster & Membership Invites
  * ───────────────────────────────────────────────────────── */
-export async function getOrgRoster(
-  backendUrl: string,
-  token: string,
-  orgId: string
-) {
+export async function getOrgRoster(backendUrl: string, token: string, orgId: string) {
   const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/roster`;
   const res = await axios.get(url, { headers: authHeaders(token) });
   return res.data as {
@@ -499,20 +458,14 @@ export async function createOrgMembershipInvite(
   orgId: string,
   payload: { role: 'instructor' | 'learner'; email?: string; expiresSec?: number }
 ) {
-  const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(
-    orgId
-  )}/invites`;
+  const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/invites`;
   const res = await axios.post(url, payload, { headers: authHeaders(token) });
   // { ok, invite_code, invite_url }
   return res.data as { ok: boolean; invite_code: string; invite_url: string };
 }
 
 // ACCEPT **membership** invite → /accept-membership (updated)
-export async function acceptOrgMembershipInvite(
-  backendUrl: string,
-  token: string,
-  code: string
-) {
+export async function acceptOrgMembershipInvite(backendUrl: string, token: string, code: string) {
   const url = `${baseUrl(backendUrl)}/api/orgs/accept-membership`;
   const res = await axios.post(url, { code }, { headers: authHeaders(token) });
   // { ok, orgId, role }
@@ -541,9 +494,7 @@ export async function removeOrgMember(
 ) {
   const url = `${baseUrl(
     backendUrl
-  )}/api/orgs/${encodeURIComponent(orgId)}/members/${encodeURIComponent(
-    String(userId)
-  )}`;
+  )}/api/orgs/${encodeURIComponent(orgId)}/members/${encodeURIComponent(String(userId))}`;
   const res = await axios.delete(url, { headers: authHeaders(token) });
   return res.data as { ok: boolean };
 }
@@ -559,9 +510,7 @@ export async function getOrgAssignments(
     q?: string;
   }
 ): Promise<OrgAssignmentsResponse> {
-  const url = new URL(
-    `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/assignments`
-  );
+  const url = new URL(`${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/assignments`);
 
   if (opts?.view) {
     url.searchParams.set('view', String(opts.view));
@@ -591,9 +540,7 @@ export async function getOrgAssignmentsForLearner(
     subjectKey?: string;
   }
 ): Promise<OrgAssignmentsResponse> {
-  const url = new URL(
-    `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/assignments`
-  );
+  const url = new URL(`${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/assignments`);
 
   // learner-only view
   url.searchParams.set('view', 'learner');
@@ -675,7 +622,7 @@ export async function saveOrgLearnerAttendance(
     behaviorRating: number | null;
     punctualityRating: number | null;
     teacherComment: string | null;
-  },
+  }
 ) {
   const url = `${backendUrl}/api/orgs/${orgId}/learners/${learnerId}/attendance`;
 
@@ -721,19 +668,13 @@ export async function createOrgLegacyAssignment(
   orgId: string,
   body: OrgLegacyAssignmentBody
 ): Promise<OrgAssignmentRow> {
-  const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(
-    orgId
-  )}/assignments/legacy`;
+  const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/assignments/legacy`;
 
   console.log('[orgApi:createOrgLegacyAssignment] request', { url, body });
 
-  const res = await axios.post<{ ok: boolean; assignment: OrgAssignmentRow }>(
-    url,
-    body,
-    {
-      headers: authHeaders(token),
-    }
-  );
+  const res = await axios.post<{ ok: boolean; assignment: OrgAssignmentRow }>(url, body, {
+    headers: authHeaders(token),
+  });
 
   console.log('[orgApi:createOrgLegacyAssignment] response', {
     status: res.status,

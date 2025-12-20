@@ -71,8 +71,6 @@ export interface ShopContextValue {
   refreshProfile: () => Promise<void>;
   refreshUserDetails: () => Promise<void>;
   role: UserRole; // <-- now includes admin/superadmin
-  
-  
 }
 
 /** What ChatContext provides (only chat/socket pieces) */

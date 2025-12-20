@@ -12,9 +12,7 @@ type SectionProps = {
 };
 
 const Card: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <View style={tw`rounded-2xl border border-[#182430] bg-[#0f1821] p-4`} >
-    {children}
-  </View>
+  <View style={tw`rounded-2xl border border-[#182430] bg-[#0f1821] p-4`}>{children}</View>
 );
 
 const Section: React.FC<SectionProps> = ({ title, items }) => (

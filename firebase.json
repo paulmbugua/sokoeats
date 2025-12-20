@@ -4,9 +4,21 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [{ "source": "**", "destination": "/index.html" }],
     "redirects": [
-      { "source": "https://www.daybreaklearner.com/**", "destination": "https://daybreaklearner.com", "type": 301 },
-      { "source": "https://mytutorapp-d3c91.web.app/**", "destination": "https://daybreaklearner.com", "type": 301 },
-      { "source": "https://mytutorapp-d3c91.firebaseapp.com/**", "destination": "https://daybreaklearner.com", "type": 301 }
+      {
+        "source": "https://www.daybreaklearner.com/**",
+        "destination": "https://daybreaklearner.com",
+        "type": 301
+      },
+      {
+        "source": "https://mytutorapp-d3c91.web.app/**",
+        "destination": "https://daybreaklearner.com",
+        "type": 301
+      },
+      {
+        "source": "https://mytutorapp-d3c91.firebaseapp.com/**",
+        "destination": "https://daybreaklearner.com",
+        "type": 301
+      }
     ],
     "headers": [
       {

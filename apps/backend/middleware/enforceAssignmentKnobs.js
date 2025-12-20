@@ -1,9 +1,13 @@
-// enforceAssignmentKnobs.js
+// apps/backend/middleware/enforceAssignmentKnobs.js
 import pool from '../config/db.js';
 
 function parseJSON(v) {
   if (!v) return null;
-  try { return typeof v === 'object' ? v : JSON.parse(v); } catch { return null; }
+  try {
+    return typeof v === 'object' ? v : JSON.parse(v);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -14,9 +18,7 @@ function parseJSON(v) {
  */
 export default async function enforceAssignmentKnobs(req, res, next) {
   const assignmentId =
-    req.body?.assignmentId ||
-    req.query?.assignmentId ||
-    req.get('x-assignment-id');
+    req.body?.assignmentId || req.query?.assignmentId || req.get('x-assignment-id');
 
   if (!assignmentId) return next();
 
@@ -52,26 +54,36 @@ export default async function enforceAssignmentKnobs(req, res, next) {
     const locked = parseJSON(a.locked_config) || {};
 
     // 🔒 Always force server truth
-    req.body.courseId      = String(a.course_id);
-    if (typeof locked.minutes      === 'number') req.body.minutes      = locked.minutes;
-    if (typeof locked.totalLessons === 'number') req.body.totalLessons = locked.totalLessons;
-    if (typeof locked.quizSize     === 'number') {
-      // Different endpoints name this differently; cover common keys:
+    req.body.courseId = String(a.course_id);
+
+    // minutes/targetMinutes (cover both FE naming + controller naming)
+    if (typeof locked.minutes === 'number') {
+      req.body.minutes = locked.minutes;
+      req.body.targetMinutes = locked.minutes; // IMPORTANT
+    }
+
+    // lessons
+    if (typeof locked.totalLessons === 'number') {
+      req.body.totalLessons = locked.totalLessons;
+    }
+
+    // quiz size (cover common keys)
+    if (typeof locked.quizSize === 'number') {
       req.body.quizSize = locked.quizSize;
-      req.body.count    = locked.quizSize;   // (generateQuiz often accepts `count`)
+      req.body.count = locked.quizSize;
+      req.body.numQuestions = locked.quizSize; // IMPORTANT
     }
 
     // Optional: pass marks & timer if your downstream needs them
     res.locals.assignment = {
       orgId: a.org_id,
       passMark: a.pass_mark ?? a.default_pass_mark ?? 70,
-      timerS:  a.timer_s   ?? a.quiz_time_limit_s ?? 900,
+      timerS: a.timer_s ?? a.quiz_time_limit_s ?? 900,
       lockedConfig: locked,
     };
 
     return next();
   } catch (e) {
-    
     console.error('[enforceAssignmentKnobs] failed', e);
     return res.status(500).json({ message: 'Internal error' });
   }

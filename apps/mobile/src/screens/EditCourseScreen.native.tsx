@@ -1,12 +1,6 @@
 // apps/mobile/src/screens/EditCourse.native.tsx
 
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-  useRef,
-  useCallback,
-} from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -24,11 +18,7 @@ import tw from '../../tailwind';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useCourses } from '@mytutorapp/shared/hooks/useCourses';
-import type {
-  Course,
-  CoursePayload,
-  SyllabusItem,
-} from '@mytutorapp/shared/types';
+import type { Course, CoursePayload, SyllabusItem } from '@mytutorapp/shared/types';
 import SelectField, { type Option } from './SelectField.native';
 
 /* ---------- helpers ---------- */
@@ -38,8 +28,7 @@ const LEVEL_OPTIONS: Option[] = levels.map((l) => ({
   value: l,
 }));
 
-const clampPrice = (n: number) =>
-  Number.isFinite(n) && n >= 0 ? Number(n.toFixed(2)) : 0;
+const clampPrice = (n: number) => (Number.isFinite(n) && n >= 0 ? Number(n.toFixed(2)) : 0);
 
 const parseWeeks = (input: string): number => {
   const m = String(input || '').match(/(\d{1,2})/);
@@ -51,10 +40,14 @@ const normalizeSyllabus = (list: SyllabusItem[] = []): SyllabusItem[] =>
   list
     .filter(
       (w) =>
-        (w.topic?.trim() || '') ||
-        (w.assignment?.trim() || '') ||
-        (w.videoUrl?.trim() || '') ||
-        (w.notesUrl?.trim() || ''),
+        w.topic?.trim() ||
+        '' ||
+        w.assignment?.trim() ||
+        '' ||
+        w.videoUrl?.trim() ||
+        '' ||
+        w.notesUrl?.trim() ||
+        ''
     )
     .map((w, i) => ({ ...w, week: i + 1 }));
 
@@ -87,11 +80,7 @@ function CoursesList({
       const title = (c.title ?? '').toLowerCase();
       const level = (c.level ?? '').toLowerCase();
       const duration = (c.duration ?? '').toLowerCase();
-      return (
-        title.includes(qq) ||
-        level.includes(qq) ||
-        duration.includes(qq)
-      );
+      return title.includes(qq) || level.includes(qq) || duration.includes(qq);
     });
   }, [q, courses]);
 
@@ -106,21 +95,13 @@ function CoursesList({
         />
       </View>
 
-      {loading && (
-        <Text style={tw`text-sm text-[#49739c]`}>
-          Loading your courses…
-        </Text>
-      )}
-      {!loading && !!error && (
-        <Text style={tw`text-sm text-red-600`}>{error}</Text>
-      )}
+      {loading && <Text style={tw`text-sm text-[#49739c]`}>Loading your courses…</Text>}
+      {!loading && !!error && <Text style={tw`text-sm text-red-600`}>{error}</Text>}
 
       {!loading && !error && filtered.length === 0 && (
         <View style={tw`rounded-xl border border-slate-200 p-4`}>
           <Text style={tw`font-medium`}>No courses yet.</Text>
-          <Text style={tw`text-sm text-[#49739c] mt-1`}>
-            Create your first course.
-          </Text>
+          <Text style={tw`text-sm text-[#49739c] mt-1`}>Create your first course.</Text>
         </View>
       )}
 
@@ -132,9 +113,7 @@ function CoursesList({
               key={c.id}
               style={tw.style(
                 'rounded-xl border px-3 py-2 flex-row items-start gap-3',
-                active
-                  ? 'border-blue-300 bg-[#e7edf4]'
-                  : 'border-slate-200 bg-white',
+                active ? 'border-blue-300 bg-[#e7edf4]' : 'border-slate-200 bg-white'
               )}
             >
               <TouchableOpacity
@@ -216,8 +195,7 @@ const EditCourseScreen: React.FC = () => {
     (async () => {
       try {
         const list = await fetchMyCourses();
-        if (!ignore)
-          setSelectedId((prev) => prev ?? (list[0]?.id ?? null));
+        if (!ignore) setSelectedId((prev) => prev ?? list[0]?.id ?? null);
       } catch {
         // ignore
       }
@@ -256,18 +234,13 @@ const EditCourseScreen: React.FC = () => {
     setOpenWeeks(ow);
   }, [selectedCourse]);
 
-  const syllabusWeeks = useMemo(
-    () => parseWeeks(String(form.duration || '')),
-    [form.duration],
-  );
+  const syllabusWeeks = useMemo(() => parseWeeks(String(form.duration || '')), [form.duration]);
 
   /* keep syllabus array length in sync if duration changes */
   useEffect(() => {
     setForm((prev) => {
       const current = Array.isArray(prev.syllabus) ? prev.syllabus : [];
-      const trimmed = current
-        .slice(0, syllabusWeeks)
-        .map((w, i) => ({ ...w, week: i + 1 }));
+      const trimmed = current.slice(0, syllabusWeeks).map((w, i) => ({ ...w, week: i + 1 }));
       const next = [...trimmed];
       for (let i = trimmed.length; i < syllabusWeeks; i++) {
         next.push({ week: i + 1, topic: '', assignment: '' });
@@ -283,16 +256,10 @@ const EditCourseScreen: React.FC = () => {
     }));
   };
 
-  const onSyllabusChange = (
-    i: number,
-    field: keyof SyllabusItem,
-    value: string,
-  ) => {
+  const onSyllabusChange = (i: number, field: keyof SyllabusItem, value: string) => {
     setForm((prev) => {
       const base = Array.isArray(prev.syllabus) ? prev.syllabus : [];
-      const next = base.map((w, idx) =>
-        idx === i ? { ...w, [field]: value } : w,
-      );
+      const next = base.map((w, idx) => (idx === i ? { ...w, [field]: value } : w));
       return { ...prev, syllabus: next };
     });
   };
@@ -315,9 +282,7 @@ const EditCourseScreen: React.FC = () => {
         duration: (form.duration ?? '').trim(),
         price: clampPrice(Number(form.price ?? 0)),
         prerequisites: (form.prerequisites ?? '').trim(),
-        syllabus: normalizeSyllabus(
-          (form.syllabus as SyllabusItem[]) ?? [],
-        ),
+        syllabus: normalizeSyllabus((form.syllabus as SyllabusItem[]) ?? []),
       };
       await editCourse(selectedId, patch);
       Alert.alert('Saved', 'Your changes have been saved.');
@@ -356,9 +321,7 @@ const EditCourseScreen: React.FC = () => {
     <SafeAreaView style={tw`flex-1 bg-slate-50`}>
       {/* Header */}
       <View style={tw`border-b border-slate-200 bg-white`}>
-        <View
-          style={tw`px-4 py-3 flex-row items-center justify-between`}
-        >
+        <View style={tw`px-4 py-3 flex-row items-center justify-between`}>
           <View style={tw`flex-row items-center`}>
             <TouchableOpacity
               onPress={() => navigation.goBack()}
@@ -389,12 +352,10 @@ const EditCourseScreen: React.FC = () => {
                 'hidden',
                 'sm:inline-flex',
                 'rounded-xl px-4 h-10 justify-center',
-                canSave && !saving ? 'bg-blue-600' : 'bg-slate-400',
+                canSave && !saving ? 'bg-blue-600' : 'bg-slate-400'
               )}
             >
-              <Text style={tw`text-white font-semibold`}>
-                {saving ? 'Saving…' : 'Save'}
-              </Text>
+              <Text style={tw`text-white font-semibold`}>{saving ? 'Saving…' : 'Save'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -402,14 +363,9 @@ const EditCourseScreen: React.FC = () => {
 
       {/* Body */}
       <KeyboardAvoidingKeyboardWrapper>
-        <ScrollView
-          ref={editorScrollRef}
-          contentContainerStyle={tw`px-4 py-4 gap-y-4`}
-        >
+        <ScrollView ref={editorScrollRef} contentContainerStyle={tw`px-4 py-4 gap-y-4`}>
           {!selectedId && (
-            <View
-              style={tw`rounded-2xl border border-slate-200 bg-white p-6`}
-            >
+            <View style={tw`rounded-2xl border border-slate-200 bg-white p-6`}>
               <Text>Select a course to edit.</Text>
               <View style={tw`mt-3`}>
                 <TouchableOpacity
@@ -425,12 +381,8 @@ const EditCourseScreen: React.FC = () => {
           {selectedId && (
             <>
               {/* Basics */}
-              <View
-                style={tw`rounded-2xl border border-slate-200 bg-white p-4`}
-              >
-                <View
-                  style={tw`flex-row items-center justify-between mb-3`}
-                >
+              <View style={tw`rounded-2xl border border-slate-200 bg-white p-4`}>
+                <View style={tw`flex-row items-center justify-between mb-3`}>
                   <Text style={tw`text-lg font-bold`}>Basics</Text>
                   <View style={tw`flex-row items-center`}>
                     <TouchableOpacity
@@ -438,25 +390,17 @@ const EditCourseScreen: React.FC = () => {
                       disabled={loading || saving}
                       style={tw`rounded-xl bg-red-600/90 px-3 h-10 justify-center mr-2`}
                     >
-                      <Text
-                        style={tw`text-white text-sm font-semibold`}
-                      >
-                        Delete
-                      </Text>
+                      <Text style={tw`text-white text-sm font-semibold`}>Delete</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={doSave}
                       disabled={!canSave || loading || saving}
                       style={tw.style(
                         'rounded-xl px-4 h-10 justify-center',
-                        canSave && !saving
-                          ? 'bg-blue-600'
-                          : 'bg-slate-400',
+                        canSave && !saving ? 'bg-blue-600' : 'bg-slate-400'
                       )}
                     >
-                      <Text
-                        style={tw`text-white text-sm font-semibold`}
-                      >
+                      <Text style={tw`text-white text-sm font-semibold`}>
                         {saving ? 'Saving…' : 'Save changes'}
                       </Text>
                     </TouchableOpacity>
@@ -475,14 +419,10 @@ const EditCourseScreen: React.FC = () => {
                   </View>
 
                   <View>
-                    <Text style={tw`text-sm font-medium`}>
-                      Description
-                    </Text>
+                    <Text style={tw`text-sm font-medium`}>Description</Text>
                     <TextInput
                       value={form.description ?? ''}
-                      onChangeText={(t) =>
-                        onChange('description', t)
-                      }
+                      onChangeText={(t) => onChange('description', t)}
                       placeholder="What will learners achieve?"
                       multiline
                       style={tw`mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 min-h-28`}
@@ -498,9 +438,7 @@ const EditCourseScreen: React.FC = () => {
                       >
                         <SelectField
                           value={(form.level as string) || 'Beginner'}
-                          onChange={(v) =>
-                            onChange('level', String(v))
-                          }
+                          onChange={(v) => onChange('level', String(v))}
                           options={LEVEL_OPTIONS}
                           placeholder="Select level…"
                           modalTitle="Select course level"
@@ -510,37 +448,25 @@ const EditCourseScreen: React.FC = () => {
 
                     {/* Duration */}
                     <View style={tw`mb-4`}>
-                      <Text style={tw`text-sm font-medium`}>
-                        Duration
-                      </Text>
+                      <Text style={tw`text-sm font-medium`}>Duration</Text>
                       <TextInput
                         value={String(form.duration ?? '')}
-                        onChangeText={(t) =>
-                          onChange('duration', t)
-                        }
+                        onChangeText={(t) => onChange('duration', t)}
                         placeholder="e.g., 8 weeks"
                         style={tw`mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3`}
                       />
-                      <Text
-                        style={tw`text-xs text-slate-500 mt-1`}
-                      >
+                      <Text style={tw`text-xs text-slate-500 mt-1`}>
                         Weeks auto-size syllabus. Currently:{' '}
-                        <Text style={tw`font-bold`}>
-                          {syllabusWeeks}
-                        </Text>
+                        <Text style={tw`font-bold`}>{syllabusWeeks}</Text>
                       </Text>
                     </View>
 
                     {/* Price */}
                     <View>
-                      <Text style={tw`text-sm font-medium`}>
-                        Price (USD)
-                      </Text>
+                      <Text style={tw`text-sm font-medium`}>Price (USD)</Text>
                       <TextInput
                         value={String(form.price ?? 0)}
-                        onChangeText={(t) =>
-                          onChange('price', t)
-                        }
+                        onChangeText={(t) => onChange('price', t)}
                         keyboardType="decimal-pad"
                         style={tw`mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3`}
                       />
@@ -548,14 +474,10 @@ const EditCourseScreen: React.FC = () => {
                   </View>
 
                   <View>
-                    <Text style={tw`text-sm font-medium`}>
-                      Prerequisites (optional)
-                    </Text>
+                    <Text style={tw`text-sm font-medium`}>Prerequisites (optional)</Text>
                     <TextInput
                       value={form.prerequisites ?? ''}
-                      onChangeText={(t) =>
-                        onChange('prerequisites', t)
-                      }
+                      onChangeText={(t) => onChange('prerequisites', t)}
                       placeholder="What should learners know first?"
                       multiline
                       style={tw`mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 min-h-20`}
@@ -565,12 +487,8 @@ const EditCourseScreen: React.FC = () => {
               </View>
 
               {/* Syllabus */}
-              <View
-                style={tw`rounded-2xl border border-slate-200 bg-white p-4`}
-              >
-                <View
-                  style={tw`flex-row items-center justify-between mb-2`}
-                >
+              <View style={tw`rounded-2xl border border-slate-200 bg-white p-4`}>
+                <View style={tw`flex-row items-center justify-between mb-2`}>
                   <Text style={tw`text-lg font-bold`}>Syllabus</Text>
                   <Text style={tw`text-sm text-slate-500`}>
                     Showing {syllabusWeeks} week
@@ -582,10 +500,7 @@ const EditCourseScreen: React.FC = () => {
                   {(form.syllabus ?? []).map((w, i) => {
                     const isOpen = !!openWeeks[i];
                     return (
-                      <View
-                        key={i}
-                        style={tw`rounded-xl border border-slate-200 bg-white`}
-                      >
+                      <View key={i} style={tw`rounded-xl border border-slate-200 bg-white`}>
                         <TouchableOpacity
                           onPress={() =>
                             setOpenWeeks((s) => ({
@@ -595,54 +510,30 @@ const EditCourseScreen: React.FC = () => {
                           }
                           style={tw`px-4 py-3 flex-row items-center justify-between`}
                         >
-                          <View
-                            style={tw`flex-row items-center gap-2`}
-                          >
+                          <View style={tw`flex-row items-center gap-2`}>
                             <View
                               style={tw`h-6 w-6 rounded-lg bg-blue-600/10 items-center justify-center`}
                             >
-                              <Text
-                                style={tw`text-blue-700 text-xs font-semibold`}
-                              >
-                                {i + 1}
-                              </Text>
+                              <Text style={tw`text-blue-700 text-xs font-semibold`}>{i + 1}</Text>
                             </View>
-                            <Text
-                              style={tw`text-sm font-semibold`}
-                              numberOfLines={1}
-                            >
-                              {w.topic?.trim() ||
-                                `Week ${i + 1}`}
+                            <Text style={tw`text-sm font-semibold`} numberOfLines={1}>
+                              {w.topic?.trim() || `Week ${i + 1}`}
                             </Text>
                           </View>
-                          <Text style={tw`text-slate-500`}>
-                            {isOpen ? '▴' : '▾'}
-                          </Text>
+                          <Text style={tw`text-slate-500`}>{isOpen ? '▴' : '▾'}</Text>
                         </TouchableOpacity>
 
                         {isOpen && (
                           <View style={tw`px-4 pb-4 gap-3`}>
                             <TextInput
                               value={w.topic ?? ''}
-                              onChangeText={(t) =>
-                                onSyllabusChange(
-                                  i,
-                                  'topic',
-                                  t,
-                                )
-                              }
+                              onChangeText={(t) => onSyllabusChange(i, 'topic', t)}
                               placeholder="Topic"
                               style={tw`rounded-lg border border-slate-200 bg-slate-50 px-3 py-2`}
                             />
                             <TextInput
                               value={w.assignment ?? ''}
-                              onChangeText={(t) =>
-                                onSyllabusChange(
-                                  i,
-                                  'assignment',
-                                  t,
-                                )
-                              }
+                              onChangeText={(t) => onSyllabusChange(i, 'assignment', t)}
                               placeholder="Notes / Assignment"
                               multiline
                               style={tw`rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 min-h-20`}
@@ -650,25 +541,13 @@ const EditCourseScreen: React.FC = () => {
                             <View style={tw`gap-2`}>
                               <TextInput
                                 value={w.videoUrl ?? ''}
-                                onChangeText={(t) =>
-                                  onSyllabusChange(
-                                    i,
-                                    'videoUrl',
-                                    t,
-                                  )
-                                }
+                                onChangeText={(t) => onSyllabusChange(i, 'videoUrl', t)}
                                 placeholder="Video URL (optional)"
                                 style={tw`rounded-lg border border-slate-200 bg-slate-50 px-3 py-2`}
                               />
                               <TextInput
                                 value={w.notesUrl ?? ''}
-                                onChangeText={(t) =>
-                                  onSyllabusChange(
-                                    i,
-                                    'notesUrl',
-                                    t,
-                                  )
-                                }
+                                onChangeText={(t) => onSyllabusChange(i, 'notesUrl', t)}
                                 placeholder="Notes URL (optional)"
                                 style={tw`rounded-lg border border-slate-200 bg-slate-50 px-3 py-2`}
                               />
@@ -687,14 +566,10 @@ const EditCourseScreen: React.FC = () => {
                     disabled={!canSave || loading || saving}
                     style={tw.style(
                       'rounded-xl px-4 h-10 justify-center self-end',
-                      canSave && !saving
-                        ? 'bg-blue-600'
-                        : 'bg-slate-400',
+                      canSave && !saving ? 'bg-blue-600' : 'bg-slate-400'
                     )}
                   >
-                    <Text
-                      style={tw`text-white text-sm font-semibold`}
-                    >
+                    <Text style={tw`text-white text-sm font-semibold`}>
                       {saving ? 'Saving…' : 'Save'}
                     </Text>
                   </TouchableOpacity>
@@ -714,15 +589,9 @@ const EditCourseScreen: React.FC = () => {
       >
         <View style={tw`flex-1 bg-black/40`}>
           <SafeAreaView style={tw`flex-1`}>
-            <View
-              style={tw`absolute inset-y-0 left-0 w-5/6 max-w-[340px] bg-white p-4`}
-            >
-              <View
-                style={tw`flex-row items-center justify-between mb-2`}
-              >
-                <Text style={tw`text-base font-semibold`}>
-                  My Courses
-                </Text>
+            <View style={tw`absolute inset-y-0 left-0 w-5/6 max-w-[340px] bg-white p-4`}>
+              <View style={tw`flex-row items-center justify-between mb-2`}>
+                <Text style={tw`text-base font-semibold`}>My Courses</Text>
                 <TouchableOpacity
                   onPress={() => setShowDrawer(false)}
                   style={tw`rounded-lg border border-slate-200 h-9 px-3 justify-center`}
@@ -764,18 +633,10 @@ const EditCourseScreen: React.FC = () => {
 };
 
 /* helper: keyboard avoiding wrapper */
-function KeyboardAvoidingKeyboardWrapper({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function KeyboardAvoidingKeyboardWrapper({ children }: { children: React.ReactNode }) {
   if (Platform.OS === 'ios') {
     return (
-      <KeyboardAvoidingView
-        style={tw`flex-1`}
-        behavior="padding"
-        keyboardVerticalOffset={0}
-      >
+      <KeyboardAvoidingView style={tw`flex-1`} behavior="padding" keyboardVerticalOffset={0}>
         {children}
       </KeyboardAvoidingView>
     );

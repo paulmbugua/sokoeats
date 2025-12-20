@@ -7,37 +7,42 @@ import { ensureOrgForUser } from '../services/orgBootstrap.js';
 import { enqueueWebhook } from '../helpers/webhooks.js';
 import PDFDocument from 'pdfkit';
 // Helpers
-const nowPlusSec = (sec) => new Date(Date.now() + (sec * 1000));
+const nowPlusSec = (sec) => new Date(Date.now() + sec * 1000);
 
 /* ───────── helpers ───────── */
 function parseDomains(raw = '') {
   return String(raw)
     .split(/[,\s]+/)
-    .map(s => s.trim().toLowerCase())
+    .map((s) => s.trim().toLowerCase())
     .filter(Boolean)
-    .filter(d => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)); // basic sanity
+    .filter((d) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)); // basic sanity
 }
-
 
 const pickDefined = (obj, keys) =>
   Object.fromEntries(
     keys
-      .filter((k) => Object.prototype.hasOwnProperty.call(obj ?? {}, k) && obj[k] !== undefined)
-      .map((k) => [k, obj[k]])
+      .filter(
+        (k) =>
+          Object.prototype.hasOwnProperty.call(obj ?? {}, k) &&
+          obj[k] !== undefined,
+      )
+      .map((k) => [k, obj[k]]),
   );
 
-  async function getOrgColumns() {
+async function getOrgColumns() {
   const { rows } = await pool.query(
     `SELECT column_name
        FROM information_schema.columns
-      WHERE table_schema='public' AND table_name='organizations'`
+      WHERE table_schema='public' AND table_name='organizations'`,
   );
   return new Set(rows.map((r) => r.column_name));
 }
 
 const pick = (obj, keys) =>
-  keys.reduce((acc, k) => (obj[k] !== undefined ? (acc[k] = obj[k], acc) : acc), {});
-
+  keys.reduce(
+    (acc, k) => (obj[k] !== undefined ? ((acc[k] = obj[k]), acc) : acc),
+    {},
+  );
 
 function emailMatches(email, domainList) {
   if (!domainList.length) return true;
@@ -58,7 +63,9 @@ async function fakeGrade(courseId, answers) {
   const correct = Array.isArray(answers)
     ? Math.max(0, Math.min(answers.length, Math.round(answers.length * 0.8)))
     : 0;
-  const scorePct = answers?.length ? Math.round((correct / answers.length) * 100) : 0;
+  const scorePct = answers?.length
+    ? Math.round((correct / answers.length) * 100)
+    : 0;
   const passMark = 70;
   return { scorePct, passed: scorePct >= passMark, passMark };
 }
@@ -79,7 +86,7 @@ async function getSeatLimit(client, orgId) {
        ON s.org_id = o.id AND s.active = TRUE
     WHERE o.id = $1
     LIMIT 1`,
-    [orgId]
+    [orgId],
   );
   return q.rows[0]?.seat_limit ?? 50;
 }
@@ -103,7 +110,7 @@ async function emitQuizEvents({ attemptId }) {
        JOIN organizations o          ON o.id = a.org_id
       WHERE qa.id = $1
       LIMIT 1`,
-    [attemptId]
+    [attemptId],
   );
   if (!rows.length) return;
   const a = rows[0];
@@ -114,43 +121,41 @@ async function emitQuizEvents({ attemptId }) {
     userId: a.user_id,
     assignmentId: a.assignment_id,
     courseId: a.course_id,
-    score: a.score,             // now populated
+    score: a.score, // now populated
     submittedAt: a.submitted_at,
   };
 
   await pool.query(
     `INSERT INTO org_webhook_deliveries (org_id, event_type, payload)
      VALUES ($1, 'quiz_submitted', $2::jsonb)`,
-    [a.org_id, JSON.stringify({ ...base, passed: a.passed })]
+    [a.org_id, JSON.stringify({ ...base, passed: a.passed })],
   );
 
   if (a.passed) {
     await pool.query(
       `INSERT INTO org_webhook_deliveries (org_id, event_type, payload)
        VALUES ($1, 'quiz_passed', $2::jsonb)`,
-      [a.org_id, JSON.stringify(base)]
+      [a.org_id, JSON.stringify(base)],
     );
   }
 }
-
-
 
 export async function createOrg(req, res) {
   const userId = req.user?.id;
   const { name, slug } = req.body || {};
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
-  if (!name)   return res.status(400).json({ message: 'Missing name' });
+  if (!name) return res.status(400).json({ message: 'Missing name' });
 
   const { rows } = await pool.query(
     `INSERT INTO organizations (owner_user_id, name, slug)
      VALUES ($1, $2, $3) RETURNING id, name, slug`,
-    [userId, name, slug || null]
+    [userId, name, slug || null],
   );
   // auto-membership owner
   await pool.query(
     `INSERT INTO org_memberships (org_id, user_id, role, invited_by, joined_at)
      VALUES ($1, $2, 'owner', $2, NOW())`,
-    [rows[0].id, userId]
+    [rows[0].id, userId],
   );
   return res.json(rows[0]);
 }
@@ -159,13 +164,20 @@ export async function createOrg(req, res) {
 export async function createAssignment(req, res) {
   const userId = req.user?.id;
   const { orgId } = req.params;
-  const { courseId, title_override, pass_mark, timer_s, max_attempts = 1, due_at } = req.body || {};
+  const {
+    courseId,
+    title_override,
+    pass_mark,
+    timer_s,
+    max_attempts = 1,
+    due_at,
+  } = req.body || {};
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
   // admin/instructor only
   const mem = await pool.query(
     `SELECT role FROM org_memberships WHERE org_id=$1 AND user_id=$2 AND role IN ('owner','admin','instructor')`,
-    [orgId, userId]
+    [orgId, userId],
   );
   if (!mem.rowCount) return res.status(403).json({ message: 'Forbidden' });
 
@@ -199,17 +211,18 @@ export async function createAssignment(req, res) {
         due_at || null,
         invite,
         userId,
-      ]
+      ],
     );
 
     const row = q.rows[0];
     return res.json(row); // FE builds /org/join/:invite
   } catch (e) {
     console.error('[createAssignment]', e);
-    return res.status(500).json({ message: 'Failed to create/update assignment' });
+    return res
+      .status(500)
+      .json({ message: 'Failed to create/update assignment' });
   }
 }
-
 
 export async function submitAttempt(req, res) {
   const userId = req.user?.id;
@@ -240,9 +253,10 @@ export async function submitAttempt(req, res) {
      ORDER BY qa.created_at DESC
      LIMIT 1
     `,
-    params
+    params,
   );
-  if (!q.rowCount) return res.status(404).json({ message: 'Attempt not found' });
+  if (!q.rowCount)
+    return res.status(404).json({ message: 'Attempt not found' });
 
   const att = q.rows[0];
 
@@ -250,7 +264,10 @@ export async function submitAttempt(req, res) {
   const nowMs = Date.now();
   const dueMs = att.due_at ? new Date(att.due_at).getTime() : 0;
   if (dueMs && dueMs < nowMs) {
-    await pool.query(`UPDATE org_quiz_attempts SET status='expired' WHERE id=$1`, [att.id]);
+    await pool.query(
+      `UPDATE org_quiz_attempts SET status='expired' WHERE id=$1`,
+      [att.id],
+    );
     return res.status(403).json({ message: 'Time expired. Attempt locked.' });
   }
 
@@ -288,7 +305,7 @@ export async function submitAttempt(req, res) {
        FROM org_quiz_attempts
       WHERE assignment_id=$1 AND user_id=$2
         AND status IN ('submitted','expired')`,
-    [att.assignment_id, userId]
+    [att.assignment_id, userId],
   );
   const used = usedQ.rows[0]?.used ?? 0;
   const maxAttempts = att.max_attempts || 1;
@@ -329,12 +346,14 @@ export async function submitAttempt(req, res) {
   // Optional: mail only when finalized (passed or no-retry)
   try {
     if (shouldFinalize) {
-      const u = await pool.query(`SELECT email, name FROM users WHERE id=$1`, [userId]);
+      const u = await pool.query(`SELECT email, name FROM users WHERE id=$1`, [
+        userId,
+      ]);
       if (u.rowCount && u.rows[0].email) {
         await sendEmail(
           u.rows[0].email,
           `Quiz result: ${grade.scorePct}%`,
-          `You scored ${grade.scorePct}% ${grade.passed ? '✅ (passed)' : '❌ (not passed)'}.`
+          `You scored ${grade.scorePct}% ${grade.passed ? '✅ (passed)' : '❌ (not passed)'}.`,
         );
       }
     }
@@ -350,8 +369,6 @@ export async function submitAttempt(req, res) {
   });
 }
 
-
-
 export async function orgAnalytics(req, res) {
   const userId = req.user?.id;
   const { orgId } = req.params;
@@ -362,7 +379,7 @@ export async function orgAnalytics(req, res) {
        FROM org_memberships 
       WHERE org_id=$1 AND user_id=$2 
         AND role IN ('owner','admin','instructor')`,
-    [orgId, userId]
+    [orgId, userId],
   );
   if (!mem.rowCount) {
     return res.status(403).json({ message: 'Forbidden' });
@@ -374,8 +391,8 @@ export async function orgAnalytics(req, res) {
     period === 'year'
       ? `date_trunc('year', ${tsCol})`
       : period === 'term'
-      ? `date_trunc('quarter', ${tsCol})`
-      : `date_trunc('month', ${tsCol})`;
+        ? `date_trunc('quarter', ${tsCol})`
+        : `date_trunc('month', ${tsCol})`;
 
   const { rows } = await pool.query(
     `
@@ -392,7 +409,7 @@ export async function orgAnalytics(req, res) {
       ORDER BY 1 ASC
       LIMIT 60
     `,
-    [orgId]
+    [orgId],
   );
 
   const data = rows.map((r) => {
@@ -410,7 +427,7 @@ export async function orgAnalytics(req, res) {
     const bucketLabel = iso.slice(0, 10); // YYYY-MM-DD; FE can reformat
 
     return {
-      bucket: bucketDate,      // raw date (for serious consumers)
+      bucket: bucketDate, // raw date (for serious consumers)
       bucket_label: bucketLabel,
       attempts,
       avg_score: avgScore,
@@ -425,7 +442,6 @@ export async function orgAnalytics(req, res) {
     data,
   });
 }
-
 
 export async function getMyOrg(req, res) {
   const userId = req.user?.id;
@@ -451,10 +467,11 @@ export async function getMyOrg(req, res) {
       ORDER BY CASE WHEN m.role IN ('owner','admin') THEN 0 ELSE 1 END,
                o.created_at DESC
       LIMIT 1`,
-    [userId]
+    [userId],
   );
 
-  if (!q.rowCount) return res.status(404).json({ message: 'No organization for user' });
+  if (!q.rowCount)
+    return res.status(404).json({ message: 'No organization for user' });
   return res.json(q.rows[0]);
 }
 
@@ -467,7 +484,7 @@ export async function getOrgUsage(req, res) {
   // must be a member of this org
   const mem = await pool.query(
     `SELECT 1 FROM org_memberships WHERE org_id=$1 AND user_id=$2`,
-    [orgId, userId]
+    [orgId, userId],
   );
   if (!mem.rowCount) return res.status(403).json({ message: 'Forbidden' });
 
@@ -476,12 +493,10 @@ export async function getOrgUsage(req, res) {
     `SELECT COUNT(*)::int AS seats_used
        FROM org_memberships
       WHERE org_id=$1 AND role='learner'`,
-    [orgId]
+    [orgId],
   );
   return res.json({ seats_used: r.rows[0]?.seats_used ?? 0 });
 }
-
-
 
 export async function bootstrapMyOrg(req, res) {
   const userId = req.user?.id;
@@ -494,7 +509,6 @@ export async function bootstrapMyOrg(req, res) {
     return res.status(500).json({ message: 'Failed to bootstrap org' });
   }
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Ensure (idempotent) shareable assignment and return inviteUrl
@@ -519,7 +533,9 @@ export async function ensureShareableAssignment(req, res) {
   if (!rid) {
     try {
       const { randomUUID, randomBytes } = await import('crypto');
-      rid = (typeof randomUUID === 'function' && randomUUID()) || randomBytes(6).toString('hex');
+      rid =
+        (typeof randomUUID === 'function' && randomUUID()) ||
+        randomBytes(6).toString('hex');
     } catch {
       rid = Math.random().toString(36).slice(2, 10);
     }
@@ -556,9 +572,12 @@ export async function ensureShareableAssignment(req, res) {
     `SELECT role FROM org_memberships
       WHERE org_id=$1 AND user_id=$2
         AND role IN ('owner','admin','instructor')`,
-    [orgId, userId]
+    [orgId, userId],
   );
-  log('membership', { rowCount: mem.rowCount, roles: mem.rows?.map((r) => r.role) });
+  log('membership', {
+    rowCount: mem.rowCount,
+    roles: mem.rows?.map((r) => r.role),
+  });
   if (!mem.rowCount) {
     warn('forbidden: not owner/admin/instructor');
     return res.status(403).json({ message: 'Forbidden' });
@@ -572,31 +591,48 @@ export async function ensureShareableAssignment(req, res) {
     LEFT JOIN org_subscriptions s ON s.org_id=o.id AND s.active=TRUE
         WHERE o.id=$1
         LIMIT 1`,
-      [orgId]
+      [orgId],
     );
     const tier = tierQ.rows[0]?.tier || 'starter';
     const isStarter = tier === 'starter' || tier === 'start';
-    const safeMinutes = isStarter ? Math.min(Number(minutes ?? 30), 30) : Number(minutes ?? 20);
+    const safeMinutes = isStarter
+      ? Math.min(Number(minutes ?? 30), 30)
+      : Number(minutes ?? 20);
     log('tier', { tier, isStarter, inputMinutes: minutes, safeMinutes });
 
     // ── Ensure course (create/lookup) ───────────────────────────────────────
-    const course = await ensureCourse({ courseId, title, courseSize, minutes: safeMinutes });
+    const course = await ensureCourse({
+      courseId,
+      title,
+      courseSize,
+      minutes: safeMinutes,
+    });
     const cid = course.id;
-    log('course.ensure', { ensuredId: cid, ensuredTitle: course?.title, size: courseSize, minutes: safeMinutes });
+    log('course.ensure', {
+      ensuredId: cid,
+      ensuredTitle: course?.title,
+      size: courseSize,
+      minutes: safeMinutes,
+    });
 
     // ── Existing invite (for visibility) ────────────────────────────────────
     const existingInviteQ = await pool.query(
       `SELECT invite_code FROM org_course_assignments WHERE org_id=$1 AND course_id=$2 LIMIT 1`,
-      [orgId, cid]
+      [orgId, cid],
     );
     const existingInvite = existingInviteQ.rows[0]?.invite_code || null;
-    log('existingInvite', { exists: Boolean(existingInvite), invite_code: existingInvite });
+    log('existingInvite', {
+      exists: Boolean(existingInvite),
+      invite_code: existingInvite,
+    });
 
     // ── Upsert assignment (includes locked_config) ──────────────────────────
     const { randomBytes } = await import('crypto');
     const invite = randomBytes(10).toString('base64url');
     const lockedJSON =
-      locked_config && typeof locked_config === 'object' ? JSON.stringify(locked_config) : null;
+      locked_config && typeof locked_config === 'object'
+        ? JSON.stringify(locked_config)
+        : null;
 
     const text = `
       INSERT INTO org_course_assignments
@@ -635,33 +671,43 @@ export async function ensureShareableAssignment(req, res) {
     `;
 
     const values = [
-      orgId,                 // $1
-      cid,                   // $2
-      title_override || null,// $3
-      pass_mark || null,     // $4
-      timer_s || null,       // $5
-      max_attempts,          // $6
-      due_at || null,        // $7
-      lockedJSON,            // $8
-      invite,                // $9 (fallback if none exists)
-      userId,                // $10
+      orgId, // $1
+      cid, // $2
+      title_override || null, // $3
+      pass_mark || null, // $4
+      timer_s || null, // $5
+      max_attempts, // $6
+      due_at || null, // $7
+      lockedJSON, // $8
+      invite, // $9 (fallback if none exists)
+      userId, // $10
     ];
 
     // Verbose bind logging + sanity check
-    const placeholders = [...text.matchAll(/\$(\d+)/g)].map((m) => Number(m[1]));
+    const placeholders = [...text.matchAll(/\$(\d+)/g)].map((m) =>
+      Number(m[1]),
+    );
     const maxIndex = placeholders.length ? Math.max(...placeholders) : 0;
     log('sql.binds', {
       maxPlaceholder: maxIndex,
-      uniquePlaceholders: Array.from(new Set(placeholders)).sort((a, b) => a - b),
+      uniquePlaceholders: Array.from(new Set(placeholders)).sort(
+        (a, b) => a - b,
+      ),
       valuesCount: values.length,
     });
     values.forEach((v, i) => log(`sql.bind $${i + 1}`, v));
 
     if (maxIndex !== values.length) {
-      throw new Error(`SQL placeholder/value count mismatch: ${maxIndex} vs ${values.length}`);
+      throw new Error(
+        `SQL placeholder/value count mismatch: ${maxIndex} vs ${values.length}`,
+      );
     }
 
-    const q = await pool.query({ text, values, name: 'ensure_shareable_assignment_v2' });
+    const q = await pool.query({
+      text,
+      values,
+      name: 'ensure_shareable_assignment_v2',
+    });
     const assignment = q.rows[0];
 
     log('assignment.upserted', {
@@ -678,7 +724,9 @@ export async function ensureShareableAssignment(req, res) {
       created_by: assignment?.created_by,
       created_at: assignment?.created_at,
       updated_at: assignment?.updated_at,
-      reusedInvite: existingInvite ? assignment?.invite_code === existingInvite : false,
+      reusedInvite: existingInvite
+        ? assignment?.invite_code === existingInvite
+        : false,
     });
 
     // Build invite URL
@@ -719,7 +767,8 @@ export async function ensureShareableAssignment(req, res) {
 export async function getAttemptMeta(req, res) {
   const userId = req.user?.id;
   const { attemptId } = req.params;
-  if (!userId || !attemptId) return res.status(400).json({ message: 'Bad request' });
+  if (!userId || !attemptId)
+    return res.status(400).json({ message: 'Bad request' });
 
   const q = await pool.query(
     `SELECT
@@ -737,14 +786,16 @@ export async function getAttemptMeta(req, res) {
      JOIN organizations o          ON o.id = qa.org_id
      WHERE qa.id = $1 AND qa.user_id = $2
      LIMIT 1`,
-    [attemptId, userId]
+    [attemptId, userId],
   );
-  if (!q.rowCount) return res.status(404).json({ message: 'Attempt not found' });
+  if (!q.rowCount)
+    return res.status(404).json({ message: 'Attempt not found' });
 
   const row = q.rows[0];
   const locked_config = safeParseJSON(row.locked_config);
-  const passMark = row.pass_mark ?? row.assign_pass_mark ?? row.org_pass_mark ?? 70;
-  const timer_s  = row.assign_timer_s ?? row.org_timer_s ?? 900;
+  const passMark =
+    row.pass_mark ?? row.assign_pass_mark ?? row.org_pass_mark ?? 70;
+  const timer_s = row.assign_timer_s ?? row.org_timer_s ?? 900;
 
   return res.json({
     ok: true,
@@ -759,20 +810,25 @@ export async function getAttemptMeta(req, res) {
       status: row.status,
       org_id: row.org_id,
       title_override: row.title_override || null,
-    }
+    },
   });
 }
 
 function safeParseJSON(v) {
   if (!v) return null;
-  try { return typeof v === 'object' ? v : JSON.parse(v); } catch { return null; }
+  try {
+    return typeof v === 'object' ? v : JSON.parse(v);
+  } catch {
+    return null;
+  }
 }
 
 // GET /api/orgs/assignments/:assignmentId/mine  (find or lazily create an attempt)
 export async function getMyAttemptForAssignment(req, res) {
   const userId = req.user?.id;
   const { assignmentId } = req.params;
-  if (!userId || !assignmentId) return res.status(400).json({ message: 'Bad request' });
+  if (!userId || !assignmentId)
+    return res.status(400).json({ message: 'Bad request' });
 
   // find assignment + org defaults
   const a = await pool.query(
@@ -780,26 +836,26 @@ export async function getMyAttemptForAssignment(req, res) {
        FROM org_course_assignments a
        JOIN organizations o ON o.id = a.org_id
       WHERE a.id = $1`,
-    [assignmentId]
+    [assignmentId],
   );
-  if (!a.rowCount) return res.status(404).json({ message: 'Assignment not found' });
+  if (!a.rowCount)
+    return res.status(404).json({ message: 'Assignment not found' });
   const assign = a.rows[0];
 
   // find existing attempt for this user
- const e = await pool.query(
-  `SELECT *
+  const e = await pool.query(
+    `SELECT *
      FROM org_quiz_attempts
     WHERE assignment_id=$1 AND user_id=$2
     ORDER BY created_at DESC
     LIMIT 1`,
-  [assignmentId, userId]
-);
+    [assignmentId, userId],
+  );
 
-if (!e.rowCount) {
-
-  const locked_config = safeParseJSON(assign.locked_config);
+  if (!e.rowCount) {
+    const locked_config = safeParseJSON(assign.locked_config);
     const passMark = assign.pass_mark ?? assign.default_pass_mark ?? 70;
-    const timer_s  = assign.timer_s ?? assign.quiz_time_limit_s ?? 900;
+    const timer_s = assign.timer_s ?? assign.quiz_time_limit_s ?? 900;
 
     return res.json({
       ok: true,
@@ -814,11 +870,11 @@ if (!e.rowCount) {
         status: 'none',
         org_id: assign.org_id,
         title_override: assign.title_override || null,
-      }
+      },
     });
   }
 
-const attempt = e.rows[0];
+  const attempt = e.rows[0];
   // Re-hydrate full meta (including org timers) for the active/last attempt
   const q = await pool.query(
     `SELECT
@@ -836,12 +892,13 @@ const attempt = e.rows[0];
      JOIN organizations o          ON o.id = qa.org_id
      WHERE qa.id = $1
      LIMIT 1`,
-    [attempt.id]
+    [attempt.id],
   );
   const row = q.rows[0];
   const locked_config = safeParseJSON(row.locked_config);
-  const passMark = row.pass_mark ?? row.assign_pass_mark ?? row.org_pass_mark ?? 70;
-  const timer_s  = row.assign_timer_s ?? row.org_timer_s ?? 900;
+  const passMark =
+    row.pass_mark ?? row.assign_pass_mark ?? row.org_pass_mark ?? 70;
+  const timer_s = row.assign_timer_s ?? row.org_timer_s ?? 900;
 
   return res.json({
     ok: true,
@@ -856,7 +913,7 @@ const attempt = e.rows[0];
       status: row.status,
       org_id: row.org_id,
       title_override: row.title_override || null,
-    }
+    },
   });
 }
 
@@ -865,7 +922,8 @@ const attempt = e.rows[0];
 export async function startAttempt(req, res) {
   const userId = req.user?.id;
   const { assignmentId } = req.body || {};
-  if (!userId || !assignmentId) return res.status(400).json({ message: 'Bad request' });
+  if (!userId || !assignmentId)
+    return res.status(400).json({ message: 'Bad request' });
 
   // load assignment + org defaults
   const { rows: aRows } = await pool.query(
@@ -873,15 +931,16 @@ export async function startAttempt(req, res) {
        FROM org_course_assignments a
        JOIN organizations o ON o.id = a.org_id
       WHERE a.id=$1::uuid`,
-    [assignmentId]
+    [assignmentId],
   );
-  if (!aRows.length) return res.status(404).json({ message: 'Assignment not found' });
+  if (!aRows.length)
+    return res.status(404).json({ message: 'Assignment not found' });
   const a = aRows[0];
 
   // ensure org membership
   const mem = await pool.query(
     `SELECT 1 FROM org_memberships WHERE org_id=$1::uuid AND user_id=$2 LIMIT 1`,
-    [a.org_id, userId]
+    [a.org_id, userId],
   );
   if (!mem.rowCount) return res.status(403).json({ message: 'Forbidden' });
 
@@ -893,7 +952,7 @@ export async function startAttempt(req, res) {
          ('x'||substr(md5($1::text),1,8))::bit(32)::int,
          ('x'||substr(md5($2::text),1,8))::bit(32)::int
        )`,
-      [assignmentId, String(userId)]
+      [assignmentId, String(userId)],
     );
 
     // idempotent: reuse active & unexpired
@@ -901,16 +960,27 @@ export async function startAttempt(req, res) {
       `SELECT id, attempt_no, due_at, pass_mark
          FROM org_quiz_attempts
         WHERE assignment_id=$1::uuid AND user_id=$2 AND status='active'`,
-      [assignmentId, userId]
+      [assignmentId, userId],
     );
     if (activeRows.length) {
       const act = activeRows[0];
-      const remainingMs = Math.max(0, new Date(act.due_at).getTime() - Date.now());
+      const remainingMs = Math.max(
+        0,
+        new Date(act.due_at).getTime() - Date.now(),
+      );
       if (remainingMs > 0) {
         await pool.query('COMMIT');
-        return res.json({ ok: true, attemptId: act.id, attemptNo: act.attempt_no, remainingMs });
+        return res.json({
+          ok: true,
+          attemptId: act.id,
+          attemptNo: act.attempt_no,
+          remainingMs,
+        });
       } else {
-        await pool.query(`UPDATE org_quiz_attempts SET status='expired' WHERE id=$1`, [act.id]);
+        await pool.query(
+          `UPDATE org_quiz_attempts SET status='expired' WHERE id=$1`,
+          [act.id],
+        );
       }
     }
 
@@ -920,13 +990,15 @@ export async function startAttempt(req, res) {
          FROM org_quiz_attempts
         WHERE assignment_id=$1::uuid AND user_id=$2
           AND status IN ('submitted','expired')`,
-      [assignmentId, userId]
+      [assignmentId, userId],
     );
     const used = usedRows[0].used;
     const maxAttempts = a.max_attempts || 1;
     if (used >= maxAttempts) {
       await pool.query('ROLLBACK');
-      return res.status(409).json({ code: 'ATTEMPTS_EXHAUSTED', message: 'No attempts left.' });
+      return res
+        .status(409)
+        .json({ code: 'ATTEMPTS_EXHAUSTED', message: 'No attempts left.' });
     }
 
     // ✅ get latest attempt_no row and lock THAT row (legal with FOR UPDATE)
@@ -937,7 +1009,7 @@ export async function startAttempt(req, res) {
         ORDER BY attempt_no DESC
         LIMIT 1
         FOR UPDATE`,
-      [assignmentId, userId]
+      [assignmentId, userId],
     );
     const lastNo = lastRows[0]?.attempt_no ?? 0;
     const nextNo = lastNo + 1;
@@ -953,7 +1025,7 @@ export async function startAttempt(req, res) {
        VALUES ($1::uuid,$2::uuid,$3,$4,'active',$5,$6)
        ON CONFLICT (assignment_id, user_id, attempt_no) DO NOTHING
        RETURNING id, attempt_no, due_at`,
-      [a.org_id, assignmentId, userId, nextNo, dueAt, passMark]
+      [a.org_id, assignmentId, userId, nextNo, dueAt, passMark],
     );
 
     let attemptRow = ins.rows[0];
@@ -965,14 +1037,17 @@ export async function startAttempt(req, res) {
           WHERE assignment_id=$1::uuid AND user_id=$2
           ORDER BY attempt_no DESC
           LIMIT 1`,
-        [assignmentId, userId]
+        [assignmentId, userId],
       );
       attemptRow = fb[0];
     }
 
     await pool.query('COMMIT');
 
-    const remainingMs = Math.max(0, new Date(attemptRow.due_at).getTime() - Date.now());
+    const remainingMs = Math.max(
+      0,
+      new Date(attemptRow.due_at).getTime() - Date.now(),
+    );
     return res.json({
       ok: true,
       attemptId: attemptRow.id,
@@ -986,8 +1061,6 @@ export async function startAttempt(req, res) {
   }
 }
 
-
-
 /* ───────── ENTERPRISE-gated branding update (keeps your route: PUT /:orgId/branding) ───────── */
 export async function updateOrgBranding(req, res) {
   const { orgId } = req.params;
@@ -998,7 +1071,9 @@ export async function updateOrgBranding(req, res) {
   }
 
   // Org exists?
-  const exists = await pool.query(`SELECT 1 FROM organizations WHERE id=$1`, [orgId]);
+  const exists = await pool.query(`SELECT 1 FROM organizations WHERE id=$1`, [
+    orgId,
+  ]);
   if (!exists.rowCount) {
     return res.status(404).json({ message: 'Org not found' });
   }
@@ -1009,7 +1084,7 @@ export async function updateOrgBranding(req, res) {
        FROM org_memberships
       WHERE org_id=$1 AND user_id=$2
       LIMIT 1`,
-    [orgId, userId]
+    [orgId, userId],
   );
   if (!mem.rowCount) {
     return res.status(403).json({ message: 'Forbidden' });
@@ -1024,9 +1099,10 @@ export async function updateOrgBranding(req, res) {
   // ─────────────────────────────────────────
   if (role === 'instructor') {
     if (!cols.has('instructor_signature_url')) {
-      return res
-        .status(400)
-        .json({ message: 'instructor_signature_url is not supported on this organization' });
+      return res.status(400).json({
+        message:
+          'instructor_signature_url is not supported on this organization',
+      });
     }
 
     const { instructor_signature_url } = body || {};
@@ -1048,7 +1124,7 @@ export async function updateOrgBranding(req, res) {
           SET ${setClauses.join(', ')}
         WHERE id = $${vals.length + 1}
         RETURNING *`,
-      [...vals, orgId]
+      [...vals, orgId],
     );
 
     return res.json(rows[0]);
@@ -1073,8 +1149,8 @@ export async function updateOrgBranding(req, res) {
     'allow_retry',
   ].filter((k) => cols.has(k));
 
-  const extraKeys = ['email_domain', 'webhook_url', 'webhook_enabled'].filter((k) =>
-    cols.has(k)
+  const extraKeys = ['email_domain', 'webhook_url', 'webhook_enabled'].filter(
+    (k) => cols.has(k),
   );
 
   // NEW: school contact details (only if columns exist)
@@ -1105,7 +1181,9 @@ export async function updateOrgBranding(req, res) {
     (body.webhook_url !== undefined || body.webhook_enabled !== undefined) &&
     cols.has('webhook_secret')
   ) {
-    setClauses.push(`webhook_secret = COALESCE(webhook_secret, $${vals.length + 1})`);
+    setClauses.push(
+      `webhook_secret = COALESCE(webhook_secret, $${vals.length + 1})`,
+    );
     vals.push(crypto.randomBytes(32).toString('hex'));
   }
 
@@ -1116,7 +1194,10 @@ export async function updateOrgBranding(req, res) {
 
   if (!setClauses.length) {
     // Nothing to change → just return the row
-    const { rows: r } = await pool.query(`SELECT * FROM organizations WHERE id=$1`, [orgId]);
+    const { rows: r } = await pool.query(
+      `SELECT * FROM organizations WHERE id=$1`,
+      [orgId],
+    );
     return res.json(r[0]);
   }
 
@@ -1125,11 +1206,10 @@ export async function updateOrgBranding(req, res) {
         SET ${setClauses.join(', ')}
       WHERE id = $${vals.length + 1}
       RETURNING *`,
-    [...vals, orgId]
+    [...vals, orgId],
   );
   return res.json(r2[0]);
 }
-
 
 /** POST /accept  (auth) – join assignment; enforce domain restriction here */
 export async function acceptInvite(req, res) {
@@ -1142,15 +1222,17 @@ export async function acceptInvite(req, res) {
   if (!rid) {
     try {
       const { randomUUID, randomBytes } = await import('crypto');
-      rid = (typeof randomUUID === 'function' && randomUUID()) || randomBytes(6).toString('hex');
+      rid =
+        (typeof randomUUID === 'function' && randomUUID()) ||
+        randomBytes(6).toString('hex');
     } catch {
       rid = Math.random().toString(36).slice(2, 10);
     }
   }
   const tag = (m) => `[org.acceptInvite ${rid}] ${m}`;
-  const log  = (...a) => console.log(tag(''), ...a);
+  const log = (...a) => console.log(tag(''), ...a);
   const warn = (...a) => console.warn(tag('WARN'), ...a);
-  const err  = (...a) => console.error(tag('ERROR'), ...a);
+  const err = (...a) => console.error(tag('ERROR'), ...a);
 
   // ── Fast param check ──────────────────────────────────────────────────────
   if (!userId || !code) {
@@ -1172,7 +1254,7 @@ export async function acceptInvite(req, res) {
        JOIN organizations o ON o.id = a.org_id
       WHERE a.invite_code = $1
       LIMIT 1`,
-      [code]
+      [code],
     );
     if (!q.rowCount) {
       warn('invite not found', { code });
@@ -1183,10 +1265,16 @@ export async function acceptInvite(req, res) {
     // 1a) Ensure we actually have the user’s email (fallback to DB if auth payload lacked it)
     if (!userEmail) {
       try {
-        const { rows: uRows } = await pool.query('SELECT email FROM users WHERE id=$1', [userId]);
+        const { rows: uRows } = await pool.query(
+          'SELECT email FROM users WHERE id=$1',
+          [userId],
+        );
         userEmail = (uRows[0]?.email || '').toLowerCase();
       } catch (e) {
-        warn('failed to fetch user email fallback', { userId, err: e?.message });
+        warn('failed to fetch user email fallback', {
+          userId,
+          err: e?.message,
+        });
       }
     }
 
@@ -1194,8 +1282,12 @@ export async function acceptInvite(req, res) {
     const allowedDomains = parseDomains(assignment.org_email_domain || '');
     if (allowedDomains.length > 0) {
       if (!userEmail) {
-        warn('domain-restricted but user has no email', { org_id: assignment.org_id });
-        return res.status(400).json({ message: 'Email required for this organization' });
+        warn('domain-restricted but user has no email', {
+          org_id: assignment.org_id,
+        });
+        return res
+          .status(400)
+          .json({ message: 'Email required for this organization' });
       }
       if (!emailMatches(userEmail, allowedDomains)) {
         warn('email domain blocked', { email: userEmail, allowedDomains });
@@ -1217,21 +1309,23 @@ export async function acceptInvite(req, res) {
            ('x'||substr(md5($1::text),1,8))::bit(32)::int,
            ('x'||substr(md5($1::text),9,8))::bit(32)::int
          )`,
-        [assignment.org_id]
+        [assignment.org_id],
       );
       log('advisory lock acquired', { org_id: assignment.org_id });
 
       // 4) Seat limits (learners only). Staff do not count against seats.
-      const seatLimit = await getSeatLimit(client, assignment.org_id).catch((e) => {
-        err('getSeatLimit failed', { message: e?.message, code: e?.code });
-        return 50; // safe fallback
-      });
+      const seatLimit = await getSeatLimit(client, assignment.org_id).catch(
+        (e) => {
+          err('getSeatLimit failed', { message: e?.message, code: e?.code });
+          return 50; // safe fallback
+        },
+      );
 
       const learnersQ = await client.query(
         `SELECT COUNT(*)::int AS c
            FROM org_memberships
           WHERE org_id=$1::uuid AND role='learner'`,
-        [assignment.org_id]
+        [assignment.org_id],
       );
       const learnersUsed = learnersQ.rows[0]?.c ?? 0;
 
@@ -1240,20 +1334,29 @@ export async function acceptInvite(req, res) {
            FROM org_memberships
           WHERE org_id=$1::uuid AND user_id=$2
           LIMIT 1`,
-        [assignment.org_id, userId]
+        [assignment.org_id, userId],
       );
       const isAlreadyMember = !!existing.rowCount;
       const existingRole = existing.rows[0]?.role || null;
-      const isStaff = ['owner', 'admin', 'instructor'].includes((existingRole || '').toLowerCase());
+      const isStaff = ['owner', 'admin', 'instructor'].includes(
+        (existingRole || '').toLowerCase(),
+      );
 
-      log('seats', { seatLimit, learnersUsed, isAlreadyMember, existingRole, isStaff });
+      log('seats', {
+        seatLimit,
+        learnersUsed,
+        isAlreadyMember,
+        existingRole,
+        isStaff,
+      });
 
       if (!isStaff && !isAlreadyMember && learnersUsed >= seatLimit) {
         await client.query('ROLLBACK');
         warn('seat limit reached', { seatLimit, learnersUsed });
         return res.status(403).json({
           ok: false,
-          message: 'Seat limit reached. Upgrade your plan to add more learners.',
+          message:
+            'Seat limit reached. Upgrade your plan to add more learners.',
           code: 'SEAT_LIMIT_REACHED',
         });
       }
@@ -1271,7 +1374,7 @@ export async function acceptInvite(req, res) {
                   invited_at= COALESCE(invited_at, NOW())
             WHERE org_id=$1::uuid
               AND LOWER(COALESCE(email,''))=$3`,
-          [assignment.org_id, userId, userEmail]
+          [assignment.org_id, userId, userEmail],
         );
         log('email upgrade', { userEmail, updated: up.rowCount });
       } else {
@@ -1288,7 +1391,7 @@ export async function acceptInvite(req, res) {
                        ELSE 'learner'
                       END,
                joined_at = COALESCE(org_memberships.joined_at, EXCLUDED.joined_at)`,
-        [assignment.org_id, userId, assignment.created_by]
+        [assignment.org_id, userId, assignment.created_by],
       );
       log('membership upsert', { insertedOrUpdated: insMem.rowCount });
 
@@ -1297,14 +1400,16 @@ export async function acceptInvite(req, res) {
         `INSERT INTO org_assignment_enrollments (assignment_id, user_id)
          VALUES ($1, $2)
          ON CONFLICT (assignment_id, user_id) DO NOTHING`,
-        [assignment.id, userId]
+        [assignment.id, userId],
       );
       log('assignment enrollment ensured');
 
       await client.query('COMMIT');
       log('tx:COMMIT');
     } catch (txErr) {
-      try { await client.query('ROLLBACK'); } catch {}
+      try {
+        await client.query('ROLLBACK');
+      } catch {}
       err('tx failed', { message: txErr?.message });
       return res.status(500).json({ message: 'Failed to accept invite' });
     } finally {
@@ -1312,15 +1417,17 @@ export async function acceptInvite(req, res) {
     }
 
     // 8) Compute effective assessment policy for the response
-    const passMark = assignment.pass_mark ?? assignment.org_default_pass_mark ?? 70;
-    const timerS   = assignment.timer_s   ?? assignment.org_quiz_time_limit_s ?? 900;
+    const passMark =
+      assignment.pass_mark ?? assignment.org_default_pass_mark ?? 70;
+    const timerS =
+      assignment.timer_s ?? assignment.org_quiz_time_limit_s ?? 900;
 
     const payload = {
       ok: true,
       enrollment: {
         orgId: assignment.org_id,
         assignmentId: assignment.id,
-         courseId: assignment.course_id, 
+        courseId: assignment.course_id,
         userId,
         passMark,
         timerS,
@@ -1342,7 +1449,6 @@ export async function acceptInvite(req, res) {
     return res.status(500).json({ message: 'Failed to accept invite' });
   }
 }
-
 
 export async function resolveInvite(req, res) {
   const { code } = req.params;
@@ -1373,10 +1479,11 @@ export async function resolveInvite(req, res) {
     WHERE a.invite_code = $1
     LIMIT 1
     `,
-    [code]
+    [code],
   );
 
-  if (!rows.length) return res.status(404).json({ message: 'Invite not found' });
+  if (!rows.length)
+    return res.status(404).json({ message: 'Invite not found' });
 
   const r = rows[0];
   const domains = parseDomains(r.email_domain || '');
@@ -1388,9 +1495,9 @@ export async function resolveInvite(req, res) {
       id: r.assignment_id,
       course_id: r.course_id,
       title: r.title_override ?? null,
-    locked_config: r.locked_config ?? null,
-    max_attempts: r.max_attempts ?? null,
-    due_at: r.due_at ?? null,
+      locked_config: r.locked_config ?? null,
+      max_attempts: r.max_attempts ?? null,
+      due_at: r.due_at ?? null,
     },
     org: {
       id: r.org_id,
@@ -1398,7 +1505,7 @@ export async function resolveInvite(req, res) {
       branding: {
         logo_url: r.logo_url ?? null,
         signature_url: r.signature_url ?? null,
-         instructor_signature_url: r.instructor_signature_url ?? null,
+        instructor_signature_url: r.instructor_signature_url ?? null,
         certificate_title: r.certificate_title ?? null,
       },
     },
@@ -1410,18 +1517,18 @@ export async function resolveInvite(req, res) {
         quiz_time_limit_s: r.quiz_time_limit_s ?? null,
       },
     },
-      // ── Back-compat (what the current web reads) ────────────────────────────
-  pass_mark: r.pass_mark ?? null,
-  quiz_time_limit_s: r.quiz_time_limit_s ?? null,
-  timer_s: r.quiz_time_limit_s ?? null,          // the UI checks either name
-  max_attempts: r.max_attempts ?? null,
-  due_at: r.due_at ?? null,
-  logo_url: r.logo_url ?? null,
-  signature_url: r.signature_url ?? null,
- instructor_signature_url: r.instructor_signature_url ?? null,
-  certificate_title: r.certificate_title ?? null,
-  org_name: r.org_name ?? null,
-  locked_config: r.locked_config ?? null,
+    // ── Back-compat (what the current web reads) ────────────────────────────
+    pass_mark: r.pass_mark ?? null,
+    quiz_time_limit_s: r.quiz_time_limit_s ?? null,
+    timer_s: r.quiz_time_limit_s ?? null, // the UI checks either name
+    max_attempts: r.max_attempts ?? null,
+    due_at: r.due_at ?? null,
+    logo_url: r.logo_url ?? null,
+    signature_url: r.signature_url ?? null,
+    instructor_signature_url: r.instructor_signature_url ?? null,
+    certificate_title: r.certificate_title ?? null,
+    org_name: r.org_name ?? null,
+    locked_config: r.locked_config ?? null,
   });
 }
 
@@ -1437,7 +1544,7 @@ export async function getOrgLearnersProgress(req, res) {
     `SELECT 1 FROM org_memberships
       WHERE org_id=$1 AND user_id=$2 AND role IN ('owner','admin','instructor')
       LIMIT 1`,
-    [orgId, userId]
+    [orgId, userId],
   );
   if (!mem.rowCount) return res.status(403).json({ message: 'Forbidden' });
 
@@ -1446,7 +1553,7 @@ export async function getOrgLearnersProgress(req, res) {
     `SELECT COUNT(*)::int AS total
        FROM org_course_assignments
       WHERE org_id=$1`,
-    [orgId]
+    [orgId],
   );
   const totalAssignments = taQ.rows[0]?.total ?? 0;
 
@@ -1456,7 +1563,9 @@ export async function getOrgLearnersProgress(req, res) {
 
   // optional search on name/email
   const hasQ = String(q || '').trim().length > 0;
-  const qLike = `%${String(q || '').trim().toLowerCase()}%`;
+  const qLike = `%${String(q || '')
+    .trim()
+    .toLowerCase()}%`;
 
   // aggregate progress WITHOUT exposing answers/transcripts
   const { rows } = await pool.query(
@@ -1485,11 +1594,11 @@ export async function getOrgLearnersProgress(req, res) {
     GROUP BY l.user_id, l.name, l.email
     ORDER BY last_submit_at DESC NULLS LAST, name ASC
     `,
-    hasQ ? [orgId, offset, pageSize, qLike] : [orgId, offset, pageSize]
+    hasQ ? [orgId, offset, pageSize, qLike] : [orgId, offset, pageSize],
   );
 
   // compute progress_pct per row on the server for convenience
-  const data = rows.map(r => ({
+  const data = rows.map((r) => ({
     user_id: r.user_id,
     name: r.name,
     email: r.email,
@@ -1497,13 +1606,19 @@ export async function getOrgLearnersProgress(req, res) {
     passes: Number(r.passes || 0),
     avg_score: r.avg_score !== null ? Number(r.avg_score) : null,
     completed_assignments: Number(r.completed_assignments || 0),
-    last_submit_at: r.last_submit_at ? new Date(r.last_submit_at).toISOString() : null,
-    progress_pct: totalAssignments > 0
-      ? Math.round((Number(r.completed_assignments || 0) * 100) / totalAssignments)
-      : 0,
+    last_submit_at: r.last_submit_at
+      ? new Date(r.last_submit_at).toISOString()
+      : null,
+    progress_pct:
+      totalAssignments > 0
+        ? Math.round(
+            (Number(r.completed_assignments || 0) * 100) / totalAssignments,
+          )
+        : 0,
   }));
 
-  const next_cursor = rows.length === pageSize ? String(offset + pageSize) : null;
+  const next_cursor =
+    rows.length === pageSize ? String(offset + pageSize) : null;
 
   return res.json({
     ok: true,
@@ -1531,7 +1646,7 @@ export async function getOrgRoster(req, res) {
   // must be a member of org
   const mem = await pool.query(
     `SELECT 1 FROM org_memberships WHERE org_id = $1 AND user_id = $2`,
-    [orgId, userId]
+    [orgId, userId],
   );
   if (!mem.rowCount) return res.status(403).json({ message: 'Forbidden' });
 
@@ -1573,7 +1688,7 @@ export async function getOrgRoster(req, res) {
       COALESCE(lp.admission_code, '') ASC,
       COALESCE(u.name, u.email, '') ASC
     `,
-    [orgId]
+    [orgId],
   );
 
   const instructors = [];
@@ -1612,8 +1727,6 @@ export async function getOrgRoster(req, res) {
   return res.json({ instructors, learners });
 }
 
-
-
 // ─────────────────────────────────────────────────────────
 // CREATE ORG INVITE: POST /api/orgs/:orgId/invites
 // body: { role: 'instructor'|'learner', email?: string, expiresSec?: number }
@@ -1628,25 +1741,28 @@ export async function createOrgInvite(req, res) {
   // owner/admin only (let owners/admins invite both; instructors cannot invite instructors)
   const mem = await pool.query(
     `SELECT role FROM org_memberships WHERE org_id=$1 AND user_id=$2`,
-    [orgId, userId]
+    [orgId, userId],
   );
   if (!mem.rowCount) return res.status(403).json({ message: 'Forbidden' });
   const myRole = String(mem.rows[0].role);
-  if (!['owner','admin'].includes(myRole)) return res.status(403).json({ message: 'Forbidden' });
+  if (!['owner', 'admin'].includes(myRole))
+    return res.status(403).json({ message: 'Forbidden' });
 
-  if (!['instructor','learner'].includes(String(role))) {
+  if (!['instructor', 'learner'].includes(String(role))) {
     return res.status(400).json({ message: 'Invalid role' });
   }
 
   const { randomBytes } = await import('crypto');
   const code = randomBytes(10).toString('base64url');
-  const expires_at = expiresSec ? new Date(Date.now() + Number(expiresSec) * 1000) : null;
+  const expires_at = expiresSec
+    ? new Date(Date.now() + Number(expiresSec) * 1000)
+    : null;
 
   const ins = await pool.query(
     `INSERT INTO org_invites (org_id, role, code, email, created_by, expires_at)
      VALUES ($1,$2,$3,$4,$5,$6)
      RETURNING code`,
-    [orgId, role, code, email || null, userId, expires_at]
+    [orgId, role, code, email || null, userId, expires_at],
   );
 
   const base =
@@ -1655,7 +1771,7 @@ export async function createOrgInvite(req, res) {
     req.get('referer') ||
     'http://localhost:5173';
 
-  const invite_url = `${String(base).replace(/\/$/,'')}/org/join/${ins.rows[0].code}`;
+  const invite_url = `${String(base).replace(/\/$/, '')}/org/join/${ins.rows[0].code}`;
   res.json({ ok: true, invite_code: ins.rows[0].code, invite_url });
 }
 
@@ -1673,9 +1789,10 @@ export async function acceptOrgMembershipInvite(req, res) {
 
   const iv = await pool.query(
     `SELECT * FROM org_invites WHERE code=$1 LIMIT 1`,
-    [code]
+    [code],
   );
-  if (!iv.rowCount) return res.status(404).json({ message: 'Invite not found' });
+  if (!iv.rowCount)
+    return res.status(404).json({ message: 'Invite not found' });
   const invite = iv.rows[0];
 
   if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
@@ -1685,7 +1802,7 @@ export async function acceptOrgMembershipInvite(req, res) {
   // idempotent: if already a member, just mark accepted fields
   const already = await pool.query(
     `SELECT 1 FROM org_memberships WHERE org_id=$1 AND user_id=$2`,
-    [invite.org_id, userId]
+    [invite.org_id, userId],
   );
 
   await pool.query('BEGIN');
@@ -1696,7 +1813,7 @@ export async function acceptOrgMembershipInvite(req, res) {
         const limit = await getSeatLimit(pool, invite.org_id);
         const usedQ = await pool.query(
           `SELECT COUNT(*)::int AS used FROM org_memberships WHERE org_id=$1 AND role='learner'`,
-          [invite.org_id]
+          [invite.org_id],
         );
         const used = usedQ.rows[0]?.used ?? 0;
         if (used >= limit) {
@@ -1709,13 +1826,13 @@ export async function acceptOrgMembershipInvite(req, res) {
         `INSERT INTO org_memberships (org_id, user_id, role, invited_by, joined_at)
          VALUES ($1, $2, $3, $4, NOW())
          ON CONFLICT (org_id, user_id) DO NOTHING`,
-        [invite.org_id, userId, invite.role, invite.created_by]
+        [invite.org_id, userId, invite.role, invite.created_by],
       );
     }
 
     await pool.query(
       `UPDATE org_invites SET accepted_by=$1, accepted_at=NOW() WHERE id=$2`,
-      [userId, invite.id]
+      [userId, invite.id],
     );
 
     await pool.query('COMMIT');
@@ -1734,23 +1851,31 @@ export async function removeOrgMember(req, res) {
 
   const actorQ = await pool.query(
     `SELECT role FROM org_memberships WHERE org_id=$1 AND user_id=$2`,
-    [orgId, actorId]
+    [orgId, actorId],
   );
   if (!actorQ.rowCount) return res.status(403).json({ message: 'Forbidden' });
   const actorRole = String(actorQ.rows[0].role || '').toLowerCase();
 
   const targetQ = await pool.query(
     `SELECT role FROM org_memberships WHERE org_id=$1 AND user_id=$2`,
-    [orgId, userId]
+    [orgId, userId],
   );
-  if (!targetQ.rowCount) return res.status(404).json({ message: 'Member not found' });
+  if (!targetQ.rowCount)
+    return res.status(404).json({ message: 'Member not found' });
   const targetRole = String(targetQ.rows[0].role || '').toLowerCase();
 
   if (targetRole === 'owner') {
-    return res.status(409).json({ message: 'Owners cannot be removed. Transfer ownership first.' });
+    return res
+      .status(409)
+      .json({ message: 'Owners cannot be removed. Transfer ownership first.' });
   }
-  if (actorRole === 'admin' && (targetRole === 'admin' || targetRole === 'owner')) {
-    return res.status(403).json({ message: 'Admins can remove instructors & learners only.' });
+  if (
+    actorRole === 'admin' &&
+    (targetRole === 'admin' || targetRole === 'owner')
+  ) {
+    return res
+      .status(403)
+      .json({ message: 'Admins can remove instructors & learners only.' });
   }
 
   await pool.query('BEGIN');
@@ -1760,7 +1885,7 @@ export async function removeOrgMember(req, res) {
       `DELETE FROM org_assignment_enrollments
         WHERE user_id=$1
           AND assignment_id IN (SELECT id FROM org_course_assignments WHERE org_id=$2)`,
-      [userId, orgId]
+      [userId, orgId],
     );
 
     // End any active attempts (use allowed status)
@@ -1769,19 +1894,21 @@ export async function removeOrgMember(req, res) {
           SET status='expired',
               due_at = LEAST(due_at, NOW())
         WHERE user_id=$1 AND org_id=$2 AND status='active'`,
-      [userId, orgId]
+      [userId, orgId],
     );
 
     // Remove membership
     await pool.query(
       `DELETE FROM org_memberships WHERE org_id=$1 AND user_id=$2`,
-      [orgId, userId]
+      [orgId, userId],
     );
 
     await pool.query('COMMIT');
     return res.json({ ok: true });
   } catch (e) {
-    try { await pool.query('ROLLBACK'); } catch {}
+    try {
+      await pool.query('ROLLBACK');
+    } catch {}
     console.error('[removeOrgMember]', e);
     return res.status(500).json({ message: 'Failed to remove member' });
   }
@@ -1795,7 +1922,9 @@ export async function setClassTeacherSignature(req, res) {
 
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
   if (!classLabel || !signature_url) {
-    return res.status(400).json({ message: 'Missing classLabel or signature_url' });
+    return res
+      .status(400)
+      .json({ message: 'Missing classLabel or signature_url' });
   }
 
   // staff gate: owner/admin/instructor only
@@ -1804,7 +1933,7 @@ export async function setClassTeacherSignature(req, res) {
        FROM org_memberships
       WHERE org_id=$1 AND user_id=$2
       LIMIT 1`,
-    [orgId, userId]
+    [orgId, userId],
   );
   if (!mem.rowCount) return res.status(403).json({ message: 'Forbidden' });
 
@@ -1812,7 +1941,7 @@ export async function setClassTeacherSignature(req, res) {
     `UPDATE org_learner_profiles
         SET class_teacher_signature_url = $3
       WHERE org_id=$1 AND class_label=$2`,
-    [orgId, classLabel, signature_url]
+    [orgId, classLabel, signature_url],
   );
 
   return res.json({ ok: true });

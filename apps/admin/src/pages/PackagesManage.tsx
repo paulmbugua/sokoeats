@@ -141,8 +141,10 @@ export default function PackagesManage() {
     if (!window.confirm(`Delete the ${row.credits}-credit package (both USD & KES)?`)) return;
     try {
       const calls: Promise<any>[] = [];
-      if (row.idUSD) calls.push(axios.delete(`${base}/api/admin/packages/${row.idUSD}`, { headers }));
-      if (row.idKES) calls.push(axios.delete(`${base}/api/admin/packages/${row.idKES}`, { headers }));
+      if (row.idUSD)
+        calls.push(axios.delete(`${base}/api/admin/packages/${row.idUSD}`, { headers }));
+      if (row.idKES)
+        calls.push(axios.delete(`${base}/api/admin/packages/${row.idKES}`, { headers }));
       if (!calls.length) {
         toast.error('Missing package ids for deletion.');
         return;
@@ -284,11 +286,7 @@ export default function PackagesManage() {
                 <h3 id="pkgEditorTitle" className="app-heading">
                   {isNew ? 'Add Package' : `Edit Package (${editing.credits} credits)`}
                 </h3>
-                <button
-                  aria-label="Close"
-                  className="chip"
-                  onClick={() => setEditing(null)}
-                >
+                <button aria-label="Close" className="chip" onClick={() => setEditing(null)}>
                   <X className="w-4 h-4" />
                 </button>
               </div>

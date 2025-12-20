@@ -1,12 +1,7 @@
 /* eslint-disable prettier/prettier */
 /* eslint-disable react-hooks/exhaustive-deps */
 
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-  useCallback,
-} from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,13 +11,9 @@ import {
   Share,
   TextInput,
 } from 'react-native';
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import Animated,
-{
+import Animated, {
   FadeIn,
   FadeInDown,
   useAnimatedStyle,
@@ -142,13 +133,7 @@ const OrgInstructorHomeNative: React.FC = () => {
   const insets = useSafeAreaInsets();
   const palette = usePalette();
 
-  const {
-    backendUrl,
-    orgToken,
-    token: userToken,
-    orgLogout,
-    orgUser,
-  } = useShopContext() as any;
+  const { backendUrl, orgToken, token: userToken, orgLogout, orgUser } = useShopContext() as any;
 
   const authToken = orgToken || userToken;
 
@@ -194,10 +179,7 @@ const OrgInstructorHomeNative: React.FC = () => {
       try {
         const org: any = await getMyOrgOrBootstrap(backendUrl, orgToken);
         if (stop) return;
-        const name =
-          org?.name ||
-          (org as any)?.org_name ||
-          'Your Institution';
+        const name = org?.name || (org as any)?.org_name || 'Your Institution';
         setOrgName(name);
         setOrgId(org?.id ?? null);
 
@@ -213,16 +195,11 @@ const OrgInstructorHomeNative: React.FC = () => {
         }
 
         if (org?.instructor_signature_url) {
-          setPreviewUrl(
-            resolveAsset(org.instructor_signature_url, backendUrl),
-          );
+          setPreviewUrl(resolveAsset(org.instructor_signature_url, backendUrl));
         }
       } catch (e: any) {
         if (!stop) {
-          Alert.alert(
-            'Error',
-            e?.message || 'Failed to load organization.',
-          );
+          Alert.alert('Error', e?.message || 'Failed to load organization.');
         }
       } finally {
         if (!stop) setLoading(false);
@@ -244,52 +221,34 @@ const OrgInstructorHomeNative: React.FC = () => {
 
     (async () => {
       try {
-        const resp: any = await getOrgAssignments(
-          backendUrl,
-          authToken,
-          orgId,
-          { view: 'instructor' } as any,
-        );
+        const resp: any = await getOrgAssignments(backendUrl, authToken, orgId, {
+          view: 'instructor',
+        } as any);
 
         const rows: any[] = (resp?.data ?? resp ?? []) as any[];
 
         const withSubs = rows.filter((row: any) => {
-          const count =
-            row.submission_count ??
-            row.submissions_count ??
-            row.answers_count ??
-            0;
+          const count = row.submission_count ?? row.submissions_count ?? row.answers_count ?? 0;
           return row.has_submission || row.hasSubmitted || count > 0;
         });
 
         withSubs.sort((a: any, b: any) => {
           const aDate = new Date(
-            a.latest_submission_at ??
-              a.submitted_at ??
-              a.due_at ??
-              a.created_at ??
-              0,
+            a.latest_submission_at ?? a.submitted_at ?? a.due_at ?? a.created_at ?? 0
           ).getTime();
           const bDate = new Date(
-            b.latest_submission_at ??
-              b.submitted_at ??
-              b.due_at ??
-              b.created_at ??
-              0,
+            b.latest_submission_at ?? b.submitted_at ?? b.due_at ?? b.created_at ?? 0
           ).getTime();
           return bDate - aDate;
         });
 
         if (!stop) setRecentAssignments(withSubs.slice(0, 5));
       } catch (err: any) {
-        console.warn(
-          '[OrgInstructorHomeNative] recent submissions error',
-          {
-            message: err?.message,
-            status: err?.response?.status,
-            data: err?.response?.data,
-          },
-        );
+        console.warn('[OrgInstructorHomeNative] recent submissions error', {
+          message: err?.message,
+          status: err?.response?.status,
+          data: err?.response?.data,
+        });
         if (!stop) setRecentError('Failed to load recent submissions.');
       } finally {
         if (!stop) setRecentLoading(false);
@@ -302,25 +261,18 @@ const OrgInstructorHomeNative: React.FC = () => {
   }, [backendUrl, authToken, orgId]);
 
   const title = useMemo(
-    () =>
-      orgName ? `${orgName} · Instructor` : 'Institution · Instructor',
-    [orgName],
+    () => (orgName ? `${orgName} · Instructor` : 'Institution · Instructor'),
+    [orgName]
   );
 
-  const seatPct = Math.min(
-    100,
-    Math.round(((seatsUsed || 0) / (seatsMax || 1)) * 100),
-  );
+  const seatPct = Math.min(100, Math.round(((seatsUsed || 0) / (seatsMax || 1)) * 100));
 
   const roleLabel = useMemo(() => {
     if (orgUser?.role) return String(orgUser.role).toUpperCase();
     return 'INSTRUCTOR';
   }, [orgUser]);
 
-  const tierLabel = useMemo(
-    () => (tier ? String(tier).toUpperCase() : 'STARTER'),
-    [tier],
-  );
+  const tierLabel = useMemo(() => (tier ? String(tier).toUpperCase() : 'STARTER'), [tier]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -338,21 +290,15 @@ const OrgInstructorHomeNative: React.FC = () => {
       return;
     }
     try {
-      const resp: any = await createOrgAssignment(
-        backendUrl,
-        orgToken,
-        orgId,
-        {
-          courseId,
-          title_override: null,
-          pass_mark: null,
-          timer_s: null,
-          due_at: null,
-        } as any,
-      );
+      const resp: any = await createOrgAssignment(backendUrl, orgToken, orgId, {
+        courseId,
+        title_override: null,
+        pass_mark: null,
+        timer_s: null,
+        due_at: null,
+      } as any);
       const base = backendUrl.replace(/\/$/, '');
-      const code =
-        resp?.invite_code || resp?.inviteCode || resp?.code;
+      const code = resp?.invite_code || resp?.inviteCode || resp?.code;
       const link = `${base}/org/join/${code}`;
       setInviteUrl(link);
       try {
@@ -365,9 +311,7 @@ const OrgInstructorHomeNative: React.FC = () => {
     } catch (e: any) {
       Alert.alert(
         'Invite failed',
-        e?.response?.data?.message ||
-          e?.message ||
-          'Failed to create invite.',
+        e?.response?.data?.message || e?.message || 'Failed to create invite.'
       );
     }
   }, [backendUrl, orgId, orgToken, courseId]);
@@ -376,12 +320,11 @@ const OrgInstructorHomeNative: React.FC = () => {
     setSigError(null);
     setSigSuccess(null);
 
-    const { status } =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(
         'Permission required',
-        'We need access to your photos to select a signature image.',
+        'We need access to your photos to select a signature image.'
       );
       return;
     }
@@ -408,9 +351,7 @@ const OrgInstructorHomeNative: React.FC = () => {
     setSigSuccess(null);
 
     if (!backendUrl || !authToken || !orgId) {
-      setSigError(
-        'Missing organization context. Please refresh and try again.',
-      );
+      setSigError('Missing organization context. Please refresh and try again.');
       return;
     }
 
@@ -422,37 +363,20 @@ const OrgInstructorHomeNative: React.FC = () => {
     setSavingSig(true);
 
     try {
-      const res: any = await uploadAsset(
-        backendUrl,
-        authToken,
-        localSigFile,
-        'image',
-      );
+      const res: any = await uploadAsset(backendUrl, authToken, localSigFile, 'image');
 
       const rawUrl =
-        typeof res === 'string'
-          ? res
-          : res?.url || res?.secure_url || res?.data?.url || '';
+        typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || '';
 
       if (!rawUrl) {
-        console.warn(
-          '[OrgInstructorHomeNative] uploadAsset response with no url:',
-          res,
-        );
-        throw new Error(
-          'Upload completed but no URL was returned by the server.',
-        );
+        console.warn('[OrgInstructorHomeNative] uploadAsset response with no url:', res);
+        throw new Error('Upload completed but no URL was returned by the server.');
       }
 
       const finalUrl = resolveAsset(rawUrl, backendUrl);
 
       const payload = { instructor_signature_url: finalUrl };
-      const updated: any = await updateOrgBranding(
-        backendUrl,
-        authToken,
-        orgId,
-        payload,
-      );
+      const updated: any = await updateOrgBranding(backendUrl, authToken, orgId, payload);
 
       const savedUrl = updated?.instructor_signature_url
         ? resolveAsset(updated.instructor_signature_url, backendUrl)
@@ -461,20 +385,17 @@ const OrgInstructorHomeNative: React.FC = () => {
       setPreviewUrl(savedUrl);
       setLocalSigFile(null);
       setSigSuccess(
-        'Signature updated. New report cards will use this image in the “Class teacher / Instructor” section.',
+        'Signature updated. New report cards will use this image in the “Class teacher / Instructor” section.'
       );
     } catch (err: any) {
-      console.warn(
-        '[OrgInstructorHomeNative] save signature error',
-        err,
-      );
+      console.warn('[OrgInstructorHomeNative] save signature error', err);
 
       const status = err?.response?.status;
       const msg = err?.response?.data?.message || err?.message;
 
       if (status === 403) {
         setSigError(
-          'You do not have permission to change institution branding. Ask your institution owner/admin to upload this signature from the web portal.',
+          'You do not have permission to change institution branding. Ask your institution owner/admin to upload this signature from the web portal.'
         );
       } else {
         setSigError(msg || 'Failed to upload or save signature.');
@@ -504,7 +425,7 @@ const OrgInstructorHomeNative: React.FC = () => {
     try {
       const res = await fetch(
         `${backendUrl}/api/orgs/${orgId}/classes/${encodeURIComponent(
-          classLabel.trim(),
+          classLabel.trim()
         )}/class-teacher-signature`,
         {
           method: 'PUT',
@@ -513,19 +434,17 @@ const OrgInstructorHomeNative: React.FC = () => {
             Authorization: `Bearer ${authToken}`,
           },
           body: JSON.stringify({ signature_url: previewUrl }),
-        },
+        }
       );
       if (!res.ok) {
         const j: any = await res.json().catch(() => ({}));
         throw new Error(j?.message || `Failed (${res.status})`);
       }
       setSigSuccess(
-        `Signature applied to ${classLabel.trim()}. New report cards for this class will use it.`,
+        `Signature applied to ${classLabel.trim()}. New report cards for this class will use it.`
       );
     } catch (e: any) {
-      setSigError(
-        e?.message || 'Failed to apply class teacher signature.',
-      );
+      setSigError(e?.message || 'Failed to apply class teacher signature.');
     }
   }, [previewUrl, classLabel, backendUrl, orgId, authToken]);
 
@@ -538,7 +457,7 @@ const OrgInstructorHomeNative: React.FC = () => {
         view: 'submissions',
       });
     },
-    [navigation, orgId],
+    [navigation, orgId]
   );
 
   const bottomPad = Math.max(24, insets.bottom + 24);
@@ -563,41 +482,20 @@ const OrgInstructorHomeNative: React.FC = () => {
         <View style={tw`flex-1 items-center justify-center px-6`}>
           <View style={palette.softSurface(tw`w-full max-w-xs`)}>
             <Text
-              style={[
-                tw`text-[10px] uppercase tracking-[1.6px]`,
-                { color: palette.textSubtle },
-              ]}
+              style={[tw`text-[10px] uppercase tracking-[1.6px]`, { color: palette.textSubtle }]}
             >
               {roleLabel} PORTAL
             </Text>
-            <Text
-              style={[
-                tw`mt-2 text-lg font-semibold`,
-                { color: palette.text },
-              ]}
-            >
+            <Text style={[tw`mt-2 text-lg font-semibold`, { color: palette.text }]}>
               Preparing your instructor dashboard…
             </Text>
-            <Text
-              style={[
-                tw`mt-2 text-xs`,
-                { color: palette.textMuted },
-              ]}
-            >
-              Please wait a moment while we load your institution and
-              instructor account.
+            <Text style={[tw`mt-2 text-xs`, { color: palette.textMuted }]}>
+              Please wait a moment while we load your institution and instructor account.
             </Text>
 
             <View style={tw`mt-4 flex-row items-center`}>
               <ActivityIndicator />
-              <Text
-                style={[
-                  tw`ml-2 text-[11px]`,
-                  { color: palette.textSubtle },
-                ]}
-              >
-                Loading…
-              </Text>
+              <Text style={[tw`ml-2 text-[11px]`, { color: palette.textSubtle }]}>Loading…</Text>
             </View>
           </View>
         </View>
@@ -626,38 +524,18 @@ const OrgInstructorHomeNative: React.FC = () => {
 
         <View style={tw`px-4`}>
           {/* Header */}
-          <Animated.View
-            entering={FadeInDown.duration(320)}
-            style={palette.surface()}
-          >
+          <Animated.View entering={FadeInDown.duration(320)} style={palette.surface()}>
             <View style={tw`flex-row justify-between items-start`}>
               <View style={tw`flex-1 pr-2`}>
-                <Text
-                  style={[
-                    tw`text-[10px] font-semibold tracking-[2px]`,
-                    { color: '#4ade80' },
-                  ]}
-                >
+                <Text style={[tw`text-[10px] font-semibold tracking-[2px]`, { color: '#4ade80' }]}>
                   {roleLabel} PORTAL
                 </Text>
-                <Text
-                  style={[
-                    tw`mt-1 text-xl font-bold`,
-                    { color: palette.text },
-                  ]}
-                >
+                <Text style={[tw`mt-1 text-xl font-bold`, { color: palette.text }]}>
                   Welcome back, instructor
                 </Text>
-                <Text
-                  style={[
-                    tw`mt-1 text-xs`,
-                    { color: palette.textMuted },
-                  ]}
-                >
-                  You’re managing learning for{' '}
-                  <Text style={tw`font-semibold`}>{orgName}</Text>.
-                  Use this space to create assignments, enter marks,
-                  and keep your classes organized.
+                <Text style={[tw`mt-1 text-xs`, { color: palette.textMuted }]}>
+                  You’re managing learning for <Text style={tw`font-semibold`}>{orgName}</Text>. Use
+                  this space to create assignments, enter marks, and keep your classes organized.
                 </Text>
 
                 <View style={tw`flex-row mt-2`}>
@@ -670,12 +548,7 @@ const OrgInstructorHomeNative: React.FC = () => {
                       },
                     ]}
                   >
-                    <Text
-                      style={[
-                        tw`text-[10px] font-semibold`,
-                        { color: '#bbf7d0' },
-                      ]}
-                    >
+                    <Text style={[tw`text-[10px] font-semibold`, { color: '#bbf7d0' }]}>
                       Plan: {tierLabel}
                     </Text>
                   </View>
@@ -688,12 +561,7 @@ const OrgInstructorHomeNative: React.FC = () => {
                       },
                     ]}
                   >
-                    <Text
-                      style={[
-                        tw`text-[10px] font-semibold`,
-                        { color: '#bae6fd' },
-                      ]}
-                    >
+                    <Text style={[tw`text-[10px] font-semibold`, { color: '#bae6fd' }]}>
                       Role: {roleLabel}
                     </Text>
                   </View>
@@ -710,12 +578,7 @@ const OrgInstructorHomeNative: React.FC = () => {
                     { backgroundColor: palette.divider },
                   ]}
                 >
-                  <Text
-                    style={[
-                      tw`text-[11px] font-semibold`,
-                      { color: palette.text },
-                    ]}
-                  >
+                  <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>
                     Sign out
                   </Text>
                 </TouchableOpacity>
@@ -728,20 +591,8 @@ const OrgInstructorHomeNative: React.FC = () => {
             entering={FadeInDown.delay(80).duration(320)}
             style={palette.surface(tw`mt-3`)}
           >
-            <Text
-              style={[
-                tw`text-sm font-semibold`,
-                { color: palette.text },
-              ]}
-            >
-              Quick actions
-            </Text>
-            <Text
-              style={[
-                tw`mt-1 text-xs`,
-                { color: palette.textMuted },
-              ]}
-            >
+            <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>Quick actions</Text>
+            <Text style={[tw`mt-1 text-xs`, { color: palette.textMuted }]}>
               Jump straight into the tools you use most often.
             </Text>
 
@@ -753,104 +604,52 @@ const OrgInstructorHomeNative: React.FC = () => {
                     from: 'instructor',
                   })
                 }
-                style={[
-                  tw`mr-2 mb-2 px-3 py-2 rounded-full`,
-                  { backgroundColor: '#4f46e5' },
-                ]}
+                style={[tw`mr-2 mb-2 px-3 py-2 rounded-full`, { backgroundColor: '#4f46e5' }]}
               >
-                <Text
-                  style={tw`text-white text-[11px] font-semibold`}
-                >
-                  Create assignment
-                </Text>
+                <Text style={tw`text-white text-[11px] font-semibold`}>Create assignment</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() =>
-                  navigation.navigate('OrgExamResultsPortal')
-                }
-                style={[
-                  tw`mr-2 mb-2 px-3 py-2 rounded-full`,
-                  { backgroundColor: '#0284c7' },
-                ]}
+                onPress={() => navigation.navigate('OrgExamResultsPortal')}
+                style={[tw`mr-2 mb-2 px-3 py-2 rounded-full`, { backgroundColor: '#0284c7' }]}
               >
-                <Text
-                  style={tw`text-white text-[11px] font-semibold`}
-                >
-                  Enter marks & reports
-                </Text>
+                <Text style={tw`text-white text-[11px] font-semibold`}>Enter marks & reports</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() =>
-                  navigation.navigate('ClassVaultUpload')
-                }
-                style={[
-                  tw`mr-2 mb-2 px-3 py-2 rounded-full`,
-                  { backgroundColor: '#059669' },
-                ]}
+                onPress={() => navigation.navigate('ClassVaultUpload')}
+                style={[tw`mr-2 mb-2 px-3 py-2 rounded-full`, { backgroundColor: '#059669' }]}
               >
-                <Text
-                  style={tw`text-white text-[11px] font-semibold`}
-                >
-                  Upload recorded class
-                </Text>
+                <Text style={tw`text-white text-[11px] font-semibold`}>Upload recorded class</Text>
               </TouchableOpacity>
             </View>
 
-            <Text
-              style={[
-                tw`mt-2 text-[11px]`,
-                { color: palette.textSubtle },
-              ]}
-            >
-              Use the E-Learning portal for assignments and analytics.
-              Use the Exams area to capture marks and generate report
-              cards.
+            <Text style={[tw`mt-2 text-[11px]`, { color: palette.textSubtle }]}>
+              Use the E-Learning portal for assignments and analytics. Use the Exams area to capture
+              marks and generate report cards.
             </Text>
           </Animated.View>
-
 
           {/* Instructor signature */}
           <Animated.View
             entering={FadeInDown.delay(160).duration(320)}
             style={palette.surface(tw`mt-3`)}
           >
-            <Text
-              style={[
-                tw`text-sm font-semibold`,
-                { color: palette.text },
-              ]}
-            >
+            <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>
               Instructor signature
             </Text>
-            <Text
-              style={[
-                tw`mt-1 text-xs`,
-                { color: palette.textMuted },
-              ]}
-            >
+            <Text style={[tw`mt-1 text-xs`, { color: palette.textMuted }]}>
               Upload a clear signature image to appear in the{' '}
-              <Text style={tw`font-semibold`}>
-                “Class teacher / Instructor”
-              </Text>{' '}
-              section of your report cards.
+              <Text style={tw`font-semibold`}>“Class teacher / Instructor”</Text> section of your
+              report cards.
             </Text>
 
             <View style={tw`mt-3 flex-row items-center`}>
               <TouchableOpacity
                 onPress={pickSignature}
-                style={[
-                  tw`px-3 py-2 rounded-2xl`,
-                  { backgroundColor: palette.divider },
-                ]}
+                style={[tw`px-3 py-2 rounded-2xl`, { backgroundColor: palette.divider }]}
               >
-                <Text
-                  style={[
-                    tw`text-xs font-semibold`,
-                    { color: palette.text },
-                  ]}
-                >
+                <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>
                   Choose image
                 </Text>
               </TouchableOpacity>
@@ -866,9 +665,7 @@ const OrgInstructorHomeNative: React.FC = () => {
                   },
                 ]}
               >
-                <Text
-                  style={tw`text-white text-xs font-semibold`}
-                >
+                <Text style={tw`text-white text-xs font-semibold`}>
                   {savingSig ? 'Saving…' : 'Save signature'}
                 </Text>
               </TouchableOpacity>
@@ -895,24 +692,13 @@ const OrgInstructorHomeNative: React.FC = () => {
               </View>
             )}
 
-            <Text
-              style={[
-                tw`mt-2 text-[11px]`,
-                { color: palette.textSubtle },
-              ]}
-            >
-              Tip: use a transparent PNG (around 600×200px). Future
-              report cards and certificates will automatically use this
-              signature.
+            <Text style={[tw`mt-2 text-[11px]`, { color: palette.textSubtle }]}>
+              Tip: use a transparent PNG (around 600×200px). Future report cards and certificates
+              will automatically use this signature.
             </Text>
 
             <View style={tw`mt-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>
                 Class / Grade this signature belongs to
               </Text>
               <TextInput
@@ -929,40 +715,21 @@ const OrgInstructorHomeNative: React.FC = () => {
                   tw`mt-2 px-3 py-2 rounded-2xl items-center justify-center`,
                   {
                     backgroundColor: '#4f46e5',
-                    opacity:
-                      !previewUrl || !classLabel || !orgId || !authToken
-                        ? 0.6
-                        : 1,
+                    opacity: !previewUrl || !classLabel || !orgId || !authToken ? 0.6 : 1,
                   },
                 ]}
               >
-                <Text
-                  style={tw`text-white text-xs font-semibold`}
-                >
+                <Text style={tw`text-white text-xs font-semibold`}>
                   Save as class teacher for this class
                 </Text>
               </TouchableOpacity>
             </View>
 
             {!!sigError && (
-              <Text
-                style={[
-                  tw`mt-2 text-[11px]`,
-                  { color: '#fca5a5' },
-                ]}
-              >
-                {sigError}
-              </Text>
+              <Text style={[tw`mt-2 text-[11px]`, { color: '#fca5a5' }]}>{sigError}</Text>
             )}
             {!!sigSuccess && (
-              <Text
-                style={[
-                  tw`mt-2 text-[11px]`,
-                  { color: '#6ee7b7' },
-                ]}
-              >
-                {sigSuccess}
-              </Text>
+              <Text style={[tw`mt-2 text-[11px]`, { color: '#6ee7b7' }]}>{sigSuccess}</Text>
             )}
           </Animated.View>
 
@@ -971,15 +738,8 @@ const OrgInstructorHomeNative: React.FC = () => {
             entering={FadeInDown.delay(200).duration(320)}
             style={palette.surface(tw`mt-3`)}
           >
-            <View
-              style={tw`flex-row items-center justify-between mb-2`}
-            >
-              <Text
-                style={[
-                  tw`text-sm font-semibold`,
-                  { color: palette.text },
-                ]}
-              >
+            <View style={tw`flex-row items-center justify-between mb-2`}>
+              <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>
                 Recent submissions
               </Text>
               <TouchableOpacity
@@ -990,149 +750,84 @@ const OrgInstructorHomeNative: React.FC = () => {
                   })
                 }
               >
-                <Text
-                  style={[
-                    tw`text-[11px] underline`,
-                    { color: '#6ee7b7' },
-                  ]}
-                >
-                  Open portal →
-                </Text>
+                <Text style={[tw`text-[11px] underline`, { color: '#6ee7b7' }]}>Open portal →</Text>
               </TouchableOpacity>
             </View>
 
             {recentLoading && (
-              <Text
-                style={[
-                  tw`text-xs`,
-                  { color: palette.textMuted },
-                ]}
-              >
+              <Text style={[tw`text-xs`, { color: palette.textMuted }]}>
                 Loading recent submissions…
               </Text>
             )}
 
             {!recentLoading && !!recentError && (
-              <Text
-                style={[
-                  tw`text-xs`,
-                  { color: '#fca5a5' },
-                ]}
-              >
-                {recentError}
+              <Text style={[tw`text-xs`, { color: '#fca5a5' }]}>{recentError}</Text>
+            )}
+
+            {!recentLoading && !recentError && recentAssignments.length === 0 && (
+              <Text style={[tw`text-xs`, { color: palette.textMuted }]}>
+                No submissions yet. Once learners turn in work, their latest assignments will appear
+                here.
               </Text>
             )}
 
-            {!recentLoading &&
-              !recentError &&
-              recentAssignments.length === 0 && (
-                <Text
-                  style={[
-                    tw`text-xs`,
-                    { color: palette.textMuted },
-                  ]}
-                >
-                  No submissions yet. Once learners turn in work,
-                  their latest assignments will appear here.
-                </Text>
-              )}
+            {!recentLoading && !recentError && recentAssignments.length > 0 && (
+              <View style={tw`mt-1`}>
+                {recentAssignments.map((a: any) => {
+                  const count = a.submission_count ?? a.submissions_count ?? a.answers_count ?? 0;
 
-            {!recentLoading &&
-              !recentError &&
-              recentAssignments.length > 0 && (
-                <View style={tw`mt-1`}>
-                  {recentAssignments.map((a: any) => {
-                    const count =
-                      a.submission_count ??
-                      a.submissions_count ??
-                      a.answers_count ??
-                      0;
+                  const latest = a.latest_submission_at ?? a.submitted_at ?? null;
 
-                    const latest =
-                      a.latest_submission_at ??
-                      a.submitted_at ??
-                      null;
-
-                    let latestLabel = '';
-                    if (latest) {
-                      try {
-                        latestLabel = new Date(
-                          latest,
-                        ).toLocaleString();
-                      } catch {
-                        latestLabel = String(latest);
-                      }
+                  let latestLabel = '';
+                  if (latest) {
+                    try {
+                      latestLabel = new Date(latest).toLocaleString();
+                    } catch {
+                      latestLabel = String(latest);
                     }
+                  }
 
-                    return (
-                      <TouchableOpacity
-                        key={a.id}
-                        onPress={() =>
-                          handleOpenSubmissions(a.id)
-                        }
-                        style={tw`flex-row justify-between items-start border-b border-slate-700/60 py-2`}
-                      >
-                        <View style={tw`flex-1 pr-2`}>
+                  return (
+                    <TouchableOpacity
+                      key={a.id}
+                      onPress={() => handleOpenSubmissions(a.id)}
+                      style={tw`flex-row justify-between items-start border-b border-slate-700/60 py-2`}
+                    >
+                      <View style={tw`flex-1 pr-2`}>
+                        <Text
+                          numberOfLines={1}
+                          style={[tw`text-xs font-semibold`, { color: palette.text }]}
+                        >
+                          {a.title || a.course_title || 'Untitled assignment'}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={[tw`mt-0.5 text-[11px]`, { color: palette.textSubtle }]}
+                        >
+                          {a.org_class_label || a.class_label || 'All classes'} •{' '}
+                          {a.org_subject_key || a.subject_key || 'Subject'}
+                        </Text>
+                      </View>
+                      <View style={tw`items-end`}>
+                        <Text style={[tw`text-xs font-semibold`, { color: '#6ee7b7' }]}>
+                          {count}{' '}
                           <Text
-                            numberOfLines={1}
-                            style={[
-                              tw`text-xs font-semibold`,
-                              { color: palette.text },
-                            ]}
+                            style={[tw`text-[11px] font-normal`, { color: palette.textSubtle }]}
                           >
-                            {a.title ||
-                              a.course_title ||
-                              'Untitled assignment'}
+                            subm.
                           </Text>
-                          <Text
-                            numberOfLines={1}
-                            style={[
-                              tw`mt-0.5 text-[11px]`,
-                              { color: palette.textSubtle },
-                            ]}
-                          >
-                            {a.org_class_label ||
-                              a.class_label ||
-                              'All classes'}{' '}
-                            •{' '}
-                            {a.org_subject_key ||
-                              a.subject_key ||
-                              'Subject'}
+                        </Text>
+                        {!!latestLabel && (
+                          <Text style={[tw`mt-0.5 text-[10px]`, { color: palette.textSubtle }]}>
+                            {latestLabel}
                           </Text>
-                        </View>
-                        <View style={tw`items-end`}>
-                          <Text
-                            style={[
-                              tw`text-xs font-semibold`,
-                              { color: '#6ee7b7' },
-                            ]}
-                          >
-                            {count}{' '}
-                            <Text
-                              style={[
-                                tw`text-[11px] font-normal`,
-                                { color: palette.textSubtle },
-                              ]}
-                            >
-                              subm.
-                            </Text>
-                          </Text>
-                          {!!latestLabel && (
-                            <Text
-                              style={[
-                                tw`mt-0.5 text-[10px]`,
-                                { color: palette.textSubtle },
-                              ]}
-                            >
-                              {latestLabel}
-                            </Text>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
           </Animated.View>
 
           {/* Bottom shortcuts */}
@@ -1140,28 +835,18 @@ const OrgInstructorHomeNative: React.FC = () => {
             entering={FadeInDown.delay(240).duration(320)}
             style={tw`mt-3 mb-6 flex-row`}
           >
-            <Animated.View
-              style={[btnCreateWithAi.style, tw`flex-1 mr-2`]}
-            >
+            <Animated.View style={[btnCreateWithAi.style, tw`flex-1 mr-2`]}>
               <TouchableOpacity
-                onPress={() =>
-                  navigation.navigate('RobotTutor', { flow: 'org' })
-                }
+                onPress={() => navigation.navigate('RobotTutor', { flow: 'org' })}
                 onPressIn={btnCreateWithAi.onIn}
                 onPressOut={btnCreateWithAi.onOut}
                 style={tw`h-11 px-4 rounded-2xl bg-indigo-600 items-center justify-center`}
               >
-                <Text
-                  style={tw`text-white font-semibold text-sm`}
-                >
-                  Create with AI 🤖
-                </Text>
+                <Text style={tw`text-white font-semibold text-sm`}>Create with AI 🤖</Text>
               </TouchableOpacity>
             </Animated.View>
 
-            <Animated.View
-              style={[btnOpenPortal.style, tw`flex-1 ml-2`]}
-            >
+            <Animated.View style={[btnOpenPortal.style, tw`flex-1 ml-2`]}>
               <TouchableOpacity
                 onPress={() =>
                   navigation.navigate('OrgElearnPortal', {
@@ -1172,11 +857,7 @@ const OrgInstructorHomeNative: React.FC = () => {
                 onPressOut={btnOpenPortal.onOut}
                 style={tw`h-11 px-4 rounded-2xl bg-sky-600 items-center justify-center`}
               >
-                <Text
-                  style={tw`text-white font-semibold text-sm`}
-                >
-                  Open Org Portal
-                </Text>
+                <Text style={tw`text-white font-semibold text-sm`}>Open Org Portal</Text>
               </TouchableOpacity>
             </Animated.View>
           </Animated.View>

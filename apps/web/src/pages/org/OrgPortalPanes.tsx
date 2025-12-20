@@ -1,10 +1,7 @@
 // apps/web/src/pages/org/OrgPortalPanes.tsx
 import React from 'react';
 import { Link } from 'react-router-dom';
-import type {
-  OrgResp as Org,
-  OrgAnalyticsRow,
-} from '@mytutorapp/shared/api/orgApi';
+import type { OrgResp as Org, OrgAnalyticsRow } from '@mytutorapp/shared/api/orgApi';
 import { useCourses } from '@mytutorapp/shared/hooks';
 
 type TabKey = 'branding' | 'assign' | 'analytics';
@@ -88,9 +85,7 @@ type BrandingAssignProps = {
   setLegacyDueAt: (v: string) => void;
   legacyAttachmentUrl: string;
   legacyUploadingAttachment: boolean;
-  onUploadLegacyAttachment: (
-    file: File | null
-  ) => Promise<string | null> | Promise<null> | null;
+  onUploadLegacyAttachment: (file: File | null) => Promise<string | null> | Promise<null> | null;
   onCreateLegacyAssignment: () => void;
   creatingLegacyAssignment: boolean;
 };
@@ -236,9 +231,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
     if (!canBranding && target !== 'instructor_signature_url') {
       // instructor signature is handled separately by instructor home,
       // but from here we keep general branding changes locked if needed.
-      alert(
-        'Branding settings can only be changed by your institution owner/admin.'
-      );
+      alert('Branding settings can only be changed by your institution owner/admin.');
       try {
         inputEl.value = '';
       } catch {}
@@ -278,9 +271,8 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
         <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
           {!canBranding && (
             <div className="sm:col-span-2 text-sm text-amber-700 dark:text-amber-300">
-              Branding settings aren’t editable from this account. Please ask your
-              institution owner or admin to update logos, signatures, and contact
-              details.
+              Branding settings aren’t editable from this account. Please ask your institution owner
+              or admin to update logos, signatures, and contact details.
             </div>
           )}
 
@@ -300,9 +292,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
             <input
               className="input mt-1 w-full"
               value={form.certificate_title || ''}
-              onChange={(e) =>
-                setForm({ ...form, certificate_title: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, certificate_title: e.target.value })}
               placeholder="Certificate of Completion"
               disabled={!canBranding}
             />
@@ -329,9 +319,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                 <input
                   className="input w-full"
                   value={form.logo_url || ''}
-                  onChange={(e) =>
-                    setForm({ ...form, logo_url: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
                   placeholder="https://..."
                   disabled={!canBranding}
                 />
@@ -353,9 +341,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                       ? 'opacity-60 cursor-not-allowed bg-white/10'
                       : 'bg-emerald-600 hover:bg-emerald-500 cursor-pointer',
                   ].join(' ')}
-                  aria-disabled={
-                    uploadingLogo || !canBranding || !token || undefined
-                  }
+                  aria-disabled={uploadingLogo || !canBranding || !token || undefined}
                   title={!token ? 'Login required' : undefined}
                 >
                   {uploadingLogo ? 'Uploading…' : 'Upload Logo'}
@@ -385,9 +371,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                 <input
                   className="input w-full"
                   value={form.signature_url || ''}
-                  onChange={(e) =>
-                    setForm({ ...form, signature_url: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, signature_url: e.target.value })}
                   placeholder="https://..."
                   disabled={!canBranding}
                 />
@@ -409,9 +393,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                       ? 'opacity-60 cursor-not-allowed bg-white/10'
                       : 'bg-emerald-600 hover:bg-emerald-500 cursor-pointer',
                   ].join(' ')}
-                  aria-disabled={
-                    uploadingSignature || !canBranding || !token || undefined
-                  }
+                  aria-disabled={uploadingSignature || !canBranding || !token || undefined}
                   title={!token ? 'Login required' : undefined}
                 >
                   {uploadingSignature ? 'Uploading…' : 'Upload Signature'}
@@ -469,10 +451,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                       : 'bg-emerald-600 hover:bg-emerald-500 cursor-pointer',
                   ].join(' ')}
                   aria-disabled={
-                    uploadingInstructorSignature ||
-                    !canBranding ||
-                    !token ||
-                    undefined
+                    uploadingInstructorSignature || !canBranding || !token || undefined
                   }
                   title={!token ? 'Login required' : undefined}
                 >
@@ -499,9 +478,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                 <input
                   className="input w-full"
                   value={form.address_line1 || ''}
-                  onChange={(e) =>
-                    setForm({ ...form, address_line1: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, address_line1: e.target.value })}
                   placeholder="123 Main Street"
                   disabled={!canBranding}
                 />
@@ -514,9 +491,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                 <input
                   className="input w-full"
                   value={form.address_line2 || ''}
-                  onChange={(e) =>
-                    setForm({ ...form, address_line2: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, address_line2: e.target.value })}
                   placeholder="City / State / Country"
                   disabled={!canBranding}
                 />
@@ -529,9 +504,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                 <input
                   className="input w-full"
                   value={form.phone_number || ''}
-                  onChange={(e) =>
-                    setForm({ ...form, phone_number: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, phone_number: e.target.value })}
                   placeholder="+00 123 456 789"
                   disabled={!canBranding}
                 />
@@ -545,9 +518,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                   type="email"
                   className="input w-full"
                   value={form.contact_email || ''}
-                  onChange={(e) =>
-                    setForm({ ...form, contact_email: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, contact_email: e.target.value })}
                   placeholder="info@school.example"
                   disabled={!canBranding}
                 />
@@ -560,9 +531,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                 <input
                   className="input w-full"
                   value={form.website_url || ''}
-                  onChange={(e) =>
-                    setForm({ ...form, website_url: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, website_url: e.target.value })}
                   placeholder="https://school.example"
                   disabled={!canBranding}
                 />
@@ -619,9 +588,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
               id="allow_retry"
               type="checkbox"
               checked={!!form.allow_retry}
-              onChange={(e) =>
-                setForm({ ...form, allow_retry: e.target.checked })
-              }
+              onChange={(e) => setForm({ ...form, allow_retry: e.target.checked })}
               disabled={!canCustomPassTimers}
               title={!canCustomPassTimers ? 'Available on Pro and Enterprise' : ''}
             />
@@ -630,9 +597,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
               className="text-sm text-[#0d141c] dark:text-darkTextPrimary"
             >
               Allow retry?{' '}
-              <span className="text-[#49739c] dark:text-darkTextSecondary">
-                (default off)
-              </span>
+              <span className="text-[#49739c] dark:text-darkTextSecondary">(default off)</span>
             </label>
             {!canCustomPassTimers && <Pill>Pro+</Pill>}
           </div>
@@ -645,16 +610,14 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
             <input
               className="input mt-1 w-full"
               value={form.email_domain || ''}
-              onChange={(e) =>
-                setForm({ ...form, email_domain: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, email_domain: e.target.value })}
               placeholder="example.edu"
               disabled={!canSSO}
               title={!canSSO ? 'Available on Enterprise' : ''}
             />
             <div className="mt-1 text-[11px] text-[#49739c] dark:text-darkTextSecondary">
-              Comma-separated. Supports wildcards like <code>*.example.edu</code>.
-              Learners with other domains cannot accept invites.
+              Comma-separated. Supports wildcards like <code>*.example.edu</code>. Learners with
+              other domains cannot accept invites.
             </div>
           </div>
 
@@ -669,9 +632,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                 id="webhook_enabled"
                 type="checkbox"
                 checked={!!form.webhook_enabled}
-                onChange={(e) =>
-                  setForm({ ...form, webhook_enabled: e.target.checked })
-                }
+                onChange={(e) => setForm({ ...form, webhook_enabled: e.target.checked })}
                 disabled={!canWebhooks}
                 title={!canWebhooks ? 'Available on Enterprise' : ''}
               />
@@ -686,9 +647,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
             <input
               className="input mt-1 w-full"
               value={form.webhook_url || ''}
-              onChange={(e) =>
-                setForm({ ...form, webhook_url: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, webhook_url: e.target.value })}
               placeholder="https://your.system/hooks/elearn"
               disabled={!canWebhooks}
               title={!canWebhooks ? 'Available on Enterprise' : ''}
@@ -702,19 +661,14 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                 title="Show masked info"
                 onClick={async () => {
                   if (!org?.id || !token) return;
-                  const r = await fetch(
-                    `${backendUrl}/api/orgs/${org!.id}/webhooks/secret`,
-                    {
-                      headers: { Authorization: `Bearer ${token}` },
-                    }
-                  );
+                  const r = await fetch(`${backendUrl}/api/orgs/${org!.id}/webhooks/secret`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
                   const j = await r.json();
                   if (!j.ok && j.message) return alert(j.message);
                   alert(
                     j.present
-                      ? `Secret exists (last4: ${j.last4 || '—'}). Rotated: ${
-                          j.rotatedAt || '—'
-                        }`
+                      ? `Secret exists (last4: ${j.last4 || '—'}). Rotated: ${j.rotatedAt || '—'}`
                       : 'No secret yet. Generate one.'
                   );
                 }}
@@ -729,26 +683,17 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                 onClick={async () => {
                   if (!org?.id || !token) return;
                   if (
-                    !confirm(
-                      'Generate/rotate the secret now? This invalidates the previous one.'
-                    )
+                    !confirm('Generate/rotate the secret now? This invalidates the previous one.')
                   ) {
                     return;
                   }
-                  const r = await fetch(
-                    `${backendUrl}/api/orgs/${org!.id}/webhooks/secret`,
-                    {
-                      method: 'POST',
-                      headers: { Authorization: `Bearer ${token}` },
-                    }
-                  );
+                  const r = await fetch(`${backendUrl}/api/orgs/${org!.id}/webhooks/secret`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
                   const j = await r.json();
-                  if (!j.ok)
-                    return alert(j.message || 'Failed to generate secret.');
-                  window.prompt(
-                    'Copy your webhook secret now (store in your system):',
-                    j.secret
-                  );
+                  if (!j.ok) return alert(j.message || 'Failed to generate secret.');
+                  window.prompt('Copy your webhook secret now (store in your system):', j.secret);
                 }}
               >
                 Generate / Rotate secret
@@ -761,30 +706,27 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                   !org?.id
                     ? 'No organization loaded'
                     : !token
-                    ? 'Not authenticated'
-                    : !form.webhook_enabled
-                    ? 'Toggle “Enable webhooks” first'
-                    : !urlOk
-                    ? 'Enter a valid HTTPS Webhook URL'
-                    : 'Send a signed test event'
+                      ? 'Not authenticated'
+                      : !form.webhook_enabled
+                        ? 'Toggle “Enable webhooks” first'
+                        : !urlOk
+                          ? 'Enter a valid HTTPS Webhook URL'
+                          : 'Send a signed test event'
                 }
                 onClick={async () => {
                   if (!canWebhooks || !canSendTest || isSending) return;
                   setIsSending(true);
                   try {
-                    const r = await fetch(
-                      `${backendUrl}/api/orgs/${org!.id}/webhooks/test`,
-                      {
-                        method: 'POST',
-                        headers: {
-                          Authorization: `Bearer ${token}`,
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                          overrideUrl: String(form.webhook_url || '').trim(),
-                        }),
-                      }
-                    );
+                    const r = await fetch(`${backendUrl}/api/orgs/${org!.id}/webhooks/test`, {
+                      method: 'POST',
+                      headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        overrideUrl: String(form.webhook_url || '').trim(),
+                      }),
+                    });
 
                     let j: any = null;
                     if (r.status !== 204) {
@@ -860,11 +802,10 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
           {/* Scope hint shared by both flows */}
           {(assignClassLabel || assignSubjectKey) && (
             <div className="rounded-xl bg-[#e7edf4]/60 dark:bg-white/5 px-3 py-2 text-[11px] text-[#49739c] dark:text-darkTextSecondary">
-              This work is currently scoped to{' '}
-              {assignClassLabel && <b>{assignClassLabel}</b>}
+              This work is currently scoped to {assignClassLabel && <b>{assignClassLabel}</b>}
               {assignClassLabel && assignSubjectKey && ' · '}
-              {assignSubjectKey && <b>{assignSubjectKey}</b>}. Learners in this
-              class/subject will see it in their Assignments tab.
+              {assignSubjectKey && <b>{assignSubjectKey}</b>}. Learners in this class/subject will
+              see it in their Assignments tab.
             </div>
           )}
 
@@ -881,9 +822,8 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                   Attach a worksheet or project brief
                 </div>
                 <div className="text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
-                  Perfect for essays, worksheets, experiments and offline tasks.
-                  Learners download your file, complete the work, then submit their own
-                  file or typed answer.
+                  Perfect for essays, worksheets, experiments and offline tasks. Learners download
+                  your file, complete the work, then submit their own file or typed answer.
                 </div>
               </div>
             </div>
@@ -895,9 +835,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                 <input
                   className="input mt-1 w-full"
                   value={assignClassLabel || ''}
-                  onChange={(e) =>
-                    setAssignScope?.({ classLabel: e.target.value || '' })
-                  }
+                  onChange={(e) => setAssignScope?.({ classLabel: e.target.value || '' })}
                   placeholder="e.g. Grade 7 Blue"
                   disabled={!canAssignments}
                 />
@@ -907,9 +845,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                 <input
                   className="input mt-1 w-full"
                   value={assignSubjectKey || ''}
-                  onChange={(e) =>
-                    setAssignScope?.({ subjectKey: e.target.value || '' })
-                  }
+                  onChange={(e) => setAssignScope?.({ subjectKey: e.target.value || '' })}
                   placeholder="e.g. Mathematics, English, Physics"
                   disabled={!canAssignments}
                 />
@@ -938,8 +874,8 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                   disabled={!canAssignments}
                 />
                 <div className="mt-1 text-[10px] text-[#49739c] dark:text-darkTextSecondary">
-                  Learners will still see the assignment after the deadline, but you can
-                  treat late submissions differently.
+                  Learners will still see the assignment after the deadline, but you can treat late
+                  submissions differently.
                 </div>
               </div>
             </div>
@@ -1028,8 +964,8 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                   Link a Robot Tutor course as an assignment
                 </div>
                 <div className="text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
-                  Choose one of your AI-generated courses, set optional pass marks and
-                  timers, then share the invite link with specific groups.
+                  Choose one of your AI-generated courses, set optional pass marks and timers, then
+                  share the invite link with specific groups.
                 </div>
               </div>
             </div>
@@ -1070,9 +1006,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                   max={100}
                   className="input mt-1 w-full"
                   value={passMark}
-                  onChange={(e) =>
-                    setPassMark(e.target.value ? Number(e.target.value) : '')
-                  }
+                  onChange={(e) => setPassMark(e.target.value ? Number(e.target.value) : '')}
                   disabled={!canAssignments || !canCustomPassTimers}
                   title={!canCustomPassTimers ? 'Available on Pro and Enterprise' : ''}
                 />
@@ -1088,9 +1022,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                   step={30}
                   className="input mt-1 w-full"
                   value={timer}
-                  onChange={(e) =>
-                    setTimer(e.target.value ? Number(e.target.value) : '')
-                  }
+                  onChange={(e) => setTimer(e.target.value ? Number(e.target.value) : '')}
                   disabled={!canAssignments || !canCustomPassTimers}
                   title={!canCustomPassTimers ? 'Available on Pro and Enterprise' : ''}
                 />
@@ -1122,20 +1054,15 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                       Failed to load courses.
                     </div>
                   )}
-                  {!coursesLoading &&
-                    !coursesError &&
-                    (!courses || courses.length === 0) && (
-                      <div className="px-3 py-2 text-[11px] text-slate-500 dark:text-white/65">
-                        No courses found. Create a course with Robot Tutor first, then
-                        link it here.
-                      </div>
-                    )}
+                  {!coursesLoading && !coursesError && (!courses || courses.length === 0) && (
+                    <div className="px-3 py-2 text-[11px] text-slate-500 dark:text-white/65">
+                      No courses found. Create a course with Robot Tutor first, then link it here.
+                    </div>
+                  )}
                   {courses && courses.length > 0 && (
                     <ul className="divide-y divide-[#e7edf4] dark:divide-white/10">
                       {courses.map((c: any) => {
-                        const id = String(
-                          c.id ?? c.uuid ?? c.course_uuid ?? c.courseId ?? ''
-                        );
+                        const id = String(c.id ?? c.uuid ?? c.course_uuid ?? c.courseId ?? '');
                         const isActive = id && id === courseId;
                         return (
                           <li key={id || c.title}>
@@ -1216,8 +1143,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
                           className="chip"
                           title="Email invite link to instructors"
                         >
-                          Email instructors{' '}
-                          {bccChunks.length > 1 ? `(${idx + 1})` : ''}
+                          Email instructors {bccChunks.length > 1 ? `(${idx + 1})` : ''}
                         </a>
                       );
                     })
@@ -1249,9 +1175,9 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
             </div>
 
             <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
-              Share the AI invite link for timed quizzes and auto-marking. For open-ended
-              projects or long-form work, use the classic assignment card above so
-              learners can upload their files directly.
+              Share the AI invite link for timed quizzes and auto-marking. For open-ended projects
+              or long-form work, use the classic assignment card above so learners can upload their
+              files directly.
             </p>
           </section>
         </div>
@@ -1336,10 +1262,8 @@ export function AnalyticsPane({
       }
     }
 
-    const overallPassRate =
-      totalAttempts > 0 ? Math.round((totalPasses * 100) / totalAttempts) : 0;
-    const overallAvgScore =
-      scoreWeight > 0 ? +(scoreWeightedSum / scoreWeight).toFixed(1) : 0;
+    const overallPassRate = totalAttempts > 0 ? Math.round((totalPasses * 100) / totalAttempts) : 0;
+    const overallAvgScore = scoreWeight > 0 ? +(scoreWeightedSum / scoreWeight).toFixed(1) : 0;
 
     return {
       totalAttempts,
@@ -1360,11 +1284,7 @@ export function AnalyticsPane({
   }, [summary, analytics]);
 
   const periodLabel =
-    period === 'month'
-      ? 'Last 30 days'
-      : period === 'term'
-      ? 'This term'
-      : 'This year';
+    period === 'month' ? 'Last 30 days' : period === 'term' ? 'This term' : 'This year';
 
   const periodOptions: Period[] = ['month', 'term', 'year'];
 
@@ -1398,13 +1318,10 @@ export function AnalyticsPane({
       {/* Header row */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h2 className="text-sm sm:text-base md:text-lg font-semibold">
-            Learning analytics
-          </h2>
+          <h2 className="text-sm sm:text-base md:text-lg font-semibold">Learning analytics</h2>
           <p className="text-[11px] sm:text-xs text-slate-600 dark:text-darkTextSecondary">
-            One view that blends <b>Robot Teacher quizzes</b>,{' '}
-            <b>exam results</b> and <b>assignment grading</b> for your
-            institution.
+            One view that blends <b>Robot Teacher quizzes</b>, <b>exam results</b> and{' '}
+            <b>assignment grading</b> for your institution.
           </p>
         </div>
 
@@ -1412,8 +1329,7 @@ export function AnalyticsPane({
           {/* Period selector */}
           <div className="inline-flex rounded-lg overflow-hidden ring-1 ring-slate-200 dark:ring-white/10 text-xs sm:text-sm bg-white dark:bg-[#0b1420]">
             {periodOptions.map((p) => {
-              const disabled =
-                p !== 'month' && (!canMultiPeriodAnalytics || !canMonthly);
+              const disabled = p !== 'month' && (!canMultiPeriodAnalytics || !canMonthly);
               return (
                 <button
                   key={p}
@@ -1430,28 +1346,19 @@ export function AnalyticsPane({
                     disabled
                       ? 'Available on higher plans'
                       : p === 'month'
-                      ? 'Monthly view'
-                      : p === 'term'
-                      ? 'Term view'
-                      : 'Year view'
+                        ? 'Monthly view'
+                        : p === 'term'
+                          ? 'Term view'
+                          : 'Year view'
                   }
                 >
-                  {p === 'month'
-                    ? 'Month'
-                    : p === 'term'
-                    ? 'Term'
-                    : 'Year'}
+                  {p === 'month' ? 'Month' : p === 'term' ? 'Term' : 'Year'}
                 </button>
               );
             })}
           </div>
 
-          <button
-            onClick={onRefresh}
-            className="chip"
-            type="button"
-            disabled={loadingAnalytics}
-          >
+          <button onClick={onRefresh} className="chip" type="button" disabled={loadingAnalytics}>
             {loadingAnalytics ? 'Refreshing…' : 'Refresh'}
           </button>
 
@@ -1469,9 +1376,7 @@ export function AnalyticsPane({
         <div className={cardBase}>
           <div className="flex items-start justify-between gap-2">
             <div>
-              <div className="text-xs text-slate-500 dark:text-darkTextSecondary">
-                Term exams
-              </div>
+              <div className="text-xs text-slate-500 dark:text-darkTextSecondary">Term exams</div>
               <div className="mt-1 text-xl font-semibold">
                 {effectiveSummary.examsAttempts || 0}
               </div>
@@ -1484,11 +1389,7 @@ export function AnalyticsPane({
           <div className="mt-3 flex items-center justify-between text-[11px] text-slate-600 dark:text-darkTextSecondary">
             <span>
               Pass rate:{' '}
-              <b>
-                {effectiveSummary.examsAttempts
-                  ? `${effectiveSummary.examsPassRate}%`
-                  : '—'}
-              </b>
+              <b>{effectiveSummary.examsAttempts ? `${effectiveSummary.examsPassRate}%` : '—'}</b>
             </span>
             {typeof effectiveSummary.examCardsGenerated === 'number' &&
               effectiveSummary.examCardsGenerated > 0 && (
@@ -1527,12 +1428,10 @@ export function AnalyticsPane({
           </div>
           <div className="mt-3 flex items-center justify-between text-[11px] text-slate-600 dark:text-darkTextSecondary">
             <span>
-              Pass rate:{' '}
-              <b>{effectiveSummary.robotQuizPassRate || 0}%</b>
+              Pass rate: <b>{effectiveSummary.robotQuizPassRate || 0}%</b>
             </span>
             <span>
-              Avg score:{' '}
-              <b>{effectiveSummary.overallAvgScore || 0}%</b>
+              Avg score: <b>{effectiveSummary.overallAvgScore || 0}%</b>
             </span>
           </div>
           <div className="mt-2 text-[11px] text-slate-500 dark:text-darkTextSecondary">
@@ -1559,16 +1458,14 @@ export function AnalyticsPane({
           </div>
           <div className="mt-3 flex items-center justify-between text-[11px] text-slate-600 dark:text-darkTextSecondary">
             <span>
-              Pass rate:{' '}
-              <b>{effectiveSummary.assignmentPassRate || 0}%</b>
+              Pass rate: <b>{effectiveSummary.assignmentPassRate || 0}%</b>
             </span>
             <span>
               Overall graded: <b>{effectiveSummary.totalAttempts}</b>
             </span>
           </div>
           <div className="mt-2 text-[11px] text-slate-500 dark:text-darkTextSecondary">
-            Includes AI-powered and legacy assignments targeted to specific
-            classes and subjects.
+            Includes AI-powered and legacy assignments targeted to specific classes and subjects.
           </div>
         </div>
       </div>
@@ -1577,25 +1474,21 @@ export function AnalyticsPane({
       <div className="rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10 bg-white dark:bg-[#0f1821] p-3 sm:p-4">
         <div className="flex items-center justify-between gap-2 mb-2">
           <div>
-            <h3 className="text-sm sm:text-base font-semibold">
-              Attempts over time
-            </h3>
+            <h3 className="text-sm sm:text-base font-semibold">Attempts over time</h3>
             <p className="text-[11px] sm:text-xs text-slate-600 dark:text-darkTextSecondary">
-              Each row is a time bucket in this period. Use it to spot spikes in
-              activity (exams week, revision week, etc.).
+              Each row is a time bucket in this period. Use it to spot spikes in activity (exams
+              week, revision week, etc.).
             </p>
           </div>
           <div className="text-[11px] text-slate-500 dark:text-darkTextSecondary">
-            Overall pass rate:{' '}
-            <b>{effectiveSummary.overallPassRate || 0}%</b>
+            Overall pass rate: <b>{effectiveSummary.overallPassRate || 0}%</b>
           </div>
         </div>
 
         {!hasData && !loadingAnalytics && (
           <div className="mt-3 rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-darkTextSecondary">
-            No graded activity yet for this period. Once learners start taking
-            quizzes, exams or assignments inside DayBreak, you’ll see a trend
-            here.
+            No graded activity yet for this period. Once learners start taking quizzes, exams or
+            assignments inside DayBreak, you’ll see a trend here.
           </div>
         )}
 
@@ -1609,44 +1502,25 @@ export function AnalyticsPane({
                   <th className="py-2 pr-3">Passes</th>
                   <th className="py-2 pr-3">Avg score</th>
                   <th className="py-2 pr-3">Activity</th>
-                  {canEmailReports && (
-                    <th className="py-2 pr-3 text-right">Email snapshot</th>
-                  )}
+                  {canEmailReports && <th className="py-2 pr-3 text-right">Email snapshot</th>}
                 </tr>
               </thead>
               <tbody>
                 {analytics.map((r) => {
-                  const key = String(
-                    (r as any).bucket ?? (r as any).id ?? Math.random()
-                  );
+                  const key = String((r as any).bucket ?? (r as any).id ?? Math.random());
                   const attempts = Number((r as any).attempts ?? 0);
                   const passes = Number((r as any).passes ?? 0);
-                  const avg = Number(
-                    (r as any).avg_score ?? (r as any).avgScore ?? 0
-                  );
-                  const bucketISO = String(
-                    (r as any).bucket ?? (r as any).bucket_iso ?? ''
-                  );
+                  const avg = Number((r as any).avg_score ?? (r as any).avgScore ?? 0);
+                  const bucketISO = String((r as any).bucket ?? (r as any).bucket_iso ?? '');
                   const barWidth =
                     maxAttemptsInBucket > 0
-                      ? Math.max(
-                          4,
-                          Math.round((attempts / maxAttemptsInBucket) * 100)
-                        )
+                      ? Math.max(4, Math.round((attempts / maxAttemptsInBucket) * 100))
                       : 0;
 
                   // Optional per-bucket hints
-                  const exams = Number(
-                    (r as any).exams_attempts ?? (r as any).exam_attempts ?? 0
-                  );
-                  const robots = Number(
-                    (r as any).robot_attempts ??
-                      (r as any).quiz_attempts ??
-                      0
-                  );
-                  const assigns = Number(
-                    (r as any).assignment_attempts ?? 0
-                  );
+                  const exams = Number((r as any).exams_attempts ?? (r as any).exam_attempts ?? 0);
+                  const robots = Number((r as any).robot_attempts ?? (r as any).quiz_attempts ?? 0);
+                  const assigns = Number((r as any).assignment_attempts ?? 0);
 
                   return (
                     <tr
@@ -1670,25 +1544,13 @@ export function AnalyticsPane({
                             />
                           </div>
                           <div className="flex flex-wrap gap-1 text-[10px] text-slate-500 dark:text-darkTextSecondary">
-                            {exams > 0 && (
-                              <span className={pillMuted}>
-                                Exams: {exams}
-                              </span>
-                            )}
-                            {robots > 0 && (
-                              <span className={pillMuted}>
-                                AI quizzes: {robots}
-                              </span>
-                            )}
+                            {exams > 0 && <span className={pillMuted}>Exams: {exams}</span>}
+                            {robots > 0 && <span className={pillMuted}>AI quizzes: {robots}</span>}
                             {assigns > 0 && (
-                              <span className={pillMuted}>
-                                Assignments: {assigns}
-                              </span>
+                              <span className={pillMuted}>Assignments: {assigns}</span>
                             )}
                             {!exams && !robots && !assigns && attempts > 0 && (
-                              <span className={pillMuted}>
-                                Mixed activity
-                              </span>
+                              <span className={pillMuted}>Mixed activity</span>
                             )}
                           </div>
                         </div>
@@ -1697,10 +1559,7 @@ export function AnalyticsPane({
                         <td className="py-2 pr-3 text-right">
                           <button
                             type="button"
-                            onClick={() =>
-                              bucketISO &&
-                              onSendReportRow(bucketISO, period)
-                            }
+                            onClick={() => bucketISO && onSendReportRow(bucketISO, period)}
                             className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg bg-slate-900 text-white text-[11px] hover:bg-slate-800 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
                           >
                             Send email

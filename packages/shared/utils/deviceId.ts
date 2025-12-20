@@ -23,11 +23,26 @@ function genUUID(): string {
     const hex: string[] = [];
     for (let i = 0; i < buf.length; i++) hex.push((buf[i] + 0x100).toString(16).slice(1));
     return (
-      hex[0] + hex[1] + hex[2] + hex[3] + '-' +
-      hex[4] + hex[5] + '-' +
-      hex[6] + hex[7] + '-' +
-      hex[8] + hex[9] + '-' +
-      hex[10] + hex[11] + hex[12] + hex[13] + hex[14] + hex[15]
+      hex[0] +
+      hex[1] +
+      hex[2] +
+      hex[3] +
+      '-' +
+      hex[4] +
+      hex[5] +
+      '-' +
+      hex[6] +
+      hex[7] +
+      '-' +
+      hex[8] +
+      hex[9] +
+      '-' +
+      hex[10] +
+      hex[11] +
+      hex[12] +
+      hex[13] +
+      hex[14] +
+      hex[15]
     );
   }
   // Non-crypto fallback
@@ -39,7 +54,10 @@ const isReactNative = typeof navigator !== 'undefined' && navigator.product === 
 
 // Lazy load AsyncStorage if we're on RN and the package is available.
 // We use dynamic require to avoid bundler issues on Web/Node.
-async function getAsyncStorage(): Promise<{ getItem(k: string): Promise<string | null>; setItem(k: string, v: string): Promise<void> } | null> {
+async function getAsyncStorage(): Promise<{
+  getItem(k: string): Promise<string | null>;
+  setItem(k: string, v: string): Promise<void>;
+} | null> {
   if (!isReactNative) return null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -50,7 +68,10 @@ async function getAsyncStorage(): Promise<{ getItem(k: string): Promise<string |
     };
     const store = (mod?.default ?? mod) as any;
     if (store?.getItem && store?.setItem) {
-      return store as { getItem(k: string): Promise<string | null>; setItem(k: string, v: string): Promise<void> };
+      return store as {
+        getItem(k: string): Promise<string | null>;
+        setItem(k: string, v: string): Promise<void>;
+      };
     }
   } catch {
     /* ignore — not available */
@@ -127,7 +148,9 @@ export function getStableDeviceIdSync(): string | null {
         cachedId = existing;
         return existing;
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   return null;
 }
@@ -137,10 +160,18 @@ export async function resetStableDeviceId(): Promise<void> {
   cachedId = null;
   const asyncStorage = await getAsyncStorage();
   if (asyncStorage) {
-    try { await asyncStorage.setItem(STORAGE_KEY, ''); } catch { /* ignore */ }
+    try {
+      await asyncStorage.setItem(STORAGE_KEY, '');
+    } catch {
+      /* ignore */
+    }
   }
   const ls = getLocalStorage();
   if (ls) {
-    try { ls.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    try {
+      ls.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
   }
 }

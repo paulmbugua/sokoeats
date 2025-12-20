@@ -7,7 +7,6 @@ import pool from '../config/db.js'; // PG pool
 import { generateCertificatePdfBuffer } from '../services/certificateService.js';
 import { getEntitlement, upsertEntitlement, isUuid } from './_entitlements.js';
 
-
 // ---------- Validators ----------
 const generateSchema = Joi.object({
   courseId: Joi.string().uuid().required(),
@@ -18,7 +17,7 @@ const generateSchema = Joi.object({
 async function hasPurchasedCourse(studentId, courseId) {
   const q = await pool.query(
     `SELECT 1 FROM course_purchases WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
-    [studentId, courseId]
+    [studentId, courseId],
   );
   return q.rowCount > 0;
 }
@@ -26,7 +25,7 @@ async function hasPurchasedCourse(studentId, courseId) {
 async function hasEnrollment(studentId, courseId) {
   const q = await pool.query(
     `SELECT 1 FROM enrollments WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
-    [studentId, courseId]
+    [studentId, courseId],
   );
   return q.rowCount > 0;
 }
@@ -36,7 +35,16 @@ function resolvePaymentMethod(source) {
   const env = (process.env.PLATFORM_BALANCE_METHOD || '').trim(); // e.g., 'Tokens' or 'Manual'
   if (env) return env;
   const s = String(source || '').toLowerCase();
-  if (['platformbalance','platform_balance','wallet','tokens','internal'].includes(s)) return 'Tokens';
+  if (
+    [
+      'platformbalance',
+      'platform_balance',
+      'wallet',
+      'tokens',
+      'internal',
+    ].includes(s)
+  )
+    return 'Tokens';
   if (s.includes('paypal')) return 'PayPal';
   if (s.includes('mpesa') || s.includes('m-pesa')) return 'M-Pesa';
   if (s.includes('stripe')) return 'Stripe';
@@ -50,35 +58,37 @@ async function insertTransactionDynamic(client, row) {
     FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = 'transactions'
   `);
-  const txCols = new Set(txColsRows.map(r => r.column_name));
+  const txCols = new Set(txColsRows.map((r) => r.column_name));
 
   const cols = [];
   const vals = [];
-  const push = (col, val) => { cols.push(col); vals.push(val); };
+  const push = (col, val) => {
+    cols.push(col);
+    vals.push(val);
+  };
 
   // required/common
   push('user_id', row.user_id);
   push('type', row.type);
   push('amount', row.amount);
   push('description', row.description);
-  if (txCols.has('date'))        push('date', row.date || new Date());
+  if (txCols.has('date')) push('date', row.date || new Date());
   push('status', row.status || 'Completed');
-  if (txCols.has('currency'))    push('currency', row.currency || 'USD');
+  if (txCols.has('currency')) push('currency', row.currency || 'USD');
   if (txCols.has('payment_method')) push('payment_method', row.payment_method);
-  if (txCols.has('source'))      push('source', row.source);
+  if (txCols.has('source')) push('source', row.source);
 
-  if (txCols.has('created_at'))  push('created_at', new Date());
-  if (txCols.has('updated_at'))  push('updated_at', new Date());
+  if (txCols.has('created_at')) push('created_at', new Date());
+  if (txCols.has('updated_at')) push('updated_at', new Date());
   if (txCols.has('payer_email')) push('payer_email', row.payer_email ?? null);
-  if (txCols.has('payer_id'))    push('payer_id', row.payer_id ?? null);
+  if (txCols.has('payer_id')) push('payer_id', row.payer_id ?? null);
 
   const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
   await client.query(
     `INSERT INTO transactions (${cols.join(', ')}) VALUES (${placeholders})`,
-    vals
+    vals,
   );
 }
-
 
 function logErr(tag, err, extra = {}) {
   const x = (err && err.response && err.response.headers) || {};
@@ -94,7 +104,8 @@ function logErr(tag, err, extra = {}) {
 
 // add near top with other helpers
 async function hasExtendedByIssuance(userId, courseId) {
-  const q = await pool.query(`
+  const q = await pool.query(
+    `
     SELECT 1
       FROM ai_certificate_issuances i
       JOIN ai_certificates c ON c.id = i.certificate_id
@@ -107,10 +118,11 @@ async function hasExtendedByIssuance(userId, courseId) {
        OR c.code ~* '\\y(ext|extended|xtra|plus)\\y'
        )
      LIMIT 1
-  `, [userId, courseId]);
+  `,
+    [userId, courseId],
+  );
   return q.rowCount > 0;
 }
-
 
 async function hasOrgCoverForCourse(studentId, courseId) {
   // Prove a submitted, passed org attempt tied to this course
@@ -125,7 +137,7 @@ async function hasOrgCoverForCourse(studentId, courseId) {
          AND a.course_id = $2
        LIMIT 1
     `,
-    [studentId, courseId]
+    [studentId, courseId],
   );
   return q.rowCount > 0;
 }
@@ -135,11 +147,12 @@ function extractPublicIdFromCloudinaryUrl(url) {
     const u = new URL(url);
     if (!/\.cloudinary\.com$/i.test(u.hostname)) return null;
     const parts = u.pathname.split('/');
-    const uploadIdx = parts.findIndex(p => p === 'upload');
+    const uploadIdx = parts.findIndex((p) => p === 'upload');
     if (uploadIdx === -1) return null;
     const afterUpload = parts.slice(uploadIdx + 1);
-    const vIdx = afterUpload.findIndex(p => /^v\d+$/i.test(p));
-    const afterVersion = vIdx !== -1 ? afterUpload.slice(vIdx + 1) : afterUpload;
+    const vIdx = afterUpload.findIndex((p) => /^v\d+$/i.test(p));
+    const afterVersion =
+      vIdx !== -1 ? afterUpload.slice(vIdx + 1) : afterUpload;
     const publicIdWithExt = afterVersion.join('/');
     return publicIdWithExt.replace(/\.[a-z0-9]+$/i, '');
   } catch {
@@ -148,9 +161,10 @@ function extractPublicIdFromCloudinaryUrl(url) {
 }
 function publicIdFromPublicIdOrUrl(maybe) {
   if (!maybe) return null;
-  return maybe.includes('://') ? extractPublicIdFromCloudinaryUrl(maybe) : maybe;
+  return maybe.includes('://')
+    ? extractPublicIdFromCloudinaryUrl(maybe)
+    : maybe;
 }
-
 
 async function hasCourseCompleteAchievement(studentId, courseId) {
   console.time('[cert] hasCourseCompleteAchievement');
@@ -158,7 +172,7 @@ async function hasCourseCompleteAchievement(studentId, courseId) {
     `SELECT 1 FROM achievements
      WHERE student_id = $1 AND course_id = $2
      LIMIT 1`,
-    [studentId, courseId]
+    [studentId, courseId],
   );
   console.timeEnd('[cert] hasCourseCompleteAchievement');
   return q.rowCount > 0;
@@ -166,7 +180,10 @@ async function hasCourseCompleteAchievement(studentId, courseId) {
 
 async function hasCompletedAllWeeks(studentId, courseId) {
   console.time('[cert] hasCompletedAllWeeks:loadCourse');
-  const courseRes = await pool.query(`SELECT syllabus FROM courses WHERE id = $1`, [courseId]);
+  const courseRes = await pool.query(
+    `SELECT syllabus FROM courses WHERE id = $1`,
+    [courseId],
+  );
   console.timeEnd('[cert] hasCompletedAllWeeks:loadCourse');
   if (!courseRes.rowCount) return false;
 
@@ -179,12 +196,12 @@ async function hasCompletedAllWeeks(studentId, courseId) {
   const progRes = await pool.query(
     `SELECT week, status FROM course_progress
      WHERE student_id = $1 AND course_id = $2`,
-    [studentId, courseId]
+    [studentId, courseId],
   );
   console.timeEnd('[cert] hasCompletedAllWeeks:progress');
 
   const completedAll = weeks.every((w) =>
-    progRes.rows.some((r) => r.week === w && r.status === 'Completed')
+    progRes.rows.some((r) => r.week === w && r.status === 'Completed'),
   );
 
   return completedAll;
@@ -197,15 +214,23 @@ async function isEligibleForCertificate(studentId, courseId) {
   const b = await hasCompletedAllWeeks(studentId, courseId);
   console.log('[cert] hasCompletedAllWeeks ->', b);
   let c = false;
-  try { c = await hasOrgCoverForCourse(studentId, courseId); } catch {}
+  try {
+    c = await hasOrgCoverForCourse(studentId, courseId);
+  } catch {}
   console.log('[cert] hasOrgPassedAssignment ->', c);
   console.groupEnd();
   // Eligible if ANY of these are true (achievement OR completed weeks OR org pass)
   return a || b || c;
 }
-  
+
 // Build a crawler-friendly OG image URL (no client Cloudinary logic).
-function buildOgRedirectUrl({ cloudName, certificateId, brandPublicId, student, course }) {
+function buildOgRedirectUrl({
+  cloudName,
+  certificateId,
+  brandPublicId,
+  student,
+  course,
+}) {
   const safeBrand = (brandPublicId || 'branding/logo').replace(/\//g, ':');
   const transforms = [
     'pg_1',
@@ -215,11 +240,15 @@ function buildOgRedirectUrl({ cloudName, certificateId, brandPublicId, student, 
 
   if (student) {
     const s = encodeURIComponent(student);
-    transforms.push(`l_text:Arial_48_bold:${s},g_south_west,x_40,y_120,co_rgb:0D141C`);
+    transforms.push(
+      `l_text:Arial_48_bold:${s},g_south_west,x_40,y_120,co_rgb:0D141C`,
+    );
   }
   if (course) {
     const c = encodeURIComponent(course);
-    transforms.push(`l_text:Arial_36:${c},g_south_west,x_40,y_60,co_rgb:49739C`);
+    transforms.push(
+      `l_text:Arial_36:${c},g_south_west,x_40,y_60,co_rgb:49739C`,
+    );
   }
 
   return `https://res.cloudinary.com/${cloudName}/image/upload/${transforms.join('/')}/certificates:${certificateId}.pdf.jpg`;
@@ -234,17 +263,23 @@ function publicIdFromCloudinaryUrl(u) {
     const parts = url.pathname.split('/');
     const uploadIdx = parts.findIndex((p) => p === 'upload');
     if (uploadIdx === -1) return null;
-    const tail = parts.slice(uploadIdx + 1).join('/');  // "<transforms>/<publicId>.<ext>" OR "<publicId>.<ext>"
-    const last = tail.split('/').pop();                 // "<publicId>.<ext>"
+    const tail = parts.slice(uploadIdx + 1).join('/'); // "<transforms>/<publicId>.<ext>" OR "<publicId>.<ext>"
+    const last = tail.split('/').pop(); // "<publicId>.<ext>"
     if (!last) return null;
-    const publicId = tail.replace(/^(.*\/)?/, '').replace(/\.[a-zA-Z0-9]+$/, ''); // drop transforms + extension
+    const publicId = tail
+      .replace(/^(.*\/)?/, '')
+      .replace(/\.[a-zA-Z0-9]+$/, ''); // drop transforms + extension
     // If transforms existed, the above loses folders. Safer path:
     const afterUpload = parts.slice(uploadIdx + 1);
     // drop any transformation segments until we hit something with a dot or known folder:
     // We'll rebuild by stripping the final extension only.
     const joined = afterUpload.join('/');
-    return joined.replace(/^.*?\/(?=[^/]+\.[a-zA-Z0-9]+$)/, '').replace(/\.[a-zA-Z0-9]+$/, '');
-  } catch { return null; }
+    return joined
+      .replace(/^.*?\/(?=[^/]+\.[a-zA-Z0-9]+$)/, '')
+      .replace(/\.[a-zA-Z0-9]+$/, '');
+  } catch {
+    return null;
+  }
 }
 
 // Get the most recent org (name, logo_url, signature_url, certificate_title) that covered this user/course
@@ -267,7 +302,7 @@ async function getOrgBrandForCourse(studentId, courseId) {
        ORDER BY q.submitted_at DESC
        LIMIT 1
     `,
-    [studentId, courseId]
+    [studentId, courseId],
   );
   console.timeEnd('[cert] getOrgBrandForCourse');
 
@@ -286,9 +321,6 @@ async function getOrgBrandForCourse(studentId, courseId) {
   return row;
 }
 
-
-
-
 // ---------- Controllers ----------
 export async function checkEligibility(req, res) {
   try {
@@ -304,7 +336,9 @@ export async function checkEligibility(req, res) {
     const a = await hasCourseCompleteAchievement(studentId, courseId);
     const b = await hasCompletedAllWeeks(studentId, courseId);
     let c = false;
-    try { c = await hasOrgCoverForCourse(studentId, courseId); } catch (_) {}
+    try {
+      c = await hasOrgCoverForCourse(studentId, courseId);
+    } catch (_) {}
 
     const eligible = a || b || c;
 
@@ -326,7 +360,6 @@ export async function checkEligibility(req, res) {
   }
 }
 
-
 export async function listMyCertificates(req, res) {
   try {
     const studentId = req.user.id;
@@ -335,7 +368,7 @@ export async function listMyCertificates(req, res) {
 
     const { rows } = await pool.query(
       `SELECT * FROM certificates WHERE student_id = $1 ORDER BY issued_at DESC`,
-      [studentId]
+      [studentId],
     );
 
     console.timeEnd('[cert] listMyCertificates:query');
@@ -354,7 +387,10 @@ export async function getCertificate(req, res) {
     console.log('[cert] getCertificate', { id });
     console.time('[cert] getCertificate:query');
 
-    const { rows } = await pool.query(`SELECT * FROM certificates WHERE id = $1`, [id]);
+    const { rows } = await pool.query(
+      `SELECT * FROM certificates WHERE id = $1`,
+      [id],
+    );
 
     console.timeEnd('[cert] getCertificate:query');
     if (!rows.length) {
@@ -372,7 +408,8 @@ export async function getCertificate(req, res) {
 export async function verifyCertificate(req, res) {
   try {
     const { id } = req.params;
-    if (!isUuid(id)) return res.status(400).json({ valid: false, error: 'Invalid id' });
+    if (!isUuid(id))
+      return res.status(400).json({ valid: false, error: 'Invalid id' });
 
     console.log('[cert] verifyCertificate', { id });
     console.time('[cert] verifyCertificate:query');
@@ -383,13 +420,15 @@ export async function verifyCertificate(req, res) {
          JOIN users u    ON u.id   = c.student_id
          JOIN courses crs ON crs.id = c.course_id
         WHERE c.id = $1`,
-      [id]
+      [id],
     );
 
     console.timeEnd('[cert] verifyCertificate:query');
     if (!rows.length) {
       console.warn('[cert] verifyCertificate -> not found', { id });
-      return res.status(404).json({ valid: false, error: 'Certificate not found' });
+      return res
+        .status(404)
+        .json({ valid: false, error: 'Certificate not found' });
     }
     return res.json({ valid: true, certificate: rows[0] });
   } catch (err) {
@@ -407,7 +446,9 @@ export async function ogPreview(req, res) {
       process.env.CLOUDINARY_NAME || process.env.CLOUDINARY_CLOUD_NAME;
 
     if (!cloudName) {
-      console.error('[cert] ogPreview missing CLOUDINARY_NAME/CLOUDINARY_CLOUD_NAME');
+      console.error(
+        '[cert] ogPreview missing CLOUDINARY_NAME/CLOUDINARY_CLOUD_NAME',
+      );
       return res.status(500).send('Missing Cloudinary cloud name in env');
     }
 
@@ -416,7 +457,11 @@ export async function ogPreview(req, res) {
     let course = '';
     let brandPublicId = process.env.CERT_LOGO_PUBLIC_ID || 'branding/logo';
 
-    console.log('[cert] ogPreview start', { id, cloudName, defaultBrandPublicId: brandPublicId });
+    console.log('[cert] ogPreview start', {
+      id,
+      cloudName,
+      defaultBrandPublicId: brandPublicId,
+    });
 
     // Pull student/course + per-certificate brand logo
     console.time('[cert] ogPreview:lookup');
@@ -430,17 +475,20 @@ export async function ogPreview(req, res) {
         JOIN courses crs ON crs.id = c.course_id
        WHERE c.id = $1
        LIMIT 1`,
-      [id]
+      [id],
     );
     console.timeEnd('[cert] ogPreview:lookup');
 
     if (rows.length) {
       student = rows[0].student_name || '';
-      course  = rows[0].course_title || '';
+      course = rows[0].course_title || '';
       // Prefer the exact brand public_id saved at generation time
       brandPublicId = rows[0].brand_logo_public_id || brandPublicId;
     } else {
-      console.warn('[cert] ogPreview -> certificate not found, using minimal OG', { id });
+      console.warn(
+        '[cert] ogPreview -> certificate not found, using minimal OG',
+        { id },
+      );
       // You could return 404 here instead if you prefer:
       // return res.status(404).send('Certificate not found');
     }
@@ -461,13 +509,14 @@ export async function ogPreview(req, res) {
   }
 }
 
-
 export async function generateCertificate(req, res) {
   const t0 = Date.now();
   try {
     const { error, value } = generateSchema.validate(req.body);
     if (error) {
-      console.warn('[cert] generateCertificate validation failed', { details: error.message });
+      console.warn('[cert] generateCertificate validation failed', {
+        details: error.message,
+      });
       return res.status(400).json({ error: error.message });
     }
 
@@ -487,7 +536,7 @@ export async function generateCertificate(req, res) {
     console.time('[cert] generate:existing');
     const existing = await pool.query(
       `SELECT * FROM certificates WHERE student_id = $1 AND course_id = $2`,
-      [studentId, courseId]
+      [studentId, courseId],
     );
     console.timeEnd('[cert] generate:existing');
 
@@ -495,9 +544,11 @@ export async function generateCertificate(req, res) {
 
     // Compute the org brand we would like to use now (same as later in the handler)
     let currentOrgBrand = null;
-    try { currentOrgBrand = await getOrgBrandForCourse(studentId, courseId); } catch {}
+    try {
+      currentOrgBrand = await getOrgBrandForCourse(studentId, courseId);
+    } catch {}
     const desiredLogoId = publicIdFromPublicIdOrUrl(
-      (currentOrgBrand?.logo_url || process.env.CERT_LOGO_PUBLIC_ID) || ''
+      currentOrgBrand?.logo_url || process.env.CERT_LOGO_PUBLIC_ID || '',
     );
     const hasCorrectBrand =
       existingRow?.brand_logo_public_id &&
@@ -505,20 +556,31 @@ export async function generateCertificate(req, res) {
       existingRow.brand_logo_public_id === desiredLogoId;
 
     if (existing.rowCount > 0 && hasCorrectBrand) {
-      const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
-      console.log('[cert] generateCertificate -> already exists with matching brand, returning row', { id: existingRow.id });
-      return res.json({ ...existingRow, download_url: `${base}/api/certificates/${existingRow.id}/download` });
+      const base =
+        process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+      console.log(
+        '[cert] generateCertificate -> already exists with matching brand, returning row',
+        { id: existingRow.id },
+      );
+      return res.json({
+        ...existingRow,
+        download_url: `${base}/api/certificates/${existingRow.id}/download`,
+      });
     }
     // else: fall through to regenerate & overwrite to pick up org branding
-
 
     // 2) Eligibility
     console.time('[cert] generate:eligibility');
     const eligible = await isEligibleForCertificate(studentId, courseId);
     console.timeEnd('[cert] generate:eligibility');
     if (!eligible) {
-      console.warn('[cert] generateCertificate -> not eligible', { studentId, courseId });
-      return res.status(400).json({ error: 'Not eligible for certificate yet' });
+      console.warn('[cert] generateCertificate -> not eligible', {
+        studentId,
+        courseId,
+      });
+      return res
+        .status(400)
+        .json({ error: 'Not eligible for certificate yet' });
     }
 
     // 2.25) Determine purchase/enrollment + org coverage
@@ -526,14 +588,27 @@ export async function generateCertificate(req, res) {
       hasPurchasedCourse(studentId, courseId),
       hasEnrollment(studentId, courseId),
     ]);
-    const orgCovered = await hasOrgCoverForCourse(studentId, courseId).catch(() => false);
+    const orgCovered = await hasOrgCoverForCourse(studentId, courseId).catch(
+      () => false,
+    );
     if (orgCovered) {
-      try { await upsertEntitlement(pool, { userId: studentId, courseId, extended: true }); } catch {}
+      try {
+        await upsertEntitlement(pool, {
+          userId: studentId,
+          courseId,
+          extended: true,
+        });
+      } catch {}
     }
 
     // 2.5) Token-paid issuance gate:
     // Apply ONLY when NOT org-covered AND NOT purchased/enrolled.
-    if (process.env.REQUIRE_CERT_TOKENS === 'true' && !orgCovered && !purchased && !enrolled) {
+    if (
+      process.env.REQUIRE_CERT_TOKENS === 'true' &&
+      !orgCovered &&
+      !purchased &&
+      !enrolled
+    ) {
       console.time('[cert] generate:tokenIssuanceCheck');
       const issuQ = await pool.query(
         `SELECT 1
@@ -541,7 +616,7 @@ export async function generateCertificate(req, res) {
           WHERE i.user_id = $1
             AND (i.course_id IS NULL OR i.course_id = $2)
           LIMIT 1`,
-        [studentId, courseId]
+        [studentId, courseId],
       );
       console.timeEnd('[cert] generate:tokenIssuanceCheck');
 
@@ -558,7 +633,7 @@ export async function generateCertificate(req, res) {
                AND COALESCE(meta->>'courseId','') = $2
              LIMIT 1
           `,
-          [studentId, courseId]
+          [studentId, courseId],
         );
         legacyOk = payQ.rowCount > 0;
         console.timeEnd('[cert] generate:legacyPaymentCheck]');
@@ -572,13 +647,14 @@ export async function generateCertificate(req, res) {
       }
     }
 
-
-        // 3) Names + per-course/tutor signature
+    // 3) Names + per-course/tutor signature
     console.time('[cert] generate:lookupUserCourse');
-    const u = await pool.query(`SELECT name FROM users WHERE id = $1`, [studentId]);
+    const u = await pool.query(`SELECT name FROM users WHERE id = $1`, [
+      studentId,
+    ]);
     const c = await pool.query(
       `SELECT title, signature_public_id, tutor_id FROM courses WHERE id = $1`,
-      [courseId]
+      [courseId],
     );
     console.timeEnd('[cert] generate:lookupUserCourse');
 
@@ -591,7 +667,7 @@ export async function generateCertificate(req, res) {
         console.time('[cert] generate:lookupTutorSig');
         const prof = await pool.query(
           `SELECT signature_public_id FROM profiles WHERE user_id = $1`,
-          [c.rows[0].tutor_id]
+          [c.rows[0].tutor_id],
         );
         console.timeEnd('[cert] generate:lookupTutorSig');
         tutorSignaturePublicId = prof.rows[0]?.signature_public_id || null;
@@ -616,12 +692,14 @@ export async function generateCertificate(req, res) {
 
     // Accept public_id OR full URL (the PDF service handles both)
     const logoSource = orgBrand?.logo_url || process.env.CERT_LOGO_PUBLIC_ID;
-    const registrarSigSource = orgBrand?.signature_url || process.env.CERT_SIGNATURE_PUBLIC_ID;
+    const registrarSigSource =
+      orgBrand?.signature_url || process.env.CERT_SIGNATURE_PUBLIC_ID;
     if (orgBrand?.instructor_signature_url) {
-        tutorSignaturePublicId = orgBrand.instructor_signature_url;
-      }
+      tutorSignaturePublicId = orgBrand.instructor_signature_url;
+    }
 
-    const headerTitle = orgBrand?.certificate_title || 'Certificate of Completion';
+    const headerTitle =
+      orgBrand?.certificate_title || 'Certificate of Completion';
 
     // Build a single brand object so we reuse it for PDF and OG storage
     const brand = {
@@ -638,13 +716,13 @@ export async function generateCertificate(req, res) {
         `INSERT INTO certificates (id, student_id, course_id, url)
          VALUES (gen_random_uuid(), $1, $2, '')
          RETURNING *`,
-        [studentId, courseId]
+        [studentId, courseId],
       );
     } catch (e) {
       console.warn('[cert] insert race? reselecting existing row', e?.message);
       inserted = await pool.query(
         `SELECT * FROM certificates WHERE student_id = $1 AND course_id = $2`,
-        [studentId, courseId]
+        [studentId, courseId],
       );
       if (inserted.rowCount === 0) throw e; // real error
     }
@@ -654,7 +732,8 @@ export async function generateCertificate(req, res) {
     console.log('[cert] generateCertificate inserted row', { certId: cert.id });
 
     // 5) Build a public verification URL (no auth)
-    const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const base =
+      process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
     const verificationUrl = `${base}/api/certificates/verify/${cert.id}`;
 
     // 6) Create in-memory PDF (branded for org when present)
@@ -672,7 +751,9 @@ export async function generateCertificate(req, res) {
 
     if (!buffer || !buffer.length) {
       console.error('[cert] empty PDF buffer generated');
-      return res.status(500).json({ error: 'Failed to generate certificate PDF' });
+      return res
+        .status(500)
+        .json({ error: 'Failed to generate certificate PDF' });
     }
 
     // 7) Upload to Cloudinary
@@ -698,14 +779,17 @@ export async function generateCertificate(req, res) {
             });
             resolve(result.secure_url);
           }
-        }
+        },
       );
       Readable.from(buffer).pipe(upload);
     });
 
     const uploadTimeoutMs = Number(process.env.CERT_UPLOAD_TIMEOUT_MS || 45000);
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Cloudinary upload timed out')), uploadTimeoutMs)
+      setTimeout(
+        () => reject(new Error('Cloudinary upload timed out')),
+        uploadTimeoutMs,
+      ),
     );
 
     const url = await Promise.race([uploadPromise, timeoutPromise]);
@@ -730,7 +814,7 @@ export async function generateCertificate(req, res) {
               brand_logo_public_id = $2
         WHERE id = $3
       RETURNING *`,
-      [url, brandLogoPublicIdForOg, cert.id]
+      [url, brandLogoPublicIdForOg, cert.id],
     );
     console.timeEnd('[cert] generate:updateUrl');
 
@@ -754,7 +838,9 @@ export async function generateCertificate(req, res) {
     } catch {
       console.error('[cert] generateCertificate error (no cfg)', err);
     }
-    return res.status(500).json({ error: err?.message || 'Failed to generate certificate' });
+    return res
+      .status(500)
+      .json({ error: err?.message || 'Failed to generate certificate' });
   }
 }
 
@@ -763,7 +849,7 @@ export async function downloadCertificate(req, res) {
     const studentId = req.user.id;
     const { id } = req.params;
     if (!isUuid(id)) return res.status(400).json({ error: 'Invalid id' });
-    
+
     console.log('[cert] downloadCertificate start', { studentId, id });
 
     console.time('[cert] download:lookup');
@@ -771,7 +857,7 @@ export async function downloadCertificate(req, res) {
       `SELECT id, student_id, course_id, url
          FROM certificates
         WHERE id = $1`,
-      [id]
+      [id],
     );
     console.timeEnd('[cert] download:lookup');
 
@@ -782,8 +868,13 @@ export async function downloadCertificate(req, res) {
 
     const cert = rows[0];
     if (cert.student_id !== studentId) {
-      console.warn('[cert] downloadCertificate -> forbidden', { studentId, owner: cert.student_id });
-      return res.status(403).json({ error: 'Not allowed to download this certificate' });
+      console.warn('[cert] downloadCertificate -> forbidden', {
+        studentId,
+        owner: cert.student_id,
+      });
+      return res
+        .status(403)
+        .json({ error: 'Not allowed to download this certificate' });
     }
     if (!cert.url) {
       console.warn('[cert] downloadCertificate -> empty url', { id });
@@ -794,7 +885,9 @@ export async function downloadCertificate(req, res) {
     let suggestedFilename = `certificate-${cert.id}.pdf`;
     try {
       console.time('[cert] download:courseTitle');
-      const meta = await pool.query(`SELECT title FROM courses WHERE id = $1`, [cert.course_id]);
+      const meta = await pool.query(`SELECT title FROM courses WHERE id = $1`, [
+        cert.course_id,
+      ]);
       console.timeEnd('[cert] download:courseTitle');
       if (meta.rowCount) {
         const clean = String(meta.rows[0].title || 'course')
@@ -818,20 +911,28 @@ export async function downloadCertificate(req, res) {
 
       if (upstream.status !== 200) {
         const xErr = upstream.headers?.['x-cld-error'];
-        const err = new Error(xErr ? `Cloudinary error: ${xErr}` : `Upstream fetch failed (${upstream.status})`);
+        const err = new Error(
+          xErr
+            ? `Cloudinary error: ${xErr}`
+            : `Upstream fetch failed (${upstream.status})`,
+        );
         err.status = upstream.status;
         throw err;
       }
 
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${suggestedFilename}"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${suggestedFilename}"`,
+      );
 
       const len = upstream.headers['content-length'];
       if (len) res.setHeader('Content-Length', len);
 
       upstream.data.on('error', (e) => {
         logErr('[cert] stream error', e);
-        if (!res.headersSent) res.status(502).end('Failed to fetch certificate file');
+        if (!res.headersSent)
+          res.status(502).end('Failed to fetch certificate file');
         else res.end();
       });
 
@@ -852,11 +953,14 @@ export async function downloadCertificate(req, res) {
       // ACL / authenticated delivery → sign and retry (robust)
       const cfg = cloudinary.config() || {};
       if (!cfg.api_key || !cfg.api_secret) {
-        console.error('[cert] Missing Cloudinary API credentials for private download URL', {
-          cloud_name: cfg.cloud_name,
-          has_api_key: !!cfg.api_key,
-          has_api_secret: !!cfg.api_secret,
-        });
+        console.error(
+          '[cert] Missing Cloudinary API credentials for private download URL',
+          {
+            cloud_name: cfg.cloud_name,
+            has_api_key: !!cfg.api_key,
+            has_api_secret: !!cfg.api_secret,
+          },
+        );
         return res.status(502).json({
           error:
             'Cloudinary private download requires API credentials. Set CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET and restart the server.',
@@ -874,20 +978,29 @@ export async function downloadCertificate(req, res) {
         }
       } catch (_) {}
       if (!publicId) {
-        console.warn('[cert] Could not parse public_id from URL; using DB id fallback');
+        console.warn(
+          '[cert] Could not parse public_id from URL; using DB id fallback',
+        );
         publicId = `certificates/${cert.id}`;
       }
 
       const tryPrivateDownload = async (dlType) => {
-        const privateUrl = cloudinary.utils.private_download_url(publicId, 'pdf', {
-          resource_type: 'image',          // you uploaded as resource_type image
-          type: dlType,                    // 'upload' | 'authenticated' | 'private'
-          attachment: true,
-          attachment_filename: suggestedFilename,
-          expires_at: Math.floor(Date.now() / 1000) + 5 * 60,
-          sign_url: true,
+        const privateUrl = cloudinary.utils.private_download_url(
+          publicId,
+          'pdf',
+          {
+            resource_type: 'image', // you uploaded as resource_type image
+            type: dlType, // 'upload' | 'authenticated' | 'private'
+            attachment: true,
+            attachment_filename: suggestedFilename,
+            expires_at: Math.floor(Date.now() / 1000) + 5 * 60,
+            sign_url: true,
+          },
+        );
+        console.log('[cert] streaming via private_download_url', {
+          publicId,
+          type: dlType,
         });
-        console.log('[cert] streaming via private_download_url', { publicId, type: dlType });
         await streamUrlToClient(privateUrl, `private-download-${dlType}`);
       };
 
@@ -898,11 +1011,17 @@ export async function downloadCertificate(req, res) {
         try {
           await tryPrivateDownload(t);
           ok = true;
-          console.log('[cert] downloadCertificate success (private-download)', { id, type: t });
+          console.log('[cert] downloadCertificate success (private-download)', {
+            id,
+            type: t,
+          });
           break;
         } catch (e2) {
           if (e2?.status && e2.status !== 404 && e2.status !== 401) throw e2; // non-ACL/non-not-found error
-          console.warn('[cert] private_download_url failed; trying next type', { type: t, status: e2?.status });
+          console.warn('[cert] private_download_url failed; trying next type', {
+            type: t,
+            status: e2?.status,
+          });
         }
       }
 
@@ -911,7 +1030,9 @@ export async function downloadCertificate(req, res) {
         // You can include the version from the stored URL to avoid cache issues.
         const urlObj = new URL(cert.url);
         const verMatch = urlObj.pathname.match(/\/v(\d+)\//);
-        const version = verMatch ? urlObj.pathname.match(/\/v(\d+)\//)[1] : undefined;
+        const version = verMatch
+          ? urlObj.pathname.match(/\/v(\d+)\//)[1]
+          : undefined;
 
         const signedDeliveryUrl = cloudinary.utils.url(publicId, {
           resource_type: 'image',
@@ -923,67 +1044,102 @@ export async function downloadCertificate(req, res) {
           // we already set Content-Disposition on the response, so no need to add flags.
         });
 
-        console.log('[cert] streaming via signed delivery URL (authenticated)', { publicId, version });
-        await streamUrlToClient(signedDeliveryUrl, 'signed-delivery-authenticated');
-        console.log('[cert] downloadCertificate success (signed-delivery)', { id });
+        console.log(
+          '[cert] streaming via signed delivery URL (authenticated)',
+          { publicId, version },
+        );
+        await streamUrlToClient(
+          signedDeliveryUrl,
+          'signed-delivery-authenticated',
+        );
+        console.log('[cert] downloadCertificate success (signed-delivery)', {
+          id,
+        });
       }
     }
   } catch (err) {
     logErr('[cert] downloadCertificate error', err);
     const status = (err && err.status) || 500;
-    return res.status(status).json({ error: err?.message || 'Download failed' });
+    return res
+      .status(status)
+      .json({ error: err?.message || 'Download failed' });
   }
 }
 
 export async function getStatus(req, res) {
   try {
-    const userId  = req.user?.id;
+    const userId = req.user?.id;
     const courseId = String(req.query.courseId || '');
-    if (!userId)  return res.status(401).json({ paid: false, error: 'Unauthorized' });
-    if (!courseId || !isUuid(courseId)) return res.status(400).json({ paid:false, error:'Invalid courseId' });
+    if (!userId)
+      return res.status(401).json({ paid: false, error: 'Unauthorized' });
+    if (!courseId || !isUuid(courseId))
+      return res.status(400).json({ paid: false, error: 'Invalid courseId' });
 
     const [certQ, orgQ, issuQ, ent, purQ, enrQ] = await Promise.all([
-      pool.query(`SELECT 1 FROM certificates WHERE student_id = $1 AND course_id = $2 LIMIT 1`, [userId, courseId]),
-      pool.query(`SELECT 1
+      pool.query(
+        `SELECT 1 FROM certificates WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
+        [userId, courseId],
+      ),
+      pool.query(
+        `SELECT 1
                     FROM org_quiz_attempts q
                     JOIN org_course_assignments a ON a.id = q.assignment_id
                    WHERE q.user_id = $1 AND a.course_id = $2
                      AND q.submitted_at IS NOT NULL AND q.passed = TRUE
-                   LIMIT 1`, [userId, courseId]),
-      pool.query(`SELECT 1 FROM ai_certificate_issuances
+                   LIMIT 1`,
+        [userId, courseId],
+      ),
+      pool.query(
+        `SELECT 1 FROM ai_certificate_issuances
                    WHERE user_id = $1 AND (course_id IS NULL OR course_id = $2)
-                   LIMIT 1`, [userId, courseId]),
+                   LIMIT 1`,
+        [userId, courseId],
+      ),
       getEntitlement(pool, userId, courseId).catch(() => null),
-      pool.query(`SELECT 1 FROM course_purchases WHERE student_id = $1 AND course_id = $2 LIMIT 1`, [userId, courseId]),
-      pool.query(`SELECT 1 FROM enrollments WHERE student_id = $1 AND course_id = $2 LIMIT 1`, [userId, courseId]),
+      pool.query(
+        `SELECT 1 FROM course_purchases WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
+        [userId, courseId],
+      ),
+      pool.query(
+        `SELECT 1 FROM enrollments WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
+        [userId, courseId],
+      ),
     ]);
 
     const orgCovered = orgQ.rowCount > 0;
-    const purchased  = purQ.rowCount > 0;
-    const enrolled   = enrQ.rowCount > 0;
+    const purchased = purQ.rowCount > 0;
+    const enrolled = enrQ.rowCount > 0;
 
     // NEW: treat Extended by issuance as extended even if entitlement row hasn’t been written yet
     const extendedByIssuance = await hasExtendedByIssuance(userId, courseId);
 
     // Any cert? (purchase/enrollment also grants cert access for free)
-    const hasAnyCert = orgCovered
-                    || purchased
-                    || enrolled
-                    || !!ent?.can_certificate
-                    || certQ.rowCount > 0
-                    || issuQ.rowCount > 0;
+    const hasAnyCert =
+      orgCovered ||
+      purchased ||
+      enrolled ||
+      !!ent?.can_certificate ||
+      certQ.rowCount > 0 ||
+      issuQ.rowCount > 0;
 
     // Extended?
-    const extended = orgCovered || ent?.can_transcript === true || extendedByIssuance;
+    const extended =
+      orgCovered || ent?.can_transcript === true || extendedByIssuance;
 
     // Heal entitlement if we learned something new
     if (extended && (!ent || ent.can_transcript !== true)) {
-      try { await upsertEntitlement(pool, { userId, courseId, extended: true }); } catch {}
+      try {
+        await upsertEntitlement(pool, { userId, courseId, extended: true });
+      } catch {}
     } else if (hasAnyCert && ent && ent.can_certificate !== true && !extended) {
-      try { await upsertEntitlement(pool, { userId, courseId, extended: false }); } catch {}
+      try {
+        await upsertEntitlement(pool, { userId, courseId, extended: false });
+      } catch {}
     }
 
-    const tier = extended ? 'extended' : (ent?.tier || (hasAnyCert ? 'standard' : null));
+    const tier = extended
+      ? 'extended'
+      : ent?.tier || (hasAnyCert ? 'standard' : null);
 
     return res.json({
       paid: Boolean(hasAnyCert),

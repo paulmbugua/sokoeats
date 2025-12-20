@@ -81,9 +81,7 @@ export default function TopBar({
             loading={voicesLoading}
             error={voicesError}
           />
-          <div className="mx-1 text-[12px] sm:text-sm text-white/90 truncate">
-            {title}
-          </div>
+          <div className="mx-1 text-[12px] sm:text-sm text-white/90 truncate">{title}</div>
         </div>
 
         <div className="ml-auto flex items-center gap-2">
@@ -100,8 +98,14 @@ export default function TopBar({
           </PrimaryButton>
 
           {disablePlay && (
-            <span className="text-[12px] text-amber-100/90" title={gateNotice?.reason || 'Narration locked'}>
-              Narration locked{gateNotice?.resetsAt ? ` · Resets ${new Date(gateNotice.resetsAt).toLocaleString()}` : ''}
+            <span
+              className="text-[12px] text-amber-100/90"
+              title={gateNotice?.reason || 'Narration locked'}
+            >
+              Narration locked
+              {gateNotice?.resetsAt
+                ? ` · Resets ${new Date(gateNotice.resetsAt).toLocaleString()}`
+                : ''}
             </span>
           )}
 

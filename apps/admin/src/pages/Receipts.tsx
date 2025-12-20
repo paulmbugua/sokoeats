@@ -2,7 +2,16 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { FileDown, Loader2, Printer, RefreshCw, Search, ChevronDown, Eye, Download } from 'lucide-react';
+import {
+  FileDown,
+  Loader2,
+  Printer,
+  RefreshCw,
+  Search,
+  ChevronDown,
+  Eye,
+  Download,
+} from 'lucide-react';
 
 type Method = 'All' | 'PayPal' | 'M-Pesa';
 type Status = 'All' | 'Completed' | 'Pending' | 'Failed';
@@ -17,8 +26,8 @@ type Tx = {
   status: 'Pending' | 'Completed' | 'Failed';
   date: string; // ISO
   captureId?: string;
-  orderId?: string;   // PayPal order / M-Pesa CheckoutRequestID
-  mpesaRef?: string;  // M-Pesa receipt
+  orderId?: string; // PayPal order / M-Pesa CheckoutRequestID
+  mpesaRef?: string; // M-Pesa receipt
 };
 
 function pickBackend(): string {
@@ -32,7 +41,8 @@ function pickBackend(): string {
 function normalizeStatus(s: string | undefined | null): Tx['status'] {
   const v = String(s ?? '').toLowerCase();
   if (['completed', 'success', 'succeeded', 'captured', 'approved'].includes(v)) return 'Completed';
-  if (['pending', 'processing', 'in_progress', 'authorized', 'queued'].includes(v)) return 'Pending';
+  if (['pending', 'processing', 'in_progress', 'authorized', 'queued'].includes(v))
+    return 'Pending';
   return 'Failed';
 }
 function guessMethod(raw: any): Tx['method'] {
@@ -47,17 +57,29 @@ function coerceTx(raw: any): Tx {
     (String(raw?.currency ?? raw?.currencyCode ?? '').toUpperCase() as 'USD' | 'KES') ||
     (raw?.amountKES ? 'KES' : 'USD');
   const amountNum = Number(
-    raw?.amount ?? raw?.amountUsd ?? raw?.amountUSD ?? raw?.amountKES ?? raw?.total ?? raw?.value ?? 0
+    raw?.amount ??
+      raw?.amountUsd ??
+      raw?.amountUSD ??
+      raw?.amountKES ??
+      raw?.total ??
+      raw?.value ??
+      0
   );
-  const created = raw?.created_at ?? raw?.createdAt ?? raw?.date ?? raw?.timestamp ?? new Date().toISOString();
+  const created =
+    raw?.created_at ?? raw?.createdAt ?? raw?.date ?? raw?.timestamp ?? new Date().toISOString();
 
   const id = String(
-    raw?.id ?? raw?.payment_id ?? raw?.txId ??
-    raw?.transactionId ?? raw?.transaction_id ??
-    raw?.captureId ?? raw?.capture_id ??
-    raw?.orderId ?? raw?.order_id ??
-    raw?.mpesa_reference ??
-    `${Date.now()}`
+    raw?.id ??
+      raw?.payment_id ??
+      raw?.txId ??
+      raw?.transactionId ??
+      raw?.transaction_id ??
+      raw?.captureId ??
+      raw?.capture_id ??
+      raw?.orderId ??
+      raw?.order_id ??
+      raw?.mpesa_reference ??
+      `${Date.now()}`
   );
 
   return {
@@ -105,10 +127,10 @@ export default function Receipts() {
 
   // Selection for bulk open/print
   const [selected, setSelected] = useState<Record<string, boolean>>({});
-  const allSelected = list.length > 0 && list.every(t => selected[t.id]);
+  const allSelected = list.length > 0 && list.every((t) => selected[t.id]);
   const toggleAll = () => {
     if (allSelected) setSelected({});
-    else setSelected(Object.fromEntries(list.map(t => [t.id, true])));
+    else setSelected(Object.fromEntries(list.map((t) => [t.id, true])));
   };
 
   // Auto refresh
@@ -145,7 +167,9 @@ export default function Receipts() {
       if (res.status === 401) throw new Error('Unauthorized. Please sign in as admin.');
       if (res.status === 403) throw new Error('Forbidden. Your account lacks admin access.');
       if (!res.data?.success) {
-        throw new Error(typeof res.data?.message === 'string' ? res.data.message : `HTTP ${res.status}`);
+        throw new Error(
+          typeof res.data?.message === 'string' ? res.data.message : `HTTP ${res.status}`
+        );
       }
 
       const rows = Array.isArray(res.data?.transactions) ? res.data.transactions : [];
@@ -209,7 +233,8 @@ export default function Receipts() {
       if (String(res.headers['content-type'] || '').includes('application/pdf')) {
         const blob = new Blob([res.data], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        const refName = params.captureId || params.orderId || params.mpesaRef || params.id || 'receipt';
+        const refName =
+          params.captureId || params.orderId || params.mpesaRef || params.id || 'receipt';
         if (mode === 'download') {
           const a = document.createElement('a');
           a.href = url;
@@ -227,10 +252,16 @@ export default function Receipts() {
 
       // JSON error body
       let text = '';
-      try { text = await (res.data as Blob).text(); } catch { text = String(res.data || ''); }
+      try {
+        text = await (res.data as Blob).text();
+      } catch {
+        text = String(res.data || '');
+      }
       try {
         const j = JSON.parse(text);
-        throw new Error(j?.message || j?.error || `Failed to generate receipt (HTTP ${res.status})`);
+        throw new Error(
+          j?.message || j?.error || `Failed to generate receipt (HTTP ${res.status})`
+        );
       } catch {
         throw new Error(text || `Failed to generate receipt (HTTP ${res.status})`);
       }
@@ -240,7 +271,7 @@ export default function Receipts() {
   };
 
   const bulkOpen = async () => {
-    const items = list.filter(t => selected[t.id]);
+    const items = list.filter((t) => selected[t.id]);
     if (!items.length) {
       toast.info('Select at least one receipt');
       return;
@@ -248,7 +279,7 @@ export default function Receipts() {
     // Try to open up to 6 at once to reduce popup blocking
     for (let i = 0; i < items.length; i++) {
       await openOrDownloadPdf(items[i], 'view');
-      await new Promise(r => setTimeout(r, 150)); // tiny delay helps some browsers
+      await new Promise((r) => setTimeout(r, 150)); // tiny delay helps some browsers
     }
   };
 
@@ -284,7 +315,11 @@ export default function Receipts() {
           <div>
             <span className="text-xs block mb-1">Method</span>
             <div className="relative">
-              <select className="input pr-8" value={method} onChange={e => setMethod(e.target.value as Method)}>
+              <select
+                className="input pr-8"
+                value={method}
+                onChange={(e) => setMethod(e.target.value as Method)}
+              >
                 <option>All</option>
                 <option>PayPal</option>
                 <option>M-Pesa</option>
@@ -296,7 +331,11 @@ export default function Receipts() {
           <div>
             <span className="text-xs block mb-1">Status</span>
             <div className="relative">
-              <select className="input pr-8" value={status} onChange={e => setStatus(e.target.value as Status)}>
+              <select
+                className="input pr-8"
+                value={status}
+                onChange={(e) => setStatus(e.target.value as Status)}
+              >
                 <option>All</option>
                 <option>Completed</option>
                 <option>Pending</option>
@@ -308,57 +347,106 @@ export default function Receipts() {
 
           <label className="block">
             <span className="text-xs">Buyer Email</span>
-            <input className="input mt-1" value={email} onChange={e => setEmail(e.target.value)} placeholder="student@example.com" />
+            <input
+              className="input mt-1"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="student@example.com"
+            />
           </label>
 
           <label className="block">
             <span className="text-xs">Search (Order/Capture/M-Pesa/Email)</span>
             <div className="relative">
               <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-mutedGray" />
-              <input className="input pl-8 mt-1" value={q} onChange={e => setQ(e.target.value)} placeholder="e.g. 7A2469... or QDT3..." />
+              <input
+                className="input pl-8 mt-1"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="e.g. 7A2469... or QDT3..."
+              />
             </div>
           </label>
 
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
               <span className="text-xs">From</span>
-              <input className="input mt-1" type="date" value={since} onChange={e => setSince(e.target.value)} />
+              <input
+                className="input mt-1"
+                type="date"
+                value={since}
+                onChange={(e) => setSince(e.target.value)}
+              />
             </label>
             <label className="block">
               <span className="text-xs">To</span>
-              <input className="input mt-1" type="date" value={until} onChange={e => setUntil(e.target.value)} />
+              <input
+                className="input mt-1"
+                type="date"
+                value={until}
+                onChange={(e) => setUntil(e.target.value)}
+              />
             </label>
           </div>
 
           <div className="grid grid-cols-2 gap-2 items-end">
             <div>
               <span className="text-xs">Rows</span>
-              <input className="input mt-1" type="number" min={10} max={500} step={10} value={limit}
-                     onChange={e => setLimit(Math.max(10, Math.min(500, Number(e.target.value) || 100)))} />
+              <input
+                className="input mt-1"
+                type="number"
+                min={10}
+                max={500}
+                step={10}
+                value={limit}
+                onChange={(e) =>
+                  setLimit(Math.max(10, Math.min(500, Number(e.target.value) || 100)))
+                }
+              />
             </div>
-            <button className="btn" onClick={fetchReceipts} disabled={loading}>Apply</button>
+            <button className="btn" onClick={fetchReceipts} disabled={loading}>
+              Apply
+            </button>
           </div>
         </div>
 
         {/* Quick ranges */}
         <div className="flex flex-wrap gap-2">
-          <span className="text-xs self-center text-mutedGray dark:text-darkTextSecondary">Quick range:</span>
+          <span className="text-xs self-center text-mutedGray dark:text-darkTextSecondary">
+            Quick range:
+          </span>
           {[
             { d: 1, label: 'Today' },
             { d: 3, label: 'Last 3 days' },
             { d: 7, label: 'Last 7 days' },
             { d: 30, label: 'Last 30 days' },
-          ].map(r => (
-            <button key={r.d} className="chip" onClick={() => quickRange(r.d)}>{r.label}</button>
+          ].map((r) => (
+            <button key={r.d} className="chip" onClick={() => quickRange(r.d)}>
+              {r.label}
+            </button>
           ))}
-          <button className="chip" onClick={() => { setSince(''); setUntil(''); }}>Clear dates</button>
+          <button
+            className="chip"
+            onClick={() => {
+              setSince('');
+              setUntil('');
+            }}
+          >
+            Clear dates
+          </button>
         </div>
       </div>
 
       {err && <div className="panel p-3 text-sm text-red-500">{err}</div>}
-      {loading && <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">Loading receipts…</div>}
+      {loading && (
+        <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">
+          Loading receipts…
+        </div>
+      )}
       {!loading && !list.length && !err && (
-        <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">No receipts found.</div>
+        <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">
+          No receipts found.
+        </div>
       )}
 
       {/* Bulk bar */}
@@ -388,7 +476,9 @@ export default function Receipts() {
           <table className="w-full text-sm">
             <thead className="bg-gray-100 dark:bg-white/10 sticky top-0 z-10">
               <tr>
-                <th className="text-left p-2 w-10"><input type="checkbox" checked={allSelected} onChange={toggleAll} /></th>
+                <th className="text-left p-2 w-10">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+                </th>
                 <th className="text-left p-2">Date</th>
                 <th className="text-left p-2">Buyer</th>
                 <th className="text-left p-2">Method</th>
@@ -410,23 +500,45 @@ export default function Receipts() {
                   </td>
                   <td className="p-2 align-top">
                     <div>{new Date(t.date).toLocaleString()}</div>
-                    <div className="text-[11px] text-mutedGray dark:text-darkTextSecondary">ID: {t.id}</div>
+                    <div className="text-[11px] text-mutedGray dark:text-darkTextSecondary">
+                      ID: {t.id}
+                    </div>
                   </td>
                   <td className="p-2 align-top">
                     <div className="font-medium">{t.userEmail || '—'}</div>
-                    <div className="text-[11px] text-mutedGray dark:text-darkTextSecondary">{t.userName || '—'}</div>
+                    <div className="text-[11px] text-mutedGray dark:text-darkTextSecondary">
+                      {t.userName || '—'}
+                    </div>
                   </td>
                   <td className="p-2 align-top">{t.method}</td>
                   <td className="p-2 align-top">{fmtAmount(t)}</td>
                   <td className="p-2 align-top">
-                    <span className={`chip ${t.status === 'Completed' ? 'chip-active' : ''}`}>{t.status}</span>
+                    <span className={`chip ${t.status === 'Completed' ? 'chip-active' : ''}`}>
+                      {t.status}
+                    </span>
                   </td>
                   <td className="p-2 align-top">
                     <div className="text-[12px]">
-                      {t.orderId ? <>Order: <span className="font-mono">{t.orderId}</span><br/></> : null}
-                      {t.captureId ? <>Capture: <span className="font-mono">{t.captureId}</span><br/></> : null}
-                      {t.mpesaRef ? <>M-Pesa: <span className="font-mono">{t.mpesaRef}</span></> : null}
-                      {!t.orderId && !t.captureId && !t.mpesaRef ? <span className="text-mutedGray">—</span> : null}
+                      {t.orderId ? (
+                        <>
+                          Order: <span className="font-mono">{t.orderId}</span>
+                          <br />
+                        </>
+                      ) : null}
+                      {t.captureId ? (
+                        <>
+                          Capture: <span className="font-mono">{t.captureId}</span>
+                          <br />
+                        </>
+                      ) : null}
+                      {t.mpesaRef ? (
+                        <>
+                          M-Pesa: <span className="font-mono">{t.mpesaRef}</span>
+                        </>
+                      ) : null}
+                      {!t.orderId && !t.captureId && !t.mpesaRef ? (
+                        <span className="text-mutedGray">—</span>
+                      ) : null}
                     </div>
                   </td>
                   <td className="p-2 align-top">
@@ -465,7 +577,8 @@ export default function Receipts() {
       )}
 
       <p className="text-xs text-mutedGray dark:text-darkTextSecondary">
-        Tip: Use “View” to open the PDF in a new tab, then press <b>Ctrl/Cmd + P</b>. “Open PDFs” will open all selected receipts.
+        Tip: Use “View” to open the PDF in a new tab, then press <b>Ctrl/Cmd + P</b>. “Open PDFs”
+        will open all selected receipts.
       </p>
     </div>
   );

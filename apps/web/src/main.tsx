@@ -23,7 +23,6 @@ import { ensureBrowserPersistence } from '@mytutorapp/shared/utils/firebaseConfi
 const DevSafeStrictMode: React.FC<React.PropsWithChildren> = ({ children }) =>
   import.meta.env.DEV ? <>{children}</> : <React.StrictMode>{children}</React.StrictMode>;
 
-
 // Optional: expose for any old code that reads window.queryClient
 (window as any).queryClient = queryClient;
 
@@ -31,13 +30,7 @@ const DEBUG =
   import.meta.env.VITE_DEBUG_ERRORS === '1' ||
   new URLSearchParams(window.location.search).has('debug');
 
-function Fallback({
-  error,
-  onRetry,
-}: {
-  error?: Error;
-  onRetry?: () => void;
-}) {
+function Fallback({ error, onRetry }: { error?: Error; onRetry?: () => void }) {
   return (
     <div
       style={{
@@ -70,9 +63,7 @@ function Fallback({
             fontSize: 12,
           }}
         >
-          <summary style={{ cursor: 'default', marginBottom: 8 }}>
-            Error details (debug on)
-          </summary>
+          <summary style={{ cursor: 'default', marginBottom: 8 }}>Error details (debug on)</summary>
           <pre style={{ whiteSpace: 'pre-wrap' }}>
             {error.name}: {error.message}
             {'\n'}
@@ -119,9 +110,7 @@ if (import.meta.env.PROD && DEBUG) {
       return Promise.reject(error);
     }
   );
-  window.addEventListener('error', (e) =>
-    console.error('[WindowError]', e.message, e.error || e)
-  );
+  window.addEventListener('error', (e) => console.error('[WindowError]', e.message, e.error || e));
   window.addEventListener('unhandledrejection', (e) =>
     console.error('[UnhandledRejection]', e.reason)
   );
@@ -196,9 +185,7 @@ if (!container) {
                 </ChatProvider>
               </ShopContextProvider>
 
-              {(import.meta.env.DEV || DEBUG) && (
-                <ReactQueryDevtools initialIsOpen={false} />
-              )}
+              {(import.meta.env.DEV || DEBUG) && <ReactQueryDevtools initialIsOpen={false} />}
             </QueryClientProvider>
           </BrowserRouter>
         </ErrorBoundary>

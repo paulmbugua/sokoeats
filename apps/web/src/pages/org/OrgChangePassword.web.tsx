@@ -18,11 +18,7 @@ const OrgChangePassword: React.FC = () => {
   const [success, setSuccess] = useState(false);
 
   if (!orgToken) {
-    return (
-      <p className="p-6 text-sm text-red-500">
-        Session expired. Please log in again.
-      </p>
-    );
+    return <p className="p-6 text-sm text-red-500">Session expired. Please log in again.</p>;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -46,12 +42,7 @@ const OrgChangePassword: React.FC = () => {
       setBusy(true);
 
       // 🔐 Call backend to change the password
-      await institutionChangePassword(
-        backendUrl,
-        orgToken,
-        currentPassword,
-        newPassword
-      );
+      await institutionChangePassword(backendUrl, orgToken, currentPassword, newPassword);
 
       // ✅ Clear the must-change flag for this session
       try {
@@ -63,9 +54,7 @@ const OrgChangePassword: React.FC = () => {
       setSuccess(true);
 
       setTimeout(() => {
-        const from =
-          (location.state as any)?.from ||
-          '/org';
+        const from = (location.state as any)?.from || '/org';
         navigate(from, { replace: true });
       }, 800);
     } catch (err: any) {
@@ -75,16 +64,13 @@ const OrgChangePassword: React.FC = () => {
     }
   };
 
-
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-md rounded-2xl bg-white/90 dark:bg-[#0f1821] shadow-lg ring-1 ring-gray-200 dark:ring-darkCard p-6 sm:p-8">
-        <h1 className="text-xl font-semibold text-center mb-2">
-          Update your password
-        </h1>
+        <h1 className="text-xl font-semibold text-center mb-2">Update your password</h1>
         <p className="text-xs text-center text-gray-500 dark:text-darkTextSecondary mb-4">
-          For security, your institution asked you to change the temporary password
-          before using the portal.
+          For security, your institution asked you to change the temporary password before using the
+          portal.
         </p>
 
         {error && (

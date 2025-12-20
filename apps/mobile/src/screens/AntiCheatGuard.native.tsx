@@ -1,13 +1,6 @@
 // apps/mobile/src/screens/AntiCheatGuard.native.tsx
-import React, { useEffect, useMemo, } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Alert,
-  AccessibilityInfo,
-  ScrollView,
-} from 'react-native';
+import React, { useEffect, useMemo } from 'react';
+import { View, Text, TouchableOpacity, Alert, AccessibilityInfo, ScrollView } from 'react-native';
 import tw from '../../tailwind';
 
 type Props = {
@@ -51,28 +44,28 @@ const Pill = ({
     tone === 'ok'
       ? 'border-emerald-300 dark:border-emerald-500/40'
       : tone === 'warn'
-      ? 'border-amber-300 dark:border-amber-500/40'
-      : tone === 'danger'
-      ? 'border-red-300 dark:border-red-500/40'
-      : 'border-black/10 dark:border-white/10';
+        ? 'border-amber-300 dark:border-amber-500/40'
+        : tone === 'danger'
+          ? 'border-red-300 dark:border-red-500/40'
+          : 'border-black/10 dark:border-white/10';
 
   const bg =
     tone === 'ok'
       ? 'bg-emerald-50 dark:bg-emerald-500/10'
       : tone === 'warn'
-      ? 'bg-amber-50 dark:bg-amber-500/10'
-      : tone === 'danger'
-      ? 'bg-red-50 dark:bg-red-500/10'
-      : 'bg-white dark:bg-white/5';
+        ? 'bg-amber-50 dark:bg-amber-500/10'
+        : tone === 'danger'
+          ? 'bg-red-50 dark:bg-red-500/10'
+          : 'bg-white dark:bg-white/5';
 
   const text =
     tone === 'ok'
       ? 'text-emerald-800 dark:text-emerald-200'
       : tone === 'warn'
-      ? 'text-amber-800 dark:text-amber-200'
-      : tone === 'danger'
-      ? 'text-red-800 dark:text-red-200'
-      : 'text-slate-700 dark:text-white/80';
+        ? 'text-amber-800 dark:text-amber-200'
+        : tone === 'danger'
+          ? 'text-red-800 dark:text-red-200'
+          : 'text-slate-700 dark:text-white/80';
 
   return (
     <View
@@ -119,7 +112,6 @@ const AntiCheatGuard: React.FC<Props> = ({
 
   const lockNotifiedRef = React.useRef(false);
 
-
   // Compute times (up front)
   const elapsedS = useMemo(() => {
     const n = Number(elapsedMs);
@@ -132,34 +124,38 @@ const AntiCheatGuard: React.FC<Props> = ({
   }, [policy?.timerSec]);
 
   const remainingS = Math.max(0, Math.floor(safeTimer - elapsedS));
-  const pct = safeTimer > 0
-   ? Math.min(100, Math.max(0, (remainingS / Math.max(1, safeTimer)) * 100))
-   : 0;
+  const pct =
+    safeTimer > 0 ? Math.min(100, Math.max(0, (remainingS / Math.max(1, safeTimer)) * 100)) : 0;
 
   // Tones
   const bgTone: 'ok' | 'warn' | 'danger' =
     backgrounds > maxBg ? 'danger' : backgrounds === maxBg ? 'warn' : 'ok';
   const susTone: 'ok' | 'warn' | 'danger' =
-    suspicions >= maxSus ? 'danger' : suspicions >= Math.max(1, Math.floor(maxSus * 0.7)) ? 'warn' : 'ok';
+    suspicions >= maxSus
+      ? 'danger'
+      : suspicions >= Math.max(1, Math.floor(maxSus * 0.7))
+        ? 'warn'
+        : 'ok';
 
   // Lock effect
   useEffect(() => {
     if (!quizActive || backgrounds <= (policy?.maxBackgrounds ?? 2)) {
-    lockNotifiedRef.current = false;
-  }
-}, [quizActive, backgrounds, policy?.maxBackgrounds]);
+      lockNotifiedRef.current = false;
+    }
+  }, [quizActive, backgrounds, policy?.maxBackgrounds]);
 
- useEffect(() => {
-   if (!quizActive) return;
-   const maxBg = policy?.maxBackgrounds;
-   if (maxBg != null && backgrounds > maxBg && !lockNotifiedRef.current) {
-     lockNotifiedRef.current = true;
-     Alert.alert('Quiz locked', 'App was switched too many times. Submitting your answers.');
-     onTooManyBackgrounds?.();
-     AccessibilityInfo.announceForAccessibility?.('Quiz locked due to focus changes. Submitting now.');
-   }
- }, [quizActive, backgrounds, policy?.maxBackgrounds, onTooManyBackgrounds]);
-
+  useEffect(() => {
+    if (!quizActive) return;
+    const maxBg = policy?.maxBackgrounds;
+    if (maxBg != null && backgrounds > maxBg && !lockNotifiedRef.current) {
+      lockNotifiedRef.current = true;
+      Alert.alert('Quiz locked', 'App was switched too many times. Submitting your answers.');
+      onTooManyBackgrounds?.();
+      AccessibilityInfo.announceForAccessibility?.(
+        'Quiz locked due to focus changes. Submitting now.'
+      );
+    }
+  }, [quizActive, backgrounds, policy?.maxBackgrounds, onTooManyBackgrounds]);
 
   return (
     <View
@@ -168,16 +164,25 @@ const AntiCheatGuard: React.FC<Props> = ({
       accessibilityRole="summary"
     >
       {/* Hairline ring */}
-      <View pointerEvents="none" style={tw`absolute inset-0 rounded-2xl border border-black/10 dark:border-white/10`} />
+      <View
+        pointerEvents="none"
+        style={tw`absolute inset-0 rounded-2xl border border-black/10 dark:border-white/10`}
+      />
 
       {/* Header */}
       <View style={tw`px-4 pt-4 pb-2`}>
         <View style={tw`flex-row items-center gap-3`}>
-          <View style={tw`h-10 w-10 items-center justify-center rounded-xl shadow-md bg-indigo-600`}>
-            <Text accessible={false} style={tw`text-white text-base`}>🛡️</Text>
+          <View
+            style={tw`h-10 w-10 items-center justify-center rounded-xl shadow-md bg-indigo-600`}
+          >
+            <Text accessible={false} style={tw`text-white text-base`}>
+              🛡️
+            </Text>
           </View>
           <View style={tw`flex-1`}>
-            <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>Quiz Integrity</Text>
+            <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>
+              Quiz Integrity
+            </Text>
             <Text
               style={tw`mt-0.5 text-[11px] text-slate-600 dark:text-white/70`}
               numberOfLines={1}
@@ -196,9 +201,24 @@ const AntiCheatGuard: React.FC<Props> = ({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={tw`mt-3 pb-1 flex-row gap-2`}
         >
-          <Pill label="Exits" value={`${backgrounds}/${maxBg}`} tone={bgTone} hint="Times app lost focus" />
-          <Pill label="Suspicion" value={`${suspicions}/${maxSus}`} tone={susTone} hint="Suspicion level" />
-          <Pill label="Heartbeat" value={`${heartbeat}s`} tone="muted" hint="Anti-cheat ping interval" />
+          <Pill
+            label="Exits"
+            value={`${backgrounds}/${maxBg}`}
+            tone={bgTone}
+            hint="Times app lost focus"
+          />
+          <Pill
+            label="Suspicion"
+            value={`${suspicions}/${maxSus}`}
+            tone={susTone}
+            hint="Suspicion level"
+          />
+          <Pill
+            label="Heartbeat"
+            value={`${heartbeat}s`}
+            tone="muted"
+            hint="Anti-cheat ping interval"
+          />
           {safeTimer > 0 && <Pill label="Remaining" value={fmtHMS(remainingS)} tone="muted" />}
         </ScrollView>
       </View>
@@ -223,21 +243,19 @@ const AntiCheatGuard: React.FC<Props> = ({
       )}
 
       {/* Metrics grid (2-up, wraps on tiny screens) */}
-    <View style={tw`px-4 mt-3`}>
-      {/* Row 1 */}
-      <View style={tw`flex-row gap-2`}>
-        <Metric label="Remaining" value={safeTimer > 0 ? fmtHMS(remainingS) : 'No limit'} />
-        <Metric label="Focus exits" value={`${backgrounds}/${maxBg}`} />
+      <View style={tw`px-4 mt-3`}>
+        {/* Row 1 */}
+        <View style={tw`flex-row gap-2`}>
+          <Metric label="Remaining" value={safeTimer > 0 ? fmtHMS(remainingS) : 'No limit'} />
+          <Metric label="Focus exits" value={`${backgrounds}/${maxBg}`} />
+        </View>
+
+        {/* Row 2 */}
+        <View style={tw`flex-row gap-2 mt-2`}>
+          <Metric label="Suspicion" value={`${suspicions}/${maxSus}`} />
+          <Metric label="Elapsed" value={fmtHMS(elapsedS)} />
+        </View>
       </View>
-
-      {/* Row 2 */}
-      <View style={tw`flex-row gap-2 mt-2`}>
-        <Metric label="Suspicion" value={`${suspicions}/${maxSus}`} />
-        <Metric label="Elapsed" value={fmtHMS(elapsedS)} />
-      </View>
-    </View>
-
-
 
       {/* Divider */}
       <View style={tw`mt-4 h-px bg-black/10 dark:bg-white/10`} />
@@ -268,19 +286,25 @@ const AntiCheatGuard: React.FC<Props> = ({
       {/* Notices */}
       <View style={tw`px-4 pb-4`}>
         <Text style={tw`text-[11px] text-slate-500 dark:text-white/60`}>
-          Don’t leave the app while the quiz is active. Unusual activity may auto-submit your attempt.
+          Don’t leave the app while the quiz is active. Unusual activity may auto-submit your
+          attempt.
         </Text>
 
         {(backgrounds === maxBg || suspicions >= Math.max(1, Math.floor(maxSus * 0.7))) && (
-          <View style={tw`mt-3 rounded-xl p-3 border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10`}>
+          <View
+            style={tw`mt-3 rounded-xl p-3 border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10`}
+          >
             <Text style={tw`text-xs text-amber-800 dark:text-amber-200`}>
-              Heads up: you’re close to the limit. Switching apps or suspicious actions could lock and submit your quiz.
+              Heads up: you’re close to the limit. Switching apps or suspicious actions could lock
+              and submit your quiz.
             </Text>
           </View>
         )}
 
         {(backgrounds > maxBg || suspicions >= maxSus) && (
-          <View style={tw`mt-3 rounded-xl p-3 border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10`}>
+          <View
+            style={tw`mt-3 rounded-xl p-3 border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10`}
+          >
             <Text style={tw`text-xs text-red-800 dark:text-red-200`}>
               Quiz locked due to policy limits. Please wait while your attempt is submitted.
             </Text>

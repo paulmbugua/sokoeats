@@ -1,20 +1,14 @@
 import type { ExpoFileSystem, FsDirMap, Base64Encoding } from '../types';
 
-export const ensureSlash = (p?: string) =>
-  p ? (p.endsWith('/') ? p : p + '/') : undefined;
+export const ensureSlash = (p?: string) => (p ? (p.endsWith('/') ? p : p + '/') : undefined);
 
-export function getFsDir<T extends FsDirMap>(
-  fs: T,
-  key: keyof FsDirMap
-): string | undefined {
+export function getFsDir<T extends FsDirMap>(fs: T, key: keyof FsDirMap): string | undefined {
   const v = fs[key];
   return typeof v === 'string' ? ensureSlash(v) : undefined;
 }
 
 export function resolveCacheDir<T extends FsDirMap>(fs: T): string {
-  return getFsDir(fs, 'cacheDirectory') ??
-         getFsDir(fs, 'documentDirectory') ??
-         'file:///';
+  return getFsDir(fs, 'cacheDirectory') ?? getFsDir(fs, 'documentDirectory') ?? 'file:///';
 }
 
 export async function readAsBase64WithFallback(
@@ -32,7 +26,9 @@ export async function readAsBase64WithFallback(
     try {
       return await fs.readAsStringAsync(dest, { encoding: enc });
     } finally {
-      try { await fs.deleteAsync(dest, { idempotent: true }); } catch {}
+      try {
+        await fs.deleteAsync(dest, { idempotent: true });
+      } catch {}
     }
   }
 }

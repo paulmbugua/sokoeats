@@ -71,7 +71,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
         <div className="flex flex-col gap-2 sm:w-[260px]">
           <textarea
             className="w-full min-h-[60px] rounded-xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-[#3d99f5]"
-            placeholder='E.g. “Create Term 1 & Term 2 for 2026 and delete grade E from the bands.”'
+            placeholder="E.g. “Create Term 1 & Term 2 for 2026 and delete grade E from the bands.”"
             value={aiPrompt}
             onChange={(e) => setAiPrompt(e.target.value)}
           />
@@ -89,24 +89,22 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
             {configAiLoading
               ? 'AI is updating…'
               : configLoading
-              ? 'Saving…'
-              : 'Apply with AI (preview)'}
+                ? 'Saving…'
+                : 'Apply with AI (preview)'}
           </button>
           <p className="text-[10px] text-[#49739c] dark:text-darkTextSecondary">
             Changes are only saved when you click <strong>Save configuration</strong>.
           </p>
         </div>
       </div>
-            {/* Report card title (global default) */}
+      {/* Report card title (global default) */}
       <div className="rounded-2xl ring-1 ring-[#e7edf4] dark:ring-darkCard bg-white dark:bg-[#0f1821] p-3 sm:p-4 space-y-2">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
-            <h2 className="text-sm sm:text-base font-bold">
-              Report card title
-            </h2>
+            <h2 className="text-sm sm:text-base font-bold">Report card title</h2>
             <p className="text-[11px] sm:text-xs text-[#49739c] dark:text-darkTextSecondary">
-              This title appears at the top of each learner&apos;s report card PDF.
-              Leave blank to use <strong>TERM REPORT CARD</strong>.
+              This title appears at the top of each learner&apos;s report card PDF. Leave blank to
+              use <strong>TERM REPORT CARD</strong>.
             </p>
           </div>
         </div>
@@ -124,14 +122,10 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
           }
         />
         <p className="text-[10px] text-[#49739c] dark:text-darkTextSecondary">
-          You can also mention a preferred title in your AI instructions, e.g.
-          &nbsp;
-          <em>
-            “Use ‘Mid-Year Progress Report’ as the card title and create 3 terms…”
-          </em>
+          You can also mention a preferred title in your AI instructions, e.g. &nbsp;
+          <em>“Use ‘Mid-Year Progress Report’ as the card title and create 3 terms…”</em>
         </p>
       </div>
-
 
       {/* Main grid: terms/sessions + grading bands */}
       <div className="grid md:grid-cols-2 gap-4">
@@ -166,7 +160,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
                         setEditingConfig((prev) => ({
                           ...prev,
                           terms: prev.terms.map((x) =>
-                            x.id === t.id ? { ...x, is_active: e.target.checked } : x,
+                            x.id === t.id ? { ...x, is_active: e.target.checked } : x
                           ),
                         }))
                       }
@@ -262,10 +256,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
               </thead>
               <tbody>
                 {editingConfig.gradingBands.map((b, idx) => (
-                  <tr
-                    key={idx}
-                    className="border-t border-[#e7edf4] dark:border-darkCard"
-                  >
+                  <tr key={idx} className="border-t border-[#e7edf4] dark:border-darkCard">
                     <td className="py-1 pr-2">
                       <input
                         className="w-16 h-8 rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 text-xs"

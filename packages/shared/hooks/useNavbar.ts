@@ -1,28 +1,28 @@
 // packages/shared/hooks/useNavbar.ts
 
-import { useState } from 'react'
-import useAppQuery from './useAppQuery'
-import { fetchTutorProfiles } from '@mytutorapp/shared/api'
-import { fetchAllVideos } from '@mytutorapp/shared/api/classVaultApi'
-import { useShopContext, useChatContext } from '@mytutorapp/shared/context'
-import type { Profile, RecordedVideo } from '@mytutorapp/shared/types'
+import { useState } from 'react';
+import useAppQuery from './useAppQuery';
+import { fetchTutorProfiles } from '@mytutorapp/shared/api';
+import { fetchAllVideos } from '@mytutorapp/shared/api/classVaultApi';
+import { useShopContext, useChatContext } from '@mytutorapp/shared/context';
+import type { Profile, RecordedVideo } from '@mytutorapp/shared/types';
 
 export interface UseNavbarOptions {
-  onLogout?: () => void
-  onLogoClick?: () => void
+  onLogout?: () => void;
+  onLogoClick?: () => void;
 }
 
-const FIVE_MINUTES = 1000 * 60 * 5
+const FIVE_MINUTES = 1000 * 60 * 5;
 
 const useNavbar = (options?: UseNavbarOptions) => {
   // Local UI state
-  const [searchTerm, setSearchTerm] = useState<string>('')
-  const [showAlert, setShowAlert] = useState<boolean>(false)
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [showAlert, setShowAlert] = useState<boolean>(false);
 
   // Context
-  const { token, logout, backendUrl, language, toggleLanguage } = useShopContext()
-  const { unreadCount } = useChatContext()
-  const unreadMessagesCount = unreadCount
+  const { token, logout, backendUrl, language, toggleLanguage } = useShopContext();
+  const { unreadCount } = useChatContext();
+  const unreadMessagesCount = unreadCount;
 
   // 1) Tutor suggestions — cache for 5m, no retry on 429
   const {
@@ -37,11 +37,11 @@ const useNavbar = (options?: UseNavbarOptions) => {
       staleTime: FIVE_MINUTES,
       retry: (failureCount, error) => {
         // Don’t retry if it’s a 429
-        return (error as any)?.response?.status !== 429 && failureCount < 2
+        return (error as any)?.response?.status !== 429 && failureCount < 2;
       },
     }
-  )
-  if (tutorsError) console.error('Error fetching tutors', tutorsError)
+  );
+  if (tutorsError) console.error('Error fetching tutors', tutorsError);
 
   // 2) Video suggestions — same caching and retry logic
   const {
@@ -55,23 +55,23 @@ const useNavbar = (options?: UseNavbarOptions) => {
       enabled: Boolean(token),
       staleTime: FIVE_MINUTES,
       retry: (failureCount, error) => {
-        return (error as any)?.response?.status !== 429 && failureCount < 2
+        return (error as any)?.response?.status !== 429 && failureCount < 2;
       },
     }
-  )
-  if (videosError) console.error('Error fetching videos', videosError)
+  );
+  if (videosError) console.error('Error fetching videos', videosError);
 
   // Handlers
-  const handleSearch = () => searchTerm
+  const handleSearch = () => searchTerm;
   const handleLogout = () => {
-    logout()
-    options?.onLogout?.()
-  }
+    logout();
+    options?.onLogout?.();
+  };
   const handleLogoClick = () => {
-    setSearchTerm('')
-    options?.onLogoClick?.()
-  }
-  const handleSettingsClick = () => setShowAlert(false)
+    setSearchTerm('');
+    options?.onLogoClick?.();
+  };
+  const handleSettingsClick = () => setShowAlert(false);
 
   return {
     token,
@@ -89,7 +89,7 @@ const useNavbar = (options?: UseNavbarOptions) => {
     videoSuggestions,
     loadingTutors,
     loadingVideos,
-  }
-}
+  };
+};
 
-export default useNavbar
+export default useNavbar;

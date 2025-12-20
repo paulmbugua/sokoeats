@@ -17,8 +17,7 @@ export interface UseLoginOptions {
 
 /* ------------------------------- Env & routes ------------------------------- */
 // Detect React Native vs Web; RN needs screen names, Web uses paths.
-const isNative =
-  typeof navigator !== 'undefined' && (navigator as any)?.product === 'ReactNative';
+const isNative = typeof navigator !== 'undefined' && (navigator as any)?.product === 'ReactNative';
 
 // Map web-style paths to native screen names (extend as your stack grows).
 function routeAlias(input?: string): string | undefined {

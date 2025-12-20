@@ -1,13 +1,6 @@
 // apps/mobile/src/pages/Results.native.tsx
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  Image,
-  Pressable,
-  Linking,
-} from 'react-native';
+import { View, Text, ScrollView, Image, Pressable, Linking } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { MainStackParamList } from '../navigation/types';
@@ -81,9 +74,7 @@ function WatermarkPreview({
           className="absolute inset-0 items-center justify-center"
           style={{ mixBlendMode: 'multiply' } as any}
         >
-          <Text className="text-white/20 font-black tracking-widest text-4xl">
-            PREVIEW
-          </Text>
+          <Text className="text-white/20 font-black tracking-widest text-4xl">PREVIEW</Text>
         </View>
       </View>
 
@@ -109,7 +100,9 @@ const ResultsPage: React.FC = () => {
   const [paymentOpen, setPaymentOpen] = useState(false);
 
   const [cert, setCert] = useState<{ id: string; url: string; download_url?: string } | null>(null);
-  const [trans, setTrans] = useState<{ id: string; url: string; download_url?: string } | null>(null);
+  const [trans, setTrans] = useState<{ id: string; url: string; download_url?: string } | null>(
+    null
+  );
 
   // Helper to call API
   async function api<T = any>(path: string, init?: RequestInit): Promise<T> {
@@ -170,8 +163,14 @@ const ResultsPage: React.FC = () => {
   const passed = Boolean(grade?.passed);
 
   // Tokens-first hook (AI certificates)
-  const { skus, loading: aiCertLoading, error: aiCertError, message: aiCertMsg, claim, generate } =
-    useAICertificates({ backendUrl, token: token || '', courseId });
+  const {
+    skus,
+    loading: aiCertLoading,
+    error: aiCertError,
+    message: aiCertMsg,
+    claim,
+    generate,
+  } = useAICertificates({ backendUrl, token: token || '', courseId });
 
   const openExternal = (url?: string) => {
     if (!url) {
@@ -189,7 +188,8 @@ const ResultsPage: React.FC = () => {
             <View>
               <Text className="text-white font-bold text-xl">Results & Documents</Text>
               <Text className="text-white/70 text-sm">
-                {courseTitle ? <Text className="font-medium">{courseTitle}</Text> : 'Course'} • Your quiz results & downloads
+                {courseTitle ? <Text className="font-medium">{courseTitle}</Text> : 'Course'} • Your
+                quiz results & downloads
               </Text>
             </View>
             <Pressable
@@ -201,14 +201,18 @@ const ResultsPage: React.FC = () => {
           </View>
 
           {/* Score card */}
-          <View className={`rounded-2xl p-4 ${passed ? 'bg-emerald-500/10' : 'bg-red-500/10'} ${passed ? 'ring-emerald-500/40' : 'ring-red-500/40'} ring-1`}>
+          <View
+            className={`rounded-2xl p-4 ${passed ? 'bg-emerald-500/10' : 'bg-red-500/10'} ${passed ? 'ring-emerald-500/40' : 'ring-red-500/40'} ring-1`}
+          >
             <Text className="text-white/80 text-sm">Score</Text>
             <Text className="text-2xl font-semibold text-white">
               {grade ? `${grade.scorePct}%` : '—'}
-              <Text className="text-white/60 text-sm">  (Pass mark {grade?.passMark ?? 70}%)</Text>
+              <Text className="text-white/60 text-sm"> (Pass mark {grade?.passMark ?? 70}%)</Text>
             </Text>
             <Text className="mt-1 text-white/70">
-              {passed ? 'Nice! You passed. You can unlock clean downloads.' : 'Review the lesson and try again to pass.'}
+              {passed
+                ? 'Nice! You passed. You can unlock clean downloads.'
+                : 'Review the lesson and try again to pass.'}
             </Text>
           </View>
 
@@ -232,15 +236,21 @@ const ResultsPage: React.FC = () => {
           <View className="rounded-2xl p-4 border border-white bg-white/5">
             <Text className="text-white font-semibold mb-2">Downloads</Text>
             <Text className="text-white/70 text-sm mb-3">
-              Pay the certificate fee once to download both the <Text className="font-medium">Certificate</Text> and <Text className="font-medium">Transcript</Text> without watermark.
+              Pay the certificate fee once to download both the{' '}
+              <Text className="font-medium">Certificate</Text> and{' '}
+              <Text className="font-medium">Transcript</Text> without watermark.
             </Text>
 
             {/* Tokens-first block */}
             <View className="mb-4 p-3 rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/30">
               <Text className="text-white font-medium text-sm">Claim with Tokens</Text>
-              <Text className="text-white/70 text-xs mb-2">No processor fees for AI certificates.</Text>
+              <Text className="text-white/70 text-xs mb-2">
+                No processor fees for AI certificates.
+              </Text>
 
-              {aiCertLoading ? <Text className="text-xs text-white/60">Loading certificate options…</Text> : null}
+              {aiCertLoading ? (
+                <Text className="text-xs text-white/60">Loading certificate options…</Text>
+              ) : null}
               {aiCertError ? <Text className="text-xs text-red-300">{aiCertError}</Text> : null}
               {aiCertMsg ? <Text className="text-xs text-emerald-300">{aiCertMsg}</Text> : null}
 
@@ -255,7 +265,9 @@ const ResultsPage: React.FC = () => {
                       <Text className="text-[11px] text-white/60">{sku.code}</Text>
                     </View>
                     <View className="flex-row items-center gap-2">
-                      <Text className="text-sm font-semibold text-white">{sku.price_tokens} Tokens</Text>
+                      <Text className="text-sm font-semibold text-white">
+                        {sku.price_tokens} Tokens
+                      </Text>
                       <Pressable
                         disabled={!passed}
                         onPress={async () => {
@@ -263,7 +275,12 @@ const ResultsPage: React.FC = () => {
                           try {
                             await claim(sku.code);
                             const doc = await generate();
-                            if (doc?.id) setCert({ id: doc.id, url: doc.url, download_url: (doc as any).download_url });
+                            if (doc?.id)
+                              setCert({
+                                id: doc.id,
+                                url: doc.url,
+                                download_url: (doc as any).download_url,
+                              });
                           } catch (e) {
                             console.error('[Results] token claim/generate failed', e);
                           }
@@ -321,18 +338,24 @@ const ResultsPage: React.FC = () => {
           try {
             const c = await fetch(`${backendUrl}/api/certificates/generate`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
               body: JSON.stringify({ courseId }),
-            }).then(r => (r.ok ? r.json() : null));
+            }).then((r) => (r.ok ? r.json() : null));
             if (c?.id) setCert(c);
           } catch {}
 
           try {
             const t = await fetch(`${backendUrl}/api/transcripts/generate`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
               body: JSON.stringify({ courseId }),
-            }).then(r => (r.ok ? r.json() : null));
+            }).then((r) => (r.ok ? r.json() : null));
             if (t?.id) setTrans(t);
           } catch {}
         }}

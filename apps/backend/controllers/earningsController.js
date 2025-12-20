@@ -4,8 +4,8 @@ import pool from '../config/db.js';
 /* ───────────────────────── helpers ───────────────────────── */
 
 const upper = (s, fb = '') => String(s ?? fb).toUpperCase();
-const LOG  = (...a) => console.log('[earnings]', ...a);
-const ERR  = (...a) => console.error('[earnings]', ...a);
+const LOG = (...a) => console.log('[earnings]', ...a);
+const ERR = (...a) => console.error('[earnings]', ...a);
 
 /**
  * Choose which currency to show:
@@ -46,7 +46,7 @@ async function getTutorProfile(userId) {
       WHERE user_id = $1
         AND role = 'tutor'
       LIMIT 1`,
-    [userId]
+    [userId],
   );
   LOG('getTutorProfile: result', { rows });
   return rows[0] || null;
@@ -87,7 +87,7 @@ export const getEarningsSummary = async (req, res) => {
               pending_amount::numeric   AS pending_amount
          FROM earnings_balances
         WHERE user_id = $1`,
-      [userId]
+      [userId],
     );
     LOG('getEarningsSummary: balances rows', balRows);
 
@@ -99,13 +99,17 @@ export const getEarningsSummary = async (req, res) => {
         WHERE user_id = $1
           AND type = 'Completed Earnings'
         GROUP BY currency`,
-      [userId]
+      [userId],
     );
     LOG('getEarningsSummary: lifetime rows', lifeRows);
 
     // Index rows by upper-cased currency
-    const balBy = Object.fromEntries(balRows.map((r) => [upper(r.currency), r]));
-    const lifeBy = Object.fromEntries(lifeRows.map((r) => [upper(r.currency), r]));
+    const balBy = Object.fromEntries(
+      balRows.map((r) => [upper(r.currency), r]),
+    );
+    const lifeBy = Object.fromEntries(
+      lifeRows.map((r) => [upper(r.currency), r]),
+    );
 
     const currency = chooseCurrency(asked, profile, balRows, lifeRows);
 
@@ -123,8 +127,8 @@ export const getEarningsSummary = async (req, res) => {
     const payload = {
       currency,
       available: Number(bal.available_amount || 0),
-      pending:   Number(bal.pending_amount   || 0),
-      total:     Number(life.total          || 0),
+      pending: Number(bal.pending_amount || 0),
+      total: Number(life.total || 0),
     };
 
     LOG('getEarningsSummary: response payload', payload);
@@ -179,7 +183,7 @@ export const getEarningsTransactions = async (req, res) => {
         WHERE user_id = $1
         ORDER BY COALESCE(date, created_at, NOW()) DESC
         LIMIT $2 OFFSET $3`,
-      [userId, limit, offset]
+      [userId, limit, offset],
     );
 
     LOG('getEarningsTransactions: returning rows', rows);
@@ -223,7 +227,7 @@ export const getEarningsPayouts = async (req, res) => {
          FROM payouts
         WHERE tutor_id = $1
         ORDER BY created_at DESC`,
-      [userId]
+      [userId],
     );
 
     LOG('getEarningsPayouts: rows', rows);

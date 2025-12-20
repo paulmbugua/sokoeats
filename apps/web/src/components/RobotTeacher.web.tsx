@@ -2,9 +2,9 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
-import { useAiCourse } from '@mytutorapp/shared/hooks';
+import { useAiCourse, useAICertificates } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useAICertificates } from '@mytutorapp/shared/hooks';
+
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import OrgShareDialog from '@/components/org/OrgShareDialog';
 
@@ -17,10 +17,7 @@ const dbgEnabled = () => {
   if (typeof window === 'undefined') return false;
   const qs = new URLSearchParams(window.location.search);
   if (qs.has('dbg') || qs.get('debug') === '1') return true;
-  return (
-    localStorage.getItem('DBG_SHARE') === '1' ||
-    localStorage.getItem('DBG_AI') === '1'
-  );
+  return localStorage.getItem('DBG_SHARE') === '1' || localStorage.getItem('DBG_AI') === '1';
 };
 
 export const dlog = (...args: any[]) => {
@@ -90,8 +87,7 @@ function CourseList({
     if (!q) return items;
     return items.filter(
       (it) =>
-        (it.title || '').toLowerCase().includes(q) ||
-        (it.blurb || '').toLowerCase().includes(q)
+        (it.title || '').toLowerCase().includes(q) || (it.blurb || '').toLowerCase().includes(q)
     );
   }, [items, query]);
 
@@ -117,7 +113,10 @@ function CourseList({
         </button>
       </div>
 
-      <div className="md:hidden flex gap-2 overflow-x-auto pb-2 -mx-1 px-1" style={{ scrollbarWidth: 'thin' }}>
+      <div
+        className="md:hidden flex gap-2 overflow-x-auto pb-2 -mx-1 px-1"
+        style={{ scrollbarWidth: 'thin' }}
+      >
         {visible.length ? (
           visible.map((l, i) => {
             const active = l.id === activeId;
@@ -138,7 +137,10 @@ function CourseList({
       </div>
 
       <div className="hidden md:block">
-        <div className="space-y-2 max-h-[70vh] overflow-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+        <div
+          className="space-y-2 max-h-[70vh] overflow-auto pr-1"
+          style={{ scrollbarWidth: 'thin' }}
+        >
           {visible.length ? (
             visible.map((l, i) => {
               const active = l.id === activeId;
@@ -169,7 +171,9 @@ function CourseList({
               );
             })
           ) : (
-            <div className="text-sm text-gray-500 dark:text-white/60">No courses found. Try another search.</div>
+            <div className="text-sm text-gray-500 dark:text-white/60">
+              No courses found. Try another search.
+            </div>
           )}
         </div>
       </div>
@@ -190,7 +194,9 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const sp = React.useMemo(() => new URLSearchParams(location.search), [location.search]);
 
   const normQt = (v?: string | null): 'mcq' | 'short' | undefined => {
-    const s = String(v ?? '').trim().toLowerCase();
+    const s = String(v ?? '')
+      .trim()
+      .toLowerCase();
     return s === 'short' ? 'short' : s === 'mcq' ? 'mcq' : undefined;
   };
   const urlQuizTypeHint = normQt(sp.get('qt'));
@@ -202,7 +208,9 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   useEffect(() => {
     const prevX = document.body.style.overflowX;
     document.body.style.overflowX = 'hidden';
-    return () => { document.body.style.overflowX = prevX; };
+    return () => {
+      document.body.style.overflowX = prevX;
+    };
   }, []);
 
   // ── UI state ─────────────────────────────────────────────
@@ -212,7 +220,9 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     const prev = document.body.style.overflow;
     const shouldLock = isMaximized && !shareOpen;
     document.body.style.overflow = shouldLock ? 'hidden' : '';
-    return () => { document.body.style.overflow = prev; };
+    return () => {
+      document.body.style.overflow = prev;
+    };
   }, [isMaximized, shareOpen]);
 
   // ── Contexts & hooks ─────────────────────────────────────
@@ -231,9 +241,9 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   };
 
   const ai = useAiCourse(backendUrl, authToken, {
-  urlQuizTypeHint,
-  defaultQuizType: 'mcq',
-});
+    urlQuizTypeHint,
+    defaultQuizType: 'mcq',
+  });
 
   const {
     topCourses,
@@ -250,7 +260,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     grade,
     step,
     ttsLoading,
-     error: aiError, 
+    error: aiError,
     loadTopCourses,
     selectCourse,
     startWithAI,
@@ -272,51 +282,51 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   } = ai;
 
   const {
-  skus,
-  loading: aiCertLoading,
-  error: aiCertError,
-  message: aiCertMsg,
-  claim,
-  generate: generateAICert,
-} = useAICertificates({
-  backendUrl,
-  token: authToken,
-  courseId: selectedCourse?.id,
-});
-// keep stable refs like native
-const topCoursesRef = React.useRef<TopCourse[]>([]);
-useEffect(() => {
-  topCoursesRef.current = Array.isArray(topCourses) ? topCourses : [];
-}, [topCourses]);
+    skus,
+    loading: aiCertLoading,
+    error: aiCertError,
+    message: aiCertMsg,
+    claim,
+    generate: generateAICert,
+  } = useAICertificates({
+    backendUrl,
+    token: authToken,
+    courseId: selectedCourse?.id,
+  });
+  // keep stable refs like native
+  const topCoursesRef = React.useRef<TopCourse[]>([]);
+  useEffect(() => {
+    topCoursesRef.current = Array.isArray(topCourses) ? topCourses : [];
+  }, [topCourses]);
 
-const selectedCourseRef = React.useRef<typeof selectedCourse>(selectedCourse);
-useEffect(() => {
-  selectedCourseRef.current = selectedCourse;
-}, [selectedCourse]);
+  const selectedCourseRef = React.useRef<typeof selectedCourse>(selectedCourse);
+  useEffect(() => {
+    selectedCourseRef.current = selectedCourse;
+  }, [selectedCourse]);
 
-// tiny helpers – same idea as native
-const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+  // tiny helpers – same idea as native
+  const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
-const waitForCourses = async (timeoutMs = 5000, pollMs = 50) => {
-  const t0 = Date.now();
-  while (topCoursesRef.current.length === 0 && Date.now() - t0 < timeoutMs) {
-    await sleep(pollMs);
-  }
-  return topCoursesRef.current.length > 0;
-};
+  const waitForCourses = async (timeoutMs = 5000, pollMs = 50) => {
+    const t0 = Date.now();
+    while (topCoursesRef.current.length === 0 && Date.now() - t0 < timeoutMs) {
+      await sleep(pollMs);
+    }
+    return topCoursesRef.current.length > 0;
+  };
 
-const waitForSelection = async (timeoutMs = 3000, pollMs = 50) => {
-  const t0 = Date.now();
-  while (!selectedCourseRef.current && Date.now() - t0 < timeoutMs) {
-    await sleep(pollMs);
-  }
-  return selectedCourseRef.current;
-};
+  const waitForSelection = async (timeoutMs = 3000, pollMs = 50) => {
+    const t0 = Date.now();
+    while (!selectedCourseRef.current && Date.now() - t0 < timeoutMs) {
+      await sleep(pollMs);
+    }
+    return selectedCourseRef.current;
+  };
 
   const orgAssign = useOrgAssignment();
   const assignmentId = orgAssign?.assignmentId ?? undefined;
   const isOrgFlow = Boolean(orgAssign?.assignmentId);
-const assignmentIdForAi = authToken ? assignmentId : undefined;
+  const assignmentIdForAi = authToken ? assignmentId : undefined;
   // ── Timer owned by parent ────────────────────────────────
   const [localRemainingMs, setLocalRemainingMs] = useState<number | null>(null);
   useEffect(() => {
@@ -330,15 +340,16 @@ const assignmentIdForAi = authToken ? assignmentId : undefined;
   const timerSec =
     Number(
       (orgAssign as any)?.timerS ??
-      (orgAssign as any)?.timerSec ??
-      (orgAssign as any)?.timer_s ??
-      (orgAssign as any)?.lockedConfig?.timer_s ??
-      0
+        (orgAssign as any)?.timerSec ??
+        (orgAssign as any)?.timer_s ??
+        (orgAssign as any)?.lockedConfig?.timer_s ??
+        0
     ) || 0;
 
   const displayRemainingMs =
-    (orgAssign?.remainingMs ?? 0) > 0 ? (orgAssign?.remainingMs as number) :
-    (localRemainingMs ?? 0);
+    (orgAssign?.remainingMs ?? 0) > 0
+      ? (orgAssign?.remainingMs as number)
+      : (localRemainingMs ?? 0);
 
   // ── Payment/cert state ───────────────────────────────────
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -347,14 +358,17 @@ const assignmentIdForAi = authToken ? assignmentId : undefined;
 
   // ── SSML locking (no mutation while playing) ─────────────
   const hasAIContent = useMemo(
-    () => Boolean(
-      (joinedSsml && String(joinedSsml).trim()) ||
-      (ssml && String(ssml).trim()) ||
-      (Array.isArray(lessons) && lessons.length > 0)
-    ),
+    () =>
+      Boolean(
+        (joinedSsml && String(joinedSsml).trim()) ||
+          (ssml && String(ssml).trim()) ||
+          (Array.isArray(lessons) && lessons.length > 0)
+      ),
     [joinedSsml, ssml, lessons]
   );
-  const rawDisplaySsml: string = (hasAIContent ? (joinedSsml || ssml || '') : (initialSsml || '')).trim();
+  const rawDisplaySsml: string = (
+    hasAIContent ? joinedSsml || ssml || '' : initialSsml || ''
+  ).trim();
   const [lockedSsml, setLockedSsml] = useState<string | null>(null);
   const onBeforePlayWrapped = useCallback(async () => {
     if (!lockedSsml) setLockedSsml(rawDisplaySsml);
@@ -366,22 +380,25 @@ const assignmentIdForAi = authToken ? assignmentId : undefined;
   }, [aiOnEnded]);
   const displaySsml = lockedSsml ?? rawDisplaySsml;
   const hasJoined = Boolean(joinedSsml && String(joinedSsml).trim());
-  
- 
+
   // ── Org & role gating (compute BEFORE deriveds use them) ─
   const { activeOrgId, org: orgCtx, isStarterTier } = useOrg();
   const rolesRaw = [
     ...(Array.isArray(orgCtx?.roles) ? orgCtx.roles : []),
     orgCtx?.my_role,
     orgCtx?.role,
-  ].filter(Boolean).map(r => String(r).toLowerCase());
+  ]
+    .filter(Boolean)
+    .map((r) => String(r).toLowerCase());
   const roles = new Set(rolesRaw);
   const isAdminOwner = roles.has('owner') || roles.has('admin');
   const isInstructor = roles.has('instructor') || roles.has('teacher');
   const canShareUi = Boolean(activeOrgId && (isAdminOwner || isInstructor || isGlobalAdmin));
 
   // ── Controls state (declare BEFORE deriveds that use them) ─
-  const [classLevel, setClassLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner');
+  const [classLevel, setClassLevel] = useState<'beginner' | 'intermediate' | 'advanced'>(
+    'beginner'
+  );
   const [sizePreset, setSizePreset] = useState<SizePresetKey>('standard');
   const [minutes, setMinutes] = useState<number>(20);
   const [totalLessons, setTotalLessons] = useState<number>(8);
@@ -396,12 +413,12 @@ const assignmentIdForAi = authToken ? assignmentId : undefined;
   const [overrideLessons, setOverrideLessons] = useState(false);
   const [overrideQuiz, setOverrideQuiz] = useState(false);
 
-   const lastRunKeyRef = React.useRef<string | null>(null);
+  const lastRunKeyRef = React.useRef<string | null>(null);
 
-   // player readiness (parity with native)
-const [playerReady, setPlayerReady] = useState(false);
-const [playerLoading, setPlayerLoading] = useState(false);
-const [starting, setStarting] = useState(false);
+  // player readiness (parity with native)
+  const [playerReady, setPlayerReady] = useState(false);
+  const [playerLoading, setPlayerLoading] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   // ── Deriveds (order matters) ─────────────────────────────
   const isLockedLearner = Boolean(orgAssign?.locked ?? (isOrgFlow && !canShareUi));
@@ -415,8 +432,8 @@ const [starting, setStarting] = useState(false);
     return t.lessons;
   }, [programTrack]);
 
-  const lockedMinutes  = (orgAssign as any)?.lockedConfig?.minutes as number | undefined;
-  const lockedLessons  = (orgAssign as any)?.lockedConfig?.totalLessons as number | undefined;
+  const lockedMinutes = (orgAssign as any)?.lockedConfig?.minutes as number | undefined;
+  const lockedLessons = (orgAssign as any)?.lockedConfig?.totalLessons as number | undefined;
   const lockedQuizSize = (orgAssign as any)?.lockedConfig?.quizSize as number | undefined;
 
   const minutesEffective = isLockedLearner
@@ -424,102 +441,97 @@ const [starting, setStarting] = useState(false);
     : minutes;
 
   const lessonsEffective = isLockedLearner
-    ? (typeof lockedLessons === 'number' ? Math.max(1, lockedLessons) : trackLessons)
-    : (overrideLessons ? totalLessons : trackLessons);
+    ? typeof lockedLessons === 'number'
+      ? Math.max(1, lockedLessons)
+      : trackLessons
+    : overrideLessons
+      ? totalLessons
+      : trackLessons;
 
   const defaultQuizForLessons = (n: number) => Math.max(4, n * 2);
 
   const quizEffective = isLockedLearner
-    ? (typeof lockedQuizSize === 'number' ? Math.max(4, lockedQuizSize) : 16)
-    : (overrideQuiz ? quizCount : defaultQuizForLessons(lessonsEffective));
+    ? typeof lockedQuizSize === 'number'
+      ? Math.max(4, lockedQuizSize)
+      : 16
+    : overrideQuiz
+      ? quizCount
+      : defaultQuizForLessons(lessonsEffective);
 
-    const safeLessons = lessonsEffective;
+  const safeLessons = lessonsEffective;
   const safeQuiz = quizEffective;
 
   // ── Busy helpers (must be declared before canStartNow) ──
   const isAiBusy = step === 'outlining' || step === 'narrating' || ttsLoading;
-  const busyUi = ((activeRunId !== null) && isAiBusy) || preparing;
+  const busyUi = (activeRunId !== null && isAiBusy) || preparing;
 
- const canStartNow = useMemo(() => {
-  // need either a picked course or a custom topic
-  if (!selectedCourse && !customTitle.trim()) return false;
+  const canStartNow = useMemo(() => {
+    // need either a picked course or a custom topic
+    if (!selectedCourse && !customTitle.trim()) return false;
 
-  // treat AI as “really busy” only when a run is actually active
-  const aiReallyBusy = (activeRunId !== null) && isAiBusy;
-  if (aiReallyBusy || startMutexRef.current) return false;
+    // treat AI as “really busy” only when a run is actually active
+    const aiReallyBusy = activeRunId !== null && isAiBusy;
+    if (aiReallyBusy || startMutexRef.current) return false;
 
-  return true;
-}, [selectedCourse, customTitle, activeRunId, isAiBusy]);
+    return true;
+  }, [selectedCourse, customTitle, activeRunId, isAiBusy]);
 
- useEffect(() => {
+  useEffect(() => {
     lastRunKeyRef.current = null;
   }, [selectedCourse?.id, customTitle]);
 
-useEffect(() => {
-  dlog('state: canStartNow/busyUi update', {
-    canStartNow,
-    busyUi,
-    isAiBusy,
-    activeRunId,
-    startMutex: startMutexRef.current,
-    customTitle: customTitle.trim(),
-    selectedCourseId: selectedCourse?.id || null,
-    step,
-    ttsLoading,
-  });
-}, [
-  canStartNow,
-  busyUi,
-  isAiBusy,
-  activeRunId,
-  customTitle,
-  selectedCourse,
-  step,
-  ttsLoading,
-]);
+  useEffect(() => {
+    dlog('state: canStartNow/busyUi update', {
+      canStartNow,
+      busyUi,
+      isAiBusy,
+      activeRunId,
+      startMutex: startMutexRef.current,
+      customTitle: customTitle.trim(),
+      selectedCourseId: selectedCourse?.id || null,
+      step,
+      ttsLoading,
+    });
+  }, [canStartNow, busyUi, isAiBusy, activeRunId, customTitle, selectedCourse, step, ttsLoading]);
 
-useEffect(() => {
-  dlog('state: ai progress', {
-    step,
-    ttsLoading,
-    outlineLen: outline.length,
-    lessonsLen: lessons.length,
-    selectedCourseId: selectedCourse?.id || null,
-    error: aiError || null,
-  });
-}, [step, ttsLoading, outline, lessons, selectedCourse]);
-
+  useEffect(() => {
+    dlog('state: ai progress', {
+      step,
+      ttsLoading,
+      outlineLen: outline.length,
+      lessonsLen: lessons.length,
+      selectedCourseId: selectedCourse?.id || null,
+      error: aiError || null,
+    });
+  }, [step, ttsLoading, outline, lessons, selectedCourse]);
 
   // ── Effects that depend on deriveds ──────────────────────
 
   useEffect(() => {
-  if (activeRunId === null) {
+    if (activeRunId === null) {
+      setPreparing(false);
+      return;
+    }
+
+    const shouldPrepare =
+      step === 'outlining' ||
+      step === 'narrating' ||
+      !!ttsLoading ||
+      !hasAIContent ||
+      playerLoading ||
+      !playerReady;
+
+    setPreparing(shouldPrepare);
+  }, [activeRunId, step, ttsLoading, hasAIContent, playerLoading, playerReady]);
+
+  useEffect(() => {
+    setActiveRunId(null);
     setPreparing(false);
-    return;
-  }
-
-  const shouldPrepare =
-    step === 'outlining' ||
-    step === 'narrating' ||
-    !!ttsLoading ||
-    !hasAIContent ||
-    playerLoading ||
-    !playerReady;
-
-  setPreparing(shouldPrepare);
-}, [activeRunId, step, ttsLoading, hasAIContent, playerLoading, playerReady]);
-
-
-
-useEffect(() => {
-  setActiveRunId(null);
-  setPreparing(false);
-  setBlockedUntilStart(true);
-  setLockedSsml(null);
-  setPlayerReady(false);
-  setPlayerLoading(false);
-}, [selectedCourse?.id]);
-
+    setBlockedUntilStart(true);
+    setLockedSsml(null);
+    setPlayerReady(false);
+    setPlayerLoading(false);
+  }, [selectedCourse?.id]);
 
   useEffect(() => {
     if (!isLockedLearner) return;
@@ -542,7 +554,14 @@ useEffect(() => {
   }, [restrictStarter, trackLessons, isLockedLearner]);
 
   useEffect(() => {
-    dlog('env', { backendUrl, tokenPresent: Boolean(token), canShareUi, isInstructor, activeOrgId, isOrgFlow });
+    dlog('env', {
+      backendUrl,
+      tokenPresent: Boolean(token),
+      canShareUi,
+      isInstructor,
+      activeOrgId,
+      isOrgFlow,
+    });
   }, [backendUrl, token, canShareUi, isInstructor, activeOrgId, isOrgFlow]);
 
   // ── Data loading & selection ─────────────────────────────
@@ -554,29 +573,37 @@ useEffect(() => {
         dlog('loadTopCourses:init {limit:200, preserveIds}', { preserveIds });
         await loadTopCourses?.({ limit: 200, preserveIds } as any);
       } catch {
-        try { await loadTopCourses?.(); } catch {}
+        try {
+          await loadTopCourses?.();
+        } catch {}
       }
     })();
   }, [courseIdParam, loadTopCourses]);
 
   useEffect(() => {
-  if (!courseIdParam || !topCourses?.length) return;
-  if (selectedCourse?.id === courseIdParam) return;
-  const found = topCourses.find(c => c.id === courseIdParam) || null;
-  if (found) {
-    setPreparing(false);
-    setActiveRunId(null);
-    setBlockedUntilStart(true);
-    setLockedSsml(null);
-    selectCourse(found);
-  }
-}, [courseIdParam, topCourses, selectedCourse, selectCourse]);
-
-
-  useEffect(() => { if (isLockedLearner) setShareOpen(false); }, [isLockedLearner]);
+    if (!courseIdParam || !topCourses?.length) return;
+    if (selectedCourse?.id === courseIdParam) return;
+    const found = topCourses.find((c) => c.id === courseIdParam) || null;
+    if (found) {
+      setPreparing(false);
+      setActiveRunId(null);
+      setBlockedUntilStart(true);
+      setLockedSsml(null);
+      selectCourse(found);
+    }
+  }, [courseIdParam, topCourses, selectedCourse, selectCourse]);
 
   useEffect(() => {
-    if (!selectedCourse && Array.isArray(topCourses) && topCourses.length > 0 && !customTitle.trim()) {
+    if (isLockedLearner) setShareOpen(false);
+  }, [isLockedLearner]);
+
+  useEffect(() => {
+    if (
+      !selectedCourse &&
+      Array.isArray(topCourses) &&
+      topCourses.length > 0 &&
+      !customTitle.trim()
+    ) {
       dlog('auto-selecting first course', { id: topCourses[0]?.id, title: topCourses[0]?.title });
       selectCourse(topCourses[0]);
     }
@@ -597,24 +624,34 @@ useEffect(() => {
       dlog('loadTopCourses:more', opts);
       await loadTopCourses?.(opts as any);
     } catch {
-      try { await loadTopCourses?.({ append: true, preserveIds } as any); }
-      catch { await loadTopCourses?.({ preserveIds } as any); }
+      try {
+        await loadTopCourses?.({ append: true, preserveIds } as any);
+      } catch {
+        await loadTopCourses?.({ preserveIds } as any);
+      }
     }
   };
 
-  const handlePlayerLoadingChange = useCallback((b: boolean) => {
-  if (activeRunId === null) return;
-  setPlayerLoading((prev) => (prev === b ? prev : b));
-  // ⛔ don’t setPreparing here; let your existing effect compute preparing
-}, [activeRunId]);
-
+  const handlePlayerLoadingChange = useCallback(
+    (b: boolean) => {
+      if (activeRunId === null) return;
+      setPlayerLoading((prev) => (prev === b ? prev : b));
+      // ⛔ don’t setPreparing here; let your existing effect compute preparing
+    },
+    [activeRunId]
+  );
 
   const refreshCourseList = useCallback(async () => {
     const preserveIds = courseIdParam ? [courseIdParam] : [];
     dlog('refreshCourseList → clearTopCoursesCacheNow + reload', { preserveIds });
-    try { await clearTopCoursesCacheNow?.(); } catch {}
-    try { await loadTopCourses?.({ limit: 200, preserveIds } as any); }
-    catch { await loadTopCourses?.({ preserveIds } as any); }
+    try {
+      await clearTopCoursesCacheNow?.();
+    } catch {}
+    try {
+      await loadTopCourses?.({ limit: 200, preserveIds } as any);
+    } catch {
+      await loadTopCourses?.({ preserveIds } as any);
+    }
   }, [clearTopCoursesCacheNow, loadTopCourses, courseIdParam]);
 
   // Lesson list with stable id
@@ -632,10 +669,12 @@ useEffect(() => {
     }
   }, [hasAIContent]);
 
-    // ── Auth helpers ─────────────────────────────────────────
+  // ── Auth helpers ─────────────────────────────────────────
   const goToLoginWithReturn = (reason?: string, message?: string) => {
     const next = `${location.pathname}${location.search}${location.hash}`;
-    try { sessionStorage.setItem('auth:returnTo', next); } catch {}
+    try {
+      sessionStorage.setItem('auth:returnTo', next);
+    } catch {}
 
     // If we're in an org/assignment flow, prefer the institution login page
     const dest = isOrgFlow || orgToken ? '/org/login' : '/login';
@@ -660,145 +699,145 @@ useEffect(() => {
     return false;
   };
 
-
   // ── Quiz helpers ─────────────────────────────────────────
   const disableQuiz = Boolean(
-    (isOrgFlow && ((orgAssign?.expired) || (localRemainingMs !== null && localRemainingMs <= 0))) || grade
+    (isOrgFlow && (orgAssign?.expired || (localRemainingMs !== null && localRemainingMs <= 0))) ||
+      grade
   );
-  const handleAnswer = useCallback((qid: string, value: number | string) => {
-    if (disableQuiz) return;
-    answerQuestion(qid, value);
-  }, [disableQuiz, answerQuestion]);
+  const handleAnswer = useCallback(
+    (qid: string, value: number | string) => {
+      if (disableQuiz) return;
+      answerQuestion(qid, value);
+    },
+    [disableQuiz, answerQuestion]
+  );
 
   // ── Start course (uses deriveds above) ───────────────────
-const onStart = useCallback(async () => {
-  if (starting || !canStartNow) {
-    dlog('onStart: ignored', {
-      starting,
-      canStartNow,
-      activeRunId,
-      startMutex: startMutexRef.current,
-    });
-    return;
-  }
+  const onStart = useCallback(async () => {
+    if (starting || !canStartNow) {
+      dlog('onStart: ignored', {
+        starting,
+        canStartNow,
+        activeRunId,
+        startMutex: startMutexRef.current,
+      });
+      return;
+    }
 
-  const custom = customTitle.trim();
-  if (!selectedCourse && !custom) {
-    window.alert('Pick a course or type a topic first.');
-    return;
-  }
+    const custom = customTitle.trim();
+    if (!selectedCourse && !custom) {
+      window.alert('Pick a course or type a topic first.');
+      return;
+    }
 
-  setStarting(true);
+    setStarting(true);
 
-  // ⬇️ ensure we reuse the same knobs for both top list & sandbox
-  const courseSize = sizeToCourseSize[sizePreset];
-  const opts: any = {
-    assignmentId: assignmentIdForAi,
-    courseSize,
-    level: classLevel,
-    minutes: minutesEffective,
-    programTrack,
-    totalLessons: safeLessons,
-    voiceName: effectiveVoice,
-  };
+    // ⬇️ ensure we reuse the same knobs for both top list & sandbox
+    const courseSize = sizeToCourseSize[sizePreset];
+    const opts: any = {
+      assignmentId: assignmentIdForAi,
+      courseSize,
+      level: classLevel,
+      minutes: minutesEffective,
+      programTrack,
+      totalLessons: safeLessons,
+      voiceName: effectiveVoice,
+    };
 
-  // mark run + spinner + reset player
-  const id = ++runIdRef.current;
-  setActiveRunId(id);
-  setPreparing(true);
-  setPlayerReady(false);
-  setPlayerLoading(true);
-  setLockedSsml(null);
+    // mark run + spinner + reset player
+    const id = ++runIdRef.current;
+    setActiveRunId(id);
+    setPreparing(true);
+    setPlayerReady(false);
+    setPlayerLoading(true);
+    setLockedSsml(null);
 
-  try {
-    // -------- custom topic flow (Teach me) ----------
-    if (custom) {
-      // ⬇️ AUTH GUARD ONLY FOR AI SANDBOX
-      const ok = requireAuth(
-        'ai_sandbox',
-        'Please sign in to create a custom AI course.'
-      );
-      if (!ok) {
-        // reset run state so UI doesn’t look “stuck”
+    try {
+      // -------- custom topic flow (Teach me) ----------
+      if (custom) {
+        // ⬇️ AUTH GUARD ONLY FOR AI SANDBOX
+        const ok = requireAuth('ai_sandbox', 'Please sign in to create a custom AI course.');
+        if (!ok) {
+          // reset run state so UI doesn’t look “stuck”
+          setActiveRunId(null);
+          setPreparing(false);
+          setPlayerLoading(false);
+          return;
+        }
+
+        // ✅ IMPORTANT: pass the same knobs into startCustomTopic,
+        // and DO NOT call startWithAI again here.
+        dlog('onStart → startCustomTopic (sandbox)', { custom, opts });
+        await startCustomTopic(custom, opts);
+        await waitForSelection(); // just to ensure selectedCourseRef is hydrated
+        return;
+      }
+
+      // -------- top courses flow ----------
+      let course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
+
+      if (!course) {
+        const preserveIds = courseIdParam ? [courseIdParam] : [];
+        try {
+          await loadTopCourses?.({ limit: 200, preserveIds } as any);
+        } catch {
+          try {
+            await loadTopCourses?.();
+          } catch {
+            /* ignore */
+          }
+        }
+        await waitForCourses();
+        course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
+      }
+
+      if (course && (!selectedCourseRef.current || selectedCourseRef.current.id !== course.id)) {
+        selectCourse(course);
+        await waitForSelection();
+      }
+
+      if (!selectedCourseRef.current) {
+        dlog('onStart: bail — no course after waiting');
+        window.alert('Could not start. Please choose a course and try again.');
         setActiveRunId(null);
         setPreparing(false);
         setPlayerLoading(false);
         return;
       }
 
-      // ✅ IMPORTANT: pass the same knobs into startCustomTopic,
-      // and DO NOT call startWithAI again here.
-      dlog('onStart → startCustomTopic (sandbox)', { custom, opts });
-      await startCustomTopic(custom, opts);
-      await waitForSelection(); // just to ensure selectedCourseRef is hydrated
-      return;
-    }
-
-    // -------- top courses flow ----------
-    let course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
-
-    if (!course) {
-      const preserveIds = courseIdParam ? [courseIdParam] : [];
-      try {
-        await loadTopCourses?.({ limit: 200, preserveIds } as any);
-      } catch {
-        try {
-          await loadTopCourses?.();
-        } catch {
-          /* ignore */
-        }
-      }
-      await waitForCourses();
-      course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
-    }
-
-    if (course && (!selectedCourseRef.current || selectedCourseRef.current.id !== course.id)) {
-      selectCourse(course);
-      await waitForSelection();
-    }
-
-    if (!selectedCourseRef.current) {
-      dlog('onStart: bail — no course after waiting');
-      window.alert('Could not start. Please choose a course and try again.');
+      opts.courseId = selectedCourseRef.current.id;
+      dlog('onStart → startWithAI (top course)', {
+        opts,
+        selectedId: selectedCourseRef.current.id,
+      });
+      await startWithAI(opts);
+    } catch (e) {
+      console.error('[RobotTeacher.web:onStart] failed', e);
       setActiveRunId(null);
       setPreparing(false);
       setPlayerLoading(false);
-      return;
+    } finally {
+      setStarting(false);
     }
-
-    opts.courseId = selectedCourseRef.current.id;
-    dlog('onStart → startWithAI (top course)', {
-      opts,
-      selectedId: selectedCourseRef.current.id,
-    });
-    await startWithAI(opts);
-  } catch (e) {
-    console.error('[RobotTeacher.web:onStart] failed', e);
-    setActiveRunId(null);
-    setPreparing(false);
-    setPlayerLoading(false);
-  } finally {
-    setStarting(false);
-  }
-}, [
-  starting,
-  canStartNow,
-  customTitle,
-  selectedCourse,
-  assignmentIdForAi,
-  sizePreset,
-  classLevel,
-  minutesEffective,
-  programTrack,
-  safeLessons,
-  effectiveVoice,
-  courseIdParam,
-  startCustomTopic,
-  startWithAI,
-  loadTopCourses,
-  selectCourse,
-  requireAuth,
-]);
+  }, [
+    starting,
+    canStartNow,
+    customTitle,
+    selectedCourse,
+    assignmentIdForAi,
+    sizePreset,
+    classLevel,
+    minutesEffective,
+    programTrack,
+    safeLessons,
+    effectiveVoice,
+    courseIdParam,
+    startCustomTopic,
+    startWithAI,
+    loadTopCourses,
+    selectCourse,
+    requireAuth,
+  ]);
 
   const onRequestStartGuarded = useCallback(() => {
     // Player may ask to "start" — ignore if we already have content or we're busy
@@ -811,27 +850,36 @@ const onStart = useCallback(async () => {
     onStart();
   }, [blockedUntilStart, activeRunId, onStart, canStartNow]);
 
-
   const refreshSelectedAI = useCallback(async () => {
     if (!selectedCourse) return;
-    const ok = window.confirm('Refresh this course’s AI content?\n\nThis clears the cached outline, narration, and quiz, then regenerates fresh content.');
+    const ok = window.confirm(
+      'Refresh this course’s AI content?\n\nThis clears the cached outline, narration, and quiz, then regenerates fresh content.'
+    );
     if (!ok) return;
-    dlog('refreshSelectedAI → clearSelectedCourseCacheNow then reseed', { courseId: selectedCourse.id });
-    try { await clearSelectedCourseCacheNow?.(); } catch {}
+    dlog('refreshSelectedAI → clearSelectedCourseCacheNow then reseed', {
+      courseId: selectedCourse.id,
+    });
+    try {
+      await clearSelectedCourseCacheNow?.();
+    } catch {}
     selectCourse(selectedCourse);
     await onStart();
   }, [selectedCourse, clearSelectedCourseCacheNow, selectCourse, onStart]);
 
-  
   return (
     <div className="text-darkText dark:text-white">
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6">
         {/* LEFT */}
-        <div className={`order-1 space-y-4 sm:space-y-6 ${!isLockedLearner ? 'md:col-span-8' : 'md:col-span-12'}`}>
+        <div
+          className={`order-1 space-y-4 sm:space-y-6 ${!isLockedLearner ? 'md:col-span-8' : 'md:col-span-12'}`}
+        >
           <header className="space-y-1">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-darkText dark:text-white">AI Tutor Studio</h1>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-darkText dark:text-white">
+              AI Tutor Studio
+            </h1>
             <p className="text-sm sm:text-base text-gray-600 dark:text-white/75">
-              Free lesson (audio + captions + slides) and quiz. Score <span className="font-semibold">≥ 70%</span> to unlock your certificate
+              Free lesson (audio + captions + slides) and quiz. Score{' '}
+              <span className="font-semibold">≥ 70%</span> to unlock your certificate
               {isOrgFlow ? ' — covered by your organization' : ''}.
             </p>
           </header>
@@ -841,7 +889,7 @@ const onStart = useCallback(async () => {
             open={canShareUi && shareOpen}
             onClose={() => setShareOpen(false)}
             courseId={selectedCourse?.id || null}
-            courseTitle={selectedCourse?.title || (customTitle || null)}
+            courseTitle={selectedCourse?.title || customTitle || null}
             totalLessons={safeLessons}
             quizCount={safeQuiz}
             minutes={capMinutes(minutes)}
@@ -873,7 +921,10 @@ const onStart = useCallback(async () => {
                   key={s.k}
                   className={`px-2 py-1 rounded-full ring-1 ${
                     active
-                      ? 'bg-indigo-50 text-indigo-700 ring-indigo-200 dark:bg白/15 dark:text-white dark:ring-white/30'.replace('白', 'white')
+                      ? 'bg-indigo-50 text-indigo-700 ring-indigo-200 dark:bg白/15 dark:text-white dark:ring-white/30'.replace(
+                          '白',
+                          'white'
+                        )
                       : 'bg-white text-gray-700 ring-gray-200 dark:bg-white/5 dark:text-white/70 dark:ring-white/10'
                   }`}
                 >
@@ -891,9 +942,14 @@ const onStart = useCallback(async () => {
             canShareUi={canShareUi}
             restrictStarter={restrictStarter}
             knobsDisabled={knobsDisabled}
-            onOpenShare={() => { setIsMaximized(false); setShareOpen(true); }}
+            onOpenShare={() => {
+              setIsMaximized(false);
+              setShareOpen(true);
+            }}
             topCourses={(topCourses || []).map((c: TopCourse) => ({ id: c.id, title: c.title }))}
-            selectedCourse={selectedCourse ? { id: selectedCourse.id, title: selectedCourse.title } : null}
+            selectedCourse={
+              selectedCourse ? { id: selectedCourse.id, title: selectedCourse.title } : null
+            }
             onSelectCourse={(id) => {
               setPreparing(false);
               setActiveRunId(null);
@@ -915,7 +971,10 @@ const onStart = useCallback(async () => {
             setProgramTrack={setProgramTrack}
             capMinutes={capMinutes}
             customTitle={customTitle}
-            setCustomTitle={(s) => { setCustomTitle(s); if (s.trim()) selectCourse(null); }}
+            setCustomTitle={(s) => {
+              setCustomTitle(s);
+              if (s.trim()) selectCourse(null);
+            }}
             hasAIContent={hasAIContent}
             onStart={onStart}
             onRefreshSelectedAI={refreshSelectedAI}
@@ -923,11 +982,11 @@ const onStart = useCallback(async () => {
             setTotalLessons={setTotalLessons}
             quizCount={quizCount}
             setQuizCount={setQuizCount}
-             overrideLessons={overrideLessons}
-              setOverrideLessons={setOverrideLessons}
-              overrideQuiz={overrideQuiz}
-              setOverrideQuiz={setOverrideQuiz}
-               canStartNow={canStartNow} 
+            overrideLessons={overrideLessons}
+            setOverrideLessons={setOverrideLessons}
+            overrideQuiz={overrideQuiz}
+            setOverrideQuiz={setOverrideQuiz}
+            canStartNow={canStartNow}
           />
 
           {/* Classroom + Outline + Quiz */}
@@ -939,7 +998,7 @@ const onStart = useCallback(async () => {
             isBuildingNext={isBuildingNext}
             lessonsArr={lessonsArr}
             voiceName={voiceName || defaultVoice}
-            courseTitle={selectedCourse?.title || (customTitle || 'AI Lesson')}
+            courseTitle={selectedCourse?.title || customTitle || 'AI Lesson'}
             isMaximized={isMaximized}
             onToggleMaximized={() => setIsMaximized((v) => !v)}
             course={selectedCourse || null}
@@ -955,11 +1014,11 @@ const onStart = useCallback(async () => {
             onEnded={onEndedWrapped}
             onStart={onStart}
             onPlayerLoadingChange={handlePlayerLoadingChange}
-
-
-
             themeOpen={themeOpen}
-            onThemeOpenChange={(open) => { dlog('themeOpen →', open); setThemeOpen(open); }}
+            onThemeOpenChange={(open) => {
+              dlog('themeOpen →', open);
+              setThemeOpen(open);
+            }}
             isOrgFlow={isOrgFlow}
             assignmentId={assignmentId}
             timerSec={timerSec}
@@ -989,7 +1048,9 @@ const onStart = useCallback(async () => {
             onAnswer={handleAnswer}
             allAnswered={allAnswered}
             grade={grade}
-            gradeNow={async () => { await gradeNow(); }}
+            gradeNow={async () => {
+              await gradeNow();
+            }}
             token={authToken || ''}
             requireAuth={requireAuth}
             isOrgFlowFlag={isOrgFlow}
@@ -997,7 +1058,9 @@ const onStart = useCallback(async () => {
             aiCertLoading={aiCertLoading}
             aiCertError={aiCertError}
             aiCertMsg={aiCertMsg}
-            claim={async (code) => { await claim(code); }}
+            claim={async (code) => {
+              await claim(code);
+            }}
             tryGenerateCertificate={tryGenerateCertificate}
             generateAICert={generateAICert}
             paymentOpen={paymentOpen}
@@ -1028,7 +1091,11 @@ const onStart = useCallback(async () => {
           <aside className="md:col-span-4 order-2">
             <div className="md:sticky md:top-20 space-y-3">
               <CourseList
-                items={(topCourses || []).map((c: TopCourse) => ({ id: c.id, title: c.title, blurb: getCourseBlurb(c) }))}
+                items={(topCourses || []).map((c: TopCourse) => ({
+                  id: c.id,
+                  title: c.title,
+                  blurb: getCourseBlurb(c),
+                }))}
                 activeId={selectedCourse?.id || null}
                 onSelect={(id) => {
                   const found = (topCourses || []).find((c) => c.id === id) || null;

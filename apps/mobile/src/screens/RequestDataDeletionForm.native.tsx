@@ -31,15 +31,9 @@ const RequestDataDeletionForm: React.FC = () => {
   const [details, setDetails] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const isValidEmail = useMemo(
-    () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()),
-    [email]
-  );
+  const isValidEmail = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()), [email]);
 
-  const subject = useMemo(
-    () => encodeURIComponent('Request for Personal Data Deletion'),
-    []
-  );
+  const subject = useMemo(() => encodeURIComponent('Request for Personal Data Deletion'), []);
 
   const buildBody = useCallback(() => {
     const lines = [
@@ -94,7 +88,9 @@ const RequestDataDeletionForm: React.FC = () => {
         contentContainerStyle={tw`flex-1 justify-center px-4 py-10`}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={tw`w-full max-w-xl self-center bg-slate-800 rounded-2xl p-6 shadow-lg border border-slate-700`}>
+        <View
+          style={tw`w-full max-w-xl self-center bg-slate-800 rounded-2xl p-6 shadow-lg border border-slate-700`}
+        >
           <Text style={tw`text-2xl font-extrabold text-center text-blue-400`}>
             Request Personal Data Deletion
           </Text>

@@ -1,13 +1,7 @@
 // apps/mobile/src/screens/OerAutoPreviewScreen.native.tsx
 /* eslint-disable prettier/prettier */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  AccessibilityInfo,
-  Platform,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { AccessibilityInfo, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { InView } from 'react-native-intersection-observer';
 import { WebView } from 'react-native-webview';
@@ -70,15 +64,14 @@ const useReducedMotion = (): boolean => {
   const [reduced, setReduced] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
+    const mounted = true;
     AccessibilityInfo.isReduceMotionEnabled()
       .then((v) => mounted && setReduced(!!v))
       .catch(() => {});
 
     // RN >= 0.65: 'reduceMotionChanged'
-    const sub: any = AccessibilityInfo.addEventListener?.(
-      'reduceMotionChanged',
-      (v: boolean) => setReduced(!!v)
+    const sub: any = AccessibilityInfo.addEventListener?.('reduceMotionChanged', (v: boolean) =>
+      setReduced(!!v)
     );
 
     return () => {
@@ -124,11 +117,7 @@ export const OerAutoPreviewNative: React.FC<PreviewProps> = ({
   }, [onPress]);
 
   return (
-    <InView
-      onChange={setInView}
-      threshold={0.35}
-      style={tw`w-full`}
-    >
+    <InView onChange={setInView} threshold={0.35} style={tw`w-full`}>
       <TouchableOpacity
         activeOpacity={0.9}
         onPress={handleTap}
@@ -165,7 +154,9 @@ export const OerAutoPreviewNative: React.FC<PreviewProps> = ({
           {/* Badge (top-left) */}
           {!!badge && (
             <View style={tw`absolute top-2 left-2 rounded px-2 py-1 bg-white/90 dark:bg-black/70`}>
-              <Text style={tw`text-[11px] font-semibold text-[#0d141c] dark:text-white`}>{badge}</Text>
+              <Text style={tw`text-[11px] font-semibold text-[#0d141c] dark:text-white`}>
+                {badge}
+              </Text>
             </View>
           )}
 
@@ -202,12 +193,8 @@ type ScreenProps = {
 const OerAutoPreviewScreen: React.FC<ScreenProps> = ({ route }) => {
   const p = route?.params || {};
   const title = p.title || 'OER Preview';
-  const embedUrl =
-    p.embedUrl ||
-    'https://www.youtube.com/watch?v=dQw4w9WgXcQ'; // demo
-  const thumbnailUrl =
-    p.thumbnailUrl ||
-    'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg';
+  const embedUrl = p.embedUrl || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'; // demo
+  const thumbnailUrl = p.thumbnailUrl || 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg';
   const badge = p.badge || 'Preview';
 
   return (

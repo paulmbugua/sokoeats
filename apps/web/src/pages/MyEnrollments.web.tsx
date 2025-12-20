@@ -20,8 +20,7 @@ type NormalizedEnrollment = {
 function normalizeEnrollment(row: unknown): NormalizedEnrollment {
   const o = (row ?? {}) as Record<string, unknown>;
 
-  const str = (v: unknown, fallback = ''): string =>
-    typeof v === 'string' ? v : fallback;
+  const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback);
 
   const num = (v: unknown, fallback = 0): number =>
     typeof v === 'number' && Number.isFinite(v) ? v : fallback;
@@ -31,8 +30,7 @@ function normalizeEnrollment(row: unknown): NormalizedEnrollment {
   const title = str(o['title']) || str(o['courseTitle']) || 'Course';
   const description = str(o['description']);
   const level = str(o['level']) || 'All levels';
-  const startedAt =
-    str(o['started_at']) || str(o['enrolled_at']) || str(o['startedAt']) || null;
+  const startedAt = str(o['started_at']) || str(o['enrolled_at']) || str(o['startedAt']) || null;
   const status = str(o['status']) || 'active';
   const progressRaw = o['progress'];
   const progress = num(progressRaw);
@@ -85,15 +83,8 @@ const MyEnrollmentsPage: React.FC = () => {
   }
 
   // ✅ Use "me" so backend resolves req.user.id from JWT
-  const {
-    enrollments,
-    loading,
-    error,
-    setError,
-    fetchMine,
-    cancel,
-    setEnrollments,
-  } = useEnrollments({ backendUrl, token, studentId: 'me' as unknown as string | number });
+  const { enrollments, loading, error, setError, fetchMine, cancel, setEnrollments } =
+    useEnrollments({ backendUrl, token, studentId: 'me' as unknown as string | number });
 
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -106,7 +97,9 @@ const MyEnrollmentsPage: React.FC = () => {
     setDeleting(enrollmentId);
     try {
       // optimistic UI
-      setEnrollments(prev => prev.filter(e => String((e as Enrollment).id) !== String(enrollmentId)));
+      setEnrollments((prev) =>
+        prev.filter((e) => String((e as Enrollment).id) !== String(enrollmentId))
+      );
       await cancel(enrollmentId);
     } catch {
       await fetchMine().catch(() => {});

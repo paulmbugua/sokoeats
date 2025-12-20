@@ -35,14 +35,12 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const {
-    eligible,
-    eligibilityReason,
-    certificate,
-    loading,
-    error,
-    generate,
-  } = useCertificate({ backendUrl, token, courseId, justPassed });
+  const { eligible, eligibilityReason, certificate, loading, error, generate } = useCertificate({
+    backendUrl,
+    token,
+    courseId,
+    justPassed,
+  });
 
   const [downloading, setDownloading] = useState(false);
 
@@ -106,7 +104,7 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
     if (!url) {
       Alert.alert(
         'Download unavailable',
-        'No download link is configured for this certificate yet.',
+        'No download link is configured for this certificate yet.'
       );
       return;
     }
@@ -123,7 +121,7 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
       if (!baseDir) {
         // eslint-disable-next-line no-console
         console.warn(
-          '[cert-btn(native)] No writable directory from FileSystem; opening in external viewer instead.',
+          '[cert-btn(native)] No writable directory from FileSystem; opening in external viewer instead.'
         );
         await openExternal(url);
         return;
@@ -132,13 +130,10 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
       const targetUri = baseDir + filename;
 
       const anyCert = certificate as any;
-      const usingApiRoute =
-        url.includes('/api/certificates/') && url.includes('/download');
+      const usingApiRoute = url.includes('/api/certificates/') && url.includes('/download');
 
       const options =
-        usingApiRoute && token
-          ? { headers: { Authorization: `Bearer ${token}` } }
-          : undefined;
+        usingApiRoute && token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
 
       const result = await FS.downloadAsync(url, targetUri, options);
 
@@ -152,7 +147,7 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
 
       Alert.alert(
         'Certificate saved',
-        'Your certificate PDF has been downloaded. Open it from your Files / Documents app.',
+        'Your certificate PDF has been downloaded. Open it from your Files / Documents app.'
       );
     } catch (e: any) {
       // eslint-disable-next-line no-console
@@ -164,7 +159,7 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
       } catch {
         Alert.alert(
           'Download failed',
-          e?.message || 'Failed to download certificate. Please try again.',
+          e?.message || 'Failed to download certificate. Please try again.'
         );
       }
     } finally {
@@ -186,20 +181,16 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
           style={tw.style(
             `rounded-xl h-10 px-4 justify-center`,
             `bg-emerald-600`,
-            downloading && `opacity-70`,
+            downloading && `opacity-70`
           )}
         >
           {downloading ? (
             <View style={tw`flex-row items-center gap-2`}>
               <ActivityIndicator color="#ffffff" />
-              <Text style={tw`text-xs font-semibold text-white`}>
-                Downloading…
-              </Text>
+              <Text style={tw`text-xs font-semibold text-white`}>Downloading…</Text>
             </View>
           ) : (
-            <Text style={tw`text-sm font-semibold text-white`}>
-              Download Certificate
-            </Text>
+            <Text style={tw`text-sm font-semibold text-white`}>Download Certificate</Text>
           )}
         </TouchableOpacity>
 
@@ -208,19 +199,12 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
           accessibilityRole="button"
           onPress={() =>
             openExternal(
-              `${backendUrl.replace(/\/+$/, '')}/verify/${encodeURIComponent(
-                certId as string,
-              )}`,
+              `${backendUrl.replace(/\/+$/, '')}/verify/${encodeURIComponent(certId as string)}`
             )
           }
-          style={tw.style(
-            `rounded-xl h-10 px-4 justify-center`,
-            `bg-[#e7edf4] dark:bg-[#172534]`,
-          )}
+          style={tw.style(`rounded-xl h-10 px-4 justify-center`, `bg-[#e7edf4] dark:bg-[#172534]`)}
         >
-          <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
-            Verify
-          </Text>
+          <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Verify</Text>
         </TouchableOpacity>
       </View>
     );
@@ -237,23 +221,17 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
         onPress={() => generate().catch(() => {})}
         style={tw.style(
           `rounded-xl h-10 px-4 justify-center`,
-          eligible
-            ? `bg-[#2563eb] dark:bg-[#2563eb]`
-            : `bg-[#e5e7eb] dark:bg-[#1f2933]`,
-          disabled && `opacity-60`,
+          eligible ? `bg-[#2563eb] dark:bg-[#2563eb]` : `bg-[#e5e7eb] dark:bg-[#1f2933]`,
+          disabled && `opacity-60`
         )}
       >
         {loading ? (
           <View style={tw`flex-row items-center gap-2`}>
-            <ActivityIndicator
-              color={eligible ? '#ffffff' : isDark ? '#9ca3af' : '#6b7280'}
-            />
+            <ActivityIndicator color={eligible ? '#ffffff' : isDark ? '#9ca3af' : '#6b7280'} />
             <Text
               style={tw.style(
                 `text-xs font-semibold`,
-                eligible
-                  ? `text-white`
-                  : `text-[#6b7280] dark:text-[#9ca3af]`,
+                eligible ? `text-white` : `text-[#6b7280] dark:text-[#9ca3af]`
               )}
             >
               Generating…
@@ -263,9 +241,7 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
           <Text
             style={tw.style(
               `text-sm font-semibold`,
-              eligible
-                ? `text-white`
-                : `text-[#6b7280] dark:text-[#9ca5af]`,
+              eligible ? `text-white` : `text-[#6b7280] dark:text-[#9ca5af]`
             )}
           >
             Generate Certificate
@@ -274,16 +250,10 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
       </TouchableOpacity>
 
       {!eligible && !!eligibilityReason && (
-        <Text style={tw`text-xs text-[#49739c] dark:text-[#8fb4e5]`}>
-          {eligibilityReason}
-        </Text>
+        <Text style={tw`text-xs text-[#49739c] dark:text-[#8fb4e5]`}>{eligibilityReason}</Text>
       )}
 
-      {!!error && (
-        <Text style={tw`text-xs text-[#ef4444] dark:text-[#fca5a5]`}>
-          {error}
-        </Text>
-      )}
+      {!!error && <Text style={tw`text-xs text-[#ef4444] dark:text-[#fca5a5]`}>{error}</Text>}
     </View>
   );
 };

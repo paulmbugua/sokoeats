@@ -2,9 +2,12 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { getOrgRoster as apiRoster } from '@mytutorapp/shared/api/orgApi';
-import { createOrgMembershipInvite } from '@mytutorapp/shared/api/orgApi';
-import { removeOrgMember } from '@mytutorapp/shared/api/orgApi';
+import {
+  getOrgRoster as apiRoster,
+  createOrgMembershipInvite,
+  removeOrgMember,
+} from '@mytutorapp/shared/api/orgApi';
+
 import { getMyOrgOrBootstrap, getOrgUsage, uploadAsset } from '@mytutorapp/shared/api';
 
 // Learner creation + CSV upload
@@ -15,9 +18,7 @@ import {
 } from '@mytutorapp/shared/api/orgLearnersApi';
 
 // Instructor creation (no CSV)
-import {
-  createOrgInstructor as apiCreateOrgInstructor,
-} from '@mytutorapp/shared/api/orgInstructorsApi';
+import { createOrgInstructor as apiCreateOrgInstructor } from '@mytutorapp/shared/api/orgInstructorsApi';
 
 // Theme toggle
 import ThemeToggle from '../../components/ThemeToggle.web';
@@ -33,11 +34,7 @@ import {
 } from './portal/OrgProfileShared.web';
 
 // Modals
-import {
-  InviteModal,
-  AddInstructorModal,
-  AddLearnerModal,
-} from './portal/OrgProfileModals.web';
+import { InviteModal, AddInstructorModal, AddLearnerModal } from './portal/OrgProfileModals.web';
 
 /* ----------------------------- local types ----------------------------- */
 
@@ -148,7 +145,7 @@ const OrgProfilePage: React.FC = () => {
 
       return { url };
     },
-    [backendUrl, org?.id, orgToken],
+    [backendUrl, org?.id, orgToken]
   );
 
   const handleRemoveMember = useCallback(
@@ -157,7 +154,7 @@ const OrgProfilePage: React.FC = () => {
 
       const label = u.name || u.email || `User #${u.id}`;
       const ok = window.confirm(
-        `Remove ${label} from ${org?.name || 'this organization'}?\n\nThey will lose portal access.`,
+        `Remove ${label} from ${org?.name || 'this organization'}?\n\nThey will lose portal access.`
       );
       if (!ok) return;
 
@@ -174,7 +171,7 @@ const OrgProfilePage: React.FC = () => {
         alert(msg);
       }
     },
-    [backendUrl, org?.id, org?.name, orgToken, learners],
+    [backendUrl, org?.id, org?.name, orgToken, learners]
   );
 
   const seatCap = useCallback((tier?: string) => {
@@ -210,7 +207,7 @@ const OrgProfilePage: React.FC = () => {
         }
       }
     },
-    [backendUrl, orgToken],
+    [backendUrl, orgToken]
   );
 
   useEffect(() => {
@@ -247,7 +244,7 @@ const OrgProfilePage: React.FC = () => {
 
   const logo = useMemo(
     () => resolveAsset(org?.logo_url, backendUrl, org?.name),
-    [org?.logo_url, backendUrl, org?.name],
+    [org?.logo_url, backendUrl, org?.name]
   );
 
   const seatPct = Math.min(100, Math.round(((seatsUsed || 0) / (seatsMax || 1)) * 100));
@@ -341,12 +338,7 @@ const OrgProfilePage: React.FC = () => {
 
   // create instructor handler (no CSV)
   const handleCreateInstructor = useCallback(
-    async (payload: {
-      name: string;
-      email?: string;
-      subject?: string;
-      staff_code?: string;
-    }) => {
+    async (payload: { name: string; email?: string; subject?: string; staff_code?: string }) => {
       if (!org?.id || !orgToken) {
         throw new Error('Organization or token missing.');
       }
@@ -354,7 +346,7 @@ const OrgProfilePage: React.FC = () => {
       await refreshRoster(org.id);
       return { tempPassword: resp.tempPassword || null };
     },
-    [backendUrl, org?.id, orgToken, refreshRoster],
+    [backendUrl, org?.id, orgToken, refreshRoster]
   );
 
   // ---- Shared CSV helpers (used for learners + login sheet) ----
@@ -493,7 +485,7 @@ const OrgProfilePage: React.FC = () => {
       await refreshRoster(org.id);
       return { tempPassword: resp.tempPassword || null };
     },
-    [backendUrl, org?.id, orgToken, refreshRoster],
+    [backendUrl, org?.id, orgToken, refreshRoster]
   );
 
   // learner CSV upload handler
@@ -505,7 +497,7 @@ const OrgProfilePage: React.FC = () => {
       const created = resp?.createdCount ?? 0;
       const reused = resp?.reusedCount ?? 0;
       alert(
-        `CSV processed.\nNew learners: ${created}\nExisting reused/updated: ${reused}\n\nNext: click “Download login sheet (CSV)” to get their login details and temporary passwords.`,
+        `CSV processed.\nNew learners: ${created}\nExisting reused/updated: ${reused}\n\nNext: click “Download login sheet (CSV)” to get their login details and temporary passwords.`
       );
       await refreshRoster(org.id);
     } catch (e: any) {
@@ -560,11 +552,7 @@ const OrgProfilePage: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">
-                      {loading ? (
-                        <Skeleton className="h-6 w-48" />
-                      ) : (
-                        org?.name || 'Institution'
-                      )}
+                      {loading ? <Skeleton className="h-6 w-48" /> : org?.name || 'Institution'}
                     </h1>
                     {!loading && (
                       <span
@@ -620,9 +608,7 @@ const OrgProfilePage: React.FC = () => {
             {/* Seat usage strip */}
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-xl bg-slate-50 dark:bg-[#0b1620] ring-1 ring-black/5 dark:ring-white/10 p-3">
-                <div className="text-xs text-[#49739c] dark:text-darkTextSecondary">
-                  Seats used
-                </div>
+                <div className="text-xs text-[#49739c] dark:text-darkTextSecondary">Seats used</div>
                 {loading ? (
                   <>
                     <Skeleton className="h-7 w-32 mt-2" />
@@ -635,9 +621,7 @@ const OrgProfilePage: React.FC = () => {
                     </div>
                     <div className="mt-2 h-2 rounded-full bg-gray-200 dark:bg-[#182534] overflow-hidden">
                       <div
-                        className={`h-full ${
-                          seatPct >= 90 ? 'bg-red-500' : 'bg-emerald-500'
-                        }`}
+                        className={`h-full ${seatPct >= 90 ? 'bg-red-500' : 'bg-emerald-500'}`}
                         style={{ width: `${seatPct}%` }}
                       />
                     </div>
@@ -741,11 +725,7 @@ const OrgProfilePage: React.FC = () => {
               <>
                 <ul className="mt-3 divide-y divide-black/5 dark:divide-white/10 rounded-xl">
                   {paginatedInstructors.map((u) => (
-                    <PersonRow
-                      key={String(u.id)}
-                      u={u}
-                      onRemove={() => handleRemoveMember(u)}
-                    />
+                    <PersonRow key={String(u.id)} u={u} onRemove={() => handleRemoveMember(u)} />
                   ))}
                 </ul>
 
@@ -813,7 +793,8 @@ const OrgProfilePage: React.FC = () => {
                 <div className="text-2xl">👩🏽‍🏫</div>
                 <p className="mt-2 text-sm">No instructors listed yet.</p>
                 <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
-                  Use invites or direct add to enroll instructors. Share their login details by email or WhatsApp.
+                  Use invites or direct add to enroll instructors. Share their login details by
+                  email or WhatsApp.
                 </p>
               </div>
             )}
@@ -896,11 +877,7 @@ const OrgProfilePage: React.FC = () => {
               <>
                 <ul className="mt-3 divide-y divide-black/5 dark:divide-white/10 rounded-xl">
                   {paginatedLearners.map((u) => (
-                    <PersonRow
-                      key={String(u.id)}
-                      u={u}
-                      onRemove={() => handleRemoveMember(u)}
-                    />
+                    <PersonRow key={String(u.id)} u={u} onRemove={() => handleRemoveMember(u)} />
                   ))}
                 </ul>
 
@@ -946,9 +923,7 @@ const OrgProfilePage: React.FC = () => {
                         </span>
                         <button
                           type="button"
-                          onClick={() =>
-                            setLearnerPage((p) => Math.min(totalLearnerPages, p + 1))
-                          }
+                          onClick={() => setLearnerPage((p) => Math.min(totalLearnerPages, p + 1))}
                           disabled={learnerPage === totalLearnerPages}
                           className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
                             learnerPage === totalLearnerPages
@@ -1114,7 +1089,7 @@ const OrgProfilePage: React.FC = () => {
                     alert(
                       err?.response?.data?.message ||
                         err?.message ||
-                        'Failed to upload learner photo.',
+                        'Failed to upload learner photo.'
                     );
                   } finally {
                     setPhotoUploading(false);
@@ -1221,9 +1196,7 @@ const OrgProfilePage: React.FC = () => {
                     {!org?.address_line1 &&
                       !org?.phone_number &&
                       !org?.contact_email &&
-                      !org?.website_url && (
-                        <div className="text-[#9ca3af]">Not set yet.</div>
-                      )}
+                      !org?.website_url && <div className="text-[#9ca3af]">Not set yet.</div>}
                   </div>
                 )}
               </div>
@@ -1245,9 +1218,7 @@ const OrgProfilePage: React.FC = () => {
 
                 {org?.dorm_label?.trim() && (
                   <div className="rounded-lg px-3 py-2 bg-slate-50 dark:bg-[#0b1620] ring-1 ring-black/5 dark:ring-white/10">
-                    <div className="text-[11px] uppercase tracking-wide opacity-70">
-                      Dorm label
-                    </div>
+                    <div className="text-[11px] uppercase tracking-wide opacity-70">Dorm label</div>
                     <div className="mt-1 text-sm text-[#0d141c] dark:text-darkTextPrimary">
                       {org.dorm_label}
                     </div>
@@ -1256,9 +1227,7 @@ const OrgProfilePage: React.FC = () => {
 
                 {org?.club_label?.trim() && (
                   <div className="rounded-lg px-3 py-2 bg-slate-50 dark:bg-[#0b1620] ring-1 ring-black/5 dark:ring-white/10">
-                    <div className="text-[11px] uppercase tracking-wide opacity-70">
-                      Club label
-                    </div>
+                    <div className="text-[11px] uppercase tracking-wide opacity-70">Club label</div>
                     <div className="mt-1 text-sm text-[#0d141c] dark:text-darkTextPrimary">
                       {org.club_label}
                     </div>

@@ -1,5 +1,9 @@
 import { Router } from 'express';
-import { generateTranscript, getTranscript, downloadTranscript } from '../controllers/transcriptsController.js';
+import {
+  generateTranscript,
+  getTranscript,
+  downloadTranscript,
+} from '../controllers/transcriptsController.js';
 import anyAuth from '../middleware/anyAuth.js';
 import { ensureCourseFullyWatched } from '../controllers/progressWatchController.js';
 

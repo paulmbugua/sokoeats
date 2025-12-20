@@ -1,39 +1,37 @@
 // packages/mobile/src/screens/ProfileGrid.native.tsx
 
-import React, { useState } from 'react'
-import { View, Text, FlatList } from 'react-native'
-import ProfileCardNative from './ProfileCard.native'
-import type { Profile } from '@mytutorapp/shared/types'
-import tw from '../../tailwind'
+import React, { useState } from 'react';
+import { View, Text, FlatList } from 'react-native';
+import ProfileCardNative from './ProfileCard.native';
+import type { Profile } from '@mytutorapp/shared/types';
+import tw from '../../tailwind';
 
 interface ProfileGridProps {
-  profiles: Profile[]
+  profiles: Profile[];
 }
 
 const ProfileGridNative: React.FC<ProfileGridProps> = ({ profiles }) => {
-  const [visibleCount, setVisibleCount] = useState(10)
+  const [visibleCount, setVisibleCount] = useState(10);
   const loadMore = () => {
     if (visibleCount < profiles.length) {
-      setVisibleCount(prev => prev + 10)
+      setVisibleCount((prev) => prev + 10);
     }
-  }
-  const dataToRender = profiles.slice(0, visibleCount)
+  };
+  const dataToRender = profiles.slice(0, visibleCount);
 
   if (profiles.length === 0) {
     return (
       <View style={tw`p-4`}>
-        <Text style={tw`text-center text-gray-500`}>
-          No profiles available.
-        </Text>
+        <Text style={tw`text-center text-gray-500`}>No profiles available.</Text>
       </View>
-    )
+    );
   }
 
   return (
     <View style={tw`p-4`}>
       <FlatList
         data={dataToRender}
-        keyExtractor={item => item.id.toString()}
+        keyExtractor={(item) => item.id.toString()}
         numColumns={2}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
@@ -47,7 +45,7 @@ const ProfileGridNative: React.FC<ProfileGridProps> = ({ profiles }) => {
         )}
       />
     </View>
-  )
-}
+  );
+};
 
-export default ProfileGridNative
+export default ProfileGridNative;

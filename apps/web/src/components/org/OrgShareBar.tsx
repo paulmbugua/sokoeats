@@ -28,7 +28,9 @@ export default function OrgShareBar({ courseId, courseTitle, align = 'right' }: 
           className="btn bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60"
           disabled={disabled}
           onClick={() => setOpen(true)}
-          title={disabled ? 'Select a course first' : `Share in ${org?.name ?? 'your organization'}`}
+          title={
+            disabled ? 'Select a course first' : `Share in ${org?.name ?? 'your organization'}`
+          }
         >
           Share with learners
         </button>

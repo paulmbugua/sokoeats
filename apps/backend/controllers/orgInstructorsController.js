@@ -42,8 +42,11 @@ async function resolveUserPasswordColumn(client) {
   }
 
   USER_PASSWORD_COLUMN = res.rows[0].column_name;
-  // eslint-disable-next-line no-console
-  console.log('[orgInstructors] using users password column:', USER_PASSWORD_COLUMN);
+
+  console.log(
+    '[orgInstructors] using users password column:',
+    USER_PASSWORD_COLUMN,
+  );
   return USER_PASSWORD_COLUMN;
 }
 
@@ -66,10 +69,9 @@ async function resolveOrgMembersTable(client) {
   ];
 
   for (const name of candidates) {
-    const reg = await client.query(
-      'select to_regclass($1) as reg',
-      [`public.${name}`],
-    );
+    const reg = await client.query('select to_regclass($1) as reg', [
+      `public.${name}`,
+    ]);
     if (reg.rows[0] && reg.rows[0].reg) {
       ORG_MEMBERS_TABLE = name;
 
@@ -86,7 +88,6 @@ async function resolveOrgMembersTable(client) {
       );
       ORG_MEMBERS_HAS_ROLE = !!colRes.rows.length;
 
-      // eslint-disable-next-line no-console
       console.log(
         '[orgInstructors] using membership table:',
         ORG_MEMBERS_TABLE,
@@ -98,8 +99,9 @@ async function resolveOrgMembersTable(client) {
     }
   }
 
-  // eslint-disable-next-line no-console
-  console.warn('[orgInstructors] no org membership table found; skipping membership attach');
+  console.warn(
+    '[orgInstructors] no org membership table found; skipping membership attach',
+  );
   ORG_MEMBERS_TABLE = null;
   ORG_MEMBERS_HAS_ROLE = false;
   return { table: null, hasRole: false };
@@ -113,12 +115,7 @@ async function resolveOrgMembersTable(client) {
  *   org_id, user_id, staff_code, subject, updated_at
  */
 async function upsertOrgInstructor(client, orgId, row) {
-  const {
-    name,
-    email,
-    subject,
-    staffCode,
-  } = row;
+  const { name, email, subject, staffCode } = row;
 
   if (!name) {
     throw new Error('Instructor name is required');
@@ -141,22 +138,20 @@ async function upsertOrgInstructor(client, orgId, row) {
   }
 
   if (!user) {
-  tempPassword = generateTempPassword();
-  const passwordHash = await bcrypt.hash(tempPassword, 10);
-  const passwordCol = await resolveUserPasswordColumn(client);
+    tempPassword = generateTempPassword();
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    const passwordCol = await resolveUserPasswordColumn(client);
 
-  const insertUser = await client.query(
-    `
+    const insertUser = await client.query(
+      `
       insert into users (name, email, role, ${passwordCol}, must_change_password)
       values ($1, $2, 'tutor', $3, true)
       returning id, name, email, role
     `,
-    [name, normEmail, passwordHash],
-  );
-  user = insertUser.rows[0];
-}
-
-
+      [name, normEmail, passwordHash],
+    );
+    user = insertUser.rows[0];
+  }
 
   // 2) Attach to org as instructor in membership table (if present)
   try {
@@ -177,7 +172,6 @@ async function upsertOrgInstructor(client, orgId, row) {
       await client.query(sql, [orgId, user.id]);
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.warn(
       '[orgInstructors] membership attach failed but continuing:',
       err?.message || err,
@@ -200,15 +194,9 @@ async function upsertOrgInstructor(client, orgId, row) {
         subject    = coalesce(excluded.subject,    org_instructor_profiles.subject),
         updated_at = now()
     `,
-    [
-      orgId,
-      user.id,
-      staffCode || null,
-      subject || null,
-    ],
+    [orgId, user.id, staffCode || null, subject || null],
   );
 
-  
   return {
     user,
     tempPassword,
@@ -281,7 +269,7 @@ export async function createOrgInstructor(req, res) {
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    // eslint-disable-next-line no-console
+
     console.error('[createOrgInstructor] error', err);
     return res.status(500).json({ message: 'Failed to create instructor' });
   } finally {
@@ -317,7 +305,6 @@ export async function bulkCreateOrgInstructorsCsv(req, res) {
       trim: true,
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[bulkCreateOrgInstructorsCsv] parse error', err);
     return res.status(400).json({ message: 'Invalid CSV format' });
   }
@@ -346,11 +333,7 @@ export async function bulkCreateOrgInstructorsCsv(req, res) {
       const row = records[i];
 
       const name =
-        row.name ||
-        row.Name ||
-        row.full_name ||
-        row.FullName ||
-        row.fullName;
+        row.name || row.Name || row.full_name || row.FullName || row.fullName;
 
       if (!name) {
         errors.push({ row: i + 1, error: 'Missing name' });
@@ -360,11 +343,7 @@ export async function bulkCreateOrgInstructorsCsv(req, res) {
       const email = row.email || row.Email || null;
 
       const subject =
-        row.subject ||
-        row.Subject ||
-        row.department ||
-        row.dept ||
-        null;
+        row.subject || row.Subject || row.department || row.dept || null;
 
       const staffCode =
         row.staffCode ||
@@ -391,7 +370,6 @@ export async function bulkCreateOrgInstructorsCsv(req, res) {
           tempPassword: result.tempPassword,
         });
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('[bulkCreateOrgInstructorsCsv] row error', i + 1, err);
         errors.push({
           row: i + 1,
@@ -411,11 +389,12 @@ export async function bulkCreateOrgInstructorsCsv(req, res) {
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    // eslint-disable-next-line no-console
+
     console.error('[bulkCreateOrgInstructorsCsv] error', err);
-    return res.status(500).json({ message: 'Failed to import instructors CSV' });
+    return res
+      .status(500)
+      .json({ message: 'Failed to import instructors CSV' });
   } finally {
     client.release();
   }
 }
-

@@ -1,13 +1,20 @@
 /// <reference path="../declarations.d.ts" />
 
 import React, { useMemo, useRef, useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, ImageBackground, Pressable, useColorScheme, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  ImageBackground,
+  Pressable,
+  useColorScheme,
+  Dimensions,
+} from 'react-native';
 import { NavigationProp, useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import tw from '../../tailwind';
 import type { MainStackParamList } from '../navigation/types';
 import { useShopContext } from '@mytutorapp/shared/context';
-
 
 import Animated, {
   Easing,
@@ -16,13 +23,12 @@ import Animated, {
   FadeInDown,
   FadeInUp,
   interpolate,
-  LinearTransition,   // ← move here
+  LinearTransition, // ← move here
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-
 
 /* -------------------------------------------------------------------------- */
 /* Env + Branding                                                             */
@@ -49,7 +55,6 @@ const Landing: React.FC = () => {
   const { height } = Dimensions.get('window');
   const { orgToken } = useShopContext();
 
-
   const overlayStyle = useMemo(
     () => ({
       backgroundColor: isDark ? 'rgba(15,23,42,0.40)' : 'rgba(255,255,255,0.70)',
@@ -60,9 +65,12 @@ const Landing: React.FC = () => {
 
   /* background subtle parallax (scrollY drives gradients) */
   const scrollY = useSharedValue(0);
-  const onScroll = useCallback((e: any) => {
-    scrollY.value = e.nativeEvent.contentOffset?.y ?? 0;
-  }, [scrollY]);
+  const onScroll = useCallback(
+    (e: any) => {
+      scrollY.value = e.nativeEvent.contentOffset?.y ?? 0;
+    },
+    [scrollY]
+  );
 
   const glowAStyle = useAnimatedStyle(() => {
     const t = interpolate(scrollY.value, [0, 200], [1, 0.7], Extrapolation.CLAMP);
@@ -74,18 +82,17 @@ const Landing: React.FC = () => {
   });
 
   // replace your current `go` with this:
-const go = React.useCallback(
-  <T extends keyof MainStackParamList>(screen: T, params?: MainStackParamList[T]) => {
-    // Call the 1-arg or 2-arg overload correctly.
-    if (params === undefined) {
-      (navigation as any).navigate(screen as any);
-    } else {
-      (navigation as any).navigate(screen as any, params as any);
-    }
-  },
-  [navigation]
-);
-
+  const go = React.useCallback(
+    <T extends keyof MainStackParamList>(screen: T, params?: MainStackParamList[T]) => {
+      // Call the 1-arg or 2-arg overload correctly.
+      if (params === undefined) {
+        (navigation as any).navigate(screen as any);
+      } else {
+        (navigation as any).navigate(screen as any, params as any);
+      }
+    },
+    [navigation]
+  );
 
   return (
     <View style={tw.style('flex-1', isDark ? 'bg-slate-900' : 'bg-white')}>
@@ -99,16 +106,26 @@ const go = React.useCallback(
 
       {/* Decorative blobs (with tiny parallax) */}
       <View pointerEvents="none" style={tw`absolute inset-0`}>
-        <Animated.View style={[tw.style('absolute -top-24 -left-24 h-72 w-72 rounded-full bg-indigo-300/30'), glowAStyle]} />
-        <Animated.View style={[tw.style('absolute top-10 right-10 h-80 w-80 rounded-full bg-cyan-300/30'), glowBStyle]} />
-        <View style={tw.style('absolute -bottom-24 left-1/2 -ml-48 h-96 w-96 rounded-full bg-violet-200/20')} />
+        <Animated.View
+          style={[
+            tw.style('absolute -top-24 -left-24 h-72 w-72 rounded-full bg-indigo-300/30'),
+            glowAStyle,
+          ]}
+        />
+        <Animated.View
+          style={[
+            tw.style('absolute top-10 right-10 h-80 w-80 rounded-full bg-cyan-300/30'),
+            glowBStyle,
+          ]}
+        />
+        <View
+          style={tw.style(
+            'absolute -bottom-24 left-1/2 -ml-48 h-96 w-96 rounded-full bg-violet-200/20'
+          )}
+        />
       </View>
 
-      <ScrollView
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        contentContainerStyle={tw`pb-6`}
-      >
+      <ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={tw`pb-6`}>
         {/* Hero */}
         <View style={tw`px-4 pt-6`}>
           <Hero
@@ -156,7 +173,10 @@ const Hero: React.FC<{
           imageStyle={{ width: '100%', height: undefined }}
         >
           {/* gradient veils */}
-          <LinearGradient colors={['rgba(2,6,23,0.15)', 'rgba(2,6,23,0.35)']} style={tw`absolute inset-0`} />
+          <LinearGradient
+            colors={['rgba(2,6,23,0.15)', 'rgba(2,6,23,0.35)']}
+            style={tw`absolute inset-0`}
+          />
           <LinearGradient
             pointerEvents="none"
             colors={['rgba(255,255,255,0.12)', 'transparent']}
@@ -213,7 +233,7 @@ const HeroContent: React.FC<{
   return (
     <View style={tw`px-4 py-10 items-center`}>
       <Animated.View layout={LinearTransition.duration(250)}>
-        <Animated.View style={[badgeS]} entering={FadeInDown.duration(500)}>
+        <Animated.View style={badgeS} entering={FadeInDown.duration(500)}>
           <View style={tw`px-3 py-1 rounded-full bg-white/10 items-center justify-center`}>
             <Text style={tw`text-white text-xs font-semibold`}>Learn anything, anytime</Text>
           </View>
@@ -221,58 +241,56 @@ const HeroContent: React.FC<{
       </Animated.View>
 
       <Animated.View layout={LinearTransition.duration(250)}>
-      <Animated.View style={[h1S]} entering={FadeInDown.delay(80).duration(550)}>
-        <Text style={tw`text-white text-4xl font-black text-center mt-4`}>
-          Learn anything with AI + expert tutors
-        </Text>
+        <Animated.View style={h1S} entering={FadeInDown.delay(80).duration(550)}>
+          <Text style={tw`text-white text-4xl font-black text-center mt-4`}>
+            Learn anything with AI + expert tutors
+          </Text>
+        </Animated.View>
       </Animated.View>
-    </Animated.View>
 
-          <Animated.View layout={LinearTransition.duration(250)}>
-      <Animated.View style={[pS]} entering={FadeInDown.delay(140).duration(550)}>
-        <Text style={tw`text-white/90 text-sm text-center mt-3 max-w-[760px]`}>
-          Connect with expert tutors and our AI Robot Teacher. Master new skills or ace your coursework—your pace,
-          your schedule.
-        </Text>
+      <Animated.View layout={LinearTransition.duration(250)}>
+        <Animated.View style={pS} entering={FadeInDown.delay(140).duration(550)}>
+          <Text style={tw`text-white/90 text-sm text-center mt-3 max-w-[760px]`}>
+            Connect with expert tutors and our AI Robot Teacher. Master new skills or ace your
+            coursework—your pace, your schedule.
+          </Text>
+        </Animated.View>
       </Animated.View>
-    </Animated.View>
       {/* 2×2 CTAs – animated in a gentle cascade */}
       <View style={tw`mt-6 w-full items-center`}>
-   <View style={tw`w-full max-w-[420px]`}>
-  {/* 2×2 grid with tighter cards & bigger gaps */}
-  <View style={tw`flex-row flex-wrap justify-center gap-3`}>
-    <AnimatedCTA
-      label="Find Tutor"
-      onPress={onFindTutor}
-      delay={120}
-      bgClass="bg-white"
-      textClass="text-slate-900"
-    />
-    <AnimatedCTA
-      label="My Courses"
-      onPress={onMyCourses}
-      delay={180}
-      bgClass="bg-white/90"
-      textClass="text-slate-900"
-    />
-    <AnimatedCTA
-      label="For Institutions"
-      onPress={onOrg}
-      delay={240}
-      bgClass="bg-emerald-600"
-      textClass="text-white"
-    />
-    <AnimatedCTA
-      label="🤖 Learn with A.I."
-      onPress={onRobot}
-      delay={300}
-      bgClass="bg-black/70"
-      textClass="text-white"
-    />
-  </View>
-</View>
-
-
+        <View style={tw`w-full max-w-[420px]`}>
+          {/* 2×2 grid with tighter cards & bigger gaps */}
+          <View style={tw`flex-row flex-wrap justify-center gap-3`}>
+            <AnimatedCTA
+              label="Find Tutor"
+              onPress={onFindTutor}
+              delay={120}
+              bgClass="bg-white"
+              textClass="text-slate-900"
+            />
+            <AnimatedCTA
+              label="My Courses"
+              onPress={onMyCourses}
+              delay={180}
+              bgClass="bg-white/90"
+              textClass="text-slate-900"
+            />
+            <AnimatedCTA
+              label="For Institutions"
+              onPress={onOrg}
+              delay={240}
+              bgClass="bg-emerald-600"
+              textClass="text-white"
+            />
+            <AnimatedCTA
+              label="🤖 Learn with A.I."
+              onPress={onRobot}
+              delay={300}
+              bgClass="bg-black/70"
+              textClass="text-white"
+            />
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -293,14 +311,15 @@ const AnimatedCTA: React.FC<{
 }> = ({ label, onPress, delay = 0, bgClass = 'bg-white', textClass = 'text-slate-900' }) => {
   const scale = useSharedValue(1);
   const s = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const onIn = () => { scale.value = withSpring(0.98, { damping: 20, stiffness: 260 }); };
-  const onOut = () => { scale.value = withSpring(1, { damping: 14, stiffness: 180 }); };
+  const onIn = () => {
+    scale.value = withSpring(0.98, { damping: 20, stiffness: 260 });
+  };
+  const onOut = () => {
+    scale.value = withSpring(1, { damping: 14, stiffness: 180 });
+  };
 
   return (
-    <Animated.View
-      entering={FadeInUp.delay(delay).duration(550)}
-      style={tw`basis-[45%] mb-3`}  
-    >
+    <Animated.View entering={FadeInUp.delay(delay).duration(550)} style={tw`basis-[45%] mb-3`}>
       <Animated.View style={s}>
         <Pressable
           onPress={onPress}
@@ -316,7 +335,6 @@ const AnimatedCTA: React.FC<{
     </Animated.View>
   );
 };
-
 
 /* --------------------------- Reviews (optional) --------------------------- */
 /* If you re-enable testimonials/steps later, we can reuse Animated entering props

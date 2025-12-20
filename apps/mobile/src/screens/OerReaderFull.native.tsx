@@ -35,7 +35,9 @@ type OerItem = {
 
 const sanitizeId = (routeId?: string) => {
   let s = routeId ?? '';
-  try { s = decodeURIComponent(s); } catch {}
+  try {
+    s = decodeURIComponent(s);
+  } catch {}
   if (s.startsWith(':id')) s = s.slice(3);
   if (s.startsWith(':')) s = s.slice(1);
   return s;
@@ -47,7 +49,11 @@ async function tryJson(url: string, headers: Record<string, string>) {
   const res = await fetch(url, { headers });
   const text = await res.text();
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-  try { return JSON.parse(text); } catch { return text; }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 function firstHtmlishFromPayload(payload: any, slugOrId: string): OerItem | null {
@@ -63,10 +69,13 @@ function firstHtmlishFromPayload(payload: any, slugOrId: string): OerItem | null
     };
   }
 
-  const items = Array.isArray(payload?.items) ? payload.items
-    : Array.isArray(payload) ? payload
-    : Array.isArray(payload?.data?.items) ? payload.data.items
-    : [];
+  const items = Array.isArray(payload?.items)
+    ? payload.items
+    : Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.data?.items)
+        ? payload.data.items
+        : [];
 
   for (const it of items) {
     const web = it?.web_url || it?.html_url;
@@ -92,10 +101,7 @@ function firstHtmlishFromPayload(payload: any, slugOrId: string): OerItem | null
 }
 
 /* Absolute URL helper: mirrors toAbsUrl logic used on HomePageNative */
-const toWebBase = (base?: string) =>
-  (base || '')
-    .replace(/\/+$/, '')
-    .replace(/\/api$/i, '');
+const toWebBase = (base?: string) => (base || '').replace(/\/+$/, '').replace(/\/api$/i, '');
 
 function toAbsUrl(backendUrl?: string, src?: string | null): string {
   const raw = String(src ?? '').trim();
@@ -149,7 +155,10 @@ const OerReaderFullNative: React.FC = () => {
           try {
             const payload = await tryJson(url, headers);
             const o = firstHtmlishFromPayload(payload, id);
-            if (o?.web_url) { found = o; break; }
+            if (o?.web_url) {
+              found = o;
+              break;
+            }
           } catch {
             /* continue */
           }
@@ -171,7 +180,9 @@ const OerReaderFullNative: React.FC = () => {
         }
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [backendUrl, id, token]);
 
   // Choose the URL to render (resolve relative → absolute using backendUrl)
@@ -185,7 +196,11 @@ const OerReaderFullNative: React.FC = () => {
   // Android PDF workaround via Google Docs viewer, otherwise open directly
   const finalSrc = useMemo(() => {
     if (!resolvedSrc) return '';
-    if (Platform.OS === 'android' && isProbablyPdfUrl(resolvedSrc) && !resolvedSrc.startsWith('file://')) {
+    if (
+      Platform.OS === 'android' &&
+      isProbablyPdfUrl(resolvedSrc) &&
+      !resolvedSrc.startsWith('file://')
+    ) {
       const enc = encodeURIComponent(resolvedSrc);
       return `https://drive.google.com/viewerng/viewer?embedded=true&url=${enc}`;
     }
@@ -223,10 +238,7 @@ const OerReaderFullNative: React.FC = () => {
             >
               {item?.title || 'Open Resource'}
             </Text>
-            <Text
-              style={tw`text-[11px] text-[#49739c] dark:text-white/70`}
-              numberOfLines={1}
-            >
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`} numberOfLines={1}>
               {item?.provider || 'OER'}
             </Text>
           </View>

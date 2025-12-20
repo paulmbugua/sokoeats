@@ -16,11 +16,16 @@ type Props = { profile: Profile };
 
 const statusClass = (s?: string) => {
   switch (s) {
-    case 'Online': return 'bg-green-500';
-    case 'Busy':   return 'bg-yellow-500';
-    case 'New':    return 'bg-blue-500';
-    case 'Free':   return 'bg-purple-500';
-    default:       return 'bg-pink-400';
+    case 'Online':
+      return 'bg-green-500';
+    case 'Busy':
+      return 'bg-yellow-500';
+    case 'New':
+      return 'bg-blue-500';
+    case 'Free':
+      return 'bg-purple-500';
+    default:
+      return 'bg-pink-400';
   }
 };
 
@@ -61,7 +66,12 @@ export default function ProfileCard({ profile }: Props) {
   // Press scale animation
   const scale = useRef(new Animated.Value(1)).current;
   const animateTo = (to: number) =>
-    Animated.spring(scale, { toValue: to, useNativeDriver: true, friction: 6, tension: 120 }).start();
+    Animated.spring(scale, {
+      toValue: to,
+      useNativeDriver: true,
+      friction: 6,
+      tension: 120,
+    }).start();
 
   const onPress = () => {
     navigation.navigate('Profile', { id: String(profile.id) });
@@ -75,13 +85,17 @@ export default function ProfileCard({ profile }: Props) {
       style={tw`w-full`}
       android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
     >
-      <Animated.View style={[tw`rounded-2xl overflow-hidden bg-gray-100 shadow-lg`, { transform: [{ scale }] }]}>
+      <Animated.View
+        style={[tw`rounded-2xl overflow-hidden bg-gray-100 shadow-lg`, { transform: [{ scale }] }]}
+      >
         {/* Image */}
         <Image source={resolvedSource} resizeMode="cover" style={tw`w-full h-48`} />
 
         {/* Certificate badge */}
         {showCertBadge && (
-          <View style={tw`absolute top-2 left-2 w-8 h-8 rounded-full items-center justify-center bg-black/25`}>
+          <View
+            style={tw`absolute top-2 left-2 w-8 h-8 rounded-full items-center justify-center bg-black/25`}
+          >
             <FontAwesome5 name="certificate" size={24} color="#f59e0b" />
             <View style={tw`absolute inset-0 items-center justify-center`}>
               <FontAwesome5 name="check" size={10} color="#ffffff" />

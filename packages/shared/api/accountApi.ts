@@ -216,7 +216,6 @@ export const fetchEarningsSummary = async (
   };
 };
 
-
 export const fetchEarningsTransactions = async (
   backendUrl: string,
   token: string

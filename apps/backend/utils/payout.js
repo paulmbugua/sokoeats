@@ -1,7 +1,7 @@
 // apps/backend/utils/payout.js
 
 export const ALLOWED_CURRENCIES = ['KES', 'USD'];
-export const ALLOWED_METHODS    = ['mpesa', 'wise'];
+export const ALLOWED_METHODS = ['mpesa', 'wise'];
 
 // Accept 07XXXXXXXX / 01XXXXXXXX / 2547XXXXXXXX / +2547XXXXXXXX / 2541XXXXXXXX / +2541XXXXXXXX
 const MPESA_REGEX = /^(?:07|01|2547|\+2547|2541|\+2541)\d{8}$/;
@@ -12,9 +12,9 @@ function normalizeMsisdnKE(input) {
   let s = String(input).replace(/\D+/g, ''); // strip non-digits
 
   // Normalize to 2547/2541 format
-  if (s.startsWith('0'))  s = '254' + s.slice(1); // 07.. or 01..
-  if (s.startsWith('7'))  s = '254' + s;          // 7XXXXXXXXX
-  if (s.startsWith('1'))  s = '254' + s;          // 1XXXXXXXXX
+  if (s.startsWith('0')) s = '254' + s.slice(1); // 07.. or 01..
+  if (s.startsWith('7')) s = '254' + s; // 7XXXXXXXXX
+  if (s.startsWith('1')) s = '254' + s; // 1XXXXXXXXX
 
   // Final validation: 2547XXXXXXXX or 2541XXXXXXXX
   if (!/^254(7|1)\d{8}$/.test(s)) return null;
@@ -36,7 +36,9 @@ export function normalizePayoutFromBody(body = {}, role) {
   }
 
   // Coerce + trim raw inputs
-  const rawCurrency = String(body.payoutCurrency ?? body.payout_currency ?? 'USD')
+  const rawCurrency = String(
+    body.payoutCurrency ?? body.payout_currency ?? 'USD',
+  )
     .toUpperCase()
     .trim();
 
@@ -44,17 +46,26 @@ export function normalizePayoutFromBody(body = {}, role) {
   const fallbackMethod = rawCurrency === 'KES' ? 'mpesa' : 'wise';
 
   const rawMethodIn = String(
-    body.payoutMethod ??
-    body.payout_method ??
-    fallbackMethod
-  ).toLowerCase().trim();
+    body.payoutMethod ?? body.payout_method ?? fallbackMethod,
+  )
+    .toLowerCase()
+    .trim();
 
-  const payout_currency = ALLOWED_CURRENCIES.includes(rawCurrency) ? rawCurrency : 'USD';
-  let   payout_method   = ALLOWED_METHODS.includes(rawMethodIn) ? rawMethodIn : fallbackMethod;
+  const payout_currency = ALLOWED_CURRENCIES.includes(rawCurrency)
+    ? rawCurrency
+    : 'USD';
+  let payout_method = ALLOWED_METHODS.includes(rawMethodIn)
+    ? rawMethodIn
+    : fallbackMethod;
 
   // Extract inputs
-  const wise_email_in   = (body.wiseEmail ?? body.wise_email ?? '').toString().trim().toLowerCase();
-  const mpesa_in_raw    = (body.mpesaPhoneNumber ?? body.mpesa_phone_number ?? '').toString().trim();
+  const wise_email_in = (body.wiseEmail ?? body.wise_email ?? '')
+    .toString()
+    .trim()
+    .toLowerCase();
+  const mpesa_in_raw = (body.mpesaPhoneNumber ?? body.mpesa_phone_number ?? '')
+    .toString()
+    .trim();
 
   // Normalize/validate
   const mpesa_phone_number = mpesa_in_raw
@@ -76,7 +87,9 @@ export function normalizePayoutFromBody(body = {}, role) {
     // Force Wise for USD (we only support Wise for USD right now)
     payout_method = 'wise';
     if (!wise_email || !EMAIL_REGEX.test(wise_email)) {
-      return { error: 'A valid Wise email is required for USD payouts via Wise.' };
+      return {
+        error: 'A valid Wise email is required for USD payouts via Wise.',
+      };
     }
   }
 

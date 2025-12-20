@@ -1,18 +1,19 @@
-export function buildCertificateOgImageUrl(cloudName: string, certificateId: string, opts?: {
-  brandPublicId?: string;     // e.g. 'branding/logo'
-  student?: string;
-  course?: string;
-}) {
+export function buildCertificateOgImageUrl(
+  cloudName: string,
+  certificateId: string,
+  opts?: {
+    brandPublicId?: string; // e.g. 'branding/logo'
+    student?: string;
+    course?: string;
+  }
+) {
   const base = `https://res.cloudinary.com/${cloudName}/image/upload`;
   // Start from PDF page 1 as an image, size 1200x630 (OpenGraph)
-  const transforms = [
-    'pg_1',
-    'w_1200,h_630,c_fill',
-  ];
+  const transforms = ['pg_1', 'w_1200,h_630,c_fill'];
 
   // Optional logo overlay top-left
   if (opts?.brandPublicId) {
-    transforms.push(`l_${opts.brandPublicId.replace(/\//g,':')},w_180,g_north_west,x_40,y_40`);
+    transforms.push(`l_${opts.brandPublicId.replace(/\//g, ':')},w_180,g_north_west,x_40,y_40`);
   }
 
   // Optional student text (bottom-left)

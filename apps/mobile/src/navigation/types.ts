@@ -1,11 +1,6 @@
 // apps/mobile/src/navigation/types.ts
 
-export type ActiveTab =
-  | 'overview'
-  | 'transactions'
-  | 'sessions'
-  | 'reviews'
-  | 'earnings';
+export type ActiveTab = 'overview' | 'transactions' | 'sessions' | 'reviews' | 'earnings';
 
 export type MainStackParamList = {
   /* Landing & Public */
@@ -38,7 +33,7 @@ export type MainStackParamList = {
     | {
         logoutOrg?: boolean;
         force?: 'logout';
-        next?: string;        // 👈 NEW – where to go after org login
+        next?: string; // 👈 NEW – where to go after org login
       }
     | undefined;
 
@@ -61,7 +56,7 @@ export type MainStackParamList = {
     | undefined;
 
   OrgProfile: undefined;
-  
+
   OrgExamResultsPortal:
     | { view?: 'learner' | 'admin'; studentId?: string | number | null }
     | undefined;
@@ -116,12 +111,12 @@ export type MainStackParamList = {
         grade?: { scorePct: number; passMark: number; passed: boolean };
       }
     | undefined;
-    
-   PaystackCallback:
+
+  PaystackCallback:
     | { reference?: string; trxref?: string; paymentId?: string; kind?: string }
     | undefined;
-    
-     PaystackCheckout:
+
+  PaystackCheckout:
     | {
         authorizationUrl: string;
         reference: string;
@@ -130,12 +125,9 @@ export type MainStackParamList = {
       }
     | undefined;
 
-    OrgChangePassword:
-  | {
-      returnTo?: string; // web-style path e.g. "/org?assignmentId=..."
-    }
-  | undefined;
-
-
+  OrgChangePassword:
+    | {
+        returnTo?: string; // web-style path e.g. "/org?assignmentId=..."
+      }
+    | undefined;
 };
-

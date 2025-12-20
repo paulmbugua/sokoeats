@@ -160,15 +160,11 @@ export default function AssignmentSharePanel({
           min={60}
           step={30}
         />
-        <DateTimeField
-          label="Due at (optional)"
-          value={dueAt}
-          onChange={setDueAt}
-        />
+        <DateTimeField label="Due at (optional)" value={dueAt} onChange={setDueAt} />
         <NumberField
           label="Max attempts"
           value={maxAttempts}
-          onChange={v => setMaxAttempts(Number(v || 1))}
+          onChange={(v) => setMaxAttempts(Number(v || 1))}
           min={1}
         />
       </div>
@@ -187,11 +183,23 @@ export default function AssignmentSharePanel({
             <button onClick={copy} className="px-4 py-2 rounded-xl bg-white/10">
               Copy link
             </button>
-            <a href={mailto} className="px-4 py-2 rounded-xl bg-white/10">Email</a>
-            <a href={wa} target="_blank" rel="noreferrer" className="px-4 py-2 rounded-xl bg-white/10">
+            <a href={mailto} className="px-4 py-2 rounded-xl bg-white/10">
+              Email
+            </a>
+            <a
+              href={wa}
+              target="_blank"
+              rel="noreferrer"
+              className="px-4 py-2 rounded-xl bg-white/10"
+            >
               WhatsApp
             </a>
-            <a href={shareUrl} target="_blank" rel="noreferrer" className="px-4 py-2 rounded-xl bg-white/10">
+            <a
+              href={shareUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="px-4 py-2 rounded-xl bg-white/10"
+            >
               Open link
             </a>
           </>
@@ -206,7 +214,9 @@ export default function AssignmentSharePanel({
           {qrDataUrl ? (
             <img src={qrDataUrl} alt="Invite QR" className="h-28 w-28 rounded-lg bg-white p-2" />
           ) : (
-            <div className="text-xs text-white/60">Install <code>qrcode</code> for QR</div>
+            <div className="text-xs text-white/60">
+              Install <code>qrcode</code> for QR
+            </div>
           )}
         </div>
       )}
@@ -218,20 +228,26 @@ export default function AssignmentSharePanel({
 
 /* ————— UI bits ————— */
 
-function BadgeSeats({ tier, used, total }: { tier?: string, used: number | null, total?: number }) {
+function BadgeSeats({ tier, used, total }: { tier?: string; used: number | null; total?: number }) {
   const text =
     used == null
       ? `${tier ?? 'starter'}`
       : total
         ? `${tier ?? 'starter'} · ${used}/${total} seats`
         : `${tier ?? 'starter'} · ${used} seats used`;
-  return (
-    <span className="px-2 py-1 rounded-full bg-white/10 text-xs">{text}</span>
-  );
+  return <span className="px-2 py-1 rounded-full bg-white/10 text-xs">{text}</span>;
 }
 
-function TextField({ label, value, onChange, placeholder }:{
-  label: string; value: string; onChange: (v:string)=>void; placeholder?: string;
+function TextField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
 }) {
   return (
     <label className="space-y-1">
@@ -240,14 +256,28 @@ function TextField({ label, value, onChange, placeholder }:{
         className="w-full rounded-lg bg-black/40 border border-white/10 px-3 py-2 focus:outline-none"
         value={value}
         placeholder={placeholder}
-        onChange={e=>onChange(e.target.value)}
+        onChange={(e) => onChange(e.target.value)}
       />
     </label>
   );
 }
 
-function NumberField({ label, value, onChange, placeholder, min, max, step }:{
-  label: string; value: number|''; onChange: (v:number|'' )=>void; placeholder?: string; min?: number; max?: number; step?: number;
+function NumberField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  min,
+  max,
+  step,
+}: {
+  label: string;
+  value: number | '';
+  onChange: (v: number | '') => void;
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  step?: number;
 }) {
   return (
     <label className="space-y-1">
@@ -260,7 +290,7 @@ function NumberField({ label, value, onChange, placeholder, min, max, step }:{
         min={min}
         max={max}
         step={step}
-        onChange={e=>{
+        onChange={(e) => {
           const raw = e.target.value;
           if (raw === '') return onChange('');
           const n = Number(raw);
@@ -272,8 +302,14 @@ function NumberField({ label, value, onChange, placeholder, min, max, step }:{
   );
 }
 
-function DateTimeField({ label, value, onChange }:{
-  label: string; value: string; onChange: (v:string)=>void;
+function DateTimeField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
 }) {
   return (
     <label className="space-y-1">
@@ -282,7 +318,7 @@ function DateTimeField({ label, value, onChange }:{
         type="datetime-local"
         className="w-full rounded-lg bg-black/40 border border-white/10 px-3 py-2 focus:outline-none"
         value={value}
-        onChange={e=>onChange(e.target.value)}
+        onChange={(e) => onChange(e.target.value)}
       />
     </label>
   );

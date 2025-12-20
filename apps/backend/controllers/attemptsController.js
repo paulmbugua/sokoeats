@@ -54,11 +54,13 @@ function isOrgUser(u) {
 export const startAttempt = async (req, res) => {
   try {
     await ensureTables();
-    if (!isOrgUser(req.user)) return res.status(401).json({ message: 'Unauthorized' });
+    if (!isOrgUser(req.user))
+      return res.status(401).json({ message: 'Unauthorized' });
 
     const userId = String(req.user.id);
     const assignmentId = String(req.body?.assignmentId || '').trim();
-    if (!assignmentId) return res.status(400).json({ message: 'assignmentId required' });
+    if (!assignmentId)
+      return res.status(400).json({ message: 'assignmentId required' });
 
     // Optional knobs (fallbacks are conservative)
     const timerSec = clamp(Number(req.body?.timerSec ?? 0), 0, 24 * 3600);
@@ -71,7 +73,7 @@ export const startAttempt = async (req, res) => {
       `SELECT id, status FROM org_attempts
         WHERE user_id=$1 AND assignment_id=$2 AND status='active'
         ORDER BY started_at DESC LIMIT 1`,
-      [userId, assignmentId]
+      [userId, assignmentId],
     );
     if (existing.length) {
       return res.status(200).json({
@@ -93,7 +95,16 @@ export const startAttempt = async (req, res) => {
         (assignment_id, user_id, status, remaining_ms, seed, heartbeat_sec, max_backgrounds, max_suspicion, meta)
        VALUES ($1,$2,'active',$3,$4,$5,$6,$7,$8)
        RETURNING id, remaining_ms, seed, heartbeat_sec, max_backgrounds, max_suspicion`,
-      [assignmentId, userId, remainingMs, seed, heartbeatSec, maxBackgrounds, maxSuspicion, JSON.stringify({ startedBy: userId, startedAt: nowIso() })]
+      [
+        assignmentId,
+        userId,
+        remainingMs,
+        seed,
+        heartbeatSec,
+        maxBackgrounds,
+        maxSuspicion,
+        JSON.stringify({ startedBy: userId, startedAt: nowIso() }),
+      ],
     );
 
     const row = rows[0];
@@ -118,32 +129,48 @@ export const startAttempt = async (req, res) => {
 export const heartbeatAttempt = async (req, res) => {
   try {
     await ensureTables();
-    if (!isOrgUser(req.user)) return res.status(401).json({ message: 'Unauthorized' });
+    if (!isOrgUser(req.user))
+      return res.status(401).json({ message: 'Unauthorized' });
 
-    const { attemptId, deviceId, elapsedMs, backgrounds, suspicions } = req.body || {};
-    if (!attemptId) return res.status(400).json({ message: 'attemptId required' });
+    const { attemptId, deviceId, elapsedMs, backgrounds, suspicions } =
+      req.body || {};
+    if (!attemptId)
+      return res.status(400).json({ message: 'attemptId required' });
 
     const { rows } = await pool.query(
       `SELECT id, user_id, device_id, status, remaining_ms, heartbeat_sec, last_heartbeat
          FROM org_attempts WHERE id=$1 LIMIT 1`,
-      [attemptId]
+      [attemptId],
     );
-    if (!rows.length) return res.status(404).json({ message: 'Attempt not found' });
+    if (!rows.length)
+      return res.status(404).json({ message: 'Attempt not found' });
     const a = rows[0];
 
-    if (a.status !== 'active') return res.status(409).json({ message: `Attempt is ${a.status}` });
+    if (a.status !== 'active')
+      return res.status(409).json({ message: `Attempt is ${a.status}` });
 
     // First heartbeat binds device
     const bindDeviceId = a.device_id || (deviceId ? String(deviceId) : null);
     if (a.device_id && deviceId && a.device_id !== deviceId) {
       // device mismatch → invalidate
-      await pool.query(`UPDATE org_attempts SET status='invalid', last_heartbeat=NOW() WHERE id=$1`, [attemptId]);
-      return res.status(409).json({ message: 'Device mismatch; attempt invalidated' });
+      await pool.query(
+        `UPDATE org_attempts SET status='invalid', last_heartbeat=NOW() WHERE id=$1`,
+        [attemptId],
+      );
+      return res
+        .status(409)
+        .json({ message: 'Device mismatch; attempt invalidated' });
     }
 
     // Expiry check (client drives countdown, but we enforce if remaining_ms == 0 and has a timer)
-    if (Number(a.remaining_ms) > 0 && Number(elapsedMs || 0) >= Number(a.remaining_ms)) {
-      await pool.query(`UPDATE org_attempts SET status='expired', last_heartbeat=NOW() WHERE id=$1`, [attemptId]);
+    if (
+      Number(a.remaining_ms) > 0 &&
+      Number(elapsedMs || 0) >= Number(a.remaining_ms)
+    ) {
+      await pool.query(
+        `UPDATE org_attempts SET status='expired', last_heartbeat=NOW() WHERE id=$1`,
+        [attemptId],
+      );
       return res.status(409).json({ message: 'Attempt expired' });
     }
 
@@ -154,7 +181,12 @@ export const heartbeatAttempt = async (req, res) => {
               backgrounds=GREATEST(COALESCE(backgrounds,0), $3::int),
               suspicions=GREATEST(COALESCE(suspicions,0), $4::int)
         WHERE id=$1`,
-      [attemptId, bindDeviceId, Number(backgrounds || 0), Number(suspicions || 0)]
+      [
+        attemptId,
+        bindDeviceId,
+        Number(backgrounds || 0),
+        Number(suspicions || 0),
+      ],
     );
 
     return res.json({ ok: true, boundDevice: bindDeviceId ? true : false });
@@ -171,50 +203,66 @@ export const heartbeatAttempt = async (req, res) => {
 export const submitAttempt = async (req, res) => {
   try {
     await ensureTables();
-    if (!isOrgUser(req.user)) return res.status(401).json({ message: 'Unauthorized' });
+    if (!isOrgUser(req.user))
+      return res.status(401).json({ message: 'Unauthorized' });
 
     const userId = String(req.user.id);
     const { assignmentId, attemptId, deviceId } = req.body || {};
     const answers = Array.isArray(req.body?.answers) ? req.body.answers : [];
 
     if (!assignmentId || !attemptId) {
-      return res.status(400).json({ message: 'assignmentId and attemptId required' });
+      return res
+        .status(400)
+        .json({ message: 'assignmentId and attemptId required' });
     }
 
     const { rows } = await pool.query(
       `SELECT id, status, device_id, remaining_ms, last_heartbeat, backgrounds, suspicions, heartbeat_sec
          FROM org_attempts WHERE id=$1 AND user_id=$2 AND assignment_id=$3 LIMIT 1`,
-      [attemptId, userId, assignmentId]
+      [attemptId, userId, assignmentId],
     );
-    if (!rows.length) return res.status(404).json({ message: 'Attempt not found' });
+    if (!rows.length)
+      return res.status(404).json({ message: 'Attempt not found' });
     const a = rows[0];
 
-    if (a.status !== 'active') return res.status(409).json({ message: `Attempt is ${a.status}` });
+    if (a.status !== 'active')
+      return res.status(409).json({ message: `Attempt is ${a.status}` });
 
     // Device must match (if bound)
     if (a.device_id && deviceId && a.device_id !== deviceId) {
-      await pool.query(`UPDATE org_attempts SET status='invalid' WHERE id=$1`, [attemptId]);
-      return res.status(409).json({ message: 'Device mismatch; attempt invalidated' });
+      await pool.query(`UPDATE org_attempts SET status='invalid' WHERE id=$1`, [
+        attemptId,
+      ]);
+      return res
+        .status(409)
+        .json({ message: 'Device mismatch; attempt invalidated' });
     }
 
     // Heartbeat freshness (2x heartbeatSec tolerance)
     const hbSec = Math.max(5, Number(a.heartbeat_sec || 15));
     const staleCutoff = Date.now() - hbSec * 2 * 1000;
-    if (a.last_heartbeat && new Date(a.last_heartbeat).getTime() < staleCutoff) {
-      await pool.query(`UPDATE org_attempts SET status='invalid' WHERE id=$1`, [attemptId]);
-      return res.status(409).json({ message: 'Missing or stale heartbeat. Attempt invalidated.' });
+    if (
+      a.last_heartbeat &&
+      new Date(a.last_heartbeat).getTime() < staleCutoff
+    ) {
+      await pool.query(`UPDATE org_attempts SET status='invalid' WHERE id=$1`, [
+        attemptId,
+      ]);
+      return res
+        .status(409)
+        .json({ message: 'Missing or stale heartbeat. Attempt invalidated.' });
     }
 
     // Persist answers (verbatim)
     await pool.query(
       `INSERT INTO org_attempt_answers (attempt_id, user_id, assignment_id, answers)
        VALUES ($1,$2,$3,$4)`,
-      [attemptId, userId, assignmentId, JSON.stringify(answers)]
+      [attemptId, userId, assignmentId, JSON.stringify(answers)],
     );
 
     await pool.query(
       `UPDATE org_attempts SET status='submitted', last_heartbeat=NOW() WHERE id=$1`,
-      [attemptId]
+      [attemptId],
     );
 
     return res.json({ ok: true, submitted: true, attemptId });

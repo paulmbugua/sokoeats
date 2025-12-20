@@ -22,10 +22,11 @@ async function detectSettingsTable() {
          FROM information_schema.tables
         WHERE table_schema = 'public'
           AND table_name = ANY($1)`,
-      [SETTINGS_TABLE_CANDIDATES]
+      [SETTINGS_TABLE_CANDIDATES],
     );
-    const names = rows.map(r => r.table_name);
-    detectedSettingsTable = SETTINGS_TABLE_CANDIDATES.find(t => names.includes(t)) || null;
+    const names = rows.map((r) => r.table_name);
+    detectedSettingsTable =
+      SETTINGS_TABLE_CANDIDATES.find((t) => names.includes(t)) || null;
   } catch {
     detectedSettingsTable = null;
   }
@@ -33,7 +34,10 @@ async function detectSettingsTable() {
 }
 
 /** Get a setting from DB (with cache) or fallback. */
-async function getSetting(key, fallback = process.env[key.toUpperCase()] ?? null) {
+async function getSetting(
+  key,
+  fallback = process.env[key.toUpperCase()] ?? null,
+) {
   if (settingsCache.has(key)) return settingsCache.get(key);
 
   try {
@@ -41,7 +45,7 @@ async function getSetting(key, fallback = process.env[key.toUpperCase()] ?? null
     if (table) {
       const { rows } = await pool.query(
         `SELECT value FROM ${table} WHERE key = $1 LIMIT 1`,
-        [key]
+        [key],
       );
       const val = rows[0]?.value ?? fallback ?? null;
       settingsCache.set(key, val);
@@ -130,9 +134,13 @@ export const sendNotification = async ({ to, subject, body, details }) => {
     });
 
     // Prefer DB setting -> ENV -> rare fallback to /uploads/logo.png
-    const emailLogoUrl = await getSetting('email_logo_url', process.env.EMAIL_LOGO_URL);
+    const emailLogoUrl = await getSetting(
+      'email_logo_url',
+      process.env.EMAIL_LOGO_URL,
+    );
     const baseUrl = getPublicBaseUrl();
-    let logoUrl = emailLogoUrl || (baseUrl ? `${baseUrl}/uploads/logo.png` : null);
+    let logoUrl =
+      emailLogoUrl || (baseUrl ? `${baseUrl}/uploads/logo.png` : null);
 
     // Light cache-buster in non-prod to dodge stubborn image caches during dev
     if (logoUrl && process.env.NODE_ENV !== 'production') {
@@ -140,17 +148,22 @@ export const sendNotification = async ({ to, subject, body, details }) => {
     }
 
     // If the caller only passed `body`, wrap it in a minimal details object
-    const tpl = details && details.items
-      ? details
-      : { intro: '', items: {}, plainText: body };
+    const tpl =
+      details && details.items
+        ? details
+        : { intro: '', items: {}, plainText: body };
 
     const itemsHtml = Object.keys(tpl.items).length
       ? `<table cellpadding="5" cellspacing="0" style="width:100%;margin:20px 0;border:1px solid #ddd;">
-           ${Object.entries(tpl.items).map(([label, value]) => `
+           ${Object.entries(tpl.items)
+             .map(
+               ([label, value]) => `
              <tr>
                <td style="font-weight:bold;width:30%;background:#f9f9f9;">${label}</td>
                <td>${String(value ?? '')}</td>
-             </tr>`).join('')}
+             </tr>`,
+             )
+             .join('')}
          </table>`
       : `<p style="font-size:16px;line-height:1.5;">${body ?? ''}</p>`;
 
@@ -158,7 +171,8 @@ export const sendNotification = async ({ to, subject, body, details }) => {
     const token = sign(to);
     const webUnsub = `${publicWebUrl()}/unsubscribe?e=${encodeURIComponent(to)}&t=${token}`;
     const apiOneClick = `${publicApiUrl()}/api/email/unsubscribe/one-click?e=${encodeURIComponent(to)}&t=${token}`;
-    const supportEmail = process.env.SUPPORT_EMAIL || 'support@daybreaklearner.com';
+    const supportEmail =
+      process.env.SUPPORT_EMAIL || 'support@daybreaklearner.com';
 
     // Build the inline-CSS HTML template
     const html = `
@@ -182,13 +196,17 @@ export const sendNotification = async ({ to, subject, body, details }) => {
                   ${tpl.intro || 'Hello,'}
                 </p>
                 ${itemsHtml}
-                ${tpl.ctaUrl ? `
+                ${
+                  tpl.ctaUrl
+                    ? `
                 <p style="text-align:center;margin:30px 0;">
                   <a href="${tpl.ctaUrl}"
                      style="background:#1d4ed8;color:#fff;text-decoration:none;padding:12px 24px;border-radius:4px;display:inline-block;font-weight:bold;">
                     ${tpl.ctaText || 'Take Action'}
                   </a>
-                </p>` : ''}
+                </p>`
+                    : ''
+                }
                 <p style="font-size:14px;color:#666;">
                   If you have any questions, reply to this email or contact ${supportEmail}.
                 </p>
@@ -213,10 +231,13 @@ export const sendNotification = async ({ to, subject, body, details }) => {
       to,
       subject,
       html,
-      text: (tpl.plainText || [
-        subject,
-        ...Object.entries(tpl.items).map(([k, v]) => `${k}: ${v}`)
-      ].join('\n\n')) + `
+      text:
+        (tpl.plainText ||
+          [
+            subject,
+            ...Object.entries(tpl.items).map(([k, v]) => `${k}: ${v}`),
+          ].join('\n\n')) +
+        `
 
 Unsubscribe: ${webUnsub}
 `,

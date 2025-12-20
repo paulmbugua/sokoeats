@@ -7,8 +7,8 @@ import { useShopContext } from '@mytutorapp/shared/context';
 type NotifyType = 'success' | 'error';
 
 export interface UseWithdrawalOptions {
-  backendUrl?: string;                         // optional override
-  token?: string;                              // optional override
+  backendUrl?: string; // optional override
+  token?: string; // optional override
   onSuccess?: (data: WithdrawalResponse) => void;
   onError?: (message: string) => void;
   notify?: (message: string, type?: NotifyType) => void; // optional UI notifier
@@ -22,7 +22,7 @@ export interface UseWithdrawalOptions {
 export const useWithdrawal = (opts?: UseWithdrawalOptions) => {
   const ctx = useShopContext?.(); // context is shared across apps
   const backendUrl = opts?.backendUrl ?? ctx?.backendUrl ?? '';
-  const token      = opts?.token      ?? ctx?.token      ?? '';
+  const token = opts?.token ?? ctx?.token ?? '';
 
   const mutation = useMutation<WithdrawalResponse, Error, WithdrawalRequestBody>({
     mutationFn: async (input) => {

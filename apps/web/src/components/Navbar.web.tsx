@@ -25,13 +25,10 @@ type Props = {
 };
 
 const FALLBACK_AVATAR = (name = 'You') =>
-  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-    name
-  )}&background=223649&color=ffffff`;
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=223649&color=ffffff`;
 
 const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
-  const { token, orgToken, backendUrl, profile, orgLogout } =
-    useShopContext() as any;
+  const { token, orgToken, backendUrl, profile, orgLogout } = useShopContext() as any;
 
   const { role } = useOrg() ?? {};
   const location = useLocation();
@@ -46,16 +43,13 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
   const isOrg = useMemo(() => {
     const onOrgRoute = location.pathname.startsWith('/org');
     const sticky =
-      typeof window !== 'undefined' &&
-      window.localStorage.getItem('auth:mode') === 'org';
+      typeof window !== 'undefined' && window.localStorage.getItem('auth:mode') === 'org';
     return onOrgRoute || sticky;
   }, [location.pathname]);
 
   const normalizedRole = (role || '').toString().toLowerCase();
-  const isLearnerRole =
-    normalizedRole === 'learner' || normalizedRole === 'student';
-  const isInstructorRole =
-    normalizedRole === 'instructor' || normalizedRole === 'teacher';
+  const isLearnerRole = normalizedRole === 'learner' || normalizedRole === 'student';
+  const isInstructorRole = normalizedRole === 'instructor' || normalizedRole === 'teacher';
 
   const orgPortalHref = useMemo(() => {
     if (!orgToken) return '/org/login';
@@ -64,9 +58,7 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
     return '/org/profile';
   }, [orgToken, isLearnerRole, isInstructorRole]);
 
-  const handleOrgButtonClick = async (
-    e: React.MouseEvent<HTMLAnchorElement, MouseEvent>
-  ) => {
+  const handleOrgButtonClick = async (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
     // Learner/Instructor = "switch account" behavior
     if (!orgToken || !orgLogout) return;
     if (!(isLearnerRole || isInstructorRole)) return;
@@ -92,14 +84,13 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
     }
   }, [mobileSearchOpen]);
 
-  const profileAvatarRaw =
-    (avatarUrl ||
-      (profile as any)?.avatar ||
-      (profile as any)?.photoUrl ||
-      (profile as any)?.avatar_url ||
-      (Array.isArray((profile as any)?.gallery)
-        ? (profile as any).gallery[0]
-        : undefined)) as string | undefined;
+  const profileAvatarRaw = (avatarUrl ||
+    (profile as any)?.avatar ||
+    (profile as any)?.photoUrl ||
+    (profile as any)?.avatar_url ||
+    (Array.isArray((profile as any)?.gallery) ? (profile as any).gallery[0] : undefined)) as
+    | string
+    | undefined;
 
   const resolvedAvatar = useMemo(() => {
     if (!profileAvatarRaw || profileAvatarRaw.length === 0) {
@@ -185,9 +176,7 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
               aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
               onClick={() => setMobileMenuOpen((v) => !v)}
             >
-              <FontAwesomeIcon
-                icon={(mobileMenuOpen ? faXmark : faBars) as IconProp}
-              />
+              <FontAwesomeIcon icon={(mobileMenuOpen ? faXmark : faBars) as IconProp} />
             </button>
 
             {/* Brand */}
@@ -205,35 +194,20 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
             {/* Desktop nav (collapses gracefully because left is min-w-0) */}
             <nav className="hidden md:flex items-center gap-6 ml-4">
               {token && (
-                <Link
-                  to="/home"
-                  className="text-sm/6 hover:text-primary transition-colors"
-                >
+                <Link to="/home" className="text-sm/6 hover:text-primary transition-colors">
                   Home
                 </Link>
               )}
-              <Link
-                to="/find-tutor"
-                className="text-sm/6 hover:text-primary transition-colors"
-              >
+              <Link to="/find-tutor" className="text-sm/6 hover:text-primary transition-colors">
                 Find Tutors
               </Link>
-              <Link
-                to={myCoursesHref}
-                className="text-sm/6 hover:text-primary transition-colors"
-              >
+              <Link to={myCoursesHref} className="text-sm/6 hover:text-primary transition-colors">
                 My Courses
               </Link>
-              <Link
-                to="/resources"
-                className="text-sm/6 hover:text-primary transition-colors"
-              >
+              <Link to="/resources" className="text-sm/6 hover:text-primary transition-colors">
                 Resources
               </Link>
-              <Link
-                to="/robot-teach"
-                className="text-sm/6 hover:text-primary transition-colors"
-              >
+              <Link to="/robot-teach" className="text-sm/6 hover:text-primary transition-colors">
                 Learn with A.I
               </Link>
 
@@ -273,9 +247,7 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
               onClick={() => setMobileSearchOpen((v) => !v)}
             >
               <FontAwesomeIcon
-                icon={
-                  (mobileSearchOpen ? faXmark : faMagnifyingGlass) as IconProp
-                }
+                icon={(mobileSearchOpen ? faXmark : faMagnifyingGlass) as IconProp}
               />
             </button>
 
@@ -311,16 +283,14 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
                   <FontAwesomeIcon icon={orgPillMeta.icon as IconProp} />
                 </span>
                 {/* show text from sm up; keep pill compact on tiny phones */}
-                <span className="hidden sm:inline ml-2 truncate">
-                  {orgPillMeta.label}
-                </span>
+                <span className="hidden sm:inline ml-2 truncate">{orgPillMeta.label}</span>
               </Link>
             ) : (
               <Link
                 to={avatarHref}
                 className="shrink-0 rounded-full ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
                 aria-label={token ? 'Open my profile' : 'Login'}
-                title={token ? (profile?.name || 'My profile') : 'Login'}
+                title={token ? profile?.name || 'My profile' : 'Login'}
               >
                 <img
                   src={resolvedAvatar}

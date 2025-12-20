@@ -7,8 +7,7 @@ const UA_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
     '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept':
-    'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9',
 };
 
@@ -22,20 +21,28 @@ function normalizeOpenStax(input) {
     return {
       slug,
       detailsUrl: `https://openstax.org/details/books/${slug}`,
-      bookRoot:   `https://openstax.org/books/${slug}`,
+      bookRoot: `https://openstax.org/books/${slug}`,
     };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 const abs = (href) => {
   if (!href) return '';
-  try { return new URL(href, 'https://openstax.org').toString(); } catch { return ''; }
+  try {
+    return new URL(href, 'https://openstax.org').toString();
+  } catch {
+    return '';
+  }
 };
 
 /* -------------------- cover <meta property="og:image"> --------------------- */
 export async function discoverCoverFromOpenStax(webUrl) {
   const res = await fetch(webUrl, { headers: UA_HEADERS, redirect: 'follow' });
   const html = await res.text();
-  const m = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
+  const m = html.match(
+    /<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i,
+  );
   return m ? m[1] : null;
 }
 
@@ -53,7 +60,7 @@ function harvestLinksFromHtml(html, slug) {
 
   // 2) Try to mine __NEXT_DATA__ JSON (full SPA nav lives here)
   const nextDataMatch = html.match(
-    /<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i
+    /<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i,
   );
   if (nextDataMatch) {
     try {
@@ -65,27 +72,38 @@ function harvestLinksFromHtml(html, slug) {
           if (node.includes(`/books/${slug}/pages/`)) bag.push(abs(node));
           return;
         }
-        if (Array.isArray(node)) { node.forEach(visit); return; }
-        if (typeof node === 'object') { Object.values(node).forEach(visit); }
+        if (Array.isArray(node)) {
+          node.forEach(visit);
+          return;
+        }
+        if (typeof node === 'object') {
+          Object.values(node).forEach(visit);
+        }
       };
       visit(data);
       for (const u of bag) out.push({ title: '', url: u });
-    } catch {/* ignore */}
+    } catch {
+      /* ignore */
+    }
   }
 
   // 3) Regex all strings that look like page URLs (fallback)
   const patterns = [
-    new RegExp(String.raw`https?:\/\/openstax\.org\/books\/${slug}\/pages\/[^"'\\\s<]+`, 'ig'),
+    new RegExp(
+      String.raw`https?:\/\/openstax\.org\/books\/${slug}\/pages\/[^"'\\\s<]+`,
+      'ig',
+    ),
     new RegExp(String.raw`\/books\/${slug}\/pages\/[^"'\\\s<]+`, 'ig'),
   ];
   for (const rx of patterns) {
-    let m; while ((m = rx.exec(html))) out.push({ title: '', url: abs(m[0]) });
+    let m;
+    while ((m = rx.exec(html))) out.push({ title: '', url: abs(m[0]) });
   }
 
   // de-dupe
   const seen = new Set();
   return out
-    .filter(x => (x.url && (seen.has(x.url) ? false : (seen.add(x.url), true))))
+    .filter((x) => x.url && (seen.has(x.url) ? false : (seen.add(x.url), true)))
     .sort((a, b) => a.url.localeCompare(b.url));
 }
 
@@ -96,18 +114,25 @@ function findNextInHtml(html, slug) {
     $('a[rel="next"]').attr('href') ||
     $('a[aria-label="Next"]').attr('href') ||
     $('a:contains("Next")').attr('href') ||
-    $('a:contains("NEXT")').attr('href') || '';
+    $('a:contains("NEXT")').attr('href') ||
+    '';
 
   if (href && href.includes(`/books/${slug}/pages/`)) return abs(href);
 
   // JSON hints
   const m = html.match(
-    new RegExp(String.raw`"rel"\s*:\s*"next"[^}]*?"href"\s*:\s*"([^"]*?/books/${slug}/pages/[^"]+)`, 'i')
+    new RegExp(
+      String.raw`"rel"\s*:\s*"next"[^}]*?"href"\s*:\s*"([^"]*?/books/${slug}/pages/[^"]+)`,
+      'i',
+    ),
   );
   if (m) return abs(m[1]);
 
   const m2 = html.match(
-    new RegExp(String.raw`"next"\s*:\s*{[^}]*"href"\s*:\s*"([^"]*?/books/${slug}/pages/[^"]+)`, 'i')
+    new RegExp(
+      String.raw`"next"\s*:\s*{[^}]*"href"\s*:\s*"([^"]*?/books/${slug}/pages/[^"]+)`,
+      'i',
+    ),
   );
   if (m2) return abs(m2[1]);
 
@@ -138,12 +163,13 @@ async function crawlSequential(startUrl, slug, maxHops = 1000) {
 
     let next = findNextInHtml(html, slug);
     if (!next) {
-      const all = harvestLinksFromHtml(html, slug).map(x => x.url);
+      const all = harvestLinksFromHtml(html, slug).map((x) => x.url);
       const curSeg = url.split('/pages/')[1] || '';
-      const candidate = all.find(u =>
-        u !== url &&
-        u.includes(`/books/${slug}/pages/`) &&
-        (u.split('/pages/')[1] || '') > curSeg
+      const candidate = all.find(
+        (u) =>
+          u !== url &&
+          u.includes(`/books/${slug}/pages/`) &&
+          (u.split('/pages/')[1] || '') > curSeg,
       );
       if (candidate) next = candidate;
     }
@@ -152,13 +178,17 @@ async function crawlSequential(startUrl, slug, maxHops = 1000) {
   }
 
   const seen = new Set();
-  return pages.filter(p => (seen.has(p.url) ? false : (seen.add(p.url), true)));
+  return pages.filter((p) =>
+    seen.has(p.url) ? false : (seen.add(p.url), true),
+  );
 }
 
 /* ===================== helpers for Next.js data ===================== */
 function pickBuildIdFromHtml(html) {
   // Prefer parsing __NEXT_DATA__ JSON; fallback to "buildId":"..."
-  const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  const m = html.match(
+    /<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i,
+  );
   if (m) {
     try {
       const data = JSON.parse(m[1]);
@@ -177,7 +207,7 @@ async function resolveOerTutorId(client) {
   // 2) try tutors table
   try {
     const r = await client.query(
-      `SELECT id FROM tutors ORDER BY created_at ASC LIMIT 1`
+      `SELECT id FROM tutors ORDER BY created_at ASC LIMIT 1`,
     );
     if (r.rowCount) return r.rows[0].id;
   } catch {}
@@ -186,7 +216,7 @@ async function resolveOerTutorId(client) {
   try {
     const r = await client.query(
       `SELECT id FROM users WHERE role IN ('admin','superadmin','tutor')
-       ORDER BY created_at ASC LIMIT 1`
+       ORDER BY created_at ASC LIMIT 1`,
     );
     if (r.rowCount) return r.rows[0].id;
   } catch {}
@@ -195,11 +225,13 @@ async function resolveOerTutorId(client) {
   return null;
 }
 
-
 async function fetchNextDataJson(base, buildId, path) {
   // path should start with '/'; Next data sits under /_next/data/<buildId>/<path>.json
   const safePath = path.replace(/^https?:\/\/[^/]+/, ''); // strip origin if present
-  const url = new URL(`/_next/data/${buildId}${safePath}.json`, base).toString();
+  const url = new URL(
+    `/_next/data/${buildId}${safePath}.json`,
+    base,
+  ).toString();
   const r = await fetch(url, { headers: UA_HEADERS, redirect: 'follow' });
   if (!r.ok) throw new Error(`next-data ${r.status} for ${url}`);
   return r.json();
@@ -213,15 +245,20 @@ function harvestLinksFromAnyJson(obj, slug) {
       if (node.includes(`/books/${slug}/pages/`)) out.push(node);
       return;
     }
-    if (Array.isArray(node)) { node.forEach(visit); return; }
-    if (typeof node === 'object') { Object.values(node).forEach(visit); }
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    if (typeof node === 'object') {
+      Object.values(node).forEach(visit);
+    }
   };
   visit(obj);
   // uniq + normalize to absolute
   const seen = new Set();
   return out
-    .map(u => abs(u))
-    .filter(u => (u && (seen.has(u) ? false : (seen.add(u), true))))
+    .map((u) => abs(u))
+    .filter((u) => u && (seen.has(u) ? false : (seen.add(u), true)))
     .sort();
 }
 
@@ -232,24 +269,30 @@ async function scrapeOpenStaxToc(bookUrl, startPageOverride) {
   if (!norm) throw new Error('Not an OpenStax book URL');
 
   // 0) Try details + bookRoot HTML, mine anchors + __NEXT_DATA__ + regex
-  let detailsHtml = '', bookHtml = '';
+  let detailsHtml = '',
+    bookHtml = '';
   try {
     const [dRes, bRes] = await Promise.allSettled([
       fetch(norm.detailsUrl, { redirect: 'follow', headers: UA_HEADERS }),
-      fetch(norm.bookRoot,   { redirect: 'follow', headers: UA_HEADERS }),
+      fetch(norm.bookRoot, { redirect: 'follow', headers: UA_HEADERS }),
     ]);
-    if (dRes.status === 'fulfilled' && dRes.value.ok) detailsHtml = await dRes.value.text();
-    if (bRes.status === 'fulfilled' && bRes.value.ok) bookHtml    = await bRes.value.text();
+    if (dRes.status === 'fulfilled' && dRes.value.ok)
+      detailsHtml = await dRes.value.text();
+    if (bRes.status === 'fulfilled' && bRes.value.ok)
+      bookHtml = await bRes.value.text();
   } catch {}
 
   let bag = [];
-  if (detailsHtml) bag = bag.concat(harvestLinksFromHtml(detailsHtml, norm.slug));
-  if (bookHtml)    bag = bag.concat(harvestLinksFromHtml(bookHtml, norm.slug));
+  if (detailsHtml)
+    bag = bag.concat(harvestLinksFromHtml(detailsHtml, norm.slug));
+  if (bookHtml) bag = bag.concat(harvestLinksFromHtml(bookHtml, norm.slug));
 
   // 0a) If we already have a decent set, return it
   if (bag.length >= 2) {
     const seen = new Set();
-    return bag.filter(x => (seen.has(x.url) ? false : (seen.add(x.url), true)));
+    return bag.filter((x) =>
+      seen.has(x.url) ? false : (seen.add(x.url), true),
+    );
   }
 
   // 1) Next.js data route fallback — use buildId from whichever html we got
@@ -258,12 +301,20 @@ async function scrapeOpenStaxToc(bookUrl, startPageOverride) {
   if (buildId) {
     try {
       // Try the JSON for the book root first
-      const data = await fetchNextDataJson('https://openstax.org', buildId, `/books/${norm.slug}`);
+      const data = await fetchNextDataJson(
+        'https://openstax.org',
+        buildId,
+        `/books/${norm.slug}`,
+      );
       let urls = harvestLinksFromAnyJson(data, norm.slug);
 
       // If thin, also pull the details page JSON (sometimes contains catalog data with links)
       if (urls.length < 2) {
-        const djson = await fetchNextDataJson('https://openstax.org', buildId, `/details/books/${norm.slug}`);
+        const djson = await fetchNextDataJson(
+          'https://openstax.org',
+          buildId,
+          `/details/books/${norm.slug}`,
+        );
         urls = urls.concat(harvestLinksFromAnyJson(djson, norm.slug));
       }
 
@@ -283,22 +334,36 @@ async function scrapeOpenStaxToc(bookUrl, startPageOverride) {
         for (const s of seeds) {
           try {
             const path = new URL(s).pathname;
-            const j = await fetchNextDataJson('https://openstax.org', buildId, path);
+            const j = await fetchNextDataJson(
+              'https://openstax.org',
+              buildId,
+              path,
+            );
             // harvest any page links from this JSON
             const found = harvestLinksFromAnyJson(j, norm.slug);
-            for (const u of found) if (!seen.has(u)) { seen.add(u); chain.push(u); }
+            for (const u of found)
+              if (!seen.has(u)) {
+                seen.add(u);
+                chain.push(u);
+              }
             if (chain.length >= 2) break;
-          } catch { /* try next seed */ }
+          } catch {
+            /* try next seed */
+          }
         }
         urls = urls.concat(chain);
       }
 
       // Finalize if we have at least 2 (relax threshold; we can paginate later)
       if (urls.length >= 2) {
-        const uniq = Array.from(new Set(urls)).map(u => ({ title: '', url: u })).sort((a,b)=>a.url.localeCompare(b.url));
+        const uniq = Array.from(new Set(urls))
+          .map((u) => ({ title: '', url: u }))
+          .sort((a, b) => a.url.localeCompare(b.url));
         return uniq;
       }
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
 
   // 2) Old-school crawl: try common first pages, then follow "Next" in HTML
@@ -306,10 +371,22 @@ async function scrapeOpenStaxToc(bookUrl, startPageOverride) {
   if (startPageOverride) firstCandidates.push(startPageOverride);
   firstCandidates.push(
     ...[
-      'front-matter','frontmatter','preface','introduction','toc','table-of-contents',
-      'chapter-1','chapter1','ch-1','c1',
-      '1','1-1','1-introduction','1-functions','1-linear-equations',
-    ].map(seg => `${norm.bookRoot}/pages/${seg}`)
+      'front-matter',
+      'frontmatter',
+      'preface',
+      'introduction',
+      'toc',
+      'table-of-contents',
+      'chapter-1',
+      'chapter1',
+      'ch-1',
+      'c1',
+      '1',
+      '1-1',
+      '1-introduction',
+      '1-functions',
+      '1-linear-equations',
+    ].map((seg) => `${norm.bookRoot}/pages/${seg}`),
   );
 
   for (const u of firstCandidates) {
@@ -345,11 +422,13 @@ export async function ingestOpenStax(req, res) {
     const { collection, license, bookUrl, startPageUrl } = req.body || {};
     let { chapters = [] } = req.body || {};
 
-     // ✅ resolve an integer tutor id early
+    // ✅ resolve an integer tutor id early
     const tutorId = await resolveOerTutorId(client);
     if (tutorId == null) {
       // If courses.tutor_id is NOT NULL, fail fast with a helpful error.
-      throw new Error('No tutorId available for OER course. Set OER_TUTOR_ID env or ensure a tutor/admin user exists.');
+      throw new Error(
+        'No tutorId available for OER course. Set OER_TUTOR_ID env or ensure a tutor/admin user exists.',
+      );
     }
 
     // If no thumbnail was provided, try to discover from details page (og:image)
@@ -368,13 +447,18 @@ export async function ingestOpenStax(req, res) {
       // if (!/^https?:\/\/([^/]+\.)?openstax\.org\//i.test(bookUrl)) {
       //   return res.status(400).json({ error: 'bookUrl must be an openstax.org URL' });
       // }
-      
-      chapters = await scrapeOpenStaxToc(bookUrl, startPageUrl);
 
+      chapters = await scrapeOpenStaxToc(bookUrl, startPageUrl);
     }
 
-    if (!collection?.title || !Array.isArray(chapters) || chapters.length === 0) {
-      return res.status(400).json({ error: 'collection.title and chapters[] (or bookUrl) required' });
+    if (
+      !collection?.title ||
+      !Array.isArray(chapters) ||
+      chapters.length === 0
+    ) {
+      return res.status(400).json({
+        error: 'collection.title and chapters[] (or bookUrl) required',
+      });
     }
 
     await client.query('BEGIN');
@@ -382,7 +466,7 @@ export async function ingestOpenStax(req, res) {
     /* 1) Upsert catalog_collection by title (case-insensitive) */
     const existingColl = await client.query(
       `SELECT id FROM catalog_collection WHERE LOWER(title)=LOWER($1) LIMIT 1`,
-      [collection.title]
+      [collection.title],
     );
 
     let collectionId;
@@ -395,14 +479,24 @@ export async function ingestOpenStax(req, res) {
                 thumbnail_url = COALESCE($4, thumbnail_url),
                 updated_at    = now()
           WHERE id = $1`,
-        [collectionId, collection.description || null, collection.subject || null, resolvedThumb || null]
+        [
+          collectionId,
+          collection.description || null,
+          collection.subject || null,
+          resolvedThumb || null,
+        ],
       );
     } else {
       const cRow = await client.query(
         `INSERT INTO catalog_collection (id, title, description, subject, thumbnail_url, created_at)
          VALUES (gen_random_uuid(), $1, $2, $3, $4, now())
          RETURNING id`,
-        [collection.title, collection.description || null, collection.subject || null, resolvedThumb || null]
+        [
+          collection.title,
+          collection.description || null,
+          collection.subject || null,
+          resolvedThumb || null,
+        ],
       );
       collectionId = cRow.rows[0].id;
     }
@@ -417,24 +511,23 @@ export async function ingestOpenStax(req, res) {
             commercial_allowed, license, license_url, attribution_html, created_at)
         VALUES ('openstax',$1,$2,'text',$3,$4,$5,$6,true,$7,$8,$9,now())
          ON CONFLICT (provider, slug) DO NOTHING`,
-                [
-          slug,                               // $1
-          ch.title,                           // $2
-          collection.subject || null,         // $3
-          ch.grade_level || null,             // $4
-          resolvedThumb || null,              // $5  <-- NEW: thumbnail_url
-          ch.url,                             // $6  <-- source_url
-          license?.text || 'CC BY 4.0',       // $7
-          license?.url  || 'https://creativecommons.org/licenses/by/4.0/', // $8
-          `<p>OpenStax content used under Creative Commons. See source page for details.</p>` // $9
-        ]
-
+        [
+          slug, // $1
+          ch.title, // $2
+          collection.subject || null, // $3
+          ch.grade_level || null, // $4
+          resolvedThumb || null, // $5  <-- NEW: thumbnail_url
+          ch.url, // $6  <-- source_url
+          license?.text || 'CC BY 4.0', // $7
+          license?.url || 'https://creativecommons.org/licenses/by/4.0/', // $8
+          `<p>OpenStax content used under Creative Commons. See source page for details.</p>`, // $9
+        ],
       );
 
       await client.query(
         `INSERT INTO catalog_collection_items (collection_id, catalog_slug)
          VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-        [collectionId, slug]
+        [collectionId, slug],
       );
     }
 
@@ -457,11 +550,11 @@ export async function ingestOpenStax(req, res) {
         [
           bookSlug,
           collection.title,
-          norm ? norm.detailsUrl : bookUrl,   // store the /details URL for consistency
+          norm ? norm.detailsUrl : bookUrl, // store the /details URL for consistency
           resolvedThumb || null,
           license?.text || 'CC BY 4.0',
-          license?.url  || 'https://creativecommons.org/licenses/by/4.0/',
-        ]
+          license?.url || 'https://creativecommons.org/licenses/by/4.0/',
+        ],
       );
     }
 
@@ -476,7 +569,7 @@ export async function ingestOpenStax(req, res) {
     /* 4) Upsert a FREE OER course for this collection (provider='openstax') */
     const existingCourse = await client.query(
       `SELECT id FROM courses WHERE provider='openstax' AND LOWER(title)=LOWER($1) LIMIT 1`,
-      [collection.title]
+      [collection.title],
     );
 
     let courseId;
@@ -499,7 +592,7 @@ export async function ingestOpenStax(req, res) {
           collection.subject || null,
           resolvedThumb || null,
           JSON.stringify(syllabus),
-        ]
+        ],
       );
     } else {
       const cr = await client.query(
@@ -517,10 +610,9 @@ export async function ingestOpenStax(req, res) {
           collection.description || '',
           collection.subject || null,
           resolvedThumb || null,
-          tutorId,                       // ✅ now bound to $5
-          JSON.stringify(syllabus),      // ✅ bound to $6
-        ]
-
+          tutorId, // ✅ now bound to $5
+          JSON.stringify(syllabus), // ✅ bound to $6
+        ],
       );
       courseId = cr.rows[0].id;
     }
@@ -534,14 +626,15 @@ export async function ingestOpenStax(req, res) {
       courseId,
     });
   } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     console.error('[oer][ingest] openstax', e);
     return res.status(500).json({ error: 'failed to ingest openstax book' });
   } finally {
     client.release();
   }
 }
-
 
 // At top of the file you already have:
 // import pool from '../config/db.js';
@@ -580,7 +673,7 @@ export async function listOpenStax(req, res) {
       WHERE c.provider = 'openstax'
       ORDER BY c.created_at DESC
       LIMIT 100
-      `
+      `,
     );
 
     return res.json({ ok: true, items: r.rows });
@@ -605,7 +698,7 @@ export async function deleteOpenStax(req, res) {
 
     const courseRes = await client.query(
       `SELECT id, title FROM courses WHERE id = $1 AND provider = 'openstax' LIMIT 1`,
-      [courseId]
+      [courseId],
     );
     if (!courseRes.rowCount) {
       await client.query('ROLLBACK');
@@ -616,7 +709,7 @@ export async function deleteOpenStax(req, res) {
     // Best-effort: remove the collection and its item links
     const collRes = await client.query(
       `SELECT id FROM catalog_collection WHERE LOWER(title) = LOWER($1) LIMIT 1`,
-      [title]
+      [title],
     );
 
     if (collRes.rowCount) {
@@ -624,13 +717,12 @@ export async function deleteOpenStax(req, res) {
 
       await client.query(
         `DELETE FROM catalog_collection_items WHERE collection_id = $1`,
-        [collId]
+        [collId],
       );
 
-      await client.query(
-        `DELETE FROM catalog_collection WHERE id = $1`,
-        [collId]
-      );
+      await client.query(`DELETE FROM catalog_collection WHERE id = $1`, [
+        collId,
+      ]);
     }
 
     // Keep third_party_catalog pages and oer_books row, but "tag" the book as deleted by
@@ -643,16 +735,19 @@ export async function deleteOpenStax(req, res) {
                slug = slug || '-deleted-' || to_char(now(), 'YYYYMMDDHH24MISS')
          WHERE LOWER(title) = LOWER($1)
         `,
-        [title]
+        [title],
       );
     } catch (e) {
-      console.warn('[oer][delete] openstax: could not mark oer_books deleted', e.message);
+      console.warn(
+        '[oer][delete] openstax: could not mark oer_books deleted',
+        e.message,
+      );
     }
 
     // Finally remove the course itself
     await client.query(
       `DELETE FROM courses WHERE id = $1 AND provider = 'openstax'`,
-      [courseId]
+      [courseId],
     );
 
     await client.query('COMMIT');

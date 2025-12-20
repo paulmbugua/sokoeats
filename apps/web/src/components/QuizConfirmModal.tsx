@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect } from 'react';
 
 type QuizConfirmModalProps = {
   open: boolean;
@@ -12,7 +12,7 @@ type QuizConfirmModalProps = {
   timeLabel?: string;
   onCancel: () => void;
   onConfirm: () => void;
-   isOrgUser?: boolean;
+  isOrgUser?: boolean;
 };
 
 const fmtHMS = (totalSeconds: number | string | null | undefined) => {
@@ -21,7 +21,7 @@ const fmtHMS = (totalSeconds: number | string | null | undefined) => {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 };
 
 const QuizConfirmModal: React.FC<QuizConfirmModalProps> = ({
@@ -33,15 +33,15 @@ const QuizConfirmModal: React.FC<QuizConfirmModalProps> = ({
   timeLabel,
   onCancel,
   onConfirm,
-   isOrgUser = false,
+  isOrgUser = false,
 }) => {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
+      if (e.key === 'Escape') onCancel();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, [open, onCancel]);
 
   if (!open) return null;
@@ -58,10 +58,10 @@ const QuizConfirmModal: React.FC<QuizConfirmModalProps> = ({
   })();
 
   const remainingS = safeTimer > 0 ? Math.max(0, Math.floor(safeTimer - elapsedS)) : 0;
-  const pct = safeTimer > 0 ? Math.min(100, Math.max(0, (elapsedS / Math.max(1, safeTimer)) * 100)) : 0;
+  const pct =
+    safeTimer > 0 ? Math.min(100, Math.max(0, (elapsedS / Math.max(1, safeTimer)) * 100)) : 0;
 
-  const primaryTimeLabel =
-    safeTimer > 0 ? fmtHMS(safeTimer) : (timeLabel ?? "No limit");
+  const primaryTimeLabel = safeTimer > 0 ? fmtHMS(safeTimer) : (timeLabel ?? 'No limit');
 
   return (
     <div
@@ -81,7 +81,10 @@ const QuizConfirmModal: React.FC<QuizConfirmModalProps> = ({
               <path d="M8 5v14l11-7z" />
             </svg>
           </div>
-          <h3 id="quiz-confirm-title" className="mt-3 text-xl font-bold text-darkText dark:text-white">
+          <h3
+            id="quiz-confirm-title"
+            className="mt-3 text-xl font-bold text-darkText dark:text-white"
+          >
             Ready to start your quiz?
           </h3>
           <p className="mt-1 text-sm text-gray-600 dark:text-white/70">
@@ -108,7 +111,8 @@ const QuizConfirmModal: React.FC<QuizConfirmModalProps> = ({
                 className="h-2 rounded-full transition-[width]"
                 style={{
                   width: `${pct}%`,
-                  background: "linear-gradient(90deg, rgba(99,102,241,1) 0%, rgba(139,92,246,1) 100%)",
+                  background:
+                    'linear-gradient(90deg, rgba(99,102,241,1) 0%, rgba(139,92,246,1) 100%)',
                 }}
               />
             </div>
@@ -156,7 +160,9 @@ const QuizConfirmModal: React.FC<QuizConfirmModalProps> = ({
 function Tile({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-xl ring-1 ring-gray-200 bg-white p-3 text-center dark:bg-white/5 dark:ring-white/10">
-      <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-white/60">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-white/60">
+        {label}
+      </div>
       <div className="mt-0.5 text-lg font-semibold text-darkText dark:text-white">{value}</div>
     </div>
   );
@@ -165,7 +171,9 @@ function Tile({ label, value }: { label: string; value: React.ReactNode }) {
 function MiniMetric({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-xl p-3 text-center ring-1 ring-gray-200 bg-white dark:bg-white/5 dark:ring-white/10">
-      <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-white/60">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-white/60">
+        {label}
+      </div>
       <div className="mt-0.5 text-base font-semibold text-darkText dark:text-white">{value}</div>
     </div>
   );

@@ -1,11 +1,7 @@
 // apps/web/src/components/GoogleRedirectHandler.tsx
 import React, { useEffect, useRef } from 'react';
 import { auth } from '@mytutorapp/shared/utils/firebaseConfig';
-import {
-  getRedirectResult,
-  onAuthStateChanged,
-  getIdToken,
-} from 'firebase/auth';
+import { getRedirectResult, onAuthStateChanged, getIdToken } from 'firebase/auth';
 
 type Props = {
   onSuccess: (idToken: string) => Promise<void>;

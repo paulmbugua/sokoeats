@@ -31,7 +31,7 @@ const TutorReviews: React.FC<Props> = ({ tutorId, showComments = true }) => {
           size={16}
           color={tw.color('yellow-500') || '#f59e0b'}
           style={tw`mr-1`}
-        />,
+        />
       );
     }
     return <View style={tw`flex-row items-center`}>{items}</View>;
@@ -40,18 +40,14 @@ const TutorReviews: React.FC<Props> = ({ tutorId, showComments = true }) => {
   return (
     <View style={tw`w-full`}>
       {/* Header */}
-      <Text
-        style={tw`text-xl font-semibold text-pink-600 dark:text-pink-400 mb-3`}
-      >
+      <Text style={tw`text-xl font-semibold text-pink-600 dark:text-pink-400 mb-3`}>
         Student Reviews
       </Text>
 
       {/* Summary: stars + count */}
       <View style={tw`flex-row items-center`}>
         <StarRow />
-        <Text
-          style={tw`ml-2 text-sm text-slate-600 dark:text-slate-300`}
-        >
+        <Text style={tw`ml-2 text-sm text-slate-600 dark:text-slate-300`}>
           ({totalReviews} {totalReviews === 1 ? 'review' : 'reviews'})
         </Text>
       </View>
@@ -64,17 +60,11 @@ const TutorReviews: React.FC<Props> = ({ tutorId, showComments = true }) => {
               key={r.id}
               style={tw`p-4 rounded-xl bg-white dark:bg-[#0f1821] border border-gray-200 dark:border-white/10 mb-4`}
             >
-              <Text
-                style={tw`text-pink-600 dark:text-pink-400 font-semibold mb-1`}
-              >
+              <Text style={tw`text-pink-600 dark:text-pink-400 font-semibold mb-1`}>
                 {/* match web: show student name label */}
                 {r.studentName ? `${r.studentName}:` : 'Student:'}
               </Text>
-              <Text
-                style={tw`text-[#0d141c] dark:text-gray-200`}
-              >
-                {r.comment || ''}
-              </Text>
+              <Text style={tw`text-[#0d141c] dark:text-gray-200`}>{r.comment || ''}</Text>
             </View>
           ))}
         </View>

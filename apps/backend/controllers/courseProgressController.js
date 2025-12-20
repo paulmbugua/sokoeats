@@ -7,7 +7,7 @@ async function ensureAchievement({ studentId, courseId, ruleCode }) {
   // Only award if rule is active
   const r = await pool.query(
     `SELECT title, icon_url FROM badge_rules WHERE code = $1 AND active = TRUE LIMIT 1`,
-    [ruleCode]
+    [ruleCode],
   );
   const title = r.rows[0]?.title ?? ruleCode.replace(/_/g, ' ');
   const iconUrl = r.rows[0]?.icon_url ?? null;
@@ -16,7 +16,7 @@ async function ensureAchievement({ studentId, courseId, ruleCode }) {
     `INSERT INTO achievements (id, student_id, course_id, rule_code, title, icon_url, earned_at)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())
      ON CONFLICT (student_id, course_id, rule_code) DO NOTHING`,
-    [studentId, courseId, ruleCode, title, iconUrl]
+    [studentId, courseId, ruleCode, title, iconUrl],
   );
 }
 
@@ -25,7 +25,7 @@ async function getSyllabusWeeksCount(courseId, studentId) {
   // Try courses.syllabus JSONB length
   const c = await pool.query(
     `SELECT COALESCE(jsonb_array_length(syllabus), 0) AS total FROM courses WHERE id = $1`,
-    [courseId]
+    [courseId],
   );
   const total = Number(c.rows?.[0]?.total || 0);
   if (total > 0) return total;
@@ -35,7 +35,7 @@ async function getSyllabusWeeksCount(courseId, studentId) {
     `SELECT COALESCE(MAX(week), 0) AS max_week
        FROM course_progress
       WHERE course_id = $1 AND student_id = $2`,
-    [courseId, studentId]
+    [courseId, studentId],
   );
   return Number(m.rows?.[0]?.max_week || 0);
 }
@@ -45,7 +45,7 @@ async function getCompletedWeeksCount(studentId, courseId) {
     `SELECT COUNT(*)::int AS cnt
        FROM course_progress
       WHERE student_id = $1 AND course_id = $2 AND status = 'Completed'`,
-    [studentId, courseId]
+    [studentId, courseId],
   );
   return Number(q.rows?.[0]?.cnt || 0);
 }
@@ -60,7 +60,7 @@ export async function getProgress(req, res) {
          FROM course_progress
         WHERE student_id = $1 AND course_id = $2
      ORDER BY week ASC`,
-      [studentId, courseId]
+      [studentId, courseId],
     );
     res.json(result.rows);
   } catch (err) {
@@ -75,7 +75,9 @@ export async function updateProgress(req, res) {
     const studentId = req.user.id;
     const { courseId } = req.params;
 
-    const { error, value } = upsertProgressSchema.validate(req.body, { stripUnknown: true });
+    const { error, value } = upsertProgressSchema.validate(req.body, {
+      stripUnknown: true,
+    });
     if (error) return res.status(400).json({ error: error.message });
 
     const { week, status } = value;
@@ -90,7 +92,7 @@ export async function updateProgress(req, res) {
                     updated_at = now()
       RETURNING week, status, updated_at
       `,
-      [studentId, courseId, week, status]
+      [studentId, courseId, week, status],
     );
     const updated = upsert.rows[0];
 
@@ -102,7 +104,7 @@ export async function updateProgress(req, res) {
           WHERE student_id = $1 AND course_id = $2
             AND status IN ('In Progress','Completed')
           LIMIT 1`,
-        [studentId, courseId]
+        [studentId, courseId],
       );
       if (anyBefore.rowCount === 0) {
         await ensureAchievement({
@@ -121,7 +123,7 @@ export async function updateProgress(req, res) {
         `SELECT 1 FROM course_progress
           WHERE student_id = $1 AND course_id = $2 AND status = 'Completed'
           LIMIT 1`,
-        [studentId, courseId]
+        [studentId, courseId],
       );
       if (anyCompletedBefore.rowCount === 0) {
         await ensureAchievement({
@@ -169,7 +171,6 @@ export async function updateProgress(req, res) {
   }
 }
 
-
 // GET /api/course-progress/:courseId/summary
 export async function getProgressSummary(req, res) {
   try {
@@ -186,7 +187,7 @@ export async function getProgressSummary(req, res) {
       FROM course_progress
       WHERE student_id = $1 AND course_id = $2
       `,
-      [studentId, courseId]
+      [studentId, courseId],
     );
 
     const row = result.rows[0];

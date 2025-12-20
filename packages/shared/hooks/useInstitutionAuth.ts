@@ -78,11 +78,12 @@ export default function useInstitutionAuth(opts: Options = {}) {
   const alertFn = opts.alertFn ?? ((m: string) => console.log('[inst-auth]', m));
 
   const readReturnTo = (): string =>
-    safeGetSession('auth:returnTo') ||
-    safeGetSession('auth:returnTo:org') ||
-    '/org/profile';
+    safeGetSession('auth:returnTo') || safeGetSession('auth:returnTo:org') || '/org/profile';
 
-  const applyOrgToken = async (t?: string, meta?: { mustChangePassword?: boolean; rawResp?: AuthResp }) => {
+  const applyOrgToken = async (
+    t?: string,
+    meta?: { mustChangePassword?: boolean; rawResp?: AuthResp }
+  ) => {
     if (!t) return;
 
     // 0) Clear stale keys first (web)
@@ -145,7 +146,13 @@ export default function useInstitutionAuth(opts: Options = {}) {
   };
 
   return {
-    async loginWithEmail({ email, password }: { email: string; password: string }): Promise<InstitutionLoginResp> {
+    async loginWithEmail({
+      email,
+      password,
+    }: {
+      email: string;
+      password: string;
+    }): Promise<InstitutionLoginResp> {
       const res = await institutionLogin(backendUrl, email, password);
       if (!res.success || !res.token) throw new Error(res.message || 'Login failed');
 

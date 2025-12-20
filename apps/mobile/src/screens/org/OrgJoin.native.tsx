@@ -1,12 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import tw from '../../../tailwind';
@@ -69,7 +63,9 @@ const OrgJoinNative: React.FC = () => {
   const onAccept = useCallback(async () => {
     if (!token) {
       // just in case: bounce to login
-      try { await AsyncStorage.setItem(RETURN_TO_KEY, `/org/join/${code}`); } catch {}
+      try {
+        await AsyncStorage.setItem(RETURN_TO_KEY, `/org/join/${code}`);
+      } catch {}
       navigation.replace('InstitutionLogin', { next: `/org/join/${code}` });
       return;
     }
@@ -90,7 +86,10 @@ const OrgJoinNative: React.FC = () => {
 
       navigation.replace('OrgProfile'); // ← adjust to your org profile screen key
     } catch (e: any) {
-      Alert.alert('Join failed', e?.response?.data?.message || e?.message || 'Could not accept invite.');
+      Alert.alert(
+        'Join failed',
+        e?.response?.data?.message || e?.message || 'Could not accept invite.'
+      );
     } finally {
       setBusy(false);
     }
@@ -122,9 +121,7 @@ const OrgJoinNative: React.FC = () => {
           busy ? tw`bg-emerald-600/70` : tw`bg-emerald-600`,
         ]}
       >
-        <Text style={tw`text-white font-semibold`}>
-          {busy ? 'Joining…' : 'Accept & Continue'}
-        </Text>
+        <Text style={tw`text-white font-semibold`}>{busy ? 'Joining…' : 'Accept & Continue'}</Text>
       </TouchableOpacity>
     </View>
   );

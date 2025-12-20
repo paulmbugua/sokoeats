@@ -8,9 +8,9 @@ const MIN_WITHDRAW = { USD: 20, KES: 200 };
 export const requestWithdrawal = async (req, res) => {
   const client = await pool.connect();
   try {
-    const tutorId  = req.user?.id;
+    const tutorId = req.user?.id;
     const currency = String(req.body.currency || '').toUpperCase();
-    let amount     = Number(req.body.amount || 0);
+    let amount = Number(req.body.amount || 0);
 
     if (!tutorId) return res.status(401).json({ message: 'Unauthorized.' });
     if (!['USD', 'KES'].includes(currency)) {
@@ -21,7 +21,8 @@ export const requestWithdrawal = async (req, res) => {
     }
 
     // Normalize amount by currency (avoid fractional cents for KES)
-    amount = currency === 'USD' ? Math.round(amount * 100) / 100 : Math.round(amount);
+    amount =
+      currency === 'USD' ? Math.round(amount * 100) / 100 : Math.round(amount);
 
     if (amount < MIN_WITHDRAW[currency]) {
       return res.status(400).json({
@@ -42,7 +43,7 @@ export const requestWithdrawal = async (req, res) => {
       FROM profiles
       WHERE user_id = $1 AND role = 'tutor'
       `,
-      [tutorId]
+      [tutorId],
     );
     if (!profRows.length) {
       await client.query('ROLLBACK');
@@ -51,7 +52,9 @@ export const requestWithdrawal = async (req, res) => {
     const prefs = profRows[0];
     if (String(prefs.payout_currency).toUpperCase() !== currency) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ message: 'Withdrawal currency must match your payout currency.' });
+      return res.status(400).json({
+        message: 'Withdrawal currency must match your payout currency.',
+      });
     }
 
     const payout = normalizePayoutFromBody(prefs, 'tutor');
@@ -72,11 +75,13 @@ export const requestWithdrawal = async (req, res) => {
         AND date >= NOW() - INTERVAL '2 minutes'
       LIMIT 1
       `,
-      [tutorId, currency, amount]
+      [tutorId, currency, amount],
     );
     if (dupRows.length) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ message: 'Duplicate withdrawal request detected. Please wait a moment.' });
+      return res.status(409).json({
+        message: 'Duplicate withdrawal request detected. Please wait a moment.',
+      });
     }
 
     // 3) Lock balance & verify
@@ -87,11 +92,13 @@ export const requestWithdrawal = async (req, res) => {
       WHERE user_id = $1 AND currency = $2
       FOR UPDATE
       `,
-      [tutorId, currency]
+      [tutorId, currency],
     );
     if (!balRows.length) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ message: 'No earnings balance for this currency.' });
+      return res
+        .status(400)
+        .json({ message: 'No earnings balance for this currency.' });
     }
     const { available_amount: available } = balRows[0];
     if (available < amount) {
@@ -108,7 +115,7 @@ export const requestWithdrawal = async (req, res) => {
              updated_at       = NOW()
        WHERE user_id = $2 AND currency = $3
       `,
-      [amount, tutorId, currency]
+      [amount, tutorId, currency],
     );
 
     // Label & extra metadata for transactions row
@@ -124,43 +131,44 @@ export const requestWithdrawal = async (req, res) => {
         ($1, 'Withdrawal Request', $2, $3, NOW(), 'Pending', $4, $5, NULL, NOW(), NOW())
       RETURNING id, date
       `,
-      [tutorId, amount, description, currency, methodLabel]
+      [tutorId, amount, description, currency, methodLabel],
     );
     const transactionId = txRows[0].id;
 
-// 6) Payouts row → queued
-const destination = {
-  wise_email:      payout.wise_email || null,
-  mpesa_phone:     payout.mpesa_phone_number || null,
-  transaction_id:  transactionId,
-  // legacy placeholders
-  stripe_connect_id: null,
-  paypal_email:      null,
-};
+    // 6) Payouts row → queued
+    const destination = {
+      wise_email: payout.wise_email || null,
+      mpesa_phone: payout.mpesa_phone_number || null,
+      transaction_id: transactionId,
+      // legacy placeholders
+      stripe_connect_id: null,
+      paypal_email: null,
+    };
 
-const { rows: payoutRows } = await client.query(
-  `
+    const { rows: payoutRows } = await client.query(
+      `
   INSERT INTO payouts
     (tutor_id, class_id, purchase_id, net_tokens, currency, method, amount, destination, status, created_at, updated_at)
   VALUES
     ($1, NULL, NULL, NULL, $2, $3, $4, $5, 'queued', NOW(), NOW())
   RETURNING id
   `,
-  [
-    tutorId,              // $1 → tutor_id
-    currency,             // $2 → currency
-    payout.payout_method, // $3 → method  (e.g. 'mpesa' / 'wise')
-    amount,               // $4 → amount  (the KES / USD value we just locked)
-    JSON.stringify(destination), // $5 → destination (jsonb)
-  ]
-);
-const payoutId = payoutRows[0].id;
-
+      [
+        tutorId, // $1 → tutor_id
+        currency, // $2 → currency
+        payout.payout_method, // $3 → method  (e.g. 'mpesa' / 'wise')
+        amount, // $4 → amount  (the KES / USD value we just locked)
+        JSON.stringify(destination), // $5 → destination (jsonb)
+      ],
+    );
+    const payoutId = payoutRows[0].id;
 
     await client.query('COMMIT');
 
     // 7) Kick worker (after commit)
-    enqueuePayout(payoutId).catch((e) => console.error('enqueuePayout failed:', e));
+    enqueuePayout(payoutId).catch((e) =>
+      console.error('enqueuePayout failed:', e),
+    );
 
     return res.status(202).json({
       message: 'Withdrawal queued.',
@@ -168,7 +176,9 @@ const payoutId = payoutRows[0].id;
       payoutId,
     });
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch {}
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     console.error('requestWithdrawal error:', err);
     return res.status(500).json({ message: 'Server error.' });
   } finally {

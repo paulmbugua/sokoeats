@@ -10,9 +10,9 @@ import {
   getMyOrgOrBootstrap,
   type OrgCurrency,
   type OrgPricingTable,
+  OrgResp,
 } from '@mytutorapp/shared/api/orgApi';
 import type { OrgMembership, CurrentUser, OrgTier } from '@mytutorapp/shared/types';
-import type { OrgResp } from '@mytutorapp/shared/api/orgApi';
 
 type KV = {
   getItem: (k: string) => Promise<string | null>;
@@ -24,21 +24,23 @@ type KV = {
 const memoryStorage: KV = (() => {
   const m = new Map<string, string>();
   return {
-    async getItem(k) { return m.has(k) ? m.get(k)! : null; },
-    async setItem(k, v) { m.set(k, v); },
-    async removeItem(k) { m.delete(k); },
+    async getItem(k) {
+      return m.has(k) ? m.get(k)! : null;
+    },
+    async setItem(k, v) {
+      m.set(k, v);
+    },
+    async removeItem(k) {
+      m.delete(k);
+    },
   };
 })();
 
 export function useOrg(opts?: { currency?: OrgCurrency }) {
-
   const { backendUrl, token, orgToken, userId, storage: ctxStorage } = useShopContext() as any;
   const storage: KV = useMemo(() => (ctxStorage as KV) || memoryStorage, [ctxStorage]);
 
-
-  const authToken: string | undefined = orgToken
-
-  
+  const authToken: string | undefined = orgToken;
 
   // State
   const [membership, setMembership] = useState<OrgMembership | OrgMembership[] | null>(null);
@@ -55,8 +57,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
   const [orgChecked, setOrgChecked] = useState(false);
   const triedBootstrapRef = useRef(false);
 
-
-    const [pricingCurrency, setPricingCurrency] = useState<OrgCurrency>(
+  const [pricingCurrency, setPricingCurrency] = useState<OrgCurrency>(
     (opts?.currency ?? 'USD') as OrgCurrency
   );
 
@@ -68,16 +69,14 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opts?.currency]);
 
- const pricingQuery = useQuery({
-  queryKey: ['orgPricingTable', backendUrl, pricingCurrency, authToken],
-  queryFn: () => fetchOrgPricingTable(backendUrl, pricingCurrency, authToken),
-  enabled: !!backendUrl && !!pricingCurrency && !!authToken, // if protected
-  staleTime: 60_000,
-});
-
+  const pricingQuery = useQuery({
+    queryKey: ['orgPricingTable', backendUrl, pricingCurrency, authToken],
+    queryFn: () => fetchOrgPricingTable(backendUrl, pricingCurrency, authToken),
+    enabled: !!backendUrl && !!pricingCurrency && !!authToken, // if protected
+    staleTime: 60_000,
+  });
 
   const orgPricingTable: OrgPricingTable | null = (pricingQuery.data ?? null) as any;
-
 
   // ─────────────────────────────────────────────────────────
   // Initial storage prime (works on both web & native)
@@ -86,7 +85,10 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
     let cancelled = false;
     (async () => {
       try {
-        const a = (await storage.getItem('org:activeId')) || (await storage.getItem('auth:orgId')) || undefined;
+        const a =
+          (await storage.getItem('org:activeId')) ||
+          (await storage.getItem('auth:orgId')) ||
+          undefined;
         const rRaw = await storage.getItem('org:role');
         const r = rRaw ? rRaw.toLowerCase() : undefined;
 
@@ -98,7 +100,9 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
         /* ignore */
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [storage]);
 
   // ─────────────────────────────────────────────────────────
@@ -108,9 +112,13 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
     if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
     const onStorage = async (e: StorageEvent) => {
       // Only react to our relevant keys when storage area is localStorage (web)
-      if (!e.key || (e.key !== 'org:activeId' && e.key !== 'auth:orgId' && e.key !== 'org:role')) return;
+      if (!e.key || (e.key !== 'org:activeId' && e.key !== 'auth:orgId' && e.key !== 'org:role'))
+        return;
 
-      const a = (await storage.getItem('org:activeId')) || (await storage.getItem('auth:orgId')) || undefined;
+      const a =
+        (await storage.getItem('org:activeId')) ||
+        (await storage.getItem('auth:orgId')) ||
+        undefined;
       const rRaw = await storage.getItem('org:role');
       const r = rRaw ? rRaw.toLowerCase() : undefined;
 
@@ -147,70 +155,67 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
   }, [backendUrl, authToken]);
 
   const fetchOrg = useCallback(async (): Promise<void> => {
-  if (!authToken) {
-    setOrg(null);
-    setOrgChecked(true);
-    return;
-  }
-
-  setLoadingOrg(true);
-  try {
-    const o = await getMyOrg(backendUrl, authToken);
-    setOrg(o ?? null);
-    setOrgChecked(true);
-
-    if (o?.id) {
-      setActiveOrgId(prev => prev ?? o.id);
-      await storage.setItem('org:activeId', o.id);
+    if (!authToken) {
+      setOrg(null);
+      setOrgChecked(true);
+      return;
     }
 
-    const myRole = ((o as any)?.my_role || (o as any)?.role || '')
-      .toString()
-      .toLowerCase();
+    setLoadingOrg(true);
+    try {
+      const o = await getMyOrg(backendUrl, authToken);
+      setOrg(o ?? null);
+      setOrgChecked(true);
 
-    if (myRole) {
-      setLocalRole(myRole);
-      await storage.setItem('org:role', myRole);
-    } else {
-      setLocalRole(undefined);
-      await storage.removeItem('org:role');
-    }
-  } catch (e) {
-    if (axios.isAxiosError(e)) {
-      const status = e.response?.status;
-      console.warn('[useOrg] fetchOrg failed', status, e.message);
-
-      // ✅ If org not found, try bootstrap ONCE then retry
-      if (status === 404 && !triedBootstrapRef.current) {
-        triedBootstrapRef.current = true;
-        try {
-          const o2 = await getMyOrgOrBootstrap(backendUrl, authToken);
-          setOrg(o2 ?? null);
-        } catch (e2) {
-          console.warn('[useOrg] getMyOrgOrBootstrap failed', (e2 as any)?.message || e2);
-          setOrg(null);
-        } finally {
-          setOrgChecked(true);
-        }
-        return;
+      if (o?.id) {
+        setActiveOrgId((prev) => prev ?? o.id);
+        await storage.setItem('org:activeId', o.id);
       }
+
+      const myRole = ((o as any)?.my_role || (o as any)?.role || '').toString().toLowerCase();
+
+      if (myRole) {
+        setLocalRole(myRole);
+        await storage.setItem('org:role', myRole);
+      } else {
+        setLocalRole(undefined);
+        await storage.removeItem('org:role');
+      }
+    } catch (e) {
+      if (axios.isAxiosError(e)) {
+        const status = e.response?.status;
+        console.warn('[useOrg] fetchOrg failed', status, e.message);
+
+        // ✅ If org not found, try bootstrap ONCE then retry
+        if (status === 404 && !triedBootstrapRef.current) {
+          triedBootstrapRef.current = true;
+          try {
+            const o2 = await getMyOrgOrBootstrap(backendUrl, authToken);
+            setOrg(o2 ?? null);
+          } catch (e2) {
+            console.warn('[useOrg] getMyOrgOrBootstrap failed', (e2 as any)?.message || e2);
+            setOrg(null);
+          } finally {
+            setOrgChecked(true);
+          }
+          return;
+        }
+      }
+
+      setOrg(null);
+      setOrgChecked(true);
+    } finally {
+      setLoadingOrg(false);
     }
-
-    setOrg(null);
-    setOrgChecked(true);
-  } finally {
-    setLoadingOrg(false);
-  }
-}, [backendUrl, authToken, storage]);
-
+  }, [backendUrl, authToken, storage]);
 
   useEffect(() => {
     if (!authToken) {
       setMembership(null);
       setOrg(null);
       setCurrentUser(null);
-      setActiveOrgId(undefined);   // ✅ clear active org
-      setLocalRole(undefined);     // ✅ clear cached role
+      setActiveOrgId(undefined); // ✅ clear active org
+      setLocalRole(undefined); // ✅ clear cached role
       return;
     }
     fetchMembership();
@@ -223,7 +228,9 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
   const primaryMembership = useMemo(() => {
     if (!membership) return null;
     if (Array.isArray(membership)) {
-      return membership.find(m => m.role === 'owner' || m.role === 'admin') || membership[0] || null;
+      return (
+        membership.find((m) => m.role === 'owner' || m.role === 'admin') || membership[0] || null
+      );
     }
     return membership;
   }, [membership]);
@@ -234,9 +241,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
     activeOrgId;
 
   const orgTier: OrgTier | undefined =
-    (org?.tier as OrgTier | null) ??
-    (primaryMembership?.tier as OrgTier | undefined) ??
-    undefined;
+    (org?.tier as OrgTier | null) ?? (primaryMembership?.tier as OrgTier | undefined) ?? undefined;
 
   const hasOrg = Boolean(effectiveOrgId);
   const isStarterTier = hasOrg && (orgTier === 'starter' || (orgTier as any) === 'start');
@@ -244,8 +249,10 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
   const isEnterpriseTier = hasOrg && orgTier === 'enterprise';
 
   const isOwnerOrAdmin =
-    (!!primaryMembership && (primaryMembership.role === 'owner' || primaryMembership.role === 'admin')) ||
-    localRole === 'owner' || localRole === 'admin';
+    (!!primaryMembership &&
+      (primaryMembership.role === 'owner' || primaryMembership.role === 'admin')) ||
+    localRole === 'owner' ||
+    localRole === 'admin';
 
   const orgSeats = typeof org?.seats === 'number' ? org.seats : undefined;
 
@@ -284,9 +291,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
     orgChecked,
     orgNotFound: orgChecked && !org && !loadingOrg,
 
-
     // Optional: expose role early for gating
     role: localRole || (primaryMembership?.role ?? undefined),
   };
 }
-

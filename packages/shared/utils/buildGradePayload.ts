@@ -2,8 +2,7 @@ export type AnswersMap = Record<string, number | string>;
 
 export function buildGradePayload(quiz: any, answersMap: AnswersMap) {
   const qArr = Array.isArray(quiz?.questions) ? quiz.questions : [];
-  const isShort =
-    String(quiz?.quizType || qArr[0]?.type || 'mcq').toLowerCase() === 'short';
+  const isShort = String(quiz?.quizType || qArr[0]?.type || 'mcq').toLowerCase() === 'short';
 
   const cleanQuiz = {
     quizType: isShort ? 'short' : 'mcq',

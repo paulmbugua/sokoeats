@@ -16,7 +16,6 @@ import {
   aiTransformOrgExamConfig,
 } from '@mytutorapp/shared/api/orgExamsApi';
 
-
 interface UseOrgExamsProps {
   backendUrl: string;
   token?: string | null;
@@ -31,8 +30,7 @@ export function useOrgExams({ backendUrl, token, orgId }: UseOrgExamsProps) {
   const [savingSheet, setSavingSheet] = useState(false);
   const [analytics, setAnalytics] = useState<OrgExamAnalyticsRow[]>([]);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
-    const [configAiLoading, setConfigAiLoading] = useState(false);
-
+  const [configAiLoading, setConfigAiLoading] = useState(false);
 
   const ensure = () => backendUrl && token && orgId;
 
@@ -47,15 +45,14 @@ export function useOrgExams({ backendUrl, token, orgId }: UseOrgExamsProps) {
     }
   }, [backendUrl, token, orgId]);
 
- const saveConfig = useCallback(
-  async (next: OrgExamConfig) => {
-    if (!ensure()) return;
-    const saved = await saveOrgExamConfig(backendUrl, token!, orgId!, next);
-    setConfig(saved);          // 🔁 now uses canonical config from server
-  },
-  [backendUrl, token, orgId]
-);
-
+  const saveConfig = useCallback(
+    async (next: OrgExamConfig) => {
+      if (!ensure()) return;
+      const saved = await saveOrgExamConfig(backendUrl, token!, orgId!, next);
+      setConfig(saved); // 🔁 now uses canonical config from server
+    },
+    [backendUrl, token, orgId]
+  );
 
   const fetchSheet = useCallback(
     async (sessionId: string, classLabel?: string) => {
@@ -96,13 +93,19 @@ export function useOrgExams({ backendUrl, token, orgId }: UseOrgExamsProps) {
   const emailStudentCard = useCallback(
     async (sessionId: string, studentId: number, toOverride?: string) => {
       if (!ensure()) return { ok: false } as { ok: boolean; to?: string };
-      return await sendOrgExamStudentCardEmail(backendUrl, token!, orgId!, sessionId, studentId, toOverride);
+      return await sendOrgExamStudentCardEmail(
+        backendUrl,
+        token!,
+        orgId!,
+        sessionId,
+        studentId,
+        toOverride
+      );
     },
     [backendUrl, token, orgId]
   );
 
-
-    const previewConfigWithAi = useCallback(
+  const previewConfigWithAi = useCallback(
     async (current: OrgExamConfig, instructions: string): Promise<OrgExamConfig> => {
       if (!ensure()) return current;
       if (!instructions.trim()) return current;
@@ -121,7 +124,6 @@ export function useOrgExams({ backendUrl, token, orgId }: UseOrgExamsProps) {
     [backendUrl, token, orgId]
   );
 
-
   const fetchAnalytics = useCallback(
     async (sessionId: string) => {
       if (!ensure()) return;
@@ -136,124 +138,114 @@ export function useOrgExams({ backendUrl, token, orgId }: UseOrgExamsProps) {
     [backendUrl, token, orgId]
   );
 
- // in useOrgExams
+  // in useOrgExams
 
-const downloadStudentCardPdf = useCallback(
-  async (
-    sessionId: string,
-    studentId: number,
-    fileName?: string,
-  ): Promise<string | null> => {
-    if (!ensure()) return null;
+  const downloadStudentCardPdf = useCallback(
+    async (sessionId: string, studentId: number, fileName?: string): Promise<string | null> => {
+      if (!ensure()) return null;
 
-    const params = new URLSearchParams();
-    params.set('sessionId', sessionId);
-    if (token) params.set('token', token);   // ⬅️ pass JWT via query
+      const params = new URLSearchParams();
+      params.set('sessionId', sessionId);
+      if (token) params.set('token', token); // ⬅️ pass JWT via query
 
-    const url = `${backendUrl}/api/orgs/${orgId}/exams/student/${studentId}/card.pdf?${params.toString()}`;
+      const url = `${backendUrl}/api/orgs/${orgId}/exams/student/${studentId}/card.pdf?${params.toString()}`;
 
-    // Web-only: actually perform the download
-    if (typeof document !== 'undefined' && typeof window !== 'undefined') {
-      try {
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+      // Web-only: actually perform the download
+      if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+        try {
+          const res = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
 
-        if (!res.ok) {
-          if (typeof alert === 'function') {
-            alert(`Failed to download PDF (HTTP ${res.status})`);
-          } else {
-            console.error('Failed to download PDF', res.status);
+          if (!res.ok) {
+            if (typeof alert === 'function') {
+              alert(`Failed to download PDF (HTTP ${res.status})`);
+            } else {
+              console.error('Failed to download PDF', res.status);
+            }
+            return url;
           }
-          return url;
-        }
 
-        const blob = await res.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = fileName || 'exam-report.pdf';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(blobUrl);
-      } catch (e: any) {
-        console.error(e);
-        if (typeof alert === 'function') {
-          alert(e?.message || 'Failed to download PDF');
+          const blob = await res.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = fileName || 'exam-report.pdf';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(blobUrl);
+        } catch (e: any) {
+          console.error(e);
+          if (typeof alert === 'function') {
+            alert(e?.message || 'Failed to download PDF');
+          }
         }
       }
-    }
 
-    // Native (& web callers if they want) can open this URL directly
-    return url;
-  },
-  [backendUrl, token, orgId],
-);
+      // Native (& web callers if they want) can open this URL directly
+      return url;
+    },
+    [backendUrl, token, orgId]
+  );
 
-const downloadClassReportPdf = useCallback(
-  async (
-    sessionId: string,
-    classLabel: string,
-    fileName: string,
-  ): Promise<string | null> => {
-    if (!ensure()) return null;
-    if (!sessionId || !orgId) {
-      console.error('Missing sessionId or orgId for class report download');
-      return null;
-    }
+  const downloadClassReportPdf = useCallback(
+    async (sessionId: string, classLabel: string, fileName: string): Promise<string | null> => {
+      if (!ensure()) return null;
+      if (!sessionId || !orgId) {
+        console.error('Missing sessionId or orgId for class report download');
+        return null;
+      }
 
-    const params = new URLSearchParams();
-    if (classLabel) params.set('classLabel', classLabel);
-    params.set('format', 'booklet');          // 📘
-    if (token) params.set('token', token);     // ⬅️ JWT
+      const params = new URLSearchParams();
+      if (classLabel) params.set('classLabel', classLabel);
+      params.set('format', 'booklet'); // 📘
+      if (token) params.set('token', token); // ⬅️ JWT
 
-    const url = `${backendUrl}/api/orgs/${orgId}/exams/sessions/${sessionId}/class-report.pdf?${params.toString()}`;
+      const url = `${backendUrl}/api/orgs/${orgId}/exams/sessions/${sessionId}/class-report.pdf?${params.toString()}`;
 
-    if (typeof document !== 'undefined' && typeof window !== 'undefined') {
-      try {
-        const resp = await fetch(url, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+      if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+        try {
+          const resp = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
 
-        if (!resp.ok) {
-          const text = await resp.text().catch(() => '');
-          const msg = text || 'Failed to download class report';
-          if (typeof alert === 'function') {
-            alert(msg);
-          } else {
-            console.error(msg);
+          if (!resp.ok) {
+            const text = await resp.text().catch(() => '');
+            const msg = text || 'Failed to download class report';
+            if (typeof alert === 'function') {
+              alert(msg);
+            } else {
+              console.error(msg);
+            }
+            return url;
           }
-          return url;
-        }
 
-        const blob = await resp.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(downloadUrl);
-      } catch (e: any) {
-        console.error('Failed to download class report', e);
-        if (typeof alert === 'function') {
-          alert(e?.message || 'Failed to download class report');
+          const blob = await resp.blob();
+          const downloadUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = downloadUrl;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(downloadUrl);
+        } catch (e: any) {
+          console.error('Failed to download class report', e);
+          if (typeof alert === 'function') {
+            alert(e?.message || 'Failed to download class report');
+          }
         }
       }
-    }
 
-    return url;
-  },
-  [backendUrl, orgId, token],
-);
+      return url;
+    },
+    [backendUrl, orgId, token]
+  );
 
-
-
-    return {
+  return {
     // config
     config,
     configLoading,
@@ -279,4 +271,3 @@ const downloadClassReportPdf = useCallback(
     downloadClassReportPdf,
   };
 }
-

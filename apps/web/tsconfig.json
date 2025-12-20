@@ -14,7 +14,10 @@
       "@shared/*": ["../../packages/shared/*"],
       "@mytutorapp/shared": ["../../packages/shared/index.ts", "../../packages/shared/index.d.ts"],
       "@mytutorapp/shared/*": ["../../packages/shared/*"],
-      "@mytutorapp/shared/types": ["../../packages/shared/types/index.ts", "../../packages/shared/types/index.d.ts"]
+      "@mytutorapp/shared/types": [
+        "../../packages/shared/types/index.ts",
+        "../../packages/shared/types/index.d.ts"
+      ]
     }
   },
   "include": ["src", "*.ts", "*.tsx", "../../packages/shared"]

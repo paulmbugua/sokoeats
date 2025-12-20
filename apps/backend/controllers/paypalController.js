@@ -1,15 +1,21 @@
 import fetch from 'node-fetch';
 import pool from '../config/db.js';
 
+const FEE_PCT = Number(process.env.PAYMENT_GATEWAY_PERCENT ?? 0);
+const FEE_FIXED = Number(process.env.PAYMENT_GATEWAY_FIXED ?? 0.3);
 
-const FEE_PCT   = Number(process.env.PAYMENT_GATEWAY_PERCENT ?? 0);
-const FEE_FIXED = Number(process.env.PAYMENT_GATEWAY_FIXED   ?? 0.30);
-
-async function recordPaymentFees(paymentId, amountCapturedUsd, explicit = null) {
+async function recordPaymentFees(
+  paymentId,
+  amountCapturedUsd,
+  explicit = null,
+) {
   const fee_fixed_usd = explicit?.fixedUsd ?? FEE_FIXED;
-  const fee_percent   = explicit?.percent  ?? FEE_PCT;
-  const fee_total_usd = explicit?.totalUsd ??
-    Math.round((Number(amountCapturedUsd || 0) * fee_percent + fee_fixed_usd) * 100) / 100;
+  const fee_percent = explicit?.percent ?? FEE_PCT;
+  const fee_total_usd =
+    explicit?.totalUsd ??
+    Math.round(
+      (Number(amountCapturedUsd || 0) * fee_percent + fee_fixed_usd) * 100,
+    ) / 100;
   await pool.query(
     `UPDATE payments
         SET fee_fixed_usd = $1,
@@ -17,15 +23,15 @@ async function recordPaymentFees(paymentId, amountCapturedUsd, explicit = null) 
             fee_total_usd = $3,
             updated_at    = NOW()
       WHERE id = $4`,
-    [fee_fixed_usd, fee_percent, fee_total_usd, paymentId]
+    [fee_fixed_usd, fee_percent, fee_total_usd, paymentId],
   );
 }
 
-
 const PAYPAL_ENV = (process.env.PAYPAL_ENV || 'sandbox').trim().toLowerCase();
-const PP_BASE = PAYPAL_ENV === 'live'
-  ? 'https://api-m.paypal.com'
-  : 'https://api-m.sandbox.paypal.com';
+const PP_BASE =
+  PAYPAL_ENV === 'live'
+    ? 'https://api-m.paypal.com'
+    : 'https://api-m.sandbox.paypal.com';
 
 // match .env keys exactly
 const PAYPAL_CLIENT_ID = (process.env.PAYPAL_CLIENT_ID || '').trim();
@@ -34,14 +40,18 @@ const PAYPAL_WEBHOOK_ID = (process.env.PAYPAL_WEBHOOK_ID || '').trim();
 
 // optional: quick sanity log
 if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
-  throw new Error(`[paypal] Missing CLIENT_ID/CLIENT_SECRET. ENV=${PAYPAL_ENV}`);
+  throw new Error(
+    `[paypal] Missing CLIENT_ID/CLIENT_SECRET. ENV=${PAYPAL_ENV}`,
+  );
 }
-console.info(`[paypal] ENV=${PAYPAL_ENV} ID=${PAYPAL_CLIENT_ID.slice(0,4)}…${PAYPAL_CLIENT_ID.slice(-4)}`);
+console.info(
+  `[paypal] ENV=${PAYPAL_ENV} ID=${PAYPAL_CLIENT_ID.slice(0, 4)}…${PAYPAL_CLIENT_ID.slice(-4)}`,
+);
 
 async function getAccessToken() {
-  const basic = Buffer
-    .from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`)
-    .toString('base64');
+  const basic = Buffer.from(
+    `${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`,
+  ).toString('base64');
 
   const r = await fetch(`${PP_BASE}/v1/oauth2/token`, {
     method: 'POST',
@@ -61,7 +71,6 @@ async function getAccessToken() {
   return j.access_token;
 }
 
-
 function toUsdString(seedPrice) {
   if (seedPrice == null) throw new Error('Package has no price');
   const n = Number(seedPrice);
@@ -79,8 +88,14 @@ async function getPackageById(packageId) {
   return rows[0];
 }
 
-async function creditTokensAndCompletePayment(client, { paymentId, userId, packageId }) {
-  const pkgRes = await client.query('SELECT credits FROM packages WHERE id = $1', [packageId]);
+async function creditTokensAndCompletePayment(
+  client,
+  { paymentId, userId, packageId },
+) {
+  const pkgRes = await client.query(
+    'SELECT credits FROM packages WHERE id = $1',
+    [packageId],
+  );
   if (!pkgRes.rows[0]) throw new Error('Package not found while crediting');
   const credits = Number(pkgRes.rows[0].credits);
 
@@ -102,10 +117,14 @@ async function creditTokensAndCompletePayment(client, { paymentId, userId, packa
 export async function createOrder(req, res) {
   try {
     const userId = req?.user?.id;
-    if (!userId) return res.status(401).json({ message: 'Unauthorized: User not authenticated' });
+    if (!userId)
+      return res
+        .status(401)
+        .json({ message: 'Unauthorized: User not authenticated' });
 
     const { packageId } = req.body || {};
-    if (!packageId) return res.status(400).json({ message: 'missing packageId' });
+    if (!packageId)
+      return res.status(400).json({ message: 'missing packageId' });
 
     const pkg = await getPackageById(packageId);
     const amountUSD = toUsdString(pkg.price);
@@ -134,7 +153,10 @@ export async function createOrder(req, res) {
 
     const r = await fetch(`${PP_BASE}/v2/checkout/orders`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${access}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify(body),
     });
     const j = await r.json();
@@ -166,7 +188,10 @@ export async function captureOrder(req, res) {
     const access = await getAccessToken();
     const r = await fetch(`${PP_BASE}/v2/checkout/orders/${orderId}/capture`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${access}`,
+        'Content-Type': 'application/json',
+      },
     });
     const j = await r.json();
 
@@ -184,7 +209,10 @@ export async function captureOrder(req, res) {
       [orderId],
     );
     if (!rows[0]) {
-      console.warn('[paypal][capture] payment row not found for order', orderId);
+      console.warn(
+        '[paypal][capture] payment row not found for order',
+        orderId,
+      );
       return res.json(j);
     }
     const payment = rows[0];
@@ -203,16 +231,18 @@ export async function captureOrder(req, res) {
       );
 
       // amount captured from PayPal (string like "21.46")
-    const amountCapturedUsd = capture?.amount?.value
-      ?? j?.purchase_units?.[0]?.amount?.value
-      ?? null;
+      const amountCapturedUsd =
+        capture?.amount?.value ?? j?.purchase_units?.[0]?.amount?.value ?? null;
 
-    // Record fees (estimate unless you parse PayPal reports later)
-    try {
-      await recordPaymentFees(payment.id, amountCapturedUsd);
-    } catch (feeErr) {
-      console.warn('[paypal][capture] fee record failed (non-fatal)', feeErr?.message);
-    }
+      // Record fees (estimate unless you parse PayPal reports later)
+      try {
+        await recordPaymentFees(payment.id, amountCapturedUsd);
+      } catch (feeErr) {
+        console.warn(
+          '[paypal][capture] fee record failed (non-fatal)',
+          feeErr?.message,
+        );
+      }
 
       const { tokens } = await creditTokensAndCompletePayment(client, {
         paymentId: payment.id,
@@ -231,7 +261,10 @@ export async function captureOrder(req, res) {
     }
   } catch (e) {
     console.error('[paypal][capture] ERROR', e);
-    return res.status(500).json({ message: 'capture-order-failed', error: e?.message || 'unknown' });
+    return res.status(500).json({
+      message: 'capture-order-failed',
+      error: e?.message || 'unknown',
+    });
   }
 }
 
@@ -245,7 +278,14 @@ async function verifyWebhookSignature(req, rawBody) {
     const authAlgo = req.get('paypal-auth-algo');
     const transmissionSig = req.get('paypal-transmission-sig');
 
-    if (!transmissionId || !transmissionTime || !certUrl || !authAlgo || !transmissionSig || !PAYPAL_WEBHOOK_ID) {
+    if (
+      !transmissionId ||
+      !transmissionTime ||
+      !certUrl ||
+      !authAlgo ||
+      !transmissionSig ||
+      !PAYPAL_WEBHOOK_ID
+    ) {
       return false;
     }
 
@@ -260,11 +300,17 @@ async function verifyWebhookSignature(req, rawBody) {
       webhook_event: JSON.parse(rawBody.toString('utf8')),
     };
 
-    const r = await fetch(`${PP_BASE}/v1/notifications/verify-webhook-signature`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    const r = await fetch(
+      `${PP_BASE}/v1/notifications/verify-webhook-signature`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${access}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+    );
     const j = await r.json();
     return j?.verification_status === 'SUCCESS';
   } catch (err) {
@@ -284,7 +330,8 @@ export async function webhooks(req, res) {
 
     if (type === 'PAYMENT.CAPTURE.COMPLETED') {
       const captureId = event?.resource?.id;
-      const orderId = event?.resource?.supplementary_data?.related_ids?.order_id;
+      const orderId =
+        event?.resource?.supplementary_data?.related_ids?.order_id;
       const amount = event?.resource?.amount?.value;
       const currency = event?.resource?.amount?.currency_code;
       const payerEmail = event?.resource?.payer?.email_address;
@@ -311,11 +358,14 @@ export async function webhooks(req, res) {
         );
 
         // Record fees based on webhook amount
-       try {
-         await recordPaymentFees(payment.id, amount);
-       } catch (feeErr) {
-         console.warn('[paypal][webhook] fee record failed (non-fatal)', feeErr?.message);
-       }
+        try {
+          await recordPaymentFees(payment.id, amount);
+        } catch (feeErr) {
+          console.warn(
+            '[paypal][webhook] fee record failed (non-fatal)',
+            feeErr?.message,
+          );
+        }
 
         await creditTokensAndCompletePayment(client, {
           paymentId: payment.id,

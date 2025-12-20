@@ -15,9 +15,7 @@ export default function expoConfig({ config }) {
     iosSim: 'http://localhost:4000',
     hotspot: 'http://10.254.198.47:4000',
     lan1: process.env.EXPO_PUBLIC_BACKEND_URL || 'http://192.168.137.1:4000',
-    prod:
-      process.env.EXPO_PUBLIC_PROD_BACKEND_URL ||
-      'https://server.daybreaklearner.com',
+    prod: process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.daybreaklearner.com',
   };
 
   const DEFAULT_BACKEND = process.env.BACKEND || 'hotspot';
@@ -46,13 +44,7 @@ export default function expoConfig({ config }) {
       package: 'com.paulmbugua2.mytutorapp',
       versionCode: 1,
 
-      permissions: [
-        'INTERNET',
-        'CAMERA',
-        'RECORD_AUDIO',
-        'POST_NOTIFICATIONS',
-        'VIBRATE',
-      ],
+      permissions: ['INTERNET', 'CAMERA', 'RECORD_AUDIO', 'POST_NOTIFICATIONS', 'VIBRATE'],
 
       googleServicesFile: './google-services.json',
 
@@ -106,10 +98,7 @@ export default function expoConfig({ config }) {
     plugins: [
       'expo-router',
 
-      [
-        'expo-system-ui',
-        { lightBackgroundColor: '#FFFFFF', darkBackgroundColor: '#000000' },
-      ],
+      ['expo-system-ui', { lightBackgroundColor: '#FFFFFF', darkBackgroundColor: '#000000' }],
       [
         'expo-splash-screen',
         {
@@ -125,8 +114,7 @@ export default function expoConfig({ config }) {
       [
         'expo-location',
         {
-          locationAlwaysAndWhenInUsePermission:
-            'Allow $(PRODUCT_NAME) to use your location.',
+          locationAlwaysAndWhenInUsePermission: 'Allow $(PRODUCT_NAME) to use your location.',
         },
       ],
 
@@ -171,18 +159,13 @@ export default function expoConfig({ config }) {
     extra: {
       ...config.extra,
 
-      EXPO_PUBLIC_BACKEND_URL:
-        process.env.EXPO_PUBLIC_BACKEND_URL ?? 'http://10.0.2.2:4000',
+      EXPO_PUBLIC_BACKEND_URL: process.env.EXPO_PUBLIC_BACKEND_URL ?? 'http://10.0.2.2:4000',
       EXPO_PUBLIC_PROD_BACKEND_URL: process.env.EXPO_PUBLIC_PROD_BACKEND_URL,
 
-      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:
-        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID:
-        process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:
-        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-      EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID:
-        process.env.EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID,
 
       EXPO_PUBLIC_EAS_PROJECT_ID: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
 

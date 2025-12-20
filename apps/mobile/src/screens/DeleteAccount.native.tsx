@@ -78,7 +78,12 @@ const DeleteAccount: React.FC<Props> = ({ label = 'Delete Account', buttonStyle,
       </TouchableOpacity>
 
       {/* Confirmation modal */}
-      <Modal visible={isModalOpen} transparent animationType="fade" onRequestClose={() => setModalOpen(false)}>
+      <Modal
+        visible={isModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalOpen(false)}
+      >
         <KeyboardAvoidingView
           behavior={Platform.select({ ios: 'padding', android: undefined })}
           style={tw`flex-1`}
@@ -106,18 +111,21 @@ const DeleteAccount: React.FC<Props> = ({ label = 'Delete Account', buttonStyle,
               {/* Body (no ScrollView, compact spacing) */}
               <View>
                 <Text style={tw`text-gray-300 text-sm leading-relaxed mb-3`}>
-                  Deleting your account will deactivate your access and remove or anonymize your personal information.
-                  Please review what will happen:
+                  Deleting your account will deactivate your access and remove or anonymize your
+                  personal information. Please review what will happen:
                 </Text>
                 <View style={tw`pl-1`}>
                   <Text style={tw`text-gray-300 text-sm mb-2`}>
-                    • <Text style={tw`font-semibold text-gray-200`}>Account deactivation:</Text> You will be signed out and can’t sign in again.
+                    • <Text style={tw`font-semibold text-gray-200`}>Account deactivation:</Text> You
+                    will be signed out and can’t sign in again.
                   </Text>
                   <Text style={tw`text-gray-300 text-sm mb-2`}>
-                    • <Text style={tw`font-semibold text-gray-200`}>Personal data removal:</Text> Your name and email are erased or anonymized.
+                    • <Text style={tw`font-semibold text-gray-200`}>Personal data removal:</Text>{' '}
+                    Your name and email are erased or anonymized.
                   </Text>
                   <Text style={tw`text-gray-300 text-sm`}>
-                    • <Text style={tw`font-semibold text-gray-200`}>Irreversible:</Text> This cannot be undone.
+                    • <Text style={tw`font-semibold text-gray-200`}>Irreversible:</Text> This cannot
+                    be undone.
                   </Text>
                 </View>
 
@@ -131,19 +139,25 @@ const DeleteAccount: React.FC<Props> = ({ label = 'Delete Account', buttonStyle,
                     accessibilityState={{ checked: confirmChecked }}
                     accessibilityLabel="I understand my personal information will be removed/anonymized and this action cannot be undone."
                   >
-                    <View style={tw`h-7 w-7 rounded border border-gray-400 bg-white items-center justify-center mr-3`}>
-                      {confirmChecked ? <FontAwesome name="check" size={16} color="#dc2626" /> : null}
+                    <View
+                      style={tw`h-7 w-7 rounded border border-gray-400 bg-white items-center justify-center mr-3`}
+                    >
+                      {confirmChecked ? (
+                        <FontAwesome name="check" size={16} color="#dc2626" />
+                      ) : null}
                     </View>
 
                     <Text style={tw`flex-1 text-sm leading-6 text-gray-200`}>
-                      I understand my personal information will be removed/anonymized and this action cannot be undone.
+                      I understand my personal information will be removed/anonymized and this
+                      action cannot be undone.
                     </Text>
                   </Pressable>
 
                   {/* Type DELETE input */}
                   <View style={tw`mt-3`}>
                     <Text style={tw`text-xs text-gray-400 mb-1`}>
-                      Type <Text style={tw`font-bold text-gray-200`}>{REQUIRED_TOKEN}</Text> to confirm
+                      Type <Text style={tw`font-bold text-gray-200`}>{REQUIRED_TOKEN}</Text> to
+                      confirm
                     </Text>
                     <TextInput
                       value={confirmText}
@@ -184,7 +198,9 @@ const DeleteAccount: React.FC<Props> = ({ label = 'Delete Account', buttonStyle,
                   style={tw`px-4 py-2 rounded-md bg-red-600 ${isDeleting || !canDelete ? 'opacity-60' : ''}`}
                   accessibilityState={{ disabled: isDeleting || !canDelete }}
                 >
-                  <Text style={tw`text-white font-semibold`}>{isDeleting ? 'Deleting…' : 'Yes, Delete'}</Text>
+                  <Text style={tw`text-white font-semibold`}>
+                    {isDeleting ? 'Deleting…' : 'Yes, Delete'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>

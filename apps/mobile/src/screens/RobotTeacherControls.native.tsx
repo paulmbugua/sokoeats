@@ -1,31 +1,26 @@
 // apps/mobile/src/screens/RobotTeacherControls.native.tsx
-import React from "react";
-import { View, Text, TextInput, Pressable } from "react-native";
-import tw from "../../tailwind";
-import { MaterialIcons } from "@expo/vector-icons";
+import React from 'react';
+import { View, Text, TextInput, Pressable } from 'react-native';
+import tw from '../../tailwind';
+import { MaterialIcons } from '@expo/vector-icons';
 
-export type SizePresetKey =
-  | "quick"
-  | "standard"
-  | "extended"
-  | "intensive"
-  | "marathon";
-export type TrackKey = "module" | "certificate" | "diploma" | "degree";
+export type SizePresetKey = 'quick' | 'standard' | 'extended' | 'intensive' | 'marathon';
+export type TrackKey = 'module' | 'certificate' | 'diploma' | 'degree';
 type CourseOption = { id: string; title: string };
 
 // ⬇️ Option A: global pull-to-refresh hooks/components
-import { RefreshableScrollView } from "../refresh/Refreshable";
-import { useRegisterScreenRefresh } from "../refresh/GlobalRefreshProvider";
+import { RefreshableScrollView } from '../refresh/Refreshable';
+import { useRegisterScreenRefresh } from '../refresh/GlobalRefreshProvider';
 
 // ⬇️ New: SelectField import
-import SelectField, { type Option as SelectOption } from "./SelectField.native";
+import SelectField, { type Option as SelectOption } from './SelectField.native';
 
 /* ───────────────────────── CourseSelect (native) ───────────────────────── */
 const CourseSelect = React.memo(function CourseSelect({
   options,
   value,
   onChange,
-  placeholder = "Select a course…",
+  placeholder = 'Select a course…',
 }: {
   options: SelectOption[];
   value: string;
@@ -33,7 +28,7 @@ const CourseSelect = React.memo(function CourseSelect({
   placeholder?: string;
 }) {
   const hasOptions = options && options.length > 0;
-  const effectivePlaceholder = hasOptions ? placeholder : "No courses available";
+  const effectivePlaceholder = hasOptions ? placeholder : 'No courses available';
 
   return (
     <SelectField
@@ -71,8 +66,8 @@ interface ControlsPanelProps {
   minutes: number;
   setMinutes: (n: number) => void;
 
-  classLevel: "beginner" | "intermediate" | "advanced";
-  setClassLevel: (lv: "beginner" | "intermediate" | "advanced") => void;
+  classLevel: 'beginner' | 'intermediate' | 'advanced';
+  setClassLevel: (lv: 'beginner' | 'intermediate' | 'advanced') => void;
 
   programTrack: TrackKey;
   setProgramTrack: (k: TrackKey) => void;
@@ -160,7 +155,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
   const canStartMinimal = !busy;
   const canStartMain = !busy;
   const canTeach = !busy && !!customTitle.trim();
-  const defaultPresetKey: SizePresetKey = PRESETS[0]?.key ?? "standard";
+  const defaultPresetKey: SizePresetKey = PRESETS[0]?.key ?? 'standard';
 
   return (
     <View
@@ -173,14 +168,12 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
           </Text>
 
           <View>
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-              Course
-            </Text>
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Course</Text>
             <View
               style={tw`mt-1 h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}
             >
               <Text style={tw`text-[#0d141c] dark:text-white`}>
-                {selectedCourse?.title || "Assigned course"}
+                {selectedCourse?.title || 'Assigned course'}
               </Text>
             </View>
           </View>
@@ -202,16 +195,10 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
             >
               <Text
                 style={tw`${
-                  canStartMinimal
-                    ? "text-white"
-                    : "text-[#0d141c] dark:text-white"
+                  canStartMinimal ? 'text-white' : 'text-[#0d141c] dark:text-white'
                 } text-sm font-semibold`}
               >
-                {busy
-                  ? "Preparing…"
-                  : hasAIContent
-                  ? "Continue lesson"
-                  : "Start with A.I"}
+                {busy ? 'Preparing…' : hasAIContent ? 'Continue lesson' : 'Start with A.I'}
               </Text>
             </Pressable>
           </View>
@@ -223,27 +210,25 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
         >
           {/* Course */}
           <View>
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-              Course
-            </Text>
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Course</Text>
             <View style={tw`mt-1`}>
               {isLockedLearner ? (
                 <View
                   style={tw`h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}
                 >
                   <Text style={tw`text-[#0d141c] dark:text-white`}>
-                    {selectedCourse?.title || "Assigned course"}
+                    {selectedCourse?.title || 'Assigned course'}
                   </Text>
                 </View>
               ) : (
                 <CourseSelect
-                  value={selectedCourse?.id || ""}
+                  value={selectedCourse?.id || ''}
                   onChange={(id) => onSelectCourse(id)}
                   options={(topCourses || []).map((c) => ({
                     value: c.id,
                     label: c.title,
                   }))}
-                  placeholder={(topCourses || []).length ? "Select a course…" : "Loading…"}
+                  placeholder={(topCourses || []).length ? 'Select a course…' : 'Loading…'}
                 />
               )}
             </View>
@@ -251,9 +236,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
 
           {/* Program track */}
           <View>
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-              Program track
-            </Text>
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Program track</Text>
             <View style={tw`mt-1 flex-row flex-wrap gap-2`}>
               {TRACKS.map((t) => {
                 const active = programTrack === t.key;
@@ -274,11 +257,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                       disabled && `opacity-50`
                     )}
                   >
-                    <Text
-                      style={tw`${
-                        active ? "text-white" : "text-[#0d141c] dark:text-white"
-                      }`}
-                    >
+                    <Text style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'}`}>
                       {t.label} ({t.lessons})
                     </Text>
                   </Pressable>
@@ -292,9 +271,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
 
           {/* Lesson size + minutes */}
           <View>
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-              Lesson size
-            </Text>
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Lesson size</Text>
             <View style={tw`mt-1 gap-2`}>
               <View style={tw`flex-row flex-wrap gap-2`}>
                 {PRESETS.map((p) => {
@@ -319,11 +296,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                         disabled && `opacity-50`
                       )}
                     >
-                      <Text
-                        style={tw`${
-                          active ? "text-white" : "text-[#0d141c] dark:text-white"
-                        }`}
-                      >
+                      <Text style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'}`}>
                         {p.label}
                       </Text>
                     </Pressable>
@@ -332,18 +305,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               </View>
 
               <View style={tw`flex-row items-center gap-2`}>
-                <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-                  Minutes
-                </Text>
+                <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Minutes</Text>
                 <TextInput
                   keyboardType="number-pad"
                   value={String(minutes)}
                   onChangeText={(txt) => {
                     if (knobsDisabled) return;
-                    const n = Math.max(
-                      8,
-                      Math.min(600, Number(txt.replace(/[^\d]/g, "")) || 0)
-                    );
+                    const n = Math.max(8, Math.min(600, Number(txt.replace(/[^\d]/g, '')) || 0));
                     setMinutes(n);
                     const found = [...PRESETS].reverse().find((x) => n >= x.min);
                     const key: SizePresetKey = found?.key ?? defaultPresetKey;
@@ -368,7 +336,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
             <View
               style={tw`mt-1 flex-row rounded-lg overflow-hidden border border-[#cedbe8] dark:border-white/15`}
             >
-              {(["beginner", "intermediate", "advanced"] as const).map((lv) => {
+              {(['beginner', 'intermediate', 'advanced'] as const).map((lv) => {
                 const active = classLevel === lv;
                 const disabled = isLockedLearner;
                 return (
@@ -388,8 +356,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                     <Text
                       style={tw`capitalize text-[11px] ${
                         active
-                          ? "text-indigo-700 dark:text-white"
-                          : "text-[#0d141c] dark:text-white/80"
+                          ? 'text-indigo-700 dark:text-white'
+                          : 'text-[#0d141c] dark:text-white/80'
                       }`}
                     >
                       {lv}
@@ -418,14 +386,10 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
             >
               <Text
                 style={tw`${
-                  canStartMain ? "text-white" : "text-[#0d141c] dark:text-white"
+                  canStartMain ? 'text-white' : 'text-[#0d141c] dark:text-white'
                 } text-sm font-semibold`}
               >
-                {busy
-                  ? "Preparing…"
-                  : hasAIContent
-                  ? "Continue lesson"
-                  : "Start with A.I"}
+                {busy ? 'Preparing…' : hasAIContent ? 'Continue lesson' : 'Start with A.I'}
               </Text>
             </Pressable>
 
@@ -456,7 +420,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               >
                 <Text
                   style={tw`${
-                    selectedCourse?.id ? "text-white" : "text-[#0d141c] dark:text-white"
+                    selectedCourse?.id ? 'text-white' : 'text-[#0d141c] dark:text-white'
                   }`}
                 >
                   Share with learners
@@ -516,9 +480,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 }}
                 style={tw`px-3 py-1.5 rounded-full bg-slate-100 dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15`}
               >
-                <Text style={tw`text-[#0d141c] dark:text-white text-xs`}>
-                  Use track defaults
-                </Text>
+                <Text style={tw`text-[#0d141c] dark:text-white text-xs`}>Use track defaults</Text>
               </Pressable>
             )}
           </View>
@@ -554,7 +516,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 >
                   <Text
                     style={tw`${
-                      canTeach ? "text-white" : "text-[#0d141c] dark:text-white"
+                      canTeach ? 'text-white' : 'text-[#0d141c] dark:text-white'
                     } text-sm font-semibold`}
                   >
                     Teach me
@@ -581,12 +543,12 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   <MaterialIcons
                     name="layers"
                     size={20}
-                    color={overlayAvailable ? "#49739c" : "#94a3b8"}
+                    color={overlayAvailable ? '#49739c' : '#94a3b8'}
                   />
                 </Pressable>
 
                 <Text style={tw`ml-2 text-[12px] text-[#49739c] dark:text-white/70`}>
-                  {overlayAvailable ? "Overlay" : "No overlay for this lesson"}
+                  {overlayAvailable ? 'Overlay' : 'No overlay for this lesson'}
                 </Text>
               </View>
             </View>
@@ -597,7 +559,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
   );
 });
 
-ControlsPanel.displayName = "RobotTeacherControls";
+ControlsPanel.displayName = 'RobotTeacherControls';
 export default ControlsPanel;
 
 /* ────────────────────────── Small helper input ────────────────────────── */
@@ -624,10 +586,7 @@ function LabeledNumber({
         value={String(value)}
         onChangeText={(txt) => {
           if (disabled) return;
-          const n = Math.max(
-            min,
-            Math.min(max, Number(txt.replace(/[^\d]/g, "")) || 0)
-          );
+          const n = Math.max(min, Math.min(max, Number(txt.replace(/[^\d]/g, '')) || 0));
           onChange(n);
         }}
         editable={!disabled}

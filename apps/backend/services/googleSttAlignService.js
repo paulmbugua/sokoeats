@@ -23,11 +23,17 @@ const stt = createSpeechClient();
 function ffmpegToFlac16kMono(inputBuffer) {
   return new Promise((resolve, reject) => {
     const ff = spawn('ffmpeg', [
-      '-hide_banner', '-loglevel', 'error',
-      '-i', 'pipe:0',
-      '-ac', '1',
-      '-ar', '16000',
-      '-f', 'flac',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      'pipe:0',
+      '-ac',
+      '1',
+      '-ar',
+      '16000',
+      '-f',
+      'flac',
       'pipe:1',
     ]);
 
@@ -108,14 +114,15 @@ function mapSttWordsToScript(sttWords, scriptWords) {
   return out;
 }
 
-
 export async function alignWithGoogleSttWordOffsets({
   audioMp3Buffer,
   languageCode = 'en-US',
   scriptWords = [],
 }) {
-  if (!audioMp3Buffer?.length) throw new Error('alignWithGoogleSttWordOffsets: missing mp3 buffer');
-  if (!scriptWords?.length) throw new Error('alignWithGoogleSttWordOffsets: missing scriptWords');
+  if (!audioMp3Buffer?.length)
+    throw new Error('alignWithGoogleSttWordOffsets: missing mp3 buffer');
+  if (!scriptWords?.length)
+    throw new Error('alignWithGoogleSttWordOffsets: missing scriptWords');
 
   const flac = await ffmpegToFlac16kMono(audioMp3Buffer);
 
@@ -142,7 +149,8 @@ export async function alignWithGoogleSttWordOffsets({
     const alt = r.alternatives?.[0];
     for (const w of alt?.words || []) {
       const startSeconds =
-        Number(w.startTime?.seconds || 0) + Number(w.startTime?.nanos || 0) / 1e9;
+        Number(w.startTime?.seconds || 0) +
+        Number(w.startTime?.nanos || 0) / 1e9;
       const endSeconds =
         Number(w.endTime?.seconds || 0) + Number(w.endTime?.nanos || 0) / 1e9;
       sttWords.push({ word: w.word, startSeconds, endSeconds });

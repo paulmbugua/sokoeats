@@ -1,11 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Text, ScrollView, TextInput, TouchableOpacity } from 'react-native';
 import tw from '../../../tailwind';
 import type { OrgResp as Org } from '@mytutorapp/shared/api/orgApi';
 import type { OrgExamTerm, OrgExamSession } from '@mytutorapp/shared/types';
@@ -19,29 +13,19 @@ const buildProgressSeries = (card: any): { label: string; percent: number }[] =>
   if (!card) return [];
 
   const seriesSource =
-    card.progressSeries ||
-    card.history ||
-    card.previousSummaries ||
-    card.previous_terms ||
-    [];
+    card.progressSeries || card.history || card.previousSummaries || card.previous_terms || [];
 
   const out: { label: string; percent: number }[] = [];
 
   if (Array.isArray(seriesSource)) {
     seriesSource.forEach((p: any, idx: number) => {
-      const label =
-        p.label ||
-        p.termLabel ||
-        p.term ||
-        p.name ||
-        p.examLabel ||
-        `Term ${idx + 1}`;
+      const label = p.label || p.termLabel || p.term || p.name || p.examLabel || `Term ${idx + 1}`;
       const percent =
         typeof p.percent === 'number'
           ? p.percent
           : typeof p.totalPercent === 'number'
-          ? p.totalPercent
-          : null;
+            ? p.totalPercent
+            : null;
       if (percent != null) {
         out.push({ label, percent });
       }
@@ -160,13 +144,11 @@ const AiExtrasTable: React.FC<{ subjects: any[] }> = ({ subjects }) => {
             AI-assisted extra columns
           </Text>
           <Text style={tw`text-[9px] text-slate-500 dark:text-slate-400`}>
-            A compact view of AI-generated fields such as Effort, Homework, or Next step –
-            kept separate from teacher remarks.
+            A compact view of AI-generated fields such as Effort, Homework, or Next step – kept
+            separate from teacher remarks.
           </Text>
         </View>
-        <View
-          style={tw`hidden sm:flex px-2 py-0.5 rounded-full bg-blue-500/10`}
-        >
+        <View style={tw`hidden sm:flex px-2 py-0.5 rounded-full bg-blue-500/10`}>
           <Text style={tw`text-[9px] uppercase tracking-wide text-blue-700 dark:text-blue-200`}>
             AI enrichment
           </Text>
@@ -209,10 +191,9 @@ const AiExtrasTable: React.FC<{ subjects: any[] }> = ({ subjects }) => {
       </ScrollView>
 
       <Text style={tw`mt-1.5 text-[9px] text-slate-400 dark:text-slate-500`}>
-        Note: This table reflects{' '}
-        <Text style={tw`font-semibold`}>AI-driven column changes</Text> (Effort, targets,
-        homework, etc.). The main subject remarks column on the report card remains reserved
-        for <Text style={tw`font-semibold`}>teacher comments</Text>.
+        Note: This table reflects <Text style={tw`font-semibold`}>AI-driven column changes</Text>{' '}
+        (Effort, targets, homework, etc.). The main subject remarks column on the report card
+        remains reserved for <Text style={tw`font-semibold`}>teacher comments</Text>.
       </Text>
     </View>
   );
@@ -297,7 +278,9 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
   // ─────────────────────────────────────────────────────
   if (isLearnerView) {
     return (
-      <View style={tw`max-w-full self-center rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3`}>
+      <View
+        style={tw`max-w-full self-center rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3`}
+      >
         <View style={tw`flex-row items-center justify-between mb-2`}>
           <View style={tw`flex-1 pr-2`}>
             <Text style={tw`text-sm font-bold text-slate-900 dark:text-slate-50`}>
@@ -322,8 +305,8 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
         >
           {!studentCard && !studentCardText && (
             <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>
-              Your report card will appear here once your school publishes marks for this
-              exam, or once you choose a term and exam above.
+              Your report card will appear here once your school publishes marks for this exam, or
+              once you choose a term and exam above.
             </Text>
           )}
 
@@ -351,13 +334,9 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                       {studentCard.student?.admission_code &&
                         headerPill(`Adm: ${studentCard.student.admission_code}`)}
                       {(classLabel || studentCard.student?.class_label) &&
-                        headerPill(
-                          `Class: ${classLabel || studentCard.student?.class_label}`,
-                        )}
-                      {selectedTerm &&
-                        headerPill(`${selectedTerm.year} – ${selectedTerm.label}`)}
-                      {selectedSession &&
-                        headerPill(`Exam: ${selectedSession.label}`)}
+                        headerPill(`Class: ${classLabel || studentCard.student?.class_label}`)}
+                      {selectedTerm && headerPill(`${selectedTerm.year} – ${selectedTerm.label}`)}
+                      {selectedSession && headerPill(`Exam: ${selectedSession.label}`)}
                     </View>
                   </View>
 
@@ -383,16 +362,15 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                         </View>
                       )}
                     </View>
-                    {studentCard.summary?.classRank &&
-                      studentCard.summary?.classSize && (
-                        <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
-                          Position{' '}
-                          <Text style={tw`font-semibold`}>
-                            {formatRank(studentCard.summary.classRank)}
-                          </Text>{' '}
-                          out of {studentCard.summary.classSize}
-                        </Text>
-                      )}
+                    {studentCard.summary?.classRank && studentCard.summary?.classSize && (
+                      <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
+                        Position{' '}
+                        <Text style={tw`font-semibold`}>
+                          {formatRank(studentCard.summary.classRank)}
+                        </Text>{' '}
+                        out of {studentCard.summary.classSize}
+                      </Text>
+                    )}
                   </View>
                 </View>
 
@@ -417,30 +395,22 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                             style={tw`flex-row border-b border-slate-200 dark:border-slate-800`}
                           >
                             <View style={[subjectTableHeaderCell, tw`min-w-[120px]`]}>
-                              <Text
-                                style={tw`text-[10px] text-sky-700 dark:text-slate-300`}
-                              >
+                              <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
                                 Subject
                               </Text>
                             </View>
                             <View style={[subjectTableHeaderCell, tw`items-end`]}>
-                              <Text
-                                style={tw`text-[10px] text-sky-700 dark:text-slate-300`}
-                              >
+                              <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
                                 Score
                               </Text>
                             </View>
                             <View style={[subjectTableHeaderCell, tw`items-end`]}>
-                              <Text
-                                style={tw`text-[10px] text-sky-700 dark:text-slate-300`}
-                              >
+                              <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
                                 % / Grade
                               </Text>
                             </View>
                             <View style={[subjectTableHeaderCell, tw`items-end`]}>
-                              <Text
-                                style={tw`text-[10px] text-sky-700 dark:text-slate-300`}
-                              >
+                              <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
                                 Pos.
                               </Text>
                             </View>
@@ -491,11 +461,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                                     </Text>
                                   </View>
                                 ) : (
-                                  <Text
-                                    style={tw`text-[9px] text-right text-slate-400`}
-                                  >
-                                    —
-                                  </Text>
+                                  <Text style={tw`text-[9px] text-right text-slate-400`}>—</Text>
                                 )}
                               </View>
                             </View>
@@ -510,7 +476,9 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                   {/* Highlights + progress */}
                   <View style={tw`flex-1 gap-2.5`}>
                     <View style={cardShell}>
-                      <Text style={tw`text-[11px] font-semibold mb-1 text-slate-900 dark:text-slate-50`}>
+                      <Text
+                        style={tw`text-[11px] font-semibold mb-1 text-slate-900 dark:text-slate-50`}
+                      >
                         Highlights
                       </Text>
                       <View style={tw`space-y-0.5`}>
@@ -519,9 +487,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                             <Text style={tw`font-semibold`}>Strength: </Text>
                             {studentCard.computed.bestSubject} (
                             {studentCard.computed.bestPercent != null
-                              ? `${Math.round(
-                                  studentCard.computed.bestPercent,
-                                )}%`
+                              ? `${Math.round(studentCard.computed.bestPercent)}%`
                               : '—'}
                             )
                           </Text>
@@ -531,9 +497,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                             <Text style={tw`font-semibold`}>Focus area: </Text>
                             {studentCard.computed.weakestSubject} (
                             {studentCard.computed.weakestPercent != null
-                              ? `${Math.round(
-                                  studentCard.computed.weakestPercent,
-                                )}%`
+                              ? `${Math.round(studentCard.computed.weakestPercent)}%`
                               : '—'}
                             )
                           </Text>
@@ -566,11 +530,9 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                         const series = buildProgressSeries(studentCard);
                         if (!series.length) {
                           return (
-                            <Text
-                              style={tw`text-[10px] text-sky-700 dark:text-slate-300`}
-                            >
-                              Historical data not available yet. Once previous exams are
-                              synced, this chart will show your trend.
+                            <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
+                              Historical data not available yet. Once previous exams are synced,
+                              this chart will show your trend.
                             </Text>
                           );
                         }
@@ -578,12 +540,8 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                           <View style={tw`space-y-1.5`}>
                             {series.map((p, idx) => (
                               <View key={`${p.label}-${idx}`}>
-                                <View
-                                  style={tw`flex-row items-center justify-between mb-0.5`}
-                                >
-                                  <Text
-                                    style={tw`text-[10px] text-slate-900 dark:text-slate-100`}
-                                  >
+                                <View style={tw`flex-row items-center justify-between mb-0.5`}>
+                                  <Text style={tw`text-[10px] text-slate-900 dark:text-slate-100`}>
                                     {p.label}
                                   </Text>
                                   <Text
@@ -599,10 +557,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                                     style={[
                                       tw`h-2 rounded-full bg-sky-500`,
                                       {
-                                        width: `${Math.max(
-                                          5,
-                                          Math.min(100, p.percent),
-                                        )}%`,
+                                        width: `${Math.max(5, Math.min(100, p.percent))}%`,
                                       },
                                     ]}
                                   />
@@ -654,8 +609,8 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
               Distribution per subject for this exam, plus a downloadable class booklet.
             </Text>
             <Text style={tw`mt-0.5 text-[10px] text-slate-400 dark:text-slate-300`}>
-              Class report includes: per-subject stats, full learner list with totals,
-              grades, positions, and remarks – ready to share with parents.
+              Class report includes: per-subject stats, full learner list with totals, grades,
+              positions, and remarks – ready to share with parents.
             </Text>
           </View>
           <View style={tw`flex-row flex-wrap gap-2 justify-end`}>
@@ -683,29 +638,19 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
           <View>
             <View style={tw`flex-row border-b border-slate-200 dark:border-slate-800`}>
               <View style={tw`py-1 pr-3 min-w-[120px]`}>
-                <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>
-                  Subject
-                </Text>
+                <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>Subject</Text>
               </View>
               <View style={tw`py-1 pr-3 min-w-[60px]`}>
-                <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>
-                  Scripts
-                </Text>
+                <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>Scripts</Text>
               </View>
               <View style={tw`py-1 pr-3 min-w-[60px]`}>
-                <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>
-                  Avg %
-                </Text>
+                <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>Avg %</Text>
               </View>
               <View style={tw`py-1 pr-3 min-w-[60px]`}>
-                <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>
-                  Min %
-                </Text>
+                <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>Min %</Text>
               </View>
               <View style={tw`py-1 pr-3 min-w-[60px]`}>
-                <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>
-                  Max %
-                </Text>
+                <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>Max %</Text>
               </View>
             </View>
 
@@ -722,14 +667,10 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                   style={tw`flex-row border-t border-slate-200 dark:border-slate-800`}
                 >
                   <View style={tw`py-1 pr-3 min-w-[120px]`}>
-                    <Text style={tw`text-xs text-slate-900 dark:text-slate-100`}>
-                      {r.subject}
-                    </Text>
+                    <Text style={tw`text-xs text-slate-900 dark:text-slate-100`}>{r.subject}</Text>
                   </View>
                   <View style={tw`py-1 pr-3 min-w-[60px]`}>
-                    <Text style={tw`text-xs text-slate-900 dark:text-slate-100`}>
-                      {r.scripts}
-                    </Text>
+                    <Text style={tw`text-xs text-slate-900 dark:text-slate-100`}>{r.scripts}</Text>
                   </View>
                   <View style={tw`py-1 pr-3 min-w-[60px]`}>
                     <Text style={tw`text-xs text-slate-900 dark:text-slate-100`}>
@@ -769,8 +710,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
               Report card preview
             </Text>
             <Text style={tw`text-[11px] text-sky-700 dark:text-slate-300`}>
-              Select any learner in Marks view and tap “Card” to preview a full modern
-              report.
+              Select any learner in Marks view and tap “Card” to preview a full modern report.
             </Text>
           </View>
           {selectedStudentId && (
@@ -815,13 +755,9 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                       {studentCard.student?.admission_code &&
                         headerPill(`Adm: ${studentCard.student.admission_code}`)}
                       {(classLabel || studentCard.student?.class_label) &&
-                        headerPill(
-                          `Class: ${classLabel || studentCard.student?.class_label}`,
-                        )}
-                      {selectedTerm &&
-                        headerPill(`${selectedTerm.year} – ${selectedTerm.label}`)}
-                      {selectedSession &&
-                        headerPill(`Exam: ${selectedSession.label}`)}
+                        headerPill(`Class: ${classLabel || studentCard.student?.class_label}`)}
+                      {selectedTerm && headerPill(`${selectedTerm.year} – ${selectedTerm.label}`)}
+                      {selectedSession && headerPill(`Exam: ${selectedSession.label}`)}
                     </View>
                   </View>
 
@@ -847,16 +783,15 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                         </View>
                       )}
                     </View>
-                    {studentCard.summary?.classRank &&
-                      studentCard.summary?.classSize && (
-                        <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
-                          Position{' '}
-                          <Text style={tw`font-semibold`}>
-                            {formatRank(studentCard.summary.classRank)}
-                          </Text>{' '}
-                          out of {studentCard.summary.classSize}
-                        </Text>
-                      )}
+                    {studentCard.summary?.classRank && studentCard.summary?.classSize && (
+                      <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
+                        Position{' '}
+                        <Text style={tw`font-semibold`}>
+                          {formatRank(studentCard.summary.classRank)}
+                        </Text>{' '}
+                        out of {studentCard.summary.classSize}
+                      </Text>
+                    )}
                   </View>
                 </View>
 
@@ -872,9 +807,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                         >
                           Subject breakdown
                         </Text>
-                        <Text
-                          style={tw`text-[10px] text-sky-700 dark:text-slate-300`}
-                        >
+                        <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
                           Score • Grade • Position
                         </Text>
                       </View>
@@ -885,12 +818,8 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                             <View
                               style={tw`flex-row border-b border-slate-200 dark:border-slate-800`}
                             >
-                              <View
-                                style={[subjectTableHeaderCell, tw`min-w-[120px]`]}
-                              >
-                                <Text
-                                  style={tw`text-[10px] text-sky-700 dark:text-slate-300`}
-                                >
+                              <View style={[subjectTableHeaderCell, tw`min-w-[120px]`]}>
+                                <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
                                   Subject
                                 </Text>
                               </View>
@@ -922,9 +851,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                                 key={`${s.subject}-${idx}`}
                                 style={tw`flex-row border-t border-slate-200 dark:border-slate-800`}
                               >
-                                <View
-                                  style={[subjectTableCell, tw`min-w-[120px]`]}
-                                >
+                                <View style={[subjectTableCell, tw`min-w-[120px]`]}>
                                   <View style={tw`flex-col`}>
                                     <Text
                                       style={tw`text-[10px] font-medium text-slate-900 dark:text-slate-50`}
@@ -963,11 +890,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                                       </Text>
                                     </View>
                                   ) : (
-                                    <Text
-                                      style={tw`text-[9px] text-right text-slate-400`}
-                                    >
-                                      —
-                                    </Text>
+                                    <Text style={tw`text-[9px] text-right text-slate-400`}>—</Text>
                                   )}
                                 </View>
                               </View>
@@ -989,29 +912,21 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                         </Text>
                         <View style={tw`space-y-0.5`}>
                           {studentCard.computed?.bestSubject && (
-                            <Text
-                              style={tw`text-[10px] text-slate-900 dark:text-slate-100`}
-                            >
+                            <Text style={tw`text-[10px] text-slate-900 dark:text-slate-100`}>
                               <Text style={tw`font-semibold`}>Strength: </Text>
                               {studentCard.computed.bestSubject} (
                               {studentCard.computed.bestPercent != null
-                                ? `${Math.round(
-                                    studentCard.computed.bestPercent,
-                                  )}%`
+                                ? `${Math.round(studentCard.computed.bestPercent)}%`
                                 : '—'}
                               )
                             </Text>
                           )}
                           {studentCard.computed?.weakestSubject && (
-                            <Text
-                              style={tw`text-[10px] text-slate-900 dark:text-slate-100`}
-                            >
+                            <Text style={tw`text-[10px] text-slate-900 dark:text-slate-100`}>
                               <Text style={tw`font-semibold`}>Focus area: </Text>
                               {studentCard.computed.weakestSubject} (
                               {studentCard.computed.weakestPercent != null
-                                ? `${Math.round(
-                                    studentCard.computed.weakestPercent,
-                                  )}%`
+                                ? `${Math.round(studentCard.computed.weakestPercent)}%`
                                 : '—'}
                               )
                             </Text>
@@ -1019,9 +934,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                           {studentCard.summary?.totalPercent != null &&
                             typeof studentCard.summary?.classRank === 'number' &&
                             typeof studentCard.summary?.classSize === 'number' && (
-                              <Text
-                                style={tw`text-[10px] text-slate-900 dark:text-slate-100`}
-                              >
+                              <Text style={tw`text-[10px] text-slate-900 dark:text-slate-100`}>
                                 <Text style={tw`font-semibold`}>Overall: </Text>
                                 {studentCard.summary.totalPercent.toFixed(1)}% – position{' '}
                                 {formatRank(studentCard.summary.classRank)} of{' '}
@@ -1038,9 +951,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                           >
                             Progress over time
                           </Text>
-                          <Text
-                            style={tw`text-[10px] text-sky-700 dark:text-slate-300`}
-                          >
+                          <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
                             % scores by term / exam
                           </Text>
                         </View>
@@ -1048,11 +959,9 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                           const series = buildProgressSeries(studentCard);
                           if (!series.length) {
                             return (
-                              <Text
-                                style={tw`text-[10px] text-sky-700 dark:text-slate-300`}
-                              >
-                                Historical data not available yet. Once previous exams are
-                                synced, this chart will show the learner&apos;s trend.
+                              <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
+                                Historical data not available yet. Once previous exams are synced,
+                                this chart will show the learner&apos;s trend.
                               </Text>
                             );
                           }
@@ -1060,9 +969,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                             <View style={tw`space-y-1.5`}>
                               {series.map((p, idx) => (
                                 <View key={`${p.label}-${idx}`}>
-                                  <View
-                                    style={tw`flex-row items-center justify-between mb-0.5`}
-                                  >
+                                  <View style={tw`flex-row items-center justify-between mb-0.5`}>
                                     <Text
                                       style={tw`text-[10px] text-slate-900 dark:text-slate-100`}
                                     >
@@ -1081,10 +988,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                                       style={[
                                         tw`h-2 rounded-full bg-sky-500`,
                                         {
-                                          width: `${Math.max(
-                                            5,
-                                            Math.min(100, p.percent),
-                                          )}%`,
+                                          width: `${Math.max(5, Math.min(100, p.percent))}%`,
                                         },
                                       ]}
                                     />
@@ -1099,21 +1003,12 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                   </View>
 
                   {/* Attendance & behaviour */}
-                  <View
-                    style={[
-                      cardShell,
-                      tw`border-2 border-slate-200 dark:border-slate-800`,
-                    ]}
-                  >
+                  <View style={[cardShell, tw`border-2 border-slate-200 dark:border-slate-800`]}>
                     <View style={tw`flex-row items-center justify-between mb-1`}>
-                      <Text
-                        style={tw`text-[11px] font-semibold text-slate-900 dark:text-slate-50`}
-                      >
+                      <Text style={tw`text-[11px] font-semibold text-slate-900 dark:text-slate-50`}>
                         Attendance & behaviour
                       </Text>
-                      <Text style={tw`text-[9px] text-slate-400`}>
-                        Admin / instructor only
-                      </Text>
+                      <Text style={tw`text-[9px] text-slate-400`}>Admin / instructor only</Text>
                     </View>
 
                     <View style={tw`flex-row flex-wrap gap-2 text-[10px]`}>
@@ -1130,15 +1025,8 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                               };
                               const attended = Number(next.lessonsAttended);
                               const held = Number(next.lessonsHeld);
-                              if (
-                                Number.isFinite(attended) &&
-                                Number.isFinite(held) &&
-                                held > 0
-                              ) {
-                                next.attendancePercent = (
-                                  (attended / held) *
-                                  100
-                                ).toFixed(1);
+                              if (Number.isFinite(attended) && Number.isFinite(held) && held > 0) {
+                                next.attendancePercent = ((attended / held) * 100).toFixed(1);
                               } else {
                                 next.attendancePercent = '';
                               }
@@ -1161,15 +1049,8 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                               };
                               const attended = Number(next.lessonsAttended);
                               const held = Number(next.lessonsHeld);
-                              if (
-                                Number.isFinite(attended) &&
-                                Number.isFinite(held) &&
-                                held > 0
-                              ) {
-                                next.attendancePercent = (
-                                  (attended / held) *
-                                  100
-                                ).toFixed(1);
+                              if (Number.isFinite(attended) && Number.isFinite(held) && held > 0) {
+                                next.attendancePercent = ((attended / held) * 100).toFixed(1);
                               } else {
                                 next.attendancePercent = '';
                               }
@@ -1217,9 +1098,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                     </View>
 
                     <View style={tw`mt-2`}>
-                      <Text style={tw`text-[10px] text-slate-500`}>
-                        Teacher behaviour note
-                      </Text>
+                      <Text style={tw`text-[10px] text-slate-500`}>Teacher behaviour note</Text>
                       <TextInput
                         multiline
                         style={tw`mt-0.5 min-h-[40px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-[10px] text-slate-900 dark:text-slate-100`}
@@ -1239,12 +1118,11 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                     >
                       <View style={tw`flex-1`}>
                         <Text style={tw`text-[9px] text-slate-400 dark:text-slate-400`}>
-                          Attendance % is calculated automatically from lessons attended vs
-                          held. Use “Save attendance” to store it on the learner’s report
-                          card and PDF.
+                          Attendance % is calculated automatically from lessons attended vs held.
+                          Use “Save attendance” to store it on the learner’s report card and PDF.
                         </Text>
                         <TextInput
-                           style={tw`mt-1 w-full sm:w-[260px] h-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-[10px] text-slate-900 dark:text-slate-100`}
+                          style={tw`mt-1 w-full sm:w-[260px] h-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-[10px] text-slate-900 dark:text-slate-100`}
                           placeholderTextColor="#64748b"
                           value={teacherAiInstructions}
                           onChangeText={setTeacherAiInstructions}
@@ -1254,9 +1132,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                       <View style={tw`flex-row flex-wrap gap-1 justify-end`}>
                         <TouchableOpacity
                           style={tw`h-7 px-2 rounded-lg bg-slate-200 dark:bg-slate-800 items-center justify-center`}
-                          onPress={() =>
-                            onRegenerateTeacherComment?.(teacherAiInstructions)
-                          }
+                          onPress={() => onRegenerateTeacherComment?.(teacherAiInstructions)}
                           disabled={!selectedStudentId}
                         >
                           <Text
@@ -1297,20 +1173,15 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
 
                   {/* Remarks */}
                   <View style={cardShell}>
-                    <View
-                      style={tw`flex-col sm:flex-row sm:items-center sm:justify-between gap-2`}
-                    >
+                    <View style={tw`flex-col sm:flex-row sm:items-center sm:justify-between gap-2`}>
                       <View style={tw`flex-1`}>
                         <Text
                           style={tw`text-[11px] font-semibold text-slate-900 dark:text-slate-50`}
                         >
                           Remarks
                         </Text>
-                        <Text
-                          style={tw`text-[10px] text-sky-700 dark:text-slate-300`}
-                        >
-                          Auto-generated summary that the class teacher or principal can
-                          edit.
+                        <Text style={tw`text-[10px] text-sky-700 dark:text-slate-300`}>
+                          Auto-generated summary that the class teacher or principal can edit.
                         </Text>
                         <TextInput
                           style={tw`mt-1 w-full sm:w-[260px] h-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-[10px] text-slate-900 dark:text-slate-100`}

@@ -54,11 +54,15 @@ export default function StudentLearningProgressNative() {
               {/* If your API includes course title, render it here; fallback shows the id */}
               Course #{String(item.courseId)}
             </Text>
-            <Text style={tw`text-[#49739c] dark:text-darkTextSecondary text-sm`}>{pct}% completed</Text>
+            <Text style={tw`text-[#49739c] dark:text-darkTextSecondary text-sm`}>
+              {pct}% completed
+            </Text>
           </View>
 
           <View style={tw`sm:ml-auto w-full sm:w-auto sm:flex-row sm:items-center sm:gap-3`}>
-            <View style={tw`w-full sm:w-[180px] overflow-hidden rounded-sm bg-[#cedbe8] dark:bg-[#0f1821`}>
+            <View
+              style={tw`w-full sm:w-[180px] overflow-hidden rounded-sm bg-[#cedbe8] dark:bg-[#0f1821`}
+            >
               <View style={[tw`h-1.5 rounded-full bg-[#3d99f5]`, { width: `${pct}%` }]} />
             </View>
 
@@ -95,7 +99,9 @@ export default function StudentLearningProgressNative() {
     }
 
     if (!loading && !error && enrollments.length === 0) {
-      return <Text style={tw`text-sm text-[#49739c] py-2`}>You haven’t enrolled in any course yet.</Text>;
+      return (
+        <Text style={tw`text-sm text-[#49739c] py-2`}>You haven’t enrolled in any course yet.</Text>
+      );
     }
 
     return (

@@ -15,23 +15,42 @@ function genUUID(): string {
           const hex: string[] = [];
           for (let i = 0; i < buf.length; i++) hex.push((buf[i] + 0x100).toString(16).slice(1));
           return (
-            hex[0] + hex[1] + hex[2] + hex[3] + '-' +
-            hex[4] + hex[5] + '-' +
-            hex[6] + hex[7] + '-' +
-            hex[8] + hex[9] + '-' +
-            hex[10] + hex[11] + hex[12] + hex[13] + hex[14] + hex[15]
+            hex[0] +
+            hex[1] +
+            hex[2] +
+            hex[3] +
+            '-' +
+            hex[4] +
+            hex[5] +
+            '-' +
+            hex[6] +
+            hex[7] +
+            '-' +
+            hex[8] +
+            hex[9] +
+            '-' +
+            hex[10] +
+            hex[11] +
+            hex[12] +
+            hex[13] +
+            hex[14] +
+            hex[15]
           );
         })()
       : null;
     if (rnd) return rnd;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return `rnd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
 function getLocalStorage(): Storage | null {
   try {
     if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
-  } catch { /* private mode / SSR */ }
+  } catch {
+    /* private mode / SSR */
+  }
   return null;
 }
 
@@ -53,7 +72,9 @@ export async function getStableDeviceId(forceRefresh = false): Promise<string> {
       ls.setItem(STORAGE_KEY, fresh);
       cachedId = fresh;
       return fresh;
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
 
   // Fallback: in-memory only
@@ -72,7 +93,9 @@ export function getStableDeviceIdSync(): string | null {
         cachedId = existing;
         return existing;
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   return null;
 }
@@ -82,6 +105,10 @@ export async function resetStableDeviceId(): Promise<void> {
   cachedId = null;
   const ls = getLocalStorage();
   if (ls) {
-    try { ls.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    try {
+      ls.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
   }
 }

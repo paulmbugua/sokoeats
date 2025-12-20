@@ -14,22 +14,14 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
-import {
-  RouteProp,
-  useRoute,
-  useNavigation,
-  NavigationProp,
-} from '@react-navigation/native';
+import { RouteProp, useRoute, useNavigation, NavigationProp } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEvent } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import tw from '../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useClassVaultDetail } from '@mytutorapp/shared/hooks/useClassVault';
-import {
-  fetchVideoReviews,
-  submitVideoReview,
-} from '@mytutorapp/shared/api/classVaultApi';
+import { fetchVideoReviews, submitVideoReview } from '@mytutorapp/shared/api/classVaultApi';
 import type { MainStackParamList } from '../navigation/types';
 import type { VideoReview } from '@mytutorapp/shared/types';
 import { useThemePref } from '../theme/ThemeContext';
@@ -74,9 +66,7 @@ export default function ClassVaultDetailScreen() {
   useEffect(() => {
     if (didRequestUnlockRef.current) return;
     didRequestUnlockRef.current = true;
-    unlockContent().catch((err: { message?: string }) =>
-      setUnlockError(err?.message || ''),
-    );
+    unlockContent().catch((err: { message?: string }) => setUnlockError(err?.message || ''));
   }, [unlockContent, videoId]);
 
   // Reviews
@@ -125,11 +115,7 @@ export default function ClassVaultDetailScreen() {
   // rating summary
   const avgRating =
     reviews.length > 0
-      ? Number(
-          (
-            reviews.reduce((s, r) => s + Number(r.rating), 0) / reviews.length
-          ).toFixed(2),
-        )
+      ? Number((reviews.reduce((s, r) => s + Number(r.rating), 0) / reviews.length).toFixed(2))
       : 0;
 
   // ---------- expo-video player (hooks MUST be unconditional) ----------
@@ -157,11 +143,10 @@ export default function ClassVaultDetailScreen() {
   }, [videoUri, fullVideoUrl, player]);
 
   // 80% watched gate with 'timeUpdate'
-  const { currentTime = 0, duration = 0 } = useEvent(
-    player,
-    'timeUpdate',
-    { currentTime: 0, duration: 0 } as any,
-  ) as any;
+  const { currentTime = 0, duration = 0 } = useEvent(player, 'timeUpdate', {
+    currentTime: 0,
+    duration: 0,
+  } as any) as any;
 
   useEffect(() => {
     if (promptedRef.current || hasMyReview) return;
@@ -246,9 +231,7 @@ export default function ClassVaultDetailScreen() {
         keyboardDismissMode={Platform.select({ ios: 'on-drag', android: 'none' })}
       >
         {/* Title */}
-        <Text style={[tw`text-2xl font-extrabold text-center mb-4`, titleText]}>
-          {video.title}
-        </Text>
+        <Text style={[tw`text-2xl font-extrabold text-center mb-4`, titleText]}>{video.title}</Text>
 
         {/* Video / Preview */}
         {videoUri !== '' && (
@@ -300,7 +283,8 @@ export default function ClassVaultDetailScreen() {
         <View style={[tw`p-4 mb-4`, card]}>
           <View style={tw`flex-row items-center`}>
             <Text style={[tw`text-sm`, subtleText]}>
-              <Text style={[tw`font-semibold`, titleText]}>Rating:</Text> ★ {avgRating} ({reviews.length})
+              <Text style={[tw`font-semibold`, titleText]}>Rating:</Text> ★ {avgRating} (
+              {reviews.length})
             </Text>
 
             {loadingReviews && (
@@ -337,7 +321,7 @@ export default function ClassVaultDetailScreen() {
               'w-full py-3 mb-3 rounded-2xl border',
               pdfUri
                 ? 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
-                : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10',
+                : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10'
             )}
           >
             <Text style={[tw`text-center font-semibold`, titleText]}>
@@ -357,7 +341,7 @@ export default function ClassVaultDetailScreen() {
             'w-full py-3 rounded-2xl border',
             fullVideoUrl
               ? 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
-              : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10',
+              : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10'
           )}
         >
           <Text style={[tw`text-center font-semibold`, titleText]}>

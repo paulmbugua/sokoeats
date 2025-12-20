@@ -1,13 +1,7 @@
 /* eslint-disable prettier/prettier */
 // apps/mobile/src/screens/ManageProfileForm.native.tsx
 
-import React, {
-  useEffect,
-  useMemo,
-  useCallback,
-  useRef,
-  useState,
-} from 'react';
+import React, { useEffect, useMemo, useCallback, useRef, useState } from 'react';
 import {
   ScrollView,
   View,
@@ -50,8 +44,7 @@ const STATUS_OPTIONS = ['Online', 'Offline', 'Busy', 'Free', 'New'] as const;
 const EXPERIENCE_LEVELS = ['Beginner', 'Intermediate', 'Advanced', 'Expert'] as const;
 
 // event shim so we can reuse handleInputChange from the hook
-const makeEvent = (value: string): ChangeEvent<any> =>
-  ({ target: { value } } as ChangeEvent<any>);
+const makeEvent = (value: string): ChangeEvent<any> => ({ target: { value } }) as ChangeEvent<any>;
 
 const hasUri = (obj: unknown): obj is { uri: string } =>
   typeof obj === 'object' &&
@@ -61,11 +54,7 @@ const hasUri = (obj: unknown): obj is { uri: string } =>
 
 const resolveAssetUri = (raw: string, backendUrl: string): string => {
   if (!raw) return '';
-  if (
-    raw.startsWith('http://') ||
-    raw.startsWith('https://') ||
-    raw.startsWith('data:')
-  ) {
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) {
     return raw;
   }
   return raw.startsWith('/') ? `${backendUrl}${raw}` : raw;
@@ -90,9 +79,7 @@ type SectionKey =
   | 'pricing'
   | 'payout';
 
-type ValidationResult =
-  | { ok: true }
-  | { ok: false; msg: string; focus: SectionKey };
+type ValidationResult = { ok: true } | { ok: false; msg: string; focus: SectionKey };
 
 export default function ManageProfileFormNative() {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
@@ -119,14 +106,11 @@ export default function ManageProfileFormNative() {
           navigation.navigate('Home');
           break;
         default:
-          console.warn(
-            '[ManageProfileFormNative] Unknown path from useManageProfileForm:',
-            path,
-          );
+          console.warn('[ManageProfileFormNative] Unknown path from useManageProfileForm:', path);
           navigation.navigate('Home');
       }
     },
-    [navigation],
+    [navigation]
   );
 
   const insets = useSafeAreaInsets();
@@ -203,9 +187,7 @@ export default function ManageProfileFormNative() {
      Native image upload (Option B – pre-upload)
   ─────────────────────────────────────────────── */
 
-  const uploadProfileImageNative = async (
-    asset: ImagePicker.ImagePickerAsset,
-  ): Promise<string> => {
+  const uploadProfileImageNative = async (asset: ImagePicker.ImagePickerAsset): Promise<string> => {
     if (!backendUrl || !token) {
       throw new Error('Missing backend configuration.');
     }
@@ -214,9 +196,7 @@ export default function ManageProfileFormNative() {
       uri: asset.uri,
       name:
         (asset as any).fileName ||
-        `profile-${Date.now()}.${
-          (asset.mimeType || 'image/jpeg').split('/')[1] || 'jpg'
-        }`,
+        `profile-${Date.now()}.${(asset.mimeType || 'image/jpeg').split('/')[1] || 'jpg'}`,
       type: asset.mimeType || 'image/jpeg',
     };
 
@@ -253,10 +233,7 @@ export default function ManageProfileFormNative() {
       });
     } catch (err: any) {
       console.error('[ManageProfileFormNative] image upload failed', err);
-      Alert.alert(
-        'Upload failed',
-        err?.message || 'Could not upload image. Please try again.',
-      );
+      Alert.alert('Upload failed', err?.message || 'Could not upload image. Please try again.');
     }
   };
 
@@ -279,8 +256,7 @@ export default function ManageProfileFormNative() {
   // computed asset URIs
   const gallery0 = updatedData.gallery?.[0];
   const imageUri = useMemo(() => {
-    if (typeof gallery0 === 'string')
-      return resolveAssetUri(gallery0, backendUrl || '');
+    if (typeof gallery0 === 'string') return resolveAssetUri(gallery0, backendUrl || '');
     if (hasUri(gallery0)) return gallery0.uri;
     return '';
   }, [gallery0, backendUrl]);
@@ -304,10 +280,8 @@ export default function ManageProfileFormNative() {
   const labelText = tw`text-sm font-semibold text-[#0d141c] dark:text-white mb-2`;
   const helperText = tw`text-xs text-slate-600 dark:text-slate-400 mb-2`;
 
-  const placeholderColor =
-    resolvedScheme === 'dark' ? '#64748B' : '#94A3B8';
-  const selectedColor =
-    resolvedScheme === 'dark' ? '#E5E7EB' : '#0F172A';
+  const placeholderColor = resolvedScheme === 'dark' ? '#64748B' : '#94A3B8';
+  const selectedColor = resolvedScheme === 'dark' ? '#E5E7EB' : '#0F172A';
 
   /* ──────────────────────────────────────────────
      Select options (for SelectField)
@@ -319,7 +293,7 @@ export default function ManageProfileFormNative() {
         value: c.code,
         label: c.name,
       })),
-    [],
+    []
   );
 
   const categoryOptions: SelectOption[] = useMemo(
@@ -328,7 +302,7 @@ export default function ManageProfileFormNative() {
         value: cat,
         label: cat,
       })),
-    [],
+    []
   );
 
   const statusOptions: SelectOption[] = useMemo(
@@ -337,7 +311,7 @@ export default function ManageProfileFormNative() {
         value: opt,
         label: opt === 'Free' ? 'Free Session' : opt,
       })),
-    [],
+    []
   );
 
   const experienceOptions: SelectOption[] = useMemo(
@@ -346,7 +320,7 @@ export default function ManageProfileFormNative() {
         value: opt,
         label: opt,
       })),
-    [],
+    []
   );
 
   const payoutMethodOptions: SelectOption[] = useMemo(
@@ -354,7 +328,7 @@ export default function ManageProfileFormNative() {
       { value: 'wise', label: 'Wise (USD)' },
       { value: 'mpesa', label: 'M-Pesa (KES)' },
     ],
-    [],
+    []
   );
 
   /* ──────────────────────────────────────────────
@@ -405,11 +379,7 @@ export default function ManageProfileFormNative() {
       for (const key of Object.keys(TOKEN_RANGES) as TokenField[]) {
         const val = updatedData.pricing[key];
         const { min, max } = TOKEN_RANGES[key];
-        if (
-          !Number.isFinite(val) ||
-          (val as number) < min ||
-          (val as number) > max
-        ) {
+        if (!Number.isFinite(val) || (val as number) < min || (val as number) > max) {
           return {
             ok: false,
             msg: `Set a valid rate for ${key} (${min}–${max}).`,
@@ -466,10 +436,7 @@ export default function ManageProfileFormNative() {
   }, [videoUri, previewPlayer]);
 
   return (
-    <SafeAreaView
-      style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
-      edges={['top', 'left', 'right']}
-    >
+    <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'left', 'right']}>
       <ScrollView
         ref={scrollRef}
         style={tw`flex-1`}
@@ -481,9 +448,7 @@ export default function ManageProfileFormNative() {
           <Text style={tw`text-xs text-slate-600 dark:text-slate-400`}>
             Role: {role || 'Loading…'}
           </Text>
-          <Text
-            style={tw`mt-1 text-xl font-bold text-[#0d141c] dark:text-white`}
-          >
+          <Text style={tw`mt-1 text-xl font-bold text-[#0d141c] dark:text-white`}>
             Manage your profile
           </Text>
           <Text style={helperText}>
@@ -533,9 +498,7 @@ export default function ManageProfileFormNative() {
           <TextInput
             placeholder="e.g., Grade 7, Form 2, Year 10, Freshman …"
             value={updatedData.schoolGrade || ''}
-            onChangeText={(t) =>
-              handleInputChange('schoolGrade', makeEvent(t))
-            }
+            onChangeText={(t) => handleInputChange('schoolGrade', makeEvent(t))}
             placeholderTextColor={placeholderColor}
             style={inputBase}
           />
@@ -546,14 +509,10 @@ export default function ManageProfileFormNative() {
           style={[sectionBase, focusSection === 'languages' && sectionError]}
           onLayout={registerSection('languages')}
         >
-          <Text
-            style={tw`text-lg mb-1 font-semibold text-[#0d141c] dark:text-white`}
-          >
+          <Text style={tw`text-lg mb-1 font-semibold text-[#0d141c] dark:text-white`}>
             Languages
           </Text>
-          <Text style={helperText}>
-            Choose at least one language you speak or teach in.
-          </Text>
+          <Text style={helperText}>Choose at least one language you speak or teach in.</Text>
           <View style={tw`flex-row flex-wrap mt-1`}>
             {Object.keys(updatedData.languages).map((lang) => {
               const on = !!updatedData.languages[lang];
@@ -564,13 +523,7 @@ export default function ManageProfileFormNative() {
                   style={on ? pillOn : pillOff}
                   activeOpacity={0.9}
                 >
-                  <Text
-                    style={
-                      on
-                        ? tw`text-white`
-                        : tw`text-[#0d141c] dark:text-slate-200`
-                    }
-                  >
+                  <Text style={on ? tw`text-white` : tw`text-[#0d141c] dark:text-slate-200`}>
                     {lang}
                   </Text>
                 </TouchableOpacity>
@@ -588,14 +541,10 @@ export default function ManageProfileFormNative() {
               onLayout={registerSection('category')}
             >
               <Text style={labelText}>Category</Text>
-              <Text style={helperText}>
-                This helps learners quickly understand what you teach.
-              </Text>
+              <Text style={helperText}>This helps learners quickly understand what you teach.</Text>
               <SelectField
                 value={updatedData.category || ''}
-                onChange={(val) =>
-                  handleInputChange('category', makeEvent(val))
-                }
+                onChange={(val) => handleInputChange('category', makeEvent(val))}
                 options={categoryOptions}
                 placeholder="Select a category…"
                 modalTitle="Select a category"
@@ -609,9 +558,7 @@ export default function ManageProfileFormNative() {
               <Text style={labelText}>Status</Text>
               <SelectField
                 value={updatedData.status || ''}
-                onChange={(val) =>
-                  handleInputChange('status', makeEvent(val))
-                }
+                onChange={(val) => handleInputChange('status', makeEvent(val))}
                 options={statusOptions}
                 placeholder="Select your status…"
                 modalTitle="Select your status"
@@ -621,15 +568,8 @@ export default function ManageProfileFormNative() {
             </View>
 
             {/* Notifications */}
-            <View
-              style={[
-                sectionBase,
-                tw`flex-row items-center justify-between`,
-              ]}
-            >
-              <Text style={tw`text-[#0d141c] dark:text-white`}>
-                Notifications
-              </Text>
+            <View style={[sectionBase, tw`flex-row items-center justify-between`]}>
+              <Text style={tw`text-[#0d141c] dark:text-white`}>Notifications</Text>
               <Switch
                 value={!!updatedData.notifications}
                 onValueChange={handleToggleNotifications}
@@ -662,14 +602,11 @@ export default function ManageProfileFormNative() {
               style={[sectionBase, focusSection === 'pricing' && sectionError]}
               onLayout={registerSection('pricing')}
             >
-              <Text
-                style={tw`text-lg font-semibold text-[#0d141c] dark:text-white mb-1`}
-              >
+              <Text style={tw`text-lg font-semibold text-[#0d141c] dark:text-white mb-1`}>
                 Rates (1 token = $1 USD)
               </Text>
               <Text style={helperText}>
-                Set your rates within the allowed ranges so learners can book
-                confidently.
+                Set your rates within the allowed ranges so learners can book confidently.
               </Text>
               <View style={tw`flex-row flex-wrap -mx-2 mt-1`}>
                 {(Object.keys(TOKEN_RANGES) as TokenField[]).map((field) => {
@@ -677,9 +614,7 @@ export default function ManageProfileFormNative() {
                   const label = field.replace(/([A-Z])/g, ' $1');
                   return (
                     <View key={field} style={tw`w-1/2 px-2 mb-3`}>
-                      <Text
-                        style={tw`text-xs text-slate-600 dark:text-slate-400 mb-1`}
-                      >
+                      <Text style={tw`text-xs text-slate-600 dark:text-slate-400 mb-1`}>
                         {label} (Min {min}, Max {max})
                       </Text>
                       <TextInput
@@ -697,21 +632,12 @@ export default function ManageProfileFormNative() {
 
             {/* Expertise */}
             <View style={sectionBase}>
-              <Text
-                style={tw`text-lg text-[#0d141c] dark:text-white mb-1 font-semibold`}
-              >
+              <Text style={tw`text-lg text-[#0d141c] dark:text-white mb-1 font-semibold`}>
                 Expertise
               </Text>
-              <Text style={helperText}>
-                What do you enjoy helping learners with most?
-              </Text>
+              <Text style={helperText}>What do you enjoy helping learners with most?</Text>
               <View style={tw`flex-row flex-wrap mt-1`}>
-                {[
-                  'Exam Prep',
-                  'Skill Building',
-                  'Homework Help',
-                  'Career Guidance',
-                ].map((opt) => {
+                {['Exam Prep', 'Skill Building', 'Homework Help', 'Career Guidance'].map((opt) => {
                   const on = updatedData.expertise.includes(opt);
                   return (
                     <TouchableOpacity
@@ -720,13 +646,7 @@ export default function ManageProfileFormNative() {
                       style={on ? pillOn : pillOff}
                       activeOpacity={0.9}
                     >
-                      <Text
-                        style={
-                          on
-                            ? tw`text-white`
-                            : tw`text-[#0d141c] dark:text-slate-200`
-                        }
-                      >
+                      <Text style={on ? tw`text-white` : tw`text-[#0d141c] dark:text-slate-200`}>
                         {opt}
                       </Text>
                     </TouchableOpacity>
@@ -740,9 +660,7 @@ export default function ManageProfileFormNative() {
               <Text style={labelText}>Experience Level</Text>
               <SelectField
                 value={updatedData.experienceLevel || ''}
-                onChange={(val) =>
-                  handleInputChange('experienceLevel', val as any)
-                }
+                onChange={(val) => handleInputChange('experienceLevel', val as any)}
                 options={experienceOptions}
                 placeholder="Select experience level…"
                 modalTitle="Select experience level"
@@ -753,14 +671,10 @@ export default function ManageProfileFormNative() {
 
             {/* Teaching Styles */}
             <View style={sectionBase}>
-              <Text
-                style={tw`text-lg text-[#0d141c] dark:text-white mb-1 font-semibold`}
-              >
+              <Text style={tw`text-lg text-[#0d141c] dark:text-white mb-1 font-semibold`}>
                 Teaching Styles
               </Text>
-              <Text style={helperText}>
-                How do you prefer to run your sessions?
-              </Text>
+              <Text style={helperText}>How do you prefer to run your sessions?</Text>
               <View style={tw`flex-row flex-wrap mt-1`}>
                 {['One-on-One', 'Group', 'Workshop', 'Lecture'].map((s) => {
                   const on = updatedData.teachingStyle.includes(s);
@@ -771,13 +685,7 @@ export default function ManageProfileFormNative() {
                       style={on ? pillOn : pillOff}
                       activeOpacity={0.9}
                     >
-                      <Text
-                        style={
-                          on
-                            ? tw`text-white`
-                            : tw`text-[#0d141c] dark:text-slate-200`
-                        }
-                      >
+                      <Text style={on ? tw`text-white` : tw`text-[#0d141c] dark:text-slate-200`}>
                         {s}
                       </Text>
                     </TouchableOpacity>
@@ -791,20 +699,12 @@ export default function ManageProfileFormNative() {
               style={[sectionBase, focusSection === 'payout' && sectionError]}
               onLayout={registerSection('payout')}
             >
-              <Text
-                style={tw`text-lg text-[#0d141c] dark:text-white mb-1 font-semibold`}
-              >
+              <Text style={tw`text-lg text-[#0d141c] dark:text-white mb-1 font-semibold`}>
                 Payout Preferences
               </Text>
-              <Text style={helperText}>
-                Choose how you’d like to receive your earnings.
-              </Text>
+              <Text style={helperText}>Choose how you’d like to receive your earnings.</Text>
 
-              <Text
-                style={tw`text-sm text-[#0d141c] dark:text-white mb-2`}
-              >
-                Payout Method
-              </Text>
+              <Text style={tw`text-sm text-[#0d141c] dark:text-white mb-2`}>Payout Method</Text>
               <SelectField
                 value={updatedData.payoutMethod ?? 'wise'}
                 onChange={(method) =>
@@ -821,20 +721,14 @@ export default function ManageProfileFormNative() {
                 selectedTextColor={selectedColor}
               />
 
-              <Text
-                style={tw`text-xs text-slate-600 dark:text-slate-400 mb-1`}
-              >
+              <Text style={tw`text-xs text-slate-600 dark:text-slate-400 mb-1`}>
                 Payout Currency
               </Text>
               <View
                 style={tw`flex-row items-center justify-between bg-slate-100 dark:bg-slate-900/60 rounded-xl px-3 py-3 mb-3 border border-slate-200 dark:border-white/10`}
               >
-                <Text style={tw`text-[#0d141c] dark:text-white`}>
-                  {payoutCurrency}
-                </Text>
-                <Text
-                  style={tw`text-slate-600 dark:text-slate-400 text-xs`}
-                >
+                <Text style={tw`text-[#0d141c] dark:text-white`}>{payoutCurrency}</Text>
+                <Text style={tw`text-slate-600 dark:text-slate-400 text-xs`}>
                   Wise → USD • M-Pesa → KES
                 </Text>
               </View>
@@ -843,9 +737,7 @@ export default function ManageProfileFormNative() {
                 <TextInput
                   placeholder="Wise account email"
                   value={updatedData.wiseEmail || ''}
-                  onChangeText={(t) =>
-                    setUpdatedData((prev) => ({ ...prev, wiseEmail: t }))
-                  }
+                  onChangeText={(t) => setUpdatedData((prev) => ({ ...prev, wiseEmail: t }))}
                   placeholderTextColor={placeholderColor}
                   style={inputBase}
                   keyboardType="email-address"
@@ -873,25 +765,15 @@ export default function ManageProfileFormNative() {
             {/* Profile Image */}
             <View style={sectionBase}>
               <Text style={labelText}>Profile image</Text>
-              <Text style={helperText}>
-                A clear, friendly photo builds trust with learners.
-              </Text>
+              <Text style={helperText}>A clear, friendly photo builds trust with learners.</Text>
               <View
                 style={tw`w-40 h-40 rounded-2xl overflow-hidden bg-slate-200 dark:bg-white/5 border border-slate-200 dark:border-white/10`}
               >
                 {imageUri ? (
-                  <Image
-                    source={{ uri: imageUri }}
-                    style={tw`w-full h-full`}
-                    resizeMode="cover"
-                  />
+                  <Image source={{ uri: imageUri }} style={tw`w-full h-full`} resizeMode="cover" />
                 ) : (
                   <View style={tw`flex-1 items-center justify-center`}>
-                    <Text
-                      style={tw`text-slate-500 dark:text-slate-400`}
-                    >
-                      No image
-                    </Text>
+                    <Text style={tw`text-slate-500 dark:text-slate-400`}>No image</Text>
                   </View>
                 )}
               </View>
@@ -910,11 +792,7 @@ export default function ManageProfileFormNative() {
                       style={tw`bg-slate-200 dark:bg-slate-800 px-3 py-2 rounded-xl`}
                       activeOpacity={0.9}
                     >
-                      <Text
-                        style={tw`text-[#0d141c] dark:text-white`}
-                      >
-                        Delete
-                      </Text>
+                      <Text style={tw`text-[#0d141c] dark:text-white`}>Delete</Text>
                     </TouchableOpacity>
                   </>
                 ) : (
@@ -933,8 +811,7 @@ export default function ManageProfileFormNative() {
             <View style={sectionBase}>
               <Text style={labelText}>Intro video (optional)</Text>
               <Text style={helperText}>
-                A short intro video can greatly improve your chances of being
-                booked.
+                A short intro video can greatly improve your chances of being booked.
               </Text>
               <View style={tw`rounded-2xl overflow-hidden bg-black`}>
                 {videoUri ? (
@@ -950,11 +827,7 @@ export default function ManageProfileFormNative() {
                   <View
                     style={tw`w-full h-40 items-center justify-center bg-slate-200 dark:bg-white/5`}
                   >
-                    <Text
-                      style={tw`text-slate-600 dark:text-slate-300`}
-                    >
-                      No video uploaded
-                    </Text>
+                    <Text style={tw`text-slate-600 dark:text-slate-300`}>No video uploaded</Text>
                   </View>
                 )}
               </View>
@@ -973,11 +846,7 @@ export default function ManageProfileFormNative() {
                       style={tw`bg-slate-200 dark:bg-slate-800 px-3 py-2 rounded-xl`}
                       activeOpacity={0.9}
                     >
-                      <Text
-                        style={tw`text-[#0d141c] dark:text-white`}
-                      >
-                        Delete
-                      </Text>
+                      <Text style={tw`text-[#0d141c] dark:text-white`}>Delete</Text>
                     </TouchableOpacity>
                   </>
                 ) : (
@@ -1013,36 +882,26 @@ export default function ManageProfileFormNative() {
                       key={p._id}
                       style={tw`flex-row items-center justify-between p-2 border-b border-slate-200 dark:border-white/10 last:border-b-0`}
                     >
-                      <Text
-                        style={tw`text-[#0d141c] dark:text-white`}
-                      >
-                        {p.name}
-                      </Text>
+                      <Text style={tw`text-[#0d141c] dark:text-white`}>{p.name}</Text>
                       <TouchableOpacity
                         onPress={() => handleAddRecommendation(p._id)}
                         style={tw`bg-pink-600 px-3 py-1 rounded-xl`}
                         activeOpacity={0.9}
                       >
-                        <Text
-                          style={tw`text-white text-sm`}
-                        >
-                          Add
-                        </Text>
+                        <Text style={tw`text-white text-sm`}>Add</Text>
                       </TouchableOpacity>
                     </View>
                   ))}
                 </View>
               )}
 
-              <Text
-                style={tw`text-sm font-semibold text-[#0d141c] dark:text-white mt-3 mb-2`}
-              >
+              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white mt-3 mb-2`}>
                 Selected
               </Text>
               {updatedData.recommended.length > 0 ? (
                 updatedData.recommended.map((id) => {
                   const prof = availableProfiles.find(
-                    (x: { _id: string; name?: string }) => x._id === id,
+                    (x: { _id: string; name?: string }) => x._id === id
                   );
                   if (!prof) return null;
                   return (
@@ -1050,29 +909,15 @@ export default function ManageProfileFormNative() {
                       key={id}
                       style={tw`flex-row items-center justify-between bg-slate-100 dark:bg-slate-900/60 p-3 rounded-xl mb-2 border border-slate-200 dark:border-white/10`}
                     >
-                      <Text
-                        style={tw`text-[#0d141c] dark:text-white flex-1`}
-                      >
-                        {prof.name}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => handleRemoveRecommendation(id)}
-                      >
-                        <Text
-                          style={tw`text-red-500 text-lg`}
-                        >
-                          ✕
-                        </Text>
+                      <Text style={tw`text-[#0d141c] dark:text-white flex-1`}>{prof.name}</Text>
+                      <TouchableOpacity onPress={() => handleRemoveRecommendation(id)}>
+                        <Text style={tw`text-red-500 text-lg`}>✕</Text>
                       </TouchableOpacity>
                     </View>
                   );
                 })
               ) : (
-                <Text
-                  style={tw`text-slate-500 dark:text-slate-400`}
-                >
-                  No recommendations.
-                </Text>
+                <Text style={tw`text-slate-500 dark:text-slate-400`}>No recommendations.</Text>
               )}
             </View>
           </>

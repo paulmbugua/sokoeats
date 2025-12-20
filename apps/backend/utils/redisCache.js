@@ -1,6 +1,9 @@
 // apps/backend/utils/redisCache.js
 import crypto from 'crypto';
-import { createRedis, ensureRedisConnected } from '../cronJobs/redisConnection.js';
+import {
+  createRedis,
+  ensureRedisConnected,
+} from '../cronJobs/redisConnection.js';
 
 export const redis = createRedis();
 await ensureRedisConnected(redis).catch(() => {
@@ -37,10 +40,17 @@ export async function cacheSetJSON(key, value, ttlSec) {
 // Safe pattern delete using SCAN (never use KEYS in prod)
 export async function cacheDeleteByPattern(pattern) {
   if (!redis) return 0;
-  let cursor = '0', total = 0;
+  let cursor = '0',
+    total = 0;
   try {
     do {
-      const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 200);
+      const [next, keys] = await redis.scan(
+        cursor,
+        'MATCH',
+        pattern,
+        'COUNT',
+        200,
+      );
       cursor = next;
       if (keys.length) {
         total += keys.length;

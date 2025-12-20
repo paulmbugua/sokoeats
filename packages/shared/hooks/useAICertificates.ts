@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AICertificateSKU, AICertificateIssuance, Certificate } from '@mytutorapp/shared/types';
-import { listAICertificates, issueAICertificate, generateCertificatePdf } from '@mytutorapp/shared/api';
+import type {
+  AICertificateSKU,
+  AICertificateIssuance,
+  Certificate,
+} from '@mytutorapp/shared/types';
+import {
+  listAICertificates,
+  issueAICertificate,
+  generateCertificatePdf,
+} from '@mytutorapp/shared/api';
 
 interface UseAICertsOptions {
   backendUrl: string;
@@ -72,37 +80,34 @@ export function useAICertificates({ backendUrl, token, courseId }: UseAICertsOpt
     [backendUrl, token, courseId, hasToken]
   );
 
-  const generate = useCallback(
-    async (): Promise<Certificate & { download_url?: string }> => {
-      if (!courseId) {
-        const err = new Error('courseId is required to generate');
-        setError(err.message);
-        throw err;
-      }
-      if (!hasToken) {
-        const err = new Error('Please sign in to generate your certificate.');
-        setError(err.message);
-        throw err;
-      }
+  const generate = useCallback(async (): Promise<Certificate & { download_url?: string }> => {
+    if (!courseId) {
+      const err = new Error('courseId is required to generate');
+      setError(err.message);
+      throw err;
+    }
+    if (!hasToken) {
+      const err = new Error('Please sign in to generate your certificate.');
+      setError(err.message);
+      throw err;
+    }
 
-      setLoading(true);
-      setError(null);
-      setMessage(null);
+    setLoading(true);
+    setError(null);
+    setMessage(null);
 
-      try {
-        const doc = await generateCertificatePdf(backendUrl, token as string, { courseId });
-        setMessage('Certificate generated ✔');
-        return doc;
-      } catch (e: any) {
-        const msg = e?.response?.data?.error || e?.message || 'Failed to generate certificate';
-        setError(msg);
-        throw e;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [backendUrl, token, courseId, hasToken]
-  );
+    try {
+      const doc = await generateCertificatePdf(backendUrl, token as string, { courseId });
+      setMessage('Certificate generated ✔');
+      return doc;
+    } catch (e: any) {
+      const msg = e?.response?.data?.error || e?.message || 'Failed to generate certificate';
+      setError(msg);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, [backendUrl, token, courseId, hasToken]);
 
   // Auto-refresh whenever backendUrl / token changes
   useEffect(() => {

@@ -11,12 +11,15 @@ function toStringSafe(v) {
  *  If string, split by commas/newlines/spaces. Returns a clean array. */
 function normalizeUrlList(input) {
   if (Array.isArray(input)) {
-    return input.map(toStringSafe).map(s => s.trim()).filter(Boolean);
+    return input
+      .map(toStringSafe)
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
   const asText = toStringSafe(input);
   return asText
     .split(/[,\n\r\t ]+/g)
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 }
 
@@ -99,37 +102,41 @@ export async function ingestYouTube(req, res) {
     }
 
     // Normalize incoming URLs list; supports urls / urlsText / url
-    const urls = normalizeUrlList(
-      body.urls ?? body.urlsText ?? body.url ?? ''
-    );
+    const urls = normalizeUrlList(body.urls ?? body.urlsText ?? body.url ?? '');
     if (!urls.length) {
-      return res.status(400).json({ error: 'Provide at least one YouTube URL or ID in urls' });
+      return res
+        .status(400)
+        .json({ error: 'Provide at least one YouTube URL or ID in urls' });
     }
 
     // Collection slug seed
-    const collSlug = slugify(title || 'youtube-collection', { lower: true, strict: true })
-      .slice(0, 60);
+    const collSlug = slugify(title || 'youtube-collection', {
+      lower: true,
+      strict: true,
+    }).slice(0, 60);
 
     // Build item rows
     const items = buildYouTubeItems(urls, collSlug, subject);
     if (!items.length) {
-      return res.status(400).json({ error: 'No valid YouTube video IDs found.' });
+      return res
+        .status(400)
+        .json({ error: 'No valid YouTube video IDs found.' });
     }
 
     await client.query('BEGIN');
 
     // Ensure unique indexes for idempotent upserts/links
     await client.query(
-      `CREATE UNIQUE INDEX IF NOT EXISTS ux_tpc_provider_slug ON third_party_catalog(provider, slug)`
+      `CREATE UNIQUE INDEX IF NOT EXISTS ux_tpc_provider_slug ON third_party_catalog(provider, slug)`,
     );
     await client.query(
-      `CREATE UNIQUE INDEX IF NOT EXISTS ux_cci_collection_slug ON catalog_collection_items(collection_id, catalog_slug)`
+      `CREATE UNIQUE INDEX IF NOT EXISTS ux_cci_collection_slug ON catalog_collection_items(collection_id, catalog_slug)`,
     );
 
     // 1) Upsert collection by case-insensitive title
     const existing = await client.query(
       `SELECT id FROM catalog_collection WHERE LOWER(title)=LOWER($1) LIMIT 1`,
-      [title]
+      [title],
     );
     let collectionId;
     if (existing.rowCount) {
@@ -141,14 +148,14 @@ export async function ingestYouTube(req, res) {
                thumbnail_url = COALESCE($4, thumbnail_url),
                updated_at    = NOW()
          WHERE id = $1`,
-        [collectionId, description, subject, cover]
+        [collectionId, description, subject, cover],
       );
     } else {
       const ins = await client.query(
         `INSERT INTO catalog_collection (id, title, description, subject, thumbnail_url, created_at)
          VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
          RETURNING id`,
-        [title, description, subject, cover]
+        [title, description, subject, cover],
       );
       collectionId = ins.rows[0].id;
     }
@@ -176,14 +183,14 @@ export async function ingestYouTube(req, res) {
           v.thumbnail_url,
           v.source_url,
           v.embed_url,
-        ]
+        ],
       );
 
       await client.query(
         `INSERT INTO catalog_collection_items (collection_id, catalog_slug)
          VALUES ($1, $2)
          ON CONFLICT (collection_id, catalog_slug) DO NOTHING`,
-        [collectionId, v.slug]
+        [collectionId, v.slug],
       );
     }
 
@@ -195,7 +202,9 @@ export async function ingestYouTube(req, res) {
       items: items.length,
     });
   } catch (e) {
-    try { await pool.query('ROLLBACK'); } catch {}
+    try {
+      await pool.query('ROLLBACK');
+    } catch {}
     console.error('[oer][ingest] youtube', e);
     return res.status(500).json({ error: 'failed to ingest youtube videos' });
   } finally {
@@ -240,13 +249,15 @@ export async function listYouTube(req, res) {
       )
       ORDER BY cc.created_at DESC
       LIMIT 100
-      `
+      `,
     );
 
     return res.json({ ok: true, items: r.rows });
   } catch (e) {
     console.error('[oer][list] youtube', e);
-    return res.status(500).json({ error: 'failed to list youtube collections' });
+    return res
+      .status(500)
+      .json({ error: 'failed to list youtube collections' });
   } finally {
     client.release();
   }
@@ -284,7 +295,7 @@ export async function deleteYouTube(req, res) {
         )
       LIMIT 1
       `,
-      [collectionId]
+      [collectionId],
     );
 
     if (!exists.rowCount) {
@@ -295,21 +306,24 @@ export async function deleteYouTube(req, res) {
     // Drop item links for this collection
     await client.query(
       `DELETE FROM catalog_collection_items WHERE collection_id = $1`,
-      [collectionId]
+      [collectionId],
     );
 
     // Delete the catalog_collection row itself
-    await client.query(
-      `DELETE FROM catalog_collection WHERE id = $1`,
-      [collectionId]
-    );
+    await client.query(`DELETE FROM catalog_collection WHERE id = $1`, [
+      collectionId,
+    ]);
 
     await client.query('COMMIT');
     return res.json({ ok: true });
   } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     console.error('[oer][delete] youtube', e);
-    return res.status(500).json({ error: 'failed to delete youtube collection' });
+    return res
+      .status(500)
+      .json({ error: 'failed to delete youtube collection' });
   } finally {
     client.release();
   }

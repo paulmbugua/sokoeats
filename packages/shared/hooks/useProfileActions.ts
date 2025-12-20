@@ -16,9 +16,9 @@ export type UseProfileActionsOptions = {
 
 const NOOP_NOTIFY: Required<Notifier> = {
   success: (m) => console.log('[success]', m),
-  error:   (m) => console.error('[error]', m),
-  info:    (m) => console.log('[info]', m),
-  warn:    (m) => console.warn('[warn]', m),
+  error: (m) => console.error('[error]', m),
+  info: (m) => console.log('[info]', m),
+  warn: (m) => console.warn('[warn]', m),
 };
 
 const useProfileActions = (options?: UseProfileActionsOptions) => {
@@ -32,14 +32,11 @@ const useProfileActions = (options?: UseProfileActionsOptions) => {
     }
     try {
       const res = await addToFavorites(backendUrl, token, recipientId);
-      const msg =
-        (res?.data as { message?: string } | undefined)?.message ||
-        'Added to favorites';
+      const msg = (res?.data as { message?: string } | undefined)?.message || 'Added to favorites';
       notify.success(msg);
     } catch (error) {
       const axiosError = error as AxiosError<{ message?: string }>;
-      const msg =
-        axiosError.response?.data?.message || 'Failed to add to favorites';
+      const msg = axiosError.response?.data?.message || 'Failed to add to favorites';
       console.error('Failed to add to favorites:', axiosError);
       notify.error(msg);
     }

@@ -34,8 +34,7 @@ const extractCertId = (doc: any): string | null => {
   if (typeof direct === 'string' && direct) return direct;
   const u = String(doc?.download_url || doc?.downloadUrl || doc?.url || '');
   const m =
-    u.match(/\/certificates\/([^/]+)\/(?:download|view|raw)?/i) ||
-    u.match(/[?&]certId=([^&]+)/i);
+    u.match(/\/certificates\/([^/]+)\/(?:download|view|raw)?/i) || u.match(/[?&]certId=([^&]+)/i);
   return m?.[1] ?? null;
 };
 
@@ -88,11 +87,11 @@ const CourseProgress: React.FC = () => {
   }, [courseId, fetchCourseById]);
 
   // Progress
-  const { progress = [], loading: progressLoading, update } = useCourseProgress(
-    backendUrl,
-    courseId!,
-    token
-  );
+  const {
+    progress = [],
+    loading: progressLoading,
+    update,
+  } = useCourseProgress(backendUrl, courseId!, token);
 
   const syllabus: SyllabusItem[] =
     (selectedCourse as CourseType | null | undefined)?.syllabus ?? [];
@@ -100,11 +99,10 @@ const CourseProgress: React.FC = () => {
   const isLoading = coursesLoading || progressLoading;
 
   // Reviews
-  const { hasMyReview, submit, posting } = useCourseReviews(
-    backendUrl,
-    courseId,
-    { myStudentId: myId, token: token ?? '' }
-  );
+  const { hasMyReview, submit, posting } = useCourseReviews(backendUrl, courseId, {
+    myStudentId: myId,
+    token: token ?? '',
+  });
 
   const [openReview, setOpenReview] = useState(false);
   const [rating, setRating] = useState(0);
@@ -132,7 +130,9 @@ const CourseProgress: React.FC = () => {
   }, [progress]);
 
   const counts = useMemo(() => {
-    let notStarted = 0, inProgress = 0, completed = 0;
+    let notStarted = 0,
+      inProgress = 0,
+      completed = 0;
     syllabus.forEach((s) => {
       const st = (progressByWeek.get(s.week) ?? 'Not Started') as Status;
       if (st === 'Completed') completed++;
@@ -145,9 +145,13 @@ const CourseProgress: React.FC = () => {
   }, [syllabus, progressByWeek]);
 
   const suggestedWeek = useMemo(() => {
-    const inProg = syllabus.find((w) => (progressByWeek.get(w.week) ?? 'Not Started') === 'In Progress');
+    const inProg = syllabus.find(
+      (w) => (progressByWeek.get(w.week) ?? 'Not Started') === 'In Progress'
+    );
     if (inProg) return inProg.week;
-    const notSt = syllabus.find((w) => (progressByWeek.get(w.week) ?? 'Not Started') === 'Not Started');
+    const notSt = syllabus.find(
+      (w) => (progressByWeek.get(w.week) ?? 'Not Started') === 'Not Started'
+    );
     if (notSt) return notSt.week;
     return syllabus.length ? syllabus[syllabus.length - 1].week : undefined;
   }, [syllabus, progressByWeek]);
@@ -170,33 +174,41 @@ const CourseProgress: React.FC = () => {
   // ---- Read progress (client) ----
   const { rows: readRows } = useReadProgress(courseId);
 
-  const readAllForWeek = useCallback((week?: number | null) => {
-    if (week == null) return true;
-    const item = syllabus.find(s => s.week === week);
-    const urls: string[] = [];
-    if (Array.isArray((item as any)?.notesUrls)) {
-      urls.push(...(((item as any).notesUrls as string[]) || []).filter(Boolean));
-    }
-    if (typeof (item as any)?.notesUrl === 'string' && (item as any).notesUrl) {
-      urls.push((item as any).notesUrl);
-    }
-    if (!urls.length) return true;
+  const readAllForWeek = useCallback(
+    (week?: number | null) => {
+      if (week == null) return true;
+      const item = syllabus.find((s) => s.week === week);
+      const urls: string[] = [];
+      if (Array.isArray((item as any)?.notesUrls)) {
+        urls.push(...(((item as any).notesUrls as string[]) || []).filter(Boolean));
+      }
+      if (typeof (item as any)?.notesUrl === 'string' && (item as any).notesUrl) {
+        urls.push((item as any).notesUrl);
+      }
+      if (!urls.length) return true;
 
-    const done = new Set(readRows.filter((r: any) => r.week === week && r.completed).map((r: any) => r.source_url));
-    return urls.every(u => done.has(u));
-  }, [syllabus, readRows]);
+      const done = new Set(
+        readRows.filter((r: any) => r.week === week && r.completed).map((r: any) => r.source_url)
+      );
+      return urls.every((u) => done.has(u));
+    },
+    [syllabus, readRows]
+  );
 
   // utilities to compute watched for a given week
-  const watchedAllForWeek = useCallback((week?: number | null) => {
-    if (!week && week !== 0) return true;
-    const item = syllabus.find(s => s.week === week);
-    const vids = getWeekVideos(item);
-    if (!vids.length) return true;
-    const done = new Set(
-      watchRows.filter(r => r.week === week && r.completed).map(r => r.video_id)
-    );
-    return vids.every(v => done.has(getYoutubeId(v.url)));
-  }, [syllabus, watchRows]);
+  const watchedAllForWeek = useCallback(
+    (week?: number | null) => {
+      if (!week && week !== 0) return true;
+      const item = syllabus.find((s) => s.week === week);
+      const vids = getWeekVideos(item);
+      if (!vids.length) return true;
+      const done = new Set(
+        watchRows.filter((r) => r.week === week && r.completed).map((r) => r.video_id)
+      );
+      return vids.every((v) => done.has(getYoutubeId(v.url)));
+    },
+    [syllabus, watchRows]
+  );
 
   // For currently active week
   const weekVideos = useMemo(() => getWeekVideos(activeItem), [activeItem]);
@@ -205,34 +217,45 @@ const CourseProgress: React.FC = () => {
   // ---------- NEW: Course-level watched-all + remaining count ----------
   const courseWatchedAll = useMemo(() => {
     const requiredIds = syllabus
-      .flatMap(s => getWeekVideos(s).map(v => getYoutubeId(v.url)))
+      .flatMap((s) => getWeekVideos(s).map((v) => getYoutubeId(v.url)))
       .filter(Boolean);
     if (requiredIds.length === 0) return true;
-    const done = new Set(watchRows.filter(r => r.completed).map(r => r.video_id));
-    return requiredIds.every(id => done.has(id));
+    const done = new Set(watchRows.filter((r) => r.completed).map((r) => r.video_id));
+    return requiredIds.every((id) => done.has(id));
   }, [syllabus, watchRows]);
 
   const remainingCount = useMemo(() => {
     const requiredIds = syllabus
-      .flatMap(s => getWeekVideos(s).map(v => getYoutubeId(v.url)))
+      .flatMap((s) => getWeekVideos(s).map((v) => getYoutubeId(v.url)))
       .filter(Boolean);
-    const done = new Set(watchRows.filter(r => r.completed).map(r => r.video_id));
-    return requiredIds.filter(id => !done.has(id)).length;
+    const done = new Set(watchRows.filter((r) => r.completed).map((r) => r.video_id));
+    return requiredIds.filter((id) => !done.has(id)).length;
   }, [syllabus, watchRows]);
 
   // watch dialog state
   const [watchOpen, setWatchOpen] = useState(false);
   const [watchTarget, setWatchTarget] = useState<{ title?: string; url: string } | null>(null);
 
-  const openWatch = (v: { title?: string; url: string }) => { setWatchTarget(v); setWatchOpen(true); };
-  const onWatched = async ({ watchedSeconds, durationSeconds, videoId }: { watchedSeconds: number; durationSeconds: number; videoId: string }) => {
+  const openWatch = (v: { title?: string; url: string }) => {
+    setWatchTarget(v);
+    setWatchOpen(true);
+  };
+  const onWatched = async ({
+    watchedSeconds,
+    durationSeconds,
+    videoId,
+  }: {
+    watchedSeconds: number;
+    durationSeconds: number;
+    videoId: string;
+  }) => {
     if (activeWeek == null) return;
     await sendEvent({
       week: activeWeek,
       provider: 'youtube',
       videoId,
       watchedSeconds,
-      durationSeconds
+      durationSeconds,
     });
     reloadWatch();
     setWatchOpen(false);
@@ -310,11 +333,13 @@ const CourseProgress: React.FC = () => {
   const allWatched = useCallback(async () => {
     try {
       const r = await fetch(`${backendUrl}/api/progress/watch/${courseId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } as any : undefined
+        headers: token ? ({ Authorization: `Bearer ${token}` } as any) : undefined,
       });
       const rows = await r.json().catch(() => []);
-      const reqs = syllabus.flatMap((s) => getWeekVideos(s).map(v => v.url));
-      const done = new Set((rows || []).filter((x: any) => x.completed).map((x: any) => x.video_id));
+      const reqs = syllabus.flatMap((s) => getWeekVideos(s).map((v) => v.url));
+      const done = new Set(
+        (rows || []).filter((x: any) => x.completed).map((x: any) => x.video_id)
+      );
       return reqs.every((u: string) => done.has(getYoutubeId(u)));
     } catch {
       return false;
@@ -376,21 +401,37 @@ const CourseProgress: React.FC = () => {
 
   // ---------------------- EARLY RETURNS (after ALL hooks) ----------------------
   if (!courseId) {
-    return <div className="max-w-3xl mx-auto p-6 text-red-600 dark:text-red-400">Missing course id.</div>;
+    return (
+      <div className="max-w-3xl mx-auto p-6 text-red-600 dark:text-red-400">Missing course id.</div>
+    );
   }
   if (isLoading) {
-    return <div className="max-w-3xl mx-auto p-6 text-gray-700 dark:text-gray-300">Loading progress…</div>;
+    return (
+      <div className="max-w-3xl mx-auto p-6 text-gray-700 dark:text-gray-300">
+        Loading progress…
+      </div>
+    );
   }
   if (coursesError) {
-    return <div className="max-w-3xl mx-auto p-6 text-red-600 dark:text-red-400">Failed to load course.</div>;
+    return (
+      <div className="max-w-3xl mx-auto p-6 text-red-600 dark:text-red-400">
+        Failed to load course.
+      </div>
+    );
   }
   if (!selectedCourse) {
-    return <div className="max-w-3xl mx-auto p-6 text-gray-700 dark:text-gray-300">Course not found.</div>;
+    return (
+      <div className="max-w-3xl mx-auto p-6 text-gray-700 dark:text-gray-300">
+        Course not found.
+      </div>
+    );
   }
   if (!Array.isArray(syllabus) || syllabus.length === 0) {
     return (
       <div className="max-w-3xl mx-auto p-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">{selectedCourse.title}</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+          {selectedCourse.title}
+        </h1>
         <p className="text-gray-600 dark:text-gray-400">This course doesn’t have a syllabus yet.</p>
         <div className="mt-4">
           <Link
@@ -449,13 +490,16 @@ const CourseProgress: React.FC = () => {
     if (idx < syllabus.length - 1) setActiveWeek(syllabus[idx + 1].week);
   };
 
-  const activeStatus: Status = activeWeek == null ? 'Not Started' : (progressByWeek.get(activeWeek) ?? 'Not Started');
+  const activeStatus: Status =
+    activeWeek == null ? 'Not Started' : (progressByWeek.get(activeWeek) ?? 'Not Started');
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-12 space-y-12">
       {/* Header */}
       <header className="space-y-2">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">{selectedCourse.title}</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
+          {selectedCourse.title}
+        </h1>
         {selectedCourse.description && (
           <p className="text-gray-700 dark:text-gray-300">{selectedCourse.description}</p>
         )}
@@ -570,13 +614,15 @@ const CourseProgress: React.FC = () => {
                   <ul className="space-y-2">
                     {weekVideos.map((v, i) => {
                       const id = getYoutubeId(v.url);
-                      const row = watchRows.find(r => r.week === activeWeek && r.video_id === id);
+                      const row = watchRows.find((r) => r.week === activeWeek && r.video_id === id);
                       const done = !!row?.completed;
                       return (
                         <li key={i} className="flex items-center justify-between">
                           <span className="text-sm">{`Video ${i + 1}`}</span>
                           <div className="flex items-center gap-2">
-                            <span className={`text-xs ${done ? 'text-emerald-600' : 'text-[#49739c]'}`}>
+                            <span
+                              className={`text-xs ${done ? 'text-emerald-600' : 'text-[#49739c]'}`}
+                            >
                               {done ? 'Watched' : 'Not watched'}
                             </span>
                             <button
@@ -620,7 +666,9 @@ const CourseProgress: React.FC = () => {
 
                 <button
                   onClick={goNext}
-                  disabled={syllabus.findIndex((w) => w.week === activeWeek) === syllabus.length - 1}
+                  disabled={
+                    syllabus.findIndex((w) => w.week === activeWeek) === syllabus.length - 1
+                  }
                   className={`rounded-xl h-10 px-4 text-sm font-semibold ${
                     syllabus.findIndex((w) => w.week === activeWeek) === syllabus.length - 1
                       ? 'bg-gray-200 dark:bg-gray-700 text-gray-500'
@@ -656,7 +704,9 @@ const CourseProgress: React.FC = () => {
           return (
             <div
               key={item.week}
-              ref={(el) => { weekRefs.current[item.week] = el; }}
+              ref={(el) => {
+                weekRefs.current[item.week] = el;
+              }}
               className={`p-4 border rounded-xl bg-white dark:bg-[#0f1821] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
                 isSuggested ? 'border-[#3d99f5]' : 'border-[#cedbe8] dark:border-darkCard'
               }`}
@@ -756,7 +806,6 @@ const CourseProgress: React.FC = () => {
               <CertificateButton courseId={courseId!} />
             )}
           </div>
-
           {!oerMeta && !hasMyReview && (
             <button
               className="ml-3 rounded-xl h-8 px-3 bg-[#e7edf4] dark:bg-[#172534] text-xs font-semibold"
@@ -774,7 +823,7 @@ const CourseProgress: React.FC = () => {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 ring-1 ring-[#cedbe8] dark:ring-darkCard">
             <h3 className="text-lg font-bold mb-2">Rate this course</h3>
             <div className="flex items-center gap-2 mb-3">
-              {[1,2,3,4,5].map(n => (
+              {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
                   onClick={() => setRating(n)}
@@ -787,7 +836,7 @@ const CourseProgress: React.FC = () => {
             </div>
             <textarea
               value={comment}
-              onChange={(e)=>setComment(e.target.value)}
+              onChange={(e) => setComment(e.target.value)}
               placeholder="Optional comment (max 500 chars)"
               maxLength={500}
               className="w-full text-sm rounded-lg p-2 bg-[#e7edf4] dark:bg-[#172534]"

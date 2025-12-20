@@ -42,7 +42,7 @@ export async function notifyNewMessage({
     [recipientProfileId],
   );
 
-  const tokens = rows.map(r => r.expo_push_token).filter(isExpoToken);
+  const tokens = rows.map((r) => r.expo_push_token).filter(isExpoToken);
   if (!tokens.length) return;
 
   const messages = tokens.map((to) => ({

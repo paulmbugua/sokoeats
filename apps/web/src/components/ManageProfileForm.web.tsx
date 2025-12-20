@@ -5,13 +5,12 @@ import useManageProfileForm from '@mytutorapp/shared/hooks/useManageProfileForm'
 import { toast } from 'react-toastify';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 
-
 const STATUS_OPTIONS = [
-  { value: 'Online',  label: 'Online' },
+  { value: 'Online', label: 'Online' },
   { value: 'Offline', label: 'Offline' },
-  { value: 'Busy',    label: 'Busy' },
-  { value: 'Free',    label: 'Free Session' },
-  { value: 'New',     label: 'New' },
+  { value: 'Busy', label: 'Busy' },
+  { value: 'Free', label: 'Free Session' },
+  { value: 'New', label: 'New' },
 ];
 
 const CATEGORY_OPTIONS = [
@@ -25,8 +24,6 @@ const CATEGORY_OPTIONS = [
   'Wellness & PE',
 ];
 
-
-
 const LANGUAGES = ['English', 'Swahili', 'French', 'Spanish', 'German'];
 
 type PricingKey = 'privateSession' | 'groupSession' | 'lecture' | 'workshop';
@@ -35,9 +32,9 @@ const PRICING_KEYS: PricingKey[] = ['privateSession', 'groupSession', 'lecture',
 // ✅ Updated token ranges (1 token = $1)
 const TOKEN_RANGES: Record<PricingKey, { min: number; max: number }> = {
   privateSession: { min: 5, max: 50 },
-  groupSession:   { min: 5, max: 50  },  // per learner recommended
-  lecture:        { min: 5, max: 100 },
-  workshop:       { min: 5, max: 100 },
+  groupSession: { min: 5, max: 50 }, // per learner recommended
+  lecture: { min: 5, max: 100 },
+  workshop: { min: 5, max: 100 },
 };
 
 // same regex you use in the hook/backend
@@ -84,7 +81,7 @@ const ManageProfileForm: FC = () => {
     handleDeleteImage,
     handleDeleteVideo,
     handleToggleNotifications,
-   
+
     handleTeachingStyleSelect,
     handleExpertiseSelect,
 
@@ -94,7 +91,7 @@ const ManageProfileForm: FC = () => {
   // Default tutors to USD/Wise if unset (and keep currency derived from method)
   useEffect(() => {
     if (role === 'tutor') {
-      setUpdatedData(prev => {
+      setUpdatedData((prev) => {
         const next = { ...prev };
         if (next.payoutMethod !== 'wise' && next.payoutMethod !== 'mpesa') {
           next.payoutMethod = 'wise';
@@ -106,14 +103,14 @@ const ManageProfileForm: FC = () => {
     }
   }, [role, setUpdatedData]);
 
-  const getFullUrl = (path: string) =>
-    path?.startsWith('/') ? `${backendUrl}${path}` : path;
+  const getFullUrl = (path: string) => (path?.startsWith('/') ? `${backendUrl}${path}` : path);
 
   const inputBase =
     'w-full p-3 rounded-xl border border-[#cedbe8] dark:border-darkCard bg-slate-50 dark:bg-[#0f1821] text-[#0d141c] dark:text-darkTextPrimary';
 
-  const chipOn  = 'bg-pink-500 text-white border-pink-500';
-  const chipOff = 'bg-[#e7edf4] text-[#49739c] dark:bg-[#172534] dark:text-darkTextSecondary border-transparent';
+  const chipOn = 'bg-pink-500 text-white border-pink-500';
+  const chipOff =
+    'bg-[#e7edf4] text-[#49739c] dark:bg-[#172534] dark:text-darkTextSecondary border-transparent';
 
   // ─── Smooth scroll + highlight helper ────────────────────────────────────
   const scrollToEl = (el?: HTMLElement | null) => {
@@ -137,8 +134,6 @@ const ManageProfileForm: FC = () => {
       return { el: languagesRef.current, msg: 'Select at least one language.' };
     }
 
-    
-
     // tutor-only
     if (role === 'tutor') {
       if (!updatedData.category) {
@@ -149,7 +144,10 @@ const ManageProfileForm: FC = () => {
         const val = updatedData.pricing[key];
         const { min, max } = TOKEN_RANGES[key];
         if (!Number.isFinite(val) || val < min || val > max) {
-          return { el: pricingRefs.current[key], msg: `Set a valid rate for ${key} (${min}-${max}).` };
+          return {
+            el: pricingRefs.current[key],
+            msg: `Set a valid rate for ${key} (${min}-${max}).`,
+          };
         }
       }
 
@@ -159,7 +157,10 @@ const ManageProfileForm: FC = () => {
           return { el: wiseEmailRef.current, msg: 'Enter a valid Wise account email.' };
         }
       } else if (updatedData.payoutMethod === 'mpesa') {
-        if (!updatedData.mpesaPhoneNumber?.trim() || !MPESA_REGEX.test(updatedData.mpesaPhoneNumber)) {
+        if (
+          !updatedData.mpesaPhoneNumber?.trim() ||
+          !MPESA_REGEX.test(updatedData.mpesaPhoneNumber)
+        ) {
           return { el: mpesaPhoneRef.current, msg: 'Enter a valid M-Pesa phone number.' };
         }
       } else {
@@ -183,7 +184,6 @@ const ManageProfileForm: FC = () => {
           }
           handleSubmit(e);
         }}
-
         className="space-y-6 px-4 sm:px-6 pt-10 pb-16 sm:pt-12 sm:pb-20
                  rounded-2xl border border-[#cedbe8] dark:border-darkCard
                  bg-white dark:bg-[#0f1821] shadow-sm max-w-2xl mx-auto
@@ -199,45 +199,50 @@ const ManageProfileForm: FC = () => {
           type="text"
           placeholder="Name"
           value={updatedData.name}
-          onChange={e => handleInputChange('name', e)}
+          onChange={(e) => handleInputChange('name', e)}
           className={inputBase}
         />
 
         {/* Country */}
-<div>
-  <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">Country</label>
-  <select
-    name="country"
-    value={updatedData.country || ''}
-    onChange={e => handleInputChange('country', e)}
-    className={inputBase}
-  >
-    <option value="" disabled>Select your country</option>
-    {COUNTRIES.map(c => (
-      <option key={c.code} value={c.code}>{c.name}</option>
-    ))}
-  </select>
-</div>
+        <div>
+          <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">Country</label>
+          <select
+            name="country"
+            value={updatedData.country || ''}
+            onChange={(e) => handleInputChange('country', e)}
+            className={inputBase}
+          >
+            <option value="" disabled>
+              Select your country
+            </option>
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
-{/* School Grade */}
-<div>
-  <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">School Grade / Year / Level</label>
-  <input
-    name="schoolGrade"
-    type="text"
-    placeholder="e.g., Grade 7, Form 2, Year 10, Freshman …"
-    value={updatedData.schoolGrade || ''}
-    onChange={e => handleInputChange('schoolGrade', e)}
-    className={inputBase}
-  />
-</div>
-
+        {/* School Grade */}
+        <div>
+          <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">
+            School Grade / Year / Level
+          </label>
+          <input
+            name="schoolGrade"
+            type="text"
+            placeholder="e.g., Grade 7, Form 2, Year 10, Freshman …"
+            value={updatedData.schoolGrade || ''}
+            onChange={(e) => handleInputChange('schoolGrade', e)}
+            className={inputBase}
+          />
+        </div>
 
         {/* Languages */}
         <div ref={languagesRef}>
           <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">Languages</label>
           <div className="flex flex-wrap gap-2">
-            {LANGUAGES.map(lang => (
+            {LANGUAGES.map((lang) => (
               <button
                 key={lang}
                 type="button"
@@ -250,23 +255,28 @@ const ManageProfileForm: FC = () => {
           </div>
         </div>
 
-        
         {/* Tutor Section */}
         {role === 'tutor' && (
           <>
             {/* Category */}
             <div>
-              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">Category</label>
+              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">
+                Category
+              </label>
               <select
                 ref={categoryRef}
                 name="category"
                 value={updatedData.category}
-                onChange={e => handleInputChange('category', e)}
+                onChange={(e) => handleInputChange('category', e)}
                 className={inputBase}
               >
-                <option value="" disabled>Select Category</option>
-                {CATEGORY_OPTIONS.map(c => (
-                  <option key={c} value={c}>{c}</option>
+                <option value="" disabled>
+                  Select Category
+                </option>
+                {CATEGORY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
                 ))}
               </select>
             </div>
@@ -275,17 +285,21 @@ const ManageProfileForm: FC = () => {
             <select
               name="status"
               value={updatedData.status}
-              onChange={e => handleInputChange('status', e)}
+              onChange={(e) => handleInputChange('status', e)}
               className={inputBase}
             >
-              {STATUS_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              {STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
             </select>
 
             {/* Notifications */}
             <div className="flex items-center">
-              <label className="text-[#49739c] dark:text-darkTextSecondary mr-2">Notifications</label>
+              <label className="text-[#49739c] dark:text-darkTextSecondary mr-2">
+                Notifications
+              </label>
               <input
                 type="checkbox"
                 checked={!!updatedData.notifications}
@@ -300,7 +314,7 @@ const ManageProfileForm: FC = () => {
               rows={3}
               placeholder="Write a brief introduction…"
               value={updatedData.bio}
-              onChange={e => handleInputChange('bio', e)}
+              onChange={(e) => handleInputChange('bio', e)}
               className={`${inputBase} !min-h-[96px]`}
             />
 
@@ -315,15 +329,17 @@ const ManageProfileForm: FC = () => {
                   return (
                     <div key={field}>
                       <label className="text-sm text-[#49739c] dark:text-darkTextSecondary block">
-                        {field.replace(/([A-Z])/g,' $1')} (Min {min} | Max {max})
+                        {field.replace(/([A-Z])/g, ' $1')} (Min {min} | Max {max})
                       </label>
                       <input
-                        ref={el => { pricingRefs.current[field] = el; }}
+                        ref={(el) => {
+                          pricingRefs.current[field] = el;
+                        }}
                         type="number"
                         min={min}
                         max={max}
                         value={(updatedData.pricing[field] ?? '').toString()}
-                        onChange={e => handlePricingChange(field, e.target.value)}
+                        onChange={(e) => handlePricingChange(field, e.target.value)}
                         className={`${inputBase} !p-2`}
                       />
                     </div>
@@ -334,9 +350,11 @@ const ManageProfileForm: FC = () => {
 
             {/* Expertise */}
             <div>
-              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">Expertise</label>
+              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">
+                Expertise
+              </label>
               <div className="flex flex-wrap gap-2">
-                {['Exam Prep','Skill Building','Homework Help','Career Guidance'].map(opt => (
+                {['Exam Prep', 'Skill Building', 'Homework Help', 'Career Guidance'].map((opt) => (
                   <button
                     key={opt}
                     type="button"
@@ -351,9 +369,11 @@ const ManageProfileForm: FC = () => {
 
             {/* Teaching Styles */}
             <div>
-              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">Teaching Styles</label>
+              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">
+                Teaching Styles
+              </label>
               <div className="flex flex-wrap gap-2">
-                {['One-on-One','Group','Workshop','Lecture'].map(style => (
+                {['One-on-One', 'Group', 'Workshop', 'Lecture'].map((style) => (
                   <button
                     key={style}
                     type="button"
@@ -368,7 +388,9 @@ const ManageProfileForm: FC = () => {
 
             {/* Experience Level */}
             <div>
-              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">Experience Level</label>
+              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">
+                Experience Level
+              </label>
               <div className="flex flex-wrap gap-2">
                 {['Beginner', 'Intermediate', 'Advanced', 'Expert'].map((lvl) => (
                   <button
@@ -382,8 +404,6 @@ const ManageProfileForm: FC = () => {
                 ))}
               </div>
             </div>
-
-            
 
             {/* Payout Preferences */}
             <div className="space-y-3 border-t pt-4">
@@ -402,7 +422,7 @@ const ManageProfileForm: FC = () => {
                   value={updatedData.payoutMethod}
                   onChange={(e) => {
                     const method = e.target.value as 'wise' | 'mpesa';
-                    setUpdatedData(prev => ({
+                    setUpdatedData((prev) => ({
                       ...prev,
                       payoutMethod: method,
                       payoutCurrency: method === 'mpesa' ? 'KES' : 'USD',
@@ -442,7 +462,9 @@ const ManageProfileForm: FC = () => {
                     type="email"
                     placeholder="you@yourdomain.com"
                     value={updatedData.wiseEmail || ''}
-                    onChange={e => setUpdatedData(prev => ({ ...prev, wiseEmail: e.target.value }))}
+                    onChange={(e) =>
+                      setUpdatedData((prev) => ({ ...prev, wiseEmail: e.target.value }))
+                    }
                     className={inputBase}
                   />
                 </div>
@@ -458,7 +480,9 @@ const ManageProfileForm: FC = () => {
                     name="mpesaPhoneNumber"
                     placeholder="+2547XXXXXXXX"
                     value={updatedData.mpesaPhoneNumber || ''}
-                    onChange={e => setUpdatedData(prev => ({ ...prev, mpesaPhoneNumber: e.target.value }))}
+                    onChange={(e) =>
+                      setUpdatedData((prev) => ({ ...prev, mpesaPhoneNumber: e.target.value }))
+                    }
                     className={`${inputBase} mb-2`}
                   />
                 </div>
@@ -467,15 +491,17 @@ const ManageProfileForm: FC = () => {
 
             {/* Gallery */}
             <div className="gallery-section mb-4">
-              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">Upload Profile Image</label>
+              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">
+                Upload Profile Image
+              </label>
               <div className="w-40 h-40 border border-[#cedbe8] dark:border-darkCard rounded-lg overflow-hidden relative group bg-slate-50 dark:bg-[#0f1821]">
                 <img
                   src={
                     updatedData.gallery[0] instanceof File
                       ? URL.createObjectURL(updatedData.gallery[0] as File)
                       : updatedData.gallery[0]
-                      ? getFullUrl(updatedData.gallery[0] as string)
-                      : '/upload_placeholder.png'
+                        ? getFullUrl(updatedData.gallery[0] as string)
+                        : '/upload_placeholder.png'
                   }
                   alt=""
                   className="w-full h-full object-cover"
@@ -504,7 +530,7 @@ const ManageProfileForm: FC = () => {
                         const reader = new FileReader();
                         reader.onload = () => {
                           const dataUrl = reader.result as string;
-                          setUpdatedData(prev => {
+                          setUpdatedData((prev) => {
                             const g = [...prev.gallery];
                             g[0] = dataUrl;
                             return { ...prev, gallery: g };
@@ -520,7 +546,9 @@ const ManageProfileForm: FC = () => {
 
             {/* Video */}
             <div className="video-section mb-4">
-              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">Uploaded Video</label>
+              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">
+                Uploaded Video
+              </label>
               <div className="relative rounded-lg overflow-hidden">
                 {updatedData.video instanceof File ? (
                   <video
@@ -555,7 +583,7 @@ const ManageProfileForm: FC = () => {
                       type="file"
                       accept="video/*"
                       hidden
-                      onChange={e => {
+                      onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) setVideo(file, { maxSeconds: 30 });
                       }}
@@ -567,17 +595,22 @@ const ManageProfileForm: FC = () => {
 
             {/* Recommendations */}
             <div className="recommendations-section mb-4">
-              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">Recommendations</label>
+              <label className="text-[#49739c] dark:text-darkTextSecondary mb-2 block">
+                Recommendations
+              </label>
               <input
                 type="text"
                 placeholder="Search profiles…"
-                onChange={e => handleSearch(e)}
+                onChange={(e) => handleSearch(e)}
                 className={`${inputBase} !p-2 mb-2`}
               />
               {searchResults.length > 0 && (
                 <div className="bg-slate-50 dark:bg-[#0f1821] p-2 rounded mb-2 max-h-40 overflow-y-auto border border-[#cedbe8] dark:border-darkCard">
-                  {searchResults.map(p => (
-                    <div key={p._id} className="flex justify-between items-center p-2 even:bg-[#f6f9fc] dark:even:bg-[#101a27] rounded">
+                  {searchResults.map((p) => (
+                    <div
+                      key={p._id}
+                      className="flex justify-between items-center p-2 even:bg-[#f6f9fc] dark:even:bg-[#101a27] rounded"
+                    >
                       <span className="">{p.name}</span>
                       <button
                         type="button"
@@ -592,8 +625,8 @@ const ManageProfileForm: FC = () => {
               )}
               <div className="space-y-2">
                 {updatedData.recommended.length > 0 ? (
-                  updatedData.recommended.map(id => {
-                    const prof = availableProfiles.find(x => x._id === id);
+                  updatedData.recommended.map((id) => {
+                    const prof = availableProfiles.find((x) => x._id === id);
                     return prof ? (
                       <div
                         key={id}
@@ -611,7 +644,9 @@ const ManageProfileForm: FC = () => {
                     ) : null;
                   })
                 ) : (
-                  <p className="text-[#49739c] dark:text-darkTextSecondary">No recommendations yet.</p>
+                  <p className="text-[#49739c] dark:text-darkTextSecondary">
+                    No recommendations yet.
+                  </p>
                 )}
               </div>
             </div>

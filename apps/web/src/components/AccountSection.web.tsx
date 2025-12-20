@@ -23,7 +23,7 @@ const currencyFmt = (amt: number, currency: string) => {
 };
 
 const safeUpper = (v?: string, fb: 'USD' | 'KES' = 'USD'): 'USD' | 'KES' =>
-  (String(v ?? fb).toUpperCase() === 'KES' ? 'KES' : 'USD');
+  String(v ?? fb).toUpperCase() === 'KES' ? 'KES' : 'USD';
 
 const MIN_WITHDRAW: Record<'USD' | 'KES', number> = { USD: 20, KES: 200 };
 
@@ -32,72 +32,71 @@ const AccountSection: React.FC = () => {
   const [cancelError, setCancelError] = useState<Record<string, boolean>>({});
 
   // Track validation errors for "Create Session" form (student)
-type SessionFormErrors = Record<string, string>;
+  type SessionFormErrors = Record<string, string>;
 
-const [sessionFormErrors, setSessionFormErrors] = useState<SessionFormErrors>({});
-const [sessionBanner, setSessionBanner] = useState<string>('');
+  const [sessionFormErrors, setSessionFormErrors] = useState<SessionFormErrors>({});
+  const [sessionBanner, setSessionBanner] = useState<string>('');
 
-const createSessionFormRef = useRef<HTMLFormElement | null>(null);
+  const createSessionFormRef = useRef<HTMLFormElement | null>(null);
 
-const sessionLabelFor: Record<string, string> = {
-  tutorId: 'Tutor',
-  subject: 'Subject',
-  sessionType: 'Session type',
-  date: 'Session date',
-};
+  const sessionLabelFor: Record<string, string> = {
+    tutorId: 'Tutor',
+    subject: 'Subject',
+    sessionType: 'Session type',
+    date: 'Session date',
+  };
 
-const buildSessionBannerFromErrors = (errs: SessionFormErrors) => {
-  const keys = Object.keys(errs);
-  if (!keys.length) return '';
-  const items = keys.map((k) => sessionLabelFor[k] || k);
-  return `Please complete: ${items.join(' • ')}.`;
-};
+  const buildSessionBannerFromErrors = (errs: SessionFormErrors) => {
+    const keys = Object.keys(errs);
+    if (!keys.length) return '';
+    const items = keys.map((k) => sessionLabelFor[k] || k);
+    return `Please complete: ${items.join(' • ')}.`;
+  };
 
-const scrollToSessionField = (name: string) => {
-  const form = createSessionFormRef.current;
-  if (!form) return;
-  const el = form.querySelector(`[name="${name}"]`) as HTMLElement | null;
-  if (!el) return;
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  (el as any)?.focus?.();
-};
+  const scrollToSessionField = (name: string) => {
+    const form = createSessionFormRef.current;
+    if (!form) return;
+    const el = form.querySelector(`[name="${name}"]`) as HTMLElement | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    (el as any)?.focus?.();
+  };
 
-const validateSessionForm = (): boolean => {
-  const errs: SessionFormErrors = {};
+  const validateSessionForm = (): boolean => {
+    const errs: SessionFormErrors = {};
 
-  // Tutor must be chosen (via profile)
-  if (!formData.tutorId) {
-    errs.tutorId = 'Choose a tutor by visiting their profile and clicking "Create Session".';
-  }
-
-  if (!formData.subject?.trim()) {
-    errs.subject = 'Enter the subject or topic for this session.';
-  }
-
-  if (!formData.sessionType) {
-    errs.sessionType = 'Select a session type.';
-  }
-
-  if (!formData.date) {
-    errs.date = 'Pick a preferred date for the session.';
-  }
-
-  setSessionFormErrors(errs);
-  setSessionBanner(buildSessionBannerFromErrors(errs));
-
-  const keys = Object.keys(errs);
-  if (keys.length) {
-    // Scroll to first error field if there is an actual form control
-    const firstKey = keys[0];
-    if (firstKey !== 'tutorId') {
-      scrollToSessionField(firstKey);
+    // Tutor must be chosen (via profile)
+    if (!formData.tutorId) {
+      errs.tutorId = 'Choose a tutor by visiting their profile and clicking "Create Session".';
     }
-    return false;
-  }
 
-  return true;
-};
+    if (!formData.subject?.trim()) {
+      errs.subject = 'Enter the subject or topic for this session.';
+    }
 
+    if (!formData.sessionType) {
+      errs.sessionType = 'Select a session type.';
+    }
+
+    if (!formData.date) {
+      errs.date = 'Pick a preferred date for the session.';
+    }
+
+    setSessionFormErrors(errs);
+    setSessionBanner(buildSessionBannerFromErrors(errs));
+
+    const keys = Object.keys(errs);
+    if (keys.length) {
+      // Scroll to first error field if there is an actual form control
+      const firstKey = keys[0];
+      if (firstKey !== 'tutorId') {
+        scrollToSessionField(firstKey);
+      }
+      return false;
+    }
+
+    return true;
+  };
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -370,63 +369,63 @@ const validateSessionForm = (): boolean => {
         {/* Student Sessions */}
         {activeTab === 'sessions' && role === 'student' && (
           <>
-              <form
-                ref={createSessionFormRef}
-                className="max-w-2xl mx-auto space-y-4
+            <form
+              ref={createSessionFormRef}
+              className="max-w-2xl mx-auto space-y-4
                           p-6 rounded-2xl shadow-sm
                           bg-white border border-slate-200
                           dark:bg-[#0f1821] dark:border-[#182430]"
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  setSessionFormErrors({});
-                  setSessionBanner('');
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setSessionFormErrors({});
+                setSessionBanner('');
 
-                  const ok = validateSessionForm();
-                  if (!ok) return;
+                const ok = validateSessionForm();
+                if (!ok) return;
 
-                  await handleSessionCreation();
-                  setJustCreated(true);
-                }}
-              >
-                {/* Top error banner for Create Session */}
-                {sessionBanner && (
-                  <div
-                    role="alert"
-                    aria-live="assertive"
-                    className="rounded-lg border border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200 p-2 text-sm"
-                  >
-                    {sessionBanner}
-                  </div>
-                )}
+                await handleSessionCreation();
+                setJustCreated(true);
+              }}
+            >
+              {/* Top error banner for Create Session */}
+              {sessionBanner && (
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  className="rounded-lg border border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200 p-2 text-sm"
+                >
+                  {sessionBanner}
+                </div>
+              )}
 
-                {!formData.tutorId && (
-                  <div
-                    className={`p-2 border-l-4 rounded text-sm
+              {!formData.tutorId && (
+                <div
+                  className={`p-2 border-l-4 rounded text-sm
                                 ${
                                   sessionFormErrors.tutorId
                                     ? 'bg-red-50 border-red-500 text-red-700 dark:bg-[#3b1111] dark:text-red-200 dark:border-red-600'
                                     : 'bg-amber-50 border-amber-400 text-amber-800 dark:bg-[#231b10] dark:text-amber-200 dark:border-amber-500'
                                 }`}
-                  >
-                    <p>To create a session, visit a tutor’s profile and click “Create Session.”</p>
-                    {sessionFormErrors.tutorId && (
-                      <p className="mt-1 text-xs">{sessionFormErrors.tutorId}</p>
-                    )}
-                  </div>
-                )}
+                >
+                  <p>To create a session, visit a tutor’s profile and click “Create Session.”</p>
+                  {sessionFormErrors.tutorId && (
+                    <p className="mt-1 text-xs">{sessionFormErrors.tutorId}</p>
+                  )}
+                </div>
+              )}
 
-                <h3 className="text-lg font-bold text-primary">
-                  {formData.tutorName ? `Session with ${formData.tutorName}` : 'Create a Session'}
-                </h3>
+              <h3 className="text-lg font-bold text-primary">
+                {formData.tutorName ? `Session with ${formData.tutorName}` : 'Create a Session'}
+              </h3>
 
-                <div className="space-y-3">
-                  {/* Subject */}
-                  <div>
-                    <input
-                      name="subject"
-                      type="text"
-                      placeholder="Subject"
-                      className={`block w-full p-3 rounded-xl text-sm
+              <div className="space-y-3">
+                {/* Subject */}
+                <div>
+                  <input
+                    name="subject"
+                    type="text"
+                    placeholder="Subject"
+                    className={`block w-full p-3 rounded-xl text-sm
                                   bg-slate-50 border text-slate-900
                                   focus:outline-none focus:ring-2 focus:ring-primary
                                   dark:bg-[#0b1620] dark:border-[#182430] dark:text-slate-100
@@ -435,34 +434,34 @@ const validateSessionForm = (): boolean => {
                                       ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500'
                                       : 'border-slate-200'
                                   }`}
-                      value={formData.subject}
-                      onChange={(e) => {
-                        setFormData({ ...formData, subject: e.target.value });
-                        if (sessionFormErrors.subject) {
-                          setSessionFormErrors((prev) => {
-                            const { subject, ...rest } = prev;
-                            return rest;
-                          });
-                        }
-                      }}
-                      aria-invalid={!!sessionFormErrors.subject}
-                      aria-describedby={sessionFormErrors.subject ? 'err-session-subject' : undefined}
-                    />
-                    {sessionFormErrors.subject && (
-                      <p
-                        id="err-session-subject"
-                        className="mt-1 text-xs text-red-600 dark:text-red-400"
-                      >
-                        {sessionFormErrors.subject}
-                      </p>
-                    )}
-                  </div>
+                    value={formData.subject}
+                    onChange={(e) => {
+                      setFormData({ ...formData, subject: e.target.value });
+                      if (sessionFormErrors.subject) {
+                        setSessionFormErrors((prev) => {
+                          const { subject, ...rest } = prev;
+                          return rest;
+                        });
+                      }
+                    }}
+                    aria-invalid={!!sessionFormErrors.subject}
+                    aria-describedby={sessionFormErrors.subject ? 'err-session-subject' : undefined}
+                  />
+                  {sessionFormErrors.subject && (
+                    <p
+                      id="err-session-subject"
+                      className="mt-1 text-xs text-red-600 dark:text-red-400"
+                    >
+                      {sessionFormErrors.subject}
+                    </p>
+                  )}
+                </div>
 
-                  {/* Session Type */}
-                  <div>
-                    <select
-                      name="sessionType"
-                      className={`block w-full p-3 rounded-xl text-sm
+                {/* Session Type */}
+                <div>
+                  <select
+                    name="sessionType"
+                    className={`block w-full p-3 rounded-xl text-sm
                                   bg-slate-50 border text-slate-900
                                   focus:outline-none focus:ring-2 focus:ring-primary
                                   dark:bg-[#0b1620] dark:border-[#182430] dark:text-slate-100
@@ -471,49 +470,51 @@ const validateSessionForm = (): boolean => {
                                       ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500'
                                       : 'border-slate-200'
                                   }`}
-                      value={formData.sessionType || ''}
-                      onChange={(e) => {
-                        const sessionType = e.target.value;
-                        const sessionCost = String(
-                          formData.pricing?.[sessionType as keyof typeof formData.pricing] || 0
-                        );
-                        setFormData({ ...formData, sessionType, sessionCost });
-                        if (sessionFormErrors.sessionType) {
-                          setSessionFormErrors((prev) => {
-                            const { sessionType, ...rest } = prev;
-                            return rest;
-                          });
-                        }
-                      }}
-                      aria-invalid={!!sessionFormErrors.sessionType}
-                      aria-describedby={sessionFormErrors.sessionType ? 'err-session-type' : undefined}
+                    value={formData.sessionType || ''}
+                    onChange={(e) => {
+                      const sessionType = e.target.value;
+                      const sessionCost = String(
+                        formData.pricing?.[sessionType as keyof typeof formData.pricing] || 0
+                      );
+                      setFormData({ ...formData, sessionType, sessionCost });
+                      if (sessionFormErrors.sessionType) {
+                        setSessionFormErrors((prev) => {
+                          const { sessionType, ...rest } = prev;
+                          return rest;
+                        });
+                      }
+                    }}
+                    aria-invalid={!!sessionFormErrors.sessionType}
+                    aria-describedby={
+                      sessionFormErrors.sessionType ? 'err-session-type' : undefined
+                    }
+                  >
+                    <option value="" disabled>
+                      Select Session Type
+                    </option>
+                    {formData.pricing &&
+                      Object.entries(formData.pricing).map(([type, price]) => (
+                        <option key={type} value={type}>
+                          {`${type.charAt(0).toUpperCase() + type.slice(1)} – ${price} Tokens`}
+                        </option>
+                      ))}
+                  </select>
+                  {sessionFormErrors.sessionType && (
+                    <p
+                      id="err-session-type"
+                      className="mt-1 text-xs text-red-600 dark:text-red-400"
                     >
-                      <option value="" disabled>
-                        Select Session Type
-                      </option>
-                      {formData.pricing &&
-                        Object.entries(formData.pricing).map(([type, price]) => (
-                          <option key={type} value={type}>
-                            {`${type.charAt(0).toUpperCase() + type.slice(1)} – ${price} Tokens`}
-                          </option>
-                        ))}
-                    </select>
-                    {sessionFormErrors.sessionType && (
-                      <p
-                        id="err-session-type"
-                        className="mt-1 text-xs text-red-600 dark:text-red-400"
-                      >
-                        {sessionFormErrors.sessionType}
-                      </p>
-                    )}
-                  </div>
+                      {sessionFormErrors.sessionType}
+                    </p>
+                  )}
+                </div>
 
-                  {/* Date */}
-                  <div>
-                    <input
-                      name="date"
-                      type="date"
-                      className={`block w-full p-3 rounded-xl text-sm
+                {/* Date */}
+                <div>
+                  <input
+                    name="date"
+                    type="date"
+                    className={`block w-full p-3 rounded-xl text-sm
                                   bg-slate-50 border text-slate-900
                                   focus:outline-none focus:ring-2 focus:ring-primary
                                   dark:bg-[#0b1620] dark:border-[#182430] dark:text-slate-100
@@ -522,40 +523,39 @@ const validateSessionForm = (): boolean => {
                                       ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500'
                                       : 'border-slate-200'
                                   }`}
-                      value={formData.date}
-                      onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker?.()}
-                      onChange={(e) => {
-                        setFormData({ ...formData, date: e.target.value });
-                        if (sessionFormErrors.date) {
-                          setSessionFormErrors((prev) => {
-                            const { date, ...rest } = prev;
-                            return rest;
-                          });
-                        }
-                      }}
-                      aria-invalid={!!sessionFormErrors.date}
-                      aria-describedby={sessionFormErrors.date ? 'err-session-date' : undefined}
-                    />
-                    {sessionFormErrors.date && (
-                      <p
-                        id="err-session-date"
-                        className="mt-1 text-xs text-red-600 dark:text-red-400"
-                      >
-                        {sessionFormErrors.date}
-                      </p>
-                    )}
-                  </div>
+                    value={formData.date}
+                    onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker?.()}
+                    onChange={(e) => {
+                      setFormData({ ...formData, date: e.target.value });
+                      if (sessionFormErrors.date) {
+                        setSessionFormErrors((prev) => {
+                          const { date, ...rest } = prev;
+                          return rest;
+                        });
+                      }
+                    }}
+                    aria-invalid={!!sessionFormErrors.date}
+                    aria-describedby={sessionFormErrors.date ? 'err-session-date' : undefined}
+                  />
+                  {sessionFormErrors.date && (
+                    <p
+                      id="err-session-date"
+                      className="mt-1 text-xs text-red-600 dark:text-red-400"
+                    >
+                      {sessionFormErrors.date}
+                    </p>
+                  )}
                 </div>
+              </div>
 
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-xl text-sm font-semibold
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl text-sm font-semibold
                             bg-primary text-white hover:brightness-110 transition"
-                >
-                  Create Session
-                </button>
-              </form>
-
+              >
+                Create Session
+              </button>
+            </form>
 
             <div
               ref={sessionsRef}
@@ -586,8 +586,7 @@ const validateSessionForm = (): boolean => {
                           {session.sessionType || 'N/A'}
                         </p>
                         <p>
-                          <span className="font-semibold">Subject:</span>{' '}
-                          {session.subject || 'N/A'}
+                          <span className="font-semibold">Subject:</span> {session.subject || 'N/A'}
                         </p>
                         <p>
                           <span className="font-semibold">Cost:</span> {session.amount} tokens
@@ -716,8 +715,7 @@ const validateSessionForm = (): boolean => {
                       {session.student_name || 'N/A'}
                     </p>
                     <p>
-                      <span className="font-semibold">Type:</span>{' '}
-                      {session.sessionType || 'N/A'}
+                      <span className="font-semibold">Type:</span> {session.sessionType || 'N/A'}
                     </p>
                     <p>
                       <span className="font-semibold">Date:</span>{' '}
@@ -780,7 +778,9 @@ const validateSessionForm = (): boolean => {
                       <button
                         className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold
                                    bg-primary text-white hover:brightness-110"
-                        onClick={() => navigate(`/messages?studentId=${String(session.student_id)}`)}
+                        onClick={() =>
+                          navigate(`/messages?studentId=${String(session.student_id)}`)
+                        }
                       >
                         Chat with Student
                       </button>
@@ -832,9 +832,7 @@ const validateSessionForm = (): boolean => {
                     <p className="mt-3 text-fuchsia-300 font-semibold text-sm">Complete-Pending</p>
                   )}
                   {session.status === 'completed' && (
-                    <p className="mt-3 text-emerald-300 font-semibold text-sm">
-                      Session Completed
-                    </p>
+                    <p className="mt-3 text-emerald-300 font-semibold text-sm">Session Completed</p>
                   )}
                   {session.status === 'cancelled' && (
                     <p className="mt-3 text-rose-300 text-sm">Session Cancelled</p>
@@ -842,7 +840,9 @@ const validateSessionForm = (): boolean => {
                 </div>
               ))
             ) : (
-              <p className="text-slate-500 dark:text-slate-400 text-center">No upcoming sessions.</p>
+              <p className="text-slate-500 dark:text-slate-400 text-center">
+                No upcoming sessions.
+              </p>
             )}
           </div>
         )}
@@ -909,13 +909,19 @@ const validateSessionForm = (): boolean => {
                   <div>
                     <p className="text-xs opacity-90">Lifetime</p>
                     <p className="text-lg font-bold">
-                      {currencyFmt(earnings?.total ?? lifetimeByCurrency[payoutCurrency] ?? 0, payoutCurrency)}
+                      {currencyFmt(
+                        earnings?.total ?? lifetimeByCurrency[payoutCurrency] ?? 0,
+                        payoutCurrency
+                      )}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs opacity-90">Pending</p>
                     <p className="text-lg font-bold">
-                      {currencyFmt(earnings?.pending ?? pendingWithdrawalsByCurrency[payoutCurrency] ?? 0, payoutCurrency)}
+                      {currencyFmt(
+                        earnings?.pending ?? pendingWithdrawalsByCurrency[payoutCurrency] ?? 0,
+                        payoutCurrency
+                      )}
                     </p>
                   </div>
                 </div>
@@ -931,12 +937,15 @@ const validateSessionForm = (): boolean => {
               <div className="p-5 rounded-2xl shadow-sm bg-white border border-slate-200 dark:bg-[#0f1821] dark:border-[#182430]">
                 <h4 className="text-lg font-bold text-primary">Withdraw Earnings</h4>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Minimum: {currencyFmt(minAmount, payoutCurrency)} • Balance shown is an approximation based on your transactions.
+                  Minimum: {currencyFmt(minAmount, payoutCurrency)} • Balance shown is an
+                  approximation based on your transactions.
                 </p>
                 <div className="mt-4 space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Currency</label>
+                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                        Currency
+                      </label>
                       <input
                         value={payoutCurrency}
                         disabled
@@ -944,7 +953,9 @@ const validateSessionForm = (): boolean => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Amount</label>
+                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                        Amount
+                      </label>
                       <input
                         type="number"
                         inputMode="decimal"
@@ -960,9 +971,7 @@ const validateSessionForm = (): boolean => {
                   <button
                     className="w-full py-3 rounded-xl text-sm font-semibold bg-primary text-white hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed"
                     disabled={
-                      isWithdrawing ||
-                      !withdrawAmount ||
-                      Number(withdrawAmount) < minAmount
+                      isWithdrawing || !withdrawAmount || Number(withdrawAmount) < minAmount
                     }
                     onClick={async () => {
                       const amt = Number(withdrawAmount);
@@ -985,7 +994,9 @@ const validateSessionForm = (): boolean => {
               <div className="p-5 rounded-2xl shadow-sm bg-white border border-slate-200 dark:bg-[#0f1821] dark:border-[#182430]">
                 <h4 className="text-lg font-bold text-primary">Payout Tips</h4>
                 <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300">
-                  <li>• Your withdrawal method & currency follow your profile’s payout settings.</li>
+                  <li>
+                    • Your withdrawal method & currency follow your profile’s payout settings.
+                  </li>
                   <li>• USD withdrawals use Stripe or PayPal; KES uses M-Pesa B2C.</li>
                   <li>• Requests move to a processing queue; you’ll get an email update.</li>
                 </ul>
@@ -1083,9 +1094,7 @@ const validateSessionForm = (): boolean => {
               Rate Your Tutor
             </h2>
             <div className="mb-4">
-              <label className="block mb-1 text-slate-700 dark:text-slate-300">
-                Rating (1-5):
-              </label>
+              <label className="block mb-1 text-slate-700 dark:text-slate-300">Rating (1-5):</label>
               <input
                 type="number"
                 min={1}

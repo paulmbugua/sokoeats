@@ -7,16 +7,20 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { useCourses } from '@mytutorapp/shared/hooks';
 import { useEnrollments } from '@mytutorapp/shared/hooks/useEnrollments';
 import { useCourseProgress } from '@mytutorapp/shared/hooks/useCourseProgress';
-import type { Course, Enrollment, CourseProgress } from '@mytutorapp/shared/types';
+import type {
+  Course,
+  Enrollment,
+  CourseProgress,
+  Transaction,
+  EarningsSummary,
+} from '@mytutorapp/shared/types';
 
 import PaymentWidget from '../components/PaymentWidget.web';
 import ThemeToggle from '../components/ThemeToggle.web';
 import DeleteAccount from '../components/DeleteAccount.web';
 import useAppQuery from '@mytutorapp/shared/hooks/useAppQuery';
 import * as accountApi from '@mytutorapp/shared/api';
-import type { Transaction } from '@mytutorapp/shared/types';
 
-import type { EarningsSummary } from '@mytutorapp/shared/types';
 import { fetchEarningsSummary } from '@mytutorapp/shared/api/accountApi';
 
 // Icons
@@ -27,7 +31,7 @@ import {
   faChalkboardUser,
   faUsers,
   faUser,
-   faUserGear,
+  faUserGear,
   faMessage,
   faBell,
   faVideo,
@@ -48,11 +52,7 @@ const resolveAsset = (raw?: string, backendUrl?: string, fallbackName?: string) 
 };
 
 const toNum = (v: unknown, fb = 0): number =>
-  typeof v === 'number' && Number.isFinite(v)
-    ? v
-    : typeof v === 'string'
-    ? Number(v) || fb
-    : fb;
+  typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' ? Number(v) || fb : fb;
 
 /** Return a string courseId if present in either shape, never "undefined". */
 const getCourseId = (row: unknown): string | null => {
@@ -60,7 +60,8 @@ const getCourseId = (row: unknown): string | null => {
   const o = row as Record<string, unknown>;
   const v = ((): unknown => {
     if (typeof o.courseId === 'string' || typeof o.courseId === 'number') return o.courseId;
-    if (typeof o['course_id'] === 'string' || typeof o['course_id'] === 'number') return o['course_id'];
+    if (typeof o['course_id'] === 'string' || typeof o['course_id'] === 'number')
+      return o['course_id'];
     return null;
   })();
   if (v === null || v === undefined) return null;
@@ -69,7 +70,10 @@ const getCourseId = (row: unknown): string | null => {
 
 /** Basic UUID check (accepts v1–v5). */
 const isUuid = (s: string | null | undefined): s is string =>
-  !!s && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(s);
+  !!s &&
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+    s
+  );
 
 /** Numeric ID check. */
 const isNumericId = (s: unknown): boolean =>
@@ -77,7 +81,9 @@ const isNumericId = (s: unknown): boolean =>
 
 /** Accept UUID or numeric. */
 const isValidCourseId = (id: unknown): id is string =>
-  typeof id === 'string' ? (isUuid(id) || /^\d+$/.test(id)) : (typeof id === 'number' && Number.isFinite(id));
+  typeof id === 'string'
+    ? isUuid(id) || /^\d+$/.test(id)
+    : typeof id === 'number' && Number.isFinite(id);
 
 /** Detect if payout is configured (supports current + legacy field names). */
 const hasPayoutSetup = (prof?: any): boolean => {
@@ -101,7 +107,12 @@ type ProfileLike = {
   gallery?: string[];
 };
 
-type EarningsSummaryLocal = { total: number; pending: number; available: number; currency?: string };
+type EarningsSummaryLocal = {
+  total: number;
+  pending: number;
+  available: number;
+  currency?: string;
+};
 
 /* ---------- Student progress row ---------- */
 const StudentProgressRow: React.FC<{
@@ -160,7 +171,9 @@ const StudentProgressRow: React.FC<{
         <Link
           to={toHref}
           className={`inline-flex h-8 px-3 rounded-lg ${
-            validId ? 'bg-[#e7edf4] dark:bg-[#172534]' : 'bg-gray-200 dark:bg-gray-700 cursor-not-allowed'
+            validId
+              ? 'bg-[#e7edf4] dark:bg-[#172534]'
+              : 'bg-gray-200 dark:bg-gray-700 cursor-not-allowed'
           } text-sm font-semibold`}
           onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
             if (!validId) e.preventDefault();
@@ -231,17 +244,16 @@ const ProfilePage: React.FC = () => {
 
   const p = (profile ?? {}) as ProfileLike;
   // Payout currency for tutor (USD/KES)
-const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
-  const raw =
-    (p as any)?.payoutCurrency ??
-    (p as any)?.payout_currency ??
-    (p as any)?.currency ?? // <— NEW: also look at generic "currency"
-    'USD';
+  const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
+    const raw =
+      (p as any)?.payoutCurrency ??
+      (p as any)?.payout_currency ??
+      (p as any)?.currency ?? // <— NEW: also look at generic "currency"
+      'USD';
 
-  const upper = String(raw).toUpperCase();
-  return upper === 'KES' ? 'KES' : 'USD';
-}, [p]);
-
+    const upper = String(raw).toUpperCase();
+    return upper === 'KES' ? 'KES' : 'USD';
+  }, [p]);
 
   // Resolved identity
   const resolvedEmail = userEmail || meEmail || '';
@@ -261,7 +273,12 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
   const canSeeEarnings = useMemo(() => isTutor && hasPayoutSetup(p), [isTutor, p]);
 
   const avatar = useMemo(
-    () => resolveAsset(p.avatar ?? p.photoUrl ?? p.avatar_url ?? p.gallery?.[0], backendUrl, p.name || 'You'),
+    () =>
+      resolveAsset(
+        p.avatar ?? p.photoUrl ?? p.avatar_url ?? p.gallery?.[0],
+        backendUrl,
+        p.name || 'You'
+      ),
     [p.avatar, p.photoUrl, p.avatar_url, p.gallery, backendUrl, p.name]
   );
 
@@ -295,10 +312,8 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
     }
   };
 
-    /* Transactions for earnings math ---------------------------------------- */
-  const {
-    data: transactions = [],
-  } = useAppQuery<Transaction[], Error>(
+  /* Transactions for earnings math ---------------------------------------- */
+  const { data: transactions = [] } = useAppQuery<Transaction[], Error>(
     ['profileTransactions', token],
     () => accountApi.fetchTransactions(backendUrl, token!),
     { enabled: Boolean(token), refetchOnWindowFocus: false }
@@ -325,11 +340,10 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
   }, [transactions]);
 
   const approxLifetime = lifetimeByCurrency[payoutCurrency] ?? 0;
-  const approxPending  = pendingWithdrawalsByCurrency[payoutCurrency] ?? 0;
+  const approxPending = pendingWithdrawalsByCurrency[payoutCurrency] ?? 0;
   const approxAvailable = Math.max(0, approxLifetime - approxPending);
 
-
-    /* tutor earnings — use backend summary + tx fallback --------------------- */
+  /* tutor earnings — use backend summary + tx fallback --------------------- */
   const {
     data: earningsRaw,
     isLoading: earningsLoading,
@@ -364,12 +378,9 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
     }
 
     const raw = earningsRaw;
-    const total =
-      raw && raw.total && raw.total > 0 ? raw.total : approxLifetime;
-    const pending =
-      raw && raw.pending && raw.pending > 0 ? raw.pending : approxPending;
-    const available =
-      raw && raw.available && raw.available > 0 ? raw.available : approxAvailable;
+    const total = raw && raw.total && raw.total > 0 ? raw.total : approxLifetime;
+    const pending = raw && raw.pending && raw.pending > 0 ? raw.pending : approxPending;
+    const available = raw && raw.available && raw.available > 0 ? raw.available : approxAvailable;
 
     return {
       total,
@@ -392,7 +403,6 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
   });
   console.log('[ProfilePage] normalized earn (Profile)', earn);
 
-
   const fmtMoney = useCallback(
     (n: number, c?: string) =>
       new Intl.NumberFormat(undefined, {
@@ -405,7 +415,12 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
 
   /* student enrollments → Progress list */
   const meId = (p.user_id ?? p.id) as string | number | undefined;
-  const { enrollments, loading: enrLoading, error: enrError, fetchMine } = useEnrollments({
+  const {
+    enrollments,
+    loading: enrLoading,
+    error: enrError,
+    fetchMine,
+  } = useEnrollments({
     backendUrl,
     token: token ?? '',
     studentId: (meId ?? 'me') as string | number,
@@ -456,8 +471,9 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
           });
           if (r.ok) {
             const j = await r.json();
-            const bal =
-              Number(j?.balance ?? j?.tokens ?? j?.data?.balance ?? j?.data?.tokens ?? NaN);
+            const bal = Number(
+              j?.balance ?? j?.tokens ?? j?.data?.balance ?? j?.data?.tokens ?? NaN
+            );
             if (Number.isFinite(bal)) setCtxTokens(bal);
           }
         } catch {
@@ -467,7 +483,15 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
     } finally {
       setRefreshingTokens(false);
     }
-  }, [refetchDetails, reftechDetails, refreshWallet, refreshProfile, setCtxTokens, token, backendUrl]);
+  }, [
+    refetchDetails,
+    reftechDetails,
+    refreshWallet,
+    refreshProfile,
+    setCtxTokens,
+    token,
+    backendUrl,
+  ]);
 
   // When the payment sheet closes (regardless of success), refresh balances.
   const handlePaymentClose = useCallback(async () => {
@@ -498,10 +522,10 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
   const ctaLabel = loadingProfile
     ? 'Loading…'
     : isTutor
-    ? hasTutorProfile
-      ? 'Edit profile'
-      : 'Create profile'
-    : 'Edit profile';
+      ? hasTutorProfile
+        ? 'Edit profile'
+        : 'Create profile'
+      : 'Edit profile';
 
   const shouldAnimate = isTutor && !hasTutorProfile && !loadingProfile; // highlight CTA if tutor missing profile
 
@@ -589,7 +613,6 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
                 </span>
               </Link>
 
-
               <Link
                 to="/messages"
                 className="px-3 py-2 rounded-xl hover:bg-[#e7edf4] dark:hover:bg-[#172534] text-sm"
@@ -655,7 +678,8 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
                 <div className="flex-1">
                   <div className="font-semibold">No tutor profile found</div>
                   <p className="text-sm mt-0.5">
-                    You’re signed in as a tutor. Create your profile so students can discover and book you.
+                    You’re signed in as a tutor. Create your profile so students can discover and
+                    book you.
                   </p>
                   <div className="mt-2">
                     <button
@@ -710,7 +734,9 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
             </div>
 
             {/* Personal info */}
-            <h2 className="px-4 pt-4 pb-2 text-[20px] sm:text-[22px] font-bold">Personal information</h2>
+            <h2 className="px-4 pt-4 pb-2 text-[20px] sm:text-[22px] font-bold">
+              Personal information
+            </h2>
             <div className="px-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label className="flex flex-col">
                 <span className="pb-2 font-medium">Full name</span>
@@ -794,12 +820,16 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
                     {canSeeEarnings && !earnLoading && !earnErr && (
                       <div className="text-sm grid grid-cols-2 gap-3">
                         <div className="rounded-lg p-3 bg-[#e7edf4]/60 dark:bg-[#172534]">
-                          <div className="text-[#49739c] dark:text-darkTextSecondary">Total earned</div>
+                          <div className="text-[#49739c] dark:text-darkTextSecondary">
+                            Total earned
+                          </div>
                           <div className="font-semibold">{fmtMoney(earn.total, earn.currency)}</div>
                         </div>
                         <div className="rounded-lg p-3 bg-[#e7edf4]/60 dark:bg-[#172534]">
                           <div className="text-[#49739c] dark:text-darkTextSecondary">Pending</div>
-                          <div className="font-semibold">{fmtMoney(earn.pending, earn.currency)}</div>
+                          <div className="font-semibold">
+                            {fmtMoney(earn.pending, earn.currency)}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -817,7 +847,9 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
                         if (!canSeeEarnings) e.preventDefault();
                       }}
                       title={
-                        canSeeEarnings ? 'Open detailed earnings view' : 'Set up payouts to view details'
+                        canSeeEarnings
+                          ? 'Open detailed earnings view'
+                          : 'Set up payouts to view details'
                       }
                     >
                       View details
@@ -883,13 +915,15 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
                         typeof maybeTitle === 'string' && maybeTitle.trim().length > 0
                           ? maybeTitle
                           : courseId
-                          ? `Course #${courseId}`
-                          : 'Course';
+                            ? `Course #${courseId}`
+                            : 'Course';
                       const fallbackPct = toNum((e as any).progress, 0);
 
                       return (
                         <StudentProgressRow
-                          key={String((e as unknown as Record<string, unknown>).id ?? `${courseId}-${title}`)}
+                          key={String(
+                            (e as unknown as Record<string, unknown>).id ?? `${courseId}-${title}`
+                          )}
                           courseId={courseId}
                           title={title}
                           backendUrl={backendUrl}
@@ -965,7 +999,8 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
                     Create Course
                   </p>
                   <p className="text-[#0b3a70] dark:text-blue-200/90 text-sm mt-1">
-                    Use our step-by-step builder to publish structured lessons, quizzes & certificates.
+                    Use our step-by-step builder to publish structured lessons, quizzes &
+                    certificates.
                   </p>
                   <div className="mt-3 inline-flex items-center gap-2 text-sm font-semibold px-3 py-1.5 rounded-lg bg-[#fff] dark:bg-[#0f1821] ring-1 ring-blue-300/50 dark:ring-blue-600/30">
                     Start Builder →
@@ -1062,7 +1097,6 @@ const payoutCurrency: 'USD' | 'KES' = React.useMemo(() => {
             {/* Logout + Delete Account — spaced apart */}
             <div className="px-4 py-4">
               <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
-
                 <button
                   onClick={onLogout}
                   className="h-10 px-4 rounded-xl font-bold bg-[#e7edf4] dark:bg-[#172534]"

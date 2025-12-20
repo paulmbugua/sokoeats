@@ -1,11 +1,5 @@
 /* eslint-disable prettier/prettier */
-import React, {
-  useEffect,
-  useMemo,
-  useCallback,
-  useRef,
-  useState,
-} from 'react';
+import React, { useEffect, useMemo, useCallback, useRef, useState } from 'react';
 import {
   ScrollView,
   View,
@@ -40,9 +34,9 @@ const pricingFields: PricingKeys[] = ['privateSession', 'groupSession', 'worksho
 /** Match web min/max ranges (tokens == USD) */
 const tokenRanges: Record<PricingKeys, { min: number; max: number }> = {
   privateSession: { min: 5, max: 50 },
-  groupSession:   { min: 5, max: 50 },
-  workshop:       { min: 5, max: 100 },
-  lecture:        { min: 5, max: 100 },
+  groupSession: { min: 5, max: 50 },
+  workshop: { min: 5, max: 100 },
+  lecture: { min: 5, max: 100 },
 };
 
 function isUploadAsset(obj: unknown): obj is UploadAsset {
@@ -98,8 +92,7 @@ const toSeconds = (raw?: number | null) => {
   return n > 1000 ? n / 1000 : n;
 };
 const isEmail = (s: string) => /\S+@\S+\.\S+/.test(s);
-const isMpesaLike = (s: string) =>
-  /^\+?2547\d{8}$/.test(s) || /^07\d{8}$/.test(s);
+const isMpesaLike = (s: string) => /^\+?2547\d{8}$/.test(s) || /^07\d{8}$/.test(s);
 
 /** Error labels to build banner exactly like web */
 type Errors = Record<string, string>;
@@ -126,8 +119,7 @@ export default function CreateProfileFormNative() {
   const insets = useSafeAreaInsets();
   const { resolvedScheme } = useThemePref();
 
-  const placeholderColor =
-    resolvedScheme === 'dark' ? '#9CA3AF' : '#64748B';
+  const placeholderColor = resolvedScheme === 'dark' ? '#9CA3AF' : '#64748B';
 
   // ScrollView + section refs (for scroll-to-error behavior)
   const scrollRef = useRef<ScrollView>(null);
@@ -142,9 +134,9 @@ export default function CreateProfileFormNative() {
 
   const pricingRefs: Record<PricingKeys, ViewRef> = {
     privateSession: useRef<View>(null),
-    groupSession:   useRef<View>(null),
-    workshop:       useRef<View>(null),
-    lecture:        useRef<View>(null),
+    groupSession: useRef<View>(null),
+    workshop: useRef<View>(null),
+    lecture: useRef<View>(null),
   };
 
   const refsMap: Record<string, ViewRef> = {
@@ -167,33 +159,50 @@ export default function CreateProfileFormNative() {
     role,
 
     // basics
-    name, setName,
+    name,
+    setName,
     // age removed from UI
-    languages, handleLanguageSelect,
+    languages,
+    handleLanguageSelect,
 
-    category, setCategory,
-    bio, setBio,
-    expertise, setExpertise,
-    teachingStyle, setTeachingStyle,
+    category,
+    setCategory,
+    bio,
+    setBio,
+    expertise,
+    setExpertise,
+    teachingStyle,
+    setTeachingStyle,
 
-    pricing, handlePricingChange,
+    pricing,
+    handlePricingChange,
 
     // media
-    images, setImages,
-    videoPreview, handleVideoChange, handleRemoveVideo,
+    images,
+    setImages,
+    videoPreview,
+    handleVideoChange,
+    handleRemoveVideo,
 
     // payout (currency comes from the hook)
     payoutCurrency,
-    payoutMethod, setPayoutMethod,
-    wiseEmail, setWiseEmail,
-    mpesaPhoneNumber, setMpesaPhoneNumber,
+    payoutMethod,
+    setPayoutMethod,
+    wiseEmail,
+    setWiseEmail,
+    mpesaPhoneNumber,
+    setMpesaPhoneNumber,
 
     // geo + grade
-    country, setCountry,
-    schoolGrade, setSchoolGrade,
+    country,
+    setCountry,
+    schoolGrade,
+    setSchoolGrade,
 
     // submit + step
-    loading, handleSubmit, step,
+    loading,
+    handleSubmit,
+    step,
   } = useProfileForm({
     onSuccess: () => navigation.navigate('Home'),
   });
@@ -203,10 +212,10 @@ export default function CreateProfileFormNative() {
   const [banner, setBanner] = useState<string>('');
 
   const setFieldError = (key: string, message: string) => {
-    setErrors(prev => ({ ...prev, [key]: message }));
+    setErrors((prev) => ({ ...prev, [key]: message }));
   };
   const clearFieldError = (key: string) => {
-    setErrors(prev => {
+    setErrors((prev) => {
       if (!(key in prev)) return prev;
       const { [key]: _, ...rest } = prev;
       return rest;
@@ -215,7 +224,7 @@ export default function CreateProfileFormNative() {
   const buildBannerFromErrors = (errs: Errors) => {
     const keys = Object.keys(errs);
     if (!keys.length) return '';
-    const items = keys.map(k => labelFor[k] || k);
+    const items = keys.map((k) => labelFor[k] || k);
     return `Please complete: ${items.join(' • ')}.`;
   };
 
@@ -228,7 +237,7 @@ export default function CreateProfileFormNative() {
         if (cam.status !== 'granted' || lib.status !== 'granted') {
           Alert.alert(
             'Permissions required',
-            'Camera and media library access are needed for photos & video.',
+            'Camera and media library access are needed for photos & video.'
           );
         }
       }
@@ -248,10 +257,7 @@ export default function CreateProfileFormNative() {
     });
 
     if (res.canceled) return;
-    const a =
-      Array.isArray(res.assets) && res.assets.length > 0
-        ? res.assets[0]
-        : undefined;
+    const a = Array.isArray(res.assets) && res.assets.length > 0 ? res.assets[0] : undefined;
     if (!a) return;
 
     const mimeType = guessImageMime(a);
@@ -280,18 +286,12 @@ export default function CreateProfileFormNative() {
     });
     if (res.canceled) return;
 
-    const a =
-      Array.isArray(res.assets) && res.assets.length > 0
-        ? res.assets[0]
-        : undefined;
+    const a = Array.isArray(res.assets) && res.assets.length > 0 ? res.assets[0] : undefined;
     if (!a) return;
 
     const durSec = toSeconds(a.duration ?? undefined);
     if (durSec > 30) {
-      Alert.alert(
-        'Too long',
-        `Your clip is ${durSec.toFixed(1)}s. Please select ≤ 30s.`,
-      );
+      Alert.alert('Too long', `Your clip is ${durSec.toFixed(1)}s. Please select ≤ 30s.`);
       return;
     }
 
@@ -322,18 +322,12 @@ export default function CreateProfileFormNative() {
     });
     if (res.canceled) return;
 
-    const a =
-      Array.isArray(res.assets) && res.assets.length > 0
-        ? res.assets[0]
-        : undefined;
+    const a = Array.isArray(res.assets) && res.assets.length > 0 ? res.assets[0] : undefined;
     if (!a) return;
 
     const durSec = toSeconds(a.duration ?? undefined);
     if (durSec > 30) {
-      Alert.alert(
-        'Too long',
-        `Your recording is ${durSec.toFixed(1)}s. Please record ≤ 30s.`,
-      );
+      Alert.alert('Too long', `Your recording is ${durSec.toFixed(1)}s. Please record ≤ 30s.`);
       return;
     }
 
@@ -352,10 +346,7 @@ export default function CreateProfileFormNative() {
   };
 
   /* ---------------------- Derived & validation ---------------------- */
-  const languagesSelected = useMemo(
-    () => Object.values(languages).some(Boolean),
-    [languages],
-  );
+  const languagesSelected = useMemo(() => Object.values(languages).some(Boolean), [languages]);
 
   // Pricing: do not clamp while typing; validate on submit
   const onPriceChange = useCallback(
@@ -364,7 +355,7 @@ export default function CreateProfileFormNative() {
       handlePricingChange(field, clean);
       clearFieldError(field);
     },
-    [handlePricingChange],
+    [handlePricingChange]
   );
 
   const scrollToField = (key: string | undefined) => {
@@ -388,7 +379,7 @@ export default function CreateProfileFormNative() {
       () => {
         // measurement failed — just go to top so the banner is visible
         scrollRef.current?.scrollTo({ y: 0, animated: true });
-      },
+      }
     );
   };
 
@@ -422,8 +413,7 @@ export default function CreateProfileFormNative() {
         if (!mpesaPhoneNumber?.trim()) {
           next.mpesaPhoneNumber = 'Enter your M-Pesa phone number.';
         } else if (!isMpesaLike(mpesaPhoneNumber.trim())) {
-          next.mpesaPhoneNumber =
-            'Use format +2547XXXXXXXX or 07XXXXXXXX.';
+          next.mpesaPhoneNumber = 'Use format +2547XXXXXXXX or 07XXXXXXXX.';
         }
       } else if (payoutMethod === 'wise') {
         if (!wiseEmail?.trim()) {
@@ -461,9 +451,7 @@ export default function CreateProfileFormNative() {
       ...(role === 'tutor'
         ? [
             'category',
-            ...(payoutMethod === 'wise'
-              ? ['wiseEmail']
-              : ['mpesaPhoneNumber']),
+            ...(payoutMethod === 'wise' ? ['wiseEmail'] : ['mpesaPhoneNumber']),
             'privateSession',
             'groupSession',
             'workshop',
@@ -514,7 +502,7 @@ export default function CreateProfileFormNative() {
   const inputBase = tw`w-full p-3 rounded-xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#0f1821] text-[#0d141c] dark:text-white text-base`;
   const invalidBorder = tw`border-red-500`;
 
-  const chipOn  = tw`px-3 py-1 rounded-full bg-pink-500 border border-pink-500`;
+  const chipOn = tw`px-3 py-1 rounded-full bg-pink-500 border border-pink-500`;
   const chipOff = tw`px-3 py-1 rounded-full bg-[#e7edf4] dark:bg-[#172534] border border-transparent`;
 
   return (
@@ -529,10 +517,7 @@ export default function CreateProfileFormNative() {
       <ScrollView
         ref={scrollRef}
         style={tw`flex-1`}
-        contentContainerStyle={[
-          tw`px-4 py-4`,
-          { paddingBottom: Math.max(insets.bottom + 32, 32) },
-        ]}
+        contentContainerStyle={[tw`px-4 py-4`, { paddingBottom: Math.max(insets.bottom + 32, 32) }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
@@ -563,9 +548,7 @@ export default function CreateProfileFormNative() {
               <Text style={inputBase}>{role}</Text>
             </View>
           ) : (
-            <Text style={tw`text-[#49739c] dark:text-gray-300`}>
-              Fetching your role…
-            </Text>
+            <Text style={tw`text-[#49739c] dark:text-gray-300`}>Fetching your role…</Text>
           )}
 
           {/* Name */}
@@ -582,9 +565,7 @@ export default function CreateProfileFormNative() {
               style={[inputBase, errors.name ? invalidBorder : null]}
             />
             {!!errors.name && (
-              <Text style={tw`text-sm text-red-600 dark:text-red-400`}>
-                {errors.name}
-              </Text>
+              <Text style={tw`text-sm text-red-600 dark:text-red-400`}>{errors.name}</Text>
             )}
           </View>
 
@@ -622,9 +603,7 @@ export default function CreateProfileFormNative() {
               style={[inputBase, errors.schoolGrade ? invalidBorder : null]}
             />
             {!!errors.schoolGrade && (
-              <Text style={tw`text-sm text-red-600 dark:text-red-400`}>
-                {errors.schoolGrade}
-              </Text>
+              <Text style={tw`text-sm text-red-600 dark:text-red-400`}>{errors.schoolGrade}</Text>
             )}
           </View>
 
@@ -648,13 +627,7 @@ export default function CreateProfileFormNative() {
                     }}
                     style={on ? chipOn : chipOff}
                   >
-                    <Text
-                      style={
-                        on
-                          ? tw`text-white`
-                          : tw`text-[#49739c] dark:text-gray-300`
-                      }
-                    >
+                    <Text style={on ? tw`text-white` : tw`text-[#49739c] dark:text-gray-300`}>
                       {lang}
                     </Text>
                   </TouchableOpacity>
@@ -662,9 +635,7 @@ export default function CreateProfileFormNative() {
               })}
             </View>
             {!!errors.languages && (
-              <Text style={tw`text-sm text-red-600 dark:text-red-400`}>
-                {errors.languages}
-              </Text>
+              <Text style={tw`text-sm text-red-600 dark:text-red-400`}>{errors.languages}</Text>
             )}
           </View>
 
@@ -781,18 +752,12 @@ export default function CreateProfileFormNative() {
                         key={s}
                         onPress={() =>
                           setTeachingStyle((prev) =>
-                            on ? prev.filter((i) => i !== s) : [...prev, s],
+                            on ? prev.filter((i) => i !== s) : [...prev, s]
                           )
                         }
                         style={on ? chipOn : chipOff}
                       >
-                        <Text
-                          style={
-                            on
-                              ? tw`text-white`
-                              : tw`text-[#49739c] dark:text-gray-300`
-                          }
-                        >
+                        <Text style={on ? tw`text-white` : tw`text-[#49739c] dark:text-gray-300`}>
                           {s}
                         </Text>
                       </TouchableOpacity>
@@ -830,23 +795,17 @@ export default function CreateProfileFormNative() {
                           key={skill}
                           onPress={() =>
                             setExpertise((prev) =>
-                              on ? prev.filter((i) => i !== skill) : [...prev, skill],
+                              on ? prev.filter((i) => i !== skill) : [...prev, skill]
                             )
                           }
                           style={on ? chipOn : chipOff}
                         >
-                          <Text
-                            style={
-                              on
-                                ? tw`text-white`
-                                : tw`text-[#49739c] dark:text-gray-300`
-                            }
-                          >
+                          <Text style={on ? tw`text-white` : tw`text-[#49739c] dark:text-gray-300`}>
                             {skill}
                           </Text>
                         </TouchableOpacity>
                       );
-                    },
+                    }
                   )}
                 </View>
               </View>
@@ -857,22 +816,14 @@ export default function CreateProfileFormNative() {
                 <View style={tw`flex-row flex-wrap -mx-2`}>
                   {pricingFields.map((field) => {
                     const { min, max } = tokenRanges[field];
-                    const value =
-                      (pricing as Record<PricingKeys, string>)[field] || '';
+                    const value = (pricing as Record<PricingKeys, string>)[field] || '';
                     return (
-                      <View
-                        ref={pricingRefs[field]}
-                        key={field}
-                        style={tw`w-1/2 px-2 mb-4`}
-                      >
+                      <View ref={pricingRefs[field]} key={field} style={tw`w-1/2 px-2 mb-4`}>
                         <Text style={tw`text-sm text-[#49739c] dark:text-gray-300`}>
                           {field.replace(/([A-Z])/g, ' $1')} (Min: {min} | Max: {max})
                         </Text>
                         <TextInput
-                          placeholder={`Enter ${field.replace(
-                            /([A-Z])/g,
-                            ' $1',
-                          )} Tokens`}
+                          placeholder={`Enter ${field.replace(/([A-Z])/g, ' $1')} Tokens`}
                           value={value}
                           onChangeText={(t) => onPriceChange(field, t)}
                           keyboardType="numeric"
@@ -905,14 +856,9 @@ export default function CreateProfileFormNative() {
                   style={tw`w-24 h-24 border border-[#cedbe8] dark:border-white/10 items-center justify-center rounded-xl bg-slate-50 dark:bg-[#0f1821] overflow-hidden`}
                 >
                   {images[0] && isUploadAsset(images[0]) ? (
-                    <Image
-                      source={{ uri: images[0].uri }}
-                      style={tw`w-full h-full rounded-xl`}
-                    />
+                    <Image source={{ uri: images[0].uri }} style={tw`w-full h-full rounded-xl`} />
                   ) : (
-                    <Text style={tw`text-xs text-[#49739c] dark:text-gray-300`}>
-                      Upload
-                    </Text>
+                    <Text style={tw`text-xs text-[#49739c] dark:text-gray-300`}>Upload</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -931,9 +877,7 @@ export default function CreateProfileFormNative() {
                     onPress={pickVideo}
                     style={tw`bg-slate-200 dark:bg-[#172534] px-4 py-2 rounded-xl`}
                   >
-                    <Text style={tw`text-[#0d141c] dark:text-gray-200`}>
-                      Upload
-                    </Text>
+                    <Text style={tw`text-[#0d141c] dark:text-gray-200`}>Upload</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -975,8 +919,8 @@ export default function CreateProfileFormNative() {
                 ? step === 'uploading'
                   ? 'Uploading images…'
                   : step === 'creating'
-                  ? 'Creating profile…'
-                  : 'Creating profile…'
+                    ? 'Creating profile…'
+                    : 'Creating profile…'
                 : 'Create Profile'}
             </Text>
           </TouchableOpacity>

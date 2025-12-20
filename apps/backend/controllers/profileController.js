@@ -2,7 +2,7 @@
 
 import { v2 as cloudinary } from 'cloudinary';
 import pool from '../config/db.js';
-import path from 'path'
+import path from 'path';
 import {
   profileValidationSchema,
   profileUpdateValidationSchema,
@@ -20,38 +20,40 @@ import { resolveCountryIso2FromText } from '../utils/countries.js';
  * @returns {Promise<Array<{ url: string; public_id: string }>>}
  */
 async function uploadToCloudinary(files, resourceType = 'image') {
-  return Promise.all(files.map(async file => {
-    // 1) If Multer gave us a buffer (memoryStorage), use upload_stream:
-    if (file.buffer) {
-      return new Promise((resolve, reject) => {
-        const opts = {
+  return Promise.all(
+    files.map(async (file) => {
+      // 1) If Multer gave us a buffer (memoryStorage), use upload_stream:
+      if (file.buffer) {
+        return new Promise((resolve, reject) => {
+          const opts = {
+            resource_type: resourceType,
+            folder: 'class_vault',
+            public_id: `auto/${Date.now()}_${file.originalname.replace(/\..+$/, '')}`,
+          };
+          const stream = cloudinary.uploader.upload_stream(
+            opts,
+            (err, result) => {
+              if (err) return reject(err);
+              resolve({ url: result.secure_url, public_id: result.public_id });
+            },
+          );
+          stream.end(file.buffer);
+        });
+      }
+
+      // 2) Otherwise fall back to the on‐disk path:
+      if (file.path) {
+        const result = await cloudinary.uploader.upload(file.path, {
           resource_type: resourceType,
-          folder:         'class_vault',
-          public_id:      `auto/${Date.now()}_${file.originalname.replace(/\..+$/,'')}`
-        }
-        const stream = cloudinary.uploader.upload_stream(
-          opts,
-          (err, result) => {
-            if (err) return reject(err)
-            resolve({ url: result.secure_url, public_id: result.public_id })
-          }
-        )
-        stream.end(file.buffer)
-      })
-    }
+          folder: 'class_vault',
+          public_id: `auto/${Date.now()}_${path.basename(file.path, path.extname(file.path))}`,
+        });
+        return { url: result.secure_url, public_id: result.public_id };
+      }
 
-    // 2) Otherwise fall back to the on‐disk path:
-    if (file.path) {
-      const result = await cloudinary.uploader.upload(file.path, {
-        resource_type: resourceType,
-        folder:         'class_vault',
-        public_id:      `auto/${Date.now()}_${path.basename(file.path, path.extname(file.path))}`
-      })
-      return { url: result.secure_url, public_id: result.public_id }
-    }
-
-    throw new Error('No file.buffer or file.path provided')
-  }))
+      throw new Error('No file.buffer or file.path provided');
+    }),
+  );
 }
 
 /**
@@ -60,7 +62,9 @@ async function uploadToCloudinary(files, resourceType = 'image') {
  */
 const deleteFromCloudinary = async (publicIds, resourceType = 'image') => {
   try {
-    await cloudinary.api.delete_resources(publicIds, { resource_type: resourceType });
+    await cloudinary.api.delete_resources(publicIds, {
+      resource_type: resourceType,
+    });
   } catch (err) {
     console.error('Cloudinary delete error:', err);
   }
@@ -71,7 +75,7 @@ const deleteFromCloudinary = async (publicIds, resourceType = 'image') => {
  * E.g. 'https://res.cloudinary.com/…/upload/v123/profiles/abc.jpg'
  * → 'profiles/abc'
  */
-const getPublicIdFromUrl = url => {
+const getPublicIdFromUrl = (url) => {
   const [, afterUpload] = url.split('/upload/');
   return afterUpload.replace(/\.[^/.]+$/, '');
 };
@@ -92,96 +96,115 @@ function normIso2(input) {
 export const createProfile = async (req, res) => {
   try {
     const {
-      role, name, age,
-      paymentMethod, bankAccount, bankCode, mpesaPhoneNumber
+      role,
+      name,
+      age,
+      paymentMethod,
+      bankAccount,
+      bankCode,
+      mpesaPhoneNumber,
     } = req.body;
 
-    const isTutor   = String(role || '').toLowerCase() === 'tutor';
-    const category  = req.body.category?.trim() || null;
-    let languages   = [];
+    const isTutor = String(role || '').toLowerCase() === 'tutor';
+    const category = req.body.category?.trim() || null;
+    let languages = [];
     try {
       languages = Array.isArray(req.body.languages)
         ? req.body.languages
         : JSON.parse(req.body.languages || '[]');
-    } catch { languages = []; }
+    } catch {
+      languages = [];
+    }
 
     // NEW: optional geography/school
-    const rawCountry  = (req.body.country || '').toString();
-    const schoolGrade = (req.body.schoolGrade || null);
-    
+    const rawCountry = (req.body.country || '').toString();
+    const schoolGrade = req.body.schoolGrade || null;
+
     // files…
-    const imageFiles = ['image1','image2','image3','image4'].map(k => req.files?.[k]?.[0]).filter(Boolean);
-    const videoFile  = req.files?.video?.[0] || null;
+    const imageFiles = ['image1', 'image2', 'image3', 'image4']
+      .map((k) => req.files?.[k]?.[0])
+      .filter(Boolean);
+    const videoFile = req.files?.video?.[0] || null;
 
-    const galleryUploads = isTutor && imageFiles.length
-      ? await uploadToCloudinary(imageFiles,'image') : [];
-    const gallery = galleryUploads.map(u=>u.url);
+    const galleryUploads =
+      isTutor && imageFiles.length
+        ? await uploadToCloudinary(imageFiles, 'image')
+        : [];
+    const gallery = galleryUploads.map((u) => u.url);
 
-    const videoUrl = isTutor && videoFile
-      ? (await uploadToCloudinary([videoFile],'video'))[0].url : null;
+    const videoUrl =
+      isTutor && videoFile
+        ? (await uploadToCloudinary([videoFile], 'video'))[0].url
+        : null;
 
     // 🔹 payout prefs
     const payout = normalizePayoutFromBody(
       { ...req.body, mpesaPhoneNumber },
-      role
+      role,
     );
     if (payout.error) return res.status(400).json({ message: payout.error });
 
     // Build payload for Joi; student fields are optional now
-let description = undefined;
-let pricing     = undefined;
-try {
-  description = {
-    bio:           req.body['description.bio'],
-    expertise:     JSON.parse(req.body['description.expertise'] || '[]'),
-    teachingStyle: JSON.parse(req.body['description.teachingStyle'] || '[]'),
-  };
-} catch { description = undefined; }
-try {
-  pricing = JSON.parse(req.body.pricing || '{}');
-} catch { pricing = undefined; }
+    let description = undefined;
+    let pricing = undefined;
+    try {
+      description = {
+        bio: req.body['description.bio'],
+        expertise: JSON.parse(req.body['description.expertise'] || '[]'),
+        teachingStyle: JSON.parse(
+          req.body['description.teachingStyle'] || '[]',
+        ),
+      };
+    } catch {
+      description = undefined;
+    }
+    try {
+      pricing = JSON.parse(req.body.pricing || '{}');
+    } catch {
+      pricing = undefined;
+    }
 
-let parsedAge;
-if (age !== undefined && age !== null && String(age).trim() !== '') {
-  const n = Number(age);
-  if (Number.isFinite(n)) {
-    parsedAge = n;
-  }
-}
-const basePayload = {
-  role,
-  name,
-  languages,   // optional for students
-  country: rawCountry, // optional
-  schoolGrade,         // optional
-};                    // optional
- const payload = {
-  ...basePayload,
-  ...(typeof parsedAge === 'number' ? { age: parsedAge } : {}),
-  ...(isTutor && {
-    category,
-    gallery,
-    video: videoUrl,
-    description,
-    pricing,
-    paymentMethod,
-    bankAccount,
-    bankCode,
-    // normalized payout fields
-    payoutCurrency:   payout.payout_currency,
-    payoutMethod:     payout.payout_method,
-    mpesaPhoneNumber: payout.mpesa_phone_number,
-    stripeConnectId:  payout.stripe_connect_id,
-    paypalEmail:      payout.paypal_email,
-  }),
-};
+    let parsedAge;
+    if (age !== undefined && age !== null && String(age).trim() !== '') {
+      const n = Number(age);
+      if (Number.isFinite(n)) {
+        parsedAge = n;
+      }
+    }
+    const basePayload = {
+      role,
+      name,
+      languages, // optional for students
+      country: rawCountry, // optional
+      schoolGrade, // optional
+    }; // optional
+    const payload = {
+      ...basePayload,
+      ...(typeof parsedAge === 'number' ? { age: parsedAge } : {}),
+      ...(isTutor && {
+        category,
+        gallery,
+        video: videoUrl,
+        description,
+        pricing,
+        paymentMethod,
+        bankAccount,
+        bankCode,
+        // normalized payout fields
+        payoutCurrency: payout.payout_currency,
+        payoutMethod: payout.payout_method,
+        mpesaPhoneNumber: payout.mpesa_phone_number,
+        stripeConnectId: payout.stripe_connect_id,
+        paypalEmail: payout.paypal_email,
+      }),
+    };
 
-
-     const { error, value } = profileValidationSchema.validate(payload, {
+    const { error, value } = profileValidationSchema.validate(payload, {
       abortEarly: false,
       stripUnknown: true,
     });
-    if (error) return res.status(400).json({ message: error.details[0].message });
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
 
     const insertSQL = `
   INSERT INTO profiles
@@ -202,40 +225,37 @@ const basePayload = {
   RETURNING *;
 `;
 
-const country = normIso2(value.country) || null;
-const params = [
-  req.user.id,                        // 1
-  value.role,                         // 2
-  value.name,                         // 3
-  (typeof value.age === 'number' ? value.age : null), // 4 (student may be null)
-  value.languages || [],              // 5
-  country,                            // 6
-  value.schoolGrade ?? null,          // 7
-  isTutor ? (value.category ?? null) : null,                  // 8
-  isTutor ? JSON.stringify(value.description || {}) : null,   // 9
-  isTutor ? JSON.stringify(value.pricing || {})     : null,   // 10
-  isTutor ? (gallery || []) : null,                           // 11
-  isTutor ? (videoUrl || null) : null,                        // 12
-  isTutor ? (value.paymentMethod ?? null) : null,             // 13
-  isTutor ? (value.bankAccount ?? null)   : null,             // 14
-  isTutor ? (value.bankCode ?? null)      : null,             // 15
-  isTutor ? (payout.mpesa_phone_number ?? null) : null,       // 16
-  isTutor ? (payout.payout_currency || 'USD') : null,         // 17
-  isTutor ? (payout.payout_method   || 'wise') : null,        // 18
-  isTutor ? (payout.stripe_connect_id ?? null) : null,        // 19
-  isTutor ? (payout.paypal_email      ?? null) : null,        // 20
-];
-
+    const country = normIso2(value.country) || null;
+    const params = [
+      req.user.id, // 1
+      value.role, // 2
+      value.name, // 3
+      typeof value.age === 'number' ? value.age : null, // 4 (student may be null)
+      value.languages || [], // 5
+      country, // 6
+      value.schoolGrade ?? null, // 7
+      isTutor ? (value.category ?? null) : null, // 8
+      isTutor ? JSON.stringify(value.description || {}) : null, // 9
+      isTutor ? JSON.stringify(value.pricing || {}) : null, // 10
+      isTutor ? gallery || [] : null, // 11
+      isTutor ? videoUrl || null : null, // 12
+      isTutor ? (value.paymentMethod ?? null) : null, // 13
+      isTutor ? (value.bankAccount ?? null) : null, // 14
+      isTutor ? (value.bankCode ?? null) : null, // 15
+      isTutor ? (payout.mpesa_phone_number ?? null) : null, // 16
+      isTutor ? payout.payout_currency || 'USD' : null, // 17
+      isTutor ? payout.payout_method || 'wise' : null, // 18
+      isTutor ? (payout.stripe_connect_id ?? null) : null, // 19
+      isTutor ? (payout.paypal_email ?? null) : null, // 20
+    ];
 
     const { rows } = await pool.query(insertSQL, params);
-    res.status(201).json({ success:true, profile: rows[0] });
+    res.status(201).json({ success: true, profile: rows[0] });
   } catch (err) {
     console.error('createProfile error:', err);
-    res.status(500).json({ message:'Failed to create profile.' });
+    res.status(500).json({ message: 'Failed to create profile.' });
   }
 };
-
-
 
 // ─── 2. Create Profile (JSON body with array fields only) ────────────────────
 //
@@ -245,13 +265,16 @@ export const createProfileJson = async (req, res) => {
     const payload = req.body || {};
     // 🔓 Optional age: normalize to a number or drop it
     let ageNormalized;
-    if (payload.age !== undefined && payload.age !== null && String(payload.age).trim() !== '') {
+    if (
+      payload.age !== undefined &&
+      payload.age !== null &&
+      String(payload.age).trim() !== ''
+    ) {
       const n = Number(payload.age);
       if (Number.isFinite(n)) {
         ageNormalized = n;
       }
     }
-
 
     let languagesIn = [];
     try {
@@ -270,7 +293,12 @@ export const createProfileJson = async (req, res) => {
     const isTutor = String(payload.role || '').toLowerCase() === 'tutor';
     const payout = normalizePayoutFromBody(payload, payload.role);
     if (payout.error) {
-      console.error('normalizePayoutFromBody → error:', payout.error, 'payload:', payload);
+      console.error(
+        'normalizePayoutFromBody → error:',
+        payout.error,
+        'payload:',
+        payload,
+      );
       return res.status(400).json({ message: payout.error });
     }
 
@@ -287,11 +315,13 @@ export const createProfileJson = async (req, res) => {
       : {};
 
     const toValidate = {
-  ...payload,
-  ...(typeof ageNormalized === 'number' ? { age: ageNormalized } : {}),
-  languages: languagesIn,
-  ...(isTutor ? { gallery: galleryIn, video: videoIn, ...payoutFields } : {}),
-};
+      ...payload,
+      ...(typeof ageNormalized === 'number' ? { age: ageNormalized } : {}),
+      languages: languagesIn,
+      ...(isTutor
+        ? { gallery: galleryIn, video: videoIn, ...payoutFields }
+        : {}),
+    };
 
     // 4) Validate (schema should allow missing student age/languages/country)
     const { error, value } = profileValidationSchema.validate(toValidate, {
@@ -301,11 +331,11 @@ export const createProfileJson = async (req, res) => {
 
     console.log(
       'createProfileJson → incoming payload:',
-      JSON.stringify(payload, null, 2)
+      JSON.stringify(payload, null, 2),
     );
     console.log(
       'createProfileJson → normalized/validated candidate (toValidate):',
-      JSON.stringify(toValidate, null, 2)
+      JSON.stringify(toValidate, null, 2),
     );
 
     if (error) {
@@ -365,8 +395,8 @@ export const createProfileJson = async (req, res) => {
       typeof age === 'number' && Number.isFinite(age)
         ? age
         : typeof age === 'string' && Number.isFinite(parseInt(age, 10))
-        ? parseInt(age, 10)
-        : null;
+          ? parseInt(age, 10)
+          : null;
 
     const params = [
       req.user.id, // $1
@@ -376,23 +406,28 @@ export const createProfileJson = async (req, res) => {
       Array.isArray(languages) ? languages : [], // $5 (jsonb[])
       country, // $6
       schoolGrade ?? null, // $7
-      isTutor ? category ?? null : null, // $8
+      isTutor ? (category ?? null) : null, // $8
       isTutor ? jsonDescription : null, // $9
       isTutor ? jsonPricing : null, // $10
-      isTutor ? gallery ?? [] : null, // $11
-      isTutor ? video ?? null : null, // $12
-      isTutor ? paymentMethod ?? null : null, // $13
-      isTutor ? bankAccount ?? null : null, // $14
-      isTutor ? bankCode ?? null : null, // $15
-      isTutor ? mpesaPhoneNumber ?? null : null, // $16
+      isTutor ? (gallery ?? []) : null, // $11
+      isTutor ? (video ?? null) : null, // $12
+      isTutor ? (paymentMethod ?? null) : null, // $13
+      isTutor ? (bankAccount ?? null) : null, // $14
+      isTutor ? (bankCode ?? null) : null, // $15
+      isTutor ? (mpesaPhoneNumber ?? null) : null, // $16
       isTutor ? payoutCurrency || 'USD' : null, // $17
       isTutor ? payoutMethod || 'wise' : null, // $18  ← default to "wise"
     ];
 
     // Sanity check
     if (params.length !== 18) {
-      console.error('createProfileJson → params length mismatch:', params.length);
-      return res.status(500).json({ message: 'Server error: SQL params mismatch.' });
+      console.error(
+        'createProfileJson → params length mismatch:',
+        params.length,
+      );
+      return res
+        .status(500)
+        .json({ message: 'Server error: SQL params mismatch.' });
     }
 
     console.log('createProfileJson → final SQL params snapshot:', {
@@ -404,9 +439,16 @@ export const createProfileJson = async (req, res) => {
       country: params[5],
       school_grade: params[6],
       category: params[7],
-      descriptionKeys: isTutor && description ? Object.keys(description || {}) : null,
-      pricing: isTutor ? (JSON.stringify(pricing || {}).slice(0, 120) + '…') : null,
-      galleryCount: isTutor ? (Array.isArray(gallery) ? gallery.length : 0) : null,
+      descriptionKeys:
+        isTutor && description ? Object.keys(description || {}) : null,
+      pricing: isTutor
+        ? JSON.stringify(pricing || {}).slice(0, 120) + '…'
+        : null,
+      galleryCount: isTutor
+        ? Array.isArray(gallery)
+          ? gallery.length
+          : 0
+        : null,
       hasVideo: isTutor ? Boolean(video) : null,
       paymentMethod: params[12],
       mpesa_phone_number: params[15],
@@ -418,10 +460,11 @@ export const createProfileJson = async (req, res) => {
     return res.status(201).json({ success: true, profile: rows[0] });
   } catch (err) {
     console.error('createProfileJson error:', err);
-    return res.status(500).json({ message: 'Server error', error: err.message });
+    return res
+      .status(500)
+      .json({ message: 'Server error', error: err.message });
   }
 };
-
 
 export const updateProfileVideoJson = async (req, res) => {
   try {
@@ -431,9 +474,10 @@ export const updateProfileVideoJson = async (req, res) => {
     }
     const { rows } = await pool.query(
       'UPDATE profiles SET video = $1 WHERE user_id = $2 RETURNING *',
-      [video, req.user.id]
+      [video, req.user.id],
     );
-    if (!rows.length) return res.status(404).json({ message: 'Profile not found.' });
+    if (!rows.length)
+      return res.status(404).json({ message: 'Profile not found.' });
     res.json({ success: true, profile: rows[0] });
   } catch (err) {
     console.error('updateProfileVideoJson error:', err);
@@ -441,40 +485,55 @@ export const updateProfileVideoJson = async (req, res) => {
   }
 };
 
-
 export const updateProfile = async (req, res) => {
   console.log('Received data on backend:', req.body);
   try {
     const {
-      name, age: ageStr, status, category, pricing, languages,
-      experienceLevel, recommended, 
-      paymentMethod, bankAccount, bankCode, mpesaPhoneNumber,
-      gallery: rawGallery, country, schoolGrade,
-      payoutCurrency, payoutMethod, stripeConnectId, paypalEmail,
+      name,
+      age: ageStr,
+      status,
+      category,
+      pricing,
+      languages,
+      experienceLevel,
+      recommended,
+      paymentMethod,
+      bankAccount,
+      bankCode,
+      mpesaPhoneNumber,
+      gallery: rawGallery,
+      country,
+      schoolGrade,
+      payoutCurrency,
+      payoutMethod,
+      stripeConnectId,
+      paypalEmail,
     } = req.body;
 
     const profileResult = await pool.query(
       'SELECT * FROM profiles WHERE user_id = $1',
-      [req.user.id]
+      [req.user.id],
     );
     if (!profileResult.rows.length) {
-      return res.status(404).json({ success: false, message: 'Profile not found.' });
+      return res
+        .status(404)
+        .json({ success: false, message: 'Profile not found.' });
     }
     const profile = profileResult.rows[0];
     const normalizedRole = String(profile.role || '').toLowerCase();
 
     let age;
-if (typeof ageStr === 'number') {
-  age = ageStr;
-} else if (typeof ageStr === 'string') {
-  const trimmed = ageStr.trim();
-  if (trimmed !== '') {
-    const n = Number(trimmed);
-    if (Number.isFinite(n)) {
-      age = n;
+    if (typeof ageStr === 'number') {
+      age = ageStr;
+    } else if (typeof ageStr === 'string') {
+      const trimmed = ageStr.trim();
+      if (trimmed !== '') {
+        const n = Number(trimmed);
+        if (Number.isFinite(n)) {
+          age = n;
+        }
+      }
     }
-  }
-}
     const parsedLanguages = Array.isArray(languages) ? languages : [];
 
     // ---- gallery normalize
@@ -485,40 +544,52 @@ if (typeof ageStr === 'number') {
         try {
           const arr = JSON.parse(rawGallery);
           parsedGallery = Array.isArray(arr) ? arr : [rawGallery];
-        } catch { parsedGallery = [rawGallery]; }
+        } catch {
+          parsedGallery = [rawGallery];
+        }
       }
     }
 
     // ---- description normalize (parse legacy string once)
     let existingDesc = {};
     try {
-      existingDesc = typeof profile.description === 'string'
-        ? JSON.parse(profile.description || '{}')
-        : (profile.description || {});
-    } catch { existingDesc = {}; }
+      existingDesc =
+        typeof profile.description === 'string'
+          ? JSON.parse(profile.description || '{}')
+          : profile.description || {};
+    } catch {
+      existingDesc = {};
+    }
 
     let description = null;
     if (normalizedRole === 'tutor') {
       const desc = req.body.description || {};
       description = {
         bio: desc.bio ?? existingDesc.bio ?? '',
-        expertise: Array.isArray(desc.expertise) ? desc.expertise : (existingDesc.expertise || []),
-        teachingStyle: Array.isArray(desc.teachingStyle) ? desc.teachingStyle : (existingDesc.teachingStyle || []),
+        expertise: Array.isArray(desc.expertise)
+          ? desc.expertise
+          : existingDesc.expertise || [],
+        teachingStyle: Array.isArray(desc.teachingStyle)
+          ? desc.teachingStyle
+          : existingDesc.teachingStyle || [],
       };
     }
 
     // ---- payout normalize
     const payout = normalizePayoutFromBody(
       {
-        payoutCurrency, payoutMethod,
-        stripeConnectId, stripe_connect_id: stripeConnectId,
-        paypalEmail,    paypal_email:      paypalEmail,
+        payoutCurrency,
+        payoutMethod,
+        stripeConnectId,
+        stripe_connect_id: stripeConnectId,
+        paypalEmail,
+        paypal_email: paypalEmail,
         mpesaPhoneNumber: mpesaPhoneNumber ?? profile.mpesa_phone_number,
       },
-      normalizedRole
+      normalizedRole,
     );
     if (payout.error) {
-      return res.status(400).json({ success:false, message: payout.error });
+      return res.status(400).json({ success: false, message: payout.error });
     }
 
     // ---- country normalize (server is source of truth)
@@ -540,34 +611,55 @@ if (typeof ageStr === 'number') {
       country: normalizedCountry,
       schoolGrade,
       ...(normalizedRole === 'tutor' && {
-        category, pricing, recommended, experienceLevel, description, status,
+        category,
+        pricing,
+        recommended,
+        experienceLevel,
+        description,
+        status,
         gallery: parsedGallery,
         video: typeof req.body.video === 'string' ? req.body.video : undefined,
-        paymentMethod, bankAccount, bankCode,
+        paymentMethod,
+        bankAccount,
+        bankCode,
         payoutCurrency: payout.payout_currency,
-        payoutMethod:   payout.payout_method,
-        ...(payout.payout_currency === 'KES' ? {
-          mpesaPhoneNumber: payout.mpesa_phone_number
-        } : {}),
-        ...(payout.payout_currency === 'USD' && payout.payout_method === 'stripe' && payout.stripe_connect_id ? {
-          stripeConnectId: payout.stripe_connect_id
-        } : {}),
-        ...(payout.payout_currency === 'USD' && payout.payout_method === 'paypal' && payout.paypal_email ? {
-          paypalEmail: payout.paypal_email
-        } : {}),
+        payoutMethod: payout.payout_method,
+        ...(payout.payout_currency === 'KES'
+          ? {
+              mpesaPhoneNumber: payout.mpesa_phone_number,
+            }
+          : {}),
+        ...(payout.payout_currency === 'USD' &&
+        payout.payout_method === 'stripe' &&
+        payout.stripe_connect_id
+          ? {
+              stripeConnectId: payout.stripe_connect_id,
+            }
+          : {}),
+        ...(payout.payout_currency === 'USD' &&
+        payout.payout_method === 'paypal' &&
+        payout.paypal_email
+          ? {
+              paypalEmail: payout.paypal_email,
+            }
+          : {}),
       }),
     };
 
-
-    console.log('updateProfile → validationData:', JSON.stringify(validationData, null, 2));
+    console.log(
+      'updateProfile → validationData:',
+      JSON.stringify(validationData, null, 2),
+    );
 
     const { error, value } = profileUpdateValidationSchema.validate(
       validationData,
-      { stripUnknown: true, abortEarly: false }
+      { stripUnknown: true, abortEarly: false },
     );
     if (error) {
       console.error('Validation Error:', error.details);
-      return res.status(400).json({ success: false, message: error.details[0].message });
+      return res
+        .status(400)
+        .json({ success: false, message: error.details[0].message });
     }
 
     // ---- updatedData to persist
@@ -579,43 +671,78 @@ if (typeof ageStr === 'number') {
       country: normIso2(value.country) || null, // final guard
       school_grade: value.schoolGrade ?? profile.school_grade,
 
-      category: normalizedRole === 'tutor' ? (value.category ?? profile.category) : profile.category,
-      description: normalizedRole === 'tutor' ? JSON.stringify(value.description) : profile.description,
-      pricing: normalizedRole === 'tutor' ? JSON.stringify(value.pricing) : profile.pricing,
-      experience_level: normalizedRole === 'tutor' ? value.experienceLevel : profile.experience_level,
+      category:
+        normalizedRole === 'tutor'
+          ? (value.category ?? profile.category)
+          : profile.category,
+      description:
+        normalizedRole === 'tutor'
+          ? JSON.stringify(value.description)
+          : profile.description,
+      pricing:
+        normalizedRole === 'tutor'
+          ? JSON.stringify(value.pricing)
+          : profile.pricing,
+      experience_level:
+        normalizedRole === 'tutor'
+          ? value.experienceLevel
+          : profile.experience_level,
       status: normalizedRole === 'tutor' ? value.status : profile.status,
-      recommended: normalizedRole === 'tutor' ? value.recommended : profile.recommended,
-      payment_method: normalizedRole === 'tutor' ? value.paymentMethod : profile.payment_method,
-      bank_account: normalizedRole === 'tutor' && value.paymentMethod === 'bank' ? value.bankAccount : profile.bank_account,
-      bank_code: normalizedRole === 'tutor' && value.paymentMethod === 'bank' ? value.bankCode : profile.bank_code,
-      mpesa_phone_number: normalizedRole === 'tutor' && value.paymentMethod === 'mpesa'
-        ? (value.mpesaPhoneNumber || payout.mpesa_phone_number)
-        : (payout.mpesa_phone_number || profile.mpesa_phone_number),
+      recommended:
+        normalizedRole === 'tutor' ? value.recommended : profile.recommended,
+      payment_method:
+        normalizedRole === 'tutor'
+          ? value.paymentMethod
+          : profile.payment_method,
+      bank_account:
+        normalizedRole === 'tutor' && value.paymentMethod === 'bank'
+          ? value.bankAccount
+          : profile.bank_account,
+      bank_code:
+        normalizedRole === 'tutor' && value.paymentMethod === 'bank'
+          ? value.bankCode
+          : profile.bank_code,
+      mpesa_phone_number:
+        normalizedRole === 'tutor' && value.paymentMethod === 'mpesa'
+          ? value.mpesaPhoneNumber || payout.mpesa_phone_number
+          : payout.mpesa_phone_number || profile.mpesa_phone_number,
       gallery: parsedGallery.length ? parsedGallery : profile.gallery,
-      video: normalizedRole === 'tutor' && typeof value.video === 'string' ? value.video : profile.video,
+      video:
+        normalizedRole === 'tutor' && typeof value.video === 'string'
+          ? value.video
+          : profile.video,
 
-      payout_currency: normalizedRole === 'tutor'
-        ? (payout.payout_currency || profile.payout_currency || 'USD')
-        : profile.payout_currency,
-      payout_method: normalizedRole === 'tutor'
-        ? (payout.payout_method || profile.payout_method || 'stripe')
-        : profile.payout_method,
-      stripe_connect_id: normalizedRole === 'tutor'
-        ? (payout.stripe_connect_id || profile.stripe_connect_id || null)
-        : profile.stripe_connect_id,
-      paypal_email: normalizedRole === 'tutor'
-        ? (payout.paypal_email || profile.paypal_email || null)
-        : profile.paypal_email,
+      payout_currency:
+        normalizedRole === 'tutor'
+          ? payout.payout_currency || profile.payout_currency || 'USD'
+          : profile.payout_currency,
+      payout_method:
+        normalizedRole === 'tutor'
+          ? payout.payout_method || profile.payout_method || 'stripe'
+          : profile.payout_method,
+      stripe_connect_id:
+        normalizedRole === 'tutor'
+          ? payout.stripe_connect_id || profile.stripe_connect_id || null
+          : profile.stripe_connect_id,
+      paypal_email:
+        normalizedRole === 'tutor'
+          ? payout.paypal_email || profile.paypal_email || null
+          : profile.paypal_email,
     };
 
     // ---- uploads (unchanged)
-    const images = ['image1','image2','image3','image4'].map(k => req.files?.[k]?.[0]).filter(Boolean);
+    const images = ['image1', 'image2', 'image3', 'image4']
+      .map((k) => req.files?.[k]?.[0])
+      .filter(Boolean);
     if (images.length) {
       const uploaded = await uploadToCloudinary(images, 'image');
-      updatedData.gallery = uploaded.map(u => u.url);
+      updatedData.gallery = uploaded.map((u) => u.url);
     }
     if (normalizedRole === 'tutor' && req.files?.video?.[0]) {
-      const [videoUploaded] = await uploadToCloudinary([req.files.video[0]], 'video');
+      const [videoUploaded] = await uploadToCloudinary(
+        [req.files.video[0]],
+        'video',
+      );
       updatedData.video = videoUploaded.url || updatedData.video;
     }
 
@@ -675,10 +802,11 @@ if (typeof ageStr === 'number') {
     res.status(200).json({ success: true, profile: result.rows[0] });
   } catch (err) {
     console.error('Error in updateProfile:', err);
-    res.status(500).json({ message: 'Failed to update profile.', error: err.message });
+    res
+      .status(500)
+      .json({ message: 'Failed to update profile.', error: err.message });
   }
 };
-
 
 // ─── 4. Get User Profile ────────────────────────────────────────────────────
 export const getUserProfile = async (req, res) => {
@@ -693,11 +821,15 @@ export const getUserProfile = async (req, res) => {
 
     const { rows } = await pool.query(
       'SELECT * FROM profiles WHERE user_id = $1',
-      [userId]
+      [userId],
     );
 
     if (!rows.length) {
-      return res.json({ success: true, profileExists: false, profile: { gallery: [] } });
+      return res.json({
+        success: true,
+        profileExists: false,
+        profile: { gallery: [] },
+      });
     }
 
     const prof = rows[0];
@@ -709,13 +841,12 @@ export const getUserProfile = async (req, res) => {
   }
 };
 
-
 // ─── 5. Toggle Notifications ────────────────────────────────────────────────
 export const toggleNotifications = async (req, res) => {
   try {
     const { rows } = await pool.query(
       'UPDATE profiles SET notifications = NOT notifications WHERE user_id = $1 RETURNING *',
-      [req.user.id]
+      [req.user.id],
     );
     res.json({ success: true, profile: rows[0] });
   } catch (err) {
@@ -729,7 +860,7 @@ export const addRecentChat = async (req, res) => {
   try {
     const { rows } = await pool.query(
       'UPDATE profiles SET recent_chats_count = recent_chats_count + 1 WHERE id = $1 RETURNING *',
-      [req.params.id]
+      [req.params.id],
     );
     res.json({ success: true, profile: rows[0] });
   } catch (err) {
@@ -742,14 +873,15 @@ export const addRecentChat = async (req, res) => {
 export const updateRating = async (req, res) => {
   try {
     const rating = parseFloat(req.body.rating);
-    if (isNaN(rating)) return res.status(400).json({ message: 'Invalid rating.' });
+    if (isNaN(rating))
+      return res.status(400).json({ message: 'Invalid rating.' });
     const { rows } = await pool.query(
       `UPDATE profiles
          SET rating_total = rating_total + $1,
              rating_count = rating_count + 1
        WHERE id = $2
        RETURNING *`,
-      [rating, req.params.id]
+      [rating, req.params.id],
     );
     res.json({ success: true, profile: rows[0] });
   } catch (err) {
@@ -763,11 +895,17 @@ export const updateRating = async (req, res) => {
 export const getProfile = async (req, res) => {
   try {
     const {
-      status, experienceLevel, expertise, teachingStyle,
-      languageFluency, pricing, category, attribute,
+      status,
+      experienceLevel,
+      expertise,
+      teachingStyle,
+      languageFluency,
+      pricing,
+      category,
+      attribute,
       userIds,
-      public: publicFlag,          // ← NEW
-      limit: limitStr,             // ← NEW
+      public: publicFlag, // ← NEW
+      limit: limitStr, // ← NEW
     } = req.query;
 
     const isPublic = String(publicFlag || '0') === '1';
@@ -785,8 +923,8 @@ export const getProfile = async (req, res) => {
     if (userIds) {
       const ids = String(userIds)
         .split(',')
-        .map(s => Number(s.trim()))
-        .filter(n => Number.isFinite(n));
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isFinite(n));
       if (ids.length) {
         conditions.push(`user_id = ANY($${idx++}::int[])`);
         values.push(ids);
@@ -799,25 +937,26 @@ export const getProfile = async (req, res) => {
     }
     if (teachingStyle) {
       conditions.push(`(description->'teachingStyle') ?| $${idx++}`);
-      values.push(teachingStyle.split(',').map(s=>s.trim()));
+      values.push(teachingStyle.split(',').map((s) => s.trim()));
     }
     if (expertise) {
       conditions.push(`(description->'expertise') ?| $${idx++}`);
-      values.push(expertise.split(',').map(s=>s.trim()));
+      values.push(expertise.split(',').map((s) => s.trim()));
     }
     if (languageFluency) {
       conditions.push(`language_fluency = $${idx++}`);
       values.push(languageFluency);
     }
     if (pricing) {
-      const [min,max] = pricing.split('-').map(Number);
+      const [min, max] = pricing.split('-').map(Number);
       conditions.push(`(
-        ((pricing->>'privateSession')::numeric BETWEEN $${idx} AND $${idx+1})
-        OR ((pricing->>'groupSession')::numeric BETWEEN $${idx} AND $${idx+1})
-        OR ((pricing->>'lecture')::numeric BETWEEN $${idx} AND $${idx+1})
-        OR ((pricing->>'workshop')::numeric BETWEEN $${idx} AND $${idx+1})
+        ((pricing->>'privateSession')::numeric BETWEEN $${idx} AND $${idx + 1})
+        OR ((pricing->>'groupSession')::numeric BETWEEN $${idx} AND $${idx + 1})
+        OR ((pricing->>'lecture')::numeric BETWEEN $${idx} AND $${idx + 1})
+        OR ((pricing->>'workshop')::numeric BETWEEN $${idx} AND $${idx + 1})
       )`);
-      values.push(min, max); idx += 2;
+      values.push(min, max);
+      idx += 2;
     }
     if (category) {
       conditions.push(`category = $${idx++}`);
@@ -853,7 +992,6 @@ export const getProfile = async (req, res) => {
   }
 };
 
-
 // ─── 9. Get Profile by ID ───────────────────────────────────────────────────
 export const getProfileById = async (req, res) => {
   const id = Number(req.params.id);
@@ -885,20 +1023,21 @@ export const removeProfileItem = async (req, res) => {
   const item = req.body.item;
 
   try {
-    const { rows } = await pool.query('SELECT * FROM profiles WHERE id = $1',[id]);
+    const { rows } = await pool.query('SELECT * FROM profiles WHERE id = $1', [
+      id,
+    ]);
     if (!rows.length) return res.status(404).json({ message: 'Not found.' });
     let profile = rows[0];
 
     if (field === 'gallery') {
       const pid = getPublicIdFromUrl(item);
       await deleteFromCloudinary([pid]);
-      const updated = profile.gallery.filter(u => u !== item);
+      const updated = profile.gallery.filter((u) => u !== item);
       const upd = await pool.query(
         'UPDATE profiles SET gallery = $1 WHERE id = $2 RETURNING *',
-        [JSON.stringify(updated), id]
+        [JSON.stringify(updated), id],
       );
       profile = upd.rows[0];
-
     } else if (field === 'video') {
       if (profile.video) {
         const pid = getPublicIdFromUrl(profile.video);
@@ -906,20 +1045,19 @@ export const removeProfileItem = async (req, res) => {
       }
       const upd = await pool.query(
         'UPDATE profiles SET video = $1 WHERE id = $2 RETURNING *',
-        ['', id]
+        ['', id],
       );
       profile = upd.rows[0];
-
     } else {
       // assume array field
       const arr = profile[field] || [];
       if (!Array.isArray(arr)) {
         return res.status(400).json({ message: 'Field not array.' });
       }
-      const updatedArr = arr.filter(v => v !== item);
+      const updatedArr = arr.filter((v) => v !== item);
       const upd = await pool.query(
         `UPDATE profiles SET ${field} = $1 WHERE id = $2 RETURNING *`,
-        [JSON.stringify(updatedArr), id]
+        [JSON.stringify(updatedArr), id],
       );
       profile = upd.rows[0];
     }
@@ -936,14 +1074,22 @@ export const uploadSingleFile = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No file.' });
     const paramType = (req.params?.type || '').toLowerCase(); // 'image' | 'video'
-   const mime = req.file.mimetype || '';
-   const inferred = mime.startsWith('video/') ? 'video' : 'image';
-   const resourceType = (paramType === 'video' || paramType === 'image') ? paramType : inferred;
+    const mime = req.file.mimetype || '';
+    const inferred = mime.startsWith('video/') ? 'video' : 'image';
+    const resourceType =
+      paramType === 'video' || paramType === 'image' ? paramType : inferred;
 
-   // Optional: add a quick log while testing
-   console.log('uploadSingleFile → type from param:', paramType, 'mime:', mime, '→ resourceType:', resourceType);
+    // Optional: add a quick log while testing
+    console.log(
+      'uploadSingleFile → type from param:',
+      paramType,
+      'mime:',
+      mime,
+      '→ resourceType:',
+      resourceType,
+    );
 
-   const [upload] = await uploadToCloudinary([req.file], resourceType);
+    const [upload] = await uploadToCloudinary([req.file], resourceType);
     res.json({ url: upload.url });
   } catch (err) {
     console.error('uploadSingleFile error:', err);
@@ -955,13 +1101,15 @@ export const uploadSingleFile = async (req, res) => {
 export const getProfileWithRecommendations = async (req, res) => {
   try {
     const { id } = req.params;
-    const { rows } = await pool.query('SELECT * FROM profiles WHERE id = $1',[id]);
+    const { rows } = await pool.query('SELECT * FROM profiles WHERE id = $1', [
+      id,
+    ]);
     if (!rows.length) return res.status(404).json({ message: 'Not found.' });
     const profile = rows[0];
     if (Array.isArray(profile.recommended) && profile.recommended.length) {
       const rec = await pool.query(
         'SELECT id,name,status,gallery FROM profiles WHERE id = ANY($1)',
-        [profile.recommended]
+        [profile.recommended],
       );
       profile.recommended = rec.rows;
     } else {
@@ -974,7 +1122,6 @@ export const getProfileWithRecommendations = async (req, res) => {
   }
 };
 
-
 // ───13. Get Profile by User ID ─────────────────────────────────────────────
 export const getProfileByUserId = async (req, res) => {
   const userId = Number(req.params.userId);
@@ -982,7 +1129,7 @@ export const getProfileByUserId = async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT * FROM profiles WHERE user_id=$1 AND role='tutor'`,
-      [userId]
+      [userId],
     );
     if (!rows.length) return res.status(404).json({ message: 'Not found.' });
     res.json(rows[0]);
@@ -995,9 +1142,9 @@ export const getProfileByUserId = async (req, res) => {
 // ───14. Get Random Profile ─────────────────────────────────────────────────
 export const getRandomProfile = async (req, res) => {
   try {
-    const { rows: [{ count }] } = await pool.query(
-      `SELECT COUNT(*) FROM profiles WHERE role='tutor'`
-    );
+    const {
+      rows: [{ count }],
+    } = await pool.query(`SELECT COUNT(*) FROM profiles WHERE role='tutor'`);
     const total = parseInt(count, 10);
     if (!total) return res.status(404).json({ message: 'No tutors.' });
     const offset = Math.floor(Math.random() * total);
@@ -1006,18 +1153,20 @@ export const getRandomProfile = async (req, res) => {
        FROM profiles
        WHERE role='tutor'
        LIMIT 1 OFFSET $1`,
-      [offset]
+      [offset],
     );
     const prof = rows[0];
     let desc = {};
-    try { desc = JSON.parse(prof.description || '{}'); } catch {}
+    try {
+      desc = JSON.parse(prof.description || '{}');
+    } catch {}
     res.json({
-      id:           prof.id,
-      name:         prof.name,
-      role:         prof.role,
-      gallery:      prof.gallery,
-      category:     prof.category,
-      expertise:    desc.expertise || [],
+      id: prof.id,
+      name: prof.name,
+      role: prof.role,
+      gallery: prof.gallery,
+      category: prof.category,
+      expertise: desc.expertise || [],
       teachingStyle: desc.teachingStyle || [],
     });
   } catch (err) {
@@ -1098,9 +1247,13 @@ export const searchTutors = async (req, res) => {
       subject: (subject || ai?.subject || '').toString().trim(),
       gradeBand: (gradeBand || ai?.gradeBand || '').toString().trim(),
       status: (status || ai?.status || '').toString().trim().toLowerCase(),
-      experienceLevel: (experienceLevel || ai?.experienceLevel || '').toString().trim(),
+      experienceLevel: (experienceLevel || ai?.experienceLevel || '')
+        .toString()
+        .trim(),
       minRating: Number(minRating ?? ai?.minRating ?? 0) || 0,
-      maxTokens: Number(maxTokens ?? maxPrice ?? ai?.maxTokens ?? ai?.maxPrice ?? 0) || 0,
+      maxTokens:
+        Number(maxTokens ?? maxPrice ?? ai?.maxTokens ?? ai?.maxPrice ?? 0) ||
+        0,
       maxPrice: Number(maxPrice ?? ai?.maxPrice ?? 0) || 0,
       certified: String(certified ?? '').length
         ? String(certified) === 'true' || String(certified) === '1'
@@ -1142,7 +1295,6 @@ export const searchTutors = async (req, res) => {
       merged.minRating > 0 ||
       merged.maxTokens > 0 ||
       Boolean(merged.certified);
-
 
     const norm = (s) =>
       String(s || '')
@@ -1217,11 +1369,11 @@ export const searchTutors = async (req, res) => {
     }
 
     // ✅ tokens: maxTokens across pricing JSON keys (safe parse; no cast crashes)
-if (merged.maxTokens > 0) {
-  const num = (k) =>
-    `CASE WHEN (pricing->>'${k}') ~ '^[0-9]+(\\.[0-9]+)?$' THEN (pricing->>'${k}')::numeric END`;
+    if (merged.maxTokens > 0) {
+      const num = (k) =>
+        `CASE WHEN (pricing->>'${k}') ~ '^[0-9]+(\\.[0-9]+)?$' THEN (pricing->>'${k}')::numeric END`;
 
-  conditions.push(`(
+      conditions.push(`(
     COALESCE(
       NULLIF(${num('tokens')}, 0),
       NULLIF(${num('tokenPrice')}, 0),
@@ -1234,9 +1386,8 @@ if (merged.maxTokens > 0) {
       0
     ) <= $${idx++}
   )`);
-  values.push(merged.maxTokens);
-}
-
+      values.push(merged.maxTokens);
+    }
 
     // rating
     if (merged.minRating > 0) {
@@ -1288,7 +1439,7 @@ if (merged.maxTokens > 0) {
       kw,
       sqlPreview: sql.replace(/\s+/g, ' ').trim().slice(0, 260) + '...',
       valuesPreview: values.map((v) =>
-        typeof v === 'string' ? (v.length > 80 ? v.slice(0, 80) + '…' : v) : v
+        typeof v === 'string' ? (v.length > 80 ? v.slice(0, 80) + '…' : v) : v,
       ),
     });
 

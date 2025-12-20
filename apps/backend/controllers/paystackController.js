@@ -5,13 +5,17 @@ import pool from '../config/db.js';
 import { verifyAndFinalize as verifyAndFinalizeHandler } from './paystackVerifyController.js';
 import { verifyAndFinalizeOrg } from './orgPaystackVerifyController.js';
 
-const FEE_PCT   = Number(process.env.PAYMENT_GATEWAY_PERCENT ?? 0);
-const FEE_FIXED = Number(process.env.PAYMENT_GATEWAY_FIXED   ?? 0.30);
-const FX_USD_TO_GATEWAY = Number(process.env.PAYSTACK_USD_TO_GATEWAY_RATE || 130); // 1 USD = 130 KES
+const FEE_PCT = Number(process.env.PAYMENT_GATEWAY_PERCENT ?? 0);
+const FEE_FIXED = Number(process.env.PAYMENT_GATEWAY_FIXED ?? 0.3);
+const FX_USD_TO_GATEWAY = Number(
+  process.env.PAYSTACK_USD_TO_GATEWAY_RATE || 130,
+); // 1 USD = 130 KES
 
 const PAYSTACK_SECRET_KEY = (process.env.PAYSTACK_SECRET_KEY || '').trim();
-const PAYSTACK_BASE       = 'https://api.paystack.co';
-const PAYSTACK_CURRENCY   = (process.env.PAYSTACK_CURRENCY || 'KES').toUpperCase();
+const PAYSTACK_BASE = 'https://api.paystack.co';
+const PAYSTACK_CURRENCY = (
+  process.env.PAYSTACK_CURRENCY || 'KES'
+).toUpperCase();
 
 const PAYSTACK_CALLBACK_URL_WEB = (
   process.env.PAYSTACK_CALLBACK_URL_WEB ||
@@ -25,14 +29,18 @@ const PAYSTACK_CALLBACK_URL_NATIVE = (
 
 function inferClientPlatform(req) {
   const hinted =
-    String(req?.get?.('x-client-platform') || req?.get?.('x-platform') || '').toLowerCase() ||
+    String(
+      req?.get?.('x-client-platform') || req?.get?.('x-platform') || '',
+    ).toLowerCase() ||
     String(req?.query?.platform || req?.body?.platform || '').toLowerCase();
 
-  if (['native', 'mobile', 'expo', 'android', 'ios'].includes(hinted)) return 'native';
+  if (['native', 'mobile', 'expo', 'android', 'ios'].includes(hinted))
+    return 'native';
   if (['web', 'browser'].includes(hinted)) return 'web';
 
   const ua = String(req?.get?.('user-agent') || '');
-  if (/okhttp|dalvik|android|iphone|ipad|ios|expo|reactnative/i.test(ua)) return 'native';
+  if (/okhttp|dalvik|android|iphone|ipad|ios|expo|reactnative/i.test(ua))
+    return 'native';
 
   return 'web';
 }
@@ -40,32 +48,36 @@ function inferClientPlatform(req) {
 function resolvePaystackCallbackBase(req) {
   const platform = inferClientPlatform(req);
 
-  if (platform === 'native' && PAYSTACK_CALLBACK_URL_NATIVE) return PAYSTACK_CALLBACK_URL_NATIVE;
-  if (platform === 'web' && PAYSTACK_CALLBACK_URL_WEB) return PAYSTACK_CALLBACK_URL_WEB;
+  if (platform === 'native' && PAYSTACK_CALLBACK_URL_NATIVE)
+    return PAYSTACK_CALLBACK_URL_NATIVE;
+  if (platform === 'web' && PAYSTACK_CALLBACK_URL_WEB)
+    return PAYSTACK_CALLBACK_URL_WEB;
 
   return PAYSTACK_CALLBACK_URL_WEB || PAYSTACK_CALLBACK_URL_NATIVE || '';
 }
 
-
-if (!PAYSTACK_SECRET_KEY) throw new Error('[paystack] Missing PAYSTACK_SECRET_KEY');
+if (!PAYSTACK_SECRET_KEY)
+  throw new Error('[paystack] Missing PAYSTACK_SECRET_KEY');
 
 // HARD GUARD: your Paystack account currency is KES
 if (PAYSTACK_CURRENCY !== 'KES') {
-  throw new Error(`[paystack] PAYSTACK_CURRENCY must be KES, got ${PAYSTACK_CURRENCY}`);
+  throw new Error(
+    `[paystack] PAYSTACK_CURRENCY must be KES, got ${PAYSTACK_CURRENCY}`,
+  );
 }
 
 function buildCallbackUrl(req, base, params = {}) {
   // base should be something like: http://localhost:5173/paystack/callback
   // or: https://yourdomain.com/paystack/callback
- const fallbackBase =
-  resolvePaystackCallbackBase(req) ||
-  process.env.WEB_URL ||
-  process.env.FRONTEND_URL ||
-  req?.get?.('origin') ||
-  `${req.protocol}://${req.get('host')}/paystack/callback`;
+  const fallbackBase =
+    resolvePaystackCallbackBase(req) ||
+    process.env.WEB_URL ||
+    process.env.FRONTEND_URL ||
+    req?.get?.('origin') ||
+    `${req.protocol}://${req.get('host')}/paystack/callback`;
 
-
-  const finalBase = (base && String(base).trim()) ? String(base).trim() : fallbackBase;
+  const finalBase =
+    base && String(base).trim() ? String(base).trim() : fallbackBase;
 
   // Ensure it ends with the callback path (optional safety)
   const u = new URL(finalBase);
@@ -83,11 +95,18 @@ function buildCallbackUrl(req, base, params = {}) {
 
 /* ----------------------- shared helpers ----------------------- */
 
-async function recordPaymentFees(paymentId, amountCapturedUsd, explicit = null) {
+async function recordPaymentFees(
+  paymentId,
+  amountCapturedUsd,
+  explicit = null,
+) {
   const fee_fixed_usd = explicit?.fixedUsd ?? FEE_FIXED;
-  const fee_percent   = explicit?.percent  ?? FEE_PCT;
-  const fee_total_usd = explicit?.totalUsd ??
-    Math.round((Number(amountCapturedUsd || 0) * fee_percent + fee_fixed_usd) * 100) / 100;
+  const fee_percent = explicit?.percent ?? FEE_PCT;
+  const fee_total_usd =
+    explicit?.totalUsd ??
+    Math.round(
+      (Number(amountCapturedUsd || 0) * fee_percent + fee_fixed_usd) * 100,
+    ) / 100;
 
   await pool.query(
     `UPDATE payments
@@ -96,7 +115,7 @@ async function recordPaymentFees(paymentId, amountCapturedUsd, explicit = null) 
             fee_total_usd = $3,
             updated_at    = NOW()
       WHERE id = $4`,
-    [fee_fixed_usd, fee_percent, fee_total_usd, paymentId]
+    [fee_fixed_usd, fee_percent, fee_total_usd, paymentId],
   );
 }
 
@@ -109,8 +128,14 @@ async function getPackageById(packageId) {
   return rows[0];
 }
 
-async function creditTokensAndCompletePayment(client, { paymentId, userId, packageId }) {
-  const pkgRes = await client.query('SELECT credits FROM packages WHERE id = $1', [packageId]);
+async function creditTokensAndCompletePayment(
+  client,
+  { paymentId, userId, packageId },
+) {
+  const pkgRes = await client.query(
+    'SELECT credits FROM packages WHERE id = $1',
+    [packageId],
+  );
   if (!pkgRes.rows[0]) throw new Error('Package not found while crediting');
   const credits = Number(pkgRes.rows[0].credits);
 
@@ -153,24 +178,34 @@ function usdToGatewayMinor(amountUsdStr) {
 export async function createOrder(req, res) {
   try {
     const userId = req?.user?.id;
-    if (!userId) return res.status(401).json({ message: 'Unauthorized: User not authenticated' });
+    if (!userId)
+      return res
+        .status(401)
+        .json({ message: 'Unauthorized: User not authenticated' });
 
     const { packageId } = req.body || {};
-    if (!packageId) return res.status(400).json({ message: 'missing packageId' });
+    if (!packageId)
+      return res.status(400).json({ message: 'missing packageId' });
 
     const pkg = await getPackageById(packageId);
 
     // UI shows USD packages for CARD, but Paystack charges KES
     if ((pkg.currency || '').toUpperCase() !== 'USD') {
-      return res.status(400).json({ message: 'Package currency must be USD for Paystack card checkout' });
+      return res.status(400).json({
+        message: 'Package currency must be USD for Paystack card checkout',
+      });
     }
 
     const amountUSD = Number(pkg.price).toFixed(2);
 
     // Need buyer email for Paystack
-    const { rows: userRows } = await pool.query('SELECT email FROM users WHERE id = $1', [userId]);
+    const { rows: userRows } = await pool.query(
+      'SELECT email FROM users WHERE id = $1',
+      [userId],
+    );
     const user = userRows[0];
-    if (!user?.email) return res.status(400).json({ message: 'User email not found' });
+    if (!user?.email)
+      return res.status(400).json({ message: 'User email not found' });
 
     // (1) Create pending payments row (INTENT stays USD)
     const { rows } = await pool.query(
@@ -189,7 +224,7 @@ export async function createOrder(req, res) {
     const amountKesMajor = (amountMinor / 100).toFixed(2);
 
     await pool.query(
-  `UPDATE payments
+      `UPDATE payments
       SET transaction_id = $1,
           meta = COALESCE(meta,'{}'::jsonb) ||
                 jsonb_build_object(
@@ -202,15 +237,15 @@ export async function createOrder(req, res) {
                 ),
           updated_at = NOW()
     WHERE id = $6`,
-  [
-    reference,
-    amountUSD,
-    amountKesMajor,
-    amountMinor,
-    FX_USD_TO_GATEWAY,
-    paymentRow.id,
-  ]
-);
+      [
+        reference,
+        amountUSD,
+        amountKesMajor,
+        amountMinor,
+        FX_USD_TO_GATEWAY,
+        paymentRow.id,
+      ],
+    );
 
     // (4) Initialize Paystack transaction (KES minor units)
     const psBody = {
@@ -218,11 +253,13 @@ export async function createOrder(req, res) {
       amount: amountMinor,
       currency: 'KES',
       reference,
-      callback_url: buildCallbackUrl(req, resolvePaystackCallbackBase(req), { kind: 'tokens' }),
+      callback_url: buildCallbackUrl(req, resolvePaystackCallbackBase(req), {
+        kind: 'tokens',
+      }),
       channels: ['card'],
-           
+
       metadata: {
-          kind: 'tokens',
+        kind: 'tokens',
         paymentId: paymentRow.id,
         userId,
         packageId: pkg.id,
@@ -246,7 +283,10 @@ export async function createOrder(req, res) {
 
     if (!r.ok || !j?.status) {
       // trimmed logging
-      console.error('[paystack][create-order] init failed', { http: r.status, message: j?.message });
+      console.error('[paystack][create-order] init failed', {
+        http: r.status,
+        message: j?.message,
+      });
       return res.status(500).json({
         message: 'paystack-init-failed',
         providerMessage: j?.message,
@@ -265,7 +305,9 @@ export async function createOrder(req, res) {
     });
   } catch (e) {
     console.error('[paystack][create-order] ERROR', { message: e?.message });
-    return res.status(500).json({ message: 'create-order-failed', error: e?.message || 'unknown' });
+    return res
+      .status(500)
+      .json({ message: 'create-order-failed', error: e?.message || 'unknown' });
   }
 }
 
@@ -277,25 +319,29 @@ export async function createOrder(req, res) {
 export async function cardCharge(req, res) {
   return res.status(410).json({
     message: 'card-charge-disabled',
-    detail: 'Inline card collection is disabled. Use hosted Paystack checkout (/create-order).',
+    detail:
+      'Inline card collection is disabled. Use hosted Paystack checkout (/create-order).',
   });
 }
 
 export async function submitOtpCharge(req, res) {
   return res.status(410).json({
     message: 'submit-otp-disabled',
-    detail: 'OTP submit for inline card charge is disabled. Use hosted Paystack checkout (/create-order).',
+    detail:
+      'OTP submit for inline card charge is disabled. Use hosted Paystack checkout (/create-order).',
   });
 }
 
 /* ------------------------ Paystack webhook (capture) ------------------------ */
 export const handlePaystackWebhook = async (req, res) => {
   const sig = req.headers['x-paystack-signature'];
-const raw = req.rawBody ?? req.body;
-
+  const raw = req.rawBody ?? req.body;
 
   try {
-    const hash = crypto.createHmac('sha512', PAYSTACK_SECRET_KEY).update(raw).digest('hex');
+    const hash = crypto
+      .createHmac('sha512', PAYSTACK_SECRET_KEY)
+      .update(raw)
+      .digest('hex');
     if (!sig || hash !== sig) return res.status(400).send('Invalid signature');
 
     const event = JSON.parse(raw.toString('utf8'));
@@ -312,7 +358,12 @@ const raw = req.rawBody ?? req.body;
     const md = event?.data?.metadata || {};
     const kind = String(md.kind || '').toLowerCase(); // 'org' | 'tokens'
 
-    console.log('[paystack][webhook] charge.success', { reference, currency, providerId, kind });
+    console.log('[paystack][webhook] charge.success', {
+      reference,
+      currency,
+      providerId,
+      kind,
+    });
 
     // ACK Paystack immediately
     res.sendStatus(200);
@@ -335,7 +386,10 @@ const raw = req.rawBody ?? req.body;
           await verifyAndFinalizeHandler(fauxReq, fauxRes);
         }
       } catch (e) {
-        console.error('[paystack][webhook] finalize error', { reference, message: e?.message });
+        console.error('[paystack][webhook] finalize error', {
+          reference,
+          message: e?.message,
+        });
       }
     });
   } catch (e) {

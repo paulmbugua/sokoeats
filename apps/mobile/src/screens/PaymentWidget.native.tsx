@@ -74,7 +74,7 @@ function normalizeCurrency(input?: string | null): PayoutCurrency | undefined {
 }
 
 function getPayoutCurrency(
-  p: BareProfile | UpdatedProfileData | ProfileData | MappedProfile | undefined,
+  p: BareProfile | UpdatedProfileData | ProfileData | MappedProfile | undefined
 ): PayoutCurrency | undefined {
   if (!p) return undefined;
 
@@ -158,30 +158,12 @@ function safeTimeZone(): string | undefined {
 
 /* ───────────────────── Stars (native) ───────────────────── */
 
-const TutorRating = ({
-  rating,
-  totalReviews,
-}: {
-  rating: number;
-  totalReviews: number;
-}) => {
+const TutorRating = ({ rating, totalReviews }: { rating: number; totalReviews: number }) => {
   const rounded = Math.round((Number(rating || 0) as number) * 2) / 2;
   const stars = Array.from({ length: 5 }).map((_, i) => {
     const idx = i + 1;
-    const name =
-      rounded >= idx
-        ? 'star'
-        : rounded + 0.5 === idx
-          ? 'star-half'
-          : 'star-outline';
-    return (
-      <Ionicons
-        key={idx}
-        name={name as any}
-        size={14}
-        style={tw`text-yellow-500`}
-      />
-    );
+    const name = rounded >= idx ? 'star' : rounded + 0.5 === idx ? 'star-half' : 'star-outline';
+    return <Ionicons key={idx} name={name as any} size={14} style={tw`text-yellow-500`} />;
   });
 
   return (
@@ -272,7 +254,7 @@ const PaymentWidget: React.FC<Props> = ({
         if (finished) done?.();
       });
     },
-    [panelW, translateX],
+    [panelW, translateX]
   );
 
   const requestClose = useCallback(() => {
@@ -317,11 +299,7 @@ const PaymentWidget: React.FC<Props> = ({
           if (r.ok) {
             const j = await r.json();
             const bal = Number(
-              j?.balance ??
-                j?.tokens ??
-                j?.data?.balance ??
-                j?.data?.tokens ??
-                NaN,
+              j?.balance ?? j?.tokens ?? j?.data?.balance ?? j?.data?.tokens ?? NaN
             );
             if (Number.isFinite(bal)) setCtxTokens(bal);
           }
@@ -354,32 +332,29 @@ const PaymentWidget: React.FC<Props> = ({
     requestClose();
   }, [awaitingPaystackReturn, refreshAfterPayment, requestClose]);
 
- 
-const openPaystackAuth = useCallback(
-  async (redirectUrl: string) => {
-    const returnUrl = Linking.createURL('paystack/callback', { scheme: 'daybreak' });
-    console.log('[PAYSTACK][returnUrl]', returnUrl);
+  const openPaystackAuth = useCallback(
+    async (redirectUrl: string) => {
+      const returnUrl = Linking.createURL('paystack/callback', { scheme: 'daybreak' });
+      console.log('[PAYSTACK][returnUrl]', returnUrl);
 
+      const res = await WebBrowser.openAuthSessionAsync(String(redirectUrl), String(returnUrl));
 
-    const res = await WebBrowser.openAuthSessionAsync(
-      String(redirectUrl),
-      String(returnUrl),
-    );
+      if (res?.type === 'success' && res?.url) {
+        const qp = (Linking.parse(res.url)?.queryParams ?? {}) as any;
+        const reference = String(qp?.reference || qp?.trxref || '').trim();
 
-    if (res?.type === 'success' && res?.url) {
-      const qp = (Linking.parse(res.url)?.queryParams ?? {}) as any;
-      const reference = String(qp?.reference || qp?.trxref || '').trim();
-
-      navigation.navigate('PaystackCallback' as any, {
-        reference,
-        kind: qp?.kind ? String(qp.kind) : undefined,
-        paymentId: qp?.paymentId ? String(qp.paymentId) : undefined,
-      } as any);
-    }
-  },
-  [navigation],
-);
-
+        navigation.navigate(
+          'PaystackCallback' as any,
+          {
+            reference,
+            kind: qp?.kind ? String(qp.kind) : undefined,
+            paymentId: qp?.paymentId ? String(qp.paymentId) : undefined,
+          } as any
+        );
+      }
+    },
+    [navigation]
+  );
 
   const handlePaystackHosted = useMemo(
     () =>
@@ -426,19 +401,19 @@ const openPaystackAuth = useCallback(
                   await openPaystackAuth(String(authUrl));
                 },
               },
-            ],
+            ]
           );
         } catch (e: any) {
           console.error('[paystack][create-order] error', e);
           Alert.alert(
             'Payment',
-            e?.response?.data?.message || e?.message || 'Unable to start Paystack checkout.',
+            e?.response?.data?.message || e?.message || 'Unable to start Paystack checkout.'
           );
         } finally {
           setCardProcessing(false);
         }
       }, 300),
-    [backendUrl, token, selectedPackage, openPaystackAuth],
+    [backendUrl, token, selectedPackage, openPaystackAuth]
   );
 
   /* ───────────────────────── Profile-aware locale + display currency ───────────────────────── */
@@ -464,10 +439,7 @@ const openPaystackAuth = useCallback(
         (profile as any)?.country_code ??
         null;
 
-      const country =
-        typeof countryRaw === 'string'
-          ? countryRaw.trim().toUpperCase()
-          : undefined;
+      const country = typeof countryRaw === 'string' ? countryRaw.trim().toUpperCase() : undefined;
 
       if (country === 'QA' || country === 'QATAR') {
         nextLocale = navLocale.startsWith('ar') ? 'ar-QA' : 'en-QA';
@@ -595,11 +567,11 @@ const openPaystackAuth = useCallback(
   const debouncedCheckout = useMemo(() => debounce(handleCheckout, 300), [handleCheckout]);
   const debouncedInitiate = useMemo(
     () => debounce(handleInitiateMpesaPayment, 300),
-    [handleInitiateMpesaPayment],
+    [handleInitiateMpesaPayment]
   );
   const debouncedUpdateRef = useMemo(
     () => debounce(handleUpdateMpesaReference, 300),
-    [handleUpdateMpesaReference],
+    [handleUpdateMpesaReference]
   );
 
   useEffect(() => {
@@ -616,9 +588,7 @@ const openPaystackAuth = useCallback(
   const displayedPackages = useMemo<PaymentPackage[]>(() => {
     if (!Array.isArray(packages)) return [];
     return (packages as PaymentPackage[]).filter(
-      p =>
-        String(p.currency || '').toUpperCase() ===
-        String(inferredCurrency || '').toUpperCase(),
+      (p) => String(p.currency || '').toUpperCase() === String(inferredCurrency || '').toUpperCase()
     );
   }, [packages, inferredCurrency]);
 
@@ -660,9 +630,7 @@ const openPaystackAuth = useCallback(
 
   /* ───────────────────────── Policy navigation (native screens) ───────────────────────── */
 
-  const openPolicy = (
-    route: 'RefundsAndCancellations' | 'FulfillmentPolicy' | 'PaymentFlow',
-  ) => {
+  const openPolicy = (route: 'RefundsAndCancellations' | 'FulfillmentPolicy' | 'PaymentFlow') => {
     try {
       navigation.navigate(route as any);
     } catch {
@@ -691,10 +659,7 @@ const openPaystackAuth = useCallback(
           Fulfillment & Delivery Policy
         </Text>
         . See{' '}
-        <Text
-          onPress={() => openPolicy('PaymentFlow')}
-          style={tw`text-[#3d99f5] font-semibold`}
-        >
+        <Text onPress={() => openPolicy('PaymentFlow')} style={tw`text-[#3d99f5] font-semibold`}>
           how payments work
         </Text>
         .
@@ -715,7 +680,7 @@ const openPaystackAuth = useCallback(
                 <View
                   style={tw`w-full aspect-[16/10] rounded-2xl overflow-hidden bg-slate-100 dark:bg-[#0b1620]`}
                 >
-                  {!!mainImage ? (
+                  {mainImage ? (
                     <Image
                       source={{ uri: String(mainImage) }}
                       style={tw`w-full h-full`}
@@ -723,9 +688,7 @@ const openPaystackAuth = useCallback(
                     />
                   ) : (
                     <View style={tw`flex-1 items-center justify-center`}>
-                      <Text style={tw`text-[#49739c] dark:text-white/60 text-sm`}>
-                        No image
-                      </Text>
+                      <Text style={tw`text-[#49739c] dark:text-white/60 text-sm`}>No image</Text>
                     </View>
                   )}
                 </View>
@@ -765,7 +728,7 @@ const openPaystackAuth = useCallback(
 
         <View style={tw`mt-3 gap-2`}>
           {displayedPackages.length ? (
-            displayedPackages.map(pkg => {
+            displayedPackages.map((pkg) => {
               const active = String(selectedPackage?.id) === String(pkg.id);
               return (
                 <Pressable
@@ -823,17 +786,15 @@ const openPaystackAuth = useCallback(
           >
             <View style={tw`flex-row items-center gap-2`}>
               {brandIcons.visamaster ? (
-                <Image
-                  source={brandIcons.visamaster}
-                  style={tw`h-6 w-10`}
-                  resizeMode="contain"
-                />
+                <Image source={brandIcons.visamaster} style={tw`h-6 w-10`} resizeMode="contain" />
               ) : (
-                <Ionicons name="card-outline" size={18} style={tw`text-[#0d141c] dark:text-white`} />
+                <Ionicons
+                  name="card-outline"
+                  size={18}
+                  style={tw`text-[#0d141c] dark:text-white`}
+                />
               )}
-              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
-                Card
-              </Text>
+              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Card</Text>
             </View>
           </Pressable>
 
@@ -856,9 +817,7 @@ const openPaystackAuth = useCallback(
                 />
               )}
 
-              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
-                M-Pesa
-              </Text>
+              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>M-Pesa</Text>
             </View>
           </Pressable>
         </View>
@@ -955,7 +914,9 @@ const openPaystackAuth = useCallback(
 
             {/* Confusion-killer copy (same idea as web) */}
             {selectedPackage && String(selectedPackage.currency || '').toUpperCase() === 'USD' && (
-              <View style={tw`mt-3 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#121927] p-3`}>
+              <View
+                style={tw`mt-3 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#121927] p-3`}
+              >
                 <Text style={tw`text-[12px] leading-5 text-[#0d141c] dark:text-white/80`}>
                   Base (USD): <Text style={tw`font-extrabold`}>{paystackBaseUsdText ?? '—'}</Text>
                   {'\n'}
@@ -963,9 +924,7 @@ const openPaystackAuth = useCallback(
                   <Text style={tw`font-extrabold`}>
                     {paystackKesEstimateText?.kesPretty ?? 'KES —'}
                   </Text>{' '}
-                  <Text style={tw`opacity-70`}>
-                    (rate: {paystackKesEstimateText?.fx ?? 130})
-                  </Text>
+                  <Text style={tw`opacity-70`}>(rate: {paystackKesEstimateText?.fx ?? 130})</Text>
                   {'\n'}
                   <Text style={tw`text-[11px] opacity-70`}>
                     Final KES amount is shown by Paystack.
@@ -976,11 +935,13 @@ const openPaystackAuth = useCallback(
 
             {selectedPackage && (
               <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/50`}>
-                Local display: <Text style={tw`font-semibold`}>{formatLocalPriceOnly(selectedPackage)}</Text>
+                Local display:{' '}
+                <Text style={tw`font-semibold`}>{formatLocalPriceOnly(selectedPackage)}</Text>
               </Text>
             )}
 
-            {(!selectedPackage || String(selectedPackage.currency || '').toUpperCase() !== 'USD') && (
+            {(!selectedPackage ||
+              String(selectedPackage.currency || '').toUpperCase() !== 'USD') && (
               <Text style={tw`mt-2 text-[12px] text-orange-600`}>
                 Please select a USD package to continue with card payment.
               </Text>
@@ -1007,9 +968,7 @@ const openPaystackAuth = useCallback(
                   <Text style={tw`text-white font-extrabold`}>Redirecting…</Text>
                 </View>
               ) : (
-                <Text style={tw`text-white font-extrabold`}>
-                  {payButtonLabel(selectedPackage)}
-                </Text>
+                <Text style={tw`text-white font-extrabold`}>{payButtonLabel(selectedPackage)}</Text>
               )}
             </Pressable>
 
@@ -1055,17 +1014,13 @@ const openPaystackAuth = useCallback(
         <View
           style={tw`flex-row items-center justify-between px-4 py-3 border-b border-[#cedbe8] dark:border-white/10`}
         >
-          <Text style={tw`text-base font-semibold text-[#0d141c] dark:text-white`}>
-            {title}
-          </Text>
+          <Text style={tw`text-base font-semibold text-[#0d141c] dark:text-white`}>{title}</Text>
 
           <Pressable
             onPress={requestClose}
             style={tw`rounded-lg px-3 py-2 bg-[#e7edf4] dark:bg-[#172534]`}
           >
-            <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
-              Close
-            </Text>
+            <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Close</Text>
           </Pressable>
         </View>
 

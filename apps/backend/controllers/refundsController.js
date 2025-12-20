@@ -2,7 +2,6 @@
 import pool from '../config/db.js';
 import { sendNotification } from '../utils/sendNotification.js';
 
-
 // Minimal validation helpers (optional)
 const isNonEmpty = (v) => typeof v === 'string' && v.trim().length > 0;
 
@@ -13,25 +12,27 @@ export const createRefundRequest = async (req, res) => {
 
     const {
       transactionId,
-      amount,               // optional number
-      reason,               // 'accidental_purchase' | 'duplicate_charge' | ...
-      details,              // free text
-      resolution,           // 'original' | 'tokens'
-      attachmentUrl,        // optional
-      ccMe = true,          // optional
+      amount, // optional number
+      reason, // 'accidental_purchase' | 'duplicate_charge' | ...
+      details, // free text
+      resolution, // 'original' | 'tokens'
+      attachmentUrl, // optional
+      ccMe = true, // optional
     } = req.body || {};
 
     if (!isNonEmpty(transactionId) || !isNonEmpty(reason)) {
-      return res.status(400).json({ message: 'transactionId and reason are required.' });
+      return res
+        .status(400)
+        .json({ message: 'transactionId and reason are required.' });
     }
 
     // Load user identity (for email + display)
     const { rows } = await pool.query(
       'SELECT email, name FROM users WHERE id = $1',
-      [userId]
+      [userId],
     );
     const userEmail = rows[0]?.email || '';
-    const userName  = rows[0]?.name  || 'User';
+    const userName = rows[0]?.name || 'User';
 
     // Optional: persist request (best-effort)
     let saved = null;
@@ -49,7 +50,7 @@ export const createRefundRequest = async (req, res) => {
           details?.toString().trim() || null,
           resolution === 'tokens' ? 'tokens' : 'original',
           attachmentUrl || null,
-        ]
+        ],
       );
       saved = ins.rows[0];
     } catch {
@@ -83,7 +84,11 @@ Created At: ${saved?.created_at ?? '(n/a)'}
 
 — DayBreak Learner`;
 
-    await sendNotification({ to: 'support@daybreaklearner.com', subject, body });
+    await sendNotification({
+      to: 'support@daybreaklearner.com',
+      subject,
+      body,
+    });
 
     if (ccMe && userEmail.includes('@')) {
       await sendNotification({
@@ -114,6 +119,8 @@ Our team will review and reply shortly.
     });
   } catch (e) {
     console.error('[createRefundRequest] error:', e?.stack || e?.message || e);
-    return res.status(500).json({ message: 'Failed to submit refund request.' });
+    return res
+      .status(500)
+      .json({ message: 'Failed to submit refund request.' });
   }
 };

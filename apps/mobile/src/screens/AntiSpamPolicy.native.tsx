@@ -1,12 +1,6 @@
 // apps/mobile/src/pages/AntiSpamPolicy.native.tsx
 import React from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  Linking,
-} from 'react-native';
+import { View, Text, ScrollView, Pressable, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { MainStackParamList } from '../navigation/types';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -24,7 +18,10 @@ export default function AntiSpamPolicy() {
   };
 
   return (
-    <ScrollView className="flex-1 bg-white dark:bg-slate-900" contentContainerStyle={{ paddingBottom: 24 }}>
+    <ScrollView
+      className="flex-1 bg-white dark:bg-slate-900"
+      contentContainerStyle={{ paddingBottom: 24 }}
+    >
       <View className="max-w-[900px] w-full self-center px-4 py-10">
         <Text className="text-2xl font-bold text-slate-900 dark:text-white">Anti-Spam Policy</Text>
         <Text className="text-slate-500 dark:text-slate-400 mt-1">
@@ -37,27 +34,49 @@ export default function AntiSpamPolicy() {
             This policy applies to emails, SMS, in-app messages, and tutor/student communications.
           </Text>
 
-          <Text className="text-lg font-semibold text-slate-900 dark:text-white mt-2">1) Consent first</Text>
+          <Text className="text-lg font-semibold text-slate-900 dark:text-white mt-2">
+            1) Consent first
+          </Text>
           <View className="pl-4 mt-1">
-            <Bulleted>We send <Text className="font-semibold">transactional</Text> messages (receipts, booking updates, passwords) without marketing content.</Bulleted>
-            <Bulleted>We send <Text className="font-semibold">marketing</Text> messages only with your consent; every message includes a clear unsubscribe or opt-out.</Bulleted>
-            <Bulleted>Tutors may message only learners who have interacted with their listings or sessions and strictly about learning.</Bulleted>
+            <Bulleted>
+              We send <Text className="font-semibold">transactional</Text> messages (receipts,
+              booking updates, passwords) without marketing content.
+            </Bulleted>
+            <Bulleted>
+              We send <Text className="font-semibold">marketing</Text> messages only with your
+              consent; every message includes a clear unsubscribe or opt-out.
+            </Bulleted>
+            <Bulleted>
+              Tutors may message only learners who have interacted with their listings or sessions
+              and strictly about learning.
+            </Bulleted>
           </View>
 
-          <Text className="text-lg font-semibold text-slate-900 dark:text-white mt-4">2) Prohibited content & practices</Text>
+          <Text className="text-lg font-semibold text-slate-900 dark:text-white mt-4">
+            2) Prohibited content & practices
+          </Text>
           <View className="pl-4 mt-1">
-            <Bulleted>Purchased/harvested lists, bulk cold emails, misleading headers, or deceptive subject lines.</Bulleted>
-            <Bulleted>Scams, illegal products, hate, harassment, adult content, or malware.</Bulleted>
+            <Bulleted>
+              Purchased/harvested lists, bulk cold emails, misleading headers, or deceptive subject
+              lines.
+            </Bulleted>
+            <Bulleted>
+              Scams, illegal products, hate, harassment, adult content, or malware.
+            </Bulleted>
             <Bulleted>Sending frequency or volume that causes complaints or blocks.</Bulleted>
           </View>
 
-          <Text className="text-lg font-semibold text-slate-900 dark:text-white mt-4">3) Compliance</Text>
+          <Text className="text-lg font-semibold text-slate-900 dark:text-white mt-4">
+            3) Compliance
+          </Text>
           <Text className="text-sm leading-6 text-slate-700 dark:text-slate-300 mt-1">
-            We aim to comply with applicable anti-spam and consumer laws. We monitor bounce/complaint rates and may
-            rate-limit, warn, or suspend accounts.
+            We aim to comply with applicable anti-spam and consumer laws. We monitor
+            bounce/complaint rates and may rate-limit, warn, or suspend accounts.
           </Text>
 
-          <Text className="text-lg font-semibold text-slate-900 dark:text-white mt-4">4) Report abuse</Text>
+          <Text className="text-lg font-semibold text-slate-900 dark:text-white mt-4">
+            4) Report abuse
+          </Text>
           <Text className="text-sm leading-6 text-slate-700 dark:text-slate-300 mt-1">
             Forward suspicious messages to{' '}
             <Pressable onPress={() => openMail('abuse@daybreaklearner.com', 'Spam report')}>
@@ -66,13 +85,19 @@ export default function AntiSpamPolicy() {
             with headers if possible. We investigate promptly.
           </Text>
 
-          <Text className="text-lg font-semibold text-slate-900 dark:text-white mt-4">5) Contact</Text>
+          <Text className="text-lg font-semibold text-slate-900 dark:text-white mt-4">
+            5) Contact
+          </Text>
           <View className="rounded-md p-4 bg-slate-50 dark:bg-[#121927]">
-            <Text className="text-sm text-slate-900 dark:text-white font-semibold">EKAZICONNECT SOLUTIONS LTD</Text>
+            <Text className="text-sm text-slate-900 dark:text-white font-semibold">
+              EKAZICONNECT SOLUTIONS LTD
+            </Text>
             <Text className="text-sm text-slate-700 dark:text-slate-300 mt-1">
               International House, Mama Ngina Street, CBD, Nairobi, Kenya
             </Text>
-            <Text className="text-sm text-slate-700 dark:text-slate-300">Postal: P.O. Box 1830-01000, Thika, Kenya</Text>
+            <Text className="text-sm text-slate-700 dark:text-slate-300">
+              Postal: P.O. Box 1830-01000, Thika, Kenya
+            </Text>
 
             <Text className="text-sm text-slate-700 dark:text-slate-300 mt-2">Phones:</Text>
             <View className="flex-row flex-wrap gap-x-2 mt-1">
@@ -87,7 +112,9 @@ export default function AntiSpamPolicy() {
               <Text className="text-sm text-slate-700 dark:text-slate-300">
                 Email:{' '}
                 <Pressable onPress={() => openMail('support@daybreaklearner.com')}>
-                  <Text className="text-blue-600 dark:text-blue-400">support@daybreaklearner.com</Text>
+                  <Text className="text-blue-600 dark:text-blue-400">
+                    support@daybreaklearner.com
+                  </Text>
                 </Pressable>
               </Text>
             </View>
@@ -118,7 +145,10 @@ const Bulleted: React.FC<React.PropsWithChildren<{}>> = ({ children }) => (
   </View>
 );
 
-const InlineLink: React.FC<{ onPress: () => void; children: React.ReactNode }> = ({ onPress, children }) => (
+const InlineLink: React.FC<{ onPress: () => void; children: React.ReactNode }> = ({
+  onPress,
+  children,
+}) => (
   <Pressable onPress={onPress}>
     <Text className="text-blue-600 dark:text-blue-400 text-sm">{children}</Text>
   </Pressable>

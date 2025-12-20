@@ -4,11 +4,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type ThemePref = 'light' | 'dark' | 'system';
 type ThemeState = {
-  pref: ThemePref;                 // user preference: light | dark | system
-  resolvedScheme: 'light' | 'dark';// actual scheme in use
+  pref: ThemePref; // user preference: light | dark | system
+  resolvedScheme: 'light' | 'dark'; // actual scheme in use
   setPref: (p: ThemePref) => void;
-  toggle: () => void;              // quick light <-> dark (keeps 'system' until user flips)
-  resetSystem: () => void;         // go back to 'system'
+  toggle: () => void; // quick light <-> dark (keeps 'system' until user flips)
+  resetSystem: () => void; // go back to 'system'
 };
 
 const ThemeCtx = React.createContext<ThemeState | null>(null);
@@ -19,9 +19,12 @@ function resolve(pref: ThemePref): 'light' | 'dark' {
   return pref;
 }
 
-export const ThemeProvider: React.FC<{ children: React.ReactNode; tw?: any }> = ({ children, tw }) => {
+export const ThemeProvider: React.FC<{ children: React.ReactNode; tw?: any }> = ({
+  children,
+  tw,
+}) => {
   const [pref, setPrefState] = React.useState<ThemePref>('system');
-  const [resolvedScheme, setResolved] = React.useState<'light'|'dark'>(resolve('system'));
+  const [resolvedScheme, setResolved] = React.useState<'light' | 'dark'>(resolve('system'));
 
   // Load saved pref on mount
   React.useEffect(() => {
@@ -50,27 +53,33 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode; tw?: any }> = 
   }, [pref, tw]);
 
   const persist = async (p: ThemePref) => {
-  setPrefState(p);
-  await AsyncStorage.setItem(KEY, p);
-};
+    setPrefState(p);
+    await AsyncStorage.setItem(KEY, p);
+  };
 
-const setPref = (p: ThemePref) => {
-  if (p === pref) return;               // avoid extra work
-  void persist(p);
-  const scheme = resolve(p);
-  setResolved(scheme);
-  (tw as any)?.setColorScheme?.(scheme);
-};
+  const setPref = (p: ThemePref) => {
+    if (p === pref) return; // avoid extra work
+    void persist(p);
+    const scheme = resolve(p);
+    setResolved(scheme);
+    (tw as any)?.setColorScheme?.(scheme);
+  };
 
-/** If user is on 'system', toggle to the *opposite* of the current resolved scheme. */
-const toggle = () => {
-  const next = (pref === 'system'
-    ? (resolvedScheme === 'dark' ? 'light' : 'dark')
-    : (pref === 'dark' ? 'light' : 'dark')) as ThemePref;
-  setPref(next);
-};
+  /** If user is on 'system', toggle to the *opposite* of the current resolved scheme. */
+  const toggle = () => {
+    const next = (
+      pref === 'system'
+        ? resolvedScheme === 'dark'
+          ? 'light'
+          : 'dark'
+        : pref === 'dark'
+          ? 'light'
+          : 'dark'
+    ) as ThemePref;
+    setPref(next);
+  };
 
-const resetSystem = () => setPref('system');
+  const resetSystem = () => setPref('system');
 
   return (
     <ThemeCtx.Provider value={{ pref, resolvedScheme, setPref, toggle, resetSystem }}>

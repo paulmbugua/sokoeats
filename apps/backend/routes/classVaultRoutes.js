@@ -22,7 +22,7 @@ router.post(
   '/upload/:type(video|pdf|preview|thumbnail)',
   authUser,
   upload.single('file'),
-  uploadSingleFile
+  uploadSingleFile,
 );
 router.post('/:id(\\d+)/purchase', authUser, classVault.purchaseClass);
 router.put('/:id(\\d+)', authUser, express.json(), classVault.updateVideoJson);

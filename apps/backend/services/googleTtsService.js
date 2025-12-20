@@ -9,7 +9,10 @@ import { alignWithGoogleSttWordOffsets } from './googleSttAlignService.js';
 
 // ─────────────────────────────────────────────────────────
 const thisFile = basename(fileURLToPath(import.meta.url));
-console.info('[ttsSvc] VERSION wordmarks-v2', { file: thisFile, pid: process.pid });
+console.info('[ttsSvc] VERSION wordmarks-v2', {
+  file: thisFile,
+  pid: process.pid,
+});
 
 let __voicesCache = { at: 0, list: [] };
 const VOICES_TTL_MS = 12 * 60 * 60 * 1000;
@@ -35,16 +38,23 @@ function createTtsClient() {
         projectId: creds.project_id,
       };
 
-      console.info('[ttsSvc] Using GOOGLE_TTS_CREDENTIALS_JSON for Google TTS auth');
+      console.info(
+        '[ttsSvc] Using GOOGLE_TTS_CREDENTIALS_JSON for Google TTS auth',
+      );
 
       return textToSpeech?.v1beta1?.TextToSpeechClient
         ? new textToSpeech.v1beta1.TextToSpeechClient(clientConfig)
         : new textToSpeech.TextToSpeechClient(clientConfig);
     } catch (err) {
-      console.error('[ttsSvc] Failed to parse GOOGLE_TTS_CREDENTIALS_JSON, falling back to ADC', err);
+      console.error(
+        '[ttsSvc] Failed to parse GOOGLE_TTS_CREDENTIALS_JSON, falling back to ADC',
+        err,
+      );
     }
   } else {
-    console.info('[ttsSvc] GOOGLE_TTS_CREDENTIALS_JSON not set, using ADC / GOOGLE_APPLICATION_CREDENTIALS');
+    console.info(
+      '[ttsSvc] GOOGLE_TTS_CREDENTIALS_JSON not set, using ADC / GOOGLE_APPLICATION_CREDENTIALS',
+    );
   }
 
   return textToSpeech?.v1beta1?.TextToSpeechClient
@@ -81,7 +91,9 @@ function toGcpSsml(ssml) {
 const byteLen = (s) => Buffer.byteLength(s, 'utf8');
 const wrapSpeak = (inner) => `<speak>${inner}</speak>`;
 const unwrapSpeak = (s) =>
-  String(s || '').replace(/^\s*<speak[^>]*>/i, '').replace(/<\/speak>\s*$/i, '');
+  String(s || '')
+    .replace(/^\s*<speak[^>]*>/i, '')
+    .replace(/<\/speak>\s*$/i, '');
 
 // ─────────────────────────────────────────────────────────
 // Param parsing
@@ -98,7 +110,11 @@ function parseRate(rate = '0%') {
 function deriveLang(voiceName) {
   const v = String(voiceName || '').trim() || DEFAULT_VOICE;
   const parts = v.split('-');
-  if (parts.length >= 2 && /^[a-z]{2,3}$/i.test(parts[0]) && /^[A-Z]{2}$/.test(parts[1])) {
+  if (
+    parts.length >= 2 &&
+    /^[a-z]{2,3}$/i.test(parts[0]) &&
+    /^[A-Z]{2}$/.test(parts[1])
+  ) {
     return `${parts[0]}-${parts[1]}`;
   }
   return DEFAULT_LANG;
@@ -106,7 +122,9 @@ function deriveLang(voiceName) {
 
 async function cloudinaryHas(publicId) {
   try {
-    await cloudinary.api.resource(`tts/${publicId}`, { resource_type: 'video' });
+    await cloudinary.api.resource(`tts/${publicId}`, {
+      resource_type: 'video',
+    });
     return true;
   } catch {
     return false;
@@ -124,10 +142,13 @@ function normalizeVoices(list = []) {
     name: v.name,
     languageCodes: Array.isArray(v.languageCodes) ? v.languageCodes : [],
     ssmlGender: v.ssmlGender || v.gender || 'SSML_VOICE_GENDER_UNSPECIFIED',
-    naturalSampleRateHertz: v.naturalSampleRateHertz || v.sampleRateHertz || null,
+    naturalSampleRateHertz:
+      v.naturalSampleRateHertz || v.sampleRateHertz || null,
   }));
   arr.sort((a, b) => {
-    const la = (a.languageCodes[0] || '').localeCompare(b.languageCodes[0] || '');
+    const la = (a.languageCodes[0] || '').localeCompare(
+      b.languageCodes[0] || '',
+    );
     if (la) return la;
     return a.name.localeCompare(b.name);
   });
@@ -212,7 +233,9 @@ function splitSsmlSmart(fullSsml, maxBytes = MAX_SSML_BYTES) {
     else {
       const last = merged[merged.length - 1];
       if (byteLen(last) + byteLen(unwrapSpeak(c)) <= maxBytes - 64) {
-        merged[merged.length - 1] = wrapSpeak(unwrapSpeak(last) + unwrapSpeak(c));
+        merged[merged.length - 1] = wrapSpeak(
+          unwrapSpeak(last) + unwrapSpeak(c),
+        );
       } else merged.push(c);
     }
   }
@@ -231,7 +254,11 @@ function timepointsToWords(allTps, wordsList) {
     if (!name || name[0] !== 'w') continue;
     const i = Number(name.slice(1));
     if (Number.isFinite(i) && wordsList[i] != null) {
-      out.push({ i, t: Math.round((tp.timeSeconds || 0) * 1000), w: wordsList[i] });
+      out.push({
+        i,
+        t: Math.round((tp.timeSeconds || 0) * 1000),
+        w: wordsList[i],
+      });
     }
   }
   out.sort((a, b) => a.i - b.i);
@@ -260,8 +287,10 @@ const approxTimings = (words, rateMult = 1) => {
 
 const { protos } = textToSpeech;
 const SSML_MARK_ENUM =
-  protos?.google?.cloud?.texttospeech?.v1beta1?.SynthesizeSpeechRequest?.TimepointType?.SSML_MARK ??
-  protos?.google?.cloud?.texttospeech?.v1?.SynthesizeSpeechRequest?.TimepointType?.SSML_MARK ??
+  protos?.google?.cloud?.texttospeech?.v1beta1?.SynthesizeSpeechRequest
+    ?.TimepointType?.SSML_MARK ??
+  protos?.google?.cloud?.texttospeech?.v1?.SynthesizeSpeechRequest
+    ?.TimepointType?.SSML_MARK ??
   1;
 
 // ─────────────────────────────────────────────────────────
@@ -322,7 +351,10 @@ export async function synthesizeTtsLocalFirst({
 
   const already = await cloudinaryHas(cacheKey);
   const cdnUrlCached = already
-    ? cloudinary.url(`tts/${cacheKey}.mp3`, { resource_type: 'video', secure: true })
+    ? cloudinary.url(`tts/${cacheKey}.mp3`, {
+        resource_type: 'video',
+        secure: true,
+      })
     : null;
 
   // Cached: align and return URL
@@ -338,7 +370,10 @@ export async function synthesizeTtsLocalFirst({
         lang: langCode || 'en-US',
       });
 
-      wordsJson = Array.isArray(aligned) && aligned.length ? aligned : approxTimings(wordsList, rateMult);
+      wordsJson =
+        Array.isArray(aligned) && aligned.length
+          ? aligned
+          : approxTimings(wordsList, rateMult);
     }
 
     const ms = Number(process.hrtime.bigint() - t0) / 1e6;
@@ -366,8 +401,15 @@ export async function synthesizeTtsLocalFirst({
 
   // Not cached → synthesize
   const ssmlBytes = byteLen(inputSSML);
-  const chunks = ssmlBytes > MAX_SSML_BYTES ? splitSsmlSmart(inputSSML, MAX_SSML_BYTES) : [inputSSML];
-  if (chunks.length > 1) console.log('[ttsSvc] CHUNK', { count: chunks.length, totalBytes: ssmlBytes });
+  const chunks =
+    ssmlBytes > MAX_SSML_BYTES
+      ? splitSsmlSmart(inputSSML, MAX_SSML_BYTES)
+      : [inputSSML];
+  if (chunks.length > 1)
+    console.log('[ttsSvc] CHUNK', {
+      count: chunks.length,
+      totalBytes: ssmlBytes,
+    });
 
   const markCountAll = (inputSSML.match(/<mark\s+name="/gi) || []).length;
   const forceNoTimepoints = wantTimepoints && !markCountAll;
@@ -389,7 +431,8 @@ export async function synthesizeTtsLocalFirst({
         speakingRate: rateMult,
         pitch: pitchSt,
       },
-      enableTimePointing: wantTimepoints && !forceNoTimepoints ? [SSML_MARK_ENUM] : undefined,
+      enableTimePointing:
+        wantTimepoints && !forceNoTimepoints ? [SSML_MARK_ENUM] : undefined,
     };
 
     console.debug('[ttsSvc] request flags', {
@@ -409,7 +452,10 @@ export async function synthesizeTtsLocalFirst({
     const tps = Array.isArray(resp.timepoints) ? resp.timepoints : [];
     const marksInChunk = (c.match(/<mark\s+name="/gi) || []).length;
 
-    const approxStepMs = Math.max(80, Math.round(190 / Math.max(rateMult, 0.25)));
+    const approxStepMs = Math.max(
+      80,
+      Math.round(190 / Math.max(rateMult, 0.25)),
+    );
     let stepForThisChunk = approxStepMs;
 
     console.log('[ttsSvc] GCP synth OK', {
@@ -428,11 +474,19 @@ export async function synthesizeTtsLocalFirst({
       const last = tps[tps.length - 1];
       if (last && Number.isFinite(last.timeSeconds)) {
         const chunkDurMs = Math.round(last.timeSeconds * 1000);
-        if (marksInChunk > 0) stepForThisChunk = Math.max(50, Math.round(chunkDurMs / marksInChunk));
+        if (marksInChunk > 0)
+          stepForThisChunk = Math.max(
+            50,
+            Math.round(chunkDurMs / marksInChunk),
+          );
         offsetMs += chunkDurMs;
       }
       wordsSeen += marksInChunk;
-    } else if (wantTimepoints && marksInChunk > 0 && (wordsList?.length || 0) > 0) {
+    } else if (
+      wantTimepoints &&
+      marksInChunk > 0 &&
+      (wordsList?.length || 0) > 0
+    ) {
       const baseI = wordsSeen;
       for (let k = 0; k < marksInChunk; k++) {
         const iGlobal = baseI + k;
@@ -458,7 +512,12 @@ export async function synthesizeTtsLocalFirst({
   try {
     const uploadedUrl = await new Promise((resolve, reject) => {
       const up = cloudinary.uploader.upload_stream(
-        { public_id: `tts/${cacheKey}`, resource_type: 'video', format: 'mp3', overwrite: true },
+        {
+          public_id: `tts/${cacheKey}`,
+          resource_type: 'video',
+          format: 'mp3',
+          overwrite: true,
+        },
         (err, res) => (err ? reject(err) : resolve(res?.secure_url || null)),
       );
       up.end(mp3Buffer);
@@ -474,11 +533,17 @@ export async function synthesizeTtsLocalFirst({
   }
 
   // 1) Google timepoints (marks)
-  let wordsJson = wantTimepoints && collectedWords.length ? collectedWords.sort((a, b) => a.i - b.i) : null;
+  let wordsJson =
+    wantTimepoints && collectedWords.length
+      ? collectedWords.sort((a, b) => a.i - b.i)
+      : null;
 
   // 2) simpleAlign fallback (only if empty)
   if (wantTimepoints && (!wordsJson || wordsJson.length === 0)) {
-    const plain = (wordsList && wordsList.length) ? wordsList.join(' ') : unwrapSpeak(inputSSML);
+    const plain =
+      wordsList && wordsList.length
+        ? wordsList.join(' ')
+        : unwrapSpeak(inputSSML);
     const aligned = await simpleAlign({
       audioBuffer: finalCdnUrl ? undefined : mp3Buffer,
       audioUrl: finalCdnUrl || undefined,
@@ -502,16 +567,22 @@ export async function synthesizeTtsLocalFirst({
           languageCode: langCode || 'en-US',
           scriptWords: wordsList,
         });
-        if (Array.isArray(sttAligned) && sttAligned.length) wordsJson = sttAligned;
+        if (Array.isArray(sttAligned) && sttAligned.length)
+          wordsJson = sttAligned;
       } catch (e) {
-        console.warn('[ttsSvc] STT align failed; keeping existing timings', { message: e?.message || String(e) });
+        console.warn('[ttsSvc] STT align failed; keeping existing timings', {
+          message: e?.message || String(e),
+        });
       }
     }
   }
 
   // 4) Final fallback: evenly-spaced timings
   if (!wordsJson || wordsJson.length === 0) {
-    wordsJson = (wantTimepoints && wordsList?.length) ? approxTimings(wordsList, rateMult) : null;
+    wordsJson =
+      wantTimepoints && wordsList?.length
+        ? approxTimings(wordsList, rateMult)
+        : null;
   }
 
   const totalMs = Number(process.hrtime.bigint() - t0) / 1e6;
@@ -543,11 +614,20 @@ export async function synthesizeTtsLocalFirst({
 // Voice listing
 // ─────────────────────────────────────────────────────────
 
-export async function listGoogleVoices({ languageCode, onlyWavenet = true, force = false } = {}) {
+export async function listGoogleVoices({
+  languageCode,
+  onlyWavenet = true,
+  force = false,
+} = {}) {
   const now = Date.now();
-  if (!force && __voicesCache.list.length && now - __voicesCache.at < VOICES_TTL_MS) {
+  if (
+    !force &&
+    __voicesCache.list.length &&
+    now - __voicesCache.at < VOICES_TTL_MS
+  ) {
     let out = __voicesCache.list;
-    if (languageCode) out = out.filter((v) => v.languageCodes.includes(languageCode));
+    if (languageCode)
+      out = out.filter((v) => v.languageCodes.includes(languageCode));
     if (onlyWavenet) out = out.filter((v) => /wavenet/i.test(v.name));
     return out;
   }
@@ -561,7 +641,8 @@ export async function listGoogleVoices({ languageCode, onlyWavenet = true, force
   __voicesCache = { at: now, list: norm };
 
   let out = norm;
-  if (languageCode) out = out.filter((v) => v.languageCodes.includes(languageCode));
+  if (languageCode)
+    out = out.filter((v) => v.languageCodes.includes(languageCode));
   if (onlyWavenet) out = out.filter((v) => /wavenet/i.test(v.name));
   return out;
 }

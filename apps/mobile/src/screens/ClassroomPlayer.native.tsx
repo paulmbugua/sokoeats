@@ -8,7 +8,7 @@ import {
   Modal,
   useColorScheme,
   useWindowDimensions,
-   ActivityIndicator, 
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import tw from '../../tailwind';
@@ -61,7 +61,7 @@ type Props = {
   onPrev?: () => Promise<boolean> | boolean;
   isBuildingNext?: boolean;
   onEnded?: () => void;
- onWordSync?: (p: { words: any[]; currentIndex: number }) => void;
+  onWordSync?: (p: { words: any[]; currentIndex: number }) => void;
 
   course?: any | null;
   outline?: OutlineSection[];
@@ -83,10 +83,18 @@ type Props = {
   onLoadingChange?: (loading: boolean) => void;
 
   gateMode?: 'narration' | 'notes_only';
-  gateNotice?: { reason?: string; resetsAt?: string | null; remainingMinutes?: number | null } | null;
-  gateUsage?: Array<{ bucket?: string; remainingSeconds?: number; limitSeconds?: number; resetsAt?: string | null }>;
+  gateNotice?: {
+    reason?: string;
+    resetsAt?: string | null;
+    remainingMinutes?: number | null;
+  } | null;
+  gateUsage?: Array<{
+    bucket?: string;
+    remainingSeconds?: number;
+    limitSeconds?: number;
+    resetsAt?: string | null;
+  }>;
 };
-
 
 // ─────────────────────── Constants ───────────────────────
 
@@ -150,8 +158,9 @@ function hasUsefulPunctuation(arr: Array<{ text?: string }>) {
   });
 }
 
-
 // ───────────────────── Inner Player ─────────────────────
+
+type TabKey = 'narration' | 'notes';
 
 const InnerPlayer: React.FC<Props> = (props) => {
   const {
@@ -172,20 +181,58 @@ const InnerPlayer: React.FC<Props> = (props) => {
     onRequestStart,
     onEnded,
     activeIndex,
-     disableInternalBackdrop,
-  backdropOverride,
-  onToggleThemePanel,
-  onLoadingChange,
+    disableInternalBackdrop,
+    backdropOverride,
+    onToggleThemePanel,
+    onLoadingChange,
   } = props;
+
   const loadingCb = onPlayerLoadingChange ?? onLoadingChange;
 
   const narrationLocked = props.gateMode === 'notes_only';
+  const canNarrate = !narrationLocked;
+
   const gateReset = props.gateNotice?.resetsAt
     ? new Date(props.gateNotice.resetsAt).toLocaleString()
     : null;
 
+  // ✅ Define tab state + helpers (fixes: activeTab, isNotesTab, switchToNotes, switchToNarration)
+  const [activeTab, setActiveTab] = useState<TabKey>(narrationLocked ? 'notes' : 'narration');
+
+  useEffect(() => {
+    // If quota locks narration, force notes tab.
+    if (narrationLocked) setActiveTab('notes');
+  }, [narrationLocked]);
+
+  const isNotesTab = activeTab === 'notes';
+
+  const switchToNarration = useCallback(() => {
+    if (!canNarrate) return; // locked → ignore
+    setActiveTab('narration');
+  }, [canNarrate]);
+
+  const switchToNotes = useCallback(() => {
+    setActiveTab('notes');
+  }, []);
+
+  // ✅ Notes helper strings (fixes: notesSubtitle, notesCtaLabel)
+  const notesSubtitle = useMemo(() => {
+    if (narrationLocked) {
+      if (props.gateNotice?.reason) return props.gateNotice.reason;
+      if (gateReset) return `Narration will reset on: ${gateReset}`;
+      return 'Narration is currently unavailable. You can still read the notes.';
+    }
+    return 'Read the lesson notes here. Switch back to Narration anytime to listen.';
+  }, [narrationLocked, props.gateNotice?.reason, gateReset]);
+
+  const notesCtaLabel = useMemo(() => {
+    if (narrationLocked) return 'Keep learning with notes while narration is locked.';
+    return 'Switch back to Narration to listen to the lesson.';
+  }, [narrationLocked]);
+
   const { backendUrl } = useShopContext();
   const effectiveBackend = backendUrlOverride || backendUrl;
+
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
   const { width } = useWindowDimensions();
@@ -219,27 +266,25 @@ const InnerPlayer: React.FC<Props> = (props) => {
   } = useWordSync();
 
   const words = wordsRaw ?? [];
- 
+
   const wordsRef = useRef<any[]>([]);
   useEffect(() => {
     wordsRef.current = words as any[];
   }, [words]);
 
-const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
   // ✅ Keep latest callback without re-triggering sync effect
-const onWordSyncRef = useRef<typeof onWordSync>(onWordSync);
+  const onWordSyncRef = useRef<typeof onWordSync>(onWordSync);
+  useEffect(() => {
+    onWordSyncRef.current = onWordSync;
+  }, [onWordSync]);
 
-useEffect(() => {
-  onWordSyncRef.current = onWordSync;
-}, [onWordSync]);
-
-useEffect(() => {
-  const fn = onWordSyncRef.current;
-  if (!fn) return;
-
-  fn({ words: words || [], currentIndex: Number(currentIndex) || 0 });
-}, [words, currentIndex]); // ✅ IMPORTANT: do NOT depend on onWordSync here
-
+  useEffect(() => {
+    const fn = onWordSyncRef.current;
+    if (!fn) return;
+    fn({ words: words || [], currentIndex: Number(currentIndex) || 0 });
+  }, [words, currentIndex]);
 
   // Which lesson index (local vs controlled)
   const [lessonIdx, setLessonIdx] = useState(0);
@@ -250,15 +295,9 @@ useEffect(() => {
   const useJoined = playJoinedIfAvailable && hasJoined;
 
   const [showTranscript, setShowTranscript] = useState(false);
-  const [showNotes, setShowNotes] = useState(() => narrationLocked);
   const [showThemeSheet, setShowThemeSheet] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const [topBarH, setTopBarH] = useState(56);
-
-  useEffect(() => {
-    if (narrationLocked) setShowNotes(true);
-  }, [narrationLocked]);
-
 
   // Reader scale
   const [userScale, setUserScale] = useState(1);
@@ -267,7 +306,7 @@ useEffect(() => {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [nativeIsPlaying, setNativeIsPlaying] = useState(false);
   const [nativePositionSec, setNativePositionSec] = useState(0);
-    
+
   const [audioDurationSec, setAudioDurationSec] = useState(0);
 
   const autoPlayRef = useRef(false);
@@ -369,22 +408,18 @@ useEffect(() => {
     return (ssml || '').trim();
   }, [useJoined, ssml, hasLessons, lessons, uiLessonIdx]);
 
- const displayWords = useMemo(() => {
-  const alreadyDecorated = hasUsefulPunctuation(words as any);
-  if (alreadyDecorated) return words as any;
+  const displayWords = useMemo(() => {
+    const alreadyDecorated = hasUsefulPunctuation(words as any);
+    if (alreadyDecorated) return words as any;
 
-  const plain = ssmlToPlainText(effectiveSsml ?? '');
-  return applyPunctuationToWords(words as any, plain) as any;
-}, [words, effectiveSsml]);
-
-
+    const plain = ssmlToPlainText(effectiveSsml ?? '');
+    return applyPunctuationToWords(words as any, plain) as any;
+  }, [words, effectiveSsml]);
 
   const lessonContentKey = useMemo(() => {
-  if (useJoined) return `joined:${course?.id ?? title ?? 'joined'}`;
-  // In RobotTeacher your lessons array is length 1, so rely on its stable id.
-  return lessons?.[uiLessonIdx]?.id ?? `idx:${uiLessonIdx}`;
-}, [useJoined, course?.id, title, lessons, uiLessonIdx]);
-
+    if (useJoined) return `joined:${course?.id ?? title ?? 'joined'}`;
+    return lessons?.[uiLessonIdx]?.id ?? `idx:${uiLessonIdx}`;
+  }, [useJoined, course?.id, title, lessons, uiLessonIdx]);
 
   const courseTitleForUi = useMemo(() => {
     const t = (course?.title || course?.name || title || 'AI Course')?.toString?.() ?? 'AI Course';
@@ -410,7 +445,7 @@ useEffect(() => {
   // duration from aligner (fallback)
   const wordDurationSec = useMemo(
     () => (words.length ? Math.max(...words.map((w: any) => w.end || 0)) : 0),
-    [words],
+    [words]
   );
 
   const durationSec = audioDurationSec || wordDurationSec || 0;
@@ -420,15 +455,13 @@ useEffect(() => {
   // Prefetch trigger at 70%
   const PREFETCH_AT = 0.7;
   const prefetch70KeyRef = useRef<string | null>(null);
-  // ✅ If user hits Next while prewarm is running, we wait and then switch
-const pendingNextRef = useRef<null | { fromIdx: number; token: number }>(null);
-const pendingTokenRef = useRef(0);
+  const pendingNextRef = useRef<null | { fromIdx: number; token: number }>(null);
+  const pendingTokenRef = useRef(0);
 
-const nextIsReady = useCallback(() => {
-  const next = lessons?.[uiLessonIdx + 1];
-  return !!(next && typeof next.ssml === 'string' && next.ssml.trim().length > 0);
-}, [lessons, uiLessonIdx]);
-
+  const nextIsReady = useCallback(() => {
+    const next = lessons?.[uiLessonIdx + 1];
+    return !!(next && typeof next.ssml === 'string' && next.ssml.trim().length > 0);
+  }, [lessons, uiLessonIdx]);
 
   useEffect(() => {
     if (!audioUrl) return;
@@ -444,7 +477,16 @@ const nextIsReady = useCallback(() => {
     try {
       onRequestStart?.();
     } catch {}
-  }, [progress, audioUrl, nativeIsPlaying, loading, durationSec, uiLessonIdx, voice, onRequestStart]);
+  }, [
+    progress,
+    audioUrl,
+    nativeIsPlaying,
+    loading,
+    durationSec,
+    uiLessonIdx,
+    voice,
+    onRequestStart,
+  ]);
 
   // expo-av: load/unload sound whenever audioUrl changes
   useEffect(() => {
@@ -475,7 +517,7 @@ const nextIsReady = useCallback(() => {
       try {
         const { sound: newSound } = await Audio.Sound.createAsync(
           { uri: audioUrl },
-          { shouldPlay: false, volume },
+          { shouldPlay: false, volume }
         );
 
         if (cancelled) {
@@ -581,7 +623,7 @@ const nextIsReady = useCallback(() => {
         console.warn('[ClassroomPlayer.native] seekToWordNative failed', e);
       }
     },
-    [sound, words, audioDurationSec, wordDurationSec],
+    [sound, words, audioDurationSec, wordDurationSec]
   );
 
   const seekToTime = useCallback(
@@ -613,7 +655,7 @@ const nextIsReady = useCallback(() => {
         }
       })();
     },
-    [sound, audioDurationSec, wordDurationSec],
+    [sound, audioDurationSec, wordDurationSec]
   );
 
   const nudgeSeconds = (d: number) => seekToTime(currentSec + d);
@@ -625,7 +667,7 @@ const nextIsReady = useCallback(() => {
       if (now - lastPlayTapRef.current < 350) return;
       lastPlayTapRef.current = now;
 
-      if (narrationLocked) return;
+      if (!canNarrate) return;
 
       if (nativeIsPlaying) {
         autoPlayRef.current = false;
@@ -658,19 +700,18 @@ const nextIsReady = useCallback(() => {
       }
 
       if (sound) {
-  // If we're at (or extremely near) the end, rewind before playing.
-  const dur = audioDurationSec || 0;
-  if (dur > 0 && nativePositionSec >= dur - 0.05) {
-    await sound.setPositionAsync(0);
-    setNativePositionSec(0);
-    setCurrentIndex(0);
-  }
+        // If we're at (or extremely near) the end, rewind before playing.
+        const dur = audioDurationSec || 0;
+        if (dur > 0 && nativePositionSec >= dur - 0.05) {
+          await sound.setPositionAsync(0);
+          setNativePositionSec(0);
+          setCurrentIndex(0);
+        }
 
-  await sound.playAsync();
-  setNativeIsPlaying(true);
-  return;
-}
-
+        await sound.playAsync();
+        setNativeIsPlaying(true);
+        return;
+      }
     } catch (e) {
       console.warn('[ClassroomPlayer.native] play/generate failed', e);
     }
@@ -694,75 +735,77 @@ const nextIsReady = useCallback(() => {
   ]);
 
   useEffect(() => {
-  const pending = pendingNextRef.current;
-  if (!pending) return;
+    const pending = pendingNextRef.current;
+    if (!pending) return;
 
-  if (isBuildingNext) return;
-  if (!nextIsReady()) return;
+    if (isBuildingNext) return;
+    if (!nextIsReady()) return;
 
-  pendingNextRef.current = null;
-  autoPlayRef.current = true;
+    pendingNextRef.current = null;
+    autoPlayRef.current = true;
 
-  // ✅ advance even in controlled mode
-  if (typeof onNext === 'function') {
-    onNext();
-    return;
-  }
+    // ✅ advance even in controlled mode
+    if (typeof onNext === 'function') {
+      onNext();
+      return;
+    }
 
-  // fallback uncontrolled
-  setLessonIdx((i) => Math.min(i + 1, Math.max(lessons.length - 1, 0)));
-}, [isBuildingNext, nextIsReady, onNext, lessons.length]);
-
+    // fallback uncontrolled
+    setLessonIdx((i) => Math.min(i + 1, Math.max(lessons.length - 1, 0)));
+  }, [isBuildingNext, nextIsReady, onNext, lessons.length]);
 
   // loading callback from hook
   useEffect(() => {
-  loadingCb?.(loading);
-}, [loading, loadingCb]);
+    loadingCb?.(loading);
+  }, [loading, loadingCb]);
 
   // speak when ssml/voice changes
   const lastSpeakKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-  if (!effectiveBackend) return;
+    if (!effectiveBackend) return;
 
-  const trimmed = (effectiveSsml || '').trim();
-  if (!trimmed) return;
+    const trimmed = (effectiveSsml || '').trim();
+    if (!trimmed) return;
 
-  const key = `${voice}|${lessonContentKey}|${trimmed.length}|${useJoined ? 'joined' : 'per'}`;
+    const key = `${voice}|${lessonContentKey}|${trimmed.length}|${useJoined ? 'joined' : 'per'}`;
 
-  if (key === lastSpeakKeyRef.current) return;
-  lastSpeakKeyRef.current = key;
+    if (key === lastSpeakKeyRef.current) return;
+    lastSpeakKeyRef.current = key;
 
-  let cancelled = false;
+    let cancelled = false;
 
-  (async () => {
-    try {
-      if (sound) {
-        try { await sound.stopAsync(); } catch {}
+    (async () => {
+      try {
+        if (sound) {
+          try {
+            await sound.stopAsync();
+          } catch {}
+        }
+
+        clearForNewSession();
+        if (!trimmed || cancelled) return;
+
+        await speak(effectiveBackend, { ssml: trimmed, voiceName: voice });
+        if (cancelled) return;
+      } catch (e) {
+        console.warn('[ClassroomPlayer.native] speak failed', e);
       }
+    })();
 
-      clearForNewSession();
-      if (!trimmed || cancelled) return;
-
-      await speak(effectiveBackend, { ssml: trimmed, voiceName: voice });
-      if (cancelled) return;
-    } catch (e) {
-      console.warn('[ClassroomPlayer.native] speak failed', e);
-    }
-  })();
-
-  return () => { cancelled = true; };
-}, [
-  effectiveBackend,
-  effectiveSsml,
-  lessonContentKey, // ✅ add dependency
-  useJoined,
-  voice,
-  speak,
-  clearForNewSession,
-  sound,
-]);
-
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    effectiveBackend,
+    effectiveSsml,
+    lessonContentKey,
+    useJoined,
+    voice,
+    speak,
+    clearForNewSession,
+    sound,
+  ]);
 
   // ended / auto-next
   const lastEndedTickRef = useRef(0);
@@ -783,14 +826,12 @@ const nextIsReady = useCallback(() => {
 
     (async () => {
       autoPlayRef.current = false;
-      // ✅ if prewarm is running, wait and let the consume-effect switch lessons
       if (isBuildingNext && !nextIsReady()) {
         pendingTokenRef.current += 1;
         pendingNextRef.current = { fromIdx: uiLessonIdx, token: pendingTokenRef.current };
         return;
       }
 
-      // ✅ if next already ready, switch immediately + autoplay
       if (nextIsReady()) {
         autoPlayRef.current = true;
         if (typeof activeIndex !== 'number') {
@@ -798,7 +839,6 @@ const nextIsReady = useCallback(() => {
         }
         return;
       }
-
 
       if (typeof onNext === 'function') {
         try {
@@ -821,6 +861,8 @@ const nextIsReady = useCallback(() => {
     onNext,
     onEnded,
     activeIndex,
+    isBuildingNext,
+    nextIsReady,
   ]);
 
   const handlePrev = useCallback(async () => {
@@ -839,40 +881,35 @@ const nextIsReady = useCallback(() => {
   }, [onPrev, uiLessonIdx, activeIndex]);
 
   const handleNext = useCallback(async () => {
-  // ✅ If next lesson is already being built (prewarm), DON'T trigger a new generation.
-  // Just wait for it to finish and then switch (effect above will do it).
-  if (isBuildingNext && !nextIsReady()) {
-    pendingTokenRef.current += 1;
-    pendingNextRef.current = { fromIdx: uiLessonIdx, token: pendingTokenRef.current };
-    return;
-  }
+    if (isBuildingNext && !nextIsReady()) {
+      pendingTokenRef.current += 1;
+      pendingNextRef.current = { fromIdx: uiLessonIdx, token: pendingTokenRef.current };
+      return;
+    }
 
-  // If next lesson is already present, just switch + autoplay
-  if (nextIsReady()) {
-    autoPlayRef.current = true;
+    if (nextIsReady()) {
+      autoPlayRef.current = true;
+      if (typeof activeIndex !== 'number') {
+        setLessonIdx((i) => Math.min(i + 1, Math.max(lessons.length - 1, 0)));
+      }
+      return;
+    }
+
+    if (typeof onNext === 'function') {
+      try {
+        const did = await onNext();
+        if (did) return;
+      } catch {}
+    }
+
     if (typeof activeIndex !== 'number') {
       setLessonIdx((i) => Math.min(i + 1, Math.max(lessons.length - 1, 0)));
     }
-    return;
-  }
-
-  // Fallback: no prewarm running and no next ready → call parent (may generate)
-  if (typeof onNext === 'function') {
-    try {
-      const did = await onNext();
-      if (did) return;
-    } catch {}
-  }
-
-  if (typeof activeIndex !== 'number') {
-    setLessonIdx((i) => Math.min(i + 1, Math.max(lessons.length - 1, 0)));
-  }
-}, [onNext, activeIndex, lessons.length, isBuildingNext, nextIsReady, uiLessonIdx]);
-
+  }, [onNext, activeIndex, lessons.length, isBuildingNext, nextIsReady, uiLessonIdx]);
 
   const totalLessonsForUi = useMemo(
     () => Math.max(lessons?.length || 0, outline?.length || 0) || 1,
-    [lessons?.length, outline?.length],
+    [lessons?.length, outline?.length]
   );
 
   // Volume / mute
@@ -886,36 +923,34 @@ const nextIsReady = useCallback(() => {
       setMutedAt(null);
     }
   };
-  const volDown = () => setVolume(Math.max(0, +(Math.max(0, volume - 0.1)).toFixed(3)));
-  const volUp = () => setVolume(Math.min(1, +(Math.min(1, volume + 0.1)).toFixed(3)));
+  const volDown = () => setVolume(Math.max(0, +Math.max(0, volume - 0.1).toFixed(3)));
+  const volUp = () => setVolume(Math.min(1, +Math.min(1, volume + 0.1).toFixed(3)));
 
   const sentences = (sentenceGroups || []) as SentenceGroup[];
   const [stableTimed, setStableTimed] = useState<{
-  words: any[];
-  sentences: SentenceGroup[];
-  key: string;
-} | null>(null);
+    words: any[];
+    sentences: SentenceGroup[];
+    key: string;
+  } | null>(null);
 
-const liveReady = !!(sentences?.length && words?.length);
+  const liveReady = !!(sentences?.length && words?.length);
 
-useEffect(() => {
-  if (!liveReady) return;
+  useEffect(() => {
+    if (!liveReady) return;
 
-  setStableTimed((prev) => {
-    if (prev?.key === lessonContentKey) return prev;
-    return {
-      words: displayWords as any,
-      sentences: sentences as any,
-      key: lessonContentKey,
-    };
-  });
-}, [liveReady, lessonContentKey]);
+    setStableTimed((prev) => {
+      if (prev?.key === lessonContentKey) return prev;
+      return {
+        words: displayWords as any,
+        sentences: sentences as any,
+        key: lessonContentKey,
+      };
+    });
+  }, [liveReady, lessonContentKey, displayWords, sentences]);
 
-
-const renderWords = liveReady ? (displayWords as any) : stableTimed?.words ?? [];
-const renderSentences = liveReady ? (sentences as any) : stableTimed?.sentences ?? [];
-const shouldShowFallback = !liveReady && !stableTimed;
-
+  const renderWords = liveReady ? (displayWords as any) : (stableTimed?.words ?? []);
+  const renderSentences = liveReady ? (sentences as any) : (stableTimed?.sentences ?? []);
+  const shouldShowFallback = !liveReady && !stableTimed;
 
   return (
     <View style={tw`flex-1`}>
@@ -924,8 +959,7 @@ const shouldShowFallback = !liveReady && !stableTimed;
         style={tw.style(
           'flex-1 rounded-3xl overflow-hidden',
           'bg-slate-900/90 dark:bg-black/90 border border-white/10',
-          // ✅ keep bottom bar above home indicator
-          { marginBottom: Math.max(0, insets.bottom - 6) },
+          { marginBottom: Math.max(0, insets.bottom - 6) }
         )}
       >
         {/* Top bar */}
@@ -952,14 +986,16 @@ const shouldShowFallback = !liveReady && !stableTimed;
           maximized={maximized}
           onToggleMaximize={() => setMaximized((m) => !m)}
           onHeight={setTopBarH}
-          disablePlay={narrationLocked}
+          disablePlay={!canNarrate}
           gateNotice={props.gateNotice}
         />
 
         {narrationLocked && (
           <View style={tw`bg-amber-500/80 px-3 py-2`}>
             <Text style={tw`text-white font-semibold`}>Narration quota reached / locked.</Text>
-            <Text style={tw`text-white`}>{gateReset ? `Resets on: ${gateReset}` : 'Narration is currently unavailable.'}</Text>
+            <Text style={tw`text-white`}>
+              {gateReset ? `Resets on: ${gateReset}` : 'Narration is currently unavailable.'}
+            </Text>
           </View>
         )}
 
@@ -975,17 +1011,15 @@ const shouldShowFallback = !liveReady && !stableTimed;
           <View style={tw`flex-row gap-2 mb-3`}>
             <Pressable
               onPress={switchToNarration}
-              disabled={narrationLocked}
+              disabled={!canNarrate}
               style={tw.style(
                 'flex-1 flex-row items-center justify-center gap-2 px-3 py-2 rounded-2xl border',
-                activeTab === 'narration'
-                  ? 'bg-white text-black'
-                  : 'bg-slate-800/70 border-white/10',
-                narrationLocked && 'opacity-60'
+                activeTab === 'narration' ? 'bg-white text-black' : 'bg-slate-800/70 border-white/10',
+                !canNarrate && 'opacity-60'
               )}
             >
               <Ionicons
-                name={narrationLocked ? 'lock-closed' : 'musical-notes'}
+                name={!canNarrate ? 'lock-closed' : 'musical-notes'}
                 size={16}
                 color={activeTab === 'narration' ? '#0f172a' : '#e5e7eb'}
               />
@@ -1003,9 +1037,7 @@ const shouldShowFallback = !liveReady && !stableTimed;
               onPress={switchToNotes}
               style={tw.style(
                 'flex-1 flex-row items-center justify-center gap-2 px-3 py-2 rounded-2xl border',
-                activeTab === 'notes'
-                  ? 'bg-white text-black'
-                  : 'bg-slate-800/70 border-white/10'
+                activeTab === 'notes' ? 'bg-white text-black' : 'bg-slate-800/70 border-white/10'
               )}
             >
               <Ionicons
@@ -1032,7 +1064,7 @@ const shouldShowFallback = !liveReady && !stableTimed;
                   narrationLocked ? 'bg-amber-500/20 border border-amber-300/50' : 'bg-slate-800/60'
                 )}
               >
-                <Text style={tw`text-sm font-semibold text-slate-100`}>Notes only</Text>
+                <Text style={tw`text-sm font-semibold text-slate-100`}>Notes</Text>
                 <Text style={tw`text-xs text-slate-200 mt-1`}>{notesSubtitle}</Text>
               </View>
 
@@ -1059,7 +1091,7 @@ const shouldShowFallback = !liveReady && !stableTimed;
                     <View
                       style={tw.style(
                         'px-3 py-1 rounded-full flex-row items-center gap-1',
-                        'bg-slate-800/80 dark:bg-slate-900/90 border border-white/10',
+                        'bg-slate-800/80 dark:bg-slate-900/90 border border-white/10'
                       )}
                     >
                       <Ionicons name="book-outline" size={14} color="#e5e7eb" />
@@ -1114,7 +1146,7 @@ const shouldShowFallback = !liveReady && !stableTimed;
           onPlayPause={handlePlayPause}
           playing={nativeIsPlaying}
           loading={loading}
-          disablePlay={narrationLocked}
+          disablePlay={!canNarrate}
           volume={volume}
           volDown={volDown}
           volUp={volUp}
@@ -1127,18 +1159,16 @@ const shouldShowFallback = !liveReady && !stableTimed;
           userScale={userScale}
           setUserScale={setUserScale}
           hlHex={hlHex}
-         
         />
       </View>
-     
-           {/* Transcript */}
+
+      {/* Transcript */}
       <TranscriptModal
         open={showTranscript}
         onClose={() => setShowTranscript(false)}
         title={lessonHeadingForUi}
         sentences={renderSentences}
         words={renderWords}
-
         currentIndex={currentIndex}
         seekToWord={seekToWordNative}
       />
@@ -1163,9 +1193,7 @@ const ClassroomPlayerScreen: React.FC<Props> = (props) => {
 
   return (
     <ThemeProvider>
-      <SafeAreaView
-        style={tw.style('flex-1', isDark ? 'bg-slate-950' : 'bg-slate-100')}
-      >
+      <SafeAreaView style={tw.style('flex-1', isDark ? 'bg-slate-950' : 'bg-slate-100')}>
         <View style={tw`flex-1`}>
           <InnerPlayer {...props} />
         </View>
@@ -1231,27 +1259,24 @@ function TopBarMobile({
   const voiceLabel = voicesLoading
     ? 'Loading voices…'
     : voiceOptions.length
-    ? voice
-    : voicesError
-    ? 'Voices unavailable'
-    : voice || 'Voice';
+      ? voice
+      : voicesError
+        ? 'Voices unavailable'
+        : voice || 'Voice';
 
   return (
     <View
       onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}
       style={tw.style(
         'px-3 py-2 flex-row items-center gap-2',
-        'bg-slate-900/95 dark:bg-black/95 border-b border-white/10',
+        'bg-slate-900/95 dark:bg-black/95 border-b border-white/10'
       )}
     >
       {/* Left: dot + title */}
       <View style={tw`flex-row items-center gap-2 flex-1 min-w-0`}>
         <View style={tw`h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.9)]`} />
         <View style={tw`flex-1`}>
-          <Text
-            style={tw.style('text-xs text-slate-200', isDark && 'text-slate-100')}
-            numberOfLines={1}
-          >
+          <Text style={tw.style('text-xs text-slate-200', isDark && 'text-slate-100')} numberOfLines={1}>
             {title}
           </Text>
 
@@ -1280,7 +1305,7 @@ function TopBarMobile({
         onPress={onToggleTranscript}
         style={tw.style(
           'h-9 w-9 rounded-full items-center justify-center ml-1',
-          transcriptOpen ? 'bg-white' : 'bg-white/10 dark:bg-white/10',
+          transcriptOpen ? 'bg-white' : 'bg-white/10 dark:bg-white/10'
         )}
       >
         <Ionicons name="newspaper-outline" size={16} color={transcriptOpen ? '#000' : '#f9fafb'} />
@@ -1295,20 +1320,14 @@ function TopBarMobile({
 
       <Pressable
         onPress={onToggleTheme}
-        style={tw.style(
-          'h-9 w-9 rounded-full items-center justify-center',
-          'bg-white/10 dark:bg-white/10 ml-1',
-        )}
+        style={tw.style('h-9 w-9 rounded-full items-center justify-center', 'bg-white/10 dark:bg-white/10 ml-1')}
       >
         <MaterialIcons name="palette" size={18} color="#f9fafb" />
       </Pressable>
 
       <Pressable
         onPress={onToggleMaximize}
-        style={tw.style(
-          'h-9 w-9 rounded-full items-center justify-center',
-          'bg-white/10 dark:bg-white/10 ml-1',
-        )}
+        style={tw.style('h-9 w-9 rounded-full items-center justify-center', 'bg-white/10 dark:bg-white/10 ml-1')}
       >
         <MaterialIcons name={maximized ? 'fullscreen-exit' : 'fullscreen'} size={18} color="#f9fafb" />
       </Pressable>
@@ -1336,7 +1355,6 @@ function normalizeForMatch(s: string) {
     .replace(/[^\p{L}\p{N}']/gu, '');
 }
 
-
 function applyPunctuationToWords(
   timedWords: Array<{ text: string; start: number; end: number }>,
   plainText: string
@@ -1346,9 +1364,7 @@ function applyPunctuationToWords(
 
   if (!timedWords?.length || !plainTokens.length) return timedWords || [];
 
-  // If timed words already contain punctuation, don't meddle.
   const timedHasPunc = hasUsefulPunctuation(timedWords as any);
-
   const plainHasPunc = /[\p{P}\p{S}]/u.test(plainText || '');
 
   if (timedHasPunc || !plainHasPunc) return timedWords;
@@ -1357,11 +1373,9 @@ function applyPunctuationToWords(
 
   const isPuncOnly = (t: string) => normalizeForMatch(t) === '' && /^[\p{P}\p{S}]+$/u.test(t);
 
-
   const peel = (t: string) => {
-    const leading = (t.match(/^[\p{P}\p{S}]+/u)?.[0]) ?? '';
-    const trailing = (t.match(/[\p{P}\p{S}]+$/u)?.[0]) ?? '';
-
+    const leading = t.match(/^[\p{P}\p{S}]+/u)?.[0] ?? '';
+    const trailing = t.match(/[\p{P}\p{S}]+$/u)?.[0] ?? '';
     const core = t.slice(leading.length, t.length - trailing.length);
     return { leading, core, trailing };
   };
@@ -1376,7 +1390,6 @@ function applyPunctuationToWords(
     const base = normalizeForMatch(wi.text || '');
     if (!base) continue;
 
-    // Attach punctuation-only tokens to the previous matched word
     while (j < plainTokens.length) {
       const tok = plainTokens[j];
       if (!tok || !isPuncOnly(tok)) break;
@@ -1388,7 +1401,6 @@ function applyPunctuationToWords(
       j++;
     }
 
-    // Advance until we find a token whose CORE matches this word
     while (j < plainTokens.length) {
       const tok = plainTokens[j];
       if (!tok) {
@@ -1405,12 +1417,10 @@ function applyPunctuationToWords(
     const tok = plainTokens[j];
     if (tok && !isPuncOnly(tok)) {
       const { leading, core, trailing } = peel(tok);
-
       wi.text = `${leading}${core}${trailing}`;
       lastMatchedI = i;
       j++;
 
-      // Immediately attach following punctuation-only tokens
       while (j < plainTokens.length) {
         const tok2 = plainTokens[j];
         if (!tok2 || !isPuncOnly(tok2)) break;
@@ -1450,14 +1460,13 @@ function NarrationStage({
   fontSize: number;
   isDark: boolean;
   maximized: boolean;
-  fallbackSsml?: string; // ✅ new
+  fallbackSsml?: string;
 }) {
   const baseTextColor = isDark ? '#F9FAFB' : '#0F172A';
   const dimmedColor = isDark ? '#94a3b8' : '#4b5563';
 
   const hasTimedText = !!(sentences?.length && words?.length);
 
-  // ✅ If we don't have words/sentences yet, show the fallback SSML as plain text
   if (!hasTimedText) {
     const plain = ssmlToPlainText(fallbackSsml || '');
     return (
@@ -1465,21 +1474,11 @@ function NarrationStage({
         style={tw.style(
           'flex-1 rounded-3xl border border-white/10',
           maximized ? 'mt-0 mb-0' : 'mt-1 mb-2',
-          'bg-slate-900/70 dark:bg-slate-950/80 px-4 py-4',
+          'bg-slate-900/70 dark:bg-slate-950/80 px-4 py-4'
         )}
       >
-        <ScrollView
-          contentContainerStyle={tw`flex-1 justify-center`}
-          showsVerticalScrollIndicator={false}
-        >
-          <Text
-            style={{
-              textAlign: 'center',
-              fontSize,
-              lineHeight: fontSize * 1.35,
-              color: baseTextColor,
-            }}
-          >
+        <ScrollView contentContainerStyle={tw`flex-1 justify-center`} showsVerticalScrollIndicator={false}>
+          <Text style={{ textAlign: 'center', fontSize, lineHeight: fontSize * 1.35, color: baseTextColor }}>
             {plain || '...'}
           </Text>
         </ScrollView>
@@ -1506,7 +1505,7 @@ function NarrationStage({
       style={tw.style(
         'flex-1 rounded-3xl border border-white/10',
         maximized ? 'mt-0 mb-0' : 'mt-1 mb-2',
-        'bg-slate-900/70 dark:bg-slate-950/80 px-4 py-4',
+        'bg-slate-900/70 dark:bg-slate-950/80 px-4 py-4'
       )}
     >
       <ScrollView contentContainerStyle={tw`flex-1 justify-center`} showsVerticalScrollIndicator={false}>
@@ -1523,13 +1522,11 @@ function NarrationStage({
                 fontSize,
                 lineHeight: fontSize * 1.35,
                 color: isActiveSentence ? baseTextColor : dimmedColor,
-                marginBottom: sIdx === visibleSentenceIndices[visibleSentenceIndices.length - 1] ? 0 : fontSize * 0.4,
+                marginBottom:
+                  sIdx === visibleSentenceIndices[visibleSentenceIndices.length - 1] ? 0 : fontSize * 0.4,
               }}
             >
-              {s.indices
-                .map((wi) => words[wi]?.text)
-                .filter(Boolean)
-                .join(' ')}
+              {s.indices.map((wi) => words[wi]?.text).filter(Boolean).join(' ')}
             </Text>
           );
         })}
@@ -1537,7 +1534,6 @@ function NarrationStage({
     </View>
   );
 }
-
 
 // ───────────────────── Bottom Bar ─────────────────────
 
@@ -1598,24 +1594,37 @@ function BottomBarMobile({
     <View
       style={tw.style(
         'px-3 pt-2 pb-3 border-t border-white/10',
-        'bg-slate-900/95 dark:bg-black/95',
+        'bg-slate-900/95 dark:bg-black/95'
       )}
     >
       {/* Row 1: playback + time */}
       <View style={tw`flex-row items-center mb-2`}>
-        <Pressable onPress={onBack5} style={tw`h-9 w-9 rounded-full bg-white/10 items-center justify-center mr-1`}>
+        <Pressable
+          onPress={onBack5}
+          style={tw`h-9 w-9 rounded-full bg-white/10 items-center justify-center mr-1`}
+        >
           <Ionicons name="play-back" size={18} color="#f9fafb" />
         </Pressable>
 
         <Pressable
           onPress={onPlayPause}
           disabled={loading || disablePlay}
-          style={tw.style('h-9 w-9 rounded-full items-center justify-center mr-1', loading || disablePlay ? 'bg-slate-600/60' : 'bg-white')}
+          style={tw.style(
+            'h-9 w-9 rounded-full items-center justify-center mr-1',
+            loading || disablePlay ? 'bg-slate-600/60' : 'bg-white'
+          )}
         >
-          <Ionicons name={playing ? 'pause' : 'play'} size={18} color={loading || disablePlay ? '#e5e7eb' : '#000'} />
+          <Ionicons
+            name={playing ? 'pause' : 'play'}
+            size={18}
+            color={loading || disablePlay ? '#e5e7eb' : '#000'}
+          />
         </Pressable>
 
-        <Pressable onPress={onFwd5} style={tw`h-9 w-9 rounded-full bg-white/10 items-center justify-center mr-2`}>
+        <Pressable
+          onPress={onFwd5}
+          style={tw`h-9 w-9 rounded-full bg-white/10 items-center justify-center mr-2`}
+        >
           <Ionicons name="play-forward" size={18} color="#f9fafb" />
         </Pressable>
 
@@ -1624,39 +1633,34 @@ function BottomBarMobile({
         </Text>
 
         <View style={tw`flex-row items-center ml-auto`}>
-        {onPrev ? (
-          <Pressable
-            onPress={onPrev}
-            accessibilityRole="button"
-            accessibilityLabel="Previous lesson"
-            style={tw`h-9 w-9 rounded-full bg-white/10 items-center justify-center mr-1`}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="chevron-back" size={18} color="#f9fafb" />
-          </Pressable>
-        ) : null}
+          {onPrev ? (
+            <Pressable
+              onPress={onPrev}
+              accessibilityRole="button"
+              accessibilityLabel="Previous lesson"
+              style={tw`h-9 w-9 rounded-full bg-white/10 items-center justify-center mr-1`}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="chevron-back" size={18} color="#f9fafb" />
+            </Pressable>
+          ) : null}
 
-        {onNext ? (
-          <Pressable
-            onPress={onNext}
-            disabled={isBuildingNext}
-            accessibilityRole="button"
-            accessibilityLabel={isBuildingNext ? 'Building next lesson' : 'Next lesson'}
-            style={tw.style(
-              'h-9 w-9 rounded-full items-center justify-center',
-              isBuildingNext ? 'bg-white/10 opacity-70' : 'bg-white'
-            )}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            {isBuildingNext ? (
-              <ActivityIndicator />
-            ) : (
-              <Ionicons name="chevron-forward" size={18} color="#000" />
-            )}
-          </Pressable>
-        ) : null}
-      </View>
-
+          {onNext ? (
+            <Pressable
+              onPress={onNext}
+              disabled={isBuildingNext}
+              accessibilityRole="button"
+              accessibilityLabel={isBuildingNext ? 'Building next lesson' : 'Next lesson'}
+              style={tw.style(
+                'h-9 w-9 rounded-full items-center justify-center',
+                isBuildingNext ? 'bg-white/10 opacity-70' : 'bg-white'
+              )}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              {isBuildingNext ? <ActivityIndicator /> : <Ionicons name="chevron-forward" size={18} color="#000" />}
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       {/* Row 2: scrubber */}
@@ -1753,9 +1757,17 @@ function TranscriptModal({
   return (
     <Modal visible={open} animationType="slide" transparent onRequestClose={onClose}>
       <View style={tw`flex-1 justify-end bg-black/40`}>
-        <View style={tw.style('max-h-[70%] rounded-t-3xl px-4 pt-3 pb-4', isDark ? 'bg-slate-950' : 'bg-slate-100')}>
+        <View
+          style={tw.style(
+            'max-h-[70%] rounded-t-3xl px-4 pt-3 pb-4',
+            isDark ? 'bg-slate-950' : 'bg-slate-100'
+          )}
+        >
           <View style={tw`flex-row items-center mb-2`}>
-            <Text style={tw.style('flex-1 text-xs font-semibold', isDark ? 'text-slate-100' : 'text-slate-900')} numberOfLines={1}>
+            <Text
+              style={tw.style('flex-1 text-xs font-semibold', isDark ? 'text-slate-100' : 'text-slate-900')}
+              numberOfLines={1}
+            >
               Transcript · {title}
             </Text>
 
@@ -1781,45 +1793,6 @@ function TranscriptModal({
                 </Pressable>
               );
             })}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-// ───────────────────── Notes Modal ─────────────────────
-
-function NotesModal({
-  open,
-  onClose,
-  title,
-  markdown,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  markdown: string;
-}) {
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
-
-  return (
-    <Modal visible={open} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={tw`flex-1 justify-end bg-black/40`}>
-        <View style={tw.style('max-h-[70%] rounded-t-3xl px-4 pt-3 pb-4', isDark ? 'bg-slate-950' : 'bg-slate-100')}>
-          <View style={tw`flex-row items-center mb-2`}>
-            <Text style={tw.style('flex-1 text-xs font-semibold', isDark ? 'text-slate-100' : 'text-slate-900')} numberOfLines={1}>
-              Notes · {title}
-            </Text>
-
-            <Pressable onPress={onClose} style={tw`h-8 w-8 rounded-full items-center justify-center bg-slate-800/70`}>
-              <Ionicons name="close" size={16} color="#f9fafb" />
-            </Pressable>
-          </View>
-
-          <ScrollView>
-            <Markdown>{markdown}</Markdown>
           </ScrollView>
         </View>
       </View>
@@ -1902,7 +1875,9 @@ function ThemeSheet({
                 style={tw.style('flex-row items-center px-3 py-2 rounded-xl mb-1', active ? 'bg-indigo-600' : 'bg-slate-900')}
               >
                 <View style={tw`h-6 w-6 rounded-md bg-black/60 mr-2`} />
-                <Text style={tw.style('text-xs', active ? 'text-white' : 'text-slate-100')}>{t.label}</Text>
+                <Text style={tw.style('text-xs', active ? 'text-white' : 'text-slate-100')}>
+                  {t.label}
+                </Text>
               </Pressable>
             );
           })}

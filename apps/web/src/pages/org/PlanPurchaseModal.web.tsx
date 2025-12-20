@@ -71,12 +71,7 @@ const USD_ESTIMATE_RATES: Record<string, number> = {
   TZS: 2800,
 };
 
-function formatMoneyIntl(
-  locale: string,
-  currency: string,
-  amount: number,
-  maxFrac?: number
-) {
+function formatMoneyIntl(locale: string, currency: string, amount: number, maxFrac?: number) {
   try {
     return new Intl.NumberFormat(locale, {
       style: 'currency',
@@ -135,7 +130,6 @@ const PLAN_META: Record<'pro' | 'enterprise', { features: string[] }> = {
   },
 };
 
-
 function Pill({ children }: { children: React.ReactNode }) {
   return (
     <span
@@ -149,7 +143,6 @@ function Pill({ children }: { children: React.ReactNode }) {
     </span>
   );
 }
-
 
 export default function PlanPurchaseModalWeb({
   open,
@@ -267,7 +260,8 @@ export default function PlanPurchaseModalWeb({
     }
 
     // Paystack
-    if (localEstimate) return formatMoneyIntl(userLocale, localEstimate.local, localEstimate.amount);
+    if (localEstimate)
+      return formatMoneyIntl(userLocale, localEstimate.local, localEstimate.amount);
     if (usdCents != null) return formatMoneyIntl(userLocale, 'USD', centsToMajor(usdCents));
     return '—';
   }, [method, kesCents, localEstimate, usdCents, userLocale]);
@@ -291,7 +285,13 @@ export default function PlanPurchaseModalWeb({
       setUiError('Enter a valid Safaricom number (e.g. 2547XXXXXXXX or 07XXXXXXXX).');
       return;
     }
-    onCheckout({ method: 'M-Pesa', cycle, plan: tier, phone: p, reference: reference.trim() || undefined });
+    onCheckout({
+      method: 'M-Pesa',
+      cycle,
+      plan: tier,
+      phone: p,
+      reference: reference.trim() || undefined,
+    });
   };
 
   const handlePaystack = () => {
@@ -430,9 +430,7 @@ export default function PlanPurchaseModalWeb({
                 {/* M-Pesa */}
                 {method === 'M-Pesa' ? (
                   <div className="rounded-xl ring-1 ring-slate-200 bg-slate-50 dark:ring-white/10 dark:bg-white/5 p-3 sm:p-4 space-y-3">
-                    <h4 className="text-sm font-semibold text-slate-800 dark:text-white">
-                      M-Pesa
-                    </h4>
+                    <h4 className="text-sm font-semibold text-slate-800 dark:text-white">M-Pesa</h4>
 
                     {/* confusion-killer price box */}
                     <div className="rounded-lg bg-white dark:bg-white/5 ring-1 ring-slate-200 dark:ring-white/10 p-3 text-xs">
@@ -539,41 +537,47 @@ export default function PlanPurchaseModalWeb({
 
                     {/* confusion-killer copy */}
                     <div className="rounded-lg bg-white dark:bg-white/5 ring-1 ring-slate-200 dark:ring-white/10 p-3 text-xs">
-                     <div className="text-slate-700 dark:text-white/80 space-y-1">
+                      <div className="text-slate-700 dark:text-white/80 space-y-1">
                         <div>
-                            Base (USD): <b>{headerBaseUsd ?? '—'}</b>
+                          Base (USD): <b>{headerBaseUsd ?? '—'}</b>
                         </div>
 
                         <div>
-                            Checkout (KES):{' '}
-                            <b>
+                          Checkout (KES):{' '}
+                          <b>
                             {kesCents != null
-                                ? formatMoneyIntl('en-KE', 'KES', centsToMajor(kesCents), 0)
-                                : '(KES price unavailable)'}
-                            </b>
+                              ? formatMoneyIntl('en-KE', 'KES', centsToMajor(kesCents), 0)
+                              : '(KES price unavailable)'}
+                          </b>
                         </div>
 
                         {localEstimate ? (
-                            <div>
+                          <div>
                             Local display:{' '}
-                            <b>{formatMoneyIntl(userLocale, localEstimate.local, localEstimate.amount)}</b>{' '}
+                            <b>
+                              {formatMoneyIntl(
+                                userLocale,
+                                localEstimate.local,
+                                localEstimate.amount
+                              )}
+                            </b>{' '}
                             <span className="opacity-70">(rate: {localEstimate.rate})</span>
-                            </div>
+                          </div>
                         ) : (
-                            <div className="text-[11px] opacity-70">
+                          <div className="text-[11px] opacity-70">
                             (No local estimate available for {userDisplayCurrency}.)
-                            </div>
+                          </div>
                         )}
 
                         <div className="mt-1 text-[11px] opacity-70">
-                            Note: We show USD as the base price for consistency. Final checkout is in <b>KES</b>.
+                          Note: We show USD as the base price for consistency. Final checkout is in{' '}
+                          <b>KES</b>.
                         </div>
 
                         <div className="mt-1 text-[11px] opacity-70">
-                            Final amount is shown by Paystack at checkout.
+                          Final amount is shown by Paystack at checkout.
                         </div>
-                        </div>
-
+                      </div>
                     </div>
 
                     <button
@@ -584,7 +588,8 @@ export default function PlanPurchaseModalWeb({
                     </button>
 
                     <p className="text-[11px] text-slate-500 dark:text-white/60">
-                      After payment, you’ll return automatically and your subscription will activate.
+                      After payment, you’ll return automatically and your subscription will
+                      activate.
                     </p>
                   </div>
                 ) : null}
@@ -627,35 +632,33 @@ export default function PlanPurchaseModalWeb({
 
                 {/* Plan bar (pills + feature chips) */}
                 <div
-                className="
+                  className="
                     rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10
                     bg-white/95 dark:bg-slate-900/70
                     p-3 sm:p-4
                 "
                 >
-              
-
-                {/* feature chips */}
-                <div className="mt-2 flex flex-wrap gap-1">
+                  {/* feature chips */}
+                  <div className="mt-2 flex flex-wrap gap-1">
                     {(PLAN_META[tier]?.features || []).map((f) => (
-                    <span
+                      <span
                         key={f}
                         className="
                         px-2 py-0.5 rounded-full text-[11px]
                         bg-[#e7edf4] text-slate-800
                         dark:bg-white/10 dark:text-white/90
                         "
-                    >
+                      >
                         {f}
-                    </span>
+                      </span>
                     ))}
+                  </div>
                 </div>
-                </div>
-
 
                 {/* small note */}
                 <div className="rounded-xl ring-1 ring-slate-200 dark:ring-white/10 bg-white dark:bg-white/5 p-3 text-[11px] text-slate-600 dark:text-white/70">
-                  Need a custom seat count? Enterprise supports tailored pricing—contact support from your Org profile.
+                  Need a custom seat count? Enterprise supports tailored pricing—contact support
+                  from your Org profile.
                 </div>
               </div>
             </div>

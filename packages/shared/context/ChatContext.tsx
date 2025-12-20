@@ -56,36 +56,36 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   );
 
   const mapRaw = useCallback(
-  (r: RawConversation): Conversation => {
-    const me = String(profile?.id);
-    const sender = String(r.sender_id);
-    const recipient = String(r.recipient_id);
-    const amSender = sender === me;
+    (r: RawConversation): Conversation => {
+      const me = String(profile?.id);
+      const sender = String(r.sender_id);
+      const recipient = String(r.recipient_id);
+      const amSender = sender === me;
 
-    const peerId = amSender ? recipient : sender;
-    const peerName = amSender ? r.recipient_name : r.sender_name;
-    const peerAvatar = amSender ? r.recipient_avatar : r.sender_avatar;
+      const peerId = amSender ? recipient : sender;
+      const peerName = amSender ? r.recipient_name : r.sender_name;
+      const peerAvatar = amSender ? r.recipient_avatar : r.sender_avatar;
 
-    return {
-      conversationId: String(r.id),
-      recipientId: peerId,
-      name: peerName ?? '',          // ← fix: ensure string
-      avatar: peerAvatar ?? '',
-      lastMessage: r.last_message ?? '',
-      unreadCount: Number(r.unread_count ?? 0),
-      messages: Array.isArray(r.messages) ? r.messages.map(normalizeMsg) : [],
-    };
-  },
-  [normalizeMsg, profile?.id]
-);
+      return {
+        conversationId: String(r.id),
+        recipientId: peerId,
+        name: peerName ?? '', // ← fix: ensure string
+        avatar: peerAvatar ?? '',
+        lastMessage: r.last_message ?? '',
+        unreadCount: Number(r.unread_count ?? 0),
+        messages: Array.isArray(r.messages) ? r.messages.map(normalizeMsg) : [],
+      };
+    },
+    [normalizeMsg, profile?.id]
+  );
 
   // ———————————————————————————————————————————————
   // Conversations list (quiet on 401/404)
   // ———————————————————————————————————————————————
-  const {
-    data: rawConversations = [],
-    refetch: rawRefetchConversations,
-  } = useAppQuery<RawConversation[], Error>(
+  const { data: rawConversations = [], refetch: rawRefetchConversations } = useAppQuery<
+    RawConversation[],
+    Error
+  >(
     ['conversations', token, profile?.id],
     async () => {
       // This function only runs when enabled=true (see options below)
@@ -101,7 +101,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       return (res.data?.conversations as RawConversation[]) ?? [];
     },
     {
-      enabled: hasAuth,                 // ⬅️ no auth, no request (prevents 401 spam)
+      enabled: hasAuth, // ⬅️ no auth, no request (prevents 401 spam)
       refetchOnWindowFocus: false,
       retry: (count, err: any) => {
         // Don’t retry unauthorized/missing endpoints
@@ -117,9 +117,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const lastUnreadRef = useRef<number>(0);
 
   useEffect(() => {
-    const formatted = rawConversations
-      .filter((r) => r.sender_id !== r.recipient_id)
-      .map(mapRaw);
+    const formatted = rawConversations.filter((r) => r.sender_id !== r.recipient_id).map(mapRaw);
 
     const total = formatted.reduce((sum, c) => sum + c.unreadCount, 0);
 

@@ -12,10 +12,7 @@ const DEFAULT_SSML = `<speak>
 
 const RobotTutorScreen: React.FC = () => {
   return (
-    <SafeAreaView
-      edges={['top', 'left', 'right']}
-      style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
-    >
+    <SafeAreaView edges={['top', 'left', 'right']} style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
       <View style={tw`flex-1`}>
         <RobotTeacher initialSsml={DEFAULT_SSML} voiceName="en-US-Wavenet-F" />
       </View>

@@ -10,11 +10,7 @@ type Props = {
   align?: 'left' | 'right';
 };
 
-export default function OrgShareBar({
-  courseId,
-  courseTitle,
-  align = 'right',
-}: Props) {
+export default function OrgShareBar({ courseId, courseTitle, align = 'right' }: Props) {
   const { isOwnerOrAdmin, activeOrgId, org } = useOrg();
   const [open, setOpen] = React.useState(false);
 
@@ -31,12 +27,7 @@ export default function OrgShareBar({
   const disabled = !(courseId || (courseTitle && courseTitle.trim()));
 
   return (
-    <View
-      style={tw.style(
-        'w-full mt-3',
-        align === 'right' ? 'items-end' : 'items-start',
-      )}
-    >
+    <View style={tw.style('w-full mt-3', align === 'right' ? 'items-end' : 'items-start')}>
       <TouchableOpacity
         disabled={disabled}
         onPress={() => setOpen(true)}
@@ -44,7 +35,7 @@ export default function OrgShareBar({
         accessibilityLabel="Share with learners"
         style={tw.style(
           'px-4 py-2 rounded-lg',
-          disabled ? 'bg-indigo-400 opacity-60' : 'bg-indigo-600',
+          disabled ? 'bg-indigo-400 opacity-60' : 'bg-indigo-600'
         )}
       >
         <Text style={tw`text-white font-semibold`}>Share with learners</Text>

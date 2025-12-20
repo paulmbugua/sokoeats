@@ -17,9 +17,9 @@ import { RefreshableScrollView } from '../refresh/Refreshable';
 import LessonOverlayNative, { type LessonOverlayHandle } from './LessonOverlay.native';
 
 import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
-import { useAiCourse } from '@mytutorapp/shared/hooks';
+import { useAiCourse, useAICertificates } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useAICertificates } from '@mytutorapp/shared/hooks';
+
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 
 import type { TopCourse } from '@mytutorapp/shared/types';
@@ -32,8 +32,7 @@ import OrgShareDialog from '@/screens/org/OrgShareDialog.native';
 // ─────────────────────────────────────────────────────────
 // Utils / Debug
 // ─────────────────────────────────────────────────────────
-const DBG_ROBOT_TEACHER =
-  __DEV__ && Boolean((globalThis as any)?.__DBG_ROBOT_TEACHER__);
+const DBG_ROBOT_TEACHER = __DEV__ && Boolean((globalThis as any)?.__DBG_ROBOT_TEACHER__);
 
 export const dlog = (...args: any[]) => {
   if (!DBG_ROBOT_TEACHER) return;
@@ -91,7 +90,9 @@ const getCourseBlurb = (c: TopCourse): string => {
 };
 
 const normQt = (v?: string | null): 'mcq' | 'short' | undefined => {
-  const s = String(v ?? '').trim().toLowerCase();
+  const s = String(v ?? '')
+    .trim()
+    .toLowerCase();
   return s === 'short' ? 'short' : s === 'mcq' ? 'mcq' : undefined;
 };
 
@@ -119,13 +120,14 @@ function CourseList({
     if (!q) return items;
     return items.filter(
       (it) =>
-        (it.title || '').toLowerCase().includes(q) ||
-        (it.blurb || '').toLowerCase().includes(q)
+        (it.title || '').toLowerCase().includes(q) || (it.blurb || '').toLowerCase().includes(q)
     );
   }, [items, query]);
 
   return (
-    <View style={tw`rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-3`}>
+    <View
+      style={tw`rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-3`}
+    >
       {/* Actions */}
       <View style={tw`flex-row items-center gap-2 mb-2`}>
         <TextInput
@@ -135,7 +137,10 @@ function CourseList({
           placeholderTextColor="#7a8aa0"
           style={tw`flex-1 rounded-xl px-3 py-2 bg-[#e7edf4] dark:bg-[#172534] text-[#0d141c] dark:text-white`}
         />
-        <TouchableOpacity onPress={onRefresh} style={tw`px-3 py-2 rounded-lg bg-white dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15`}>
+        <TouchableOpacity
+          onPress={onRefresh}
+          style={tw`px-3 py-2 rounded-lg bg-white dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15`}
+        >
           <Text style={tw`text-[#0d141c] dark:text-white text-xs font-semibold`}>Refresh</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -143,55 +148,61 @@ function CourseList({
           disabled={!hasMore}
           style={tw.style(
             'px-3 py-2 rounded-lg',
-            hasMore ? 'bg-indigo-600' : 'bg-white dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15 opacity-70'
+            hasMore
+              ? 'bg-indigo-600'
+              : 'bg-white dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15 opacity-70'
           )}
         >
-          <Text style={tw`${hasMore ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs font-semibold`}>
+          <Text
+            style={tw`${hasMore ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs font-semibold`}
+          >
             {hasMore ? 'Load more' : 'All loaded'}
           </Text>
         </TouchableOpacity>
       </View>
 
-     {/* Horizontal chips */}
-<RefreshableScrollView
-  screenId="robot-tutor"
-  horizontal
-  showsHorizontalScrollIndicator={false}
-  keyboardShouldPersistTaps="always"
-  style={tw`md:hidden -mx-1 px-1 pb-2`}
-  contentContainerStyle={tw`flex-row gap-2 items-start`}
->
-  {visible.length ? (
-    visible.map((l, i) => {
-      const active = l.id === activeId;
-      return (
-        <TouchableOpacity
-          key={l.id}
-          onPress={() => onSelect(l.id)}
-          style={tw.style(
-            'px-3 py-2 rounded-full border',
-            active
-              ? 'bg-indigo-600 border-indigo-600'
-              : 'bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15',
-            // ✅ prevents the chip from stretching taller/wider than its content
-            'self-start'
-          )}
-        >
-          <Text style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs`}>
-            {String(i + 1).padStart(2, '0')} • {l.title}
-          </Text>
-        </TouchableOpacity>
-      );
-    })
-  ) : (
-    <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>No courses found.</Text>
-  )}
-</RefreshableScrollView>
+      {/* Horizontal chips */}
+      <RefreshableScrollView
+        screenId="robot-tutor"
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="always"
+        style={tw`md:hidden -mx-1 px-1 pb-2`}
+        contentContainerStyle={tw`flex-row gap-2 items-start`}
+      >
+        {visible.length ? (
+          visible.map((l, i) => {
+            const active = l.id === activeId;
+            return (
+              <TouchableOpacity
+                key={l.id}
+                onPress={() => onSelect(l.id)}
+                style={tw.style(
+                  'px-3 py-2 rounded-full border',
+                  active
+                    ? 'bg-indigo-600 border-indigo-600'
+                    : 'bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15',
+                  // ✅ prevents the chip from stretching taller/wider than its content
+                  'self-start'
+                )}
+              >
+                <Text
+                  style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs`}
+                >
+                  {String(i + 1).padStart(2, '0')} • {l.title}
+                </Text>
+              </TouchableOpacity>
+            );
+          })
+        ) : (
+          <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>No courses found.</Text>
+        )}
+      </RefreshableScrollView>
 
       {/* Vertical list (tablet/desktop widths) */}
       <View style={tw`hidden md:flex`}>
         <RefreshableScrollView
-       screenId="robot-tutor"
+          screenId="robot-tutor"
           style={tw`max-h-[70vh]`}
           contentContainerStyle={[tw`pr-1`, { paddingBottom: 16 }]}
           keyboardShouldPersistTaps="always"
@@ -219,7 +230,10 @@ function CourseList({
                     </Text>
                   </View>
                   {l.blurb ? (
-                    <Text style={tw`text-[#49739c] dark:text-white/70 text-[11px] mt-0.5`} numberOfLines={2}>
+                    <Text
+                      style={tw`text-[#49739c] dark:text-white/70 text-[11px] mt-0.5`}
+                      numberOfLines={2}
+                    >
                       {l.blurb}
                     </Text>
                   ) : null}
@@ -227,7 +241,9 @@ function CourseList({
               );
             })
           ) : (
-            <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>No courses found. Try another search.</Text>
+            <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>
+              No courses found. Try another search.
+            </Text>
           )}
         </RefreshableScrollView>
       </View>
@@ -250,36 +266,34 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const route = useRoute<RobotTeacherRoute>();
 
   const params = useMemo(
-  () =>
-    (route.params ?? {}) as {
-      assignmentId?: string | null;
-      courseId?: string | null;
-      qt?: 'mcq' | 'short' | string | null;
-    },
-  [route.params]
-);
+    () =>
+      (route.params ?? {}) as {
+        assignmentId?: string | null;
+        courseId?: string | null;
+        qt?: 'mcq' | 'short' | string | null;
+      },
+    [route.params]
+  );
 
-// (Optional) keep a single log ONLY when debugging is explicitly enabled
-useEffect(() => {
-  dlog('mounted', { params });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
-
+  // (Optional) keep a single log ONLY when debugging is explicitly enabled
+  useEffect(() => {
+    dlog('mounted', { params });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [isMaximized, setIsMaximized] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-const [overlayState, setOverlayState] = useState<{
-  words: any[];
-  currentIndex: number;
-  lesson: any | null;
-} | null>(null);
+  const [overlayState, setOverlayState] = useState<{
+    words: any[];
+    currentIndex: number;
+    lesson: any | null;
+  } | null>(null);
 
-const overlayRef = useRef<LessonOverlayHandle | null>(null);
+  const overlayRef = useRef<LessonOverlayHandle | null>(null);
 
-const openOverlay = useCallback(() => {
-  overlayRef.current?.toggle();
-}, []);
-
+  const openOverlay = useCallback(() => {
+    overlayRef.current?.toggle();
+  }, []);
 
   const effectiveVoice = voiceName || defaultVoice;
   const { backendUrl, token, role: globalRole } = useShopContext();
@@ -293,7 +307,7 @@ const openOverlay = useCallback(() => {
     if (!isThemeControlled) setInternalThemeOpen(v);
     onThemeOpenChange?.(v);
   };
- const urlQuizTypeHint = useMemo(() => normQt(params?.qt), [params?.qt]);
+  const urlQuizTypeHint = useMemo(() => normQt(params?.qt), [params?.qt]);
 
   const ai = useAiCourse(backendUrl, token || undefined, {
     urlQuizTypeHint,
@@ -338,15 +352,23 @@ const openOverlay = useCallback(() => {
     clearTopCoursesCacheNow,
   } = ai as any;
 
-  const { skus, loading: aiCertLoading, error: aiCertError, message: aiCertMsg, claim, generate: generateAICert } =
-    useAICertificates({ backendUrl, token: token || '', courseId: selectedCourse?.id });
+  const {
+    skus,
+    loading: aiCertLoading,
+    error: aiCertError,
+    message: aiCertMsg,
+    claim,
+    generate: generateAICert,
+  } = useAICertificates({ backendUrl, token: token || '', courseId: selectedCourse?.id });
 
   const orgAssign = useOrgAssignment();
   const assignmentId = orgAssign?.assignmentId ?? undefined;
   const isOrgFlow = Boolean(orgAssign?.assignmentId);
 
   // knobs
-  const [classLevel, setClassLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner');
+  const [classLevel, setClassLevel] = useState<'beginner' | 'intermediate' | 'advanced'>(
+    'beginner'
+  );
   const [sizePreset, setSizePreset] = useState<SizePresetKey>('standard');
   const [minutes, setMinutes] = useState<number>(20);
   const [totalLessons, setTotalLessons] = useState<number>(8);
@@ -374,25 +396,26 @@ const openOverlay = useCallback(() => {
 
   // timer
   const [localRemainingMs, setLocalRemainingMs] = useState<number | null>(null);
- useEffect(() => {
-  const id = setInterval(() => {
-    setLocalRemainingMs(ms => (ms == null ? null : Math.max(0, ms - 1000)));
-  }, 1000);
-  return () => clearInterval(id);
-}, []);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setLocalRemainingMs((ms) => (ms == null ? null : Math.max(0, ms - 1000)));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const timerSec =
     Number(
       (orgAssign as any)?.timerS ??
-      (orgAssign as any)?.timerSec ??
-      (orgAssign as any)?.timer_s ??
-      (orgAssign as any)?.lockedConfig?.timer_s ??
-      0
+        (orgAssign as any)?.timerSec ??
+        (orgAssign as any)?.timer_s ??
+        (orgAssign as any)?.lockedConfig?.timer_s ??
+        0
     ) || 0;
 
   const displayRemainingMs =
-    (orgAssign?.remainingMs ?? 0) > 0 ? (orgAssign?.remainingMs as number) :
-    (localRemainingMs ?? 0);
+    (orgAssign?.remainingMs ?? 0) > 0
+      ? (orgAssign?.remainingMs as number)
+      : (localRemainingMs ?? 0);
 
   // org role context
   const { activeOrgId, org: orgCtx, isStarterTier } = useOrg();
@@ -400,7 +423,9 @@ const openOverlay = useCallback(() => {
     ...(Array.isArray(orgCtx?.roles) ? orgCtx.roles : []),
     orgCtx?.my_role,
     orgCtx?.role,
-  ].filter(Boolean).map((r) => String(r).toLowerCase());
+  ]
+    .filter(Boolean)
+    .map((r) => String(r).toLowerCase());
   const roles = new Set(rolesRaw);
   const isAdminOwner = roles.has('owner') || roles.has('admin');
   const isInstructor = roles.has('instructor') || roles.has('teacher');
@@ -420,8 +445,8 @@ const openOverlay = useCallback(() => {
   const capMinutes = (m?: number) => (restrictStarter ? Math.min(m ?? 30, 30) : (m ?? 20));
 
   // 🔒 locked config
-  const lockedMinutes  = (orgAssign as any)?.lockedConfig?.minutes as number | undefined;
-  const lockedLessons  = (orgAssign as any)?.lockedConfig?.totalLessons as number | undefined;
+  const lockedMinutes = (orgAssign as any)?.lockedConfig?.minutes as number | undefined;
+  const lockedLessons = (orgAssign as any)?.lockedConfig?.totalLessons as number | undefined;
   const lockedQuizSize = (orgAssign as any)?.lockedConfig?.quizSize as number | undefined;
 
   const minutesEffective = isLockedLearner
@@ -429,12 +454,20 @@ const openOverlay = useCallback(() => {
     : minutes;
 
   const lessonsEffective = isLockedLearner
-    ? (typeof lockedLessons === 'number' ? Math.max(1, lockedLessons) : trackLessons)
-    : (overrideLessons ? totalLessons : trackLessons);
+    ? typeof lockedLessons === 'number'
+      ? Math.max(1, lockedLessons)
+      : trackLessons
+    : overrideLessons
+      ? totalLessons
+      : trackLessons;
 
   const quizEffective = isLockedLearner
-    ? (typeof lockedQuizSize === 'number' ? Math.max(4, lockedQuizSize) : 16)
-    : (overrideQuiz ? quizCount : defaultQuizForLessons(lessonsEffective));
+    ? typeof lockedQuizSize === 'number'
+      ? Math.max(4, lockedQuizSize)
+      : 16
+    : overrideQuiz
+      ? quizCount
+      : defaultQuizForLessons(lessonsEffective);
 
   const safeLessons = lessonsEffective;
   const safeQuiz = quizEffective;
@@ -466,7 +499,6 @@ const openOverlay = useCallback(() => {
     setQuizCount(16);
   }, [restrictStarter, trackLessons, isLockedLearner]);
 
- 
   // load top courses on mount
   useEffect(() => {
     (async () => {
@@ -475,32 +507,43 @@ const openOverlay = useCallback(() => {
         dlog('loadTopCourses:init {limit:200, preserveIds}', { preserveIds });
         await loadTopCourses?.({ limit: 200, preserveIds } as any);
       } catch {
-        try { await loadTopCourses?.(); } catch { /* ignore */ }
+        try {
+          await loadTopCourses?.();
+        } catch {
+          /* ignore */
+        }
       }
     })();
   }, [params.courseId, loadTopCourses]);
 
   // SSML + content deriveds (now mirrored with web)
   const hasAIContent = useMemo(
-    () => Boolean(
-      (joinedSsml && String(joinedSsml).trim()) ||
-      (ssml && String(ssml).trim()) ||
-      (Array.isArray(lessons) && lessons.length > 0)
-    ),
+    () =>
+      Boolean(
+        (joinedSsml && String(joinedSsml).trim()) ||
+          (ssml && String(ssml).trim()) ||
+          (Array.isArray(lessons) && lessons.length > 0)
+      ),
     [joinedSsml, ssml, lessons]
   );
-  const rawDisplaySsml: string = (hasAIContent ? (joinedSsml || ssml || '') : (initialSsml || '')).trim();
+  const rawDisplaySsml: string = (
+    hasAIContent ? joinedSsml || ssml || '' : initialSsml || ''
+  ).trim();
   const [lockedSsml, setLockedSsml] = useState<string | null>(null);
   const displaySsml: string = (lockedSsml ?? rawDisplaySsml).trim();
   const hasJoined = Boolean(joinedSsml && String(joinedSsml).trim());
 
   // Refs to mirror web behavior for robust start
   const topCoursesRef = useRef<TopCourse[]>([]);
-  useEffect(() => { topCoursesRef.current = Array.isArray(topCourses) ? topCourses : []; }, [topCourses]);
+  useEffect(() => {
+    topCoursesRef.current = Array.isArray(topCourses) ? topCourses : [];
+  }, [topCourses]);
   const selectedCourseRef = useRef<typeof selectedCourse>(selectedCourse);
-  useEffect(() => { selectedCourseRef.current = selectedCourse; }, [selectedCourse]);
+  useEffect(() => {
+    selectedCourseRef.current = selectedCourse;
+  }, [selectedCourse]);
 
-  const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+  const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
   const waitForCourses = async (timeoutMs = 5000, pollMs = 50) => {
     const t0 = Date.now();
     while (topCoursesRef.current.length === 0 && Date.now() - t0 < timeoutMs) {
@@ -527,15 +570,7 @@ const openOverlay = useCallback(() => {
       !(Array.isArray(lessons) && lessons.length > 0) &&
       !(Array.isArray(outline) && outline.length > 0);
     return noContentYet;
-  }, [
-    selectedCourse,
-    customTitle,
-    activeRunId,
-    joinedSsml,
-    ssml,
-    lessons.length,
-    outline.length,
-  ]);
+  }, [selectedCourse, customTitle, activeRunId, joinedSsml, ssml, lessons.length, outline.length]);
 
   // preselect course from route param — cancel any active run
   useEffect(() => {
@@ -558,11 +593,18 @@ const openOverlay = useCallback(() => {
     }
   }, [activeRunId, hasJoined, playerReady]);
 
-  useEffect(() => { if (isLockedLearner) setShareOpen(false); }, [isLockedLearner]);
+  useEffect(() => {
+    if (isLockedLearner) setShareOpen(false);
+  }, [isLockedLearner]);
 
   // auto-select first course — keep default "Start with AI"
   useEffect(() => {
-    if (!selectedCourse && Array.isArray(topCourses) && topCourses.length > 0 && !customTitle.trim()) {
+    if (
+      !selectedCourse &&
+      Array.isArray(topCourses) &&
+      topCourses.length > 0 &&
+      !customTitle.trim()
+    ) {
       dlog('auto-selecting first course', { id: topCourses[0]?.id, title: topCourses[0]?.title });
       setActiveRunId(null);
       setUiPreparing(false);
@@ -574,7 +616,9 @@ const openOverlay = useCallback(() => {
   }, [topCourses, selectedCourse, selectCourse, customTitle]);
 
   const compat = ai as any;
-  const hasMoreCourses: boolean = Boolean(compat?.hasMoreCourses ?? compat?.coursesHasMore ?? compat?.hasMore);
+  const hasMoreCourses: boolean = Boolean(
+    compat?.hasMoreCourses ?? compat?.coursesHasMore ?? compat?.hasMore
+  );
   const handleLoadMore = async () => {
     const preserveIds = params.courseId ? [params.courseId] : [];
     const coursesCursor: string | null = compat?.coursesCursor ?? compat?.nextCursor ?? null;
@@ -586,15 +630,20 @@ const openOverlay = useCallback(() => {
       dlog('loadTopCourses:more', opts);
       await loadTopCourses?.(opts as any);
     } catch {
-      try { await loadTopCourses?.({ append: true, preserveIds } as any); }
-      catch { await loadTopCourses?.({ preserveIds } as any); }
+      try {
+        await loadTopCourses?.({ append: true, preserveIds } as any);
+      } catch {
+        await loadTopCourses?.({ preserveIds } as any);
+      }
     }
   };
 
   const refreshCourseList = useCallback(async () => {
     const preserveIds = params.courseId ? [params.courseId] : [];
     dlog('refreshCourseList → clearTopCoursesCacheNow + reload', { preserveIds });
-    try { await clearTopCoursesCacheNow?.(); } catch {}
+    try {
+      await clearTopCoursesCacheNow?.();
+    } catch {}
     try {
       await loadTopCourses?.({ limit: 200, preserveIds } as any);
     } catch {
@@ -603,38 +652,37 @@ const openOverlay = useCallback(() => {
   }, [clearTopCoursesCacheNow, loadTopCourses, params.courseId]);
 
   // Lesson list with stable id (parity with web)
- const lessonsArr = useMemo(() => {
-  const total = Math.max(1, Number(safeLessons ?? 1));
-  const out: any[] = [];
+  const lessonsArr = useMemo(() => {
+    const total = Math.max(1, Number(safeLessons ?? 1));
+    const out: any[] = [];
 
-  for (let i = 0; i < total; i++) {
-    const L = typeof getLessonAt === 'function' ? getLessonAt(i) : null;
+    for (let i = 0; i < total; i++) {
+      const L = typeof getLessonAt === 'function' ? getLessonAt(i) : null;
 
-    // Keep indices aligned. If not built yet, keep placeholder with empty ssml.
-    // ✅ include overlay payload (formulas/tables/snippets/charts) if present from getLessonAt()
-out.push({
-  id: (L as any)?.id ?? `${selectedCourse?.id || 'course'}:${i}`,
-  title: (L as any)?.title ?? outline?.[i]?.title ?? `Lesson ${i + 1}`,
-  ssml: (L as any)?.ssml ?? '',
-  markdown: (L as any)?.markdown ?? '',
-  formulas: (L as any)?.formulas ?? [],
-  tables: (L as any)?.tables ?? [],
-  snippets: (L as any)?.snippets ?? [],
-  charts: (L as any)?.charts ?? [],
-});
+      // Keep indices aligned. If not built yet, keep placeholder with empty ssml.
+      // ✅ include overlay payload (formulas/tables/snippets/charts) if present from getLessonAt()
+      out.push({
+        id: (L as any)?.id ?? `${selectedCourse?.id || 'course'}:${i}`,
+        title: (L as any)?.title ?? outline?.[i]?.title ?? `Lesson ${i + 1}`,
+        ssml: (L as any)?.ssml ?? '',
+        markdown: (L as any)?.markdown ?? '',
+        formulas: (L as any)?.formulas ?? [],
+        tables: (L as any)?.tables ?? [],
+        snippets: (L as any)?.snippets ?? [],
+        charts: (L as any)?.charts ?? [],
+      });
+    }
 
-  }
+    return out;
+  }, [getLessonAt, safeLessons, selectedCourse?.id, outline]);
 
-  return out;
-}, [getLessonAt, safeLessons, selectedCourse?.id, outline]);
-
-const currentLessonForOverlay = lessonsArr?.[Number(currentIdx ?? 0)] ?? null;
-const overlayAvailable =
-  !!(currentLessonForOverlay?.formulas?.length ||
-     currentLessonForOverlay?.tables?.length ||
-     currentLessonForOverlay?.snippets?.length ||
-     currentLessonForOverlay?.charts?.length);
-
+  const currentLessonForOverlay = lessonsArr?.[Number(currentIdx ?? 0)] ?? null;
+  const overlayAvailable = !!(
+    currentLessonForOverlay?.formulas?.length ||
+    currentLessonForOverlay?.tables?.length ||
+    currentLessonForOverlay?.snippets?.length ||
+    currentLessonForOverlay?.charts?.length
+  );
 
   useEffect(() => {
     if (hasAIContent) setIsMaximized(true);
@@ -653,12 +701,16 @@ const overlayAvailable =
 
   // Quiz answer helper
   const disableQuiz = Boolean(
-    (isOrgFlow && ((orgAssign?.expired) || (localRemainingMs !== null && localRemainingMs <= 0))) || grade
+    (isOrgFlow && (orgAssign?.expired || (localRemainingMs !== null && localRemainingMs <= 0))) ||
+      grade
   );
-  const handleAnswer = useCallback((qid: string, value: number | string) => {
-    if (disableQuiz) return;
-    answerQuestion(qid, value);
-  }, [disableQuiz, answerQuestion]);
+  const handleAnswer = useCallback(
+    (qid: string, value: number | string) => {
+      if (disableQuiz) return;
+      answerQuestion(qid, value);
+    },
+    [disableQuiz, answerQuestion]
+  );
 
   // Prev navigation (parity with web)
   const goPrev = useCallback(async () => {
@@ -675,17 +727,16 @@ const overlayAvailable =
   }, [currentIdx, ai]);
 
   const handlePlayerReady = useCallback(() => {
-  setPlayerReady(true);
-}, []);
+    setPlayerReady(true);
+  }, []);
 
-const handlePlayerLoadingChange = useCallback((loading: boolean) => {
-  setPlayerLoading(loading);
-}, []);
+  const handlePlayerLoadingChange = useCallback((loading: boolean) => {
+    setPlayerLoading(loading);
+  }, []);
 
-const handleToggleMaximized = useCallback(() => {
-  setIsMaximized(v => !v);
-}, []);
-
+  const handleToggleMaximized = useCallback(() => {
+    setIsMaximized((v) => !v);
+  }, []);
 
   // ─────────────────────────────────────────────────────────
   // Prefetch policy: warm exactly N lessons once, then stop
@@ -698,21 +749,24 @@ const handleToggleMaximized = useCallback(() => {
     return typeof h === 'function' ? (h as () => boolean)() : Boolean(h);
   }, [hasNextLesson]);
 
-  const prefetchAhead = useCallback(async (n: number = PREFETCH_BUFFER) => {
-    if (typeof nextLesson !== 'function' || typeof getLessonAt !== 'function') return;
-    const base = Number(currentIdx ?? 0);
-    for (let k = 1; k <= n; k++) {
-      const exists = !!getLessonAt(base + k);
-      if (!exists && canBuildMore()) {
-        try {
-          await nextLesson({ silent: true });
-        } catch (e) {
-          console.warn('[prefetchAhead] nextLesson failed', e);
-          break;
+  const prefetchAhead = useCallback(
+    async (n: number = PREFETCH_BUFFER) => {
+      if (typeof nextLesson !== 'function' || typeof getLessonAt !== 'function') return;
+      const base = Number(currentIdx ?? 0);
+      for (let k = 1; k <= n; k++) {
+        const exists = !!getLessonAt(base + k);
+        if (!exists && canBuildMore()) {
+          try {
+            await nextLesson({ silent: true });
+          } catch (e) {
+            console.warn('[prefetchAhead] nextLesson failed', e);
+            break;
+          }
         }
       }
-    }
-  }, [currentIdx, getLessonAt, nextLesson, canBuildMore]);
+    },
+    [currentIdx, getLessonAt, nextLesson, canBuildMore]
+  );
 
   // Start — robust sequencing (parity-ish with web, but keeping your start gate)
   const onStart = useCallback(async () => {
@@ -753,7 +807,12 @@ const handleToggleMaximized = useCallback(() => {
 
       let course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
       if (!course) {
-        try { await loadTopCourses?.({ limit: 200, preserveIds: params.courseId ? [params.courseId] : [] } as any); } catch {}
+        try {
+          await loadTopCourses?.({
+            limit: 200,
+            preserveIds: params.courseId ? [params.courseId] : [],
+          } as any);
+        } catch {}
         await waitForCourses();
         course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
       }
@@ -765,7 +824,10 @@ const handleToggleMaximized = useCallback(() => {
 
       if (!selectedCourseRef.current) {
         dlog('onStart: bail — no course available after waiting');
-        Alert.alert('Could not start', 'No course is selected yet. Please choose a course and try again.');
+        Alert.alert(
+          'Could not start',
+          'No course is selected yet. Please choose a course and try again.'
+        );
         setActiveRunId(null);
         setUiPreparing(false);
         setPlayerLoading(false);
@@ -784,9 +846,21 @@ const handleToggleMaximized = useCallback(() => {
       setStarting(false);
     }
   }, [
-    starting, canStartNow,
-    assignmentId, sizePreset, classLevel, minutesEffective, programTrack, safeLessons, effectiveVoice,
-    customTitle, startCustomTopic, startWithAI, loadTopCourses, selectCourse, params.courseId
+    starting,
+    canStartNow,
+    assignmentId,
+    sizePreset,
+    classLevel,
+    minutesEffective,
+    programTrack,
+    safeLessons,
+    effectiveVoice,
+    customTitle,
+    startCustomTopic,
+    startWithAI,
+    loadTopCourses,
+    selectCourse,
+    params.courseId,
   ]);
 
   // course change — cancel any active run and spinner
@@ -826,14 +900,18 @@ const handleToggleMaximized = useCallback(() => {
           text: 'Refresh',
           style: 'destructive',
           onPress: async () => {
-            dlog('refreshSelectedAI → clearSelectedCourseCacheNow then reseed', { courseId: selectedCourse.id });
+            dlog('refreshSelectedAI → clearSelectedCourseCacheNow then reseed', {
+              courseId: selectedCourse.id,
+            });
             const id = ++runIdRef.current;
             setActiveRunId(id);
             setUiPreparing(true);
             setPlayerLoading(true);
             setPlayerReady(false);
             setLockedSsml(null);
-            try { await clearSelectedCourseCacheNow?.(); } catch {}
+            try {
+              await clearSelectedCourseCacheNow?.();
+            } catch {}
             selectCourse(selectedCourse);
             await onStart();
           },
@@ -863,15 +941,14 @@ const handleToggleMaximized = useCallback(() => {
   }, [activeRunId, step, ttsLoading, hasAIContent, playerReady, playerLoading]);
 
   const preparingNow =
-    (activeRunId !== null) && (
-      uiPreparing ||
+    activeRunId !== null &&
+    (uiPreparing ||
       step === 'outlining' ||
       step === 'narrating' ||
       !!ttsLoading ||
       !hasJoined ||
       playerLoading ||
-      !playerReady
-    );
+      !playerReady);
 
   // Payment & certificate state (parity with web)
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -881,7 +958,7 @@ const handleToggleMaximized = useCallback(() => {
   // ─────────────────────────────────────────────────────────
   // onBeforePlay / onEnded wrappers (SSML lock + prefetch)
   // ─────────────────────────────────────────────────────────
-    const onBeforePlayWrapped = useCallback(async () => {
+  const onBeforePlayWrapped = useCallback(async () => {
     dlog('Classroom onBeforePlay (policy)');
     if (!lockedSsml) setLockedSsml(rawDisplaySsml);
 
@@ -889,8 +966,7 @@ const handleToggleMaximized = useCallback(() => {
     await aiOnBeforePlay?.();
   }, [lockedSsml, rawDisplaySsml, aiOnBeforePlay]);
 
-
-    const onRequestStartWrapped = useCallback(async () => {
+  const onRequestStartWrapped = useCallback(async () => {
     const idx = Number(currentIdx ?? 0);
 
     // only once per lesson index
@@ -908,285 +984,126 @@ const handleToggleMaximized = useCallback(() => {
     aiOnEnded?.();
   }, [aiOnEnded]);
 
-const bottomPad = (insets?.bottom ?? 0) + 24;
+  const bottomPad = (insets?.bottom ?? 0) + 24;
 
-const scrollContentContainerStyle = useMemo(
-  () => [tw`px-3 py-4 md:px-5 md:py-6`, { paddingBottom: bottomPad }],
-  [bottomPad]
-);
+  const scrollContentContainerStyle = useMemo(
+    () => [tw`px-3 py-4 md:px-5 md:py-6`, { paddingBottom: bottomPad }],
+    [bottomPad]
+  );
 
-const scrollContentInset = useMemo(
-  () => ({ bottom: bottomPad }),
-  [bottomPad]
-);
+  const scrollContentInset = useMemo(() => ({ bottom: bottomPad }), [bottomPad]);
 
-
- return (
-  <SafeAreaView edges={['bottom']} style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
-    <View style={tw`flex-1`}>
-      <RefreshableScrollView
-        screenId="robot-tutor"
-        contentContainerStyle={scrollContentContainerStyle}
-        keyboardShouldPersistTaps="always"
-        keyboardDismissMode="on-drag"
-        nestedScrollEnabled
-        removeClippedSubviews={false}
-        contentInsetAdjustmentBehavior="automatic"
-        contentInset={scrollContentInset}
-      >
-        <View style={tw`flex-col md:flex-row gap-4`}>
-          {/* LEFT (main) */}
-          <View style={tw`${showCourseList ? 'md:w-2/3' : 'md:w-full'} w-full`}>
-            <View style={tw`mb-4`}>
-              <Text style={tw`text-[#0d141c] dark:text-white font-black text-2xl md:text-3xl`}>
-                AI Tutor Studio
-              </Text>
-              <Text style={tw`text-[#49739c] dark:text-white/80 mt-1`}>
-                Free lesson (audio + captions + slides) and quiz. Score{' '}
-                <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>≥ 70%</Text> to unlock your certificate
-                {isOrgFlow ? ' — covered by your organization' : ''}.
-              </Text>
-            </View>
-
-            {/* Share dialog near header */}
-            <Modal
-              visible={canShareUi && shareOpen}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setShareOpen(false)}
-            >
-              <OrgShareDialog
-                open={canShareUi && shareOpen}
-                onClose={() => setShareOpen(false)}
-                courseId={selectedCourse?.id || null}
-                courseTitle={selectedCourse?.title || (customTitle || null)}
-                totalLessons={safeLessons}
-                quizCount={safeQuiz}
-                minutes={capMinutes(minutes)}
-              />
-            </Modal>
-
-            {degraded && (
-              <View style={tw`rounded-xl p-3 bg-yellow-50 border border-yellow-300 mb-3`}>
-                <Text style={tw`text-yellow-700 dark:text-yellow-200 text-sm`}>
-                  High demand fallback: content may be simplified, but your progress still counts.
+  return (
+    <SafeAreaView edges={['bottom']} style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
+      <View style={tw`flex-1`}>
+        <RefreshableScrollView
+          screenId="robot-tutor"
+          contentContainerStyle={scrollContentContainerStyle}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="on-drag"
+          nestedScrollEnabled
+          removeClippedSubviews={false}
+          contentInsetAdjustmentBehavior="automatic"
+          contentInset={scrollContentInset}
+        >
+          <View style={tw`flex-col md:flex-row gap-4`}>
+            {/* LEFT (main) */}
+            <View style={tw`${showCourseList ? 'md:w-2/3' : 'md:w-full'} w-full`}>
+              <View style={tw`mb-4`}>
+                <Text style={tw`text-[#0d141c] dark:text-white font-black text-2xl md:text-3xl`}>
+                  AI Tutor Studio
+                </Text>
+                <Text style={tw`text-[#49739c] dark:text-white/80 mt-1`}>
+                  Free lesson (audio + captions + slides) and quiz. Score{' '}
+                  <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>≥ 70%</Text> to
+                  unlock your certificate
+                  {isOrgFlow ? ' — covered by your organization' : ''}.
                 </Text>
               </View>
-            )}
 
-            {/* Step indicator */}
-            <View style={tw`flex-row flex-wrap items-center gap-2 mb-3`}>
-              {[
-                { k: 'course', label: 'Choose' },
-                { k: 'outline', label: 'Outline' },
-                { k: 'lessons', label: 'Lessons' },
-                { k: 'quiz', label: 'Quiz' },
-                { k: 'cert', label: 'Certificate' },
-              ].map((s, i) => {
-                const active =
-                  (i === 0 && !outline.length) ||
-                  (i === 1 && step === 'outlining') ||
-                  (i === 2 && (step === 'narrating' || hasAIContent)) ||
-                  (i === 3 && (quiz?.questions?.length || step === 'quizzing')) ||
-                  (i === 4 && Boolean(grade?.passed));
-                return (
-                  <View
-                    key={s.k}
-                    style={tw.style(
-                      'px-2 py-1 rounded-full border',
-                      active
-                        ? 'bg-indigo-50 dark:bg-indigo-600/30 border-indigo-600'
-                        : 'bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/10'
-                    )}
-                  >
-                    <Text style={tw`text-[#0d141c] dark:text-white text-[11px]`}>
-                      {i + 1}. {s.label}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
+              {/* Share dialog near header */}
+              <Modal
+                visible={canShareUi && shareOpen}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShareOpen(false)}
+              >
+                <OrgShareDialog
+                  open={canShareUi && shareOpen}
+                  onClose={() => setShareOpen(false)}
+                  courseId={selectedCourse?.id || null}
+                  courseTitle={selectedCourse?.title || customTitle || null}
+                  totalLessons={safeLessons}
+                  quizCount={safeQuiz}
+                  minutes={capMinutes(minutes)}
+                />
+              </Modal>
 
-            {/* Controls */}
-            <ControlsPanel
-              showMinimalControls={showMinimalControls}
-              isLockedLearner={isLockedLearner}
-              canShareUi={canShareUi}
-              onOpenOverlay={openOverlay}
-              overlayAvailable={overlayAvailable}
-              restrictStarter={restrictStarter}
-              knobsDisabled={knobsDisabled}
-              onOpenShare={() => {
-                setIsMaximized(false);
-                setShareOpen(true);
-              }}
-              busy={preparingNow || starting}
-              topCourses={(topCourses || []).map((c: TopCourse) => ({ id: c.id, title: c.title }))}
-              selectedCourse={selectedCourse ? { id: selectedCourse.id, title: selectedCourse.title } : null}
-              onSelectCourse={(id) => {
-                const found = (topCourses || []).find((c: TopCourse) => c.id === id) || null;
-                dlog('CourseSelect.onChange/Select →', { id, foundTitle: found?.title });
+              {degraded && (
+                <View style={tw`rounded-xl p-3 bg-yellow-50 border border-yellow-300 mb-3`}>
+                  <Text style={tw`text-yellow-700 dark:text-yellow-200 text-sm`}>
+                    High demand fallback: content may be simplified, but your progress still counts.
+                  </Text>
+                </View>
+              )}
 
-                setActiveRunId(null);
-                setUiPreparing(false);
-                setPlayerReady(false);
-                setPlayerLoading(false);
-                setLockedSsml(null);
+              {/* Step indicator */}
+              <View style={tw`flex-row flex-wrap items-center gap-2 mb-3`}>
+                {[
+                  { k: 'course', label: 'Choose' },
+                  { k: 'outline', label: 'Outline' },
+                  { k: 'lessons', label: 'Lessons' },
+                  { k: 'quiz', label: 'Quiz' },
+                  { k: 'cert', label: 'Certificate' },
+                ].map((s, i) => {
+                  const active =
+                    (i === 0 && !outline.length) ||
+                    (i === 1 && step === 'outlining') ||
+                    (i === 2 && (step === 'narrating' || hasAIContent)) ||
+                    (i === 3 && (quiz?.questions?.length || step === 'quizzing')) ||
+                    (i === 4 && Boolean(grade?.passed));
+                  return (
+                    <View
+                      key={s.k}
+                      style={tw.style(
+                        'px-2 py-1 rounded-full border',
+                        active
+                          ? 'bg-indigo-50 dark:bg-indigo-600/30 border-indigo-600'
+                          : 'bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/10'
+                      )}
+                    >
+                      <Text style={tw`text-[#0d141c] dark:text-white text-[11px]`}>
+                        {i + 1}. {s.label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
 
-                selectCourse(found);
-              }}
-              PRESETS={PRESETS}
-              TRACKS={TRACKS}
-              trackLessons={trackLessons}
-              sizePreset={sizePreset}
-              setSizePreset={setSizePreset}
-              minutes={minutes}
-              setMinutes={setMinutes}
-              classLevel={classLevel}
-              setClassLevel={setClassLevel}
-              programTrack={programTrack}
-              setProgramTrack={setProgramTrack}
-              capMinutes={capMinutes}
-              totalLessons={totalLessons}
-              setTotalLessons={setTotalLessons}
-              quizCount={quizCount}
-              setQuizCount={setQuizCount}
-              overrideLessons={overrideLessons}
-              setOverrideLessons={setOverrideLessons}
-              overrideQuiz={overrideQuiz}
-              setOverrideQuiz={setOverrideQuiz}
-              customTitle={customTitle}
-              setCustomTitle={(s: string) => {
-                setCustomTitle(s);
-                if (s.trim()) selectCourse(null);
-              }}
-              hasAIContent={hasAIContent}
-              onStart={onStart}
-              onRefreshSelectedAI={refreshSelectedAI}
-            />
-
-            {/* Classroom / Outline / Quiz */}
-            <LessonAndQuizPane
-              compactPlayer={true}
-              showCourseList={showCourseList}
-              displaySsml={displaySsml}
-              onPlayerReady={handlePlayerReady}
-              onPlayerLoadingChange={handlePlayerLoadingChange}
-              onToggleMaximized={handleToggleMaximized}
-              onNext={goNext}
-              onPrev={goPrev}
-              isBuildingNext={isBuildingNext}
-              lessonsArr={lessonsArr}
-              activeIndex={currentIdx ?? 0}
-              voiceName={voiceName || defaultVoice}
-              courseTitle={selectedCourse?.title || (customTitle || 'AI Lesson')}
-              isMaximized={isMaximized}
-              course={selectedCourse || null}
-              currentIdx={currentIdx ?? 0}
-              outline={outline}
-              backendUrl={backendUrl}
-              gateMode={gateMode}
-              gateNotice={gateNotice}
-              gateUsage={gateUsage}
-              onBeforePlay={onBeforePlayWrapped}
-              onEnded={onEndedWrapped}
-              onRequestStart={onRequestStartWrapped}
-              themeOpen={themeOpen}
-              onThemeOpenChange={(open: boolean) => {
-                dlog('themeOpen →', open);
-                setThemeOpen(open);
-              }}
-              isOrgFlow={isOrgFlow}
-              assignmentId={assignmentId}
-              timerSec={timerSec}
-              generateQuizNow={async (
-                count?: number,
-                _courseSize?: string,
-                _programTrack?: string,
-                _totalLessons?: number,
-                assignmentIdFromChild?: string,
-                quizType?: 'mcq' | 'short',
-                opts?: { lessonIndex?: number }
-              ) => {
-                const n = typeof count === 'number' ? count : safeQuiz;
-                await generateQuizNow(
-                  n,
-                  sizeToCourseSize[sizePreset] as any,
-                  programTrack as any,
-                  safeLessons,
-                  assignmentIdFromChild ?? assignmentId,
-                  quizType,
-                  opts
-                );
-              }}
-              safeLessons={safeLessons}
-              safeQuiz={safeQuiz}
-              overrideLessons={overrideLessons} 
-              quiz={quiz}
-              answers={answers}
-              onAnswer={handleAnswer}
-              allAnswered={allAnswered}
-              grade={grade}
-              gradeNow={async () => {
-                await gradeNow();
-              }}
-              token={token || ''}
-              requireAuth={requireAuth}
-              isOrgFlowFlag={isOrgFlow}
-              skus={skus}
-              aiCertLoading={aiCertLoading}
-              aiCertError={aiCertError}
-              aiCertMsg={aiCertMsg}
-              claim={async (code: string) => {
-                await claim(code);
-              }}
-              tryGenerateCertificate={tryGenerateCertificate}
-              generateAICert={generateAICert}
-              paymentOpen={paymentOpen}
-              setPaymentOpen={setPaymentOpen}
-              certUrl={certUrl}
-              setCertUrl={setCertUrl}
-              downUrl={downUrl}
-              setDownUrl={setDownUrl}
-              localRemainingMs={localRemainingMs}
-              setLocalRemainingMs={setLocalRemainingMs}
-              displayRemainingMs={displayRemainingMs}
-              disableQuiz={disableQuiz}
-              onStart={onStart}
-              hasJoined={hasJoined}
-              canAutoStart={false}
-              onViewResults={(courseId: string, courseTitle: string, g: { scorePct: number; passMark: number; passed: boolean }) => {
-                dlog('navigate → Results', { courseId, courseTitle, grade: g });
-                navigation.navigate(
-                  'Results' as any,
-                  {
-                    courseId,
-                    courseTitle,
-                    grade: {
-                      scorePct: g.scorePct,
-                      passMark: g.passMark,
-                      passed: g.passed,
-                    },
-                  } as any
-                );
-              }}
-              onOverlayState={setOverlayState}
-            />
-          </View>
-
-          {/* RIGHT (course list) */}
-          {showCourseList && (
-            <View style={tw`w-full md:w-1/3`}>
-              <CourseList
-                items={(topCourses || []).map((c: TopCourse) => ({
+              {/* Controls */}
+              <ControlsPanel
+                showMinimalControls={showMinimalControls}
+                isLockedLearner={isLockedLearner}
+                canShareUi={canShareUi}
+                onOpenOverlay={openOverlay}
+                overlayAvailable={overlayAvailable}
+                restrictStarter={restrictStarter}
+                knobsDisabled={knobsDisabled}
+                onOpenShare={() => {
+                  setIsMaximized(false);
+                  setShareOpen(true);
+                }}
+                busy={preparingNow || starting}
+                topCourses={(topCourses || []).map((c: TopCourse) => ({
                   id: c.id,
                   title: c.title,
-                  blurb: getCourseBlurb(c),
                 }))}
-                activeId={selectedCourse?.id || null}
-                onSelect={(id) => {
+                selectedCourse={
+                  selectedCourse ? { id: selectedCourse.id, title: selectedCourse.title } : null
+                }
+                onSelectCourse={(id) => {
                   const found = (topCourses || []).find((c: TopCourse) => c.id === id) || null;
-                  dlog('CourseList.onSelect', { id, title: found?.title });
+                  dlog('CourseSelect.onChange/Select →', { id, foundTitle: found?.title });
 
                   setActiveRunId(null);
                   setUiPreparing(false);
@@ -1196,31 +1113,195 @@ const scrollContentInset = useMemo(
 
                   selectCourse(found);
                 }}
-                onRefresh={refreshCourseList}
-                onLoadMore={handleLoadMore}
-                hasMore={Boolean(hasMoreCourses)}
+                PRESETS={PRESETS}
+                TRACKS={TRACKS}
+                trackLessons={trackLessons}
+                sizePreset={sizePreset}
+                setSizePreset={setSizePreset}
+                minutes={minutes}
+                setMinutes={setMinutes}
+                classLevel={classLevel}
+                setClassLevel={setClassLevel}
+                programTrack={programTrack}
+                setProgramTrack={setProgramTrack}
+                capMinutes={capMinutes}
+                totalLessons={totalLessons}
+                setTotalLessons={setTotalLessons}
+                quizCount={quizCount}
+                setQuizCount={setQuizCount}
+                overrideLessons={overrideLessons}
+                setOverrideLessons={setOverrideLessons}
+                overrideQuiz={overrideQuiz}
+                setOverrideQuiz={setOverrideQuiz}
+                customTitle={customTitle}
+                setCustomTitle={(s: string) => {
+                  setCustomTitle(s);
+                  if (s.trim()) selectCourse(null);
+                }}
+                hasAIContent={hasAIContent}
+                onStart={onStart}
+                onRefreshSelectedAI={refreshSelectedAI}
+              />
+
+              {/* Classroom / Outline / Quiz */}
+              <LessonAndQuizPane
+                compactPlayer={true}
+                showCourseList={showCourseList}
+                displaySsml={displaySsml}
+                onPlayerReady={handlePlayerReady}
+                onPlayerLoadingChange={handlePlayerLoadingChange}
+                onToggleMaximized={handleToggleMaximized}
+                onNext={goNext}
+                onPrev={goPrev}
+                isBuildingNext={isBuildingNext}
+                lessonsArr={lessonsArr}
+                activeIndex={currentIdx ?? 0}
+                voiceName={voiceName || defaultVoice}
+                courseTitle={selectedCourse?.title || customTitle || 'AI Lesson'}
+                isMaximized={isMaximized}
+                course={selectedCourse || null}
+                currentIdx={currentIdx ?? 0}
+                outline={outline}
+                backendUrl={backendUrl}
+                gateMode={gateMode}
+                gateNotice={gateNotice}
+                gateUsage={gateUsage}
+                onBeforePlay={onBeforePlayWrapped}
+                onEnded={onEndedWrapped}
+                onRequestStart={onRequestStartWrapped}
+                themeOpen={themeOpen}
+                onThemeOpenChange={(open: boolean) => {
+                  dlog('themeOpen →', open);
+                  setThemeOpen(open);
+                }}
+                isOrgFlow={isOrgFlow}
+                assignmentId={assignmentId}
+                timerSec={timerSec}
+                generateQuizNow={async (
+                  count?: number,
+                  _courseSize?: string,
+                  _programTrack?: string,
+                  _totalLessons?: number,
+                  assignmentIdFromChild?: string,
+                  quizType?: 'mcq' | 'short',
+                  opts?: { lessonIndex?: number }
+                ) => {
+                  const n = typeof count === 'number' ? count : safeQuiz;
+                  await generateQuizNow(
+                    n,
+                    sizeToCourseSize[sizePreset] as any,
+                    programTrack as any,
+                    safeLessons,
+                    assignmentIdFromChild ?? assignmentId,
+                    quizType,
+                    opts
+                  );
+                }}
+                safeLessons={safeLessons}
+                safeQuiz={safeQuiz}
+                overrideLessons={overrideLessons}
+                quiz={quiz}
+                answers={answers}
+                onAnswer={handleAnswer}
+                allAnswered={allAnswered}
+                grade={grade}
+                gradeNow={async () => {
+                  await gradeNow();
+                }}
+                token={token || ''}
+                requireAuth={requireAuth}
+                isOrgFlowFlag={isOrgFlow}
+                skus={skus}
+                aiCertLoading={aiCertLoading}
+                aiCertError={aiCertError}
+                aiCertMsg={aiCertMsg}
+                claim={async (code: string) => {
+                  await claim(code);
+                }}
+                tryGenerateCertificate={tryGenerateCertificate}
+                generateAICert={generateAICert}
+                paymentOpen={paymentOpen}
+                setPaymentOpen={setPaymentOpen}
+                certUrl={certUrl}
+                setCertUrl={setCertUrl}
+                downUrl={downUrl}
+                setDownUrl={setDownUrl}
+                localRemainingMs={localRemainingMs}
+                setLocalRemainingMs={setLocalRemainingMs}
+                displayRemainingMs={displayRemainingMs}
+                disableQuiz={disableQuiz}
+                onStart={onStart}
+                hasJoined={hasJoined}
+                canAutoStart={false}
+                onViewResults={(
+                  courseId: string,
+                  courseTitle: string,
+                  g: { scorePct: number; passMark: number; passed: boolean }
+                ) => {
+                  dlog('navigate → Results', { courseId, courseTitle, grade: g });
+                  navigation.navigate(
+                    'Results' as any,
+                    {
+                      courseId,
+                      courseTitle,
+                      grade: {
+                        scorePct: g.scorePct,
+                        passMark: g.passMark,
+                        passed: g.passed,
+                      },
+                    } as any
+                  );
+                }}
+                onOverlayState={setOverlayState}
               />
             </View>
-          )}
+
+            {/* RIGHT (course list) */}
+            {showCourseList && (
+              <View style={tw`w-full md:w-1/3`}>
+                <CourseList
+                  items={(topCourses || []).map((c: TopCourse) => ({
+                    id: c.id,
+                    title: c.title,
+                    blurb: getCourseBlurb(c),
+                  }))}
+                  activeId={selectedCourse?.id || null}
+                  onSelect={(id) => {
+                    const found = (topCourses || []).find((c: TopCourse) => c.id === id) || null;
+                    dlog('CourseList.onSelect', { id, title: found?.title });
+
+                    setActiveRunId(null);
+                    setUiPreparing(false);
+                    setPlayerReady(false);
+                    setPlayerLoading(false);
+                    setLockedSsml(null);
+
+                    selectCourse(found);
+                  }}
+                  onRefresh={refreshCourseList}
+                  onLoadMore={handleLoadMore}
+                  hasMore={Boolean(hasMoreCourses)}
+                />
+              </View>
+            )}
+          </View>
+        </RefreshableScrollView>
+
+        {/* ✅ GLOBAL OVERLAY LAYER (outside ScrollView, above everything) */}
+        <View
+          pointerEvents="box-none"
+          style={[StyleSheet.absoluteFillObject, { zIndex: 999999, elevation: 999999 }]}
+        >
+          <LessonOverlayNative
+            lesson={currentLessonForOverlay}
+            rememberKey={`robotTutor:${selectedCourse?.id || customTitle || 'free'}`}
+            zIndex={999999}
+            ref={overlayRef}
+          />
         </View>
-      </RefreshableScrollView>
-
-      {/* ✅ GLOBAL OVERLAY LAYER (outside ScrollView, above everything) */}
-      <View
-        pointerEvents="box-none"
-        style={[StyleSheet.absoluteFillObject, { zIndex: 999999, elevation: 999999 }]}
-      >
-        <LessonOverlayNative
-          lesson={currentLessonForOverlay}
-          rememberKey={`robotTutor:${selectedCourse?.id || customTitle || 'free'}`}
-          zIndex={999999}
-          ref={overlayRef}
-        />
       </View>
-    </View>
-  </SafeAreaView>
-);
-
+    </SafeAreaView>
+  );
 };
 
 export default RobotTeacher;

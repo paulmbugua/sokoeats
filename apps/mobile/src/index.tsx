@@ -63,9 +63,12 @@ const getExtra = (): AppExtra => {
   const raw = (cfg?.extra ?? man?.extra ?? {}) as Record<string, unknown>;
   return {
     EXPO_PUBLIC_BACKEND_URL: String(raw.EXPO_PUBLIC_BACKEND_URL || '') || undefined,
-    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: String(raw.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '') || undefined,
-    EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: String(raw.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '') || undefined,
-    EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: String(raw.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '') || undefined,
+    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:
+      String(raw.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '') || undefined,
+    EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID:
+      String(raw.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '') || undefined,
+    EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:
+      String(raw.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '') || undefined,
     BACKENDS: (raw.BACKENDS as Record<string, string>) || undefined,
     DEFAULT_BACKEND: (raw.DEFAULT_BACKEND as string) || undefined,
   };
@@ -73,8 +76,15 @@ const getExtra = (): AppExtra => {
 
 const runtimeExtra = getExtra();
 
-(['EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID','EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID','EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID'] as const)
-  .forEach((key) => { if (!runtimeExtra[key]) console.warn(`⚠️ ${key} is not defined in app.config.js extra!`); });
+(
+  [
+    'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID',
+    'EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID',
+    'EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID',
+  ] as const
+).forEach((key) => {
+  if (!runtimeExtra[key]) console.warn(`⚠️ ${key} is not defined in app.config.js extra!`);
+});
 
 /* ──────────────────────────────────────────────────────────
    Google Sign-In
@@ -93,17 +103,16 @@ GoogleSignin.configure({
    - Final fallback: android emulator loopback
 ────────────────────────────────────────────────────────── */
 const selectedFromMulti =
-  (runtimeExtra.BACKENDS && runtimeExtra.DEFAULT_BACKEND
+  runtimeExtra.BACKENDS && runtimeExtra.DEFAULT_BACKEND
     ? runtimeExtra.BACKENDS[runtimeExtra.DEFAULT_BACKEND]
-    : undefined);
+    : undefined;
 
 const backendUrl =
-  selectedFromMulti ||
-  runtimeExtra.EXPO_PUBLIC_BACKEND_URL ||
-  'http://10.0.2.2:4000';
+  selectedFromMulti || runtimeExtra.EXPO_PUBLIC_BACKEND_URL || 'http://10.0.2.2:4000';
 
 axios.defaults.baseURL = backendUrl; // ← ensure relative URLs hit your backend
-console.log('🔗 Using backend URL (%s): %s',
+console.log(
+  '🔗 Using backend URL (%s): %s',
   runtimeExtra.DEFAULT_BACKEND ?? 'env-single',
   backendUrl
 );
@@ -143,7 +152,6 @@ const linking = {
   },
 };
 
-
 /* ──────────────────────────────────────────────────────────
    Root composition (ThemeProvider only)
 ────────────────────────────────────────────────────────── */
@@ -154,63 +162,61 @@ const RootInner = () => {
   // ⬇️ Use app-scoped axios + only register when we have a session
   const { http, token, orgToken } = useShopContext() as any;
 
-useEffect(() => {
-  let cancelled = false;
+  useEffect(() => {
+    let cancelled = false;
 
-  (async () => {
-    if (!token && !orgToken) return;
+    (async () => {
+      if (!token && !orgToken) return;
 
-    const pushToken = await registerForPushToken();
-    if (!pushToken || cancelled) return;
+      const pushToken = await registerForPushToken();
+      if (!pushToken || cancelled) return;
 
-    try {
-      await http.post('/api/push/register', {
-        expoPushToken: pushToken,
-        platform: Platform.OS,
-      });
-      if (__DEV__) console.log('[push] registered:', pushToken);
-    } catch (e: any) {
-      if (__DEV__) {
-        const status = e?.response?.status;
-        console.warn('[push] register failed', status, e?.message || e);
+      try {
+        await http.post('/api/push/register', {
+          expoPushToken: pushToken,
+          platform: Platform.OS,
+        });
+        if (__DEV__) console.log('[push] registered:', pushToken);
+      } catch (e: any) {
+        if (__DEV__) {
+          const status = e?.response?.status;
+          console.warn('[push] register failed', status, e?.message || e);
+        }
       }
-    }
-  })();
+    })();
 
-  return () => {
-    cancelled = true;
-  };
-}, [http, token, orgToken]);
+    return () => {
+      cancelled = true;
+    };
+  }, [http, token, orgToken]);
 
-useEffect(() => {
-  const handleResp = (resp: Notifications.NotificationResponse) => {
-    const data = resp.notification.request.content.data as any;
-    if (data?.screen) {
-      navRef.current?.dispatch(
-        CommonActions.navigate({
-          name: String(data.screen),
-          params: data.params ?? undefined,
-        }),
-      );
-    }
-  };
+  useEffect(() => {
+    const handleResp = (resp: Notifications.NotificationResponse) => {
+      const data = resp.notification.request.content.data as any;
+      if (data?.screen) {
+        navRef.current?.dispatch(
+          CommonActions.navigate({
+            name: String(data.screen),
+            params: data.params ?? undefined,
+          })
+        );
+      }
+    };
 
-  let cleanup = () => {};
+    let cleanup = () => {};
 
-  (async () => {
-    const last = await Notifications.getLastNotificationResponseAsync();
-    if (last) handleResp(last);
-  })();
+    (async () => {
+      const last = await Notifications.getLastNotificationResponseAsync();
+      if (last) handleResp(last);
+    })();
 
-  cleanup = initNotificationListeners({
-    onReceive: () => {},
-    onRespond: handleResp,
-  });
+    cleanup = initNotificationListeners({
+      onReceive: () => {},
+      onRespond: handleResp,
+    });
 
-  return () => cleanup();
-}, [navRef]);
-
-
+    return () => cleanup();
+  }, [navRef]);
 
   return (
     <>
@@ -221,13 +227,12 @@ useEffect(() => {
       />
       <GlobalRefreshProvider>
         <NavigationContainer
-            ref={navRef}
-            theme={resolvedScheme === 'dark' ? NavDark : NavLight}
-            linking={linking}
-          >
-            <App />
-          </NavigationContainer>
-
+          ref={navRef}
+          theme={resolvedScheme === 'dark' ? NavDark : NavLight}
+          linking={linking}
+        >
+          <App />
+        </NavigationContainer>
       </GlobalRefreshProvider>
     </>
   );

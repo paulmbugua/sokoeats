@@ -27,12 +27,10 @@ type Props = {
   tier: 'pro' | 'enterprise';
   orgName?: string | null;
 
- assets?: {
+  assets?: {
     visamaster?: ImgSrc; // url OR require()
-    mpesa?: ImgSrc;      // url OR require()
+    mpesa?: ImgSrc; // url OR require()
   };
-
-
 
   onCheckout: (opts: {
     method: PayMethod;
@@ -219,8 +217,7 @@ export default function PlanPurchaseModalNative({
   const anyLoading = pricingLoadingUSD || pricingLoadingKES;
   const anyError = pricingErrorUSD || pricingErrorKES;
   const visaMasterSrc = useMemo(() => asImg(assets?.visamaster), [assets?.visamaster]);
-const mpesaSrc = useMemo(() => asImg(assets?.mpesa), [assets?.mpesa]);
-
+  const mpesaSrc = useMemo(() => asImg(assets?.mpesa), [assets?.mpesa]);
 
   const localEstimate = useMemo(() => {
     if (usdCents == null) return null;
@@ -246,7 +243,8 @@ const mpesaSrc = useMemo(() => asImg(assets?.mpesa), [assets?.mpesa]);
     }
 
     // Paystack
-    if (localEstimate) return formatMoneyIntl(userLocale, localEstimate.local, localEstimate.amount);
+    if (localEstimate)
+      return formatMoneyIntl(userLocale, localEstimate.local, localEstimate.amount);
     if (usdCents != null) return formatMoneyIntl(userLocale, 'USD', centsToMajor(usdCents));
     return '—';
   }, [method, kesCents, localEstimate, usdCents, userLocale]);
@@ -292,19 +290,29 @@ const mpesaSrc = useMemo(() => asImg(assets?.mpesa), [assets?.mpesa]);
         <Pressable style={tw`flex-1 bg-black/60`} onPress={onClose}>
           {/* Stop propagation */}
           <Pressable onPress={() => {}} style={tw`flex-1 justify-center px-3 py-4`}>
-            <View style={tw`w-full max-w-2xl self-center rounded-2xl bg-white dark:bg-[#0f1821] overflow-hidden border border-slate-200 dark:border-white/10`}>
+            <View
+              style={tw`w-full max-w-2xl self-center rounded-2xl bg-white dark:bg-[#0f1821] overflow-hidden border border-slate-200 dark:border-white/10`}
+            >
               {/* Header */}
-              <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-white/10`}>
+              <View
+                style={tw`flex-row items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-white/10`}
+              >
                 <View style={tw`flex-1 pr-2`}>
                   <Text style={tw`text-xs text-slate-500 dark:text-white/60`} numberOfLines={1}>
                     Upgrade for {orgName || 'your organization'}
                   </Text>
-                  <Text style={tw`text-base font-semibold text-[#0d141c] dark:text-white`} numberOfLines={1}>
+                  <Text
+                    style={tw`text-base font-semibold text-[#0d141c] dark:text-white`}
+                    numberOfLines={1}
+                  >
                     {tier === 'pro' ? 'Upgrade to PRO' : 'Upgrade to ENTERPRISE'}
                   </Text>
                 </View>
 
-                <Pressable onPress={onClose} style={tw`px-3 py-2 rounded-lg bg-slate-100 dark:bg-white/10`}>
+                <Pressable
+                  onPress={onClose}
+                  style={tw`px-3 py-2 rounded-lg bg-slate-100 dark:bg-white/10`}
+                >
                   <Text style={tw`text-sm text-[#0d141c] dark:text-white`}>Close</Text>
                 </Pressable>
               </View>
@@ -312,7 +320,9 @@ const mpesaSrc = useMemo(() => asImg(assets?.mpesa), [assets?.mpesa]);
               {/* Body */}
               <ScrollView style={tw`max-h-[80vh]`} contentContainerStyle={tw`p-4 pb-6`}>
                 {anyError ? (
-                  <View style={tw`rounded-xl p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20`}>
+                  <View
+                    style={tw`rounded-xl p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20`}
+                  >
                     <Text style={tw`text-sm text-red-700 dark:text-red-200`}>
                       Failed to load pricing. Please refresh and try again.
                     </Text>
@@ -323,29 +333,31 @@ const mpesaSrc = useMemo(() => asImg(assets?.mpesa), [assets?.mpesa]);
                 <View style={tw`mt-3`}>
                   <Text style={tw`text-sm text-slate-600 dark:text-white/70 mb-2`}>Billing</Text>
 
-                  <View style={tw`flex-row rounded-xl overflow-hidden border border-slate-200 dark:border-white/10`}>
+                  <View
+                    style={tw`flex-row rounded-xl overflow-hidden border border-slate-200 dark:border-white/10`}
+                  >
                     <Pressable
                       onPress={() => setCycle('monthly')}
                       style={tw.style(
                         `flex-1 px-3 py-2`,
-                        cycle === 'monthly'
-                          ? `bg-slate-200 dark:bg-white/10`
-                          : `bg-transparent`
+                        cycle === 'monthly' ? `bg-slate-200 dark:bg-white/10` : `bg-transparent`
                       )}
                     >
-                      <Text style={tw`text-sm text-[#0d141c] dark:text-white text-center`}>Monthly</Text>
+                      <Text style={tw`text-sm text-[#0d141c] dark:text-white text-center`}>
+                        Monthly
+                      </Text>
                     </Pressable>
 
                     <Pressable
                       onPress={() => setCycle('annual')}
                       style={tw.style(
                         `flex-1 px-3 py-2`,
-                        cycle === 'annual'
-                          ? `bg-slate-200 dark:bg-white/10`
-                          : `bg-transparent`
+                        cycle === 'annual' ? `bg-slate-200 dark:bg-white/10` : `bg-transparent`
                       )}
                     >
-                      <Text style={tw`text-sm text-[#0d141c] dark:text-white text-center`}>Annual</Text>
+                      <Text style={tw`text-sm text-[#0d141c] dark:text-white text-center`}>
+                        Annual
+                      </Text>
                     </Pressable>
                   </View>
                 </View>
@@ -354,64 +366,76 @@ const mpesaSrc = useMemo(() => asImg(assets?.mpesa), [assets?.mpesa]);
                 <View style={tw`mt-4`}>
                   <Text style={tw`text-sm text-slate-600 dark:text-white/70 mb-2`}>Pay with</Text>
 
-                  <View style={tw`flex-row rounded-xl overflow-hidden border border-slate-200 dark:border-white/10`}>
+                  <View
+                    style={tw`flex-row rounded-xl overflow-hidden border border-slate-200 dark:border-white/10`}
+                  >
                     <Pressable
                       onPress={() => setMethod('Paystack')}
                       style={tw.style(
                         `flex-1 px-3 py-2 flex-row items-center justify-center gap-2`,
-                        method === 'Paystack'
-                          ? `bg-slate-200 dark:bg-white/10`
-                          : `bg-transparent`
+                        method === 'Paystack' ? `bg-slate-200 dark:bg-white/10` : `bg-transparent`
                       )}
                     >
                       {visaMasterSrc ? (
                         <Image source={visaMasterSrc} style={tw`h-6 w-18`} resizeMode="contain" />
-                        ) : (
-                        <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Card</Text>
-                        )}
-
+                      ) : (
+                        <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+                          Card
+                        </Text>
+                      )}
                     </Pressable>
 
                     <Pressable
                       onPress={() => setMethod('M-Pesa')}
                       style={tw.style(
                         `flex-1 px-3 py-2 flex-row items-center justify-center gap-2`,
-                        method === 'M-Pesa'
-                          ? `bg-slate-200 dark:bg-white/10`
-                          : `bg-transparent`
+                        method === 'M-Pesa' ? `bg-slate-200 dark:bg-white/10` : `bg-transparent`
                       )}
                     >
                       {mpesaSrc ? (
                         <Image source={mpesaSrc} style={tw`h-6 w-18`} resizeMode="contain" />
-                        ) : (
-                        <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>M-Pesa</Text>
-                        )}
-
+                      ) : (
+                        <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+                          M-Pesa
+                        </Text>
+                      )}
                     </Pressable>
                   </View>
 
                   {anyLoading ? (
                     <View style={tw`mt-2 flex-row items-center gap-2`}>
                       <ActivityIndicator />
-                      <Text style={tw`text-xs text-slate-500 dark:text-white/60`}>Loading pricing…</Text>
+                      <Text style={tw`text-xs text-slate-500 dark:text-white/60`}>
+                        Loading pricing…
+                      </Text>
                     </View>
                   ) : null}
 
                   {uiError ? (
-                    <View style={tw`mt-3 rounded-xl p-3 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20`}>
+                    <View
+                      style={tw`mt-3 rounded-xl p-3 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20`}
+                    >
                       <Text style={tw`text-xs text-slate-800 dark:text-white/80`}>{uiError}</Text>
                     </View>
                   ) : null}
                 </View>
 
                 {/* Summary box */}
-                <View style={tw`mt-4 rounded-2xl p-4 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10`}>
+                <View
+                  style={tw`mt-4 rounded-2xl p-4 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10`}
+                >
                   <View style={tw`flex-row items-start justify-between gap-3`}>
                     <View style={tw`flex-1`}>
-                      <Text style={tw`text-base font-semibold text-slate-900 dark:text-white`} numberOfLines={1}>
+                      <Text
+                        style={tw`text-base font-semibold text-slate-900 dark:text-white`}
+                        numberOfLines={1}
+                      >
                         {tier.toUpperCase()} plan
                       </Text>
-                      <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={1}>
+                      <Text
+                        style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}
+                        numberOfLines={1}
+                      >
                         Selected: <Text style={tw`font-semibold`}>{amountLabel}</Text>
                       </Text>
                       <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
@@ -451,18 +475,23 @@ const mpesaSrc = useMemo(() => asImg(assets?.mpesa), [assets?.mpesa]);
 
                 {/* Method-specific UI */}
                 {method === 'M-Pesa' ? (
-                  <View style={tw`mt-4 rounded-2xl p-4 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10`}>
+                  <View
+                    style={tw`mt-4 rounded-2xl p-4 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10`}
+                  >
                     <View style={tw`flex-row items-center justify-between`}>
-                    <View style={tw`flex-row items-center gap-2`}>
+                      <View style={tw`flex-row items-center gap-2`}>
                         {mpesaSrc ? (
-                        <Image source={mpesaSrc} style={tw`h-6 w-16`} resizeMode="contain" />
+                          <Image source={mpesaSrc} style={tw`h-6 w-16`} resizeMode="contain" />
                         ) : null}
-                        <Text style={tw`text-sm font-semibold text-slate-800 dark:text-white`}>M-Pesa</Text>
-                    </View>
+                        <Text style={tw`text-sm font-semibold text-slate-800 dark:text-white`}>
+                          M-Pesa
+                        </Text>
+                      </View>
                     </View>
 
-
-                    <View style={tw`mt-3 rounded-xl p-3 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10`}>
+                    <View
+                      style={tw`mt-3 rounded-xl p-3 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10`}
+                    >
                       <Text style={tw`text-xs text-slate-700 dark:text-white/80`}>
                         Charged in KES:{' '}
                         <Text style={tw`font-semibold`}>
@@ -498,7 +527,7 @@ const mpesaSrc = useMemo(() => asImg(assets?.mpesa), [assets?.mpesa]);
                       keyboardType="phone-pad"
                     />
 
-                    {!!phone ? (
+                    {phone ? (
                       <Text style={tw`mt-2 text-[11px] text-slate-500 dark:text-white/60`}>
                         Normalized: <Text style={tw`font-semibold`}>{normPhone || '—'}</Text>
                       </Text>
@@ -561,22 +590,24 @@ const mpesaSrc = useMemo(() => asImg(assets?.mpesa), [assets?.mpesa]);
                 ) : null}
 
                 {method === 'Paystack' ? (
-                  <View style={tw`mt-4 rounded-2xl p-4 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10`}>
+                  <View
+                    style={tw`mt-4 rounded-2xl p-4 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10`}
+                  >
                     <View style={tw`flex-row items-center justify-between`}>
-                    <View>
+                      <View>
                         <Text style={tw`text-sm font-semibold text-slate-800 dark:text-white`}>
-                        Card checkout
+                          Card checkout
                         </Text>
                         <Text style={tw`mt-1 text-[11px] text-slate-600 dark:text-white/70`}>
-                        You’ll be redirected to Paystack to pay for{' '}
-                        <Text style={tw`font-semibold`}>{amountLabel}</Text>.
+                          You’ll be redirected to Paystack to pay for{' '}
+                          <Text style={tw`font-semibold`}>{amountLabel}</Text>.
                         </Text>
+                      </View>
                     </View>
 
-                    </View>
-                    
-
-                    <View style={tw`mt-3 rounded-xl p-3 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10`}>
+                    <View
+                      style={tw`mt-3 rounded-xl p-3 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10`}
+                    >
                       <Text style={tw`text-xs text-slate-700 dark:text-white/80`}>
                         Base (USD): <Text style={tw`font-semibold`}>{headerBaseUsd ?? '—'}</Text>
                       </Text>
@@ -622,14 +653,18 @@ const mpesaSrc = useMemo(() => asImg(assets?.mpesa), [assets?.mpesa]);
                     </Pressable>
 
                     <Text style={tw`mt-2 text-[11px] text-slate-500 dark:text-white/60`}>
-                      After payment, you’ll return automatically and your subscription will activate.
+                      After payment, you’ll return automatically and your subscription will
+                      activate.
                     </Text>
                   </View>
                 ) : null}
 
-                <View style={tw`mt-4 rounded-2xl p-3 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10`}>
+                <View
+                  style={tw`mt-4 rounded-2xl p-3 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10`}
+                >
                   <Text style={tw`text-[11px] text-slate-600 dark:text-white/70`}>
-                    Need a custom seat count? Enterprise supports tailored pricing—contact support from your Org profile.
+                    Need a custom seat count? Enterprise supports tailored pricing—contact support
+                    from your Org profile.
                   </Text>
                 </View>
               </ScrollView>

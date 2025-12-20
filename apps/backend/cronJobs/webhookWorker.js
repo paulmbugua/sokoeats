@@ -4,7 +4,10 @@ import crypto from 'crypto';
 import pool from '../config/db.js';
 
 function sign(secret, ts, raw) {
-  const h = crypto.createHmac('sha256', secret).update(`${ts}.${raw}`).digest('hex');
+  const h = crypto
+    .createHmac('sha256', secret)
+    .update(`${ts}.${raw}`)
+    .digest('hex');
   return `t=${ts},v1=${h}`;
 }
 
@@ -31,7 +34,7 @@ async function nextBatch(limit = 15) {
       (SELECT o.webhook_url    FROM organizations o WHERE o.id = d.org_id) AS webhook_url,
       (SELECT o.webhook_secret FROM organizations o WHERE o.id = d.org_id) AS webhook_secret;
     `,
-    [limit]
+    [limit],
   );
   return rows;
 }
@@ -57,7 +60,7 @@ async function mark(id, status, last_error = null) {
     `UPDATE org_webhook_deliveries
         SET ${sets.join(', ')}
       WHERE id = $${vals.length + 1}`,
-    [...vals, id]
+    [...vals, id],
   );
 }
 
@@ -68,7 +71,13 @@ export async function runWebhookTick() {
     try {
       const rawBody = j.body || '{}';
       // allow test override without forcing a DB save
-      const payload = (() => { try { return JSON.parse(rawBody); } catch { return {}; } })();
+      const payload = (() => {
+        try {
+          return JSON.parse(rawBody);
+        } catch {
+          return {};
+        }
+      })();
       const url = payload.__override_url || j.webhook_url;
 
       if (!/^https:\/\/.+/i.test(url || '')) {
@@ -106,7 +115,7 @@ export async function runWebhookTick() {
         `UPDATE org_webhook_deliveries
             SET created_at = now() + make_interval(mins := LEAST(5, GREATEST(1, attempt_count)))
           WHERE id = $1`,
-        [j.id]
+        [j.id],
       );
     }
   }

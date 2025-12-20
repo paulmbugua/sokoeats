@@ -7,7 +7,8 @@ export function useTtsQueue(onPlayNext: (ssml: string) => void) {
 
   const enqueue = useCallback((ssml: string, opts?: { replaceLatest?: boolean }) => {
     if (!ssml?.trim()) return;
-    if (opts?.replaceLatest) qRef.current = [ssml]; else qRef.current.push(ssml);
+    if (opts?.replaceLatest) qRef.current = [ssml];
+    else qRef.current.push(ssml);
     setPending(qRef.current.length);
   }, []);
 

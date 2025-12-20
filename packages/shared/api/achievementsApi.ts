@@ -23,10 +23,16 @@ export async function getAchievementsByStudent(
 export async function awardAchievement(
   backendUrl: string,
   token: string,
-  payload: { studentId: number; courseId?: string | null; ruleCode: string; title: string; iconUrl?: string }
-): Promise<Achievement | {}> {
+  payload: {
+    studentId: number;
+    courseId?: string | null;
+    ruleCode: string;
+    title: string;
+    iconUrl?: string;
+  }
+): Promise<Achievement | unknown> {
   const res = await axios.post(`${backendUrl}/api/achievements`, payload, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return res.data;
+  return res.data as Achievement | unknown;
 }

@@ -4,11 +4,11 @@ import { View, Image, Animated, Easing, Platform, ImageSourcePropType } from 're
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   // Native utilities from apps/mobile/utils/subjectImages
-  getImageSourceForCourse,     // → ImageSourcePropType for <Image source={...} />
-  pickImageUriForCourse,       // → raw URL string
-  SUBJECT_IMAGE_MAP_NATIVE,    // → Record<string, ImageSourcePropType>
+  getImageSourceForCourse, // → ImageSourcePropType for <Image source={...} />
+  pickImageUriForCourse, // → raw URL string
+  SUBJECT_IMAGE_MAP_NATIVE, // → Record<string, ImageSourcePropType>
   SUBJECT_ALIASES,
-  FALLBACK_COURSE_IMAGE_URL,   // → raw URL string (used for prefetch fallback)
+  FALLBACK_COURSE_IMAGE_URL, // → raw URL string (used for prefetch fallback)
 } from '../../utils/subjectImages';
 
 type CourseLike = {
@@ -29,10 +29,10 @@ type BackdropProps = {
   playing?: boolean;
 
   // Live-tunable appearance
-  dim?: number;         // 0–1 (applied as a black overlay)
-  blurPx?: number;      // RN Image.blurRadius
-  brightness?: number;  // approximated by increasing dim
-  saturation?: number;  // ignored in core RN
+  dim?: number; // 0–1 (applied as a black overlay)
+  blurPx?: number; // RN Image.blurRadius
+  brightness?: number; // approximated by increasing dim
+  saturation?: number; // ignored in core RN
   vignetteInner?: number; // 0–1 (vignette via edge gradients)
 
   // Optional: override images + controlled index
@@ -164,30 +164,28 @@ const ClassroomBackdrop: React.FC<BackdropProps> = ({
   const prevSrc = images[prevIdx] || baseSource;
 
   // 5) Rotate images on a timer
- const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
- useEffect(() => {
-  if (!playing || images.length <= 1) return;
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!playing || images.length <= 1) return;
 
-   if (timerRef.current != null) {
-  
-    clearInterval(timerRef.current);
-  }
-
-  timerRef.current = setInterval(() => {
-    const cur = typeof index === 'number' ? index : internalIdx;
-    const next = (cur + 1) % images.length;
-    setIdx(next);
-  }, intervalSec * 1000);
-
-  return () => {
     if (timerRef.current != null) {
-      
       clearInterval(timerRef.current);
-      timerRef.current = null;
     }
-  };
-// eslint-disable-next-line react-hooks/exhaustive-deps
-}, [images.length, intervalSec, playing, index, internalIdx]);
+
+    timerRef.current = setInterval(() => {
+      const cur = typeof index === 'number' ? index : internalIdx;
+      const next = (cur + 1) % images.length;
+      setIdx(next);
+    }, intervalSec * 1000);
+
+    return () => {
+      if (timerRef.current != null) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [images.length, intervalSec, playing, index, internalIdx]);
 
   // 6) Fade in whenever the active index changes
   useEffect(() => {
@@ -260,7 +258,13 @@ const ClassroomBackdrop: React.FC<BackdropProps> = ({
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         pointerEvents="none"
-        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 120 * vignetteEdgeStrength }}
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: 0,
+          height: 120 * vignetteEdgeStrength,
+        }}
       />
       <LinearGradient
         colors={['transparent', 'rgba(0,0,0,0.70)']}
@@ -280,14 +284,26 @@ const ClassroomBackdrop: React.FC<BackdropProps> = ({
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         pointerEvents="none"
-        style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 80 * vignetteEdgeStrength }}
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 80 * vignetteEdgeStrength,
+        }}
       />
       <LinearGradient
         colors={['transparent', 'rgba(0,0,0,0.45)']}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         pointerEvents="none"
-        style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 80 * vignetteEdgeStrength }}
+        style={{
+          position: 'absolute',
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 80 * vignetteEdgeStrength,
+        }}
       />
     </View>
   );

@@ -67,14 +67,12 @@ export interface UseAccountSectionResult {
   ) => void;
 }
 
-export const useAccountSection = (
-  options?: {
-    alertFn?: (message: string) => void;
-    confirmFn?: (message: string) => Promise<boolean>;
-    navigateFn?: (destination: string) => void;
-    queryParams?: URLSearchParams;
-  }
-): UseAccountSectionResult => {
+export const useAccountSection = (options?: {
+  alertFn?: (message: string) => void;
+  confirmFn?: (message: string) => Promise<boolean>;
+  navigateFn?: (destination: string) => void;
+  queryParams?: URLSearchParams;
+}): UseAccountSectionResult => {
   const { alertFn, confirmFn, navigateFn, queryParams } = options ?? {};
   const { token, backendUrl, setTokens } = useShopContext();
 
@@ -121,7 +119,7 @@ export const useAccountSection = (
   console.log('[useAccountSection] payoutCurrency (from profile)', payoutCurrency);
 
   // sync tokens → context
- const prevTokens = useRef<number | undefined>(undefined);
+  const prevTokens = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (user.tokens !== prevTokens.current) {
       prevTokens.current = user.tokens;
@@ -130,32 +128,28 @@ export const useAccountSection = (
   }, [user.tokens, setTokens]);
 
   /* 2) Transactions --------------------------------------------------------- */
-  const {
-    data: transactions = [],
-    refetch: refetchTransactions,
-  } = useAppQuery<Transaction[], Error>(
-    ['transactions', token],
-    () => accountApi.fetchTransactions(backendUrl, token!),
-    { enabled: Boolean(token), refetchOnWindowFocus: false }
-  );
+  const { data: transactions = [], refetch: refetchTransactions } = useAppQuery<
+    Transaction[],
+    Error
+  >(['transactions', token], () => accountApi.fetchTransactions(backendUrl, token!), {
+    enabled: Boolean(token),
+    refetchOnWindowFocus: false,
+  });
 
   /* 3) Sessions ------------------------------------------------------------- */
-  const {
-    data: sessions = [],
-    refetch: refetchSessions,
-  } = useAppQuery<SessionType[], Error>(
+  const { data: sessions = [], refetch: refetchSessions } = useAppQuery<SessionType[], Error>(
     ['sessions', token],
     () => accountApi.fetchSessionsByType(backendUrl, token!, 'session'),
     { enabled: Boolean(token), refetchOnWindowFocus: false }
   );
 
-    /* 4) Earnings summary (tutor only) ---------------------------------------- */
+  /* 4) Earnings summary (tutor only) ---------------------------------------- */
   // ✅ Always available for tutors (not tab-gated)
   const earningsEnabled = Boolean(token && acctReady && isTutor);
-  const {
-    data: earningsRaw = null,
-    refetch: refetchEarnings,
-  } = useAppQuery<EarningsSummary, Error>(
+  const { data: earningsRaw = null, refetch: refetchEarnings } = useAppQuery<
+    EarningsSummary,
+    Error
+  >(
     ['earningsSummary', token, isTutor],
     () => accountApi.fetchEarningsSummary(backendUrl, token!),
     {
@@ -188,7 +182,7 @@ export const useAccountSection = (
   }
 
   const approxLifetime = lifetimeByCurrency[payoutCurrency] ?? 0;
-  const approxPending  = pendingByCurrency[payoutCurrency] ?? 0;
+  const approxPending = pendingByCurrency[payoutCurrency] ?? 0;
   const approxAvailable = Math.max(0, approxLifetime - approxPending);
 
   // ✅ Normalize earnings we expose to the UI:
@@ -197,18 +191,10 @@ export const useAccountSection = (
   const earnings: EarningsSummary | null = isTutor
     ? {
         currency: payoutCurrency, // align with profile’s payout currency
-        total:
-          (earningsRaw && earningsRaw.total > 0
-            ? earningsRaw.total
-            : approxLifetime),
-        pending:
-          (earningsRaw && earningsRaw.pending > 0
-            ? earningsRaw.pending
-            : approxPending),
+        total: earningsRaw && earningsRaw.total > 0 ? earningsRaw.total : approxLifetime,
+        pending: earningsRaw && earningsRaw.pending > 0 ? earningsRaw.pending : approxPending,
         available:
-          (earningsRaw && earningsRaw.available > 0
-            ? earningsRaw.available
-            : approxAvailable),
+          earningsRaw && earningsRaw.available > 0 ? earningsRaw.available : approxAvailable,
       }
     : null;
 
@@ -277,8 +263,7 @@ export const useAccountSection = (
   });
 
   const completePendingM = useMutation<void, Error, string>({
-    mutationFn: (sessionId) =>
-      accountApi.completePendingSession(backendUrl, token!, sessionId),
+    mutationFn: (sessionId) => accountApi.completePendingSession(backendUrl, token!, sessionId),
     onSuccess: () => {
       alertFn?.('Session marked as complete-pending.');
       refetchSessions();
@@ -287,8 +272,7 @@ export const useAccountSection = (
   });
 
   const confirmCompleteM = useMutation<void, Error, string>({
-    mutationFn: (sessionId) =>
-      accountApi.confirmSessionCompletion(backendUrl, token!, sessionId),
+    mutationFn: (sessionId) => accountApi.confirmSessionCompletion(backendUrl, token!, sessionId),
     onSuccess: (_data, sessionId) => {
       alertFn?.('Session confirmed complete.');
       refetchSessions();
@@ -339,7 +323,15 @@ export const useAccountSection = (
     { sessionId: string; topic: string; startTime: string; duration: number; tutorName: string }
   >({
     mutationFn: ({ sessionId, topic, startTime, duration, tutorName }) =>
-      accountApi.createZoomLink(backendUrl, token!, sessionId, topic, startTime, duration, tutorName),
+      accountApi.createZoomLink(
+        backendUrl,
+        token!,
+        sessionId,
+        topic,
+        startTime,
+        duration,
+        tutorName
+      ),
     onSuccess: () => {
       alertFn?.('Zoom link created.');
       refetchSessions();
@@ -348,49 +340,42 @@ export const useAccountSection = (
   });
 
   /* 7) URL-driven tab logic ------------------------------------------------- */
- useEffect(() => {
-  if (queryParams?.get('action') === 'createSession') {
-    setActiveTab('sessions');
-    setFormData((fd) => ({
-      ...fd,
-      tutorId: queryParams.get('tutorId') ?? '',
-      tutorName: queryParams.get('tutorName') ?? '',
-      subject: queryParams.get('subject') ?? '',
-      pricing: queryParams.get('pricing')
-        ? JSON.parse(queryParams.get('pricing')!)
-        : {},
-    }));
-  }
-}, [queryParams, setActiveTab, setFormData]);
-
+  useEffect(() => {
+    if (queryParams?.get('action') === 'createSession') {
+      setActiveTab('sessions');
+      setFormData((fd) => ({
+        ...fd,
+        tutorId: queryParams.get('tutorId') ?? '',
+        tutorName: queryParams.get('tutorName') ?? '',
+        subject: queryParams.get('subject') ?? '',
+        pricing: queryParams.get('pricing') ? JSON.parse(queryParams.get('pricing')!) : {},
+      }));
+    }
+  }, [queryParams, setActiveTab, setFormData]);
 
   /* 8) When Earnings tab is open, refresh related data on focus ------------ */
- useEffect(() => {
-  if (activeTab !== 'earnings') return;
+  useEffect(() => {
+    if (activeTab !== 'earnings') return;
 
-  // Always refresh once when Earnings tab is opened
-  refetchTransactions();
-  refetchAccount();
-  refetchEarnings();
-
-  // ✅ Only attach window focus listener on web
-  if (
-    typeof window === 'undefined' ||
-    typeof window.addEventListener !== 'function'
-  ) {
-    return;
-  }
-
-  const onFocus = () => {
+    // Always refresh once when Earnings tab is opened
     refetchTransactions();
     refetchAccount();
     refetchEarnings();
-  };
 
-  window.addEventListener('focus', onFocus);
-  return () => window.removeEventListener('focus', onFocus);
-}, [activeTab, refetchTransactions, refetchAccount, refetchEarnings]);
+    // ✅ Only attach window focus listener on web
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+      return;
+    }
 
+    const onFocus = () => {
+      refetchTransactions();
+      refetchAccount();
+      refetchEarnings();
+    };
+
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [activeTab, refetchTransactions, refetchAccount, refetchEarnings]);
 
   /* 9) Handlers ------------------------------------------------------------- */
   const confirmCancelSession = useCallback(
@@ -435,8 +420,7 @@ export const useAccountSection = (
   );
 
   const handleCancelReasonChange = useCallback(
-    (sessionId: string, reason: string) =>
-      setCancelReasons((p) => ({ ...p, [sessionId]: reason })),
+    (sessionId: string, reason: string) => setCancelReasons((p) => ({ ...p, [sessionId]: reason })),
     []
   );
 

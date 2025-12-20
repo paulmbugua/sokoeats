@@ -20,6 +20,8 @@ router.post('/password/request-otp', institutionRequestPasswordReset);
 router.post('/password/verify', institutionVerifyOTPAndResetPassword);
 router.post('/change-password', requireAuth, institutionChangePassword);
 // Protected sanity check (optional)
-router.get('/whoami', requireAuth, (req, res) => res.json({ ok: true, user: req.user }));
+router.get('/whoami', requireAuth, (req, res) =>
+  res.json({ ok: true, user: req.user }),
+);
 
 export default router;

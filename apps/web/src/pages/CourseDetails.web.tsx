@@ -3,10 +3,9 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import debounce from 'lodash.debounce';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useCourses, useEnrollments,useOerMeta } from '@mytutorapp/shared/hooks';
+import { useCourses, useEnrollments, useOerMeta } from '@mytutorapp/shared/hooks';
 import { useCourseReviews } from '@mytutorapp/shared/hooks/useCourseReviews';
 import type { Course } from '@mytutorapp/shared/types';
-
 
 interface MaybeInstructor {
   tutorName?: string;
@@ -15,7 +14,7 @@ interface MaybeInstructor {
 
 const StarRow: React.FC<{ avg?: number; count?: number }> = ({ avg = 0, count = 0 }) => {
   const a = Math.round(avg * 2) / 2;
-  const stars = [1, 2, 3, 4, 5].map(i => (a >= i ? '★' : a + 0.5 === i ? '☆' : '☆')).join('');
+  const stars = [1, 2, 3, 4, 5].map((i) => (a >= i ? '★' : a + 0.5 === i ? '☆' : '☆')).join('');
   return (
     <span
       className="text-sm text-[#49739c] dark:text-darkTextSecondary"
@@ -28,12 +27,7 @@ const StarRow: React.FC<{ avg?: number; count?: number }> = ({ avg = 0, count = 
 
 /** Coerce any price-like value to whole tokens (non-negative int) */
 function toTokens(v: unknown): number {
-  const n =
-    typeof v === 'number'
-      ? v
-      : typeof v === 'string'
-      ? Number.parseFloat(v)
-      : 0;
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number.parseFloat(v) : 0;
   return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
 }
 
@@ -80,9 +74,7 @@ const CourseDetails: React.FC = () => {
 
   const myEnrollment = useMemo(() => {
     if (!courseId) return undefined;
-    return enrollments.find(
-      (e: any) => String(e?.course_id ?? e?.courseId) === String(courseId)
-    );
+    return enrollments.find((e: any) => String(e?.course_id ?? e?.courseId) === String(courseId));
   }, [enrollments, courseId]);
 
   // Always treat price as tokens
@@ -93,14 +85,20 @@ const CourseDetails: React.FC = () => {
   const mi = (c ?? {}) as Course & MaybeInstructor;
   const tutorName = mi.tutorName || mi.instructor?.name || 'Your tutor';
   const tutorBio = mi.instructor?.bio || 'Experienced educator';
-const oerMeta = useOerMeta(courseId);
+  const oerMeta = useOerMeta(courseId);
   // -------- Reviews wiring --------
   const { avg, count, hasMyReview, reload, submit, posting } = useCourseReviews(
     backendUrl,
     courseId,
     { myStudentId: myId, token: token ?? '' }
   );
-  const debouncedReload = useMemo(() => debounce(() => { void reload(); }, 200), [reload]);
+  const debouncedReload = useMemo(
+    () =>
+      debounce(() => {
+        void reload();
+      }, 200),
+    [reload]
+  );
   useEffect(() => () => debouncedReload.cancel(), [debouncedReload]);
 
   const [openReview, setOpenReview] = useState(false);
@@ -113,7 +111,7 @@ const oerMeta = useOerMeta(courseId);
 
     const proceed = window.confirm(
       `You are about to purchase "${c.title}" for ${priceTokens} tokens.\n\n` +
-      `This amount will be deducted from your balance (${walletTokens} tokens). Continue?`
+        `This amount will be deducted from your balance (${walletTokens} tokens). Continue?`
     );
     if (!proceed) return;
 
@@ -143,7 +141,7 @@ const oerMeta = useOerMeta(courseId);
   };
 
   const onUnenroll = async () => {
-    if (!(myEnrollment?.id)) return;
+    if (!myEnrollment?.id) return;
     try {
       await cancel(String(myEnrollment.id));
       debouncedReload();
@@ -197,7 +195,6 @@ const oerMeta = useOerMeta(courseId);
               </span>
             )}
 
-
             {/* ⭐ Rating row */}
             <div className="mt-2">
               <StarRow avg={avg} count={count} />
@@ -250,16 +247,15 @@ const oerMeta = useOerMeta(courseId);
                   Unenroll
                 </button>
                 {oerMeta && (
-                <a
-                  href={`${backendUrl}/api/oer/transcript/${courseId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-xl h-10 px-4 bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-sm font-semibold"
-                >
-                  Download Transcript (Free)
-                </a>
-              )}
-
+                  <a
+                    href={`${backendUrl}/api/oer/transcript/${courseId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-xl h-10 px-4 bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-sm font-semibold"
+                  >
+                    Download Transcript (Free)
+                  </a>
+                )}
 
                 {/* Review button when enrolled & not yet reviewed */}
                 {!hasMyReview && (
@@ -308,9 +304,7 @@ const oerMeta = useOerMeta(courseId);
               Back
             </button>
 
-            {enrollError && (
-              <p className="text-xs text-red-600 mt-1">{String(enrollError)}</p>
-            )}
+            {enrollError && <p className="text-xs text-red-600 mt-1">{String(enrollError)}</p>}
           </div>
         </div>
 
@@ -355,7 +349,7 @@ const oerMeta = useOerMeta(courseId);
             <h3 className="text-lg font-bold mb-2">Rate this course</h3>
             <p className="text-sm text-[#49739c] dark:text-darkTextSecondary mb-3">{c.title}</p>
             <div className="flex items-center gap-2 mb-3">
-              {[1, 2, 3, 4, 5].map(n => (
+              {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
                   onClick={() => setRating(n)}

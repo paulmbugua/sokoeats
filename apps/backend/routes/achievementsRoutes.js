@@ -3,8 +3,8 @@ import authUser from '../middleware/authUser.js';
 import {
   listStudentAchievements,
   awardAchievement,
-  unlockAchievement,      // ✅ import it
-  deleteAchievement,      // ✅ import it
+  unlockAchievement, // ✅ import it
+  deleteAchievement, // ✅ import it
 } from '../controllers/achievementsController.js';
 
 const router = express.Router();

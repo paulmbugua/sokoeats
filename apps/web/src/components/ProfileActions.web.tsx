@@ -80,7 +80,9 @@ ProfileActions.StatusButton = ({ status, statusColor, lastOnline }) => (
   <div className="flex items-center justify-between mt-2">
     <span className="text-sm text-darkTextSecondary">
       Status:{' '}
-      <span className={`inline-flex items-center px-2 py-1 rounded-md text-white text-xs ${statusColor}`}>
+      <span
+        className={`inline-flex items-center px-2 py-1 rounded-md text-white text-xs ${statusColor}`}
+      >
         {status || 'Unknown'}
       </span>
     </span>
@@ -91,9 +93,7 @@ ProfileActions.StatusButton = ({ status, statusColor, lastOnline }) => (
 /* ---------- Recommended tutors grid ---------- */
 ProfileActions.Recommended = ({ recommended, statusColor }) => (
   <div className="mt-8 pb-10">
-    <h3 className="text-lg sm:text-xl font-semibold text-primary mb-4">
-      Recommended Tutors
-    </h3>
+    <h3 className="text-lg sm:text-xl font-semibold text-primary mb-4">Recommended Tutors</h3>
 
     {recommended && recommended.length ? (
       <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -104,7 +104,10 @@ ProfileActions.Recommended = ({ recommended, statusColor }) => (
           >
             <div className="flex items-center justify-between mb-2">
               <h4 className="font-semibold truncate">{profile.name}</h4>
-              <span className={`inline-block w-2.5 h-2.5 rounded-full ${statusColor}`} aria-hidden="true" />
+              <span
+                className={`inline-block w-2.5 h-2.5 rounded-full ${statusColor}`}
+                aria-hidden="true"
+              />
             </div>
             <p className="text-sm text-darkTextSecondary">
               {typeof profile.description?.bio === 'string' && profile.description.bio.length

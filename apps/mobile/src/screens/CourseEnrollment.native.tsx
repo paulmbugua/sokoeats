@@ -1,13 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, { useEffect, useMemo, useCallback } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import tw from '../../tailwind';
 
@@ -20,12 +13,7 @@ type RouteParams = { courseId?: string | number; course?: Course };
 
 /** Helper to coerce price into whole tokens */
 function toTokens(v: unknown): number {
-  const n =
-    typeof v === 'number'
-      ? v
-      : typeof v === 'string'
-      ? Number.parseFloat(v)
-      : 0;
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number.parseFloat(v) : 0;
   return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
 }
 
@@ -57,13 +45,7 @@ const CourseEnrollmentNative: React.FC = () => {
   }, [token, role, navigation]);
 
   // Enrollments API (use "me" so backend resolves from JWT)
-  const {
-    purchaseCourseAndEnroll,
-    fetchMine,
-    enrollments,
-    loading,
-    error,
-  } = useEnrollments({
+  const { purchaseCourseAndEnroll, fetchMine, enrollments, loading, error } = useEnrollments({
     backendUrl,
     token,
     studentId: 'me' as unknown as string | number,
@@ -177,9 +159,7 @@ const CourseEnrollmentNative: React.FC = () => {
       <View style={tw`rounded-2xl bg-white p-6 shadow-soft`}>
         <Text style={tw`text-2xl font-bold text-darkText mb-2`}>{c.title}</Text>
 
-        {!!c.description && (
-          <Text style={tw`text-darkText mb-4`}>{c.description}</Text>
-        )}
+        {!!c.description && <Text style={tw`text-darkText mb-4`}>{c.description}</Text>}
 
         <View style={tw`flex-row flex-wrap gap-3 mb-4`}>
           {!!c.level && <Text style={tw`text-mutedGray text-sm`}>Level: {c.level}</Text>}
@@ -225,9 +205,7 @@ const CourseEnrollmentNative: React.FC = () => {
           </View>
         )}
 
-        {!!error && (
-          <Text style={tw`text-red-600 mt-4 text-sm`}>{String(error)}</Text>
-        )}
+        {!!error && <Text style={tw`text-red-600 mt-4 text-sm`}>{String(error)}</Text>}
 
         {/* Syllabus preview */}
         {Array.isArray(c.syllabus) && c.syllabus.length > 0 && (

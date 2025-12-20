@@ -10,14 +10,12 @@ const CertificateButton: React.FC<{ courseId: string; justPassed?: boolean }> = 
 }) => {
   const { backendUrl, token } = useShopContext();
 
-  const {
-    eligible,
-    eligibilityReason,
-    certificate,
-    loading,
-    error,
-    generate,
-  } = useCertificate({ backendUrl, token, courseId, justPassed });
+  const { eligible, eligibilityReason, certificate, loading, error, generate } = useCertificate({
+    backendUrl,
+    token,
+    courseId,
+    justPassed,
+  });
 
   const [downloading, setDownloading] = useState(false);
 

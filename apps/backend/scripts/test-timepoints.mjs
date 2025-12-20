@@ -26,7 +26,7 @@ async function main() {
       resp.timepoints.map((tp) => ({
         markName: tp.markName || tp.timepointName,
         timeSeconds: tp.timeSeconds,
-      }))
+      })),
     );
   }
 }

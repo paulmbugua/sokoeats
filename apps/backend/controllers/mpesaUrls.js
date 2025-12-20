@@ -3,12 +3,17 @@
 import pool from '../config/db.js';
 
 export const mpesaCallback = async (req, res) => {
-  console.log('🔥 GOT STK CALLBACK (raw body):\n', JSON.stringify(req.body, null, 2));
+  console.log(
+    '🔥 GOT STK CALLBACK (raw body):\n',
+    JSON.stringify(req.body, null, 2),
+  );
 
   let client;
   try {
     client = await pool.connect();
-    client.on('error', (err) => console.error('⚠️ PG CLIENT ERROR (ignored):', err.message));
+    client.on('error', (err) =>
+      console.error('⚠️ PG CLIENT ERROR (ignored):', err.message),
+    );
     await client.query('BEGIN');
 
     const stk = req.body?.Body?.stkCallback;
@@ -18,23 +23,22 @@ export const mpesaCallback = async (req, res) => {
       return res.status(200).send('OK');
     }
 
-    const {
-      CheckoutRequestID,
-      ResultCode,
-      ResultDesc,
-      CallbackMetadata,
-    } = stk;
+    const { CheckoutRequestID, ResultCode, ResultDesc, CallbackMetadata } = stk;
 
     const items = CallbackMetadata?.Item || [];
-    const receipt = items.find((i) => i.Name === 'MpesaReceiptNumber')?.Value || null;
+    const receipt =
+      items.find((i) => i.Name === 'MpesaReceiptNumber')?.Value || null;
     const amountKes = items.find((i) => i.Name === 'Amount')?.Value ?? null;
 
-    const paidKesInt =
-      Number.isFinite(Number(amountKes)) ? Math.max(0, Math.round(Number(amountKes))) : null;
+    const paidKesInt = Number.isFinite(Number(amountKes))
+      ? Math.max(0, Math.round(Number(amountKes)))
+      : null;
     const paidKesMinor = paidKesInt != null ? paidKesInt * 100 : null;
 
     const patch = {
-      mpesaResultCode: Number.isFinite(Number(ResultCode)) ? Number(ResultCode) : null,
+      mpesaResultCode: Number.isFinite(Number(ResultCode))
+        ? Number(ResultCode)
+        : null,
       mpesaResultDesc: ResultDesc ? String(ResultDesc).slice(0, 500) : null,
       mpesaReceiptNumber: receipt,
       paidKesInt,
@@ -51,7 +55,7 @@ export const mpesaCallback = async (req, res) => {
         WHERE transaction_id = $2
           AND status = 'Pending'
         RETURNING *;`,
-      [receipt, CheckoutRequestID, JSON.stringify(patch)]
+      [receipt, CheckoutRequestID, JSON.stringify(patch)],
     );
 
     if (!rowCount) {
@@ -66,7 +70,9 @@ export const mpesaCallback = async (req, res) => {
     return res.status(200).send('OK');
   } catch (err) {
     console.error('❌ Error processing STK callback:', err);
-    try { await client?.query('ROLLBACK'); } catch {}
+    try {
+      await client?.query('ROLLBACK');
+    } catch {}
     return res.status(200).send('OK');
   } finally {
     client?.release();
@@ -87,7 +93,7 @@ export const b2cResult = async (req, res) => {
     OriginatorConversationID,
     ConversationID,
     ResultCode,
-    TransactionID,      // actual M-Pesa receipt
+    TransactionID, // actual M-Pesa receipt
   } = result;
 
   // We keyed the transaction on ConversationID in confirmCompletion:
@@ -115,7 +121,9 @@ export const b2cResult = async (req, res) => {
     if (rows.length) {
       console.log(`✅ Transaction ${newStatus}:`, rows[0]);
     } else {
-      console.warn(`No matching transaction found for mpesa_reference=${mpesaRef}`);
+      console.warn(
+        `No matching transaction found for mpesa_reference=${mpesaRef}`,
+      );
     }
 
     await client.query('COMMIT');
@@ -141,11 +149,7 @@ export const b2cTimeout = async (req, res) => {
     return res.status(400).send({ error: 'Invalid callback format' });
   }
 
-  const {
-    OriginatorConversationID,
-    ConversationID,
-    ResultDesc,
-  } = result;
+  const { OriginatorConversationID, ConversationID, ResultDesc } = result;
 
   // Use the same reference you stored on the transaction
   const mpesaRef = OriginatorConversationID || ConversationID;
@@ -167,7 +171,9 @@ export const b2cTimeout = async (req, res) => {
     if (rows.length) {
       console.log(`⚠️ Transaction timed out and marked Failed:`, rows[0]);
     } else {
-      console.warn(`No pending transaction found for mpesa_reference=${mpesaRef}`);
+      console.warn(
+        `No pending transaction found for mpesa_reference=${mpesaRef}`,
+      );
     }
 
     await client.query('COMMIT');
@@ -182,4 +188,3 @@ export const b2cTimeout = async (req, res) => {
     client.release();
   }
 };
-

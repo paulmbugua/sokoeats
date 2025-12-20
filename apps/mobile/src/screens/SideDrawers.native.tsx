@@ -37,12 +37,12 @@ type Line = { text: string; start: number; end: number; indices: number[] };
    ───────────────────────────────────────────────────────── */
 function useSlideIn(open: boolean, from: 'left' | 'right', widthPx: number) {
   const [rendered, setRendered] = useState(open);
-  const x = useRef(new Animated.Value(open ? 0 : (from === 'right' ? widthPx : -widthPx))).current;
+  const x = useRef(new Animated.Value(open ? 0 : from === 'right' ? widthPx : -widthPx)).current;
 
   useEffect(() => {
     if (open) setRendered(true);
     Animated.timing(x, {
-      toValue: open ? 0 : (from === 'right' ? widthPx : -widthPx),
+      toValue: open ? 0 : from === 'right' ? widthPx : -widthPx,
       duration: 250,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
@@ -69,7 +69,12 @@ export const MarkdownPro: React.FC<{
   if (!RNMarkdown) {
     return (
       <ScrollView style={tw`max-h-[70vh]`}>
-        <Text style={[tw`text-slate-800 dark:text-slate-100`, { fontSize: computedFont, lineHeight: computedFont * 1.5 }]}>
+        <Text
+          style={[
+            tw`text-slate-800 dark:text-slate-100`,
+            { fontSize: computedFont, lineHeight: computedFont * 1.5 },
+          ]}
+        >
           {children}
         </Text>
       </ScrollView>
@@ -89,18 +94,30 @@ export const MarkdownPro: React.FC<{
     ),
     fence: (node: any) => (
       <ScrollView key={node.key} horizontal style={tw`mb-2`}>
-        <Text style={[tw`p-3 rounded-lg bg-zinc-900/5 dark:bg-white/10 text-[13px]`, { fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }) }]}>
+        <Text
+          style={[
+            tw`p-3 rounded-lg bg-zinc-900/5 dark:bg-white/10 text-[13px]`,
+            { fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }) },
+          ]}
+        >
           {node.content}
         </Text>
       </ScrollView>
     ),
     table: (node: any, childrenRN: any) => (
       <ScrollView key={node.key} horizontal style={tw`my-2 rounded-xl`}>
-        <View style={tw`bg-white dark:bg-slate-900 rounded-xl border border-black/10 dark:border-slate-700`}>{childrenRN}</View>
+        <View
+          style={tw`bg-white dark:bg-slate-900 rounded-xl border border-black/10 dark:border-slate-700`}
+        >
+          {childrenRN}
+        </View>
       </ScrollView>
     ),
     th: (node: any, childrenRN: any) => (
-      <View key={node.key} style={tw`px-3 py-2 bg-slate-100 dark:bg-slate-800 border-b border-black/10 dark:border-slate-700`}>
+      <View
+        key={node.key}
+        style={tw`px-3 py-2 bg-slate-100 dark:bg-slate-800 border-b border-black/10 dark:border-slate-700`}
+      >
         <Text style={tw`font-semibold text-slate-900 dark:text-slate-100`}>{childrenRN}</Text>
       </View>
     ),
@@ -137,8 +154,8 @@ export interface TranscriptDrawerProps {
   words: Word[];
   activeLine: number;
   currentIndex: number;
-  top: number;      // px from top edge to avoid overlap
-  bottom: number;   // px from bottom edge to avoid overlap
+  top: number; // px from top edge to avoid overlap
+  bottom: number; // px from bottom edge to avoid overlap
   readerScale: number;
   loading?: boolean;
   error?: string;
@@ -147,8 +164,19 @@ export interface TranscriptDrawerProps {
 }
 
 export const TranscriptDrawer: React.FC<TranscriptDrawerProps> = ({
-  open, title, lines, words, activeLine, currentIndex, top, bottom, readerScale,
-  loading, error, onSeekToWord, scrollRef,
+  open,
+  title,
+  lines,
+  words,
+  activeLine,
+  currentIndex,
+  top,
+  bottom,
+  readerScale,
+  loading,
+  error,
+  onSeekToWord,
+  scrollRef,
 }) => {
   const inset = useSafeAreaInsets();
   const screenW = Dimensions.get('window').width;
@@ -179,23 +207,21 @@ export const TranscriptDrawer: React.FC<TranscriptDrawerProps> = ({
       {/* Header */}
       <View style={tw`px-4 py-3 border-b border-black/10 dark:border-slate-700`}>
         <Text
-            numberOfLines={1}
-            // BEFORE: text-transparent + gradient classes (web-only)
-            // style={tw`font-semibold text-base text-transparent bg-clip-text bg-gradient-to-r from-[#f5a] via-indigo-300 to-indigo-600`}
-            style={tw`font-semibold text-base text-[#0d141c] dark:text-white`}
-          >
-            {title}
-          </Text>
+          numberOfLines={1}
+          // BEFORE: text-transparent + gradient classes (web-only)
+          // style={tw`font-semibold text-base text-transparent bg-clip-text bg-gradient-to-r from-[#f5a] via-indigo-300 to-indigo-600`}
+          style={tw`font-semibold text-base text-[#0d141c] dark:text-white`}
+        >
+          {title}
+        </Text>
 
-        <Text style={tw`mt-0.5 text-slate-600 dark:text-slate-300 text-[12px]`}>Transcript (tap a line to seek)</Text>
+        <Text style={tw`mt-0.5 text-slate-600 dark:text-slate-300 text-[12px]`}>
+          Transcript (tap a line to seek)
+        </Text>
       </View>
 
       {/* Lines */}
-      <ScrollView
-        ref={scrollRef as any}
-        style={tw`flex-1`}
-        contentContainerStyle={tw`px-2 py-2`}
-      >
+      <ScrollView ref={scrollRef as any} style={tw`flex-1`} contentContainerStyle={tw`px-2 py-2`}>
         {lines.map((ln, i) => {
           const active = i === activeLine;
           return (
@@ -203,15 +229,12 @@ export const TranscriptDrawer: React.FC<TranscriptDrawerProps> = ({
               key={`${ln.start}-${i}`}
               onPress={() => {
                 if (ln.indices.length > 0) {
-                    onSeekToWord(ln.indices[0]!); // safe due to the length check
+                  onSeekToWord(ln.indices[0]!); // safe due to the length check
                 }
-                }}
-
+              }}
               style={[
                 tw`rounded-md px-3 py-2 mb-2`,
-                active
-                  ? tw`bg-slate-100 dark:bg-slate-800`
-                  : tw`bg-transparent`,
+                active ? tw`bg-slate-100 dark:bg-slate-800` : tw`bg-transparent`,
               ]}
             >
               <Text
@@ -221,27 +244,26 @@ export const TranscriptDrawer: React.FC<TranscriptDrawerProps> = ({
                 ]}
               >
                 {ln.indices.map((wi, j) => {
-                    const w = words[wi];
-                    if (!w) return null; // guard against out-of-bounds/undefined
-                    const isActiveWord = wi === currentIndex;
-                    return (
-                        <Text
-                        key={`${wi}-${j}`}
-                        style={isActiveWord
-                            ? [tw`bg-white text-black rounded px-1`]
-                            : undefined}
-                        >
-                        {(j ? ' ' : '') + w.text}
-                        </Text>
-                    );
-                    })}
-
+                  const w = words[wi];
+                  if (!w) return null; // guard against out-of-bounds/undefined
+                  const isActiveWord = wi === currentIndex;
+                  return (
+                    <Text
+                      key={`${wi}-${j}`}
+                      style={isActiveWord ? [tw`bg-white text-black rounded px-1`] : undefined}
+                    >
+                      {(j ? ' ' : '') + w.text}
+                    </Text>
+                  );
+                })}
               </Text>
             </TouchableOpacity>
           );
         })}
         {!!loading && (
-          <Text style={tw`px-3 text-[12px] text-slate-600 dark:text-slate-300`}>Generating TTS…</Text>
+          <Text style={tw`px-3 text-[12px] text-slate-600 dark:text-slate-300`}>
+            Generating TTS…
+          </Text>
         )}
         {!!error && !loading && (
           <Text style={tw`px-3 text-[12px] text-red-600 dark:text-red-300`}>{error}</Text>
@@ -266,7 +288,13 @@ export interface NotesDrawerProps {
 }
 
 export const NotesDrawer: React.FC<NotesDrawerProps> = ({
-  open, title, markdown, top, bottom, readerScale, isMax = false,
+  open,
+  title,
+  markdown,
+  top,
+  bottom,
+  readerScale,
+  isMax = false,
 }) => {
   const inset = useSafeAreaInsets();
   const screenW = Dimensions.get('window').width;
@@ -310,10 +338,7 @@ export const NotesDrawer: React.FC<NotesDrawerProps> = ({
       </View>
 
       {/* Content */}
-      <ScrollView
-        style={tw`flex-1`}
-        contentContainerStyle={tw`p-3`}
-      >
+      <ScrollView style={tw`flex-1`} contentContainerStyle={tw`p-3`}>
         <MarkdownPro zoom={readerScale} size={isMax ? 'lg' : 'base'}>
           {markdown || '_No notes for this lesson yet._'}
         </MarkdownPro>

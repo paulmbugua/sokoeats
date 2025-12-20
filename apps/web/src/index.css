@@ -18,7 +18,9 @@
     text-size-adjust: 100%;
   }
   @media (min-width: 768px) {
-    html { font-size: 14px; }
+    html {
+      font-size: 14px;
+    }
   }
 
   /* Light mode defaults */
@@ -27,39 +29,56 @@
     font-family: 'Poppins', sans-serif;
   }
   /* Force inherit */
-  * { font-family: inherit; }
+  * {
+    font-family: inherit;
+  }
 
   /* Dark mode overrides */
-  .dark body { @apply bg-darkBg text-darkTextPrimary; }
+  .dark body {
+    @apply bg-darkBg text-darkTextPrimary;
+  }
 
   /* Links */
-  a { @apply transition-colors duration-200; }
+  a {
+    @apply transition-colors duration-200;
+  }
 
   /* ───────── Focus / outline reset (removes blue glow & rectangles) ───────── */
-  * { -webkit-tap-highlight-color: transparent; }
-  input, textarea, select, button {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  input,
+  textarea,
+  select,
+  button {
     outline: none !important;
     box-shadow: none !important;
     -webkit-appearance: none;
     appearance: none;
   }
-  input:focus, textarea:focus, select:focus, button:focus,
-  input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible {
+  input:focus,
+  textarea:focus,
+  select:focus,
+  button:focus,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  button:focus-visible {
     outline: none !important;
     box-shadow: none !important;
   }
 
   /* Kill WebKit search field chrome (extra decorations & glow) */
-  input[type="search"] {
+  input[type='search'] {
     outline: none !important;
     box-shadow: none !important;
-    border: none;                 /* no rectangular border */
+    border: none; /* no rectangular border */
     background-clip: padding-box; /* keep radius clean */
   }
-  input[type="search"]::-webkit-search-decoration,
-  input[type="search"]::-webkit-search-cancel-button,
-  input[type="search"]::-webkit-search-results-button,
-  input[type="search"]::-webkit-search-results-decoration {
+  input[type='search']::-webkit-search-decoration,
+  input[type='search']::-webkit-search-cancel-button,
+  input[type='search']::-webkit-search-results-button,
+  input[type='search']::-webkit-search-results-decoration {
     display: none;
   }
 
@@ -79,27 +98,42 @@
 }
 
 /* Smooth anchors opt-in */
-html.scroll-smooth { scroll-behavior: smooth; }
+html.scroll-smooth {
+  scroll-behavior: smooth;
+}
 
 /* Keep anchored sections visible below sticky headers */
-section[id] { scroll-margin-top: 80px; }
+section[id] {
+  scroll-margin-top: 80px;
+}
 
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  html.scroll-smooth { scroll-behavior: auto; }
+  html.scroll-smooth {
+    scroll-behavior: auto;
+  }
 }
 
 /* Hide scrollbars (opt-in) */
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
 /* ---------------------------
    Components / Utilities
    --------------------------- */
 @layer components {
   /* App wrappers */
-  .app-body { @apply text-darkText bg-softGray dark:bg-darkBg dark:text-darkTextPrimary; }
-  .app-heading { @apply text-plum font-display font-semibold dark:text-darkTextPrimary; }
+  .app-body {
+    @apply text-darkText bg-softGray dark:bg-darkBg dark:text-darkTextPrimary;
+  }
+  .app-heading {
+    @apply text-plum font-display font-semibold dark:text-darkTextPrimary;
+  }
 
   /* Theme-aware panel */
   .panel {
@@ -118,7 +152,7 @@ section[id] { scroll-margin-top: 80px; }
     @apply bg-indigo-50 text-indigo-700 ring-indigo-300
            dark:bg-indigo-600/40 dark:text-white dark:ring-indigo-500;
   }
-  
+
   .overlay-panel {
     @apply rounded-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur
            ring-1 ring-white/10 shadow-2xl;
@@ -171,16 +205,26 @@ section[id] { scroll-margin-top: 80px; }
            hover:bg-softPink hover:text-white;
   }
 
-  .link { @apply text-gray-500 hover:text-softPink cursor-pointer dark:text-darkTextSecondary; }
+  .link {
+    @apply text-gray-500 hover:text-softPink cursor-pointer dark:text-darkTextSecondary;
+  }
 
-  .form-heading { @apply text-2xl font-bold text-center text-softPink; }
+  .form-heading {
+    @apply text-2xl font-bold text-center text-softPink;
+  }
 
   /* Progress bar animation */
-  .progress-bar-inner { transition: width 0.3s ease; }
+  .progress-bar-inner {
+    transition: width 0.3s ease;
+  }
 
   /* Modal */
-  .modal-backdrop { @apply fixed inset-0 flex items-center justify-center bg-black/50 z-50; }
-  .modal-content { @apply panel p-6 w-full max-w-sm; }
+  .modal-backdrop {
+    @apply fixed inset-0 flex items-center justify-center bg-black/50 z-50;
+  }
+  .modal-content {
+    @apply panel p-6 w-full max-w-sm;
+  }
 }
 
 @layer components {
@@ -200,8 +244,12 @@ section[id] { scroll-margin-top: 80px; }
 
   /* ---------- Prose helpers & image-only paragraph polish ---------- */
   /* Theme-aware prose helper */
-  .prose-theme { @apply prose prose-base max-w-none; }
-  .dark .prose-theme { @apply prose-invert; }
+  .prose-theme {
+    @apply prose prose-base max-w-none;
+  }
+  .dark .prose-theme {
+    @apply prose-invert;
+  }
 
   /* If a paragraph contains only a single image, present it like a block/figure */
   .prose :where(p:has(> img:only-child)) {
@@ -220,50 +268,83 @@ section[id] { scroll-margin-top: 80px; }
 /* ===== Fix: make formula text bright in the dark overlay ===== */
 @layer components {
   /* KaTeX inside overlay: inherit and brighten in dark mode */
-  .overlay-panel :is(.katex, .katex-display) { color: inherit; }
-  .dark .overlay-panel :is(.katex, .katex-display) { color: #fff !important; }
+  .overlay-panel :is(.katex, .katex-display) {
+    color: inherit;
+  }
+  .dark .overlay-panel :is(.katex, .katex-display) {
+    color: #fff !important;
+  }
 
   /* Plain-text formulas (non-KaTeX) */
-  .dark .overlay-panel [data-kind="formula"] {
-    color: #fff !important;                /* base text */
+  .dark .overlay-panel [data-kind='formula'] {
+    color: #fff !important; /* base text */
   }
-  .dark .overlay-panel [data-kind="formula"] :is(.formula-box, .formula-text, .rounded, .rounded-lg, .rounded-xl) {
-    color: #fff !important;                /* inner “pill” / box text */
+  .dark
+    .overlay-panel
+    [data-kind='formula']
+    :is(.formula-box, .formula-text, .rounded, .rounded-lg, .rounded-xl) {
+    color: #fff !important; /* inner “pill” / box text */
   }
   /* optional: slightly softer for helper text lines like “Read as:” */
-  .dark .overlay-panel [data-kind="formula"] .hint,
-  .dark .overlay-panel [data-kind="formula"] .muted {
-    color: rgba(255,255,255,0.8) !important;
+  .dark .overlay-panel [data-kind='formula'] .hint,
+  .dark .overlay-panel [data-kind='formula'] .muted {
+    color: rgba(255, 255, 255, 0.8) !important;
   }
 
   /* If any opacity utilities were applied, neutralize them */
-  .dark .overlay-panel [data-kind="formula"] * { --tw-text-opacity: 1 !important; }
+  .dark .overlay-panel [data-kind='formula'] * {
+    --tw-text-opacity: 1 !important;
+  }
 }
 
 /* Small utilities the overlay relies on */
 @layer utilities {
   /* Ensure cards don't split across columns in the full-screen overlay */
-  .break-inside-avoid { break-inside: avoid; }
+  .break-inside-avoid {
+    break-inside: avoid;
+  }
 }
 
 /* ── Focus/outline + ring overrides for all form controls ── */
 @layer utilities {
   /* No tap highlight on mobile */
-  .app-body * { -webkit-tap-highlight-color: transparent; }
+  .app-body * {
+    -webkit-tap-highlight-color: transparent;
+  }
 
   /* Rings per kind */
-  .ring-accent-formula { @apply ring-violet-300/50 dark:ring-violet-400/30; }
-  .ring-accent-table   { @apply ring-emerald-300/50 dark:ring-emerald-400/30; }
-  .ring-accent-image   { @apply ring-rose-300/50 dark:ring-rose-400/30; }
-  .ring-accent-snippet { @apply ring-amber-300/50 dark:ring-amber-400/30; }
-  .ring-accent-chart   { @apply ring-sky-300/50   dark:ring-sky-400/30; }
+  .ring-accent-formula {
+    @apply ring-violet-300/50 dark:ring-violet-400/30;
+  }
+  .ring-accent-table {
+    @apply ring-emerald-300/50 dark:ring-emerald-400/30;
+  }
+  .ring-accent-image {
+    @apply ring-rose-300/50 dark:ring-rose-400/30;
+  }
+  .ring-accent-snippet {
+    @apply ring-amber-300/50 dark:ring-amber-400/30;
+  }
+  .ring-accent-chart {
+    @apply ring-sky-300/50   dark:ring-sky-400/30;
+  }
 
   /* Label gradients per kind */
-  .grad-formula { @apply from-violet-300 via-fuchsia-300 to-sky-300; }
-  .grad-table   { @apply from-emerald-300 via-teal-300   to-softPink; }
-  .grad-image   { @apply from-softPink   via-rose-300    to-softPink; }
-  .grad-snippet { @apply from-amber-300  via-orange-300  to-softPink; }
-  .grad-chart   { @apply from-sky-300    via-indigo-300  to-softPink; }
+  .grad-formula {
+    @apply from-violet-300 via-fuchsia-300 to-sky-300;
+  }
+  .grad-table {
+    @apply from-emerald-300 via-teal-300   to-softPink;
+  }
+  .grad-image {
+    @apply from-softPink   via-rose-300    to-softPink;
+  }
+  .grad-snippet {
+    @apply from-amber-300  via-orange-300  to-softPink;
+  }
+  .grad-chart {
+    @apply from-sky-300    via-indigo-300  to-softPink;
+  }
 
   /* Resize handle */
   .resize-handle {
@@ -275,46 +356,51 @@ section[id] { scroll-margin-top: 80px; }
   /* Nuke blue glow/outline from controls (keyboard-visible focus can be re-enabled via .kbd-focus) */
   .app-body :is(input, textarea, select, button) {
     outline: none !important;
-    box-shadow: none !important;           /* kills Tailwind ring box-shadow */
+    box-shadow: none !important; /* kills Tailwind ring box-shadow */
   }
   .app-body :is(input, textarea, select, button):is(:focus, :focus-visible) {
     outline: none !important;
     box-shadow: none !important;
-    border-color: transparent;             /* avoid border color flips */
+    border-color: transparent; /* avoid border color flips */
   }
 
   /* WebKit search field decorations + focus ring */
-  .app-body input[type="search"] {
+  .app-body input[type='search'] {
     -webkit-appearance: none;
     appearance: none;
     outline: none !important;
     box-shadow: none !important;
   }
-  .app-body input[type="search"]::-webkit-search-decoration,
-  .app-body input[type="search"]::-webkit-search-cancel-button,
-  .app-body input[type="search"]::-webkit-search-results-button,
-  .app-body input[type="search"]::-webkit-search-results-decoration {
+  .app-body input[type='search']::-webkit-search-decoration,
+  .app-body input[type='search']::-webkit-search-cancel-button,
+  .app-body input[type='search']::-webkit-search-results-button,
+  .app-body input[type='search']::-webkit-search-results-decoration {
     display: none;
   }
 
   /* If a wrapper has a Tailwind ring AND contains an input, remove the rectangle */
   /* Uses :has() which is supported in modern Chrome/Edge/Safari */
-  .app-body :is([class*="ring-"], .ring, .ring-1, .ring-2):has(:is(input, textarea, select)) {
-    box-shadow: none !important;           /* hide the ring rectangle */
-    border: 1px solid transparent;         /* keep layout without visible border */
+  .app-body :is([class*='ring-'], .ring, .ring-1, .ring-2):has(:is(input, textarea, select)) {
+    box-shadow: none !important; /* hide the ring rectangle */
+    border: 1px solid transparent; /* keep layout without visible border */
   }
 }
 
 @layer base {
   /* Keep KaTeX using its own fonts */
-  .katex, .katex * {
-    font-family: KaTeX_Main, "Times New Roman", serif !important;
+  .katex,
+  .katex * {
+    font-family: KaTeX_Main, 'Times New Roman', serif !important;
   }
 
   /* Monospace for code UI and prose */
-  code, pre, kbd, samp {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-                 "Liberation Mono", "Courier New", monospace !important;
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace !important;
   }
 }
 
@@ -329,8 +415,10 @@ section[id] { scroll-margin-top: 80px; }
   @supports not (selector(:has(*))) {
     .no-has .ring-wrapper {
       box-shadow: none !important;
-      border: 1px solid rgba(0,0,0,0.08);
+      border: 1px solid rgba(0, 0, 0, 0.08);
     }
-    .dark .no-has .ring-wrapper { border-color: rgba(255,255,255,0.10); }
+    .dark .no-has .ring-wrapper {
+      border-color: rgba(255, 255, 255, 0.1);
+    }
   }
 }

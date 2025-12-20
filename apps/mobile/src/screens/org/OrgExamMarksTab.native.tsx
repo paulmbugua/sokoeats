@@ -1,17 +1,5 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
 import tw from '../../../tailwind';
 import type { OrgExamResultRow } from '@mytutorapp/shared/types';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -54,7 +42,7 @@ type OrgExamMarksTabProps = {
   saveSheet: (
     sessionId: string,
     classLabel: string | undefined,
-    rows: OrgExamResultRow[],
+    rows: OrgExamResultRow[]
   ) => void | Promise<void>;
 };
 
@@ -160,10 +148,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
 
   const totalMarksPages = useMemo(() => {
     if (!filteredSheetRows.length) return 1;
-    return Math.max(
-      1,
-      Math.ceil(filteredSheetRows.length / marksPageSize),
-    );
+    return Math.max(1, Math.ceil(filteredSheetRows.length / marksPageSize));
   }, [filteredSheetRows.length, marksPageSize]);
 
   const paginatedSheetRows = useMemo(() => {
@@ -188,10 +173,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
   const marksRangeText = () => {
     if (!filteredSheetRows.length) return 'No marks yet';
     const start = (marksPage - 1) * marksPageSize + 1;
-    const end = Math.min(
-      marksPage * marksPageSize,
-      filteredSheetRows.length,
-    );
+    const end = Math.min(marksPage * marksPageSize, filteredSheetRows.length);
     return `Showing ${start}–${end} of ${filteredSheetRows.length} rows`;
   };
 
@@ -207,10 +189,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
   const handleAiFillColumn = useCallback(
     async (targetKey: string, instructions: string) => {
       if (!backendUrl || !orgId) {
-        Alert.alert(
-          'AI fill',
-          'Missing org or backend URL – cannot run AI fill.',
-        );
+        Alert.alert('AI fill', 'Missing org or backend URL – cannot run AI fill.');
         return;
       }
       if (!selectedSessionId) {
@@ -218,34 +197,26 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
         return;
       }
       if (!sheetRows.length) {
-        Alert.alert(
-          'AI fill',
-          'No rows available for AI to work on.',
-        );
+        Alert.alert('AI fill', 'No rows available for AI to work on.');
         return;
       }
 
       setAiBusy(true);
       try {
-        const resp = await fetch(
-          `${backendUrl}/api/orgs/${orgId}/exams/sheet/ai-compute`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(authToken
-                ? { Authorization: `Bearer ${authToken}` }
-                : {}),
-            },
-            body: JSON.stringify({
-              sessionId: selectedSessionId,
-              classLabel,
-              rows: sheetRows,
-              targetColumnKey: targetKey || undefined,
-              instructions,
-            }),
+        const resp = await fetch(`${backendUrl}/api/orgs/${orgId}/exams/sheet/ai-compute`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
-        );
+          body: JSON.stringify({
+            sessionId: selectedSessionId,
+            classLabel,
+            rows: sheetRows,
+            targetColumnKey: targetKey || undefined,
+            instructions,
+          }),
+        });
 
         const data = await resp.json().catch(() => null);
 
@@ -253,43 +224,24 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
           console.error('[handleAiFillColumn] error response', data);
           Alert.alert(
             'AI fill',
-            data?.message ||
-              'AI sheet update failed. Please check your instructions and try again.',
+            data?.message || 'AI sheet update failed. Please check your instructions and try again.'
           );
           return;
         }
 
         if (Array.isArray(data.rows) && data.rows.length) {
-          await saveSheet(
-            selectedSessionId,
-            classLabel || undefined,
-            data.rows,
-          );
+          await saveSheet(selectedSessionId, classLabel || undefined, data.rows);
         } else {
-          Alert.alert(
-            'AI fill',
-            'AI did not return any updated rows.',
-          );
+          Alert.alert('AI fill', 'AI did not return any updated rows.');
         }
       } catch (err) {
         console.error('[handleAiFillColumn] error', err);
-        Alert.alert(
-          'AI fill',
-          'Failed to run AI fill. Please try again.',
-        );
+        Alert.alert('AI fill', 'Failed to run AI fill. Please try again.');
       } finally {
         setAiBusy(false);
       }
     },
-    [
-      backendUrl,
-      orgId,
-      authToken,
-      selectedSessionId,
-      classLabel,
-      sheetRows,
-      saveSheet,
-    ],
+    [backendUrl, orgId, authToken, selectedSessionId, classLabel, sheetRows, saveSheet]
   );
 
   // ✨ Free-form AI prompt that can add / rename / fill extra columns
@@ -301,10 +253,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
     }
 
     if (!backendUrl || !orgId || !selectedSessionId || !sheetRows.length) {
-      Alert.alert(
-        'AI sheet assistant',
-        'Missing context (org, session or rows) for AI.',
-      );
+      Alert.alert('AI sheet assistant', 'Missing context (org, session or rows) for AI.');
       return;
     }
 
@@ -314,15 +263,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
     } finally {
       setAiBusy(false);
     }
-  }, [
-    aiPrompt,
-    aiColumnKey,
-    backendUrl,
-    orgId,
-    selectedSessionId,
-    sheetRows,
-    handleAiFillColumn,
-  ]);
+  }, [aiPrompt, aiColumnKey, backendUrl, orgId, selectedSessionId, sheetRows, handleAiFillColumn]);
 
   // ────────────────────────────────────────────────
   // UI helpers
@@ -339,14 +280,8 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
         },
   ];
 
-  const tableHeaderCell = [
-    tw`px-3 py-2 min-w-[90px]`,
-    { borderColor: palette.border },
-  ];
-  const tableCell = [
-    tw`px-3 py-2 min-w-[90px]`,
-    { borderColor: palette.border },
-  ];
+  const tableHeaderCell = [tw`px-3 py-2 min-w-[90px]`, { borderColor: palette.border }];
+  const tableCell = [tw`px-3 py-2 min-w-[90px]`, { borderColor: palette.border }];
 
   const inputBase = [
     tw`rounded-xl px-3 text-xs`,
@@ -380,27 +315,15 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
       ]}
     >
       {/* Header / summary */}
-      <View
-        style={tw`flex-row flex-wrap items-center justify-between gap-y-3 mb-3`}
-      >
+      <View style={tw`flex-row flex-wrap items-center justify-between gap-y-3 mb-3`}>
         <View style={tw`flex-1 mr-2`}>
-          <Text
-            style={[tw`text-sm font-bold`, { color: palette.text }]}
-          >
-            Marks entry
-          </Text>
-          <Text
-            style={[tw`text-[11px] mt-0.5`, { color: palette.textSoft }]}
-          >
+          <Text style={[tw`text-sm font-bold`, { color: palette.text }]}>Marks entry</Text>
+          <Text style={[tw`text-[11px] mt-0.5`, { color: palette.textSoft }]}>
             One row per learner & subject. The system will auto-grade on save.
           </Text>
-          <Text
-            style={[tw`text-[11px] mt-0.5`, { color: palette.textMuted }]}
-          >
-            Roster learners:{' '}
-            {rosterLoading ? 'Loading…' : rosterLearners.length || '0'}{' '}
-            • Selectable for this class:{' '}
-            {classLabel.trim() ? visibleLearnerCount : 'all'}
+          <Text style={[tw`text-[11px] mt-0.5`, { color: palette.textMuted }]}>
+            Roster learners: {rosterLoading ? 'Loading…' : rosterLearners.length || '0'} •
+            Selectable for this class: {classLabel.trim() ? visibleLearnerCount : 'all'}
           </Text>
         </View>
 
@@ -411,10 +334,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
             onChangeText={setSubjectFilter}
             placeholder="Filter by subject"
             placeholderTextColor={palette.textSoft}
-            style={[
-              ...inputBase,
-              tw`h-9`,
-            ]}
+            style={[...inputBase, tw`h-9`]}
           />
         </View>
       </View>
@@ -423,11 +343,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
       <View style={tw`mt-2 gap-3`}>
         {/* Learner selector DROPDOWN */}
         <View>
-          <Text
-            style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}
-          >
-            Select learner
-          </Text>
+          <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>Select learner</Text>
 
           {/* Field */}
           <TouchableOpacity
@@ -451,113 +367,83 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                 tw`text-[11px] flex-1`,
                 {
                   color:
-                    selectedLearnerLabel === 'Choose learner'
-                      ? palette.textSoft
-                      : palette.text,
+                    selectedLearnerLabel === 'Choose learner' ? palette.textSoft : palette.text,
                 },
               ]}
             >
               {selectedLearnerLabel}
             </Text>
-            <Text
-              style={[
-                tw`text-[10px] ml-2`,
-                { color: palette.textSoft },
-              ]}
-            >
+            <Text style={[tw`text-[10px] ml-2`, { color: palette.textSoft }]}>
               {learnerDropdownOpen ? '▲' : '▼'}
             </Text>
           </TouchableOpacity>
 
-{/* Dropdown menu */}
-{learnerDropdownOpen && !rosterLoading && learnerOptions.length > 0 && (
-  <View
-    style={[
-      tw`mt-1 rounded-xl overflow-hidden`,
-      {
-        borderColor: palette.border,
-        borderWidth: 1,
-        backgroundColor: palette.card,
-      },
-    ]}
-  >
-    <ScrollView
-      nestedScrollEnabled
-      keyboardShouldPersistTaps="handled"
-      style={{ maxHeight: 220 }}
-    >
-      {learnerOptions.map((opt) => {
-        const active = opt.value === newStudentId;
-        return (
-          <TouchableOpacity
-            key={opt.value}
-            onPress={() => {
-              setNewStudentId(opt.value);
-              setLearnerDropdownOpen(false);
-            }}
-            style={[
-              tw`px-3 py-2 flex-row items-center justify-between`,
-              {
-                backgroundColor: active
-                  ? palette.rowAltBg
-                  : palette.card,
-              },
-            ]}
-          >
-            <Text
-              numberOfLines={1}
+          {/* Dropdown menu */}
+          {learnerDropdownOpen && !rosterLoading && learnerOptions.length > 0 && (
+            <View
               style={[
-                tw`text-[11px] flex-1`,
-                { color: palette.text },
+                tw`mt-1 rounded-xl overflow-hidden`,
+                {
+                  borderColor: palette.border,
+                  borderWidth: 1,
+                  backgroundColor: palette.card,
+                },
               ]}
             >
-              {opt.label}
-            </Text>
-            {active && (
-              <Text
-                style={[
-                  tw`text-[10px] ml-2`,
-                  { color: palette.accentSoft },
-                ]}
+              <ScrollView
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                style={{ maxHeight: 220 }}
               >
-                ✓
-              </Text>
-            )}
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
-  </View>
-)}
-
+                {learnerOptions.map((opt) => {
+                  const active = opt.value === newStudentId;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      onPress={() => {
+                        setNewStudentId(opt.value);
+                        setLearnerDropdownOpen(false);
+                      }}
+                      style={[
+                        tw`px-3 py-2 flex-row items-center justify-between`,
+                        {
+                          backgroundColor: active ? palette.rowAltBg : palette.card,
+                        },
+                      ]}
+                    >
+                      <Text
+                        numberOfLines={1}
+                        style={[tw`text-[11px] flex-1`, { color: palette.text }]}
+                      >
+                        {opt.label}
+                      </Text>
+                      {active && (
+                        <Text style={[tw`text-[10px] ml-2`, { color: palette.accentSoft }]}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Loading / empty helper text when dropdown unavailable */}
           {rosterLoading && (
-            <Text
-              style={[tw`mt-1 text-[11px]`, { color: palette.textSoft }]}
-            >
+            <Text style={[tw`mt-1 text-[11px]`, { color: palette.textSoft }]}>
               Loading learners…
             </Text>
           )}
           {!rosterLoading && learnerOptions.length === 0 && (
-            <Text
-              style={[tw`mt-1 text-[11px]`, { color: palette.textSoft }]}
-            >
+            <Text style={[tw`mt-1 text-[11px]`, { color: palette.textSoft }]}>
               No learners in roster.
             </Text>
           )}
         </View>
 
         {/* Subject + initials + add row / bulk add / extra column */}
-        <View
-          style={tw`flex-row flex-wrap items-center gap-2`}
-        >
+        <View style={tw`flex-row flex-wrap items-center gap-2`}>
           <View style={tw`flex-1 min-w-[140px]`}>
-            <Text
-              style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}
-            >
-              Subject name
-            </Text>
+            <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>Subject name</Text>
             <TextInput
               value={newSubject}
               onChangeText={setNewSubject}
@@ -568,39 +454,23 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
           </View>
 
           <View style={tw`w-20`}>
-            <Text
-              style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}
-            >
-              Initials
-            </Text>
+            <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>Initials</Text>
             <TextInput
               value={teacherInitials}
               onChangeText={(v) => setTeacherInitials(v.toUpperCase())}
               placeholder="Init."
               placeholderTextColor={palette.textSoft}
-              style={[
-                ...smallInputBase,
-                tw`text-center`,
-              ]}
+              style={[...smallInputBase, tw`text-center`]}
             />
           </View>
 
           {/* Single learner add */}
           <TouchableOpacity
             style={smallButton('primary')}
-            disabled={
-              !selectedSessionId ||
-              !newStudentId ||
-              !newSubject.trim() ||
-              rosterLoading
-            }
+            disabled={!selectedSessionId || !newStudentId || !newSubject.trim() || rosterLoading}
             onPress={onAddRowFromRoster}
           >
-            <Text
-              style={tw`text-xs text-white font-semibold`}
-            >
-              + Add row
-            </Text>
+            <Text style={tw`text-xs text-white font-semibold`}>+ Add row</Text>
           </TouchableOpacity>
 
           {/* Bulk add class */}
@@ -615,24 +485,18 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
             }
             onPress={onBulkAddClassForSubject}
           >
-            <Text
-              style={[tw`text-[11px] font-semibold`, { color: palette.text }]}
-            >
+            <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>
               Add class roster
             </Text>
           </TouchableOpacity>
         </View>
 
         {/* Extra column + AI column controls */}
-        <View
-          style={tw`flex-row flex-wrap items-center gap-2 mt-1`}
-        >
+        <View style={tw`flex-row flex-wrap items-center gap-2 mt-1`}>
           {/* Extra column name + button */}
           <View style={tw`flex-row items-center gap-2`}>
             <View style={tw`w-32`}>
-              <Text
-                style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}
-              >
+              <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>
                 New extra column
               </Text>
               <TextInput
@@ -651,25 +515,16 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
               onPress={() => {
                 const label = newExtraColumnName.trim();
                 if (!label) {
-                  Alert.alert(
-                    'Extra column',
-                    'Type a column title first.',
-                  );
+                  Alert.alert('Extra column', 'Type a column title first.');
                   return;
                 }
 
                 const next = sheetRows.map((row) => {
                   const currentExtra =
-                    (row as any).extra &&
-                    typeof (row as any).extra === 'object'
+                    (row as any).extra && typeof (row as any).extra === 'object'
                       ? (row as any).extra
                       : {};
-                  if (
-                    Object.prototype.hasOwnProperty.call(
-                      currentExtra,
-                      label,
-                    )
-                  ) {
+                  if (Object.prototype.hasOwnProperty.call(currentExtra, label)) {
                     return row;
                   }
                   return {
@@ -678,44 +533,24 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                   } as any;
                 });
 
-                void saveSheet(
-                  selectedSessionId,
-                  classLabel || undefined,
-                  next,
-                );
+                void saveSheet(selectedSessionId, classLabel || undefined, next);
               }}
             >
-              <Text
-                style={[tw`text-[11px] font-semibold`, { color: palette.text }]}
-              >
+              <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>
                 + Extra column
               </Text>
             </TouchableOpacity>
           </View>
 
           {/* AI column selector + buttons */}
-          <View
-            style={tw`flex-row items-center gap-1 flex-wrap`}
-          >
-            <Text
-              style={[tw`text-[10px]`, { color: palette.accentSoft }]}
-            >
-              AI column
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-            >
+          <View style={tw`flex-row items-center gap-1 flex-wrap`}>
+            <Text style={[tw`text-[10px]`, { color: palette.accentSoft }]}>AI column</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {extraColumnKeys.length === 0 && (
                 <View
-                  style={[
-                    tw`px-2 py-1 rounded-full mr-1`,
-                    { backgroundColor: palette.chipBg },
-                  ]}
+                  style={[tw`px-2 py-1 rounded-full mr-1`, { backgroundColor: palette.chipBg }]}
                 >
-                  <Text
-                    style={[tw`text-[10px]`, { color: palette.textSoft }]}
-                  >
+                  <Text style={[tw`text-[10px]`, { color: palette.textSoft }]}>
                     No extra columns
                   </Text>
                 </View>
@@ -731,11 +566,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                       : { backgroundColor: palette.chipBg, borderColor: palette.border },
                   ]}
                 >
-                  <Text
-                    style={[tw`text-[10px]`, { color: palette.text }]}
-                  >
-                    {key}
-                  </Text>
+                  <Text style={[tw`text-[10px]`, { color: palette.text }]}>{key}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -754,29 +585,23 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                 !extraColumnKeys.length
               }
               onPress={async () => {
-                const effectiveKey =
-                  aiColumnKey || extraColumnKeys[0] || '';
+                const effectiveKey = aiColumnKey || extraColumnKeys[0] || '';
                 if (!effectiveKey) {
                   Alert.alert(
                     'AI fill',
-                    'No target column selected. Please add or choose an extra column first.',
+                    'No target column selected. Please add or choose an extra column first.'
                   );
                   return;
                 }
                 const trimmed = aiPrompt.trim();
                 if (!trimmed) {
-                  Alert.alert(
-                    'AI fill',
-                    'Type instructions for AI in the assistant box below.',
-                  );
+                  Alert.alert('AI fill', 'Type instructions for AI in the assistant box below.');
                   return;
                 }
                 await handleAiFillColumn(effectiveKey, trimmed);
               }}
             >
-              <Text
-                style={tw`text-[11px] text-white font-semibold`}
-              >
+              <Text style={tw`text-[11px] text-white font-semibold`}>
                 {aiBusy ? 'AI filling…' : '✨ AI fill'}
               </Text>
             </TouchableOpacity>
@@ -795,12 +620,11 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                 !extraColumnKeys.length
               }
               onPress={() => {
-                const effectiveKey =
-                  aiColumnKey || extraColumnKeys[0] || '';
+                const effectiveKey = aiColumnKey || extraColumnKeys[0] || '';
                 if (!effectiveKey) {
                   Alert.alert(
                     'AI delete',
-                    'No target column selected. Please add or choose an extra column first.',
+                    'No target column selected. Please add or choose an extra column first.'
                   );
                   return;
                 }
@@ -819,21 +643,14 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                           'For every row, set extra["' +
                           effectiveKey +
                           '"] to "__DELETE__" so the backend removes this column entirely.';
-                        await handleAiFillColumn(
-                          effectiveKey,
-                          instructions,
-                        );
+                        await handleAiFillColumn(effectiveKey, instructions);
                       },
                     },
-                  ],
+                  ]
                 );
               }}
             >
-              <Text
-                style={tw`text-[11px] text-rose-700 font-semibold`}
-              >
-                🗑 AI delete col
-              </Text>
+              <Text style={tw`text-[11px] text-rose-700 font-semibold`}>🗑 AI delete col</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -846,74 +663,45 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
           { borderColor: palette.border, backgroundColor: palette.rowBg },
         ]}
       >
-        <View
-          style={tw`flex-row flex-wrap items-start justify-between gap-2`}
-        >
+        <View style={tw`flex-row flex-wrap items-start justify-between gap-2`}>
           <View style={tw`flex-1 min-w-[220px]`}>
             <View style={tw`flex-row items-center gap-1.5`}>
-              <Text
-                style={[tw`text-[11px] font-semibold`, { color: palette.text }]}
-              >
+              <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>
                 AI sheet assistant
               </Text>
-              <View
-                style={tw`px-2 py-0.5 rounded-full bg-blue-500/20`}
-              >
-                <Text
-                  style={tw`text-[9px] uppercase tracking-wide text-blue-200`}
-                >
-                  Beta
-                </Text>
+              <View style={tw`px-2 py-0.5 rounded-full bg-blue-500/20`}>
+                <Text style={tw`text-[9px] uppercase tracking-wide text-blue-200`}>Beta</Text>
               </View>
             </View>
-            <Text
-              style={[tw`text-[10px] mt-0.5`, { color: palette.textSoft }]}
-            >
+            <Text style={[tw`text-[10px] mt-0.5`, { color: palette.textSoft }]}>
               Example:{' '}
               <Text style={tw`italic`}>
-                “Add a Homework /40 column and fill 38 for student 105,
-                35 for 106. Set Effort A–E based on the % score. Delete
-                the old ‘Comments’ column.”
+                “Add a Homework /40 column and fill 38 for student 105, 35 for 106. Set Effort A–E
+                based on the % score. Delete the old ‘Comments’ column.”
               </Text>
             </Text>
           </View>
 
           <TouchableOpacity
-  disabled={
-    aiBusy ||
-    !backendUrl ||
-    !orgId ||
-    !selectedSessionId ||
-    !sheetRows.length
-  }
-  onPress={handleAiSheetCommand}
-  style={[
-    tw`h-9 px-3 rounded-xl items-center justify-center self-end`,
-    {
-      backgroundColor: palette.isDark ? palette.chipBg : palette.accent,
-      borderColor: palette.isDark ? palette.border : palette.accentSoft,
-      borderWidth: 1,
-      opacity:
-        aiBusy ||
-        !backendUrl ||
-        !orgId ||
-        !selectedSessionId ||
-        !sheetRows.length
-          ? 0.6
-          : 1,
-    },
-  ]}
->
-  <Text
-    style={[
-      tw`text-[11px] font-semibold`,
-      { color: '#ffffff' },
-    ]}
-  >
-    {aiBusy ? 'Working…' : 'Run on sheet'}
-  </Text>
-</TouchableOpacity>
-
+            disabled={aiBusy || !backendUrl || !orgId || !selectedSessionId || !sheetRows.length}
+            onPress={handleAiSheetCommand}
+            style={[
+              tw`h-9 px-3 rounded-xl items-center justify-center self-end`,
+              {
+                backgroundColor: palette.isDark ? palette.chipBg : palette.accent,
+                borderColor: palette.isDark ? palette.border : palette.accentSoft,
+                borderWidth: 1,
+                opacity:
+                  aiBusy || !backendUrl || !orgId || !selectedSessionId || !sheetRows.length
+                    ? 0.6
+                    : 1,
+              },
+            ]}
+          >
+            <Text style={[tw`text-[11px] font-semibold`, { color: '#ffffff' }]}>
+              {aiBusy ? 'Working…' : 'Run on sheet'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <TextInput
@@ -932,12 +720,10 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
             },
           ]}
         />
-        <Text
-          style={[tw`mt-1 text-[10px]`, { color: palette.textMuted }]}
-        >
+        <Text style={[tw`mt-1 text-[10px]`, { color: palette.textMuted }]}>
           The assistant updates the in-memory sheet first, then your{' '}
-          <Text style={tw`font-semibold`}>Save all marks</Text> persists
-          everything to <Text style={tw`font-mono`}>org_exam_results.extra</Text>.
+          <Text style={tw`font-semibold`}>Save all marks</Text> persists everything to{' '}
+          <Text style={tw`font-mono`}>org_exam_results.extra</Text>.
         </Text>
       </View>
 
@@ -948,10 +734,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
           { borderColor: palette.border, backgroundColor: palette.card },
         ]}
       >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator>
           <View>
             {/* Header row */}
             <View
@@ -961,100 +744,49 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
               ]}
             >
               <View style={tableHeaderCell}>
-                <Text
-                  style={[tw`text-[11px]`, { color: palette.text }]}
-                >
-                  Student ID
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Student ID</Text>
               </View>
               <View style={tableHeaderCell}>
-                <Text
-                  style={[tw`text-[11px]`, { color: palette.text }]}
-                >
-                  Adm. code
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Adm. code</Text>
               </View>
               <View style={[...tableHeaderCell, tw`min-w-[160px]`]}>
-                <Text
-                  style={[tw`text-[11px]`, { color: palette.text }]}
-                >
-                  Name / Email
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Name / Email</Text>
               </View>
               <View style={tableHeaderCell}>
-                <Text
-                  style={[tw`text-[11px]`, { color: palette.text }]}
-                >
-                  Subject
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Subject</Text>
               </View>
               <View style={tableHeaderCell}>
-                <Text
-                  style={[tw`text-[11px]`, { color: palette.text }]}
-                >
-                  Score
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Score</Text>
               </View>
               <View style={tableHeaderCell}>
-                <Text
-                  style={[tw`text-[11px]`, { color: palette.text }]}
-                >
-                  Out of
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Out of</Text>
               </View>
               <View style={[...tableHeaderCell, tw`min-w-[110px]`]}>
-                <Text
-                  style={[tw`text-[11px]`, { color: palette.text }]}
-                >
-                  % / Grade
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>% / Grade</Text>
               </View>
               <View style={[...tableHeaderCell, tw`min-w-[150px]`]}>
-                <Text
-                  style={[tw`text-[11px]`, { color: palette.text }]}
-                >
-                  Remarks
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Remarks</Text>
               </View>
 
               {/* dynamic extras */}
               {extraColumnKeys.map((key) => (
-                <View
-                  key={key}
-                  style={[...tableHeaderCell, tw`min-w-[120px]`]}
-                >
-                  <Text
-                    style={[tw`text-[11px]`, { color: palette.text }]}
-                  >
-                    {key}
-                  </Text>
+                <View key={key} style={[...tableHeaderCell, tw`min-w-[120px]`]}>
+                  <Text style={[tw`text-[11px]`, { color: palette.text }]}>{key}</Text>
                 </View>
               ))}
 
               <View style={tableHeaderCell}>
-                <Text
-                  style={[tw`text-[11px]`, { color: palette.text }]}
-                >
-                  Initials
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Initials</Text>
               </View>
               <View style={[...tableHeaderCell, tw`min-w-[130px]`]}>
-                <Text
-                  style={[tw`text-[11px]`, { color: palette.text }]}
-                >
-                  Actions
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Actions</Text>
               </View>
             </View>
 
             {/* Body */}
             {sheetLoading && (
               <View style={tw`px-3 py-4`}>
-                <Text
-                  style={[tw`text-sm`, { color: palette.textSoft }]}
-                >
-                  Loading marks…
-                </Text>
+                <Text style={[tw`text-sm`, { color: palette.textSoft }]}>Loading marks…</Text>
               </View>
             )}
 
@@ -1062,19 +794,11 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
               paginatedSheetRows.map((r, idx) => {
                 const percent =
                   r.score != null && r.max_score
-                    ? Math.round(
-                        (Number(r.score) /
-                          Number(r.max_score)) * 100,
-                      )
+                    ? Math.round((Number(r.score) / Number(r.max_score)) * 100)
                     : null;
 
-                const meta = learnerById.get(
-                  Number(r.student_user_id),
-                );
-                const admissionCode =
-                  (r as any).admission_code ??
-                  meta?.admission_code ??
-                  null;
+                const meta = learnerById.get(Number(r.student_user_id));
+                const admissionCode = (r as any).admission_code ?? meta?.admission_code ?? null;
 
                 const displayName =
                   (r as any).student_name ||
@@ -1082,26 +806,17 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                   meta?.email ||
                   `User #${r.student_user_id}`;
 
-                const displayEmail =
-                  (r as any).student_email ?? meta?.email ?? '';
+                const displayEmail = (r as any).student_email ?? meta?.email ?? '';
 
                 let rowIndex = sheetRows.indexOf(r);
                 if (rowIndex === -1) {
                   rowIndex = sheetRows.findIndex(
-                    (x) =>
-                      x.student_user_id === r.student_user_id &&
-                      x.subject === r.subject,
+                    (x) => x.student_user_id === r.student_user_id && x.subject === r.subject
                   );
                 }
-                const safeIndex =
-                  rowIndex === -1
-                    ? filteredSheetRows.indexOf(r)
-                    : rowIndex;
+                const safeIndex = rowIndex === -1 ? filteredSheetRows.indexOf(r) : rowIndex;
 
-                const rowBgColor =
-                  idx % 2 === 0
-                    ? palette.rowBg
-                    : palette.rowAltBg;
+                const rowBgColor = idx % 2 === 0 ? palette.rowBg : palette.rowAltBg;
 
                 return (
                   <View
@@ -1112,9 +827,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                     ]}
                   >
                     <View style={tableCell}>
-                      <Text
-                        style={[tw`text-[11px]`, { color: palette.text }]}
-                      >
+                      <Text style={[tw`text-[11px]`, { color: palette.text }]}>
                         {r.student_user_id}
                       </Text>
                     </View>
@@ -1127,50 +840,28 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                             { backgroundColor: palette.chipBg },
                           ]}
                         >
-                          <Text
-                            style={[
-                              tw`text-[10px] font-semibold`,
-                              { color: palette.text },
-                            ]}
-                          >
+                          <Text style={[tw`text-[10px] font-semibold`, { color: palette.text }]}>
                             {admissionCode}
                           </Text>
                         </View>
                       ) : (
-                        <Text
-                          style={[tw`text-[11px]`, { color: palette.textSoft }]}
-                        >
-                          —
-                        </Text>
+                        <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>—</Text>
                       )}
                     </View>
 
-                    <View
-                      style={[...tableCell, tw`min-w-[160px]`]}
-                    >
-                      <Text
-                        style={[
-                          tw`text-xs font-medium`,
-                          { color: palette.text },
-                        ]}
-                      >
+                    <View style={[...tableCell, tw`min-w-[160px]`]}>
+                      <Text style={[tw`text-xs font-medium`, { color: palette.text }]}>
                         {displayName}
                       </Text>
                       {displayEmail ? (
-                        <Text
-                          style={[tw`text-[11px] mt-0.5`, { color: palette.textSoft }]}
-                        >
+                        <Text style={[tw`text-[11px] mt-0.5`, { color: palette.textSoft }]}>
                           {displayEmail}
                         </Text>
                       ) : null}
                     </View>
 
                     <View style={tableCell}>
-                      <Text
-                        style={[tw`text-[11px]`, { color: palette.text }]}
-                      >
-                        {r.subject}
-                      </Text>
+                      <Text style={[tw`text-[11px]`, { color: palette.text }]}>{r.subject}</Text>
                     </View>
 
                     {/* Score */}
@@ -1190,16 +881,9 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                           };
 
                           copy[safeIndex] = next;
-                          void saveSheet(
-                            selectedSessionId,
-                            classLabel || undefined,
-                            copy,
-                          );
+                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
                         }}
-                        style={[
-                          ...smallInputBase,
-                          tw`w-20`,
-                        ]}
+                        style={[...smallInputBase, tw`w-20`]}
                         placeholderTextColor={palette.textSoft}
                       />
                     </View>
@@ -1221,104 +905,61 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                           };
 
                           copy[safeIndex] = next;
-                          void saveSheet(
-                            selectedSessionId,
-                            classLabel || undefined,
-                            copy,
-                          );
+                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
                         }}
-                        style={[
-                          ...smallInputBase,
-                          tw`w-20`,
-                        ]}
+                        style={[...smallInputBase, tw`w-20`]}
                         placeholderTextColor={palette.textSoft}
                       />
                     </View>
 
                     {/* % / Grade */}
-                    <View
-                      style={[...tableCell, tw`min-w-[110px]`]}
-                    >
+                    <View style={[...tableCell, tw`min-w-[110px]`]}>
                       {percent != null ? (
-                        <Text
-                          style={[tw`text-[11px]`, { color: palette.text }]}
-                        >
-                          {percent}%{' '}
-                          {r.grade ? `• ${r.grade}` : ''}
+                        <Text style={[tw`text-[11px]`, { color: palette.text }]}>
+                          {percent}% {r.grade ? `• ${r.grade}` : ''}
                         </Text>
                       ) : (
-                        <Text
-                          style={[tw`text-[11px]`, { color: palette.textSoft }]}
-                        >
-                          —
-                        </Text>
+                        <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>—</Text>
                       )}
                     </View>
 
                     {/* Per-subject remark */}
-                    <View
-                      style={[...tableCell, tw`min-w-[150px]`]}
-                    >
+                    <View style={[...tableCell, tw`min-w-[150px]`]}>
                       <TextInput
                         value={(r as any).remark ?? ''}
                         onChangeText={(val) => {
                           const copy = [...sheetRows];
-                          if (
-                            safeIndex < 0 ||
-                            safeIndex >= copy.length
-                          )
-                            return;
+                          if (safeIndex < 0 || safeIndex >= copy.length) return;
                           (copy[safeIndex] as any) = {
                             ...copy[safeIndex],
                             remark: val,
                           };
-                          void saveSheet(
-                            selectedSessionId,
-                            classLabel || undefined,
-                            copy,
-                          );
+                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
                         }}
                         placeholder="Remark"
                         placeholderTextColor={palette.textSoft}
-                        style={[
-                          ...smallInputBase,
-                          tw`w-40`,
-                        ]}
+                        style={[...smallInputBase, tw`w-40`]}
                       />
                     </View>
 
                     {/* Dynamic extra columns */}
                     {extraColumnKeys.map((key) => {
                       const extra =
-                        (r as any).extra &&
-                        typeof (r as any).extra === 'object'
-                          ? ((r as any)
-                              .extra as Record<string, any>)
+                        (r as any).extra && typeof (r as any).extra === 'object'
+                          ? ((r as any).extra as Record<string, any>)
                           : {};
                       const value = extra[key] ?? '';
 
                       return (
-                        <View
-                          key={key}
-                          style={[
-                            ...tableCell,
-                            tw`min-w-[120px]`,
-                          ]}
-                        >
+                        <View key={key} style={[...tableCell, tw`min-w-[120px]`]}>
                           <TextInput
                             value={String(value)}
                             onChangeText={(val) => {
                               const copy = [...sheetRows];
-                              if (
-                                safeIndex < 0 ||
-                                safeIndex >= copy.length
-                              )
-                                return;
-                              const current =
-                                (copy[safeIndex] as any) || {};
+                              if (safeIndex < 0 || safeIndex >= copy.length) return;
+                              const current = (copy[safeIndex] as any) || {};
                               const currentExtra =
-                                current.extra &&
-                                typeof current.extra === 'object'
+                                current.extra && typeof current.extra === 'object'
                                   ? current.extra
                                   : {};
                               (copy[safeIndex] as any) = {
@@ -1328,16 +969,9 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                                   [key]: val,
                                 },
                               };
-                              void saveSheet(
-                                selectedSessionId,
-                                classLabel || undefined,
-                                copy,
-                              );
+                              void saveSheet(selectedSessionId, classLabel || undefined, copy);
                             }}
-                            style={[
-                              ...smallInputBase,
-                              tw`w-28`,
-                            ]}
+                            style={[...smallInputBase, tw`w-28`]}
                             placeholderTextColor={palette.textSoft}
                           />
                         </View>
@@ -1347,73 +981,40 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                     {/* Teacher initials */}
                     <View style={tableCell}>
                       <TextInput
-                        value={
-                          (r as any).teacher_initials ??
-                          (r as any).teacherInitials ??
-                          ''
-                        }
+                        value={(r as any).teacher_initials ?? (r as any).teacherInitials ?? ''}
                         onChangeText={(val) => {
                           const copy = [...sheetRows];
-                          if (
-                            safeIndex < 0 ||
-                            safeIndex >= copy.length
-                          )
-                            return;
+                          if (safeIndex < 0 || safeIndex >= copy.length) return;
                           (copy[safeIndex] as any) = {
                             ...copy[safeIndex],
                             teacher_initials: val,
                           };
-                          void saveSheet(
-                            selectedSessionId,
-                            classLabel || undefined,
-                            copy,
-                          );
+                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
                         }}
                         placeholder="Init."
                         placeholderTextColor={palette.textSoft}
-                        style={[
-                          ...smallInputBase,
-                          tw`w-16`,
-                        ]}
+                        style={[...smallInputBase, tw`w-16`]}
                       />
                     </View>
 
                     {/* Actions */}
-                    <View
-                      style={[
-                        ...tableCell,
-                        tw`flex-row items-center gap-1 min-w-[130px]`,
-                      ]}
-                    >
+                    <View style={[...tableCell, tw`flex-row items-center gap-1 min-w-[130px]`]}>
                       <TouchableOpacity
                         style={[
                           tw`h-8 px-3 rounded-xl items-center justify-center`,
                           { backgroundColor: palette.chipBg },
                         ]}
-                        onPress={() =>
-                          onOpenStudentCard(r.student_user_id)
-                        }
+                        onPress={() => onOpenStudentCard(r.student_user_id)}
                       >
-                        <Text
-                          style={[
-                            tw`text-[11px] font-semibold`,
-                            { color: palette.text },
-                          ]}
-                        >
+                        <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>
                           Card
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={tw`h-8 px-3 rounded-xl bg-sky-500 items-center justify-center`}
-                        onPress={() =>
-                          onEmailStudentCard(r.student_user_id)
-                        }
+                        onPress={() => onEmailStudentCard(r.student_user_id)}
                       >
-                        <Text
-                          style={tw`text-[11px] text-white font-semibold`}
-                        >
-                          Email
-                        </Text>
+                        <Text style={tw`text-[11px] text-white font-semibold`}>Email</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1422,11 +1023,9 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
 
             {!sheetLoading && !filteredSheetRows.length && (
               <View style={tw`px-3 py-4`}>
-                <Text
-                  style={[tw`text-sm`, { color: palette.textSoft }]}
-                >
-                  No marks yet for this exam/class. Start by adding
-                  rows using the learner selector above.
+                <Text style={[tw`text-sm`, { color: palette.textSoft }]}>
+                  No marks yet for this exam/class. Start by adding rows using the learner selector
+                  above.
                 </Text>
               </View>
             )}
@@ -1436,18 +1035,10 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
 
       {/* 🔢 Pagination strip */}
       {!sheetLoading && filteredSheetRows.length > 0 && (
-        <View
-          style={tw`mt-2 flex-row flex-wrap items-center justify-between gap-2`}
-        >
-          <Text
-            style={[tw`text-[11px]`, { color: palette.textSoft }]}
-          >
-            {marksRangeText()}
-          </Text>
+        <View style={tw`mt-2 flex-row flex-wrap items-center justify-between gap-2`}>
+          <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>{marksRangeText()}</Text>
 
-          <View
-            style={tw`flex-row flex-wrap items-center gap-2`}
-          >
+          <View style={tw`flex-row flex-wrap items-center gap-2`}>
             {/* Rows per page */}
             <View
               style={[
@@ -1455,11 +1046,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                 { backgroundColor: palette.chipBg },
               ]}
             >
-              <Text
-                style={[tw`text-[11px]`, { color: palette.text }]}
-              >
-                Rows:
-              </Text>
+              <Text style={[tw`text-[11px]`, { color: palette.text }]}>Rows:</Text>
               {[10, 25, 50].map((size) => (
                 <TouchableOpacity
                   key={size}
@@ -1470,10 +1057,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                   style={[
                     tw`px-2 py-0.5 rounded-full`,
                     {
-                      backgroundColor:
-                        marksPageSize === size
-                          ? palette.accent
-                          : palette.rowBg,
+                      backgroundColor: marksPageSize === size ? palette.accent : palette.rowBg,
                     },
                   ]}
                 >
@@ -1481,10 +1065,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
                     style={[
                       tw`text-[11px]`,
                       {
-                        color:
-                          marksPageSize === size
-                            ? '#ffffff'
-                            : palette.text,
+                        color: marksPageSize === size ? '#ffffff' : palette.text,
                       },
                     ]}
                   >
@@ -1504,55 +1085,33 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
               >
                 <TouchableOpacity
                   disabled={marksPage === 1}
-                  onPress={() =>
-                    setMarksPage((p) => Math.max(1, p - 1))
-                  }
+                  onPress={() => setMarksPage((p) => Math.max(1, p - 1))}
                   style={[
                     tw`px-2 py-0.5 rounded-full`,
                     {
-                      backgroundColor:
-                        marksPage === 1
-                          ? 'transparent'
-                          : palette.rowBg,
+                      backgroundColor: marksPage === 1 ? 'transparent' : palette.rowBg,
                       opacity: marksPage === 1 ? 0.4 : 1,
                     },
                   ]}
                 >
-                  <Text
-                    style={[tw`text-[11px]`, { color: palette.text }]}
-                  >
-                    ‹ Prev
-                  </Text>
+                  <Text style={[tw`text-[11px]`, { color: palette.text }]}>‹ Prev</Text>
                 </TouchableOpacity>
-                <Text
-                  style={[tw`text-[11px]`, { color: palette.text }]}
-                >
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>
                   Page {marksPage} of {totalMarksPages}
                 </Text>
                 <TouchableOpacity
                   disabled={marksPage === totalMarksPages}
-                  onPress={() =>
-                    setMarksPage((p) =>
-                      Math.min(totalMarksPages, p + 1),
-                    )
-                  }
+                  onPress={() => setMarksPage((p) => Math.min(totalMarksPages, p + 1))}
                   style={[
                     tw`px-2 py-0.5 rounded-full`,
                     {
                       backgroundColor:
-                        marksPage === totalMarksPages
-                          ? 'transparent'
-                          : palette.rowBg,
-                      opacity:
-                        marksPage === totalMarksPages ? 0.4 : 1,
+                        marksPage === totalMarksPages ? 'transparent' : palette.rowBg,
+                      opacity: marksPage === totalMarksPages ? 0.4 : 1,
                     },
                   ]}
                 >
-                  <Text
-                    style={[tw`text-[11px]`, { color: palette.text }]}
-                  >
-                    Next ›
-                  </Text>
+                  <Text style={[tw`text-[11px]`, { color: palette.text }]}>Next ›</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1561,9 +1120,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
       )}
 
       {/* Save button */}
-      <View
-        style={tw`mt-3 flex-row justify-end`}
-      >
+      <View style={tw`mt-3 flex-row justify-end`}>
         <TouchableOpacity
           disabled={savingSheet}
           onPress={onSaveSheet}
@@ -1572,9 +1129,7 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
             { backgroundColor: palette.accent },
           ]}
         >
-          <Text
-            style={tw`text-sm text-white font-semibold`}
-          >
+          <Text style={tw`text-sm text-white font-semibold`}>
             {savingSheet ? 'Saving…' : 'Save all marks'}
           </Text>
         </TouchableOpacity>

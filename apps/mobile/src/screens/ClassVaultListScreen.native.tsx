@@ -45,7 +45,7 @@ type PdfItem = {
 export interface ClassVaultFilters {
   category?: string[]; // subject
   ageGroup?: string[]; // grade
-  country?: string;    // currently applied in parent; no local UI filtering here
+  country?: string; // currently applied in parent; no local UI filtering here
 }
 
 interface ClassVaultListScreenProps {
@@ -62,8 +62,7 @@ export default function ClassVaultListScreen({
   clearFilters, // not used now (filtering handled in parent)
   searchTerm,
 }: ClassVaultListScreenProps) {
-  const navigation =
-    useNavigation<StackNavigationProp<MainStackParamList, 'ClassVaultLibrary'>>();
+  const navigation = useNavigation<StackNavigationProp<MainStackParamList, 'ClassVaultLibrary'>>();
   const { role, userId, backendUrl } = useShopContext();
 
   // Base hook filters from parent (subject + grade)
@@ -113,7 +112,7 @@ export default function ClassVaultListScreen({
   useFocusEffect(
     useCallback(() => {
       refresh();
-    }, [refresh]),
+    }, [refresh])
   );
 
   // Role scoping (tutor sees only their own uploads)
@@ -131,9 +130,7 @@ export default function ClassVaultListScreen({
       const rows = filteredPdfRows
         .map(
           (row) =>
-            row.filter(
-              (pdf) => Number((pdf as { tutor_id?: number }).tutor_id) === me,
-            ) as PdfItem[],
+            row.filter((pdf) => Number((pdf as { tutor_id?: number }).tutor_id) === me) as PdfItem[]
         )
         .filter((row) => row.length > 0);
       return rows;
@@ -150,9 +147,7 @@ export default function ClassVaultListScreen({
       const titleMatch = v.title.toLowerCase().includes(q);
       const subjectMatch = (v.subject ?? '').toLowerCase().includes(q);
       const gradeMatch =
-        v.grade_level != null
-          ? String(v.grade_level).toLowerCase().includes(q)
-          : false;
+        v.grade_level != null ? String(v.grade_level).toLowerCase().includes(q) : false;
       const descMatch = (v.description ?? '').toLowerCase().includes(q);
       return titleMatch || subjectMatch || gradeMatch || descMatch;
     });
@@ -166,25 +161,21 @@ export default function ClassVaultListScreen({
           const titleMatch = pdf.title.toLowerCase().includes(q);
           const subjectMatch = (pdf.subject ?? '').toLowerCase().includes(q);
           const gradeMatch =
-            pdf.grade_level != null
-              ? String(pdf.grade_level).toLowerCase().includes(q)
-              : false;
+            pdf.grade_level != null ? String(pdf.grade_level).toLowerCase().includes(q) : false;
           const descMatch = (pdf.description ?? '').toLowerCase().includes(q);
           return titleMatch || subjectMatch || gradeMatch || descMatch;
-        }),
+        })
       )
       .filter((row) => row.length > 0);
   }, [scopedPdfRows, q]);
 
   /* ---------- Ratings prefetch (match web behavior) ---------- */
-  const [ratings, setRatings] = useState<
-    Record<number, { avg: number; count: number }>
-  >({});
+  const [ratings, setRatings] = useState<Record<number, { avg: number; count: number }>>({});
   const fetchingIdsRef = useRef<Set<number>>(new Set());
 
   const idsToPrefetch = useMemo<number[]>(
     () => displayVideos.slice(0, VISIBLE_LIMIT).map((v) => v.id),
-    [displayVideos],
+    [displayVideos]
   );
 
   const debouncedFetch = useMemo(
@@ -199,27 +190,19 @@ export default function ClassVaultListScreen({
             const count = data.length;
             const avg =
               count > 0
-                ? Number(
-                    (
-                      data.reduce((s, r) => s + Number(r.rating), 0) / count
-                    ).toFixed(2),
-                  )
+                ? Number((data.reduce((s, r) => s + Number(r.rating), 0) / count).toFixed(2))
                 : 0;
-            setRatings((prev) =>
-              prev[id] ? prev : { ...prev, [id]: { avg, count } },
-            );
+            setRatings((prev) => (prev[id] ? prev : { ...prev, [id]: { avg, count } }));
           } finally {
             fetchingIdsRef.current.delete(id);
           }
         }
       }, DEBOUNCE_MS),
-    [backendUrl, ratings],
+    [backendUrl, ratings]
   );
 
   useEffect(() => {
-    const pending = idsToPrefetch.filter(
-      (id) => !ratings[id] && !fetchingIdsRef.current.has(id),
-    );
+    const pending = idsToPrefetch.filter((id) => !ratings[id] && !fetchingIdsRef.current.has(id));
     if (pending.length > 0) debouncedFetch(pending);
     return () => {
       debouncedFetch.cancel();
@@ -229,21 +212,15 @@ export default function ClassVaultListScreen({
   /* ---------- Early returns ---------- */
   if (loading) {
     return (
-      <View
-        style={tw`flex-1 items-center justify-center bg-slate-50 dark:bg-[#0b1016]`}
-      >
+      <View style={tw`flex-1 items-center justify-center bg-slate-50 dark:bg-[#0b1016]`}>
         <ActivityIndicator size="large" />
       </View>
     );
   }
   if (error) {
     return (
-      <View
-        style={tw`flex-1 items-center justify-center bg-slate-50 dark:bg-[#0b1016] p-4`}
-      >
-        <Text style={tw`text-red-600 dark:text-red-400 text-center`}>
-          {error}
-        </Text>
+      <View style={tw`flex-1 items-center justify-center bg-slate-50 dark:bg-[#0b1016] p-4`}>
+        <Text style={tw`text-red-600 dark:text-red-400 text-center`}>{error}</Text>
       </View>
     );
   }
@@ -257,9 +234,7 @@ export default function ClassVaultListScreen({
         {/* Title */}
         <View style={tw`flex-row items-end justify-between mb-2`}>
           <View style={tw`flex-1 pr-3`}>
-            <Text
-              style={tw`text-[20px] font-extrabold text-[#0d141c] dark:text-white`}
-            >
+            <Text style={tw`text-[20px] font-extrabold text-[#0d141c] dark:text-white`}>
               {role === 'tutor' ? 'Your Uploaded Classes' : 'Available Classes'}
             </Text>
           </View>
@@ -273,7 +248,7 @@ export default function ClassVaultListScreen({
             onPress={() => setTab('videos')}
             style={tw.style(
               'px-4 py-2 rounded-full',
-              tab === 'videos' && 'bg-white dark:bg-[#0f1821]',
+              tab === 'videos' && 'bg-white dark:bg-[#0f1821]'
             )}
             accessibilityRole="button"
             accessibilityState={{ selected: tab === 'videos' }}
@@ -283,7 +258,7 @@ export default function ClassVaultListScreen({
                 'text-xs font-semibold',
                 tab === 'videos'
                   ? 'text-slate-900 dark:text-white'
-                  : 'text-slate-700 dark:text-white/70',
+                  : 'text-slate-700 dark:text-white/70'
               )}
             >
               Videos
@@ -293,7 +268,7 @@ export default function ClassVaultListScreen({
             onPress={() => setTab('notes')}
             style={tw.style(
               'px-4 py-2 rounded-full',
-              tab === 'notes' && 'bg-white dark:bg-[#0f1821]',
+              tab === 'notes' && 'bg-white dark:bg-[#0f1821]'
             )}
             accessibilityRole="button"
             accessibilityState={{ selected: tab === 'notes' }}
@@ -303,7 +278,7 @@ export default function ClassVaultListScreen({
                 'text-xs font-semibold',
                 tab === 'notes'
                   ? 'text-slate-900 dark:text-white'
-                  : 'text-slate-700 dark:text-white/70',
+                  : 'text-slate-700 dark:text-white/70'
               )}
             >
               Class Notes
@@ -316,11 +291,8 @@ export default function ClassVaultListScreen({
           <View
             style={tw`bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-3 rounded-2xl mb-4`}
           >
-            <Text
-              style={tw`text-[#0d141c] dark:text-white font-semibold text-center`}
-            >
-              Earn passive income—upload once and get paid every time a student
-              purchases.
+            <Text style={tw`text-[#0d141c] dark:text-white font-semibold text-center`}>
+              Earn passive income—upload once and get paid every time a student purchases.
             </Text>
           </View>
         )}
@@ -329,21 +301,15 @@ export default function ClassVaultListScreen({
         {tab === 'videos' ? (
           videosEmpty ? (
             <View style={tw`items-center mt-8`}>
-              <Text
-                style={tw`text-[#49739c] dark:text-white/70 text-center mb-4`}
-              >
-                {role === 'tutor'
-                  ? 'No recorded videos yet.'
-                  : 'No available videos.'}
+              <Text style={tw`text-[#49739c] dark:text-white/70 text-center mb-4`}>
+                {role === 'tutor' ? 'No recorded videos yet.' : 'No available videos.'}
               </Text>
               {role === 'tutor' && (
                 <TouchableOpacity
                   onPress={() => navigation.navigate('ClassVaultUpload')}
                   style={tw`bg-[#3d99f5] px-6 py-3 rounded-full`}
                 >
-                  <Text style={tw`text-white font-semibold`}>
-                    Upload Your First Class
-                  </Text>
+                  <Text style={tw`text-white font-semibold`}>Upload Your First Class</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -370,20 +336,14 @@ export default function ClassVaultListScreen({
                   {hasRatings ? (
                     <View style={tw`flex-row items-center`}>
                       {/* simple stars text if you want; or icon row */}
-                      <Text
-                        style={tw`text-xs text-[#49739c] dark:text-white/70`}
-                      >
+                      <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
                         {stat!.avg.toFixed(1)} ({stat!.count})
                       </Text>
                     </View>
                   ) : null}
 
-                  <Text
-                    style={tw`text-[#49739c] dark:text-white/70 mt-1 mb-2`}
-                    numberOfLines={1}
-                  >
-                    {(video.subject ?? 'Unknown subject')} • Grade{' '}
-                    {video.grade_level}
+                  <Text style={tw`text-[#49739c] dark:text-white/70 mt-1 mb-2`} numberOfLines={1}>
+                    {video.subject ?? 'Unknown subject'} • Grade {video.grade_level}
                   </Text>
                   <Text
                     style={tw`text-[#0d141c] dark:text-white mb-1`}
@@ -401,11 +361,7 @@ export default function ClassVaultListScreen({
                         <View
                           style={tw`w-full h-48 rounded-xl bg-black items-center justify-center`}
                         >
-                          <FontAwesome5
-                            name="play-circle"
-                            size={48}
-                            color="#ffffff"
-                          />
+                          <FontAwesome5 name="play-circle" size={48} color="#ffffff" />
                         </View>
                       )}
                       {video.preview_url ? (
@@ -415,20 +371,14 @@ export default function ClassVaultListScreen({
                           accessibilityRole="button"
                           accessibilityLabel="Play preview"
                         >
-                          <FontAwesome5
-                            name="play-circle"
-                            size={48}
-                            color="#ffffff"
-                          />
+                          <FontAwesome5 name="play-circle" size={48} color="#ffffff" />
                         </TouchableOpacity>
                       ) : null}
                     </View>
                   ) : null}
 
                   {isPreviewing && video.preview_url && (
-                    <View
-                      style={tw`w-full h-48 rounded-xl overflow-hidden mt-3`}
-                    >
+                    <View style={tw`w-full h-48 rounded-xl overflow-hidden mt-3`}>
                       <VideoView
                         player={previewPlayer}
                         style={tw`w-full h-full`}
@@ -443,11 +393,7 @@ export default function ClassVaultListScreen({
                         accessibilityRole="button"
                         accessibilityLabel="Close preview"
                       >
-                        <FontAwesome5
-                          name="times-circle"
-                          size={24}
-                          color="#ffffff"
-                        />
+                        <FontAwesome5 name="times-circle" size={24} color="#ffffff" />
                       </TouchableOpacity>
                     </View>
                   )}
@@ -458,11 +404,7 @@ export default function ClassVaultListScreen({
                       onPress={() => handleDelete(video.id)}
                       style={tw`bg-red-600 py-2 rounded-xl mt-3`}
                     >
-                      <Text
-                        style={tw`text-white text-center font-medium`}
-                      >
-                        Delete
-                      </Text>
+                      <Text style={tw`text-white text-center font-medium`}>Delete</Text>
                     </TouchableOpacity>
                   ) : purchasedIds.has(video.id) ? (
                     <>
@@ -470,9 +412,7 @@ export default function ClassVaultListScreen({
                         onPress={() => handleDownload(video)}
                         style={tw`bg-[#e7edf4] dark:bg-[#172534] py-2 rounded-xl mt-3`}
                       >
-                        <Text
-                          style={tw`text-slate-900 dark:text-white text-center font-medium`}
-                        >
+                        <Text style={tw`text-slate-900 dark:text-white text-center font-medium`}>
                           Download
                         </Text>
                       </TouchableOpacity>
@@ -484,9 +424,7 @@ export default function ClassVaultListScreen({
                         }
                         style={tw`bg-[#e7edf4] dark:bg-[#172534] py-2 rounded-xl mt-3`}
                       >
-                        <Text
-                          style={tw`text-slate-900 dark:text-white text-center font-medium`}
-                        >
+                        <Text style={tw`text-slate-900 dark:text-white text-center font-medium`}>
                           Review
                         </Text>
                       </TouchableOpacity>
@@ -497,18 +435,12 @@ export default function ClassVaultListScreen({
                       onPress={() => handlePurchase(video)}
                       style={tw.style(
                         'bg-[#3d99f5] py-2 rounded-xl mt-3',
-                        buyingId === video.id && 'opacity-60',
+                        buyingId === video.id && 'opacity-60'
                       )}
-                      accessibilityHint={
-                        buyingId === video.id ? 'Processing…' : undefined
-                      }
+                      accessibilityHint={buyingId === video.id ? 'Processing…' : undefined}
                     >
-                      <Text
-                        style={tw`text-white text-center font-semibold`}
-                      >
-                        {buyingId === video.id
-                          ? 'Purchasing…'
-                          : 'Purchase'}
+                      <Text style={tw`text-white text-center font-semibold`}>
+                        {buyingId === video.id ? 'Purchasing…' : 'Purchase'}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -519,21 +451,15 @@ export default function ClassVaultListScreen({
         ) : // NOTES
         notesEmpty ? (
           <View style={tw`items-center mt-8`}>
-            <Text
-              style={tw`text-[#49739c] dark:text-white/70 text-center mb-4`}
-            >
-              {role === 'tutor'
-                ? 'No class notes uploaded yet.'
-                : 'No class notes available.'}
+            <Text style={tw`text-[#49739c] dark:text-white/70 text-center mb-4`}>
+              {role === 'tutor' ? 'No class notes uploaded yet.' : 'No class notes available.'}
             </Text>
             {role === 'tutor' && (
               <TouchableOpacity
                 onPress={() => navigation.navigate('ClassVaultUpload')}
                 style={tw`bg-[#3d99f5] px-6 py-3 rounded-full`}
               >
-                <Text style={tw`text-white font-semibold`}>
-                  Upload Your First Notes
-                </Text>
+                <Text style={tw`text-white font-semibold`}>Upload Your First Notes</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -545,12 +471,7 @@ export default function ClassVaultListScreen({
                   key={pdf.id}
                   style={tw`flex-1 mx-1 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-4 rounded-2xl`}
                 >
-                  <FontAwesome5
-                    name="file-pdf"
-                    size={48}
-                    color="#ef4444"
-                    style={tw`mb-2`}
-                  />
+                  <FontAwesome5 name="file-pdf" size={48} color="#ef4444" style={tw`mb-2`} />
                   <Text
                     style={tw`text-[#0d141c] dark:text-white font-semibold mb-1`}
                     numberOfLines={2}
@@ -566,42 +487,28 @@ export default function ClassVaultListScreen({
                       onPress={() => handleDelete(pdf.id)}
                       style={tw`bg-red-600 py-2 rounded-xl mt-3`}
                     >
-                      <Text
-                        style={tw`text-white text-center font-medium`}
-                      >
-                        Delete
-                      </Text>
+                      <Text style={tw`text-white text-center font-medium`}>Delete</Text>
                     </TouchableOpacity>
                   ) : purchasedIds.has(pdf.id) ? (
                     <TouchableOpacity
-                      onPress={() =>
-                        navigation.navigate('ClassVaultDetail', { id: pdf.id })
-                      }
+                      onPress={() => navigation.navigate('ClassVaultDetail', { id: pdf.id })}
                       style={tw`bg-[#e7edf4] dark:bg-[#172534] py-2 rounded-xl mt-3`}
                     >
-                      <Text
-                        style={tw`text-slate-900 dark:text-white text-center font-medium`}
-                      >
+                      <Text style={tw`text-slate-900 dark:text-white text-center font-medium`}>
                         Download
                       </Text>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
                       disabled={buyingId === pdf.id}
-                      onPress={() =>
-                        handlePurchase(pdf as unknown as RecordedVideo)
-                      }
+                      onPress={() => handlePurchase(pdf as unknown as RecordedVideo)}
                       style={tw.style(
                         'bg-[#3d99f5] py-2 rounded-xl mt-3',
-                        buyingId === pdf.id && 'opacity-60',
+                        buyingId === pdf.id && 'opacity-60'
                       )}
                     >
-                      <Text
-                        style={tw`text-white text-center font-semibold`}
-                      >
-                        {buyingId === pdf.id
-                          ? 'Purchasing…'
-                          : 'Purchase Access'}
+                      <Text style={tw`text-white text-center font-semibold`}>
+                        {buyingId === pdf.id ? 'Purchasing…' : 'Purchase Access'}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -619,9 +526,7 @@ export default function ClassVaultListScreen({
               onPress={() => navigation.navigate('ClassVaultUpload')}
               style={tw`bg-[#3d99f5] px-6 py-3 rounded-full`}
             >
-              <Text style={tw`text-white font-semibold`}>
-                Upload New Class
-              </Text>
+              <Text style={tw`text-white font-semibold`}>Upload New Class</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -646,8 +551,7 @@ export default function ClassVaultListScreen({
             Alert.alert('Success', `"${item.title}" is now unlocked.`, [
               {
                 text: 'OK',
-                onPress: () =>
-                  navigation.navigate('ClassVaultDetail', { id: item.id }),
+                onPress: () => navigation.navigate('ClassVaultDetail', { id: item.id }),
               },
             ]);
           } catch (err: unknown) {
@@ -659,17 +563,13 @@ export default function ClassVaultListScreen({
                 ? (err as { message: string }).message
                 : 'Purchase failed';
             if (message.includes('Insufficient tokens')) {
-              Alert.alert(
-                'Insufficient Tokens',
-                'Not enough tokens. Would you like to buy more?',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Buy Tokens',
-                    onPress: () => navigation.navigate('BuyTokens'),
-                  },
-                ],
-              );
+              Alert.alert('Insufficient Tokens', 'Not enough tokens. Would you like to buy more?', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Buy Tokens',
+                  onPress: () => navigation.navigate('BuyTokens'),
+                },
+              ]);
             } else {
               Alert.alert('Error', message);
             }

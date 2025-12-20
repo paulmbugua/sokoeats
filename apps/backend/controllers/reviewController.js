@@ -1,8 +1,8 @@
 // controllers/reviewController.js
 import pool from '../config/db.js';
 import {
-  reviewValidationSchema,     // existing tutor review validator
-  starOnlySchema,             // NEW: { rating, comment? }
+  reviewValidationSchema, // existing tutor review validator
+  starOnlySchema, // NEW: { rating, comment? }
 } from '../validators/reviewValidator.js';
 
 /* --------------------- Helpers --------------------- */
@@ -15,7 +15,7 @@ async function ownsVideo(studentId, videoId) {
       WHERE student_id = $1
         AND class_id   = $2
       LIMIT 1`,
-    [studentId, videoId]
+    [studentId, videoId],
   );
   return rows.length > 0;
 }
@@ -26,7 +26,7 @@ async function enrolledInCourse(client, studentIdInt, courseIdUuid) {
        FROM enrollments
       WHERE student_id = $1 AND course_id = $2
       LIMIT 1`,
-    [studentIdInt, courseIdUuid]
+    [studentIdInt, courseIdUuid],
   );
   return rows.length > 0;
 }
@@ -36,7 +36,9 @@ async function enrolledInCourse(client, studentIdInt, courseIdUuid) {
 export const postTutorReview = async (req, res) => {
   try {
     const { tutorId, comment, rating, sessionId } =
-      await reviewValidationSchema.validateAsync(req.body, { stripUnknown: true });
+      await reviewValidationSchema.validateAsync(req.body, {
+        stripUnknown: true,
+      });
 
     const studentId = req.user.id; // integer (from authUser)
     const { rows } = await pool.query(
@@ -44,7 +46,7 @@ export const postTutorReview = async (req, res) => {
          (tutor_id, student_id, session_id, rating, comment, created_at)
        VALUES ($1, $2, $3, $4, $5, NOW())
        RETURNING *`,
-      [tutorId, studentId, sessionId, rating, comment]
+      [tutorId, studentId, sessionId, rating, comment],
     );
 
     return res.status(201).json({
@@ -53,7 +55,9 @@ export const postTutorReview = async (req, res) => {
     });
   } catch (err) {
     if (err.isJoi) {
-      return res.status(400).json({ message: 'Validation error.', details: err.details });
+      return res
+        .status(400)
+        .json({ message: 'Validation error.', details: err.details });
     }
     console.error('Error posting tutor review:', err);
     return res.status(500).json({ message: 'Internal server error.' });
@@ -64,14 +68,16 @@ export const getTutorReviews = async (req, res) => {
   try {
     const { tutorId } = req.query;
     if (!tutorId || typeof tutorId !== 'string') {
-      return res.status(400).json({ message: 'Tutor ID is required to fetch reviews.' });
+      return res
+        .status(400)
+        .json({ message: 'Tutor ID is required to fetch reviews.' });
     }
 
     const { rows: stats } = await pool.query(
       `SELECT AVG(rating) AS avg_rating, COUNT(*) AS total_reviews
          FROM reviews
         WHERE tutor_id = $1`,
-      [tutorId]
+      [tutorId],
     );
     const avgRating = stats[0].avg_rating ?? 0;
     const totalReviews = stats[0].total_reviews ?? 0;
@@ -84,23 +90,23 @@ export const getTutorReviews = async (req, res) => {
        JOIN users u ON u.id = r.student_id
        WHERE r.tutor_id = $1
        ORDER BY r.created_at DESC`,
-      [tutorId]
+      [tutorId],
     );
 
-    const reviews = rows.map(r => ({
-      id:          String(r.id),
-      tutorId:     String(tutorId),
-      sessionId:   String(r.session_id),
-      rating:      Number(r.rating),
-      comment:     r.comment,
-      createdAt:   r.created_at,
-      studentId:   String(r.student_id),
+    const reviews = rows.map((r) => ({
+      id: String(r.id),
+      tutorId: String(tutorId),
+      sessionId: String(r.session_id),
+      rating: Number(r.rating),
+      comment: r.comment,
+      createdAt: r.created_at,
+      studentId: String(r.student_id),
       studentName: r.student_name,
     }));
 
     return res.status(200).json({
-      message:      'Reviews fetched successfully.',
-      avgRating:    Number(avgRating),
+      message: 'Reviews fetched successfully.',
+      avgRating: Number(avgRating),
       totalReviews: Number(totalReviews),
       reviews,
     });
@@ -114,7 +120,8 @@ export const getTutorReviews = async (req, res) => {
 
 export async function postVideoReview(req, res) {
   try {
-    const videoIdParam = typeof req.params.videoId === 'string' ? Number(req.params.videoId) : NaN;
+    const videoIdParam =
+      typeof req.params.videoId === 'string' ? Number(req.params.videoId) : NaN;
     if (!Number.isFinite(videoIdParam)) {
       return res.status(400).json({ message: 'Invalid video id.' });
     }
@@ -128,7 +135,9 @@ export async function postVideoReview(req, res) {
     const { rating, comment } = req.body ?? {};
     const ratingNum = Number(rating);
     if (!Number.isFinite(ratingNum) || ratingNum < 1 || ratingNum > 5) {
-      return res.status(400).json({ message: 'Rating must be between 1 and 5' });
+      return res
+        .status(400)
+        .json({ message: 'Rating must be between 1 and 5' });
     }
     const safeComment =
       typeof comment === 'string' ? comment.trim().slice(0, 500) : null;
@@ -136,7 +145,9 @@ export async function postVideoReview(req, res) {
     // ✅ check ownership via classvault_purchases.class_id
     const hasAccess = await ownsVideo(studentId, videoId);
     if (!hasAccess) {
-      return res.status(403).json({ message: 'You have not purchased this class.' });
+      return res
+        .status(403)
+        .json({ message: 'You have not purchased this class.' });
     }
 
     // Insert (or upsert if you prefer to allow edits)
@@ -152,22 +163,26 @@ export async function postVideoReview(req, res) {
       safeComment,
     ]);
 
-    return res.status(201).json({ message: 'Review posted successfully.', review: rows[0] });
+    return res
+      .status(201)
+      .json({ message: 'Review posted successfully.', review: rows[0] });
   } catch (err) {
     console.error('Error posting video review:', err);
     // duplicate review protection if you added UNIQUE (video_id, student_id) on recorded_video_reviews
     if (err && err.code === '23505') {
-  return res.status(409).json({ message: 'You already reviewed this video.' });
-}
+      return res
+        .status(409)
+        .json({ message: 'You already reviewed this video.' });
+    }
 
     return res.status(500).json({ message: 'Internal server error.' });
   }
 }
 
-
 export async function getVideoReviews(req, res) {
   try {
-    const videoIdParam = typeof req.params.videoId === 'string' ? Number(req.params.videoId) : NaN;
+    const videoIdParam =
+      typeof req.params.videoId === 'string' ? Number(req.params.videoId) : NaN;
     if (!Number.isFinite(videoIdParam)) {
       return res.status(400).json({ message: 'Invalid video id.' });
     }
@@ -178,7 +193,7 @@ export async function getVideoReviews(req, res) {
          FROM recorded_video_reviews
         WHERE video_id = $1
         ORDER BY created_at DESC`,
-      [videoId]
+      [videoId],
     );
 
     return res.status(200).json(rows);
@@ -199,8 +214,8 @@ export const postCourseReview = async (req, res) => {
     });
 
     // IDs in your schema are UUIDs — keep them as strings
-    const studentId = String(req.user.id);          // UUID string
-    const courseId  = String(req.params.courseId);  // UUID string
+    const studentId = String(req.user.id); // UUID string
+    const courseId = String(req.params.courseId); // UUID string
 
     const client = await pool.connect();
 
@@ -216,7 +231,7 @@ export const postCourseReview = async (req, res) => {
            AND course_id  = $2
          LIMIT 1
         `,
-        [studentId, courseId]
+        [studentId, courseId],
       );
 
       if (enr.length === 0) {
@@ -235,7 +250,7 @@ export const postCourseReview = async (req, res) => {
           comment    = EXCLUDED.comment,
           created_at = NOW()
         `,
-        [courseId, studentId, rating, comment ?? null]
+        [courseId, studentId, rating, comment ?? null],
       );
 
       // 3) Recompute aggregates from source of truth
@@ -255,7 +270,7 @@ export const postCourseReview = async (req, res) => {
          WHERE c.id = $1
         RETURNING c.avg_rating, c.ratings_count
         `,
-        [courseId]
+        [courseId],
       );
 
       await client.query('COMMIT');
@@ -285,7 +300,6 @@ export const postCourseReview = async (req, res) => {
   }
 };
 
-
 export const getCourseReviews = async (req, res) => {
   try {
     const courseId = String(req.params.courseId); // UUID
@@ -294,7 +308,7 @@ export const getCourseReviews = async (req, res) => {
       `SELECT AVG(rating) AS avg_rating, COUNT(*) AS total_reviews
          FROM course_reviews
         WHERE course_id = $1`,
-      [courseId]
+      [courseId],
     );
     const avgRating = stats[0].avg_rating ?? 0;
     const totalReviews = stats[0].total_reviews ?? 0;
@@ -307,21 +321,21 @@ export const getCourseReviews = async (req, res) => {
        JOIN users u ON u.id = r.student_id
        WHERE r.course_id = $1
        ORDER BY r.created_at DESC`,
-      [courseId]
+      [courseId],
     );
 
-    const reviews = rows.map(r => ({
-      id:          String(r.id),
-      rating:      Number(r.rating),
-      comment:     r.comment,
-      createdAt:   r.created_at,
-      studentId:   String(r.student_id),
+    const reviews = rows.map((r) => ({
+      id: String(r.id),
+      rating: Number(r.rating),
+      comment: r.comment,
+      createdAt: r.created_at,
+      studentId: String(r.student_id),
       studentName: r.student_name,
     }));
 
     return res.status(200).json({
-      message:      'Reviews fetched successfully.',
-      avgRating:    Number(avgRating),
+      message: 'Reviews fetched successfully.',
+      avgRating: Number(avgRating),
       totalReviews: Number(totalReviews),
       reviews,
     });

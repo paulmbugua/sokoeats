@@ -17,7 +17,7 @@ import CreateProfileForm from './CreateProfileForm.native';
 import ManageProfileForm from './ManageProfileForm.native';
 import AccountSection from './AccountSection.native';
 import CertificationSettings from './CertificationSettings.native';
-import DeleteAccountScreen from './DeleteAccount.native';  // ← import it here
+import DeleteAccountScreen from './DeleteAccount.native'; // ← import it here
 import { useSettings } from '@mytutorapp/shared/hooks';
 import tw from '../../tailwind';
 
@@ -33,13 +33,20 @@ const showToast = (message: string) => {
 
 const getIconName = (id: string): keyof typeof FontAwesome.glyphMap => {
   switch (id) {
-    case 'account': return 'user-circle';
-    case 'manageProfile': return 'edit';
-    case 'certification': return 'certificate';
-    case 'help': return 'question-circle';
-    case 'language': return 'globe';
-    case 'logout': return 'power-off';
-    default: return 'user-circle';
+    case 'account':
+      return 'user-circle';
+    case 'manageProfile':
+      return 'edit';
+    case 'certification':
+      return 'certificate';
+    case 'help':
+      return 'question-circle';
+    case 'language':
+      return 'globe';
+    case 'logout':
+      return 'power-off';
+    default:
+      return 'user-circle';
   }
 };
 
@@ -57,7 +64,7 @@ const SettingsNative: React.FC = () => {
 
   const { hasProfile, activeSection, menuItems, handleMenuClick } = useSettings({
     alertFn: (title, message) => showToast(`${title}: ${message}`),
-    navigateFn: dest => navigation.navigate(dest as keyof RootStackParamList),
+    navigateFn: (dest) => navigation.navigate(dest as keyof RootStackParamList),
   });
 
   const renderActiveSection = () => {
@@ -66,9 +73,7 @@ const SettingsNative: React.FC = () => {
         return <AccountSection />;
 
       case 'manageProfile':
-        return hasProfile 
-          ? <ManageProfileForm /> 
-          : <CreateProfileForm />;
+        return hasProfile ? <ManageProfileForm /> : <CreateProfileForm />;
 
       case 'certification':
         return <CertificationSettings />;
@@ -76,26 +81,16 @@ const SettingsNative: React.FC = () => {
       case 'help':
         return (
           <View style={tw`items-center mt-6`}>
-            <Text style={tw`text-lg font-medium text-white mb-4`}>
-              Help Center
-            </Text>
+            <Text style={tw`text-lg font-medium text-white mb-4`}>Help Center</Text>
             <DeleteAccountScreen />
           </View>
         );
 
       case 'language':
-        return (
-          <Text style={tw`text-white text-center mt-10`}>
-            Language Settings
-          </Text>
-        );
+        return <Text style={tw`text-white text-center mt-10`}>Language Settings</Text>;
 
       default:
-        return (
-          <Text style={tw`text-white text-center mt-10`}>
-            Account Details
-          </Text>
-        );
+        return <Text style={tw`text-white text-center mt-10`}>Account Details</Text>;
     }
   };
 
@@ -123,29 +118,33 @@ const SettingsNative: React.FC = () => {
         style={tw`absolute bottom-0 left-0 right-0 py-3 px-6 rounded-t-2xl shadow-xl border-t border-purple-800`}
       >
         <View style={tw`flex-row justify-between`}>
-          {menuItems.filter(item => item.id !== 'logout').map(item => {
-            const isActive = item.id === activeSection;
-            return (
-              <TouchableOpacity
-                key={item.id}
-                onPress={() =>
-                  handleMenuClick({ ...item, icon: item.icon ?? getIconName(item.id) })
-                }
-                style={tw`items-center flex-1`}
-                disabled={item.disabled}
-              >
-                <FontAwesome
-                  name={getIconName(item.id)}
-                  size={24}
-                  color={item.disabled ? 'gray' : isActive ? '#F472B6' : '#E9D5FF'}
-                />
-                <Text style={tw`mt-1 text-xs ${item.disabled ? 'text-gray-500' : isActive ? 'text-pink-400' : 'text-purple-200'}`}>
-                  {item.label}
-                </Text>
-                {isActive && <View style={tw`h-1 w-6 bg-pink-400 rounded-full mt-1`} />}
-              </TouchableOpacity>
-            );
-          })}
+          {menuItems
+            .filter((item) => item.id !== 'logout')
+            .map((item) => {
+              const isActive = item.id === activeSection;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() =>
+                    handleMenuClick({ ...item, icon: item.icon ?? getIconName(item.id) })
+                  }
+                  style={tw`items-center flex-1`}
+                  disabled={item.disabled}
+                >
+                  <FontAwesome
+                    name={getIconName(item.id)}
+                    size={24}
+                    color={item.disabled ? 'gray' : isActive ? '#F472B6' : '#E9D5FF'}
+                  />
+                  <Text
+                    style={tw`mt-1 text-xs ${item.disabled ? 'text-gray-500' : isActive ? 'text-pink-400' : 'text-purple-200'}`}
+                  >
+                    {item.label}
+                  </Text>
+                  {isActive && <View style={tw`h-1 w-6 bg-pink-400 rounded-full mt-1`} />}
+                </TouchableOpacity>
+              );
+            })}
         </View>
       </LinearGradient>
     </View>

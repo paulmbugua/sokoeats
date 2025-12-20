@@ -2,9 +2,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { speakRobot, SpeakReq, SpeakResp, Viseme } from '../api/ttsAvatarApi';
 
-
-
-
 type State = SpeakResp | null;
 const COOLDOWN_MS = 2500; // wait after any failure before trying again
 const DEDUPE_WINDOW_MS = 10_000; // 10s grace for identical payloads
@@ -42,11 +39,11 @@ async function speakWithDedupe(
   timeoutMs?: number,
   signal?: AbortSignal
 ): Promise<SpeakResp> {
-  const rate  = payload.rate  ?? '0%';
+  const rate = payload.rate ?? '0%';
   const pitch = payload.pitch ?? '+0st';
   const voice = String(payload.voiceName || '');
-  const ssml  = String(payload.ssml || '');
-  const hash  = await sha1Hex(`${voice}|${rate}|${pitch}|${ssml}`);
+  const ssml = String(payload.ssml || '');
+  const hash = await sha1Hex(`${voice}|${rate}|${pitch}|${ssml}`);
 
   // Fast return: identical to last success
   if (hash === lastHash && lastResp) return lastResp;
@@ -66,13 +63,15 @@ async function speakWithDedupe(
   return p;
 }
 
-
 // Best-effort extractor for { error: "CODE" } from backend errors (or wrapped errors)
 function extractErrorCode(err: any): string | undefined {
   if (!err) return undefined;
   if (typeof err.code === 'string') return err.code;
   if (typeof err.body === 'string') {
-    try { const j = JSON.parse(err.body); if (typeof j?.error === 'string') return j.error; } catch {}
+    try {
+      const j = JSON.parse(err.body);
+      if (typeof j?.error === 'string') return j.error;
+    } catch {}
   }
   const msg = String(err.message || '');
   const m = msg.match(/"error"\s*:\s*"([^"]+)"/);
@@ -160,8 +159,6 @@ export function useRobotSpeaker() {
       const ssmlLen = body?.ssml ? String(body.ssml).length : 0;
       const textLen = body?.text ? String(body.text).length : 0;
 
-     
-
       // Cooldown after a failure
       const sinceFail = Date.now() - lastFailAtRef.current;
       if (sinceFail < COOLDOWN_MS) {
@@ -212,8 +209,7 @@ export function useRobotSpeaker() {
       inflightRef.current = true;
 
       try {
-       const resp = await speakWithDedupe(backendUrl, body, token, timeoutMs, ctrl.signal);
-
+        const resp = await speakWithDedupe(backendUrl, body, token, timeoutMs, ctrl.signal);
 
         const t1 = performance.now();
         // eslint-disable-next-line no-console
@@ -269,10 +265,17 @@ export function useRobotSpeaker() {
   const getCurrentViseme = useCallback((tSec: number) => {
     const arr = visemesRef.current;
     if (!arr.length) return undefined;
-    let lo = 0, hi = arr.length - 1, ans = 0;
+    let lo = 0,
+      hi = arr.length - 1,
+      ans = 0;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (arr[mid].time <= tSec) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+      if (arr[mid].time <= tSec) {
+        ans = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
     }
     return arr[ans];
   }, []);
@@ -306,14 +309,14 @@ export function useRobotSpeaker() {
 
   return useMemo(
     () => ({
-      data,              // SpeakResp | null
-      loading,           // boolean
-      error,             // string | null (human-friendly)
-      requestSpeech,     // (backendUrl, body, token?, timeoutMs?) => Promise<void>
-      speak,             // alias
-      getCurrentViseme,  // (t: number) => Viseme | undefined
-      getVisemes,        // () => Viseme[]
-      reset,             // () => void
+      data, // SpeakResp | null
+      loading, // boolean
+      error, // string | null (human-friendly)
+      requestSpeech, // (backendUrl, body, token?, timeoutMs?) => Promise<void>
+      speak, // alias
+      getCurrentViseme, // (t: number) => Viseme | undefined
+      getVisemes, // () => Viseme[]
+      reset, // () => void
     }),
     [data, loading, error, requestSpeech, speak, getCurrentViseme, getVisemes, reset]
   );

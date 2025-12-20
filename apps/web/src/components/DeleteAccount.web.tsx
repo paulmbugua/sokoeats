@@ -21,10 +21,7 @@ const ModalPortal: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return createPortal(children, document.body);
 };
 
-const DeleteAccount: React.FC<Props> = ({
-  triggerClassName = '',
-  label = 'Delete Account',
-}) => {
+const DeleteAccount: React.FC<Props> = ({ triggerClassName = '', label = 'Delete Account' }) => {
   const navigate = useNavigate();
 
   const { handleDeleteAccount, isDeleting, deleteError } = useAuth({
@@ -133,24 +130,25 @@ const DeleteAccount: React.FC<Props> = ({
                     </p>
                     <ul className="list-disc list-inside space-y-2">
                       <li>
-                        <strong>Account deactivation:</strong> You will be signed out and can’t sign in again.
+                        <strong>Account deactivation:</strong> You will be signed out and can’t sign
+                        in again.
                       </li>
                       <li>
-                        <strong>Personal data removal:</strong> Your name, email, phone, avatar, and profile
-                        details are erased or replaced with anonymous values.
+                        <strong>Personal data removal:</strong> Your name, email, phone, avatar, and
+                        profile details are erased or replaced with anonymous values.
                       </li>
                       <li>
-                        <strong>History retained (anonymized):</strong> Purchases, learning progress, certificates,
-                        reviews, and payment records may be kept for audit and fraud prevention, but they will no
-                        longer identify you.
+                        <strong>History retained (anonymized):</strong> Purchases, learning
+                        progress, certificates, reviews, and payment records may be kept for audit
+                        and fraud prevention, but they will no longer identify you.
                       </li>
                       <li>
-                        <strong>Organizations:</strong> Any organizations you own/admin may have ownership
-                        transferred to a system account or another admin.
+                        <strong>Organizations:</strong> Any organizations you own/admin may have
+                        ownership transferred to a system account or another admin.
                       </li>
                       <li>
-                        <strong>Backups:</strong> Existing backups may contain your data until routine rotation
-                        completes (~ {BACKUP_RETENTION_DAYS} days).
+                        <strong>Backups:</strong> Existing backups may contain your data until
+                        routine rotation completes (~ {BACKUP_RETENTION_DAYS} days).
                       </li>
                       <li>
                         <strong>Irreversible:</strong> This cannot be undone.
@@ -158,7 +156,10 @@ const DeleteAccount: React.FC<Props> = ({
                     </ul>
 
                     <div className="pt-2">
-                      <a href="/settings/export-data" className="text-primary underline hover:opacity-80">
+                      <a
+                        href="/settings/export-data"
+                        className="text-primary underline hover:opacity-80"
+                      >
                         Export a copy of your data (optional)
                       </a>
                     </div>
@@ -183,7 +184,8 @@ const DeleteAccount: React.FC<Props> = ({
                         onChange={(e) => setConfirmChecked(e.target.checked)}
                       />
                       <span className="leading-6">
-                        I understand my personal information will be removed/anonymized and this action cannot be undone.
+                        I understand my personal information will be removed/anonymized and this
+                        action cannot be undone.
                       </span>
                     </label>
 
@@ -202,11 +204,13 @@ const DeleteAccount: React.FC<Props> = ({
                         spellCheck={false}
                         inputMode="text"
                       />
-                      {confirmText && !(confirmChecked && normalize(confirmText) === REQUIRED_TOKEN) && (
-                        <p className="mt-1 text-xs text-red-300">
-                          Please type {REQUIRED_TOKEN} exactly (case-insensitive, no extra spaces) and tick the checkbox.
-                        </p>
-                      )}
+                      {confirmText &&
+                        !(confirmChecked && normalize(confirmText) === REQUIRED_TOKEN) && (
+                          <p className="mt-1 text-xs text-red-300">
+                            Please type {REQUIRED_TOKEN} exactly (case-insensitive, no extra spaces)
+                            and tick the checkbox.
+                          </p>
+                        )}
                     </div>
                   </div>
                 </div>

@@ -53,9 +53,7 @@ const AntiCheatGuard: React.FC<Props> = ({
 
   const remainingS = Math.max(0, Math.floor(safeTimer - elapsedS));
   const pct =
-    safeTimer > 0
-      ? Math.min(100, Math.max(0, (remainingS / Math.max(1, safeTimer)) * 100))
-      : 0;
+    safeTimer > 0 ? Math.min(100, Math.max(0, (remainingS / Math.max(1, safeTimer)) * 100)) : 0;
 
   React.useEffect(() => {
     if (!quizActive || backgrounds <= maxBg) {
@@ -86,10 +84,10 @@ const AntiCheatGuard: React.FC<Props> = ({
       tone === 'ok'
         ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-500/30'
         : tone === 'warn'
-        ? 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/30'
-        : tone === 'danger'
-        ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/10 dark:text-red-200 dark:ring-red-500/30'
-        : 'bg-gray-50 text-gray-700 ring-gray-200 dark:bg-white/5 dark:text-white/80 dark:ring-white/10';
+          ? 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/30'
+          : tone === 'danger'
+            ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/10 dark:text-red-200 dark:ring-red-500/30'
+            : 'bg-gray-50 text-gray-700 ring-gray-200 dark:bg-white/5 dark:text-white/80 dark:ring-white/10';
 
     return (
       <span
@@ -114,8 +112,8 @@ const AntiCheatGuard: React.FC<Props> = ({
     suspicions >= maxSus
       ? 'danger'
       : suspicions >= Math.max(1, Math.floor(maxSus * 0.7))
-      ? 'warn'
-      : 'ok';
+        ? 'warn'
+        : 'ok';
 
   return (
     <div className="rounded-2xl bg-white ring-1 ring-gray-200 p-3 sm:p-4 mb-3 shadow-sm dark:bg-[#0f1821] dark:ring-white/10">
@@ -146,18 +144,20 @@ const AntiCheatGuard: React.FC<Props> = ({
         <div className="w-full sm:w-auto">
           <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2">
             <Badge tone={bgTone} title="Number of times the tab/app lost focus">
-              <span className="truncate">Exits: {backgrounds}/{maxBg}</span>
+              <span className="truncate">
+                Exits: {backgrounds}/{maxBg}
+              </span>
             </Badge>
 
             <Badge tone={susTone} title="Suspicion level accumulated for unusual actions">
-              <span className="truncate">Suspicion: {suspicions}/{maxSus}</span>
+              <span className="truncate">
+                Suspicion: {suspicions}/{maxSus}
+              </span>
             </Badge>
 
             {/* Heartbeat: short label on xs, full label on sm+ */}
             <Badge tone="muted" title="Anti-cheat heartbeat interval">
-              <span className="sm:hidden truncate">
-                HB: {policy?.heartbeatSec ?? 15}s
-              </span>
+              <span className="sm:hidden truncate">HB: {policy?.heartbeatSec ?? 15}s</span>
               <span className="hidden sm:inline truncate">
                 {policy?.heartbeatSec ?? 15}s heartbeat
               </span>
@@ -171,7 +171,9 @@ const AntiCheatGuard: React.FC<Props> = ({
         <div className="mt-4">
           <div className="flex items-center justify-between text-[11px] text-gray-600 dark:text-white/60">
             <span>Time limit</span>
-            <span className="font-medium text-darkText dark:text-white">{fmtHMS(remainingS)} left</span>
+            <span className="font-medium text-darkText dark:text-white">
+              {fmtHMS(remainingS)} left
+            </span>
           </div>
           <div className="mt-1 h-2 w-full rounded-full bg-gray-200/70 dark:bg-white/10">
             <div
@@ -196,8 +198,8 @@ const AntiCheatGuard: React.FC<Props> = ({
               ? remainingS <= 60
                 ? 'danger'
                 : remainingS <= 180
-                ? 'warn'
-                : 'ok'
+                  ? 'warn'
+                  : 'ok'
               : 'muted'
           }
         />
@@ -231,13 +233,15 @@ const AntiCheatGuard: React.FC<Props> = ({
 
       {/* Hint / Notice */}
       <div className="mt-2 text-[11px] text-gray-500 dark:text-white/60">
-        Don’t leave the page while the quiz is active. Unusual activity may auto-submit your attempt.
+        Don’t leave the page while the quiz is active. Unusual activity may auto-submit your
+        attempt.
       </div>
 
       {/* Elevated warning when at risk */}
       {(backgrounds === maxBg || suspicions >= Math.max(1, Math.floor(maxSus * 0.7))) && (
         <div className="mt-3 rounded-xl p-3 ring-1 ring-amber-200 bg-amber-50 text-amber-800 text-xs dark:bg-amber-500/10 dark:ring-amber-500/30 dark:text-amber-200">
-          Heads up: you’re close to the limit. Switching tabs/apps or suspicious actions could lock and submit your quiz.
+          Heads up: you’re close to the limit. Switching tabs/apps or suspicious actions could lock
+          and submit your quiz.
         </div>
       )}
 
@@ -264,28 +268,26 @@ function MetricCard({
     tone === 'ok'
       ? 'ring-emerald-200 dark:ring-emerald-500/30'
       : tone === 'warn'
-      ? 'ring-amber-200 dark:ring-amber-500/30'
-      : tone === 'danger'
-      ? 'ring-red-200 dark:ring-red-500/30'
-      : 'ring-gray-200 dark:ring-white/10';
+        ? 'ring-amber-200 dark:ring-amber-500/30'
+        : tone === 'danger'
+          ? 'ring-red-200 dark:ring-red-500/30'
+          : 'ring-gray-200 dark:ring-white/10';
 
   const bg =
     tone === 'ok'
       ? 'bg-emerald-50 dark:bg-emerald-500/10'
       : tone === 'warn'
-      ? 'bg-amber-50 dark:bg-amber-500/10'
-      : tone === 'danger'
-      ? 'bg-red-50 dark:bg-red-500/10'
-      : 'bg-white dark:bg-white/5';
+        ? 'bg-amber-50 dark:bg-amber-500/10'
+        : tone === 'danger'
+          ? 'bg-red-50 dark:bg-red-500/10'
+          : 'bg-white dark:bg-white/5';
 
   return (
     <div className={`rounded-xl p-3 text-center ring-1 ${ring} ${bg}`}>
       <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-white/60">
         {label}
       </div>
-      <div className="mt-0.5 text-lg font-semibold text-darkText dark:text-white">
-        {value}
-      </div>
+      <div className="mt-0.5 text-lg font-semibold text-darkText dark:text-white">{value}</div>
     </div>
   );
 }

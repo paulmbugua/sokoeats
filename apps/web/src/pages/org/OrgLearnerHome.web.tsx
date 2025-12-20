@@ -4,8 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useShopContext } from '@mytutorapp/shared/context';
 
-const card =
-  'rounded-2xl ring-1 ring-white/10 bg-white/5 p-4 sm:p-5';
+const card = 'rounded-2xl ring-1 ring-white/10 bg-white/5 p-4 sm:p-5';
 
 const OrgLearnerHome: React.FC = () => {
   const { org, role, currentUser } = (useOrg?.() ?? {}) as any;
@@ -22,27 +21,17 @@ const OrgLearnerHome: React.FC = () => {
   } = useShopContext() as any;
 
   // 🔐 support studentId coming from QR / login link
-  const rawStudentIdParam =
-    params.get('studentId') ?? params.get('student_id') ?? '';
+  const rawStudentIdParam = params.get('studentId') ?? params.get('student_id') ?? '';
 
   // Optional subject hint coming from URL (e.g. /org/learner-home?subject=Maths)
   const subjectParam =
-    params.get('subject') ??
-    params.get('subjectKey') ??
-    params.get('subject_key') ??
-    '';
+    params.get('subject') ?? params.get('subjectKey') ?? params.get('subject_key') ?? '';
 
-  const orgName: string =
-    org?.name ||
-    org?.org_name ||
-    'Your Institution';
+  const orgName: string = org?.name || org?.org_name || 'Your Institution';
 
-  const planLabel: string = org?.tier
-    ? org.tier.toString().toUpperCase()
-    : 'STARTER';
+  const planLabel: string = org?.tier ? org.tier.toString().toUpperCase() : 'STARTER';
 
-  const portalLabel =
-    role ? `${String(role).toUpperCase()} PORTAL` : 'LEARNER PORTAL';
+  const portalLabel = role ? `${String(role).toUpperCase()} PORTAL` : 'LEARNER PORTAL';
 
   // ─────────────────────────────────────────────
   // Learner identity derived fields
@@ -71,20 +60,18 @@ const OrgLearnerHome: React.FC = () => {
     currentUser ||
     null;
 
-  const learnerUserBase: any =
-    shopUser ||
-    currentUser ||
-    ctxOrgUser ||
-    null;
+  const learnerUserBase: any = shopUser || currentUser || ctxOrgUser || null;
 
   // Canonical learner user id (this is what exam sheets use as student_user_id)
   const learnerUserId: number | string | null =
     learner?.user_id ??
     learner?.student_user_id ??
-    learner?.userId ??      // 👈 from your `{ success, userId, ... }` payload
+    learner?.userId ?? // 👈 from your `{ success, userId, ... }` payload
     learner?.id ??
     ctxUserId ??
-    (shopUser?.id ?? shopUser?.user_id ?? shopUser?.userId) ??
+    shopUser?.id ??
+    shopUser?.user_id ??
+    shopUser?.userId ??
     null;
 
   // ✅ Canonical learner student id for exams:
@@ -94,8 +81,8 @@ const OrgLearnerHome: React.FC = () => {
     rawStudentIdParam && rawStudentIdParam.trim() !== ''
       ? rawStudentIdParam.trim()
       : learnerUserId != null
-      ? String(learnerUserId)
-      : '';
+        ? String(learnerUserId)
+        : '';
 
   // Optional: treat "no learner yet" + no studentId param as loading
   const isLoading = !learner && !rawStudentIdParam;
@@ -127,15 +114,12 @@ const OrgLearnerHome: React.FC = () => {
   ]);
 
   // Single URL used everywhere (exam portal learner view)
-  const examsHref =
-    learnerStudentId
-      ? `/org/exams?view=learner&studentId=${encodeURIComponent(
-          learnerStudentId,
-        )}`
-      : '/org/exams?view=learner';
+  const examsHref = learnerStudentId
+    ? `/org/exams?view=learner&studentId=${encodeURIComponent(learnerStudentId)}`
+    : '/org/exams?view=learner';
 
   // ── Display fields: all derived from `learner` ────────────────────────────
-   const learnerName: string =
+  const learnerName: string =
     learnerUserBase?.name ||
     learner?.name ||
     learner?.full_name ||
@@ -144,37 +128,28 @@ const OrgLearnerHome: React.FC = () => {
     learner?.email ||
     'Learner';
 
-
-    const learnerEmail: string =
-    learnerUserBase?.email ||              // primary: actual login email
-    learner?.email ||                      // in case learner is already user-shaped
+  const learnerEmail: string =
+    learnerUserBase?.email || // primary: actual login email
+    learner?.email || // in case learner is already user-shaped
     learnerUserBase?.email_address ||
     learner?.email_address ||
-    learner?.guardian_email ||             // fallback to guardian email
+    learner?.guardian_email || // fallback to guardian email
     '';
 
-    '';
+  ('');
 
   const learnerGrade: string | null =
-    learner?.class_label ||
-    learner?.classLabel ||
-    learner?.grade ||
-    null;
+    learner?.class_label || learner?.classLabel || learner?.grade || null;
 
   // NEW: Try to resolve a default subject for this learner
   const learnerSubject: string | null =
-    (subjectParam && subjectParam.trim() !== ''
-      ? subjectParam.trim()
-      : null) ||
+    (subjectParam && subjectParam.trim() !== '' ? subjectParam.trim() : null) ||
     learner?.subject ||
     learner?.subject_name ||
     learner?.subject_label ||
     null;
 
-  const admissionCode: string | null =
-    learner?.admission_code ||
-    learner?.admissionCode ||
-    null;
+  const admissionCode: string | null = learner?.admission_code || learner?.admissionCode || null;
 
   const learnerPhotoFromProfile: string | null =
     (learnerProfileFromOrg &&
@@ -184,10 +159,7 @@ const OrgLearnerHome: React.FC = () => {
     null;
 
   const learnerPhoto: string | null =
-    learnerPhotoFromProfile ||
-    learner?.photo_url ||
-    learner?.photoUrl ||
-    null;
+    learnerPhotoFromProfile || learner?.photo_url || learner?.photoUrl || null;
 
   const learnerInitial = (learnerName || 'L').trim().charAt(0).toUpperCase();
 
@@ -210,38 +182,31 @@ const OrgLearnerHome: React.FC = () => {
   if (learnerSubject) {
     courseQueryParts.push(`subject=${encodeURIComponent(learnerSubject)}`);
   }
-  const coursesHref = `/courses${
-    courseQueryParts.length ? `?${courseQueryParts.join('&')}` : ''
-  }`;
+  const coursesHref = `/courses${courseQueryParts.length ? `?${courseQueryParts.join('&')}` : ''}`;
 
   // 🔐 Assignments: learner-restricted view (only what teachers share)
   // Now also passes class + subject hints to /org/portal
   const assignQueryParts: string[] = [];
   assignQueryParts.push('view=learner', 'tab=assign');
   if (learnerStudentId) {
-    assignQueryParts.push(
-      `studentId=${encodeURIComponent(learnerStudentId)}`,
-    );
+    assignQueryParts.push(`studentId=${encodeURIComponent(learnerStudentId)}`);
   }
   if (learnerGrade) {
     assignQueryParts.push(`class=${encodeURIComponent(learnerGrade)}`);
   }
   if (learnerSubject) {
-    assignQueryParts.push(
-      `subject=${encodeURIComponent(learnerSubject)}`,
-    );
+    assignQueryParts.push(`subject=${encodeURIComponent(learnerSubject)}`);
   }
   const assignmentsHref = `/org/portal${
     assignQueryParts.length ? `?${assignQueryParts.join('&')}` : ''
   }`;
 
   // 🔐 Results & certificates: Robot Tutor + legacy (certificates from Robot Tutor only)
-  const resultsHref =
-    learnerStudentId
-      ? `/results?studentId=${encodeURIComponent(learnerStudentId)}`
-      : '/results';
+  const resultsHref = learnerStudentId
+    ? `/results?studentId=${encodeURIComponent(learnerStudentId)}`
+    : '/results';
 
-       // 🔍 NEW: log how the learner will pull courses/assignments/results
+  // 🔍 NEW: log how the learner will pull courses/assignments/results
   React.useEffect(() => {
     console.log('[OrgLearnerHome] navigation + filters', {
       learnerStudentId,
@@ -269,9 +234,7 @@ const OrgLearnerHome: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#0b1220] text-white px-3 sm:px-4 py-6 flex items-center justify-center">
         <div className="max-w-md w-full text-center space-y-3">
-          <p className="text-xs uppercase tracking-[0.16em] text-white/50">
-            LEARNER PORTAL
-          </p>
+          <p className="text-xs uppercase tracking-[0.16em] text-white/50">LEARNER PORTAL</p>
           <p className="text-lg font-semibold">Preparing your learner dashboard…</p>
           <p className="text-xs text-white/60">
             Please wait a moment while we load your institution profile and learner account.
@@ -284,19 +247,14 @@ const OrgLearnerHome: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#0b1220] text-white px-3 sm:px-4 py-6">
       <div className="max-w-screen-lg mx-auto space-y-4">
-
         {/* Header */}
         <header className={`${card} flex items-center justify-between gap-3`}>
           <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-[0.16em] text-white/60">
               {portalLabel}
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold truncate mt-0.5">
-              {orgName}
-            </h1>
-            <div className="text-xs text-white/60 mt-0.5">
-              {planLabel} plan
-            </div>
+            <h1 className="text-xl sm:text-2xl font-bold truncate mt-0.5">{orgName}</h1>
+            <div className="text-xs text-white/60 mt-0.5">{planLabel} plan</div>
           </div>
 
           <div className="shrink-0 flex flex-col items-end gap-2">
@@ -309,7 +267,6 @@ const OrgLearnerHome: React.FC = () => {
             >
               Not you? <span className="font-semibold">Sign out</span>
             </button>
-
           </div>
         </header>
 
@@ -319,11 +276,7 @@ const OrgLearnerHome: React.FC = () => {
             {/* Avatar */}
             <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-gradient-to-br from-emerald-500/60 to-sky-500/60 flex items-center justify-center text-lg sm:text-xl font-bold shadow-inner overflow-hidden">
               {learnerPhoto ? (
-                <img
-                  src={learnerPhoto}
-                  alt={learnerName}
-                  className="h-full w-full object-cover"
-                />
+                <img src={learnerPhoto} alt={learnerName} className="h-full w-full object-cover" />
               ) : (
                 <span>{learnerInitial}</span>
               )}
@@ -336,9 +289,7 @@ const OrgLearnerHome: React.FC = () => {
               </p>
 
               <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                <div className="text-base sm:text-lg font-semibold truncate">
-                  {learnerName}
-                </div>
+                <div className="text-base sm:text-lg font-semibold truncate">{learnerName}</div>
 
                 {learnerGrade && (
                   <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-200 border border-emerald-400/30">
@@ -369,8 +320,8 @@ const OrgLearnerHome: React.FC = () => {
                 )}
 
                 <p className="mt-1 text-[11px] text-white/50">
-                  If this name or grade doesn&apos;t look correct, sign out and
-                  ask your teacher to confirm your login card.
+                  If this name or grade doesn&apos;t look correct, sign out and ask your teacher to
+                  confirm your login card.
                 </p>
               </div>
             </div>
@@ -381,12 +332,10 @@ const OrgLearnerHome: React.FC = () => {
         <section className={card}>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">
-                Exam results &amp; report cards
-              </h2>
+              <h2 className="text-lg font-semibold">Exam results &amp; report cards</h2>
               <p className="text-sm text-white/70">
-                View your official institution exam marks and download
-                report cards as PDF for each term or exam session.
+                View your official institution exam marks and download report cards as PDF for each
+                term or exam session.
               </p>
             </div>
             {/* 🔐 learner-only mode with studentId param when available */}
@@ -399,16 +348,14 @@ const OrgLearnerHome: React.FC = () => {
             </Link>
           </div>
           <p className="mt-2 text-xs text-white/60">
-            Results are powered by your institution&apos;s DayBreak exams
-            workspace. You can save or print the downloaded report cards.
+            Results are powered by your institution&apos;s DayBreak exams workspace. You can save or
+            print the downloaded report cards.
           </p>
         </section>
 
         {/* General learner tools */}
         <section className={card}>
-          <h3 className="text-base font-semibold mb-2">
-            Learning tools
-          </h3>
+          <h3 className="text-base font-semibold mb-2">Learning tools</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             {/* Assignments – legacy / file-based only */}
             <Link
@@ -417,20 +364,17 @@ const OrgLearnerHome: React.FC = () => {
             >
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold">
-                    Assignments (files)
-                  </h4>
+                  <h4 className="text-sm font-semibold">Assignments (files)</h4>
                   <span className="text-[11px] text-indigo-300 group-hover:translate-x-0.5 transition">
                     Open →
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-white/70">
-                  See only file-based assignments (PDFs, docs, images) that your
-                  teachers have shared with you using the classic / legacy flow.
+                  See only file-based assignments (PDFs, docs, images) that your teachers have
+                  shared with you using the classic / legacy flow.
                 </p>
               </div>
             </Link>
-
 
             {/* Results & certificates (Robot Tutor + legacy overview) */}
             <Link
@@ -439,17 +383,14 @@ const OrgLearnerHome: React.FC = () => {
             >
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold">
-                    Results &amp; certificates
-                  </h4>
+                  <h4 className="text-sm font-semibold">Results &amp; certificates</h4>
                   <span className="text-[11px] text-indigo-300 group-hover:translate-x-0.5 transition">
                     View →
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-white/70">
-                  Check your quiz results from Robot Tutor and legacy exams.
-                  Certificates are currently available for Robot Tutor quizzes
-                  only.
+                  Check your quiz results from Robot Tutor and legacy exams. Certificates are
+                  currently available for Robot Tutor quizzes only.
                 </p>
               </div>
             </Link>
@@ -461,16 +402,14 @@ const OrgLearnerHome: React.FC = () => {
             >
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold">
-                    Course library
-                  </h4>
+                  <h4 className="text-sm font-semibold">Course library</h4>
                   <span className="text-[11px] text-indigo-300 group-hover:translate-x-0.5 transition">
                     Browse →
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-white/70">
-                  Explore courses, OER resources, and AI lessons
-                  that are connected to your account, class
+                  Explore courses, OER resources, and AI lessons that are connected to your account,
+                  class
                   {learnerGrade ? ` (${learnerGrade})` : ''} and
                   {learnerSubject ? ` subject (${learnerSubject}).` : ' subjects.'}
                 </p>
@@ -484,16 +423,13 @@ const OrgLearnerHome: React.FC = () => {
             >
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold">
-                    Messages &amp; help
-                  </h4>
+                  <h4 className="text-sm font-semibold">Messages &amp; help</h4>
                   <span className="text-[11px] text-indigo-300 group-hover:translate-x-0.5 transition">
                     Open →
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-white/70">
-                  Reach your instructors or support and keep all
-                  school communication in one place.
+                  Reach your instructors or support and keep all school communication in one place.
                 </p>
               </div>
             </Link>

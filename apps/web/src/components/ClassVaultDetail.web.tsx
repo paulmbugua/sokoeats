@@ -91,9 +91,7 @@ export default function ClassVaultDetail() {
 
   const avgRating =
     reviews.length > 0
-      ? Number(
-          (reviews.reduce((s, r) => s + Number(r.rating), 0) / reviews.length).toFixed(2)
-        )
+      ? Number((reviews.reduce((s, r) => s + Number(r.rating), 0) / reviews.length).toFixed(2))
       : 0;
 
   const onTimeUpdate = () => {
@@ -155,7 +153,14 @@ export default function ClassVaultDetail() {
       >
         <div className="rounded-full p-4 ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821]">
           <svg className="animate-spin h-7 w-7 text-[#3d99f5]" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
             <path className="opacity-75" fill="currentColor" d="M4 12a 8 8 0 018-8v8z" />
           </svg>
         </div>
@@ -211,19 +216,25 @@ export default function ClassVaultDetail() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col">
               <p className="text-[#49739c] dark:text-darkTextSecondary text-sm">Subject</p>
-              <p className="text-[#0d141c] dark:text-darkTextPrimary font-semibold">{v.subject ?? '—'}</p>
+              <p className="text-[#0d141c] dark:text-darkTextPrimary font-semibold">
+                {v.subject ?? '—'}
+              </p>
             </div>
 
             <div className="flex flex-col">
               <p className="text-[#49739c] dark:text-darkTextSecondary text-sm">Grade Level</p>
-              <p className="text-[#0d141c] dark:text-darkTextPrimary font-semibold">{v.grade_level ?? '—'}</p>
+              <p className="text-[#0d141c] dark:text-darkTextPrimary font-semibold">
+                {v.grade_level ?? '—'}
+              </p>
             </div>
           </div>
 
           {v.description && (
             <div className="flex flex-col">
               <p className="text-[#49739c] dark:text-darkTextSecondary text-sm">Description</p>
-              <p className="text-[#0d141c] dark:text-darkTextPrimary leading-relaxed">{v.description}</p>
+              <p className="text-[#0d141c] dark:text-darkTextPrimary leading-relaxed">
+                {v.description}
+              </p>
             </div>
           )}
 
@@ -252,7 +263,9 @@ export default function ClassVaultDetail() {
           <div className="flex items-center gap-3">
             <div className="text-sm">
               <span className="font-semibold">Rating:</span>{' '}
-              <span>★ {avgRating} ({reviews.length})</span>
+              <span>
+                ★ {avgRating} ({reviews.length})
+              </span>
               {loadingReviews && <span className="ml-2 text-[#49739c]">Loading…</span>}
               {reviewsError && <span className="ml-2 text-red-600">{reviewsError}</span>}
             </div>
@@ -326,9 +339,7 @@ export default function ClassVaultDetail() {
                 icon={(pdfUrl ? faDownload : faShoppingCart) as IconProp}
                 className="text-current"
               />
-              <span>
-                {pdfUrl ? 'Download Class Notes (PDF)' : 'Purchase to Access PDF'}
-              </span>
+              <span>{pdfUrl ? 'Download Class Notes (PDF)' : 'Purchase to Access PDF'}</span>
             </button>
           )}
 
@@ -358,7 +369,10 @@ export default function ClassVaultDetail() {
 
           {/* Small helper row */}
           <div className="flex items-center justify-center gap-2 pt-1">
-            <FontAwesomeIcon icon={faFilePdf as IconProp} className="text-[#49739c] dark:text-darkTextSecondary" />
+            <FontAwesomeIcon
+              icon={faFilePdf as IconProp}
+              className="text-[#49739c] dark:text-darkTextSecondary"
+            />
             <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
               Downloads open in a new tab.
             </p>

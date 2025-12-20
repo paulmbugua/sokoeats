@@ -47,24 +47,51 @@ function splitMathBlocks(src: string) {
   return parts;
 }
 
-
 const defaultMarkdownStyles = (zoom = 1) => ({
-  body:       { color: '#e5e7eb', fontSize: 14 * zoom, lineHeight: 22 * zoom },
-  heading1:   { color: '#ffffff', fontSize: 20 * zoom, marginBottom: 6 },
-  heading2:   { color: '#ffffff', fontSize: 18 * zoom, marginBottom: 6 },
-  heading3:   { color: '#ffffff', fontSize: 16 * zoom, marginBottom: 6 },
-  code_block: { backgroundColor: 'rgba(2,6,23,0.6)', padding: 10, borderRadius: 10, fontSize: 13 * zoom },
-  fence:      { backgroundColor: 'rgba(2,6,23,0.6)', padding: 10, borderRadius: 10, fontSize: 13 * zoom },
-  table:      { borderWidth: 0.5, borderColor: 'rgba(148,163,184,0.3)', borderRadius: 8, overflow: 'hidden' },
-  thead:      { backgroundColor: 'rgba(30,41,59,0.9)' },
-  th:         { color: '#e5e7eb', fontWeight: '700', padding: 8, borderRightWidth: 0.5, borderRightColor: 'rgba(148,163,184,0.3)' },
-  td:         { color: '#e5e7eb', padding: 8, borderRightWidth: 0.5, borderRightColor: 'rgba(148,163,184,0.2)', borderTopWidth: 0.5, borderTopColor: 'rgba(148,163,184,0.2)' },
-  image:      { borderRadius: 12, marginVertical: 6 },
-  strong:     { color: '#ffffff' },
-  em:         { color: '#a78bfa' },
-  link:       { color: '#93c5fd' },
+  body: { color: '#e5e7eb', fontSize: 14 * zoom, lineHeight: 22 * zoom },
+  heading1: { color: '#ffffff', fontSize: 20 * zoom, marginBottom: 6 },
+  heading2: { color: '#ffffff', fontSize: 18 * zoom, marginBottom: 6 },
+  heading3: { color: '#ffffff', fontSize: 16 * zoom, marginBottom: 6 },
+  code_block: {
+    backgroundColor: 'rgba(2,6,23,0.6)',
+    padding: 10,
+    borderRadius: 10,
+    fontSize: 13 * zoom,
+  },
+  fence: {
+    backgroundColor: 'rgba(2,6,23,0.6)',
+    padding: 10,
+    borderRadius: 10,
+    fontSize: 13 * zoom,
+  },
+  table: {
+    borderWidth: 0.5,
+    borderColor: 'rgba(148,163,184,0.3)',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  thead: { backgroundColor: 'rgba(30,41,59,0.9)' },
+  th: {
+    color: '#e5e7eb',
+    fontWeight: '700',
+    padding: 8,
+    borderRightWidth: 0.5,
+    borderRightColor: 'rgba(148,163,184,0.3)',
+  },
+  td: {
+    color: '#e5e7eb',
+    padding: 8,
+    borderRightWidth: 0.5,
+    borderRightColor: 'rgba(148,163,184,0.2)',
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(148,163,184,0.2)',
+  },
+  image: { borderRadius: 12, marginVertical: 6 },
+  strong: { color: '#ffffff' },
+  em: { color: '#a78bfa' },
+  link: { color: '#93c5fd' },
   blockquote: { borderLeftColor: '#93c5fd', borderLeftWidth: 3, paddingLeft: 10, color: '#e5e7eb' },
-  hr:         { borderColor: 'rgba(148,163,184,0.2)', borderWidth: 0.5 },
+  hr: { borderColor: 'rgba(148,163,184,0.2)', borderWidth: 0.5 },
 });
 
 export default function Markdown({
@@ -88,8 +115,7 @@ export default function Markdown({
   // Inline rules: use node.key (or a safe fallback) instead of parent.key
   // inside Markdown.native.tsx
 
-const inlineRules =
-  inline
+  const inlineRules = inline
     ? {
         paragraph: (node: any, _children: any) => (
           <Text
@@ -111,7 +137,6 @@ const inlineRules =
         ),
       }
     : undefined;
-
 
   return (
     <View style={className ? tw`${className}` : undefined}>

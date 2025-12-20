@@ -12,7 +12,13 @@ export type AttemptStartResp = {
 export async function startAttemptApi(
   backendUrl: string,
   token: string,
-  body: { assignmentId: string; timerSec?: number; heartbeatSec?: number; maxBackgrounds?: number; maxSuspicion?: number }
+  body: {
+    assignmentId: string;
+    timerSec?: number;
+    heartbeatSec?: number;
+    maxBackgrounds?: number;
+    maxSuspicion?: number;
+  }
 ): Promise<AttemptStartResp> {
   const r = await fetch(`${backendUrl}/api/orgs/attempts/start`, {
     method: 'POST',
@@ -26,7 +32,13 @@ export async function startAttemptApi(
 export async function heartbeatAttemptApi(
   backendUrl: string,
   token: string,
-  body: { attemptId: string; deviceId?: string; elapsedMs?: number; backgrounds?: number; suspicions?: number }
+  body: {
+    attemptId: string;
+    deviceId?: string;
+    elapsedMs?: number;
+    backgrounds?: number;
+    suspicions?: number;
+  }
 ) {
   const r = await fetch(`${backendUrl}/api/orgs/attempts/heartbeat`, {
     method: 'POST',

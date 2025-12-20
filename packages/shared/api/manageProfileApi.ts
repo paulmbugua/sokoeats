@@ -15,21 +15,13 @@ export const fetchAvailableProfiles = async (backendUrl: string, token: string) 
   return response.data;
 };
 
-export const updateProfile = async (
-  backendUrl: string,
-  token: string,
-  body: any
-) => {
-  const response = await axios.put(
-    `${backendUrl}/api/profile`,
-    body,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  );
+export const updateProfile = async (backendUrl: string, token: string, body: any) => {
+  const response = await axios.put(`${backendUrl}/api/profile`, body, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
   return response;
 };
 

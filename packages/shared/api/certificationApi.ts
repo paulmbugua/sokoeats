@@ -15,13 +15,10 @@ export const getCertificationStatus = async (
   profileId: string
 ): Promise<CertificationData | null> => {
   try {
-    const response = await fetch(
-      `${backendUrl}/api/profiles/${profileId}/certification/status`,
-      {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
+    const response = await fetch(`${backendUrl}/api/profiles/${profileId}/certification/status`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (!response.ok) throw new Error(await response.text());
     const json = await response.json();
     return json.certification || null;

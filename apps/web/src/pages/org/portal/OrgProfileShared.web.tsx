@@ -71,8 +71,8 @@ const IconBtn: React.FC<{
     variant === 'danger'
       ? 'bg-rose-600 text-white ring-rose-500/40 hover:bg-rose-500 disabled:opacity-60 disabled:hover:bg-rose-600'
       : variant === 'wa'
-      ? 'bg-emerald-600 text-white ring-emerald-500/40 hover:bg-emerald-500 disabled:opacity-60 disabled:hover:bg-emerald-600'
-      : 'bg-[#e7edf4] dark:bg-[#172534] text-[#0d141c] dark:text-darkTextPrimary ring-black/5 dark:ring-white/10 hover:bg-[#dfe7ef] dark:hover:bg-[#1c2d40] disabled:opacity-60';
+        ? 'bg-emerald-600 text-white ring-emerald-500/40 hover:bg-emerald-500 disabled:opacity-60 disabled:hover:bg-emerald-600'
+        : 'bg-[#e7edf4] dark:bg-[#172534] text-[#0d141c] dark:text-darkTextPrimary ring-black/5 dark:ring-white/10 hover:bg-[#dfe7ef] dark:hover:bg-[#1c2d40] disabled:opacity-60';
 
   const cls = `${base} ${styles}`;
 
@@ -161,9 +161,7 @@ export const PersonRow: React.FC<{ u: MiniUser; onRemove?: () => Promise<void> |
 
         {/* Give the name more room */}
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium truncate">
-            {u.name || u.email || `User #${u.id}`}
-          </div>
+          <div className="text-sm font-medium truncate">{u.name || u.email || `User #${u.id}`}</div>
           {u.email && (
             <div className="text-xs text-[#49739c] dark:text-darkTextSecondary truncate">
               {u.email}
@@ -182,7 +180,11 @@ export const PersonRow: React.FC<{ u: MiniUser; onRemove?: () => Promise<void> |
           <MailIcon className="h-4 w-4" />
         </IconBtn>
 
-        <IconBtn title="WhatsApp" href={`https://wa.me/?text=${encodeURIComponent(msg)}`} variant="wa">
+        <IconBtn
+          title="WhatsApp"
+          href={`https://wa.me/?text=${encodeURIComponent(msg)}`}
+          variant="wa"
+        >
           <WhatsAppIcon className="h-4 w-4" />
         </IconBtn>
 

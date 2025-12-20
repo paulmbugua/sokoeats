@@ -17,9 +17,7 @@ import { useNavigation, useRoute, RouteProp, useIsFocused } from '@react-navigat
 import { StackNavigationProp } from '@react-navigation/stack';
 import { FontAwesome } from '@expo/vector-icons';
 import { useMessages } from '@mytutorapp/shared/hooks';
-import {
-    notifyNow,
-} from '../../utils/notifications';
+import { notifyNow } from '../../utils/notifications';
 import tw from '../../tailwind';
 import chat from '../../assets/chat.png';
 import type { ChatMessage as SharedChatMessage } from '@mytutorapp/shared/types/ShopContextTypes';
@@ -108,7 +106,6 @@ const MessagesNative: React.FC = () => {
   const msgKey = (m: any) =>
     String(m?.id ?? m?.timestamp ?? `${m?.sender_id ?? ''}:${m?.created_at ?? ''}`);
 
-  
   // Auto-open via route param (like web’s ?studentId)
   useEffect(() => {
     const { studentId } = route.params ?? {};
@@ -196,9 +193,7 @@ const MessagesNative: React.FC = () => {
     if (!latest) return;
 
     const senderName =
-      (latest as any).sender_name ||
-      (activeChat && activeChat.name) ||
-      'New message';
+      (latest as any).sender_name || (activeChat && activeChat.name) || 'New message';
 
     const body = String((latest as any).content ?? 'You have a new message');
 
@@ -240,7 +235,9 @@ const MessagesNative: React.FC = () => {
       ]}
     >
       {/* Top bar */}
-      <View style={tw`flex-row items-center justify-between px-4 py-3 bg-white dark:bg-[#0f1821] border-b border-[#cedbe8] dark:border-white/10`}>
+      <View
+        style={tw`flex-row items-center justify-between px-4 py-3 bg-white dark:bg-[#0f1821] border-b border-[#cedbe8] dark:border-white/10`}
+      >
         <TouchableOpacity
           onPress={() => setSidebarOpen(true)}
           accessibilityLabel="Open chats"
@@ -261,8 +258,8 @@ const MessagesNative: React.FC = () => {
                 myProfile.role === 'tutor'
                   ? chat
                   : activeChat.avatar
-                  ? { uri: activeChat.avatar }
-                  : chat
+                    ? { uri: activeChat.avatar }
+                    : chat
               }
               style={tw`w-8 h-8 rounded-full mr-3`}
             />
@@ -305,11 +302,11 @@ const MessagesNative: React.FC = () => {
             style={tw`absolute inset-0 bg-black/40`}
           />
           {/* panel */}
-          <View style={tw`absolute top-0 bottom-0 left-0 w-72 bg-white dark:bg-[#0f1821] p-4 border-r border-[#cedbe8] dark:border-white/10`}>
+          <View
+            style={tw`absolute top-0 bottom-0 left-0 w-72 bg-white dark:bg-[#0f1821] p-4 border-r border-[#cedbe8] dark:border-white/10`}
+          >
             <View style={tw`flex-row items-center justify-between mb-4`}>
-              <Text style={tw`text-xl font-bold text-pink-600 dark:text-pink-400`}>
-                Chats
-              </Text>
+              <Text style={tw`text-xl font-bold text-pink-600 dark:text-pink-400`}>Chats</Text>
               <TouchableOpacity
                 onPress={() => setSidebarOpen(false)}
                 accessibilityLabel="Close chats"
@@ -325,8 +322,7 @@ const MessagesNative: React.FC = () => {
             <ScrollView>
               {chatsArr.length > 0 ? (
                 chatsArr.map((chatItem) => {
-                  const isActive =
-                    activeChat?.conversationId === String(chatItem.conversationId);
+                  const isActive = activeChat?.conversationId === String(chatItem.conversationId);
                   return (
                     <TouchableOpacity
                       key={String(chatItem.conversationId)}
@@ -350,8 +346,8 @@ const MessagesNative: React.FC = () => {
                             myProfile.role === 'tutor'
                               ? chat
                               : chatItem.avatar
-                              ? { uri: chatItem.avatar }
-                              : chat
+                                ? { uri: chatItem.avatar }
+                                : chat
                           }
                           style={tw`w-10 h-10 rounded-full mr-3`}
                         />
@@ -371,9 +367,7 @@ const MessagesNative: React.FC = () => {
                         </View>
                         {(chatItem.unreadCount ?? 0) > 0 && (
                           <View style={tw`bg-red-600 rounded-full px-2 py-0.5 ml-2`}>
-                            <Text style={tw`text-white text-[10px]`}>
-                              {chatItem.unreadCount}
-                            </Text>
+                            <Text style={tw`text-white text-[10px]`}>{chatItem.unreadCount}</Text>
                           </View>
                         )}
                       </View>
@@ -408,8 +402,9 @@ const MessagesNative: React.FC = () => {
                   msg.sender
               );
               const isSender = rawSenderId === String(myProfile.id);
-              const displayName =
-                isSender ? 'You' : (msg as { sender_name?: string }).sender_name ?? '';
+              const displayName = isSender
+                ? 'You'
+                : ((msg as { sender_name?: string }).sender_name ?? '');
 
               return (
                 <View
@@ -427,7 +422,9 @@ const MessagesNative: React.FC = () => {
                     ]}
                   >
                     {!isSender && !!displayName && (
-                      <Text style={tw`text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5`}>
+                      <Text
+                        style={tw`text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5`}
+                      >
                         {displayName}
                       </Text>
                     )}
@@ -454,7 +451,9 @@ const MessagesNative: React.FC = () => {
 
         {/* Composer */}
         {activeChat && (
-          <View style={tw`flex-row items-center px-3 py-3 bg-white dark:bg-[#0f1821] border-t border-[#cedbe8] dark:border-white/10`}>
+          <View
+            style={tw`flex-row items-center px-3 py-3 bg-white dark:bg-[#0f1821] border-t border-[#cedbe8] dark:border-white/10`}
+          >
             <TextInput
               ref={messageInputRef}
               accessibilityLabel="Message input"

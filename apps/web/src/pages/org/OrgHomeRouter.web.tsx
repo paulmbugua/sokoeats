@@ -29,11 +29,7 @@ const OrgHomeRouter: React.FC = () => {
   // Not authenticated for org at all → go to org login
   if (!orgToken) {
     return (
-      <Navigate
-        to="/org/login"
-        replace
-        state={{ from: location.pathname + location.search }}
-      />
+      <Navigate to="/org/login" replace state={{ from: location.pathname + location.search }} />
     );
   }
 
@@ -49,21 +45,14 @@ const OrgHomeRouter: React.FC = () => {
   // Token exists but no org found → send to login to recover
   if (!org) {
     return (
-      <Navigate
-        to="/org/login"
-        replace
-        state={{ from: location.pathname + location.search }}
-      />
+      <Navigate to="/org/login" replace state={{ from: location.pathname + location.search }} />
     );
   }
 
   const normalizedRole = (role || '').toString().toLowerCase();
-  const isLearner =
-    normalizedRole === 'learner' || normalizedRole === 'student';
-  const isInstructor =
-    normalizedRole === 'instructor' || normalizedRole === 'teacher';
-  const isOrgAdmin =
-    normalizedRole === 'owner' || normalizedRole === 'admin';
+  const isLearner = normalizedRole === 'learner' || normalizedRole === 'student';
+  const isInstructor = normalizedRole === 'instructor' || normalizedRole === 'teacher';
+  const isOrgAdmin = normalizedRole === 'owner' || normalizedRole === 'admin';
 
   // 🔐 Force password change for learners & instructors on first login
   if (mustChangePassword && (isLearner || isInstructor)) {
@@ -110,23 +99,13 @@ const OrgHomeRouter: React.FC = () => {
   // 👑 Owners / admins only → org profile
   if (isOrgAdmin) {
     return (
-      <Navigate
-        to="/org/profile"
-        replace
-        state={{ from: location.pathname + location.search }}
-      />
+      <Navigate to="/org/profile" replace state={{ from: location.pathname + location.search }} />
     );
   }
 
   // ❓ Any unknown/unsupported role → never show Org Profile;
   // send them back to org login to recover safely.
-  return (
-    <Navigate
-      to="/org/login"
-      replace
-      state={{ from: location.pathname + location.search }}
-    />
-  );
+  return <Navigate to="/org/login" replace state={{ from: location.pathname + location.search }} />;
 };
 
 export default OrgHomeRouter;

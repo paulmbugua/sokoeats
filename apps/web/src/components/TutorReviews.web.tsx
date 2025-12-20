@@ -59,12 +59,8 @@ const TutorReviews: React.FC<TutorReviewsProps> = ({ tutorId, showComments = tru
               key={review.id}
               className="p-4 rounded-lg bg-white dark:bg-darkCard shadow-sm ring-1 ring-gray-200 dark:ring-darkCard"
             >
-              <p className="text-primary font-bold mb-1">
-                {review.studentName}:
-              </p>
-              <p className="text-darkText dark:text-darkTextPrimary">
-                {review.comment}
-              </p>
+              <p className="text-primary font-bold mb-1">{review.studentName}:</p>
+              <p className="text-darkText dark:text-darkTextPrimary">{review.comment}</p>
             </div>
           ))}
         </div>

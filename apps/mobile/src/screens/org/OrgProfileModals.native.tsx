@@ -68,10 +68,7 @@ function usePalette() {
           },
         ];
       }
-      return [
-        tw`px-3 py-1.5 rounded-full`,
-        { backgroundColor: this.divider },
-      ];
+      return [tw`px-3 py-1.5 rounded-full`, { backgroundColor: this.divider }];
     },
     monoText() {
       return {
@@ -90,10 +87,7 @@ function usePalette() {
 export const InviteModal: React.FC<{
   open: boolean;
   onClose: () => void;
-  onCreate: (
-    role: 'instructor' | 'learner',
-    email?: string,
-  ) => Promise<{ url: string } | void>;
+  onCreate: (role: 'instructor' | 'learner', email?: string) => Promise<{ url: string } | void>;
   initialRole?: 'instructor' | 'learner';
 }> = ({ open, onClose, onCreate, initialRole = 'learner' }) => {
   const palette = usePalette();
@@ -135,7 +129,7 @@ export const InviteModal: React.FC<{
   const shareEmail = () => {
     if (!url) return;
     const mailUrl = `mailto:?subject=${encodeURIComponent(
-      "You’re invited",
+      'You’re invited'
     )}&body=${encodeURIComponent(url)}`;
     Linking.openURL(mailUrl).catch(() => {});
   };
@@ -147,47 +141,21 @@ export const InviteModal: React.FC<{
   };
 
   return (
-    <Modal
-      visible={open}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <View style={tw`flex-1 items-center justify-center bg-black/40 p-3`}>
         <View style={[palette.surface(), tw`w-full max-w-xl`]}>
           {/* Header */}
           <View style={tw`flex-row items-center justify-between`}>
-            <Text
-              style={[tw`text-lg font-bold`, { color: palette.text }]}
-            >
-              Create invite
-            </Text>
-            <TouchableOpacity
-              onPress={onClose}
-              style={palette.chip()}
-            >
-              <Text
-                style={[
-                  tw`text-xs font-semibold`,
-                  { color: palette.text },
-                ]}
-              >
-                Close
-              </Text>
+            <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Create invite</Text>
+            <TouchableOpacity onPress={onClose} style={palette.chip()}>
+              <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>Close</Text>
             </TouchableOpacity>
           </View>
 
           <View style={tw`mt-3`}>
             {/* Role */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
-                Role
-              </Text>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Role</Text>
               <View style={tw`flex-row`}>
                 {(['learner', 'instructor'] as const).map((r) => {
                   const active = role === r;
@@ -198,20 +166,13 @@ export const InviteModal: React.FC<{
                       style={[
                         tw`px-3 py-2 rounded-2xl mr-2`,
                         {
-                          backgroundColor: active
-                            ? palette.divider
-                            : 'transparent',
+                          backgroundColor: active ? palette.divider : 'transparent',
                           borderColor: palette.border,
                           borderWidth: active ? 1 : 0,
                         },
                       ]}
                     >
-                      <Text
-                        style={[
-                          tw`text-xs font-semibold`,
-                          { color: palette.text },
-                        ]}
-                      >
+                      <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>
                         {r === 'learner' ? 'Learner' : 'Instructor'}
                       </Text>
                     </TouchableOpacity>
@@ -222,14 +183,7 @@ export const InviteModal: React.FC<{
 
             {/* Email */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
-                Email (optional)
-              </Text>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Email (optional)</Text>
               <TextInput
                 value={email}
                 onChangeText={setEmail}
@@ -252,9 +206,7 @@ export const InviteModal: React.FC<{
                     if (r?.url) setUrl(r.url);
                   } catch (e: any) {
                     const msg =
-                      e?.response?.data?.message ||
-                      e?.message ||
-                      'Failed to create invite.';
+                      e?.response?.data?.message || e?.message || 'Failed to create invite.';
                     Alert.alert('Invite', msg);
                   } finally {
                     setCreating(false);
@@ -262,9 +214,7 @@ export const InviteModal: React.FC<{
                 }}
                 style={palette.button('primary')}
               >
-                <Text
-                  style={tw`text-white font-semibold text-sm`}
-                >
+                <Text style={tw`text-white font-semibold text-sm`}>
                   {creating ? 'Creating…' : 'Create invite'}
                 </Text>
               </TouchableOpacity>
@@ -282,52 +232,20 @@ export const InviteModal: React.FC<{
                 >
                   <Text
                     selectable
-                    style={[
-                      tw`text-xs`,
-                      { color: palette.text },
-                      palette.monoText(),
-                    ]}
+                    style={[tw`text-xs`, { color: palette.text }, palette.monoText()]}
                   >
                     {url}
                   </Text>
                 </View>
                 <View style={tw`flex-row flex-wrap gap-2 mt-2`}>
-                  <TouchableOpacity
-                    onPress={copyUrl}
-                    style={palette.chip(true)}
-                  >
-                    <Text
-                      style={[
-                        tw`text-xs font-semibold`,
-                        { color: palette.text },
-                      ]}
-                    >
-                      Copy
-                    </Text>
+                  <TouchableOpacity onPress={copyUrl} style={palette.chip(true)}>
+                    <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>Copy</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={shareEmail}
-                    style={palette.chip()}
-                  >
-                    <Text
-                      style={[
-                        tw`text-xs font-semibold`,
-                        { color: palette.text },
-                      ]}
-                    >
-                      Email
-                    </Text>
+                  <TouchableOpacity onPress={shareEmail} style={palette.chip()}>
+                    <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>Email</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={shareWhatsApp}
-                    style={palette.chip()}
-                  >
-                    <Text
-                      style={[
-                        tw`text-xs font-semibold`,
-                        { color: palette.text },
-                      ]}
-                    >
+                  <TouchableOpacity onPress={shareWhatsApp} style={palette.chip()}>
+                    <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>
                       WhatsApp
                     </Text>
                   </TouchableOpacity>
@@ -393,10 +311,7 @@ export const AddInstructorModal: React.FC<{
         onClose();
       }
     } catch (e: any) {
-      const msg =
-        e?.response?.data?.message ||
-        e?.message ||
-        'Failed to create instructor.';
+      const msg = e?.response?.data?.message || e?.message || 'Failed to create instructor.';
       Alert.alert('Add instructor', msg);
     } finally {
       setCreating(false);
@@ -404,47 +319,21 @@ export const AddInstructorModal: React.FC<{
   };
 
   return (
-    <Modal
-      visible={open}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <View style={tw`flex-1 items-center justify-center bg-black/40 p-3`}>
         <View style={[palette.surface(), tw`w-full max-w-xl`]}>
           {/* Header */}
           <View style={tw`flex-row items-center justify-between`}>
-            <Text
-              style={[tw`text-lg font-bold`, { color: palette.text }]}
-            >
-              Add instructor
-            </Text>
-            <TouchableOpacity
-              onPress={onClose}
-              style={palette.chip()}
-            >
-              <Text
-                style={[
-                  tw`text-xs font-semibold`,
-                  { color: palette.text },
-                ]}
-              >
-                Close
-              </Text>
+            <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Add instructor</Text>
+            <TouchableOpacity onPress={onClose} style={palette.chip()}>
+              <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>Close</Text>
             </TouchableOpacity>
           </View>
 
           <View style={tw`mt-3`}>
             {/* Name */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
-                Full name *
-              </Text>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Full name *</Text>
               <TextInput
                 value={name}
                 onChangeText={setName}
@@ -456,12 +345,7 @@ export const AddInstructorModal: React.FC<{
 
             {/* Email */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>
                 Email (optional, used for login)
               </Text>
               <TextInput
@@ -477,12 +361,7 @@ export const AddInstructorModal: React.FC<{
 
             {/* Subject */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>
                 Subject / department (optional)
               </Text>
               <TextInput
@@ -496,12 +375,7 @@ export const AddInstructorModal: React.FC<{
 
             {/* Staff code */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>
                 Staff ID / code (optional)
               </Text>
               <TextInput
@@ -519,9 +393,7 @@ export const AddInstructorModal: React.FC<{
                 onPress={handleSubmit}
                 style={palette.button('primary')}
               >
-                <Text
-                  style={tw`text-white font-semibold text-sm`}
-                >
+                <Text style={tw`text-white font-semibold text-sm`}>
                   {creating ? 'Creating…' : 'Create instructor'}
                 </Text>
               </TouchableOpacity>
@@ -529,12 +401,7 @@ export const AddInstructorModal: React.FC<{
 
             {tempPassword && (
               <View style={tw`mt-3`}>
-                <Text
-                  style={[
-                    tw`text-xs mb-2`,
-                    { color: palette.textMuted },
-                  ]}
-                >
+                <Text style={[tw`text-xs mb-2`, { color: palette.textMuted }]}>
                   Instructor created. Share these login details securely:
                 </Text>
                 <View
@@ -549,11 +416,7 @@ export const AddInstructorModal: React.FC<{
                 >
                   <Text
                     selectable
-                    style={[
-                      tw`text-xs`,
-                      { color: palette.text },
-                      palette.monoText(),
-                    ]}
+                    style={[tw`text-xs`, { color: palette.text }, palette.monoText()]}
                   >
                     Email / ID: {email || '(their assigned email or user ID)'}
                     {'\n'}
@@ -566,14 +429,7 @@ export const AddInstructorModal: React.FC<{
                   onPress={onClose}
                   style={[palette.chip(true), tw`mt-3 self-start`]}
                 >
-                  <Text
-                    style={[
-                      tw`text-xs font-semibold`,
-                      { color: palette.text },
-                    ]}
-                  >
-                    Done
-                  </Text>
+                  <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>Done</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -652,10 +508,7 @@ export const AddLearnerModal: React.FC<{
         onClose();
       }
     } catch (e: any) {
-      const msg =
-        e?.response?.data?.message ||
-        e?.message ||
-        'Failed to create learner.';
+      const msg = e?.response?.data?.message || e?.message || 'Failed to create learner.';
       Alert.alert('Add learner', msg);
     } finally {
       setCreating(false);
@@ -663,47 +516,21 @@ export const AddLearnerModal: React.FC<{
   };
 
   return (
-    <Modal
-      visible={open}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <View style={tw`flex-1 items-center justify-center bg-black/40 p-3`}>
         <View style={[palette.surface(), tw`w-full max-w-xl`]}>
           {/* Header */}
           <View style={tw`flex-row items-center justify-between`}>
-            <Text
-              style={[tw`text-lg font-bold`, { color: palette.text }]}
-            >
-              Add learner
-            </Text>
-            <TouchableOpacity
-              onPress={onClose}
-              style={palette.chip()}
-            >
-              <Text
-                style={[
-                  tw`text-xs font-semibold`,
-                  { color: palette.text },
-                ]}
-              >
-                Close
-              </Text>
+            <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Add learner</Text>
+            <TouchableOpacity onPress={onClose} style={palette.chip()}>
+              <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>Close</Text>
             </TouchableOpacity>
           </View>
 
           <View style={tw`mt-3`}>
             {/* Name */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
-                Full name *
-              </Text>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Full name *</Text>
               <TextInput
                 value={name}
                 onChangeText={setName}
@@ -715,12 +542,7 @@ export const AddLearnerModal: React.FC<{
 
             {/* Email */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>
                 Email (optional, used for login)
               </Text>
               <TextInput
@@ -736,12 +558,7 @@ export const AddLearnerModal: React.FC<{
 
             {/* Admission code */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>
                 Admission No / Code
               </Text>
               <TextInput
@@ -755,14 +572,7 @@ export const AddLearnerModal: React.FC<{
 
             {/* Class / grade */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
-                Class / grade
-              </Text>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Class / grade</Text>
               <TextInput
                 value={classLabel}
                 onChangeText={setClassLabel}
@@ -774,14 +584,7 @@ export const AddLearnerModal: React.FC<{
 
             {/* House */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
-                House (optional)
-              </Text>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>House (optional)</Text>
               <TextInput
                 value={house}
                 onChangeText={setHouse}
@@ -793,12 +596,7 @@ export const AddLearnerModal: React.FC<{
 
             {/* Dormitory */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>
                 Dormitory (optional)
               </Text>
               <TextInput
@@ -812,12 +610,7 @@ export const AddLearnerModal: React.FC<{
 
             {/* Club */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>
                 Club / Activity (optional)
               </Text>
               <TextInput
@@ -831,12 +624,7 @@ export const AddLearnerModal: React.FC<{
 
             {/* Guardian email */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-xs mb-1`,
-                  { color: palette.textMuted },
-                ]}
-              >
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>
                 Guardian email (optional)
               </Text>
               <TextInput
@@ -856,9 +644,7 @@ export const AddLearnerModal: React.FC<{
                 onPress={handleSubmit}
                 style={palette.button('primary')}
               >
-                <Text
-                  style={tw`text-white font-semibold text-sm`}
-                >
+                <Text style={tw`text-white font-semibold text-sm`}>
                   {creating ? 'Creating…' : 'Create learner'}
                 </Text>
               </TouchableOpacity>
@@ -866,12 +652,7 @@ export const AddLearnerModal: React.FC<{
 
             {tempPassword && (
               <View style={tw`mt-3`}>
-                <Text
-                  style={[
-                    tw`text-xs mb-2`,
-                    { color: palette.textMuted },
-                  ]}
-                >
+                <Text style={[tw`text-xs mb-2`, { color: palette.textMuted }]}>
                   Learner created. Share these login details securely:
                 </Text>
                 <View
@@ -886,16 +667,11 @@ export const AddLearnerModal: React.FC<{
                 >
                   <Text
                     selectable
-                    style={[
-                      tw`text-xs`,
-                      { color: palette.text },
-                      palette.monoText(),
-                    ]}
+                    style={[tw`text-xs`, { color: palette.text }, palette.monoText()]}
                   >
                     Email / ID: {email || '(their assigned email or user ID)'}
                     {'\n'}
-                    Admission No/Code:{' '}
-                    {admissionCode || '(see roster)'}
+                    Admission No/Code: {admissionCode || '(see roster)'}
                     {'\n'}
                     Temp password: {tempPassword}
                   </Text>
@@ -904,14 +680,7 @@ export const AddLearnerModal: React.FC<{
                   onPress={onClose}
                   style={[palette.chip(true), tw`mt-3 self-start`]}
                 >
-                  <Text
-                    style={[
-                      tw`text-xs font-semibold`,
-                      { color: palette.text },
-                    ]}
-                  >
-                    Done
-                  </Text>
+                  <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>Done</Text>
                 </TouchableOpacity>
               </View>
             )}

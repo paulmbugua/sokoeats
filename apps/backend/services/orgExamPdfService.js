@@ -13,10 +13,15 @@ import crc32 from 'crc-32';
 const CLOUDINARY_CLOUD_NAME =
   process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_NAME || '';
 
-const oneline = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+const oneline = (v) =>
+  String(v ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 function getOrgInitials(name) {
-  const parts = oneline(name).split(/[^A-Za-z]+/).filter(Boolean);
+  const parts = oneline(name)
+    .split(/[^A-Za-z]+/)
+    .filter(Boolean);
   if (!parts.length) return 'X';
   if (parts.length === 1) return parts[0][0].toUpperCase();
   if (parts.length === 2) return (parts[0][0] + parts[1][0]).toUpperCase();
@@ -55,7 +60,10 @@ function generateReportCardNumber({
   ].join('||');
 
   const hex = sha1Hex(seed);
-  const tail6 = String(parseInt(hex.slice(0, 8), 16) % 1_000_000).padStart(6, '0');
+  const tail6 = String(parseInt(hex.slice(0, 8), 16) % 1_000_000).padStart(
+    6,
+    '0',
+  );
   const chk2 = crc32Mod97(seed);
 
   return `${initials}-${tail6}${chk2}`.toUpperCase();
@@ -65,7 +73,13 @@ function generateReportCardNumber({
 function drawFooterReportNumber(
   doc,
   reportNumber,
-  { y = 800, size = 9, opacity = 0.32, tracking = 0.5, font = 'Helvetica-Bold' } = {},
+  {
+    y = 800,
+    size = 9,
+    opacity = 0.32,
+    tracking = 0.5,
+    font = 'Helvetica-Bold',
+  } = {},
 ) {
   if (!reportNumber) return;
   const label = `Report No: ${oneline(reportNumber)}`;
@@ -113,7 +127,7 @@ async function fetchBufferWithSignedRetry(
   }
 
   const xerr = first.headers?.['x-cld-error'];
-  // eslint-disable-next-line no-console
+
   console.warn('[examCard] fetchBufferWithSignedRetry failed', {
     status: first.status,
     x_cld_error: xerr,
@@ -144,7 +158,6 @@ async function fetchCloudinaryAsPngBuffer(
       });
       if (buf) return buf;
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.warn('[examCard] direct image fetch failed', e?.message);
     }
     return null;
@@ -172,7 +185,7 @@ async function fetchCloudinaryAsPngBuffer(
     return buf;
   } catch (e) {
     const status = e?.response?.status;
-    // eslint-disable-next-line no-console
+
     console.warn('[examCard] Cloudinary fetch failed:', {
       url,
       status,
@@ -197,8 +210,7 @@ async function tryLoadImageBuffer(
   const looksLikePublicId =
     typeof idOrUrl === 'string' && !idOrUrl.includes('://');
   const looksLikeCloudinaryUrl =
-    typeof idOrUrl === 'string' &&
-    idOrUrl.includes('res.cloudinary.com');
+    typeof idOrUrl === 'string' && idOrUrl.includes('res.cloudinary.com');
 
   if (looksLikePublicId || looksLikeCloudinaryUrl) {
     const buf = await fetchCloudinaryAsPngBuffer(idOrUrl, {
@@ -246,7 +258,6 @@ const toSentenceCase = (value) => {
   const lower = s.toLowerCase();
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 };
-
 
 function buildAiExtrasMatrix(subjects) {
   if (!Array.isArray(subjects) || !subjects.length) return null;
@@ -338,12 +349,11 @@ export async function renderOrgExamStudentCardPdf(card) {
   const termLabel = card.term ? `${card.term.year} ${card.term.label}` : '';
   const examLabel = card.session?.label || '';
 
-    const classTeacherSig =
+  const classTeacherSig =
     card.class_teacher_signature_url || // from service
-    card.instructor_signature_url ||    // flattened org-level instructor sig
+    card.instructor_signature_url || // flattened org-level instructor sig
     card.org?.instructor_signature_url || // extra safety
     null;
-
 
   // Deterministic report card number
   const reportNumber = generateReportCardNumber({
@@ -355,37 +365,38 @@ export async function renderOrgExamStudentCardPdf(card) {
   });
 
   // Pre-fetch images (logo + student photo + registrar + teacher signatures)
-  const [logoBuf, photoBuf, registrarSigBuf, teacherSigBuf] = await Promise.all([
-    tryLoadImageBuffer(card.org?.logo_url, {
-      w: 240,
-      h: 240,
-      trim: false,
-      exact: false,
-      dpr: 2,
-    }),
-    tryLoadImageBuffer(card.student?.photo_url, {
-      w: 400,
-      h: 400,
-      trim: false,
-      exact: false,
-      dpr: 2,
-    }),
-    tryLoadImageBuffer(card.org?.signature_url, {
-      w: 520,
-      h: 200,
-      trim: true,
-      exact: false,
-      dpr: 2,
-    }),
-    tryLoadImageBuffer(classTeacherSig, {
-    w: 520,
-    h: 200,
-    trim: true,
-    exact: false,
-    dpr: 2,
-  }),
-
-  ]);
+  const [logoBuf, photoBuf, registrarSigBuf, teacherSigBuf] = await Promise.all(
+    [
+      tryLoadImageBuffer(card.org?.logo_url, {
+        w: 240,
+        h: 240,
+        trim: false,
+        exact: false,
+        dpr: 2,
+      }),
+      tryLoadImageBuffer(card.student?.photo_url, {
+        w: 400,
+        h: 400,
+        trim: false,
+        exact: false,
+        dpr: 2,
+      }),
+      tryLoadImageBuffer(card.org?.signature_url, {
+        w: 520,
+        h: 200,
+        trim: true,
+        exact: false,
+        dpr: 2,
+      }),
+      tryLoadImageBuffer(classTeacherSig, {
+        w: 520,
+        h: 200,
+        trim: true,
+        exact: false,
+        dpr: 2,
+      }),
+    ],
+  );
 
   // ───────────────────────────────── HEADER ─────────────────────────────────
   const headerHeight = 70;
@@ -406,7 +417,7 @@ export async function renderOrgExamStudentCardPdf(card) {
     }
   }
 
-    // School name
+  // School name
   doc
     .fillColor('#111827')
     .font('Helvetica-Bold')
@@ -438,20 +449,15 @@ export async function renderOrgExamStudentCardPdf(card) {
     doc.font('Helvetica').fontSize(8).fillColor('#374151');
     contactTextLines.forEach((line, idx) => {
       const lineY = 40 + idx * 10;
-      doc.text(
-        line,
-        leftMargin + (logoBuf ? 60 : 0),
-        lineY,
-        {
-          width: innerWidth - (logoBuf ? 60 : 0),
-          align: 'center',
-        },
-      );
+      doc.text(line, leftMargin + (logoBuf ? 60 : 0), lineY, {
+        width: innerWidth - (logoBuf ? 60 : 0),
+        align: 'center',
+      });
       lastContactBottomY = lineY + 10; // rough line height
     });
   }
 
-    // Card title – ensure it sits BELOW contact info
+  // Card title – ensure it sits BELOW contact info
   const minTitleY = headerHeight - 8;
   const titleY = Math.max(minTitleY, lastContactBottomY + 6);
 
@@ -459,13 +465,8 @@ export async function renderOrgExamStudentCardPdf(card) {
   const dynamicCardTitle =
     (card.reportTitle && oneline(card.reportTitle)) ||
     (card.settings &&
-      oneline(
-        card.settings.reportTitle ||
-          card.settings.cardTitle ||
-          '',
-      )) ||
-    (card.org &&
-      oneline(card.org.exam_report_title || '')) ||
+      oneline(card.settings.reportTitle || card.settings.cardTitle || '')) ||
+    (card.org && oneline(card.org.exam_report_title || '')) ||
     defaultCardTitle;
 
   doc
@@ -476,7 +477,6 @@ export async function renderOrgExamStudentCardPdf(card) {
       width: innerWidth,
       align: 'center',
     });
-
 
   // Separator line just under the title
   const headerRuleY = titleY + 14;
@@ -491,7 +491,6 @@ export async function renderOrgExamStudentCardPdf(card) {
   doc.y = headerRuleY + 20;
   doc.fillColor('#111827');
 
-
   // ───────────────────────── LEARNER BLOCK + PHOTO ─────────────────────────
   const metaTopY = doc.y;
 
@@ -499,7 +498,7 @@ export async function renderOrgExamStudentCardPdf(card) {
   const metaWidth = innerWidth * 0.55;
 
   const photoBoxSize = 80;
-   const photoX = pageWidth - rightMargin - photoBoxSize;
+  const photoX = pageWidth - rightMargin - photoBoxSize;
   const photoY = metaTopY;
 
   const student = card.student || {};
@@ -571,7 +570,7 @@ export async function renderOrgExamStudentCardPdf(card) {
     .stroke()
     .restore();
 
-   const photoRadius = 10;
+  const photoRadius = 10;
 
   // Photo frame + student photo (with rounded corners)
   if (photoBuf) {
@@ -629,7 +628,6 @@ export async function renderOrgExamStudentCardPdf(card) {
       });
   }
 
-
   doc.y = metaBlockBottom + 10;
   doc.fillColor('#111827');
 
@@ -637,7 +635,10 @@ export async function renderOrgExamStudentCardPdf(card) {
   const summaryItems = [];
 
   if (summary.totalScore != null && summary.totalMax != null) {
-    summaryItems.push(['TOTAL SCORE', `${summary.totalScore}/${summary.totalMax}`]);
+    summaryItems.push([
+      'TOTAL SCORE',
+      `${summary.totalScore}/${summary.totalMax}`,
+    ]);
   }
 
   if (typeof summary.totalPercent === 'number') {
@@ -721,7 +722,7 @@ export async function renderOrgExamStudentCardPdf(card) {
     doc.y = y + 4;
   }
 
-     // ───────────────────────── SUBJECT PERFORMANCE TABLE ─────────────────────
+  // ───────────────────────── SUBJECT PERFORMANCE TABLE ─────────────────────
   doc
     .font('Helvetica-Bold')
     .fontSize(9.5)
@@ -741,7 +742,8 @@ export async function renderOrgExamStudentCardPdf(card) {
 
   // Allow backend to force score-only mode with card.settings.showGrades = false
   const showGradeColumn =
-    card.settings && Object.prototype.hasOwnProperty.call(card.settings, 'showGrades')
+    card.settings &&
+    Object.prototype.hasOwnProperty.call(card.settings, 'showGrades')
       ? card.settings.showGrades !== false && hasAnyGrade
       : hasAnyGrade;
 
@@ -829,7 +831,7 @@ export async function renderOrgExamStudentCardPdf(card) {
   const bodyTopY = doc.y;
 
   // Vertically centered rows
-   // Vertically centered rows
+  // Vertically centered rows
   const rowHeight = 11;
   let rowY = bodyTopY; // start rows directly under header line
   const lineHeight = doc.currentLineHeight();
@@ -853,19 +855,20 @@ export async function renderOrgExamStudentCardPdf(card) {
     // STRICT: use only the MARK ENTRY remark here (no AI extras), sentence case
     const rawRemark = toSentenceCase(s.remark || '');
 
-
     let remarkShort = rawRemark;
     if (remarkShort.length > 40) {
       const clipped = remarkShort.slice(0, 40);
       const lastSpace = clipped.lastIndexOf(' ');
-      remarkShort =
-        (lastSpace > 14 ? clipped.slice(0, lastSpace) : clipped).trimEnd();
+      remarkShort = (
+        lastSpace > 14 ? clipped.slice(0, lastSpace) : clipped
+      ).trimEnd();
     }
 
     const remarkBlock = remarkShort || '—';
 
-    const initialsRaw =
-      (s.teacher_initials || s.teacherInitials || '').toString().trim();
+    const initialsRaw = (s.teacher_initials || s.teacherInitials || '')
+      .toString()
+      .trim();
     const initialsText = initialsRaw ? initialsRaw.toUpperCase() : '—';
 
     // Row box
@@ -875,11 +878,11 @@ export async function renderOrgExamStudentCardPdf(card) {
     // Compute vertically centered y for this row
     const textY = rowTopY + (rowHeight - lineHeight) / 2;
 
-      // SUBJECT – left-aligned with a bit of left padding
-  doc.text(subjectName, colSubject + 4, textY, {
-    width: subjectColWidth - 8, // keep right edge consistent
-    align: 'left',
-  });
+    // SUBJECT – left-aligned with a bit of left padding
+    doc.text(subjectName, colSubject + 4, textY, {
+      width: subjectColWidth - 8, // keep right edge consistent
+      align: 'left',
+    });
 
     // SCORE – right-aligned
     doc.text(scoreText, colScore, textY, {
@@ -931,15 +934,11 @@ export async function renderOrgExamStudentCardPdf(card) {
       align: 'right',
     });
 
-    
-      // REMARKS – left-aligned, sentence case, with left padding
-doc.text(remarkBlock, colRemarks + 4, textY, {
-  width: remarksColWidth - 8, // shrink width to keep right edge consistent
-  align: 'left',
-});
-
-
-
+    // REMARKS – left-aligned, sentence case, with left padding
+    doc.text(remarkBlock, colRemarks + 4, textY, {
+      width: remarksColWidth - 8, // shrink width to keep right edge consistent
+      align: 'left',
+    });
 
     // INITIALS – centered
     doc.text(initialsText, colInitials, textY, {
@@ -955,10 +954,7 @@ doc.text(remarkBlock, colRemarks + 4, textY, {
       .lineTo(tableRight, rowTopY)
       .stroke();
 
-    doc
-      .moveTo(tableLeft, rowBottomY)
-      .lineTo(tableRight, rowBottomY)
-      .stroke();
+    doc.moveTo(tableLeft, rowBottomY).lineTo(tableRight, rowBottomY).stroke();
 
     rowY = rowBottomY;
   });
@@ -973,117 +969,138 @@ doc.text(remarkBlock, colRemarks + 4, textY, {
     .lineTo(tableRight, bodyTopY - 4)
     .stroke();
 
-  doc.moveTo(tableLeft, bodyTopY - 4).lineTo(tableLeft, tableBottomY).stroke();
-  doc.moveTo(tableRight, bodyTopY - 4).lineTo(tableRight, tableBottomY).stroke();
+  doc
+    .moveTo(tableLeft, bodyTopY - 4)
+    .lineTo(tableLeft, tableBottomY)
+    .stroke();
+  doc
+    .moveTo(tableRight, bodyTopY - 4)
+    .lineTo(tableRight, tableBottomY)
+    .stroke();
 
   // Column separators
-  doc.moveTo(colScore, bodyTopY - 4).lineTo(colScore, tableBottomY).stroke();
-  doc.moveTo(colPercent, bodyTopY - 4).lineTo(colPercent, tableBottomY).stroke();
+  doc
+    .moveTo(colScore, bodyTopY - 4)
+    .lineTo(colScore, tableBottomY)
+    .stroke();
+  doc
+    .moveTo(colPercent, bodyTopY - 4)
+    .lineTo(colPercent, tableBottomY)
+    .stroke();
 
   if (showGradeColumn) {
-    doc.moveTo(colGrade, bodyTopY - 4).lineTo(colGrade, tableBottomY).stroke();
+    doc
+      .moveTo(colGrade, bodyTopY - 4)
+      .lineTo(colGrade, tableBottomY)
+      .stroke();
   }
 
-  doc.moveTo(colPosition, bodyTopY - 4).lineTo(colPosition, tableBottomY).stroke();
-  doc.moveTo(colRemarks, bodyTopY - 4).lineTo(colRemarks, tableBottomY).stroke();
-  doc.moveTo(colInitials, bodyTopY - 4).lineTo(colInitials, tableBottomY).stroke();
+  doc
+    .moveTo(colPosition, bodyTopY - 4)
+    .lineTo(colPosition, tableBottomY)
+    .stroke();
+  doc
+    .moveTo(colRemarks, bodyTopY - 4)
+    .lineTo(colRemarks, tableBottomY)
+    .stroke();
+  doc
+    .moveTo(colInitials, bodyTopY - 4)
+    .lineTo(colInitials, tableBottomY)
+    .stroke();
 
   doc.y = tableBottomY + 8;
 
+  // ───────────────────── AI-ASSISTED EXTRA COLUMNS (OPTIONAL) ─────────────────────
+  const aiMatrix = buildAiExtrasMatrix(subjects);
 
+  if (aiMatrix) {
+    const { extraKeys, rows } = aiMatrix;
 
- // ───────────────────── AI-ASSISTED EXTRA COLUMNS (OPTIONAL) ─────────────────────
-const aiMatrix = buildAiExtrasMatrix(subjects);
+    // Rough height estimate so we don't crush signatures / footer
+    const estimatedTableHeight = 24 + (rows.length + 1) * 11;
+    if (doc.y + estimatedTableHeight < pageHeight - 120) {
+      // Subtitle
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .fillColor('#111827')
+        .text('Extra Details', leftMargin, doc.y);
+      doc.moveDown(0.2);
 
-if (aiMatrix) {
-  const { extraKeys, rows } = aiMatrix;
+      const boxX = leftMargin;
+      const tableStartY = doc.y;
+      const subjectColWidth = 120;
+      const extrasCount = extraKeys.length || 1;
+      const extraColWidth = (innerWidth - subjectColWidth) / extrasCount;
 
-  // Rough height estimate so we don't crush signatures / footer
-  const estimatedTableHeight = 24 + (rows.length + 1) * 11;
-  if (doc.y + estimatedTableHeight < pageHeight - 120) {
-    // Subtitle
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(8)
-      .fillColor('#111827')
-      .text('Extra Details', leftMargin, doc.y);
-    doc.moveDown(0.2);
+      // Header row
+      doc.font('Helvetica-Bold').fontSize(7).fillColor('#374151');
 
-    const boxX = leftMargin;
-    const tableStartY = doc.y;
-    const subjectColWidth = 120;
-    const extrasCount = extraKeys.length || 1;
-    const extraColWidth = (innerWidth - subjectColWidth) / extrasCount;
-
-    // Header row
-    doc.font('Helvetica-Bold').fontSize(7).fillColor('#374151');
-
-    doc.text('SUBJECT', boxX + 4, doc.y, {
-      width: subjectColWidth - 8,
-    });
-
-    extraKeys.forEach((key, idx) => {
-      const colX = boxX + subjectColWidth + idx * extraColWidth;
-      doc.text(String(key), colX + 2, doc.y, {
-        width: extraColWidth - 4,
-      });
-    });
-
-    doc.moveDown(0.1);
-    const headerBottomY2 = doc.y;
-
-    // Light horizontal line under header
-    doc
-      .moveTo(boxX, headerBottomY2)
-      .lineTo(boxX + innerWidth, headerBottomY2)
-      .strokeColor('#cbd5f5')
-      .lineWidth(0.5)
-      .stroke();
-
-    // Rows
-    doc.font('Helvetica').fontSize(7).fillColor('#111827');
-
-    rows.forEach((row) => {
-      const y = doc.y;
-      doc.text(String(row.subject).toUpperCase(), boxX + 4, y, {
+      doc.text('SUBJECT', boxX + 4, doc.y, {
         width: subjectColWidth - 8,
       });
 
-      row.cells.forEach((cell, idx) => {
+      extraKeys.forEach((key, idx) => {
         const colX = boxX + subjectColWidth + idx * extraColWidth;
-        doc.text(String(cell), colX + 2, y, {
+        doc.text(String(key), colX + 2, doc.y, {
           width: extraColWidth - 4,
         });
       });
 
       doc.moveDown(0.1);
-    });
+      const headerBottomY2 = doc.y;
 
-    const tableBottomY2 = doc.y + 2;
+      // Light horizontal line under header
+      doc
+        .moveTo(boxX, headerBottomY2)
+        .lineTo(boxX + innerWidth, headerBottomY2)
+        .strokeColor('#cbd5f5')
+        .lineWidth(0.5)
+        .stroke();
 
-    // Dashed rounded border around whole AI table
-    doc.save();
-    doc
-      .dash(2, { space: 2 })
-      .roundedRect(
-        boxX - 2,
-        tableStartY - 4,
-        innerWidth + 4,
-        tableBottomY2 - tableStartY + 6,
-        4,
-      )
-      .strokeColor('#cbd5f5')
-      .lineWidth(0.6)
-      .stroke();
-    doc.undash();
-    doc.restore();
+      // Rows
+      doc.font('Helvetica').fontSize(7).fillColor('#111827');
 
-    doc.y = tableBottomY2 + 4;
+      rows.forEach((row) => {
+        const y = doc.y;
+        doc.text(String(row.subject).toUpperCase(), boxX + 4, y, {
+          width: subjectColWidth - 8,
+        });
+
+        row.cells.forEach((cell, idx) => {
+          const colX = boxX + subjectColWidth + idx * extraColWidth;
+          doc.text(String(cell), colX + 2, y, {
+            width: extraColWidth - 4,
+          });
+        });
+
+        doc.moveDown(0.1);
+      });
+
+      const tableBottomY2 = doc.y + 2;
+
+      // Dashed rounded border around whole AI table
+      doc.save();
+      doc
+        .dash(2, { space: 2 })
+        .roundedRect(
+          boxX - 2,
+          tableStartY - 4,
+          innerWidth + 4,
+          tableBottomY2 - tableStartY + 6,
+          4,
+        )
+        .strokeColor('#cbd5f5')
+        .lineWidth(0.6)
+        .stroke();
+      doc.undash();
+      doc.restore();
+
+      doc.y = tableBottomY2 + 4;
+    }
   }
-}
 
-
-   // ───────────────────────── MINI PROGRESS SPARKLINE (OPTIONAL) ────────────
+  // ───────────────────────── MINI PROGRESS SPARKLINE (OPTIONAL) ────────────
   let series = (card.progressSeries || []).filter(
     (p) => p && typeof p.percent === 'number',
   );
@@ -1113,7 +1130,6 @@ if (aiMatrix) {
     const chartLeft = leftMargin + 20;
     const chartTop = doc.y + 4;
     const chartBottom = chartTop + chartHeight;
-    
 
     // Axis
     doc
@@ -1342,7 +1358,7 @@ if (aiMatrix) {
     teacherSigBottomY = teacherSigTopY + sigImageMaxHeight;
   }
 
-  // ── Head teacher / Principal (RIGHT) ── 
+  // ── Head teacher / Principal (RIGHT) ──
   const principalLabel = 'Head teacher / Principal';
 
   doc
@@ -1401,13 +1417,12 @@ if (aiMatrix) {
     .lineTo(principalLabelX + sigColumnWidth, sigLineY)
     .stroke();
 
- // ───────────────────────── FOOTER: REPORT CARD NUMBER ─────────────────────────
+  // ───────────────────────── FOOTER: REPORT CARD NUMBER ─────────────────────────
   drawFooterReportNumber(doc, reportNumber, {
     y: pageHeight - 40, // safely above bottom margin
     size: 9,
     opacity: 0.45,
   });
-
 
   doc.end();
   return bufferPromise;
@@ -1507,12 +1522,11 @@ export async function renderOrgExamClassReportPdf(payload) {
 
   // Preload logo + signatures (principal + class teacher)
   const teacherSignatureSource =
-  examMeta.class_teacher_signature_url || // 👈 per-class (same as learner card)
-  examMeta.teacher_signature_url ||       // optional per-exam override
-  org.instructor_signature_url ||         // org-level instructor sig
-  org.teacher_signature_url ||            // legacy/fallback
-  null;
-
+    examMeta.class_teacher_signature_url || // 👈 per-class (same as learner card)
+    examMeta.teacher_signature_url || // optional per-exam override
+    org.instructor_signature_url || // org-level instructor sig
+    org.teacher_signature_url || // legacy/fallback
+    null;
 
   const registrarSignatureSource =
     org.signature_url ||
@@ -1594,15 +1608,10 @@ export async function renderOrgExamClassReportPdf(payload) {
       doc.font('Helvetica').fontSize(8).fillColor('#374151');
       contactTextLines.forEach((line, idx) => {
         const lineY = 40 + idx * 10;
-        doc.text(
-          line,
-          leftMargin + (logoBuf ? 60 : 0),
-          lineY,
-          {
-            width: innerWidth - (logoBuf ? 60 : 0),
-            align: 'center',
-          },
-        );
+        doc.text(line, leftMargin + (logoBuf ? 60 : 0), lineY, {
+          width: innerWidth - (logoBuf ? 60 : 0),
+          align: 'center',
+        });
         lastContactBottomY = lineY + 10;
       });
     }
@@ -1726,15 +1735,15 @@ export async function renderOrgExamClassReportPdf(payload) {
 
   /* ───────────────────────── SUBJECT SUMMARY (MULTI-PAGE) ───────────────────────── */
 
-  const safeSubjectStats = (Array.isArray(subjectStats) ? subjectStats : []).map(
-    (s) => ({
-      subject: s.subject || '—',
-      scripts: asNum(s.scripts) ?? s.scripts ?? '',
-      avg_percent: asNum(s.avg_percent),
-      min_percent: asNum(s.min_percent),
-      max_percent: asNum(s.max_percent),
-    }),
-  );
+  const safeSubjectStats = (
+    Array.isArray(subjectStats) ? subjectStats : []
+  ).map((s) => ({
+    subject: s.subject || '—',
+    scripts: asNum(s.scripts) ?? s.scripts ?? '',
+    avg_percent: asNum(s.avg_percent),
+    min_percent: asNum(s.min_percent),
+    max_percent: asNum(s.max_percent),
+  }));
 
   const drawSubjectSummaryHeader = (continued = false) => {
     ensureSpace(40);
@@ -1801,26 +1810,14 @@ export async function renderOrgExamClassReportPdf(payload) {
       .lineTo(tableRight, headerBottomY)
       .stroke();
     // verticals (include outer edges)
-    doc
-      .moveTo(tableLeft, headerTopY)
-      .lineTo(tableLeft, headerBottomY)
-      .stroke();
+    doc.moveTo(tableLeft, headerTopY).lineTo(tableLeft, headerBottomY).stroke();
     doc
       .moveTo(colScripts, headerTopY)
       .lineTo(colScripts, headerBottomY)
       .stroke();
-    doc
-      .moveTo(colAvg, headerTopY)
-      .lineTo(colAvg, headerBottomY)
-      .stroke();
-    doc
-      .moveTo(colMin, headerTopY)
-      .lineTo(colMin, headerBottomY)
-      .stroke();
-    doc
-      .moveTo(colMax, headerTopY)
-      .lineTo(colMax, headerBottomY)
-      .stroke();
+    doc.moveTo(colAvg, headerTopY).lineTo(colAvg, headerBottomY).stroke();
+    doc.moveTo(colMin, headerTopY).lineTo(colMin, headerBottomY).stroke();
+    doc.moveTo(colMax, headerTopY).lineTo(colMax, headerBottomY).stroke();
     doc
       .moveTo(tableRight, headerTopY)
       .lineTo(tableRight, headerBottomY)
@@ -1908,35 +1905,14 @@ export async function renderOrgExamClassReportPdf(payload) {
         .moveTo(tableLeft, rowTopY)
         .lineTo(tableRight, rowTopY)
         .stroke();
-      doc
-        .moveTo(tableLeft, rowBottomY)
-        .lineTo(tableRight, rowBottomY)
-        .stroke();
+      doc.moveTo(tableLeft, rowBottomY).lineTo(tableRight, rowBottomY).stroke();
       // verticals (outer + internal)
-      doc
-        .moveTo(tableLeft, rowTopY)
-        .lineTo(tableLeft, rowBottomY)
-        .stroke();
-      doc
-        .moveTo(colScripts, rowTopY)
-        .lineTo(colScripts, rowBottomY)
-        .stroke();
-      doc
-        .moveTo(colAvg, rowTopY)
-        .lineTo(colAvg, rowBottomY)
-        .stroke();
-      doc
-        .moveTo(colMin, rowTopY)
-        .lineTo(colMin, rowBottomY)
-        .stroke();
-      doc
-        .moveTo(colMax, rowTopY)
-        .lineTo(colMax, rowBottomY)
-        .stroke();
-      doc
-        .moveTo(tableRight, rowTopY)
-        .lineTo(tableRight, rowBottomY)
-        .stroke();
+      doc.moveTo(tableLeft, rowTopY).lineTo(tableLeft, rowBottomY).stroke();
+      doc.moveTo(colScripts, rowTopY).lineTo(colScripts, rowBottomY).stroke();
+      doc.moveTo(colAvg, rowTopY).lineTo(colAvg, rowBottomY).stroke();
+      doc.moveTo(colMin, rowTopY).lineTo(colMin, rowBottomY).stroke();
+      doc.moveTo(colMax, rowTopY).lineTo(colMax, rowBottomY).stroke();
+      doc.moveTo(tableRight, rowTopY).lineTo(tableRight, rowBottomY).stroke();
 
       doc.y = rowBottomY;
     }
@@ -1949,102 +1925,96 @@ export async function renderOrgExamClassReportPdf(payload) {
   const learners = rankedStudents;
 
   const drawTopLearnersHeader = (continued = false) => {
-  ensureSpace(40);
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(9.5)
-    .fillColor('#111827')
-    .text(continued ? 'TOP LEARNERS (cont.)' : 'TOP LEARNERS', leftMargin, doc.y);
-  doc.moveDown(0.3);
+    ensureSpace(40);
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(9.5)
+      .fillColor('#111827')
+      .text(
+        continued ? 'TOP LEARNERS (cont.)' : 'TOP LEARNERS',
+        leftMargin,
+        doc.y,
+      );
+    doc.moveDown(0.3);
 
-  const tableLeft = leftMargin;
-  const tableRight = pageWidth - rightMargin;
+    const tableLeft = leftMargin;
+    const tableRight = pageWidth - rightMargin;
 
-  const colPos = tableLeft;
-  const colAdmName = colPos + 40;
-  const colTotal = colAdmName + 210;
-  const colPercent = colTotal + 70;
-  const colGrade = colPercent + 60;
+    const colPos = tableLeft;
+    const colAdmName = colPos + 40;
+    const colTotal = colAdmName + 210;
+    const colPercent = colTotal + 70;
+    const colGrade = colPercent + 60;
 
-  const rowHeight = 12;
-  const headerTopY = doc.y;
+    const rowHeight = 12;
+    const headerTopY = doc.y;
 
-  doc.font('Helvetica-Bold').fontSize(8).fillColor('#374151');
-  const headerLineHeight = doc.currentLineHeight();
-  const headerTextY = headerTopY + (rowHeight - headerLineHeight) / 2;
+    doc.font('Helvetica-Bold').fontSize(8).fillColor('#374151');
+    const headerLineHeight = doc.currentLineHeight();
+    const headerTextY = headerTopY + (rowHeight - headerLineHeight) / 2;
 
-  doc.text('POS', colPos, headerTextY, {
-    width: colAdmName - colPos - 4,
-  });
-  doc.text('ADM / NAME', colAdmName, headerTextY, {
-    width: colTotal - colAdmName - 4,
-  });
-  doc.text('TOTAL', colTotal, headerTextY, {
-    width: colPercent - colTotal - 4,
-    align: 'right',
-  });
-  doc.text('%', colPercent, headerTextY, {
-    width: colGrade - colPercent - 4,
-    align: 'right',
-  });
-  doc.text('GRADE', colGrade, headerTextY, {
-    width: tableRight - colGrade - 4,
-    align: 'right',      // ✅ header right-aligned
-  });
+    doc.text('POS', colPos, headerTextY, {
+      width: colAdmName - colPos - 4,
+    });
+    doc.text('ADM / NAME', colAdmName, headerTextY, {
+      width: colTotal - colAdmName - 4,
+    });
+    doc.text('TOTAL', colTotal, headerTextY, {
+      width: colPercent - colTotal - 4,
+      align: 'right',
+    });
+    doc.text('%', colPercent, headerTextY, {
+      width: colGrade - colPercent - 4,
+      align: 'right',
+    });
+    doc.text('GRADE', colGrade, headerTextY, {
+      width: tableRight - colGrade - 4,
+      align: 'right', // ✅ header right-aligned
+    });
 
-  const headerBottomY = headerTopY + rowHeight;
+    const headerBottomY = headerTopY + rowHeight;
 
-  // borders (unchanged)
-  doc
-    .strokeColor('#9ca3af')
-    .lineWidth(0.7)
-    .moveTo(tableLeft, headerTopY)
-    .lineTo(tableRight, headerTopY)
-    .stroke();
-  doc
-    .moveTo(tableLeft, headerBottomY)
-    .lineTo(tableRight, headerBottomY)
-    .stroke();
-  doc
-    .moveTo(tableLeft, headerTopY)
-    .lineTo(tableLeft, headerBottomY)
-    .stroke();
-  doc
-    .moveTo(colAdmName, headerTopY)
-    .lineTo(colAdmName, headerBottomY)
-    .stroke();
-  doc
-    .moveTo(colTotal, headerTopY)
-    .lineTo(colTotal, headerBottomY)
-    .stroke();
-  doc
-    .moveTo(colPercent, headerTopY)
-    .lineTo(colPercent, headerBottomY)
-    .stroke();
-  doc
-    .moveTo(colGrade, headerTopY)
-    .lineTo(colGrade, headerBottomY)
-    .stroke();
-  doc
-    .moveTo(tableRight, headerTopY)
-    .lineTo(tableRight, headerBottomY)
-    .stroke();
+    // borders (unchanged)
+    doc
+      .strokeColor('#9ca3af')
+      .lineWidth(0.7)
+      .moveTo(tableLeft, headerTopY)
+      .lineTo(tableRight, headerTopY)
+      .stroke();
+    doc
+      .moveTo(tableLeft, headerBottomY)
+      .lineTo(tableRight, headerBottomY)
+      .stroke();
+    doc.moveTo(tableLeft, headerTopY).lineTo(tableLeft, headerBottomY).stroke();
+    doc
+      .moveTo(colAdmName, headerTopY)
+      .lineTo(colAdmName, headerBottomY)
+      .stroke();
+    doc.moveTo(colTotal, headerTopY).lineTo(colTotal, headerBottomY).stroke();
+    doc
+      .moveTo(colPercent, headerTopY)
+      .lineTo(colPercent, headerBottomY)
+      .stroke();
+    doc.moveTo(colGrade, headerTopY).lineTo(colGrade, headerBottomY).stroke();
+    doc
+      .moveTo(tableRight, headerTopY)
+      .lineTo(tableRight, headerBottomY)
+      .stroke();
 
-  doc.font('Helvetica').fontSize(8).fillColor('#111827');
-  doc.y = headerBottomY;
+    doc.font('Helvetica').fontSize(8).fillColor('#111827');
+    doc.y = headerBottomY;
 
-  return {
-    tableLeft,
-    tableRight,
-    colPos,
-    colAdmName,
-    colTotal,
-    colPercent,
-    colGrade,
-    rowHeight,
+    return {
+      tableLeft,
+      tableRight,
+      colPos,
+      colAdmName,
+      colTotal,
+      colPercent,
+      colGrade,
+      rowHeight,
+    };
   };
-};
-
 
   if (learners.length) {
     let learnersTableLayout = drawTopLearnersHeader(false);
@@ -2089,62 +2059,64 @@ export async function renderOrgExamClassReportPdf(payload) {
         s.total_score != null && s.total_max != null
           ? `${s.total_score}/${s.total_max}`
           : s.total_score != null
-          ? String(s.total_score)
-          : '—';
+            ? String(s.total_score)
+            : '—';
 
       const pctText =
         s.total_percent != null
           ? `${clampPercent(s.total_percent).toFixed(1)}%`
           : '—';
 
-const gradeTextRaw = (s.overall_grade || '').toString().toUpperCase().trim();
+      const gradeTextRaw = (s.overall_grade || '')
+        .toString()
+        .toUpperCase()
+        .trim();
 
-// row text, vertically centered
-doc.text(posText, colPos, textY, {
-  width: colAdmName - colPos - 4,
-});
-doc.text(nameLine || 'Learner', colAdmName, textY, {
-  width: colTotal - colAdmName - 4,
-});
-doc.text(totalText, colTotal, textY, {
-  width: colPercent - colTotal - 4,
-  align: 'right',
-});
-doc.text(pctText, colPercent, textY, {
-  width: colGrade - colPercent - 4,
-  align: 'right',
-});
+      // row text, vertically centered
+      doc.text(posText, colPos, textY, {
+        width: colAdmName - colPos - 4,
+      });
+      doc.text(nameLine || 'Learner', colAdmName, textY, {
+        width: colTotal - colAdmName - 4,
+      });
+      doc.text(totalText, colTotal, textY, {
+        width: colPercent - colTotal - 4,
+        align: 'right',
+      });
+      doc.text(pctText, colPercent, textY, {
+        width: colGrade - colPercent - 4,
+        align: 'right',
+      });
 
-// ── GRADE: align base letter and suffix separately ──
-const gradeCellWidth = tableRight - colGrade - 4;
-const suffixWidth = 8; // small fixed slot on the right
-const baseWidth = Math.max(0, gradeCellWidth - suffixWidth);
+      // ── GRADE: align base letter and suffix separately ──
+      const gradeCellWidth = tableRight - colGrade - 4;
+      const suffixWidth = 8; // small fixed slot on the right
+      const baseWidth = Math.max(0, gradeCellWidth - suffixWidth);
 
-if (gradeTextRaw) {
-  const baseGrade = gradeTextRaw[0];              // 'A', 'B', 'C'
-  const suffix = gradeTextRaw.slice(1);           // '+', '-', or ''
+      if (gradeTextRaw) {
+        const baseGrade = gradeTextRaw[0]; // 'A', 'B', 'C'
+        const suffix = gradeTextRaw.slice(1); // '+', '-', or ''
 
-  // base letter right-aligned within its sub-cell
-  doc.text(baseGrade, colGrade, textY, {
-    width: baseWidth,
-    align: 'right',
-  });
+        // base letter right-aligned within its sub-cell
+        doc.text(baseGrade, colGrade, textY, {
+          width: baseWidth,
+          align: 'right',
+        });
 
-  // suffix (if any) left-aligned in the tiny right sub-cell
-  if (suffix) {
-    doc.text(suffix, colGrade + baseWidth, textY, {
-      width: suffixWidth,
-      align: 'left',
-    });
-  }
-} else {
-  // fallback when there is no grade
-  doc.text('—', colGrade, textY, {
-    width: gradeCellWidth,
-    align: 'right',
-  });
-}
-
+        // suffix (if any) left-aligned in the tiny right sub-cell
+        if (suffix) {
+          doc.text(suffix, colGrade + baseWidth, textY, {
+            width: suffixWidth,
+            align: 'left',
+          });
+        }
+      } else {
+        // fallback when there is no grade
+        doc.text('—', colGrade, textY, {
+          width: gradeCellWidth,
+          align: 'right',
+        });
+      }
 
       const rowBottomY = rowTopY + rowHeight;
 
@@ -2156,35 +2128,14 @@ if (gradeTextRaw) {
         .moveTo(tableLeft, rowTopY)
         .lineTo(tableRight, rowTopY)
         .stroke();
-      doc
-        .moveTo(tableLeft, rowBottomY)
-        .lineTo(tableRight, rowBottomY)
-        .stroke();
+      doc.moveTo(tableLeft, rowBottomY).lineTo(tableRight, rowBottomY).stroke();
       // verticals
-      doc
-        .moveTo(tableLeft, rowTopY)
-        .lineTo(tableLeft, rowBottomY)
-        .stroke();
-      doc
-        .moveTo(colAdmName, rowTopY)
-        .lineTo(colAdmName, rowBottomY)
-        .stroke();
-      doc
-        .moveTo(colTotal, rowTopY)
-        .lineTo(colTotal, rowBottomY)
-        .stroke();
-      doc
-        .moveTo(colPercent, rowTopY)
-        .lineTo(colPercent, rowBottomY)
-        .stroke();
-      doc
-        .moveTo(colGrade, rowTopY)
-        .lineTo(colGrade, rowBottomY)
-        .stroke();
-      doc
-        .moveTo(tableRight, rowTopY)
-        .lineTo(tableRight, rowBottomY)
-        .stroke();
+      doc.moveTo(tableLeft, rowTopY).lineTo(tableLeft, rowBottomY).stroke();
+      doc.moveTo(colAdmName, rowTopY).lineTo(colAdmName, rowBottomY).stroke();
+      doc.moveTo(colTotal, rowTopY).lineTo(colTotal, rowBottomY).stroke();
+      doc.moveTo(colPercent, rowTopY).lineTo(colPercent, rowBottomY).stroke();
+      doc.moveTo(colGrade, rowTopY).lineTo(colGrade, rowBottomY).stroke();
+      doc.moveTo(tableRight, rowTopY).lineTo(tableRight, rowBottomY).stroke();
 
       doc.y = rowBottomY;
     }

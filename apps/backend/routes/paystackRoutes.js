@@ -34,5 +34,4 @@ router.post('/card-charge', anyAuth, cardCharge);
 router.post('/submit-otp', anyAuth, submitOtpCharge);
 router.get('/verify/:reference', verifyAndFinalize);
 
-
 export default router;

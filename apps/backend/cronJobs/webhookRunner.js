@@ -18,6 +18,8 @@ const timer = setInterval(tick, periodMs);
 
 process.on('SIGTERM', () => {
   console.log('[webhooks] SIGTERM — stopping runner...');
-  try { clearInterval(timer); } catch {}
+  try {
+    clearInterval(timer);
+  } catch {}
   process.exit(0);
 });

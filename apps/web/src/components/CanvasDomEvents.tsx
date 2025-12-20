@@ -53,7 +53,9 @@ export default function CanvasDomEvents({
     if (onWheel) canvas.addEventListener('wheel', onWheel, { passive: true });
 
     // WebGL context lifecycle (must be able to call preventDefault on lost)
-    canvas.addEventListener('webglcontextlost', handleContextLost as EventListener, { passive: false });
+    canvas.addEventListener('webglcontextlost', handleContextLost as EventListener, {
+      passive: false,
+    });
     canvas.addEventListener('webglcontextrestored', handleContextRestored as EventListener);
 
     // Cleanup

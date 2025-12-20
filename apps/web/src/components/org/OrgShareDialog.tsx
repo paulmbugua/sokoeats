@@ -3,10 +3,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
-import {
-  createOrgAssignment,
-  ensureOrgShareableAssignment,
-} from '@mytutorapp/shared/api/orgApi';
+import { createOrgAssignment, ensureOrgShareableAssignment } from '@mytutorapp/shared/api/orgApi';
 
 type Props = {
   open: boolean;
@@ -19,7 +16,7 @@ type Props = {
   quizCount?: number;
   minutes?: number;
 
-  /** 
+  /**
    * quiz  = full quiz-style options (timer, question type, attempts)
    * homework = simplified “school assignment” flow (due date + submissions + optional pass mark)
    */
@@ -154,7 +151,7 @@ export default function OrgShareDialog({
     if (isHomework) {
       setTimerH(0);
       setTimerM(0);
-      setMaxAttempts((prev) => (prev || 2));
+      setMaxAttempts((prev) => prev || 2);
       return;
     }
 
@@ -224,7 +221,7 @@ export default function OrgShareDialog({
       clampToViewport({
         x: dragRef.current.startPos.x + dx,
         y: dragRef.current.startPos.y + dy,
-      }),
+      })
     );
   };
 
@@ -286,9 +283,7 @@ export default function OrgShareDialog({
     }
 
     const effectivePass = passMark === '' ? null : Number(passMark);
-    const effectiveAttempts = isStarter
-      ? 1
-      : Math.max(1, Math.min(10, Number(maxAttempts) || 1));
+    const effectiveAttempts = isStarter ? 1 : Math.max(1, Math.min(10, Number(maxAttempts) || 1));
 
     const locked_config: any = {
       totalLessons: typeof totalLessons === 'number' ? totalLessons : undefined,
@@ -327,12 +322,10 @@ export default function OrgShareDialog({
         backendUrl,
         bearer,
         activeOrgId,
-        payload as any,
+        payload as any
       );
       const code =
-        resp.assignment?.invite_code ??
-        resp.assignment?.inviteCode ??
-        resp.assignment?.code;
+        resp.assignment?.invite_code ?? resp.assignment?.inviteCode ?? resp.assignment?.code;
       if (!code) throw new Error('Invite code missing');
       const cid = pickCourseId(resp);
       if (cid) {
@@ -342,8 +335,7 @@ export default function OrgShareDialog({
       setInviteLink(`${window.location.origin}/org/join/${code}`);
     } catch (e: any) {
       const status = e?.response?.status;
-      const canFallback =
-        !!courseId && (status === 404 || status === 501 || status === 400);
+      const canFallback = !!courseId && (status === 404 || status === 501 || status === 400);
       if (canFallback) {
         try {
           const legacy = await createOrgAssignment(backendUrl, bearer, activeOrgId, {
@@ -364,18 +356,10 @@ export default function OrgShareDialog({
             setCreatedCourseId(cid2);
           }
         } catch (e2: any) {
-          setErr(
-            e2?.response?.data?.message ||
-              e2?.message ||
-              'Failed to create invite.',
-          );
+          setErr(e2?.response?.data?.message || e2?.message || 'Failed to create invite.');
         }
       } else {
-        setErr(
-          e?.response?.data?.message ||
-            e?.message ||
-            'Failed to share course.',
-        );
+        setErr(e?.response?.data?.message || e?.message || 'Failed to share course.');
       }
     } finally {
       setBusy(false);
@@ -395,9 +379,7 @@ export default function OrgShareDialog({
 
   const primaryCtaLabel = isHomework ? 'Share assignment link' : 'Create invite';
   const passLabel = isHomework ? 'Pass mark (%) (optional)' : 'Pass mark (%)';
-  const attemptsLabel = isHomework
-    ? 'Maximum submissions allowed'
-    : 'Max quiz attempts';
+  const attemptsLabel = isHomework ? 'Maximum submissions allowed' : 'Max quiz attempts';
 
   return (
     <div
@@ -410,9 +392,7 @@ export default function OrgShareDialog({
         role="dialog"
         aria-modal="true"
         aria-label={
-          isHomework
-            ? 'Share course as a homework assignment'
-            : 'Share course with learners'
+          isHomework ? 'Share course as a homework assignment' : 'Share course with learners'
         }
         className="
           fixed w-[95vw] max-w-sm sm:max-w-md
@@ -437,28 +417,19 @@ export default function OrgShareDialog({
         >
           <div className="min-w-0">
             <div className="text-[11px] text-gray-500 dark:text-white/70">
-              {isHomework
-                ? 'Share as homework / holiday assignment'
-                : 'Share course with learners'}
+              {isHomework ? 'Share as homework / holiday assignment' : 'Share course with learners'}
             </div>
-            <div className="font-semibold truncate text-sm">
-              {courseTitle || 'Selected course'}
-            </div>
-            {(typeof totalLessons === 'number' ||
-              typeof quizCount === 'number') && (
+            <div className="font-semibold truncate text-sm">{courseTitle || 'Selected course'}</div>
+            {(typeof totalLessons === 'number' || typeof quizCount === 'number') && (
               <div className="text-[10px] text-gray-500 dark:text-white/60 mt-0.5">
-                {typeof totalLessons === 'number'
-                  ? `${totalLessons} lessons`
-                  : '—'}
-                {typeof quizCount === 'number'
-                  ? ` • ${quizCount} questions`
-                  : ''}
+                {typeof totalLessons === 'number' ? `${totalLessons} lessons` : '—'}
+                {typeof quizCount === 'number' ? ` • ${quizCount} questions` : ''}
               </div>
             )}
             {isHomework && (
               <div className="mt-1 text-[10px] text-gray-500 dark:text-white/60">
-                Set a due date and how many times learners can submit. Great for
-                holiday work or weekly homework.
+                Set a due date and how many times learners can submit. Great for holiday work or
+                weekly homework.
               </div>
             )}
           </div>
@@ -513,32 +484,22 @@ export default function OrgShareDialog({
               {/* Pass mark / Timer (timer hidden for homework) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <label className="grid gap-1">
-                  <span className="text-[12px] text-gray-600 dark:text-white/70">
-                    {passLabel}
-                  </span>
+                  <span className="text-[12px] text-gray-600 dark:text-white/70">{passLabel}</span>
                   <input
                     className={`input !py-1.5 !px-2.5 text-[13px] ${
-                      lockPass
-                        ? 'bg-gray-100 cursor-not-allowed dark:bg-white/10'
-                        : ''
+                      lockPass ? 'bg-gray-100 cursor-not-allowed dark:bg-white/10' : ''
                     }`}
                     type="number"
                     min={0}
                     max={100}
                     value={passMark}
                     onChange={(e) =>
-                      setPassMark(
-                        e.target.value === '' ? '' : Number(e.target.value),
-                      )
+                      setPassMark(e.target.value === '' ? '' : Number(e.target.value))
                     }
                     disabled={lockPass}
                     readOnly={lockPass}
                     placeholder={isHomework ? 'Optional' : undefined}
-                    title={
-                      lockPass
-                        ? 'Managed by your plan; cannot be changed.'
-                        : undefined
-                    }
+                    title={lockPass ? 'Managed by your plan; cannot be changed.' : undefined}
                   />
                   <span className="text-[10px] text-gray-500 dark:text-white/60">
                     {isHomework
@@ -553,27 +514,18 @@ export default function OrgShareDialog({
                     <span className="text-[12px] text-gray-600 dark:text-white/70">
                       Timer (duration){' '}
                       {isStarter && (
-                        <em className="text-[10px] text-gray-500">
-                          • Starter fixed at 30 min
-                        </em>
+                        <em className="text-[10px] text-gray-500">• Starter fixed at 30 min</em>
                       )}
                     </span>
 
                     <div className="flex items-center gap-1.5">
                       <select
                         className={`input !py-1.5 !px-2.5 text-[13px] w-[100px] ${
-                          lockTimer
-                            ? 'bg-gray-100 cursor-not-allowed dark:bg-white/10'
-                            : ''
+                          lockTimer ? 'bg-gray-100 cursor-not-allowed dark:bg-white/10' : ''
                         }`}
                         value={timerH}
                         onChange={(e) =>
-                          setTimerH(
-                            Math.max(
-                              0,
-                              parseInt(e.target.value || '0', 10),
-                            ),
-                          )
+                          setTimerH(Math.max(0, parseInt(e.target.value || '0', 10)))
                         }
                         disabled={lockTimer}
                       >
@@ -586,28 +538,19 @@ export default function OrgShareDialog({
 
                       <select
                         className={`input !py-1.5 !px-2.5 text-[13px] w-[115px] ${
-                          lockTimer
-                            ? 'bg-gray-100 cursor-not-allowed dark:bg-white/10'
-                            : ''
+                          lockTimer ? 'bg-gray-100 cursor-not-allowed dark:bg-white/10' : ''
                         }`}
                         value={timerM}
                         onChange={(e) =>
-                          setTimerM(
-                            Math.max(
-                              0,
-                              parseInt(e.target.value || '0', 10),
-                            ),
-                          )
+                          setTimerM(Math.max(0, parseInt(e.target.value || '0', 10)))
                         }
                         disabled={lockTimer}
                       >
-                        {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(
-                          (m) => (
-                            <option key={m} value={m}>
-                              {m} {m === 1 ? 'minute' : 'minutes'}
-                            </option>
-                          ),
-                        )}
+                        {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+                          <option key={m} value={m}>
+                            {m} {m === 1 ? 'minute' : 'minutes'}
+                          </option>
+                        ))}
                       </select>
 
                       <span className="text-[10px] text-gray-600 dark:text-white/60">
@@ -628,26 +571,20 @@ export default function OrgShareDialog({
                 <span className="text-[12px] text-gray-600 dark:text-white/70">
                   {attemptsLabel}
                   {isStarter && (
-                    <em className="ml-1 text-[10px] text-gray-500">
-                      • Starter locked to 1
-                    </em>
+                    <em className="ml-1 text-[10px] text-gray-500">• Starter locked to 1</em>
                   )}
                 </span>
                 <div className="flex items-center gap-1.5">
                   <input
                     className={`input !py-1.5 !px-2.5 text-[13px] w-24 ${
-                      lockAttempts
-                        ? 'bg-gray-100 cursor-not-allowed dark:bg-white/10'
-                        : ''
+                      lockAttempts ? 'bg-gray-100 cursor-not-allowed dark:bg-white/10' : ''
                     }`}
                     type="number"
                     min={1}
                     max={10}
                     value={maxAttempts}
                     onChange={(e) =>
-                      setMaxAttempts(
-                        Math.max(1, Math.min(10, Number(e.target.value) || 1)),
-                      )
+                      setMaxAttempts(Math.max(1, Math.min(10, Number(e.target.value) || 1)))
                     }
                     disabled={lockAttempts}
                     readOnly={lockAttempts}
@@ -663,9 +600,7 @@ export default function OrgShareDialog({
               {/* Question type – only for quiz-style assignments */}
               {!isHomework && (
                 <div className="grid gap-1">
-                  <div className="text-[12px] text-gray-600 dark:text-white/70">
-                    Question type
-                  </div>
+                  <div className="text-[12px] text-gray-600 dark:text-white/70">Question type</div>
 
                   <div
                     role="radiogroup"
@@ -702,19 +637,12 @@ export default function OrgShareDialog({
                         `}
                           aria-hidden
                         >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                          >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M7 5h14v2H7V5zm0 6h14v2H7v-2zm0 6h14v2H7v-2zM3 5h2v2H3V5zm0 6h2v2H3v-2zm0 6h2v2H3v-2z" />
                           </svg>
                         </span>
                         <div>
-                          <div className="font-medium text-[13px]">
-                            Multiple choice (MCQ)
-                          </div>
+                          <div className="font-medium text-[13px]">Multiple choice (MCQ)</div>
                           <div className="text-[10px] text-gray-600 dark:text-white/60">
                             Learners choose one of four options.
                           </div>
@@ -746,19 +674,12 @@ export default function OrgShareDialog({
                         `}
                           aria-hidden
                         >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                          >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M20 5H4c-1.1 0-2 .9-2 2v8a2 2 0 002 2h16a2 2 0 002-2V7c0-1.1-.9-2-2-2zm0 10H4V7h16v8zM6 9h2v2H6V9zm3 0h2v2H9V9zm3 0h2v2h-2V9zm3 0h2v2h-2V9zM6 12h8v2H6v-2zm9 0h3v2h-3v-2z" />
                           </svg>
                         </span>
                         <div>
-                          <div className="font-medium text-[13px]">
-                            Short answers (typed)
-                          </div>
+                          <div className="font-medium text-[13px]">Short answers (typed)</div>
                           <div className="text-[10px] text-gray-600 dark:text-white/60">
                             Great for formulas (e.g., H₂SO₄). We’ll auto-mark.
                           </div>
@@ -784,9 +705,7 @@ export default function OrgShareDialog({
 
               {/* Date picker */}
               <label className="grid gap-1">
-                <span className="text-[12px] text-gray-600 dark:text-white/70">
-                  Due date
-                </span>
+                <span className="text-[12px] text-gray-600 dark:text-white/70">Due date</span>
                 <input
                   className="input !py-1.5 !px-2.5 text-[13px]"
                   type="date"
@@ -794,22 +713,16 @@ export default function OrgShareDialog({
                   onChange={(e) => setDueDate(e.target.value)}
                 />
                 <span className="text-[10px] text-gray-500 dark:text-white/60">
-                  Learners will see this as the deadline. Submissions after this
-                  may still come in, but you’ll know the official cut-off.
+                  Learners will see this as the deadline. Submissions after this may still come in,
+                  but you’ll know the official cut-off.
                 </span>
               </label>
 
-              {!!err && (
-                <div className="text-amber-600 dark:text-amber-300 text-[12px]">
-                  {err}
-                </div>
-              )}
+              {!!err && <div className="text-amber-600 dark:text-amber-300 text-[12px]">{err}</div>}
             </div>
           ) : (
             <div className="grid gap-1.5">
-              <div className="text-[12px] text-gray-600 dark:text-white/70">
-                Invite link
-              </div>
+              <div className="text-[12px] text-gray-600 dark:text-white/70">Invite link</div>
               <div className="flex items-stretch gap-1.5">
                 <input
                   className="input flex-1 !py-1.5 !px-2.5 text-[13px]"
@@ -821,8 +734,7 @@ export default function OrgShareDialog({
                 </button>
               </div>
               <div className="text-[10px] text-gray-500 dark:text-white/60">
-                Share this link with your learners (WhatsApp groups, SMS,
-                noticeboard, etc.).
+                Share this link with your learners (WhatsApp groups, SMS, noticeboard, etc.).
               </div>
               {cidForLink && (
                 <div className="mt-2">
@@ -832,16 +744,12 @@ export default function OrgShareDialog({
                       onClose();
                       try {
                         sessionStorage.setItem('ai:lastCourseId', cidForLink);
-                        if (inviteLink)
-                          sessionStorage.setItem(
-                            'ai:lastInviteLink',
-                            inviteLink,
-                          );
+                        if (inviteLink) sessionStorage.setItem('ai:lastInviteLink', inviteLink);
                       } catch {}
                       nav(
                         `${ORG_PORTAL_PATH}?tab=assign&from=share&courseId=${encodeURIComponent(
-                          cidForLink,
-                        )}`,
+                          cidForLink
+                        )}`
                       );
                     }}
                   >

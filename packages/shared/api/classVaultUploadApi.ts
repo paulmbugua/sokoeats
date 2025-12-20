@@ -1,7 +1,9 @@
 // packages/shared/api/classVaultUploadApi.ts
 import axios from 'axios';
 
-export interface UploadResult { url: string }
+export interface UploadResult {
+  url: string;
+}
 
 // Either a browser File or an RN asset
 type Asset = File | { uri: string; name?: string; type?: string };
@@ -28,30 +30,34 @@ export const uploadClassVaultAsset = async (
   const folder = opts?.folder ?? 'class_vault';
 
   // 1) Ask backend for a signed upload (keeps API secret server-side)
-  const sign = await axios.post(
-    `${backendUrl}/api/cloudinary/sign`,
-    { resourceType, folder },
-    { headers: { Authorization: `Bearer ${token}` } }
-  ).then(r => r.data as {
-    cloudName: string;
-    apiKey: string;
-    timestamp: number;
-    folder: string;
-    signature: string;
-    resourceType: 'video' | 'image' | 'raw';
-  });
+  const sign = await axios
+    .post(
+      `${backendUrl}/api/cloudinary/sign`,
+      { resourceType, folder },
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+    .then(
+      (r) =>
+        r.data as {
+          cloudName: string;
+          apiKey: string;
+          timestamp: number;
+          folder: string;
+          signature: string;
+          resourceType: 'video' | 'image' | 'raw';
+        }
+    );
 
   // 2) Cloudinary upload URL
   const cloudUrl = `https://api.cloudinary.com/v1_1/${sign.cloudName}/${sign.resourceType}/upload`;
 
   // 3) Build FormData
   const isBrowserFile =
-    typeof window !== 'undefined' &&
-    typeof File !== 'undefined' &&
-    file instanceof File;
+    typeof window !== 'undefined' && typeof File !== 'undefined' && file instanceof File;
 
   const nameGuess = (() => {
-    if (isBrowserFile) return (file as File).name || (type === 'video' ? 'upload.mp4' : 'upload.pdf');
+    if (isBrowserFile)
+      return (file as File).name || (type === 'video' ? 'upload.mp4' : 'upload.pdf');
     const rn = file as { uri: string; name?: string };
     if (rn?.name) return rn.name;
     return type === 'video' ? 'upload.mp4' : 'upload.pdf';
@@ -87,9 +93,7 @@ export const uploadClassVaultAsset = async (
     const res = await axios.post(cloudUrl, form, {
       onUploadProgress: (e) => {
         if (!onProgress) return;
-        const pct = e.lengthComputable
-          ? Math.round((e.loaded * 100) / (e.total || 1))
-          : 0;
+        const pct = e.lengthComputable ? Math.round((e.loaded * 100) / (e.total || 1)) : 0;
         onProgress(pct);
       },
     });
@@ -104,9 +108,7 @@ export const uploadClassVaultAsset = async (
 
     xhr.upload.onprogress = (e) => {
       if (!onProgress) return;
-      const pct = e.lengthComputable
-        ? Math.round((e.loaded * 100) / (e.total || 1))
-        : 0;
+      const pct = e.lengthComputable ? Math.round((e.loaded * 100) / (e.total || 1)) : 0;
       onProgress(pct);
     };
 

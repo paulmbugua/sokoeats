@@ -25,7 +25,9 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ✅ Inline vault list screen (renders under the Library tab)
-import ClassVaultListScreen, { type ClassVaultFilters } from '../screens/ClassVaultListScreen.native';
+import ClassVaultListScreen, {
+  type ClassVaultFilters,
+} from '../screens/ClassVaultListScreen.native';
 
 import { useThemePref } from '../theme/ThemeContext';
 
@@ -42,13 +44,13 @@ const Chip: React.FC<{ label: string; active?: boolean; onPress: () => void }> =
     onPress={onPress}
     style={tw.style(
       'px-3 h-9 rounded-full items-center justify-center mr-2 mb-2',
-      active ? 'bg-[#3d99f5]' : 'bg-[#e7edf4] dark:bg-[#172534]',
+      active ? 'bg-[#3d99f5]' : 'bg-[#e7edf4] dark:bg-[#172534]'
     )}
   >
     <Text
       style={tw.style(
         'text-sm',
-        active ? 'text-white font-semibold' : 'text-[#0d141c] dark:text-white/90',
+        active ? 'text-white font-semibold' : 'text-[#0d141c] dark:text-white/90'
       )}
     >
       {label}
@@ -59,9 +61,7 @@ const Chip: React.FC<{ label: string; active?: boolean; onPress: () => void }> =
 // Compact star text
 function StarRow({ avg, count }: { avg?: number; count?: number }) {
   const a = Math.round((avg ?? 0) * 2) / 2;
-  const stars = [1, 2, 3, 4, 5]
-    .map((i) => (a >= i ? '★' : a + 0.5 === i ? '☆' : '☆'))
-    .join('');
+  const stars = [1, 2, 3, 4, 5].map((i) => (a >= i ? '★' : a + 0.5 === i ? '☆' : '☆')).join('');
   return (
     <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
       {stars} {avg ? avg.toFixed(1) : '—'} ({count ?? 0})
@@ -147,7 +147,7 @@ function isOerCourse(c: any): boolean {
       provider.includes('openstax') ||
       provider.includes('khan') ||
       provider.includes('ck-12') ||
-      codeish.includes('oer'),
+      codeish.includes('oer')
   );
 }
 
@@ -208,7 +208,10 @@ type OerCollection = {
   [k: string]: any;
 };
 
-const norm = (v: any) => String(v ?? '').trim().toLowerCase();
+const norm = (v: any) =>
+  String(v ?? '')
+    .trim()
+    .toLowerCase();
 
 const isOerVideoCollectionStrict = (c: OerCollection): boolean => {
   const kind = norm(c.content_kind);
@@ -273,7 +276,7 @@ const OerVideoCard: React.FC<{
   const thumb =
     resolveThumbUri(backendBase, thumbRaw) ||
     `https://picsum.photos/seed/${encodeURIComponent(
-      String(col.slug ?? col.id ?? col.title ?? 'oer'),
+      String(col.slug ?? col.id ?? col.title ?? 'oer')
     )}/800/450`;
 
   return (
@@ -290,7 +293,7 @@ const OerVideoCard: React.FC<{
         {col.title}
       </Text>
       <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-0.5`} numberOfLines={1}>
-        {(col.subject ?? '—')} • {col.items_count ?? 0} item{(col.items_count ?? 0) === 1 ? '' : 's'}
+        {col.subject ?? '—'} • {col.items_count ?? 0} item{(col.items_count ?? 0) === 1 ? '' : 's'}
       </Text>
       <View style={tw`mt-2`}>
         <Text
@@ -314,12 +317,14 @@ const OerBookCard: React.FC<{
   const thumb =
     resolveThumbUri(backendBase, thumbRaw) ||
     `https://picsum.photos/seed/${encodeURIComponent(
-      String(book.slug ?? book.id ?? book.title ?? 'oer'),
+      String(book.slug ?? book.id ?? book.title ?? 'oer')
     )}/800/450`;
 
   return (
     <View style={tw`w-1/2 pr-2 mb-3`}>
-      <View style={tw`rounded-xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-3`}>
+      <View
+        style={tw`rounded-xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-3`}
+      >
         <Image
           source={{ uri: thumb }}
           style={tw`w-full h-36 rounded-lg bg-slate-200 dark:bg-white/5`}
@@ -381,7 +386,10 @@ const MyCoursesNative: React.FC = () => {
   const isDark = resolvedScheme === 'dark';
   const insets = useSafeAreaInsets();
 
-  const navAny = navigation as unknown as { navigate: (...args: any[]) => void; getState: () => any };
+  const navAny = navigation as unknown as {
+    navigate: (...args: any[]) => void;
+    getState: () => any;
+  };
 
   const myId = String(profile?.id ?? '');
 
@@ -419,7 +427,7 @@ const MyCoursesNative: React.FC = () => {
       try {
         handleCourseSearch(q);
       } catch {}
-    }, 250),
+    }, 250)
   );
 
   useEffect(() => () => debouncedSearch.current.cancel(), []);
@@ -454,10 +462,10 @@ const MyCoursesNative: React.FC = () => {
     setDraftGradeBand(String(courseFilters?.gradeBand ?? ''));
     setDraftLevel(String(courseFilters?.level ?? ''));
     setDraftMinRating(
-      (courseFilters?.minRating ?? 0) > 0 ? String(courseFilters?.minRating ?? 0) : '',
+      (courseFilters?.minRating ?? 0) > 0 ? String(courseFilters?.minRating ?? 0) : ''
     );
     setDraftMaxPrice(
-      (courseFilters?.maxPrice ?? 0) > 0 ? String(courseFilters?.maxPrice ?? 0) : '',
+      (courseFilters?.maxPrice ?? 0) > 0 ? String(courseFilters?.maxPrice ?? 0) : ''
     );
     setDraftDuration(duration);
     setFiltersOpen(true);
@@ -567,7 +575,8 @@ const MyCoursesNative: React.FC = () => {
         const payload = await res.json();
         const out: Record<string, string> = {};
 
-        const pickIdLocal = (it: any) => String(it?.user_id ?? it?.userId ?? it?.user ?? it?.id ?? '');
+        const pickIdLocal = (it: any) =>
+          String(it?.user_id ?? it?.userId ?? it?.user ?? it?.id ?? '');
         const pickNameLocal = (it: any) =>
           it?.name ?? it?.fullName ?? it?.displayName ?? it?.username ?? '—';
 
@@ -580,7 +589,12 @@ const MyCoursesNative: React.FC = () => {
         if (Array.isArray(payload)) payload.forEach(add);
         else if (payload && typeof payload === 'object') {
           const arr =
-            payload.profiles ?? payload.items ?? payload.data ?? payload.results ?? payload.rows ?? payload.users;
+            payload.profiles ??
+            payload.items ??
+            payload.data ??
+            payload.results ??
+            payload.rows ??
+            payload.users;
           if (Array.isArray(arr)) arr.forEach(add);
           else for (const v of Object.values(payload)) if (v && typeof v === 'object') add(v);
         }
@@ -589,12 +603,12 @@ const MyCoursesNative: React.FC = () => {
         return {};
       }
     },
-    [token, api],
+    [token, api]
   );
 
   const missingTutorUserIds = useMemo(
     () => tutorUserIdsInCourses.filter((id) => !tutorNameById[id]),
-    [tutorUserIdsInCourses, tutorNameById],
+    [tutorUserIdsInCourses, tutorNameById]
   );
 
   useEffect(() => {
@@ -618,7 +632,7 @@ const MyCoursesNative: React.FC = () => {
       const name = userId && tutorNameById[userId] ? tutorNameById[userId] : rawInfo.name;
       return name && name !== '—' ? name : undefined;
     },
-    [tutorNameById],
+    [tutorNameById]
   );
 
   // ✅ Course list like web: searchedCourses -> safety filter -> duration contains -> require tutor name
@@ -633,13 +647,15 @@ const MyCoursesNative: React.FC = () => {
       });
   }, [searchedCourses, duration]);
 
-  const displayRows = useMemo(() => filteredRows.filter((c) => !!resolveTutorName(c)), [
-    filteredRows,
-    resolveTutorName,
-  ]);
+  const displayRows = useMemo(
+    () => filteredRows.filter((c) => !!resolveTutorName(c)),
+    [filteredRows, resolveTutorName]
+  );
 
   /* ----------------------- Ratings prefetch (courses) ----------------------- */
-  const [ratings, setRatings] = useState<Record<string, { avg: number; count: number; my: boolean }>>({});
+  const [ratings, setRatings] = useState<
+    Record<string, { avg: number; count: number; my: boolean }>
+  >({});
   const [openReview, setOpenReview] = useState<{ id: string; title: string } | null>(null);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
@@ -661,13 +677,13 @@ const MyCoursesNative: React.FC = () => {
         // silent
       }
     },
-    [backendUrl, myId],
+    [backendUrl, myId]
   );
 
   const debouncedFetchCourseRatings = useRef(
     debounce((courseId: string) => {
       void fetchCourseRatings(courseId);
-    }, 200),
+    }, 200)
   );
 
   useEffect(() => () => debouncedFetchCourseRatings.current.cancel(), []);
@@ -683,12 +699,32 @@ const MyCoursesNative: React.FC = () => {
   const { courses: oerCourses = [], loading: oerLoading, error: oerError } = useOerCourses();
   const { wrapBook } = useWrapOerBook();
 
-  const oerBooks = useMemo(() => (oerCourses as any[]).filter((c) => c?.kind === 'book'), [oerCourses]);
+  const oerBooks = useMemo(
+    () => (oerCourses as any[]).filter((c) => c?.kind === 'book'),
+    [oerCourses]
+  );
 
   /* ------------------------------- Library tab (Vault + OER videos) ------------------------------- */
-  const CLASS_SUBJECTS = ['Math', 'Science', 'Programming', 'Art', 'Wellness', 'Languages'] as const;
+  const CLASS_SUBJECTS = [
+    'Math',
+    'Science',
+    'Programming',
+    'Art',
+    'Wellness',
+    'Languages',
+  ] as const;
   const CLASS_GRADES = ['Any', 'Primary', 'Middle', 'High', 'College'] as const;
-  const TOP_COUNTRIES = ['United States', 'United Kingdom', 'Canada', 'India', 'Kenya', 'France', 'South Africa', 'Nigeria', 'Qatar'] as const;
+  const TOP_COUNTRIES = [
+    'United States',
+    'United Kingdom',
+    'Canada',
+    'India',
+    'Kenya',
+    'France',
+    'South Africa',
+    'Nigeria',
+    'Qatar',
+  ] as const;
 
   const [classSubject, setClassSubject] = useState<string>(''); // '' == Any subject
   const [classGrade, setClassGrade] = useState<string>(''); // '' == Any grade
@@ -718,8 +754,8 @@ const MyCoursesNative: React.FC = () => {
         const names = Array.isArray(st?.routeNames)
           ? st.routeNames
           : Array.isArray(st?.routes)
-          ? st.routes.map((r: any) => r.name)
-          : [];
+            ? st.routes.map((r: any) => r.name)
+            : [];
         if (names.includes(name)) return true;
         const routes = Array.isArray(st?.routes) ? st.routes : [];
         for (const r of routes) if (r?.state && walk(r.state)) return true;
@@ -782,13 +818,16 @@ const MyCoursesNative: React.FC = () => {
           r = await fetch(api('/oer/collections?limit=48'), { signal: ac.signal });
           if (r.ok) {
             const all = toArray<OerCollection>(await r.json().catch(() => []));
-            arr = all.filter((c) => isOerVideoCollectionStrict(c) && !isDocKind(c) && !isOpenStaxDoc(c));
+            arr = all.filter(
+              (c) => isOerVideoCollectionStrict(c) && !isDocKind(c) && !isOpenStaxDoc(c)
+            );
           }
         }
         const cleaned = arr.filter((c) => !isDocKind(c) && !isOpenStaxDoc(c));
         setOerVideoCols(cleaned);
       } catch (e: any) {
-        if (!ac.signal.aborted) setErrVCols(String(e?.message || e) || 'Failed to fetch collections');
+        if (!ac.signal.aborted)
+          setErrVCols(String(e?.message || e) || 'Failed to fetch collections');
       } finally {
         if (!ac.signal.aborted) setLoadingVCols(false);
       }
@@ -804,7 +843,13 @@ const MyCoursesNative: React.FC = () => {
 
   const renderOerVideoItem = ({ item }: { item: OerCollection }) => {
     const idOrSlug = String(item.slug ?? item.id);
-    return <OerVideoCard col={item} backendBase={backendUrl} onPress={() => goCollection(idOrSlug, 'video')} />;
+    return (
+      <OerVideoCard
+        col={item}
+        backendBase={backendUrl}
+        onPress={() => goCollection(idOrSlug, 'video')}
+      />
+    );
   };
 
   /* --------------------------------- Guards --------------------------------- */
@@ -813,7 +858,9 @@ const MyCoursesNative: React.FC = () => {
       <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
         <View style={tw`flex-1 items-center justify-center`}>
           <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
-          <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>Checking your account…</Text>
+          <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>
+            Checking your account…
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -827,8 +874,8 @@ const MyCoursesNative: React.FC = () => {
       typeof (item as any).price === 'number'
         ? `$${(item as any).price}`
         : typeof (item as any).price === 'string'
-        ? (item as any).price
-        : '—';
+          ? (item as any).price
+          : '—';
 
     const isEnrolled = enrolledCourseIds.has(cid);
     const r = ratings[cid];
@@ -841,10 +888,15 @@ const MyCoursesNative: React.FC = () => {
         }
       >
         <View style={tw`flex-row items-start justify-between`}>
-          <Text style={tw`font-semibold text-sm flex-1 pr-2 text-slate-900 dark:text-white`} numberOfLines={2}>
+          <Text
+            style={tw`font-semibold text-sm flex-1 pr-2 text-slate-900 dark:text-white`}
+            numberOfLines={2}
+          >
             {(item as any).title}
           </Text>
-          <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>{(item as any).level ?? '—'}</Text>
+          <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+            {(item as any).level ?? '—'}
+          </Text>
         </View>
 
         <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`} numberOfLines={1}>
@@ -860,7 +912,11 @@ const MyCoursesNative: React.FC = () => {
 
         <View style={tw`flex-row items-center justify-between mt-2`}>
           <View>
-            {r ? <StarRow avg={r.avg} count={r.count} /> : <Text style={tw`text-xs text-[#49739c] dark:text-white/70 opacity-70`}>—</Text>}
+            {r ? (
+              <StarRow avg={r.avg} count={r.count} />
+            ) : (
+              <Text style={tw`text-xs text-[#49739c] dark:text-white/70 opacity-70`}>—</Text>
+            )}
           </View>
 
           {isEnrolled ? (
@@ -869,7 +925,9 @@ const MyCoursesNative: React.FC = () => {
                 style={tw`h-9 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
                 onPress={() => navigation.navigate('CourseProgress', { courseId: cid })}
               >
-                <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>Enrolled</Text>
+                <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>
+                  Enrolled
+                </Text>
               </Pressable>
             ) : (
               <Pressable
@@ -894,15 +952,22 @@ const MyCoursesNative: React.FC = () => {
 
   /* ----------------------------- Tabs header ----------------------------- */
   const headerTabs = (
-    <View style={tw`flex-row self-start rounded-xl p-1 bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10`}>
+    <View
+      style={tw`flex-row self-start rounded-xl p-1 bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10`}
+    >
       <Pressable
         onPress={() => setTab('library')}
-        style={tw.style('h-9 px-3 rounded-lg items-center justify-center', tab === 'library' && 'bg-white dark:bg-[#0f1821]')}
+        style={tw.style(
+          'h-9 px-3 rounded-lg items-center justify-center',
+          tab === 'library' && 'bg-white dark:bg-[#0f1821]'
+        )}
       >
         <Text
           style={tw.style(
             'text-xs font-semibold',
-            tab === 'library' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-white/70',
+            tab === 'library'
+              ? 'text-slate-900 dark:text-white'
+              : 'text-slate-700 dark:text-white/70'
           )}
         >
           Explore Videos &amp; Notes
@@ -911,12 +976,17 @@ const MyCoursesNative: React.FC = () => {
 
       <Pressable
         onPress={() => setTab('courses')}
-        style={tw.style('h-9 px-3 rounded-lg items-center justify-center', tab === 'courses' && 'bg-white dark:bg-[#0f1821]')}
+        style={tw.style(
+          'h-9 px-3 rounded-lg items-center justify-center',
+          tab === 'courses' && 'bg-white dark:bg-[#0f1821]'
+        )}
       >
         <Text
           style={tw.style(
             'text-xs font-semibold',
-            tab === 'courses' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-white/70',
+            tab === 'courses'
+              ? 'text-slate-900 dark:text-white'
+              : 'text-slate-700 dark:text-white/70'
           )}
         >
           Explore Courses
@@ -929,7 +999,9 @@ const MyCoursesNative: React.FC = () => {
   const CoursesListHeader = (
     <View>
       <View style={tw`mt-3 mb-2`}>
-        <Text style={tw`text-[20px] font-bold text-slate-900 dark:text-white px-0`}>Explore Courses</Text>
+        <Text style={tw`text-[20px] font-bold text-slate-900 dark:text-white px-0`}>
+          Explore Courses
+        </Text>
         <Text style={tw`text-[#49739c] dark:text-white/70 text-xs px-0`}>
           Find the perfect course to enhance your skills and knowledge.
         </Text>
@@ -937,7 +1009,9 @@ const MyCoursesNative: React.FC = () => {
 
       {/* OER Books */}
       <View style={tw`mt-2`}>
-        <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-2 px-0`}>My Free OER Books</Text>
+        <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-2 px-0`}>
+          My Free OER Books
+        </Text>
 
         {oerLoading && (
           <View style={tw`py-2`}>
@@ -946,12 +1020,16 @@ const MyCoursesNative: React.FC = () => {
         )}
         {!!oerError && !oerLoading && (
           <View style={tw`py-2`}>
-            <Text style={tw`text-sm text-red-600 dark:text-red-400`}>Failed to load OER books.</Text>
+            <Text style={tw`text-sm text-red-600 dark:text-red-400`}>
+              Failed to load OER books.
+            </Text>
           </View>
         )}
         {!oerLoading && !oerError && oerBooks.length === 0 && (
           <View style={tw`py-2`}>
-            <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>No OER books available.</Text>
+            <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+              No OER books available.
+            </Text>
           </View>
         )}
 
@@ -988,7 +1066,9 @@ const MyCoursesNative: React.FC = () => {
       <View style={tw`mt-3`}>
         <View style={tw`flex-row items-center`}>
           <View style={tw`flex-1 rounded-xl overflow-hidden`}>
-            <View style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] h-11 px-3 rounded-xl`}>
+            <View
+              style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] h-11 px-3 rounded-xl`}
+            >
               <Text style={tw`text-base mr-2 text-[#0d141c] dark:text-white`}>🔎</Text>
               <TextInput
                 value={searchText}
@@ -1032,21 +1112,43 @@ const MyCoursesNative: React.FC = () => {
         {/* Active filter chips */}
         <View style={tw`mt-3 flex-row flex-wrap`}>
           {!!courseFilters?.subject && (
-            <Chip label={`Subject: ${courseFilters.subject}`} active onPress={() => setCourseSubject('')} />
+            <Chip
+              label={`Subject: ${courseFilters.subject}`}
+              active
+              onPress={() => setCourseSubject('')}
+            />
           )}
           {!!courseFilters?.gradeBand && (
-            <Chip label={`Grade: ${courseFilters.gradeBand}`} active onPress={() => setCourseGradeBand('')} />
+            <Chip
+              label={`Grade: ${courseFilters.gradeBand}`}
+              active
+              onPress={() => setCourseGradeBand('')}
+            />
           )}
           {!!courseFilters?.level && (
-            <Chip label={`Level: ${courseFilters.level}`} active onPress={() => setCourseLevel('')} />
+            <Chip
+              label={`Level: ${courseFilters.level}`}
+              active
+              onPress={() => setCourseLevel('')}
+            />
           )}
           {(courseFilters?.minRating ?? 0) > 0 && (
-            <Chip label={`Min★: ${courseFilters?.minRating}`} active onPress={() => setCourseMinRating(0)} />
+            <Chip
+              label={`Min★: ${courseFilters?.minRating}`}
+              active
+              onPress={() => setCourseMinRating(0)}
+            />
           )}
           {(courseFilters?.maxPrice ?? 0) > 0 && (
-            <Chip label={`Max$: ${courseFilters?.maxPrice}`} active onPress={() => setCourseMaxPrice(0)} />
+            <Chip
+              label={`Max$: ${courseFilters?.maxPrice}`}
+              active
+              onPress={() => setCourseMaxPrice(0)}
+            />
           )}
-          {!!duration && <Chip label={`Duration: ${duration}`} active onPress={() => setDuration('')} />}
+          {!!duration && (
+            <Chip label={`Duration: ${duration}`} active onPress={() => setDuration('')} />
+          )}
         </View>
 
         {!!courseSearchError && (
@@ -1062,24 +1164,58 @@ const MyCoursesNative: React.FC = () => {
 
   /* ----------------------------- Filters Modal ----------------------------- */
   const FiltersModal = (
-    <Modal visible={filtersOpen} animationType="fade" transparent onRequestClose={() => setFiltersOpen(false)}>
+    <Modal
+      visible={filtersOpen}
+      animationType="fade"
+      transparent
+      onRequestClose={() => setFiltersOpen(false)}
+    >
       <View style={tw`flex-1 bg-black/40 items-center justify-center p-4`}>
-        <View style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-white/10`}>
+        <View
+          style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-white/10`}
+        >
           <Text style={tw`text-lg font-bold text-slate-900 dark:text-white`}>Filters</Text>
           <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1 mb-3`}>
             Matches the web page: subject / grade band / level / min rating / max price / duration.
           </Text>
 
           {[
-            { label: 'Subject', value: draftSubject, set: setDraftSubject, ph: 'e.g., Math, English' },
-            { label: 'Grade band', value: draftGradeBand, set: setDraftGradeBand, ph: 'e.g., K-5, 6-8, 9-12' },
-            { label: 'Level', value: draftLevel, set: setDraftLevel, ph: 'Beginner / Intermediate / Advanced' },
-            { label: 'Min rating (1-5)', value: draftMinRating, set: setDraftMinRating, ph: 'e.g., 4' },
+            {
+              label: 'Subject',
+              value: draftSubject,
+              set: setDraftSubject,
+              ph: 'e.g., Math, English',
+            },
+            {
+              label: 'Grade band',
+              value: draftGradeBand,
+              set: setDraftGradeBand,
+              ph: 'e.g., K-5, 6-8, 9-12',
+            },
+            {
+              label: 'Level',
+              value: draftLevel,
+              set: setDraftLevel,
+              ph: 'Beginner / Intermediate / Advanced',
+            },
+            {
+              label: 'Min rating (1-5)',
+              value: draftMinRating,
+              set: setDraftMinRating,
+              ph: 'e.g., 4',
+            },
             { label: 'Max price', value: draftMaxPrice, set: setDraftMaxPrice, ph: 'e.g., 50' },
-            { label: 'Duration contains', value: draftDuration, set: setDraftDuration, ph: 'e.g., 10 weeks' },
+            {
+              label: 'Duration contains',
+              value: draftDuration,
+              set: setDraftDuration,
+              ph: 'e.g., 10 weeks',
+            },
           ].map((f) => (
             <View key={f.label} style={tw`mb-3`}>
-              <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white mb-1`}>{f.label}</Text>
+              <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white mb-1`}>
+                {f.label}
+              </Text>
               <TextInput
                 value={f.value}
                 onChangeText={f.set}
@@ -1116,7 +1252,9 @@ const MyCoursesNative: React.FC = () => {
             }}
             style={tw`mt-3 self-start`}
           >
-            <Text style={tw`text-xs text-[#49739c] dark:text-white/70 underline`}>Reset fields</Text>
+            <Text style={tw`text-xs text-[#49739c] dark:text-white/70 underline`}>
+              Reset fields
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -1129,7 +1267,9 @@ const MyCoursesNative: React.FC = () => {
       <View style={tw`flex-1`}>
         {/* Header */}
         <View style={tw`px-4 pt-4 pb-2`}>
-          <Text style={tw`text-[28px] font-extrabold text-[#0d141c] dark:text-white`}>My Courses</Text>
+          <Text style={tw`text-[28px] font-extrabold text-[#0d141c] dark:text-white`}>
+            My Courses
+          </Text>
           <Text style={tw`text-[#49739c] dark:text-white/70 text-xs mt-1`}>
             Access your learning library or discover structured courses to level up.
           </Text>
@@ -1148,36 +1288,63 @@ const MyCoursesNative: React.FC = () => {
             </Text>
 
             {/* Unified filters control BOTH ClassVault and OER video collections */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`pb-2`}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={tw`pb-2`}
+            >
               <Chip
                 label={classSubject ? `Subject: ${classSubject}` : 'Any subject'}
                 active={!!classSubject}
                 onPress={() => setClassSubject('')}
               />
               {CLASS_SUBJECTS.map((subj) => (
-                <Chip key={subj} label={subj} active={classSubject === subj} onPress={() => setClassSubject(subj)} />
+                <Chip
+                  key={subj}
+                  label={subj}
+                  active={classSubject === subj}
+                  onPress={() => setClassSubject(subj)}
+                />
               ))}
             </ScrollView>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`pb-2`}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={tw`pb-2`}
+            >
               <Chip
                 label={classGrade ? `Grade: ${classGrade}` : 'Any grade'}
                 active={!!classGrade}
                 onPress={() => setClassGrade('')}
               />
               {CLASS_GRADES.filter((g) => g !== 'Any').map((g) => (
-                <Chip key={g} label={g} active={classGrade === g} onPress={() => setClassGrade(g)} />
+                <Chip
+                  key={g}
+                  label={g}
+                  active={classGrade === g}
+                  onPress={() => setClassGrade(g)}
+                />
               ))}
             </ScrollView>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`pb-2`}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={tw`pb-2`}
+            >
               <Chip
                 label={classCountry ? `Country: ${classCountry}` : 'Any country'}
                 active={!!classCountry}
                 onPress={() => setClassCountry('')}
               />
               {TOP_COUNTRIES.map((c) => (
-                <Chip key={c} label={c} active={classCountry === c} onPress={() => setClassCountry(c)} />
+                <Chip
+                  key={c}
+                  label={c}
+                  active={classCountry === c}
+                  onPress={() => setClassCountry(c)}
+                />
               ))}
             </ScrollView>
 
@@ -1194,7 +1361,9 @@ const MyCoursesNative: React.FC = () => {
               {loadingVCols && (
                 <View style={tw`py-4 items-center`}>
                   <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
-                  <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>Loading collections…</Text>
+                  <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>
+                    Loading collections…
+                  </Text>
                 </View>
               )}
 
@@ -1202,8 +1371,9 @@ const MyCoursesNative: React.FC = () => {
                 <Text style={tw`py-2 text-xs text-red-500 dark:text-red-400`}>{errVCols}</Text>
               )}
 
-              {!loadingVCols && !errVCols && (
-                filteredOerVideos.length === 0 ? (
+              {!loadingVCols &&
+                !errVCols &&
+                (filteredOerVideos.length === 0 ? (
                   <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
                     No free OER video collections yet.
                   </Text>
@@ -1216,8 +1386,7 @@ const MyCoursesNative: React.FC = () => {
                     scrollEnabled={false}
                     contentContainerStyle={tw`pb-4`}
                   />
-                )
-              )}
+                ))}
             </View>
           </ScrollView>
         ) : (
@@ -1225,7 +1394,9 @@ const MyCoursesNative: React.FC = () => {
             {courseSearchLoading ? (
               <View style={tw`py-6 items-center`}>
                 <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
-                <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>Loading courses…</Text>
+                <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>
+                  Loading courses…
+                </Text>
               </View>
             ) : displayRows.length === 0 ? (
               <FlatList
@@ -1247,7 +1418,10 @@ const MyCoursesNative: React.FC = () => {
                 data={displayRows as any}
                 keyExtractor={(item) => String((item as any).id)}
                 renderItem={renderCourseCard as any}
-                contentContainerStyle={[tw`pb-6 px-4`, { paddingBottom: (insets.bottom || 12) + 24 }]}
+                contentContainerStyle={[
+                  tw`pb-6 px-4`,
+                  { paddingBottom: (insets.bottom || 12) + 24 },
+                ]}
                 onViewableItemsChanged={onViewableItemsChanged}
                 viewabilityConfig={{ itemVisiblePercentThreshold: 40 }}
                 ListHeaderComponent={<View>{CoursesListHeader}</View>}
@@ -1266,14 +1440,22 @@ const MyCoursesNative: React.FC = () => {
             <View
               style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-white/10`}
             >
-              <Text style={tw`text-lg font-bold mb-1 text-slate-900 dark:text-white`}>Rate this course</Text>
-              <Text style={tw`text-sm text-[#49739c] dark:text-white/70 mb-3`}>{openReview.title}</Text>
+              <Text style={tw`text-lg font-bold mb-1 text-slate-900 dark:text-white`}>
+                Rate this course
+              </Text>
+              <Text style={tw`text-sm text-[#49739c] dark:text-white/70 mb-3`}>
+                {openReview.title}
+              </Text>
 
               <View style={tw`flex-row items-center gap-2 mb-3`}>
                 {[1, 2, 3, 4, 5].map((n) => (
                   <Pressable key={n} onPress={() => setReviewRating(n)}>
                     <Text
-                      style={n <= reviewRating ? tw`text-yellow-500 text-2xl` : tw`text-[#49739c] dark:text-white/60 text-2xl`}
+                      style={
+                        n <= reviewRating
+                          ? tw`text-yellow-500 text-2xl`
+                          : tw`text-[#49739c] dark:text-white/60 text-2xl`
+                      }
                     >
                       ★
                     </Text>
@@ -1305,16 +1487,21 @@ const MyCoursesNative: React.FC = () => {
                     if (!openReview || reviewRating < 1) return;
                     setPosting(true);
                     try {
-                      const res = await fetch(`${backendUrl}/api/reviews/courses/${openReview.id}`, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                        },
-                        body: JSON.stringify({ rating: reviewRating, comment: reviewComment }),
-                      });
+                      const res = await fetch(
+                        `${backendUrl}/api/reviews/courses/${openReview.id}`,
+                        {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                          },
+                          body: JSON.stringify({ rating: reviewRating, comment: reviewComment }),
+                        }
+                      );
                       if (!res.ok)
-                        throw new Error((await res.text().catch(() => '')) || 'Failed to submit review');
+                        throw new Error(
+                          (await res.text().catch(() => '')) || 'Failed to submit review'
+                        );
                       await fetchCourseRatings(openReview.id);
                       setOpenReview(null);
                     } catch (e: any) {
@@ -1325,10 +1512,12 @@ const MyCoursesNative: React.FC = () => {
                   }}
                   style={tw.style(
                     'px-4 h-10 rounded-xl items-center justify-center bg-[#3d99f5]',
-                    (posting || reviewRating < 1) && 'opacity-60',
+                    (posting || reviewRating < 1) && 'opacity-60'
                   )}
                 >
-                  <Text style={tw`text-white text-sm font-semibold`}>{posting ? 'Saving…' : 'Submit'}</Text>
+                  <Text style={tw`text-white text-sm font-semibold`}>
+                    {posting ? 'Saving…' : 'Submit'}
+                  </Text>
                 </Pressable>
               </View>
             </View>

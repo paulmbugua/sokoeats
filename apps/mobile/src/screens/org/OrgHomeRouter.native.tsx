@@ -121,8 +121,7 @@ export default function OrgHomeRouterNative() {
       // Still resolving org + role → keep spinner
       if (busy) return;
 
-      
-// Give useOrg a grace window to resolve org before "recovering" to login.
+      // Give useOrg a grace window to resolve org before "recovering" to login.
       if (!org) {
         if (orgMissingSince.current == null) {
           orgMissingSince.current = Date.now();
@@ -135,7 +134,7 @@ export default function OrgHomeRouterNative() {
         }
 
         if (!cancelled) {
-         safeReset('InstitutionLogin', { next: '/org', logoutOrg: true });
+          safeReset('InstitutionLogin', { next: '/org', logoutOrg: true });
           setChecking(false);
         }
         return;
@@ -143,7 +142,6 @@ export default function OrgHomeRouterNative() {
 
       // ✅ org is present again, clear grace timer
       orgMissingSince.current = null;
-
 
       // Read must-change flag + saved deep-link once
       const [mustChangePassword, saved] = await Promise.all([

@@ -5,18 +5,20 @@ import {
   useNavigation,
   useRoute,
   RouteProp,
-  StackActions,           // ← use action creator instead of replace(...)
+  StackActions, // ← use action creator instead of replace(...)
 } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import tw from '../../tailwind';
 import type { MainStackParamList } from '../navigation/types';
 
 type GlobalAuthRedirectParams = {
-  GlobalAuthRedirect: {
-    redirectTo?: keyof MainStackParamList; // optional target
-    msg?: string;
-    errorMsg?: string;
-  } | undefined;
+  GlobalAuthRedirect:
+    | {
+        redirectTo?: keyof MainStackParamList; // optional target
+        msg?: string;
+        errorMsg?: string;
+      }
+    | undefined;
 };
 
 type Nav = StackNavigationProp<MainStackParamList>;

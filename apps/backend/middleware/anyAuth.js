@@ -14,15 +14,32 @@ function runSilently(mw, req) {
       headers: {},
       locals: {},
 
-      status(code) { this.statusCode = code; return this; },
-      set(field, value) { this.headers[field] = value; return this; },
-      json(_body) { wrote = true; return this; },
-      send(_body) { wrote = true; return this; },
-      end(_body) { wrote = true; return this; },
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      set(field, value) {
+        this.headers[field] = value;
+        return this;
+      },
+      json(_body) {
+        wrote = true;
+        return this;
+      },
+      send(_body) {
+        wrote = true;
+        return this;
+      },
+      end(_body) {
+        wrote = true;
+        return this;
+      },
     };
 
     const next = (err) => {
-      if (err) { errored = true; }
+      if (err) {
+        errored = true;
+      }
       nextCalled = !err;
       resolve(nextCalled && !errored && !wrote);
     };

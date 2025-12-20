@@ -77,7 +77,6 @@ const formatRank = (n: number | null | undefined): string => {
   return String(n);
 };
 
-
 type AutoRemarksArgs = {
   name: string;
   percent: number | null;
@@ -106,46 +105,44 @@ const buildAutoRemarks = ({
   const displayName = name || 'This learner';
   if (percent != null) {
     pieces.push(
-      `${displayName} achieved an overall score of ${percent.toFixed(
-        1,
-      )}%${
+      `${displayName} achieved an overall score of ${percent.toFixed(1)}%${
         overallGrade ? ` (grade ${overallGrade})` : ''
-      }, reflecting their effort and engagement this term.`,
+      }, reflecting their effort and engagement this term.`
     );
   }
 
   if (classRank && classSize) {
     pieces.push(
       `In the class, ${displayName.toLowerCase()} ranked ${formatRank(
-        classRank,
-      )} out of ${classSize} learners.`,
+        classRank
+      )} out of ${classSize} learners.`
     );
   }
 
   if (bestSubject && bestPercent != null) {
     pieces.push(
       `Strongest performance was in ${bestSubject} at about ${Math.round(
-        bestPercent,
-      )}%, showing confidence and understanding in this area.`,
+        bestPercent
+      )}%, showing confidence and understanding in this area.`
     );
   }
 
   if (weakestSubject && weakestPercent != null) {
     pieces.push(
       `More focused support is recommended in ${weakestSubject}, where the score was around ${Math.round(
-        weakestPercent,
-      )}%.`,
+        weakestPercent
+      )}%.`
     );
   }
 
   if (!pieces.length) {
     pieces.push(
-      `${displayName} has made noticeable progress this term. Continued effort and support will help unlock even better outcomes.`,
+      `${displayName} has made noticeable progress this term. Continued effort and support will help unlock even better outcomes.`
     );
   }
 
   pieces.push(
-    'Parents/guardians are encouraged to celebrate the wins, discuss the areas that need improvement, and agree on 1–3 practical action steps for the coming term.',
+    'Parents/guardians are encouraged to celebrate the wins, discuss the areas that need improvement, and agree on 1–3 practical action steps for the coming term.'
   );
 
   return pieces.join(' ');
@@ -174,8 +171,7 @@ const OrgExamResultsPortal: React.FC = () => {
   const authToken = orgToken || userToken || '';
 
   // support ?studentId= and ?student_id=
-  const studentIdParam =
-    params.get('studentId') ?? params.get('student_id');
+  const studentIdParam = params.get('studentId') ?? params.get('student_id');
 
   const studentIdFromUrl: string | null =
     studentIdParam && studentIdParam.trim() !== '' ? studentIdParam.trim() : null;
@@ -345,7 +341,10 @@ const OrgExamResultsPortal: React.FC = () => {
 
   const handleAddTerm = () => {
     const year = new Date().getFullYear();
-    const label = window.prompt('Term label (e.g. "Term 1"):', `Term ${editingConfig.terms.length + 1}`);
+    const label = window.prompt(
+      'Term label (e.g. "Term 1"):',
+      `Term ${editingConfig.terms.length + 1}`
+    );
     if (!label) return;
     const next = {
       id: makeClientId(),
@@ -375,8 +374,7 @@ const OrgExamResultsPortal: React.FC = () => {
     setEditingConfig((prev) => ({ ...prev, sessions: [...prev.sessions, next] }));
   };
 
-
-    const handleRunConfigAi = async (instructions: string) => {
+  const handleRunConfigAi = async (instructions: string) => {
     try {
       const next = await previewConfigWithAi(editingConfig, instructions);
       setEditingConfig(next);
@@ -475,8 +473,7 @@ const OrgExamResultsPortal: React.FC = () => {
           };
           const nextTotalScore = prev.totalScore + s;
           const nextTotalMax = prev.totalMax + m;
-          const nextPercent =
-            nextTotalMax > 0 ? (nextTotalScore / nextTotalMax) * 100 : 0;
+          const nextPercent = nextTotalMax > 0 ? (nextTotalScore / nextTotalMax) * 100 : 0;
           totalsByStudent.set(sid, {
             totalScore: nextTotalScore,
             totalMax: nextTotalMax,
@@ -485,7 +482,7 @@ const OrgExamResultsPortal: React.FC = () => {
         }
 
         const overallSorted = Array.from(totalsByStudent.entries()).sort(
-          (a, b) => b[1].percent - a[1].percent,
+          (a, b) => b[1].percent - a[1].percent
         );
         const classSize = overallSorted.length;
         const overallIdx = overallSorted.findIndex(([id]) => id === studentId);
@@ -525,37 +522,33 @@ const OrgExamResultsPortal: React.FC = () => {
           const size = withPerc.length;
           const idx = withPerc.findIndex((row) => row.studentId === studentId);
           const rank = idx >= 0 ? idx + 1 : null;
-          const meanPercent =
-            withPerc.reduce((acc, r) => acc + r.percent, 0) / size || null;
+          const meanPercent = withPerc.reduce((acc, r) => acc + r.percent, 0) / size || null;
 
           subjectPositions[subKey] = { rank, size, meanPercent };
         });
 
         let bestSubject: string | null = null;
-let bestPercent: number | null = null;
-let weakestSubject: string | null = null;
-let weakestPercent: number | null = null;
+        let bestPercent: number | null = null;
+        let weakestSubject: string | null = null;
+        let weakestPercent: number | null = null;
 
-card.subjects.forEach((s: any) => {
-  const p = percentOf(s.score, s.max_score);
-  if (p == null) return;
+        card.subjects.forEach((s: any) => {
+          const p = percentOf(s.score, s.max_score);
+          if (p == null) return;
 
-  if (bestPercent == null || p > bestPercent) {
-    bestPercent = p;
-    bestSubject = s.subject;
-  }
+          if (bestPercent == null || p > bestPercent) {
+            bestPercent = p;
+            bestSubject = s.subject;
+          }
 
-  if (weakestPercent == null || p < weakestPercent) {
-    weakestPercent = p;
-    weakestSubject = s.subject;
-  }
-});
-
+          if (weakestPercent == null || p < weakestPercent) {
+            weakestPercent = p;
+            weakestSubject = s.subject;
+          }
+        });
 
         const overallPercent: number | null =
-          typeof card.summary?.totalPercent === 'number'
-            ? card.summary.totalPercent
-            : null;
+          typeof card.summary?.totalPercent === 'number' ? card.summary.totalPercent : null;
 
         const enrichedCard = {
           ...card,
@@ -578,12 +571,11 @@ card.subjects.forEach((s: any) => {
             };
           }),
           computed: {
-                bestSubject,
-                bestPercent,
-                weakestSubject,
-                weakestPercent,
-              },
-
+            bestSubject,
+            bestPercent,
+            weakestSubject,
+            weakestPercent,
+          },
         };
 
         setStudentCard(enrichedCard);
@@ -592,8 +584,7 @@ card.subjects.forEach((s: any) => {
         setAttendanceForm({
           lessonsAttended:
             attendance.lessonsAttended != null ? String(attendance.lessonsAttended) : '',
-          lessonsHeld:
-            attendance.lessonsHeld != null ? String(attendance.lessonsHeld) : '',
+          lessonsHeld: attendance.lessonsHeld != null ? String(attendance.lessonsHeld) : '',
           attendancePercent:
             typeof attendance.attendancePercent === 'number'
               ? String(attendance.attendancePercent)
@@ -601,9 +592,7 @@ card.subjects.forEach((s: any) => {
           behaviorRating:
             attendance.behaviorRating != null ? String(attendance.behaviorRating) : '',
           punctualityRating:
-            attendance.punctualityRating != null
-              ? String(attendance.punctualityRating)
-              : '',
+            attendance.punctualityRating != null ? String(attendance.punctualityRating) : '',
           teacherComment: attendance.teacherComment ?? '',
         });
 
@@ -612,8 +601,7 @@ card.subjects.forEach((s: any) => {
         lines.push('');
         enrichedCard.subjects.forEach((s: any) => {
           const baseLine = `${s.subject}: ${s.score}/${s.max_score}`;
-          const percentStr =
-            s.percent != null ? ` (${Math.round(s.percent)}%)` : '';
+          const percentStr = s.percent != null ? ` (${Math.round(s.percent)}%)` : '';
           const gradeStr = s.grade ? ` – ${s.grade}` : '';
           const posStr =
             s.classRank && s.classSize
@@ -629,8 +617,8 @@ card.subjects.forEach((s: any) => {
               : '';
           lines.push(
             `Total: ${card.summary.totalScore}/${card.summary.totalMax} (${overallPercent.toFixed(
-              1,
-            )}%) – ${card.summary.overallGrade || ''}${posStr}`,
+              1
+            )}%) – ${card.summary.overallGrade || ''}${posStr}`
           );
         }
         setStudentCardText(lines.join('\n'));
@@ -640,9 +628,8 @@ card.subjects.forEach((s: any) => {
           overallGrade: card.summary.overallGrade,
         });
 
-                const principalFromServer =
-          (card.summary && (card.summary.principalRemark || card.summary.overallRemark)) ||
-          null;
+        const principalFromServer =
+          (card.summary && (card.summary.principalRemark || card.summary.overallRemark)) || null;
 
         const remarks =
           principalFromServer ||
@@ -659,7 +646,6 @@ card.subjects.forEach((s: any) => {
           });
 
         setReportRemarks(remarks);
-
       } catch (e: any) {
         console.error('[OrgExamPortal] fetchStudentCard error', e);
         setStudentCard(null);
@@ -668,7 +654,14 @@ card.subjects.forEach((s: any) => {
         alert(e?.message || 'Failed to load report card');
       }
     },
-    [selectedSessionId, classLabel, sheetRows, ensureSessionSelected, fetchStudentCard, isLearnerView],
+    [
+      selectedSessionId,
+      classLabel,
+      sheetRows,
+      ensureSessionSelected,
+      fetchStudentCard,
+      isLearnerView,
+    ]
   );
 
   // reset learner auto-open when exam or learner changes
@@ -688,9 +681,7 @@ card.subjects.forEach((s: any) => {
     if (!selectedSessionId) return;
     if (!sheetRows || !sheetRows.length) return;
 
-    const match = sheetRows.find(
-      (r) => String(r.student_user_id) === String(numericId),
-    );
+    const match = sheetRows.find((r) => String(r.student_user_id) === String(numericId));
     if (!match) return;
 
     setHasAutoOpenedLearnerCard(true);
@@ -708,7 +699,7 @@ card.subjects.forEach((s: any) => {
     if (!ensureSessionSelected()) return;
     const maybeTo = window.prompt(
       'Send report to (leave blank to use guardian/student email):',
-      '',
+      ''
     );
     try {
       const resp = await emailStudentCard(selectedSessionId, studentId, maybeTo || undefined);
@@ -726,7 +717,9 @@ card.subjects.forEach((s: any) => {
   const filteredSheetRows = useMemo(() => {
     if (!subjectFilter) return sheetRows;
     return sheetRows.filter((r) =>
-      String(r.subject || '').toLowerCase().includes(subjectFilter.toLowerCase()),
+      String(r.subject || '')
+        .toLowerCase()
+        .includes(subjectFilter.toLowerCase())
     );
   }, [sheetRows, subjectFilter]);
 
@@ -823,9 +816,7 @@ card.subjects.forEach((s: any) => {
     }
 
     const existing = new Set(
-      sheetRows.map(
-        (r) => `${r.student_user_id}::${String(r.subject || '').toLowerCase()}`,
-      ),
+      sheetRows.map((r) => `${r.student_user_id}::${String(r.subject || '').toLowerCase()}`)
     );
 
     const additions: OrgExamResultRow[] = [];
@@ -862,10 +853,8 @@ card.subjects.forEach((s: any) => {
     void saveSheet(selectedSessionId, classLabel || undefined, next);
   };
 
-  const selectedSession =
-    cfg.sessions.find((s) => s.id === selectedSessionId) || null;
-  const selectedTerm =
-    cfg.terms.find((t) => t.id === selectedSession?.term_id) || null;
+  const selectedSession = cfg.sessions.find((s) => s.id === selectedSessionId) || null;
+  const selectedTerm = cfg.terms.find((t) => t.id === selectedSession?.term_id) || null;
 
   const handleDownloadPdf = useCallback(() => {
     if (!selectedStudentId || !ensureSessionSelected()) return;
@@ -895,57 +884,48 @@ card.subjects.forEach((s: any) => {
     ensureSessionSelected,
   ]);
 
-  
-
   const handleDownloadClassPdf = useCallback(() => {
-  if (!ensureSessionSelected()) return;
+    if (!ensureSessionSelected()) return;
 
-  const trimmedClass = classLabel.trim();
-  if (!trimmedClass) {
-    alert('Enter/select the class label above first (e.g. "Grade 7 Maple").');
-    return;
-  }
+    const trimmedClass = classLabel.trim();
+    if (!trimmedClass) {
+      alert('Enter/select the class label above first (e.g. "Grade 7 Maple").');
+      return;
+    }
 
-  if (!selectedSessionId) {
-    alert('Please select an exam session first.');
-    return;
-  }
+    if (!selectedSessionId) {
+      alert('Please select an exam session first.');
+      return;
+    }
 
-  const termPart = selectedTerm ? `${selectedTerm.year}-${selectedTerm.label}` : '';
-  const examPart = selectedSession?.label || '';
+    const termPart = selectedTerm ? `${selectedTerm.year}-${selectedTerm.label}` : '';
+    const examPart = selectedSession?.label || '';
 
-  const pieces = [
-    org?.name || 'school',
-    trimmedClass,
-    termPart,
-    examPart,
-    'class-report',
-  ]
-    .map((p) => String(p || '').trim())
-    .filter(Boolean);
+    const pieces = [org?.name || 'school', trimmedClass, termPart, examPart, 'class-report']
+      .map((p) => String(p || '').trim())
+      .filter(Boolean);
 
-  const base = slugify(pieces.join('_'));
-  const fileName = `${base}.pdf`;
+    const base = slugify(pieces.join('_'));
+    const fileName = `${base}.pdf`;
 
-  // fire-and-download
-  void downloadClassReportPdf(selectedSessionId, trimmedClass, fileName);
-}, [
-  ensureSessionSelected,
-  classLabel,
-  selectedSessionId,
-  selectedTerm,
-  selectedSession,
-  org,
-  downloadClassReportPdf,
-]);
-
+    // fire-and-download
+    void downloadClassReportPdf(selectedSessionId, trimmedClass, fileName);
+  }, [
+    ensureSessionSelected,
+    classLabel,
+    selectedSessionId,
+    selectedTerm,
+    selectedSession,
+    org,
+    downloadClassReportPdf,
+  ]);
 
   const handleRefreshAnalytics = useCallback(() => {
     if (!ensureSessionSelected()) return;
     void fetchAnalytics(selectedSessionId);
   }, [ensureSessionSelected, fetchAnalytics, selectedSessionId]);
 
-    const handleSaveRemarks = useCallback(async () => {
+  const handleSaveRemarks = useCallback(async () => {
     if (!selectedStudentId || !selectedSessionId || !orgId) return;
 
     try {
@@ -961,7 +941,7 @@ card.subjects.forEach((s: any) => {
             sessionId: selectedSessionId,
             principalRemark: reportRemarks ?? '',
           }),
-        },
+        }
       );
 
       const data = await resp.json().catch(() => null);
@@ -978,91 +958,81 @@ card.subjects.forEach((s: any) => {
       console.error('[OrgExamPortal] save remarks error', e);
       alert(e?.message || 'Failed to save remarks');
     }
-  }, [
-    selectedStudentId,
-    selectedSessionId,
-    orgId,
-    backendUrl,
-    authToken,
-    reportRemarks,
-  ]);
+  }, [selectedStudentId, selectedSessionId, orgId, backendUrl, authToken, reportRemarks]);
 
-const handleSaveAttendance = useCallback(async () => {
-  if (!selectedStudentId || !selectedTerm || !orgId) {
-    alert('Select a learner, term, and exam before saving attendance.');
-    return;
-  }
-  if (!authToken) {
-    alert('You must be logged in to save attendance.');
-    return;
-  }
-
-  const lhRaw = attendanceForm.lessonsHeld ?? '';
-  const laRaw = attendanceForm.lessonsAttended ?? '';
-  const bhRaw = attendanceForm.behaviorRating ?? '';
-  const puRaw = attendanceForm.punctualityRating ?? '';
-  const commentRaw = attendanceForm.teacherComment ?? '';
-
-  const lessonsHeld = lhRaw.trim() === '' ? null : Number(lhRaw.trim());
-  const lessonsAttended = laRaw.trim() === '' ? null : Number(laRaw.trim());
-  const behaviorRating = bhRaw.trim() === '' ? null : Number(bhRaw.trim());
-  const punctualityRating = puRaw.trim() === '' ? null : Number(puRaw.trim());
-  const teacherComment = commentRaw.trim() === '' ? null : commentRaw.trim();
-
-  const payload = {
-    termId: selectedTerm.id,
-    // 🔹 add session if you want it:
-    // sessionId: selectedSession?.id,
-    lessonsHeld,
-    lessonsAttended,
-    behaviorRating,
-    punctualityRating,
-    teacherComment,
-  };
-
-  console.log('[OrgExamPortal] save attendance payload', {
-    backendUrl,
-    orgId,
-    selectedStudentId,
-    payload,
-  });
-
-  try {
-    const resp = await saveOrgLearnerAttendanceApi(
-      backendUrl,
-      authToken,
-      orgId,
-      selectedStudentId,
-      payload,
-    );
-
-    if (!resp?.ok) {
-      alert('Failed to save attendance.');
+  const handleSaveAttendance = useCallback(async () => {
+    if (!selectedStudentId || !selectedTerm || !orgId) {
+      alert('Select a learner, term, and exam before saving attendance.');
+      return;
+    }
+    if (!authToken) {
+      alert('You must be logged in to save attendance.');
       return;
     }
 
-      setStudentCard((prev: any) => {
-  if (!prev) return prev;
-  const attended = lessonsAttended ?? null;
-  const held = lessonsHeld ?? null;
-  const pct =
-    held && attended != null && held > 0
-      ? (attended / held) * 100
-      : null;
+    const lhRaw = attendanceForm.lessonsHeld ?? '';
+    const laRaw = attendanceForm.lessonsAttended ?? '';
+    const bhRaw = attendanceForm.behaviorRating ?? '';
+    const puRaw = attendanceForm.punctualityRating ?? '';
+    const commentRaw = attendanceForm.teacherComment ?? '';
 
-  return {
-    ...prev,
-    attendance: {
-      ...(prev as any).attendance,
-      lessonsHeld: held,
-      lessonsAttended: attended,
+    const lessonsHeld = lhRaw.trim() === '' ? null : Number(lhRaw.trim());
+    const lessonsAttended = laRaw.trim() === '' ? null : Number(laRaw.trim());
+    const behaviorRating = bhRaw.trim() === '' ? null : Number(bhRaw.trim());
+    const punctualityRating = puRaw.trim() === '' ? null : Number(puRaw.trim());
+    const teacherComment = commentRaw.trim() === '' ? null : commentRaw.trim();
+
+    const payload = {
+      termId: selectedTerm.id,
+      // 🔹 add session if you want it:
+      // sessionId: selectedSession?.id,
+      lessonsHeld,
+      lessonsAttended,
       behaviorRating,
       punctualityRating,
       teacherComment,
-      attendancePercent: pct,
-    },
-  };
-});
+    };
+
+    console.log('[OrgExamPortal] save attendance payload', {
+      backendUrl,
+      orgId,
+      selectedStudentId,
+      payload,
+    });
+
+    try {
+      const resp = await saveOrgLearnerAttendanceApi(
+        backendUrl,
+        authToken,
+        orgId,
+        selectedStudentId,
+        payload
+      );
+
+      if (!resp?.ok) {
+        alert('Failed to save attendance.');
+        return;
+      }
+
+      setStudentCard((prev: any) => {
+        if (!prev) return prev;
+        const attended = lessonsAttended ?? null;
+        const held = lessonsHeld ?? null;
+        const pct = held && attended != null && held > 0 ? (attended / held) * 100 : null;
+
+        return {
+          ...prev,
+          attendance: {
+            ...(prev as any).attendance,
+            lessonsHeld: held,
+            lessonsAttended: attended,
+            behaviorRating,
+            punctualityRating,
+            teacherComment,
+            attendancePercent: pct,
+          },
+        };
+      });
 
       // alert('Attendance saved.');
     } catch (e: any) {
@@ -1080,65 +1050,58 @@ const handleSaveAttendance = useCallback(async () => {
   ]);
 
   const handleRegenerateTeacherComment = useCallback(
-  async (instructions?: string) => {
-    if (!selectedStudentId || !selectedSessionId || !orgId) return;
+    async (instructions?: string) => {
+      if (!selectedStudentId || !selectedSessionId || !orgId) return;
 
-    try {
-      const resp = await fetch(
-        `${backendUrl}/api/orgs/${orgId}/exams/student/${selectedStudentId}/ai-remarks`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`,
-          },
-          body: JSON.stringify({
-            sessionId: selectedSessionId,
-            // 🧠 Tell AI we only care about a short class-teacher note,
-            // and that it should use attendance + behaviour + punctuality.
-            instructions: [
-              'Write a single short class-teacher behaviour note (1–2 short sentences, max ~160 characters).',
-              'Base it on the learner’s attendance, behaviour rating (1–5), and punctuality rating (1–5) from the card.attendance block.',
-              'Focus on behaviour, attitude, and presence (punctuality), not academic performance.',
-              instructions ? `Extra hint: ${instructions}` : '',
-            ]
-              .filter(Boolean)
-              .join(' '),
-          }),
-        },
-      ).then((r) => r.json());
+      try {
+        const resp = await fetch(
+          `${backendUrl}/api/orgs/${orgId}/exams/student/${selectedStudentId}/ai-remarks`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({
+              sessionId: selectedSessionId,
+              // 🧠 Tell AI we only care about a short class-teacher note,
+              // and that it should use attendance + behaviour + punctuality.
+              instructions: [
+                'Write a single short class-teacher behaviour note (1–2 short sentences, max ~160 characters).',
+                'Base it on the learner’s attendance, behaviour rating (1–5), and punctuality rating (1–5) from the card.attendance block.',
+                'Focus on behaviour, attitude, and presence (punctuality), not academic performance.',
+                instructions ? `Extra hint: ${instructions}` : '',
+              ]
+                .filter(Boolean)
+                .join(' '),
+            }),
+          }
+        ).then((r) => r.json());
 
-      if (!resp?.ok) {
-        console.error('AI teacher-comment error', resp);
-        alert(resp?.message || 'Failed to generate AI teacher behaviour note.');
-        return;
+        if (!resp?.ok) {
+          console.error('AI teacher-comment error', resp);
+          alert(resp?.message || 'Failed to generate AI teacher behaviour note.');
+          return;
+        }
+
+        const raw = (resp as any).principalRemark as string | null | undefined;
+        if (!raw) return;
+
+        // Clean and lightly clamp for this note
+        const flat = raw.replace(/\s+/g, ' ').trim();
+        const shortened = flat.length > 200 ? flat.slice(0, 200) : flat;
+
+        setAttendanceForm((prev: AttendanceFormState) => ({
+          ...prev,
+          teacherComment: shortened,
+        }));
+      } catch (e: any) {
+        console.error('[OrgExamPortal] AI teacher-comment error', e);
+        alert(e?.message || 'Failed to generate AI teacher behaviour note.');
       }
-
-      const raw = (resp as any).principalRemark as string | null | undefined;
-      if (!raw) return;
-
-      // Clean and lightly clamp for this note
-      const flat = raw.replace(/\s+/g, ' ').trim();
-      const shortened = flat.length > 200 ? flat.slice(0, 200) : flat;
-
-      setAttendanceForm((prev: AttendanceFormState) => ({
-        ...prev,
-        teacherComment: shortened,
-      }));
-    } catch (e: any) {
-      console.error('[OrgExamPortal] AI teacher-comment error', e);
-      alert(e?.message || 'Failed to generate AI teacher behaviour note.');
-    }
-  },
-  [
-    selectedStudentId,
-    selectedSessionId,
-    orgId,
-    backendUrl,
-    authToken,
-    setAttendanceForm,
-  ],
-);
+    },
+    [selectedStudentId, selectedSessionId, orgId, backendUrl, authToken, setAttendanceForm]
+  );
 
   const handleRegenerateRemarks = useCallback(
     async (instructions?: string) => {
@@ -1157,7 +1120,7 @@ const handleSaveAttendance = useCallback(async () => {
               sessionId: selectedSessionId,
               instructions: instructions ?? '',
             }),
-          },
+          }
         ).then((r) => r.json());
 
         if (!resp?.ok) {
@@ -1182,7 +1145,9 @@ const handleSaveAttendance = useCallback(async () => {
               (s) =>
                 s.subject &&
                 s.subject.toLowerCase().trim() ===
-                  String(row.subject || '').toLowerCase().trim(),
+                  String(row.subject || '')
+                    .toLowerCase()
+                    .trim()
             );
             if (!match) return row;
             return { ...row, remark: match.remark };
@@ -1206,10 +1171,8 @@ const handleSaveAttendance = useCallback(async () => {
       saveSheet,
       classLabel,
       setReportRemarks,
-    ],
+    ]
   );
-
-
 
   return (
     <div
@@ -1393,7 +1356,7 @@ const handleSaveAttendance = useCallback(async () => {
           {/* Main content – split into 3 tabs */}
           <section className="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
             {/* Setup tab */}
-                        {!isLearnerView && tab === 'setup' && (
+            {!isLearnerView && tab === 'setup' && (
               <OrgExamSetupTab
                 editingConfig={editingConfig}
                 setEditingConfig={setEditingConfig}
@@ -1406,7 +1369,6 @@ const handleSaveAttendance = useCallback(async () => {
                 configAiLoading={configAiLoading}
               />
             )}
-
 
             {/* Marks tab */}
             {!isLearnerView && tab === 'marks' && (
@@ -1438,39 +1400,38 @@ const handleSaveAttendance = useCallback(async () => {
                 saveSheet={saveSheet}
               />
             )}
-{tab === 'reports' && (
-  <OrgExamReportsTab
-    isLearnerView={isLearnerView}
-    org={org}
-    selectedStudentId={selectedStudentId}
-    selectedTerm={selectedTerm}
-    selectedSession={selectedSession}
-    classLabel={classLabel}
-    studentCard={studentCard}
-    studentCardText={studentCardText}
-    reportRemarks={reportRemarks}
-    setReportRemarks={setReportRemarks}
-    attendanceForm={attendanceForm}
-    setAttendanceForm={setAttendanceForm}
-    analytics={analytics}
-    analyticsLoading={analyticsLoading}
-    onRefreshAnalytics={handleRefreshAnalytics}
-    onDownloadPdf={handleDownloadPdf}
-    onRegenerateRemarks={handleRegenerateRemarks}
-    onSaveRemarks={handleSaveRemarks}
-    onSaveAttendance={handleSaveAttendance}
-    canDownloadClass={Boolean(
-      !isLearnerView &&
-        selectedSessionId &&
-        classLabel.trim() &&
-        sheetRows &&
-        sheetRows.length,
-    )}
-    onDownloadClassPdf={handleDownloadClassPdf}
-     onRegenerateTeacherComment={handleRegenerateTeacherComment}
-  />
-)}
-
+            {tab === 'reports' && (
+              <OrgExamReportsTab
+                isLearnerView={isLearnerView}
+                org={org}
+                selectedStudentId={selectedStudentId}
+                selectedTerm={selectedTerm}
+                selectedSession={selectedSession}
+                classLabel={classLabel}
+                studentCard={studentCard}
+                studentCardText={studentCardText}
+                reportRemarks={reportRemarks}
+                setReportRemarks={setReportRemarks}
+                attendanceForm={attendanceForm}
+                setAttendanceForm={setAttendanceForm}
+                analytics={analytics}
+                analyticsLoading={analyticsLoading}
+                onRefreshAnalytics={handleRefreshAnalytics}
+                onDownloadPdf={handleDownloadPdf}
+                onRegenerateRemarks={handleRegenerateRemarks}
+                onSaveRemarks={handleSaveRemarks}
+                onSaveAttendance={handleSaveAttendance}
+                canDownloadClass={Boolean(
+                  !isLearnerView &&
+                    selectedSessionId &&
+                    classLabel.trim() &&
+                    sheetRows &&
+                    sheetRows.length
+                )}
+                onDownloadClassPdf={handleDownloadClassPdf}
+                onRegenerateTeacherComment={handleRegenerateTeacherComment}
+              />
+            )}
           </section>
         </div>
       </main>

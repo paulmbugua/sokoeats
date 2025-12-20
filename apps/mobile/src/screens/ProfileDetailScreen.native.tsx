@@ -1,21 +1,8 @@
 /// <reference path="../declarations.d.ts" />
 
 import React, { useMemo, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  Image,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  Modal,
-} from 'react-native';
-import {
-  useRoute,
-  useNavigation,
-  RouteProp,
-  NavigationProp,
-} from '@react-navigation/native';
+import { View, Text, Image, TouchableOpacity, ScrollView, TextInput, Modal } from 'react-native';
+import { useRoute, useNavigation, RouteProp, NavigationProp } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MainStackParamList } from '../navigation/types';
 import { FontAwesome } from '@expo/vector-icons';
@@ -41,10 +28,11 @@ type ProfileWithRatings = Profile & { rating: number; totalReviews: number };
 const convertToTutorProfile = (profile: any): TutorProfile => {
   const expertise = profile?.description?.expertise ?? [];
   const teachingStyle = profile?.description?.teachingStyle ?? [];
-  const roleValue: Role | undefined =
-    (['tutor', 'student'] as Role[]).includes((profile?.role as Role) ?? 'tutor')
-      ? (profile?.role as Role)
-      : undefined;
+  const roleValue: Role | undefined = (['tutor', 'student'] as Role[]).includes(
+    (profile?.role as Role) ?? 'tutor'
+  )
+    ? (profile?.role as Role)
+    : undefined;
 
   return {
     id: String(profile?.id ?? ''),
@@ -79,10 +67,8 @@ const convertToTutorProfile = (profile: any): TutorProfile => {
 const tutorToProfile = (t: TutorProfile): ProfileWithRatings => ({
   id: t.id,
   user_id: t.user_id || String(t.user ?? t.id ?? ''),
-  expertise:
-    Array.isArray(t.description?.expertise) ? t.description!.expertise! : [],
-  teachingStyle:
-    Array.isArray(t.description?.teachingStyle) ? t.description!.teachingStyle! : [],
+  expertise: Array.isArray(t.description?.expertise) ? t.description!.expertise! : [],
+  teachingStyle: Array.isArray(t.description?.teachingStyle) ? t.description!.teachingStyle! : [],
 
   name: t.name ?? '',
   role: (t.role ?? 'tutor') as Role,
@@ -169,17 +155,11 @@ const ProfileDetailPage: React.FC = () => {
   } = useProfileDetail(id, backendUrl);
 
   // Debounced sender
-  const debouncedSendMessage = useMemo(
-    () => debounce(handleSendMessage, 300),
-    [handleSendMessage]
-  );
+  const debouncedSendMessage = useMemo(() => debounce(handleSendMessage, 300), [handleSendMessage]);
   useEffect(() => () => debouncedSendMessage.cancel(), [debouncedSendMessage]);
 
   const numericProfile = useMemo(
-    () =>
-      tutorProfile
-        ? convertToTutorProfile(tutorProfile as any)
-        : defaultTutorProfile,
+    () => (tutorProfile ? convertToTutorProfile(tutorProfile as any) : defaultTutorProfile),
     [tutorProfile]
   );
 
@@ -255,10 +235,10 @@ const ProfileDetailPage: React.FC = () => {
     numericProfile.status === 'Online'
       ? 'bg-green-500'
       : numericProfile.status === 'Busy'
-      ? 'bg-yellow-500'
-      : numericProfile.status === 'Free'
-      ? 'bg-purple-500'
-      : 'bg-gray-500';
+        ? 'bg-yellow-500'
+        : numericProfile.status === 'Free'
+          ? 'bg-purple-500'
+          : 'bg-gray-500';
 
   const langs = numericProfile.languages ?? [];
   const expertise = numericProfile.description?.expertise ?? [];
@@ -266,20 +246,18 @@ const ProfileDetailPage: React.FC = () => {
 
   // Tutor-only: show School Grade / Year / Level from server (school_grade or schoolGrade)
   const isTutor = String(numericProfile.role || '').toLowerCase() === 'tutor';
-  const gradeRaw =
-    (tutorProfile as any)?.school_grade ??
-    (tutorProfile as any)?.schoolGrade;
+  const gradeRaw = (tutorProfile as any)?.school_grade ?? (tutorProfile as any)?.schoolGrade;
   const displayGrade = typeof gradeRaw === 'string' ? gradeRaw : '';
 
   const pricingSections: [string, string][] = [
     ['Private Session (60 mins)', numericProfile.pricing.privateSession],
-    ['Group Session (90 mins)',   numericProfile.pricing.groupSession],
-    ['Workshop (120 mins)',       numericProfile.pricing.workshop],
-    ['Lecture (180 mins)',        numericProfile.pricing.lecture],
+    ['Group Session (90 mins)', numericProfile.pricing.groupSession],
+    ['Workshop (120 mins)', numericProfile.pricing.workshop],
+    ['Lecture (180 mins)', numericProfile.pricing.lecture],
   ];
 
   const aboutSections: [string, string[]][] = [
-    ['Expertise',      expertise],
+    ['Expertise', expertise],
     ['Teaching Style', teachingStyle],
   ];
 
@@ -321,7 +299,9 @@ const ProfileDetailPage: React.FC = () => {
         </View>
 
         {/* Info card */}
-        <View style={tw`w-full mt-6 rounded-lg shadow-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-6`}>
+        <View
+          style={tw`w-full mt-6 rounded-lg shadow-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-6`}
+        >
           <View style={tw`flex-row items-center`}>
             <Image
               source={{ uri: heroUri || 'https://via.placeholder.com/200?text=Avatar' }}
@@ -329,10 +309,14 @@ const ProfileDetailPage: React.FC = () => {
             />
 
             <View style={tw`flex-shrink`}>
-              <Text style={tw`text-2xl font-semibold text-[#0d141c] dark:text-white`}>{numericProfile.name}</Text>
+              <Text style={tw`text-2xl font-semibold text-[#0d141c] dark:text-white`}>
+                {numericProfile.name}
+              </Text>
               <Text style={tw`text-sm text-slate-700 dark:text-slate-300 mt-1`}>
                 <Text style={tw`font-medium text-[#0d141c] dark:text-gray-200`}>Category: </Text>
-                <Text style={tw`text-pink-600 dark:text-pink-400`}>{numericProfile.category || 'N/A'}</Text>
+                <Text style={tw`text-pink-600 dark:text-pink-400`}>
+                  {numericProfile.category || 'N/A'}
+                </Text>
               </Text>
               <Text style={tw`text-sm text-slate-700 dark:text-slate-300 mt-1`}>
                 <Text style={tw`font-medium text-[#0d141c] dark:text-gray-200`}>Speaks: </Text>
@@ -340,14 +324,13 @@ const ProfileDetailPage: React.FC = () => {
               </Text>
               {!!numericProfile.status && (
                 <Text
-                style={tw.style(
-                  'self-start text-[11px] mt-2 px-2 py-1 rounded-full text-white',
-                  statusColor // 'bg-green-500' | 'bg-yellow-500' | 'bg-purple-500' | 'bg-gray-500'
-                )}
-              >
-                {numericProfile.status}
-              </Text>
-
+                  style={tw.style(
+                    'self-start text-[11px] mt-2 px-2 py-1 rounded-full text-white',
+                    statusColor // 'bg-green-500' | 'bg-yellow-500' | 'bg-purple-500' | 'bg-gray-500'
+                  )}
+                >
+                  {numericProfile.status}
+                </Text>
               )}
             </View>
           </View>
@@ -363,7 +346,9 @@ const ProfileDetailPage: React.FC = () => {
             {pricingSections.map(([label, val]) => (
               <View key={label} style={tw`flex-row justify-between py-1`}>
                 <Text style={tw`text-sm text-slate-700 dark:text-slate-300`}>{label}</Text>
-                <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-gray-100`}>{val} tokens</Text>
+                <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-gray-100`}>
+                  {val} tokens
+                </Text>
               </View>
             ))}
           </View>
@@ -378,8 +363,12 @@ const ProfileDetailPage: React.FC = () => {
 
         {/* About & Reviews */}
         <View style={tw`mt-8`}>
-          <View style={tw`p-6 rounded-lg shadow-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
-            <Text style={tw`text-xl font-semibold text-pink-600 dark:text-pink-400 mb-3`}>About Me</Text>
+          <View
+            style={tw`p-6 rounded-lg shadow-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+          >
+            <Text style={tw`text-xl font-semibold text-pink-600 dark:text-pink-400 mb-3`}>
+              About Me
+            </Text>
             <Text style={tw`text-[#0d141c] dark:text-gray-200 mb-4`}>
               {numericProfile.description?.bio || 'No bio available.'}
             </Text>
@@ -387,7 +376,9 @@ const ProfileDetailPage: React.FC = () => {
             {/* Grade / Class — heading styled like About */}
             {isTutor && !!displayGrade && (
               <View style={tw`mb-4`}>
-                <Text style={tw`text-xl font-semibold text-pink-600 dark:text-pink-400`}>Grade / Class</Text>
+                <Text style={tw`text-xl font-semibold text-pink-600 dark:text-pink-400`}>
+                  Grade / Class
+                </Text>
                 <Text style={tw`text-[#0d141c] dark:text-gray-200 mt-1`}>{displayGrade}</Text>
               </View>
             )}
@@ -395,10 +386,15 @@ const ProfileDetailPage: React.FC = () => {
             <View style={tw`flex-row flex-wrap gap-6`}>
               {aboutSections.map(([title, items]) => (
                 <View key={title} style={tw`w-full md:w-1/2`}>
-                  <Text style={tw`text-lg font-semibold text-pink-600 dark:text-pink-400 mb-1`}>{title}</Text>
+                  <Text style={tw`text-lg font-semibold text-pink-600 dark:text-pink-400 mb-1`}>
+                    {title}
+                  </Text>
                   {items.length ? (
                     items.map((it, i) => (
-                      <Text key={`${title}-${i}`} style={tw`text-[#0d141c] dark:text-gray-200 text-sm`}>
+                      <Text
+                        key={`${title}-${i}`}
+                        style={tw`text-[#0d141c] dark:text-gray-200 text-sm`}
+                      >
                         {it}
                       </Text>
                     ))
@@ -418,7 +414,9 @@ const ProfileDetailPage: React.FC = () => {
         {/* Recommended tutors → ProfileCard tiles */}
         {(numericProfile.recommended?.length ?? 0) > 0 && (
           <View style={tw`mt-8`}>
-            <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold mb-3`}>Recommended Tutors</Text>
+            <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold mb-3`}>
+              Recommended Tutors
+            </Text>
 
             <ScrollView
               horizontal
@@ -457,7 +455,10 @@ const ProfileDetailPage: React.FC = () => {
       {/* Chat FAB + overlay */}
       {String(myProfile?.id ?? '') !== String(numericProfile.id) && (
         <View style={[tw`absolute right-6`, { bottom: insets.bottom + 24 }]}>
-          <TouchableOpacity onPress={toggleChat} style={tw`bg-pink-600 dark:bg-pink-500 p-3 rounded-full shadow-lg`}>
+          <TouchableOpacity
+            onPress={toggleChat}
+            style={tw`bg-pink-600 dark:bg-pink-500 p-3 rounded-full shadow-lg`}
+          >
             <FontAwesome name="smile-o" size={20} color="white" />
           </TouchableOpacity>
         </View>
@@ -480,7 +481,9 @@ const ProfileDetailPage: React.FC = () => {
                       : 'bg-slate-200 dark:bg-gray-700 self-start'
                   }`}
                 >
-                  <Text style={tw`${msg.sender === 'me' ? 'text-white' : 'text-[#0d141c] dark:text-white'}`}>
+                  <Text
+                    style={tw`${msg.sender === 'me' ? 'text-white' : 'text-[#0d141c] dark:text-white'}`}
+                  >
                     {msg.content}
                   </Text>
                 </View>
@@ -489,7 +492,12 @@ const ProfileDetailPage: React.FC = () => {
               <Text style={tw`text-slate-600 dark:text-gray-400`}>Start the conversation!</Text>
             )}
           </ScrollView>
-          <View style={[tw`flex-row items-center p-2 border-t border-[#cedbe8] dark:border-white/10`, { paddingBottom: insets.bottom }]}>
+          <View
+            style={[
+              tw`flex-row items-center p-2 border-t border-[#cedbe8] dark:border-white/10`,
+              { paddingBottom: insets.bottom },
+            ]}
+          >
             <TextInput
               value={newMessage}
               onChangeText={setNewMessage}
@@ -497,7 +505,10 @@ const ProfileDetailPage: React.FC = () => {
               placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
               style={tw`flex-1 bg-white dark:bg-gray-700 text-[#0d141c] dark:text-white px-3 py-2 rounded-l`}
             />
-            <TouchableOpacity onPress={handleSendPress} style={tw`bg-pink-600 dark:bg-pink-500 px-4 py-2 rounded-r`}>
+            <TouchableOpacity
+              onPress={handleSendPress}
+              style={tw`bg-pink-600 dark:bg-pink-500 px-4 py-2 rounded-r`}
+            >
               <FontAwesome name="paper-plane" size={16} color="white" />
             </TouchableOpacity>
           </View>

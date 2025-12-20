@@ -42,50 +42,50 @@ const InstitutionLogin: React.FC = () => {
   const clearErrors = () => setError(null);
   const canSignUp = accountKind === 'institution';
 
-// make sure we never stay in "Sign Up" for non-institution
-useEffect(() => {
-  if (!canSignUp && authMode === 'Sign Up') {
-    setAuthMode('Login');
-  }
-}, [canSignUp, authMode]);
+  // make sure we never stay in "Sign Up" for non-institution
+  useEffect(() => {
+    if (!canSignUp && authMode === 'Sign Up') {
+      setAuthMode('Login');
+    }
+  }, [canSignUp, authMode]);
 
   // —— Auth hook —— //
   const navigateAfterAuth = useCallback(() => {
-  // 1) Prefer an explicit returnTo from the invite flow
-  try {
-    const saved = sessionStorage.getItem('auth:returnTo');
-    if (saved) {
-      sessionStorage.removeItem('auth:returnTo');
-      navigate(saved, { replace: true });
+    // 1) Prefer an explicit returnTo from the invite flow
+    try {
+      const saved = sessionStorage.getItem('auth:returnTo');
+      if (saved) {
+        sessionStorage.removeItem('auth:returnTo');
+        navigate(saved, { replace: true });
+        return;
+      }
+    } catch {
+      // ignore storage errors and fall through
+    }
+
+    // 2) If there’s an invite code in the URL, go back to that invite
+    const search = new URLSearchParams(location.search);
+    const inviteCode = search.get('code');
+    if (inviteCode) {
+      navigate(`/org/join/${inviteCode}`, { replace: true });
       return;
     }
-  } catch {
-    // ignore storage errors and fall through
-  }
 
-  // 2) If there’s an invite code in the URL, go back to that invite
-  const search = new URLSearchParams(location.search);
-  const inviteCode = search.get('code');
-  if (inviteCode) {
-    navigate(`/org/join/${inviteCode}`, { replace: true });
-    return;
-  }
+    // 3) Default: normal institution flow
+    navigate('/org', { replace: true });
+  }, [navigate, location.search]);
 
-  // 3) Default: normal institution flow
-  navigate('/org', { replace: true });
-}, [navigate, location.search]);
-
-const {
-  handleGoogleLoginSuccess,
-  handleGoogleLoginFailure,
-  loginWithEmail,
-  registerWithEmail,
-  sendResetOTP,
-  resetPasswordWithOTP,
-} = useInstitutionAuth({
-  alertFn: (msg) => console.log('[org-auth]', msg),
-  navigateFn: navigateAfterAuth,
-});
+  const {
+    handleGoogleLoginSuccess,
+    handleGoogleLoginFailure,
+    loginWithEmail,
+    registerWithEmail,
+    sendResetOTP,
+    resetPasswordWithOTP,
+  } = useInstitutionAuth({
+    alertFn: (msg) => console.log('[org-auth]', msg),
+    navigateFn: navigateAfterAuth,
+  });
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,8 +114,8 @@ const {
           accountKind === 'institution'
             ? 'owner'
             : accountKind === 'instructor'
-            ? 'instructor'
-            : 'learner'; // student
+              ? 'instructor'
+              : 'learner'; // student
 
         await registerWithEmail({
           name: name.trim(),
@@ -198,12 +198,10 @@ const {
 
   const emailFormTitle = useMemo(() => {
     const base = labelForKind(accountKind);
-    return authMode === 'Login'
-      ? `${base} Login`
-      : `Create your ${base} account`;
+    return authMode === 'Login' ? `${base} Login` : `Create your ${base} account`;
   }, [authMode, accountKind]);
 
-   const accountOptions: { key: AccountKind; label: string; helper: string }[] = [
+  const accountOptions: { key: AccountKind; label: string; helper: string }[] = [
     {
       key: 'institution',
       label: 'Institution',
@@ -215,8 +213,8 @@ const {
       helper: 'Teachers & trainers',
     },
     {
-      key: 'learner',            // ✅ lowercase to match AccountKind
-      label: 'Learner',          // ✅ display text can stay capitalized
+      key: 'learner', // ✅ lowercase to match AccountKind
+      label: 'Learner', // ✅ display text can stay capitalized
       helper: 'Learners in this institution',
     },
   ];
@@ -249,7 +247,12 @@ const {
             <div className="w-full rounded-2xl p-8 lg:p-10 bg-white/70 ring-1 ring-gray-200 shadow-sm backdrop-blur-sm dark:bg-[#0f1821]/70 dark:ring-darkCard">
               <div className="flex items-center gap-3">
                 <span className="h-10 w-10 text-indigo-600">
-                  <svg viewBox="0 0 48 48" fill="currentColor" className="h-full w-full" aria-hidden>
+                  <svg
+                    viewBox="0 0 48 48"
+                    fill="currentColor"
+                    className="h-full w-full"
+                    aria-hidden
+                  >
                     <path d="M36.7273 44C33.9891 44 31.6043 39.8386 30.3636 33.69C29.123 39.8386 26.7382 44 24 44C21.2618 44 18.877 39.8386 17.6364 33.69C16.3957 39.8386 14.0109 44 11.2727 44C7.25611 44 4 35.0457 4 24C4 12.9543 7.25611 4 11.2727 4C14.0109 4 16.3957 8.16144 17.6364 14.31C18.877 8.16144 21.2618 4 24 4C26.7382 4 29.123 8.16144 30.3636 14.31C31.6043 8.16144 33.9891 4 36.7273 4C40.7439 4 44 12.9543 44 24C44 35.0457 40.7439 44 36.7273 44Z" />
                   </svg>
                 </span>
@@ -257,11 +260,12 @@ const {
               </div>
 
               <p className="mt-4 text-sm text-gray-700 dark:text-darkTextSecondary">
-                This login is for institutions, instructors, and students using your organization&apos;s DayBreak portal.
+                This login is for institutions, instructors, and students using your
+                organization&apos;s DayBreak portal.
               </p>
 
               <ul className="mt-6 space-y-3 text-sm">
-                 <li>• Exam Results &amp; Reports cards</li>
+                <li>• Exam Results &amp; Reports cards</li>
                 <li>• Custom certificates &amp; branding</li>
                 <li>• Timed assignments &amp; pass marks</li>
                 <li>• Termly &amp; yearly analytics</li>
@@ -361,7 +365,9 @@ const {
                   </form>
                 ) : (
                   <form onSubmit={handleSendOtp} className="space-y-5">
-                    <h2 className="text-xl font-display font-semibold text-center">Reset Password</h2>
+                    <h2 className="text-xl font-display font-semibold text-center">
+                      Reset Password
+                    </h2>
                     <input
                       className="input"
                       type="email"
@@ -389,7 +395,9 @@ const {
                 )
               ) : (
                 <form onSubmit={onSubmit} className="space-y-5">
-                  <h2 className="text-xl font-display font-semibold text-center">{emailFormTitle}</h2>
+                  <h2 className="text-xl font-display font-semibold text-center">
+                    {emailFormTitle}
+                  </h2>
 
                   {authMode === 'Sign Up' && (
                     <input
@@ -435,51 +443,49 @@ const {
                     {authMode === 'Login' ? 'Login' : 'Sign Up'}
                   </button>
 
-              <div className="flex justify-between text-sm">
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearErrors();
-                    setResetMode('requesting');
-                  }}
-                  className="link"
-                >
-                  Forgot password?
-                </button>
-
-                {canSignUp && (
-                  authMode === 'Login' ? (
+                  <div className="flex justify-between text-sm">
                     <button
                       type="button"
                       onClick={() => {
                         clearErrors();
-                        setAuthMode('Sign Up');
+                        setResetMode('requesting');
                       }}
                       className="link"
                     >
-                      Create account
+                      Forgot password?
                     </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearErrors();
-                        setAuthMode('Login');
-                      }}
-                      className="link"
-                    >
-                      Already have an account?
-                    </button>
-                  )
-                )}
-              </div>
-              {accountKind !== 'institution' && (
-                <p className="mt-3 text-[11px] text-gray-500 dark:text-darkTextSecondary text-center">
-                  Instructors and learners: please log in using the email/ID and password
-                  shared by your school or the invite link.
-                </p>
-              )}
 
+                    {canSignUp &&
+                      (authMode === 'Login' ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearErrors();
+                            setAuthMode('Sign Up');
+                          }}
+                          className="link"
+                        >
+                          Create account
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearErrors();
+                            setAuthMode('Login');
+                          }}
+                          className="link"
+                        >
+                          Already have an account?
+                        </button>
+                      ))}
+                  </div>
+                  {accountKind !== 'institution' && (
+                    <p className="mt-3 text-[11px] text-gray-500 dark:text-darkTextSecondary text-center">
+                      Instructors and learners: please log in using the email/ID and password shared
+                      by your school or the invite link.
+                    </p>
+                  )}
                 </form>
               )}
 
@@ -492,11 +498,13 @@ const {
                     <div className="h-px flex-1 bg-gray-200 dark:bg-darkCard" />
                   </div>
                   <div className="flex justify-center">
-                    <CustomGoogleLoginButton onSuccess={onGoogleSuccess} onFailure={onGoogleFailure} />
+                    <CustomGoogleLoginButton
+                      onSuccess={onGoogleSuccess}
+                      onFailure={onGoogleFailure}
+                    />
                   </div>
                 </>
               )}
-
 
               {/* Mobile-only helper link */}
               <div className="mt-6 text-center text-sm md:hidden">

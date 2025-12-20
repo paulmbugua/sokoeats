@@ -1,5 +1,8 @@
 // apps/backend/controllers/wherever.js  (ESM)
-const normalize = (s) => String(s || '').trim().toLowerCase();
+const normalize = (s) =>
+  String(s || '')
+    .trim()
+    .toLowerCase();
 
 /**
  * True when a payment should be treated as fully settled/paid.

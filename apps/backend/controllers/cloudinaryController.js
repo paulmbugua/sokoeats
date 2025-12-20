@@ -17,13 +17,15 @@ export const getDirectUploadSignature = async (req, res) => {
     const paramsToSign = { timestamp, folder };
     const signature = cloudinary.utils.api_sign_request(
       paramsToSign,
-      process.env.CLOUDINARY_API_SECRET
+      process.env.CLOUDINARY_API_SECRET,
     );
 
     // 🟢 Add debugging logs
     console.log('🎥 Cloudinary sign request:', {
-      user: req.user?.id,            // who is requesting the sign
-      resourceType, folder, timestamp,
+      user: req.user?.id, // who is requesting the sign
+      resourceType,
+      folder,
+      timestamp,
       apiKey: process.env.CLOUDINARY_API_KEY,
     });
 

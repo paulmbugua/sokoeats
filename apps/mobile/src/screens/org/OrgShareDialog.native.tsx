@@ -20,10 +20,7 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
-import {
-  createOrgAssignment,
-  ensureOrgShareableAssignment,
-} from '@mytutorapp/shared/api/orgApi';
+import { createOrgAssignment, ensureOrgShareableAssignment } from '@mytutorapp/shared/api/orgApi';
 
 import SelectField from '@/screens/SelectField.native';
 import { useThemePref } from '../../theme/ThemeContext';
@@ -168,19 +165,14 @@ const Choice: React.FC<{
       : 'rgba(79,70,229,0.10)'
     : palette.chipBg;
 
-  const border = active
-    ? 'rgba(79,70,229,0.65)'
-    : palette.border;
+  const border = active ? 'rgba(79,70,229,0.65)' : palette.border;
 
   const text = active ? palette.text : palette.textSoft;
 
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={[
-        tw`flex-1 rounded-xl p-3 border`,
-        { backgroundColor: bg, borderColor: border },
-      ]}
+      style={[tw`flex-1 rounded-xl p-3 border`, { backgroundColor: bg, borderColor: border }]}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
     >
@@ -325,9 +317,7 @@ export default function OrgShareDialogNative({
       : requestedTimer;
 
     const effectivePass = passMark === '' ? null : Number(passMark);
-    const effectiveAttempts = isStarter
-      ? 1
-      : Math.max(1, Math.min(10, Number(maxAttempts) || 1));
+    const effectiveAttempts = isStarter ? 1 : Math.max(1, Math.min(10, Number(maxAttempts) || 1));
 
     setBusy(true);
     try {
@@ -351,17 +341,10 @@ export default function OrgShareDialogNative({
         ...assignOpts,
       } as any;
 
-      const resp = await ensureOrgShareableAssignment(
-        backendUrl,
-        bearer,
-        activeOrgId,
-        payload
-      );
+      const resp = await ensureOrgShareableAssignment(backendUrl, bearer, activeOrgId, payload);
 
       const code =
-        resp?.assignment?.invite_code ??
-        resp?.assignment?.inviteCode ??
-        resp?.assignment?.code;
+        resp?.assignment?.invite_code ?? resp?.assignment?.inviteCode ?? resp?.assignment?.code;
 
       if (!code) throw new Error('Invite code missing');
 
@@ -600,7 +583,8 @@ export default function OrgShareDialogNative({
 
                       <View style={tw`pt-6`}>
                         <Text style={[tw`text-3xs`, { color: palette.textSubtle }]}>
-                          {String(timerH ?? 0).padStart(2, '0')}:{String(timerM ?? 0).padStart(2, '0')}
+                          {String(timerH ?? 0).padStart(2, '0')}:
+                          {String(timerM ?? 0).padStart(2, '0')}
                           :00
                         </Text>
                       </View>
@@ -628,9 +612,7 @@ export default function OrgShareDialogNative({
                     <View style={tw`flex-1`}>
                       <NumberInput
                         value={maxAttempts}
-                        setValue={(n) =>
-                          setMaxAttempts(Math.max(1, Math.min(10, Number(n) || 1)))
-                        }
+                        setValue={(n) => setMaxAttempts(Math.max(1, Math.min(10, Number(n) || 1)))}
                         min={1}
                         max={10}
                         disabled={lockAttempts}
@@ -754,10 +736,7 @@ export default function OrgShareDialogNative({
                 <View style={tw`flex-row flex-wrap gap-2 mt-1`}>
                   <TouchableOpacity
                     onPress={emailShare}
-                    style={[
-                      tw`px-3 py-1.5 rounded-lg`,
-                      { backgroundColor: palette.chipBg },
-                    ]}
+                    style={[tw`px-3 py-1.5 rounded-lg`, { backgroundColor: palette.chipBg }]}
                   >
                     <Text style={[tw`text-[11px] font-medium`, { color: palette.text }]}>
                       Email
@@ -766,10 +745,7 @@ export default function OrgShareDialogNative({
 
                   <TouchableOpacity
                     onPress={whatsappShare}
-                    style={[
-                      tw`px-3 py-1.5 rounded-lg`,
-                      { backgroundColor: palette.chipBg },
-                    ]}
+                    style={[tw`px-3 py-1.5 rounded-lg`, { backgroundColor: palette.chipBg }]}
                   >
                     <Text style={[tw`text-[11px] font-medium`, { color: palette.text }]}>
                       WhatsApp
@@ -786,23 +762,18 @@ export default function OrgShareDialogNative({
                     <TouchableOpacity
                       onPress={() => {
                         onClose();
-                        navigation.navigate(
-                          'OrgElearnPortal',
-                          {
-                            tab: 'assign',
-                            from: 'share',
-                            courseId: createdCourseId || (courseId ?? undefined),
-                          } as any
-                        );
+                        navigation.navigate('OrgElearnPortal', {
+                          tab: 'assign',
+                          from: 'share',
+                          courseId: createdCourseId || (courseId ?? undefined),
+                        } as any);
                       }}
                       style={[
                         tw`self-start px-3 py-1.5 rounded-lg`,
                         { backgroundColor: palette.primary },
                       ]}
                     >
-                      <Text style={tw`text-white text-[11px] font-semibold`}>
-                        Open Assign pane
-                      </Text>
+                      <Text style={tw`text-white text-[11px] font-semibold`}>Open Assign pane</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -812,7 +783,12 @@ export default function OrgShareDialogNative({
 
           {/* Footer */}
           {!inviteLink && (
-            <View style={[tw`mt-3 pt-2 flex-row justify-end`, { borderTopWidth: 1, borderTopColor: palette.divider }]}>
+            <View
+              style={[
+                tw`mt-3 pt-2 flex-row justify-end`,
+                { borderTopWidth: 1, borderTopColor: palette.divider },
+              ]}
+            >
               <TouchableOpacity
                 onPress={handleShare}
                 disabled={busy || !canCreate}

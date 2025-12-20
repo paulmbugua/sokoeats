@@ -3,7 +3,9 @@ import crypto from 'node:crypto';
 import pool from '../config/db.js';
 
 function normalizeEmail(e) {
-  return String(e || '').trim().toLowerCase();
+  return String(e || '')
+    .trim()
+    .toLowerCase();
 }
 
 function sign(email) {
@@ -30,14 +32,14 @@ async function recordUnsub(email, reason = null) {
     `INSERT INTO email_unsubscribes (email, reason)
      VALUES ($1, $2)
      ON CONFLICT (lower(email)) DO NOTHING`,
-    [em, reason]
+    [em, reason],
   );
 
   // Optional: flip marketing flag if present on users table
   try {
     await pool.query(
       `UPDATE users SET email_marketing_opt_in = FALSE WHERE lower(email) = lower($1)`,
-      [em]
+      [em],
     );
   } catch {
     /* ignore if column/table doesn't exist */
@@ -54,7 +56,9 @@ export async function unsubscribeOneClick(req, res) {
 export async function unsubscribeViaLink(req, res) {
   const { e: email, t: token } = req.query || {};
   if (!verify(email, token)) {
-    return res.status(400).json({ ok: false, message: 'Invalid or missing token.' });
+    return res
+      .status(400)
+      .json({ ok: false, message: 'Invalid or missing token.' });
   }
   await recordUnsub(email, 'link');
   return res.json({ ok: true });
@@ -62,7 +66,8 @@ export async function unsubscribeViaLink(req, res) {
 
 export async function unsubscribeManual(req, res) {
   const email = normalizeEmail(req.body?.email);
-  if (!email) return res.status(400).json({ ok: false, message: 'Email required.' });
+  if (!email)
+    return res.status(400).json({ ok: false, message: 'Email required.' });
   await recordUnsub(email, 'manual');
   return res.json({ ok: true });
 }

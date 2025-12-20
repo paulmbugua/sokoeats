@@ -1,13 +1,5 @@
 // apps/web/src/pages/OerCollectionReader.web.tsx
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useMemo,
-  lazy,
-  Suspense,
-} from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo, lazy, Suspense } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -41,7 +33,6 @@ pdfjs.GlobalWorkerOptions.workerPort = new PdfJsWorker();
 // IMPORTANT: react-pdf v7 CSS paths. If on another major, adjust imports.
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
-
 
 /* -------------------------------------------------------------------------- */
 /* Debug helper */
@@ -96,14 +87,13 @@ export type CollectionItem = {
   [key: string]: any;
 };
 
-const cx = (...parts: (false | null | undefined | string)[]) =>
-  parts.filter(Boolean).join(' ');
+const cx = (...parts: (false | null | undefined | string)[]) => parts.filter(Boolean).join(' ');
 
 const isProbablyPdfUrl = (u?: string) => !!u && /\.pdf($|\?)/i.test(u);
 const isProbablyVideoUrl = (u?: string) =>
   !!u &&
   /(youtube\.com|youtu\.be|youtube-nocookie\.com|vimeo\.com|\.m3u8($|\?)|\.mp4($|\?)|\.webm($|\?)|\/playlist\?list=)/i.test(
-    u,
+    u
   );
 
 const toWatchLikeYouTube = (raw?: string) => {
@@ -156,7 +146,9 @@ const toYouTubeIframeSrc = (raw?: string) => {
 
     const params =
       `modestbranding=1&playsinline=1&rel=0` +
-      (typeof window !== 'undefined' ? `&origin=${encodeURIComponent(window.location.origin)}` : '');
+      (typeof window !== 'undefined'
+        ? `&origin=${encodeURIComponent(window.location.origin)}`
+        : '');
 
     const list = sp.get('list');
     const v = sp.get('v');
@@ -209,8 +201,10 @@ const normalizeKind = (it: CollectionItem): CollectionItemKind => {
 };
 
 const getPdfUrl = (it: CollectionItem) => it.file_url || (it as any).pdf_url || it.source_url || '';
-const getVideoUrl = (it: CollectionItem) => it.video_url || it.embed_url || it.source_url || (it as any).url || '';
-const itemKey = (it: CollectionItem, idx: number) => String(it.id ?? it.slug ?? it.source_url ?? `idx-${idx}`);
+const getVideoUrl = (it: CollectionItem) =>
+  it.video_url || it.embed_url || it.source_url || (it as any).url || '';
+const itemKey = (it: CollectionItem, idx: number) =>
+  String(it.id ?? it.slug ?? it.source_url ?? `idx-${idx}`);
 
 // ✅ FIXED: added missing `}` and backtick
 const lsKey = (collectionId: string | number, suffix: string) =>
@@ -221,7 +215,11 @@ const toYouTubeWatch = (raw?: string) => {
   try {
     const u = new URL(raw);
     const host = u.hostname.replace(/^www\./, '');
-    if (host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtube-nocookie.com') {
+    if (
+      host === 'youtube.com' ||
+      host.endsWith('.youtube.com') ||
+      host === 'youtube-nocookie.com'
+    ) {
       if (u.pathname.startsWith('/embed/')) {
         const id = u.pathname.split('/')[2];
         const list = u.searchParams.get('list');
@@ -247,7 +245,9 @@ const toYouTubeWatch = (raw?: string) => {
 /* Helpers for resilient fetching */
 const sanitizeId = (routeId?: string) => {
   let s = routeId ?? '';
-  try { s = decodeURIComponent(s); } catch {}
+  try {
+    s = decodeURIComponent(s);
+  } catch {}
   if (s.startsWith(':id')) s = s.slice(3);
   if (s.startsWith(':')) s = s.slice(1);
   return s;
@@ -258,7 +258,11 @@ async function tryJson(url: string, headers: Record<string, string>) {
   const text = await res.text();
   dlog('HTTP', res.status, url, 'preview:', text.slice(0, 320));
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-  try { return JSON.parse(text); } catch { return text; }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 function coerceItemsFromPayload(payload: any, slugOrId: string): CollectionItem[] {
@@ -267,31 +271,34 @@ function coerceItemsFromPayload(payload: any, slugOrId: string): CollectionItem[
 
   const html = payload?.web_url || payload?.html_url;
   if (html) {
-    return [{
-      id: payload?.id ?? slugOrId,
-      slug: payload?.slug ?? slugOrId,
-      title: payload?.title || payload?.name || 'Untitled Book',
-       kind: 'text',                // not 'pdf' -> we’ll render as HTML
-      web_url: html,
-      cover_url: payload?.cover_url || null,
-      provider: payload?.provider || payload?.origin || 'OER',
-      pages: payload?.pages,
-    }];
+    return [
+      {
+        id: payload?.id ?? slugOrId,
+        slug: payload?.slug ?? slugOrId,
+        title: payload?.title || payload?.name || 'Untitled Book',
+        kind: 'text', // not 'pdf' -> we’ll render as HTML
+        web_url: html,
+        cover_url: payload?.cover_url || null,
+        provider: payload?.provider || payload?.origin || 'OER',
+        pages: payload?.pages,
+      },
+    ];
   }
 
-   // (optional) fallback if some legacy rows only have pdf_url – you can drop this if you never store PDFs anymore
-  const file =
-    payload?.file_url || payload?.pdf_url || payload?.source_url || payload?.url || '';
+  // (optional) fallback if some legacy rows only have pdf_url – you can drop this if you never store PDFs anymore
+  const file = payload?.file_url || payload?.pdf_url || payload?.source_url || payload?.url || '';
   if (file) {
-    return [{
-      id: payload?.id ?? slugOrId,
-      slug: payload?.slug ?? slugOrId,
-      title: payload?.title || payload?.name || 'Untitled Book',
-      kind: 'text',
-      web_url: file,               // try to open even if it’s a PDF URL (OpenStax will redirect to HTML in many cases)
-      cover_url: payload?.cover_url || null,
-      provider: payload?.provider || payload?.origin || 'OER',
-    }];
+    return [
+      {
+        id: payload?.id ?? slugOrId,
+        slug: payload?.slug ?? slugOrId,
+        title: payload?.title || payload?.name || 'Untitled Book',
+        kind: 'text',
+        web_url: file, // try to open even if it’s a PDF URL (OpenStax will redirect to HTML in many cases)
+        cover_url: payload?.cover_url || null,
+        provider: payload?.provider || payload?.origin || 'OER',
+      },
+    ];
   }
 
   if (payload?.data && Array.isArray(payload.data.items)) return payload.data.items;
@@ -315,7 +322,9 @@ const OerCollectionReader: React.FC = () => {
   const [items, setItems] = useState<CollectionItem[]>([]);
 
   const initialIndexParam = params.get('item');
-  const [activeIndex, setActiveIndex] = useState<number>(initialIndexParam ? Number(initialIndexParam) : 0);
+  const [activeIndex, setActiveIndex] = useState<number>(
+    initialIndexParam ? Number(initialIndexParam) : 0
+  );
 
   const [pdfPage, setPdfPage] = useState(1);
   const [numPages, setNumPages] = useState<number | null>(null);
@@ -331,9 +340,6 @@ const OerCollectionReader: React.FC = () => {
   const [playerReady, setPlayerReady] = useState(false);
   const [forceIframe, setForceIframe] = useState(false);
 
-
-
-
   // Mobile drawers
   const [mobileTOCOpen, setMobileTOCOpen] = useState(false);
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
@@ -344,45 +350,46 @@ const OerCollectionReader: React.FC = () => {
   const activeItem = items[activeIndex];
 
   // Must be above any effects/handlers that reference them
-const activeItemKey = useMemo(
-  () => String(activeItem?.id ?? activeItem?.slug ?? activeIndex),
-  [activeItem, activeIndex]
-);
+  const activeItemKey = useMemo(
+    () => String(activeItem?.id ?? activeItem?.slug ?? activeIndex),
+    [activeItem, activeIndex]
+  );
 
-// Compute early so `isHtml` can be derived before handlers/effects
-const reactPlayerUrl = useMemo(() => getPlayableUrl(activeItem), [activeItem]);
+  // Compute early so `isHtml` can be derived before handlers/effects
+  const reactPlayerUrl = useMemo(() => getPlayableUrl(activeItem), [activeItem]);
 
-// Kind detection (used by wheel/tip handlers)
-const guessedKind = activeItem ? normalizeKind(activeItem) : undefined;
-const isVideo = !!reactPlayerUrl && isProbablyVideoUrl(reactPlayerUrl);
-const isHtml  = !!activeItem?.web_url && !isVideo;
+  // Kind detection (used by wheel/tip handlers)
+  const guessedKind = activeItem ? normalizeKind(activeItem) : undefined;
+  const isVideo = !!reactPlayerUrl && isProbablyVideoUrl(reactPlayerUrl);
+  const isHtml = !!activeItem?.web_url && !isVideo;
 
-// Ctrl + wheel to zoom HTML pages
-const onHtmlWheelZoom = useCallback((e: WheelEvent) => {
-  if (!isHtml) return;
-  if (e.ctrlKey) {
-    e.preventDefault();
-    setHtmlZoom(z => Math.min(2.5, Math.max(0.5, +(z - e.deltaY * 0.0015).toFixed(2))));
-  }
-}, [isHtml]);
+  // Ctrl + wheel to zoom HTML pages
+  const onHtmlWheelZoom = useCallback(
+    (e: WheelEvent) => {
+      if (!isHtml) return;
+      if (e.ctrlKey) {
+        e.preventDefault();
+        setHtmlZoom((z) => Math.min(2.5, Math.max(0.5, +(z - e.deltaY * 0.0015).toFixed(2))));
+      }
+    },
+    [isHtml]
+  );
 
-useEffect(() => {
-  const el = htmlViewportRef.current;
-  if (!el) return;
-  const handler = (ev: any) => onHtmlWheelZoom(ev as WheelEvent);
-  el.addEventListener('wheel', handler, { passive: false });
-  return () => el.removeEventListener('wheel', handler);
-}, [onHtmlWheelZoom]);
+  useEffect(() => {
+    const el = htmlViewportRef.current;
+    if (!el) return;
+    const handler = (ev: any) => onHtmlWheelZoom(ev as WheelEvent);
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, [onHtmlWheelZoom]);
 
+  useEffect(() => {
+    if (!isHtml) return;
+    setShowHtmlTip(true);
+    const t = setTimeout(() => setShowHtmlTip(false), 4000);
+    return () => clearTimeout(t);
+  }, [isHtml, activeItemKey]);
 
-useEffect(() => {
-  if (!isHtml) return;
-  setShowHtmlTip(true);
-  const t = setTimeout(() => setShowHtmlTip(false), 4000);
-  return () => clearTimeout(t);
-}, [isHtml, activeItemKey]);
-
- 
   const highlightsKey = useMemo(
     () => lsKey(id || 'x', `item.${activeItemKey}.highlights`),
     [id, activeItemKey]
@@ -414,41 +421,40 @@ useEffect(() => {
   }, [highlights, highlightsKey]);
 
   useEffect(() => {
-  const el = htmlViewportRef.current;
-  if (!el) return;
-  const handler = (ev: any) => onHtmlWheelZoom(ev as WheelEvent);
-  el.addEventListener('wheel', handler, { passive: false });
-  return () => el.removeEventListener('wheel', handler);
-}, [onHtmlWheelZoom]);
+    const el = htmlViewportRef.current;
+    if (!el) return;
+    const handler = (ev: any) => onHtmlWheelZoom(ev as WheelEvent);
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, [onHtmlWheelZoom]);
 
   // CREATE HIGHLIGHTS on Alt/Option + mouseup (so normal selection remains for copy)
   const onMouseUpPage = useCallback(
-    (pageNo: number) =>
-      (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!(e.altKey || e.ctrlKey || e.metaKey)) return;
+    (pageNo: number) => (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!(e.altKey || e.ctrlKey || e.metaKey)) return;
 
-        const sel = window.getSelection?.();
-        if (!sel || sel.isCollapsed) return;
+      const sel = window.getSelection?.();
+      if (!sel || sel.isCollapsed) return;
 
-        const range = sel.getRangeAt(0);
-        const rects = Array.from(range.getClientRects());
-        if (!rects.length) return;
+      const range = sel.getRangeAt(0);
+      const rects = Array.from(range.getClientRects());
+      if (!rects.length) return;
 
-        const bounds = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const bounds = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
 
-        const toStore: HL[] = rects.map((r) => ({
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          x: (r.left - bounds.left) / bounds.width,
-          y: (r.top - bounds.top) / bounds.height,
-          w: r.width / bounds.width,
-          h: r.height / bounds.height,
-        }));
+      const toStore: HL[] = rects.map((r) => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        x: (r.left - bounds.left) / bounds.width,
+        y: (r.top - bounds.top) / bounds.height,
+        w: r.width / bounds.width,
+        h: r.height / bounds.height,
+      }));
 
-        setHighlights((prev) => ({
-          ...prev,
-          [pageNo]: [...(prev[pageNo] || []), ...toStore],
-        }));
-      },
+      setHighlights((prev) => ({
+        ...prev,
+        [pageNo]: [...(prev[pageNo] || []), ...toStore],
+      }));
+    },
     []
   );
 
@@ -541,22 +547,35 @@ useEffect(() => {
   useEffect(() => {
     if (!items.length) return;
     const idx = Math.min(Math.max(activeIndex, 0), items.length - 1);
-    setParams(prev => {
-      const next = new URLSearchParams(prev);
-      next.set('item', String(idx));
-      return next;
-    }, { replace: true });
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('item', String(idx));
+        return next;
+      },
+      { replace: true }
+    );
   }, [activeIndex, items.length, setParams]);
 
   // Compute URLs
 
   const iframeSrc = useMemo(
-    () => toYouTubeIframeSrc(reactPlayerUrl || activeItem?.embed_url || activeItem?.source_url || (activeItem as any)?.url || ''),
-    [reactPlayerUrl, activeItem],
+    () =>
+      toYouTubeIframeSrc(
+        reactPlayerUrl ||
+          activeItem?.embed_url ||
+          activeItem?.source_url ||
+          (activeItem as any)?.url ||
+          ''
+      ),
+    [reactPlayerUrl, activeItem]
   );
   const externalUrl = useMemo(
-    () => (activeItem ? activeItem.source_url || toYouTubeWatch(activeItem.embed_url) || getVideoUrl(activeItem) : ''),
-    [activeItem],
+    () =>
+      activeItem
+        ? activeItem.source_url || toYouTubeWatch(activeItem.embed_url) || getVideoUrl(activeItem)
+        : '',
+    [activeItem]
   );
 
   // PDF file + headers
@@ -570,26 +589,19 @@ useEffect(() => {
   );
 
   // ✅ Add this block:
-const isPdf = useMemo(() => {
-  if (!activeItem) return false;
-  if (guessedKind === 'pdf') return true;
+  const isPdf = useMemo(() => {
+    if (!activeItem) return false;
+    if (guessedKind === 'pdf') return true;
 
-  // fallbacks based on url or mime-type
-  const url =
-    getPdfUrl(activeItem) ||
-    activeItem.source_url ||
-    (activeItem as any).url ||
-    '';
-  const mime =
-    (activeItem as any).mime_type ||
-    (activeItem as any).content_type ||
-    '';
+    // fallbacks based on url or mime-type
+    const url = getPdfUrl(activeItem) || activeItem.source_url || (activeItem as any).url || '';
+    const mime = (activeItem as any).mime_type || (activeItem as any).content_type || '';
 
-  return isProbablyPdfUrl(url) || String(mime).toLowerCase().includes('application/pdf');
-}, [activeItem, guessedKind]);
+    return isProbablyPdfUrl(url) || String(mime).toLowerCase().includes('application/pdf');
+  }, [activeItem, guessedKind]);
 
-// Used by "Learn with RobotTeacher"
-const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
+  // Used by "Learn with RobotTeacher"
+  const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
 
   // Reset on item change
   useEffect(() => {
@@ -619,33 +631,39 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
     }
   }, []);
 
-  const goToOutlineItem = useCallback(async (item: any) => {
-    if (!pdfDoc) return;
+  const goToOutlineItem = useCallback(
+    async (item: any) => {
+      if (!pdfDoc) return;
 
-    try {
-      let dest = item?.dest;
-      if (!dest && item?.url) {
-        window.open(item.url, '_blank');
-        return;
+      try {
+        let dest = item?.dest;
+        if (!dest && item?.url) {
+          window.open(item.url, '_blank');
+          return;
+        }
+        if (typeof dest === 'string') {
+          dest = await pdfDoc.getDestination(dest);
+        }
+        if (Array.isArray(dest)) {
+          const [refOrNum] = dest;
+          const pageIndex =
+            typeof refOrNum === 'object'
+              ? await pdfDoc.getPageIndex(refOrNum)
+              : (refOrNum as number);
+          goToPage((pageIndex | 0) + 1);
+        }
+      } catch (e) {
+        dlog('outline nav error', e, item);
       }
-      if (typeof dest === 'string') {
-        dest = await pdfDoc.getDestination(dest);
-      }
-      if (Array.isArray(dest)) {
-        const [refOrNum] = dest;
-        const pageIndex =
-          typeof refOrNum === 'object'
-            ? await pdfDoc.getPageIndex(refOrNum)
-            : (refOrNum as number);
-        goToPage((pageIndex | 0) + 1);
-      }
-    } catch (e) {
-      dlog('outline nav error', e, item);
-    }
-  }, [pdfDoc]);
+    },
+    [pdfDoc]
+  );
 
   const goPrevItem = useCallback(() => setActiveIndex((i) => Math.max(0, i - 1)), []);
-  const goNextItem = useCallback(() => setActiveIndex((i) => Math.min(items.length - 1, i + 1)), [items.length]);
+  const goNextItem = useCallback(
+    () => setActiveIndex((i) => Math.min(items.length - 1, i + 1)),
+    [items.length]
+  );
 
   const zoomIn = () => setScale((s) => Math.min(3, +(s + 0.15).toFixed(2)));
   const zoomOut = () => setScale((s) => Math.max(0.6, +(s - 0.15).toFixed(2)));
@@ -654,7 +672,10 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
     setPdfPage((_) => {
       const next = Math.max(1, Math.min(numPages || 1, p));
       if (activeItem) {
-        const key = lsKey(id || 'x', `item.${String(activeItem.id ?? activeItem.slug ?? activeIndex)}.page`);
+        const key = lsKey(
+          id || 'x',
+          `item.${String(activeItem.id ?? activeItem.slug ?? activeIndex)}.page`
+        );
         localStorage.setItem(key, String(next));
       }
       return next;
@@ -663,14 +684,15 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
   const onKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.target && (e.target as HTMLElement).tagName === 'INPUT') return;
-       if (e.key === '+') { isHtml ? setHtmlZoom(z => Math.min(2.5, +(z + 0.15).toFixed(2))) : zoomIn(); }
-     else if (e.key === '-') { isHtml ? setHtmlZoom(z => Math.max(0.5, +(z - 0.15).toFixed(2))) : zoomOut(); }
-
-      else if (e.key === 'ArrowRight') goToPage(pdfPage + 1);
+      if (e.key === '+') {
+        isHtml ? setHtmlZoom((z) => Math.min(2.5, +(z + 0.15).toFixed(2))) : zoomIn();
+      } else if (e.key === '-') {
+        isHtml ? setHtmlZoom((z) => Math.max(0.5, +(z - 0.15).toFixed(2))) : zoomOut();
+      } else if (e.key === 'ArrowRight') goToPage(pdfPage + 1);
       else if (e.key === 'ArrowLeft') goToPage(pdfPage - 1);
       else if (e.key.toLowerCase() === 'f') setSpread((s) => !s);
     },
-    [pdfPage, numPages],
+    [pdfPage, numPages]
   );
 
   useEffect(() => {
@@ -765,7 +787,7 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
         <aside
           className={cx(
             'rounded-2xl ring-1 ring-slate-200/80 dark:ring-white/10 bg-white dark:bg-[#0f1821] overflow-hidden flex-col',
-            'hidden md:flex',
+            'hidden md:flex'
           )}
         >
           <div className="p-2 flex items-center gap-2 border-b border-slate-200/70 dark:border-white/10">
@@ -795,7 +817,11 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
               items
                 .map((it, idx) => ({ it, idx }))
                 .filter(({ it }) =>
-                  searchQuery ? String(it.title || '').toLowerCase().includes(searchQuery.toLowerCase()) : true,
+                  searchQuery
+                    ? String(it.title || '')
+                        .toLowerCase()
+                        .includes(searchQuery.toLowerCase())
+                    : true
                 )
                 .map(({ it, idx }) => {
                   const k = normalizeKind(it);
@@ -806,11 +832,15 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
                       onClick={() => setActiveIndex(idx)}
                       className={cx(
                         'w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-slate-50/80 dark:hover:bg-white/5 border-b border-slate-200/60 dark:border-white/5',
-                        active && 'bg-[#e7edf4] dark:bg-white/10',
+                        active && 'bg-[#e7edf4] dark:bg-white/10'
                       )}
                       title={it.title}
                     >
-                      {k === 'video' ? <Video className="w-4 h-4" /> : <BookOpenText className="w-4 h-4" />}
+                      {k === 'video' ? (
+                        <Video className="w-4 h-4" />
+                      ) : (
+                        <BookOpenText className="w-4 h-4" />
+                      )}
                       <span className="text-sm line-clamp-2">{it.title}</span>
                     </button>
                   );
@@ -832,7 +862,7 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
         <section
           ref={containerRef}
           className={cx(
-            'relative rounded-2xl ring-1 ring-slate-200/80 dark:ring-white/10 bg-white dark:bg-[#0f1821] overflow-hidden flex flex-col min-w-0',
+            'relative rounded-2xl ring-1 ring-slate-200/80 dark:ring-white/10 bg-white dark:bg-[#0f1821] overflow-hidden flex flex-col min-w-0'
           )}
         >
           {/* Toolbar */}
@@ -902,7 +932,7 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
                 <button
                   className={cx(
                     'h-9 px-3 rounded-lg text-xs font-semibold ring-1 ring-slate-200/80 dark:ring-white/10',
-                    spread ? 'bg-slate-100/80 dark:bg-white/10' : 'bg-transparent',
+                    spread ? 'bg-slate-100/80 dark:bg-white/10' : 'bg-transparent'
                   )}
                   onClick={() => setSpread((s) => !s)}
                   title="Toggle two-page view (F)"
@@ -915,7 +945,11 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
                   onClick={toggleFullscreen}
                   title="Fullscreen"
                 >
-                  {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                  {isFullscreen ? (
+                    <Minimize2 className="w-4 h-4" />
+                  ) : (
+                    <Maximize2 className="w-4 h-4" />
+                  )}
                 </button>
 
                 {hasSelection && (
@@ -931,107 +965,136 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
             )}
 
             {isHtml && (
-  <div className="flex-1 min-h-0 flex flex-col">
-    {/* Hero header (unchanged) */}
-    <div className="px-3 sm:px-6 py-4 sm:py-6 w-full bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white">
-      <div className="max-w-[1100px] mx-auto flex items-center gap-4 sm:gap-6">
-        <div className="w-14 h-20 sm:w-16 sm:h-24 rounded-lg overflow-hidden ring-1 ring-white/20 bg-white/5 flex-shrink-0">
-          {activeItem?.cover_url ? (
-            <img src={activeItem.cover_url} alt="Cover" className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full grid place-items-center text-xs opacity-80">
-              {String(activeItem?.title || 'Book').slice(0, 2).toUpperCase()}
-            </div>
-          )}
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm uppercase tracking-wide text-white/70">Free OER course</div>
-          <h1 className="text-base sm:text-xl font-semibold truncate">{activeItem?.title || '—'}</h1>
-          <div className="text-[12px] sm:text-xs text-white/70">{activeItem?.provider || 'OpenStax'}</div>
-        </div>
-      </div>
-    </div>
+              <div className="flex-1 min-h-0 flex flex-col">
+                {/* Hero header (unchanged) */}
+                <div className="px-3 sm:px-6 py-4 sm:py-6 w-full bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white">
+                  <div className="max-w-[1100px] mx-auto flex items-center gap-4 sm:gap-6">
+                    <div className="w-14 h-20 sm:w-16 sm:h-24 rounded-lg overflow-hidden ring-1 ring-white/20 bg-white/5 flex-shrink-0">
+                      {activeItem?.cover_url ? (
+                        <img
+                          src={activeItem.cover_url}
+                          alt="Cover"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full grid place-items-center text-xs opacity-80">
+                          {String(activeItem?.title || 'Book')
+                            .slice(0, 2)
+                            .toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm uppercase tracking-wide text-white/70">
+                        Free OER course
+                      </div>
+                      <h1 className="text-base sm:text-xl font-semibold truncate">
+                        {activeItem?.title || '—'}
+                      </h1>
+                      <div className="text-[12px] sm:text-xs text-white/70">
+                        {activeItem?.provider || 'OpenStax'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-    {/* Zoomable viewport */}
-    <div className="flex-1 min-h-0 overflow-hidden">
-      <div
-        ref={htmlViewportRef}
-        className="relative h-full w-full overflow-auto"
-        onMouseEnter={() => setShowHtmlTip(true)}
-      >
-        {/* tooltip */}
-        <AnimatePresence>
-          {showHtmlTip && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              className="pointer-events-none absolute right-3 top-3 z-10"
-            >
-              <div className="rounded-lg bg-black/70 text-white text-xs px-3 py-2 shadow">
-                Hold <kbd className="px-1.5 py-0.5 rounded border border-white/20 bg-white/10">Ctrl</kbd> + mouse wheel to zoom
+                {/* Zoomable viewport */}
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <div
+                    ref={htmlViewportRef}
+                    className="relative h-full w-full overflow-auto"
+                    onMouseEnter={() => setShowHtmlTip(true)}
+                  >
+                    {/* tooltip */}
+                    <AnimatePresence>
+                      {showHtmlTip && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          className="pointer-events-none absolute right-3 top-3 z-10"
+                        >
+                          <div className="rounded-lg bg-black/70 text-white text-xs px-3 py-2 shadow">
+                            Hold{' '}
+                            <kbd className="px-1.5 py-0.5 rounded border border-white/20 bg-white/10">
+                              Ctrl
+                            </kbd>{' '}
+                            + mouse wheel to zoom
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* scaled content */}
+                    <div
+                      style={{
+                        transform: `scale(${htmlZoom})`,
+                        transformOrigin: '0 0',
+                        width: `${100 / htmlZoom}%`,
+                        height: `${100 / htmlZoom}%`,
+                      }}
+                    >
+                      <iframe
+                        key={activeItem!.web_url}
+                        src={activeItem!.web_url!}
+                        className="w-full h-full block"
+                        style={{ border: 0 }}
+                        referrerPolicy="strict-origin-when-cross-origin"
+                        allow="clipboard-write"
+                        title={activeItem?.title || 'OpenStax Book'}
+                        onError={() =>
+                          window.open(activeItem!.web_url!, '_blank', 'noopener,noreferrer')
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* scaled content */}
-        <div
-          style={{
-            transform: `scale(${htmlZoom})`,
-            transformOrigin: '0 0',
-            width: `${100 / htmlZoom}%`,
-            height: `${100 / htmlZoom}%`,
-          }}
-        >
-          <iframe
-            key={activeItem!.web_url}
-            src={activeItem!.web_url!}
-            className="w-full h-full block"
-            style={{ border: 0 }}
-            referrerPolicy="strict-origin-when-cross-origin"
-            allow="clipboard-write"
-            title={activeItem?.title || 'OpenStax Book'}
-            onError={() => window.open(activeItem!.web_url!, '_blank', 'noopener,noreferrer')}
-          />
-        </div>
-      </div>
-    </div>
-  </div>
-)}
-
-
+            )}
           </div>
 
           {/* Canvas */}
-           <div
-
-              className={cx(
-                'flex-1',
-                isHtml ? 'overflow-hidden flex flex-col' : 'overflow-auto flex items-center justify-center',
-                darkPaper ? 'bg-[#0e1722]' : 'bg-slate-100',
-              )}
-            >
-             {/* Video */}
+          <div
+            className={cx(
+              'flex-1',
+              isHtml
+                ? 'overflow-hidden flex flex-col'
+                : 'overflow-auto flex items-center justify-center',
+              darkPaper ? 'bg-[#0e1722]' : 'bg-slate-100'
+            )}
+          >
+            {/* Video */}
             {isVideo && (
               <div className="w-full max-w-[1100px] aspect-video rounded-xl overflow-hidden shadow-lg ring-1 ring-slate-200/60 dark:ring-white/10">
                 {!forceIframe && reactPlayerUrl && !playerError ? (
-                  <Suspense fallback={<div className="w-full h-full flex items-center justify-center text-sm text-slate-500">Loading player...</div>}>
+                  <Suspense
+                    fallback={
+                      <div className="w-full h-full flex items-center justify-center text-sm text-slate-500">
+                        Loading player...
+                      </div>
+                    }
+                  >
                     <Player
                       key={reactPlayerUrl}
                       url={reactPlayerUrl}
                       width="100%"
                       height="100%"
                       controls
-                      onReady={() => { setPlayerReady(true); }}
-                      onError={() => { setPlayerError('blocked'); setForceIframe(true); }}
+                      onReady={() => {
+                        setPlayerReady(true);
+                      }}
+                      onError={() => {
+                        setPlayerError('blocked');
+                        setForceIframe(true);
+                      }}
                       config={{
                         youtube: {
                           playerVars: {
                             modestbranding: 1,
                             playsinline: 1,
                             rel: 0,
-                            origin: typeof window !== 'undefined' ? window.location.origin : undefined,
+                            origin:
+                              typeof window !== 'undefined' ? window.location.origin : undefined,
                           },
                         },
                       }}
@@ -1055,7 +1118,12 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
                   <div className="w-full h-full flex items-center justify-center p-4 text-sm text-slate-300 text-center">
                     This video can't be embedded here.
                     {externalUrl && (
-                      <a className="ml-2 underline text-white" href={externalUrl} target="_blank" rel="noreferrer">
+                      <a
+                        className="ml-2 underline text-white"
+                        href={externalUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
                         Open on YouTube
                       </a>
                     )}
@@ -1065,71 +1133,80 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
             )}
 
             {/* HTML (OpenStax View Online) */}
-{isHtml && (
-  <div className="flex-1 min-h-0 flex flex-col">
-    {/* Hero header */}
-    <div className="px-3 sm:px-6 py-4 sm:py-6 w-full bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white">
-      <div className="max-w-[1100px] mx-auto flex items-center gap-4 sm:gap-6">
-        <div className="w-14 h-20 sm:w-16 sm:h-24 rounded-lg overflow-hidden ring-1 ring-white/20 bg-white/5 flex-shrink-0">
-          {activeItem?.cover_url ? (
-            <img
-              src={activeItem.cover_url}
-              alt="Cover"
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full grid place-items-center text-xs opacity-80">
-              {String(activeItem?.title || 'Book').slice(0, 2).toUpperCase()}
-            </div>
-          )}
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm uppercase tracking-wide text-white/70">Free OER course</div>
-          <h1 className="text-base sm:text-xl font-semibold truncate">
-            {activeItem?.title || '—'}
-          </h1>
-          <div className="text-[12px] sm:text-xs text-white/70">
-            {activeItem?.provider || 'OpenStax'}
-          </div>
-        </div>
-      </div>
-    </div>
+            {isHtml && (
+              <div className="flex-1 min-h-0 flex flex-col">
+                {/* Hero header */}
+                <div className="px-3 sm:px-6 py-4 sm:py-6 w-full bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white">
+                  <div className="max-w-[1100px] mx-auto flex items-center gap-4 sm:gap-6">
+                    <div className="w-14 h-20 sm:w-16 sm:h-24 rounded-lg overflow-hidden ring-1 ring-white/20 bg-white/5 flex-shrink-0">
+                      {activeItem?.cover_url ? (
+                        <img
+                          src={activeItem.cover_url}
+                          alt="Cover"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full grid place-items-center text-xs opacity-80">
+                          {String(activeItem?.title || 'Book')
+                            .slice(0, 2)
+                            .toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm uppercase tracking-wide text-white/70">
+                        Free OER course
+                      </div>
+                      <h1 className="text-base sm:text-xl font-semibold truncate">
+                        {activeItem?.title || '—'}
+                      </h1>
+                      <div className="text-[12px] sm:text-xs text-white/70">
+                        {activeItem?.provider || 'OpenStax'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-    {/* Zoomable viewport */}
-    <div className="flex-1 min-h-0 overflow-hidden">
-      <div ref={htmlViewportRef} className="h-full w-full overflow-auto">
-        <div
-          style={{
-            transform: `scale(${htmlZoom})`,
-            transformOrigin: '0 0',
-            width: `${100 / htmlZoom}%`,
-            height: `${100 / htmlZoom}%`,
-          }}
-        >
-          <iframe
-            key={activeItem!.web_url}
-            src={activeItem!.web_url!}
-            className="w-full h-full block"
-            style={{ border: 0 }}
-            referrerPolicy="strict-origin-when-cross-origin"
-            allow="clipboard-write"
-            title={activeItem?.title || 'OpenStax Book'}
-            onError={() =>
-              window.open(activeItem!.web_url!, '_blank', 'noopener,noreferrer')
-            }
-          />
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+                {/* Zoomable viewport */}
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <div ref={htmlViewportRef} className="h-full w-full overflow-auto">
+                    <div
+                      style={{
+                        transform: `scale(${htmlZoom})`,
+                        transformOrigin: '0 0',
+                        width: `${100 / htmlZoom}%`,
+                        height: `${100 / htmlZoom}%`,
+                      }}
+                    >
+                      <iframe
+                        key={activeItem!.web_url}
+                        src={activeItem!.web_url!}
+                        className="w-full h-full block"
+                        style={{ border: 0 }}
+                        referrerPolicy="strict-origin-when-cross-origin"
+                        allow="clipboard-write"
+                        title={activeItem?.title || 'OpenStax Book'}
+                        onError={() =>
+                          window.open(activeItem!.web_url!, '_blank', 'noopener,noreferrer')
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Fallback */}
             {!isPdf && !isVideo && (
               <div className="p-6 text-center text-sm text-slate-500">
                 <p>Item type not recognized. You can open the source link:</p>
                 {activeItem?.source_url && (
-                  <a className="underline" href={activeItem.source_url} target="_blank" rel="noreferrer">
+                  <a
+                    className="underline"
+                    href={activeItem.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     Open source
                   </a>
                 )}
@@ -1166,7 +1243,12 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
                       'select-text'
                     )}
                   >
-                    <div className={cx('flex items-start justify-center', spread ? 'flex-row gap-4 sm:gap-6' : 'flex-col gap-4 sm:gap-6')}>
+                    <div
+                      className={cx(
+                        'flex items-start justify-center',
+                        spread ? 'flex-row gap-4 sm:gap-6' : 'flex-col gap-4 sm:gap-6'
+                      )}
+                    >
                       <div className="relative">
                         <Page
                           pageNumber={pdfPage}
@@ -1220,7 +1302,7 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
         <aside
           className={cx(
             'rounded-2xl ring-1 ring-slate-200/80 dark:ring-white/10 bg-white dark:bg-[#0f1821] overflow-hidden flex-col',
-            'hidden lg:flex',
+            'hidden lg:flex'
           )}
         >
           <div className="p-3 border-b border-slate-200/70 dark:border-white/10 flex items-center justify-between">
@@ -1294,36 +1376,35 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
           )}
 
           {isHtml && (
-  <div className="flex items-center gap-2">
-    <button
-      className="h-10 w-10 rounded-xl flex items-center justify-center ring-1 ring-slate-200/80 dark:ring-white/10"
-      onClick={() => setHtmlZoom(z => Math.max(0.5, +(z - 0.15).toFixed(2)))}
-      aria-label="Zoom out"
-    >
-      −
-    </button>
-    <div className="flex items-center gap-2">
-      <input
-        type="range"
-        min={0.5}
-        max={2.5}
-        step={0.05}
-        value={htmlZoom}
-        onChange={(e) => setHtmlZoom(Number(e.target.value))}
-        className="w-36"
-      />
-      <span className="text-xs w-10 text-right">{Math.round(htmlZoom * 100)}%</span>
-    </div>
-    <button
-      className="h-10 w-10 rounded-xl flex items-center justify-center ring-1 ring-slate-200/80 dark:ring-white/10"
-      onClick={() => setHtmlZoom(z => Math.min(2.5, +(z + 0.15).toFixed(2)))}
-      aria-label="Zoom in"
-    >
-      +
-    </button>
-  </div>
-)}
-
+            <div className="flex items-center gap-2">
+              <button
+                className="h-10 w-10 rounded-xl flex items-center justify-center ring-1 ring-slate-200/80 dark:ring-white/10"
+                onClick={() => setHtmlZoom((z) => Math.max(0.5, +(z - 0.15).toFixed(2)))}
+                aria-label="Zoom out"
+              >
+                −
+              </button>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2.5}
+                  step={0.05}
+                  value={htmlZoom}
+                  onChange={(e) => setHtmlZoom(Number(e.target.value))}
+                  className="w-36"
+                />
+                <span className="text-xs w-10 text-right">{Math.round(htmlZoom * 100)}%</span>
+              </div>
+              <button
+                className="h-10 w-10 rounded-xl flex items-center justify-center ring-1 ring-slate-200/80 dark:ring-white/10"
+                onClick={() => setHtmlZoom((z) => Math.min(2.5, +(z + 0.15).toFixed(2)))}
+                aria-label="Zoom in"
+              >
+                +
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <button
@@ -1390,7 +1471,11 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
                 {items
                   .map((it, idx) => ({ it, idx }))
                   .filter(({ it }) =>
-                    searchQuery ? String(it.title || '').toLowerCase().includes(searchQuery.toLowerCase()) : true,
+                    searchQuery
+                      ? String(it.title || '')
+                          .toLowerCase()
+                          .includes(searchQuery.toLowerCase())
+                      : true
                   )
                   .map(({ it, idx }) => {
                     const k = normalizeKind(it);
@@ -1404,11 +1489,15 @@ const canRobot = isPdf && Boolean(activeItem?.slug || activeItem?.id);
                         }}
                         className={cx(
                           'w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-slate-50/80 dark:hover:bg-white/5 border-b border-slate-200/60 dark:border-white/5',
-                          active && 'bg-[#e7edf4] dark:bg-white/10',
+                          active && 'bg-[#e7edf4] dark:bg-white/10'
                         )}
                         title={it.title}
                       >
-                        {k === 'video' ? <Video className="w-4 h-4" /> : <BookOpenText className="w-4 h-4" />}
+                        {k === 'video' ? (
+                          <Video className="w-4 h-4" />
+                        ) : (
+                          <BookOpenText className="w-4 h-4" />
+                        )}
                         <span className="text-sm line-clamp-2">{it.title}</span>
                       </button>
                     );
@@ -1526,11 +1615,12 @@ const OutlineList: React.FC<{
 /* -------------------------------------------------------------------------- */
 /* Notes widget (localStorage-backed) */
 /* -------------------------------------------------------------------------- */
-const NotesArea: React.FC<{ collectionId: string | number; itemId: string }> = ({ collectionId, itemId }) => {
+const NotesArea: React.FC<{ collectionId: string | number; itemId: string }> = ({
+  collectionId,
+  itemId,
+}) => {
   const key = lsKey(collectionId, `item.${itemId}.notes`);
   const [text, setText] = useState<string>('');
-
-  
 
   useEffect(() => {
     setText(localStorage.getItem(key) || '');
@@ -1543,7 +1633,9 @@ const NotesArea: React.FC<{ collectionId: string | number; itemId: string }> = (
 
   return (
     <div className="p-3 flex-1 flex flex-col gap-2">
-      <div className="text-xs text-slate-500">Your notes are saved automatically on this device.</div>
+      <div className="text-xs text-slate-500">
+        Your notes are saved automatically on this device.
+      </div>
       <textarea
         className="flex-1 min-h-[220px] rounded-xl p-3 bg-slate-50 dark:bg-white/5 ring-1 ring-slate-200/80 dark:ring-white/10 text-sm"
         placeholder="Type notes, highlights, or questions..."

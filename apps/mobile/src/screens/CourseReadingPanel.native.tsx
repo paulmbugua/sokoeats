@@ -1,13 +1,7 @@
 /* eslint-disable prettier/prettier */
 // apps/mobile/src/components/CourseReadingPanel.native.tsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Linking,
-} from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEvent } from 'expo';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
@@ -70,7 +64,11 @@ const ProgressBar: React.FC<{ pct: number }> = ({ pct }) => (
 );
 
 /** Theme-aware card */
-const Card: React.FC<{ title?: string; children?: React.ReactNode; style?: any }> = ({ title, children, style }) => (
+const Card: React.FC<{ title?: string; children?: React.ReactNode; style?: any }> = ({
+  title,
+  children,
+  style,
+}) => (
   <View style={[tw`rounded-2xl border border-gray-200 bg-white p-4`, style]}>
     {!!title && <Text style={tw`text-lg font-semibold mb-3`}>{title}</Text>}
     {children}
@@ -110,16 +108,19 @@ const VideoGate: React.FC<{
       try {
         await player.pause();
         await player.replace(mp4 ? url : null);
-      } catch {/* ignore */}
-      return () => { cancelled = true; };
+      } catch {
+        /* ignore */
+      }
+      return () => {
+        cancelled = true;
+      };
     })();
   }, [url, mp4, player]);
 
-  const { currentTime = 0, duration = 0 } = useEvent(
-    player,
-    'timeUpdate',
-    { currentTime: 0, duration: 0 } as any
-  ) as any;
+  const { currentTime = 0, duration = 0 } = useEvent(player, 'timeUpdate', {
+    currentTime: 0,
+    duration: 0,
+  } as any) as any;
 
   useEffect(() => {
     if (!mp4 || !duration) return;
@@ -258,7 +259,9 @@ const VideoGate: React.FC<{
     try {
       await Linking.openURL(url);
       if (coarseElapsed === 0) setCoarseElapsed(1);
-    } catch {/* no-op */}
+    } catch {
+      /* no-op */
+    }
   };
 
   const pctLabel = externalOnly
@@ -305,9 +308,7 @@ const VideoGate: React.FC<{
               onPress={() => (player.playing ? player.pause() : player.play())}
               style={tw`ml-2 self-start rounded-xl h-9 px-3 bg-gray-200 justify-center`}
             >
-              <Text style={tw`text-sm font-semibold`}>
-                {player.playing ? 'Pause' : 'Play'}
-              </Text>
+              <Text style={tw`text-sm font-semibold`}>{player.playing ? 'Pause' : 'Play'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -330,7 +331,9 @@ const VideoGate: React.FC<{
 
           <View style={tw`mt-3`}>
             <ProgressBar pct={watchedPct} />
-            <Text style={tw`mt-1 text-xs text-gray-600`}>Watched: {watchedPct}% • need {requiredPct}%</Text>
+            <Text style={tw`mt-1 text-xs text-gray-600`}>
+              Watched: {watchedPct}% • need {requiredPct}%
+            </Text>
           </View>
 
           <TouchableOpacity
@@ -359,7 +362,9 @@ const VideoGate: React.FC<{
 
           <View style={tw`mt-3`}>
             <ProgressBar pct={watchedPct} />
-            <Text style={tw`mt-1 text-xs text-gray-600`}>Watched: {watchedPct}% • need {requiredPct}%</Text>
+            <Text style={tw`mt-1 text-xs text-gray-600`}>
+              Watched: {watchedPct}% • need {requiredPct}%
+            </Text>
           </View>
 
           <TouchableOpacity
@@ -382,7 +387,9 @@ const VideoGate: React.FC<{
           </TouchableOpacity>
 
           <View style={tw`mt-3`}>
-            <ProgressBar pct={Math.min(100, Math.round((coarseElapsed / NON_MP4_REQUIRED) * 100))} />
+            <ProgressBar
+              pct={Math.min(100, Math.round((coarseElapsed / NON_MP4_REQUIRED) * 100))}
+            />
             <Text style={tw`mt-1 text-xs text-gray-600`}>{pctLabel}</Text>
           </View>
 
@@ -421,7 +428,9 @@ const NotesGate: React.FC<{
     try {
       await Linking.openURL(url);
       setDownloaded(true);
-    } catch {/* no-op */}
+    } catch {
+      /* no-op */
+    }
   };
 
   return (
@@ -435,7 +444,8 @@ const NotesGate: React.FC<{
           <Text style={tw`text-sm font-semibold`}>Open notes</Text>
         </TouchableOpacity>
         <Text style={tw`text-xs text-gray-600`}>
-          Time on step: {elapsed}s / {requiredSeconds}s {downloaded ? '• opened ✔' : '• not opened'}
+          Time on step: {elapsed}s / {requiredSeconds}s{' '}
+          {downloaded ? '• opened ✔' : '• not opened'}
         </Text>
       </View>
     </Card>
@@ -527,7 +537,8 @@ const CourseReadingPanelNative: React.FC<Props> = ({
         </View>
         <Card>
           <Text style={tw`text-sm text-gray-600`}>
-            No week data yet. If this persists, check your progress API route or the enrollment/Week ID.
+            No week data yet. If this persists, check your progress API route or the enrollment/Week
+            ID.
           </Text>
         </Card>
       </ScrollView>
@@ -559,10 +570,14 @@ const CourseReadingPanelNative: React.FC<Props> = ({
                 : 'bg-[#3d99f5]'
             )}
           >
-            <Text style={tw.style(
-              'text-sm font-semibold',
-              (!canComplete || safeStatus === 'Completed' || !onSetStatus) ? 'text-gray-500' : 'text-white'
-            )}>
+            <Text
+              style={tw.style(
+                'text-sm font-semibold',
+                !canComplete || safeStatus === 'Completed' || !onSetStatus
+                  ? 'text-gray-500'
+                  : 'text-white'
+              )}
+            >
               {safeStatus === 'Completed' ? 'Completed' : 'Mark week as complete'}
             </Text>
           </TouchableOpacity>
@@ -589,13 +604,15 @@ const CourseReadingPanelNative: React.FC<Props> = ({
       )}
 
       {/* Empty state if no resources */}
-      {!safeItem.videoUrl && !safeItem.notesUrl && !(safeItem.assignment && safeItem.assignment.trim().length > 0) && (
-        <Card>
-          <Text style={tw`text-sm text-gray-600`}>
-            No resources were added for this week. You can still mark it complete when ready.
-          </Text>
-        </Card>
-      )}
+      {!safeItem.videoUrl &&
+        !safeItem.notesUrl &&
+        !(safeItem.assignment && safeItem.assignment.trim().length > 0) && (
+          <Card>
+            <Text style={tw`text-sm text-gray-600`}>
+              No resources were added for this week. You can still mark it complete when ready.
+            </Text>
+          </Card>
+        )}
     </ScrollView>
   );
 };

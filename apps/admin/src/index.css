@@ -14,7 +14,9 @@
     text-size-adjust: 100%;
   }
   @media (min-width: 768px) {
-    html { font-size: 14px; }
+    html {
+      font-size: 14px;
+    }
   }
 
   /* Light mode defaults */
@@ -23,38 +25,58 @@
     font-family: 'Poppins', sans-serif;
   }
   /* Force inherit */
-  * { font-family: inherit; }
+  * {
+    font-family: inherit;
+  }
 
   /* Dark mode overrides */
-  .dark body { @apply bg-darkBg text-darkTextPrimary; }
+  .dark body {
+    @apply bg-darkBg text-darkTextPrimary;
+  }
 
   /* Links */
-  a { @apply transition-colors duration-200; }
+  a {
+    @apply transition-colors duration-200;
+  }
 }
 
 /* Smooth anchors opt-in */
-html.scroll-smooth { scroll-behavior: smooth; }
+html.scroll-smooth {
+  scroll-behavior: smooth;
+}
 
 /* Keep anchored sections visible below sticky headers */
-section[id] { scroll-margin-top: 80px; }
+section[id] {
+  scroll-margin-top: 80px;
+}
 
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  html.scroll-smooth { scroll-behavior: auto; }
+  html.scroll-smooth {
+    scroll-behavior: auto;
+  }
 }
 
 /* Hide scrollbars (opt-in) */
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
 /* ---------------------------
    Components / Utilities
    --------------------------- */
 @layer components {
   /* App wrappers */
-  .app-body { @apply text-darkText bg-softGray dark:bg-darkBg dark:text-darkTextPrimary; }
-  .app-heading { @apply text-plum font-display font-semibold dark:text-darkTextPrimary; }
-  
+  .app-body {
+    @apply text-darkText bg-softGray dark:bg-darkBg dark:text-darkTextPrimary;
+  }
+  .app-heading {
+    @apply text-plum font-display font-semibold dark:text-darkTextPrimary;
+  }
 
   /* Theme-aware panel */
   .panel {
@@ -97,14 +119,24 @@ section[id] { scroll-margin-top: 80px; }
            hover:bg-softPink hover:text-white;
   }
 
-  .link { @apply text-gray-500 hover:text-softPink cursor-pointer dark:text-darkTextSecondary; }
+  .link {
+    @apply text-gray-500 hover:text-softPink cursor-pointer dark:text-darkTextSecondary;
+  }
 
-  .form-heading { @apply text-2xl font-bold text-center text-softPink; }
+  .form-heading {
+    @apply text-2xl font-bold text-center text-softPink;
+  }
 
   /* Progress bar animation */
-  .progress-bar-inner { transition: width 0.3s ease; }
+  .progress-bar-inner {
+    transition: width 0.3s ease;
+  }
 
   /* Modal */
-  .modal-backdrop { @apply fixed inset-0 flex items-center justify-center bg-black/50 z-50; }
-  .modal-content { @apply panel p-6 w-full max-w-sm; }
+  .modal-backdrop {
+    @apply fixed inset-0 flex items-center justify-center bg-black/50 z-50;
+  }
+  .modal-content {
+    @apply panel p-6 w-full max-w-sm;
+  }
 }

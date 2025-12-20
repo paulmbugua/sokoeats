@@ -24,13 +24,21 @@ const COURSE_SEARCH_SCHEMA = {
   properties: {
     keywords: { type: 'string' },
     subject: { type: 'string' },
-    gradeBand: { type: 'string' },     // free-form school level
-    level: { type: 'string' },         // Beginner/Intermediate/Advanced/All Levels (optional)
+    gradeBand: { type: 'string' }, // free-form school level
+    level: { type: 'string' }, // Beginner/Intermediate/Advanced/All Levels (optional)
     minRating: { type: 'number' },
-    maxPrice: { type: 'number' },      // tokens for courses (your price column)
-    isOer: { type: 'boolean' },        // free/OER flag
+    maxPrice: { type: 'number' }, // tokens for courses (your price column)
+    isOer: { type: 'boolean' }, // free/OER flag
   },
-  required: ['keywords', 'subject', 'gradeBand', 'level', 'minRating', 'maxPrice', 'isOer'],
+  required: [
+    'keywords',
+    'subject',
+    'gradeBand',
+    'level',
+    'minRating',
+    'maxPrice',
+    'isOer',
+  ],
   additionalProperties: false,
 };
 
@@ -51,8 +59,14 @@ function titleCase(s) {
 }
 function stripOnce(haystack, needle) {
   if (!needle) return haystack;
-  const re = new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'ig');
-  return String(haystack || '').replace(re, ' ').replace(/\s+/g, ' ').trim();
+  const re = new RegExp(
+    `\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+    'ig',
+  );
+  return String(haystack || '')
+    .replace(re, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function extractGradeBandHeuristic(qRaw) {
@@ -68,11 +82,26 @@ function extractGradeBandHeuristic(qRaw) {
 
   // buckets (free-form values tutors/admins may type)
   const buckets = [
-    'kindergarten', 'kg', 'nursery', 'pre-k', 'preschool',
-    'elementary', 'primary', 'middle school', 'junior secondary',
-    'secondary', 'high school', 'senior secondary',
-    'college', 'university', 'tertiary',
-    'academy', 'technical', 'tveta', 'vocational', 'polytechnic',
+    'kindergarten',
+    'kg',
+    'nursery',
+    'pre-k',
+    'preschool',
+    'elementary',
+    'primary',
+    'middle school',
+    'junior secondary',
+    'secondary',
+    'high school',
+    'senior secondary',
+    'college',
+    'university',
+    'tertiary',
+    'academy',
+    'technical',
+    'tveta',
+    'vocational',
+    'polytechnic',
   ];
 
   for (const b of buckets) {
@@ -90,12 +119,21 @@ function extractSubjectHeuristic(qRaw) {
   const s = norm(q);
 
   const rules = [
-    { re: /\b(math|maths|mathematics|algebra|geometry|calculus|fractions|decimals)\b/i, subject: 'Math' },
+    {
+      re: /\b(math|maths|mathematics|algebra|geometry|calculus|fractions|decimals)\b/i,
+      subject: 'Math',
+    },
     { re: /\b(science|biology|chemistry|physics)\b/i, subject: 'Science' },
-    { re: /\b(programming|coding|computer science|javascript|python|react|node)\b/i, subject: 'Programming' },
+    {
+      re: /\b(programming|coding|computer science|javascript|python|react|node)\b/i,
+      subject: 'Programming',
+    },
     { re: /\b(art|drawing|painting|design)\b/i, subject: 'Art' },
     { re: /\b(wellness|health|fitness|mindfulness)\b/i, subject: 'Wellness' },
-    { re: /\b(language|languages|french|spanish|arabic|german|swahili)\b/i, subject: 'Languages' },
+    {
+      re: /\b(language|languages|french|spanish|arabic|german|swahili)\b/i,
+      subject: 'Languages',
+    },
     { re: /\b(english|grammar|writing|reading)\b/i, subject: 'English' },
     { re: /\b(history|geography|civics)\b/i, subject: 'History' },
   ];
@@ -109,10 +147,17 @@ function extractSubjectHeuristic(qRaw) {
 
 function extractDifficultyHeuristic(qRaw) {
   const q = norm(qRaw);
-  if (/\bbeginner\b/.test(q)) return { level: 'Beginner', remainder: stripOnce(qRaw, 'beginner') };
-  if (/\bintermediate\b/.test(q)) return { level: 'Intermediate', remainder: stripOnce(qRaw, 'intermediate') };
-  if (/\badvanced\b/.test(q)) return { level: 'Advanced', remainder: stripOnce(qRaw, 'advanced') };
-  if (/\ball levels\b|\ball-levels\b/.test(q)) return { level: 'All Levels', remainder: stripOnce(qRaw, 'all levels') };
+  if (/\bbeginner\b/.test(q))
+    return { level: 'Beginner', remainder: stripOnce(qRaw, 'beginner') };
+  if (/\bintermediate\b/.test(q))
+    return {
+      level: 'Intermediate',
+      remainder: stripOnce(qRaw, 'intermediate'),
+    };
+  if (/\badvanced\b/.test(q))
+    return { level: 'Advanced', remainder: stripOnce(qRaw, 'advanced') };
+  if (/\ball levels\b|\ball-levels\b/.test(q))
+    return { level: 'All Levels', remainder: stripOnce(qRaw, 'all levels') };
   return { level: '', remainder: qRaw };
 }
 
@@ -124,7 +169,10 @@ function extractOerHeuristic(qRaw) {
 
   const remainder = isOer
     ? qRaw
-        .replace(/\b(oer|open stax|openstax|khan|ck-?12|free|no cost|zero cost)\b/ig, ' ')
+        .replace(
+          /\b(oer|open stax|openstax|khan|ck-?12|free|no cost|zero cost)\b/gi,
+          ' ',
+        )
         .replace(/\s+/g, ' ')
         .trim()
     : qRaw;
@@ -150,9 +198,10 @@ function cleanKeywords({ keywords, gradeBand, subject, level }) {
   if (level) k = stripOnce(k, level);
 
   // remove generic grade/class/form/year/level + number mentions
-  k = k.replace(/\b(grade|class|form|year|level)\s*[0-9]{1,3}\b/gi, ' ')
-       .replace(/\s+/g, ' ')
-       .trim();
+  k = k
+    .replace(/\b(grade|class|form|year|level)\s*[0-9]{1,3}\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
   return k;
 }
@@ -186,7 +235,8 @@ export async function aiParseCourseSearch(query) {
   const heuristicIsOer = o.isOer;
 
   // If it's basically ONLY a grade/system search (e.g. "Grade 3"), skip OpenAI
-  const onlyGradeLike = norm(o.remainder).length === 0 && Boolean(heuristicGradeBand);
+  const onlyGradeLike =
+    norm(o.remainder).length === 0 && Boolean(heuristicGradeBand);
   if (onlyGradeLike) {
     const out = {
       keywords: '',
@@ -198,7 +248,11 @@ export async function aiParseCourseSearch(query) {
       isOer: heuristicIsOer,
     };
     out.keywords = cleanKeywords(out);
-    console.log(`[${reqId}] heuristic-only`, { q, out, ms: Date.now() - started });
+    console.log(`[${reqId}] heuristic-only`, {
+      q,
+      out,
+      ms: Date.now() - started,
+    });
     return out;
   }
 
@@ -258,8 +312,15 @@ export async function aiParseCourseSearch(query) {
   }
 
   const out = {
-    keywords: typeof parsed.keywords === 'string' ? parsed.keywords.trim() : o.remainder.trim(),
-    subject: sanitizeSubject(typeof parsed.subject === 'string' ? parsed.subject.trim() : heuristicSubject),
+    keywords:
+      typeof parsed.keywords === 'string'
+        ? parsed.keywords.trim()
+        : o.remainder.trim(),
+    subject: sanitizeSubject(
+      typeof parsed.subject === 'string'
+        ? parsed.subject.trim()
+        : heuristicSubject,
+    ),
     gradeBand:
       typeof parsed.gradeBand === 'string' && parsed.gradeBand.trim()
         ? parsed.gradeBand.trim()
@@ -268,8 +329,12 @@ export async function aiParseCourseSearch(query) {
       typeof parsed.level === 'string' && parsed.level.trim()
         ? titleCase(parsed.level.trim())
         : heuristicLevel,
-    minRating: Number.isFinite(Number(parsed.minRating)) ? Number(parsed.minRating) : 0,
-    maxPrice: Number.isFinite(Number(parsed.maxPrice)) ? Number(parsed.maxPrice) : 0,
+    minRating: Number.isFinite(Number(parsed.minRating))
+      ? Number(parsed.minRating)
+      : 0,
+    maxPrice: Number.isFinite(Number(parsed.maxPrice))
+      ? Number(parsed.maxPrice)
+      : 0,
     isOer: Boolean(parsed.isOer) || heuristicIsOer,
   };
 
@@ -277,7 +342,12 @@ export async function aiParseCourseSearch(query) {
   if (out.minRating < 0) out.minRating = 0;
 
   // enforce known difficulty labels only
-  if (!['', 'Beginner', 'Intermediate', 'Advanced', 'All Levels'].includes(out.level)) out.level = '';
+  if (
+    !['', 'Beginner', 'Intermediate', 'Advanced', 'All Levels'].includes(
+      out.level,
+    )
+  )
+    out.level = '';
 
   // if OER: force maxPrice 0 (safe)
   if (out.isOer) out.maxPrice = 0;
@@ -286,7 +356,12 @@ export async function aiParseCourseSearch(query) {
 
   console.log(`[${reqId}] parsed`, {
     q,
-    heuristic: { heuristicGradeBand, heuristicSubject, heuristicLevel, heuristicIsOer },
+    heuristic: {
+      heuristicGradeBand,
+      heuristicSubject,
+      heuristicLevel,
+      heuristicIsOer,
+    },
     aiMs,
     out,
     totalMs: Date.now() - started,

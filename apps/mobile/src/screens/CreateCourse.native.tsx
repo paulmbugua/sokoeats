@@ -1,19 +1,7 @@
 // apps/mobile/src/screens/CreateCourse.native.tsx
 /* eslint-disable prettier/prettier */
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-  useCallback,
-} from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  Pressable,
-  Alert,
-} from 'react-native';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { View, Text, TextInput, ScrollView, Pressable, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -185,9 +173,7 @@ const CreateCourseScreen: React.FC = () => {
     const weeks = parseWeeks(formData.duration ?? '');
     setFormData((prev) => {
       const current = prev.syllabus ?? [];
-      const trimmed = current
-        .slice(0, weeks)
-        .map((s, i) => ({ ...s, week: i + 1 }));
+      const trimmed = current.slice(0, weeks).map((s, i) => ({ ...s, week: i + 1 }));
       const next: SyllabusItem[] = [...trimmed];
       for (let i = trimmed.length; i < weeks; i++) {
         next.push({ week: i + 1, topic: '', assignment: '' });
@@ -211,16 +197,10 @@ const CreateCourseScreen: React.FC = () => {
 
   /* ───────── Syllabus change ───────── */
 
-  const handleSyllabusChange = (
-    index: number,
-    field: EditableSyllabusField,
-    value: string,
-  ) => {
+  const handleSyllabusChange = (index: number, field: EditableSyllabusField, value: string) => {
     setFormData((prev) => {
       const base = prev.syllabus ?? [];
-      const next = base.map((w, i) =>
-        i === index ? { ...w, [field]: value } : w,
-      );
+      const next = base.map((w, i) => (i === index ? { ...w, [field]: value } : w));
       return { ...prev, syllabus: next };
     });
   };
@@ -244,7 +224,7 @@ const CreateCourseScreen: React.FC = () => {
 
   const handleVideoFileUpload = async (
     index: number,
-    asset: DocumentPicker.DocumentPickerAsset | null,
+    asset: DocumentPicker.DocumentPickerAsset | null
   ) => {
     if (!asset) return;
     if (!guardUpload()) return;
@@ -258,20 +238,13 @@ const CreateCourseScreen: React.FC = () => {
         type: asset.mimeType || 'video/mp4',
       };
 
-      const { url } = await uploadClassVaultAsset(
-        backendUrl!,
-        token!,
-        file,
-        'video',
-        onProgress,
-        { folder: 'courses' },
-      );
+      const { url } = await uploadClassVaultAsset(backendUrl!, token!, file, 'video', onProgress, {
+        folder: 'courses',
+      });
 
       setFormData((prev) => {
         const base = prev.syllabus ?? [];
-        const next = base.map((w, i) =>
-          i === index ? { ...w, videoUrl: url } : w,
-        );
+        const next = base.map((w, i) => (i === index ? { ...w, videoUrl: url } : w));
         return { ...prev, syllabus: next };
       });
 
@@ -285,7 +258,7 @@ const CreateCourseScreen: React.FC = () => {
 
   const handleNotesPdfUpload = async (
     index: number,
-    asset: DocumentPicker.DocumentPickerAsset | null,
+    asset: DocumentPicker.DocumentPickerAsset | null
   ) => {
     if (!asset) return;
     if (!guardUpload()) return;
@@ -299,20 +272,13 @@ const CreateCourseScreen: React.FC = () => {
         type: asset.mimeType || 'application/pdf',
       };
 
-      const { url } = await uploadClassVaultAsset(
-        backendUrl!,
-        token!,
-        file,
-        'pdf',
-        onProgress,
-        { folder: 'courses' },
-      );
+      const { url } = await uploadClassVaultAsset(backendUrl!, token!, file, 'pdf', onProgress, {
+        folder: 'courses',
+      });
 
       setFormData((prev) => {
         const base = prev.syllabus ?? [];
-        const next = base.map((w, i) =>
-          i === index ? { ...w, notesUrl: url } : w,
-        );
+        const next = base.map((w, i) => (i === index ? { ...w, notesUrl: url } : w));
         return { ...prev, syllabus: next };
       });
 
@@ -325,11 +291,8 @@ const CreateCourseScreen: React.FC = () => {
   };
 
   const fileUploading = useMemo(
-    () =>
-      Object.values(uploadPct).some(
-        (p) => (p ?? 0) > 0 && (p ?? 0) < 100,
-      ),
-    [uploadPct],
+    () => Object.values(uploadPct).some((p) => (p ?? 0) > 0 && (p ?? 0) < 100),
+    [uploadPct]
   );
 
   const overallUploadPct = useMemo(() => {
@@ -352,14 +315,10 @@ const CreateCourseScreen: React.FC = () => {
     if (!freeCourse) {
       const trimmed = priceInput.trim();
       const parsed = trimmed === '' ? NaN : Number(trimmed);
-      if (
-        !Number.isFinite(parsed) ||
-        parsed < 0 ||
-        !Number.isInteger(parsed)
-      ) {
+      if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
         Alert.alert(
           'Invalid price',
-          'Please enter a valid non-negative whole number of tokens, or mark the course as Free.',
+          'Please enter a valid non-negative whole number of tokens, or mark the course as Free.'
         );
         return;
       }
@@ -372,7 +331,7 @@ const CreateCourseScreen: React.FC = () => {
           (s.topic?.trim().length ?? 0) > 0 ||
           (s.assignment?.trim().length ?? 0) > 0 ||
           (s.videoUrl?.trim().length ?? 0) > 0 ||
-          (s.notesUrl?.trim().length ?? 0) > 0,
+          (s.notesUrl?.trim().length ?? 0) > 0
       )
       .map((s, i) => ({ ...s, week: i + 1 }));
 
@@ -423,20 +382,14 @@ const CreateCourseScreen: React.FC = () => {
 
   const canNext = useMemo(() => {
     if (step === 0) {
-      return (
-        formData.title.trim().length > 3 &&
-        !!formData.description?.trim()
-      );
+      return formData.title.trim().length > 3 && !!formData.description?.trim();
     }
     if (step === 1) {
       const weeksOk = parseWeeks(formData.duration ?? '') >= 1;
       if (freeCourse) return weeksOk;
       const trimmed = priceInput.trim();
       const parsed = trimmed === '' ? NaN : Number(trimmed);
-      const priceOk =
-        Number.isFinite(parsed) &&
-        parsed >= 0 &&
-        Number.isInteger(parsed);
+      const priceOk = Number.isFinite(parsed) && parsed >= 0 && Number.isInteger(parsed);
       return weeksOk && priceOk;
     }
     if (step === 2) {
@@ -445,22 +398,20 @@ const CreateCourseScreen: React.FC = () => {
           (w.topic?.trim().length ?? 0) > 0 ||
           (w.assignment?.trim().length ?? 0) > 0 ||
           (w.videoUrl?.trim().length ?? 0) > 0 ||
-          (w.notesUrl?.trim().length ?? 0) > 0,
+          (w.notesUrl?.trim().length ?? 0) > 0
       );
     }
     return true;
   }, [step, formData, priceInput, freeCourse]);
 
-  const tokensForDisplay =
-    freeCourse
-      ? 0
-      : priceInput.trim() !== '' &&
-        Number.isFinite(Number(priceInput))
+  const tokensForDisplay = freeCourse
+    ? 0
+    : priceInput.trim() !== '' && Number.isFinite(Number(priceInput))
       ? Number(priceInput)
       : formData.price;
 
   const priceFmtTokens = `${Number(
-    tokensForDisplay || 0,
+    tokensForDisplay || 0
   )} Tokens (≈ $${Number(tokensForDisplay || 0)} USD)`;
 
   const progressPct = ((step + 1) / steps.length) * 100;
@@ -495,17 +446,14 @@ const CreateCourseScreen: React.FC = () => {
             (s.topic?.trim().length ?? 0) > 0 ||
             (s.assignment?.trim().length ?? 0) > 0 ||
             (s.videoUrl?.trim().length ?? 0) > 0 ||
-            (s.notesUrl?.trim().length ?? 0) > 0,
+            (s.notesUrl?.trim().length ?? 0) > 0
         )
         .map((s, i) => ({ ...s, week: i + 1 })),
-    [formData.syllabus],
+    [formData.syllabus]
   );
 
   return (
-    <SafeAreaView
-      style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
-      edges={['top', 'bottom']}
-    >
+    <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
       {/* Soft background blobs (like FindTutor) */}
       <View style={tw`absolute inset-0`}>
         <View
@@ -522,8 +470,7 @@ const CreateCourseScreen: React.FC = () => {
           tw`pb-6`,
           {
             paddingTop: topPad + 4,
-            paddingBottom:
-              bottomPad + FOOTER_OFFSET + ACTION_BAR_HEIGHT + 12,
+            paddingBottom: bottomPad + FOOTER_OFFSET + ACTION_BAR_HEIGHT + 12,
             paddingHorizontal: 16,
           },
         ]}
@@ -531,31 +478,21 @@ const CreateCourseScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View
-          style={tw`flex-row items-center justify-between mb-3 mt-2`}
-        >
+        <View style={tw`flex-row items-center justify-between mb-3 mt-2`}>
           <View style={tw`flex-row items-center flex-1 pr-2`}>
-            <View
-              style={tw`h-9 w-9 rounded-xl bg-blue-600 items-center justify-center shadow-sm`}
-            >
+            <View style={tw`h-9 w-9 rounded-xl bg-blue-600 items-center justify-center shadow-sm`}>
               <Text style={tw`text-white text-lg`}>📘</Text>
             </View>
             <View style={tw`ml-3 flex-1`}>
-              <Text
-                style={tw`text-[18px] font-extrabold text-slate-900 dark:text-white`}
-              >
+              <Text style={tw`text-[18px] font-extrabold text-slate-900 dark:text-white`}>
                 Create a New Course
               </Text>
               <View style={tw`flex-row items-center mt-1`}>
-                <Text
-                  style={tw`text-[11px] text-slate-500 dark:text-slate-400`}
-                >
+                <Text style={tw`text-[11px] text-slate-500 dark:text-slate-400`}>
                   Autosaves locally •{' '}
                 </Text>
                 <Pressable onPress={clearDraft}>
-                  <Text
-                    style={tw`text-[11px] underline text-slate-700 dark:text-slate-200`}
-                  >
+                  <Text style={tw`text-[11px] underline text-slate-700 dark:text-slate-200`}>
                     Clear draft
                   </Text>
                 </Pressable>
@@ -576,25 +513,21 @@ const CreateCourseScreen: React.FC = () => {
                       done
                         ? 'bg-emerald-600'
                         : active
-                        ? 'bg-blue-600'
-                        : 'bg-slate-200 dark:bg-slate-700',
+                          ? 'bg-blue-600'
+                          : 'bg-slate-200 dark:bg-slate-700'
                     )}
                   >
                     <Text
                       style={tw.style(
                         'text-xs font-semibold',
-                        done || active
-                          ? 'text-white'
-                          : 'text-slate-700 dark:text-slate-300',
+                        done || active ? 'text-white' : 'text-slate-700 dark:text-slate-300'
                       )}
                     >
                       {idx + 1}
                     </Text>
                   </View>
                   {idx < steps.length - 1 && (
-                    <View
-                      style={tw`mx-1 h-[2px] w-6 rounded bg-slate-200 dark:bg-slate-700`}
-                    />
+                    <View style={tw`mx-1 h-[2px] w-6 rounded bg-slate-200 dark:bg-slate-700`} />
                   )}
                 </View>
               );
@@ -603,21 +536,12 @@ const CreateCourseScreen: React.FC = () => {
         </View>
 
         {/* Progress bar */}
-        <View
-          style={tw`h-1 rounded-full bg-slate-200/70 dark:bg-white/10 mb-4`}
-        >
-          <View
-            style={[
-              tw`h-full rounded-full bg-blue-600`,
-              { width: `${progressPct}%` },
-            ]}
-          />
+        <View style={tw`h-1 rounded-full bg-slate-200/70 dark:bg-white/10 mb-4`}>
+          <View style={[tw`h-full rounded-full bg-blue-600`, { width: `${progressPct}%` }]} />
         </View>
 
         {/* Step label for small view */}
-        <Text
-          style={tw`text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2`}
-        >
+        <Text style={tw`text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2`}>
           Step {step + 1} of {steps.length} · {steps[step]}
         </Text>
 
@@ -631,9 +555,7 @@ const CreateCourseScreen: React.FC = () => {
               <View style={tw`gap-y-4`}>
                 {/* Title */}
                 <View>
-                  <Text
-                    style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}
-                  >
+                  <Text style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}>
                     Course Title
                   </Text>
                   <TextInput
@@ -647,9 +569,7 @@ const CreateCourseScreen: React.FC = () => {
 
                 {/* Description */}
                 <View>
-                  <Text
-                    style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}
-                  >
+                  <Text style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}>
                     Description
                   </Text>
                   <TextInput
@@ -666,9 +586,7 @@ const CreateCourseScreen: React.FC = () => {
 
                 {/* Level */}
                 <View>
-                  <Text
-                    style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}
-                  >
+                  <Text style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}>
                     Level
                   </Text>
                   <View
@@ -691,9 +609,7 @@ const CreateCourseScreen: React.FC = () => {
               <View style={tw`gap-y-4`}>
                 {/* Duration */}
                 <View>
-                  <Text
-                    style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}
-                  >
+                  <Text style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}>
                     Duration
                   </Text>
                   <TextInput
@@ -703,11 +619,8 @@ const CreateCourseScreen: React.FC = () => {
                     placeholderTextColor="#64748b"
                     style={tw`w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-3 text-slate-900 dark:text-white`}
                   />
-                  <Text
-                    style={tw`mt-1 text-[11px] text-slate-500 dark:text-slate-400`}
-                  >
-                    Tip: type "8 weeks", "8weeks", or "8w". We’ll size the
-                    syllabus automatically.
+                  <Text style={tw`mt-1 text-[11px] text-slate-500 dark:text-slate-400`}>
+                    Tip: type "8 weeks", "8weeks", or "8w". We’ll size the syllabus automatically.
                   </Text>
                 </View>
 
@@ -723,23 +636,15 @@ const CreateCourseScreen: React.FC = () => {
                   <View
                     style={tw`mt-0.5 h-4 w-4 rounded border border-slate-400 dark:border-slate-500 items-center justify-center bg-white dark:bg-[#0f1821]`}
                   >
-                    {freeCourse && (
-                      <View
-                        style={tw`h-3 w-3 rounded bg-emerald-500`}
-                      />
-                    )}
+                    {freeCourse && <View style={tw`h-3 w-3 rounded bg-emerald-500`} />}
                   </View>
                   <View style={tw`flex-1`}>
-                    <Text
-                      style={tw`text-sm font-medium text-slate-800 dark:text-slate-100`}
-                    >
+                    <Text style={tw`text-sm font-medium text-slate-800 dark:text-slate-100`}>
                       This is a free course
                     </Text>
-                    <Text
-                      style={tw`text-xs text-slate-600 dark:text-slate-300 mt-0.5`}
-                    >
-                      Learners will enroll at no cost. The price field will
-                      be disabled and saved as 0 Tokens.
+                    <Text style={tw`text-xs text-slate-600 dark:text-slate-300 mt-0.5`}>
+                      Learners will enroll at no cost. The price field will be disabled and saved as
+                      0 Tokens.
                     </Text>
                   </View>
                 </Pressable>
@@ -747,15 +652,11 @@ const CreateCourseScreen: React.FC = () => {
                 {/* Price */}
                 <View>
                   <View style={tw`flex-row items-baseline mb-1`}>
-                    <Text
-                      style={tw`text-sm font-medium text-slate-700 dark:text-slate-200`}
-                    >
+                    <Text style={tw`text-sm font-medium text-slate-700 dark:text-slate-200`}>
                       Price (Tokens)
                     </Text>
                     {freeCourse && (
-                      <Text
-                        style={tw`ml-2 text-xs text-slate-500 dark:text-slate-400`}
-                      >
+                      <Text style={tw`ml-2 text-xs text-slate-500 dark:text-slate-400`}>
                         (disabled for Free)
                       </Text>
                     )}
@@ -765,37 +666,26 @@ const CreateCourseScreen: React.FC = () => {
                     onChangeText={setPriceInput}
                     editable={!freeCourse}
                     keyboardType="number-pad"
-                    placeholder={
-                      freeCourse
-                        ? 'Free course selected'
-                        : 'e.g., 5 (Tokens)'
-                    }
+                    placeholder={freeCourse ? 'Free course selected' : 'e.g., 5 (Tokens)'}
                     placeholderTextColor="#64748b"
                     style={tw.style(
                       'w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-3 text-slate-900 dark:text-white',
-                      freeCourse ? 'opacity-60' : '',
+                      freeCourse ? 'opacity-60' : ''
                     )}
                   />
-                  <Text
-                    style={tw`mt-1 text-[11px] text-slate-500 dark:text-slate-400`}
-                  >
-                    1 Token = 1 USD (charged in tokens, shown here as whole
-                    numbers).
+                  <Text style={tw`mt-1 text-[11px] text-slate-500 dark:text-slate-400`}>
+                    1 Token = 1 USD (charged in tokens, shown here as whole numbers).
                   </Text>
                 </View>
 
                 {/* Prerequisites */}
                 <View>
-                  <Text
-                    style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}
-                  >
+                  <Text style={tw`text-sm font-medium text-slate-700 dark:text-slate-200 mb-1`}>
                     Prerequisites (optional)
                   </Text>
                   <TextInput
                     value={formData.prerequisites ?? ''}
-                    onChangeText={(t) =>
-                      updateField('prerequisites', t)
-                    }
+                    onChangeText={(t) => updateField('prerequisites', t)}
                     placeholder="e.g., Basic algebra, comfort with functions"
                     placeholderTextColor="#64748b"
                     style={tw`w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-3 text-slate-900 dark:text-white`}
@@ -813,23 +703,18 @@ const CreateCourseScreen: React.FC = () => {
                 <View
                   style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
                 >
-                  <Text
-                    style={tw`text-sm text-slate-600 dark:text-slate-300`}
-                  >
+                  <Text style={tw`text-sm text-slate-600 dark:text-slate-300`}>
                     Syllabus for{' '}
-                    <Text style={tw`font-semibold`}>
-                      {parseWeeks(formData.duration ?? '')}
-                    </Text>{' '}
+                    <Text style={tw`font-semibold`}>{parseWeeks(formData.duration ?? '')}</Text>{' '}
                     week
-                    {parseWeeks(formData.duration ?? '') === 1 ? '' : 's'}{' '}
-                    (auto-sized from duration)
+                    {parseWeeks(formData.duration ?? '') === 1 ? '' : 's'} (auto-sized from
+                    duration)
                   </Text>
                 </View>
 
                 <View style={tw`gap-y-3`}>
                   {(formData.syllabus ?? []).map((item, index) => {
-                    const isOpen =
-                      openWeeks[index] ?? index < 2; // default open first 2
+                    const isOpen = openWeeks[index] ?? index < 2; // default open first 2
                     return (
                       <View
                         key={index}
@@ -853,16 +738,10 @@ const CreateCourseScreen: React.FC = () => {
                             <Text
                               style={tw`text-sm font-semibold text-slate-800 dark:text-slate-100`}
                             >
-                              {item.topic?.trim()
-                                ? item.topic
-                                : `Week ${item.week}`}
+                              {item.topic?.trim() ? item.topic : `Week ${item.week}`}
                             </Text>
                           </View>
-                          <Text
-                            style={tw`text-base text-slate-500`}
-                          >
-                            {isOpen ? '⌃' : '⌄'}
-                          </Text>
+                          <Text style={tw`text-base text-slate-500`}>{isOpen ? '⌃' : '⌄'}</Text>
                         </Pressable>
 
                         {/* Body */}
@@ -870,13 +749,7 @@ const CreateCourseScreen: React.FC = () => {
                           <View style={tw`px-4 pb-4 gap-y-3`}>
                             <TextInput
                               value={item.topic ?? ''}
-                              onChangeText={(t) =>
-                                handleSyllabusChange(
-                                  index,
-                                  'topic',
-                                  t,
-                                )
-                              }
+                              onChangeText={(t) => handleSyllabusChange(index, 'topic', t)}
                               placeholder="Topic (e.g., Limits & Continuity)"
                               placeholderTextColor="#64748b"
                               style={tw`w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-2 text-slate-900 dark:text-white`}
@@ -884,13 +757,7 @@ const CreateCourseScreen: React.FC = () => {
 
                             <TextInput
                               value={item.assignment ?? ''}
-                              onChangeText={(t) =>
-                                handleSyllabusChange(
-                                  index,
-                                  'assignment',
-                                  t,
-                                )
-                              }
+                              onChangeText={(t) => handleSyllabusChange(index, 'assignment', t)}
                               placeholder="Notes/Assignment"
                               placeholderTextColor="#64748b"
                               style={tw`w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-3 text-slate-900 dark:text-white`}
@@ -899,31 +766,19 @@ const CreateCourseScreen: React.FC = () => {
                               numberOfLines={4}
                             />
 
-                            <View
-                              style={tw`flex-col sm:flex-row gap-3`}
-                            >
+                            <View style={tw`flex-col sm:flex-row gap-3`}>
                               {/* Video URL + upload */}
                               <View style={tw`flex-1 gap-y-2`}>
                                 <TextInput
                                   value={item.videoUrl ?? ''}
-                                  onChangeText={(t) =>
-                                    handleSyllabusChange(
-                                      index,
-                                      'videoUrl',
-                                      t,
-                                    )
-                                  }
+                                  onChangeText={(t) => handleSyllabusChange(index, 'videoUrl', t)}
                                   placeholder="Optional: Video URL (YouTube/Vimeo/MP4)"
                                   placeholderTextColor="#64748b"
                                   style={tw`w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-2 text-slate-900 dark:text-white`}
                                 />
                                 <View>
-                                  <View
-                                    style={tw`flex-row items-center justify-between`}
-                                  >
-                                    <Text
-                                      style={tw`text-xs text-slate-600 dark:text-slate-300`}
-                                    >
+                                  <View style={tw`flex-row items-center justify-between`}>
+                                    <Text style={tw`text-xs text-slate-600 dark:text-slate-300`}>
                                       Or upload video file
                                     </Text>
                                     {(uploadPct[`n-${index}`] ?? 0) > 0 && (
@@ -935,26 +790,16 @@ const CreateCourseScreen: React.FC = () => {
                                   <Pressable
                                     onPress={async () => {
                                       try {
-                                        const res =
-                                          await DocumentPicker.getDocumentAsync(
-                                            {
-                                              type: 'video/*',
-                                              multiple: false,
-                                              copyToCacheDirectory: true,
-                                            },
-                                          );
+                                        const res = await DocumentPicker.getDocumentAsync({
+                                          type: 'video/*',
+                                          multiple: false,
+                                          copyToCacheDirectory: true,
+                                        });
                                         if (res.canceled) return;
-                                        const asset =
-                                          res.assets?.[0] ?? null;
-                                        await handleVideoFileUpload(
-                                          index,
-                                          asset,
-                                        );
+                                        const asset = res.assets?.[0] ?? null;
+                                        await handleVideoFileUpload(index, asset);
                                       } catch (e) {
-                                        console.error(
-                                          '[CreateCourse.native] pick video error',
-                                          e,
-                                        );
+                                        console.error('[CreateCourse.native] pick video error', e);
                                       }
                                     }}
                                     style={tw`mt-1 w-full rounded-lg border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-[#132133] px-3 py-2 items-center justify-center`}
@@ -965,16 +810,15 @@ const CreateCourseScreen: React.FC = () => {
                                       Choose video file
                                     </Text>
                                   </Pressable>
-                                  {item.videoUrl &&
-                                    item.videoUrl.length > 0 && (
-                                      <Text
-                                        numberOfLines={2}
-                                        ellipsizeMode="tail"
-                                        style={tw`mt-1 text-xs text-blue-600`}
-                                      >
-                                        {item.videoUrl}
-                                      </Text>
-                                    )}
+                                  {item.videoUrl && item.videoUrl.length > 0 && (
+                                    <Text
+                                      numberOfLines={2}
+                                      ellipsizeMode="tail"
+                                      style={tw`mt-1 text-xs text-blue-600`}
+                                    >
+                                      {item.videoUrl}
+                                    </Text>
+                                  )}
                                 </View>
                               </View>
 
@@ -982,24 +826,14 @@ const CreateCourseScreen: React.FC = () => {
                               <View style={tw`flex-1 gap-y-2`}>
                                 <TextInput
                                   value={item.notesUrl ?? ''}
-                                  onChangeText={(t) =>
-                                    handleSyllabusChange(
-                                      index,
-                                      'notesUrl',
-                                      t,
-                                    )
-                                  }
+                                  onChangeText={(t) => handleSyllabusChange(index, 'notesUrl', t)}
                                   placeholder="Optional: Notes URL (PDF/Doc)"
                                   placeholderTextColor="#64748b"
                                   style={tw`w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-2 text-slate-900 dark:text-white`}
                                 />
                                 <View>
-                                  <View
-                                    style={tw`flex-row items-center justify-between`}
-                                  >
-                                    <Text
-                                      style={tw`text-xs text-slate-600 dark:text-slate-300`}
-                                    >
+                                  <View style={tw`flex-row items-center justify-between`}>
+                                    <Text style={tw`text-xs text-slate-600 dark:text-slate-300`}>
                                       Or upload notes (PDF)
                                     </Text>
                                     {(uploadPct[`v-${index}`] ?? 0) > 0 && (
@@ -1011,26 +845,16 @@ const CreateCourseScreen: React.FC = () => {
                                   <Pressable
                                     onPress={async () => {
                                       try {
-                                        const res =
-                                          await DocumentPicker.getDocumentAsync(
-                                            {
-                                              type: 'application/pdf',
-                                              multiple: false,
-                                              copyToCacheDirectory: true,
-                                            },
-                                          );
+                                        const res = await DocumentPicker.getDocumentAsync({
+                                          type: 'application/pdf',
+                                          multiple: false,
+                                          copyToCacheDirectory: true,
+                                        });
                                         if (res.canceled) return;
-                                        const asset =
-                                          res.assets?.[0] ?? null;
-                                        await handleNotesPdfUpload(
-                                          index,
-                                          asset,
-                                        );
+                                        const asset = res.assets?.[0] ?? null;
+                                        await handleNotesPdfUpload(index, asset);
                                       } catch (e) {
-                                        console.error(
-                                          '[CreateCourse.native] pick pdf error',
-                                          e,
-                                        );
+                                        console.error('[CreateCourse.native] pick pdf error', e);
                                       }
                                     }}
                                     style={tw`mt-1 w-full rounded-lg border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-[#132133] px-3 py-2 items-center justify-center`}
@@ -1041,16 +865,15 @@ const CreateCourseScreen: React.FC = () => {
                                       Choose PDF file
                                     </Text>
                                   </Pressable>
-                                  {item.notesUrl &&
-                                    item.notesUrl.length > 0 && (
-                                      <Text
-                                        numberOfLines={2}
-                                        ellipsizeMode="tail"
-                                        style={tw`mt-1 text-xs text-blue-600`}
-                                      >
-                                        {item.notesUrl}
-                                      </Text>
-                                    )}
+                                  {item.notesUrl && item.notesUrl.length > 0 && (
+                                    <Text
+                                      numberOfLines={2}
+                                      ellipsizeMode="tail"
+                                      style={tw`mt-1 text-xs text-blue-600`}
+                                    >
+                                      {item.notesUrl}
+                                    </Text>
+                                  )}
                                 </View>
                               </View>
                             </View>
@@ -1066,21 +889,15 @@ const CreateCourseScreen: React.FC = () => {
             {/* Step 3: Review */}
             {step === 3 && (
               <View style={tw`gap-y-4`}>
-                <View
-                  style={tw`flex-row flex-wrap gap-3`}
-                >
+                <View style={tw`flex-row flex-wrap gap-3`}>
                   {/* Title */}
                   <View
                     style={tw`flex-1 min-w-[48%] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
                   >
-                    <Text
-                      style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}
-                    >
+                    <Text style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}>
                       Title
                     </Text>
-                    <Text
-                      style={tw`font-semibold text-slate-900 dark:text-white`}
-                    >
+                    <Text style={tw`font-semibold text-slate-900 dark:text-white`}>
                       {formData.title || '—'}
                     </Text>
                   </View>
@@ -1089,14 +906,10 @@ const CreateCourseScreen: React.FC = () => {
                   <View
                     style={tw`flex-1 min-w-[48%] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
                   >
-                    <Text
-                      style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}
-                    >
+                    <Text style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}>
                       Level
                     </Text>
-                    <Text
-                      style={tw`font-semibold text-slate-900 dark:text-white`}
-                    >
+                    <Text style={tw`font-semibold text-slate-900 dark:text-white`}>
                       {formData.level}
                     </Text>
                   </View>
@@ -1105,14 +918,10 @@ const CreateCourseScreen: React.FC = () => {
                   <View
                     style={tw`flex-1 min-w-[48%] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
                   >
-                    <Text
-                      style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}
-                    >
+                    <Text style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}>
                       Duration
                     </Text>
-                    <Text
-                      style={tw`font-semibold text-slate-900 dark:text-white`}
-                    >
+                    <Text style={tw`font-semibold text-slate-900 dark:text-white`}>
                       {formData.duration || '—'}
                     </Text>
                   </View>
@@ -1121,32 +930,24 @@ const CreateCourseScreen: React.FC = () => {
                   <View
                     style={tw`flex-1 min-w-[48%] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
                   >
-                    <Text
-                      style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}
-                    >
+                    <Text style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}>
                       Price
                     </Text>
                     {freeCourse ? (
                       <View style={tw`flex-row items-center gap-2`}>
-                        <View
-                          style={tw`px-2 py-1 rounded-lg bg-emerald-600/10`}
-                        >
+                        <View style={tw`px-2 py-1 rounded-lg bg-emerald-600/10`}>
                           <Text
                             style={tw`text-xs font-semibold text-emerald-700 dark:text-emerald-300`}
                           >
                             Free
                           </Text>
                         </View>
-                        <Text
-                          style={tw`text-xs text-slate-500 dark:text-slate-400`}
-                        >
+                        <Text style={tw`text-xs text-slate-500 dark:text-slate-400`}>
                           (saved as 0 Tokens)
                         </Text>
                       </View>
                     ) : (
-                      <Text
-                        style={tw`font-semibold text-slate-900 dark:text-white`}
-                      >
+                      <Text style={tw`font-semibold text-slate-900 dark:text-white`}>
                         {priceFmtTokens}
                       </Text>
                     )}
@@ -1157,14 +958,10 @@ const CreateCourseScreen: React.FC = () => {
                 <View
                   style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
                 >
-                  <Text
-                    style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}
-                  >
+                  <Text style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-1`}>
                     Prerequisites
                   </Text>
-                  <Text
-                    style={tw`text-sm text-slate-900 dark:text-white`}
-                  >
+                  <Text style={tw`text-sm text-slate-900 dark:text-white`}>
                     {formData.prerequisites || '—'}
                   </Text>
                 </View>
@@ -1173,60 +970,37 @@ const CreateCourseScreen: React.FC = () => {
                 <View
                   style={tw`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-3`}
                 >
-                  <Text
-                    style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-2`}
-                  >
+                  <Text style={tw`text-[11px] text-slate-500 dark:text-slate-400 mb-2`}>
                     Syllabus ({cleanSyllabusReview.length} week
                     {cleanSyllabusReview.length === 1 ? '' : 's'})
                   </Text>
                   {cleanSyllabusReview.length === 0 ? (
-                    <Text
-                      style={tw`text-sm text-slate-700 dark:text-slate-300`}
-                    >
-                      —
-                    </Text>
+                    <Text style={tw`text-sm text-slate-700 dark:text-slate-300`}>—</Text>
                   ) : (
                     <View style={tw`pl-4`}>
                       {cleanSyllabusReview.map((w) => (
-                        <View
-                          key={w.week}
-                          style={tw`mb-2`}
-                        >
-                          <Text
-                            style={tw`font-medium text-slate-900 dark:text-white`}
-                          >
+                        <View key={w.week} style={tw`mb-2`}>
+                          <Text style={tw`font-medium text-slate-900 dark:text-white`}>
                             {w.week}. {w.topic || 'Untitled topic'}
                           </Text>
 
                           {w.assignment ? (
-                            <Text
-                              style={tw`text-xs text-slate-700 dark:text-slate-300 mt-1`}
-                            >
-                              <Text style={tw`font-semibold`}>
-                                Assignment:{' '}
-                              </Text>
+                            <Text style={tw`text-xs text-slate-700 dark:text-slate-300 mt-1`}>
+                              <Text style={tw`font-semibold`}>Assignment: </Text>
                               {w.assignment}
                             </Text>
                           ) : null}
 
                           {w.videoUrl ? (
-                            <Text
-                              style={tw`text-xs text-slate-700 dark:text-slate-300 mt-1`}
-                            >
-                              <Text style={tw`font-semibold`}>
-                                Video:{' '}
-                              </Text>
+                            <Text style={tw`text-xs text-slate-700 dark:text-slate-300 mt-1`}>
+                              <Text style={tw`font-semibold`}>Video: </Text>
                               {w.videoUrl}
                             </Text>
                           ) : null}
 
                           {w.notesUrl ? (
-                            <Text
-                              style={tw`text-xs text-slate-700 dark:text-slate-300 mt-1`}
-                            >
-                              <Text style={tw`font-semibold`}>
-                                Notes:{' '}
-                              </Text>
+                            <Text style={tw`text-xs text-slate-700 dark:text-slate-300 mt-1`}>
+                              <Text style={tw`font-semibold`}>Notes: </Text>
                               {w.notesUrl}
                             </Text>
                           ) : null}
@@ -1244,31 +1018,18 @@ const CreateCourseScreen: React.FC = () => {
             <View
               style={tw`mx-4 mb-4 rounded-xl border border-yellow-200 dark:border-yellow-900/40 bg-yellow-50 dark:bg-[#1b2a3a] p-3`}
             >
-              <Text
-                style={tw`text-sm text-yellow-900 dark:text-yellow-100 mb-2`}
-              >
+              <Text style={tw`text-sm text-yellow-900 dark:text-yellow-100 mb-2`}>
                 Uploading files… {overallUploadPct}%
               </Text>
-              <View
-                style={tw`w-full h-2 rounded bg-slate-200 dark:bg-slate-700 overflow-hidden`}
-              >
-                <View
-                  style={[
-                    tw`h-full bg-blue-600`,
-                    { width: `${overallUploadPct}%` },
-                  ]}
-                />
+              <View style={tw`w-full h-2 rounded bg-slate-200 dark:bg-slate-700 overflow-hidden`}>
+                <View style={[tw`h-full bg-blue-600`, { width: `${overallUploadPct}%` }]} />
               </View>
             </View>
           )}
         </View>
 
         {error ? (
-          <Text
-            style={tw`mt-3 text-sm text-red-600 dark:text-red-400`}
-          >
-            {String(error)}
-          </Text>
+          <Text style={tw`mt-3 text-sm text-red-600 dark:text-red-400`}>{String(error)}</Text>
         ) : null}
       </ScrollView>
 
@@ -1287,9 +1048,7 @@ const CreateCourseScreen: React.FC = () => {
         ]}
       >
         <View style={tw`flex-row items-center justify-between`}>
-          <Text
-            style={tw`text-[11px] text-slate-500 dark:text-slate-400`}
-          >
+          <Text style={tw`text-[11px] text-slate-500 dark:text-slate-400`}>
             Step {step + 1} of {steps.length} • {steps[step]}
           </Text>
           <View style={tw`flex-row items-center gap-3`}>
@@ -1298,23 +1057,17 @@ const CreateCourseScreen: React.FC = () => {
                 onPress={() => setStep(step - 1)}
                 style={tw`flex-row items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/0 dark:bg-white/0 px-4 py-2`}
               >
-                <Text style={tw`text-sm text-slate-700 dark:text-slate-200`}>
-                  ← Back
-                </Text>
+                <Text style={tw`text-sm text-slate-700 dark:text-slate-200`}>← Back</Text>
               </Pressable>
             )}
 
             {step < steps.length - 1 ? (
               <Pressable
-                onPress={() =>
-                  canNext && !fileUploading && setStep(step + 1)
-                }
+                onPress={() => canNext && !fileUploading && setStep(step + 1)}
                 disabled={!canNext || fileUploading}
                 style={tw.style(
                   'flex-row items-center gap-1 rounded-xl px-4 py-2 shadow-sm',
-                  canNext && !fileUploading
-                    ? 'bg-blue-600'
-                    : 'bg-slate-400',
+                  canNext && !fileUploading ? 'bg-blue-600' : 'bg-slate-400'
                 )}
               >
                 <Text style={tw`text-sm text-white`}>
@@ -1327,17 +1080,11 @@ const CreateCourseScreen: React.FC = () => {
                 disabled={loading || fileUploading || !formData.tutorId}
                 style={tw.style(
                   'flex-row items-center gap-1 rounded-xl px-4 py-2 shadow-sm',
-                  loading || fileUploading || !formData.tutorId
-                    ? 'bg-slate-400'
-                    : 'bg-emerald-600',
+                  loading || fileUploading || !formData.tutorId ? 'bg-slate-400' : 'bg-emerald-600'
                 )}
               >
                 <Text style={tw`text-sm text-white`}>
-                  {fileUploading
-                    ? 'Uploading…'
-                    : loading
-                    ? 'Saving…'
-                    : 'Create Course'}
+                  {fileUploading ? 'Uploading…' : loading ? 'Saving…' : 'Create Course'}
                 </Text>
               </Pressable>
             )}

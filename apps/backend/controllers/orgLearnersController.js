@@ -28,20 +28,16 @@ async function uploadLearnerPhotoToCloudinary(file, resourceType = 'image') {
   if (file.buffer) {
     return new Promise((resolve, reject) => {
       const baseName =
-        file.originalname?.replace(/\..+$/, '') ||
-        `learner_${Date.now()}`;
+        file.originalname?.replace(/\..+$/, '') || `learner_${Date.now()}`;
       const opts = {
         resource_type: resourceType,
         folder: 'org_learner_photos',
         public_id: `auto/${Date.now()}_${baseName}`,
       };
-      const stream = cloudinary.uploader.upload_stream(
-        opts,
-        (err, result) => {
-          if (err) return reject(err);
-          resolve({ url: result.secure_url, public_id: result.public_id });
-        },
-      );
+      const stream = cloudinary.uploader.upload_stream(opts, (err, result) => {
+        if (err) return reject(err);
+        resolve({ url: result.secure_url, public_id: result.public_id });
+      });
       stream.end(file.buffer);
     });
   }
@@ -86,8 +82,11 @@ async function resolveUserPasswordColumn(client) {
   }
 
   USER_PASSWORD_COLUMN = res.rows[0].column_name;
-  // eslint-disable-next-line no-console
-  console.log('[orgLearners] using users password column:', USER_PASSWORD_COLUMN);
+
+  console.log(
+    '[orgLearners] using users password column:',
+    USER_PASSWORD_COLUMN,
+  );
   return USER_PASSWORD_COLUMN;
 }
 
@@ -111,10 +110,9 @@ async function resolveOrgMembersTable(client) {
   ];
 
   for (const name of candidates) {
-    const reg = await client.query(
-      'select to_regclass($1) as reg',
-      [`public.${name}`],
-    );
+    const reg = await client.query('select to_regclass($1) as reg', [
+      `public.${name}`,
+    ]);
     if (reg.rows[0] && reg.rows[0].reg) {
       // Table exists
       ORG_MEMBERS_TABLE = name;
@@ -132,7 +130,6 @@ async function resolveOrgMembersTable(client) {
       );
       ORG_MEMBERS_HAS_ROLE = !!colRes.rows.length;
 
-      // eslint-disable-next-line no-console
       console.log(
         '[orgLearners] using membership table:',
         ORG_MEMBERS_TABLE,
@@ -145,8 +142,10 @@ async function resolveOrgMembersTable(client) {
   }
 
   // If we reach here, no known membership table was found
-  // eslint-disable-next-line no-console
-  console.warn('[orgLearners] no org membership table found; skipping membership attach');
+
+  console.warn(
+    '[orgLearners] no org membership table found; skipping membership attach',
+  );
   ORG_MEMBERS_TABLE = null;
   ORG_MEMBERS_HAS_ROLE = false;
   return { table: null, hasRole: false };
@@ -190,21 +189,20 @@ async function upsertOrgLearner(client, orgId, row) {
   }
 
   if (!user) {
-  tempPassword = generateTempPassword();
-  const passwordHash = await bcrypt.hash(tempPassword, 10);
-  const passwordCol = await resolveUserPasswordColumn(client);
+    tempPassword = generateTempPassword();
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    const passwordCol = await resolveUserPasswordColumn(client);
 
-  const insertUser = await client.query(
-    `
+    const insertUser = await client.query(
+      `
       insert into users (name, email, role, ${passwordCol}, must_change_password)
       values ($1, $2, 'student', $3, true)
       returning id, name, email, role
     `,
-    [name, normEmail, passwordHash],
-  );
-  user = insertUser.rows[0];
-}
-
+      [name, normEmail, passwordHash],
+    );
+    user = insertUser.rows[0];
+  }
 
   // 2) Attach to org as learner in membership table (if we find one)
   try {
@@ -226,7 +224,7 @@ async function upsertOrgLearner(client, orgId, row) {
     }
   } catch (err) {
     // Membership attach failure should NOT block learner creation
-    // eslint-disable-next-line no-console
+
     console.warn(
       '[orgLearners] membership attach failed but continuing:',
       err?.message || err,
@@ -234,7 +232,7 @@ async function upsertOrgLearner(client, orgId, row) {
   }
 
   // 3) Upsert org_learner_profiles (admission_code, class_label, guardian_email, + extras)
-    await client.query(
+  await client.query(
     `
       insert into org_learner_profiles (
         org_id,
@@ -271,10 +269,9 @@ async function upsertOrgLearner(client, orgId, row) {
       dormLabel || null,
       clubLabel || null,
       photoUrl || null,
-      tempPassword || null,   // 🟢 only non-null when we created a NEW user
+      tempPassword || null, // 🟢 only non-null when we created a NEW user
     ],
   );
-
 
   return {
     user,
@@ -383,7 +380,7 @@ export async function createOrgLearner(req, res) {
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    // eslint-disable-next-line no-console
+
     console.error('[createOrgLearner] error', err);
     return res.status(500).json({ message: 'Failed to create learner' });
   } finally {
@@ -419,7 +416,6 @@ export async function bulkCreateOrgLearnersCsv(req, res) {
       trim: true,
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[bulkCreateOrgLearnersCsv] parse error', err);
     return res.status(400).json({ message: 'Invalid CSV format' });
   }
@@ -448,11 +444,7 @@ export async function bulkCreateOrgLearnersCsv(req, res) {
       const row = records[i];
 
       const name =
-        row.name ||
-        row.Name ||
-        row.full_name ||
-        row.FullName ||
-        row.fullName;
+        row.name || row.Name || row.full_name || row.FullName || row.fullName;
 
       if (!name) {
         errors.push({ row: i + 1, error: 'Missing name' });
@@ -462,17 +454,10 @@ export async function bulkCreateOrgLearnersCsv(req, res) {
       const email = row.email || row.Email || null;
 
       const classLabel =
-        row.classLabel ||
-        row.class ||
-        row.class_name ||
-        row.grade ||
-        null;
+        row.classLabel || row.class || row.class_name || row.grade || null;
 
       const guardianEmail =
-        row.guardianEmail ||
-        row.guardian_email ||
-        row.parent_email ||
-        null;
+        row.guardianEmail || row.guardian_email || row.parent_email || null;
 
       const admissionCode =
         row.admissionCode ||
@@ -483,24 +468,12 @@ export async function bulkCreateOrgLearnersCsv(req, res) {
         null;
 
       const houseLabel =
-        row.houseLabel ||
-        row.house_label ||
-        row.house ||
-        row.stream ||
-        null;
+        row.houseLabel || row.house_label || row.house || row.stream || null;
 
       const dormLabel =
-        row.dormLabel ||
-        row.dorm_label ||
-        row.dorm ||
-        row.hostel ||
-        null;
+        row.dormLabel || row.dorm_label || row.dorm || row.hostel || null;
 
-      const clubLabel =
-        row.clubLabel ||
-        row.club_label ||
-        row.club ||
-        null;
+      const clubLabel = row.clubLabel || row.club_label || row.club || null;
 
       const photoUrl = row.photoUrl || row.photo_url || null;
 
@@ -526,7 +499,6 @@ export async function bulkCreateOrgLearnersCsv(req, res) {
           tempPassword: result.tempPassword,
         });
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('[bulkCreateOrgLearnersCsv] row error', i + 1, err);
         errors.push({
           row: i + 1,
@@ -546,7 +518,7 @@ export async function bulkCreateOrgLearnersCsv(req, res) {
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    // eslint-disable-next-line no-console
+
     console.error('[bulkCreateOrgLearnersCsv] error', err);
     return res.status(500).json({ message: 'Failed to import learners CSV' });
   } finally {
@@ -623,7 +595,6 @@ export async function setOrgLearnerPhotoByAdmission(req, res) {
       photo_url: photoUrl,
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[setOrgLearnerPhotoByAdmission] error', err);
     return res
       .status(500)
@@ -640,7 +611,7 @@ export async function saveOrgLearnerAttendance(req, res, next) {
     const { orgId, studentId } = req.params;
     const {
       termId,
-      sessionId,          // optional (for later)
+      sessionId, // optional (for later)
       lessonsHeld,
       lessonsAttended,
       behaviorRating,
@@ -650,9 +621,7 @@ export async function saveOrgLearnerAttendance(req, res, next) {
 
     if (!termId) {
       console.log('[saveOrgLearnerAttendance] 400 – missing termId');
-      return res
-        .status(400)
-        .json({ ok: false, message: 'termId is required' });
+      return res.status(400).json({ ok: false, message: 'termId is required' });
     }
 
     const studentIdNum = Number(studentId);
@@ -660,9 +629,7 @@ export async function saveOrgLearnerAttendance(req, res, next) {
       console.log('[saveOrgLearnerAttendance] 400 – invalid studentId', {
         studentId,
       });
-      return res
-        .status(400)
-        .json({ ok: false, message: 'Invalid studentId' });
+      return res.status(400).json({ ok: false, message: 'Invalid studentId' });
     }
 
     const lh =
@@ -740,8 +707,8 @@ export async function saveOrgLearnerAttendance(req, res, next) {
       [
         orgId,
         studentIdNum,
-        termId,                 // 👈 UUID
-        sessionId || null,      // optional
+        termId, // 👈 UUID
+        sessionId || null, // optional
         lh,
         la,
         attendancePercent,
@@ -757,4 +724,3 @@ export async function saveOrgLearnerAttendance(req, res, next) {
     return next(err);
   }
 }
-

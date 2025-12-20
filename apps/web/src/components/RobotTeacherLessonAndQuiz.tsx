@@ -1,11 +1,5 @@
 // apps/web/src/components/RobotTeacherLessonAndQuiz.tsx
-import React, {
-  useEffect,
-  useState,
-  useRef,
-  useMemo,
-  useCallback,
-} from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import Markdown from '@/components/Markdown.web';
 import ClassroomThemeShell from '@/components/ClassroomThemeShell';
@@ -17,6 +11,7 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import AntiCheatGuard from '@/components/AntiCheatGuard.web';
 import { useAttemptIntegrity } from '@mytutorapp/shared/hooks/useAttemptIntegrity';
 import { getStableDeviceId } from '@mytutorapp/shared/utils/deviceId';
+import { getCertificateCtaFromGate } from '@mytutorapp/shared/utils/gateCtaRule';
 
 const fmtDuration = (s: number) => {
   const m = Math.floor(s / 60);
@@ -31,7 +26,7 @@ const fmtHMS = (totalSeconds: number) => {
   const sec = s % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(
     2,
-    '0',
+    '0'
   )}:${String(sec).padStart(2, '0')}`;
 };
 
@@ -41,7 +36,9 @@ type RequestStartArgs = { runId?: string } | void;
 
 // Normalize 'quizType' from any raw value
 function normQt(v: unknown): 'mcq' | 'short' | undefined {
-  const s = String(v ?? '').trim().toLowerCase();
+  const s = String(v ?? '')
+    .trim()
+    .toLowerCase();
   if (s === 'short') return 'short';
   if (s === 'mcq') return 'mcq';
   return undefined;
@@ -71,8 +68,17 @@ interface LessonAndQuizProps {
   onBeforePlay: () => Promise<void> | void;
   onEnded: () => void;
   gateMode?: 'narration' | 'notes_only';
-  gateNotice?: { reason?: string; resetsAt?: string | null; remainingMinutes?: number | null } | null;
-  gateUsage?: Array<{ bucket?: string; remainingSeconds?: number; limitSeconds?: number; resetsAt?: string | null }>;
+  gateNotice?: {
+    reason?: string;
+    resetsAt?: string | null;
+    remainingMinutes?: number | null;
+  } | null;
+  gateUsage?: Array<{
+    bucket?: string;
+    remainingSeconds?: number;
+    limitSeconds?: number;
+    resetsAt?: string | null;
+  }>;
   themeOpen: boolean;
   onThemeOpenChange: (open: boolean) => void;
   // outline → quiz
@@ -86,7 +92,7 @@ interface LessonAndQuizProps {
     totalLessons?: number,
     assignmentId?: string,
     quizType?: 'mcq' | 'short',
-    opts?: { lessonIndex?: number },
+    opts?: { lessonIndex?: number }
   ) => Promise<void> | void;
   safeLessons: number;
   safeQuiz: number;
@@ -200,9 +206,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
   // local retry & working answers (supports number | string)
   const [retakeMode, setRetakeMode] = useState(false);
-  const [workingAnswers, setWorkingAnswers] = useState<
-    Record<string, number | string | undefined>
-  >({});
+  const [workingAnswers, setWorkingAnswers] = useState<Record<string, number | string | undefined>>(
+    {}
+  );
 
   // prevent rapid double POSTs
   const startingAttemptRef = useRef(false);
@@ -278,17 +284,27 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
   const enforcedQuizType: 'mcq' | 'short' = useMemo(() => {
     const fromQuiz =
-      typeof quiz?.quizType === 'string'
-        ? String(quiz.quizType).toLowerCase()
-        : undefined;
+      typeof quiz?.quizType === 'string' ? String(quiz.quizType).toLowerCase() : undefined;
     const fromOrg = orgMeta?.quizType;
     const t = (fromQuiz || fromOrg || urlQuizTypeHint || 'mcq') as 'mcq' | 'short';
     return t === 'short' ? 'short' : 'mcq';
   }, [quiz?.quizType, orgMeta?.quizType, urlQuizTypeHint]);
 
+  const isLoggedIn = Boolean(token); // web: token is passed to LessonAndQuizPane
+
+const certCta = useMemo(
+  () =>
+    getCertificateCtaFromGate({
+      gateMode,
+      reason: gateNotice?.reason,
+      isLoggedIn,
+    }),
+  [gateMode, gateNotice?.reason, isLoggedIn]
+);
+
+
   // What we *ask* the generator to create if we haven't got orgMeta yet
-  const desiredQuizType: 'mcq' | 'short' =
-    orgMeta?.quizType ?? urlQuizTypeHint ?? 'mcq';
+  const desiredQuizType: 'mcq' | 'short' = orgMeta?.quizType ?? urlQuizTypeHint ?? 'mcq';
 
   // 👉 hydrate workingAnswers whenever a (new) quiz arrives or answers change
   useEffect(() => {
@@ -301,26 +317,16 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       const next: Record<string, number | string | undefined> = {};
       const isMcq = enforcedQuizType === 'mcq';
       for (const q of quiz.questions) {
-        const v = (answers && (answers as any)[q.id]) as
-          | number
-          | string
-          | undefined;
+        const v = (answers && (answers as any)[q.id]) as number | string | undefined;
         if (v === undefined) continue;
         next[q.id] = isMcq ? Number(v) : String(v);
       }
       return next;
     });
-  }, [
-    quiz?.questions?.map((q: any) => q.id).join('|'),
-    answers,
-    enforcedQuizType,
-  ]);
+  }, [quiz?.questions?.map((q: any) => q.id).join('|'), answers, enforcedQuizType]);
 
   // ---------- PERSISTENT CERTIFICATE (localStorage) ----------
-  const lsKey = useMemo(
-    () => (course?.id ? `cert:last:${course.id}` : null),
-    [course?.id],
-  );
+  const lsKey = useMemo(() => (course?.id ? `cert:last:${course.id}` : null), [course?.id]);
   const [persistedCert, setPersistedCert] = useState<{
     certUrl?: string | null;
     downUrl?: string | null;
@@ -336,8 +342,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       console.info('[qt] router snapshot', {
         pathname: location.pathname,
         search: location.search,
-        hash:
-          typeof window !== 'undefined' ? window.location.hash : '',
+        hash: typeof window !== 'undefined' ? window.location.hash : '',
         qt_from_router: searchParams.get('qt'),
       });
     } catch {
@@ -358,6 +363,11 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     hasSignaledReadyRef.current = false;
   }, [activeRunId]);
 
+  useEffect(() => {
+  hasSignaledReadyRef.current = false;
+}, [course?.id]);
+
+
   // load from localStorage on mount
   useEffect(() => {
     if (!lsKey) return;
@@ -373,8 +383,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   useEffect(() => {
     if (!lsKey) return;
     if (!certUrl && !downUrl) return;
-    const certId =
-      downUrl?.match(/\/certificates\/([^/]+)\/download/)?.[1] ?? null;
+    const certId = downUrl?.match(/\/certificates\/([^/]+)\/download/)?.[1] ?? null;
     const payload = {
       certUrl: certUrl ?? null,
       downUrl: downUrl ?? null,
@@ -397,18 +406,13 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
   const anyAffordable = useMemo(() => {
     return (skus || []).some((sku) => {
-      const price = Number(
-        sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? 0,
-      );
+      const price = Number(sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? 0);
       return (Number(tokens) || 0) >= price;
     });
   }, [skus, tokens]);
 
   const api = useCallback(
-    async function <T = any>(
-      path: string,
-      init?: RequestInit,
-    ): Promise<T> {
+    async function <T = any>(path: string, init?: RequestInit): Promise<T> {
       const r = await fetch(`${backendUrl}${path}`, {
         ...init,
         headers: {
@@ -420,24 +424,20 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       if (r.status === 204) return null as any;
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
-        const e: any = new Error(
-          (data as any)?.error || `Request failed: ${r.status}`,
-        );
+        const e: any = new Error((data as any)?.error || `Request failed: ${r.status}`);
         e.status = r.status;
         e.data = data;
         throw e;
       }
       return data;
     },
-    [backendUrl, token],
+    [backendUrl, token]
   );
 
   const onRequestStartGuarded = useCallback(
     async (args?: RequestStartArgs) => {
       const runId =
-        args && typeof args === 'object' && 'runId' in args
-          ? (args as any).runId ?? null
-          : null;
+        args && typeof args === 'object' && 'runId' in args ? ((args as any).runId ?? null) : null;
 
       setActiveRunId(runId);
       try {
@@ -447,7 +447,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
         setPreparing(false);
       }
     },
-    [onStart],
+    [onStart]
   );
 
   // Check if the user has paid for this course's certificate
@@ -459,9 +459,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
         return;
       }
       const s = await api<{ paid?: boolean }>(
-        `/api/certificates/status?courseId=${encodeURIComponent(
-          courseId,
-        )}`,
+        `/api/certificates/status?courseId=${encodeURIComponent(courseId)}`
       ).catch(() => null);
       if (s && typeof s.paid === 'boolean') {
         setPaymentOk(s.paid);
@@ -497,40 +495,28 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       if (!isOrgFlow || !assignmentId || !token) return;
       try {
         const r = await fetch(
-          `${backendUrl}/api/orgs/assignments/${encodeURIComponent(
-            assignmentId,
-          )}/mine`,
+          `${backendUrl}/api/orgs/assignments/${encodeURIComponent(assignmentId)}/mine`,
           {
             headers: {
               Accept: 'application/json',
               Authorization: `Bearer ${token}`,
             },
-          },
+          }
         );
         if (!r.ok) return;
         const data = await r.json();
         const lc =
-          data?.meta?.locked_config ??
-          data?.locked_config ??
-          data?.assignment?.locked_config ??
-          {};
+          data?.meta?.locked_config ?? data?.locked_config ?? data?.assignment?.locked_config ?? {};
 
         const t = Number(data?.meta?.timer_s ?? data?.timer_s);
 
         // accept quizType | quiz_type in multiple places
-        const rawQt =
-          lc?.quizType ??
-          lc?.quiz_type ??
-          data?.quizType ??
-          data?.quiz_type;
+        const rawQt = lc?.quizType ?? lc?.quiz_type ?? data?.quizType ?? data?.quiz_type;
 
         if (!ignore) {
           setOrgMeta({
-            quizSize:
-              Number(lc?.quizSize ?? lc?.quiz_size) || undefined,
-            totalLessons:
-              Number(lc?.totalLessons ?? lc?.total_lessons) ||
-              undefined,
+            quizSize: Number(lc?.quizSize ?? lc?.quiz_size) || undefined,
+            totalLessons: Number(lc?.totalLessons ?? lc?.total_lessons) || undefined,
             timer_s: Number.isFinite(t) ? t : undefined,
             quizType: normQt(rawQt),
           });
@@ -553,30 +539,33 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   }, [quiz?.timerSec, markActive, quizActive, setLocalRemainingMs]);
 
   // Modal display values (prefer org-locked)
-  const displayLessons =
-    orgMeta?.totalLessons ?? safeLessons ?? outline?.length ?? 0;
-  const displayQuestions =
-    orgMeta?.quizSize ?? safeQuiz ?? 0;
-  const displayTimerSec =
-    Number(quiz?.timerSec) ||
-    (orgMeta?.timer_s ?? timerSec ?? 0);
+  const displayLessons = orgMeta?.totalLessons ?? safeLessons ?? outline?.length ?? 0;
+  const displayQuestions = orgMeta?.quizSize ?? safeQuiz ?? 0;
+  const displayTimerSec = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
   const hasTimer = displayTimerSec > 0;
+
+  const effectiveTimerSecForArming = useMemo(() => {
+  // If confirmInfo exists, it’s what the user just confirmed.
+  const fromConfirm = Number(confirmInfo?.timerSec);
+  if (Number.isFinite(fromConfirm) && fromConfirm > 0) return fromConfirm;
+
+  // Otherwise: quiz timer (if present) or org lock or prop
+  const t = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
+  return Number.isFinite(t) && t > 0 ? t : 0;
+}, [confirmInfo?.timerSec, quiz?.timerSec, orgMeta?.timer_s, timerSec]);
+
 
   // Ensure uniform quiz shape
   useEffect(() => {
     if (!quiz) return;
     try {
       const qt = enforcedQuizType;
-      if (
-        quiz &&
-        (quiz as any).quizType !== 'mcq' &&
-        (quiz as any).quizType !== 'short'
-      ) {
+      if (quiz && (quiz as any).quizType !== 'mcq' && (quiz as any).quizType !== 'short') {
         (quiz as any).quizType = qt;
       }
       if (Array.isArray(quiz.questions)) {
         (quiz as any).questions = quiz.questions.map((q: any) =>
-          q?.type === qt ? q : { ...q, type: qt },
+          q?.type === qt ? q : { ...q, type: qt }
         );
       }
     } catch {
@@ -593,20 +582,14 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   // Choose a robust timer base
   const baseMs = useMemo(() => {
     const candidates = [
-      Number.isFinite(displayRemainingMs)
-        ? Number(displayRemainingMs)
-        : null,
-      Number.isFinite(localRemainingMs as any)
-        ? Number(localRemainingMs)
-        : null,
+      Number.isFinite(displayRemainingMs) ? Number(displayRemainingMs) : null,
+      Number.isFinite(localRemainingMs as any) ? Number(localRemainingMs) : null,
       hasTimer ? displayTimerSec * 1000 : null,
     ].filter((n): n is number => typeof n === 'number' && n !== null);
 
     if (!candidates.length) return 0;
     const positive = candidates.filter((n) => n > 0);
-    return positive.length
-      ? Math.max(...positive)
-      : Math.max(...candidates);
+    return positive.length ? Math.max(...positive) : Math.max(...candidates);
   }, [displayRemainingMs, localRemainingMs, hasTimer, displayTimerSec]);
 
   const remainingMsTicker = Math.max(0, baseMs - elapsedMs);
@@ -633,9 +616,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       const v = workingAnswers[qq.id];
       return enforcedQuizType === 'short'
         ? typeof v === 'string' && v.trim() !== ''
-        : typeof v === 'number' &&
-            Number.isFinite(v) &&
-            v >= 0;
+        : typeof v === 'number' && Number.isFinite(v) && v >= 0;
     });
   }, [quiz?.questions, workingAnswers, enforcedQuizType]);
 
@@ -678,25 +659,15 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   }
 
   // Selection helpers
-  function getActiveShortInput():
-    | HTMLInputElement
-    | HTMLTextAreaElement
-    | null {
-    if (typeof document === 'undefined')
-      return lastShortInputRef.current;
-    if (
-      lastShortInputRef.current &&
-      document.body.contains(lastShortInputRef.current)
-    ) {
+  function getActiveShortInput(): HTMLInputElement | HTMLTextAreaElement | null {
+    if (typeof document === 'undefined') return lastShortInputRef.current;
+    if (lastShortInputRef.current && document.body.contains(lastShortInputRef.current)) {
       return lastShortInputRef.current;
     }
     const el = document.activeElement as HTMLElement | null;
     if (!el) return null;
     const tag = el.tagName;
-    if (
-      (tag === 'INPUT' || tag === 'TEXTAREA') &&
-      el.getAttribute('data-qid')
-    ) {
+    if ((tag === 'INPUT' || tag === 'TEXTAREA') && el.getAttribute('data-qid')) {
       return el as HTMLInputElement | HTMLTextAreaElement;
     }
     return null;
@@ -707,13 +678,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     if (!input) return;
     input.focus();
     const qid = input.getAttribute('data-qid')!;
-    const start =
-      (input as any).selectionStart ?? input.value.length;
+    const start = (input as any).selectionStart ?? input.value.length;
     const end = (input as any).selectionEnd ?? input.value.length;
-    const next =
-      input.value.slice(0, start) +
-      text +
-      input.value.slice(end);
+    const next = input.value.slice(0, start) + text + input.value.slice(end);
     (input as any).value = next;
     const caret = start + text.length;
     (input as any).setSelectionRange?.(caret, caret);
@@ -735,10 +702,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     }
     const sel = input.value.slice(start, end);
     const rep = transformer(sel);
-    const next =
-      input.value.slice(0, start) +
-      rep +
-      input.value.slice(end);
+    const next = input.value.slice(0, start) + rep + input.value.slice(end);
     const delta = rep.length - sel.length;
     (input as any).value = next;
     (input as any).setSelectionRange?.(start, end + delta);
@@ -753,8 +717,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   }
 
   // ---- Keypad positioning relative to header (centered) ----
-  const clamp = (val: number, min: number, max: number) =>
-    Math.max(min, Math.min(max, val));
+  const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
 
   function positionKeypadAtHeaderCenter() {
     const M = 8,
@@ -766,16 +729,8 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       return;
     }
     const r = anchor.getBoundingClientRect();
-    const left = clamp(
-      r.left + r.width / 2 - W / 2,
-      M,
-      Math.max(M, window.innerWidth - W - M),
-    );
-    const top = clamp(
-      r.top + r.height + 8,
-      M,
-      Math.max(M, window.innerHeight - H - M),
-    );
+    const left = clamp(r.left + r.width / 2 - W / 2, M, Math.max(M, window.innerWidth - W - M));
+    const top = clamp(r.top + r.height + 8, M, Math.max(M, window.innerHeight - H - M));
     setOverlayPos({ left, top });
   }
 
@@ -790,21 +745,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
         const w = rect.width || 352;
         const h = rect.height || 240;
         const M = 8;
-        const left = clamp(
-          overlayPos.left,
-          M,
-          Math.max(M, window.innerWidth - w - M),
-        );
-        const top = clamp(
-          overlayPos.top,
-          M,
-          Math.max(M, window.innerHeight - h - M),
-        );
-        if (
-          left !== overlayPos.left ||
-          top !== overlayPos.top
-        )
-          setOverlayPos({ left, top });
+        const left = clamp(overlayPos.left, M, Math.max(M, window.innerWidth - w - M));
+        const top = clamp(overlayPos.top, M, Math.max(M, window.innerHeight - h - M));
+        if (left !== overlayPos.left || top !== overlayPos.top) setOverlayPos({ left, top });
       } else {
         positionKeypadAtHeaderCenter();
       }
@@ -847,12 +790,12 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     const nextLeft = clamp(
       dragStartRef.current.left + dx,
       M,
-      Math.max(M, window.innerWidth - w - M),
+      Math.max(M, window.innerWidth - w - M)
     );
     const nextTop = clamp(
       dragStartRef.current.top + dy,
       M,
-      Math.max(M, window.innerHeight - h - M),
+      Math.max(M, window.innerHeight - h - M)
     );
     setOverlayPos({ left: nextLeft, top: nextTop });
   };
@@ -891,20 +834,38 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   }, [mathOpen]);
 
   const currentLesson =
-    lessonsArr && lessonsArr.length
-      ? lessonsArr[currentIdx] ?? lessonsArr[0]
-      : null;
+    lessonsArr && lessonsArr.length ? (lessonsArr[currentIdx] ?? lessonsArr[0]) : null;
 
   return (
     <>
+    {certCta.show && !isOrgFlowFlag && (
+      <div className="mb-3 rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 dark:bg-amber-500/10 dark:ring-amber-500/30">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="text-sm text-amber-900 dark:text-amber-200">
+            Narration is locked right now. Unlock it with a certificate.
+          </div>
+
+          <button
+            className="btn bg-indigo-600 hover:bg-indigo-500"
+            onClick={() => {
+              if (certCta.action === 'login') {
+                requireAuth('buy_certificate', 'Please sign in to buy your certificate.');
+                return;
+              }
+              // buy_certificate → open your existing payment widget/modal
+              setPaymentOpen(true);
+            }}
+          >
+            {certCta.label}
+          </button>
+        </div>
+      </div>
+    )}
+
       {/* Classroom */}
       <section
         id="classroom"
-        className={`relative z-[0] ${
-          compactPlayer && !showCourseList
-            ? 'mx-auto max-w-5xl'
-            : ''
-        }`}
+        className={`relative z-[0] ${compactPlayer && !showCourseList ? 'mx-auto max-w-5xl' : ''}`}
       >
         <div
           className={
@@ -976,39 +937,27 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       {/* Outline */}
       {outline.length > 0 && (
         <section className="panel p-4">
-          <div className="font-semibold mb-2 text-darkText dark:text-white">
-            Lesson outline
-          </div>
+          <div className="font-semibold mb-2 text-darkText dark:text-white">Lesson outline</div>
           <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700 dark:text-white/80">
-            {outline
-              .filter(Boolean)
-              .map((s: any, i: number) => (
-                <li key={s?.id ?? `sec-${i}`}>
-                  <span className="font-medium text-darkText dark:text-white">
-                    {s?.title ?? `Lesson ${i + 1}`}
-                  </span>
-                  <ul className="list-disc list-inside ml-4">
-                    {((s?.keyPoints || []) as string[]).map(
-                      (k: string, idx: number) => (
-                        <li
-                          key={idx}
-                          className="text-gray-700 dark:text-white/70"
-                        >
-                          {k}
-                        </li>
-                      ),
-                    )}
-                  </ul>
-                </li>
-              ))}
+            {outline.filter(Boolean).map((s: any, i: number) => (
+              <li key={s?.id ?? `sec-${i}`}>
+                <span className="font-medium text-darkText dark:text-white">
+                  {s?.title ?? `Lesson ${i + 1}`}
+                </span>
+                <ul className="list-disc list-inside ml-4">
+                  {((s?.keyPoints || []) as string[]).map((k: string, idx: number) => (
+                    <li key={idx} className="text-gray-700 dark:text-white/70">
+                      {k}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
           </ol>
           <div className="mt-3 flex items-center gap-2">
             <button
               onClick={async () => {
-                const timeLabel =
-                  displayTimerSec > 0
-                    ? fmtHMS(displayTimerSec)
-                    : 'No time limit';
+                const timeLabel = displayTimerSec > 0 ? fmtHMS(displayTimerSec) : 'No time limit';
                 setConfirmInfo({
                   lessons: displayLessons,
                   questions: displayQuestions,
@@ -1036,9 +985,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
           heartbeatSec: attempt?.heartbeatSec ?? 15,
           maxBackgrounds: attempt?.maxBackgrounds ?? 2,
           maxSuspicion: attempt?.maxSuspicion ?? 5,
-          timerSec:
-            Number(quiz?.timerSec) ||
-            (orgMeta?.timer_s ?? timerSec ?? 0),
+          timerSec: Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0),
         }}
         onTooManyBackgrounds={() => {
           if (shownLockAlertRef.current) return;
@@ -1048,50 +995,33 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
             (async () => {
               try {
                 // reuse your submit code path (or factor it into a function)
-                const payloadAnswers = (quiz?.questions || []).map(
-                  (q: any) => {
-                    const v = workingAnswers[q.id];
-                    if (enforcedQuizType === 'short') {
-                      return {
-                        questionId: q.id,
-                        answerText: String(v ?? '').trim(),
-                      };
-                    }
-                    const idx =
-                      typeof v === 'number' ? v : Number(v);
+                const payloadAnswers = (quiz?.questions || []).map((q: any) => {
+                  const v = workingAnswers[q.id];
+                  if (enforcedQuizType === 'short') {
                     return {
                       questionId: q.id,
-                      choiceIndex: Number.isFinite(idx)
-                        ? idx
-                        : -1,
+                      answerText: String(v ?? '').trim(),
                     };
-                  },
-                );
+                  }
+                  const idx = typeof v === 'number' ? v : Number(v);
+                  return {
+                    questionId: q.id,
+                    choiceIndex: Number.isFinite(idx) ? idx : -1,
+                  };
+                });
                 const assignmentKey =
                   assignmentId ||
-                  `free:${
-                    course?.id ||
-                    course?.slug ||
-                    courseTitle ||
-                    'free-course'
-                  }`;
-                await submitAttempt(
-                  assignmentKey,
-                  payloadAnswers,
-                );
+                  `free:${course?.id || course?.slug || courseTitle || 'free-course'}`;
+                await submitAttempt(assignmentKey, payloadAnswers);
                 await gradeNow();
                 markNotActive();
               } catch {
                 // fall back to a visible nudge
-                alert(
-                  'We had to lock the quiz due to too many app switches.',
-                );
+                alert('We had to lock the quiz due to too many app switches.');
               }
             })();
           } else {
-            alert(
-              'Quiz locked due to too many app switches. Please submit or retry.',
-            );
+            alert('Quiz locked due to too many app switches. Please submit or retry.');
           }
         }}
         onBumpSuspicion={(d) => bumpSuspicion(d)}
@@ -1100,47 +1030,33 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       {/* Quiz */}
       {quiz?.questions?.length ? (
         <section className="panel p-4 relative">
-          <div className="font-semibold text-darkText dark:text-white text-center">
-            Quick quiz
-          </div>
+          <div className="font-semibold text-darkText dark:text-white text-center">Quick quiz</div>
 
           {/* time banner */}
           <div
             className={`mt-1 text-xs px-2 py-1 rounded text-center ${
-              isLocked
-                ? 'bg-red-600/20 text-red-200'
-                : 'bg-white/10 text-white/90'
+              isLocked ? 'bg-red-600/20 text-red-200' : 'bg-white/10 text-white/90'
             }`}
           >
             {hasTimer
               ? isLocked
                 ? 'Time up — quiz locked'
                 : `Time left: ${fmtHMSms(remainingMsTicker)}`
-              : `Time elapsed: ${Math.floor(
-                  elapsedMs / 1000,
-                )}s`}
+              : `Time elapsed: ${Math.floor(elapsedMs / 1000)}s`}
           </div>
 
           {/* Type + keypad toggle (centered) */}
-          <div
-            ref={keypadAnchorRef}
-            className="mt-2 flex flex-col items-center gap-2"
-          >
+          <div ref={keypadAnchorRef} className="mt-2 flex flex-col items-center gap-2">
             <div className="text-xs text-gray-600 dark:text-white/70">
               Answer type:&nbsp;
-              <b>
-                {enforcedQuizType === 'short'
-                  ? 'Short (typed)'
-                  : 'Multiple choice (MCQ)'}
-              </b>
+              <b>{enforcedQuizType === 'short' ? 'Short (typed)' : 'Multiple choice (MCQ)'}</b>
             </div>
             {enforcedQuizType === 'short' && !isLocked && (
               <button
                 type="button"
                 onClick={() => {
                   setMathOpen((v) => !v);
-                  if (!userDraggedRef.current)
-                    positionKeypadAtHeaderCenter();
+                  if (!userDraggedRef.current) positionKeypadAtHeaderCenter();
                 }}
                 className="px-3 py-1.5 rounded-full text-sm bg-indigo-600 text-white hover:bg-indigo-500 shadow"
                 title="Open math keypad"
@@ -1166,41 +1082,27 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                 >
                   <div className="text-[15px] font-medium mb-2 text-darkText dark:text-white">
                     <span className="mr-1">{idx + 1}.</span>
-                    <Markdown inline>
-                      {String(q.display || q.prompt || '')}
-                    </Markdown>
+                    <Markdown inline>{String(q.display || q.prompt || '')}</Markdown>
                   </div>
 
                   {qType === 'short' ? (
                     <div className="space-y-2">
                       <textarea
                         className={`input text-[15px] ${
-                          isLocked
-                            ? 'opacity-60 cursor-not-allowed'
-                            : ''
+                          isLocked ? 'opacity-60 cursor-not-allowed' : ''
                         }`}
                         data-qid={q.id}
                         rows={1}
-                        value={String(
-                          workingAnswers[q.id] ?? '',
-                        )}
-                        onChange={(e) =>
-                          handleAnswer(q.id, e.target.value)
-                        }
-                        onInput={(e) =>
-                          autoGrow(e.currentTarget)
-                        }
+                        value={String(workingAnswers[q.id] ?? '')}
+                        onChange={(e) => handleAnswer(q.id, e.target.value)}
+                        onInput={(e) => autoGrow(e.currentTarget)}
                         onFocus={(e) => {
-                          lastShortInputRef.current =
-                            e.currentTarget;
+                          lastShortInputRef.current = e.currentTarget;
                           autoGrow(e.currentTarget);
                         }}
                         onKeyDown={(e) => {
                           // Let "Enter" insert a newline by default (Word-like)
-                          if (
-                            e.altKey &&
-                            (e.key === 'p' || e.key === 'P')
-                          ) {
+                          if (e.altKey && (e.key === 'p' || e.key === 'P')) {
                             e.preventDefault();
                             insertAtCursor('π');
                           }
@@ -1231,29 +1133,22 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                           <div className="text-[12px] mt-1 text-gray-700 dark:text-white/70">
                             {q.answer && (
                               <div>
-                                <b>Answer:</b>{' '}
-                                {String(q.answer)}
+                                <b>Answer:</b> {String(q.answer)}
                               </div>
                             )}
-                            {Array.isArray(q.accept) &&
-                              q.accept.length > 0 && (
-                                <div>
-                                  <b>Accept:</b>{' '}
-                                  {q.accept.join(', ')}
-                                </div>
-                              )}
+                            {Array.isArray(q.accept) && q.accept.length > 0 && (
+                              <div>
+                                <b>Accept:</b> {q.accept.join(', ')}
+                              </div>
+                            )}
                             {q.regex && (
                               <div>
-                                <b>Regex:</b>{' '}
-                                <code>
-                                  {String(q.regex)}
-                                </code>
+                                <b>Regex:</b> <code>{String(q.regex)}</code>
                               </div>
                             )}
                             {q.explanation && (
                               <div className="mt-1">
-                                <b>Explanation:</b>{' '}
-                                {q.explanation}
+                                <b>Explanation:</b> {q.explanation}
                               </div>
                             )}
                           </div>
@@ -1262,43 +1157,29 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {(q.choices || []).map(
-                        (c: string, i: number) => {
-                          const isSelected =
-                            Number(workingAnswers[q.id]) ===
-                            i;
+                      {(q.choices || []).map((c: string, i: number) => {
+                        const isSelected = Number(workingAnswers[q.id]) === i;
 
-                          return (
-                            <button
-                              key={i}
-                              onClick={() =>
-                                handleAnswer(q.id, i)
-                              }
-                              disabled={isLocked}
-                              className={`text-left px-3 py-2.5 rounded-lg text-[15px] ring-1 transition
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => handleAnswer(q.id, i)}
+                            disabled={isLocked}
+                            className={`text-left px-3 py-2.5 rounded-lg text-[15px] ring-1 transition
                               ${
                                 isSelected
                                   ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-600/30 dark:text-white dark:ring-emerald-500'
                                   : 'bg-white text-darkText ring-gray-200 hover:bg-gray-50 dark:bg-white/5 dark:text-white dark:ring-white/10 dark:hover:bg-white/10'
                               }
-                              ${
-                                isLocked
-                                  ? 'opacity-60 cursor-not-allowed'
-                                  : ''
-                              }`}
-                            >
-                              <Markdown inline>
-                                {String(c || '')}
-                              </Markdown>
-                            </button>
-                          );
-                        },
-                      )}
-                      {(!q.choices ||
-                        q.choices.length === 0) && (
+                              ${isLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                          >
+                            <Markdown inline>{String(c || '')}</Markdown>
+                          </button>
+                        );
+                      })}
+                      {(!q.choices || q.choices.length === 0) && (
                         <div className="text-[12px] text-amber-700 dark:text-amber-300">
-                          No choices provided for this MCQ. Please
-                          refresh or contact your admin.
+                          No choices provided for this MCQ. Please refresh or contact your admin.
                         </div>
                       )}
                     </div>
@@ -1311,12 +1192,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
               onClick={async () => {
-                if (
-                  !requireAuth(
-                    'grade_quiz',
-                    'Please sign in to submit and grade your quiz.',
-                  )
-                )
+                if (!requireAuth('grade_quiz', 'Please sign in to submit and grade your quiz.'))
                   return;
                 try {
                   // normalize quiz object
@@ -1330,11 +1206,10 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                       (quiz as any).quizType = qt;
                     }
                     if (quiz?.questions) {
-                      (quiz as any).questions =
-                        quiz.questions.map((q: any) => ({
-                          ...q,
-                          type: qt,
-                        }));
+                      (quiz as any).questions = quiz.questions.map((q: any) => ({
+                        ...q,
+                        type: qt,
+                      }));
                     }
                   } catch {
                     /* ignore */
@@ -1345,17 +1220,10 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                     for (const q of quiz.questions) {
                       const raw = workingAnswers[q.id];
                       if (enforcedQuizType === 'short') {
-                        onAnswer(
-                          q.id,
-                          String(raw ?? '').trim(),
-                        );
+                        onAnswer(q.id, String(raw ?? '').trim());
                       } else {
-                        const n =
-                          typeof raw === 'number'
-                            ? raw
-                            : Number(raw);
-                        if (Number.isFinite(n))
-                          onAnswer(q.id, n);
+                        const n = typeof raw === 'number' ? raw : Number(raw);
+                        if (Number.isFinite(n)) onAnswer(q.id, n);
                       }
                     }
                   }
@@ -1365,9 +1233,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                     submittingRef.current = true;
                     try {
                       // build payload answers (mcq + short)
-                      const payloadAnswers = (
-                        quiz?.questions || []
-                      ).map((q: any) => {
+                      const payloadAnswers = (quiz?.questions || []).map((q: any) => {
                         const v = workingAnswers[q.id];
                         if (enforcedQuizType === 'short') {
                           return {
@@ -1375,15 +1241,10 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                             answerText: String(v ?? '').trim(),
                           };
                         }
-                        const idx =
-                          typeof v === 'number'
-                            ? v
-                            : Number(v);
+                        const idx = typeof v === 'number' ? v : Number(v);
                         return {
                           questionId: q.id,
-                          choiceIndex: Number.isFinite(idx)
-                            ? idx
-                            : -1,
+                          choiceIndex: Number.isFinite(idx) ? idx : -1,
                         };
                       });
 
@@ -1391,30 +1252,21 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                       try {
                         const assignmentKey =
                           assignmentId ||
-                          `free:${
-                            course?.id ||
-                            course?.slug ||
-                            courseTitle ||
-                            'free-course'
-                          }`;
-                        await submitAttempt(
-                          assignmentKey,
-                          payloadAnswers,
-                        );
+                          `free:${course?.id || course?.slug || courseTitle || 'free-course'}`;
+                        await submitAttempt(assignmentKey, payloadAnswers);
                       } catch (e) {
-                        console.error(
-                          'submitAttempt failed',
-                          e,
-                        );
+                        console.error('submitAttempt failed', e);
                       }
 
                       await gradeNow();
+                      markNotActive();
                       setRetakeMode(false);
                     } finally {
                       submittingRef.current = false;
                     }
                   } else {
                     await gradeNow();
+                    markNotActive();
                     setRetakeMode(false);
                   }
                 } catch (err) {
@@ -1423,9 +1275,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
               }}
               disabled={!canSubmit}
               className={`btn ${
-                canSubmit
-                  ? 'bg-emerald-600 hover:bg-emerald-500'
-                  : 'opacity-60 cursor-not-allowed'
+                canSubmit ? 'bg-emerald-600 hover:bg-emerald-500' : 'opacity-60 cursor-not-allowed'
               }`}
             >
               Submit quiz
@@ -1433,19 +1283,14 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
             {grade && (
               <span className="text-sm text-darkText dark:text-white/80">
-                Score:{' '}
-                <span className="font-semibold">
-                  {grade.scorePct}%
-                </span>{' '}
-                (Pass mark {grade.passMark}%)
+                Score: <span className="font-semibold">{grade.scorePct}%</span> (Pass mark{' '}
+                {grade.passMark}%)
               </span>
             )}
 
             {grade && course?.id && (
               <button
-                onClick={() =>
-                  onViewResults(course.id, courseTitle, grade)
-                }
+                onClick={() => onViewResults(course.id, courseTitle, grade)}
                 className="chip"
                 title="Open your Results &amp; Documents page"
               >
@@ -1470,15 +1315,13 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
               {isOrgFlowFlag ? (
                 <>
                   <div className="mt-2 text-xs text-gray-600 dark:text-white/70">
-                    Covered by your organization — no payment
-                    needed.
+                    Covered by your organization — no payment needed.
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <button
                       onClick={async () => {
                         try {
-                          const sku =
-                            (skus && skus[0]) || null;
+                          const sku = (skus && skus[0]) || null;
                           if (sku) {
                             try {
                               await claim(sku.code);
@@ -1487,28 +1330,16 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                             }
                           }
                           const doc =
-                            (await tryGenerateCertificate().catch(
-                              () => null,
-                            )) ||
-                            (await generateAICert().catch(
-                              () => null,
-                            ));
+                            (await tryGenerateCertificate().catch(() => null)) ||
+                            (await generateAICert().catch(() => null));
                           if (doc) {
                             const c: any = doc;
                             setCertUrl(c.url ?? null);
-                            setDownUrl(
-                              c.download_url ??
-                                c.downloadUrl ??
-                                c.url ??
-                                null,
-                            );
+                            setDownUrl(c.download_url ?? c.downloadUrl ?? c.url ?? null);
                             await checkPaymentStatus();
                           }
                         } catch (e) {
-                          console.error(
-                            '[org] manual issue failed',
-                            e,
-                          );
+                          console.error('[org] manual issue failed', e);
                         }
                       }}
                       className="btn bg-emerald-600 hover:bg-emerald-500"
@@ -1518,12 +1349,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
                     {certUrl && (
                       <>
-                        <a
-                          href={certUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="chip"
-                        >
+                        <a href={certUrl} target="_blank" rel="noreferrer" className="chip">
                           View certificate
                         </a>
                         {downUrl && (
@@ -1533,14 +1359,11 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                               if (
                                 !requireAuth(
                                   'download_certificate',
-                                  'Please sign in to download your certificate.',
+                                  'Please sign in to download your certificate.'
                                 )
                               )
                                 return;
-                              const m =
-                                downUrl?.match(
-                                  /\/certificates\/([^/]+)\/download/,
-                                );
+                              const m = downUrl?.match(/\/certificates\/([^/]+)\/download/);
                               const certId = m?.[1];
                               if (certId) {
                                 try {
@@ -1549,30 +1372,16 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                                     token,
                                     certId,
                                     `${courseTitle
-                                      .replace(
-                                        /\s+/g,
-                                        '-',
-                                      )
-                                      .toLowerCase()}-${certId}.pdf`,
+                                      .replace(/\s+/g, '-')
+                                      .toLowerCase()}-${certId}.pdf`
                                   );
                                 } catch (e) {
-                                  console.error(
-                                    'Download failed',
-                                    e,
-                                  );
+                                  console.error('Download failed', e);
                                   if (certUrl)
-                                    window.open(
-                                      certUrl,
-                                      '_blank',
-                                      'noopener,noreferrer',
-                                    );
+                                    window.open(certUrl, '_blank', 'noopener,noreferrer');
                                 }
                               } else if (certUrl) {
-                                window.open(
-                                  certUrl,
-                                  '_blank',
-                                  'noopener,noreferrer',
-                                );
+                                window.open(certUrl, '_blank', 'noopener,noreferrer');
                               }
                             }}
                           >
@@ -1584,8 +1393,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                   </div>
                   {!certUrl && (
                     <p className="text-[12px] text-gray-600 dark:text-white/70 mt-2">
-                      Your certificate will be generated at no
-                      cost.
+                      Your certificate will be generated at no cost.
                     </p>
                   )}
                 </>
@@ -1596,15 +1404,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                       Pay in tokens (no processing fees)
                     </div>
                     {aiCertLoading && (
-                      <div className="text-xs text-gray-500">
-                        Loading certificate options…
-                      </div>
+                      <div className="text-xs text-gray-500">Loading certificate options…</div>
                     )}
-                    {aiCertError && (
-                      <div className="text-xs text-red-600">
-                        {aiCertError}
-                      </div>
-                    )}
+                    {aiCertError && <div className="text-xs text-red-600">{aiCertError}</div>}
                     {aiCertMsg && (
                       <div className="text-xs text-emerald-700 dark:text-emerald-300">
                         {aiCertMsg}
@@ -1613,31 +1415,23 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
                     {/* Balance (optional) */}
                     <div className="text-[11px] text-gray-600 dark:text-white/70">
-                      Your balance:{' '}
-                      <b>{Number(tokens) || 0}</b> tokens
+                      Your balance: <b>{Number(tokens) || 0}</b> tokens
                     </div>
 
                     {/* Only show fiat “payment required” if nothing is affordable in tokens */}
                     {!paymentOk && !anyAffordable && (
                       <div className="text-[11px] text-gray-600 dark:text-white/70 mb-2">
-                        Payment required to unlock{' '}
-                        <b>Claim &amp; Generate</b>.
+                        Payment required to unlock <b>Claim &amp; Generate</b>.
                       </div>
                     )}
 
                     <div className="space-y-2">
                       {(skus || []).map((sku) => {
                         const price = Number(
-                          sku?.price_tokens ??
-                            sku?.priceTokens ??
-                            sku?.price ??
-                            0,
+                          sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? 0
                         );
-                        const hasEnoughTokens =
-                          (Number(tokens) || 0) >= price;
-                        const canClaimNow =
-                          Boolean(grade?.passed) &&
-                          hasEnoughTokens; // ✅ pass + enough tokens
+                        const hasEnoughTokens = (Number(tokens) || 0) >= price;
+                        const canClaimNow = Boolean(grade?.passed) && hasEnoughTokens; // ✅ pass + enough tokens
 
                         return (
                           <div
@@ -1645,18 +1439,14 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                             className="flex items-center justify-between rounded-lg ring-1 ring-gray-200 dark:ring-white/10 p-2 bg-white dark:bg-white/5"
                           >
                             <div>
-                              <div className="text-sm font-medium">
-                                {sku.title}
-                              </div>
+                              <div className="text-sm font-medium">{sku.title}</div>
                               <div className="text-[11px] text-gray-600 dark:text-white/60">
                                 {sku.code}
                               </div>
                             </div>
 
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold">
-                                {price} Tokens
-                              </span>
+                              <span className="text-sm font-semibold">{price} Tokens</span>
 
                               <button
                                 disabled={!canClaimNow}
@@ -1664,40 +1454,21 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                                   !grade?.passed
                                     ? 'Pass the quiz first'
                                     : !hasEnoughTokens
-                                    ? 'Not enough tokens'
-                                    : 'Claim & generate'
+                                      ? 'Not enough tokens'
+                                      : 'Claim & generate'
                                 }
                                 onClick={async () => {
-                                  if (
-                                    !token ||
-                                    !canClaimNow
-                                  )
-                                    return;
+                                  if (!token || !canClaimNow) return;
                                   try {
                                     await claim(sku.code);
-                                    const doc =
-                                      await generateAICert();
+                                    const doc = await generateAICert();
 
-                                    const url =
-                                      (doc as any)
-                                        ?.download_url ||
-                                      (doc as any)?.url;
-                                    if (url)
-                                      window.open(
-                                        url,
-                                        '_blank',
-                                        'noopener,noreferrer',
-                                      );
+                                    const url = (doc as any)?.download_url || (doc as any)?.url;
+                                    if (url) window.open(url, '_blank', 'noopener,noreferrer');
 
-                                    const c: any =
-                                      doc || {};
+                                    const c: any = doc || {};
                                     setCertUrl(c.url ?? null);
-                                    setDownUrl(
-                                      c.download_url ??
-                                        c.downloadUrl ??
-                                        c.url ??
-                                        null,
-                                    );
+                                    setDownUrl(c.download_url ?? c.downloadUrl ?? c.url ?? null);
 
                                     // Refresh wallet after token deduction
                                     try {
@@ -1713,10 +1484,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                                       /* ignore */
                                     }
                                   } catch (e) {
-                                    console.error(
-                                      '[tokens] claim/generate failed',
-                                      e,
-                                    );
+                                    console.error('[tokens] claim/generate failed', e);
                                   }
                                 }}
                                 className={`px-3 py-1.5 rounded text-sm text-white ${
@@ -1737,21 +1505,15 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                     {(skus?.length ?? 0) > 0 &&
                       (Number(tokens) || 0) <
                         Number(
-                          skus?.[0]?.price_tokens ??
-                            skus?.[0]?.priceTokens ??
-                            skus?.[0]?.price ??
-                            0,
+                          skus?.[0]?.price_tokens ?? skus?.[0]?.priceTokens ?? skus?.[0]?.price ?? 0
                         ) && (
                         <div className="mt-2">
                           <div className="text-[11px] text-gray-600 dark:text-white/70">
-                            Not enough tokens?{' '}
-                            <b>Top up and try again.</b>
+                            Not enough tokens? <b>Top up and try again.</b>
                           </div>
                           <div className="mt-2 flex gap-2">
                             <button
-                              onClick={() =>
-                                setPaymentOpen(true)
-                              }
+                              onClick={() => setPaymentOpen(true)}
                               className="btn bg-indigo-600 hover:bg-indigo-500"
                             >
                               Buy tokens
@@ -1774,12 +1536,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
                     {certUrl && (
                       <>
-                        <a
-                          href={certUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="chip"
-                        >
+                        <a href={certUrl} target="_blank" rel="noreferrer" className="chip">
                           View certificate
                         </a>
 
@@ -1790,14 +1547,11 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                               if (
                                 !requireAuth(
                                   'download_certificate',
-                                  'Please sign in to download your certificate.',
+                                  'Please sign in to download your certificate.'
                                 )
                               )
                                 return;
-                              const m =
-                                downUrl?.match(
-                                  /\/certificates\/([^/]+)\/download/,
-                                );
+                              const m = downUrl?.match(/\/certificates\/([^/]+)\/download/);
                               const certId = m?.[1];
                               if (certId) {
                                 try {
@@ -1806,30 +1560,16 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                                     token,
                                     certId,
                                     `${courseTitle
-                                      .replace(
-                                        /\s+/g,
-                                        '-',
-                                      )
-                                      .toLowerCase()}-${certId}.pdf`,
+                                      .replace(/\s+/g, '-')
+                                      .toLowerCase()}-${certId}.pdf`
                                   );
                                 } catch (e) {
-                                  console.error(
-                                    'Download failed',
-                                    e,
-                                  );
+                                  console.error('Download failed', e);
                                   if (certUrl)
-                                    window.open(
-                                      certUrl,
-                                      '_blank',
-                                      'noopener,noreferrer',
-                                    );
+                                    window.open(certUrl, '_blank', 'noopener,noreferrer');
                                 }
                               } else if (certUrl) {
-                                window.open(
-                                  certUrl,
-                                  '_blank',
-                                  'noopener,noreferrer',
-                                );
+                                window.open(certUrl, '_blank', 'noopener,noreferrer');
                               }
                             }}
                           >
@@ -1842,8 +1582,8 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
                   {!certUrl && (
                     <p className="text-[12px] text-gray-600 dark:text-white/70 mt-2">
-                      Once payment completes (tokens or fiat), we’ll
-                      generate your certificate instantly.
+                      Once payment completes (tokens or fiat), we’ll generate your certificate
+                      instantly.
                     </p>
                   )}
                 </>
@@ -1854,8 +1594,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
           {grade && !grade.passed && !retakeMode && (
             <div className="mt-4 rounded-xl bg-red-50 ring-1 ring-red-200 p-3 dark:bg-red-500/10 dark:ring-red-500">
               <div className="text-sm text-red-700 dark:text-red-200">
-                You scored {grade.scorePct}%. Review the lesson and
-                try again.
+                You scored {grade.scorePct}%. Review the lesson and try again.
               </div>
 
               {/* Retry CTA (org flow) */}
@@ -1864,22 +1603,13 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                   <button
                     className="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500"
                     onClick={async () => {
-                      if (
-                        !requireAuth(
-                          'start_attempt',
-                          'Please sign in to retry.',
-                        )
-                      )
-                        return;
+                      if (!requireAuth('start_attempt', 'Please sign in to retry.')) return;
                       if (startingAttemptRef.current) return;
                       startingAttemptRef.current = true;
                       try {
                         const timerSecEff =
-                          (orgMeta?.timer_s ?? timerSec ?? 0) >
-                          0
-                            ? Number(
-                                orgMeta?.timer_s ?? timerSec,
-                              )
+                          (orgMeta?.timer_s ?? timerSec ?? 0) > 0
+                            ? Number(orgMeta?.timer_s ?? timerSec)
                             : 0;
 
                         // Start via hook (updates attempt/attemptId internally)
@@ -1893,11 +1623,8 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
                         const ms =
                           Number(att?.remainingMs ?? 0) ||
-                          (timerSecEff > 0
-                            ? timerSecEff * 1000
-                            : 0);
-                        if (ms > 0)
-                          setLocalRemainingMs(ms);
+                          (timerSecEff > 0 ? timerSecEff * 1000 : 0);
+                        if (ms > 0) setLocalRemainingMs(ms);
 
                         setForceUnlock(true);
                         setRetakeMode(true);
@@ -1912,7 +1639,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                           undefined,
                           assignmentId,
                           desiredQuizType,
-                          { lessonIndex: currentIdx },
+                          { lessonIndex: currentIdx }
                         );
                       } catch (e) {
                         console.error('[retry] failed', e);
@@ -1934,10 +1661,8 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                     onClick={async () => {
                       setRetakeMode(true);
                       setWorkingAnswers({});
-                      if (timerSec > 0)
-                        setLocalRemainingMs(
-                          displayTimerSec * 1000,
-                        );
+                      if (displayTimerSec > 0) setLocalRemainingMs(displayTimerSec * 1000);
+
                       markActive();
                       await generateQuizNow(
                         displayQuestions,
@@ -1946,7 +1671,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                         undefined,
                         assignmentId,
                         desiredQuizType,
-                        { lessonIndex: currentIdx },
+                        { lessonIndex: currentIdx }
                       );
                     }}
                   >
@@ -1958,123 +1683,120 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
           )}
 
           {/* ---- Pinned, centered keypad overlay (draggable) ---- */}
-          {mathOpen &&
-            enforcedQuizType === 'short' &&
-            !isLocked && (
-              <div
-                ref={overlayRef}
-                className={`fixed z-50 max-w-[22rem] rounded-2xl ring-1 ring-gray-200 bg-white p-3 shadow-2xl
+          {mathOpen && enforcedQuizType === 'short' && !isLocked && (
+            <div
+              ref={overlayRef}
+              className={`fixed z-50 max-w-[22rem] rounded-2xl ring-1 ring-gray-200 bg-white p-3 shadow-2xl
                           dark:bg-white/5 dark:ring-white/10 backdrop-blur ${
                             overlayPos ? '' : 'bottom-20 right-4'
                           }`}
-                style={
-                  overlayPos
-                    ? {
-                        left: overlayPos.left,
-                        top: overlayPos.top,
-                      }
-                    : undefined
-                }
-                role="dialog"
-                aria-label="Math keypad"
+              style={
+                overlayPos
+                  ? {
+                      left: overlayPos.left,
+                      top: overlayPos.top,
+                    }
+                  : undefined
+              }
+              role="dialog"
+              aria-label="Math keypad"
+            >
+              {/* Drag handle + close */}
+              <div
+                className="text-sm font-semibold mb-2 text-darkText dark:text-white cursor-move select-none flex items-center justify-between"
+                onMouseDown={(e) => {
+                  beginDrag(e.clientX, e.clientY);
+                }}
+                onTouchStart={(e) => {
+                  const t = e.touches[0];
+                  beginDrag(t.clientX, t.clientY);
+                }}
               >
-                {/* Drag handle + close */}
-                <div
-                  className="text-sm font-semibold mb-2 text-darkText dark:text-white cursor-move select-none flex items-center justify-between"
-                  onMouseDown={(e) => {
-                    beginDrag(e.clientX, e.clientY);
-                  }}
-                  onTouchStart={(e) => {
-                    const t = e.touches[0];
-                    beginDrag(t.clientX, t.clientY);
-                  }}
+                <span>Math keypad</span>
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => setMathOpen(false)}
+                  title="Close keypad"
                 >
-                  <span>Math keypad</span>
-                  <button
-                    type="button"
-                    className="chip"
-                    onClick={() => setMathOpen(false)}
-                    title="Close keypad"
-                  >
-                    Close
-                  </button>
-                </div>
-
-                {/* Symbols grid */}
-                <div className="grid grid-cols-8 gap-1 text-lg">
-                  {[
-                    'π',
-                    '×',
-                    '÷',
-                    '±',
-                    '√',
-                    '^',
-                    '≤',
-                    '≥',
-                    '≈',
-                    '∞',
-                    '°',
-                    '·',
-                    'θ',
-                    'α',
-                    'β',
-                    'γ',
-                    'µ',
-                    '∑',
-                    '∫',
-                    '≠',
-                    '→',
-                    '←',
-                    '↔',
-                    '∈',
-                    '∉',
-                    '∩',
-                    '∪',
-                    '∧',
-                    '∨',
-                    '⊂',
-                    '⊆',
-                  ].map((k) => (
-                    <button
-                      key={k}
-                      type="button"
-                      className="px-2 py-1 rounded-md ring-1 ring-gray-200 bg-white hover:bg-gray-50
-                               dark:bg-white/10 dark:ring-white/10 dark:hover:bg-white/20"
-                      onClick={() => insertAtCursor(k)}
-                      title={`Insert ${k}`}
-                    >
-                      {k}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Sub/Sup actions */}
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    className="chip"
-                    onClick={() => transformSelection(toSub)}
-                    title="Convert selection to subscript digits/signs"
-                  >
-                    Subscript (x₂)
-                  </button>
-                  <button
-                    type="button"
-                    className="chip"
-                    onClick={() => transformSelection(toSup)}
-                    title="Convert selection to superscript digits/signs"
-                  >
-                    Superscript (x²)
-                  </button>
-                </div>
-
-                <div className="mt-2 text-[11px] text-gray-500 dark:text-white/60">
-                  Tip: click into your answer box, then tap a symbol.
-                  Shortcuts — Alt+P (π), Alt+= (superscript), Alt+-
-                  (subscript). Drag this panel by its header.
-                </div>
+                  Close
+                </button>
               </div>
-            )}
+
+              {/* Symbols grid */}
+              <div className="grid grid-cols-8 gap-1 text-lg">
+                {[
+                  'π',
+                  '×',
+                  '÷',
+                  '±',
+                  '√',
+                  '^',
+                  '≤',
+                  '≥',
+                  '≈',
+                  '∞',
+                  '°',
+                  '·',
+                  'θ',
+                  'α',
+                  'β',
+                  'γ',
+                  'µ',
+                  '∑',
+                  '∫',
+                  '≠',
+                  '→',
+                  '←',
+                  '↔',
+                  '∈',
+                  '∉',
+                  '∩',
+                  '∪',
+                  '∧',
+                  '∨',
+                  '⊂',
+                  '⊆',
+                ].map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    className="px-2 py-1 rounded-md ring-1 ring-gray-200 bg-white hover:bg-gray-50
+                               dark:bg-white/10 dark:ring-white/10 dark:hover:bg-white/20"
+                    onClick={() => insertAtCursor(k)}
+                    title={`Insert ${k}`}
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sub/Sup actions */}
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => transformSelection(toSub)}
+                  title="Convert selection to subscript digits/signs"
+                >
+                  Subscript (x₂)
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => transformSelection(toSup)}
+                  title="Convert selection to superscript digits/signs"
+                >
+                  Superscript (x²)
+                </button>
+              </div>
+
+              <div className="mt-2 text-[11px] text-gray-500 dark:text-white/60">
+                Tip: click into your answer box, then tap a symbol. Shortcuts — Alt+P (π), Alt+=
+                (superscript), Alt+- (subscript). Drag this panel by its header.
+              </div>
+            </div>
+          )}
         </section>
       ) : null}
 
@@ -2092,13 +1814,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
             setConfirmOpen(false);
 
             if (isOrgFlow && assignmentId) {
-              if (
-                !requireAuth(
-                  'start_attempt',
-                  'Please sign in to start your attempt.',
-                )
-              )
-                return;
+              if (!requireAuth('start_attempt', 'Please sign in to start your attempt.')) return;
               if (startingAttemptRef.current) return;
               startingAttemptRef.current = true;
               try {
@@ -2115,23 +1831,20 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                   maxSuspicion: 5,
                 });
 
-                const ms =
-                  (att?.remainingMs ?? 0) ||
-                  (timerSecEff > 0
-                    ? timerSecEff * 1000
-                    : 0);
+                const ms = (att?.remainingMs ?? 0) || (timerSecEff > 0 ? timerSecEff * 1000 : 0);
                 if (ms > 0) setLocalRemainingMs(ms);
 
                 markActive();
                 setForceUnlock(true);
-              } catch (e) {
-                console.warn(
-                  'attempt start failed; using local timer fallback',
-                  e,
-                );
-                if (timerSec > 0)
-                  setLocalRemainingMs(timerSec * 1000);
-              } finally {
+             } catch (e) {
+                console.warn('attempt start failed; using local timer fallback', e);
+                const fallback = Number(orgMeta?.timer_s ?? timerSec ?? 0);
+                if (Number.isFinite(fallback) && fallback > 0) {
+                  setLocalRemainingMs(fallback * 1000);
+                  markActive();
+                }
+              }
+              finally {
                 startingAttemptRef.current = false;
               }
             } else if (timerSec > 0) {
@@ -2141,14 +1854,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
             }
 
             const desiredQuestions =
-              orgMeta?.quizSize ??
-              safeQuiz ??
-              Number(confirmInfo.questions || 0);
+              orgMeta?.quizSize ?? safeQuiz ?? Number(confirmInfo.questions || 0);
 
-            const numQArg = Math.max(
-              3,
-              Number(desiredQuestions || 0),
-            );
+            const numQArg = Math.max(3, Number(desiredQuestions || 0));
 
             console.log('[ui] desiredQuizType →', {
               org: orgMeta?.quizType,
@@ -2157,9 +1865,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
             });
 
             await generateQuizNow(
-              isOrgFlow &&
-                assignmentId &&
-                Number.isFinite(orgMeta?.quizSize as any)
+              isOrgFlow && assignmentId && Number.isFinite(orgMeta?.quizSize as any)
                 ? undefined // let backend enforce locked size
                 : numQArg, // otherwise, send our chosen number
               undefined,
@@ -2167,7 +1873,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
               undefined,
               assignmentId,
               desiredQuizType,
-              { lessonIndex: currentIdx },
+              { lessonIndex: currentIdx }
             );
           }}
         />

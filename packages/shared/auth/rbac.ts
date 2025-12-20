@@ -9,7 +9,7 @@ export const RoleOrder = {
 
 export function hasRoleAtLeast(current: UserRole, required: UserRole): boolean {
   if (!current || !required) return false;
-  
+
   return RoleOrder[current] >= RoleOrder[required];
 }
 

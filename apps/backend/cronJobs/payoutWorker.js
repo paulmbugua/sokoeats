@@ -8,8 +8,6 @@ import express from 'express';
 import pool from '../config/db.js';
 import { createRedis } from './redisConnection.js';
 
-
-
 // ────────────────────────────────────────────────────────────────
 // Utilities
 // ────────────────────────────────────────────────────────────────
@@ -27,7 +25,11 @@ async function ensureRedisUp(conn) {
 function parseDestination(dest) {
   if (!dest) return {};
   if (typeof dest === 'string') {
-    try { return JSON.parse(dest); } catch { return {}; }
+    try {
+      return JSON.parse(dest);
+    } catch {
+      return {};
+    }
   }
   return dest;
 }
@@ -52,14 +54,18 @@ let queueScheduler = null;
 const startBull = async () => {
   const ok = await ensureRedisUp(connection);
   if (!ok) {
-    console.warn('[payouts] Redis not reachable/disabled; skipping queue/worker startup.');
+    console.warn(
+      '[payouts] Redis not reachable/disabled; skipping queue/worker startup.',
+    );
     return;
   }
 
   if (typeof QueueScheduler === 'function') {
     queueScheduler = new QueueScheduler('payouts', { connection });
   } else {
-    console.log('[payouts] QueueScheduler not available in this BullMQ version—continuing without it.');
+    console.log(
+      '[payouts] QueueScheduler not available in this BullMQ version—continuing without it.',
+    );
   }
 
   payoutsQueue = new Queue('payouts', { connection });
@@ -70,7 +76,7 @@ const startBull = async () => {
 
     worker.on('completed', (job) => console.log('[payouts] completed', job.id));
     worker.on('failed', (job, err) =>
-      console.error('[payouts] failed', job?.id, err?.message)
+      console.error('[payouts] failed', job?.id, err?.message),
     );
   }
 };
@@ -80,7 +86,9 @@ const startBull = async () => {
 // ────────────────────────────────────────────────────────────────
 export async function enqueuePayout(payoutId) {
   if (!payoutsQueue) {
-    throw new Error('Payout queue is unavailable (Redis down or worker not started). Try again later.');
+    throw new Error(
+      'Payout queue is unavailable (Redis down or worker not started). Try again later.',
+    );
   }
   await payoutsQueue.add(
     'process',
@@ -90,7 +98,7 @@ export async function enqueuePayout(payoutId) {
       backoff: { type: 'exponential', delay: 5000 },
       removeOnComplete: 1000,
       removeOnFail: 200,
-    }
+    },
   );
 }
 
@@ -133,7 +141,10 @@ async function processor(job) {
     const { payoutId } = job.data;
     await client.query('BEGIN');
 
-    const { rows } = await client.query('SELECT * FROM payouts WHERE id=$1 FOR UPDATE', [payoutId]);
+    const { rows } = await client.query(
+      'SELECT * FROM payouts WHERE id=$1 FOR UPDATE',
+      [payoutId],
+    );
     if (!rows.length) throw new Error('Payout not found');
 
     const p = rows[0];
@@ -178,35 +189,40 @@ async function processor(job) {
       `UPDATE payouts
          SET status='paid', provider_ref=$2, paid_at=NOW(), updated_at=NOW()
        WHERE id=$1`,
-      [payoutId, providerRef]
+      [payoutId, providerRef],
     );
 
     await client.query(
       `UPDATE earnings_balances
           SET pending_amount = pending_amount - $3, updated_at = NOW()
         WHERE user_id=$1 AND currency=$2`,
-      [p.tutor_id, currency, amount]
+      [p.tutor_id, currency, amount],
     );
 
     const txId = dest.transaction_id;
     if (txId) {
       await client.query(
         `UPDATE transactions SET status='Completed', updated_at=NOW() WHERE id=$1`,
-        [txId]
+        [txId],
       );
     }
 
     await client.query('COMMIT');
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch {}
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     try {
       const { payoutId } = job.data;
-      const { rows: pRows } = await pool.query('SELECT * FROM payouts WHERE id=$1', [payoutId]);
+      const { rows: pRows } = await pool.query(
+        'SELECT * FROM payouts WHERE id=$1',
+        [payoutId],
+      );
       const p = pRows[0];
       if (p && p.status === 'queued') {
         await pool.query(
           `UPDATE payouts SET status='failed', error=$2, updated_at=NOW() WHERE id=$1`,
-          [payoutId, String(err.message).slice(0, 500)]
+          [payoutId, String(err.message).slice(0, 500)],
         );
 
         if (p.amount > 0) {
@@ -216,7 +232,11 @@ async function processor(job) {
                     pending_amount   = GREATEST(pending_amount - $3, 0),
                     updated_at = NOW()
               WHERE user_id=$1 AND currency=$2`,
-            [p.tutor_id, String(p.currency || '').toUpperCase(), Number(p.amount)]
+            [
+              p.tutor_id,
+              String(p.currency || '').toUpperCase(),
+              Number(p.amount),
+            ],
           );
         }
 
@@ -224,7 +244,7 @@ async function processor(job) {
         if (dest.transaction_id) {
           await pool.query(
             `UPDATE transactions SET status='Failed', updated_at=NOW() WHERE id=$1`,
-            [dest.transaction_id]
+            [dest.transaction_id],
           );
         }
       }
@@ -276,7 +296,9 @@ if (WORKER_HEALTH_PORT > 0) {
   });
 
   healthApp.listen(WORKER_HEALTH_PORT, () => {
-    console.log(`[worker] health server on :${WORKER_HEALTH_PORT} (GET /healthz)`);
+    console.log(
+      `[worker] health server on :${WORKER_HEALTH_PORT} (GET /healthz)`,
+    );
   });
 }
 

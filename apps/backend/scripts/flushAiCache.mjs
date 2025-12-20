@@ -3,7 +3,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Adjust this import to your actual helper path:
-import { createRedis, ensureRedisConnected } from '../cronJobs/redisConnection.js';
+import {
+  createRedis,
+  ensureRedisConnected,
+} from '../cronJobs/redisConnection.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,7 +17,13 @@ async function deleteByPattern(redis, pattern) {
   let cursor = '0';
   let total = 0;
   do {
-    const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 500);
+    const [next, keys] = await redis.scan(
+      cursor,
+      'MATCH',
+      pattern,
+      'COUNT',
+      500,
+    );
     cursor = next;
     if (keys.length) {
       total += keys.length;
@@ -28,7 +37,9 @@ async function deleteByPattern(redis, pattern) {
   const redis = createRedis();
   await ensureRedisConnected(redis);
 
-  const patterns = patternsFromArgs.length ? patternsFromArgs : DEFAULT_PATTERNS;
+  const patterns = patternsFromArgs.length
+    ? patternsFromArgs
+    : DEFAULT_PATTERNS;
 
   let grandTotal = 0;
   for (const p of patterns) {

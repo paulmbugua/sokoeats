@@ -29,32 +29,32 @@ export const loginUser = async (req, res) => {
         .json({ success: false, message: 'Email and password are required' });
     }
 
-    const result = await pool.query(
-      'SELECT * FROM users WHERE email = $1',
-      [email.trim()]
-    );
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [
+      email.trim(),
+    ]);
     if (result.rows.length === 0) {
-      return res.status(401).json({ success: false, message: 'User not found' });
+      return res
+        .status(401)
+        .json({ success: false, message: 'User not found' });
     }
 
     const user = result.rows[0];
     if (!user.password) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: 'Please log in with Google (this account has no password)',
-        });
+      return res.status(400).json({
+        success: false,
+        message: 'Please log in with Google (this account has no password)',
+      });
     }
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      return res
+        .status(401)
+        .json({ success: false, message: 'Invalid credentials' });
     }
 
     const token = createToken(user.id);
     return res.json({ success: true, token, message: 'Login successful' });
-
   } catch (err) {
     console.error('Login Error:', err);
     return res.status(500).json({ success: false, message: 'Server error' });
@@ -69,105 +69,136 @@ export const registerUser = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
     // new/optional student fields
-    const age        = req.body.age;
-    const languages  = Array.isArray(req.body.languages) ? req.body.languages : (req.body.languages ? [req.body.languages] : []);
-    const country    = (req.body.country || '').toString().trim().toUpperCase();  // e.g. 'KE'
-    const gradeBands = Array.isArray(req.body.gradeBands) ? req.body.gradeBands : (req.body.gradeBands ? [req.body.gradeBands] : []);
+    const age = req.body.age;
+    const languages = Array.isArray(req.body.languages)
+      ? req.body.languages
+      : req.body.languages
+        ? [req.body.languages]
+        : [];
+    const country = (req.body.country || '').toString().trim().toUpperCase(); // e.g. 'KE'
+    const gradeBands = Array.isArray(req.body.gradeBands)
+      ? req.body.gradeBands
+      : req.body.gradeBands
+        ? [req.body.gradeBands]
+        : [];
 
     if (!name || !email?.trim() || !password || !role) {
-      return res.status(400).json({ success: false, message: 'Name, email, password and role are required' });
+      return res.status(400).json({
+        success: false,
+        message: 'Name, email, password and role are required',
+      });
     }
     if (!validator.isEmail(email.trim())) {
-      return res.status(400).json({ success: false, message: 'Invalid email format' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid email format' });
     }
     if (password.length < 8) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters',
+      });
     }
     if (!['student', 'tutor'].includes(role)) {
       return res.status(400).json({ success: false, message: 'Invalid role' });
     }
 
     // 🔁 Backward & forward compatible (now fully optional for students):
-// - Old clients may send ageGroup (string or array)
-// - New clients may send age / gradeBands (optional)
-let ageGroupArr = [];
-if (req.body.ageGroup) {
-  ageGroupArr = Array.isArray(req.body.ageGroup) ? req.body.ageGroup : [req.body.ageGroup];
-} else if (role === 'student' && (age || (gradeBands && gradeBands.length))) {
-  try {
-    const derived = inferAgeGroup({ age, gradeBands });
-    if (derived) ageGroupArr = [derived];
-  } catch { /* best-effort only */ }
-}
+    // - Old clients may send ageGroup (string or array)
+    // - New clients may send age / gradeBands (optional)
+    let ageGroupArr = [];
+    if (req.body.ageGroup) {
+      ageGroupArr = Array.isArray(req.body.ageGroup)
+        ? req.body.ageGroup
+        : [req.body.ageGroup];
+    } else if (
+      role === 'student' &&
+      (age || (gradeBands && gradeBands.length))
+    ) {
+      try {
+        const derived = inferAgeGroup({ age, gradeBands });
+        if (derived) ageGroupArr = [derived];
+      } catch {
+        /* best-effort only */
+      }
+    }
 
-
-    const exists = await pool.query('SELECT 1 FROM users WHERE email = $1', [email.trim()]);
+    const exists = await pool.query('SELECT 1 FROM users WHERE email = $1', [
+      email.trim(),
+    ]);
     if (exists.rows.length) {
-      return res.status(409).json({ success: false, message: 'User already exists' });
+      return res
+        .status(409)
+        .json({ success: false, message: 'User already exists' });
     }
 
     const hashed = await bcrypt.hash(password, 10);
     const insertUser = await pool.query(
       'INSERT INTO users (name, email, password, role) VALUES ($1,$2,$3,$4) RETURNING id',
-      [name, email.trim(), hashed, role]
+      [name, email.trim(), hashed, role],
     );
     const userId = insertUser.rows[0].id;
 
-   if (role === 'student') {
-  // DB requires age >= 5 → clamp to 5 when missing/too small
-  const ageRaw = req.body.age;
-  const safeAgeStudent =
-    Number.isFinite(Number(ageRaw)) && Number(ageRaw) >= 5
-      ? Number(ageRaw)
-      : 5;
+    if (role === 'student') {
+      // DB requires age >= 5 → clamp to 5 when missing/too small
+      const ageRaw = req.body.age;
+      const safeAgeStudent =
+        Number.isFinite(Number(ageRaw)) && Number(ageRaw) >= 5
+          ? Number(ageRaw)
+          : 5;
 
-  const languagesIn = Array.isArray(req.body.languages)
-    ? req.body.languages
-    : (req.body.languages ? [req.body.languages] : []);
-  const safeLanguages = languagesIn.filter(Boolean);
+      const languagesIn = Array.isArray(req.body.languages)
+        ? req.body.languages
+        : req.body.languages
+          ? [req.body.languages]
+          : [];
+      const safeLanguages = languagesIn.filter(Boolean);
 
-  const gradeBands = Array.isArray(req.body.gradeBands)
-    ? req.body.gradeBands
-    : (req.body.gradeBands ? [req.body.gradeBands] : []);
+      const gradeBands = Array.isArray(req.body.gradeBands)
+        ? req.body.gradeBands
+        : req.body.gradeBands
+          ? [req.body.gradeBands]
+          : [];
 
-  let ageGroupArr = null;
-  try {
-    if (req.body.ageGroup) {
-      ageGroupArr = Array.isArray(req.body.ageGroup) ? req.body.ageGroup : [req.body.ageGroup];
-    } else if (safeAgeStudent > 0 || (gradeBands && gradeBands.length)) {
-      ageGroupArr = [inferAgeGroup({ age: safeAgeStudent, gradeBands })];
-    }
-  } catch {
-    ageGroupArr = null;
-  }
+      let ageGroupArr = null;
+      try {
+        if (req.body.ageGroup) {
+          ageGroupArr = Array.isArray(req.body.ageGroup)
+            ? req.body.ageGroup
+            : [req.body.ageGroup];
+        } else if (safeAgeStudent > 0 || (gradeBands && gradeBands.length)) {
+          ageGroupArr = [inferAgeGroup({ age: safeAgeStudent, gradeBands })];
+        }
+      } catch {
+        ageGroupArr = null;
+      }
 
-  const description = JSON.stringify({
-    region: null,
-    country: (country || null),
-    gradeBandKey: (gradeBands[0] || null),
-  });
+      const description = JSON.stringify({
+        region: null,
+        country: country || null,
+        gradeBandKey: gradeBands[0] || null,
+      });
 
-  await pool.query(
-    `INSERT INTO profiles (user_id, role, name, age, languages, age_group, description, country)
+      await pool.query(
+        `INSERT INTO profiles (user_id, role, name, age, languages, age_group, description, country)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-    [
-      userId,
-      role,
-      name,
-      safeAgeStudent,                                  // ← 5 instead of 0/NULL
-      (safeLanguages.length ? safeLanguages : null),
-      (ageGroupArr && ageGroupArr.length ? ageGroupArr : null),
-      description,
-      country || null,
-    ]
-  );
-}
-
-
+        [
+          userId,
+          role,
+          name,
+          safeAgeStudent, // ← 5 instead of 0/NULL
+          safeLanguages.length ? safeLanguages : null,
+          ageGroupArr && ageGroupArr.length ? ageGroupArr : null,
+          description,
+          country || null,
+        ],
+      );
+    }
 
     const token = createToken(userId);
-    return res.status(201).json({ success: true, token, message: 'Sign up successful' });
-
+    return res
+      .status(201)
+      .json({ success: true, token, message: 'Sign up successful' });
   } catch (err) {
     console.error('Registration Error:', err);
     return res.status(500).json({ success: false, message: 'Server error' });
@@ -199,7 +230,9 @@ export const getUser = async (req, res) => {
 
     const userId = Number(rawId);
     if (!Number.isFinite(userId)) {
-      return res.status(400).json({ success: false, message: 'Invalid user ID' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid user ID' });
     }
 
     // 1) Base user info (same as before)
@@ -221,10 +254,12 @@ export const getUser = async (req, res) => {
       ) p ON TRUE
       WHERE u.id = $1
       `,
-      [userId]
+      [userId],
     );
     if (!rows.length) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: 'User not found' });
     }
 
     const u = rows[0];
@@ -238,7 +273,7 @@ export const getUser = async (req, res) => {
         ORDER BY created_at DESC
         LIMIT 1
       `,
-      [userId]
+      [userId],
     );
 
     const orgLearnerProfile = lpRes.rows[0] || null;
@@ -268,7 +303,6 @@ export const getUser = async (req, res) => {
   }
 };
 
-
 /** --------------------
  *  Password Reset Flow
  -------------------- */
@@ -285,7 +319,7 @@ export const requestPasswordReset = async (req, res) => {
 
     const { rows } = await pool.query(
       'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
-      [email]
+      [email],
     );
 
     // You can choose to NOT leak user existence. For now, keep your old behaviour.
@@ -307,7 +341,7 @@ export const requestPasswordReset = async (req, res) => {
              updated_at = NOW()
        WHERE email = $2
       `,
-      [otp, email]
+      [otp, email],
     );
 
     await sendOTP(email, otp);
@@ -315,9 +349,7 @@ export const requestPasswordReset = async (req, res) => {
     return res.json({ success: true, message: 'OTP sent' });
   } catch (err) {
     console.error('requestPasswordReset Error:', err);
-    return res
-      .status(500)
-      .json({ success: false, message: 'Server error' });
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
@@ -326,7 +358,8 @@ export const verifyOTPAndResetPassword = async (req, res) => {
     const rawEmail = req.body?.email;
     const email = rawEmail && rawEmail.toString().trim();
     const otp = req.body?.otp && req.body.otp.toString().trim();
-    const newPassword = req.body?.newPassword && req.body.newPassword.toString();
+    const newPassword =
+      req.body?.newPassword && req.body.newPassword.toString();
 
     if (!email || !otp || !newPassword) {
       return res
@@ -341,7 +374,7 @@ export const verifyOTPAndResetPassword = async (req, res) => {
        WHERE email = $1
          AND deleted_at IS NULL
       `,
-      [email]
+      [email],
     );
 
     if (!rows.length) {
@@ -354,9 +387,7 @@ export const verifyOTPAndResetPassword = async (req, res) => {
 
     // Check OTP match + expiry
     const now = new Date();
-    const expiry = user.otp_expiration
-      ? new Date(user.otp_expiration)
-      : null;
+    const expiry = user.otp_expiration ? new Date(user.otp_expiration) : null;
 
     if (user.otp !== otp || !expiry || expiry < now) {
       return res
@@ -365,9 +396,10 @@ export const verifyOTPAndResetPassword = async (req, res) => {
     }
 
     if (newPassword.trim().length < 8) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Password must be at least 8 characters' });
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters',
+      });
     }
 
     const hash = await bcrypt.hash(newPassword.trim(), 10);
@@ -382,15 +414,13 @@ export const verifyOTPAndResetPassword = async (req, res) => {
              updated_at       = NOW()
        WHERE email = $2
       `,
-      [hash, email]
+      [hash, email],
     );
 
     return res.json({ success: true, message: 'Password updated' });
   } catch (err) {
     console.error('verifyOTP Error:', err);
-    return res
-      .status(500)
-      .json({ success: false, message: 'Server error' });
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
@@ -410,15 +440,22 @@ export const googleLogin = async (req, res) => {
     const decodePayload = (t) => {
       const parts = t.split('.');
       if (parts.length !== 3) return null;
-      const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+      const b64 = parts[1]
+        .replace(/-/g, '+')
+        .replace(/_/g, '/')
         .padEnd(Math.ceil(parts[1].length / 4) * 4, '=');
-      try { return JSON.parse(Buffer.from(b64, 'base64').toString('utf8')); }
-      catch { return null; }
+      try {
+        return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+      } catch {
+        return null;
+      }
     };
 
     const payload = decodePayload(rawToken);
     if (!payload) {
-      return res.status(400).json({ success: false, message: 'Malformed token' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Malformed token' });
     }
 
     const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'mytutorapp-d3c91';
@@ -436,7 +473,9 @@ export const googleLogin = async (req, res) => {
       payload.iss.startsWith('https://securetoken.google.com/')
     ) {
       if (payload.aud !== PROJECT_ID) {
-        return res.status(401).json({ success: false, message: 'Token audience mismatch' });
+        return res
+          .status(401)
+          .json({ success: false, message: 'Token audience mismatch' });
       }
       // Verify with Firebase Admin (throws if invalid/expired)
       const decoded = await admin.auth().verifyIdToken(rawToken);
@@ -455,13 +494,23 @@ export const googleLogin = async (req, res) => {
       });
       const g = ticket.getPayload();
       if (!g) {
-        return res.status(401).json({ success: false, message: 'Invalid Google token' });
+        return res
+          .status(401)
+          .json({ success: false, message: 'Invalid Google token' });
       }
-      if (g.aud && allowedAudiences.length && !allowedAudiences.includes(g.aud)) {
-        return res.status(401).json({ success: false, message: 'Google audience mismatch' });
+      if (
+        g.aud &&
+        allowedAudiences.length &&
+        !allowedAudiences.includes(g.aud)
+      ) {
+        return res
+          .status(401)
+          .json({ success: false, message: 'Google audience mismatch' });
       }
       if (g.email_verified === false) {
-        return res.status(401).json({ success: false, message: 'Email not verified' });
+        return res
+          .status(401)
+          .json({ success: false, message: 'Email not verified' });
       }
       email = g.email;
       googleId = g.sub; // Google subject
@@ -469,11 +518,15 @@ export const googleLogin = async (req, res) => {
     }
     // Unknown issuer
     else {
-      return res.status(400).json({ success: false, message: 'Unsupported token issuer' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Unsupported token issuer' });
     }
 
     if (!email || !googleId) {
-      return res.status(400).json({ success: false, message: 'Invalid token claims' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid token claims' });
     }
 
     // ⚡ Single UPSERT (fill empty name; set google_id if missing)
@@ -487,11 +540,13 @@ export const googleLogin = async (req, res) => {
         google_id = COALESCE(users.google_id, EXCLUDED.google_id)
       RETURNING id, email, name, role
       `,
-      [displayName || email, email, googleId]
+      [displayName || email, email, googleId],
     );
 
     const user = rows[0];
-    const jwtToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1d' });
+    const jwtToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
+      expiresIn: '1d',
+    });
 
     return res.status(200).json({
       success: true,
@@ -503,7 +558,9 @@ export const googleLogin = async (req, res) => {
     });
   } catch (error) {
     console.error('Google Login Error:', error);
-    return res.status(500).json({ success: false, message: 'Google authentication failed' });
+    return res
+      .status(500)
+      .json({ success: false, message: 'Google authentication failed' });
   }
 };
 
@@ -515,11 +572,14 @@ export const updateUserRole = async (req, res) => {
   const client = await pool.connect();
   try {
     const rawId = req.user?.id;
-    if (!rawId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    if (!rawId)
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
 
     const userId = Number(rawId);
     if (!Number.isFinite(userId)) {
-      return res.status(400).json({ success: false, message: 'Invalid user ID' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid user ID' });
     }
 
     const { role } = req.body || {};
@@ -530,10 +590,12 @@ export const updateUserRole = async (req, res) => {
     // Load current user (fallback name, etc.)
     const { rows: u0 } = await client.query(
       'SELECT id, email, name FROM users WHERE id = $1',
-      [userId]
+      [userId],
     );
     if (!u0.length) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: 'User not found' });
     }
     const currentUser = u0[0];
 
@@ -544,24 +606,39 @@ export const updateUserRole = async (req, res) => {
 
     const langsIn = Array.isArray(req.body.languages)
       ? req.body.languages
-      : (req.body.languages ? [req.body.languages] : []);
-    const langs = langsIn.map(s => String(s || '').trim()).filter(Boolean);
+      : req.body.languages
+        ? [req.body.languages]
+        : [];
+    const langs = langsIn.map((s) => String(s || '').trim()).filter(Boolean);
 
     const gradeBands = Array.isArray(req.body.gradeBands)
       ? req.body.gradeBands
-      : (req.body.gradeBands ? [req.body.gradeBands] : []);
+      : req.body.gradeBands
+        ? [req.body.gradeBands]
+        : [];
 
     let ageGroupArr = [];
     if (req.body.ageGroup) {
-      ageGroupArr = Array.isArray(req.body.ageGroup) ? req.body.ageGroup : [req.body.ageGroup];
-    } else if (role === 'student' && (Number.isFinite(ageRaw) || gradeBands.length)) {
+      ageGroupArr = Array.isArray(req.body.ageGroup)
+        ? req.body.ageGroup
+        : [req.body.ageGroup];
+    } else if (
+      role === 'student' &&
+      (Number.isFinite(ageRaw) || gradeBands.length)
+    ) {
       try {
-        const derived = inferAgeGroup({ age: Number.isFinite(ageRaw) ? ageRaw : undefined, gradeBands });
+        const derived = inferAgeGroup({
+          age: Number.isFinite(ageRaw) ? ageRaw : undefined,
+          gradeBands,
+        });
         if (derived) ageGroupArr = [derived];
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
     }
 
-    const country = (req.body.country || '').toString().trim().toUpperCase() || null;
+    const country =
+      (req.body.country || '').toString().trim().toUpperCase() || null;
     const description = JSON.stringify({
       region: null,
       country,
@@ -580,17 +657,25 @@ export const updateUserRole = async (req, res) => {
        WHERE id = $3
        RETURNING id, email, role, name, tokens
       `,
-      [role, cleanName, userId]
+      [role, cleanName, userId],
     );
     const updatedUser = u1[0];
 
     // Only students get/need a profile
     let profile = null;
     if (role === 'student') {
-      const finalName = (cleanName || updatedUser.name || currentUser.name || '').trim();
+      const finalName = (
+        cleanName ||
+        updatedUser.name ||
+        currentUser.name ||
+        ''
+      ).trim();
       if (finalName.length < 2) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, message: 'Name is required for student role' });
+        return res.status(400).json({
+          success: false,
+          message: 'Name is required for student role',
+        });
       }
 
       // Idempotent UPSERT
@@ -620,7 +705,7 @@ export const updateUserRole = async (req, res) => {
           ageGroupArr.length ? ageGroupArr : null,
           description,
           country,
-        ]
+        ],
       );
       profile = p1[0];
     }
@@ -640,7 +725,9 @@ export const updateUserRole = async (req, res) => {
       profile, // null for tutors
     });
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch {}
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     if (err?.code === '23505') {
       // Still here would imply a different unique collision (not user_id), but surface cleanly.
       return res.status(409).json({
@@ -656,8 +743,6 @@ export const updateUserRole = async (req, res) => {
   }
 };
 
-
-
 export async function deleteUser(req, res) {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
@@ -667,7 +752,9 @@ export async function deleteUser(req, res) {
     await client.query('BEGIN');
 
     // Optional: lock the row so concurrent requests don't race
-    await client.query('SELECT id FROM public.users WHERE id = $1 FOR UPDATE', [userId]);
+    await client.query('SELECT id FROM public.users WHERE id = $1 FOR UPDATE', [
+      userId,
+    ]);
 
     await client.query(
       `
@@ -686,7 +773,7 @@ export async function deleteUser(req, res) {
         onboarding_state = NULL
       WHERE id = $1
       `,
-      [userId]
+      [userId],
     );
 
     // Optional: revoke sessions/tokens in your auth store here
@@ -710,7 +797,9 @@ export const adminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email & password required' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Email & password required' });
     }
 
     if (
@@ -723,20 +812,23 @@ export const adminLogin = async (req, res) => {
 
     const { rows } = await pool.query(
       'SELECT * FROM users WHERE email = $1 AND role = $2',
-      [email, 'admin']
+      [email, 'admin'],
     );
     if (!rows.length) {
-      return res.status(401).json({ success: false, message: 'Invalid admin credentials' });
+      return res
+        .status(401)
+        .json({ success: false, message: 'Invalid admin credentials' });
     }
     const admin = rows[0];
     const match = await bcrypt.compare(password, admin.password);
     if (!match) {
-      return res.status(401).json({ success: false, message: 'Invalid admin credentials' });
+      return res
+        .status(401)
+        .json({ success: false, message: 'Invalid admin credentials' });
     }
 
     const token = createToken(admin.id);
     return res.json({ success: true, token, message: 'Admin logged in' });
-
   } catch (err) {
     console.error('adminLogin Error:', err);
     return res.status(500).json({ success: false, message: 'Server error' });

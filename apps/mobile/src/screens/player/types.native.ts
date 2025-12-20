@@ -5,13 +5,23 @@ export type LessonLite = {
   title?: string;
   ssml: string;
   markdown?: string;
-  formulas?: { id: string; latex: string; speakAs?: SpeakAsMode; title?: string; announceAtSentence?: number }[];
-  tables?: { title: string; columns: string[]; rows: (string | number)[][]; caption?: string; announceAtSentence?: number }[];
+  formulas?: {
+    id: string;
+    latex: string;
+    speakAs?: SpeakAsMode;
+    title?: string;
+    announceAtSentence?: number;
+  }[];
+  tables?: {
+    title: string;
+    columns: string[];
+    rows: (string | number)[][];
+    caption?: string;
+    announceAtSentence?: number;
+  }[];
 };
 
 export type OutlineSection = { id: string; title: string; keyPoints?: string[] };
-
-
 
 export type VoiceInfo = { name: string };
 
@@ -27,8 +37,8 @@ export type HighlightTemplate =
 export type ThemeTokens = {
   hlHex: string;
   genHex: string;
-  hlRgb: string;   // "r g b"
-  genRgb: string;  // "r g b"
+  hlRgb: string; // "r g b"
+  genRgb: string; // "r g b"
   activeTextOnHl: '#000' | '#fff';
 
   // NEW: highlight template state for the player

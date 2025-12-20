@@ -119,7 +119,9 @@ const VideoGate: React.FC<{
         // chain existing callback if present
         const prev = w.onYouTubeIframeAPIReady;
         w.onYouTubeIframeAPIReady = () => {
-          try { prev?.(); } catch {}
+          try {
+            prev?.();
+          } catch {}
           resolve();
         };
         // If script was already loaded and callback fired earlier, poll for YT
@@ -179,7 +181,9 @@ const VideoGate: React.FC<{
 
     return () => {
       clearInterval(interval);
-      try { ytPlayerRef.current?.destroy?.(); } catch {}
+      try {
+        ytPlayerRef.current?.destroy?.();
+      } catch {}
     };
   }, [url, ytId, requiredPct, onSatisfied]);
 
@@ -267,7 +271,8 @@ const NotesGate: React.FC<{
       </div>
 
       <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
-        Time on step: {elapsed}s / {requiredSeconds}s {downloaded ? '• downloaded ✔' : '• not downloaded'}
+        Time on step: {elapsed}s / {requiredSeconds}s{' '}
+        {downloaded ? '• downloaded ✔' : '• not downloaded'}
       </div>
     </Card>
   );
@@ -303,13 +308,7 @@ const AssignmentGate: React.FC<{
 };
 
 /** --- Main Panel -------------------------------------------------------- */
-const CourseReadingPanel: React.FC<Props> = ({
-  courseId,
-  week,
-  item,
-  status,
-  onSetStatus,
-}) => {
+const CourseReadingPanel: React.FC<Props> = ({ courseId, week, item, status, onSetStatus }) => {
   const safeStatus: Status = status ?? 'Not Started';
   const safeItem: SyllabusItem | null = item ?? null;
   const weekLabel = safeItem?.week ?? week ?? 0;
@@ -334,9 +333,11 @@ const CourseReadingPanel: React.FC<Props> = ({
   }, [safeItem]);
 
   const canComplete = useMemo(() => {
-    return (needVideo ? videoOk : true) &&
-           (needNotes ? notesOk : true) &&
-           (needAssign ? assignmentOk : true);
+    return (
+      (needVideo ? videoOk : true) &&
+      (needNotes ? notesOk : true) &&
+      (needAssign ? assignmentOk : true)
+    );
   }, [needVideo, needNotes, needAssign, videoOk, notesOk, assignmentOk]);
 
   const onMarkComplete = async () => {
@@ -361,7 +362,8 @@ const CourseReadingPanel: React.FC<Props> = ({
 
         <Card>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            No week data yet. If this persists, check your progress API route or the enrollment/Week ID.
+            No week data yet. If this persists, check your progress API route or the enrollment/Week
+            ID.
           </p>
         </Card>
       </div>
@@ -376,7 +378,9 @@ const CourseReadingPanel: React.FC<Props> = ({
           <h2 className="text-lg sm:text-xl font-bold">
             Week {weekLabel}: {safeItem.topic || 'Untitled'}
           </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Work through the resources below.</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Work through the resources below.
+          </p>
         </div>
 
         <div className="flex gap-2">
@@ -395,8 +399,8 @@ const CourseReadingPanel: React.FC<Props> = ({
               !onSetStatus
                 ? 'Action unavailable'
                 : !canComplete
-                ? 'Finish all required steps first'
-                : 'Mark this week as completed'
+                  ? 'Finish all required steps first'
+                  : 'Mark this week as completed'
             }
           >
             {safeStatus === 'Completed' ? 'Completed' : 'Mark week as complete'}
@@ -418,13 +422,15 @@ const CourseReadingPanel: React.FC<Props> = ({
       )}
 
       {/* Empty state */}
-      {!safeItem.videoUrl && !safeItem.notesUrl && !(safeItem.assignment && safeItem.assignment.trim().length > 0) && (
-        <Card>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            No resources were added for this week. You can still mark it complete when ready.
-          </p>
-        </Card>
-      )}
+      {!safeItem.videoUrl &&
+        !safeItem.notesUrl &&
+        !(safeItem.assignment && safeItem.assignment.trim().length > 0) && (
+          <Card>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              No resources were added for this week. You can still mark it complete when ready.
+            </p>
+          </Card>
+        )}
     </div>
   );
 };

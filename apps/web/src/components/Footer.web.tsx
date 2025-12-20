@@ -68,8 +68,12 @@ const Footer: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-center gap-4">
-            <a href="#" className="hover:text-primary transition">Facebook</a>
-            <a href="#" className="hover:text-primary transition">Telegram</a>
+            <a href="#" className="hover:text-primary transition">
+              Facebook
+            </a>
+            <a href="#" className="hover:text-primary transition">
+              Telegram
+            </a>
           </div>
         </div>
 
@@ -79,15 +83,15 @@ const Footer: React.FC = () => {
           <div className="md:w-1/3 text-center md:text-left text-sm text-mutedGray dark:text-darkTextSecondary">
             <p className="mb-3">Support • FAQ • Partner with Us • Report Issues</p>
             <p className="text-xs leading-relaxed">
-              <strong>EKAZICONNECT SOLUTIONS LTD</strong><br />
-              Registered Office: International House, Mama Ngina Street, CBD, Nairobi<br />
+              <strong>EKAZICONNECT SOLUTIONS LTD</strong>
+              <br />
+              Registered Office: International House, Mama Ngina Street, CBD, Nairobi
+              <br />
               Phones: <a href="tel:+254728872800">+254 728 872 800</a> •{' '}
               <a href="tel:+254720423764">+254 720 423 764</a> •{' '}
-              <a href="tel:+254758276900">+254 758 276 900</a><br />
-              Email:{' '}
-              <a href="mailto:support@daybreaklearner.com">
-                support@daybreaklearner.com
-              </a>
+              <a href="tel:+254758276900">+254 758 276 900</a>
+              <br />
+              Email: <a href="mailto:support@daybreaklearner.com">support@daybreaklearner.com</a>
             </p>
           </div>
 
@@ -129,13 +133,27 @@ const Footer: React.FC = () => {
         {/* Policy Links */}
         <div className="w-full text-center">
           <div className="grid grid-cols-2 place-items-center sm:flex sm:flex-wrap sm:justify-center gap-3 sm:gap-6 text-xs">
-            <Link to="/privacy-policy" className="hover:text-primary">Privacy Policy</Link>
-            <Link to="/terms" className="hover:text-primary">Terms of Service</Link>
-            <Link to="/anti-spam-policy" className="hover:text-primary">Anti-Spam Policy</Link>
-            <Link to="/complaints-feedback" className="hover:text-primary">Complaints & Feedback</Link>
-            <Link to="/refunds" className="hover:text-primary">Refund & Cancellation Policy</Link>
-            <Link to="/fulfillment" className="hover:text-primary">Fulfillment & Delivery Policy</Link>
-            <Link to="/payment-flow" className="hover:text-primary">How Payments Work</Link>
+            <Link to="/privacy-policy" className="hover:text-primary">
+              Privacy Policy
+            </Link>
+            <Link to="/terms" className="hover:text-primary">
+              Terms of Service
+            </Link>
+            <Link to="/anti-spam-policy" className="hover:text-primary">
+              Anti-Spam Policy
+            </Link>
+            <Link to="/complaints-feedback" className="hover:text-primary">
+              Complaints & Feedback
+            </Link>
+            <Link to="/refunds" className="hover:text-primary">
+              Refund & Cancellation Policy
+            </Link>
+            <Link to="/fulfillment" className="hover:text-primary">
+              Fulfillment & Delivery Policy
+            </Link>
+            <Link to="/payment-flow" className="hover:text-primary">
+              How Payments Work
+            </Link>
           </div>
         </div>
 

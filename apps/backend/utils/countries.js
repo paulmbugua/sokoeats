@@ -10,7 +10,7 @@ export const COUNTRIES = (raw ?? [])
   .sort((a, b) => a.name.localeCompare(b.name));
 
 const NAME_TO_ISO2 = new Map(
-  COUNTRIES.map((c) => [c.name.toLowerCase(), c.code])
+  COUNTRIES.map((c) => [c.name.toLowerCase(), c.code]),
 );
 
 // Optional: tiny synonyms

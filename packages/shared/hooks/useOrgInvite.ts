@@ -51,7 +51,9 @@ export function useOrgInvite(code?: string) {
     }
 
     run();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [backendUrl, code]);
 
   return { kind, data, error, loading };

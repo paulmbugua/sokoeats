@@ -25,7 +25,9 @@ export function useCertificate(opts: UseCertificateOpts) {
 
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; };
+    return () => {
+      mounted.current = false;
+    };
   }, []);
 
   // Hydrate from localStorage (only when logged in)
@@ -36,7 +38,9 @@ export function useCertificate(opts: UseCertificateOpts) {
       if (v === '1') setEligible(true);
     } catch {}
     // when token disappears (logout), clear local + state
-    return () => { /* noop */ };
+    return () => {
+      /* noop */
+    };
   }, [token, courseId, lsKey]);
 
   // If caller flags "just passed", show CTA immediately (optimistic)
@@ -57,7 +61,9 @@ export function useCertificate(opts: UseCertificateOpts) {
   // If the user logs out, reset everything (and remove local mirror)
   useEffect(() => {
     if (token) return;
-    try { localStorage.removeItem(lsKey); } catch {}
+    try {
+      localStorage.removeItem(lsKey);
+    } catch {}
     setEligible(false);
     setCertificate(null);
     setEligibilityReason(null);
@@ -66,21 +72,21 @@ export function useCertificate(opts: UseCertificateOpts) {
 
   const check = useCallback(async () => {
     if (!token || !courseId) return;
-    setLoading(true); setErr(null);
+    setLoading(true);
+    setErr(null);
     try {
       // Server-validated eligibility
       const e = await getEligibility(backendUrl, token, courseId);
       if (!mounted.current) return;
 
       // Prefer server truth, but keep optimistic true if we already showed it
-      setEligible(prev => Boolean(e?.eligible) || prev);
+      setEligible((prev) => Boolean(e?.eligible) || prev);
       setEligibilityReason(e?.reason || null);
 
       // Also see if a cert already exists for this course
       const mine = await getMyCertificates(backendUrl, token);
       if (!mounted.current) return;
-      const found =
-        (mine || []).find((c: any) => String(c.course_id) === String(courseId)) || null;
+      const found = (mine || []).find((c: any) => String(c.course_id) === String(courseId)) || null;
       setCertificate(found);
 
       // Persist mirror after server check
@@ -97,13 +103,16 @@ export function useCertificate(opts: UseCertificateOpts) {
   }, [backendUrl, token, courseId, lsKey]);
 
   const generate = useCallback(async () => {
-    setLoading(true); setErr(null);
+    setLoading(true);
+    setErr(null);
     try {
       const c = await generateCertificate(backendUrl, token, courseId);
       if (!mounted.current) return null;
       setCertificate(c);
       setEligible(true);
-      try { localStorage.setItem(lsKey, '1'); } catch {}
+      try {
+        localStorage.setItem(lsKey, '1');
+      } catch {}
       return c;
     } catch (e: any) {
       if (mounted.current) {
@@ -116,7 +125,9 @@ export function useCertificate(opts: UseCertificateOpts) {
   }, [backendUrl, token, courseId, lsKey]);
 
   // Initial + whenever deps change
-  useEffect(() => { check(); }, [check]);
+  useEffect(() => {
+    check();
+  }, [check]);
 
   return {
     eligible,

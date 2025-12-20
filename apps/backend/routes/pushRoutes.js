@@ -1,6 +1,9 @@
 import express from 'express';
 import authUser from '../middleware/authUser.js';
-import { registerPushToken, unregisterPushToken } from '../controllers/pushController.js';
+import {
+  registerPushToken,
+  unregisterPushToken,
+} from '../controllers/pushController.js';
 
 const router = express.Router();
 

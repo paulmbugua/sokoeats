@@ -3,20 +3,34 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrgInvite } from '@mytutorapp/shared/hooks';
-import {
-  acceptOrgInvite,
-  acceptOrgMembershipInvite,
-} from '@mytutorapp/shared/api';
+import { acceptOrgInvite, acceptOrgMembershipInvite } from '@mytutorapp/shared/api';
 import type { OrgInviteInfo } from '@mytutorapp/shared/types';
 
 const ROBOT_ROUTE = '/robot-teach';
 
 type QuizType = 'mcq' | 'short';
 const normalizeQuizType = (v: unknown): QuizType | null => {
-  const s = String(v ?? '').trim().toLowerCase();
+  const s = String(v ?? '')
+    .trim()
+    .toLowerCase();
   if (!s) return null;
-  if (['mcq', 'multiple', 'multiple_choice', 'multiple-choice', 'choice', 'choices'].includes(s)) return 'mcq';
-  if (['short', 'open', 'free', 'shortanswer', 'short-answer', 'short_answer', 'written', 'fill', 'fill_in', 'fill-in'].includes(s)) return 'short';
+  if (['mcq', 'multiple', 'multiple_choice', 'multiple-choice', 'choice', 'choices'].includes(s))
+    return 'mcq';
+  if (
+    [
+      'short',
+      'open',
+      'free',
+      'shortanswer',
+      'short-answer',
+      'short_answer',
+      'written',
+      'fill',
+      'fill_in',
+      'fill-in',
+    ].includes(s)
+  )
+    return 'short';
   return null;
 };
 
@@ -65,23 +79,22 @@ export default function OrgInviteLanding() {
       return;
     }
 
-   // Require sign-in; remember return target
-if (!learnerToken) {
-  const next = `/org/join/${code}`;
-  try {
-    sessionStorage.setItem('auth:returnTo', next);
-  } catch {}
-  // Send to InstitutionLogin (with a hint it's from an invite)
-  nav(`/org/login?from=invite&code=${encodeURIComponent(code)}`, {
-    replace: true,
-  });
-  return;
-}
-
+    // Require sign-in; remember return target
+    if (!learnerToken) {
+      const next = `/org/join/${code}`;
+      try {
+        sessionStorage.setItem('auth:returnTo', next);
+      } catch {}
+      // Send to InstitutionLogin (with a hint it's from an invite)
+      nav(`/org/login?from=invite&code=${encodeURIComponent(code)}`, {
+        replace: true,
+      });
+      return;
+    }
 
     try {
       if (kind === 'membership') {
-        const resp = await acceptOrgMembershipInvite(backendUrl,learnerToken, code);
+        const resp = await acceptOrgMembershipInvite(backendUrl, learnerToken, code);
         if (!resp?.ok) {
           // No `message` on this type — let the catch block surface API errors.
           throw new Error('Failed to join organization.');
@@ -90,17 +103,15 @@ if (!learnerToken) {
         return;
       }
 
-
       // Default/assignment path
-      const resp: any = await acceptOrgInvite(backendUrl,learnerToken, code);
+      const resp: any = await acceptOrgInvite(backendUrl, learnerToken, code);
       if (!resp?.ok) throw new Error(resp?.message || 'Failed to accept invite.');
 
       const enrollment = resp.enrollment ?? resp.attempt ?? resp;
 
       const assignmentId =
         enrollment?.assignmentId ?? (meta as OrgInviteInfo | undefined)?.id ?? null;
-      const courseId =
-        enrollment?.courseId ?? (meta as OrgInviteInfo | undefined)?.course_id ?? '';
+      const courseId = enrollment?.courseId ?? (meta as OrgInviteInfo | undefined)?.course_id ?? '';
 
       if (!assignmentId) throw new Error('Invite accepted, but no assignment found.');
 
@@ -145,7 +156,8 @@ if (!learnerToken) {
   const timerLabel = React.useMemo(() => {
     if (!meta || kind !== 'assignment') return '—';
     const assess = (meta as any)?.policy?.assessment || {};
-    const secs = assess.quiz_time_limit_s ?? (meta as any)?.timer_s ?? (meta as any)?.quiz_time_limit_s;
+    const secs =
+      assess.quiz_time_limit_s ?? (meta as any)?.timer_s ?? (meta as any)?.quiz_time_limit_s;
     if (!secs) return '—';
     return secs % 60 === 0 ? `${secs / 60} min` : `${secs}s`;
   }, [meta, kind]);
@@ -162,8 +174,14 @@ if (!learnerToken) {
     }
   }, [meta, kind]);
 
-  const quizType = React.useMemo(() => (kind === 'assignment' ? resolveQuizType(meta as any) : null), [meta, kind]);
-  const quizSize = React.useMemo(() => (kind === 'assignment' ? resolveQuizSize(meta as any) : null), [meta, kind]);
+  const quizType = React.useMemo(
+    () => (kind === 'assignment' ? resolveQuizType(meta as any) : null),
+    [meta, kind]
+  );
+  const quizSize = React.useMemo(
+    () => (kind === 'assignment' ? resolveQuizSize(meta as any) : null),
+    [meta, kind]
+  );
 
   const quizTypeLabel = React.useMemo(() => {
     if (!quizType) return '—';
@@ -178,19 +196,25 @@ if (!learnerToken) {
   }, [quizType]);
 
   // UI title/subtitle vary by kind
-  const title = kind === 'membership'
-    ? 'Join organization'
-    : (meta as OrgInviteInfo | undefined)?.title_override || 'Assigned Course';
+  const title =
+    kind === 'membership'
+      ? 'Join organization'
+      : (meta as OrgInviteInfo | undefined)?.title_override || 'Assigned Course';
 
-  const subtitle = kind === 'membership'
-    ? 'You have been invited to join this organization.'
-    : 'Invitation to learn';
+  const subtitle =
+    kind === 'membership'
+      ? 'You have been invited to join this organization.'
+      : 'Invitation to learn';
 
   const orgName = (meta as OrgInviteInfo | undefined)?.org_name || 'Organization';
 
-  const primaryCta =learnerToken
-    ? (kind === 'membership' ? 'Join Organization' : 'Accept & Join')
-    : (domainRestricted ? 'Sign in with allowed email' : 'Sign in to continue');
+  const primaryCta = learnerToken
+    ? kind === 'membership'
+      ? 'Join Organization'
+      : 'Accept & Join'
+    : domainRestricted
+      ? 'Sign in with allowed email'
+      : 'Sign in to continue';
 
   return (
     <div className="min-h-screen bg-[#0b1220] text-white px-3 sm:px-4 py-6 grid place-items-center">
@@ -265,11 +289,11 @@ if (!learnerToken) {
               >
                 {quizType === 'short' ? (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M20 5H4c-1.1 0-2 .9-2 2v8a2 2 0 002 2h16a2 2 0 002-2V7c0-1.1-.9-2-2-2zm0 10H4V7h16v8zM6 9h2v2H6V9zm3 0h2v2H9V9zm3 0h2v2h-2V9zm3 0h2v2h-2V9zM6 12h8v2H6v-2zm9 0h3v2h-3v-2z"/>
+                    <path d="M20 5H4c-1.1 0-2 .9-2 2v8a2 2 0 002 2h16a2 2 0 002-2V7c0-1.1-.9-2-2-2zm0 10H4V7h16v8zM6 9h2v2H6V9zm3 0h2v2H9V9zm3 0h2v2h-2V9zm3 0h2v2h-2V9zM6 12h8v2H6v-2zm9 0h3v2h-3v-2z" />
                   </svg>
                 ) : (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M7 5h14v2H7V5zm0 6h14v2H7v-2zm0 6h14v2H7v-2zM3 5h2v2H3V5zm0 6h2v2H3v-2zm0 6h2v2H3v-2z"/>
+                    <path d="M7 5h14v2H7V5zm0 6h14v2H7v-2zm0 6h14v2H7v-2zM3 5h2v2H3V5zm0 6h2v2H3v-2zm0 6h2v2H3v-2z" />
                   </svg>
                 )}
               </span>
@@ -280,7 +304,7 @@ if (!learnerToken) {
                 <div className="text-white/70">
                   {kind === 'membership'
                     ? 'You will be added to this organization. Your admins can assign courses to you afterwards.'
-                    : (quizTypeDesc || 'Your organization set the answer format for this quiz.')}
+                    : quizTypeDesc || 'Your organization set the answer format for this quiz.'}
                 </div>
               </div>
             </div>
@@ -291,8 +315,12 @@ if (!learnerToken) {
                 <div className="font-medium">Restricted invite</div>
                 <div className="mt-0.5">
                   Only emails from <b>{allowedDomains.join(', ')}</b> can accept this invite.
-                  {!!learnerToken ? (
-                    <> If this isn’t your organization email, sign out and sign back in with the permitted address.</>
+                  {learnerToken ? (
+                    <>
+                      {' '}
+                      If this isn’t your organization email, sign out and sign back in with the
+                      permitted address.
+                    </>
                   ) : (
                     <> Please sign in using an email on one of those domains.</>
                   )}
@@ -327,16 +355,22 @@ if (!learnerToken) {
 
             {/* Error */}
             {!!error && (
-              <div className="mt-3 text-amber-300 text-xs whitespace-pre-line">
-                {error}
-              </div>
+              <div className="mt-3 text-amber-300 text-xs whitespace-pre-line">{error}</div>
             )}
 
             {/* Footnote */}
             <p className="mt-4 text-[12px] text-white/60">
-              {kind === 'membership'
-                ? <>By joining, you’ll be added to <b>{orgName}</b>. Your admins may assign courses to you.</>
-                : <>By starting, you’ll be added as a learner in <b>{orgName}</b> for this course. Your attempt may be timed and limited by your organization’s policy.</>}
+              {kind === 'membership' ? (
+                <>
+                  By joining, you’ll be added to <b>{orgName}</b>. Your admins may assign courses to
+                  you.
+                </>
+              ) : (
+                <>
+                  By starting, you’ll be added as a learner in <b>{orgName}</b> for this course.
+                  Your attempt may be timed and limited by your organization’s policy.
+                </>
+              )}
             </p>
           </>
         )}

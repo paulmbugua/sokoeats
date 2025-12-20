@@ -28,14 +28,11 @@ export async function uploadAsset(
   }
 
   const form = new FormData();
-  form.append(
-    'file',
-    {
-      uri,
-      name,
-      type: mimeType,
-    } as any
-  );
+  form.append('file', {
+    uri,
+    name,
+    type: mimeType,
+  } as any);
 
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -58,11 +55,7 @@ export async function uploadAsset(
     // ignore
   }
 
-  const url: string | null =
-    parsed?.url ||
-    parsed?.secure_url ||
-    parsed?.data?.url ||
-    null;
+  const url: string | null = parsed?.url || parsed?.secure_url || parsed?.data?.url || null;
 
   if (!url || typeof url !== 'string') {
     throw new Error('Upload response missing url.');
@@ -71,4 +64,3 @@ export async function uploadAsset(
   // All your callers already handle "string or object", so returning string is safe
   return url;
 }
-

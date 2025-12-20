@@ -71,11 +71,17 @@ const Chip: React.FC<{ label: string; onPress?: () => void; disabled?: boolean }
   </Pressable>
 );
 
-const Disclosure: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => {
+const Disclosure: React.FC<{ title: string; children: React.ReactNode }> = ({
+  title,
+  children,
+}) => {
   const [open, setOpen] = useState(false);
   return (
     <View style={tw`rounded-xl p-4 bg-[#121927] mt-2`}>
-      <Pressable onPress={() => setOpen((o) => !o)} style={tw`flex-row items-center justify-between`}>
+      <Pressable
+        onPress={() => setOpen((o) => !o)}
+        style={tw`flex-row items-center justify-between`}
+      >
         <Text style={tw`font-medium text-slate-100`}>{title}</Text>
         <Text style={tw`text-slate-400`}>{open ? '−' : '+'}</Text>
       </Pressable>
@@ -154,10 +160,7 @@ const HelpNative: React.FC = () => {
           <P style={tw`text-slate-400`}>New here? Start with the quick guide below.</P>
 
           {/* QUICK START */}
-          <View
-            onLayout={(e) => setAnchor('quickstart')(e.nativeEvent.layout.y)}
-            style={tw`mt-6`}
-          >
+          <View onLayout={(e) => setAnchor('quickstart')(e.nativeEvent.layout.y)} style={tw`mt-6`}>
             <H2>Quick Start</H2>
             <OL
               items={[
@@ -169,8 +172,8 @@ const HelpNative: React.FC = () => {
                   .
                 </>,
                 <>
-                  <Text style={tw`font-semibold`}>Complete your profile</Text> → add your
-                  learning goals on{' '}
+                  <Text style={tw`font-semibold`}>Complete your profile</Text> → add your learning
+                  goals on{' '}
                   <Text style={tw`text-pink-400 underline`} onPress={() => go('ProfileMe' as any)}>
                     My Profile
                   </Text>
@@ -184,8 +187,8 @@ const HelpNative: React.FC = () => {
                   .
                 </>,
                 <>
-                  <Text style={tw`font-semibold`}>Join your session</Text> → we’ll send the
-                  meeting link; use any device.
+                  <Text style={tw`font-semibold`}>Join your session</Text> → we’ll send the meeting
+                  link; use any device.
                 </>,
                 <>
                   Prefer self-paced? Try the{' '}
@@ -216,10 +219,7 @@ const HelpNative: React.FC = () => {
             />
             <P style={tw`text-xs text-slate-400 mt-2`}>
               See also:{' '}
-              <Text
-                style={tw`text-pink-400 underline`}
-                onPress={() => go('PaymentFlow' as any)}
-              >
+              <Text style={tw`text-pink-400 underline`} onPress={() => go('PaymentFlow' as any)}>
                 How Payments Work
               </Text>{' '}
               •{' '}
@@ -248,10 +248,7 @@ const HelpNative: React.FC = () => {
                 Terms of Service
               </Text>{' '}
               •{' '}
-              <Text
-                style={tw`text-pink-400 underline`}
-                onPress={() => go('PrivacyPolicy' as any)}
-              >
+              <Text style={tw`text-pink-400 underline`} onPress={() => go('PrivacyPolicy' as any)}>
                 Privacy Policy
               </Text>{' '}
               •{' '}
@@ -359,7 +356,9 @@ const HelpNative: React.FC = () => {
             <H2>Contact Support</H2>
             <View style={tw`rounded-xl p-4 bg-[#121927]`}>
               <Text style={tw`text-slate-100 font-semibold`}>EKAZICONNECT SOLUTIONS LTD</Text>
-              <Text style={tw`text-slate-300`}>International House, Mama Ngina Street, CBD, Nairobi, Kenya</Text>
+              <Text style={tw`text-slate-300`}>
+                International House, Mama Ngina Street, CBD, Nairobi, Kenya
+              </Text>
               <Text style={tw`text-slate-300`}>Postal: P.O. Box 1830-01000, Thika, Kenya</Text>
 
               <Text style={tw`text-slate-300 mt-1`}>

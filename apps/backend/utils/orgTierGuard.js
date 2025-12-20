@@ -9,7 +9,9 @@ function assertOrgTierAtLeast(currentTier, requiredTier) {
   const reqIdx = ORDER.indexOf(requiredTier);
 
   if (idx === -1 || reqIdx === -1 || idx < reqIdx) {
-    const err = new Error(`This feature requires ${requiredTier.toUpperCase()} plan or higher.`);
+    const err = new Error(
+      `This feature requires ${requiredTier.toUpperCase()} plan or higher.`,
+    );
     err.status = 403;
     throw err;
   }

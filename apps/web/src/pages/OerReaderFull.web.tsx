@@ -18,11 +18,15 @@ type OerItem = {
   cover_url?: string | null;
 };
 
-const dlog = (...args: any[]) => { /* set true to debug */ };
+const dlog = (...args: any[]) => {
+  /* set true to debug */
+};
 
 const sanitizeId = (routeId?: string) => {
   let s = routeId ?? '';
-  try { s = decodeURIComponent(s); } catch {}
+  try {
+    s = decodeURIComponent(s);
+  } catch {}
   if (s.startsWith(':id')) s = s.slice(3);
   if (s.startsWith(':')) s = s.slice(1);
   return s;
@@ -33,7 +37,11 @@ async function tryJson(url: string, headers: Record<string, string>) {
   const text = await res.text();
   dlog('HTTP', res.status, url, 'preview:', text.slice(0, 200));
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-  try { return JSON.parse(text); } catch { return text; }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 function firstHtmlishFromPayload(payload: any, slugOrId: string): OerItem | null {
@@ -50,10 +58,13 @@ function firstHtmlishFromPayload(payload: any, slugOrId: string): OerItem | null
     };
   }
   // array or items
-  const items = Array.isArray(payload?.items) ? payload.items
-    : Array.isArray(payload) ? payload
-    : Array.isArray(payload?.data?.items) ? payload.data.items
-    : [];
+  const items = Array.isArray(payload?.items)
+    ? payload.items
+    : Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.data?.items)
+        ? payload.data.items
+        : [];
 
   // prefer web_url/html_url; if none, fall back to file/source/url (PDF or site)
   for (const it of items) {
@@ -117,7 +128,10 @@ const OerReaderFull: React.FC = () => {
           try {
             const payload = await tryJson(url, headers);
             const o = firstHtmlishFromPayload(payload, id);
-            if (o?.web_url) { found = o; break; }
+            if (o?.web_url) {
+              found = o;
+              break;
+            }
           } catch {
             /* keep trying next candidate */
           }
@@ -139,7 +153,9 @@ const OerReaderFull: React.FC = () => {
         }
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [backendUrl, id, token]);
 
   const src = useMemo(() => {
@@ -186,9 +202,7 @@ const OerReaderFull: React.FC = () => {
           </div>
         )}
         {!loading && error && (
-          <div className="h-full grid place-items-center text-sm text-red-600">
-            {error}
-          </div>
+          <div className="h-full grid place-items-center text-sm text-red-600">{error}</div>
         )}
         {!loading && !error && src && (
           <iframe

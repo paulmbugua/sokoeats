@@ -1,7 +1,13 @@
 /// <reference path="../declarations.d.ts" />
 /* eslint-disable prettier/prettier */
 
-import { useFocusEffect } from '@react-navigation/native';
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+  NavigationProp,
+  RouteProp,
+} from '@react-navigation/native';
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
@@ -14,12 +20,7 @@ import {
   Linking,
   ScrollView,
 } from 'react-native';
-import {
-  useNavigation,
-  useRoute,
-  NavigationProp,
-  RouteProp,
-} from '@react-navigation/native';
+
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Spinner from './Spinner.native';
@@ -161,14 +162,10 @@ const AccountSectionNative: React.FC = () => {
   const selectedTextColor = resolvedScheme === 'dark' ? '#E5E7EB' : '#0F172A';
 
   // shared styles (theme-aware)
-  const sectionBase =
-    tw`rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`;
-  const cardAlt =
-    tw`p-4 rounded-xl bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-white/10`;
-  const helperText =
-    tw`text-xs text-slate-600 dark:text-slate-400`;
-  const inputBase =
-    tw`w-full px-3 py-3 rounded-xl bg-slate-100 dark:bg-slate-900/60 text-[#0d141c] dark:text-white border border-slate-200 dark:border-white/10`;
+  const sectionBase = tw`rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`;
+  const cardAlt = tw`p-4 rounded-xl bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-white/10`;
+  const helperText = tw`text-xs text-slate-600 dark:text-slate-400`;
+  const inputBase = tw`w-full px-3 py-3 rounded-xl bg-slate-100 dark:bg-slate-900/60 text-[#0d141c] dark:text-white border border-slate-200 dark:border-white/10`;
   const tabOn = tw`px-3 py-2 rounded-xl bg-[#3d99f5]`;
   const tabOff = tw`px-3 py-2 rounded-xl bg-slate-200 dark:bg-white/5`;
 
@@ -268,36 +265,34 @@ const AccountSectionNative: React.FC = () => {
 
   const hasSessionTypes = sessionTypeOptions.length > 0;
 
-  const { lifetimeByCurrency, pendingWithdrawalsByCurrency, completedEarnings } =
-    useMemo(() => {
-      const sums: Record<string, number> = {};
-      const pending: Record<string, number> = {};
-      const earningsTx: Transaction[] = [];
+  const { lifetimeByCurrency, pendingWithdrawalsByCurrency, completedEarnings } = useMemo(() => {
+    const sums: Record<string, number> = {};
+    const pending: Record<string, number> = {};
+    const earningsTx: Transaction[] = [];
 
-      for (const tx of transactions) {
-        const curr = String(tx.currency ?? 'USD').toUpperCase();
-        if (tx.type?.toLowerCase().includes('earning')) {
-          sums[curr] = (sums[curr] || 0) + Math.max(0, Number(tx.amount) || 0);
-          earningsTx.push(tx);
-        }
-        if (tx.type === 'Withdrawal Request' && (tx.status || 'Pending') === 'Pending') {
-          pending[curr] = (pending[curr] || 0) + Math.max(0, Number(tx.amount) || 0);
-        }
+    for (const tx of transactions) {
+      const curr = String(tx.currency ?? 'USD').toUpperCase();
+      if (tx.type?.toLowerCase().includes('earning')) {
+        sums[curr] = (sums[curr] || 0) + Math.max(0, Number(tx.amount) || 0);
+        earningsTx.push(tx);
       }
+      if (tx.type === 'Withdrawal Request' && (tx.status || 'Pending') === 'Pending') {
+        pending[curr] = (pending[curr] || 0) + Math.max(0, Number(tx.amount) || 0);
+      }
+    }
 
-      return {
-        lifetimeByCurrency: sums,
-        pendingWithdrawalsByCurrency: pending,
-        completedEarnings: earningsTx.sort(
-          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-        ),
-      };
-    }, [transactions]);
+    return {
+      lifetimeByCurrency: sums,
+      pendingWithdrawalsByCurrency: pending,
+      completedEarnings: earningsTx.sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      ),
+    };
+  }, [transactions]);
 
   const approxAvailable = Math.max(
     0,
-    (lifetimeByCurrency[payoutCurrency] || 0) -
-      (pendingWithdrawalsByCurrency[payoutCurrency] || 0)
+    (lifetimeByCurrency[payoutCurrency] || 0) - (pendingWithdrawalsByCurrency[payoutCurrency] || 0)
   );
 
   const earningsLastSeenRef = useRef<number | null>(null);
@@ -307,10 +302,7 @@ const AccountSectionNative: React.FC = () => {
     if (prev != null && current > prev + 0.009) {
       void notifyNow(
         'New earnings available',
-        `Your available earnings are now ${currencyFmt(
-          current,
-          String(payoutCurrency)
-        )}.`,
+        `Your available earnings are now ${currencyFmt(current, String(payoutCurrency))}.`,
         { screen: 'Account', params: { tab: 'earnings' } }
       );
     }
@@ -342,10 +334,7 @@ const AccountSectionNative: React.FC = () => {
   );
 
   const sortedSessions = useMemo(
-    () =>
-      [...sessions].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-      ),
+    () => [...sessions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
     [sessions]
   );
 
@@ -394,11 +383,7 @@ const AccountSectionNative: React.FC = () => {
   // ✅ Pull-to-refresh action (same idea as Profile’s refreshAccountState)
   const refreshAccountState = useCallback(async () => {
     try {
-      await Promise.allSettled([
-        refetchAccount(),
-        refetchTransactions(),
-        refetchEarnings(),
-      ]);
+      await Promise.allSettled([refetchAccount(), refetchTransactions(), refetchEarnings()]);
     } catch {
       // ignore
     }
@@ -525,7 +510,10 @@ const AccountSectionNative: React.FC = () => {
                     </Text>
                     <Text style={helperText}>
                       <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Amount: </Text>
-                      {currencyFmt(Math.abs(Number(tx.amount)), String(tx.currency ?? 'USD').toUpperCase())}
+                      {currencyFmt(
+                        Math.abs(Number(tx.amount)),
+                        String(tx.currency ?? 'USD').toUpperCase()
+                      )}
                     </Text>
                     <Text style={helperText}>
                       <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Kind: </Text>
@@ -536,7 +524,9 @@ const AccountSectionNative: React.FC = () => {
                       {tx.status || 'N/A'}
                     </Text>
                     <Text style={helperText}>
-                      <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Description: </Text>
+                      <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                        Description:{' '}
+                      </Text>
                       {tx.description || 'N/A'}
                     </Text>
                     <Text style={helperText}>
@@ -557,7 +547,9 @@ const AccountSectionNative: React.FC = () => {
               {/* Create Session Form */}
               <View style={[sectionBase, tw`max-w-[680px] self-center w-full mb-4`]}>
                 {!!sessionBanner && (
-                  <View style={tw`mb-3 rounded-lg border border-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-2`}>
+                  <View
+                    style={tw`mb-3 rounded-lg border border-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-2`}
+                  >
                     <Text style={tw`text-xs text-red-800 dark:text-red-100`}>{sessionBanner}</Text>
                   </View>
                 )}
@@ -622,7 +614,9 @@ const AccountSectionNative: React.FC = () => {
                       }
                     }}
                     options={sessionTypeOptions}
-                    placeholder={hasSessionTypes ? 'Select Session Type' : 'No session types configured'}
+                    placeholder={
+                      hasSessionTypes ? 'Select Session Type' : 'No session types configured'
+                    }
                     modalTitle="Select session type"
                     error={sessionFormErrors.sessionType}
                     placeholderColor={placeholderColor}
@@ -633,7 +627,11 @@ const AccountSectionNative: React.FC = () => {
                 {/* Date */}
                 <TouchableOpacity
                   onPress={() => setShowDatePicker(true)}
-                  style={tw.style(inputBase, tw`mt-2`, sessionFormErrors.date ? 'border-red-500' : '')}
+                  style={tw.style(
+                    inputBase,
+                    tw`mt-2`,
+                    sessionFormErrors.date ? 'border-red-500' : ''
+                  )}
                   activeOpacity={0.9}
                 >
                   <Text style={tw`text-sm text-[#0d141c] dark:text-white`}>
@@ -694,7 +692,9 @@ const AccountSectionNative: React.FC = () => {
 
               {/* Sessions list (no nested ScrollView) */}
               <View style={tw`max-w-[880px] self-center w-full`}>
-                <View style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
+                <View
+                  style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+                >
                   <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-2`}>
                     Your Sessions
                   </Text>
@@ -703,27 +703,39 @@ const AccountSectionNative: React.FC = () => {
                     sortedSessions.map((session) => (
                       <View key={String(session.id)} style={[cardAlt, tw`mb-3`]}>
                         <Text style={helperText}>
-                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Tutor: </Text>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                            Tutor:{' '}
+                          </Text>
                           {session.tutor_name || 'N/A'}
                         </Text>
                         <Text style={helperText}>
-                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Type: </Text>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                            Type:{' '}
+                          </Text>
                           {session.sessionType || 'N/A'}
                         </Text>
                         <Text style={helperText}>
-                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Subject: </Text>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                            Subject:{' '}
+                          </Text>
                           {session.subject || 'N/A'}
                         </Text>
                         <Text style={helperText}>
-                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Cost: </Text>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                            Cost:{' '}
+                          </Text>
                           {session.amount} tokens
                         </Text>
                         <Text style={helperText}>
-                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Date: </Text>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                            Date:{' '}
+                          </Text>
                           {new Date(session.date).toLocaleDateString()}
                         </Text>
                         <Text style={helperText}>
-                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Status: </Text>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                            Status:{' '}
+                          </Text>
                           {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
                         </Text>
 
@@ -731,19 +743,28 @@ const AccountSectionNative: React.FC = () => {
                           <>
                             {session.zoom_links?.length ? (
                               <View style={tw`mt-3`}>
-                                <Text style={tw`text-xs font-semibold text-emerald-600 dark:text-emerald-300 mb-1`}>
+                                <Text
+                                  style={tw`text-xs font-semibold text-emerald-600 dark:text-emerald-300 mb-1`}
+                                >
                                   Zoom Links:
                                 </Text>
                                 {session.zoom_links.map((link, i) => (
-                                  <TouchableOpacity key={String(i)} onPress={() => Linking.openURL(link)}>
-                                    <Text style={tw`text-xs text-[#3d99f5] dark:text-[#7fb5ff] underline`}>
+                                  <TouchableOpacity
+                                    key={String(i)}
+                                    onPress={() => Linking.openURL(link)}
+                                  >
+                                    <Text
+                                      style={tw`text-xs text-[#3d99f5] dark:text-[#7fb5ff] underline`}
+                                    >
                                       Join Meeting Part {i + 1}
                                     </Text>
                                   </TouchableOpacity>
                                 ))}
                               </View>
                             ) : (
-                              <Text style={tw`mt-3 text-xs text-slate-600 dark:text-slate-400 italic`}>
+                              <Text
+                                style={tw`mt-3 text-xs text-slate-600 dark:text-slate-400 italic`}
+                              >
                                 Please wait for the tutor to create Zoom links.
                               </Text>
                             )}
@@ -753,7 +774,10 @@ const AccountSectionNative: React.FC = () => {
                               placeholderTextColor={placeholderColor}
                               value={cancelReasons[String(session.id)] || ''}
                               onChangeText={(t) => {
-                                setCancelError((prev) => ({ ...prev, [String(session.id)]: false }));
+                                setCancelError((prev) => ({
+                                  ...prev,
+                                  [String(session.id)]: false,
+                                }));
                                 handleCancelReasonChange(String(session.id), t);
                               }}
                               style={tw.style(
@@ -769,14 +793,19 @@ const AccountSectionNative: React.FC = () => {
                               onPress={() => {
                                 const reason = (cancelReasons[String(session.id)] || '').trim();
                                 if (!reason) {
-                                  setCancelError((prev) => ({ ...prev, [String(session.id)]: true }));
+                                  setCancelError((prev) => ({
+                                    ...prev,
+                                    [String(session.id)]: true,
+                                  }));
                                   return;
                                 }
                                 confirmCancelSession(String(session.id), role, session.status);
                               }}
                               activeOpacity={0.9}
                             >
-                              <Text style={tw`text-white text-sm font-semibold`}>Cancel Session</Text>
+                              <Text style={tw`text-white text-sm font-semibold`}>
+                                Cancel Session
+                              </Text>
                             </TouchableOpacity>
                           </>
                         )}
@@ -794,12 +823,16 @@ const AccountSectionNative: React.FC = () => {
                             }}
                             activeOpacity={0.9}
                           >
-                            <Text style={tw`text-white text-sm font-semibold`}>Confirm Completion</Text>
+                            <Text style={tw`text-white text-sm font-semibold`}>
+                              Confirm Completion
+                            </Text>
                           </TouchableOpacity>
                         )}
 
                         {session.status === 'completed' && (
-                          <Text style={tw`mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-300`}>
+                          <Text
+                            style={tw`mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-300`}
+                          >
                             Session Completed
                           </Text>
                         )}
@@ -823,7 +856,9 @@ const AccountSectionNative: React.FC = () => {
           {/* Tutor Sessions (no nested ScrollView) */}
           {activeTab === 'sessions' && role === 'tutor' && (
             <View style={tw`max-w-[880px] self-center w-full`}>
-              <View style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
+              <View
+                style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+              >
                 <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-2`}>
                   Your Upcoming Sessions
                 </Text>
@@ -832,7 +867,9 @@ const AccountSectionNative: React.FC = () => {
                   sortedSessions.map((session) => (
                     <View key={String(session.id)} style={[cardAlt, tw`mb-3`]}>
                       <Text style={helperText}>
-                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Student: </Text>
+                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                          Student:{' '}
+                        </Text>
                         {session.student_name || 'N/A'}
                       </Text>
                       <Text style={helperText}>
@@ -904,7 +941,9 @@ const AccountSectionNative: React.FC = () => {
                             }
                             activeOpacity={0.9}
                           >
-                            <Text style={tw`text-white text-sm font-semibold`}>Chat with Student</Text>
+                            <Text style={tw`text-white text-sm font-semibold`}>
+                              Chat with Student
+                            </Text>
                           </TouchableOpacity>
 
                           {!session.zoom_links?.length ? (
@@ -921,16 +960,25 @@ const AccountSectionNative: React.FC = () => {
                               }
                               activeOpacity={0.9}
                             >
-                              <Text style={tw`text-white text-sm font-semibold`}>Create Zoom Links</Text>
+                              <Text style={tw`text-white text-sm font-semibold`}>
+                                Create Zoom Links
+                              </Text>
                             </TouchableOpacity>
                           ) : (
                             <View style={tw`mt-3`}>
-                              <Text style={tw`text-xs font-semibold text-emerald-600 dark:text-emerald-300 mb-1`}>
+                              <Text
+                                style={tw`text-xs font-semibold text-emerald-600 dark:text-emerald-300 mb-1`}
+                              >
                                 Zoom Links:
                               </Text>
                               {session.zoom_links.map((link, i) => (
-                                <TouchableOpacity key={String(i)} onPress={() => Linking.openURL(link)}>
-                                  <Text style={tw`text-xs text-[#3d99f5] dark:text-[#7fb5ff] underline`}>
+                                <TouchableOpacity
+                                  key={String(i)}
+                                  onPress={() => Linking.openURL(link)}
+                                >
+                                  <Text
+                                    style={tw`text-xs text-[#3d99f5] dark:text-[#7fb5ff] underline`}
+                                  >
                                     Join Meeting Part {i + 1}
                                   </Text>
                                 </TouchableOpacity>
@@ -950,18 +998,24 @@ const AccountSectionNative: React.FC = () => {
                             }}
                             activeOpacity={0.9}
                           >
-                            <Text style={tw`text-white text-sm font-semibold`}>Mark as Complete-Pending</Text>
+                            <Text style={tw`text-white text-sm font-semibold`}>
+                              Mark as Complete-Pending
+                            </Text>
                           </TouchableOpacity>
                         </>
                       )}
 
                       {session.status === 'completed_pending' && (
-                        <Text style={tw`mt-3 text-xs font-semibold text-fuchsia-500 dark:text-fuchsia-300`}>
+                        <Text
+                          style={tw`mt-3 text-xs font-semibold text-fuchsia-500 dark:text-fuchsia-300`}
+                        >
                           Complete-Pending
                         </Text>
                       )}
                       {session.status === 'completed' && (
-                        <Text style={tw`mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-300`}>
+                        <Text
+                          style={tw`mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-300`}
+                        >
                           Session Completed
                         </Text>
                       )}
@@ -984,7 +1038,9 @@ const AccountSectionNative: React.FC = () => {
           {/* Reviews (student) */}
           {activeTab === 'reviews' && role === 'student' && (
             <View style={sectionBase}>
-              <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-3`}>Post a Review</Text>
+              <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-3`}>
+                Post a Review
+              </Text>
 
               <TextInput
                 placeholder="Tutor ID"
@@ -1034,13 +1090,19 @@ const AccountSectionNative: React.FC = () => {
                   <View style={tw`flex-1`}>
                     <Text style={tw`text-[11px] text-white/90`}>Lifetime</Text>
                     <Text style={tw`text-lg font-bold text-white`}>
-                      {currencyFmt(earnings?.total ?? lifetimeByCurrency[payoutCurrency] ?? 0, String(payoutCurrency))}
+                      {currencyFmt(
+                        earnings?.total ?? lifetimeByCurrency[payoutCurrency] ?? 0,
+                        String(payoutCurrency)
+                      )}
                     </Text>
                   </View>
                   <View style={tw`flex-1`}>
                     <Text style={tw`text-[11px] text-white/90`}>Pending</Text>
                     <Text style={tw`text-lg font-bold text-white`}>
-                      {currencyFmt(earnings?.pending ?? pendingWithdrawalsByCurrency[payoutCurrency] ?? 0, String(payoutCurrency))}
+                      {currencyFmt(
+                        earnings?.pending ?? pendingWithdrawalsByCurrency[payoutCurrency] ?? 0,
+                        String(payoutCurrency)
+                      )}
                     </Text>
                   </View>
                 </View>
@@ -1059,14 +1121,19 @@ const AccountSectionNative: React.FC = () => {
                   Withdraw Earnings
                 </Text>
                 <Text style={helperText}>
-                  Minimum: {currencyFmt(minAmount, String(payoutCurrency))} • Balance shown is an approximation based on your transactions.
+                  Minimum: {currencyFmt(minAmount, String(payoutCurrency))} • Balance shown is an
+                  approximation based on your transactions.
                 </Text>
 
                 <View style={tw`mt-4`}>
                   <View style={tw`flex-row gap-3`}>
                     <View style={tw`flex-1`}>
                       <Text style={helperText}>Currency</Text>
-                      <TextInput editable={false} value={String(payoutCurrency)} style={inputBase} />
+                      <TextInput
+                        editable={false}
+                        value={String(payoutCurrency)}
+                        style={inputBase}
+                      />
                     </View>
                     <View style={tw`flex-1`}>
                       <Text style={helperText}>Amount</Text>
@@ -1082,7 +1149,9 @@ const AccountSectionNative: React.FC = () => {
                   </View>
 
                   <TouchableOpacity
-                    disabled={isWithdrawing || !withdrawAmount || Number(withdrawAmount) < minAmount}
+                    disabled={
+                      isWithdrawing || !withdrawAmount || Number(withdrawAmount) < minAmount
+                    }
                     onPress={async () => {
                       const amt = Number(withdrawAmount);
                       if (!Number.isFinite(amt) || amt < minAmount) return;
@@ -1128,7 +1197,9 @@ const AccountSectionNative: React.FC = () => {
                       style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3`}
                     >
                       <Text style={helperText}>
-                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Amount: </Text>
+                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                          Amount:{' '}
+                        </Text>
                         {currencyFmt(Number(tx.amount) || 0, String(tx.currency ?? payoutCurrency))}
                       </Text>
                       <Text style={helperText}>
@@ -1136,7 +1207,9 @@ const AccountSectionNative: React.FC = () => {
                         {new Date(tx.date).toLocaleDateString()}
                       </Text>
                       <Text style={helperText}>
-                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Description: </Text>
+                        <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                          Description:{' '}
+                        </Text>
                         {tx.description}
                       </Text>
                     </View>
@@ -1162,19 +1235,30 @@ const AccountSectionNative: React.FC = () => {
                         style={tw`p-4 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3`}
                       >
                         <Text style={helperText}>
-                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Type: </Text>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                            Type:{' '}
+                          </Text>
                           {tx.type}
                         </Text>
                         <Text style={helperText}>
-                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Amount: </Text>
-                          {currencyFmt(Math.abs(Number(tx.amount)), String(tx.currency ?? payoutCurrency).toUpperCase())}
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                            Amount:{' '}
+                          </Text>
+                          {currencyFmt(
+                            Math.abs(Number(tx.amount)),
+                            String(tx.currency ?? payoutCurrency).toUpperCase()
+                          )}
                         </Text>
                         <Text style={helperText}>
-                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Status: </Text>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                            Status:{' '}
+                          </Text>
                           {tx.status || 'Pending'}
                         </Text>
                         <Text style={helperText}>
-                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Date: </Text>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                            Date:{' '}
+                          </Text>
                           {new Date(tx.date).toLocaleDateString()}
                         </Text>
                         {!!tx.description && <Text style={helperText}>{tx.description}</Text>}
@@ -1196,7 +1280,9 @@ const AccountSectionNative: React.FC = () => {
           onRequestClose={() => setShowRatingModal(false)}
         >
           <View style={tw`absolute inset-0 bg-black/60 justify-center items-center`}>
-            <View style={tw`w-11/12 max-w-md p-6 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
+            <View
+              style={tw`w-11/12 max-w-md p-6 rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+            >
               <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white mb-4`}>
                 Rate Your Tutor
               </Text>

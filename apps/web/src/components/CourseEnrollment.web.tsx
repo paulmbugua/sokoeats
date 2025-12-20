@@ -13,12 +13,7 @@ interface Props {
 
 /** Helper to coerce price into whole tokens */
 function toTokens(v: unknown): number {
-  const n =
-    typeof v === 'number'
-      ? v
-      : typeof v === 'string'
-      ? Number.parseFloat(v)
-      : 0;
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number.parseFloat(v) : 0;
   return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
 }
 
@@ -32,13 +27,7 @@ const CourseEnrollment: React.FC<Props> = ({ course }) => {
   if (role !== 'student') return <Navigate to="/" replace />;
 
   // Use "me" so backend resolves req.user.id from JWT
-  const {
-    purchaseCourseAndEnroll,
-    fetchMine,
-    enrollments,
-    loading,
-    error,
-  } = useEnrollments({
+  const { purchaseCourseAndEnroll, fetchMine, enrollments, loading, error } = useEnrollments({
     backendUrl,
     token,
     studentId: 'me' as unknown as string | number,
@@ -80,7 +69,7 @@ const CourseEnrollment: React.FC<Props> = ({ course }) => {
 
     const proceed = window.confirm(
       `You are about to purchase "${c.title}" for ${priceTokens} tokens.\n\n` +
-      `This amount will be deducted from your balance (${walletTokens} tokens). Continue?`
+        `This amount will be deducted from your balance (${walletTokens} tokens). Continue?`
     );
     if (!proceed) return;
 
@@ -106,16 +95,12 @@ const CourseEnrollment: React.FC<Props> = ({ course }) => {
 
   if (!courseId) {
     return (
-      <div className="max-w-3xl mx-auto p-6 text-red-600 dark:text-red-400">
-        Missing course id.
-      </div>
+      <div className="max-w-3xl mx-auto p-6 text-red-600 dark:text-red-400">Missing course id.</div>
     );
   }
   if (loadingCourse && !c) {
     return (
-      <div className="max-w-3xl mx-auto p-6 text-gray-700 dark:text-gray-300">
-        Loading course…
-      </div>
+      <div className="max-w-3xl mx-auto p-6 text-gray-700 dark:text-gray-300">Loading course…</div>
     );
   }
   if (courseError && !c) {
@@ -138,9 +123,7 @@ const CourseEnrollment: React.FC<Props> = ({ course }) => {
       <div className="rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-6">
         <h1 className="text-3xl font-bold mb-2 text-gray-900 dark:text-gray-100">{c.title}</h1>
 
-        {c.description && (
-          <p className="text-gray-700 dark:text-gray-300 mb-4">{c.description}</p>
-        )}
+        {c.description && <p className="text-gray-700 dark:text-gray-300 mb-4">{c.description}</p>}
 
         <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400 mb-4">
           {c.level && <span>Level: {c.level}</span>}
@@ -190,7 +173,9 @@ const CourseEnrollment: React.FC<Props> = ({ course }) => {
         {/* Syllabus preview */}
         {Array.isArray(c.syllabus) && c.syllabus.length > 0 && (
           <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100">Syllabus</h2>
+            <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100">
+              Syllabus
+            </h2>
             <ul className="list-disc list-inside text-gray-800 dark:text-gray-200">
               {c.syllabus.map((s) => (
                 <li key={s.week} className="mb-1">

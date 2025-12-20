@@ -1,19 +1,8 @@
 // apps/web/src/admin/YouTubeIngest.tsx (path as in your project)
 
-import React, {
-  useMemo,
-  useState,
-  useEffect,
-  useCallback,
-} from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import {
-  Loader2,
-  CheckCircle2,
-  RefreshCw,
-  Trash2,
-  Pencil,
-} from 'lucide-react';
+import { Loader2, CheckCircle2, RefreshCw, Trash2, Pencil } from 'lucide-react';
 import { useShopContext } from '@mytutorapp/shared/context/ShopContext';
 
 type Result = { ok: boolean; collectionId: string; items: number };
@@ -58,21 +47,18 @@ export default function YouTubeIngest() {
 
   const urlCount = useMemo(() => splitUrls(urlsText).length, [urlsText]);
 
-    /* ───────────────────── load existing collections ───────────────────── */
+  /* ───────────────────── load existing collections ───────────────────── */
 
   const loadExisting = useCallback(async () => {
     if (!backendUrl) return;
     setListLoading(true);
     try {
-      const res = await fetch(
-        `${backendUrl.replace(/\/$/, '')}/api/oer/youtube`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
-          },
-        }
-      );
+      const res = await fetch(`${backendUrl.replace(/\/$/, '')}/api/oer/youtube`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        },
+      });
 
       if (!res.ok) {
         const txt = await res.text().catch(() => 'Failed to load YouTube collections');
@@ -137,9 +123,7 @@ export default function YouTubeIngest() {
     try {
       setDeleteBusyId(coll.collectionId);
       const res = await fetch(
-        `${backendUrl.replace(/\/$/, '')}/api/oer/youtube/${encodeURIComponent(
-          coll.collectionId
-        )}`,
+        `${backendUrl.replace(/\/$/, '')}/api/oer/youtube/${encodeURIComponent(coll.collectionId)}`,
         {
           method: 'DELETE',
           headers: {
@@ -154,9 +138,7 @@ export default function YouTubeIngest() {
       }
 
       toast.success('YouTube collection deleted');
-      setExistingCollections((prev) =>
-        prev.filter((x) => x.collectionId !== coll.collectionId)
-      );
+      setExistingCollections((prev) => prev.filter((x) => x.collectionId !== coll.collectionId));
 
       if (editingCollectionId === coll.collectionId) {
         resetForm();
@@ -188,27 +170,24 @@ export default function YouTubeIngest() {
 
     try {
       setLoading(true);
-      const res = await fetch(
-        `${backendUrl.replace(/\/$/, '')}/api/oer/ingest/youtube`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+      const res = await fetch(`${backendUrl.replace(/\/$/, '')}/api/oer/ingest/youtube`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        },
+        body: JSON.stringify({
+          collection: {
+            title: title.trim(),
+            description: desc || '',
+            subject: subject || null,
+            thumbnail_url: thumbnail || null,
           },
-          body: JSON.stringify({
-            collection: {
-              title: title.trim(),
-              description: desc || '',
-              subject: subject || null,
-              thumbnail_url: thumbnail || null,
-            },
-            grade_level: grade || null,
-            urls,
-            slug_prefix: slugPrefix || undefined,
-          }),
-        }
-      );
+          grade_level: grade || null,
+          urls,
+          slug_prefix: slugPrefix || undefined,
+        }),
+      });
 
       if (!res.ok) {
         const txt = await res.text().catch(() => 'Failed to ingest');
@@ -290,8 +269,8 @@ export default function YouTubeIngest() {
             />
             {isEditing && (
               <p className="mt-1 text-[11px] text-mutedGray dark:text-darkTextSecondary">
-                Changing the title may create a <b>new</b> collection; the old one will remain
-                until you delete it.
+                Changing the title may create a <b>new</b> collection; the old one will remain until
+                you delete it.
               </p>
             )}
           </label>
@@ -380,8 +359,8 @@ export default function YouTubeIngest() {
                 ? 'Saving changes…'
                 : 'Ingesting…'
               : isEditing
-              ? 'Save changes'
-              : 'Ingest YouTube Videos'}
+                ? 'Save changes'
+                : 'Ingest YouTube Videos'}
           </button>
           <span className="text-xs text-mutedGray dark:text-darkTextSecondary">
             We’ll upsert into <code>third_party_catalog</code> and link everything under this
@@ -465,7 +444,9 @@ export default function YouTubeIngest() {
                     </div>
                     <p className="text-xs text-mutedGray dark:text-darkTextSecondary">
                       {c.subject || 'Subject not set'} ·{' '}
-                      {c.items != null ? `${c.items} video${c.items === 1 ? '' : 's'}` : 'count unknown'}
+                      {c.items != null
+                        ? `${c.items} video${c.items === 1 ? '' : 's'}`
+                        : 'count unknown'}
                     </p>
                     {c.createdAt && (
                       <p className="text-[11px] text-mutedGray dark:text-darkTextSecondary">

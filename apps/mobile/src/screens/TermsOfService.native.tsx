@@ -7,9 +7,7 @@ import type { MainStackParamList } from '../navigation/types';
 import tw from '../../tailwind';
 
 const Card: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <View style={tw`rounded-2xl border border-[#182430] bg-[#0f1821] p-4`} >
-    {children}
-  </View>
+  <View style={tw`rounded-2xl border border-[#182430] bg-[#0f1821] p-4`}>{children}</View>
 );
 
 const H2: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -53,9 +51,9 @@ const TermsOfServiceNative: React.FC = () => {
       >
         <Card>
           <P>
-            Welcome to <Text style={tw`font-bold`}>Daybreak Learn</Text>. These Terms form a binding agreement
-            between you and <Text style={tw`font-bold`}>EKAZICONNECT SOLUTIONS LTD</Text>. By using our website or
-            apps, you agree to these Terms.
+            Welcome to <Text style={tw`font-bold`}>Daybreak Learn</Text>. These Terms form a binding
+            agreement between you and <Text style={tw`font-bold`}>EKAZICONNECT SOLUTIONS LTD</Text>.
+            By using our website or apps, you agree to these Terms.
           </P>
 
           <H2>1) Services</H2>
@@ -70,8 +68,8 @@ const TermsOfServiceNative: React.FC = () => {
 
           <H2>2) Accounts & eligibility</H2>
           <P>
-            You must provide accurate information and keep credentials secure. You are responsible for activity
-            under your account.
+            You must provide accurate information and keep credentials secure. You are responsible
+            for activity under your account.
           </P>
 
           <H2>3) Tokens & payments</H2>
@@ -88,7 +86,10 @@ const TermsOfServiceNative: React.FC = () => {
           />
           <P>
             Refunds and cancellations are governed by our{' '}
-            <Text style={tw`text-pink-400 underline`} onPress={() => go('RefundsAndCancellations' as any)}>
+            <Text
+              style={tw`text-pink-400 underline`}
+              onPress={() => go('RefundsAndCancellations' as any)}
+            >
               Refund & Cancellation Policy
             </Text>
             .
@@ -96,8 +97,8 @@ const TermsOfServiceNative: React.FC = () => {
 
           <H2>4) Live sessions; videos/courses</H2>
           <P>
-            For live sessions, we place a token hold and capture upon completion. Video/course purchases grant
-            streaming access immediately after payment.
+            For live sessions, we place a token hold and capture upon completion. Video/course
+            purchases grant streaming access immediately after payment.
           </P>
 
           <H2>5) Tutors</H2>
@@ -111,8 +112,12 @@ const TermsOfServiceNative: React.FC = () => {
 
           <H2>6) Institutional plans</H2>
           <P>
-            Institutions may subscribe for seats; provisioning and billing terms are described in our{' '}
-            <Text style={tw`text-pink-400 underline`} onPress={() => go('FulfillmentPolicy' as any)}>
+            Institutions may subscribe for seats; provisioning and billing terms are described in
+            our{' '}
+            <Text
+              style={tw`text-pink-400 underline`}
+              onPress={() => go('FulfillmentPolicy' as any)}
+            >
               Fulfillment Policy
             </Text>{' '}
             and order forms or MSAs.
@@ -124,7 +129,10 @@ const TermsOfServiceNative: React.FC = () => {
               'No harassment, hate speech, IP infringement, or unlawful activity.',
               <Text>
                 No spamming or unsolicited marketing—see our{' '}
-                <Text style={tw`text-pink-400 underline`} onPress={() => go('AntiSpamPolicy' as any)}>
+                <Text
+                  style={tw`text-pink-400 underline`}
+                  onPress={() => go('AntiSpamPolicy' as any)}
+                >
                   Anti-Spam Policy
                 </Text>
                 .
@@ -143,21 +151,27 @@ const TermsOfServiceNative: React.FC = () => {
           />
 
           <H2>9) Disclaimers</H2>
-          <P>Services are provided “as is” without warranties. We do not guarantee outcomes, grades, or results.</P>
+          <P>
+            Services are provided “as is” without warranties. We do not guarantee outcomes, grades,
+            or results.
+          </P>
 
           <H2>10) Limitation of liability</H2>
           <P>
-            To the fullest extent permitted by law, our liability is limited to the amount you paid for the service
-            giving rise to the claim.
+            To the fullest extent permitted by law, our liability is limited to the amount you paid
+            for the service giving rise to the claim.
           </P>
 
           <H2>11) Termination</H2>
-          <P>We may suspend or terminate accounts for violations. You may stop using the services at any time.</P>
+          <P>
+            We may suspend or terminate accounts for violations. You may stop using the services at
+            any time.
+          </P>
 
           <H2>12) Governing law; disputes</H2>
           <P>
-            Kenyan law governs these Terms. We encourage good-faith resolution first; courts in Kenya have jurisdiction,
-            without prejudice to any consumer rights you hold.
+            Kenyan law governs these Terms. We encourage good-faith resolution first; courts in
+            Kenya have jurisdiction, without prejudice to any consumer rights you hold.
           </P>
 
           <H2>13) Changes</H2>
@@ -166,7 +180,9 @@ const TermsOfServiceNative: React.FC = () => {
           <H2>14) Contact</H2>
           <View style={tw`rounded-xl p-4 bg-[#121927] mt-2`}>
             <Text style={tw`text-slate-100 font-semibold`}>EKAZICONNECT SOLUTIONS LTD</Text>
-            <Text style={tw`text-slate-300`}>International House, Mama Ngina Street, CBD, Nairobi, Kenya</Text>
+            <Text style={tw`text-slate-300`}>
+              International House, Mama Ngina Street, CBD, Nairobi, Kenya
+            </Text>
             <Text style={tw`text-slate-300`}>Postal: P.O. Box 1830-01000, Thika, Kenya</Text>
             <Text style={tw`text-slate-300`}>
               Phones:{' '}

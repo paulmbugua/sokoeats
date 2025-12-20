@@ -93,7 +93,6 @@ const EXAM_CONFIG_TRANSFORM_SCHEMA = {
   additionalProperties: true,
 };
 
-
 /**
  * NEW: Shape of JSON we expect when AI is transforming the marks sheet.
  *
@@ -154,14 +153,11 @@ function buildAiCardSnapshot(card) {
     },
     student: {
       name: card.student?.name || 'Learner',
-      class_label: card.student?.class_label || card.summary?.classLabel || null,
+      class_label:
+        card.student?.class_label || card.summary?.classLabel || null,
     },
-    term: card.term
-      ? { year: card.term.year, label: card.term.label }
-      : null,
-    session: card.session
-      ? { label: card.session.label }
-      : null,
+    term: card.term ? { year: card.term.year, label: card.term.label } : null,
+    session: card.session ? { label: card.session.label } : null,
     summary: {
       totalScore: card.summary?.totalScore ?? null,
       totalMax: card.summary?.totalMax ?? null,
@@ -183,11 +179,12 @@ function buildAiCardSnapshot(card) {
   };
 }
 
-
 function buildAiConfigSnapshot(config = {}) {
   const terms = Array.isArray(config.terms) ? config.terms : [];
   const sessions = Array.isArray(config.sessions) ? config.sessions : [];
-  const gradingBands = Array.isArray(config.gradingBands) ? config.gradingBands : [];
+  const gradingBands = Array.isArray(config.gradingBands)
+    ? config.gradingBands
+    : [];
 
   const termById = new Map();
   terms.forEach((t) => {
@@ -209,7 +206,6 @@ function buildAiConfigSnapshot(config = {}) {
         termLabel = termById.get(String(s.term_id)).label || null;
       }
       return {
-        
         label: s.label,
         term_label: termLabel,
         weight: s.weight ?? 1,
@@ -239,7 +235,6 @@ function clampSubjectRemark(raw, max = 30) {
   return safe.trimEnd();
 }
 
-
 /**
  * Core AI helper:
  * - Takes the student card + optional free-text instructions from admin
@@ -265,7 +260,7 @@ export async function aiGenerateExamInsights({ card, instructions }) {
     JSON.stringify(snapshot, null, 2),
     '```',
     '',
-        'Goals:',
+    'Goals:',
     '- Write a short overall PRINCIPAL-style remark (2–4 sentences) under 420 characters.',
     '- Optionally refine/override per-subject comments to be printed in the subject REMARK column.',
     '- Keep each subject remark under 30 characters, as a short but complete phrase with NO trailing dots or ellipsis.',
@@ -306,23 +301,22 @@ export async function aiGenerateExamInsights({ card, instructions }) {
       ? parsed.principalRemark.trim()
       : null;
 
- const subjectRemarks = Array.isArray(parsed.subjectRemarks)
-  ? parsed.subjectRemarks
-      .filter(
-        (x) =>
-          x &&
-          typeof x.subject === 'string' &&
-          x.subject.trim() &&
-          typeof x.remark === 'string' &&
-          x.remark.trim(),
-      )
-      .map((x) => ({
-        subject: x.subject.trim(),
-        // ✅ ensure AI subject remarks are tiny (≤ 20 chars) for the REMARKS column
-        remark: clampSubjectRemark(x.remark, 30),
-      }))
-  : [];
-
+  const subjectRemarks = Array.isArray(parsed.subjectRemarks)
+    ? parsed.subjectRemarks
+        .filter(
+          (x) =>
+            x &&
+            typeof x.subject === 'string' &&
+            x.subject.trim() &&
+            typeof x.remark === 'string' &&
+            x.remark.trim(),
+        )
+        .map((x) => ({
+          subject: x.subject.trim(),
+          // ✅ ensure AI subject remarks are tiny (≤ 20 chars) for the REMARKS column
+          remark: clampSubjectRemark(x.remark, 30),
+        }))
+    : [];
 
   return {
     principalRemark,
@@ -358,10 +352,9 @@ function buildAiSheetSnapshot({ rows, meta = {} }) {
       percent: r.percent ?? null,
       grade: r.grade ?? null,
       remark: r.remark ?? null,
-      teacher_initials:
-        r.teacher_initials ?? r.teacherInitials ?? null,
+      teacher_initials: r.teacher_initials ?? r.teacherInitials ?? null,
       extra:
-        (r.extra && typeof r.extra === 'object' && !Array.isArray(r.extra))
+        r.extra && typeof r.extra === 'object' && !Array.isArray(r.extra)
           ? r.extra
           : {},
     })),
@@ -403,12 +396,11 @@ export async function aiComputeExamSheet({
     },
   });
 
-    const systemMessage =
+  const systemMessage =
     'You are an assistant that helps teachers compute or fill exam mark-sheet columns. ' +
     'You must strictly follow the JSON schema and keep student_user_id + subject unchanged. ' +
     'If a targetColumnKey is provided and it is NOT "Remark" or "Remarks", you primarily fill or update that column inside row.extra[targetColumnKey]. ' +
     'If the targetColumnKey is "Remark" or "Remarks", you MUST write into the existing "remark" field of each row instead of creating any new extra column.';
-
 
   const userMessage = [
     'You are helping to compute or fill columns for a school exam mark sheet.',
@@ -418,7 +410,7 @@ export async function aiComputeExamSheet({
     JSON.stringify(snapshot, null, 2),
     '```',
     '',
-        'Rules:',
+    'Rules:',
     '- NEVER change student_user_id or subject values.',
     '- Treat each row as one learner + subject entry.',
     '- If targetColumnKey is provided and is NOT "Remark" or "Remarks", prefer writing into row.extra[targetColumnKey].',
@@ -437,7 +429,6 @@ export async function aiComputeExamSheet({
     '- Compute "Total" column in extra.total as cat_score + exam_score.',
     '- Rewrite remark strings to be short, neutral comments.',
   ].join('\n');
-
 
   const completion = await openai.chat.completions.create({
     model: EXAMS_MODEL,
@@ -461,8 +452,7 @@ export async function aiComputeExamSheet({
   const updatedRows = Array.isArray(parsed.updatedRows)
     ? parsed.updatedRows.filter((row) => {
         const sid = Number(row.student_user_id);
-        const subject =
-          row.subject && row.subject.toString().trim();
+        const subject = row.subject && row.subject.toString().trim();
         return sid && subject;
       })
     : [];
@@ -527,16 +517,19 @@ export async function aiTransformExamConfig({ config, instructions }) {
   }
 
   const safeTerms = Array.isArray(parsed.terms) ? parsed.terms : snapshot.terms;
-  const safeSessions = Array.isArray(parsed.sessions) ? parsed.sessions : snapshot.sessions;
-  const safeBands =
-    Array.isArray(parsed.gradingBands) ? parsed.gradingBands : snapshot.gradingBands;
+  const safeSessions = Array.isArray(parsed.sessions)
+    ? parsed.sessions
+    : snapshot.sessions;
+  const safeBands = Array.isArray(parsed.gradingBands)
+    ? parsed.gradingBands
+    : snapshot.gradingBands;
 
-    const safeReportTitle =
+  const safeReportTitle =
     typeof parsed.reportTitle === 'string'
       ? parsed.reportTitle.trim()
-      : (config && typeof config.reportTitle === 'string'
+      : config && typeof config.reportTitle === 'string'
         ? config.reportTitle
-        : null);
+        : null;
 
   return {
     reportTitle: safeReportTitle,

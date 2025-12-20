@@ -4,10 +4,7 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import useAppQuery from './useAppQuery';
 import { searchCoursesApi, getCourses } from '@mytutorapp/shared/api';
 
-const dev =
-  typeof process !== 'undefined'
-    ? process.env.NODE_ENV !== 'production'
-    : false;
+const dev = typeof process !== 'undefined' ? process.env.NODE_ENV !== 'production' : false;
 
 type UiFilters = {
   subject: string;
@@ -71,7 +68,11 @@ export default function useCourseSearch(opts?: { backendUrl?: string }) {
     [backendUrl, q, uiFilters]
   );
 
-  const { data, isLoading: loading, refetch } = useAppQuery<Course[]>(
+  const {
+    data,
+    isLoading: loading,
+    refetch,
+  } = useAppQuery<Course[]>(
     queryKey,
     async () => {
       if (!backendUrl) return [];
@@ -100,10 +101,10 @@ export default function useCourseSearch(opts?: { backendUrl?: string }) {
         const courses = Array.isArray(resp)
           ? resp
           : Array.isArray(resp?.courses)
-          ? resp.courses
-          : Array.isArray(resp?.rows)
-          ? resp.rows
-          : [];
+            ? resp.courses
+            : Array.isArray(resp?.rows)
+              ? resp.rows
+              : [];
 
         setSearchMeta({
           usingServer: true,
@@ -118,10 +119,7 @@ export default function useCourseSearch(opts?: { backendUrl?: string }) {
         return courses;
       } catch (err: any) {
         const ms = Date.now() - t0;
-        const msg =
-          err?.response?.data?.message ||
-          err?.message ||
-          'searchCoursesApi failed';
+        const msg = err?.response?.data?.message || err?.message || 'searchCoursesApi failed';
 
         setSearchMeta({ usingServer: false, serverError: msg, ms });
         console.error('[useCourseSearch] failed → fallback:', msg);

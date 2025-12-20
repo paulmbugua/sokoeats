@@ -9,13 +9,13 @@ export type SpeakReq = {
   ssml?: string;
   text?: string;
   voiceName?: string;
-  rate?: string;   // e.g. "0%", "+10%", "-15%"
-  pitch?: string;  // e.g. "0st", "+2st", "-3st"
+  rate?: string; // e.g. "0%", "+10%", "-15%"
+  pitch?: string; // e.g. "0st", "+2st", "-3st"
 };
 
 export type SpeakResp = {
-  url: string;                // Cloudinary URL (or absolute)
-  streamPath?: string;        // e.g. "/api/ttsAvatar/stream/<cacheKey>"
+  url: string; // Cloudinary URL (or absolute)
+  streamPath?: string; // e.g. "/api/ttsAvatar/stream/<cacheKey>"
   cacheKey: string;
   cached: boolean;
 
@@ -35,12 +35,7 @@ export type SpeakResp = {
 export type TtsVoiceInfo = {
   name: string;
   languageCodes: string[];
-  ssmlGender:
-    | 'MALE'
-    | 'FEMALE'
-    | 'NEUTRAL'
-    | 'SSML_VOICE_GENDER_UNSPECIFIED'
-    | string;
+  ssmlGender: 'MALE' | 'FEMALE' | 'NEUTRAL' | 'SSML_VOICE_GENDER_UNSPECIFIED' | string;
   naturalSampleRateHertz?: number | null;
 };
 
@@ -92,7 +87,7 @@ type SpeakOptions = {
 function makeAbortError(message = 'Timeout'): any {
   try {
     // Browser / modern runtimes
-    // @ts-ignore
+
     return new DOMException(message, 'AbortError');
   } catch {
     const err: any = new Error(message);
@@ -123,7 +118,11 @@ export async function speakRobot(
     if ((options.signal as AbortSignal).aborted) {
       controller.abort((options.signal as any).reason);
     } else {
-      options.signal.addEventListener('abort', () => controller.abort((options.signal as any).reason), { once: true });
+      options.signal.addEventListener(
+        'abort',
+        () => controller.abort((options.signal as any).reason),
+        { once: true }
+      );
     }
   }
 
@@ -135,7 +134,7 @@ export async function speakRobot(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(body),
@@ -149,7 +148,11 @@ export async function speakRobot(
   let parsed: any = undefined;
   const isJson = res.headers.get('content-type')?.includes('application/json');
   if (text && isJson) {
-    try { parsed = JSON.parse(text); } catch { /* ignore parse errors */ }
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      /* ignore parse errors */
+    }
   }
 
   if (!res.ok) {
@@ -192,7 +195,7 @@ export async function listTtsVoices(
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), Math.max(10_000, opts?.timeoutMs || 10_000));
 
-  const headers: Record<string, string> = { 'Accept': 'application/json' };
+  const headers: Record<string, string> = { Accept: 'application/json' };
   if (opts?.token) headers.Authorization = `Bearer ${opts.token}`;
 
   try {

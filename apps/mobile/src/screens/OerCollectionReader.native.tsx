@@ -49,14 +49,16 @@ export type CollectionItem = {
 type OerRouteName = 'OerCollectionReader';
 type OerParams = { id: string };
 type Nav = StackNavigationProp<MainStackParamList, OerRouteName>;
-type Rt  = RouteProp<MainStackParamList, OerRouteName>;
+type Rt = RouteProp<MainStackParamList, OerRouteName>;
 
 const lsKey = (collectionId: string | number, suffix: string) =>
   `oer.collection.${collectionId}.${suffix}`;
 
 const sanitizeId = (routeId?: string) => {
   let s = routeId ?? '';
-  try { s = decodeURIComponent(s); } catch {}
+  try {
+    s = decodeURIComponent(s);
+  } catch {}
   if (s.startsWith(':id')) s = s.slice(3);
   if (s.startsWith(':')) s = s.slice(1);
   return s;
@@ -64,7 +66,10 @@ const sanitizeId = (routeId?: string) => {
 
 const isProbablyPdfUrl = (u?: string) => !!u && /\.pdf($|\?)/i.test(u);
 const isProbablyVideoUrl = (u?: string) =>
-  !!u && /(youtube\.com|youtu\.be|youtube-nocookie\.com|vimeo\.com|\.m3u8($|\?)|\.mp4($|\?)|\.webm($|\?)|\/playlist\?list=)/i.test(u);
+  !!u &&
+  /(youtube\.com|youtu\.be|youtube-nocookie\.com|vimeo\.com|\.m3u8($|\?)|\.mp4($|\?)|\.webm($|\?)|\/playlist\?list=)/i.test(
+    u
+  );
 
 const toWatchLikeYouTube = (raw?: string) => {
   if (!raw) return '';
@@ -74,22 +79,26 @@ const toWatchLikeYouTube = (raw?: string) => {
     const sp = u.searchParams;
 
     const yt =
-      host === 'youtube.com' || host === 'm.youtube.com' ||
-      host === 'youtube-nocookie.com' || host === 'youtu.be' ||
+      host === 'youtube.com' ||
+      host === 'm.youtube.com' ||
+      host === 'youtube-nocookie.com' ||
+      host === 'youtu.be' ||
       host.endsWith('.youtube.com');
     if (!yt) return raw;
 
     if (u.pathname.startsWith('/shorts/')) {
-    const segs = u.pathname.split('/');
-    const id = segs[2] ?? '';
-    return `https://www.youtube.com/watch?v=${id}`;
-  }
+      const segs = u.pathname.split('/');
+      const id = segs[2] ?? '';
+      return `https://www.youtube.com/watch?v=${id}`;
+    }
 
     if (host === 'youtu.be') return raw;
     if (u.pathname.startsWith('/embed/')) {
       const id = u.pathname.split('/')[2];
       const list = sp.get('list');
-      return list ? `https://www.youtube.com/watch?v=${id}&list=${list}` : `https://www.youtube.com/watch?v=${id}`;
+      return list
+        ? `https://www.youtube.com/watch?v=${id}&list=${list}`
+        : `https://www.youtube.com/watch?v=${id}`;
     }
     return raw;
   } catch {
@@ -115,13 +124,12 @@ const toYouTubeEmbed = (raw?: string) => {
     let id = '';
     if (host === 'youtu.be') id = u.pathname.slice(1);
     else if (u.pathname.startsWith('/embed/')) {
-    const segs = u.pathname.split('/');
-    id = segs[2] ?? '';
-  } else if (u.pathname.startsWith('/shorts/')) {
-    const segs = u.pathname.split('/');
-    id = segs[2] ?? '';
-  }
-    else if (v) id = v;
+      const segs = u.pathname.split('/');
+      id = segs[2] ?? '';
+    } else if (u.pathname.startsWith('/shorts/')) {
+      const segs = u.pathname.split('/');
+      id = segs[2] ?? '';
+    } else if (v) id = v;
 
     if (id) {
       return `https://www.youtube-nocookie.com/embed/${id}?${baseParams}${list ? `&list=${list}` : ''}`;
@@ -158,13 +166,18 @@ const normalizeKind = (it: CollectionItem): CollectionItemKind => {
 };
 
 const getPdfUrl = (it: CollectionItem) => it.file_url || (it as any).pdf_url || it.source_url || '';
-const getVideoUrl = (it: CollectionItem) => it.video_url || it.embed_url || it.source_url || (it as any).url || '';
+const getVideoUrl = (it: CollectionItem) =>
+  it.video_url || it.embed_url || it.source_url || (it as any).url || '';
 
 async function tryJson(url: string, headers: Record<string, string>) {
   const res = await fetch(url, { headers });
   const text = await res.text();
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-  try { return JSON.parse(text); } catch { return text; }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 function coerceItemsFromPayload(payload: any, slugOrId: string): CollectionItem[] {
@@ -173,31 +186,35 @@ function coerceItemsFromPayload(payload: any, slugOrId: string): CollectionItem[
 
   const html = payload?.web_url || payload?.html_url;
   if (html) {
-    return [{
-      id: payload?.id ?? slugOrId,
-      slug: payload?.slug ?? slugOrId,
-      title: payload?.title || payload?.name || 'Untitled Book',
-      kind: 'text',
-      web_url: html,
-      cover_url: payload?.cover_url || null,
-      provider: payload?.provider || payload?.origin || 'OER',
-      pages: payload?.pages,
-    }];
+    return [
+      {
+        id: payload?.id ?? slugOrId,
+        slug: payload?.slug ?? slugOrId,
+        title: payload?.title || payload?.name || 'Untitled Book',
+        kind: 'text',
+        web_url: html,
+        cover_url: payload?.cover_url || null,
+        provider: payload?.provider || payload?.origin || 'OER',
+        pages: payload?.pages,
+      },
+    ];
   }
 
   const file = payload?.file_url || payload?.pdf_url || payload?.source_url || payload?.url || '';
   if (file) {
-   const isPdf = isProbablyPdfUrl(file);
-  return [{
-    id: payload?.id ?? slugOrId,
-    slug: payload?.slug ?? slugOrId,
-    title: payload?.title || payload?.name || 'Untitled Book',
-    kind: isPdf ? 'pdf' : 'text',
-    web_url: isPdf ? null : file,
-      ...(isPdf ? { file_url: file } : {}),
-    cover_url: payload?.cover_url || null,
-    provider: payload?.provider || payload?.origin || 'OER',
-  }];
+    const isPdf = isProbablyPdfUrl(file);
+    return [
+      {
+        id: payload?.id ?? slugOrId,
+        slug: payload?.slug ?? slugOrId,
+        title: payload?.title || payload?.name || 'Untitled Book',
+        kind: isPdf ? 'pdf' : 'text',
+        web_url: isPdf ? null : file,
+        ...(isPdf ? { file_url: file } : {}),
+        cover_url: payload?.cover_url || null,
+        provider: payload?.provider || payload?.origin || 'OER',
+      },
+    ];
   }
 
   if (payload?.data && Array.isArray(payload.data.items)) return payload.data.items;
@@ -228,7 +245,8 @@ const OerCollectionReaderNative: React.FC = () => {
   // Notes (per item)
   const activeItem = items[activeIndex];
   const notesKey = useMemo(
-    () => lsKey(id || 'x', `item.${String(activeItem?.id ?? activeItem?.slug ?? activeIndex)}.notes`),
+    () =>
+      lsKey(id || 'x', `item.${String(activeItem?.id ?? activeItem?.slug ?? activeIndex)}.notes`),
     [id, activeItem, activeIndex]
   );
   const [notes, setNotes] = useState('');
@@ -317,7 +335,9 @@ const OerCollectionReaderNative: React.FC = () => {
         }
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [backendUrl, id, token]);
 
   // Kinds & URLs
@@ -334,10 +354,10 @@ const OerCollectionReaderNative: React.FC = () => {
   const isHtml = !!activeItem?.web_url && !guessedVideo && !isPdf;
 
   const youTubeEmbed = useMemo(() => toYouTubeEmbed(playableUrl), [playableUrl]);
- const externalUrl = useMemo(
-  () => (activeItem ? activeItem.source_url || getVideoUrl(activeItem) : ''),
-  [activeItem],
-); // ✅ getVideoUrl only called when activeItem exists
+  const externalUrl = useMemo(
+    () => (activeItem ? activeItem.source_url || getVideoUrl(activeItem) : ''),
+    [activeItem]
+  ); // ✅ getVideoUrl only called when activeItem exists
 
   // PDF in WebView: Android often needs Google Docs viewer; iOS can open PDF directly.
   const pdfUrl = useMemo(() => {
@@ -418,12 +438,19 @@ const OerCollectionReaderNative: React.FC = () => {
 
         {/* Title + provider */}
         <View style={tw`mt-3`}>
-          <Text style={tw`text-[22px] font-extrabold text-[#0d141c] dark:text-white`} numberOfLines={2}>
+          <Text
+            style={tw`text-[22px] font-extrabold text-[#0d141c] dark:text-white`}
+            numberOfLines={2}
+          >
             {activeItem?.title || '—'}
           </Text>
           {!!activeItem?.provider && (
-            <View style={tw`mt-2 self-start h-8 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}>
-              <Text style={tw`text-xs text-[#0d141c] dark:text-white`}>Provider: {activeItem.provider}</Text>
+            <View
+              style={tw`mt-2 self-start h-8 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
+            >
+              <Text style={tw`text-xs text-[#0d141c] dark:text-white`}>
+                Provider: {activeItem.provider}
+              </Text>
             </View>
           )}
         </View>
@@ -450,7 +477,7 @@ const OerCollectionReaderNative: React.FC = () => {
             // YouTube/player via WebView
             <WebView
               style={tw`flex-1`}
-               source={{ uri: youTubeEmbed || playableUrl || 'about:blank' }}
+              source={{ uri: youTubeEmbed || playableUrl || 'about:blank' }}
               allowsFullscreenVideo
               javaScriptEnabled
               domStorageEnabled
@@ -486,20 +513,26 @@ const OerCollectionReaderNative: React.FC = () => {
                   onPress={() => openExternal(externalUrl)}
                   style={tw`mt-3 rounded-xl h-10 px-4 bg-white dark:bg-[#0f1821] items-center justify-center border border-[#cedbe8] dark:border-darkCard`}
                 >
-                  <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Open source</Text>
+                  <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+                    Open source
+                  </Text>
                 </Pressable>
               )}
             </View>
           )}
 
           {/* Bottom nav */}
-          <View style={tw`px-4 py-2 border-t border-[#e7edf4] dark:border-darkCard flex-row items-center justify-between`}>
+          <View
+            style={tw`px-4 py-2 border-t border-[#e7edf4] dark:border-darkCard flex-row items-center justify-between`}
+          >
             <Pressable
               onPress={goPrev}
               disabled={activeIndex <= 0}
               style={tw.style(
                 'rounded-xl h-9 px-3 items-center justify-center',
-                activeIndex <= 0 ? 'bg-[#e7edf4] dark:bg-[#172534] opacity-60' : 'bg-[#e7edf4] dark:bg-[#172534]'
+                activeIndex <= 0
+                  ? 'bg-[#e7edf4] dark:bg-[#172534] opacity-60'
+                  : 'bg-[#e7edf4] dark:bg-[#172534]'
               )}
             >
               <Text style={tw`text-sm text-[#0d141c] dark:text-white`}>‹ Previous</Text>
@@ -514,7 +547,9 @@ const OerCollectionReaderNative: React.FC = () => {
               disabled={activeIndex >= items.length - 1}
               style={tw.style(
                 'rounded-xl h-9 px-3 items-center justify-center',
-                activeIndex >= items.length - 1 ? 'bg-[#e7edf4] dark:bg-[#172534] opacity-60' : 'bg-[#e7edf4] dark:bg-[#172534]'
+                activeIndex >= items.length - 1
+                  ? 'bg-[#e7edf4] dark:bg-[#172534] opacity-60'
+                  : 'bg-[#e7edf4] dark:bg-[#172534]'
               )}
             >
               <Text style={tw`text-sm text-[#0d141c] dark:text-white`}>Next ›</Text>
@@ -524,11 +559,20 @@ const OerCollectionReaderNative: React.FC = () => {
       )}
 
       {/* Playlist Drawer */}
-      <Modal visible={openPlaylist} transparent animationType="fade" onRequestClose={() => setOpenPlaylist(false)}>
+      <Modal
+        visible={openPlaylist}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOpenPlaylist(false)}
+      >
         <View style={tw`flex-1 bg-black/40`}>
-          <View style={tw`absolute left-0 top-0 bottom-0 w-4/5 max-w-[320px] rounded-r-2xl bg-white dark:bg-[#0f1821] border-r border-[#cedbe8] dark:border-darkCard p-3`}>
+          <View
+            style={tw`absolute left-0 top-0 bottom-0 w-4/5 max-w-[320px] rounded-r-2xl bg-white dark:bg-[#0f1821] border-r border-[#cedbe8] dark:border-darkCard p-3`}
+          >
             <View style={tw`flex-row items-center gap-2 mb-2`}>
-              <Text style={tw`text-base font-semibold text-[#0d141c] dark:text-white`}>Playlist</Text>
+              <Text style={tw`text-base font-semibold text-[#0d141c] dark:text-white`}>
+                Playlist
+              </Text>
               <View style={tw`flex-1`} />
               <Pressable
                 onPress={() => setOpenPlaylist(false)}
@@ -538,7 +582,9 @@ const OerCollectionReaderNative: React.FC = () => {
               </Pressable>
             </View>
 
-            <View style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] rounded-xl px-3 h-10 mb-2`}>
+            <View
+              style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] rounded-xl px-3 h-10 mb-2`}
+            >
               <TextInput
                 placeholder="Search title…"
                 placeholderTextColor="#7a8aa0"
@@ -552,9 +598,12 @@ const OerCollectionReaderNative: React.FC = () => {
               data={items
                 .map((it, idx) => ({ it, idx }))
                 .filter(({ it }) =>
-                  search ? String(it.title || '').toLowerCase().includes(search.toLowerCase()) : true,
-                )
-              }
+                  search
+                    ? String(it.title || '')
+                        .toLowerCase()
+                        .includes(search.toLowerCase())
+                    : true
+                )}
               keyExtractor={(row) => String(row.it.id ?? row.it.slug ?? row.idx)}
               renderItem={({ item: row }) => {
                 const k = normalizeKind(row.it);
@@ -570,10 +619,19 @@ const OerCollectionReaderNative: React.FC = () => {
                       active ? 'bg-[#e7edf4] dark:bg-[#172534]' : 'bg-transparent'
                     )}
                   >
-                    <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`} numberOfLines={2}>
+                    <Text
+                      style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}
+                      numberOfLines={2}
+                    >
                       {row.it.title}
                     </Text>
-                    <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-0.5`}>{k === 'video' ? 'Video' : isProbablyPdfUrl(getPdfUrl(row.it)) ? 'PDF' : 'Item'}</Text>
+                    <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-0.5`}>
+                      {k === 'video'
+                        ? 'Video'
+                        : isProbablyPdfUrl(getPdfUrl(row.it))
+                          ? 'PDF'
+                          : 'Item'}
+                    </Text>
                   </Pressable>
                 );
               }}
@@ -584,11 +642,20 @@ const OerCollectionReaderNative: React.FC = () => {
       </Modal>
 
       {/* Notes Drawer */}
-      <Modal visible={openNotes} transparent animationType="fade" onRequestClose={() => setOpenNotes(false)}>
+      <Modal
+        visible={openNotes}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOpenNotes(false)}
+      >
         <View style={tw`flex-1 bg-black/40`}>
-          <View style={tw`absolute right-0 top-0 bottom-0 w-11/12 max-w-[360px] rounded-l-2xl bg-white dark:bg-[#0f1821] border-l border-[#cedbe8] dark:border-darkCard p-3`}>
+          <View
+            style={tw`absolute right-0 top-0 bottom-0 w-11/12 max-w-[360px] rounded-l-2xl bg-white dark:bg-[#0f1821] border-l border-[#cedbe8] dark:border-darkCard p-3`}
+          >
             <View style={tw`flex-row items-center gap-2 mb-2`}>
-              <Text style={tw`text-base font-semibold text-[#0d141c] dark:text-white`}>Notes & Highlights</Text>
+              <Text style={tw`text-base font-semibold text-[#0d141c] dark:text-white`}>
+                Notes & Highlights
+              </Text>
               <View style={tw`flex-1`} />
               <Pressable
                 onPress={() => setOpenNotes(false)}
@@ -601,7 +668,10 @@ const OerCollectionReaderNative: React.FC = () => {
             <View style={tw`mb-2 flex-row flex-wrap gap-2`}>
               {canRobot && (
                 <Pressable
-                  onPress={() => { setOpenNotes(false); openRobotTeacher(); }}
+                  onPress={() => {
+                    setOpenNotes(false);
+                    openRobotTeacher();
+                  }}
                   style={tw`h-9 px-3 rounded-xl bg-[#3d99f5] items-center justify-center`}
                 >
                   <Text style={tw`text-white text-xs font-semibold`}>Learn with RobotTeacher</Text>
@@ -612,7 +682,9 @@ const OerCollectionReaderNative: React.FC = () => {
                   onPress={() => openExternal(activeItem.source_url)}
                   style={tw`h-9 px-3 rounded-xl border border-[#cedbe8] dark:border-darkCard items-center justify-center`}
                 >
-                  <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>Open source</Text>
+                  <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>
+                    Open source
+                  </Text>
                 </Pressable>
               )}
             </View>
@@ -633,7 +705,9 @@ const OerCollectionReaderNative: React.FC = () => {
               />
               <View style={tw`mt-1 flex-row items-center justify-between`}>
                 <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>Local only</Text>
-                <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>{notes.length} / 4000</Text>
+                <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+                  {notes.length} / 4000
+                </Text>
               </View>
             </View>
           </View>

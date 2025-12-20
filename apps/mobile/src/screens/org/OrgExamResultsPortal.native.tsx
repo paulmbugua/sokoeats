@@ -1,28 +1,8 @@
 /* eslint-disable no-console */
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-  useCallback,
-} from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  Linking,
-} from 'react-native';
-import {
-  useNavigation,
-  useRoute,
-  type RouteProp,
-} from '@react-navigation/native';
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Linking } from 'react-native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import tw from '../../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -132,46 +112,44 @@ const buildAutoRemarks = ({
   const displayName = name || 'This learner';
   if (percent != null) {
     pieces.push(
-      `${displayName} achieved an overall score of ${percent.toFixed(
-        1,
-      )}%${
+      `${displayName} achieved an overall score of ${percent.toFixed(1)}%${
         overallGrade ? ` (grade ${overallGrade})` : ''
-      }, reflecting their effort and engagement this term.`,
+      }, reflecting their effort and engagement this term.`
     );
   }
 
   if (classRank && classSize) {
     pieces.push(
       `In the class, ${displayName.toLowerCase()} ranked ${formatRank(
-        classRank,
-      )} out of ${classSize} learners.`,
+        classRank
+      )} out of ${classSize} learners.`
     );
   }
 
   if (bestSubject && bestPercent != null) {
     pieces.push(
       `Strongest performance was in ${bestSubject} at about ${Math.round(
-        bestPercent,
-      )}%, showing confidence and understanding in this area.`,
+        bestPercent
+      )}%, showing confidence and understanding in this area.`
     );
   }
 
   if (weakestSubject && weakestPercent != null) {
     pieces.push(
       `More focused support is recommended in ${weakestSubject}, where the score was around ${Math.round(
-        weakestPercent,
-      )}%.`,
+        weakestPercent
+      )}%.`
     );
   }
 
   if (!pieces.length) {
     pieces.push(
-      `${displayName} has made noticeable progress this term. Continued effort and support will help unlock even better outcomes.`,
+      `${displayName} has made noticeable progress this term. Continued effort and support will help unlock even better outcomes.`
     );
   }
 
   pieces.push(
-    'Parents/guardians are encouraged to celebrate the wins, discuss the areas that need improvement, and agree on 1–3 practical action steps for the coming term.',
+    'Parents/guardians are encouraged to celebrate the wins, discuss the areas that need improvement, and agree on 1–3 practical action steps for the coming term.'
   );
 
   return pieces.join(' ');
@@ -242,8 +220,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
   const insets = useSafeAreaInsets();
   const palette = usePalette();
 
-  const { backendUrl, token: userToken, orgToken, userId } =
-    useShopContext() as any;
+  const { backendUrl, token: userToken, orgToken, userId } = useShopContext() as any;
 
   const authToken = orgToken || userToken || '';
 
@@ -254,8 +231,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
 
   // support param studentId
   const studentIdFromParamRaw = route.params?.studentId;
-  const studentIdFromParam =
-    studentIdFromParamRaw != null ? String(studentIdFromParamRaw) : null;
+  const studentIdFromParam = studentIdFromParamRaw != null ? String(studentIdFromParamRaw) : null;
 
   const resolvedLearnerId: string | null = useMemo(() => {
     if (!isLearnerView) return null;
@@ -308,8 +284,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
   } = useOrgExams({ backendUrl, token: authToken, orgId });
 
   const cfg = config ?? emptyConfig;
-  const [editingConfig, setEditingConfig] =
-    useState<OrgExamConfig>(emptyConfig);
+  const [editingConfig, setEditingConfig] = useState<OrgExamConfig>(emptyConfig);
 
   const [selectedTermId, setSelectedTermId] = useState<string>('');
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
@@ -317,11 +292,9 @@ const OrgExamResultsPortalNative: React.FC = () => {
   const [subjectFilter, setSubjectFilter] = useState<string>('');
   const [teacherInitials, setTeacherInitials] = useState<string>('');
 
-  const [selectedStudentId, setSelectedStudentId] =
-    useState<number | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
 
-  const [hasAutoOpenedLearnerCard, setHasAutoOpenedLearnerCard] =
-    useState(false);
+  const [hasAutoOpenedLearnerCard, setHasAutoOpenedLearnerCard] = useState(false);
 
   // roster + mark-entry helpers
   const [rosterLearners, setRosterLearners] = useState<OrgRosterLearner[]>([]);
@@ -334,9 +307,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
   // ─────────────────────
   useEffect(() => {
     if (!authToken) {
-      console.log(
-        '[ExamPortalNative] no authToken, navigating to InstitutionLogin',
-      );
+      console.log('[ExamPortalNative] no authToken, navigating to InstitutionLogin');
       navigation.replace('InstitutionLogin' as never);
     }
   }, [authToken, navigation]);
@@ -368,9 +339,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
       setRosterLoading(true);
       try {
         const roster = await getOrgRoster(backendUrl, authToken, orgId);
-        const learners = Array.isArray(roster?.learners)
-          ? roster.learners
-          : [];
+        const learners = Array.isArray(roster?.learners) ? roster.learners : [];
         setRosterLearners(learners as OrgRosterLearner[]);
       } catch (e) {
         console.warn('[OrgExamPortalNative] Failed to load org roster', e);
@@ -402,16 +371,12 @@ const OrgExamResultsPortalNative: React.FC = () => {
 
     if (!sortedTerms.length) return;
 
-    const latestTerm =
-      sortedTerms[sortedTerms.length - 1] as OrgExamTerm;
+    const latestTerm = sortedTerms[sortedTerms.length - 1] as OrgExamTerm;
 
-    const sessionsForTerm = config.sessions.filter(
-      (s) => s.term_id === latestTerm.id,
-    );
+    const sessionsForTerm = config.sessions.filter((s) => s.term_id === latestTerm.id);
     if (!sessionsForTerm.length) return;
 
-    const latestSession =
-      sessionsForTerm[sessionsForTerm.length - 1] as OrgExamSession;
+    const latestSession = sessionsForTerm[sessionsForTerm.length - 1] as OrgExamSession;
 
     setSelectedTermId(latestTerm.id);
     setSelectedSessionId(latestSession.id);
@@ -438,9 +403,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
   // Config handlers
   // ─────────────────────
   const makeClientId = () =>
-    `tmp-${Date.now().toString(36)}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
+    `tmp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
   const handleAddTerm = () => {
     const year = new Date().getFullYear();
@@ -468,7 +431,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
     if (!baseTermId) {
       Alert.alert(
         'Add term',
-        'No term is available to attach this exam. Please create a term first.',
+        'No term is available to attach this exam. Please create a term first.'
       );
       return;
     }
@@ -494,10 +457,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
       setEditingConfig(next);
     } catch (e: any) {
       console.error('[OrgExamPortalNative] AI config error', e);
-      Alert.alert(
-        'AI error',
-        e?.message || 'Failed to apply AI changes to exam setup.',
-      );
+      Alert.alert('AI error', e?.message || 'Failed to apply AI changes to exam setup.');
     }
   };
 
@@ -527,11 +487,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
   const handleSaveSheet = async () => {
     if (!ensureSessionSelected()) return;
     try {
-      await saveSheet(
-        selectedSessionId,
-        classLabel || undefined,
-        sheetRows,
-      );
+      await saveSheet(selectedSessionId, classLabel || undefined, sheetRows);
       Alert.alert('Saved', 'Marks saved.');
     } catch (e: any) {
       console.error('[OrgExamPortalNative] save marks error', e);
@@ -558,15 +514,10 @@ const OrgExamResultsPortalNative: React.FC = () => {
       setReportRemarks(null);
 
       try {
-        const card: any = await fetchStudentCard(
-          selectedSessionId,
-          studentId,
-        );
+        const card: any = await fetchStudentCard(selectedSessionId, studentId);
 
         if (!card) {
-          setStudentCardText(
-            'No report data found for this learner yet.',
-          );
+          setStudentCardText('No report data found for this learner yet.');
           return;
         }
 
@@ -578,9 +529,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
 
         const rowsInClass = sheetRows.filter((r) => {
           if (!classKey) return true;
-          const rowClass = (r.class_label || '')
-            .toString()
-            .toLowerCase();
+          const rowClass = (r.class_label || '').toString().toLowerCase();
           return rowClass.includes(classKey);
         });
 
@@ -594,18 +543,14 @@ const OrgExamResultsPortalNative: React.FC = () => {
           if (!Number.isFinite(sid)) continue;
           const s = Number(r.score) || 0;
           const m = Number(r.max_score) || 0;
-          const prev =
-            totalsByStudent.get(sid) || {
-              totalScore: 0,
-              totalMax: 0,
-              percent: 0,
-            };
+          const prev = totalsByStudent.get(sid) || {
+            totalScore: 0,
+            totalMax: 0,
+            percent: 0,
+          };
           const nextTotalScore = prev.totalScore + s;
           const nextTotalMax = prev.totalMax + m;
-          const nextPercent =
-            nextTotalMax > 0
-              ? (nextTotalScore / nextTotalMax) * 100
-              : 0;
+          const nextPercent = nextTotalMax > 0 ? (nextTotalScore / nextTotalMax) * 100 : 0;
           totalsByStudent.set(sid, {
             totalScore: nextTotalScore,
             totalMax: nextTotalMax,
@@ -613,15 +558,12 @@ const OrgExamResultsPortalNative: React.FC = () => {
           });
         }
 
-        const overallSorted = Array.from(
-          totalsByStudent.entries(),
-        ).sort((a, b) => b[1].percent - a[1].percent);
-        const classSize = overallSorted.length;
-        const overallIdx = overallSorted.findIndex(
-          ([id]) => id === studentId,
+        const overallSorted = Array.from(totalsByStudent.entries()).sort(
+          (a, b) => b[1].percent - a[1].percent
         );
-        const overallRank =
-          overallIdx >= 0 ? overallIdx + 1 : null;
+        const classSize = overallSorted.length;
+        const overallIdx = overallSorted.findIndex(([id]) => id === studentId);
+        const overallRank = overallIdx >= 0 ? overallIdx + 1 : null;
 
         const subjectPositions: Record<
           string,
@@ -658,15 +600,9 @@ const OrgExamResultsPortalNative: React.FC = () => {
             .sort((a, b) => b.percent - a.percent);
 
           const size = withPerc.length;
-          const idx = withPerc.findIndex(
-            (row) => row.studentId === studentId,
-          );
+          const idx = withPerc.findIndex((row) => row.studentId === studentId);
           const rank = idx >= 0 ? idx + 1 : null;
-          const meanPercent =
-            withPerc.reduce(
-              (acc, r) => acc + r.percent,
-              0,
-            ) / size || null;
+          const meanPercent = withPerc.reduce((acc, r) => acc + r.percent, 0) / size || null;
 
           subjectPositions[subKey] = {
             rank,
@@ -696,9 +632,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
         });
 
         const overallPercent: number | null =
-          typeof card.summary?.totalPercent === 'number'
-            ? card.summary.totalPercent
-            : null;
+          typeof card.summary?.totalPercent === 'number' ? card.summary.totalPercent : null;
 
         const enrichedCard = {
           ...card,
@@ -709,9 +643,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
             classSize,
           },
           subjects: card.subjects.map((s: any) => {
-            const key = (s.subject || '')
-              .toString()
-              .toLowerCase();
+            const key = (s.subject || '').toString().toLowerCase();
             const pos = subjectPositions[key];
             const subjectPercent = percentOf(s.score, s.max_score);
             return {
@@ -732,31 +664,19 @@ const OrgExamResultsPortalNative: React.FC = () => {
 
         setStudentCard(enrichedCard);
 
-        const attendance =
-          (card as any).attendance ||
-          (card.summary as any)?.attendance ||
-          {};
+        const attendance = (card as any).attendance || (card.summary as any)?.attendance || {};
         setAttendanceForm({
           lessonsAttended:
-            attendance.lessonsAttended != null
-              ? String(attendance.lessonsAttended)
-              : '',
-          lessonsHeld:
-            attendance.lessonsHeld != null
-              ? String(attendance.lessonsHeld)
-              : '',
+            attendance.lessonsAttended != null ? String(attendance.lessonsAttended) : '',
+          lessonsHeld: attendance.lessonsHeld != null ? String(attendance.lessonsHeld) : '',
           attendancePercent:
             typeof attendance.attendancePercent === 'number'
               ? String(attendance.attendancePercent)
               : '',
           behaviorRating:
-            attendance.behaviorRating != null
-              ? String(attendance.behaviorRating)
-              : '',
+            attendance.behaviorRating != null ? String(attendance.behaviorRating) : '',
           punctualityRating:
-            attendance.punctualityRating != null
-              ? String(attendance.punctualityRating)
-              : '',
+            attendance.punctualityRating != null ? String(attendance.punctualityRating) : '',
           teacherComment: attendance.teacherComment ?? '',
         });
 
@@ -765,14 +685,11 @@ const OrgExamResultsPortalNative: React.FC = () => {
         lines.push('');
         enrichedCard.subjects.forEach((s: any) => {
           const baseLine = `${s.subject}: ${s.score}/${s.max_score}`;
-          const percentStr =
-            s.percent != null ? ` (${Math.round(s.percent)}%)` : '';
+          const percentStr = s.percent != null ? ` (${Math.round(s.percent)}%)` : '';
           const gradeStr = s.grade ? ` – ${s.grade}` : '';
           const posStr =
             s.classRank && s.classSize
-              ? ` – position ${formatRank(s.classRank)} of ${
-                  s.classSize
-                }`
+              ? ` – position ${formatRank(s.classRank)} of ${s.classSize}`
               : '';
           lines.push(baseLine + percentStr + gradeStr + posStr);
         });
@@ -784,8 +701,8 @@ const OrgExamResultsPortalNative: React.FC = () => {
               : '';
           lines.push(
             `Total: ${card.summary.totalScore}/${card.summary.totalMax} (${overallPercent.toFixed(
-              1,
-            )}%) – ${card.summary.overallGrade || ''}${posStr}`,
+              1
+            )}%) – ${card.summary.overallGrade || ''}${posStr}`
           );
         }
         setStudentCardText(lines.join('\n'));
@@ -796,10 +713,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
         });
 
         const principalFromServer =
-          (card.summary &&
-            (card.summary.principalRemark ||
-              card.summary.overallRemark)) ||
-          null;
+          (card.summary && (card.summary.principalRemark || card.summary.overallRemark)) || null;
 
         const remarks =
           principalFromServer ||
@@ -817,10 +731,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
 
         setReportRemarks(remarks);
       } catch (e: any) {
-        console.error(
-          '[OrgExamPortalNative] fetchStudentCard error',
-          e,
-        );
+        console.error('[OrgExamPortalNative] fetchStudentCard error', e);
         setStudentCard(null);
         setStudentCardText(null);
         setReportRemarks(null);
@@ -834,7 +745,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
       ensureSessionSelected,
       fetchStudentCard,
       isLearnerView,
-    ],
+    ]
   );
 
   // reset learner auto-open when exam or learner changes
@@ -854,9 +765,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
     if (!selectedSessionId) return;
     if (!sheetRows || !sheetRows.length) return;
 
-    const match = sheetRows.find(
-      (r) => String(r.student_user_id) === String(numericId),
-    );
+    const match = sheetRows.find((r) => String(r.student_user_id) === String(numericId));
     if (!match) return;
 
     setHasAutoOpenedLearnerCard(true);
@@ -876,17 +785,12 @@ const OrgExamResultsPortalNative: React.FC = () => {
       const resp = await emailStudentCard(
         selectedSessionId,
         studentId,
-        undefined, // native: send to default guardian/student email
+        undefined // native: send to default guardian/student email
       );
       if (!resp.ok) {
         Alert.alert('Error', 'Failed to queue email.');
       } else {
-        Alert.alert(
-          'Queued',
-          `Report queued to: ${
-            resp.to || '(guardian/student email)'
-          }`,
-        );
+        Alert.alert('Queued', `Report queued to: ${resp.to || '(guardian/student email)'}`);
       }
     } catch (e: any) {
       console.error(e);
@@ -899,7 +803,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
     return sheetRows.filter((r) =>
       String(r.subject || '')
         .toLowerCase()
-        .includes(subjectFilter.toLowerCase()),
+        .includes(subjectFilter.toLowerCase())
     );
   }, [sheetRows, subjectFilter]);
 
@@ -923,12 +827,8 @@ const OrgExamResultsPortalNative: React.FC = () => {
     });
     return filtered.map((l) => {
       const displayBase = l.name || l.email || `User #${l.id}`;
-      const withAdm = l.admission_code
-        ? `${l.admission_code} – ${displayBase}`
-        : displayBase;
-      const withClass = l.class_label
-        ? `${withAdm} (${l.class_label})`
-        : withAdm;
+      const withAdm = l.admission_code ? `${l.admission_code} – ${displayBase}` : displayBase;
+      const withClass = l.class_label ? `${withAdm} (${l.class_label})` : withAdm;
       return {
         value: String(l.id),
         label: withClass,
@@ -941,10 +841,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
   const handleAddRowFromRoster = () => {
     if (!ensureSessionSelected()) return;
     if (!newStudentId || !newSubject.trim()) {
-      Alert.alert(
-        'Missing data',
-        'Select a learner and enter a subject.',
-      );
+      Alert.alert('Missing data', 'Select a learner and enter a subject.');
       return;
     }
     const studentIdNum = Number(newStudentId);
@@ -986,15 +883,12 @@ const OrgExamResultsPortalNative: React.FC = () => {
     if (!classKey) {
       Alert.alert(
         'Class label',
-        'Enter the class label above (e.g. "Grade 7 Maple") before bulk adding.',
+        'Enter the class label above (e.g. "Grade 7 Maple") before bulk adding.'
       );
       return;
     }
     if (!subject) {
-      Alert.alert(
-        'Subject',
-        'Enter the subject name before bulk adding.',
-      );
+      Alert.alert('Subject', 'Enter the subject name before bulk adding.');
       return;
     }
 
@@ -1004,18 +898,12 @@ const OrgExamResultsPortalNative: React.FC = () => {
     });
 
     if (!classLearners.length) {
-      Alert.alert(
-        'No learners',
-        'No learners in roster match this class label.',
-      );
+      Alert.alert('No learners', 'No learners in roster match this class label.');
       return;
     }
 
     const existing = new Set(
-      sheetRows.map(
-        (r) =>
-          `${r.student_user_id}::${String(r.subject || '').toLowerCase()}`,
-      ),
+      sheetRows.map((r) => `${r.student_user_id}::${String(r.subject || '').toLowerCase()}`)
     );
 
     const additions: OrgExamResultRow[] = [];
@@ -1046,7 +934,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
     if (!additions.length) {
       Alert.alert(
         'Already added',
-        'All learners in this class already have rows for this subject.',
+        'All learners in this class already have rows for this subject.'
       );
       return;
     }
@@ -1055,157 +943,107 @@ const OrgExamResultsPortalNative: React.FC = () => {
     void saveSheet(selectedSessionId, classLabel || undefined, next);
   };
 
-  const selectedSession =
-    cfg.sessions.find((s) => s.id === selectedSessionId) || null;
-  const selectedTerm =
-    cfg.terms.find((t) => t.id === selectedSession?.term_id) || null;
+  const selectedSession = cfg.sessions.find((s) => s.id === selectedSessionId) || null;
+  const selectedTerm = cfg.terms.find((t) => t.id === selectedSession?.term_id) || null;
 
- const handleDownloadPdf = useCallback(async () => {
-  if (!selectedStudentId || !ensureSessionSelected()) return;
+  const handleDownloadPdf = useCallback(async () => {
+    if (!selectedStudentId || !ensureSessionSelected()) return;
 
-  const studentName = studentCardMeta?.studentName || 'student';
-  const termPart = selectedTerm
-    ? `${selectedTerm.year}-${selectedTerm.label}`
-    : '';
-  const examPart = selectedSession?.label || '';
-  const classPart = classLabel || '';
-  const gradePart = studentCardMeta?.overallGrade || '';
+    const studentName = studentCardMeta?.studentName || 'student';
+    const termPart = selectedTerm ? `${selectedTerm.year}-${selectedTerm.label}` : '';
+    const examPart = selectedSession?.label || '';
+    const classPart = classLabel || '';
+    const gradePart = studentCardMeta?.overallGrade || '';
 
-  const pieces = [
-    studentName,
-    classPart,
-    termPart,
-    examPart,
-    gradePart,
-    'report-card',
-  ]
-    .map((p) => p.trim())
-    .filter(Boolean);
+    const pieces = [studentName, classPart, termPart, examPart, gradePart, 'report-card']
+      .map((p) => p.trim())
+      .filter(Boolean);
 
-  const base = slugify(pieces.join('_'));
-  const fileName = `${base}.pdf`;
+    const base = slugify(pieces.join('_'));
+    const fileName = `${base}.pdf`;
 
-  try {
-    const url = await downloadStudentCardPdf(
-      selectedSessionId,
-      selectedStudentId,
-      fileName,
-    ); // url: string | null
+    try {
+      const url = await downloadStudentCardPdf(selectedSessionId, selectedStudentId, fileName); // url: string | null
 
-    if (!url) {
-      Alert.alert(
-        'Download error',
-        'No PDF URL was returned by the server.',
-      );
+      if (!url) {
+        Alert.alert('Download error', 'No PDF URL was returned by the server.');
+        return;
+      }
+
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert('Cannot open PDF', url);
+        return;
+      }
+
+      await Linking.openURL(url);
+    } catch (e: any) {
+      console.error('[OrgExamPortalNative] download student PDF error', e);
+      Alert.alert('Download failed', e?.message || 'Failed to open report card PDF.');
+    }
+  }, [
+    selectedStudentId,
+    selectedSessionId,
+    downloadStudentCardPdf,
+    studentCardMeta,
+    selectedTerm,
+    selectedSession,
+    classLabel,
+    ensureSessionSelected,
+  ]);
+
+  const handleDownloadClassPdf = useCallback(async () => {
+    if (!ensureSessionSelected()) return;
+
+    const trimmedClass = classLabel.trim();
+    if (!trimmedClass) {
+      Alert.alert('Class', 'Enter/select the class label above first (e.g. "Grade 7 Maple").');
       return;
     }
 
-    const canOpen = await Linking.canOpenURL(url);
-    if (!canOpen) {
-      Alert.alert('Cannot open PDF', url);
+    if (!selectedSessionId) {
+      Alert.alert('Exam', 'Please select an exam session first.');
       return;
     }
 
-    await Linking.openURL(url);
-  } catch (e: any) {
-    console.error(
-      '[OrgExamPortalNative] download student PDF error',
-      e,
-    );
-    Alert.alert(
-      'Download failed',
-      e?.message || 'Failed to open report card PDF.',
-    );
-  }
-}, [
-  selectedStudentId,
-  selectedSessionId,
-  downloadStudentCardPdf,
-  studentCardMeta,
-  selectedTerm,
-  selectedSession,
-  classLabel,
-  ensureSessionSelected,
-]);
+    const termPart = selectedTerm ? `${selectedTerm.year}-${selectedTerm.label}` : '';
+    const examPart = selectedSession?.label || '';
 
+    const pieces = [org?.name || 'school', trimmedClass, termPart, examPart, 'class-report']
+      .map((p) => String(p || '').trim())
+      .filter(Boolean);
 
-const handleDownloadClassPdf = useCallback(async () => {
-  if (!ensureSessionSelected()) return;
+    const base = slugify(pieces.join('_'));
+    const fileName = `${base}.pdf`;
 
-  const trimmedClass = classLabel.trim();
-  if (!trimmedClass) {
-    Alert.alert(
-      'Class',
-      'Enter/select the class label above first (e.g. "Grade 7 Maple").',
-    );
-    return;
-  }
+    try {
+      const url = await downloadClassReportPdf(selectedSessionId, trimmedClass, fileName); // url: string | null
 
-  if (!selectedSessionId) {
-    Alert.alert('Exam', 'Please select an exam session first.');
-    return;
-  }
+      if (!url) {
+        Alert.alert('Download error', 'No class report PDF URL was returned by the server.');
+        return;
+      }
 
-  const termPart = selectedTerm
-    ? `${selectedTerm.year}-${selectedTerm.label}`
-    : '';
-  const examPart = selectedSession?.label || '';
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert('Cannot open PDF', url);
+        return;
+      }
 
-  const pieces = [
-    org?.name || 'school',
-    trimmedClass,
-    termPart,
-    examPart,
-    'class-report',
-  ]
-    .map((p) => String(p || '').trim())
-    .filter(Boolean);
-
-  const base = slugify(pieces.join('_'));
-  const fileName = `${base}.pdf`;
-
-  try {
-    const url = await downloadClassReportPdf(
-      selectedSessionId,
-      trimmedClass,
-      fileName,
-    ); // url: string | null
-
-    if (!url) {
-      Alert.alert(
-        'Download error',
-        'No class report PDF URL was returned by the server.',
-      );
-      return;
+      await Linking.openURL(url);
+    } catch (e: any) {
+      console.error('[OrgExamPortalNative] download class PDF error', e);
+      Alert.alert('Download failed', e?.message || 'Failed to open class report PDF.');
     }
-
-    const canOpen = await Linking.canOpenURL(url);
-    if (!canOpen) {
-      Alert.alert('Cannot open PDF', url);
-      return;
-    }
-
-    await Linking.openURL(url);
-  } catch (e: any) {
-    console.error(
-      '[OrgExamPortalNative] download class PDF error',
-      e,
-    );
-    Alert.alert(
-      'Download failed',
-      e?.message || 'Failed to open class report PDF.',
-    );
-  }
-}, [
-  ensureSessionSelected,
-  classLabel,
-  selectedSessionId,
-  selectedTerm,
-  selectedSession,
-  org,
-  downloadClassReportPdf,
-]);
-
+  }, [
+    ensureSessionSelected,
+    classLabel,
+    selectedSessionId,
+    selectedTerm,
+    selectedSession,
+    org,
+    downloadClassReportPdf,
+  ]);
 
   const handleRefreshAnalytics = useCallback(() => {
     if (!ensureSessionSelected()) return;
@@ -1228,50 +1066,31 @@ const handleDownloadClassPdf = useCallback(async () => {
             sessionId: selectedSessionId,
             principalRemark: reportRemarks ?? '',
           }),
-        },
+        }
       );
 
       const data = await resp.json().catch(() => null);
 
       if (!resp.ok || !data?.ok) {
-        console.error(
-          '[OrgExamPortalNative] save remarks error',
-          data,
-        );
+        console.error('[OrgExamPortalNative] save remarks error', data);
         Alert.alert('Error', data?.message || 'Failed to save remarks');
         return;
       }
     } catch (e: any) {
-      console.error(
-        '[OrgExamPortalNative] save remarks error',
-        e,
-      );
+      console.error('[OrgExamPortalNative] save remarks error', e);
       Alert.alert('Error', e?.message || 'Failed to save remarks');
     }
-  }, [
-    selectedStudentId,
-    selectedSessionId,
-    orgId,
-    backendUrl,
-    authToken,
-    reportRemarks,
-  ]);
+  }, [selectedStudentId, selectedSessionId, orgId, backendUrl, authToken, reportRemarks]);
 
   const handleSaveAttendance = useCallback(async () => {
     const termId = selectedTerm?.id;
 
     if (!selectedStudentId || !termId || !orgId) {
-      Alert.alert(
-        'Missing data',
-        'Select a learner, term, and exam before saving attendance.',
-      );
+      Alert.alert('Missing data', 'Select a learner, term, and exam before saving attendance.');
       return;
     }
     if (!authToken) {
-      Alert.alert(
-        'Auth',
-        'You must be logged in to save attendance.',
-      );
+      Alert.alert('Auth', 'You must be logged in to save attendance.');
       return;
     }
 
@@ -1281,16 +1100,11 @@ const handleDownloadClassPdf = useCallback(async () => {
     const puRaw = attendanceForm.punctualityRating ?? '';
     const commentRaw = attendanceForm.teacherComment ?? '';
 
-    const lessonsHeld =
-      lhRaw.trim() === '' ? null : Number(lhRaw.trim());
-    const lessonsAttended =
-      laRaw.trim() === '' ? null : Number(laRaw.trim());
-    const behaviorRating =
-      bhRaw.trim() === '' ? null : Number(bhRaw.trim());
-    const punctualityRating =
-      puRaw.trim() === '' ? null : Number(puRaw.trim());
-    const teacherComment =
-      commentRaw.trim() === '' ? null : commentRaw.trim();
+    const lessonsHeld = lhRaw.trim() === '' ? null : Number(lhRaw.trim());
+    const lessonsAttended = laRaw.trim() === '' ? null : Number(laRaw.trim());
+    const behaviorRating = bhRaw.trim() === '' ? null : Number(bhRaw.trim());
+    const punctualityRating = puRaw.trim() === '' ? null : Number(puRaw.trim());
+    const teacherComment = commentRaw.trim() === '' ? null : commentRaw.trim();
 
     const payload = {
       termId,
@@ -1314,7 +1128,7 @@ const handleDownloadClassPdf = useCallback(async () => {
         authToken,
         orgId,
         selectedStudentId,
-        payload,
+        payload
       );
 
       if (!resp?.ok) {
@@ -1327,10 +1141,7 @@ const handleDownloadClassPdf = useCallback(async () => {
 
         const attended = lessonsAttended ?? null;
         const held = lessonsHeld ?? null;
-        const pct =
-          held && attended != null && held > 0
-            ? (attended / held) * 100
-            : null;
+        const pct = held && attended != null && held > 0 ? (attended / held) * 100 : null;
 
         const prevAttendance = (prev as any)?.attendance ?? {};
 
@@ -1348,14 +1159,8 @@ const handleDownloadClassPdf = useCallback(async () => {
         };
       });
     } catch (e: any) {
-      console.error(
-        '[OrgExamPortalNative] save attendance error',
-        e,
-      );
-      Alert.alert(
-        'Error',
-        e?.message || 'Failed to save attendance',
-      );
+      console.error('[OrgExamPortalNative] save attendance error', e);
+      Alert.alert('Error', e?.message || 'Failed to save attendance');
     }
   }, [
     selectedStudentId,
@@ -1391,53 +1196,31 @@ const handleDownloadClassPdf = useCallback(async () => {
                 .filter(Boolean)
                 .join(' '),
             }),
-          },
+          }
         ).then((r) => r.json());
 
         if (!resp?.ok) {
           console.error('AI teacher-comment error', resp);
-          Alert.alert(
-            'AI error',
-            resp?.message ||
-              'Failed to generate AI teacher behaviour note.',
-          );
+          Alert.alert('AI error', resp?.message || 'Failed to generate AI teacher behaviour note.');
           return;
         }
 
-        const raw = (resp as any).principalRemark as
-          | string
-          | null
-          | undefined;
+        const raw = (resp as any).principalRemark as string | null | undefined;
         if (!raw) return;
 
         const flat = raw.replace(/\s+/g, ' ').trim();
-        const shortened =
-          flat.length > 200 ? flat.slice(0, 200) : flat;
+        const shortened = flat.length > 200 ? flat.slice(0, 200) : flat;
 
         setAttendanceForm((prev: AttendanceFormState) => ({
           ...prev,
           teacherComment: shortened,
         }));
       } catch (e: any) {
-        console.error(
-          '[OrgExamPortalNative] AI teacher-comment error',
-          e,
-        );
-        Alert.alert(
-          'AI error',
-          e?.message ||
-            'Failed to generate AI teacher behaviour note.',
-        );
+        console.error('[OrgExamPortalNative] AI teacher-comment error', e);
+        Alert.alert('AI error', e?.message || 'Failed to generate AI teacher behaviour note.');
       }
     },
-    [
-      selectedStudentId,
-      selectedSessionId,
-      orgId,
-      backendUrl,
-      authToken,
-      setAttendanceForm,
-    ],
+    [selectedStudentId, selectedSessionId, orgId, backendUrl, authToken, setAttendanceForm]
   );
 
   const handleRegenerateRemarks = useCallback(
@@ -1457,16 +1240,12 @@ const handleDownloadClassPdf = useCallback(async () => {
               sessionId: selectedSessionId,
               instructions: instructions ?? '',
             }),
-          },
+          }
         ).then((r) => r.json());
 
         if (!resp?.ok) {
           console.error('AI remarks error', resp);
-          Alert.alert(
-            'AI error',
-            resp?.message ||
-              'Failed to generate AI-powered remarks.',
-          );
+          Alert.alert('AI error', resp?.message || 'Failed to generate AI-powered remarks.');
           return;
         }
 
@@ -1487,27 +1266,17 @@ const handleDownloadClassPdf = useCallback(async () => {
                 s.subject.toLowerCase().trim() ===
                   String(row.subject || '')
                     .toLowerCase()
-                    .trim(),
+                    .trim()
             );
             if (!match) return row;
             return { ...row, remark: match.remark };
           });
 
-          await saveSheet(
-            selectedSessionId,
-            classLabel || undefined,
-            updated,
-          );
+          await saveSheet(selectedSessionId, classLabel || undefined, updated);
         }
       } catch (e: any) {
-        console.error(
-          '[OrgExamPortalNative] AI remarks error',
-          e,
-        );
-        Alert.alert(
-          'AI error',
-          e?.message || 'Failed to generate AI remarks',
-        );
+        console.error('[OrgExamPortalNative] AI remarks error', e);
+        Alert.alert('AI error', e?.message || 'Failed to generate AI remarks');
       }
     },
     [
@@ -1520,7 +1289,7 @@ const handleDownloadClassPdf = useCallback(async () => {
       saveSheet,
       classLabel,
       setReportRemarks,
-    ],
+    ]
   );
 
   // ───────────────────────────────────────────────────────────
@@ -1530,7 +1299,7 @@ const handleDownloadClassPdf = useCallback(async () => {
   const sessionLabel = (s: OrgExamSession) => s.label;
 
   const sessionsForSelectedTerm = cfg.sessions.filter(
-    (s) => !selectedTermId || s.term_id === selectedTermId,
+    (s) => !selectedTermId || s.term_id === selectedTermId
   );
 
   // ✅ Style helper – return `any` array to keep TS happy with tailwind style
@@ -1564,10 +1333,7 @@ const handleDownloadClassPdf = useCallback(async () => {
     >
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={[
-          tw`px-3 py-4`,
-          { paddingBottom: bottomPad },
-        ]}
+        contentContainerStyle={[tw`px-3 py-4`, { paddingBottom: bottomPad }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -1576,24 +1342,10 @@ const handleDownloadClassPdf = useCallback(async () => {
           <View style={tw`mb-4`}>
             {/* Title + subtitle always on top */}
             <View style={tw`mb-3`}>
-              <Text
-                style={[
-                  tw`text-2xl font-bold`,
-                  { color: palette.text },
-                ]}
-                numberOfLines={2}
-              >
-                {isLearnerView
-                  ? 'My exam results'
-                  : 'Exam Results & Reports'}
+              <Text style={[tw`text-2xl font-bold`, { color: palette.text }]} numberOfLines={2}>
+                {isLearnerView ? 'My exam results' : 'Exam Results & Reports'}
               </Text>
-              <Text
-                style={[
-                  tw`mt-1 text-xs`,
-                  { color: palette.textMuted },
-                ]}
-                numberOfLines={3}
-              >
+              <Text style={[tw`mt-1 text-xs`, { color: palette.textMuted }]} numberOfLines={3}>
                 {isLearnerView
                   ? 'See your marks and download an official, school-branded report card.'
                   : 'Record marks, auto-grade, and send rich report cards to parents.'}
@@ -1620,10 +1372,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                     style={[
                       tw`text-xs font-bold`,
                       {
-                        color:
-                          tab === 'setup'
-                            ? '#ffffff'
-                            : palette.textSoft,
+                        color: tab === 'setup' ? '#ffffff' : palette.textSoft,
                       },
                     ]}
                     numberOfLines={1}
@@ -1640,10 +1389,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                     style={[
                       tw`text-xs font-bold`,
                       {
-                        color:
-                          tab === 'marks'
-                            ? '#ffffff'
-                            : palette.textSoft,
+                        color: tab === 'marks' ? '#ffffff' : palette.textSoft,
                       },
                     ]}
                     numberOfLines={1}
@@ -1660,10 +1406,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                     style={[
                       tw`text-xs font-bold`,
                       {
-                        color:
-                          tab === 'reports'
-                            ? '#ffffff'
-                            : palette.textSoft,
+                        color: tab === 'reports' ? '#ffffff' : palette.textSoft,
                       },
                     ]}
                     numberOfLines={1}
@@ -1684,12 +1427,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                 ]}
               >
                 <View style={tw`h-2 w-2 rounded-full bg-emerald-400`} />
-                <Text
-                  style={[
-                    tw`text-[11px]`,
-                    { color: palette.textSoft },
-                  ]}
-                >
+                <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>
                   Learner view – only your results
                 </Text>
               </View>
@@ -1701,40 +1439,19 @@ const handleDownloadClassPdf = useCallback(async () => {
             {isLearnerView ? (
               <View style={palette.surface()}>
                 <View style={tw`mb-2`}>
-                  <Text
-                    style={[
-                      tw`text-xs font-semibold`,
-                      { color: palette.accentSoft },
-                    ]}
-                  >
+                  <Text style={[tw`text-xs font-semibold`, { color: palette.accentSoft }]}>
                     Exam selection
                   </Text>
-                  <Text
-                    style={[
-                      tw`text-[11px] mt-0.5`,
-                      { color: palette.textSoft },
-                    ]}
-                  >
-                    Choose the term and exam you want to view your report
-                    card for.
+                  <Text style={[tw`text-[11px] mt-0.5`, { color: palette.textSoft }]}>
+                    Choose the term and exam you want to view your report card for.
                   </Text>
                 </View>
 
                 <View style={tw`gap-2`}>
                   {/* Term chips */}
                   <View>
-                    <Text
-                      style={[
-                        tw`text-[11px] mb-1`,
-                        { color: palette.textSoft },
-                      ]}
-                    >
-                      Term
-                    </Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                    >
+                    <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>Term</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                       {cfg.terms.map((t) => {
                         const isActive = selectedTermId === t.id;
                         return (
@@ -1744,12 +1461,8 @@ const handleDownloadClassPdf = useCallback(async () => {
                             style={[
                               tw`px-3 py-1 rounded-full mr-2 mb-1 border`,
                               {
-                                backgroundColor: isActive
-                                  ? palette.accent
-                                  : palette.chipBg,
-                                borderColor: isActive
-                                  ? palette.accent
-                                  : palette.border,
+                                backgroundColor: isActive ? palette.accent : palette.chipBg,
+                                borderColor: isActive ? palette.accent : palette.border,
                               },
                             ]}
                           >
@@ -1757,9 +1470,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                               style={[
                                 tw`text-[11px]`,
                                 {
-                                  color: isActive
-                                    ? '#ffffff'
-                                    : palette.textSoft,
+                                  color: isActive ? '#ffffff' : palette.textSoft,
                                 },
                               ]}
                             >
@@ -1769,12 +1480,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                         );
                       })}
                       {cfg.terms.length === 0 && (
-                        <Text
-                          style={[
-                            tw`text-[11px]`,
-                            { color: palette.textSoft },
-                          ]}
-                        >
+                        <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>
                           No terms yet
                         </Text>
                       )}
@@ -1783,18 +1489,8 @@ const handleDownloadClassPdf = useCallback(async () => {
 
                   {/* Session chips */}
                   <View>
-                    <Text
-                      style={[
-                        tw`text-[11px] mb-1`,
-                        { color: palette.textSoft },
-                      ]}
-                    >
-                      Exam
-                    </Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                    >
+                    <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>Exam</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                       {sessionsForSelectedTerm.map((s) => {
                         const isActive = selectedSessionId === s.id;
                         return (
@@ -1804,12 +1500,8 @@ const handleDownloadClassPdf = useCallback(async () => {
                             style={[
                               tw`px-3 py-1 rounded-full mr-2 mb-1 border`,
                               {
-                                backgroundColor: isActive
-                                  ? palette.accent
-                                  : palette.chipBg,
-                                borderColor: isActive
-                                  ? palette.accent
-                                  : palette.border,
+                                backgroundColor: isActive ? palette.accent : palette.chipBg,
+                                borderColor: isActive ? palette.accent : palette.border,
                               },
                             ]}
                           >
@@ -1817,9 +1509,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                               style={[
                                 tw`text-[11px]`,
                                 {
-                                  color: isActive
-                                    ? '#ffffff'
-                                    : palette.textSoft,
+                                  color: isActive ? '#ffffff' : palette.textSoft,
                                 },
                               ]}
                             >
@@ -1829,12 +1519,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                         );
                       })}
                       {sessionsForSelectedTerm.length === 0 && (
-                        <Text
-                          style={[
-                            tw`text-[11px]`,
-                            { color: palette.textSoft },
-                          ]}
-                        >
+                        <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>
                           No exams yet
                         </Text>
                       )}
@@ -1844,18 +1529,9 @@ const handleDownloadClassPdf = useCallback(async () => {
               </View>
             ) : (
               <View style={palette.surface()}>
-                <View
-                  style={tw`flex-row flex-wrap items-center justify-between gap-y-2`}
-                >
-                  <View
-                    style={tw`flex-row flex-wrap items-center gap-2`}
-                  >
-                    <Text
-                      style={[
-                        tw`text-xs font-semibold`,
-                        { color: palette.accentSoft },
-                      ]}
-                    >
+                <View style={tw`flex-row flex-wrap items-center justify-between gap-y-2`}>
+                  <View style={tw`flex-row flex-wrap items-center gap-2`}>
+                    <Text style={[tw`text-xs font-semibold`, { color: palette.accentSoft }]}>
                       Active selection:
                     </Text>
                     <View
@@ -1866,42 +1542,21 @@ const handleDownloadClassPdf = useCallback(async () => {
                         },
                       ]}
                     >
-                      <Text
-                        style={[
-                          tw`text-[11px]`,
-                          { color: palette.pillText },
-                        ]}
-                      >
+                      <Text style={[tw`text-[11px]`, { color: palette.pillText }]}>
                         Term: {selectedTerm?.label ?? '—'}
                       </Text>
                     </View>
                     <View
-                      style={[
-                        tw`px-2 py-0.5 rounded-full`,
-                        { backgroundColor: palette.pillBg },
-                      ]}
+                      style={[tw`px-2 py-0.5 rounded-full`, { backgroundColor: palette.pillBg }]}
                     >
-                      <Text
-                        style={[
-                          tw`text-[11px]`,
-                          { color: palette.pillText },
-                        ]}
-                      >
+                      <Text style={[tw`text-[11px]`, { color: palette.pillText }]}>
                         Exam: {selectedSession?.label ?? '—'}
                       </Text>
                     </View>
                     <View
-                      style={[
-                        tw`px-2 py-0.5 rounded-full`,
-                        { backgroundColor: palette.pillBg },
-                      ]}
+                      style={[tw`px-2 py-0.5 rounded-full`, { backgroundColor: palette.pillBg }]}
                     >
-                      <Text
-                        style={[
-                          tw`text-[11px]`,
-                          { color: palette.pillText },
-                        ]}
-                      >
+                      <Text style={[tw`text-[11px]`, { color: palette.pillText }]}>
                         Class: {classLabel || '—'}
                       </Text>
                     </View>
@@ -1912,18 +1567,8 @@ const handleDownloadClassPdf = useCallback(async () => {
                 <View style={tw`mt-3 gap-2`}>
                   {/* Term chips */}
                   <View>
-                    <Text
-                      style={[
-                        tw`text-[11px] mb-1`,
-                        { color: palette.textSoft },
-                      ]}
-                    >
-                      Term
-                    </Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                    >
+                    <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>Term</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                       {cfg.terms.map((t) => {
                         const isActive = selectedTermId === t.id;
                         return (
@@ -1933,12 +1578,8 @@ const handleDownloadClassPdf = useCallback(async () => {
                             style={[
                               tw`px-3 py-1 rounded-full mr-2 mb-1 border`,
                               {
-                                backgroundColor: isActive
-                                  ? palette.accent
-                                  : palette.chipBg,
-                                borderColor: isActive
-                                  ? palette.accent
-                                  : palette.border,
+                                backgroundColor: isActive ? palette.accent : palette.chipBg,
+                                borderColor: isActive ? palette.accent : palette.border,
                               },
                             ]}
                           >
@@ -1946,9 +1587,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                               style={[
                                 tw`text-[11px]`,
                                 {
-                                  color: isActive
-                                    ? '#ffffff'
-                                    : palette.textSoft,
+                                  color: isActive ? '#ffffff' : palette.textSoft,
                                 },
                               ]}
                             >
@@ -1958,12 +1597,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                         );
                       })}
                       {cfg.terms.length === 0 && (
-                        <Text
-                          style={[
-                            tw`text-[11px]`,
-                            { color: palette.textSoft },
-                          ]}
-                        >
+                        <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>
                           No terms yet
                         </Text>
                       )}
@@ -1972,18 +1606,8 @@ const handleDownloadClassPdf = useCallback(async () => {
 
                   {/* Session chips */}
                   <View>
-                    <Text
-                      style={[
-                        tw`text-[11px] mb-1`,
-                        { color: palette.textSoft },
-                      ]}
-                    >
-                      Exam
-                    </Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                    >
+                    <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>Exam</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                       {sessionsForSelectedTerm.map((s) => {
                         const isActive = selectedSessionId === s.id;
                         return (
@@ -1993,12 +1617,8 @@ const handleDownloadClassPdf = useCallback(async () => {
                             style={[
                               tw`px-3 py-1 rounded-full mr-2 mb-1 border`,
                               {
-                                backgroundColor: isActive
-                                  ? palette.accent
-                                  : palette.chipBg,
-                                borderColor: isActive
-                                  ? palette.accent
-                                  : palette.border,
+                                backgroundColor: isActive ? palette.accent : palette.chipBg,
+                                borderColor: isActive ? palette.accent : palette.border,
                               },
                             ]}
                           >
@@ -2006,9 +1626,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                               style={[
                                 tw`text-[11px]`,
                                 {
-                                  color: isActive
-                                    ? '#ffffff'
-                                    : palette.textSoft,
+                                  color: isActive ? '#ffffff' : palette.textSoft,
                                 },
                               ]}
                             >
@@ -2018,12 +1636,7 @@ const handleDownloadClassPdf = useCallback(async () => {
                         );
                       })}
                       {sessionsForSelectedTerm.length === 0 && (
-                        <Text
-                          style={[
-                            tw`text-[11px]`,
-                            { color: palette.textSoft },
-                          ]}
-                        >
+                        <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>
                           No exams yet
                         </Text>
                       )}
@@ -2032,12 +1645,7 @@ const handleDownloadClassPdf = useCallback(async () => {
 
                   {/* Class input */}
                   <View>
-                    <Text
-                      style={[
-                        tw`text-[11px] mb-1`,
-                        { color: palette.textSoft },
-                      ]}
-                    >
+                    <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>
                       Class (e.g. Grade 7 Maple)
                     </Text>
                     <TextInput
@@ -2125,12 +1733,10 @@ const handleDownloadClassPdf = useCallback(async () => {
                     selectedSessionId &&
                     classLabel.trim() &&
                     sheetRows &&
-                    sheetRows.length,
+                    sheetRows.length
                 )}
                 onDownloadClassPdf={handleDownloadClassPdf}
-                onRegenerateTeacherComment={
-                  handleRegenerateTeacherComment
-                }
+                onRegenerateTeacherComment={handleRegenerateTeacherComment}
               />
             )}
           </View>

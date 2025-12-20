@@ -21,7 +21,9 @@ const courseSchema = Joi.object({
   tutorId: Joi.number().integer().optional(),
   title: Joi.string().min(3).required(),
   description: Joi.string().allow(''),
-  level: Joi.string().valid('Beginner', 'Intermediate', 'Advanced', 'All Levels').required(),
+  level: Joi.string()
+    .valid('Beginner', 'Intermediate', 'Advanced', 'All Levels')
+    .required(),
   duration: Joi.string().allow(''),
   price: Joi.number().precision(2).min(0).required(),
   syllabus: Joi.array().items(syllabusItemSchema).default([]),
@@ -56,7 +58,9 @@ function allowAiInResponse(req) {
   return isAdminReq(req) && String(req.query?.include_ai || '') === '1';
 }
 function aiExclusionClause(alias = 'c', req) {
-  return allowAiInResponse(req) ? 'TRUE' : `NOT COALESCE(${alias}.is_ai_generated, FALSE)`;
+  return allowAiInResponse(req)
+    ? 'TRUE'
+    : `NOT COALESCE(${alias}.is_ai_generated, FALSE)`;
 }
 function aiOff(alias, req) {
   return aiExclusionClause(alias, req);
@@ -67,7 +71,9 @@ function hasTutor(alias = 'c') {
 
 const isUuid = (s) =>
   typeof s === 'string' &&
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(s);
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+    s,
+  );
 
 function normalizeSyllabus(input = []) {
   const kept = (Array.isArray(input) ? input : []).filter((w) => {
@@ -102,10 +108,7 @@ function coerceUserId(u) {
 function getAuthTutorId(req) {
   // From standard user auth
   const userCandidate =
-    req?.user?.id ??
-    req?.user?.user_id ??
-    req?.user?.userId ??
-    req?.user?.sub;
+    req?.user?.id ?? req?.user?.user_id ?? req?.user?.userId ?? req?.user?.sub;
 
   // From org auth (depending on how your auth.js populates it)
   const orgCandidate =
@@ -160,7 +163,7 @@ async function getAllowedPaymentMethods(client) {
        AND pc.conname  = $1
      LIMIT 1
     `,
-    [PM_CONSTRAINT_NAME]
+    [PM_CONSTRAINT_NAME],
   );
   const def = q.rows?.[0]?.def || '';
   // Pull everything inside single quotes '...'
@@ -220,7 +223,9 @@ async function resolvePaymentMethodForTokens(client) {
 =========================== */
 export const createCourse = async (req, res) => {
   try {
-    const { error, value } = courseSchema.validate(req.body, { abortEarly: false });
+    const { error, value } = courseSchema.validate(req.body, {
+      abortEarly: false,
+    });
     if (error) return res.status(400).json({ error: error.message });
 
     // Prefer auth-derived tutorId (works for both site + org via anyAuth)
@@ -230,13 +235,15 @@ export const createCourse = async (req, res) => {
     if (!tutorId && typeof value.tutorId === 'number') tutorId = value.tutorId;
 
     if (!tutorId) {
-      return res
-        .status(401)
-        .json({ error: 'Unauthenticated: tutorId missing in token and request body.' });
+      return res.status(401).json({
+        error: 'Unauthenticated: tutorId missing in token and request body.',
+      });
     }
 
     // Ensure tutor exists (clearer error than FK violation)
-    const tutorCheck = await pool.query('SELECT 1 FROM users WHERE id = $1', [tutorId]);
+    const tutorCheck = await pool.query('SELECT 1 FROM users WHERE id = $1', [
+      tutorId,
+    ]);
     if (tutorCheck.rowCount === 0) {
       return res.status(400).json({ error: `Tutor ${tutorId} not found` });
     }
@@ -263,7 +270,7 @@ export const createCourse = async (req, res) => {
         value.price,
         JSON.stringify(cleanedSyllabus),
         value.prerequisites ?? '',
-      ]
+      ],
     );
 
     return res.json(result.rows[0]);
@@ -272,7 +279,9 @@ export const createCourse = async (req, res) => {
     if (err && err.code === '23503') {
       return res.status(400).json({ error: 'Invalid tutorId (foreign key).' });
     }
-    return res.status(500).json({ error: err?.message ?? 'Internal server error' });
+    return res
+      .status(500)
+      .json({ error: err?.message ?? 'Internal server error' });
   }
 };
 
@@ -301,7 +310,8 @@ export const getCourses = async (req, res) => {
 export const getCourseById = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid course id' });
+    if (!isUuid(id))
+      return res.status(400).json({ error: 'Invalid course id' });
 
     const sql = `
       SELECT
@@ -314,7 +324,8 @@ export const getCourseById = async (req, res) => {
       WHERE id = $1
     `;
     const result = await pool.query(sql, [id]);
-    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
+    if (!result.rows.length)
+      return res.status(404).json({ error: 'Not found' });
 
     const row = result.rows[0];
     if (row.is_ai_generated && !allowAiInResponse(req)) {
@@ -332,14 +343,21 @@ export const getCourseById = async (req, res) => {
 export const updateCourse = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid course id' });
+    if (!isUuid(id))
+      return res.status(400).json({ error: 'Invalid course id' });
 
-    const { error, value } = courseUpdateSchema.validate(req.body, { abortEarly: false });
+    const { error, value } = courseUpdateSchema.validate(req.body, {
+      abortEarly: false,
+    });
     if (error) return res.status(400).json({ error: error.message });
 
     // Verify existence + ownership
-    const found = await pool.query('SELECT id, tutor_id FROM courses WHERE id = $1', [id]);
-    if (found.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    const found = await pool.query(
+      'SELECT id, tutor_id FROM courses WHERE id = $1',
+      [id],
+    );
+    if (found.rowCount === 0)
+      return res.status(404).json({ error: 'Not found' });
 
     const course = found.rows[0];
 
@@ -392,7 +410,7 @@ export const updateCourse = async (req, res) => {
            COALESCE(ratings_count, 0)     AS ratings_count,
            created_at, updated_at
          FROM courses WHERE id = $1`,
-        [id]
+        [id],
       );
       return res.json(fresh.rows[0]);
     }
@@ -414,17 +432,24 @@ export const updateCourse = async (req, res) => {
     return res.json(updated.rows[0]);
   } catch (err) {
     console.error('[updateCourse] server error', err);
-    return res.status(500).json({ error: err?.message ?? 'Internal server error' });
+    return res
+      .status(500)
+      .json({ error: err?.message ?? 'Internal server error' });
   }
 };
 
 export const deleteCourse = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid course id' });
+    if (!isUuid(id))
+      return res.status(400).json({ error: 'Invalid course id' });
 
-    const found = await pool.query('SELECT id, tutor_id FROM courses WHERE id = $1', [id]);
-    if (found.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    const found = await pool.query(
+      'SELECT id, tutor_id FROM courses WHERE id = $1',
+      [id],
+    );
+    if (found.rowCount === 0)
+      return res.status(404).json({ error: 'Not found' });
 
     const course = found.rows[0];
     const requesterId = getAuthTutorId(req);
@@ -438,7 +463,9 @@ export const deleteCourse = async (req, res) => {
     return res.status(204).send();
   } catch (err) {
     console.error('[deleteCourse] server error', err);
-    return res.status(500).json({ error: err?.message ?? 'Internal server error' });
+    return res
+      .status(500)
+      .json({ error: err?.message ?? 'Internal server error' });
   }
 };
 
@@ -499,19 +526,21 @@ export const getTutorCourses = async (req, res) => {
 
 export const getFeaturedCourses = async (req, res) => {
   try {
-    const limit    = toInt(req.query.limit, 8);
+    const limit = toInt(req.query.limit, 8);
     const minCount = minCountOrDefault(req.query.minCount, 3);
-    const subject  = (req.query.subject ?? '').trim();
+    const subject = (req.query.subject ?? '').trim();
 
     const params = [minCount, limit];
-    const where  = [
+    const where = [
       `COALESCE(c.ratings_count,0) >= $1`,
       aiOff('c', req),
       hasTutor('c'),
     ];
 
     if (subject) {
-      where.push(`(LOWER(COALESCE(c.subject, '')) = LOWER($3) OR LOWER(COALESCE(c.category, '')) = LOWER($3))`);
+      where.push(
+        `(LOWER(COALESCE(c.subject, '')) = LOWER($3) OR LOWER(COALESCE(c.category, '')) = LOWER($3))`,
+      );
       params.splice(1, 0, subject); // [$1=minCount, $2=subject, $3=limit]
       params.push(limit);
     }
@@ -537,7 +566,9 @@ export const getFeaturedCourses = async (req, res) => {
 
 export const getRecommendedCourses = async (req, res) => {
   try {
-    const { value, error } = recQuerySchema.validate(req.query, { abortEarly: false });
+    const { value, error } = recQuerySchema.validate(req.query, {
+      abortEarly: false,
+    });
     if (error) return res.status(200).json([]);
 
     const limit = value.limit;
@@ -546,7 +577,9 @@ export const getRecommendedCourses = async (req, res) => {
     const userId =
       typeof req.user?.id === 'number'
         ? req.user.id
-        : (typeof req.user?.id === 'string' && /^\d+$/.test(req.user.id) ? Number(req.user.id) : null);
+        : typeof req.user?.id === 'string' && /^\d+$/.test(req.user.id)
+          ? Number(req.user.id)
+          : null;
 
     if (userId) {
       const sql = `
@@ -592,13 +625,13 @@ export const getRecommendedCourses = async (req, res) => {
 
 export const getFeaturedVideos = async (req, res) => {
   try {
-    const limit    = toInt(req.query.limit, 8);
+    const limit = toInt(req.query.limit, 8);
     const minCount = minCountOrDefault(req.query.minCount, 3);
-    const subject  = (req.query.subject ?? '').trim();
+    const subject = (req.query.subject ?? '').trim();
 
     const params = [minCount, limit];
     const subjectFilter = subject
-      ? 'AND LOWER(COALESCE(v.subject, \'\')) = LOWER($3)'
+      ? "AND LOWER(COALESCE(v.subject, '')) = LOWER($3)"
       : '';
     if (subject) params.splice(1, 0, subject); // [$1=minCount, $2=subject, $3=limit]
     if (subject) params.push(limit);
@@ -633,7 +666,9 @@ export const getFeaturedVideos = async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.error('[getFeaturedVideos] server error', err);
-    return res.status(500).json({ error: err?.message ?? 'Internal server error' });
+    return res
+      .status(500)
+      .json({ error: err?.message ?? 'Internal server error' });
   }
 };
 
@@ -657,11 +692,14 @@ export const purchaseCourse = async (req, res) => {
       FROM courses c
       WHERE id = $1
       `,
-      [courseId]
+      [courseId],
     );
-    if (crsRows.length === 0) return res.status(404).json({ message: 'Course not found' });
+    if (crsRows.length === 0)
+      return res.status(404).json({ message: 'Course not found' });
     if (crsRows[0].is_ai_generated && !allowAiInResponse(req)) {
-      return res.status(400).json({ message: 'This course is not available for purchase.' });
+      return res
+        .status(400)
+        .json({ message: 'This course is not available for purchase.' });
     }
 
     const { tutor_id: tutorId, title, price: rawPrice } = crsRows[0];
@@ -672,11 +710,14 @@ export const purchaseCourse = async (req, res) => {
     // 2) dup checks BEFORE lock
     const { rows: dupEnroll } = await client.query(
       `SELECT 1 FROM enrollments WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
-      [req.user.id, courseId]
+      [req.user.id, courseId],
     );
     if (dupEnroll.length > 0) {
       await client.query('ROLLBACK');
-      const { rows: balRows } = await pool.query(`SELECT tokens FROM users WHERE id = $1`, [req.user.id]);
+      const { rows: balRows } = await pool.query(
+        `SELECT tokens FROM users WHERE id = $1`,
+        [req.user.id],
+      );
       return res.status(200).json({
         message: 'Already enrolled',
         purchase: null,
@@ -687,7 +728,7 @@ export const purchaseCourse = async (req, res) => {
 
     const { rows: dupPurchase } = await client.query(
       `SELECT * FROM course_purchases WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
-      [req.user.id, courseId]
+      [req.user.id, courseId],
     );
     if (dupPurchase.length > 0) {
       const { rows: enrollRows } = await client.query(
@@ -695,10 +736,13 @@ export const purchaseCourse = async (req, res) => {
          VALUES (gen_random_uuid(), $1, $2, 'active', 0, NOW())
          ON CONFLICT DO NOTHING
          RETURNING *`,
-        [req.user.id, courseId]
+        [req.user.id, courseId],
       );
       await client.query('COMMIT');
-      const { rows: balRows } = await pool.query(`SELECT tokens FROM users WHERE id = $1`, [req.user.id]);
+      const { rows: balRows } = await pool.query(
+        `SELECT tokens FROM users WHERE id = $1`,
+        [req.user.id],
+      );
       return res.status(200).json({
         message: 'Already purchased. Enrollment ensured.',
         purchase: dupPurchase[0],
@@ -710,7 +754,7 @@ export const purchaseCourse = async (req, res) => {
     // 3) balance check WITH ROW LOCK
     const { rows: userRows } = await client.query(
       `SELECT tokens, name, email FROM users WHERE id = $1 FOR UPDATE`,
-      [req.user.id]
+      [req.user.id],
     );
     if (!userRows.length) {
       await client.query('ROLLBACK');
@@ -720,30 +764,35 @@ export const purchaseCourse = async (req, res) => {
     const currentTokens = Number(userRows[0].tokens ?? 0);
     if (currentTokens < priceTokens) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ message: `Insufficient tokens. Need ${priceTokens - currentTokens} more.` });
+      return res.status(400).json({
+        message: `Insufficient tokens. Need ${priceTokens - currentTokens} more.`,
+      });
     }
 
     // ======= atomic purchase =======
-    await client.query(`UPDATE users SET tokens = tokens - $1 WHERE id = $2`, [priceTokens, req.user.id]);
+    await client.query(`UPDATE users SET tokens = tokens - $1 WHERE id = $2`, [
+      priceTokens,
+      req.user.id,
+    ]);
 
     const netTokens = Math.round(priceTokens * (1 - PLATFORM_FEE));
     const { rows: purchaseRows } = await client.query(
       `INSERT INTO course_purchases (course_id, student_id, tutor_id, gross, net_tokens)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [courseId, req.user.id, tutorId, priceTokens, netTokens]
+      [courseId, req.user.id, tutorId, priceTokens, netTokens],
     );
 
     const { rows: enrollRows } = await client.query(
       `INSERT INTO enrollments (id, student_id, course_id, status, progress, started_at)
        VALUES (gen_random_uuid(), $1, $2, 'active', 0, NOW())
        RETURNING *`,
-      [req.user.id, courseId]
+      [req.user.id, courseId],
     );
 
     const { rows: balRows } = await client.query(
       `SELECT tokens FROM users WHERE id = $1`,
-      [req.user.id]
+      [req.user.id],
     );
     const tokens = Number(balRows[0]?.tokens ?? 0);
 
@@ -751,13 +800,15 @@ export const purchaseCourse = async (req, res) => {
     const { rows: profRows } = await client.query(
       `SELECT COALESCE(payout_currency,'USD') AS payout_currency
          FROM profiles WHERE user_id = $1 AND role='tutor'`,
-      [tutorId]
+      [tutorId],
     );
-    const payoutCurrency = String(profRows[0]?.payout_currency || 'USD').toUpperCase();
+    const payoutCurrency = String(
+      profRows[0]?.payout_currency || 'USD',
+    ).toUpperCase();
 
     const grossUsd = +priceTokens.toFixed(2); // 1 token = $1
-    const feeUsd   = +(grossUsd * PLATFORM_FEE).toFixed(2);
-    const netUsd   = +(grossUsd - feeUsd).toFixed(2);
+    const feeUsd = +(grossUsd * PLATFORM_FEE).toFixed(2);
+    const netUsd = +(grossUsd - feeUsd).toFixed(2);
 
     let creditedAmount = netUsd;
     let fxRateUsed = 1;
@@ -774,7 +825,7 @@ export const purchaseCourse = async (req, res) => {
        DO UPDATE SET
          available_amount = earnings_balances.available_amount + EXCLUDED.available_amount,
          updated_at = NOW()`,
-      [tutorId, payoutCurrency, creditedAmount]
+      [tutorId, payoutCurrency, creditedAmount],
     );
 
     // ---------- payment_method that satisfies DB CHECK ----------
@@ -786,9 +837,18 @@ export const purchaseCourse = async (req, res) => {
       FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = 'transactions'
     `);
-    const txCols = new Set(txColsRows.map(r => r.column_name));
+    const txCols = new Set(txColsRows.map((r) => r.column_name));
 
-    const cols = ['user_id', 'type', 'amount', 'description', 'date', 'status', 'currency', 'payment_method'];
+    const cols = [
+      'user_id',
+      'type',
+      'amount',
+      'description',
+      'date',
+      'status',
+      'currency',
+      'payment_method',
+    ];
     const description =
       `Course sale "${title}" · gross ${grossUsd.toFixed(2)} USD ` +
       `(tokens ${priceTokens}), fee ${feeUsd.toFixed(2)} USD, ` +
@@ -807,11 +867,26 @@ export const purchaseCourse = async (req, res) => {
     ];
 
     // Optional columns if present
-    if (txCols.has('source'))      { cols.push('source');      vals.push('PlatformBalance'); }
-    if (txCols.has('created_at'))  { cols.push('created_at');  vals.push(new Date()); }
-    if (txCols.has('updated_at'))  { cols.push('updated_at');  vals.push(new Date()); }
-    if (txCols.has('payer_email')) { cols.push('payer_email'); vals.push(null); }
-    if (txCols.has('payer_id'))    { cols.push('payer_id');    vals.push(null); }
+    if (txCols.has('source')) {
+      cols.push('source');
+      vals.push('PlatformBalance');
+    }
+    if (txCols.has('created_at')) {
+      cols.push('created_at');
+      vals.push(new Date());
+    }
+    if (txCols.has('updated_at')) {
+      cols.push('updated_at');
+      vals.push(new Date());
+    }
+    if (txCols.has('payer_email')) {
+      cols.push('payer_email');
+      vals.push(null);
+    }
+    if (txCols.has('payer_id')) {
+      cols.push('payer_id');
+      vals.push(null);
+    }
 
     const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
     const insertSql = `INSERT INTO transactions (${cols.join(', ')}) VALUES (${placeholders})`;
@@ -821,7 +896,10 @@ export const purchaseCourse = async (req, res) => {
 
     // 7) notify (best effort)
     try {
-      const { rows: tutorRows } = await pool.query(`SELECT email, name FROM users WHERE id = $1`, [tutorId]);
+      const { rows: tutorRows } = await pool.query(
+        `SELECT email, name FROM users WHERE id = $1`,
+        [tutorId],
+      );
       if (tutorRows.length) {
         await sendNotification({
           to: tutorRows[0].email,
@@ -852,7 +930,9 @@ export const purchaseCourse = async (req, res) => {
       },
     });
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch {}
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     console.error('❌ purchaseCourse error:', err);
     return res.status(500).json({ message: 'Internal server error' });
   } finally {
@@ -873,8 +953,8 @@ export const searchCourses = async (req, res) => {
     const {
       q = '',
       subject,
-      gradeBand,     // free-form
-      level,         // Beginner/Intermediate/Advanced/All Levels
+      gradeBand, // free-form
+      level, // Beginner/Intermediate/Advanced/All Levels
       minRating,
       maxPrice,
       isOer,
@@ -894,7 +974,16 @@ export const searchCourses = async (req, res) => {
     log(`\n[searchCourses:${rid}] incoming`, {
       rawQ,
       shouldUseAi,
-      ui: { subject, gradeBand, level, minRating, maxPrice, isOer, limitN, offsetN },
+      ui: {
+        subject,
+        gradeBand,
+        level,
+        minRating,
+        maxPrice,
+        isOer,
+        limitN,
+        offsetN,
+      },
     });
 
     // ── AI parse (optional)
@@ -962,7 +1051,12 @@ export const searchCourses = async (req, res) => {
     }
 
     log(`[searchCourses:${rid}] merged`, merged);
-    log(`[searchCourses:${rid}] kw decision`, { rawQ, aiUsed, gradeBand: merged.gradeBand, kwUsed: kw });
+    log(`[searchCourses:${rid}] kw decision`, {
+      rawQ,
+      aiUsed,
+      gradeBand: merged.gradeBand,
+      kwUsed: kw,
+    });
 
     // ────────────────────────────────────────────────────────────────
     // Build SQL
@@ -1069,7 +1163,9 @@ export const searchCourses = async (req, res) => {
       offsetN,
       kw,
       sqlPreview: sql.replace(/\s+/g, ' ').trim().slice(0, 260) + '...',
-      valuesPreview: values.map((v) => (typeof v === 'string' ? (v.length > 80 ? v.slice(0, 80) + '…' : v) : v)),
+      valuesPreview: values.map((v) =>
+        typeof v === 'string' ? (v.length > 80 ? v.slice(0, 80) + '…' : v) : v,
+      ),
     });
 
     const tDb = Date.now();

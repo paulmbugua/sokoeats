@@ -1,10 +1,15 @@
 // apps/backend/controllers/ttsAvatarController.js
 import { v2 as cloudinary } from 'cloudinary';
-import { synthesizeTtsLocalFirst, listGoogleVoices } from '../services/googleTtsService.js';
+import {
+  synthesizeTtsLocalFirst,
+  listGoogleVoices,
+} from '../services/googleTtsService.js';
 
 const NS = '[tts]';
 
-function msSince(t0) { return Number(process.hrtime.bigint() - t0) / 1e6; }
+function msSince(t0) {
+  return Number(process.hrtime.bigint() - t0) / 1e6;
+}
 function errShape(err) {
   return {
     name: err?.name,
@@ -21,12 +26,17 @@ const putHot = (id, buf) => {
   hotAudio.set(id, { buf, expiresAt: Date.now() + HOT_TTL_MS });
   const t = setTimeout(() => hotAudio.delete(id), HOT_TTL_MS);
   if (typeof t?.unref === 'function') t.unref();
-  try { console.log(NS, 'HOT put', { id: id.slice(0, 8), bytes: buf?.length ?? 0 }); } catch {}
+  try {
+    console.log(NS, 'HOT put', { id: id.slice(0, 8), bytes: buf?.length ?? 0 });
+  } catch {}
 };
 const getHot = (id) => {
   const e = hotAudio.get(id);
   if (!e) return null;
-  if (Date.now() > e.expiresAt) { hotAudio.delete(id); return null; }
+  if (Date.now() > e.expiresAt) {
+    hotAudio.delete(id);
+    return null;
+  }
   return e.buf;
 };
 
@@ -39,9 +49,9 @@ function uploadBuf({ buffer, public_id, resource_type, folder = 'tts' }) {
         resource_type,
         overwrite: true,
         type: 'upload',
-        format: 'mp3',               // explicit
+        format: 'mp3', // explicit
       },
-      (err, result) => (err ? reject(err) : resolve(result))
+      (err, result) => (err ? reject(err) : resolve(result)),
     );
     upload.end(buffer);
   });
@@ -63,16 +73,17 @@ export const speakRobot = async (req, res) => {
       if (!s) return def;
       if (s.includes('wavenet') || s.includes('standard')) return v; // already Google
       if (s.includes('jenny')) return 'en-US-Wavenet-C';
-      if (s.includes('guy'))   return 'en-US-Wavenet-C';
-      if (s.includes('aria'))  return 'en-US-Wavenet-C';
-      if (s.includes('neerja') || s.includes('prabhat')) return 'en-IN-Wavenet-A';
-      if (s.includes('libby')  || s.includes('mia'))     return 'en-GB-Wavenet-A';
+      if (s.includes('guy')) return 'en-US-Wavenet-C';
+      if (s.includes('aria')) return 'en-US-Wavenet-C';
+      if (s.includes('neerja') || s.includes('prabhat'))
+        return 'en-IN-Wavenet-A';
+      if (s.includes('libby') || s.includes('mia')) return 'en-GB-Wavenet-A';
       return def;
     }
     const mappedVoice = mapVoice(voiceName);
 
     const speakingRate = rate ?? '0%';
-    const safePitch    = pitch ?? '+0st';
+    const safePitch = pitch ?? '+0st';
 
     const ssmlLen = ssml ? String(ssml).length : 0;
     const textLen = text ? String(text).length : 0;
@@ -90,7 +101,9 @@ export const speakRobot = async (req, res) => {
 
     if (!ssml && !text) {
       console.warn(NS, 'EMPTY_TEXT');
-      return res.status(400).json({ message: 'TTS_FAILED', error: 'EMPTY_TEXT' });
+      return res
+        .status(400)
+        .json({ message: 'TTS_FAILED', error: 'EMPTY_TEXT' });
     }
 
     // 1) Synthesize (local-first). Service may return either:
@@ -105,7 +118,7 @@ export const speakRobot = async (req, res) => {
       wantTimepoints: true,
     });
 
-    const audioId    = out.cacheKey;
+    const audioId = out.cacheKey;
     const streamPath = `/api/ttsAvatar/stream/${audioId}`;
     const cdnFromSvc = out.cdnUrl || null;
 
@@ -126,9 +139,9 @@ export const speakRobot = async (req, res) => {
       }
 
       return res.json({
-        url: cdnFromSvc,          // <-- actual URL string
-        cdnUrl: cdnFromSvc,       // duplicate for compatibility
-        streamPath,               // hot stream fallback (will 302 if buffer is gone)
+        url: cdnFromSvc, // <-- actual URL string
+        cdnUrl: cdnFromSvc, // duplicate for compatibility
+        streamPath, // hot stream fallback (will 302 if buffer is gone)
         words: out.wordsJson,
         visemes: out.visemesJson,
         bookmarks: out.bookmarksJson,
@@ -145,7 +158,9 @@ export const speakRobot = async (req, res) => {
         haveUrl: !!cdnFromSvc,
         haveBuf: !!out.mp3Buffer,
       });
-      return res.status(502).json({ message: 'TTS_FAILED', error: 'EMPTY_AUDIO' });
+      return res
+        .status(502)
+        .json({ message: 'TTS_FAILED', error: 'EMPTY_AUDIO' });
     }
 
     // Prime HOT cache for instant local streaming
@@ -156,7 +171,11 @@ export const speakRobot = async (req, res) => {
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Content-Length', out.mp3Buffer.length);
-      console.info(NS, 'send RAW', { id: audioId.slice(0, 8), bytes: out.mp3Buffer.length, ms: Math.round(msSince(t0)) });
+      console.info(NS, 'send RAW', {
+        id: audioId.slice(0, 8),
+        bytes: out.mp3Buffer.length,
+        ms: Math.round(msSince(t0)),
+      });
       return res.status(200).end(out.mp3Buffer);
     }
 
@@ -170,7 +189,10 @@ export const speakRobot = async (req, res) => {
       });
       secureUrl = mp3Res?.secure_url || null;
       if (secureUrl) {
-        console.info(NS, 'upload ok', { id: audioId.slice(0, 8), url: secureUrl });
+        console.info(NS, 'upload ok', {
+          id: audioId.slice(0, 8),
+          url: secureUrl,
+        });
       } else {
         console.warn(NS, 'upload returned no secure_url');
       }
@@ -178,7 +200,12 @@ export const speakRobot = async (req, res) => {
       console.warn(NS, 'upload FAIL; fallback to computed CDN url', e?.message);
     }
 
-    const cdnUrl = secureUrl || cloudinary.url(`tts/${audioId}.mp3`, { resource_type: 'video', secure: true });
+    const cdnUrl =
+      secureUrl ||
+      cloudinary.url(`tts/${audioId}.mp3`, {
+        resource_type: 'video',
+        secure: true,
+      });
 
     console.info(NS, 'respond JSON', {
       id: audioId.slice(0, 8),
@@ -188,9 +215,9 @@ export const speakRobot = async (req, res) => {
     });
 
     return res.json({
-      url: cdnUrl,                // <-- actual URL string
+      url: cdnUrl, // <-- actual URL string
       cdnUrl,
-      streamPath,                 // immediate stream from HOT cache
+      streamPath, // immediate stream from HOT cache
       words: out.wordsJson,
       visemes: out.visemesJson,
       bookmarks: out.bookmarksJson,
@@ -199,12 +226,19 @@ export const speakRobot = async (req, res) => {
       cached: false,
       hotTtlMs: HOT_TTL_MS,
     });
-
   } catch (err) {
-    console.error(NS, 'speak ERROR', errShape(err), `dur=${Math.round(msSince(t0))}ms`);
+    console.error(
+      NS,
+      'speak ERROR',
+      errShape(err),
+      `dur=${Math.round(msSince(t0))}ms`,
+    );
     const code = err?.code;
-    if (code === 'EMPTY_TEXT') return res.status(400).json({ message: 'TTS_FAILED', error: code });
-    return res.status(502).json({ message: 'TTS_FAILED', error: code || 'SYNTH_FAILED' });
+    if (code === 'EMPTY_TEXT')
+      return res.status(400).json({ message: 'TTS_FAILED', error: code });
+    return res
+      .status(502)
+      .json({ message: 'TTS_FAILED', error: code || 'SYNTH_FAILED' });
   }
 };
 
@@ -224,8 +258,14 @@ export const streamRobot = async (req, res) => {
 
     const buf = getHot(id);
     if (!buf) {
-      const cdnUrl = cloudinary.url(`tts/${id}.mp3`, { resource_type: 'video', secure: true });
-      console.debug(NS, 'stream MISS -> 302', { id: id.slice(0, 8), redirect: cdnUrl });
+      const cdnUrl = cloudinary.url(`tts/${id}.mp3`, {
+        resource_type: 'video',
+        secure: true,
+      });
+      console.debug(NS, 'stream MISS -> 302', {
+        id: id.slice(0, 8),
+        redirect: cdnUrl,
+      });
       return res.redirect(302, cdnUrl);
     }
 
@@ -244,7 +284,7 @@ export const streamRobot = async (req, res) => {
 
     const match = /bytes=(\d+)-(\d+)?/.exec(range);
     const start = match ? parseInt(match[1], 10) : 0;
-    const end   = match && match[2] ? parseInt(match[2], 10) : total - 1;
+    const end = match && match[2] ? parseInt(match[2], 10) : total - 1;
 
     if (start >= total || end >= total || start > end) {
       res.setHeader('Content-Range', `bytes */${total}`);
@@ -255,7 +295,12 @@ export const streamRobot = async (req, res) => {
     res.status(206);
     res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
     res.setHeader('Content-Length', end - start + 1);
-    console.debug(NS, 'stream HIT 206', { id: id.slice(0, 8), start, end, total });
+    console.debug(NS, 'stream HIT 206', {
+      id: id.slice(0, 8),
+      start,
+      end,
+      total,
+    });
     return res.end(buf.subarray(start, end + 1));
   } catch (err) {
     console.error(NS, 'stream ERROR', errShape(err));
@@ -271,6 +316,8 @@ export const listVoices = async (req, res) => {
     return res.json({ voices });
   } catch (err) {
     console.error(NS, 'listVoices ERROR', errShape(err));
-    return res.status(502).json({ message: 'VOICES_FAILED', error: err?.code || 'LIST_FAILED' });
+    return res
+      .status(502)
+      .json({ message: 'VOICES_FAILED', error: err?.code || 'LIST_FAILED' });
   }
 };

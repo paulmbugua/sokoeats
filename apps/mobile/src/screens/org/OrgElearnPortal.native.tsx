@@ -17,7 +17,6 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 
-
 import * as DocumentPicker from 'expo-document-picker';
 
 import tw from '../../../tailwind';
@@ -43,7 +42,6 @@ import {
   // ✅ parity with web
   getOrgRoster,
   getOrgAssignmentSubmissions,
-
   type OrgResp as Org,
   type OrgAnalyticsRow,
   type OrgLearnerProgressRow,
@@ -60,7 +58,6 @@ import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 
 type TabKey = 'branding' | 'assign' | 'analytics';
 type Period = 'month' | 'term' | 'year';
-
 
 const PAY_DEBUG = true; // turn off later
 
@@ -115,9 +112,9 @@ function resolveApprovalUrl(init: unknown): string | undefined {
     obj?.authorization_url,
 
     // axios / wrapped responses
-    obj?.data?.authorizationUrl,     // ✅ add
-    obj?.data?.checkoutUrl,          // ✅ add
-    obj?.data?.approvalUrl,          // ✅ add
+    obj?.data?.authorizationUrl, // ✅ add
+    obj?.data?.checkoutUrl, // ✅ add
+    obj?.data?.approvalUrl, // ✅ add
 
     obj?.data?.approvalUrl,
     obj?.data?.approveUrl,
@@ -140,8 +137,14 @@ function resolveApprovalUrl(init: unknown): string | undefined {
     if (typeof c === 'string' && c.startsWith('http')) return c;
   }
 
-  const links = Array.isArray(obj?.links) ? obj.links : Array.isArray(obj?.data?.links) ? obj.data.links : undefined;
-  const approve = links?.find?.((l: any) => l?.rel === 'approve' && typeof l?.href === 'string')?.href;
+  const links = Array.isArray(obj?.links)
+    ? obj.links
+    : Array.isArray(obj?.data?.links)
+      ? obj.data.links
+      : undefined;
+  const approve = links?.find?.(
+    (l: any) => l?.rel === 'approve' && typeof l?.href === 'string'
+  )?.href;
   if (approve) return approve;
 
   if (typeof obj?.href === 'string') return obj.href;
@@ -149,7 +152,6 @@ function resolveApprovalUrl(init: unknown): string | undefined {
 
   return undefined;
 }
-
 
 function resolvePaymentId(init: unknown): string | null {
   const obj = init as any;
@@ -173,9 +175,10 @@ function resolvePaymentId(init: unknown): string | null {
   return null;
 }
 
-
 const Pill = ({ children }: { children: React.ReactNode }) => (
-  <View style={tw`px-2 py-0.5 rounded-full bg-[#e7edf4] dark:bg-white/10 border border-[#d1e2f4] dark:border-white/10`}>
+  <View
+    style={tw`px-2 py-0.5 rounded-full bg-[#e7edf4] dark:bg-white/10 border border-[#d1e2f4] dark:border-white/10`}
+  >
     <Text style={tw`text-[11px] text-[#0d141c] dark:text-white/90`}>{children}</Text>
   </View>
 );
@@ -227,7 +230,10 @@ type OrgAnalyticsSummary = {
   examCardsGenerated?: number;
 };
 
-function deriveAnalyticsSummary(rows: OrgAnalyticsRow[], apiSummary?: Partial<OrgAnalyticsSummary> | null): OrgAnalyticsSummary {
+function deriveAnalyticsSummary(
+  rows: OrgAnalyticsRow[],
+  apiSummary?: Partial<OrgAnalyticsSummary> | null
+): OrgAnalyticsSummary {
   type ExtRow = OrgAnalyticsRow & {
     source_kind?: string | null;
     source?: string | null;
@@ -312,7 +318,8 @@ function deriveAnalyticsSummary(rows: OrgAnalyticsRow[], apiSummary?: Partial<Or
     robotQuizPassRate: robotAttempts > 0 ? Math.round((robotPasses * 100) / robotAttempts) : 0,
     assignmentAttempts,
     assignmentPasses,
-    assignmentPassRate: assignmentAttempts > 0 ? Math.round((assignmentPasses * 100) / assignmentAttempts) : 0,
+    assignmentPassRate:
+      assignmentAttempts > 0 ? Math.round((assignmentPasses * 100) / assignmentAttempts) : 0,
     examCardsGenerated: examCardsGenerated || undefined,
   };
 
@@ -321,10 +328,11 @@ function deriveAnalyticsSummary(rows: OrgAnalyticsRow[], apiSummary?: Partial<Or
   const safeNum = (v: any) => (Number.isFinite(v) ? Number(v) : 0);
   return {
     ...base,
-    ...Object.fromEntries(Object.entries(apiSummary).map(([k, v]) => [k, typeof v === 'number' ? safeNum(v) : v])),
+    ...Object.fromEntries(
+      Object.entries(apiSummary).map(([k, v]) => [k, typeof v === 'number' ? safeNum(v) : v])
+    ),
   } as OrgAnalyticsSummary;
 }
-
 
 /* ──────────────────────────────
    Main screen
@@ -348,7 +356,8 @@ const OrgElearnPortalNative: React.FC = () => {
 
   const learnerStudentId = paramsAny.studentId ?? paramsAny.student_id ?? '';
   const learnerClassFromRoute = paramsAny.class ?? paramsAny.class_label ?? '';
-  const learnerSubjectFromRoute = paramsAny.subject ?? paramsAny.subjectKey ?? paramsAny.subject_key ?? '';
+  const learnerSubjectFromRoute =
+    paramsAny.subject ?? paramsAny.subjectKey ?? paramsAny.subject_key ?? '';
 
   const [tab, setTab] = useState<TabKey>(isLearnerView || isInstructor ? 'assign' : 'branding');
 
@@ -362,10 +371,8 @@ const OrgElearnPortalNative: React.FC = () => {
   const [showEnterpriseModal, setShowEnterpriseModal] = useState(false);
   const { resolvedScheme } = useThemePref();
 
-
   const canBrandingRole = !isInstructor && !isLearnerView && !isSubmissionsView;
   const canUpgradePlan = !isInstructor && !isLearnerView && !isSubmissionsView;
-  
 
   // branding form
   const [form, setForm] = useState<any>({
@@ -450,7 +457,9 @@ const OrgElearnPortalNative: React.FC = () => {
   const [submitUploading, setSubmitUploading] = useState(false);
 
   // roster
-  const [instructors, setInstructors] = useState<Array<{ user_id: number; name?: string; email?: string; role?: string }>>([]);
+  const [instructors, setInstructors] = useState<
+    Array<{ user_id: number; name?: string; email?: string; role?: string }>
+  >([]);
 
   // submissions view (single assignment)
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
@@ -468,238 +477,244 @@ const OrgElearnPortalNative: React.FC = () => {
     hasPrioritySupport,
   } = useFeatureGates(tier);
 
- type AndroidPickerEvent = { type?: 'set' | 'dismissed' | 'neutralButtonPressed' | string };
+  type AndroidPickerEvent = { type?: 'set' | 'dismissed' | 'neutralButtonPressed' | string };
 
-type AndroidOpenOptions = {
-  value: Date;
-  mode: 'date' | 'time';
-  is24Hour?: boolean;
-  onChange: (event: AndroidPickerEvent, date?: Date) => void;
-  // keep it flexible for lib options / future props
-  [key: string]: any;
-};
+  type AndroidOpenOptions = {
+    value: Date;
+    mode: 'date' | 'time';
+    is24Hour?: boolean;
+    onChange: (event: AndroidPickerEvent, date?: Date) => void;
+    // keep it flexible for lib options / future props
+    [key: string]: any;
+  };
 
-const openAndroid = DateTimePickerAndroid.open as unknown as (opts: AndroidOpenOptions) => void;
+  const openAndroid = DateTimePickerAndroid.open as unknown as (opts: AndroidOpenOptions) => void;
 
-const openAndroidDateTime = useCallback((initial: Date, onDone: (d: Date) => void) => {
-  openAndroid({
-    value: initial,
-    mode: 'date',
-    is24Hour: true,
-    onChange: (event, pickedDate) => {
-      if (event?.type === 'dismissed' || !pickedDate) return;
+  const openAndroidDateTime = useCallback((initial: Date, onDone: (d: Date) => void) => {
+    openAndroid({
+      value: initial,
+      mode: 'date',
+      is24Hour: true,
+      onChange: (event, pickedDate) => {
+        if (event?.type === 'dismissed' || !pickedDate) return;
 
-      openAndroid({
-        value: pickedDate,
-        mode: 'time',
-        is24Hour: true,
-        onChange: (event2, pickedTime) => {
-          if (event2?.type === 'dismissed' || !pickedTime) return;
+        openAndroid({
+          value: pickedDate,
+          mode: 'time',
+          is24Hour: true,
+          onChange: (event2, pickedTime) => {
+            if (event2?.type === 'dismissed' || !pickedTime) return;
 
-          const merged = new Date(pickedDate);
-          merged.setHours(pickedTime.getHours(), pickedTime.getMinutes(), 0, 0);
-          onDone(merged);
-        },
-      });
-    },
-  });
-}, []);
-
-
+            const merged = new Date(pickedDate);
+            merged.setHours(pickedTime.getHours(), pickedTime.getMinutes(), 0, 0);
+            onDone(merged);
+          },
+        });
+      },
+    });
+  }, []);
 
   // keep per-tier payment state (so pro/enterprise don’t conflict)
-const proPaymentIdRef = useRef<string | null>(null);
-const entPaymentIdRef = useRef<string | null>(null);
+  const proPaymentIdRef = useRef<string | null>(null);
+  const entPaymentIdRef = useRef<string | null>(null);
 
-const refreshOrgAfterPayment = useCallback(async () => {
-  if (!authToken) return;
-  const updated = await getMyOrgOrBootstrap(backendUrl, authToken);
-  setOrg(updated);
-}, [backendUrl, authToken]);
+  const refreshOrgAfterPayment = useCallback(async () => {
+    if (!authToken) return;
+    const updated = await getMyOrgOrBootstrap(backendUrl, authToken);
+    setOrg(updated);
+  }, [backendUrl, authToken]);
 
-const closeProModal = useCallback(() => {
-  proPaymentIdRef.current = null;
-  setShowProModal(false);
-}, []);
+  const closeProModal = useCallback(() => {
+    proPaymentIdRef.current = null;
+    setShowProModal(false);
+  }, []);
 
-const closeEnterpriseModal = useCallback(() => {
-  entPaymentIdRef.current = null;
-  setShowEnterpriseModal(false);
-}, []);
+  const closeEnterpriseModal = useCallback(() => {
+    entPaymentIdRef.current = null;
+    setShowEnterpriseModal(false);
+  }, []);
 
-const handlePlanCheckout = useCallback(
-  async (
-    tierToBuy: 'pro' | 'enterprise',
-    paymentIdRef: React.MutableRefObject<string | null>,
-    opts: {
-      method: 'Paystack' | 'M-Pesa';
-      cycle: 'monthly' | 'annual';
-      plan: 'pro' | 'enterprise';
-      phone?: string;
-      reference?: string;
-    }
-  ) => {
-    if (!org?.id || !authToken) {
-      Alert.alert('Missing organization', 'Please sign in to your institution first.');
-      return;
-    }
+  const handlePlanCheckout = useCallback(
+    async (
+      tierToBuy: 'pro' | 'enterprise',
+      paymentIdRef: React.MutableRefObject<string | null>,
+      opts: {
+        method: 'Paystack' | 'M-Pesa';
+        cycle: 'monthly' | 'annual';
+        plan: 'pro' | 'enterprise';
+        phone?: string;
+        reference?: string;
+      }
+    ) => {
+      if (!org?.id || !authToken) {
+        Alert.alert('Missing organization', 'Please sign in to your institution first.');
+        return;
+      }
 
-    const apiCycle: 'monthly' | 'yearly' = opts.cycle === 'annual' ? 'yearly' : 'monthly';
+      const apiCycle: 'monthly' | 'yearly' = opts.cycle === 'annual' ? 'yearly' : 'monthly';
 
-    try {
-      // ───────────────────────── M-PESA ─────────────────────────
-      if (opts.method === 'M-Pesa') {
-        const phone = (opts.phone || '').trim();
-        if (!phone) {
-          Alert.alert('Phone required', 'Enter your Safaricom phone number.');
-          return;
+      try {
+        // ───────────────────────── M-PESA ─────────────────────────
+        if (opts.method === 'M-Pesa') {
+          const phone = (opts.phone || '').trim();
+          if (!phone) {
+            Alert.alert('Phone required', 'Enter your Safaricom phone number.');
+            return;
+          }
+
+          // INIT
+          if (!paymentIdRef.current) {
+            const init = await initOrgSubscription(backendUrl, authToken, org.id, {
+              tier: tierToBuy,
+              cycle: apiCycle,
+              method: 'MPESA',
+              phone,
+            });
+
+            paymentIdRef.current = (init as any)?.paymentId ?? (init as any)?.id ?? null;
+
+            Alert.alert(
+              'STK Push sent',
+              'Approve the request on your phone, then tap "Complete Payment". If it lags, open the reference box and submit the M-Pesa receipt.'
+            );
+            return;
+          }
+
+          // CONFIRM
+          try {
+            if (opts.reference?.trim()) {
+              await confirmOrgSubscription(
+                backendUrl,
+                authToken,
+                paymentIdRef.current!,
+                opts.reference.trim()
+              );
+            } else {
+              await confirmOrgSubscription(backendUrl, authToken, paymentIdRef.current!);
+            }
+
+            paymentIdRef.current = null;
+            Alert.alert('Activated', 'Payment confirmed. Subscription activated ✅');
+
+            await refreshOrgAfterPayment();
+
+            if (tierToBuy === 'pro') closeProModal();
+            else closeEnterpriseModal();
+
+            return;
+          } catch (err: any) {
+            const msg = err?.response?.data?.message || err?.message || '';
+            // keep paymentIdRef so user can retry confirm / add reference
+            if (/pending|reference missing|still waiting|not confirmed/i.test(msg)) {
+              Alert.alert(
+                'Still pending',
+                'We’re still waiting for M-Pesa confirmation. If you have the receipt, enter it and tap "Update Reference / Complete".'
+              );
+              return;
+            }
+            Alert.alert('Payment error', msg || 'Payment confirmation failed.');
+            return;
+          }
         }
+
+        // ───────────────────────── PAYSTACK ─────────────────────────
 
         // INIT
         if (!paymentIdRef.current) {
-          const init = await initOrgSubscription(backendUrl, authToken, org.id, {
-            tier: tierToBuy,
-            cycle: apiCycle,
-            method: 'MPESA',
-            phone,
+          payLog('[PAYSTACK][INIT] about to call initOrgSubscription', {
+            backendUrl,
+            orgId: org.id,
+            tierToBuy,
+            apiCycle,
+            method: 'PAYSTACK',
+            hasAuthToken: !!authToken,
+            tokenSource: orgToken ? 'orgToken' : token ? 'token' : 'none',
           });
 
-          paymentIdRef.current = (init as any)?.paymentId ?? (init as any)?.id ?? null;
+          let init: any;
+          try {
+            init = await initOrgSubscription(backendUrl, authToken, org.id, {
+              tier: tierToBuy,
+              cycle: apiCycle,
+              method: 'PAYSTACK',
+            });
+          } catch (e: any) {
+            payLog('[PAYSTACK][INIT] initOrgSubscription threw', {
+              message: e?.message,
+              status: e?.response?.status,
+              data: e?.response?.data,
+            });
+            throw e;
+          }
 
-          Alert.alert(
-            'STK Push sent',
-            'Approve the request on your phone, then tap "Complete Payment". If it lags, open the reference box and submit the M-Pesa receipt.'
-          );
+          payLog('[PAYSTACK][INIT] raw init response', init);
+
+          paymentIdRef.current = resolvePaymentId(init);
+
+          const url = resolveApprovalUrl(init);
+
+          payLog('[PAYSTACK][INIT] resolved fields', {
+            paymentId: paymentIdRef.current,
+            url,
+            topKeys: Object.keys(init || {}).slice(0, 50),
+            dataKeys: Object.keys(init?.data || {}).slice(0, 50),
+            dataDataKeys: Object.keys(init?.data?.data || {}).slice(0, 50),
+          });
+
+          if (url) {
+            const can = await Linking.canOpenURL(url);
+            payLog('[PAYSTACK][INIT] canOpenURL', { url, can });
+            if (!can) {
+              Alert.alert('Cannot open Paystack', 'This device cannot open the checkout link.');
+              return;
+            }
+            await Linking.openURL(url);
+            Alert.alert(
+              'Complete in browser',
+              'After payment, return to the app and tap "Complete Payment".'
+            );
+          } else {
+            Alert.alert(
+              'Unavailable',
+              `Paystack approval URL was not found.\n` +
+                `Top keys: ${Object.keys(init || {})
+                  .slice(0, 30)
+                  .join(', ')}\n` +
+                `data keys: ${Object.keys(init?.data || {})
+                  .slice(0, 30)
+                  .join(', ')}`
+            );
+          }
+
           return;
         }
 
         // CONFIRM
-        try {
-          if (opts.reference?.trim()) {
-            await confirmOrgSubscription(backendUrl, authToken, paymentIdRef.current!, opts.reference.trim());
-          } else {
-            await confirmOrgSubscription(backendUrl, authToken, paymentIdRef.current!);
-          }
-
-          paymentIdRef.current = null;
-          Alert.alert('Activated', 'Payment confirmed. Subscription activated ✅');
-
-          await refreshOrgAfterPayment();
-
-          if (tierToBuy === 'pro') closeProModal();
-          else closeEnterpriseModal();
-
-          return;
-        } catch (err: any) {
-          const msg = err?.response?.data?.message || err?.message || '';
-          // keep paymentIdRef so user can retry confirm / add reference
-          if (/pending|reference missing|still waiting|not confirmed/i.test(msg)) {
-            Alert.alert(
-              'Still pending',
-              'We’re still waiting for M-Pesa confirmation. If you have the receipt, enter it and tap "Update Reference / Complete".'
-            );
-            return;
-          }
-          Alert.alert('Payment error', msg || 'Payment confirmation failed.');
-          return;
-        }
-      }
-
-     // ───────────────────────── PAYSTACK ─────────────────────────
-
-      // INIT
-      if (!paymentIdRef.current) {
-        payLog('[PAYSTACK][INIT] about to call initOrgSubscription', {
-          backendUrl,
-          orgId: org.id,
-          tierToBuy,
-          apiCycle,
-          method: 'PAYSTACK',
-          hasAuthToken: !!authToken,
-          tokenSource: orgToken ? 'orgToken' : token ? 'token' : 'none',
-        });
-
-        let init: any;
-        try {
-          init = await initOrgSubscription(backendUrl, authToken, org.id, {
-            tier: tierToBuy,
-            cycle: apiCycle,
-            method: 'PAYSTACK',
-          });
-        } catch (e: any) {
-          payLog('[PAYSTACK][INIT] initOrgSubscription threw', {
-            message: e?.message,
-            status: e?.response?.status,
-            data: e?.response?.data,
-          });
-          throw e;
-        }
-
-        payLog('[PAYSTACK][INIT] raw init response', init);
-
-        paymentIdRef.current = resolvePaymentId(init);
-
-        const url = resolveApprovalUrl(init);
-
-        payLog('[PAYSTACK][INIT] resolved fields', {
-          paymentId: paymentIdRef.current,
-          url,
-          topKeys: Object.keys(init || {}).slice(0, 50),
-          dataKeys: Object.keys(init?.data || {}).slice(0, 50),
-          dataDataKeys: Object.keys(init?.data?.data || {}).slice(0, 50),
-        });
-
-        if (url) {
-          const can = await Linking.canOpenURL(url);
-          payLog('[PAYSTACK][INIT] canOpenURL', { url, can });
-          if (!can) {
-            Alert.alert('Cannot open Paystack', 'This device cannot open the checkout link.');
-            return;
-          }
-          await Linking.openURL(url);
-          Alert.alert('Complete in browser', 'After payment, return to the app and tap "Complete Payment".');
-        } else {
-          Alert.alert(
-            'Unavailable',
-            `Paystack approval URL was not found.\n` +
-            `Top keys: ${Object.keys(init || {}).slice(0, 30).join(', ')}\n` +
-            `data keys: ${Object.keys(init?.data || {}).slice(0, 30).join(', ')}`
+        if (opts.reference?.trim()) {
+          await confirmOrgSubscription(
+            backendUrl,
+            authToken,
+            paymentIdRef.current!,
+            opts.reference.trim()
           );
+        } else {
+          await confirmOrgSubscription(backendUrl, authToken, paymentIdRef.current!);
         }
 
-        return;
+        paymentIdRef.current = null;
+        Alert.alert('Activated', 'Payment confirmed. Subscription activated ✅');
+
+        await refreshOrgAfterPayment();
+
+        if (tierToBuy === 'pro') closeProModal();
+        else closeEnterpriseModal();
+      } catch (e: any) {
+        const msg = e?.response?.data?.message || e?.message || 'Please try again.';
+        Alert.alert('Payment failed', msg);
       }
-
-
-      // CONFIRM
-      if (opts.reference?.trim()) {
-        await confirmOrgSubscription(backendUrl, authToken, paymentIdRef.current!, opts.reference.trim());
-      } else {
-        await confirmOrgSubscription(backendUrl, authToken, paymentIdRef.current!);
-      }
-
-      paymentIdRef.current = null;
-      Alert.alert('Activated', 'Payment confirmed. Subscription activated ✅');
-
-      await refreshOrgAfterPayment();
-
-      if (tierToBuy === 'pro') closeProModal();
-      else closeEnterpriseModal();
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || 'Please try again.';
-      Alert.alert('Payment failed', msg);
-    }
-  },
-  [
-    backendUrl,
-    authToken,
-    org?.id,
-    refreshOrgAfterPayment,
-    closeProModal,
-    closeEnterpriseModal,
-  ]
-);
-
+    },
+    [backendUrl, authToken, org?.id, refreshOrgAfterPayment, closeProModal, closeEnterpriseModal]
+  );
 
   // hydrate from route params
   useEffect(() => {
@@ -790,18 +805,26 @@ const handlePlanCheckout = useCallback(
           target === 'logo_url'
             ? setUploadingLogo
             : target === 'signature_url'
-            ? setUploadingSignature
-            : setUploadingInstructorSignature;
+              ? setUploadingSignature
+              : setUploadingInstructorSignature;
 
         setBusy(true);
 
         const res: any = await uploadAsset(backendUrl, authToken, file, 'image');
-        const url = typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || '';
+        const url =
+          typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || '';
 
         if (!url) throw new Error('Upload completed but no URL was returned by the server.');
 
         setForm((f: any) => ({ ...f, [target]: url }));
-        Alert.alert('Uploaded', target === 'logo_url' ? 'Logo updated.' : target === 'signature_url' ? 'Signature updated.' : 'Instructor signature updated.');
+        Alert.alert(
+          'Uploaded',
+          target === 'logo_url'
+            ? 'Logo updated.'
+            : target === 'signature_url'
+              ? 'Signature updated.'
+              : 'Instructor signature updated.'
+        );
       } catch (e: any) {
         if (e?.message?.includes('canceled')) return;
         Alert.alert('Upload failed', e?.message || 'Please try again.');
@@ -817,12 +840,18 @@ const handlePlanCheckout = useCallback(
   /* save branding */
   const saveBranding = useCallback(async () => {
     if (!org?.id || !authToken) {
-      Alert.alert('Missing organization', 'Please create your Institution account first (For Institutions → Login/Sign up).');
+      Alert.alert(
+        'Missing organization',
+        'Please create your Institution account first (For Institutions → Login/Sign up).'
+      );
       return;
     }
 
     if (!canBrandingRole) {
-      Alert.alert('Not allowed', 'Branding settings can only be changed by your institution owner or admin.');
+      Alert.alert(
+        'Not allowed',
+        'Branding settings can only be changed by your institution owner or admin.'
+      );
       return;
     }
 
@@ -856,7 +885,7 @@ const handlePlanCheckout = useCallback(
 
     try {
       const updated = await updateOrgBranding(backendUrl, authToken, org.id, form);
-      setOrg((prev) => ({ ...(prev ?? {}), ...(updated ?? {}) } as Org));
+      setOrg((prev) => ({ ...(prev ?? {}), ...(updated ?? {}) }) as Org);
       setForm((f: any) => ({ ...f, ...(updated ?? {}) }));
       setShowCongrats(true);
     } catch (e: any) {
@@ -902,7 +931,8 @@ const handlePlanCheckout = useCallback(
 
       const res: any = await uploadAsset(backendUrl, authToken, file, 'doc');
 
-      const url = typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || null;
+      const url =
+        typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || null;
       if (!url) throw new Error('Upload completed but no URL was returned.');
 
       setLegacyAttachmentUrl(url);
@@ -934,7 +964,10 @@ const handlePlanCheckout = useCallback(
 
     // web requires both; native now matches
     if (!classLabel || !subjectKey) {
-      Alert.alert('Scope required', 'Please specify both Class/Grade and Subject so the right learners see this.');
+      Alert.alert(
+        'Scope required',
+        'Please specify both Class/Grade and Subject so the right learners see this.'
+      );
       return;
     }
 
@@ -952,7 +985,10 @@ const handlePlanCheckout = useCallback(
 
       await createOrgLegacyAssignment(backendUrl, authToken, org.id, payload);
 
-      Alert.alert('Assignment shared', 'Learners in the selected class/subject will see this assignment in their portal.');
+      Alert.alert(
+        'Assignment shared',
+        'Learners in the selected class/subject will see this assignment in their portal.'
+      );
 
       setLegacyTitle('');
       setLegacyInstructions('');
@@ -986,8 +1022,8 @@ const handlePlanCheckout = useCallback(
       const payload = {
         courseId,
         title_override: titleOverride || null,
-        pass_mark: canCustomPassTimers ? (passMark || null) : null,
-        timer_s: canCustomPassTimers ? (timer || null) : null,
+        pass_mark: canCustomPassTimers ? passMark || null : null,
+        timer_s: canCustomPassTimers ? timer || null : null,
         due_at: dueAt || null,
       };
 
@@ -999,7 +1035,17 @@ const handlePlanCheckout = useCallback(
     } catch (e: any) {
       Alert.alert('Failed', e?.response?.data?.message || 'Failed to create assignment.');
     }
-  }, [org?.id, authToken, courseId, titleOverride, passMark, timer, dueAt, backendUrl, canCustomPassTimers]);
+  }, [
+    org?.id,
+    authToken,
+    courseId,
+    titleOverride,
+    passMark,
+    timer,
+    dueAt,
+    backendUrl,
+    canCustomPassTimers,
+  ]);
 
   /* analytics */
   const loadAnalytics = useCallback(async () => {
@@ -1020,7 +1066,15 @@ const handlePlanCheckout = useCallback(
     } finally {
       setLoadingAnalytics(false);
     }
-  }, [org?.id, backendUrl, authToken, period, canMultiPeriodAnalytics, isLearnerView, isSubmissionsView]);
+  }, [
+    org?.id,
+    backendUrl,
+    authToken,
+    period,
+    canMultiPeriodAnalytics,
+    isLearnerView,
+    isSubmissionsView,
+  ]);
 
   useEffect(() => {
     if (tab === 'analytics') loadAnalytics();
@@ -1098,7 +1152,12 @@ const handlePlanCheckout = useCallback(
     setSubmissionsError(null);
 
     try {
-      const res: any = await getOrgAssignmentSubmissions(backendUrl, authToken, org.id, String(assignmentIdFromRoute));
+      const res: any = await getOrgAssignmentSubmissions(
+        backendUrl,
+        authToken,
+        org.id,
+        String(assignmentIdFromRoute)
+      );
       setSubmissionsAssignment(res?.assignment ?? null);
       setSubmissionsRows(Array.isArray(res?.submissions) ? res.submissions : []);
     } catch (e: any) {
@@ -1137,27 +1196,27 @@ const handlePlanCheckout = useCallback(
   }, []);
 
   /* deadline pickers */
- const handleLegacyDeadlinePress = () => {
-  if (Platform.OS === 'android') {
-    openAndroidDateTime(legacyDueDate ?? new Date(), (d) => {
-      setLegacyDueDate(d);
-      setLegacyDueAt(d.toISOString());
-    });
-    return;
-  }
-  setLegacyDuePickerOpen(true);
-};
+  const handleLegacyDeadlinePress = () => {
+    if (Platform.OS === 'android') {
+      openAndroidDateTime(legacyDueDate ?? new Date(), (d) => {
+        setLegacyDueDate(d);
+        setLegacyDueAt(d.toISOString());
+      });
+      return;
+    }
+    setLegacyDuePickerOpen(true);
+  };
 
-const handleAiDeadlinePress = () => {
-  if (Platform.OS === 'android') {
-    openAndroidDateTime(aiDueDate ?? new Date(), (d) => {
-      setAiDueDate(d);
-      setDueAt(d.toISOString());
-    });
-    return;
-  }
-  setAiDuePickerOpen(true);
-};
+  const handleAiDeadlinePress = () => {
+    if (Platform.OS === 'android') {
+      openAndroidDateTime(aiDueDate ?? new Date(), (d) => {
+        setAiDueDate(d);
+        setDueAt(d.toISOString());
+      });
+      return;
+    }
+    setAiDuePickerOpen(true);
+  };
 
   const handleLegacyDueChange = (_event: any, selected?: Date) => {
     setLegacyDuePickerOpen(false);
@@ -1199,7 +1258,8 @@ const handleAiDeadlinePress = () => {
         };
 
         const res: any = await uploadAsset(backendUrl, authToken, file, 'doc');
-        attachmentUrl = typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || null;
+        attachmentUrl =
+          typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || null;
       }
 
       await submitOrgLegacyAssignment(backendUrl, authToken, org.id, (submitAssignment as any).id, {
@@ -1221,13 +1281,23 @@ const handleAiDeadlinePress = () => {
     } finally {
       setSubmitUploading(false);
     }
-  }, [submitAssignment, submitText, submitFileAsset, backendUrl, authToken, org?.id, loadLearnerAssignments]);
+  }, [
+    submitAssignment,
+    submitText,
+    submitFileAsset,
+    backendUrl,
+    authToken,
+    org?.id,
+    loadLearnerAssignments,
+  ]);
 
   /* computed */
   const seatPct = Math.min(100, Math.round(((seatsUsed || 0) / seatsMax) * 100));
   const nearLimit = seatPct >= 90;
 
-  const visibleTabs: TabKey[] = canBrandingRole ? ['branding', 'assign', 'analytics'] : ['assign', 'analytics'];
+  const visibleTabs: TabKey[] = canBrandingRole
+    ? ['branding', 'assign', 'analytics']
+    : ['assign', 'analytics'];
 
   // Learner: legacy-only filter (same as your existing logic)
   const legacyAssignments = useMemo(
@@ -1258,7 +1328,11 @@ const handleAiDeadlinePress = () => {
       const submissionCount = a.submission_count ?? a.submissions_count ?? a.answers_count ?? 0;
       const hasFlag = a.has_submission ?? a.hasSubmitted ?? false;
       const submissionTs =
-        a.latest_submission_at || a.submitted_at || a.last_submitted_at || a.my_submission_created_at || null;
+        a.latest_submission_at ||
+        a.submitted_at ||
+        a.last_submitted_at ||
+        a.my_submission_created_at ||
+        null;
 
       const hasSubmitted = Boolean(hasFlag) || Number(submissionCount) > 0 || Boolean(submissionTs);
       if (hasSubmitted) submitted.push(a);
@@ -1269,10 +1343,7 @@ const handleAiDeadlinePress = () => {
   }, [legacyAssignments]);
 
   const instructorEmails = useMemo(
-    () =>
-      instructors
-        .map((u) => (u.email || '').trim())
-        .filter(Boolean),
+    () => instructors.map((u) => (u.email || '').trim()).filter(Boolean),
     [instructors]
   );
 
@@ -1321,7 +1392,9 @@ const handleAiDeadlinePress = () => {
 
   const shareViaWhatsApp = useCallback(async () => {
     if (!inviteLink) return;
-    const text = encodeURIComponent(`Please share this course invite with your learners:\n\n${inviteLink}`);
+    const text = encodeURIComponent(
+      `Please share this course invite with your learners:\n\n${inviteLink}`
+    );
     const waUrl = `https://wa.me/?text=${text}`;
     try {
       await Linking.openURL(waUrl);
@@ -1339,8 +1412,12 @@ const handleAiDeadlinePress = () => {
 
   const renderLearnerAssignmentRow = (a: OrgAssignmentRow, submitted: boolean) => {
     const key = String((a as any).id ?? (a as any).invite_code ?? Math.random());
-    const dueLabel = (a as any).due_at ? new Date((a as any).due_at).toLocaleString() : 'No due date';
-    const createdLabel = (a as any).created_at ? new Date((a as any).created_at).toLocaleString() : null;
+    const dueLabel = (a as any).due_at
+      ? new Date((a as any).due_at).toLocaleString()
+      : 'No due date';
+    const createdLabel = (a as any).created_at
+      ? new Date((a as any).created_at).toLocaleString()
+      : null;
 
     const attachmentUrl: string | null =
       (a as any).attachment_url ||
@@ -1352,13 +1429,20 @@ const handleAiDeadlinePress = () => {
       null;
 
     return (
-      <View key={key} style={tw`mt-2 p-3 rounded-xl bg-[#f8fbff] dark:bg-[#111b28] border border-[#cedbe8] dark:border-white/10`}>
-        <Text style={tw`text-[#0d141c] dark:text-white font-semibold`}>{(a as any).title || 'Untitled assignment'}</Text>
+      <View
+        key={key}
+        style={tw`mt-2 p-3 rounded-xl bg-[#f8fbff] dark:bg-[#111b28] border border-[#cedbe8] dark:border-white/10`}
+      >
+        <Text style={tw`text-[#0d141c] dark:text-white font-semibold`}>
+          {(a as any).title || 'Untitled assignment'}
+        </Text>
 
         <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/80`}>Due: {dueLabel}</Text>
 
         {createdLabel && (
-          <Text style={tw`mt-1 text-[11px] text-[#9CA3AF] dark:text-white/60`}>Assigned: {createdLabel}</Text>
+          <Text style={tw`mt-1 text-[11px] text-[#9CA3AF] dark:text-white/60`}>
+            Assigned: {createdLabel}
+          </Text>
         )}
 
         {attachmentUrl && (
@@ -1389,13 +1473,19 @@ const handleAiDeadlinePress = () => {
 
   // submissions view card
   const renderSubmissionRow = (row: any, idx: number) => {
-    const name = row?.name || row?.student_name || row?.email || row?.student_email || `Submission #${idx + 1}`;
+    const name =
+      row?.name ||
+      row?.student_name ||
+      row?.email ||
+      row?.student_email ||
+      `Submission #${idx + 1}`;
     const submittedAt = row?.created_at || row?.submitted_at || row?.submittedAt || null;
     const score = row?.score ?? row?.grade ?? row?.mark ?? null;
     const pass = row?.passed ?? row?.is_pass ?? row?.isPassed ?? null;
 
     const answerText = row?.answer_text ?? row?.answerText ?? '';
-    const attachmentUrl = row?.attachment_url ?? row?.attachmentUrl ?? row?.file_url ?? row?.fileUrl ?? null;
+    const attachmentUrl =
+      row?.attachment_url ?? row?.attachmentUrl ?? row?.file_url ?? row?.fileUrl ?? null;
 
     return (
       <View
@@ -1412,7 +1502,8 @@ const handleAiDeadlinePress = () => {
         ) : null}
 
         <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70 mt-1`}>
-          Score: {score == null ? '—' : `${Math.round(Number(score))}%`} {pass == null ? '' : pass ? '• PASS' : '• FAIL'}
+          Score: {score == null ? '—' : `${Math.round(Number(score))}%`}{' '}
+          {pass == null ? '' : pass ? '• PASS' : '• FAIL'}
         </Text>
 
         {!!answerText && (
@@ -1451,15 +1542,19 @@ const handleAiDeadlinePress = () => {
                 </Text>
               </View>
 
-              <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}>
+              <View
+                style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
+              >
                 <View style={tw`flex-row items-center justify-between`}>
                   <View style={tw`flex-1 pr-2`}>
                     <Text style={tw`text-[#0d141c] dark:text-white font-semibold`}>
-                      {(submissionsAssignment?.title ?? submissionsAssignment?.name) || 'Assignment'}
+                      {(submissionsAssignment?.title ?? submissionsAssignment?.name) ||
+                        'Assignment'}
                     </Text>
                     {!!submissionsAssignment?.class_label && (
                       <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70 mt-1`}>
-                        Class: {submissionsAssignment.class_label} • Subject: {submissionsAssignment.subject_key || '—'}
+                        Class: {submissionsAssignment.class_label} • Subject:{' '}
+                        {submissionsAssignment.subject_key || '—'}
                       </Text>
                     )}
                   </View>
@@ -1467,7 +1562,11 @@ const handleAiDeadlinePress = () => {
                   <TouchableOpacity
                     onPress={() => {
                       // back to assignments tab
-                      navigation.setParams?.({ view: undefined, assignmentId: undefined, tab: 'assign' });
+                      navigation.setParams?.({
+                        view: undefined,
+                        assignmentId: undefined,
+                        tab: 'assign',
+                      });
                       setTab('assign');
                     }}
                     style={tw`px-3 py-1.5 rounded-lg bg-[#e7edf4] dark:bg-white/10`}
@@ -1490,9 +1589,13 @@ const handleAiDeadlinePress = () => {
                     <ActivityIndicator color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'} />
                   </View>
                 ) : submissionsError ? (
-                  <Text style={tw`mt-3 text-sm text-red-600 dark:text-red-300`}>{submissionsError}</Text>
+                  <Text style={tw`mt-3 text-sm text-red-600 dark:text-red-300`}>
+                    {submissionsError}
+                  </Text>
                 ) : submissionsRows.length === 0 ? (
-                  <Text style={tw`mt-3 text-sm text-[#49739c] dark:text-white/70`}>No submissions yet.</Text>
+                  <Text style={tw`mt-3 text-sm text-[#49739c] dark:text-white/70`}>
+                    No submissions yet.
+                  </Text>
                 ) : (
                   <View style={tw`mt-3`}>
                     {submissionsRows.map((r, idx) => renderSubmissionRow(r, idx))}
@@ -1510,12 +1613,14 @@ const handleAiDeadlinePress = () => {
                   Assignments shared with you
                 </Text>
                 <Text style={tw`text-[#49739c] dark:text-white/70 text-xs mt-1`}>
-                  These file-based assignments were shared by your teachers. Download the attachment, follow the instructions, and submit your work.
+                  These file-based assignments were shared by your teachers. Download the
+                  attachment, follow the instructions, and submit your work.
                 </Text>
 
                 {!!learnerClassFromRoute && (
                   <Text style={tw`text-[#49739c] dark:text-white/70 text-[11px] mt-1`}>
-                    You&apos;re viewing work for <Text style={tw`font-semibold`}>{learnerClassFromRoute}</Text>
+                    You&apos;re viewing work for{' '}
+                    <Text style={tw`font-semibold`}>{learnerClassFromRoute}</Text>
                     {learnerSubjectFromRoute ? (
                       <>
                         {' '}
@@ -1527,10 +1632,14 @@ const handleAiDeadlinePress = () => {
                 )}
               </View>
 
-              <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}>
+              <View
+                style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
+              >
                 <View style={tw`flex-row justify-between items-center mb-2`}>
                   <View style={tw`flex-1 pr-2`}>
-                    <Text style={tw`text-[#0d141c] dark:text-white text-base font-semibold`}>Your assignments</Text>
+                    <Text style={tw`text-[#0d141c] dark:text-white text-base font-semibold`}>
+                      Your assignments
+                    </Text>
                     <Text style={tw`text-[#6b7280] dark:text-white/70 text-[11px] mt-1`}>
                       New work appears here automatically when a teacher targets your class/subject.
                     </Text>
@@ -1542,7 +1651,9 @@ const handleAiDeadlinePress = () => {
 
                 {/* Submitted */}
                 <View style={tw`mt-2`}>
-                  <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>Submitted assignments</Text>
+                  <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>
+                    Submitted assignments
+                  </Text>
                   {submittedAssignments.length === 0 && !learnerAssignmentsLoading ? (
                     <Text style={tw`mt-1 text-[11px] text-[#6b7280] dark:text-white/70`}>
                       You haven&apos;t submitted any legacy (file-based) assignments yet.
@@ -1554,10 +1665,13 @@ const handleAiDeadlinePress = () => {
 
                 {/* Pending */}
                 <View style={tw`mt-4`}>
-                  <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>Assignments to work on</Text>
+                  <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>
+                    Assignments to work on
+                  </Text>
                   {pendingAssignments.length === 0 && !learnerAssignmentsLoading ? (
                     <Text style={tw`mt-1 text-[11px] text-[#6b7280] dark:text-white/70`}>
-                      You don&apos;t have any pending legacy (file-based) assignments for this class or subject yet.
+                      You don&apos;t have any pending legacy (file-based) assignments for this class
+                      or subject yet.
                     </Text>
                   ) : (
                     pendingAssignments.map((a) => renderLearnerAssignmentRow(a, false))
@@ -1566,7 +1680,8 @@ const handleAiDeadlinePress = () => {
 
                 {!!learnerStudentId && (
                   <Text style={tw`mt-4 text-[11px] text-[#6b7280] dark:text-white/70`}>
-                    Learner ID in this portal: <Text style={tw`font-mono`}>{learnerStudentId}</Text>.
+                    Learner ID in this portal: <Text style={tw`font-mono`}>{learnerStudentId}</Text>
+                    .
                   </Text>
                 )}
               </View>
@@ -1596,7 +1711,9 @@ const handleAiDeadlinePress = () => {
                       onPress={() => setTab(t)}
                       style={tw`mr-2 px-3 py-1.5 rounded-xl ${active ? 'bg-indigo-600' : 'bg-[#e7edf4] dark:bg-white/10'}`}
                     >
-                      <Text style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-sm capitalize`}>
+                      <Text
+                        style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-sm capitalize`}
+                      >
                         {t}
                       </Text>
                     </TouchableOpacity>
@@ -1605,7 +1722,9 @@ const handleAiDeadlinePress = () => {
               </View>
 
               {/* plan summary */}
-              <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-3 mb-6`}>
+              <View
+                style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-3 mb-6`}
+              >
                 <View style={tw`flex-row flex-wrap items-center justify-between`}>
                   <View style={tw`flex-row flex-wrap items-center`}>
                     <Pill>
@@ -1631,10 +1750,21 @@ const handleAiDeadlinePress = () => {
 
                   {!isInstructor && (
                     <View style={tw`flex-row items-center mt-2`}>
-                      <View style={tw`w-32 h-2 rounded bg-[#e7edf4] dark:bg-white/10 overflow-hidden mr-2`}>
-                        <View style={[tw`${nearLimit ? 'bg-red-500' : 'bg-emerald-500'}`, { height: '100%', width: `${seatPct}%` }]} />
+                      <View
+                        style={tw`w-32 h-2 rounded bg-[#e7edf4] dark:bg-white/10 overflow-hidden mr-2`}
+                      >
+                        <View
+                          style={[
+                            tw`${nearLimit ? 'bg-red-500' : 'bg-emerald-500'}`,
+                            { height: '100%', width: `${seatPct}%` },
+                          ]}
+                        />
                       </View>
-                      {nearLimit && <Text style={tw`text-red-600 dark:text-red-300 text-xs`}>Near seat limit</Text>}
+                      {nearLimit && (
+                        <Text style={tw`text-red-600 dark:text-red-300 text-xs`}>
+                          Near seat limit
+                        </Text>
+                      )}
                     </View>
                   )}
                 </View>
@@ -1653,10 +1783,18 @@ const handleAiDeadlinePress = () => {
                             else if (org?.id && authToken) {
                               upgradeOrgTier(backendUrl, authToken, org.id, next)
                                 .then((j) => {
-                                  setOrg((prev: Org | null) => ({ ...((prev ?? {}) as Org), ...(j as any) }));
-                                  Alert.alert('Plan updated', `Changed plan to ${next.toUpperCase()}.`);
+                                  setOrg((prev: Org | null) => ({
+                                    ...((prev ?? {}) as Org),
+                                    ...(j as any),
+                                  }));
+                                  Alert.alert(
+                                    'Plan updated',
+                                    `Changed plan to ${next.toUpperCase()}.`
+                                  );
                                 })
-                                .catch(() => Alert.alert('Failed', 'Plan change failed. Please try again.'));
+                                .catch(() =>
+                                  Alert.alert('Failed', 'Plan change failed. Please try again.')
+                                );
                             }
                           }}
                           style={tw`mr-2 mt-2 px-2 py-1 rounded-lg bg-indigo-600`}
@@ -1669,7 +1807,10 @@ const handleAiDeadlinePress = () => {
 
                 <View style={tw`flex-row flex-wrap mt-2`}>
                   {ORG_TIERS[tier].features.map((f) => (
-                    <View key={f} style={tw`mr-1 mt-1 px-2 py-0.5 rounded-full bg-[#e7edf4] dark:bg-white/10`}>
+                    <View
+                      key={f}
+                      style={tw`mr-1 mt-1 px-2 py-0.5 rounded-full bg-[#e7edf4] dark:bg-white/10`}
+                    >
                       <Text style={tw`text-[#0d141c] dark:text-white/90 text-[11px]`}>{f}</Text>
                     </View>
                   ))}
@@ -1677,17 +1818,24 @@ const handleAiDeadlinePress = () => {
 
                 {isInstructor && (
                   <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/70`}>
-                    Your institution owner/admin manages branding and subscriptions. As an instructor you can create assignments and view analytics here.
+                    Your institution owner/admin manages branding and subscriptions. As an
+                    instructor you can create assignments and view analytics here.
                   </Text>
                 )}
               </View>
 
               {/* BRANDING */}
               {tab === 'branding' && canBrandingRole && (
-                <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4 mb-6`}>
-                  <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold mb-3`}>Branding</Text>
+                <View
+                  style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4 mb-6`}
+                >
+                  <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold mb-3`}>
+                    Branding
+                  </Text>
 
-                  <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>Organization name</Text>
+                  <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>
+                    Organization name
+                  </Text>
                   <TextInput
                     value={form.name}
                     onChangeText={(v) => setForm((f: any) => ({ ...f, name: v }))}
@@ -1697,34 +1845,56 @@ const handleAiDeadlinePress = () => {
                   />
 
                   {/* LOGO & SIGNATURES */}
-                  <View style={tw`mt-4 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-[#f8fbff] dark:bg-white/5`}>
-                    <TouchableOpacity onPress={() => setShowLogoSection((v) => !v)} style={tw`flex-row items-center justify-between px-3 py-2`}>
+                  <View
+                    style={tw`mt-4 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-[#f8fbff] dark:bg-white/5`}
+                  >
+                    <TouchableOpacity
+                      onPress={() => setShowLogoSection((v) => !v)}
+                      style={tw`flex-row items-center justify-between px-3 py-2`}
+                    >
                       <View>
-                        <Text style={tw`text-[#0d141c] dark:text-white text-sm font-semibold`}>Logo & Signatures</Text>
-                        <Text style={tw`text-[#49739c] dark:text-white/70 text-[11px]`}>Upload logo and signatures for certificates and reports.</Text>
+                        <Text style={tw`text-[#0d141c] dark:text-white text-sm font-semibold`}>
+                          Logo & Signatures
+                        </Text>
+                        <Text style={tw`text-[#49739c] dark:text-white/70 text-[11px]`}>
+                          Upload logo and signatures for certificates and reports.
+                        </Text>
                       </View>
-                      <Text style={tw`text-[#49739c] dark:text-white/70 text-lg`}>{showLogoSection ? '−' : '+'}</Text>
+                      <Text style={tw`text-[#49739c] dark:text-white/70 text-lg`}>
+                        {showLogoSection ? '−' : '+'}
+                      </Text>
                     </TouchableOpacity>
 
                     {showLogoSection && (
                       <View style={tw`px-3 pb-3`}>
                         {/* logo */}
-                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-xs`}>Logo image</Text>
+                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-xs`}>
+                          Logo image
+                        </Text>
                         <View style={tw`flex-row items-center mt-1`}>
                           <TouchableOpacity
                             onPress={() => handleUpload('logo_url')}
                             disabled={uploadingLogo}
                             style={tw`px-3 py-2 rounded-xl bg-indigo-600 mr-2 ${uploadingLogo ? 'opacity-60' : ''}`}
                           >
-                            {uploadingLogo ? <ActivityIndicator color="#fff" /> : <Text style={tw`text-white text-xs`}>Upload logo</Text>}
+                            {uploadingLogo ? (
+                              <ActivityIndicator color="#fff" />
+                            ) : (
+                              <Text style={tw`text-white text-xs`}>Upload logo</Text>
+                            )}
                           </TouchableOpacity>
 
-                          <Text numberOfLines={1} style={tw`flex-1 text-[11px] ${form.logo_url ? 'text-[#49739c] dark:text-white/70' : 'text-[#9CA3AF] dark:text-white/50'}`}>
+                          <Text
+                            numberOfLines={1}
+                            style={tw`flex-1 text-[11px] ${form.logo_url ? 'text-[#49739c] dark:text-white/70' : 'text-[#9CA3AF] dark:text-white/50'}`}
+                          >
                             {form.logo_url || 'No logo uploaded yet'}
                           </Text>
                         </View>
 
-                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-[11px]`}>Or paste logo URL</Text>
+                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-[11px]`}>
+                          Or paste logo URL
+                        </Text>
                         <TextInput
                           value={form.logo_url}
                           onChangeText={(v) => setForm((f: any) => ({ ...f, logo_url: v }))}
@@ -1735,22 +1905,33 @@ const handleAiDeadlinePress = () => {
 
                         {/* principal signature */}
                         <View style={tw`h-3`} />
-                        <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>Principal / Director signature image</Text>
+                        <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>
+                          Principal / Director signature image
+                        </Text>
                         <View style={tw`flex-row items-center mt-1`}>
                           <TouchableOpacity
                             onPress={() => handleUpload('signature_url')}
                             disabled={uploadingSignature}
                             style={tw`px-3 py-2 rounded-xl bg-indigo-600 mr-2 ${uploadingSignature ? 'opacity-60' : ''}`}
                           >
-                            {uploadingSignature ? <ActivityIndicator color="#fff" /> : <Text style={tw`text-white text-xs`}>Upload signature</Text>}
+                            {uploadingSignature ? (
+                              <ActivityIndicator color="#fff" />
+                            ) : (
+                              <Text style={tw`text-white text-xs`}>Upload signature</Text>
+                            )}
                           </TouchableOpacity>
 
-                          <Text numberOfLines={1} style={tw`flex-1 text-[11px] ${form.signature_url ? 'text-[#49739c] dark:text-white/70' : 'text-[#9CA3AF] dark:text-white/50'}`}>
+                          <Text
+                            numberOfLines={1}
+                            style={tw`flex-1 text-[11px] ${form.signature_url ? 'text-[#49739c] dark:text-white/70' : 'text-[#9CA3AF] dark:text-white/50'}`}
+                          >
                             {form.signature_url || 'No signature uploaded yet'}
                           </Text>
                         </View>
 
-                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-[11px]`}>Or paste signature URL</Text>
+                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-[11px]`}>
+                          Or paste signature URL
+                        </Text>
                         <TextInput
                           value={form.signature_url}
                           onChangeText={(v) => setForm((f: any) => ({ ...f, signature_url: v }))}
@@ -1761,25 +1942,41 @@ const handleAiDeadlinePress = () => {
 
                         {/* instructor signature */}
                         <View style={tw`h-3`} />
-                        <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>Instructor signature image (optional)</Text>
+                        <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>
+                          Instructor signature image (optional)
+                        </Text>
                         <View style={tw`flex-row items-center mt-1`}>
                           <TouchableOpacity
                             onPress={() => handleUpload('instructor_signature_url')}
                             disabled={uploadingInstructorSignature}
                             style={tw`px-3 py-2 rounded-xl bg-indigo-600 mr-2 ${uploadingInstructorSignature ? 'opacity-60' : ''}`}
                           >
-                            {uploadingInstructorSignature ? <ActivityIndicator color="#fff" /> : <Text style={tw`text-white text-xs`}>Upload instructor signature</Text>}
+                            {uploadingInstructorSignature ? (
+                              <ActivityIndicator color="#fff" />
+                            ) : (
+                              <Text style={tw`text-white text-xs`}>
+                                Upload instructor signature
+                              </Text>
+                            )}
                           </TouchableOpacity>
 
-                          <Text numberOfLines={1} style={tw`flex-1 text-[11px] ${form.instructor_signature_url ? 'text-[#49739c] dark:text-white/70' : 'text-[#9CA3AF] dark:text-white/50'}`}>
-                            {form.instructor_signature_url || 'No instructor signature uploaded yet'}
+                          <Text
+                            numberOfLines={1}
+                            style={tw`flex-1 text-[11px] ${form.instructor_signature_url ? 'text-[#49739c] dark:text-white/70' : 'text-[#9CA3AF] dark:text-white/50'}`}
+                          >
+                            {form.instructor_signature_url ||
+                              'No instructor signature uploaded yet'}
                           </Text>
                         </View>
 
-                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-[11px]`}>Or paste instructor signature URL</Text>
+                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-[11px]`}>
+                          Or paste instructor signature URL
+                        </Text>
                         <TextInput
                           value={form.instructor_signature_url}
-                          onChangeText={(v) => setForm((f: any) => ({ ...f, instructor_signature_url: v }))}
+                          onChangeText={(v) =>
+                            setForm((f: any) => ({ ...f, instructor_signature_url: v }))
+                          }
                           placeholder="https://…/instructor-signature.png"
                           placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
                           style={tw`mt-1 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 rounded px-3 py-2 text-[#0d141c] dark:text-white text-xs`}
@@ -1789,18 +1986,31 @@ const handleAiDeadlinePress = () => {
                   </View>
 
                   {/* SSO & access */}
-                  <View style={tw`mt-4 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-[#f8fbff] dark:bg-white/5`}>
-                    <TouchableOpacity onPress={() => setShowSsoSection((v) => !v)} style={tw`flex-row items-center justify-between px-3 py-2`}>
+                  <View
+                    style={tw`mt-4 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-[#f8fbff] dark:bg-white/5`}
+                  >
+                    <TouchableOpacity
+                      onPress={() => setShowSsoSection((v) => !v)}
+                      style={tw`flex-row items-center justify-between px-3 py-2`}
+                    >
                       <View>
-                        <Text style={tw`text-[#0d141c] dark:text-white text-sm font-semibold`}>SSO & Access</Text>
-                        <Text style={tw`text-[#49739c] dark:text-white/70 text-[11px]`}>Restrict enrollments to email domains and receive webhooks.</Text>
+                        <Text style={tw`text-[#0d141c] dark:text-white text-sm font-semibold`}>
+                          SSO & Access
+                        </Text>
+                        <Text style={tw`text-[#49739c] dark:text-white/70 text-[11px]`}>
+                          Restrict enrollments to email domains and receive webhooks.
+                        </Text>
                       </View>
-                      <Text style={tw`text-[#49739c] dark:text-white/70 text-lg`}>{showSsoSection ? '−' : '+'}</Text>
+                      <Text style={tw`text-[#49739c] dark:text-white/70 text-lg`}>
+                        {showSsoSection ? '−' : '+'}
+                      </Text>
                     </TouchableOpacity>
 
                     {showSsoSection && (
                       <View style={tw`px-3 pb-3`}>
-                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-xs`}>Allowed email domains (comma separated)</Text>
+                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-xs`}>
+                          Allowed email domains (comma separated)
+                        </Text>
                         <TextInput
                           editable={canSSO}
                           value={form.email_domain ?? ''}
@@ -1817,7 +2027,9 @@ const handleAiDeadlinePress = () => {
 
                         <View style={tw`flex-row items-center mt-4 justify-between`}>
                           <View>
-                            <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>Webhook for completions</Text>
+                            <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>
+                              Webhook for completions
+                            </Text>
                             <Text style={tw`text-[#6b7280] dark:text-white/60 text-[11px]`}>
                               Receive events when learners complete quizzes or certificates.
                             </Text>
@@ -1837,7 +2049,9 @@ const handleAiDeadlinePress = () => {
                           />
                         </View>
 
-                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-xs`}>Webhook URL (HTTPS)</Text>
+                        <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-xs`}>
+                          Webhook URL (HTTPS)
+                        </Text>
                         <TextInput
                           editable={canWebhooks}
                           value={form.webhook_url ?? ''}
@@ -1856,29 +2070,50 @@ const handleAiDeadlinePress = () => {
                   </View>
 
                   {/* instructors */}
-                  <View style={tw`mt-4 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-[#f8fbff] dark:bg-white/5`}>
-                    <TouchableOpacity onPress={() => setShowInstructorsSection((v) => !v)} style={tw`flex-row items-center justify-between px-3 py-2`}>
+                  <View
+                    style={tw`mt-4 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-[#f8fbff] dark:bg-white/5`}
+                  >
+                    <TouchableOpacity
+                      onPress={() => setShowInstructorsSection((v) => !v)}
+                      style={tw`flex-row items-center justify-between px-3 py-2`}
+                    >
                       <View>
-                        <Text style={tw`text-[#0d141c] dark:text-white text-sm font-semibold`}>Instructors & admins</Text>
-                        <Text style={tw`text-[#49739c] dark:text-white/70 text-[11px]`}>View who can assign courses and manage reports.</Text>
+                        <Text style={tw`text-[#0d141c] dark:text-white text-sm font-semibold`}>
+                          Instructors & admins
+                        </Text>
+                        <Text style={tw`text-[#49739c] dark:text-white/70 text-[11px]`}>
+                          View who can assign courses and manage reports.
+                        </Text>
                       </View>
-                      <Text style={tw`text-[#49739c] dark:text-white/70 text-lg`}>{showInstructorsSection ? '−' : '+'}</Text>
+                      <Text style={tw`text-[#49739c] dark:text-white/70 text-lg`}>
+                        {showInstructorsSection ? '−' : '+'}
+                      </Text>
                     </TouchableOpacity>
 
                     {showInstructorsSection && (
                       <View style={tw`px-3 pb-3`}>
                         {instructors.length === 0 ? (
                           <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-xs`}>
-                            No instructors configured yet. Use the web dashboard → Institution → E-Learning → Staff.
+                            No instructors configured yet. Use the web dashboard → Institution →
+                            E-Learning → Staff.
                           </Text>
                         ) : (
                           <>
                             {instructors.map((u) => (
-                              <View key={u.user_id} style={tw`mt-2 p-2 rounded-xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
-                                <Text style={tw`text-[#0d141c] dark:text-white text-sm font-semibold`}>
+                              <View
+                                key={u.user_id}
+                                style={tw`mt-2 p-2 rounded-xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+                              >
+                                <Text
+                                  style={tw`text-[#0d141c] dark:text-white text-sm font-semibold`}
+                                >
                                   {u.name || u.email || `User #${u.user_id}`}
                                 </Text>
-                                {!!u.email && <Text style={tw`text-[#49739c] dark:text-white/60 text-[11px]`}>{u.email}</Text>}
+                                {!!u.email && (
+                                  <Text style={tw`text-[#49739c] dark:text-white/60 text-[11px]`}>
+                                    {u.email}
+                                  </Text>
+                                )}
                                 <Text style={tw`mt-1 text-[#49739c] dark:text-white/80 text-xs`}>
                                   Role: {u.role ? String(u.role).toUpperCase() : 'INSTRUCTOR'}
                                 </Text>
@@ -1892,7 +2127,9 @@ const handleAiDeadlinePress = () => {
 
                   {/* certificate + defaults */}
                   <View style={tw`h-3`} />
-                  <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>Certificate title</Text>
+                  <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>
+                    Certificate title
+                  </Text>
                   <TextInput
                     value={form.certificate_title}
                     onChangeText={(v) => setForm((f: any) => ({ ...f, certificate_title: v }))}
@@ -1902,22 +2139,30 @@ const handleAiDeadlinePress = () => {
                   />
 
                   <View style={tw`h-3`} />
-                  <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>Default pass mark (%)</Text>
+                  <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>
+                    Default pass mark (%)
+                  </Text>
                   <TextInput
                     keyboardType="numeric"
                     value={String(form.default_pass_mark ?? '')}
-                    onChangeText={(v) => setForm((f: any) => ({ ...f, default_pass_mark: Number(v) || 0 }))}
+                    onChangeText={(v) =>
+                      setForm((f: any) => ({ ...f, default_pass_mark: Number(v) || 0 }))
+                    }
                     placeholder="70"
                     placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
                     style={tw`mt-1 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 rounded px-3 py-2 text-[#0d141c] dark:text-white`}
                   />
 
                   <View style={tw`h-3`} />
-                  <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>Quiz time limit (seconds)</Text>
+                  <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>
+                    Quiz time limit (seconds)
+                  </Text>
                   <TextInput
                     keyboardType="numeric"
                     value={String(form.quiz_time_limit_s ?? '')}
-                    onChangeText={(v) => setForm((f: any) => ({ ...f, quiz_time_limit_s: Number(v) || 0 }))}
+                    onChangeText={(v) =>
+                      setForm((f: any) => ({ ...f, quiz_time_limit_s: Number(v) || 0 }))
+                    }
                     placeholder="900"
                     placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
                     style={tw`mt-1 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 rounded px-3 py-2 text-[#0d141c] dark:text-white`}
@@ -1935,7 +2180,9 @@ const handleAiDeadlinePress = () => {
                   />
 
                   <View style={tw`h-3`} />
-                  <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>Address line 2 (optional)</Text>
+                  <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>
+                    Address line 2 (optional)
+                  </Text>
                   <TextInput
                     value={form.address_line2 ?? ''}
                     onChangeText={(v) => setForm((f: any) => ({ ...f, address_line2: v }))}
@@ -1976,7 +2223,10 @@ const handleAiDeadlinePress = () => {
 
                   {/* actions */}
                   <View style={tw`flex-row mt-4 flex-wrap`}>
-                    <TouchableOpacity onPress={saveBranding} style={tw`px-4 py-2 rounded-xl bg-emerald-600`}>
+                    <TouchableOpacity
+                      onPress={saveBranding}
+                      style={tw`px-4 py-2 rounded-xl bg-emerald-600`}
+                    >
                       <Text style={tw`text-white font-semibold`}>Save branding</Text>
                     </TouchableOpacity>
 
@@ -1986,7 +2236,12 @@ const handleAiDeadlinePress = () => {
                           if (!org?.id || !authToken) return;
                           try {
                             const resp = await sendOrgReportTest(backendUrl, authToken, org.id);
-                            Alert.alert((resp as any)?.ok ? 'Sent' : 'Failed', (resp as any)?.ok ? 'Test report queued to org admins.' : 'Failed to send report.');
+                            Alert.alert(
+                              (resp as any)?.ok ? 'Sent' : 'Failed',
+                              (resp as any)?.ok
+                                ? 'Test report queued to org admins.'
+                                : 'Failed to send report.'
+                            );
                           } catch {
                             Alert.alert('Error', 'Failed to send report.');
                           }
@@ -2002,35 +2257,53 @@ const handleAiDeadlinePress = () => {
 
               {/* ASSIGN */}
               {tab === 'assign' && (
-                <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}>
-                  <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold mb-3`}>Assignments</Text>
+                <View
+                  style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
+                >
+                  <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold mb-3`}>
+                    Assignments
+                  </Text>
 
                   {/* Scope hint */}
                   {(assignClassLabel || assignSubjectKey) && (
-                    <View style={tw`mb-3 rounded-xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10 px-3 py-2`}>
+                    <View
+                      style={tw`mb-3 rounded-xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10 px-3 py-2`}
+                    >
                       <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
                         This work is scoped to{' '}
-                        {assignClassLabel ? <Text style={tw`font-semibold`}>{assignClassLabel}</Text> : null}
+                        {assignClassLabel ? (
+                          <Text style={tw`font-semibold`}>{assignClassLabel}</Text>
+                        ) : null}
                         {assignClassLabel && assignSubjectKey ? ' · ' : ''}
-                        {assignSubjectKey ? <Text style={tw`font-semibold`}>{assignSubjectKey}</Text> : null}.
+                        {assignSubjectKey ? (
+                          <Text style={tw`font-semibold`}>{assignSubjectKey}</Text>
+                        ) : null}
+                        .
                       </Text>
                     </View>
                   )}
 
                   {/* CLASSIC */}
-                  <View style={tw`rounded-2xl bg-[#f8fbff] dark:bg-[#111b28] border border-[#cedbe8] dark:border-white/10 p-3 mb-4`}>
-                    <Text style={tw`text-[11px] uppercase tracking-wide text-[#6b7280] dark:text-white/60`}>
+                  <View
+                    style={tw`rounded-2xl bg-[#f8fbff] dark:bg-[#111b28] border border-[#cedbe8] dark:border-white/10 p-3 mb-4`}
+                  >
+                    <Text
+                      style={tw`text-[11px] uppercase tracking-wide text-[#6b7280] dark:text-white/60`}
+                    >
                       Classic assignment
                     </Text>
                     <Text style={tw`mt-1 text-sm font-semibold text-[#0d141c] dark:text-white`}>
                       Attach a worksheet or project brief
                     </Text>
                     <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/70`}>
-                      Learners download your file, complete the work, then submit their own file or typed answer.
+                      Learners download your file, complete the work, then submit their own file or
+                      typed answer.
                     </Text>
 
                     <View style={tw`mt-3`}>
-                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Class / Grade</Text>
+                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                        Class / Grade
+                      </Text>
                       <TextInput
                         style={tw`mt-1 px-3 py-2 rounded bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white text-xs`}
                         placeholder="e.g. Grade 7 Blue"
@@ -2051,7 +2324,9 @@ const handleAiDeadlinePress = () => {
                     </View>
 
                     <View style={tw`mt-3`}>
-                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Assignment title</Text>
+                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                        Assignment title
+                      </Text>
                       <TextInput
                         style={tw`mt-1 px-3 py-2 rounded bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white text-xs`}
                         placeholder="Term 2 Algebra worksheet"
@@ -2061,7 +2336,9 @@ const handleAiDeadlinePress = () => {
                       />
 
                       <View style={tw`h-3`} />
-                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Deadline (optional)</Text>
+                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                        Deadline (optional)
+                      </Text>
                       <View style={tw`mt-1 flex-row items-center`}>
                         <TouchableOpacity
                           onPress={handleLegacyDeadlinePress}
@@ -2076,13 +2353,17 @@ const handleAiDeadlinePress = () => {
                           style={tw`ml-2 flex-1 text-[11px] ${legacyDueAt ? 'text-[#49739c] dark:text-white/70' : 'text-[#9CA3AF] dark:text-white/50'}`}
                           numberOfLines={2}
                         >
-                          {legacyDueAt ? `${new Date(legacyDueAt).toLocaleString()} (${legacyDueAt})` : 'No deadline set'}
+                          {legacyDueAt
+                            ? `${new Date(legacyDueAt).toLocaleString()} (${legacyDueAt})`
+                            : 'No deadline set'}
                         </Text>
                       </View>
                     </View>
 
                     <View style={tw`mt-3`}>
-                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Instructions</Text>
+                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                        Instructions
+                      </Text>
                       <TextInput
                         multiline
                         textAlignVertical="top"
@@ -2095,7 +2376,9 @@ const handleAiDeadlinePress = () => {
                     </View>
 
                     <View style={tw`mt-3`}>
-                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Attach assignment file (PDF, DOC, slides…)</Text>
+                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                        Attach assignment file (PDF, DOC, slides…)
+                      </Text>
                       <View style={tw`mt-1 flex-row items-center`}>
                         <TouchableOpacity
                           onPress={handlePickLegacyAttachment}
@@ -2103,7 +2386,9 @@ const handleAiDeadlinePress = () => {
                           style={tw`px-3 py-2 rounded bg-[#e7edf4] dark:bg-white/10`}
                         >
                           {legacyUploadingAttachment ? (
-                            <ActivityIndicator color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'} />
+                            <ActivityIndicator
+                              color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'}
+                            />
                           ) : (
                             <Text style={tw`text-xs text-[#0d141c] dark:text-white`}>
                               {legacyAttachmentLabel ? 'Change attachment' : 'Pick attachment'}
@@ -2134,25 +2419,37 @@ const handleAiDeadlinePress = () => {
                   </View>
 
                   {/* AI */}
-                  <View style={tw`rounded-2xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10 p-3`}>
-                    <Text style={tw`text-[11px] uppercase tracking-wide text-[#6b7280] dark:text-white/60`}>
+                  <View
+                    style={tw`rounded-2xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10 p-3`}
+                  >
+                    <Text
+                      style={tw`text-[11px] uppercase tracking-wide text-[#6b7280] dark:text-white/60`}
+                    >
                       Teach with AI
                     </Text>
                     <Text style={tw`mt-1 text-sm font-semibold text-[#0d141c] dark:text-white`}>
                       Link a Robot Tutor course as an assignment
                     </Text>
                     <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/70`}>
-                      Choose an AI course, set optional pass marks and timers, then share the invite link.
+                      Choose an AI course, set optional pass marks and timers, then share the invite
+                      link.
                     </Text>
 
                     <View style={tw`mt-2 flex-row`}>
-                      <TouchableOpacity onPress={() => navigation.navigate('RobotTutor')} style={tw`px-3 py-1.5 rounded-xl bg-[#e7edf4] dark:bg-white/10`}>
-                        <Text style={tw`text-[11px] text-[#0d141c] dark:text-white`}>Open “Teach with AI”</Text>
+                      <TouchableOpacity
+                        onPress={() => navigation.navigate('RobotTutor')}
+                        style={tw`px-3 py-1.5 rounded-xl bg-[#e7edf4] dark:bg-white/10`}
+                      >
+                        <Text style={tw`text-[11px] text-[#0d141c] dark:text-white`}>
+                          Open “Teach with AI”
+                        </Text>
                       </TouchableOpacity>
                     </View>
 
                     <View style={tw`mt-3`}>
-                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Course ID</Text>
+                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                        Course ID
+                      </Text>
                       <TextInput
                         value={courseId}
                         onChangeText={(v) => {
@@ -2165,7 +2462,9 @@ const handleAiDeadlinePress = () => {
                       />
 
                       <View style={tw`h-3`} />
-                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Title override (optional)</Text>
+                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                        Title override (optional)
+                      </Text>
                       <TextInput
                         value={titleOverride}
                         onChangeText={setTitleOverride}
@@ -2177,7 +2476,9 @@ const handleAiDeadlinePress = () => {
                       {canCustomPassTimers && (
                         <>
                           <View style={tw`h-3`} />
-                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Pass mark (%)</Text>
+                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                            Pass mark (%)
+                          </Text>
                           <TextInput
                             keyboardType="numeric"
                             value={String(passMark ?? '')}
@@ -2188,7 +2489,9 @@ const handleAiDeadlinePress = () => {
                           />
 
                           <View style={tw`h-3`} />
-                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Timer (seconds)</Text>
+                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                            Timer (seconds)
+                          </Text>
                           <TextInput
                             keyboardType="numeric"
                             value={String(timer ?? '')}
@@ -2201,31 +2504,49 @@ const handleAiDeadlinePress = () => {
                       )}
 
                       <View style={tw`h-3`} />
-                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Due at (optional)</Text>
+                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                        Due at (optional)
+                      </Text>
                       <View style={tw`mt-1 flex-row items-center`}>
-                        <TouchableOpacity onPress={handleAiDeadlinePress} style={tw`px-3 py-2 rounded bg-[#e7edf4] dark:bg-white/10`}>
-                          <Text style={tw`text-xs text-[#0d141c] dark:text-white`}>{dueAt ? 'Change deadline' : 'Pick date & time'}</Text>
+                        <TouchableOpacity
+                          onPress={handleAiDeadlinePress}
+                          style={tw`px-3 py-2 rounded bg-[#e7edf4] dark:bg-white/10`}
+                        >
+                          <Text style={tw`text-xs text-[#0d141c] dark:text-white`}>
+                            {dueAt ? 'Change deadline' : 'Pick date & time'}
+                          </Text>
                         </TouchableOpacity>
 
                         <Text
                           style={tw`ml-2 flex-1 text-[11px] ${dueAt ? 'text-[#49739c] dark:text-white/70' : 'text-[#9CA3AF] dark:text-white/50'}`}
                           numberOfLines={2}
                         >
-                          {dueAt ? `${new Date(dueAt).toLocaleString()} (${dueAt})` : 'No deadline set'}
+                          {dueAt
+                            ? `${new Date(dueAt).toLocaleString()} (${dueAt})`
+                            : 'No deadline set'}
                         </Text>
                       </View>
                     </View>
 
                     <View style={tw`flex-row mt-4`}>
-                      <TouchableOpacity onPress={createAssignment} style={tw`px-4 py-2 rounded-xl bg-emerald-600`}>
-                        <Text style={tw`text-white font-semibold text-sm`}>Create AI assignment</Text>
+                      <TouchableOpacity
+                        onPress={createAssignment}
+                        style={tw`px-4 py-2 rounded-xl bg-emerald-600`}
+                      >
+                        <Text style={tw`text-white font-semibold text-sm`}>
+                          Create AI assignment
+                        </Text>
                       </TouchableOpacity>
                     </View>
 
                     {!!inviteLink && (
                       <View style={tw`mt-4`}>
-                        <Text style={tw`text-[11px] text-[#49739c] dark:text-white/80 mb-1`}>Invite link</Text>
-                        <Text selectable style={tw`text-xs text-[#0d141c] dark:text-white`}>{inviteLink}</Text>
+                        <Text style={tw`text-[11px] text-[#49739c] dark:text-white/80 mb-1`}>
+                          Invite link
+                        </Text>
+                        <Text selectable style={tw`text-xs text-[#0d141c] dark:text-white`}>
+                          {inviteLink}
+                        </Text>
 
                         {instructorEmails.length > 0 && (
                           <View style={tw`mt-2 flex-row flex-wrap`}>
@@ -2236,32 +2557,46 @@ const handleAiDeadlinePress = () => {
                                 style={tw`mr-2 mb-2 px-3 py-2 rounded bg-[#e7edf4] dark:bg-white/10`}
                               >
                                 <Text style={tw`text-xs text-[#0d141c] dark:text-white`}>
-                                  {bccChunks.length === 1 ? 'Email instructors' : `Email instructors (grp ${idx + 1})`}
+                                  {bccChunks.length === 1
+                                    ? 'Email instructors'
+                                    : `Email instructors (grp ${idx + 1})`}
                                 </Text>
                               </TouchableOpacity>
                             ))}
 
-                            <TouchableOpacity onPress={shareViaWhatsApp} style={tw`mr-2 mb-2 px-3 py-2 rounded bg-[#e7edf4] dark:bg-white/10`}>
-                              <Text style={tw`text-xs text-[#0d141c] dark:text-white`}>WhatsApp instructors</Text>
+                            <TouchableOpacity
+                              onPress={shareViaWhatsApp}
+                              style={tw`mr-2 mb-2 px-3 py-2 rounded bg-[#e7edf4] dark:bg-white/10`}
+                            >
+                              <Text style={tw`text-xs text-[#0d141c] dark:text-white`}>
+                                WhatsApp instructors
+                              </Text>
                             </TouchableOpacity>
                           </View>
                         )}
 
-                        <TouchableOpacity onPress={copyLink} style={tw`mt-2 px-3 py-2 rounded bg-indigo-600 self-start`}>
+                        <TouchableOpacity
+                          onPress={copyLink}
+                          style={tw`mt-2 px-3 py-2 rounded bg-indigo-600 self-start`}
+                        >
                           <Text style={tw`text-white text-xs`}>Share invite link</Text>
                         </TouchableOpacity>
 
                         {!!(form.email_domain || (org as any)?.email_domain) && (
                           <Text style={tw`mt-2 text-[11px] text-[#ea580c] dark:text-amber-300`}>
                             This invite is restricted to{' '}
-                            <Text style={tw`font-semibold`}>{String(form.email_domain || (org as any)?.email_domain || '').trim()}</Text>.
+                            <Text style={tw`font-semibold`}>
+                              {String(form.email_domain || (org as any)?.email_domain || '').trim()}
+                            </Text>
+                            .
                           </Text>
                         )}
                       </View>
                     )}
 
                     <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/70`}>
-                      Use the AI invite link for timed quizzes and auto-marking. For open-ended projects, use the classic assignment card above.
+                      Use the AI invite link for timed quizzes and auto-marking. For open-ended
+                      projects, use the classic assignment card above.
                     </Text>
                   </View>
                 </View>
@@ -2269,16 +2604,24 @@ const handleAiDeadlinePress = () => {
 
               {/* ANALYTICS */}
               {tab === 'analytics' && (
-                <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}>
+                <View
+                  style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
+                >
                   <View style={tw`flex-row justify-between items-center mb-3`}>
-                    <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold`}>Analytics</Text>
+                    <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold`}>
+                      Analytics
+                    </Text>
 
                     <View style={tw`flex-row`}>
                       <TouchableOpacity
                         onPress={() => setPeriod('month')}
                         style={tw`px-3 py-1.5 rounded-lg mr-2 ${period === 'month' ? 'bg-indigo-600' : 'bg-[#e7edf4] dark:bg-white/10'}`}
                       >
-                        <Text style={tw`${period === 'month' ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs`}>Monthly</Text>
+                        <Text
+                          style={tw`${period === 'month' ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs`}
+                        >
+                          Monthly
+                        </Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -2286,7 +2629,11 @@ const handleAiDeadlinePress = () => {
                         onPress={() => setPeriod('term')}
                         style={tw`px-3 py-1.5 rounded-lg mr-2 ${period === 'term' ? 'bg-indigo-600' : 'bg-[#e7edf4] dark:bg-white/10'} ${!canMultiPeriodAnalytics ? 'opacity-50' : ''}`}
                       >
-                        <Text style={tw`${period === 'term' ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs`}>Termly</Text>
+                        <Text
+                          style={tw`${period === 'term' ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs`}
+                        >
+                          Termly
+                        </Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -2294,13 +2641,20 @@ const handleAiDeadlinePress = () => {
                         onPress={() => setPeriod('year')}
                         style={tw`px-3 py-1.5 rounded-lg ${period === 'year' ? 'bg-indigo-600' : 'bg-[#e7edf4] dark:bg-white/10'} ${!canMultiPeriodAnalytics ? 'opacity-50' : ''}`}
                       >
-                        <Text style={tw`${period === 'year' ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs`}>Yearly</Text>
+                        <Text
+                          style={tw`${period === 'year' ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-xs`}
+                        >
+                          Yearly
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   </View>
 
                   <View style={tw`flex-row mb-3 flex-wrap`}>
-                    <TouchableOpacity onPress={loadAnalytics} style={tw`px-3 py-2 rounded-lg bg-indigo-600 mr-2`}>
+                    <TouchableOpacity
+                      onPress={loadAnalytics}
+                      style={tw`px-3 py-2 rounded-lg bg-indigo-600 mr-2`}
+                    >
                       <Text style={tw`text-white text-xs`}>Refresh</Text>
                     </TouchableOpacity>
 
@@ -2308,7 +2662,9 @@ const handleAiDeadlinePress = () => {
                       <TouchableOpacity
                         onPress={async () => {
                           try {
-                            const rows: (string | number)[][] = [['Bucket', 'Attempts', 'Passes', 'Avg Score']];
+                            const rows: (string | number)[][] = [
+                              ['Bucket', 'Attempts', 'Passes', 'Avg Score'],
+                            ];
                             analytics.forEach((r) => {
                               const bucketISO = new Date((r as any).bucket).toISOString();
                               const attempts = Number((r as any).attempts ?? 0);
@@ -2318,7 +2674,9 @@ const handleAiDeadlinePress = () => {
                             });
 
                             const csv = rows
-                              .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
+                              .map((r) =>
+                                r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')
+                              )
                               .join('\n');
 
                             await Share.share({ message: csv });
@@ -2337,43 +2695,64 @@ const handleAiDeadlinePress = () => {
                   {analyticsSummary && (
                     <View style={tw`mb-3`}>
                       <View style={tw`flex-row flex-wrap`}>
-                        <View style={tw`mr-2 mb-2 px-3 py-2 rounded-xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10`}>
-                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Overall</Text>
+                        <View
+                          style={tw`mr-2 mb-2 px-3 py-2 rounded-xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10`}
+                        >
+                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                            Overall
+                          </Text>
                           <Text style={tw`text-[#0d141c] dark:text-white font-semibold`}>
-                            {analyticsSummary.overallAvgScore}% avg • {analyticsSummary.overallPassRate}% pass
+                            {analyticsSummary.overallAvgScore}% avg •{' '}
+                            {analyticsSummary.overallPassRate}% pass
                           </Text>
                           <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-                            {analyticsSummary.totalAttempts} attempts • {analyticsSummary.totalPasses} passes
+                            {analyticsSummary.totalAttempts} attempts •{' '}
+                            {analyticsSummary.totalPasses} passes
                           </Text>
                         </View>
 
-                        <View style={tw`mr-2 mb-2 px-3 py-2 rounded-xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10`}>
-                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Robot quizzes</Text>
+                        <View
+                          style={tw`mr-2 mb-2 px-3 py-2 rounded-xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10`}
+                        >
+                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                            Robot quizzes
+                          </Text>
                           <Text style={tw`text-[#0d141c] dark:text-white font-semibold`}>
                             {analyticsSummary.robotQuizPassRate}% pass
                           </Text>
                           <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-                            {analyticsSummary.robotQuizAttempts} attempts • {analyticsSummary.robotQuizPasses} passes
+                            {analyticsSummary.robotQuizAttempts} attempts •{' '}
+                            {analyticsSummary.robotQuizPasses} passes
                           </Text>
                         </View>
 
-                        <View style={tw`mr-2 mb-2 px-3 py-2 rounded-xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10`}>
-                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Assignments</Text>
+                        <View
+                          style={tw`mr-2 mb-2 px-3 py-2 rounded-xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10`}
+                        >
+                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                            Assignments
+                          </Text>
                           <Text style={tw`text-[#0d141c] dark:text-white font-semibold`}>
                             {analyticsSummary.assignmentPassRate}% pass
                           </Text>
                           <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-                            {analyticsSummary.assignmentAttempts} attempts • {analyticsSummary.assignmentPasses} passes
+                            {analyticsSummary.assignmentAttempts} attempts •{' '}
+                            {analyticsSummary.assignmentPasses} passes
                           </Text>
                         </View>
 
-                        <View style={tw`mr-2 mb-2 px-3 py-2 rounded-xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10`}>
-                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Exams</Text>
+                        <View
+                          style={tw`mr-2 mb-2 px-3 py-2 rounded-xl bg-[#f8fbff] dark:bg-white/5 border border-[#cedbe8] dark:border-white/10`}
+                        >
+                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+                            Exams
+                          </Text>
                           <Text style={tw`text-[#0d141c] dark:text-white font-semibold`}>
                             {analyticsSummary.examsPassRate}% pass
                           </Text>
                           <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-                            {analyticsSummary.examsAttempts} attempts • {analyticsSummary.examsPasses} passes
+                            {analyticsSummary.examsAttempts} attempts •{' '}
+                            {analyticsSummary.examsPasses} passes
                           </Text>
                         </View>
                       </View>
@@ -2382,10 +2761,14 @@ const handleAiDeadlinePress = () => {
 
                   {loadingAnalytics ? (
                     <View style={tw`py-6 items-center`}>
-                      <ActivityIndicator color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'} />
+                      <ActivityIndicator
+                        color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'}
+                      />
                     </View>
                   ) : analytics.length === 0 ? (
-                    <Text style={tw`text-[#49739c] dark:text-white/80 text-sm`}>No analytics yet.</Text>
+                    <Text style={tw`text-[#49739c] dark:text-white/80 text-sm`}>
+                      No analytics yet.
+                    </Text>
                   ) : (
                     <View>
                       {analytics.map((row: any, idx: number) => (
@@ -2397,13 +2780,20 @@ const handleAiDeadlinePress = () => {
                             {new Date(row.bucket).toLocaleString()}
                           </Text>
                           <Text style={tw`text-[#49739c] dark:text-white/80 text-xs mt-1`}>
-                            Attempts: {row.attempts} • Passes: {row.passes} • Avg: {Math.round(row.avg_score ?? 0)}%
+                            Attempts: {row.attempts} • Passes: {row.passes} • Avg:{' '}
+                            {Math.round(row.avg_score ?? 0)}%
                           </Text>
 
                           {canEmailReports && (
                             <TouchableOpacity
                               onPress={() =>
-                                sendOrgReportRow(backendUrl, authToken!, org!.id, new Date(row.bucket).toISOString(), period)
+                                sendOrgReportRow(
+                                  backendUrl,
+                                  authToken!,
+                                  org!.id,
+                                  new Date(row.bucket).toISOString(),
+                                  period
+                                )
                                   .then((ok) => {
                                     if ((ok as any)?.ok) Alert.alert('Queued', 'Report queued.');
                                     else Alert.alert('Failed', 'Failed to queue report.');
@@ -2412,7 +2802,9 @@ const handleAiDeadlinePress = () => {
                               }
                               style={tw`mt-2 px-3 py-1.5 rounded bg-[#e7edf4] dark:bg-white/10 self-start`}
                             >
-                              <Text style={tw`text-[#0d141c] dark:text-white text-xs`}>Send report for this period</Text>
+                              <Text style={tw`text-[#0d141c] dark:text-white text-xs`}>
+                                Send report for this period
+                              </Text>
                             </TouchableOpacity>
                           )}
                         </View>
@@ -2423,18 +2815,29 @@ const handleAiDeadlinePress = () => {
                   {/* learner progress */}
                   <View style={tw`mt-4`}>
                     <View style={tw`flex-row items-center justify-between mb-2`}>
-                      <Text style={tw`text-[#0d141c] dark:text-white text-base font-semibold`}>Learner Progress (overall)</Text>
+                      <Text style={tw`text-[#0d141c] dark:text-white text-base font-semibold`}>
+                        Learner Progress (overall)
+                      </Text>
 
                       <View style={tw`flex-row items-center`}>
-                        {lpLoading && <Text style={tw`text-[#49739c] dark:text-white/70 text-xs mr-2`}>Loading…</Text>}
-                        <TouchableOpacity onPress={() => loadLearnerProgress(true)} style={tw`px-3 py-1.5 rounded bg-[#e7edf4] dark:bg-white/10`}>
+                        {lpLoading && (
+                          <Text style={tw`text-[#49739c] dark:text-white/70 text-xs mr-2`}>
+                            Loading…
+                          </Text>
+                        )}
+                        <TouchableOpacity
+                          onPress={() => loadLearnerProgress(true)}
+                          style={tw`px-3 py-1.5 rounded bg-[#e7edf4] dark:bg-white/10`}
+                        >
                           <Text style={tw`text-[#0d141c] dark:text-white text-xs`}>Refresh</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
 
                     {!lpRows.length && !lpLoading ? (
-                      <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>No learner data yet.</Text>
+                      <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>
+                        No learner data yet.
+                      </Text>
                     ) : (
                       <View>
                         {lpRows.map((r) => (
@@ -2445,18 +2848,27 @@ const handleAiDeadlinePress = () => {
                             <Text style={tw`text-[#0d141c] dark:text-white font-semibold`}>
                               {(r as any).name || (r as any).email || `User #${(r as any).user_id}`}
                             </Text>
-                            {(r as any).email && <Text style={tw`text-[#49739c] dark:text-white/60 text-[11px]`}>{(r as any).email}</Text>}
+                            {(r as any).email && (
+                              <Text style={tw`text-[#49739c] dark:text-white/60 text-[11px]`}>
+                                {(r as any).email}
+                              </Text>
+                            )}
 
                             <Text style={tw`text-[#49739c] dark:text-white/80 text-xs mt-1`}>
-                              Attempts: {(r as any).attempts} • Passes: {(r as any).passes} • Avg: {Math.round((r as any).avg_score ?? 0)}%
+                              Attempts: {(r as any).attempts} • Passes: {(r as any).passes} • Avg:{' '}
+                              {Math.round((r as any).avg_score ?? 0)}%
                             </Text>
 
                             <Text style={tw`text-[#49739c] dark:text-white/80 text-xs mt-1`}>
-                              Completed: {(r as any).completed_assignments} • Progress: {(r as any).progress_pct}%
+                              Completed: {(r as any).completed_assignments} • Progress:{' '}
+                              {(r as any).progress_pct}%
                             </Text>
 
                             <Text style={tw`text-[#49739c] dark:text-white/60 text-[11px] mt-1`}>
-                              Last Submit: {(r as any).last_submit_at ? new Date((r as any).last_submit_at).toLocaleString() : '—'}
+                              Last Submit:{' '}
+                              {(r as any).last_submit_at
+                                ? new Date((r as any).last_submit_at).toLocaleString()
+                                : '—'}
                             </Text>
                           </View>
                         ))}
@@ -2482,13 +2894,26 @@ const handleAiDeadlinePress = () => {
         {/* ──────────────────────────────
            learner submit modal
         ─────────────────────────────── */}
-        <Modal visible={submitOpen} transparent animationType="slide" onRequestClose={() => setSubmitOpen(false)}>
+        <Modal
+          visible={submitOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setSubmitOpen(false)}
+        >
           <View style={tw`flex-1 bg-black/50 justify-center items-center p-4`}>
-            <View style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-4`}>
-              <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold`}>Submit assignment</Text>
-              <Text style={tw`text-[#49739c] dark:text-white/80 text-xs mt-1`}>{(submitAssignment as any)?.title || 'Untitled assignment'}</Text>
+            <View
+              style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-4`}
+            >
+              <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold`}>
+                Submit assignment
+              </Text>
+              <Text style={tw`text-[#49739c] dark:text-white/80 text-xs mt-1`}>
+                {(submitAssignment as any)?.title || 'Untitled assignment'}
+              </Text>
 
-              <Text style={tw`mt-3 text-[#49739c] dark:text-white/80 text-xs`}>Your answer (optional)</Text>
+              <Text style={tw`mt-3 text-[#49739c] dark:text-white/80 text-xs`}>
+                Your answer (optional)
+              </Text>
               <TextInput
                 multiline
                 textAlignVertical="top"
@@ -2499,9 +2924,17 @@ const handleAiDeadlinePress = () => {
                 style={tw`mt-1 h-28 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 rounded-xl px-3 py-2 text-[#0d141c] dark:text-white text-sm`}
               />
 
-              <Text style={tw`mt-3 text-[#49739c] dark:text-white/80 text-xs`}>Attach file (optional)</Text>
-              <TouchableOpacity onPress={handlePickSubmitFile} style={tw`mt-1 px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-white/10`} disabled={submitUploading}>
-                <Text style={tw`text-[#0d141c] dark:text-white text-xs`}>{submitFileAsset ? 'Change attachment' : 'Choose file'}</Text>
+              <Text style={tw`mt-3 text-[#49739c] dark:text-white/80 text-xs`}>
+                Attach file (optional)
+              </Text>
+              <TouchableOpacity
+                onPress={handlePickSubmitFile}
+                style={tw`mt-1 px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-white/10`}
+                disabled={submitUploading}
+              >
+                <Text style={tw`text-[#0d141c] dark:text-white text-xs`}>
+                  {submitFileAsset ? 'Change attachment' : 'Choose file'}
+                </Text>
               </TouchableOpacity>
 
               {submitFileAsset && (
@@ -2524,7 +2957,9 @@ const handleAiDeadlinePress = () => {
                   disabled={submitUploading}
                   style={tw`px-4 py-2 rounded-xl bg-emerald-600 ${submitUploading ? 'opacity-60' : ''}`}
                 >
-                  <Text style={tw`text-white text-sm`}>{submitUploading ? 'Submitting…' : 'Submit work'}</Text>
+                  <Text style={tw`text-white text-sm`}>
+                    {submitUploading ? 'Submitting…' : 'Submit work'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -2532,15 +2967,26 @@ const handleAiDeadlinePress = () => {
         </Modal>
 
         {/* Congrats modal */}
-        <Modal visible={showCongrats} transparent animationType="fade" onRequestClose={() => setShowCongrats(false)}>
+        <Modal
+          visible={showCongrats}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowCongrats(false)}
+        >
           <View style={tw`flex-1 bg-black/50 justify-center items-center p-4`}>
-            <View style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-5`}>
+            <View
+              style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-5`}
+            >
               <View style={tw`flex-row items-start`}>
-                <View style={tw`h-10 w-10 rounded-full bg-emerald-500/15 items-center justify-center mr-3`}>
+                <View
+                  style={tw`h-10 w-10 rounded-full bg-emerald-500/15 items-center justify-center mr-3`}
+                >
                   <Text style={tw`text-xl`}>🎉</Text>
                 </View>
                 <View style={tw`flex-1`}>
-                  <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold`}>Brand saved!</Text>
+                  <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold`}>
+                    Brand saved!
+                  </Text>
                   <Text style={tw`text-[#49739c] dark:text-white/80 text-sm mt-1`}>
                     Your institution profile is ready. Want to set up an assignment now?
                   </Text>
@@ -2558,7 +3004,10 @@ const handleAiDeadlinePress = () => {
                   <Text style={tw`text-white font-semibold`}>Go to Assignments</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={() => setShowCongrats(false)} style={tw`mb-2 px-4 py-2 rounded-xl bg-[#e7edf4] dark:bg-white/10`}>
+                <TouchableOpacity
+                  onPress={() => setShowCongrats(false)}
+                  style={tw`mb-2 px-4 py-2 rounded-xl bg-[#e7edf4] dark:bg-white/10`}
+                >
                   <Text style={tw`text-[#0d141c] dark:text-white`}>Not now</Text>
                 </TouchableOpacity>
               </View>
@@ -2575,9 +3024,9 @@ const handleAiDeadlinePress = () => {
               tier="pro"
               orgName={(org as any)?.name}
               assets={{
-                  visamaster: require('../../../assets/visamaster.png'),
-                  mpesa: require('../../../assets/mpesa.png'),
-                }}
+                visamaster: require('../../../assets/visamaster.png'),
+                mpesa: require('../../../assets/mpesa.png'),
+              }}
               onCheckout={(opts) => handlePlanCheckout('pro', proPaymentIdRef, opts)}
             />
 
@@ -2595,26 +3044,24 @@ const handleAiDeadlinePress = () => {
           </>
         )}
 
-
         {/* native date/time pickers */}
-       {Platform.OS === 'ios' && legacyDuePickerOpen && (
-        <DateTimePicker
-          value={legacyDueDate ?? new Date()}
-          mode="datetime"
-          display="inline"
-          onChange={handleLegacyDueChange}
-        />
-      )}
+        {Platform.OS === 'ios' && legacyDuePickerOpen && (
+          <DateTimePicker
+            value={legacyDueDate ?? new Date()}
+            mode="datetime"
+            display="inline"
+            onChange={handleLegacyDueChange}
+          />
+        )}
 
-      {Platform.OS === 'ios' && aiDuePickerOpen && (
-        <DateTimePicker
-          value={aiDueDate ?? new Date()}
-          mode="datetime"
-          display="inline"
-          onChange={handleAiDueChange}
-        />
-      )}
-
+        {Platform.OS === 'ios' && aiDuePickerOpen && (
+          <DateTimePicker
+            value={aiDueDate ?? new Date()}
+            mode="datetime"
+            display="inline"
+            onChange={handleAiDueChange}
+          />
+        )}
       </View>
     </SafeAreaView>
   );

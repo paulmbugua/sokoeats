@@ -44,10 +44,10 @@ function requireAdmin(req, res, next) {
 // POST /api/oer/upload-cover  (file field: "file")
 r.post(
   '/oer/upload-cover',
-  authUser,              // populate req.user
-  adminAuth,          // ensure admin/superadmin
+  authUser, // populate req.user
+  adminAuth, // ensure admin/superadmin
   upload.single('file'), // field name must match frontend
-  uploadOerCover
+  uploadOerCover,
 );
 
 /* -------------------- Catalog (flat items) -------------------- */
@@ -65,8 +65,8 @@ r.get('/oer/books/:idOrSlug', getBook);
 /* ------------------------- Utilities -------------------------- */
 // NOTE: keep the path as whatever your frontend calls.
 // If your client currently posts to /oer/wrap-item, use that instead.
-r.post('/oer/wrap', authUser, wrapCatalogItem);          // body { slug }
-r.post('/oer/wrap-book', authOptional, wrapBook);        // body { idOrSlug }
-r.get('/oer/meta/:courseId', authUser, getOerMeta);      // license/flags for UI
+r.post('/oer/wrap', authUser, wrapCatalogItem); // body { slug }
+r.post('/oer/wrap-book', authOptional, wrapBook); // body { idOrSlug }
+r.get('/oer/meta/:courseId', authUser, getOerMeta); // license/flags for UI
 
 export default r;

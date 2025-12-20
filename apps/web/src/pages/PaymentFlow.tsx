@@ -6,7 +6,9 @@ export default function PaymentFlow() {
   return (
     <main className="max-w-4xl mx-auto px-4 py-10 text-sm leading-6">
       <h1 className="text-2xl font-bold">How Payments Work</h1>
-      <p className="text-gray-500">Transparent flows for live sessions, on-demand courses, AI learning, and certificates</p>
+      <p className="text-gray-500">
+        Transparent flows for live sessions, on-demand courses, AI learning, and certificates
+      </p>
 
       <div className="mt-6 grid gap-6">
         {/* Flow A: Buy Tokens */}
@@ -22,9 +24,13 @@ export default function PaymentFlow() {
         <section className="rounded-xl border p-4 bg-white dark:bg-[#0f1821]">
           <h2 className="text-lg font-semibold">B) Book a Live Session</h2>
           <ol className="list-decimal pl-5 space-y-1 mt-2">
-            <li>Student selects tutor/time → we <strong>hold</strong> Tokens.</li>
+            <li>
+              Student selects tutor/time → we <strong>hold</strong> Tokens.
+            </li>
             <li>After completion (or 24h auto-complete), Tokens are captured.</li>
-            <li>Platform fee retained; <strong>tutor payout released</strong> (24–72h typical).</li>
+            <li>
+              Platform fee retained; <strong>tutor payout released</strong> (24–72h typical).
+            </li>
           </ol>
         </section>
 
@@ -43,8 +49,13 @@ export default function PaymentFlow() {
           <h2 className="text-lg font-semibold">D) AI Learning, Quizzes & Certificates</h2>
           <ol className="list-decimal pl-5 space-y-1 mt-2">
             <li>Students study AI lessons and attempt quizzes freely.</li>
-            <li>Only when a <strong>certificate is requested</strong> do we charge the certificate fee (Tokens).</li>
-            <li>Certificate is generated and added to the student’s profile for download/verification.</li>
+            <li>
+              Only when a <strong>certificate is requested</strong> do we charge the certificate fee
+              (Tokens).
+            </li>
+            <li>
+              Certificate is generated and added to the student’s profile for download/verification.
+            </li>
           </ol>
         </section>
 
@@ -54,13 +65,26 @@ export default function PaymentFlow() {
           <ol className="list-decimal pl-5 space-y-1 mt-2">
             <li>Institution purchases a subscription/seat bundle or issues a PO.</li>
             <li>We provision seats to the admin (1–2 business days).</li>
-            <li>Learners access AI learning, courses, and optional certificates (billed per plan).</li>
+            <li>
+              Learners access AI learning, courses, and optional certificates (billed per plan).
+            </li>
           </ol>
         </section>
       </div>
 
       <div className="mt-6 p-3 rounded-lg bg-gray-50 dark:bg-[#121927] text-xs">
-        <p><strong>Important:</strong> Tokens are non-transferable and not redeemable for cash. See the <Link to="/refunds" className="text-primary">Refund Policy</Link> and <Link to="/fulfillment" className="text-primary">Fulfillment Policy</Link>.</p>
+        <p>
+          <strong>Important:</strong> Tokens are non-transferable and not redeemable for cash. See
+          the{' '}
+          <Link to="/refunds" className="text-primary">
+            Refund Policy
+          </Link>{' '}
+          and{' '}
+          <Link to="/fulfillment" className="text-primary">
+            Fulfillment Policy
+          </Link>
+          .
+        </p>
       </div>
     </main>
   );

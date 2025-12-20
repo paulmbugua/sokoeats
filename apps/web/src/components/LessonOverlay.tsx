@@ -120,9 +120,11 @@ const olog = (...args: unknown[]) => {
   console.log('[LessonOverlay]', ...args);
 };
 
-
 function groupSignature(arr: OverlayItem[]): string {
-  return arr.map((it) => `${it.key}:${it.md.length}`).sort().join('|');
+  return arr
+    .map((it) => `${it.key}:${it.md.length}`)
+    .sort()
+    .join('|');
 }
 
 function renderGfmTable(t: {
@@ -132,9 +134,7 @@ function renderGfmTable(t: {
   rows: (string | number | boolean)[][];
 }) {
   const head = `| ${t.columns.join(' | ')} |\n| ${t.columns.map(() => '---').join(' | ')} |`;
-  const body = (t.rows || [])
-    .map((r) => `| ${r.map((x) => String(x)).join(' | ')} |`)
-    .join('\n');
+  const body = (t.rows || []).map((r) => `| ${r.map((x) => String(x)).join(' | ')} |`).join('\n');
   return `\n**${t.title || 'Table'}**${t.caption ? ` — _${t.caption}_` : ''}\n\n${head}\n${body}\n`;
 }
 
@@ -197,33 +197,37 @@ function Markdown({
     // Paragraph: unwrap image-only paragraphs to avoid <div> inside <p>
     // react-markdown "props" includes "node" at runtime. Use any to access it safely.
     p: (props: any) => {
-  const { node, children, ...rest } = props;
+      const { node, children, ...rest } = props;
 
-  const isImageNode = (n: any) => n && n.type === 'image';
-  const isLinkWithImage = (n: any) =>
-    n && n.type === 'link' && Array.isArray(n.children) && n.children.length === 1 && isImageNode(n.children[0]);
+      const isImageNode = (n: any) => n && n.type === 'image';
+      const isLinkWithImage = (n: any) =>
+        n &&
+        n.type === 'link' &&
+        Array.isArray(n.children) &&
+        n.children.length === 1 &&
+        isImageNode(n.children[0]);
 
-  const kids = node?.children;
-  const imgOnly =
-    Array.isArray(kids) &&
-    kids.length === 1 &&
-    (isImageNode(kids[0]) || isLinkWithImage(kids[0]));
+      const kids = node?.children;
+      const imgOnly =
+        Array.isArray(kids) &&
+        kids.length === 1 &&
+        (isImageNode(kids[0]) || isLinkWithImage(kids[0]));
 
-  if (imgOnly) {
-    // Image-only paragraph → use a block wrapper for styling
-    return (
-      <div className="not-prose overflow-hidden rounded-2xl ring-1 ring-black/10 dark:ring-white/10 shadow-md bg-white/80 dark:bg-slate-900/80 backdrop-blur my-2">
-        {children}
-      </div>
-    );
-  }
+      if (imgOnly) {
+        // Image-only paragraph → use a block wrapper for styling
+        return (
+          <div className="not-prose overflow-hidden rounded-2xl ring-1 ring-black/10 dark:ring-white/10 shadow-md bg-white/80 dark:bg-slate-900/80 backdrop-blur my-2">
+            {children}
+          </div>
+        );
+      }
 
-  return (
-    <p className="leading-relaxed text-slate-700 dark:text-slate-200" {...rest}>
-      {children}
-    </p>
-  );
-},
+      return (
+        <p className="leading-relaxed text-slate-700 dark:text-slate-200" {...rest}>
+          {children}
+        </p>
+      );
+    },
     a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
       <a
         className="font-medium underline decoration-2 underline-offset-2 text-indigo-700 dark:text-indigo-300 hover:opacity-90"
@@ -259,7 +263,10 @@ function Markdown({
       const { inline, className, children, ...rest } = props;
       if (inline) {
         return (
-          <code className={`px-1 py-0.5 rounded bg-zinc-900/5 dark:bg-white/10 ${className || ''}`} {...rest}>
+          <code
+            className={`px-1 py-0.5 rounded bg-zinc-900/5 dark:bg-white/10 ${className || ''}`}
+            {...rest}
+          >
             {children}
           </code>
         );
@@ -281,7 +288,9 @@ function Markdown({
         <table className="w-full table-auto border-separate border-spacing-0 text-sm" {...props} />
       </div>
     ),
-    thead: (props: React.HTMLAttributes<HTMLTableSectionElement>) => <thead className="text-left" {...props} />,
+    thead: (props: React.HTMLAttributes<HTMLTableSectionElement>) => (
+      <thead className="text-left" {...props} />
+    ),
     th: (props: React.ThHTMLAttributes<HTMLTableCellElement>) => (
       <th
         className="px-3 py-2 font-semibold border-b border-black/10 dark:border-slate-700 bg-slate-100 text-slate-900
@@ -302,14 +311,14 @@ function Markdown({
       const cls = props.className ?? '';
       return (
         <img
-      {...props}
-      className={`w-full h-auto object-contain max-h-[60svh] ${cls}`}
-      loading="lazy"
-      decoding="async"
-      draggable={false}
-    />
-  );
-},
+          {...props}
+          className={`w-full h-auto object-contain max-h-[60svh] ${cls}`}
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+        />
+      );
+    },
 
     hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
       <hr className="my-3 border-black/10 dark:border-slate-700" {...props} />
@@ -348,7 +357,6 @@ function Markdown({
   );
 }
 
-
 // Defer mounting heavy children (Markdown/KaTeX) to idle so we don't block audio stream
 function DeferMount({ sig, children }: { sig: string; children: React.ReactNode }) {
   const [ready, setReady] = React.useState(false);
@@ -356,7 +364,9 @@ function DeferMount({ sig, children }: { sig: string; children: React.ReactNode 
     setReady(false);
     let cancelled = false;
 
-    const run = () => { if (!cancelled) setReady(true); };
+    const run = () => {
+      if (!cancelled) setReady(true);
+    };
 
     // Prefer requestIdleCallback, fall back to a tiny timeout
     const w = typeof window !== 'undefined' ? (window as any) : undefined;
@@ -393,8 +403,7 @@ export default function LessonOverlay({
   fullOnMaximize = true,
   allowMarkdownFallback = false,
 }: LessonOverlayProps) {
-
-    // Log raw props whenever lesson or word stream changes
+  // Log raw props whenever lesson or word stream changes
   useEffect(() => {
     olog('props', {
       wordsLen: words.length,
@@ -411,7 +420,6 @@ export default function LessonOverlay({
       allowMarkdownFallback,
     });
   }, [words.length, currentIndex, lesson, allowMarkdownFallback]);
-
 
   const portaled = portal && typeof document !== 'undefined';
   const positionClass = portaled ? 'fixed' : 'absolute';
@@ -430,7 +438,8 @@ export default function LessonOverlay({
         start = i + 1;
       }
     }
-    if (start < words.length) spans.push({ startWi: start, endWi: words.length - 1, index: spans.length });
+    if (start < words.length)
+      spans.push({ startWi: start, endWi: words.length - 1, index: spans.length });
     return spans;
   }, [words]);
 
@@ -445,9 +454,7 @@ export default function LessonOverlay({
     if (!lesson) return [];
 
     const normalizeAt = (n?: number) =>
-      typeof n === 'number' && Number.isFinite(n)
-        ? Math.max(0, Math.round(n - 1))
-        : undefined;
+      typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.round(n - 1)) : undefined;
 
     const onlyOneSentence = sentences.length <= 1;
 
@@ -483,7 +490,8 @@ export default function LessonOverlay({
       const at0 = atFor(ch.announceAtSentence);
       if (typeof at0 === 'number') {
         const alt = (ch.alt || ch.title || ch.kind || 'Chart').replace(/\|/g, '-');
-        const url = ch.url || (ch.svg ? `data:image/svg+xml;utf8,${encodeURIComponent(ch.svg)}` : '');
+        const url =
+          ch.url || (ch.svg ? `data:image/svg+xml;utf8,${encodeURIComponent(ch.svg)}` : '');
         const caption = ch.caption ? `\n\n_${ch.caption}_` : '';
         const md = url
           ? `**${ch.title || (ch.kind ? ch.kind[0].toUpperCase() + ch.kind.slice(1) : 'Chart')}**${caption}\n\n![${alt}](${url})`
@@ -495,7 +503,13 @@ export default function LessonOverlay({
     (lesson.tables || []).forEach((t, i) => {
       const at0 = atFor(t.announceAtSentence);
       if (typeof at0 === 'number' && (t.columns?.length || 0) && (t.rows?.length || 0)) {
-        out.push({ kind: 'table', at: at0, key: `T${i}:${t.title || i}`, md: renderGfmTable(t), title: t.title });
+        out.push({
+          kind: 'table',
+          at: at0,
+          key: `T${i}:${t.title || i}`,
+          md: renderGfmTable(t),
+          title: t.title,
+        });
       }
     });
 
@@ -519,7 +533,6 @@ export default function LessonOverlay({
     // ⬅️ No markdown fallback here anymore. If backend sends nothing, we show nothing.
     return out.sort((a, b) => a.at - b.at);
   }, [lesson, sentences.length]);
-
 
   const latestIdx = useMemo(() => {
     if (!items.length) return -1;
@@ -667,13 +680,9 @@ export default function LessonOverlay({
   const currentGroupSig = useMemo(() => groupSignature(group), [group]);
 
   const [dismissedSig, setDismissedSig] = useState<string | null>(null);
-    const hasNonImageInGroup = useMemo(
-    () => group.some((it) => it.kind !== 'image'),
-    [group]
-  );
+  const hasNonImageInGroup = useMemo(() => group.some((it) => it.kind !== 'image'), [group]);
 
-
-   const visible = useMemo(() => {
+  const visible = useMemo(() => {
     if (minimized || activeIdx < 0) return false;
     if (!hasNonImageInGroup) return false; // 🚫 Never show for image-only overlays
     if (dismissedSig && currentGroupSig === dismissedSig) return false;
@@ -695,8 +704,7 @@ export default function LessonOverlay({
     hasNonImageInGroup,
   ]);
 
-
-    useEffect(() => {
+  useEffect(() => {
     olog('visibility', {
       latestIdx,
       activeIdx,
@@ -726,7 +734,6 @@ export default function LessonOverlay({
     lingerMs,
   ]);
 
-
   // 5) Dragging (move)
   const cardRef = useRef<HTMLDivElement | null>(null);
   const dragState = useRef<{ dx: number; dy: number } | null>(null);
@@ -747,12 +754,17 @@ export default function LessonOverlay({
     const { dx, dy } = dragState.current;
     const { vw, vh } = vp();
     const el = cardRef.current;
-    const rect = el ? (el.getBoundingClientRect() as DOMRect) : ({ width: w, height: h } as DOMRect);
+    const rect = el
+      ? (el.getBoundingClientRect() as DOMRect)
+      : ({ width: w, height: h } as DOMRect);
     const loX = 8,
       hiX = vw - rect.width - 8;
     const loY = freeMove ? 8 : topOffset || 0;
     const hiY = vh - rect.height - 8;
-    setPos({ x: clamp(e.clientX - dx, loX, Math.max(loX, hiX)), y: clamp(e.clientY - dy, loY, Math.max(loY, hiY)) });
+    setPos({
+      x: clamp(e.clientX - dx, loX, Math.max(loX, hiX)),
+      y: clamp(e.clientY - dy, loY, Math.max(loY, hiY)),
+    });
   };
   const onPointerUp = (e: React.PointerEvent) => {
     dragState.current = null;
@@ -761,7 +773,12 @@ export default function LessonOverlay({
   };
 
   // 5b) Resizing (drag corner)
-  const resizeState = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
+  const resizeState = useRef<{
+    startX: number;
+    startY: number;
+    startW: number;
+    startH: number;
+  } | null>(null);
   const onResizeDown = (e: React.PointerEvent) => {
     if (maximized) return;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -826,7 +843,7 @@ export default function LessonOverlay({
     return portaled ? ReactDOM.createPortal(chip, document.body) : chip;
   }
 
-    if (!group.length || !visible) {
+  if (!group.length || !visible) {
     olog('hidden', {
       reason: !group.length ? 'no-items-for-current-sentence' : 'visible=false',
       groupLen: group.length,
@@ -869,15 +886,28 @@ export default function LessonOverlay({
         >
           +
         </button>
-        <button className="chip chip-active" onClick={() => setZoom(1)} title="Reset zoom" aria-label="Reset zoom">
+        <button
+          className="chip chip-active"
+          onClick={() => setZoom(1)}
+          title="Reset zoom"
+          aria-label="Reset zoom"
+        >
           Reset
         </button>
       </div>
       <div className="ml-auto sm:hidden inline-flex items-center gap-1">
-        <button className="chip" onClick={() => setZoom((z) => Math.max(0.7, +(z - 0.1).toFixed(2)))} aria-label="Zoom out">
+        <button
+          className="chip"
+          onClick={() => setZoom((z) => Math.max(0.7, +(z - 0.1).toFixed(2)))}
+          aria-label="Zoom out"
+        >
           −
         </button>
-        <button className="chip" onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)))} aria-label="Zoom in">
+        <button
+          className="chip"
+          onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)))}
+          aria-label="Zoom in"
+        >
           +
         </button>
       </div>
@@ -895,15 +925,30 @@ export default function LessonOverlay({
       >
         {pinned ? 'Unpin' : 'Pin'}
       </button>
-      <button className="chip" onClick={() => setMinimized(true)} title="Minimize" aria-label="Minimize">
+      <button
+        className="chip"
+        onClick={() => setMinimized(true)}
+        title="Minimize"
+        aria-label="Minimize"
+      >
         Minimize
       </button>
       {maximized ? (
-        <button className="chip" onClick={() => setMaximized(false)} title="Restore" aria-label="Restore">
+        <button
+          className="chip"
+          onClick={() => setMaximized(false)}
+          title="Restore"
+          aria-label="Restore"
+        >
           Restore
         </button>
       ) : (
-        <button className="chip" onClick={() => setMaximized(true)} title="Maximize" aria-label="Maximize">
+        <button
+          className="chip"
+          onClick={() => setMaximized(true)}
+          title="Maximize"
+          aria-label="Maximize"
+        >
           Maximize
         </button>
       )}
@@ -947,7 +992,10 @@ export default function LessonOverlay({
           role="dialog"
         >
           {/* Header */}
-          <div className="sticky top-0 z-10 overlay-header ring-1 ring-white/10" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div
+            className="sticky top-0 z-10 overlay-header ring-1 ring-white/10"
+            style={{ paddingTop: 'env(safe-area-inset-top)' }}
+          >
             <div className="text-sm font-semibold truncate bg-clip-text text-transparent bg-gradient-to-r from-softPink via-indigo-300 to-softPink">
               {lesson?.title || 'Lesson notes'}
             </div>
@@ -957,7 +1005,7 @@ export default function LessonOverlay({
           {/* Content: responsive grid */}
           <div
             className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 w-full max-w-[min(1600px,96vw)] mx-auto"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)', contain: 'content'}}
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)', contain: 'content' }}
           >
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
               {group.map((it) => {
@@ -1005,9 +1053,8 @@ export default function LessonOverlay({
           maxWidth: 'min(calc(100vw - 16px), 1400px)',
           maxHeight: 'min(calc(100svh - 16px), 900px)',
         }}
-       
       >
-         <div
+        <div
           ref={cardRef}
           className="overlay-panel flex flex-col overflow-hidden"
           style={{ width: w, height: h, contain: 'content', willChange: 'transform' }}
@@ -1038,7 +1085,7 @@ export default function LessonOverlay({
                   <div className={`overlay-kind-label--float ${c.grad}`}>{KIND_LABEL[it.kind]}</div>
                   <DeferMount sig={currentGroupSig}>
                     <MemoMarkdown zoom={zoom}>{it.md}</MemoMarkdown>
-                 </DeferMount>
+                  </DeferMount>
                 </div>
               );
             })}

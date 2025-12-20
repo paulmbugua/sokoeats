@@ -1,10 +1,5 @@
 /* eslint-disable prettier/prettier */
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-  useCallback,
-} from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -49,8 +44,17 @@ type ClassroomThemeShellProps = Record<string, any> & {
   onLoadingChange?: (loading: boolean) => void;
 
   gateMode?: 'narration' | 'notes_only';
-  gateNotice?: { reason?: string; resetsAt?: string | null; remainingMinutes?: number | null } | null;
-  gateUsage?: Array<{ bucket?: string; remainingSeconds?: number; limitSeconds?: number; resetsAt?: string | null }>;
+  gateNotice?: {
+    reason?: string;
+    resetsAt?: string | null;
+    remainingMinutes?: number | null;
+  } | null;
+  gateUsage?: Array<{
+    bucket?: string;
+    remainingSeconds?: number;
+    limitSeconds?: number;
+    resetsAt?: string | null;
+  }>;
 };
 
 /* --------------------------- storage helpers --------------------------- */
@@ -81,10 +85,8 @@ async function readNum(key: string, fallback: number) {
     return fallback;
   }
 }
-const writeStr = (k: string, v: string) =>
-  AsyncStorage.setItem(k, v).catch(() => {});
-const writeNum = (k: string, n: number) =>
-  AsyncStorage.setItem(k, String(n)).catch(() => {});
+const writeStr = (k: string, v: string) => AsyncStorage.setItem(k, v).catch(() => {});
+const writeNum = (k: string, n: number) => AsyncStorage.setItem(k, String(n)).catch(() => {});
 
 /* ------------------------------- UI bits ------------------------------- */
 
@@ -95,17 +97,9 @@ const Chip: React.FC<{
 }> = ({ active, label, onPress }) => (
   <TouchableOpacity
     onPress={onPress}
-    style={tw.style(
-      'px-2.5 py-1 rounded-full',
-      active ? 'bg-white' : 'bg-white/10',
-    )}
+    style={tw.style('px-2.5 py-1 rounded-full', active ? 'bg-white' : 'bg-white/10')}
   >
-    <Text
-      style={tw.style(
-        'text-[11px] font-medium',
-        active ? 'text-black' : 'text-white',
-      )}
-    >
+    <Text style={tw.style('text-[11px] font-medium', active ? 'text-black' : 'text-white')}>
       {label}
     </Text>
   </TouchableOpacity>
@@ -128,14 +122,8 @@ const PresetThumb: React.FC<{
   >
     {/* Placeholder thumb; replace with ImageBackground if you add previews */}
     <View style={tw`absolute inset-0 bg-black/20`} />
-    <View
-      style={tw`absolute inset-0 ${
-        selected ? 'items-center justify-center' : ''
-      }`}
-    >
-      {selected && (
-        <Text style={tw`text-white text-[10px] font-semibold`}>Selected</Text>
-      )}
+    <View style={tw`absolute inset-0 ${selected ? 'items-center justify-center' : ''}`}>
+      {selected && <Text style={tw`text-white text-[10px] font-semibold`}>Selected</Text>}
     </View>
   </Pressable>
 );
@@ -162,24 +150,19 @@ const InlineSlider: React.FC<{
 }) => {
   const [width, setWidth] = useState(1);
   const hi = (n: number) => (Number.isFinite(n) ? n : 1);
-  const clamp = (n: number, a: number, b: number) =>
-    Math.max(a, Math.min(hi(b), n));
+  const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(hi(b), n));
 
   const clamped = clamp(value, minimumValue, maximumValue);
-  const ratio =
-    (clamped - minimumValue) /
-    Math.max(1e-6, maximumValue - minimumValue);
+  const ratio = (clamped - minimumValue) / Math.max(1e-6, maximumValue - minimumValue);
 
-  const onLayout = (e: LayoutChangeEvent) =>
-    setWidth(Math.max(1, e.nativeEvent.layout.width));
+  const onLayout = (e: LayoutChangeEvent) => setWidth(Math.max(1, e.nativeEvent.layout.width));
   const toAbs = (x: number) => {
     const r = Math.max(0, Math.min(1, x / Math.max(1, width)));
     return minimumValue + r * (maximumValue - minimumValue);
   };
 
   const onStart = () => true;
-  const onMove = (e: GestureResponderEvent) =>
-    onValueChange?.(toAbs(e.nativeEvent.locationX));
+  const onMove = (e: GestureResponderEvent) => onValueChange?.(toAbs(e.nativeEvent.locationX));
   const onRelease = (e: GestureResponderEvent) => {
     const v = toAbs(e.nativeEvent.locationX);
     onValueChange?.(v);
@@ -196,10 +179,7 @@ const InlineSlider: React.FC<{
       style={tw`h-6 justify-center`}
     >
       <View
-        style={[
-          tw`h-1.5 rounded-full overflow-hidden`,
-          { backgroundColor: maximumTrackTintColor },
-        ]}
+        style={[tw`h-1.5 rounded-full overflow-hidden`, { backgroundColor: maximumTrackTintColor }]}
       >
         <View
           style={{
@@ -216,13 +196,7 @@ const InlineSlider: React.FC<{
           {
             backgroundColor: thumbTintColor,
             top: 6 - 8,
-            left: Math.max(
-              0,
-              Math.min(
-                ratio * width - 8,
-                Math.max(0, width - 16),
-              ),
-            ),
+            left: Math.max(0, Math.min(ratio * width - 8, Math.max(0, width - 16))),
           },
         ]}
       />
@@ -241,9 +215,7 @@ const RowSlider: React.FC<{
   <View style={tw`mb-2`}>
     <View style={tw`flex-row items-center justify-between mb-1`}>
       <Text style={tw`text-white/85 text-[11px]`}>{label}</Text>
-      <Text style={tw`text-white/60 text-[11px]`}>
-        {value.toFixed(2)}
-      </Text>
+      <Text style={tw`text-white/60 text-[11px]`}>{value.toFixed(2)}</Text>
     </View>
     <InlineSlider
       minimumValue={min}
@@ -260,38 +232,27 @@ const RowSlider: React.FC<{
 
 /* ----------------------------- Main Shell ----------------------------- */
 
-const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
-  props,
-) => {
+const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (props) => {
   const { height: WIN_H } = useWindowDimensions();
   const SHEET_MAX_H = Math.min(500, Math.floor(WIN_H * 0.6)); // ~60% of screen on phones
   const SHEET_SIDE_M = 8;
 
-  const {
-  onPlayerLoadingChange,
-  onLoadingChange,
-} = props;
+  const { onPlayerLoadingChange, onLoadingChange } = props;
 
   // unify loading callback name (support both web-style + old prop)
-  const handleLoadingChange =
-    onPlayerLoadingChange ?? onLoadingChange;
+  const handleLoadingChange = onPlayerLoadingChange ?? onLoadingChange;
 
   const [internalThemeOpen, setInternalThemeOpen] = useState(false);
   const isControlled = typeof props.themeOpen === 'boolean';
-  const showTheme = isControlled
-    ? (props.themeOpen as boolean)
-    : internalThemeOpen;
+  const showTheme = isControlled ? (props.themeOpen as boolean) : internalThemeOpen;
 
   const setShowTheme = useCallback(
     (v: boolean | ((s: boolean) => boolean)) => {
-      const next =
-        typeof v === 'function'
-          ? (v as (s: boolean) => boolean)(showTheme)
-          : v;
+      const next = typeof v === 'function' ? (v as (s: boolean) => boolean)(showTheme) : v;
       if (!isControlled) setInternalThemeOpen(next);
       props.onThemeOpenChange?.(next);
     },
-    [isControlled, props, showTheme],
+    [isControlled, props, showTheme]
   );
 
   // Defaults immediately for first paint; then hydrate from storage.
@@ -301,8 +262,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
   const [brightness, setBrightness] = useState<number>(0.6);
   const [saturation, setSaturation] = useState<number>(0.9);
   const [blurPx, setBlurPx] = useState<number>(2);
-  const [vignetteInner, setVignetteInner] =
-    useState<number>(0.45);
+  const [vignetteInner, setVignetteInner] = useState<number>(0.45);
 
   // Hydrate persisted values once
   useEffect(() => {
@@ -356,10 +316,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
 
   const imagesOverride = useMemo(() => {
     if (mode !== 'preset') return undefined;
-    const idx = Math.max(
-      0,
-      Math.min(DARK_PRESET_THEMES.length - 1, presetIndex),
-    );
+    const idx = Math.max(0, Math.min(DARK_PRESET_THEMES.length - 1, presetIndex));
     return [DARK_PRESET_THEMES[idx]] as string[];
   }, [mode, presetIndex]);
 
@@ -369,11 +326,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
         course={props.course || null}
         outline={props.outline}
         backendUrl={props.backendUrlOverride}
-        playing={
-          typeof props.playing === 'boolean'
-            ? props.playing
-            : undefined
-        }
+        playing={typeof props.playing === 'boolean' ? props.playing : undefined}
         intervalSec={14}
         dim={dim}
         brightness={brightness}
@@ -394,7 +347,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
       blurPx,
       vignetteInner,
       imagesOverride,
-    ],
+    ]
   );
 
   // Back handler to close the panel (Android hardware back)
@@ -404,10 +357,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
       setShowTheme(false);
       return true;
     };
-    const sub = BackHandler.addEventListener(
-      'hardwareBackPress',
-      onBack,
-    );
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => sub.remove();
   }, [showTheme, setShowTheme]);
 
@@ -436,9 +386,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
       >
         {/* Header (compact) */}
         <View style={tw`flex-row items-center justify-between mb-1`}>
-          <Text style={tw`text-white font-semibold text-sm`}>
-            Theme
-          </Text>
+          <Text style={tw`text-white font-semibold text-sm`}>Theme</Text>
           <TouchableOpacity
             onPress={() => setShowTheme(false)}
             hitSlop={{
@@ -459,11 +407,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
             active={mode === 'auto'}
             onPress={() => setMode('auto')}
           />
-          <Chip
-            label="Presets"
-            active={mode === 'preset'}
-            onPress={() => setMode('preset')}
-          />
+          <Chip label="Presets" active={mode === 'preset'} onPress={() => setMode('preset')} />
         </View>
 
         {/* Presets (shrunk) */}
@@ -475,17 +419,15 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
               contentContainerStyle={tw`gap-2`}
               keyboardShouldPersistTaps="handled"
             >
-              {DARK_PRESET_THEMES.map(
-                (src: string, i: number) => (
-                  <PresetThumb
-                    key={i}
-                    src={src}
-                    selected={presetIndex === i}
-                    onPress={() => setPresetIndex(i)}
-                    index={i}
-                  />
-                ),
-              )}
+              {DARK_PRESET_THEMES.map((src: string, i: number) => (
+                <PresetThumb
+                  key={i}
+                  src={src}
+                  selected={presetIndex === i}
+                  onPress={() => setPresetIndex(i)}
+                  index={i}
+                />
+              ))}
             </ScrollView>
           </View>
         )}
@@ -496,13 +438,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
           contentContainerStyle={tw`pb-2`}
           keyboardShouldPersistTaps="handled"
         >
-          <RowSlider
-            label="Darken"
-            value={dim}
-            min={0}
-            max={0.85}
-            onChange={setDim}
-          />
+          <RowSlider label="Darken" value={dim} min={0} max={0.85} onChange={setDim} />
           <RowSlider
             label="Brightness"
             value={brightness}
@@ -517,13 +453,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
             max={1.3}
             onChange={setSaturation}
           />
-          <RowSlider
-            label="Blur"
-            value={blurPx}
-            min={0}
-            max={6}
-            onChange={setBlurPx}
-          />
+          <RowSlider label="Blur" value={blurPx} min={0} max={6} onChange={setBlurPx} />
           <RowSlider
             label="Vignette Center"
             value={vignetteInner}
@@ -545,9 +475,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
             }}
             style={tw`px-2.5 py-1 rounded bg-white/10`}
           >
-            <Text style={tw`text-white text-[11px]`}>
-              Reset nice dark
-            </Text>
+            <Text style={tw`text-white text-[11px]`}>Reset nice dark</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
@@ -559,9 +487,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
             }}
             style={tw`px-2.5 py-1 rounded bg-white/10`}
           >
-            <Text style={tw`text-white text-[11px]`}>
-              Brighter
-            </Text>
+            <Text style={tw`text-white text-[11px]`}>Brighter</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
@@ -573,9 +499,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
             }}
             style={tw`px-2.5 py-1 rounded bg-white/10`}
           >
-            <Text style={tw`text-white text-[11px]`}>
-              Super dim
-            </Text>
+            <Text style={tw`text-white text-[11px]`}>Super dim</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -583,32 +507,29 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (
   );
 
   return (
-   <View style={tw.style('relative', 'flex-1')}>
+    <View style={tw.style('relative', 'flex-1')}>
       <ClassroomPlayer
-  {...props}
-   onWordSync={props.onWordSync}
-  disableInternalBackdrop
-  backdropOverride={backdropOverride}
-  onToggleThemePanel={() => setShowTheme((s) => !s)}
-  /** parity with web: just forward loading + request hooks */
-  onPlayerLoadingChange={handleLoadingChange}
-  onRequestStart={props.onRequestStart}
-  activeIndex={props.activeIndex}
-  onPrev={props.onPrev}
-/>
-
+        {...props}
+        onWordSync={props.onWordSync}
+        disableInternalBackdrop
+        backdropOverride={backdropOverride}
+        onToggleThemePanel={() => setShowTheme((s) => !s)}
+        /** parity with web: just forward loading + request hooks */
+        onPlayerLoadingChange={handleLoadingChange}
+        onRequestStart={props.onRequestStart}
+        activeIndex={props.activeIndex}
+        onPrev={props.onPrev}
+      />
 
       {/* Floating Theme button (compact) */}
       {props.showFloatingThemeButton !== false && (
         <TouchableOpacity
           onPress={() => setShowTheme((s) => !s)}
-          style={tw`absolute right-2 ${
-            Platform.select({
-              ios: 'bottom-24',
-              android: 'bottom-20',
-              default: 'bottom-20',
-            })
-          } px-3 py-1.5 rounded-xl bg-black/80 border border-white/10`}
+          style={tw`absolute right-2 ${Platform.select({
+            ios: 'bottom-24',
+            android: 'bottom-20',
+            default: 'bottom-20',
+          })} px-3 py-1.5 rounded-xl bg-black/80 border border-white/10`}
           accessibilityLabel="Theme"
         >
           <Text style={tw`text-white text-[11px]`}>Theme</Text>

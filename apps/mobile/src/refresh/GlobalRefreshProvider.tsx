@@ -45,13 +45,12 @@ export function GlobalRefreshProvider({ children }: PropsWithChildren) {
     }
   }, [refreshing]);
 
-  const value = useMemo<Ctx>(() => ({ refreshing, refresh, register }), [refreshing, refresh, register]);
-
-  return (
-    <GlobalRefreshContext.Provider value={value}>
-      {children}
-    </GlobalRefreshContext.Provider>
+  const value = useMemo<Ctx>(
+    () => ({ refreshing, refresh, register }),
+    [refreshing, refresh, register]
   );
+
+  return <GlobalRefreshContext.Provider value={value}>{children}</GlobalRefreshContext.Provider>;
 }
 
 export const useGlobalRefresh = () => {

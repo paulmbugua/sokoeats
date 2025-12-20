@@ -1,12 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  ActivityIndicator,
-  DeviceEventEmitter,
-} from 'react-native';
+import { View, Text, Pressable, ActivityIndicator, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -121,18 +115,17 @@ export default function PaystackCallbackNative() {
   const padBottom = Math.max(insets.bottom, 16);
 
   useEffect(() => {
-  (async () => {
-    const initial = await Linking.getInitialURL();
-    console.log('[PAYSTACK][initialURL]', initial);
-  })();
+    (async () => {
+      const initial = await Linking.getInitialURL();
+      console.log('[PAYSTACK][initialURL]', initial);
+    })();
 
-  const sub = Linking.addEventListener('url', ({ url }) => {
-    console.log('[PAYSTACK][eventURL]', url);
-  });
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      console.log('[PAYSTACK][eventURL]', url);
+    });
 
-  return () => sub.remove();
-}, []);
-
+    return () => sub.remove();
+  }, []);
 
   // Resolve reference + flow from route params OR deep link
   useEffect(() => {
@@ -168,24 +161,23 @@ export default function PaystackCallbackNative() {
   }, [route.params]);
 
   useEffect(() => {
-  const sub = Linking.addEventListener('url', ({ url }) => {
-    try {
-      const qp = Linking.parse(url)?.queryParams ?? {};
-      const merged = { ...(route.params ?? {}), ...(qp as any) };
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      try {
+        const qp = Linking.parse(url)?.queryParams ?? {};
+        const merged = { ...(route.params ?? {}), ...(qp as any) };
 
-      const ref = pickReference(merged);
-      resolveFlowNative(merged).then((flow) => {
-        setReference(ref);
-        setIsOrg(flow.isOrg);
-        setEffectivePaymentId(flow.effectivePaymentId);
-        setKind(flow.kind || '');
-      });
-    } catch {}
-  });
+        const ref = pickReference(merged);
+        resolveFlowNative(merged).then((flow) => {
+          setReference(ref);
+          setIsOrg(flow.isOrg);
+          setEffectivePaymentId(flow.effectivePaymentId);
+          setKind(flow.kind || '');
+        });
+      } catch {}
+    });
 
-  return () => sub.remove();
-}, [route.params]);
-
+    return () => sub.remove();
+  }, [route.params]);
 
   const retry = () => {
     setStatus('verifying');
@@ -196,8 +188,7 @@ export default function PaystackCallbackNative() {
   const goHome = () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
   const goAccount = () =>
     navigation.reset({ index: 0, routes: [{ name: 'Account', params: { tab: 'transactions' } }] });
-  const goOrgPortal = () =>
-    navigation.reset({ index: 0, routes: [{ name: 'OrgElearnPortal' }] });
+  const goOrgPortal = () => navigation.reset({ index: 0, routes: [{ name: 'OrgElearnPortal' }] });
 
   // Main verify effect (matches web logic; never mixes tokens)
   useEffect(() => {
@@ -285,9 +276,13 @@ export default function PaystackCallbackNative() {
         setStatus('failed');
 
         if (isOrg) {
-          setMessage(e?.response?.data?.message || e?.message || 'Failed to confirm subscription payment');
+          setMessage(
+            e?.response?.data?.message || e?.message || 'Failed to confirm subscription payment'
+          );
         } else {
-          setMessage(e?.response?.data?.message || e?.message || 'Token payment verification failed.');
+          setMessage(
+            e?.response?.data?.message || e?.message || 'Token payment verification failed.'
+          );
         }
       }
     })();
@@ -306,11 +301,20 @@ export default function PaystackCallbackNative() {
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
       {/* Soft background orbs (same vibe as FindTutor) */}
       <View style={tw`absolute inset-0`}>
-        <View style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-pink-500/12 dark:bg-pink-500/10`} />
-        <View style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/10`} />
+        <View
+          style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-pink-500/12 dark:bg-pink-500/10`}
+        />
+        <View
+          style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/10`}
+        />
       </View>
 
-      <View style={[tw`flex-1 items-center justify-center px-5`, { paddingTop: padTop, paddingBottom: padBottom }]}>
+      <View
+        style={[
+          tw`flex-1 items-center justify-center px-5`,
+          { paddingTop: padTop, paddingBottom: padBottom },
+        ]}
+      >
         <View style={tw.style(`w-full max-w-[520px] rounded-2xl p-5 ${cardBg} ${cardBorder}`)}>
           <Text style={tw`text-lg font-extrabold text-[#0d141c] dark:text-white`}>
             Paystack callback{' '}
@@ -320,7 +324,6 @@ export default function PaystackCallbackNative() {
           </Text>
 
           <View style={tw`mt-3 flex-row items-center`}>
-
             {status === 'verifying' ? (
               <>
                 <ActivityIndicator />
@@ -335,9 +338,7 @@ export default function PaystackCallbackNative() {
             )}
           </View>
 
-          <Text style={tw`mt-2 text-sm text-[#0d141c] dark:text-white/90`}>
-            {message}
-          </Text>
+          <Text style={tw`mt-2 text-sm text-[#0d141c] dark:text-white/90`}>{message}</Text>
 
           {/* Buttons (never mix links) */}
           <View style={tw`mt-4 flex-row flex-wrap gap-2`}>
@@ -377,25 +378,23 @@ export default function PaystackCallbackNative() {
           </View>
 
           {/* Debug footer */}
-          {!!reference ? (
+          {reference ? (
             <View style={tw`mt-4`}>
               <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
                 Ref:{' '}
-                <Text style={tw`font-mono text-[#0d141c] dark:text-white/80`}>
-                  {reference}
-                </Text>
+                <Text style={tw`font-mono text-[#0d141c] dark:text-white/80`}>{reference}</Text>
                 {isOrg && effectivePaymentId ? (
                   <>
-                    {' '}• PaymentId:{' '}
+                    {' '}
+                    • PaymentId:{' '}
                     <Text style={tw`font-mono text-[#0d141c] dark:text-white/80`}>
                       {effectivePaymentId}
                     </Text>
                     {kind ? (
                       <>
-                        {' '}• Kind:{' '}
-                        <Text style={tw`font-mono text-[#0d141c] dark:text-white/80`}>
-                          {kind}
-                        </Text>
+                        {' '}
+                        • Kind:{' '}
+                        <Text style={tw`font-mono text-[#0d141c] dark:text-white/80`}>{kind}</Text>
                       </>
                     ) : null}
                   </>

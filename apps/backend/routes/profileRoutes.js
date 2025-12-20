@@ -17,7 +17,7 @@ import {
   getProfileWithRecommendations,
   getProfileByUserId,
   getRandomProfile,
-   createProfileJson,
+  createProfileJson,
   updateProfileVideoJson,
   searchTutors,
 } from '../controllers/profileController.js';
@@ -46,21 +46,20 @@ router.get('/:id/recommendations', getProfileWithRecommendations);
 
 router.get('/search', searchTutors); // public search
 
-
 // Now the routes that use the generic id parameter
 router.patch(
   '/video',
   authUser,
-  express.json(),     // parse JSON body
-  updateProfileVideoJson
+  express.json(), // parse JSON body
+  updateProfileVideoJson,
 );
 // Route to create a profile
 router.post(
   '/json',
   authUser,
-  express.json(),            // parse application/json bodies
-  createProfileJson
-)
+  express.json(), // parse application/json bodies
+  createProfileJson,
+);
 
 router.post(
   '/',
@@ -106,4 +105,3 @@ router.get('/', getProfile);
 router.get('/:id', getProfileById);
 
 export default router;
-

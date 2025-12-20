@@ -38,10 +38,13 @@ router.post('/', anyAuth, courseController.createCourse);
 router.post(
   '/ai-sandbox',
   anyAuth, // must be logged in (site or org) to hit AI sandbox
-  inflightLimiter({ keyFn: aiKeyFn, max: Number(process.env.AI_MAX_INFLIGHT || 2) }),
+  inflightLimiter({
+    keyFn: aiKeyFn,
+    max: Number(process.env.AI_MAX_INFLIGHT || 2),
+  }),
   aiLimiterStrict,
   normalizeCourseSize,
-  createAiSandboxCourse
+  createAiSandboxCourse,
 );
 
 /** ---------------------------------------------------------------------------
@@ -57,7 +60,5 @@ router.post('/:id/purchase', authUser, courseController.purchaseCourse);
 // Update/delete: allow either site tutor or org instructor (via anyAuth)
 router.patch('/:id', anyAuth, courseController.updateCourse);
 router.delete('/:id', anyAuth, courseController.deleteCourse);
-
-
 
 export default router;

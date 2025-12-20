@@ -2,8 +2,12 @@
 const path = require('path');
 
 const plugins = [];
-try { plugins.push(require('@tailwindcss/forms')({ strategy: 'class' })); } catch {}
-try { plugins.push(require('@tailwindcss/typography')); } catch {}
+try {
+  plugins.push(require('@tailwindcss/forms')({ strategy: 'class' }));
+} catch {}
+try {
+  plugins.push(require('@tailwindcss/typography'));
+} catch {}
 
 // Helper to normalize to forward slashes on Windows
 const p = (rel) => path.resolve(__dirname, rel).replace(/\\/g, '/');
@@ -42,10 +46,18 @@ module.exports = {
       },
       fontFamily: {
         sans: [
-          'Poppins','ui-sans-serif','system-ui','Segoe UI','Roboto','Arial','Noto Sans',
-          'Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol',
+          'Poppins',
+          'ui-sans-serif',
+          'system-ui',
+          'Segoe UI',
+          'Roboto',
+          'Arial',
+          'Noto Sans',
+          'Apple Color Emoji',
+          'Segoe UI Emoji',
+          'Segoe UI Symbol',
         ],
-        display: ['Montserrat','Poppins','ui-sans-serif','system-ui'],
+        display: ['Montserrat', 'Poppins', 'ui-sans-serif', 'system-ui'],
       },
       // keep your literal prose theme (no functions)
       typography: {

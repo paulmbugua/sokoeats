@@ -8,7 +8,7 @@ import {
   getCertificate,
   verifyCertificate,
   ogPreview,
-  downloadCertificate,        // ⬅️ add this import
+  downloadCertificate, // ⬅️ add this import
   getStatus,
 } from '../controllers/certificatesController.js';
 
@@ -22,7 +22,6 @@ router.get(`/:id(${UUID_RE})/og`, ogPreview);
 // ---- Private (auth) ----
 // IMPORTANT: put this BEFORE '/:id'
 router.get(`/:id(${UUID_RE})/download`, anyAuth, downloadCertificate);
-
 
 router.get('/status', anyAuth, getStatus);
 

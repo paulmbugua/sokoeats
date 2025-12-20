@@ -131,9 +131,7 @@ function deriveAnalyticsSummary(
     examCardsGenerated += Number(r.exam_cards_generated ?? 0);
 
     // Fallback: infer source from kind/source field where possible
-    const kindRaw = String(
-      r.source_kind ?? r.kind ?? r.source ?? ''
-    ).toLowerCase();
+    const kindRaw = String(r.source_kind ?? r.kind ?? r.source ?? '').toLowerCase();
 
     if (kindRaw.includes('exam')) {
       examsAttempts += attempts;
@@ -147,23 +145,19 @@ function deriveAnalyticsSummary(
     }
   }
 
-  const overallPassRate =
-    totalAttempts > 0 ? Math.round((totalPasses * 100) / totalAttempts) : 0;
-  const overallAvgScore =
-    scoreWeight > 0 ? +(scoreWeightedSum / scoreWeight).toFixed(1) : 0;
+  const overallPassRate = totalAttempts > 0 ? Math.round((totalPasses * 100) / totalAttempts) : 0;
+  const overallAvgScore = scoreWeight > 0 ? +(scoreWeightedSum / scoreWeight).toFixed(1) : 0;
 
   // If backend hasn’t given us any per-source split at all, treat
   // everything as Robot Teacher quizzes so the UI isn’t empty.
-  const hasAnySourceSplit =
-    examsAttempts > 0 || robotAttempts > 0 || assignmentAttempts > 0;
+  const hasAnySourceSplit = examsAttempts > 0 || robotAttempts > 0 || assignmentAttempts > 0;
 
   if (!hasAnySourceSplit && totalAttempts > 0) {
     robotAttempts = totalAttempts;
     robotPasses = totalPasses;
   }
 
-  const safe = (v: number | undefined) =>
-    Number.isFinite(v as any) ? Number(v) : 0;
+  const safe = (v: number | undefined) => (Number.isFinite(v as any) ? Number(v) : 0);
 
   // Base derived summary
   const base: OrgAnalyticsSummary = {
@@ -173,20 +167,14 @@ function deriveAnalyticsSummary(
     overallAvgScore,
     examsAttempts,
     examsPasses,
-    examsPassRate:
-      examsAttempts > 0 ? Math.round((examsPasses * 100) / examsAttempts) : 0,
+    examsPassRate: examsAttempts > 0 ? Math.round((examsPasses * 100) / examsAttempts) : 0,
     robotQuizAttempts: robotAttempts,
     robotQuizPasses: robotPasses,
-    robotQuizPassRate:
-      robotAttempts > 0
-        ? Math.round((robotPasses * 100) / robotAttempts)
-        : 0,
+    robotQuizPassRate: robotAttempts > 0 ? Math.round((robotPasses * 100) / robotAttempts) : 0,
     assignmentAttempts,
     assignmentPasses,
     assignmentPassRate:
-      assignmentAttempts > 0
-        ? Math.round((assignmentPasses * 100) / assignmentAttempts)
-        : 0,
+      assignmentAttempts > 0 ? Math.round((assignmentPasses * 100) / assignmentAttempts) : 0,
     examCardsGenerated: examCardsGenerated || undefined,
   };
 
@@ -197,31 +185,21 @@ function deriveAnalyticsSummary(
   return {
     ...base,
     ...Object.fromEntries(
-      Object.entries(apiSummary).map(([k, v]) => [
-        k,
-        typeof v === 'number' ? safe(v) : v,
-      ])
+      Object.entries(apiSummary).map(([k, v]) => [k, typeof v === 'number' ? safe(v) : v])
     ),
   } as OrgAnalyticsSummary;
 }
 
 type MiniUser = { id: string | number; name?: string; email?: string };
 
-export const ORG_TIERS: Record<
-  OrgTier,
-  { seats: number; features: string[] }
-> = {
+export const ORG_TIERS: Record<OrgTier, { seats: number; features: string[] }> = {
   starter: {
     seats: 50,
     features: ['Branding', 'Assignments', 'Monthly analytics'],
   },
   pro: {
     seats: 500,
-    features: [
-      'Custom pass marks & timers',
-      'Monthly/Termly/Yearly analytics',
-      'Email reports',
-    ],
+    features: ['Custom pass marks & timers', 'Monthly/Termly/Yearly analytics', 'Email reports'],
   },
   enterprise: {
     seats: 5000,
@@ -247,7 +225,6 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
-
 export default function OrgElearnPortal() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -255,17 +232,14 @@ export default function OrgElearnPortal() {
   const viewParam = searchParams.get('view');
   const isLearnerView = viewParam === 'learner';
 
-  const learnerStudentId =
-    searchParams.get('studentId') ?? searchParams.get('student_id') ?? '';
+  const learnerStudentId = searchParams.get('studentId') ?? searchParams.get('student_id') ?? '';
 
-    // NEW: deep-link into a specific assignment’s submissions
-const assignmentIdFromUrl = searchParams.get('assignmentId') ?? '';
-const isSubmissionsView = !isLearnerView && viewParam === 'submissions';
-
+  // NEW: deep-link into a specific assignment’s submissions
+  const assignmentIdFromUrl = searchParams.get('assignmentId') ?? '';
+  const isSubmissionsView = !isLearnerView && viewParam === 'submissions';
 
   // NEW: class + subject hints coming from learner portal
-  const learnerClassFromUrl =
-    searchParams.get('class') ?? searchParams.get('class_label') ?? '';
+  const learnerClassFromUrl = searchParams.get('class') ?? searchParams.get('class_label') ?? '';
   const learnerSubjectFromUrl =
     searchParams.get('subject') ??
     searchParams.get('subjectKey') ??
@@ -275,8 +249,7 @@ const isSubmissionsView = !isLearnerView && viewParam === 'submissions';
   const { backendUrl, token: userToken, orgToken } = useShopContext();
   const authToken = orgToken || userToken;
 
-    const { role } = useOrg({ currency: 'USD' }); // role doesn't depend on pricing currency
-
+  const { role } = useOrg({ currency: 'USD' }); // role doesn't depend on pricing currency
 
   const isInstructor = role === 'instructor';
 
@@ -333,22 +306,20 @@ const isSubmissionsView = !isLearnerView && viewParam === 'submissions';
   const [learnerAssignmentsLoading, setLearnerAssignmentsLoading] = useState(false);
 
   // NEW: instructor/org view – detailed submissions for a single assignment
-const [submissionsLoading, setSubmissionsLoading] = useState(false);
-const [submissionsError, setSubmissionsError] = useState<string | null>(null);
-const [submissionsAssignment, setSubmissionsAssignment] = useState<any | null>(null);
-const [submissionsRows, setSubmissionsRows] = useState<any[]>([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(false);
+  const [submissionsError, setSubmissionsError] = useState<string | null>(null);
+  const [submissionsAssignment, setSubmissionsAssignment] = useState<any | null>(null);
+  const [submissionsRows, setSubmissionsRows] = useState<any[]>([]);
 
   // analytics
   const [period, setPeriod] = useState<Period>('month');
   const [analytics, setAnalytics] = useState<OrgAnalyticsRow[]>([]);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
-    const [analyticsSummary, setAnalyticsSummary] =
-    useState<OrgAnalyticsSummary | null>(null);
+  const [analyticsSummary, setAnalyticsSummary] = useState<OrgAnalyticsSummary | null>(null);
 
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingSignature, setUploadingSignature] = useState(false);
-  const [uploadingInstructorSignature, setUploadingInstructorSignature] =
-    useState(false);
+  const [uploadingInstructorSignature, setUploadingInstructorSignature] = useState(false);
 
   const mpesaPaymentIdRef = useRef<string | null>(null);
 
@@ -367,14 +338,12 @@ const [submissionsRows, setSubmissionsRows] = useState<any[]>([]);
   const [legacyInstructions, setLegacyInstructions] = useState('');
   const [legacyDueAt, setLegacyDueAt] = useState('');
   const [legacyAttachmentUrl, setLegacyAttachmentUrl] = useState<string>('');
-  const [legacyUploadingAttachment, setLegacyUploadingAttachment] =
-    useState(false);
+  const [legacyUploadingAttachment, setLegacyUploadingAttachment] = useState(false);
   const [creatingLegacyAssignment, setCreatingLegacyAssignment] = useState(false);
 
   // Learner submission modal state (for legacy assignments)
   const [submitOpen, setSubmitOpen] = useState(false);
-  const [submitAssignment, setSubmitAssignment] =
-    useState<OrgAssignmentRow | null>(null);
+  const [submitAssignment, setSubmitAssignment] = useState<OrgAssignmentRow | null>(null);
   const [submitText, setSubmitText] = useState('');
   const [submitFile, setSubmitFile] = useState<File | null>(null);
   const [submitUploading, setSubmitUploading] = useState(false);
@@ -396,9 +365,7 @@ const [submissionsRows, setSubmissionsRows] = useState<any[]>([]);
       const res: any = await uploadAsset(backendUrl, authToken, file, 'doc');
 
       const url =
-        typeof res === 'string'
-          ? res
-          : res?.url || res?.secure_url || res?.data?.url || '';
+        typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || '';
 
       if (!url) {
         throw new Error('Upload finished but no URL was returned.');
@@ -469,10 +436,7 @@ const [submissionsRows, setSubmissionsRows] = useState<any[]>([]);
       setLegacyAttachmentUrl('');
     } catch (e: any) {
       console.error('[OrgElearnPortal] createLegacyAssignment error', e);
-      const msg =
-        e?.response?.data?.message ||
-        e?.message ||
-        'Failed to create assignment.';
+      const msg = e?.response?.data?.message || e?.message || 'Failed to create assignment.';
       alert(msg);
     } finally {
       setCreatingLegacyAssignment(false);
@@ -486,16 +450,11 @@ const [submissionsRows, setSubmissionsRows] = useState<any[]>([]);
 
     setLearnerAssignmentsLoading(true);
     try {
-      const resp = await getOrgAssignmentsForLearner(
-        backendUrl,
-        authToken,
-        org.id,
-        {
-          studentId: learnerStudentId || undefined,
-          classLabel: learnerClassFromUrl || undefined,
-          subjectKey: learnerSubjectFromUrl || undefined,
-        }
-      );
+      const resp = await getOrgAssignmentsForLearner(backendUrl, authToken, org.id, {
+        studentId: learnerStudentId || undefined,
+        classLabel: learnerClassFromUrl || undefined,
+        subjectKey: learnerSubjectFromUrl || undefined,
+      });
 
       const rows = Array.isArray(resp?.data) ? resp.data : [];
       setLearnerAssignments(rows as OrgAssignmentRow[]);
@@ -516,48 +475,44 @@ const [submissionsRows, setSubmissionsRows] = useState<any[]>([]);
   ]);
 
   const loadAssignmentSubmissions = useCallback(async () => {
-  if (!isSubmissionsView) return;
-  if (!authToken || !org?.id) return;
-  if (!assignmentIdFromUrl) return;
+    if (!isSubmissionsView) return;
+    if (!authToken || !org?.id) return;
+    if (!assignmentIdFromUrl) return;
 
-  setSubmissionsLoading(true);
-  setSubmissionsError(null);
+    setSubmissionsLoading(true);
+    setSubmissionsError(null);
 
-  try {
-    const res = await getOrgAssignmentSubmissions(
-      backendUrl,
-      authToken,
-      org.id,
-      assignmentIdFromUrl
-    );
+    try {
+      const res = await getOrgAssignmentSubmissions(
+        backendUrl,
+        authToken,
+        org.id,
+        assignmentIdFromUrl
+      );
 
-    setSubmissionsAssignment(res.assignment ?? null);
-    setSubmissionsRows(Array.isArray(res.submissions) ? res.submissions : []);
-  } catch (e: any) {
-    console.error('[OrgElearnPortal] loadAssignmentSubmissions error', {
-      message: e?.message,
-      status: e?.response?.status,
-      data: e?.response?.data,
-      url: `${backendUrl}/api/orgs/${org?.id}/assignments/${assignmentIdFromUrl}/submissions`,
-    });
+      setSubmissionsAssignment(res.assignment ?? null);
+      setSubmissionsRows(Array.isArray(res.submissions) ? res.submissions : []);
+    } catch (e: any) {
+      console.error('[OrgElearnPortal] loadAssignmentSubmissions error', {
+        message: e?.message,
+        status: e?.response?.status,
+        data: e?.response?.data,
+        url: `${backendUrl}/api/orgs/${org?.id}/assignments/${assignmentIdFromUrl}/submissions`,
+      });
 
-    setSubmissionsError(
-      e?.response?.data?.message ||
-        e?.message ||
-        'Failed to load submissions.'
-    );
-    setSubmissionsAssignment(null);
-    setSubmissionsRows([]);
-  } finally {
-    setSubmissionsLoading(false);
-  }
-}, [isSubmissionsView, authToken, org?.id, assignmentIdFromUrl, backendUrl]);
+      setSubmissionsError(
+        e?.response?.data?.message || e?.message || 'Failed to load submissions.'
+      );
+      setSubmissionsAssignment(null);
+      setSubmissionsRows([]);
+    } finally {
+      setSubmissionsLoading(false);
+    }
+  }, [isSubmissionsView, authToken, org?.id, assignmentIdFromUrl, backendUrl]);
 
-
-useEffect(() => {
-  loadAssignmentSubmissions();
-}, [loadAssignmentSubmissions]);
-
+  useEffect(() => {
+    loadAssignmentSubmissions();
+  }, [loadAssignmentSubmissions]);
 
   useEffect(() => {
     loadLearnerAssignments();
@@ -581,21 +536,13 @@ useEffect(() => {
       if (submitFile) {
         const res: any = await uploadAsset(backendUrl, authToken, submitFile, 'doc');
         attachmentUrl =
-          typeof res === 'string'
-            ? res
-            : res?.url || res?.secure_url || res?.data?.url || '';
+          typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || '';
       }
 
-      await submitOrgLegacyAssignment(
-        backendUrl,
-        authToken,
-        org.id,
-        submitAssignment.id,
-        {
-          answer_text: submitText.trim() || null,
-          attachment_url: attachmentUrl,
-        }
-      );
+      await submitOrgLegacyAssignment(backendUrl, authToken, org.id, submitAssignment.id, {
+        answer_text: submitText.trim() || null,
+        attachment_url: attachmentUrl,
+      });
 
       alert('Your work has been submitted ✅');
       setSubmitOpen(false);
@@ -607,10 +554,7 @@ useEffect(() => {
       await loadLearnerAssignments();
     } catch (e: any) {
       console.error('[OrgElearnPortal] submit legacy work error', e);
-      const msg =
-        e?.response?.data?.message ||
-        e?.message ||
-        'Failed to submit work.';
+      const msg = e?.response?.data?.message || e?.message || 'Failed to submit work.';
       alert(msg);
     } finally {
       setSubmitUploading(false);
@@ -623,12 +567,10 @@ useEffect(() => {
       if (!org?.id || !authToken) return;
       setLpLoading(true);
       try {
-        const resp = await getOrgLearnersProgress(
-          backendUrl,
-          authToken,
-          org.id,
-          { limit: 25, cursor: reset ? undefined : lpCursor || undefined }
-        );
+        const resp = await getOrgLearnersProgress(backendUrl, authToken, org.id, {
+          limit: 25,
+          cursor: reset ? undefined : lpCursor || undefined,
+        });
         setLpRows((prev) => (reset ? resp.data : [...prev, ...resp.data]));
         setLpCursor(resp.next_cursor ?? null);
       } finally {
@@ -649,9 +591,7 @@ useEffect(() => {
       // keep current tab (and other params) intact
       if (tab) sp.set('tab', tab);
 
-      const nextUrl = `${window.location.pathname}?${sp.toString()}${
-        window.location.hash
-      }`;
+      const nextUrl = `${window.location.pathname}?${sp.toString()}${window.location.hash}`;
       window.history.replaceState(null, '', nextUrl);
 
       // also cache for cross-route handoff
@@ -675,15 +615,14 @@ useEffect(() => {
   }, [navigate]);
 
   const handleBackToAssignments = useCallback(() => {
-  const sp = new URLSearchParams(window.location.search);
-  sp.delete('view');
-  sp.delete('assignmentId');
-  if (!sp.get('tab')) sp.set('tab', 'assign');
+    const sp = new URLSearchParams(window.location.search);
+    sp.delete('view');
+    sp.delete('assignmentId');
+    if (!sp.get('tab')) sp.set('tab', 'assign');
 
-  const nextUrl = `${window.location.pathname}?${sp.toString()}${window.location.hash}`;
-  navigate(nextUrl, { replace: true });
-}, [navigate]);
-
+    const nextUrl = `${window.location.pathname}?${sp.toString()}${window.location.hash}`;
+    navigate(nextUrl, { replace: true });
+  }, [navigate]);
 
   useEffect(() => {
     (async () => {
@@ -714,11 +653,7 @@ useEffect(() => {
     if (!authToken || !org?.id) return;
     (async () => {
       try {
-        const { seats_used } = await getOrgUsage(
-          backendUrl,
-          authToken,
-          org.id
-        );
+        const { seats_used } = await getOrgUsage(backendUrl, authToken, org.id);
         setSeatsUsed(Number(seats_used ?? 0));
       } catch {
         setSeatsUsed(Number(org?.seats_used ?? 0));
@@ -733,9 +668,7 @@ useEffect(() => {
       if (!authToken || !org?.id) return;
       try {
         const roster = await getOrgRoster(backendUrl, authToken, org.id);
-        setInstructors(
-          Array.isArray(roster?.instructors) ? roster.instructors : []
-        );
+        setInstructors(Array.isArray(roster?.instructors) ? roster.instructors : []);
       } catch {
         setInstructors([]);
       }
@@ -746,9 +679,7 @@ useEffect(() => {
   const hasFeature = useCallback(
     (needle: string) => {
       const list = ORG_TIERS[tier]?.features || [];
-      return list.some((f) =>
-        f.toLowerCase().includes(needle.toLowerCase())
-      );
+      return list.some((f) => f.toLowerCase().includes(needle.toLowerCase()));
     },
     [tier]
   );
@@ -793,8 +724,8 @@ useEffect(() => {
       target === 'logo_url'
         ? setUploadingLogo
         : target === 'signature_url'
-        ? setUploadingSignature
-        : setUploadingInstructorSignature;
+          ? setUploadingSignature
+          : setUploadingInstructorSignature;
 
     setBusy(true);
     try {
@@ -807,15 +738,11 @@ useEffect(() => {
       const res: any = await uploadAsset(backendUrl, authToken, file, 'image');
 
       const url =
-        typeof res === 'string'
-          ? res
-          : res?.url || res?.secure_url || res?.data?.url || '';
+        typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || '';
 
       if (!url) {
         console.error('[upload] unexpected response:', res);
-        throw new Error(
-          'Upload completed but no URL was returned by the server.'
-        );
+        throw new Error('Upload completed but no URL was returned by the server.');
       }
 
       console.debug('[upload] success url:', url);
@@ -863,21 +790,14 @@ useEffect(() => {
     if (form.webhook_enabled) {
       const u = String(form.webhook_url || '').trim();
       if (!/^https:\/\/.+/i.test(u)) {
-        alert(
-          'Webhook URL must be a valid HTTPS URL when webhooks are enabled.'
-        );
+        alert('Webhook URL must be a valid HTTPS URL when webhooks are enabled.');
         return;
       }
     }
 
     try {
-      const updated = await updateOrgBranding(
-        backendUrl,
-        authToken,
-        org.id,
-        form
-      );
-      setOrg((prev) => ({ ...(prev ?? {}), ...(updated ?? {}) } as Org));
+      const updated = await updateOrgBranding(backendUrl, authToken, org.id, form);
+      setOrg((prev) => ({ ...(prev ?? {}), ...(updated ?? {}) }) as Org);
       setForm((f: any) => ({ ...f, ...(updated ?? {}) }));
 
       setShowCongrats(true);
@@ -925,12 +845,7 @@ useEffect(() => {
         orgSubjectKey: assignSubjectKey || null,
       };
 
-      const a = await createOrgAssignment(
-        backendUrl,
-        authToken,
-        org.id,
-        payload
-      );
+      const a = await createOrgAssignment(backendUrl, authToken, org.id, payload);
       const link = `${window.location.origin}/org/join/${a.invite_code}`;
       setInviteLink(link);
 
@@ -941,7 +856,7 @@ useEffect(() => {
   };
 
   /** Analytics */
-   const loadAnalytics = useCallback(async () => {
+  const loadAnalytics = useCallback(async () => {
     if (isLearnerView) return; // 🔐 learner view has no analytics dashboard
     if (!org?.id || !authToken) return;
     setLoadingAnalytics(true);
@@ -949,9 +864,7 @@ useEffect(() => {
       const p: Period = canMultiPeriodAnalytics ? period : 'month';
       const resp = await getOrgAnalytics(backendUrl, authToken, org.id, p);
 
-      const rows: OrgAnalyticsRow[] = Array.isArray(resp?.data)
-        ? resp.data
-        : [];
+      const rows: OrgAnalyticsRow[] = Array.isArray(resp?.data) ? resp.data : [];
 
       setAnalytics(rows);
 
@@ -968,15 +881,7 @@ useEffect(() => {
     } finally {
       setLoadingAnalytics(false);
     }
-  }, [
-    org?.id,
-    backendUrl,
-    authToken,
-    period,
-    canMultiPeriodAnalytics,
-    isLearnerView,
-  ]);
-
+  }, [org?.id, backendUrl, authToken, period, canMultiPeriodAnalytics, isLearnerView]);
 
   useEffect(() => {
     loadAnalytics();
@@ -997,11 +902,11 @@ useEffect(() => {
     const fromShare = sp.get('from') === 'share';
 
     const desiredTab: TabKey =
-      explicitTab === 'assign' ||
-      explicitTab === 'analytics' ||
-      explicitTab === 'branding'
+      explicitTab === 'assign' || explicitTab === 'analytics' || explicitTab === 'branding'
         ? explicitTab
-        : (isInstructor ? 'assign' as TabKey : 'branding');
+        : isInstructor
+          ? ('assign' as TabKey)
+          : 'branding';
 
     setTab(!canBranding && desiredTab === 'branding' ? 'assign' : desiredTab);
 
@@ -1054,9 +959,7 @@ useEffect(() => {
   /** CSV export */
   const downloadCSV = useCallback(() => {
     try {
-      const rows: (string | number)[][] = [
-        ['Bucket', 'Attempts', 'Passes', 'Avg Score'],
-      ];
+      const rows: (string | number)[][] = [['Bucket', 'Attempts', 'Passes', 'Avg Score']];
       analytics.forEach((r) => {
         const bucketISO = new Date(r.bucket).toISOString();
         const attempts = Number(r.attempts ?? 0);
@@ -1065,11 +968,7 @@ useEffect(() => {
         rows.push([bucketISO, attempts, passes, avg]);
       });
       const csv = rows
-        .map((r) =>
-          r
-            .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-            .join(',')
-        )
+        .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
         .join('\n');
 
       const blob = new Blob(['\uFEFF' + csv], {
@@ -1108,10 +1007,8 @@ useEffect(() => {
         alert('Please sign in and open your organization first.');
         return;
       }
-      const apiCycle: 'monthly' | 'yearly' =
-        opts.cycle === 'annual' ? 'yearly' : 'monthly';
-      const apiMethod: 'MPESA' | 'PAYSTACK' =
-        opts.method === 'M-Pesa' ? 'MPESA' : 'PAYSTACK';
+      const apiCycle: 'monthly' | 'yearly' = opts.cycle === 'annual' ? 'yearly' : 'monthly';
+      const apiMethod: 'MPESA' | 'PAYSTACK' = opts.method === 'M-Pesa' ? 'MPESA' : 'PAYSTACK';
 
       try {
         // M-Pesa flow
@@ -1127,17 +1024,12 @@ useEffect(() => {
           }
 
           if (!mpesaPaymentIdRef.current) {
-            const init = await initOrgSubscription(
-              backendUrl,
-              authToken,
-              org.id,
-              {
-                tier: target,
-                cycle: apiCycle,
-                method: 'MPESA',
-                phone: opts.phone,
-              }
-            );
+            const init = await initOrgSubscription(backendUrl, authToken, org.id, {
+              tier: target,
+              cycle: apiCycle,
+              method: 'MPESA',
+              phone: opts.phone,
+            });
             mpesaPaymentIdRef.current = init.paymentId;
 
             alert(
@@ -1163,11 +1055,7 @@ useEffect(() => {
           }
 
           try {
-            await confirmOrgSubscription(
-              backendUrl,
-              authToken,
-              mpesaPaymentIdRef.current!
-            );
+            await confirmOrgSubscription(backendUrl, authToken, mpesaPaymentIdRef.current!);
             mpesaPaymentIdRef.current = null;
             alert('Payment confirmed. Subscription activated ✅');
             if (target === 'pro') setShowProModal(false);
@@ -1176,39 +1064,27 @@ useEffect(() => {
             setOrg(updated);
             return;
           } catch (err: any) {
-            const msg =
-              err?.response?.data?.message || err?.message || '';
+            const msg = err?.response?.data?.message || err?.message || '';
             if (/reference missing/i.test(msg)) {
               await new Promise((r) => setTimeout(r, 5000));
               try {
-                await confirmOrgSubscription(
-                  backendUrl,
-                  authToken,
-                  mpesaPaymentIdRef.current!
-                );
+                await confirmOrgSubscription(backendUrl, authToken, mpesaPaymentIdRef.current!);
                 mpesaPaymentIdRef.current = null;
                 alert('Payment confirmed. Subscription activated ✅');
                 if (target === 'pro') setShowProModal(false);
-                if (target === 'enterprise')
-                  setShowEnterpriseModal(false);
-                const updated = await getMyOrgOrBootstrap(
-                  backendUrl,
-                  authToken
-                );
+                if (target === 'enterprise') setShowEnterpriseModal(false);
+                const updated = await getMyOrgOrBootstrap(backendUrl, authToken);
                 setOrg(updated);
                 return;
               } catch (err2: any) {
-                const msg2 =
-                  err2?.response?.data?.message || err2?.message || '';
+                const msg2 = err2?.response?.data?.message || err2?.message || '';
                 if (/reference missing/i.test(msg2)) {
                   alert(
                     'We’re still waiting for M-Pesa to confirm. If you have the receipt on your phone, enter it below and press “Update Reference / Complete”.'
                   );
                   return;
                 }
-                alert(
-                  msg2 || 'Payment confirmation failed. Please try again.'
-                );
+                alert(msg2 || 'Payment confirmation failed. Please try again.');
                 return;
               }
             }
@@ -1223,18 +1099,11 @@ useEffect(() => {
             tier: target,
             cycle: apiCycle,
             method: 'PAYSTACK',
-
           } as any);
 
-          const authUrl =
-            (init as any).authorizationUrl ||
-            (init as any).authorization_url ||
-            '';
+          const authUrl = (init as any).authorizationUrl || (init as any).authorization_url || '';
 
-          const paymentId =
-            (init as any).paymentId ||
-            (init as any).payment_id ||
-            '';
+          const paymentId = (init as any).paymentId || (init as any).payment_id || '';
 
           if (!authUrl) {
             alert('Paystack init failed: missing authorization URL');
@@ -1258,9 +1127,7 @@ useEffect(() => {
         // PAYPAL handled via the PayPal Buttons in the modal
       } catch (err: any) {
         const msg =
-          err?.response?.data?.message ||
-          err?.message ||
-          'Payment failed — please try again.';
+          err?.response?.data?.message || err?.message || 'Payment failed — please try again.';
         alert(msg);
       }
     },
@@ -1268,10 +1135,7 @@ useEffect(() => {
   );
 
   /** Helpers */
-  const seatPct = Math.min(
-    100,
-    Math.round(((seatsUsed || 0) / seatsMax) * 100)
-  );
+  const seatPct = Math.min(100, Math.round(((seatsUsed || 0) / seatsMax) * 100));
   const nearLimit = seatPct >= 90;
   const visibleTabs: TabKey[] = isInstructor
     ? ['assign', 'analytics']
@@ -1317,10 +1181,7 @@ useEffect(() => {
         (a as any).answers_count ??
         0;
 
-      const hasFlag =
-        (a as any).has_submission ??
-        (a as any).hasSubmitted ??
-        false;
+      const hasFlag = (a as any).has_submission ?? (a as any).hasSubmitted ?? false;
 
       const submissionTimestamp =
         (a as any).latest_submission_at ||
@@ -1330,9 +1191,7 @@ useEffect(() => {
         null;
 
       const hasSubmitted =
-        Boolean(hasFlag) ||
-        Number(submissionCount) > 0 ||
-        Boolean(submissionTimestamp);
+        Boolean(hasFlag) || Number(submissionCount) > 0 || Boolean(submissionTimestamp);
 
       if (hasSubmitted) submitted.push(a);
       else pending.push(a);
@@ -1358,17 +1217,17 @@ useEffect(() => {
                   Assignments shared with you
                 </h1>
                 <div className="text-[#49739c] dark:text-white/70 text-xs sm:text-sm">
-                  These file-based assignments (PDFs, docs, images) were shared by your
-                  teachers using the classic / legacy flow. Download the attachment,
-                  follow the instructions, and submit your work back to the teacher.
+                  These file-based assignments (PDFs, docs, images) were shared by your teachers
+                  using the classic / legacy flow. Download the attachment, follow the instructions,
+                  and submit your work back to the teacher.
                   {learnerClassFromUrl && (
                     <>
-                      {' '}You&apos;re currently viewing work for{' '}
-                      <strong>{learnerClassFromUrl}</strong>
+                      {' '}
+                      You&apos;re currently viewing work for <strong>{learnerClassFromUrl}</strong>
                       {learnerSubjectFromUrl && (
                         <>
-                          {' '}in{' '}
-                          <strong>{learnerSubjectFromUrl}</strong>.
+                          {' '}
+                          in <strong>{learnerSubjectFromUrl}</strong>.
                         </>
                       )}
                     </>
@@ -1379,19 +1238,15 @@ useEffect(() => {
               <section className="rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10 bg-white dark:bg-[#0f1821] p-3 sm:p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <h2 className="text-sm sm:text-base font-semibold">
-                      Your assignments
-                    </h2>
+                    <h2 className="text-sm sm:text-base font-semibold">Your assignments</h2>
                     <p className="text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
-                      You can only see assignments that your institution has
-                      shared with you. New work will appear here automatically
-                      when a teacher targets your class / subject.
+                      You can only see assignments that your institution has shared with you. New
+                      work will appear here automatically when a teacher targets your class /
+                      subject.
                     </p>
                   </div>
                   {learnerAssignmentsLoading && (
-                    <span className="text-[11px] text-slate-500 dark:text-white/60">
-                      Loading…
-                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-white/60">Loading…</span>
                   )}
                 </div>
 
@@ -1404,8 +1259,8 @@ useEffect(() => {
 
                     {submittedAssignments.length === 0 && !learnerAssignmentsLoading && (
                       <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
-                        You haven&apos;t submitted any legacy (file-based) assignments yet.
-                        When you submit work, it will appear here.
+                        You haven&apos;t submitted any legacy (file-based) assignments yet. When you
+                        submit work, it will appear here.
                       </div>
                     )}
 
@@ -1523,7 +1378,8 @@ useEffect(() => {
                               </div>
 
                               <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-white/55">
-                                Your submission stays listed here so you can always see which work you&apos;ve already sent.
+                                Your submission stays listed here so you can always see which work
+                                you&apos;ve already sent.
                               </p>
                             </li>
                           );
@@ -1540,8 +1396,8 @@ useEffect(() => {
 
                     {pendingAssignments.length === 0 && !learnerAssignmentsLoading && (
                       <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
-                        You don&apos;t have any pending legacy (file-based) assignments for this class or subject yet.
-                        New work shared by your teacher will appear here.
+                        You don&apos;t have any pending legacy (file-based) assignments for this
+                        class or subject yet. New work shared by your teacher will appear here.
                       </div>
                     )}
 
@@ -1655,8 +1511,9 @@ useEffect(() => {
                               </div>
 
                               <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-white/55">
-                                After completing the work, your teacher may ask you to upload or share your answers through the course, quiz,
-                                or the Messages area of your portal.
+                                After completing the work, your teacher may ask you to upload or
+                                share your answers through the course, quiz, or the Messages area of
+                                your portal.
                               </p>
                             </li>
                           );
@@ -1666,12 +1523,10 @@ useEffect(() => {
                   </div>
                 </div>
 
-
                 {learnerStudentId && (
                   <p className="mt-3 text-[10px] sm:text-[11px] text-slate-500 dark:text:white/55">
-                    Learner ID in this portal:{' '}
-                    <span className="font-mono">{learnerStudentId}</span>. If this
-                    doesn&apos;t match your login card, ask your teacher to confirm.
+                    Learner ID in this portal: <span className="font-mono">{learnerStudentId}</span>
+                    . If this doesn&apos;t match your login card, ask your teacher to confirm.
                   </p>
                 )}
               </section>
@@ -1699,8 +1554,8 @@ useEffect(() => {
 
                     <div className="px-4 py-3 space-y-3 max-h-[70vh] overflow-y-auto">
                       <div className="text-[11px] sm:text-xs text-slate-600 dark:text:white/70">
-                        You can type your answer, attach a file (PDF, DOC, images),
-                        or both. Your teacher will see the time you submitted.
+                        You can type your answer, attach a file (PDF, DOC, images), or both. Your
+                        teacher will see the time you submitted.
                       </div>
 
                       <div>
@@ -1722,9 +1577,7 @@ useEffect(() => {
                         </label>
                         <input
                           type="file"
-                          onChange={(e) =>
-                            setSubmitFile(e.target.files?.[0] ?? null)
-                          }
+                          onChange={(e) => setSubmitFile(e.target.files?.[0] ?? null)}
                           className="block w-full text-[11px] sm:text-xs text-slate-600 dark:text-slate-300
                             file:mr-3 file:py-1.5 file:px-3 file:rounded-xl
                             file:border-0 file:text-xs file:font-semibold
@@ -1799,7 +1652,7 @@ useEffect(() => {
                         ))}
                       </div>
 
-                     {/* 📊 Exam results – PRO & ENTERPRISE only */}
+                      {/* 📊 Exam results – PRO & ENTERPRISE only */}
                       {(tier === 'pro' || tier === 'enterprise') && (
                         <button
                           onClick={() => navigate('/org/exams')}
@@ -1816,7 +1669,6 @@ useEffect(() => {
                           <span>Exam results</span>
                         </button>
                       )}
-
 
                       {/* Primary CTA */}
                       <button
@@ -1859,10 +1711,7 @@ useEffect(() => {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <Pill>
-                        Plan:{' '}
-                        <span className="ml-1 font-semibold">
-                          {tier.toUpperCase()}
-                        </span>
+                        Plan: <span className="ml-1 font-semibold">{tier.toUpperCase()}</span>
                       </Pill>
 
                       {!isInstructor && (
@@ -1880,9 +1729,7 @@ useEffect(() => {
                         {/* seat usage bar */}
                         <div className="flex-1 sm:flex-none sm:w-40 h-2 rounded bg-slate-100 dark:bg-slate-800 overflow-hidden ring-1 ring-slate-200 dark:ring-slate-700">
                           <div
-                            className={`h-full ${
-                              nearLimit ? 'bg-red-500' : 'bg-emerald-500'
-                            }`}
+                            className={`h-full ${nearLimit ? 'bg-red-500' : 'bg-emerald-500'}`}
                             style={{ width: `${seatPct}%` }}
                           />
                         </div>
@@ -1935,220 +1782,193 @@ useEffect(() => {
 
                   {isInstructor && (
                     <div className="mt-2 text-[11px] text-[#49739c] dark:text:white/70">
-                      Your institution owner/admin manages branding and subscriptions.
-                      As an instructor you can create assignments and view analytics here.
+                      Your institution owner/admin manages branding and subscriptions. As an
+                      instructor you can create assignments and view analytics here.
                     </div>
                   )}
                 </div>
               </header>
 
               {/* Assignment submissions detail (deep-link from instructor home) */}
-                {tab === 'assign' && isSubmissionsView && (
-                  <section className="mt-4 rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10 bg-white dark:bg-[#0f1821] p-3 sm:p-4 space-y-3">
+              {tab === 'assign' && isSubmissionsView && (
+                <section className="mt-4 rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10 bg-white dark:bg-[#0f1821] p-3 sm:p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <h2 className="text-sm sm:text-base font-semibold">Assignment submissions</h2>
+                      <p className="text-[11px] sm:text-xs text-slate-600 dark:text-darkTextSecondary">
+                        You’re viewing all learner submissions for this assignment. Use this view
+                        after clicking a row from “Recent submissions” on the Instructor home.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      {submissionsLoading && (
+                        <span className="text-[11px] text-slate-500 dark:text-darkTextSecondary">
+                          Loading…
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleBackToAssignments}
+                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                      >
+                        ← Back to assignments
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Assignment header */}
+                  <div className="rounded-xl border border-[#e7edf4] dark:border-white/10 bg-slate-50/80 dark:bg-[#111b28] px-3 py-3 sm:px-4 sm:py-3.5">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <div>
-                        <h2 className="text-sm sm:text-base font-semibold">
-                          Assignment submissions
-                        </h2>
-                        <p className="text-[11px] sm:text-xs text-slate-600 dark:text-darkTextSecondary">
-                          You’re viewing all learner submissions for this assignment.
-                          Use this view after clicking a row from “Recent submissions”
-                          on the Instructor home.
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 items-center">
-                        {submissionsLoading && (
-                          <span className="text-[11px] text-slate-500 dark:text-darkTextSecondary">
-                            Loading…
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={handleBackToAssignments}
-                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
-                        >
-                          ← Back to assignments
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Assignment header */}
-                    <div className="rounded-xl border border-[#e7edf4] dark:border-white/10 bg-slate-50/80 dark:bg-[#111b28] px-3 py-3 sm:px-4 sm:py-3.5">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                        <div>
-                          <div className="text-sm sm:text-base font-semibold">
-                            {submissionsAssignment?.title ||
-                              submissionsAssignment?.title_override ||
-                              submissionsAssignment?.course_title ||
-                              'Assignment'}
-                          </div>
-                          <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
-                            {submissionsAssignment?.course_title && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-100 dark:bg-sky-500/10 dark:text-sky-100 dark:border-sky-500/40">
-                                📘 {submissionsAssignment.course_title}
-                              </span>
-                            )}
-                            {submissionsAssignment?.org_class_label && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-white/5 dark:text-white/80 dark:border-white/10">
-                                🎓 Class: {submissionsAssignment.org_class_label}
-                              </span>
-                            )}
-                            {submissionsAssignment?.org_subject_key && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-100 dark:border-emerald-500/40">
-                                📚 Subject: {submissionsAssignment.org_subject_key}
-                              </span>
-                            )}
-                          </div>
+                        <div className="text-sm sm:text-base font-semibold">
+                          {submissionsAssignment?.title ||
+                            submissionsAssignment?.title_override ||
+                            submissionsAssignment?.course_title ||
+                            'Assignment'}
                         </div>
-
-                        <div className="text-right text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
-                          <div>
-                            Total submissions:{' '}
-                            <span className="font-semibold">
-                              {submissionsRows.length}
+                        <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
+                          {submissionsAssignment?.course_title && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-100 dark:bg-sky-500/10 dark:text-sky-100 dark:border-sky-500/40">
+                              📘 {submissionsAssignment.course_title}
                             </span>
-                          </div>
-                          {submissionsAssignment?.due_at && (
-                            <div>
-                              Due:{' '}
-                              {new Date(
-                                submissionsAssignment.due_at
-                              ).toLocaleString()}
-                            </div>
+                          )}
+                          {submissionsAssignment?.org_class_label && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-white/5 dark:text-white/80 dark:border-white/10">
+                              🎓 Class: {submissionsAssignment.org_class_label}
+                            </span>
+                          )}
+                          {submissionsAssignment?.org_subject_key && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-100 dark:border-emerald-500/40">
+                              📚 Subject: {submissionsAssignment.org_subject_key}
+                            </span>
                           )}
                         </div>
                       </div>
+
+                      <div className="text-right text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
+                        <div>
+                          Total submissions:{' '}
+                          <span className="font-semibold">{submissionsRows.length}</span>
+                        </div>
+                        {submissionsAssignment?.due_at && (
+                          <div>Due: {new Date(submissionsAssignment.due_at).toLocaleString()}</div>
+                        )}
+                      </div>
                     </div>
+                  </div>
 
-                    {/* Error / empty states */}
-                    {submissionsError && (
-                      <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] sm:text-xs text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100">
-                        {submissionsError}
-                      </div>
-                    )}
+                  {/* Error / empty states */}
+                  {submissionsError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] sm:text-xs text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100">
+                      {submissionsError}
+                    </div>
+                  )}
 
-                    {!submissionsError && !submissionsLoading && submissionsRows.length === 0 && (
-                      <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
-                        No submissions have been recorded for this assignment yet.
-                        Once learners start submitting work, you’ll see them listed here.
-                      </div>
-                    )}
+                  {!submissionsError && !submissionsLoading && submissionsRows.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
+                      No submissions have been recorded for this assignment yet. Once learners start
+                      submitting work, you’ll see them listed here.
+                    </div>
+                  )}
 
-                    {/* Submissions table */}
-                    {submissionsRows.length > 0 && (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-xs sm:text-sm">
-                          <thead className="text-left text-slate-600 dark:text-white/70">
-                            <tr>
-                              <th className="py-2 pr-4">Learner</th>
-                              <th className="py-2 pr-4">Identifier</th>
-                              <th className="py-2 pr-4">Submitted at</th>
-                              <th className="py-2 pr-4">Answer</th>
-                              <th className="py-2 pr-4">Attachment</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {submissionsRows.map((s) => {
-                              const key = String(
-                                s.id ??
-                                  s.submission_id ??
-                                  `${s.assignment_id ?? submissionsAssignment?.id ?? 'a'}-${Math.random()}`
-                              );
+                  {/* Submissions table */}
+                  {submissionsRows.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-xs sm:text-sm">
+                        <thead className="text-left text-slate-600 dark:text-white/70">
+                          <tr>
+                            <th className="py-2 pr-4">Learner</th>
+                            <th className="py-2 pr-4">Identifier</th>
+                            <th className="py-2 pr-4">Submitted at</th>
+                            <th className="py-2 pr-4">Answer</th>
+                            <th className="py-2 pr-4">Attachment</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {submissionsRows.map((s) => {
+                            const key = String(
+                              s.id ??
+                                s.submission_id ??
+                                `${s.assignment_id ?? submissionsAssignment?.id ?? 'a'}-${Math.random()}`
+                            );
 
-                              const name =
-                                s.learner_name ||
-                                s.student_name ||
-                                s.name ||
-                                null;
+                            const name = s.learner_name || s.student_name || s.name || null;
 
-                              const identifier =
-                                s.student_id ||
-                                s.learner_id ||
-                                s.user_id ||
-                                s.admission_code ||
-                                null;
+                            const identifier =
+                              s.student_id || s.learner_id || s.user_id || s.admission_code || null;
 
-                              const submittedRaw =
-                                s.submitted_at ||
-                                s.created_at ||
-                                s.updated_at ||
-                                null;
+                            const submittedRaw =
+                              s.submitted_at || s.created_at || s.updated_at || null;
 
-                              const submittedLabel = submittedRaw
-                                ? new Date(submittedRaw).toLocaleString()
-                                : '—';
+                            const submittedLabel = submittedRaw
+                              ? new Date(submittedRaw).toLocaleString()
+                              : '—';
 
-                              const answerText = (s.answer_text || s.text || '') as string;
-                              const attachmentUrl: string | null =
-                                s.attachment_url ||
-                                s.file_url ||
-                                s.resource_url ||
-                                null;
+                            const answerText = (s.answer_text || s.text || '') as string;
+                            const attachmentUrl: string | null =
+                              s.attachment_url || s.file_url || s.resource_url || null;
 
-                              return (
-                                <tr
-                                  key={key}
-                                  className="border-t border-[#e7edf4] dark:border-white/10 align-top"
-                                >
-                                  <td className="py-2 pr-4">
-                                    <div className="font-medium">
-                                      {name || 'Unknown learner'}
+                            return (
+                              <tr
+                                key={key}
+                                className="border-t border-[#e7edf4] dark:border-white/10 align-top"
+                              >
+                                <td className="py-2 pr-4">
+                                  <div className="font-medium">{name || 'Unknown learner'}</div>
+                                  {s.email && (
+                                    <div className="text-[11px] text-slate-500 dark:text-white/60">
+                                      {s.email}
                                     </div>
-                                    {s.email && (
-                                      <div className="text-[11px] text-slate-500 dark:text-white/60">
-                                        {s.email}
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td className="py-2 pr-4 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
-                                    {identifier ? (
-                                      <span className="font-mono">{identifier}</span>
-                                    ) : (
-                                      '—'
-                                    )}
-                                  </td>
-                                  <td className="py-2 pr-4 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
-                                    {submittedLabel}
-                                  </td>
-                                  <td className="py-2 pr-4 text-[11px] sm:text-xs text-slate-600 dark:text-white/80 max-w-xs sm:max-w-md">
-                                    {answerText ? (
-                                      <span title={answerText}>
-                                        {answerText.length > 120
-                                          ? `${answerText.slice(0, 120)}…`
-                                          : answerText}
-                                      </span>
-                                    ) : (
-                                      <span className="text-slate-400 dark:text-white/50">
-                                        (No typed answer)
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="py-2 pr-4 text-[11px] sm:text-xs">
-                                    {attachmentUrl ? (
-                                      <a
-                                        href={attachmentUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
-                                      >
-                                        ⬇️ Open file
-                                      </a>
-                                    ) : (
-                                      <span className="text-slate-400 dark:text-white/50">
-                                        No file
-                                      </span>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </section>
-                )}
-
+                                  )}
+                                </td>
+                                <td className="py-2 pr-4 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
+                                  {identifier ? (
+                                    <span className="font-mono">{identifier}</span>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
+                                <td className="py-2 pr-4 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
+                                  {submittedLabel}
+                                </td>
+                                <td className="py-2 pr-4 text-[11px] sm:text-xs text-slate-600 dark:text-white/80 max-w-xs sm:max-w-md">
+                                  {answerText ? (
+                                    <span title={answerText}>
+                                      {answerText.length > 120
+                                        ? `${answerText.slice(0, 120)}…`
+                                        : answerText}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 dark:text-white/50">
+                                      (No typed answer)
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2 pr-4 text-[11px] sm:text-xs">
+                                  {attachmentUrl ? (
+                                    <a
+                                      href={attachmentUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                                    >
+                                      ⬇️ Open file
+                                    </a>
+                                  ) : (
+                                    <span className="text-slate-400 dark:text-white/50">
+                                      No file
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              )}
 
               {/* PANES (split) */}
               {(tab === 'branding' || tab === 'assign') && (
@@ -2203,7 +2023,6 @@ useEffect(() => {
                       setAssignSubjectKey(opts.subjectKey || '');
                     }
                   }}
-
                   // NEW: legacy assignment props
                   legacyTitle={legacyTitle}
                   setLegacyTitle={setLegacyTitle}
@@ -2249,7 +2068,6 @@ useEffect(() => {
                     canMonthly={canMonthly}
                   />
 
-
                   {/* Overall learner progress (simple, read-only) */}
                   <section className="mt-4 rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10 bg-white dark:bg-[#0f1821] p-3 sm:p-4">
                     <div className="flex items-center justify-between gap-2 mb-2">
@@ -2262,10 +2080,7 @@ useEffect(() => {
                             Loading…
                           </span>
                         )}
-                        <button
-                          className="chip"
-                          onClick={() => loadLearnerProgress(true)}
-                        >
+                        <button className="chip" onClick={() => loadLearnerProgress(true)}>
                           Refresh
                         </button>
                       </div>
@@ -2303,20 +2118,13 @@ useEffect(() => {
                               <td className="py-2 pr-4">{r.attempts}</td>
                               <td className="py-2 pr-4">{r.passes}</td>
                               <td className="py-2 pr-4">
-                                {r.avg_score != null
-                                  ? Math.round(r.avg_score)
-                                  : 0}
-                                %
+                                {r.avg_score != null ? Math.round(r.avg_score) : 0}%
                               </td>
-                              <td className="py-2 pr-4">
-                                {r.completed_assignments}
-                              </td>
+                              <td className="py-2 pr-4">{r.completed_assignments}</td>
                               <td className="py-2 pr-4">{r.progress_pct}%</td>
                               <td className="py-2 pr-4">
                                 {r.last_submit_at
-                                  ? new Date(
-                                      r.last_submit_at
-                                    ).toLocaleString()
+                                  ? new Date(r.last_submit_at).toLocaleString()
                                   : '—'}
                               </td>
                             </tr>
@@ -2365,8 +2173,7 @@ useEffect(() => {
               <div className="flex-1">
                 <h3 className="text-lg font-semibold">Brand saved!</h3>
                 <p className="mt-1 text-sm text-slate-600 dark:text:white/80">
-                  Your institution profile is ready. Want to create your first
-                  course with AI now?
+                  Your institution profile is ready. Want to create your first course with AI now?
                 </p>
               </div>
             </div>
@@ -2434,32 +2241,32 @@ useEffect(() => {
 
       {/* Modals – only for owners/admins (not learner view) */}
       {!isLearnerView && org && authToken && canUpgradePlan && (
-          <>
-            <PlanPurchaseModalWeb
-              open={showProModal}
-              onClose={() => setShowProModal(false)}
-              tier="pro"
-              orgName={org?.name}
-              assets={{
-                visamaster: assets?.visamaster, // adjust keys to your assets file
-                mpesa: assets?.mpesa,
-              }}
-              onCheckout={(opts) => handleCheckout('pro', opts)}
-            />
+        <>
+          <PlanPurchaseModalWeb
+            open={showProModal}
+            onClose={() => setShowProModal(false)}
+            tier="pro"
+            orgName={org?.name}
+            assets={{
+              visamaster: assets?.visamaster, // adjust keys to your assets file
+              mpesa: assets?.mpesa,
+            }}
+            onCheckout={(opts) => handleCheckout('pro', opts)}
+          />
 
-            <PlanPurchaseModalWeb
-              open={showEnterpriseModal}
-              onClose={() => setShowEnterpriseModal(false)}
-              tier="enterprise"
-              orgName={org?.name}
-              assets={{
-                visamaster: assets?.visamaster,
-                mpesa: assets?.mpesa,
-              }}
-              onCheckout={(opts) => handleCheckout('enterprise', opts)}
-            />
-          </>
-        )}
+          <PlanPurchaseModalWeb
+            open={showEnterpriseModal}
+            onClose={() => setShowEnterpriseModal(false)}
+            tier="enterprise"
+            orgName={org?.name}
+            assets={{
+              visamaster: assets?.visamaster,
+              mpesa: assets?.mpesa,
+            }}
+            onCheckout={(opts) => handleCheckout('enterprise', opts)}
+          />
+        </>
+      )}
     </div>
   );
 }

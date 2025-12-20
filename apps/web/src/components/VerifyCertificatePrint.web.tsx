@@ -4,7 +4,7 @@ import { Helmet } from 'react-helmet-async';
 import { useVerifyCertificate } from '@mytutorapp/shared/hooks/useVerifyCertificate';
 import { useShopContext } from '@mytutorapp/shared/context';
 
-const A4_MM_WIDTH = 210;  // mm
+const A4_MM_WIDTH = 210; // mm
 const A4_MM_HEIGHT = 297; // mm
 
 const VerifyCertificatePrintPage: React.FC = () => {
@@ -62,7 +62,10 @@ const VerifyCertificatePrintPage: React.FC = () => {
 
         {/* A4 paper */}
         <div className="flex justify-center">
-          <div className="bg-white shadow print:shadow-none print:border print:border-[#e5e7eb]" id="print-root">
+          <div
+            className="bg-white shadow print:shadow-none print:border print:border-[#e5e7eb]"
+            id="print-root"
+          >
             <div className="p-10" style={{ width: '210mm', minHeight: '297mm' }}>
               {loading && <p>Verifying…</p>}
               {!loading && error && (
@@ -71,16 +74,24 @@ const VerifyCertificatePrintPage: React.FC = () => {
                   <p className="text-sm text-[#49739c] mt-2">{error}</p>
                 </div>
               )}
-              {!loading && data && (
-                data.valid ? (
-                  <PrintableContent certId={id} issuedAt={cert!.issued_at} student={cert!.student_name!} course={cert!.course_title!} pdfUrl={cert!.url} />
+              {!loading &&
+                data &&
+                (data.valid ? (
+                  <PrintableContent
+                    certId={id}
+                    issuedAt={cert!.issued_at}
+                    student={cert!.student_name!}
+                    course={cert!.course_title!}
+                    pdfUrl={cert!.url}
+                  />
                 ) : (
                   <div className="rounded-xl border border-red-200 bg-white p-6">
                     <p className="text-red-600 font-semibold">Invalid Certificate</p>
-                    <p className="text-sm text-[#49739c] mt-2">{data.error || 'No matching certificate found.'}</p>
+                    <p className="text-sm text-[#49739c] mt-2">
+                      {data.error || 'No matching certificate found.'}
+                    </p>
                   </div>
-                )
-              )}
+                ))}
             </div>
           </div>
         </div>
@@ -132,7 +143,9 @@ const PrintableContent: React.FC<{
       {/* Body */}
       <div className="py-10">
         <h3 className="text-3xl font-extrabold text-center tracking-tight">Valid Certificate</h3>
-        <p className="text-center text-[#64748b] mt-1">This page confirms the authenticity of the certificate below.</p>
+        <p className="text-center text-[#64748b] mt-1">
+          This page confirms the authenticity of the certificate below.
+        </p>
 
         <div className="grid grid-cols-2 gap-6 mt-10">
           <div className="rounded-xl border border-[#e5e7eb] p-5">
@@ -143,7 +156,12 @@ const PrintableContent: React.FC<{
           </div>
           <div className="rounded-xl border border-[#e5e7eb] p-5">
             <p className="text-sm text-[#64748b]">Certificate PDF</p>
-            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="block mt-2 rounded-lg border border-[#cedbe8] p-3 hover:bg-slate-50">
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block mt-2 rounded-lg border border-[#cedbe8] p-3 hover:bg-slate-50"
+            >
               <span className="text-sm font-semibold text-blue-700">Open / Download PDF</span>
             </a>
             <p className="text-xs text-[#94a3b8] mt-2">
@@ -153,7 +171,8 @@ const PrintableContent: React.FC<{
         </div>
 
         <div className="mt-10 text-center text-xs text-[#94a3b8]">
-          To verify offline, scan the QR code on the certificate or visit https://yourdomain.example/verify/{certId}
+          To verify offline, scan the QR code on the certificate or visit
+          https://yourdomain.example/verify/{certId}
         </div>
       </div>
 
@@ -165,7 +184,11 @@ const PrintableContent: React.FC<{
   );
 };
 
-const Detail: React.FC<{ label: string; value: string; mono?: boolean }> = ({ label, value, mono }) => (
+const Detail: React.FC<{ label: string; value: string; mono?: boolean }> = ({
+  label,
+  value,
+  mono,
+}) => (
   <div className="py-2">
     <p className="text-xs text-[#64748b]">{label}</p>
     <p className={`text-sm font-semibold ${mono ? 'font-mono' : ''}`}>{value}</p>

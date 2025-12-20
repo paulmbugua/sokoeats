@@ -3,10 +3,9 @@ import speech from '@google-cloud/speech';
 import fetch from 'node-fetch';
 
 // Reuse one client
-const speechClient =
-  speech?.v1p1beta1?.SpeechClient
-    ? new speech.v1p1beta1.SpeechClient()
-    : new speech.SpeechClient();
+const speechClient = speech?.v1p1beta1?.SpeechClient
+  ? new speech.v1p1beta1.SpeechClient()
+  : new speech.SpeechClient();
 
 const NS = '[simpleAligner]';
 
@@ -32,7 +31,7 @@ function editDistance(a, b) {
       dp[i][j] = Math.min(
         dp[i - 1][j] + 1,
         dp[i][j - 1] + 1,
-        dp[i - 1][j - 1] + cost
+        dp[i - 1][j - 1] + cost,
       );
     }
   }
@@ -47,7 +46,7 @@ function editDistance(a, b) {
  */
 function alignSttToScript(scriptWords, sttWords) {
   const scriptNorm = scriptWords.map(normalizeWord);
-  const sttNorm = sttWords.map(w => normalizeWord(w.word));
+  const sttNorm = sttWords.map((w) => normalizeWord(w.word));
 
   const marks = [];
   let j = 0; // pointer in sttNorm

@@ -3,10 +3,9 @@ import 'dotenv/config';
 import fs from 'node:fs/promises';
 import speech from '@google-cloud/speech';
 
-const client =
-  speech?.v1p1beta1?.SpeechClient
-    ? new speech.v1p1beta1.SpeechClient()
-    : new speech.SpeechClient();
+const client = speech?.v1p1beta1?.SpeechClient
+  ? new speech.v1p1beta1.SpeechClient()
+  : new speech.SpeechClient();
 
 async function main() {
   // TODO: point to a very short WAV/FLAC/LINEAR16 file, 8–16 kHz
@@ -26,18 +25,25 @@ async function main() {
   console.log('[test-aligner] calling recognize…');
   const [resp] = await client.recognize(request);
 
-  const words = resp.results
-    ?.flatMap(r => r.alternatives ?? [])
-    .flatMap(a => a.words ?? []) ?? [];
+  const words =
+    resp.results
+      ?.flatMap((r) => r.alternatives ?? [])
+      .flatMap((a) => a.words ?? []) ?? [];
 
-  console.log('[test-aligner] got words:', words.map(w => ({
-    text: w.word,
-    start: Number(w.startTime?.seconds ?? 0) + Number(w.startTime?.nanos ?? 0) / 1e9,
-    end:   Number(w.endTime?.seconds ?? 0)   + Number(w.endTime?.nanos ?? 0)   / 1e9,
-  })));
+  console.log(
+    '[test-aligner] got words:',
+    words.map((w) => ({
+      text: w.word,
+      start:
+        Number(w.startTime?.seconds ?? 0) +
+        Number(w.startTime?.nanos ?? 0) / 1e9,
+      end:
+        Number(w.endTime?.seconds ?? 0) + Number(w.endTime?.nanos ?? 0) / 1e9,
+    })),
+  );
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('FATAL test-aligner error:', err);
   process.exitCode = 1;
 });

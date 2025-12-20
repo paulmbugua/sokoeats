@@ -14,7 +14,9 @@ export function inflightLimiter({
         if (n === 1) await redis.expire(key, ttlSec);
         if (n > max) {
           await redis.decr(key).catch(() => {});
-          return res.status(429).json({ message: 'Too many concurrent requests. Please wait a moment.' });
+          return res.status(429).json({
+            message: 'Too many concurrent requests. Please wait a moment.',
+          });
         }
         const dec = () => redis.decr(key).catch(() => {});
         res.on('finish', dec);
@@ -32,10 +34,13 @@ export function inflightLimiter({
     const key = keyFn(req);
     const current = (counters.get(key) || 0) + 1;
     if (current > max) {
-      return res.status(429).json({ message: 'Too many concurrent requests. Please wait a moment.' });
+      return res.status(429).json({
+        message: 'Too many concurrent requests. Please wait a moment.',
+      });
     }
     counters.set(key, current);
-    const dec = () => counters.set(key, Math.max(0, (counters.get(key) || 1) - 1));
+    const dec = () =>
+      counters.set(key, Math.max(0, (counters.get(key) || 1) - 1));
     res.on('finish', dec);
     res.on('close', dec);
     next();

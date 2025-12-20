@@ -15,8 +15,6 @@ import {
   aiComputeExamSheet,
   aiTransformExamConfig,
 } from '../services/orgExamAiService.js';
-;
-
 const upload = multer({ storage: multer.memoryStorage() });
 
 /**
@@ -33,8 +31,8 @@ async function uploadExamDocsToCloudinary(files) {
       const resourceType = mime.startsWith('image/')
         ? 'image'
         : mime.startsWith('video/')
-        ? 'video'
-        : 'raw'; // pdf/xlsx/etc
+          ? 'video'
+          : 'raw'; // pdf/xlsx/etc
 
       // 1) memoryStorage → file.buffer
       if (file.buffer) {
@@ -109,8 +107,6 @@ function clampSubjectRemark(rawRemark, maxChars = 80) {
   return `${trimmed}…`;
 }
 
-
-
 // Helper: compute grade from bands
 async function pickGrade(orgId, percent) {
   const { rows } = await pool.query(
@@ -120,7 +116,7 @@ async function pickGrade(orgId, percent) {
       WHERE org_id = $1
       ORDER BY sort_order ASC, min_percent DESC
     `,
-    [orgId]
+    [orgId],
   );
 
   for (const row of rows) {
@@ -164,12 +160,11 @@ export async function getOrgExamStudentCard(req, res, next) {
     if (card.summary && typeof card.summary.totalPercent === 'number') {
       const { grade, remark } = await pickGrade(
         orgId,
-        card.summary.totalPercent
+        card.summary.totalPercent,
       );
       card.summary.overallGrade = card.summary.overallGrade || grade;
       // add remark field for the "Remarks" section on the report
-      card.summary.overallRemark =
-        card.summary.overallRemark || remark || null;
+      card.summary.overallRemark = card.summary.overallRemark || remark || null;
     }
 
     // Preserve previous shape by including ok: true
@@ -178,7 +173,6 @@ export async function getOrgExamStudentCard(req, res, next) {
       ...card,
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[getOrgExamStudentCard] error', err);
     return next(err);
   }
@@ -210,11 +204,10 @@ export async function downloadOrgExamStudentCardPdf(req, res, next) {
     if (card.summary && typeof card.summary.totalPercent === 'number') {
       const { grade, remark } = await pickGrade(
         orgId,
-        card.summary.totalPercent
+        card.summary.totalPercent,
       );
       card.summary.overallGrade = card.summary.overallGrade || grade;
-      card.summary.overallRemark =
-        card.summary.overallRemark || remark || null;
+      card.summary.overallRemark = card.summary.overallRemark || remark || null;
     }
 
     const pdfBuffer = await renderOrgExamStudentCardPdf(card);
@@ -228,11 +221,10 @@ export async function downloadOrgExamStudentCardPdf(req, res, next) {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `inline; filename="${filenameSafeName}-report-card.pdf"`
+      `inline; filename="${filenameSafeName}-report-card.pdf"`,
     );
     return res.send(pdfBuffer);
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[downloadOrgExamStudentCardPdf] error', err);
     return next(err);
   }
@@ -240,7 +232,6 @@ export async function downloadOrgExamStudentCardPdf(req, res, next) {
 
 // ✅ Backwards-compatible alias if your routes still import getOrgExamStudentCardPdf
 export const getOrgExamStudentCardPdf = downloadOrgExamStudentCardPdf;
-
 
 /** GET /api/orgs/:orgId/exams/config */
 export async function getOrgExamConfig(req, res, next) {
@@ -279,12 +270,11 @@ export async function getOrgExamConfig(req, res, next) {
       ),
     ]);
 
-    const reportTitle =
-      orgRes.rows[0]?.exam_report_title ?? null;
+    const reportTitle = orgRes.rows[0]?.exam_report_title ?? null;
 
     return res.json({
       ok: true,
-      reportTitle,          // 👈 NEW
+      reportTitle, // 👈 NEW
       terms: terms.rows,
       sessions: sessions.rows,
       gradingBands: bands.rows,
@@ -293,7 +283,6 @@ export async function getOrgExamConfig(req, res, next) {
     next(err);
   }
 }
-
 
 /** POST /api/orgs/:orgId/exams/config */
 /** POST /api/orgs/:orgId/exams/config */
@@ -316,7 +305,9 @@ export async function upsertOrgExamConfig(req, res, next) {
     const seenSessionKeys = new Set();
     for (const s of sessions) {
       const termKey = s.term_id || 'no-term';
-      const labelKey = String(s.label || '').trim().toLowerCase();
+      const labelKey = String(s.label || '')
+        .trim()
+        .toLowerCase();
       if (!labelKey) continue;
 
       const key = `${termKey}::${labelKey}`;
@@ -543,8 +534,6 @@ export async function upsertOrgExamConfig(req, res, next) {
   }
 }
 
-
-
 /** GET /api/orgs/:orgId/exams/sheet?sessionId=...&classLabel=... */
 export async function getOrgExamSheet(req, res, next) {
   try {
@@ -582,7 +571,7 @@ export async function getOrgExamSheet(req, res, next) {
          AND r.session_id = $2
          AND ($3::text IS NULL OR r.class_label = $3)
        ORDER BY student_name ASC, subject ASC`,
-      [orgId, sessionId, classLabel || null]
+      [orgId, sessionId, classLabel || null],
     );
 
     return res.json({ ok: true, rows });
@@ -621,82 +610,73 @@ export async function saveOrgExamSheet(req, res) {
     if (!rows.length) {
       return res.json({ ok: true, message: 'No rows to save' });
     }
-const normalized = rows
-  .map((r) => {
-    const base = {
-      student_user_id: Number(
-        r.student_user_id || r.studentId || r.student_userId
-      ),
-      subject: (r.subject || '').trim(),
-      score: r.score == null ? null : Number(r.score),
-      max_score: r.max_score == null ? null : Number(r.max_score),
-      class_label:
-        (classLabel ||
-          r.class_label ||
-          r.classLabel ||
-          ''
-        ).trim() || null,
+    const normalized = rows
+      .map((r) => {
+        const base = {
+          student_user_id: Number(
+            r.student_user_id || r.studentId || r.student_userId,
+          ),
+          subject: (r.subject || '').trim(),
+          score: r.score == null ? null : Number(r.score),
+          max_score: r.max_score == null ? null : Number(r.max_score),
+          class_label:
+            (classLabel || r.class_label || r.classLabel || '').trim() || null,
 
-      cat_score: r.cat_score == null ? null : Number(r.cat_score),
-      exam_score: r.exam_score == null ? null : Number(r.exam_score),
+          cat_score: r.cat_score == null ? null : Number(r.cat_score),
+          exam_score: r.exam_score == null ? null : Number(r.exam_score),
 
-      remark: (function () {
-        const raw = (r.remark ?? '').toString().trim();
-        return raw || null;
-      })(),
+          remark: (function () {
+            const raw = (r.remark ?? '').toString().trim();
+            return raw || null;
+          })(),
 
-      teacher_initials: (function () {
-        const raw = (
-          r.teacher_initials ??
-          r.teacherInitials ??
-          ''
-        )
-          .toString()
-          .trim();
-        return raw || null;
-      })(),
-    };
+          teacher_initials: (function () {
+            const raw = (r.teacher_initials ?? r.teacherInitials ?? '')
+              .toString()
+              .trim();
+            return raw || null;
+          })(),
+        };
 
-    // ✅ NEW: flexible extra columns
-    // Prefer explicit r.extra if present; otherwise collect unknown keys.
-    let extra = {};
-    if (r.extra && typeof r.extra === 'object' && !Array.isArray(r.extra)) {
-      extra = { ...r.extra };
-    } else {
-      const knownKeys = new Set([
-        'id',
-        'student_user_id',
-        'studentId',
-        'student_userId',
-        'student_name',
-        'student_email',
-        'admission_code',
-        'class_label',
-        'classLabel',
-        'subject',
-        'score',
-        'max_score',
-        'cat_score',
-        'exam_score',
-        'percent',
-        'grade',
-        'remark',
-        'teacher_initials',
-        'teacherInitials',
-      ]);
+        // ✅ NEW: flexible extra columns
+        // Prefer explicit r.extra if present; otherwise collect unknown keys.
+        let extra = {};
+        if (r.extra && typeof r.extra === 'object' && !Array.isArray(r.extra)) {
+          extra = { ...r.extra };
+        } else {
+          const knownKeys = new Set([
+            'id',
+            'student_user_id',
+            'studentId',
+            'student_userId',
+            'student_name',
+            'student_email',
+            'admission_code',
+            'class_label',
+            'classLabel',
+            'subject',
+            'score',
+            'max_score',
+            'cat_score',
+            'exam_score',
+            'percent',
+            'grade',
+            'remark',
+            'teacher_initials',
+            'teacherInitials',
+          ]);
 
-      Object.entries(r || {}).forEach(([key, value]) => {
-        if (!knownKeys.has(key)) {
-          extra[key] = value;
+          Object.entries(r || {}).forEach(([key, value]) => {
+            if (!knownKeys.has(key)) {
+              extra[key] = value;
+            }
+          });
         }
-      });
-    }
 
-    base.extra = extra;
-    return base;
-  })
-  .filter((r) => r.student_user_id && r.subject);
-
+        base.extra = extra;
+        return base;
+      })
+      .filter((r) => r.student_user_id && r.subject);
 
     if (!normalized.length) {
       return res.status(400).json({
@@ -710,7 +690,7 @@ const normalized = rows
     ];
     const { rows: existingRows } = await pool.query(
       'SELECT id FROM users WHERE id = ANY($1::int[])',
-      [uniqueStudentIds]
+      [uniqueStudentIds],
     );
     const existingIds = new Set(existingRows.map((r) => Number(r.id)));
     const missingIds = uniqueStudentIds.filter((id) => !existingIds.has(id));
@@ -719,7 +699,7 @@ const normalized = rows
       return res.status(400).json({
         ok: false,
         message: `Some student IDs do not exist in the system: ${missingIds.join(
-          ', '
+          ', ',
         )}`,
         missingStudentIds: missingIds,
       });
@@ -789,23 +769,22 @@ const normalized = rows
   ;
 `;
 
-for (const r of normalized) {
-  await client.query(upsertSql, [
-    orgId,
-    sessionId,
-    r.student_user_id,
-    r.class_label,
-    r.subject,
-    r.score ?? 0,
-    r.max_score ?? 100,
-    r.cat_score,
-    r.exam_score,
-    r.remark ?? '',
-    r.teacher_initials ?? '',
-    r.extra ?? {},           // ✅ NEW
-  ]);
-}
-
+      for (const r of normalized) {
+        await client.query(upsertSql, [
+          orgId,
+          sessionId,
+          r.student_user_id,
+          r.class_label,
+          r.subject,
+          r.score ?? 0,
+          r.max_score ?? 100,
+          r.cat_score,
+          r.exam_score,
+          r.remark ?? '',
+          r.teacher_initials ?? '',
+          r.extra ?? {}, // ✅ NEW
+        ]);
+      }
 
       // Recompute totals + overall grades (no cat/exam needed here)
       await client.query(
@@ -859,21 +838,20 @@ for (const r of normalized) {
           updated_at    = NOW()
         ;
         `,
-        [orgId, sessionId, classLabel || null]
+        [orgId, sessionId, classLabel || null],
       );
 
       await client.query('COMMIT');
       return res.json({ ok: true });
     } catch (err) {
       await client.query('ROLLBACK');
-      // eslint-disable-next-line no-console
+
       console.error('[saveOrgExamSheet] error', err);
       throw err;
     } finally {
       client.release();
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[saveOrgExamSheet] outer error', err);
     return res.status(400).json({
       ok: false,
@@ -901,12 +879,10 @@ export async function sendOrgExamStudentCardEmail(req, res, next) {
        FROM users u
        LEFT JOIN user_profiles up ON up.user_id = u.id
        WHERE u.id = $1`,
-      [studentId]
+      [studentId],
     );
     if (studentRes.rowCount === 0) {
-      return res
-        .status(404)
-        .json({ ok: false, message: 'Student not found' });
+      return res.status(404).json({ ok: false, message: 'Student not found' });
     }
     const student = studentRes.rows[0];
 
@@ -917,20 +893,13 @@ export async function sendOrgExamStudentCardEmail(req, res, next) {
          AND session_id = $2
          AND student_user_id = $3
        ORDER BY subject ASC`,
-      [orgId, sessionId, studentId]
+      [orgId, sessionId, studentId],
     );
     const rows = rowsRes.rows;
 
-    const totalScore = rows.reduce(
-      (sum, r) => sum + Number(r.score ?? 0),
-      0
-    );
-    const totalMax = rows.reduce(
-      (sum, r) => sum + Number(r.max_score ?? 0),
-      0
-    );
-    const totalPercent =
-      totalMax > 0 ? (totalScore * 100.0) / totalMax : 0;
+    const totalScore = rows.reduce((sum, r) => sum + Number(r.score ?? 0), 0);
+    const totalMax = rows.reduce((sum, r) => sum + Number(r.max_score ?? 0), 0);
+    const totalPercent = totalMax > 0 ? (totalScore * 100.0) / totalMax : 0;
     const { grade: overallGrade } = await pickGrade(orgId, totalPercent);
 
     const targetEmail = toOverride || student.guardian_email || student.email;
@@ -946,7 +915,6 @@ export async function sendOrgExamStudentCardEmail(req, res, next) {
     // TODO: plug into your mailer service with the new rich card if you want
     // const card = await getStudentExamCard({ orgId, sessionId, studentUserId: Number(studentId) });
 
-    // eslint-disable-next-line no-console
     console.log('[sendExamCard] would email', {
       to: targetEmail,
       studentName: student.name,
@@ -988,7 +956,7 @@ export async function getOrgExamAnalytics(req, res, next) {
         GROUP BY subject
         ORDER BY subject ASC
       `,
-      [orgId, sessionId]
+      [orgId, sessionId],
     );
 
     return res.json({ ok: true, data: rows });
@@ -996,7 +964,6 @@ export async function getOrgExamAnalytics(req, res, next) {
     next(err);
   }
 }
-
 
 export async function generateOrgExamStudentAiRemarks(req, res, next) {
   try {
@@ -1030,12 +997,13 @@ export async function generateOrgExamStudentAiRemarks(req, res, next) {
         card.summary.totalPercent,
       );
       card.summary.overallGrade = card.summary.overallGrade || grade;
-      card.summary.overallRemark =
-        card.summary.overallRemark || remark || null;
+      card.summary.overallRemark = card.summary.overallRemark || remark || null;
     }
 
-    const { principalRemark, subjectRemarks } =
-      await aiGenerateExamInsights({ card, instructions });
+    const { principalRemark, subjectRemarks } = await aiGenerateExamInsights({
+      card,
+      instructions,
+    });
 
     // OPTIONAL: if you later add a principal_remark column to org_exam_student_overall,
     // you can persist principalRemark here.
@@ -1049,7 +1017,6 @@ export async function generateOrgExamStudentAiRemarks(req, res, next) {
       subjectRemarks,
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[generateOrgExamStudentAiRemarks] error', err);
     return next(err);
   }
@@ -1109,7 +1076,6 @@ export async function saveOrgExamStudentRemarks(req, res, next) {
 
     return res.json({ ok: true });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[saveOrgExamStudentRemarks] error', err);
     return next(err);
   }
@@ -1162,8 +1128,8 @@ export async function getOrgClassReportPdf(req, res, next) {
     const session = sessionRows[0];
 
     // Try to find any per-class teacher signature for this class
-const { rows: classSigRows } = await pool.query(
-  `
+    const { rows: classSigRows } = await pool.query(
+      `
   SELECT class_teacher_signature_url
   FROM org_learner_profiles
   WHERE org_id = $1
@@ -1171,22 +1137,20 @@ const { rows: classSigRows } = await pool.query(
     AND class_teacher_signature_url IS NOT NULL
   LIMIT 1
   `,
-  [orgId, classLabel],
-);
+      [orgId, classLabel],
+    );
 
-const classTeacherSignatureUrl =
-  classSigRows[0]?.class_teacher_signature_url || null;
+    const classTeacherSignatureUrl =
+      classSigRows[0]?.class_teacher_signature_url || null;
 
-
-const examMeta = {
-  classLabel: String(classLabel || '').trim(),
-  termLabel: session.term_label || '',
-  termYear: session.term_year || '',
-  examLabel: session.exam_label || '',
-  // 👇 NEW: per-class teacher signature for this report
-  class_teacher_signature_url: classTeacherSignatureUrl,
-};
-
+    const examMeta = {
+      classLabel: String(classLabel || '').trim(),
+      termLabel: session.term_label || '',
+      termYear: session.term_year || '',
+      examLabel: session.exam_label || '',
+      // 👇 NEW: per-class teacher signature for this report
+      class_teacher_signature_url: classTeacherSignatureUrl,
+    };
 
     // ── Subject summary for this class ──
     const { rows: subjectStats } = await pool.query(
@@ -1209,8 +1173,8 @@ const examMeta = {
 
     // ── Per-learner totals from org_exam_student_overall ──
     // ── Per-learner totals from org_exam_student_overall ──
-const { rows: overallRows } = await pool.query(
-  `
+    const { rows: overallRows } = await pool.query(
+      `
   SELECT
     o.student_user_id,
     o.class_label,
@@ -1226,18 +1190,18 @@ const { rows: overallRows } = await pool.query(
     AND o.session_id = $2
     AND o.class_label = $3
   `,
-  [orgId, sessionId, classLabel],
-);
+      [orgId, sessionId, classLabel],
+    );
 
-const studentRows = overallRows.map((row) => ({
-  admission_code: null, // you can wire this later if you add a table/column
-  student_name: row.student_name,
-  total_score: row.total_score,
-  total_max: row.total_max,
-  total_percent: row.total_percent,
-  overall_grade: row.overall_grade,
-  // position is assigned in the PDF renderer
-}));
+    const studentRows = overallRows.map((row) => ({
+      admission_code: null, // you can wire this later if you add a table/column
+      student_name: row.student_name,
+      total_score: row.total_score,
+      total_max: row.total_max,
+      total_percent: row.total_percent,
+      overall_grade: row.overall_grade,
+      // position is assigned in the PDF renderer
+    }));
 
     if (!studentRows.length) {
       return res.status(400).json({
@@ -1255,15 +1219,17 @@ const studentRows = overallRows.map((row) => ({
       format,
     });
 
-    const safeClassLabel = String(classLabel || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'class';
+    const safeClassLabel =
+      String(classLabel || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'class';
 
-    const safeExamLabel = String(examMeta.examLabel || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'exam';
+    const safeExamLabel =
+      String(examMeta.examLabel || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'exam';
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
@@ -1273,12 +1239,10 @@ const studentRows = overallRows.map((row) => ({
 
     return res.send(pdfBuffer);
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[getOrgClassReportPdf] error', err);
     return next(err);
   }
 }
-
 
 /** POST /api/orgs/:orgId/exams/sheet/ai-compute
  *
@@ -1373,8 +1337,7 @@ export async function generateOrgExamSheetAiCompute(req, res, next) {
 
     const mergedRows = baseRows.map((row) => {
       const sid = Number(row.student_user_id);
-      const subject =
-        (row.subject || '').toString().trim().toLowerCase();
+      const subject = (row.subject || '').toString().trim().toLowerCase();
       const key = `${sid}::${subject}`;
       const patch = updatesByKey.get(key);
 
@@ -1383,33 +1346,30 @@ export async function generateOrgExamSheetAiCompute(req, res, next) {
       const next = { ...row };
 
       // Top-level numeric + text fields (only if specified by AI)
-if (patch.score !== undefined) next.score = patch.score;
-if (patch.max_score !== undefined) next.max_score = patch.max_score;
-if (patch.cat_score !== undefined) next.cat_score = patch.cat_score;
-if (patch.exam_score !== undefined) next.exam_score = patch.exam_score;
-if (patch.percent !== undefined) next.percent = patch.percent;
-if (patch.grade !== undefined) next.grade = patch.grade;
+      if (patch.score !== undefined) next.score = patch.score;
+      if (patch.max_score !== undefined) next.max_score = patch.max_score;
+      if (patch.cat_score !== undefined) next.cat_score = patch.cat_score;
+      if (patch.exam_score !== undefined) next.exam_score = patch.exam_score;
+      if (patch.percent !== undefined) next.percent = patch.percent;
+      if (patch.grade !== undefined) next.grade = patch.grade;
 
-// ✅ Allow AI to update per-subject remark, clamp to max 30 characters
-if (patch.remark !== undefined) {
-  next.remark = patch.remark == null
-    ? null
-    : clampSubjectRemark(patch.remark, 30);
-}
+      // ✅ Allow AI to update per-subject remark, clamp to max 30 characters
+      if (patch.remark !== undefined) {
+        next.remark =
+          patch.remark == null ? null : clampSubjectRemark(patch.remark, 30);
+      }
 
-// ✅ Allow AI to update teacher_initials
-if (patch.teacher_initials !== undefined) {
-  const raw = patch.teacher_initials;
-  next.teacher_initials =
-    raw == null ? null : String(raw).trim();
-}
+      // ✅ Allow AI to update teacher_initials
+      if (patch.teacher_initials !== undefined) {
+        const raw = patch.teacher_initials;
+        next.teacher_initials = raw == null ? null : String(raw).trim();
+      }
 
-
-
-     
-     // extra: merge current + AI extras, with deletion semantics
+      // extra: merge current + AI extras, with deletion semantics
       const currentExtra =
-        next.extra && typeof next.extra === 'object' && !Array.isArray(next.extra)
+        next.extra &&
+        typeof next.extra === 'object' &&
+        !Array.isArray(next.extra)
           ? next.extra
           : {};
 
@@ -1420,8 +1380,7 @@ if (patch.teacher_initials !== undefined) {
         const tKey = targetColumnKey?.toLowerCase() || null;
 
         // Special case: when we are computing Remarks, we do NOT want an extra column
-        const isRemarksTarget =
-          tKey === 'remark' || tKey === 'remarks';
+        const isRemarksTarget = tKey === 'remark' || tKey === 'remarks';
 
         if (targetColumnKey && !isRemarksTarget) {
           // Normal target-column behavior
@@ -1454,20 +1413,19 @@ if (patch.teacher_initials !== undefined) {
         // is already handled above via `patch.remark` -> `next.remark`.
       }
 
-
       // Ensure we always have a plain object, never an array
       next.extra =
-        mergedExtra && typeof mergedExtra === 'object' && !Array.isArray(mergedExtra)
+        mergedExtra &&
+        typeof mergedExtra === 'object' &&
+        !Array.isArray(mergedExtra)
           ? mergedExtra
           : {};
-
 
       return next;
     });
 
     return res.json({ ok: true, rows: mergedRows });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[generateOrgExamSheetAiCompute] error', err);
     return next(err);
   }
@@ -1478,8 +1436,12 @@ export const generateOrgExamSheetFromDocs = [
   async (req, res, next) => {
     try {
       const { orgId } = req.params;
-      const { sessionId, classLabel, instructions, rows: rowsJson } =
-        req.body || {};
+      const {
+        sessionId,
+        classLabel,
+        instructions,
+        rows: rowsJson,
+      } = req.body || {};
 
       if (!sessionId) {
         return res
@@ -1591,27 +1553,24 @@ export const generateOrgExamSheetFromDocs = [
         const next = { ...row };
 
         // top-level fields
-          if (patch.score !== undefined) next.score = patch.score;
-          if (patch.max_score !== undefined) next.max_score = patch.max_score;
-          if (patch.cat_score !== undefined) next.cat_score = patch.cat_score;
-          if (patch.exam_score !== undefined) next.exam_score = patch.exam_score;
-          if (patch.percent !== undefined) next.percent = patch.percent;
-          if (patch.grade !== undefined) next.grade = patch.grade;
+        if (patch.score !== undefined) next.score = patch.score;
+        if (patch.max_score !== undefined) next.max_score = patch.max_score;
+        if (patch.cat_score !== undefined) next.cat_score = patch.cat_score;
+        if (patch.exam_score !== undefined) next.exam_score = patch.exam_score;
+        if (patch.percent !== undefined) next.percent = patch.percent;
+        if (patch.grade !== undefined) next.grade = patch.grade;
 
-          /// ✅ Allow AI to update per-subject remark, clamp to max 30 characters
-          if (patch.remark !== undefined) {
-            next.remark = patch.remark == null
-              ? null
-              : clampSubjectRemark(patch.remark, 30);
-          }
+        /// ✅ Allow AI to update per-subject remark, clamp to max 30 characters
+        if (patch.remark !== undefined) {
+          next.remark =
+            patch.remark == null ? null : clampSubjectRemark(patch.remark, 30);
+        }
 
-                    // ✅ Allow AI to update teacher_initials
-          if (patch.teacher_initials !== undefined) {
-            const raw = patch.teacher_initials;
-            next.teacher_initials =
-              raw == null ? null : String(raw).trim();
-          }
-
+        // ✅ Allow AI to update teacher_initials
+        if (patch.teacher_initials !== undefined) {
+          const raw = patch.teacher_initials;
+          next.teacher_initials = raw == null ? null : String(raw).trim();
+        }
 
         // extra: free-form merge with deletion semantics
         const currentExtra =
@@ -1645,13 +1604,11 @@ export const generateOrgExamSheetFromDocs = [
 
       return res.json({ ok: true, rows: mergedRows });
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error('[generateOrgExamSheetFromDocs] error', err);
       return next(err);
     }
   },
 ];
-
 
 export async function generateOrgExamConfigAi(req, res, next) {
   try {
@@ -1712,8 +1669,7 @@ export async function generateOrgExamConfigAi(req, res, next) {
     });
 
     // Use AI title if provided, otherwise fall back to base
-    const nextReportTitle =
-      reportTitle ?? baseConfig.reportTitle ?? null;
+    const nextReportTitle = reportTitle ?? baseConfig.reportTitle ?? null;
 
     // ─────────────────────────────────────────────
     // Normalise + generate temporary IDs for front-end editing
@@ -1744,7 +1700,9 @@ export async function generateOrgExamConfigAi(req, res, next) {
     const safeSessions = (sessions || []).map((s, idx) => {
       const id = `tmp-session-${nowKey}-${idx}`;
       const label = String(s.label || `Exam ${idx + 1}`).trim();
-      const termLabel = String(s.term_label || '').trim().toLowerCase();
+      const termLabel = String(s.term_label || '')
+        .trim()
+        .toLowerCase();
       const term_id = termLabel ? termIdByLabel.get(termLabel) || null : null;
       const weightRaw = s.weight != null ? Number(s.weight) : 1;
       const weight = Number.isFinite(weightRaw) ? weightRaw : 1;
@@ -1760,10 +1718,8 @@ export async function generateOrgExamConfigAi(req, res, next) {
     });
 
     const safeBands = (gradingBands || []).map((b, idx) => {
-      const minRaw =
-        b.min_percent != null ? Number(b.min_percent) : 0;
-      const maxRaw =
-        b.max_percent != null ? Number(b.max_percent) : 0;
+      const minRaw = b.min_percent != null ? Number(b.min_percent) : 0;
+      const maxRaw = b.max_percent != null ? Number(b.max_percent) : 0;
 
       return {
         id: `tmp-band-${nowKey}-${idx}`,
@@ -1786,7 +1742,6 @@ export async function generateOrgExamConfigAi(req, res, next) {
       },
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[generateOrgExamConfigAi] error', err);
     return next(err);
   }

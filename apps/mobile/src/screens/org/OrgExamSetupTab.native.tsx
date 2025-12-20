@@ -1,12 +1,5 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import tw from '../../../tailwind';
 import type { OrgExamConfig, OrgExamGradingBand } from '@mytutorapp/shared/types';
 import { useThemePref } from '../../theme/ThemeContext';
@@ -106,7 +99,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
       borderColor: palette.border,
       borderWidth: 1,
       color: palette.text,
-      minHeight: 36,      // taller for digits + descenders
+      minHeight: 36, // taller for digits + descenders
       paddingVertical: 6, // avoid vertical clipping
     },
   ];
@@ -122,25 +115,15 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
   };
 
   const renderTermExams = (termId: string | number) => {
-    const labels = editingConfig.sessions
-      .filter((s) => s.term_id === termId)
-      .map((s) => s.label);
+    const labels = editingConfig.sessions.filter((s) => s.term_id === termId).map((s) => s.label);
 
     return labels.length ? labels.join(', ') : 'none yet';
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={tw`space-y-4 pb-6`}
-      keyboardShouldPersistTaps="handled"
-    >
+    <ScrollView contentContainerStyle={tw`space-y-4 pb-6`} keyboardShouldPersistTaps="handled">
       {/* AI assistant strip */}
-      <View
-        style={[
-          ...cardShell,
-          { backgroundColor: palette.rowBg },
-        ]}
-      >
+      <View style={[...cardShell, { backgroundColor: palette.rowBg }]}>
         <View style={tw`flex-col gap-3`}>
           <View style={tw`flex-1`}>
             <View style={tw`flex-row items-center gap-2`}>
@@ -152,69 +135,29 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
               >
                 <Text style={tw`text-xs text-white font-semibold`}>AI</Text>
               </View>
-              <Text
-                style={[
-                  tw`text-sm font-bold`,
-                  { color: palette.text },
-                ]}
-              >
+              <Text style={[tw`text-sm font-bold`, { color: palette.text }]}>
                 Let AI help with your exam setup
               </Text>
             </View>
 
-            <Text
-              style={[
-                tw`mt-1 text-[11px]`,
-                { color: palette.textSoft },
-              ]}
-            >
-              Describe what you want — create terms, exams/semesters, or grading bands.
-              You can also ask to delete items by name.
+            <Text style={[tw`mt-1 text-[11px]`, { color: palette.textSoft }]}>
+              Describe what you want — create terms, exams/semesters, or grading bands. You can also
+              ask to delete items by name.
             </Text>
 
             <View style={tw`mt-2 flex-row flex-wrap gap-1`}>
-              <View
-                style={[
-                  tw`px-2 py-0.5 rounded-full`,
-                  { backgroundColor: palette.chipBg },
-                ]}
-              >
-                <Text
-                  style={[
-                    tw`text-[10px]`,
-                    { color: palette.text },
-                  ]}
-                >
+              <View style={[tw`px-2 py-0.5 rounded-full`, { backgroundColor: palette.chipBg }]}>
+                <Text style={[tw`text-[10px]`, { color: palette.text }]}>
                   “Create 3 terms for 2025 with Midterm and End Term in each”
                 </Text>
               </View>
-              <View
-                style={[
-                  tw`px-2 py-0.5 rounded-full`,
-                  { backgroundColor: palette.chipBg },
-                ]}
-              >
-                <Text
-                  style={[
-                    tw`text-[10px]`,
-                    { color: palette.text },
-                  ]}
-                >
+              <View style={[tw`px-2 py-0.5 rounded-full`, { backgroundColor: palette.chipBg }]}>
+                <Text style={[tw`text-[10px]`, { color: palette.text }]}>
                   “Use grading A–E, delete F”
                 </Text>
               </View>
-              <View
-                style={[
-                  tw`px-2 py-0.5 rounded-full`,
-                  { backgroundColor: palette.chipBg },
-                ]}
-              >
-                <Text
-                  style={[
-                    tw`text-[10px]`,
-                    { color: palette.text },
-                  ]}
-                >
+              <View style={[tw`px-2 py-0.5 rounded-full`, { backgroundColor: palette.chipBg }]}>
+                <Text style={[tw`text-[10px]`, { color: palette.text }]}>
                   “Remove the Trial Exam and keep only Final Exam this year”
                 </Text>
               </View>
@@ -233,7 +176,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
                   color: palette.text,
                 },
               ]}
-              placeholder='E.g. “Create Term 1 & Term 2 for 2026 and delete grade E from the bands.”'
+              placeholder="E.g. “Create Term 1 & Term 2 for 2026 and delete grade E from the bands.”"
               placeholderTextColor={palette.textSoft}
               value={aiPrompt}
               onChangeText={setAiPrompt}
@@ -253,16 +196,11 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
                 {configAiLoading
                   ? 'AI is updating…'
                   : configLoading
-                  ? 'Saving…'
-                  : 'Apply with AI (preview)'}
+                    ? 'Saving…'
+                    : 'Apply with AI (preview)'}
               </Text>
             </TouchableOpacity>
-            <Text
-              style={[
-                tw`mt-1 text-[10px]`,
-                { color: palette.textMuted },
-              ]}
-            >
+            <Text style={[tw`mt-1 text-[10px]`, { color: palette.textMuted }]}>
               Changes are only saved when you tap{' '}
               <Text style={tw`font-semibold`}>Save configuration</Text>.
             </Text>
@@ -274,31 +212,15 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
       <View style={cardShell}>
         <View style={tw`flex-col gap-2`}>
           <View>
-            <Text
-              style={[
-                tw`text-sm font-bold`,
-                { color: palette.text },
-              ]}
-            >
-              Report card title
-            </Text>
-            <Text
-              style={[
-                tw`text-[11px]`,
-                { color: palette.textSoft },
-              ]}
-            >
-              This title appears at the top of each learner&apos;s report card PDF.
-              Leave blank to use{' '}
-              <Text style={tw`font-semibold`}>TERM REPORT CARD</Text>.
+            <Text style={[tw`text-sm font-bold`, { color: palette.text }]}>Report card title</Text>
+            <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>
+              This title appears at the top of each learner&apos;s report card PDF. Leave blank to
+              use <Text style={tw`font-semibold`}>TERM REPORT CARD</Text>.
             </Text>
           </View>
 
           <TextInput
-            style={[
-              ...inputBase,
-              tw`mt-1 w-full h-9`,
-            ]}
+            style={[...inputBase, tw`mt-1 w-full h-9`]}
             placeholder='E.g. "Term Report Card", "Progress Report", "End of Year Report"'
             placeholderTextColor={palette.textSoft}
             value={editingConfig.reportTitle ?? ''}
@@ -309,12 +231,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
               }))
             }
           />
-          <Text
-            style={[
-              tw`text-[10px]`,
-              { color: palette.textMuted },
-            ]}
-          >
+          <Text style={[tw`text-[10px]`, { color: palette.textMuted }]}>
             You can also mention a preferred title in your AI instructions, e.g.{' '}
             <Text style={tw`italic`}>
               “Use ‘Mid-Year Progress Report’ as the card title and create 3 terms…”
@@ -328,14 +245,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
         {/* Terms & sessions */}
         <View style={cardShell}>
           <View style={tw`flex-row items-center justify-between mb-2`}>
-            <Text
-              style={[
-                tw`text-sm font-bold`,
-                { color: palette.text },
-              ]}
-            >
-              Terms & exams
-            </Text>
+            <Text style={[tw`text-sm font-bold`, { color: palette.text }]}>Terms & exams</Text>
             <TouchableOpacity
               style={[
                 tw`h-9 px-3 rounded-xl items-center justify-center`,
@@ -343,14 +253,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
               ]}
               onPress={onAddTerm}
             >
-              <Text
-                style={[
-                  tw`text-xs font-semibold`,
-                  { color: palette.text },
-                ]}
-              >
-                + Add term
-              </Text>
+              <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>+ Add term</Text>
             </TouchableOpacity>
           </View>
 
@@ -369,12 +272,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
                   ]}
                 >
                   <View style={tw`flex-row items-center justify-between mb-1`}>
-                    <Text
-                      style={[
-                        tw`text-sm font-semibold`,
-                        { color: palette.text },
-                      ]}
-                    >
+                    <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>
                       {t.year} – {t.label}
                     </Text>
 
@@ -383,7 +281,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
                         setEditingConfig((prev) => ({
                           ...prev,
                           terms: prev.terms.map((x) =>
-                            x.id === t.id ? { ...x, is_active: !t.is_active } : x,
+                            x.id === t.id ? { ...x, is_active: !t.is_active } : x
                           ),
                         }))
                       }
@@ -404,41 +302,24 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
                         style={[
                           tw`w-3 h-3 rounded-full mr-1`,
                           {
-                            backgroundColor: t.is_active
-                              ? '#22c55e'
-                              : '#9ca3af',
+                            backgroundColor: t.is_active ? '#22c55e' : '#9ca3af',
                           },
                         ]}
                       />
-                      <Text
-                        style={[
-                          tw`text-[11px]`,
-                          { color: palette.text },
-                        ]}
-                      >
+                      <Text style={[tw`text-[11px]`, { color: palette.text }]}>
                         {t.is_active ? 'Active' : 'Inactive'}
                       </Text>
                     </TouchableOpacity>
                   </View>
 
-                  <Text
-                    style={[
-                      tw`text-[11px]`,
-                      { color: palette.textSoft },
-                    ]}
-                  >
+                  <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>
                     Exams: {renderTermExams(t.id)}
                   </Text>
                 </View>
               ))}
 
               {!editingConfig.terms.length && (
-                <Text
-                  style={[
-                    tw`text-xs`,
-                    { color: palette.textSoft },
-                  ]}
-                >
+                <Text style={[tw`text-xs`, { color: palette.textSoft }]}>
                   No terms yet. Add a term or let AI create them for you.
                 </Text>
               )}
@@ -447,20 +328,10 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
 
           <View style={tw`mt-3 flex-row items-center justify-between gap-2`}>
             <View style={tw`flex-1`}>
-              <Text
-                style={[
-                  tw`text-xs font-semibold`,
-                  { color: palette.textSoft },
-                ]}
-              >
+              <Text style={[tw`text-xs font-semibold`, { color: palette.textSoft }]}>
                 Exam sessions
               </Text>
-              <Text
-                style={[
-                  tw`text-[11px]`,
-                  { color: palette.textSoft },
-                ]}
-              >
+              <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>
                 Attach exams to terms and assign weight for yearly averages.
               </Text>
             </View>
@@ -468,9 +339,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
               style={tw`h-9 px-3 rounded-xl bg-sky-500 items-center justify-center`}
               onPress={onAddSession}
             >
-              <Text style={tw`text-xs font-semibold text-white`}>
-                + Add exam
-              </Text>
+              <Text style={tw`text-xs font-semibold text-white`}>+ Add exam</Text>
             </TouchableOpacity>
           </View>
 
@@ -485,35 +354,19 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
                   ]}
                 >
                   <View style={tw`flex-1`}>
-                    <Text
-                      style={[
-                        tw`text-xs font-semibold`,
-                        { color: palette.text },
-                      ]}
-                    >
+                    <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>
                       {s.label}
                     </Text>
-                    <Text
-                      style={[
-                        tw`text-[11px]`,
-                        { color: palette.textSoft },
-                      ]}
-                    >
-                      {editingConfig.terms.find((t) => t.id === s.term_id)?.label ||
-                        'Unassigned'}{' '}
-                      • weight {s.weight}
+                    <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>
+                      {editingConfig.terms.find((t) => t.id === s.term_id)?.label || 'Unassigned'} •
+                      weight {s.weight}
                     </Text>
                   </View>
                 </View>
               ))}
 
               {!editingConfig.sessions.length && (
-                <Text
-                  style={[
-                    tw`text-[11px]`,
-                    { color: palette.textSoft },
-                  ]}
-                >
+                <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>
                   No exams configured yet.
                 </Text>
               )}
@@ -525,20 +378,8 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
         <View style={cardShell}>
           <View style={tw`flex-row items-center justify-between`}>
             <View>
-              <Text
-                style={[
-                  tw`text-sm font-bold`,
-                  { color: palette.text },
-                ]}
-              >
-                Grading bands
-              </Text>
-              <Text
-                style={[
-                  tw`text-[11px]`,
-                  { color: palette.textSoft },
-                ]}
-              >
+              <Text style={[tw`text-sm font-bold`, { color: palette.text }]}>Grading bands</Text>
+              <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>
                 Used to auto-grade each subject and overall score.
               </Text>
             </View>
@@ -549,12 +390,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
               ]}
               onPress={onApplyBandsPreset}
             >
-              <Text
-                style={[
-                  tw`text-xs font-semibold`,
-                  { color: palette.text },
-                ]}
-              >
+              <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>
                 Use default preset
               </Text>
             </TouchableOpacity>
@@ -569,34 +405,13 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
               ]}
             >
               <View style={tw`w-16 pr-2`}>
-                <Text
-                  style={[
-                    tw`text-[11px]`,
-                    { color: palette.textSoft },
-                  ]}
-                >
-                  Grade
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>Grade</Text>
               </View>
               <View style={tw`w-36 pr-2`}>
-                <Text
-                  style={[
-                    tw`text-[11px]`,
-                    { color: palette.textSoft },
-                  ]}
-                >
-                  % range
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>% range</Text>
               </View>
               <View style={tw`flex-1`}>
-                <Text
-                  style={[
-                    tw`text-[11px]`,
-                    { color: palette.textSoft },
-                  ]}
-                >
-                  Remark
-                </Text>
+                <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>Remark</Text>
               </View>
             </View>
 
@@ -604,10 +419,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
               {editingConfig.gradingBands.map((b, idx) => (
                 <View
                   key={idx}
-                  style={[
-                    tw`flex-row items-center py-1 border-b`,
-                    { borderColor: palette.border },
-                  ]}
+                  style={[tw`flex-row items-center py-1 border-b`, { borderColor: palette.border }]}
                 >
                   {/* Grade */}
                   <View style={tw`w-16 pr-2`}>
@@ -638,10 +450,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
                   {/* % range */}
                   <View style={tw`w-36 pr-2 flex-row items-center`}>
                     <TextInput
-                      style={[
-                        ...smallInputBase,
-                        tw`flex-1 px-1`,
-                      ]}
+                      style={[...smallInputBase, tw`flex-1 px-1`]}
                       keyboardType="numeric"
                       value={String(b.min_percent ?? '')}
                       onChangeText={(value) =>
@@ -665,19 +474,9 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
                       }
                       placeholderTextColor={palette.textSoft}
                     />
-                    <Text
-                      style={[
-                        tw`mx-1 text-[11px]`,
-                        { color: palette.textSoft },
-                      ]}
-                    >
-                      to
-                    </Text>
+                    <Text style={[tw`mx-1 text-[11px]`, { color: palette.textSoft }]}>to</Text>
                     <TextInput
-                      style={[
-                        ...smallInputBase,
-                        tw`flex-1 px-1`,
-                      ]}
+                      style={[...smallInputBase, tw`flex-1 px-1`]}
                       keyboardType="numeric"
                       value={String(b.max_percent ?? '')}
                       onChangeText={(value) =>
@@ -707,10 +506,7 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
                   <View style={tw`flex-1`}>
                     <TextInput
                       multiline
-                      style={[
-                        ...smallInputBase,
-                        tw`px-2 min-h-[40px]`,
-                      ]}
+                      style={[...smallInputBase, tw`px-2 min-h-[40px]`]}
                       value={b.remark ?? ''}
                       onChangeText={(value) =>
                         setEditingConfig((prev) => {
@@ -737,14 +533,8 @@ const OrgExamSetupTab: React.FC<OrgExamSetupTabProps> = ({
               ))}
 
               {!editingConfig.gradingBands.length && (
-                <Text
-                  style={[
-                    tw`py-3 text-xs`,
-                    { color: palette.textSoft },
-                  ]}
-                >
-                  No grading bands yet. Use the preset or ask AI to create a grading
-                  scale.
+                <Text style={[tw`py-3 text-xs`, { color: palette.textSoft }]}>
+                  No grading bands yet. Use the preset or ask AI to create a grading scale.
                 </Text>
               )}
             </ScrollView>

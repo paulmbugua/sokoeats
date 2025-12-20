@@ -7,24 +7,35 @@ function pickType(s = '') {
 }
 
 function isUuid(s = '') {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    s,
+  );
 }
 
 export async function listCatalog(req, res) {
   try {
     const type = pickType(req.query.type);
-    const subject  = (req.query.subject || '').trim();
+    const subject = (req.query.subject || '').trim();
     const provider = (req.query.provider || '').trim();
 
-    const limit  = Math.min(Math.max(Number(req.query.limit)  || 50, 1), 200);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
 
     const where = [];
     const args = [];
 
-    if (type)    { args.push(type);    where.push(`type = $${args.length}`); }
-    if (subject) { args.push(subject); where.push(`subject = $${args.length}`); }
-    if (provider){ args.push(provider);where.push(`provider = $${args.length}`); }
+    if (type) {
+      args.push(type);
+      where.push(`type = $${args.length}`);
+    }
+    if (subject) {
+      args.push(subject);
+      where.push(`subject = $${args.length}`);
+    }
+    if (provider) {
+      args.push(provider);
+      where.push(`provider = $${args.length}`);
+    }
 
     const sql = `
       SELECT slug, title, type, provider, subject, grade_level,
@@ -52,7 +63,7 @@ export async function wrapCatalogItem(req, res) {
     // 1) lookup catalog
     const { rows: cat } = await pool.query(
       `SELECT * FROM third_party_catalog WHERE slug = $1`,
-      [slug]
+      [slug],
     );
     const item = cat[0];
     if (!item) return res.status(404).json({ error: 'catalog item not found' });
@@ -60,20 +71,25 @@ export async function wrapCatalogItem(req, res) {
     // 2) reuse if already wrapped (single item wrap)
     const reuse = await pool.query(
       `SELECT course_id FROM oer_wrapped_course WHERE catalog_slug = $1 LIMIT 1`,
-      [item.slug]
+      [item.slug],
     );
     if (reuse.rowCount) {
-      return res.json({ courseId: reuse.rows[0].course_id, firstLessonWeek: 1 });
+      return res.json({
+        courseId: reuse.rows[0].course_id,
+        firstLessonWeek: 1,
+      });
     }
 
     // 3) create simple course
-    const syllabus = [{
-      week: 1,
-      topic: item.title,
-      assignment: '',
-      videoUrl: item.embed_url || '',
-      notesUrl: item.source_url
-    }];
+    const syllabus = [
+      {
+        week: 1,
+        topic: item.title,
+        assignment: '',
+        videoUrl: item.embed_url || '',
+        notesUrl: item.source_url,
+      },
+    ];
 
     const desc =
       `${String(item.provider || '').toUpperCase()} • Wrapped OER\n` +
@@ -85,7 +101,10 @@ export async function wrapCatalogItem(req, res) {
       RETURNING id
     `;
     const { rows: cr } = await pool.query(createSql, [
-      userId, item.title, desc, JSON.stringify(syllabus)
+      userId,
+      item.title,
+      desc,
+      JSON.stringify(syllabus),
     ]);
     const courseId = cr[0].id;
 
@@ -102,8 +121,8 @@ export async function wrapCatalogItem(req, res) {
         !!item.commercial_allowed,
         item.license || null,
         item.license_url || null,
-        item.attribution_html || null
-      ]
+        item.attribution_html || null,
+      ],
     );
 
     res.json({ courseId, firstLessonWeek: 1 });
@@ -130,7 +149,8 @@ export async function wrapCollection(req, res) {
   try {
     const userId = req.user?.id ?? null;
     const { idOrTitle } = req.body || {};
-    if (!idOrTitle) return res.status(400).json({ error: 'idOrTitle required' });
+    if (!idOrTitle)
+      return res.status(400).json({ error: 'idOrTitle required' });
 
     // 0) Find the collection row first (to get its UUID + title)
     const collSql = isUuid(idOrTitle)
@@ -138,17 +158,21 @@ export async function wrapCollection(req, res) {
       : `SELECT id, title, description, subject FROM catalog_collection WHERE LOWER(title) = LOWER($1)`;
     const { rows: collRows } = await pool.query(collSql, [idOrTitle]);
     const collection = collRows[0];
-    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    if (!collection)
+      return res.status(404).json({ error: 'Collection not found' });
 
     const collectionId = collection.id;
 
     // 1) Reuse if we already wrapped this collection (one course per collection)
     const reuse = await pool.query(
       `SELECT course_id FROM oer_wrapped_collection WHERE collection_id = $1 LIMIT 1`,
-      [collectionId]
+      [collectionId],
     );
     if (reuse.rowCount) {
-      return res.json({ courseId: reuse.rows[0].course_id, firstLessonWeek: 1 });
+      return res.json({
+        courseId: reuse.rows[0].course_id,
+        firstLessonWeek: 1,
+      });
     }
 
     // 2) Load all items in collection (ordered)
@@ -160,9 +184,10 @@ export async function wrapCollection(req, res) {
        WHERE cci.collection_id = $1
        ORDER BY tpc.created_at ASC NULLS LAST, tpc.title
       `,
-      [collectionId]
+      [collectionId],
     );
-    if (!items.length) return res.status(404).json({ error: 'Empty collection' });
+    if (!items.length)
+      return res.status(404).json({ error: 'Empty collection' });
 
     // 3) Build syllabus: one week per item, video/text supported
     const syllabus = items.map((it, i) => {
@@ -170,7 +195,7 @@ export async function wrapCollection(req, res) {
       return {
         week: i + 1,
         topic: it.title,
-        videoUrl: isVideo ? (it.embed_url || it.source_url || '') : '',
+        videoUrl: isVideo ? it.embed_url || it.source_url || '' : '',
         notesUrl: it.source_url || '',
       };
     });
@@ -205,7 +230,7 @@ export async function wrapCollection(req, res) {
       VALUES ($1, $2, $3, $4)
       ON CONFLICT (collection_id) DO NOTHING
       `,
-      [collectionId, courseId, collection.title, items.length]
+      [collectionId, courseId, collection.title, items.length],
     );
 
     res.json({ courseId, firstLessonWeek: 1 });
@@ -221,13 +246,15 @@ export async function wrapCollection(req, res) {
  */
 export async function getOerMeta(req, res) {
   try {
-     // accept /oer/meta/:id or /oer/meta/:courseId
+    // accept /oer/meta/:id or /oer/meta/:courseId
     const courseId = req.params.courseId ?? req.params.id;
 
     // small helper to see if a table exists
     const tableExists = async (name) => {
       const q = `SELECT to_regclass($1) AS reg`;
-      const r = await pool.query(q, [name.includes('.') ? name : `public.${name}`]);
+      const r = await pool.query(q, [
+        name.includes('.') ? name : `public.${name}`,
+      ]);
       return !!r.rows[0]?.reg;
     };
 
@@ -238,7 +265,7 @@ export async function getOerMeta(req, res) {
          FROM oer_wrapped_course
         WHERE course_id = $1
         LIMIT 1`,
-      [courseId]
+      [courseId],
     );
     if (itemRows.length) return res.json(itemRows[0]);
 
@@ -251,7 +278,7 @@ export async function getOerMeta(req, res) {
            FROM oer_wrapped_collection oc
            LEFT JOIN catalog_collection c ON c.id = oc.collection_id
           WHERE oc.course_id = $1          LIMIT 1`,
-        [courseId]
+        [courseId],
       );
       collRows = r.rows || [];
     }
@@ -281,7 +308,7 @@ export async function getOerMeta(req, res) {
            JOIN oer_books b ON b.id = wb.book_id
           WHERE wb.course_id = $1
           LIMIT 1`,
-        [courseId]
+        [courseId],
       );
       bookRows = r.rows || [];
     }
@@ -293,11 +320,12 @@ export async function getOerMeta(req, res) {
         course_id: courseId,
         commercial_allowed: true, // CC BY 4.0 allows commercial use
         license: b.license || 'CC BY 4.0',
-        license_url: b.license_url || 'https://creativecommons.org/licenses/by/4.0/',
+        license_url:
+          b.license_url || 'https://creativecommons.org/licenses/by/4.0/',
         attribution_html: `<p>${(b.provider || 'OpenStax')
           .toString()
-          .replace(/</g,'&lt;')
-          .replace(/>/g,'&gt;')} content used under Creative Commons.</p>`,
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')} content used under Creative Commons.</p>`,
       });
     }
 
@@ -334,20 +362,25 @@ export async function wrapBook(req, res) {
     // 2) reuse if already wrapped
     const reuse = await pool.query(
       `SELECT course_id FROM oer_wrapped_book WHERE book_id = $1 LIMIT 1`,
-      [b.id]
+      [b.id],
     );
     if (reuse.rowCount) {
-      return res.json({ courseId: reuse.rows[0].course_id, firstLessonWeek: 1 });
+      return res.json({
+        courseId: reuse.rows[0].course_id,
+        firstLessonWeek: 1,
+      });
     }
 
     // 3) create a super-simple course (1-week reading)
-    const syllabus = [{
-      week: 1,
-      topic: b.title,
-      videoUrl: '',
-      notesUrl: b.pdf_url,
-      notesUrls: [b.pdf_url],
-    }];
+    const syllabus = [
+      {
+        week: 1,
+        topic: b.title,
+        videoUrl: '',
+        notesUrl: b.pdf_url,
+        notesUrls: [b.pdf_url],
+      },
+    ];
 
     const desc =
       `${String(b.provider || 'OER').toUpperCase()} • Book Course\n` +
@@ -361,7 +394,10 @@ export async function wrapBook(req, res) {
       RETURNING id
     `;
     const { rows: cr } = await pool.query(createSql, [
-      userId, b.title, desc, JSON.stringify(syllabus)
+      userId,
+      b.title,
+      desc,
+      JSON.stringify(syllabus),
     ]);
     const courseId = cr[0].id;
 
@@ -370,7 +406,7 @@ export async function wrapBook(req, res) {
       `INSERT INTO oer_wrapped_book (book_id, course_id)
        VALUES ($1,$2)
        ON CONFLICT (book_id) DO NOTHING`,
-      [b.id, courseId]
+      [b.id, courseId],
     );
 
     res.json({ courseId, firstLessonWeek: 1 });

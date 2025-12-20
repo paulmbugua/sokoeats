@@ -24,7 +24,9 @@ type AttemptMeta = {
 
 type OrgAssignmentOptions = {
   /** Pass route params (RN) or explicitly override values */
-  params?: Partial<Record<'assignmentId' | 'attemptId' | 'lock', string | number | boolean | null | undefined>>;
+  params?: Partial<
+    Record<'assignmentId' | 'attemptId' | 'lock', string | number | boolean | null | undefined>
+  >;
   /** Raw search string if you have it (web): e.g., "?assignmentId=123&attemptId=abc&lock=1" */
   search?: string;
 };
@@ -62,9 +64,9 @@ function getParamFromOptions(
 
 export function useOrgAssignment(options?: OrgAssignmentOptions) {
   const assignmentIdQ = getParamFromOptions('assignmentId', options) || '';
-  const attemptIdQ    = getParamFromOptions('attemptId', options) || '';
-  const lockQ         = getParamFromOptions('lock', options);
-  const lockFlag      = (lockQ === '1') || lockQ === 'true';
+  const attemptIdQ = getParamFromOptions('attemptId', options) || '';
+  const lockQ = getParamFromOptions('lock', options);
+  const lockFlag = lockQ === '1' || lockQ === 'true';
 
   const { backendUrl, token } = useShopContext();
 
@@ -77,8 +79,14 @@ export function useOrgAssignment(options?: OrgAssignmentOptions) {
   useEffect(() => {
     let aborted = false;
     (async () => {
-      if (!token) { setMeta(null); return; }
-      if (!attemptIdQ && !assignmentIdQ) { setMeta(null); return; }
+      if (!token) {
+        setMeta(null);
+        return;
+      }
+      if (!attemptIdQ && !assignmentIdQ) {
+        setMeta(null);
+        return;
+      }
 
       setLoading(true);
       setError(null);
@@ -111,7 +119,9 @@ export function useOrgAssignment(options?: OrgAssignmentOptions) {
       }
     })();
 
-    return () => { aborted = true; };
+    return () => {
+      aborted = true;
+    };
   }, [attemptIdQ, assignmentIdQ, backendUrl, token]);
 
   // tick remaining time
@@ -120,8 +130,11 @@ export function useOrgAssignment(options?: OrgAssignmentOptions) {
     const due = new Date(meta.due_at).getTime();
     const tick = () => setRemainingMs(Math.max(0, due - Date.now()));
     tick();
-    const id = globalThis.setInterval ? globalThis.setInterval(tick, 1000) : setInterval(tick, 1000);
-    return () => (globalThis.clearInterval ? globalThis.clearInterval(id as any) : clearInterval(id as any));
+    const id = globalThis.setInterval
+      ? globalThis.setInterval(tick, 1000)
+      : setInterval(tick, 1000);
+    return () =>
+      globalThis.clearInterval ? globalThis.clearInterval(id as any) : clearInterval(id as any);
   }, [meta?.due_at]);
 
   const expired = useMemo(() => remainingMs <= 0 && !!meta?.due_at, [remainingMs, meta?.due_at]);

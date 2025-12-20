@@ -85,22 +85,18 @@ import OrgInstructorHomeNative from './screens/org/OrgInstructorHome.native';
 import OrgExamResultsPortal from './screens/org/OrgExamResultsPortal.native'; // if you have this
 import OrgChangePasswordNative from './screens/org/OrgChangePassword.native';
 
-
 const Stack = createStackNavigator<MainStackParamList>();
 
 /* ───────── First-login helpers (per identity) ───────── */
-const firstLoginKey = (
-  userId?: string | number | null,
-  email?: string | null | undefined
-) => `tutorapp_hasLoggedInOnce::${userId ?? email ?? 'unknown'}`;
+const firstLoginKey = (userId?: string | number | null, email?: string | null | undefined) =>
+  `tutorapp_hasLoggedInOnce::${userId ?? email ?? 'unknown'}`;
 
 /** Compute a stable per-user key only when we actually know identity. */
 const useIdentityKey = () => {
   const { userId, userEmail, profile } = useShopContext() as any;
   const id = userId ?? profile?.id ?? null;
   const email = userEmail ?? profile?.email ?? null;
-  const stable =
-    id != null || (typeof email === 'string' && email.trim().length > 0);
+  const stable = id != null || (typeof email === 'string' && email.trim().length > 0);
   const key = firstLoginKey(id ?? null, email ?? null);
   return { key, stable };
 };
@@ -139,8 +135,7 @@ const useOrgRole = () => {
   const normalized = role ? String(role).toLowerCase() : '';
 
   const isAdmin = normalized === 'owner' || normalized === 'admin';
-  const isInstructor =
-    normalized === 'instructor' || normalized === 'teacher';
+  const isInstructor = normalized === 'instructor' || normalized === 'teacher';
   const isLearner = normalized === 'learner' || normalized === 'student';
 
   return { busy, role: normalized, isAdmin, isInstructor, isLearner };
@@ -180,7 +175,6 @@ const OrgAdminOnlyGuard: React.FC<ProtectedRouteProps> = ({ children }) => {
   return null;
 };
 
-
 const OrgLearnerOnlyGuard: React.FC<ProtectedRouteProps> = ({ children }) => {
   const navigation = useNavigation<any>();
   const { busy, role, isAdmin, isInstructor, isLearner } = useOrgRole();
@@ -203,7 +197,6 @@ const OrgLearnerOnlyGuard: React.FC<ProtectedRouteProps> = ({ children }) => {
 
   return null;
 };
-
 
 const OrgInstructorOnlyGuard: React.FC<ProtectedRouteProps> = ({ children }) => {
   const navigation = useNavigation<any>();
@@ -228,12 +221,10 @@ const OrgInstructorOnlyGuard: React.FC<ProtectedRouteProps> = ({ children }) => 
   return null;
 };
 
-
 /* ───────── App ───────── */
 const App: React.FC = () => {
   const [bootReady, setBootReady] = React.useState(false);
-  const [initialRoute, setInitialRoute] =
-    React.useState<keyof MainStackParamList>('Landing');
+  const [initialRoute, setInitialRoute] = React.useState<keyof MainStackParamList>('Landing');
 
   const { token, initializing } = (useShopContext() as any) ?? {};
 
@@ -241,7 +232,6 @@ const App: React.FC = () => {
   const markSeen = useMarkFirstLoginSeen();
 
   const { uiFilters, handleSearch, clearFilters } = useHomePage();
-  
 
   React.useEffect(() => {
     let mounted = true;
@@ -278,10 +268,7 @@ const App: React.FC = () => {
 
       {/* Main navigator content */}
       <View style={{ flex: 1 }}>
-        <Stack.Navigator
-          initialRouteName={initialRoute}
-          screenOptions={{ headerShown: false }}
-        >
+        <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
           {/* Public: Landing first */}
           <Stack.Screen name="Landing" component={Landing} />
           <Stack.Screen name="InviteLogin" component={InviteLoginScreen} />
@@ -294,71 +281,29 @@ const App: React.FC = () => {
           <Stack.Screen name="Help" component={HelpPage} />
           <Stack.Screen name="Resources" component={ResourcesPage} />
           <Stack.Screen name="Videos" component={VideosScreen} />
-          <Stack.Screen
-            name="VideoCollection"
-            component={VideosScreen}
-          />
+          <Stack.Screen name="VideoCollection" component={VideosScreen} />
 
           {/* 🔗 NEW: unified OER reader (books + collections, doc + video) */}
-          <Stack.Screen
-            name="OerReaderFull"
-            component={OerReaderFullNative}
-          />
+          <Stack.Screen name="OerReaderFull" component={OerReaderFullNative} />
 
-          <Stack.Screen
-            name="PrivacyPolicy"
-            component={PrivacyPolicy}
-          />
-          <Stack.Screen
-            name="TermsOfService"
-            component={TermsOfService}
-          />
-          <Stack.Screen
-            name="AntiSpamPolicy"
-            component={AntiSpamPolicy}
-          />
-          <Stack.Screen
-            name="ComplaintsFeedback"
-            component={ComplaintsFeedback}
-          />
-          <Stack.Screen
-            name="RefundsAndCancellations"
-            component={RefundsAndCancellations}
-          />
-          <Stack.Screen
-            name="Unsubscribe"
-            component={UnsubscribePage}
-          />
-          <Stack.Screen
-            name="FulfillmentPolicy"
-            component={FulfillmentPolicy}
-          />
+          <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicy} />
+          <Stack.Screen name="TermsOfService" component={TermsOfService} />
+          <Stack.Screen name="AntiSpamPolicy" component={AntiSpamPolicy} />
+          <Stack.Screen name="ComplaintsFeedback" component={ComplaintsFeedback} />
+          <Stack.Screen name="RefundsAndCancellations" component={RefundsAndCancellations} />
+          <Stack.Screen name="Unsubscribe" component={UnsubscribePage} />
+          <Stack.Screen name="FulfillmentPolicy" component={FulfillmentPolicy} />
           <Stack.Screen name="PaymentFlow" component={PaymentFlow} />
           <Stack.Screen name="PaystackCheckout" component={PaystackCheckoutNative} />
           <Stack.Screen name="PaystackCallback" component={PaystackCallbackNative} />
 
-
-
-
           {/* Public verify routes */}
-          <Stack.Screen
-            name="VerifyCertificate"
-            component={VerifyCertificatePage}
-          />
-          <Stack.Screen
-            name="VerifyCertificatePrint"
-            component={VerifyCertificatePrintPage}
-          />
+          <Stack.Screen name="VerifyCertificate" component={VerifyCertificatePage} />
+          <Stack.Screen name="VerifyCertificatePrint" component={VerifyCertificatePrintPage} />
 
           {/* Org public */}
-          <Stack.Screen
-            name="InstitutionLogin"
-            component={InstitutionLogin}
-          />
-          <Stack.Screen
-            name="OrgInviteLanding"
-            component={OrgInviteLanding}
-          />
+          <Stack.Screen name="InstitutionLogin" component={InstitutionLogin} />
+          <Stack.Screen name="OrgInviteLanding" component={OrgInviteLanding} />
 
           {/* 🔁 ORG HOME ROUTER (like /org on web) */}
           <Stack.Screen name="OrgHome">
@@ -376,7 +321,6 @@ const App: React.FC = () => {
               </OrgProtectedRoute>
             )}
           </Stack.Screen>
-
 
           {/* Org learner home (role-guarded) */}
           <Stack.Screen name="OrgLearnerHome">
@@ -421,7 +365,7 @@ const App: React.FC = () => {
           </Stack.Screen>
 
           {/* Exams portal – instructor only (matches native instructor home shortcut) */}
-            <Stack.Screen name="OrgExamResultsPortal">
+          <Stack.Screen name="OrgExamResultsPortal">
             {() => (
               <OrgProtectedRoute>
                 <OrgExamResultsPortal />
@@ -430,41 +374,29 @@ const App: React.FC = () => {
           </Stack.Screen>
 
           {/* Public catalog / details */}
-          <Stack.Screen name="Profile">
-            {() => <ProfileDetailPage />}
-          </Stack.Screen>
+          <Stack.Screen name="Profile">{() => <ProfileDetailPage />}</Stack.Screen>
 
           <Stack.Screen name="Courses" component={MyCourses} />
-          <Stack.Screen
-            name="CourseDetails"
-            component={CourseDetails}
-          />
+          <Stack.Screen name="CourseDetails" component={CourseDetails} />
 
           {/* ClassVault listing (public entry; filtered UI inside) */}
           <Stack.Screen name="ClassVaultLibrary">
-              {() => {
-                const classVaultFilters = React.useMemo(
-                  () => ({
-                    category: (uiFilters as any)?.videoCategory ?? (uiFilters as any)?.category,
-                    ageGroup: (uiFilters as any)?.videoAgeGroup ?? (uiFilters as any)?.ageGroup,
-                  }),
-                  [uiFilters]
-                );
+            {() => {
+              const classVaultFilters = React.useMemo(
+                () => ({
+                  category: (uiFilters as any)?.videoCategory ?? (uiFilters as any)?.category,
+                  ageGroup: (uiFilters as any)?.videoAgeGroup ?? (uiFilters as any)?.ageGroup,
+                }),
+                [uiFilters]
+              );
 
-                return (
-                  <ClassVaultListScreen
-                    filters={classVaultFilters}
-                    clearFilters={clearFilters}
-                  />
-                );
-              }}
-            </Stack.Screen>
+              return (
+                <ClassVaultListScreen filters={classVaultFilters} clearFilters={clearFilters} />
+              );
+            }}
+          </Stack.Screen>
 
-
-          <Stack.Screen
-            name="ClassVaultDetail"
-            component={ClassVaultDetailScreen}
-          />
+          <Stack.Screen name="ClassVaultDetail" component={ClassVaultDetailScreen} />
 
           {/* Protected Sections (user token) */}
           <Stack.Screen name="ProfileSelf">
@@ -584,11 +516,7 @@ const App: React.FC = () => {
           zIndex: 50,
         }}
       >
-        <FooterNav
-          aiRouteName="RobotTutor"
-          homeRouteName="Home"
-          profileRouteName="ProfileSelf"
-        />
+        <FooterNav aiRouteName="RobotTutor" homeRouteName="Home" profileRouteName="ProfileSelf" />
       </View>
     </SafeAreaView>
   );

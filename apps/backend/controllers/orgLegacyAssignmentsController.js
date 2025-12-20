@@ -26,7 +26,9 @@ export async function createOrgLegacyAssignment(req, res) {
   console.log('[createOrgLegacyAssignment] body=', req.body);
 
   if (!orgId) {
-    return res.status(400).json({ ok: false, message: 'Missing orgId in URL.' });
+    return res
+      .status(400)
+      .json({ ok: false, message: 'Missing orgId in URL.' });
   }
 
   // Basic auth/permissions check – mirror whatever you use for createOrgAssignment
@@ -72,10 +74,10 @@ export async function createOrgLegacyAssignment(req, res) {
   // IMPORTANT: this assumes course_id is nullable in org_course_assignments.
   // If your column is NOT NULL, run:
   //   ALTER TABLE org_course_assignments ALTER COLUMN course_id DROP NOT NULL;
- // apps/backend/controllers/orgLegacyAssignmentsController.js
+  // apps/backend/controllers/orgLegacyAssignmentsController.js
 
-// ...rest of imports...
-// import { randomBytes } from 'crypto';  // you already added this above
+  // ...rest of imports...
+  // import { randomBytes } from 'crypto';  // you already added this above
 
   // ...
   const inviteCode = randomBytes(8).toString('hex');
@@ -113,7 +115,7 @@ export async function createOrgLegacyAssignment(req, res) {
       `,
       [
         orgId,
-        trimmedTitle,                                   // title_override
+        trimmedTitle, // title_override
         inviteCode,
         instructions ? String(instructions).trim() : null,
         classLabel,
@@ -121,7 +123,7 @@ export async function createOrgLegacyAssignment(req, res) {
         attachment_url || null,
         dueAtValue,
         userId,
-      ]
+      ],
     );
 
     const assignment = rows[0];
@@ -133,7 +135,6 @@ export async function createOrgLegacyAssignment(req, res) {
       message: 'Failed to create legacy assignment.',
     });
   }
-
 }
 
 /**
@@ -171,8 +172,7 @@ export async function getOrgAssignments(req, res) {
     let classLabel =
       (classFromQuery || class_label || '').toString().trim() || null;
 
-    const subjectKey =
-      (subject || subject_key || '').toString().trim() || null;
+    const subjectKey = (subject || subject_key || '').toString().trim() || null;
 
     let learnerId = null;
 
@@ -191,7 +191,7 @@ export async function getOrgAssignments(req, res) {
             )
           LIMIT 1
           `,
-          [orgId, String(studentId)]
+          [orgId, String(studentId)],
         );
 
         if (lrRows[0]) {
@@ -203,7 +203,7 @@ export async function getOrgAssignments(req, res) {
       } catch (e) {
         console.warn(
           '[getOrgAssignments] deriving class from studentId failed',
-          e?.message || e
+          e?.message || e,
         );
       }
     }
@@ -333,8 +333,7 @@ export async function getOrgAssignments(req, res) {
           ? submissionCountRaw
           : Number(submissionCountRaw || 0);
 
-      const latestSub =
-        r.latest_submission_at || r.submitted_at || null;
+      const latestSub = r.latest_submission_at || r.submitted_at || null;
 
       const hasSubmission =
         submissionCount > 0 || (latestSub != null && latestSub !== '');
@@ -395,7 +394,6 @@ export async function getOrgAssignments(req, res) {
   }
 }
 
-
 /**
  * POST /api/orgs/:orgId/assignments/:assignmentId/legacy/submit
  * Body: { answer_text?, attachment_url? }
@@ -404,7 +402,7 @@ export async function getOrgAssignments(req, res) {
  */
 export async function submitOrgLegacyAssignment(req, res) {
   try {
-    const orgId = req.params.orgId;             // 👈 keep as string (UUID)
+    const orgId = req.params.orgId; // 👈 keep as string (UUID)
     const assignmentId = req.params.assignmentId;
 
     if (!orgId || !assignmentId) {
@@ -430,7 +428,7 @@ export async function submitOrgLegacyAssignment(req, res) {
       FROM org_course_assignments
       WHERE id = $1
       `,
-      [assignmentId] // <-- assignmentId as UUID string
+      [assignmentId], // <-- assignmentId as UUID string
     );
 
     if (
@@ -453,8 +451,8 @@ export async function submitOrgLegacyAssignment(req, res) {
       null;
 
     const params = [
-      orgId,                // 👈 UUID
-      assignmentId,         // 👈 UUID
+      orgId, // 👈 UUID
+      assignmentId, // 👈 UUID
       learnerId,
       userId,
       studentId,
@@ -485,7 +483,7 @@ export async function submitOrgLegacyAssignment(req, res) {
         attachment_url,
         submitted_at
       `,
-      params
+      params,
     );
 
     return res.status(201).json({
@@ -513,7 +511,6 @@ export async function submitOrgLegacyAssignment(req, res) {
       .json({ ok: false, message: 'Failed to submit assignment.' });
   }
 }
-
 
 export async function getOrgAssignmentSubmissions(req, res) {
   const { orgId, assignmentId } = req.params;
@@ -545,7 +542,7 @@ export async function getOrgAssignmentSubmissions(req, res) {
       WHERE id = $1
       LIMIT 1
       `,
-      [assignmentId]
+      [assignmentId],
     );
 
     console.log('[getOrgAssignmentSubmissions] assignment query result', {
@@ -601,7 +598,7 @@ export async function getOrgAssignmentSubmissions(req, res) {
         AND s.assignment_id = $2
       ORDER BY s.submitted_at DESC
       `,
-      [orgId, assignmentId]
+      [orgId, assignmentId],
     );
 
     console.log('[getOrgAssignmentSubmissions] submissions result', {

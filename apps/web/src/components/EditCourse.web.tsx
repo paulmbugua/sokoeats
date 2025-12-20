@@ -16,10 +16,14 @@ const normalizeSyllabus = (list: SyllabusItem[] = []): SyllabusItem[] =>
   list
     .filter(
       (w) =>
-        (w.topic?.trim() || '') ||
-        (w.assignment?.trim() || '') ||
-        (w.videoUrl?.trim() || '') ||
-        (w.notesUrl?.trim() || '')
+        w.topic?.trim() ||
+        '' ||
+        w.assignment?.trim() ||
+        '' ||
+        w.videoUrl?.trim() ||
+        '' ||
+        w.notesUrl?.trim() ||
+        ''
     )
     .map((w, i) => ({ ...w, week: i + 1 }));
 
@@ -166,7 +170,7 @@ const EditCoursePage: React.FC = () => {
     (async () => {
       try {
         const list = await fetchMyCourses();
-        if (!ignore) setSelectedId((prev) => prev ?? (list[0]?.id ?? null));
+        if (!ignore) setSelectedId((prev) => prev ?? list[0]?.id ?? null);
       } catch {}
     })();
     return () => {
@@ -498,7 +502,11 @@ const EditCoursePage: React.FC = () => {
                             {w.topic?.trim() || `Week ${i + 1}`}
                           </span>
                         </div>
-                        <svg className="h-4 w-4 text-slate-500 transition" viewBox="0 0 20 20" fill="currentColor">
+                        <svg
+                          className="h-4 w-4 text-slate-500 transition"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
                           <path
                             fillRule="evenodd"
                             d="M5.23 7.21a.75.75 0 011.06.02L10 11.106l3.71-3.875a.75.75 0 111.08 1.04l-4.24 4.43a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z"
@@ -567,12 +575,14 @@ const EditCoursePage: React.FC = () => {
           aria-modal="true"
           aria-label="My courses list"
         >
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowMobileList(false)} />
           <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setShowMobileList(false)}
-          />
-          <div className="absolute inset-y-0 left-0 w-[85%] max-w-sm bg-white dark:bg-[#0f1821] shadow-xl border-r border-slate-200 dark:border-slate-700 p-4 flex flex-col"
-               style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))', paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+            className="absolute inset-y-0 left-0 w-[85%] max-w-sm bg-white dark:bg-[#0f1821] shadow-xl border-r border-slate-200 dark:border-slate-700 p-4 flex flex-col"
+            style={{
+              paddingTop: 'max(1rem, env(safe-area-inset-top))',
+              paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+            }}
+          >
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-base font-semibold">My Courses</h2>
               <button

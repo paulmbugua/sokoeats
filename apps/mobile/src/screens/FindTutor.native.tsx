@@ -61,7 +61,11 @@ const normalizeStr = (v: unknown): string => {
   if (typeof v === 'string') return v.toLowerCase().trim();
   if (typeof v === 'number' || typeof v === 'boolean') return String(v).toLowerCase().trim();
   if (Array.isArray(v)) return v.map(normalizeStr).join(' ').trim();
-  if (typeof v === 'object') return Object.values(v as any).map(normalizeStr).join(' ').trim();
+  if (typeof v === 'object')
+    return Object.values(v as any)
+      .map(normalizeStr)
+      .join(' ')
+      .trim();
   return '';
 };
 
@@ -80,7 +84,6 @@ const getRating = (p: any) => {
   return Number(r) || 0;
 };
 
-
 const getTokens = (p: any) => {
   const x =
     p?.pricing?.tokens ??
@@ -95,7 +98,9 @@ const getTokens = (p: any) => {
 };
 
 const normalizeStatus = (s: any) => {
-  const v = String(s || '').trim().toLowerCase();
+  const v = String(s || '')
+    .trim()
+    .toLowerCase();
   if (!v) return '';
   if (v === 'online') return 'Online';
   if (v === 'offline') return 'Offline';
@@ -184,13 +189,13 @@ const Chip: React.FC<{
     onPress={onPress}
     style={tw.style(
       'px-3 h-9 rounded-full items-center justify-center mr-2 mb-2',
-      active ? 'bg-primary' : 'bg-[#e7edf4] dark:bg-[#172534]',
+      active ? 'bg-primary' : 'bg-[#e7edf4] dark:bg-[#172534]'
     )}
   >
     <Text
       style={tw.style(
         'text-sm',
-        active ? 'text-white font-semibold' : 'text-[#0d141c] dark:text-white/90',
+        active ? 'text-white font-semibold' : 'text-[#0d141c] dark:text-white/90'
       )}
       numberOfLines={1}
     >
@@ -222,11 +227,12 @@ const TutorCard = React.memo(function TutorCard({
 
   const langs =
     Array.isArray((item as any).languages) && (item as any).languages.length > 0
-      ? (item as any).languages.slice(0, 3).join(', ') + ((item as any).languages.length > 3 ? '…' : '')
+      ? (item as any).languages.slice(0, 3).join(', ') +
+        ((item as any).languages.length > 3 ? '…' : '')
       : '';
 
   const ccode = String((item as any).country ?? (item as any).country_code ?? '').trim();
-  const cname = ccode ? (countryName?.(ccode) || ccode) : '';
+  const cname = ccode ? countryName?.(ccode) || ccode : '';
 
   return (
     <View style={tw`mb-4`}>
@@ -237,9 +243,7 @@ const TutorCard = React.memo(function TutorCard({
           <Text style={tw`text-xs font-medium text-[#49739c] dark:text-white/70`}>{sub}</Text>
 
           <View style={tw`flex-row items-center gap-2 mt-0.5`}>
-            {status ? (
-              <View style={tw.style('w-2 h-2 rounded-full', chipBg)} />
-            ) : null}
+            {status ? <View style={tw.style('w-2 h-2 rounded-full', chipBg)} /> : null}
 
             <Pressable onPress={() => onPress((item as any).user_id ?? (item as any).id)}>
               <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
@@ -260,22 +264,16 @@ const TutorCard = React.memo(function TutorCard({
             ) : null}
 
             {langs ? (
-              <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>
-                Languages: {langs}
-              </Text>
+              <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>Languages: {langs}</Text>
             ) : null}
 
             {cname ? (
-              <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>
-                {cname}
-              </Text>
+              <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>{cname}</Text>
             ) : null}
           </View>
 
           {desc ? (
-            <Text style={tw`text-sm mt-1 text-[#0d141c] dark:text-white/90`}>
-              {desc}
-            </Text>
+            <Text style={tw`text-sm mt-1 text-[#0d141c] dark:text-white/90`}>{desc}</Text>
           ) : null}
         </View>
 
@@ -290,7 +288,7 @@ const TutorCard = React.memo(function TutorCard({
             {/* subtle overlay for readability */}
             <View style={tw`absolute inset-0 bg-black/10`} />
 
-            {(status || showNew) ? (
+            {status || showNew ? (
               <View style={tw`absolute top-2 left-2 flex-row items-center gap-2`}>
                 {status ? (
                   <View style={tw.style('px-2.5 py-1 rounded-full', chipBg)}>
@@ -315,7 +313,7 @@ const TutorCard = React.memo(function TutorCard({
 /* ───────── Countries normalized for modal ───────── */
 type CountryOpt = { code: string; name: string };
 const COUNTRY_LIST: CountryOpt[] = Array.isArray(COUNTRIES)
-  ? (COUNTRIES as any[])
+  ? ((COUNTRIES as any[])
       .map((c) => {
         if (!c) return null;
         if (typeof c === 'string') return { code: c, name: c };
@@ -324,7 +322,7 @@ const COUNTRY_LIST: CountryOpt[] = Array.isArray(COUNTRIES)
         if (!code && !name) return null;
         return { code: code || name, name: name || code };
       })
-      .filter(Boolean) as CountryOpt[]
+      .filter(Boolean) as CountryOpt[])
   : [];
 
 /* ───────── Screen ───────── */
@@ -343,7 +341,7 @@ const FindTutorScreen: React.FC = () => {
 
   const uiFilters = (home?.uiFilters ?? {}) as {
     subject?: string;
-    country?: string;   // ISO2
+    country?: string; // ISO2
     minRating?: number;
     maxTokens?: number;
   };
@@ -392,7 +390,7 @@ const FindTutorScreen: React.FC = () => {
   const tutors = useMemo<Profile[]>(
     () =>
       (filteredProfiles || []).filter((p: any) => String(p?.role || '').toLowerCase() === 'tutor'),
-    [filteredProfiles],
+    [filteredProfiles]
   );
 
   // languages from current result set (plus common)
@@ -484,16 +482,17 @@ const FindTutorScreen: React.FC = () => {
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
       {/* Soft background orbs */}
       <View style={tw`absolute inset-0`}>
-        <View style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-pink-500/12 dark:bg-pink-500/10`} />
-        <View style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/10`} />
+        <View
+          style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-pink-500/12 dark:bg-pink-500/10`}
+        />
+        <View
+          style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/10`}
+        />
       </View>
 
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={[
-          tw`pb-6`,
-          { paddingTop: topPad, paddingBottom: bottomPad + 80 },
-        ]}
+        contentContainerStyle={[tw`pb-6`, { paddingTop: topPad, paddingBottom: bottomPad + 80 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -501,7 +500,9 @@ const FindTutorScreen: React.FC = () => {
         <View style={tw`px-4 pt-2 pb-2`}>
           <View style={tw`flex-row items-end justify-between`}>
             <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-xs tracking-[2px] uppercase text-pink-500/80 dark:text-pink-400`}>
+              <Text
+                style={tw`text-xs tracking-[2px] uppercase text-pink-500/80 dark:text-pink-400`}
+              >
                 DayBreak Tutors
               </Text>
               <Text style={tw`text-[28px] font-extrabold text-[#0d141c] dark:text-white mt-1`}>
@@ -514,7 +515,8 @@ const FindTutorScreen: React.FC = () => {
               {/* Optional meta (like web debug chip) */}
               {searchMeta?.aiUsed != null ? (
                 <Text style={tw`text-[11px] mt-1 text-[#49739c] dark:text-white/60`}>
-                  Search: {searchMeta.aiUsed ? 'AI' : 'Direct'} • {searchMeta.rows ?? tutors.length} results
+                  Search: {searchMeta.aiUsed ? 'AI' : 'Direct'} • {searchMeta.rows ?? tutors.length}{' '}
+                  results
                 </Text>
               ) : null}
             </View>
@@ -563,7 +565,11 @@ const FindTutorScreen: React.FC = () => {
           <Text style={tw`text-[18px] font-bold text-[#0d141c] dark:text-white`}>Filters</Text>
 
           {/* Subject (server) */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-2 pr-2`}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={tw`py-2 pr-2`}
+          >
             <Chip
               label={uiFilters?.subject ? `Subject: ${uiFilters.subject}` : 'Subject'}
               active={!!uiFilters?.subject}
@@ -586,7 +592,11 @@ const FindTutorScreen: React.FC = () => {
           </ScrollView>
 
           {/* Availability (local) */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-1 pr-2`}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={tw`py-1 pr-2`}
+          >
             <Chip
               label={availability ? `Availability: ${availability}` : 'Availability'}
               active={!!availability}
@@ -609,7 +619,11 @@ const FindTutorScreen: React.FC = () => {
           </ScrollView>
 
           {/* Tokens (server) */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-1 pr-2`}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={tw`py-1 pr-2`}
+          >
             {TOKENS_OPTIONS.map((o) => {
               const active = Number(uiFilters?.maxTokens || 0) === o.value;
               return (
@@ -627,7 +641,11 @@ const FindTutorScreen: React.FC = () => {
           </ScrollView>
 
           {/* Language (local) */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-1 pr-2`}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={tw`py-1 pr-2`}
+          >
             <Chip
               label={language ? `Language: ${language}` : 'Language'}
               active={!!language}
@@ -650,7 +668,11 @@ const FindTutorScreen: React.FC = () => {
           </ScrollView>
 
           {/* Rating (server) */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-1 pr-2`}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={tw`py-1 pr-2`}
+          >
             <Chip
               label={uiFilters?.minRating ? `Rating: ≥ ${uiFilters.minRating}★` : 'Rating'}
               active={!!uiFilters?.minRating}
@@ -673,7 +695,11 @@ const FindTutorScreen: React.FC = () => {
           </ScrollView>
 
           {/* Country (server, ISO2) */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`py-1 pr-2`}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={tw`py-1 pr-2`}
+          >
             <Chip
               label={uiFilters?.country ? `Country: ${currentCountryLabel}` : 'Country'}
               active={!!uiFilters?.country}
@@ -706,9 +732,7 @@ const FindTutorScreen: React.FC = () => {
         {/* Results */}
         <View style={tw`px-4`}>
           {pageItems.length === 0 ? (
-            <Text style={tw`text-[#49739c] dark:text-white/70`}>
-              No tutors match your filters.
-            </Text>
+            <Text style={tw`text-[#49739c] dark:text-white/70`}>No tutors match your filters.</Text>
           ) : (
             pageItems.map((item: any) => (
               <TutorCard
@@ -740,10 +764,17 @@ const FindTutorScreen: React.FC = () => {
                     onPress={() => setPage(n)}
                     style={tw.style(
                       'h-10 w-10 rounded-full items-center justify-center',
-                      active ? 'bg-[#e7edf4] dark:bg-[#172534]' : 'bg-transparent',
+                      active ? 'bg-[#e7edf4] dark:bg-[#172534]' : 'bg-transparent'
                     )}
                   >
-                    <Text style={tw.style('text-sm', active ? 'font-extrabold text-[#0d141c] dark:text-white' : 'text-[#49739c] dark:text-white/70')}>
+                    <Text
+                      style={tw.style(
+                        'text-sm',
+                        active
+                          ? 'font-extrabold text-[#0d141c] dark:text-white'
+                          : 'text-[#49739c] dark:text-white/70'
+                      )}
+                    >
                       {n}
                     </Text>
                   </Pressable>
@@ -766,7 +797,12 @@ const FindTutorScreen: React.FC = () => {
       </ScrollView>
 
       {/* Country modal */}
-      <Modal visible={countryModal} transparent animationType="fade" onRequestClose={() => setCountryModal(false)}>
+      <Modal
+        visible={countryModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCountryModal(false)}
+      >
         <Pressable
           onPress={() => setCountryModal(false)}
           style={tw`flex-1 bg-black/40 items-center justify-center p-4`}
@@ -776,7 +812,9 @@ const FindTutorScreen: React.FC = () => {
             style={tw`w-full max-w-[520px] rounded-2xl bg-white dark:bg-[#0b1016] border border-[#e2edf5] dark:border-white/10 p-3`}
           >
             <View style={tw`flex-row items-center justify-between`}>
-              <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>Select country</Text>
+              <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
+                Select country
+              </Text>
               <Pressable onPress={() => setCountryModal(false)} style={tw`px-3 py-2`}>
                 <Text style={tw`text-sm font-bold text-[#49739c] dark:text-white/70`}>Close</Text>
               </Pressable>
@@ -805,13 +843,17 @@ const FindTutorScreen: React.FC = () => {
                 }}
                 style={tw`px-3 py-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534]`}
               >
-                <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>Any country</Text>
+                <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>
+                  Any country
+                </Text>
               </Pressable>
 
               <View style={tw`h-2`} />
 
               {countryFilteredList.map((c) => {
-                const active = String(uiFilters?.country || '').toUpperCase() === String(c.code || '').toUpperCase();
+                const active =
+                  String(uiFilters?.country || '').toUpperCase() ===
+                  String(c.code || '').toUpperCase();
                 return (
                   <Pressable
                     key={c.code}
@@ -823,11 +865,23 @@ const FindTutorScreen: React.FC = () => {
                     style={tw.style(
                       'px-3 py-3 rounded-xl mb-2',
                       active ? 'bg-primary' : 'bg-white dark:bg-[#0f1821]',
-                      'border border-[#e2edf5] dark:border-white/10',
+                      'border border-[#e2edf5] dark:border-white/10'
                     )}
                   >
-                    <Text style={tw.style('text-sm font-bold', active ? 'text-white' : 'text-[#0d141c] dark:text-white')}>
-                      {c.name} <Text style={tw.style(active ? 'text-white/90' : 'text-[#49739c] dark:text-white/60')}>({c.code})</Text>
+                    <Text
+                      style={tw.style(
+                        'text-sm font-bold',
+                        active ? 'text-white' : 'text-[#0d141c] dark:text-white'
+                      )}
+                    >
+                      {c.name}{' '}
+                      <Text
+                        style={tw.style(
+                          active ? 'text-white/90' : 'text-[#49739c] dark:text-white/60'
+                        )}
+                      >
+                        ({c.code})
+                      </Text>
                     </Text>
                   </Pressable>
                 );

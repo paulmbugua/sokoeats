@@ -98,14 +98,14 @@ function attachAuthGuards(
     let path = '';
     try {
       const full = axios.getUri(cfg);
-      path = full.startsWith('http') ? new URL(full).pathname : (cfg.url ?? '') as string;
+      path = full.startsWith('http') ? new URL(full).pathname : ((cfg.url ?? '') as string);
     } catch {
       path = (cfg.url ?? '') as string;
     }
 
     const wantsAdmin = path.startsWith('/api/admin');
-    const wantsOrg   = path.startsWith('/api/org'); // matches /api/org and /api/orgs
-    const session    = wantsAdmin ? 'admin' : (wantsOrg ? 'org' : 'user');
+    const wantsOrg = path.startsWith('/api/org'); // matches /api/org and /api/orgs
+    const session = wantsAdmin ? 'admin' : wantsOrg ? 'org' : 'user';
 
     const useToken = wantsAdmin ? adminToken : wantsOrg ? orgToken : token;
 
@@ -129,21 +129,23 @@ function attachAuthGuards(
       let path = '';
       try {
         const full = axios.getUri(error?.config || {});
-        path = full.startsWith('http') ? new URL(full).pathname : (error?.config?.url ?? '') as string;
+        path = full.startsWith('http')
+          ? new URL(full).pathname
+          : ((error?.config?.url ?? '') as string);
       } catch {
         path = (error?.config?.url ?? '') as string;
       }
 
-      const session = (error?.config as any)?.__session as 'user'|'org'|'admin'|undefined;
+      const session = (error?.config as any)?.__session as 'user' | 'org' | 'admin' | undefined;
 
       // Admin token will 401 on user endpoints; ignore those 401s.
       const ignoreUserHydrate401 =
         session === 'admin' && (path === '/api/user/me' || path === '/api/profile/me');
 
       if ((status === 401 || status === 403) && !ignoreUserHydrate401) {
-        if (session === 'admin')      await onAdminAuthFail();
-        else if (session === 'org')   await onOrgAuthFail();
-        else                          await onUserAuthFail();
+        if (session === 'admin') await onAdminAuthFail();
+        else if (session === 'org') await onOrgAuthFail();
+        else await onUserAuthFail();
       }
       return Promise.reject(error);
     }
@@ -159,7 +161,7 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
   const queryClient = useQueryClient();
 
   // ── Local state ───────────────────────────────────────────────────────────
-  const [token, setTokenState] = useState<string>('');       // user (student/tutor) token
+  const [token, setTokenState] = useState<string>(''); // user (student/tutor) token
   const [orgToken, setOrgTokenState] = useState<string>(''); // institution token
   const [adminToken, setAdminTokenState] = useState<string>(''); // admin token
   const [initializing, setInitializing] = useState<boolean>(true);
@@ -189,9 +191,15 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
     orgToken: '',
     adminToken: '',
   });
-  useEffect(() => { tokensRef.current.token = token; }, [token]);
-  useEffect(() => { tokensRef.current.orgToken = orgToken; }, [orgToken]);
-  useEffect(() => { tokensRef.current.adminToken = adminToken; }, [adminToken]);
+  useEffect(() => {
+    tokensRef.current.token = token;
+  }, [token]);
+  useEffect(() => {
+    tokensRef.current.orgToken = orgToken;
+  }, [orgToken]);
+  useEffect(() => {
+    tokensRef.current.adminToken = adminToken;
+  }, [adminToken]);
 
   // ── Logout helpers ────────────────────────────────────────────────────────
   const doAutoUserLogout = useCallback(async () => {
@@ -242,7 +250,7 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
       () => tokensRef.current,
       () => runLogoutOnce(doAutoUserLogout),
       () => runLogoutOnce(doAutoOrgLogout),
-      () => runLogoutOnce(doAutoAdminLogout),
+      () => runLogoutOnce(doAutoAdminLogout)
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -396,65 +404,66 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
   }, [fetchUserDetails]);
 
   // ── Compose and provide context value ─────────────────────────────────────
-  const value = useMemo<ShopContextValue>(() => ({
-    // existing
-    backendUrl,
-    token,
-    initializing,
-    userId,
-    language,
-    setToken,
-    toggleLanguage,
-    logout,
-    userEmail,
-    tokens,
-    setTokens,
-    loadingProfile,
-    profile,
-    refreshProfile,
-    refreshUserDetails,
-    role,
+  const value = useMemo<ShopContextValue>(
+    () => ({
+      // existing
+      backendUrl,
+      token,
+      initializing,
+      userId,
+      language,
+      setToken,
+      toggleLanguage,
+      logout,
+      userEmail,
+      tokens,
+      setTokens,
+      loadingProfile,
+      profile,
+      refreshProfile,
+      refreshUserDetails,
+      role,
 
-    // org
-    orgToken,
-    setOrgToken,
-    orgLogout,
+      // org
+      orgToken,
+      setOrgToken,
+      orgLogout,
 
-    // axios
-    http: httpRef.current,
+      // axios
+      http: httpRef.current,
 
-    // admin
-    adminToken,
-    setAdminToken,
-    adminLogout,
-  }), [
-    backendUrl,
-    token,
-    initializing,
-    userId,
-    language,
-    setToken,
-    toggleLanguage,
-    logout,
-    userEmail,
-    tokens,
-    loadingProfile,
-    profile,
-    refreshProfile,
-    refreshUserDetails,
-    role,
-    orgToken,
-    setOrgToken,
-    orgLogout,
-    adminToken,
-    setAdminToken,
-    adminLogout,
-  ]);
+      // admin
+      adminToken,
+      setAdminToken,
+      adminLogout,
+    }),
+    [
+      backendUrl,
+      token,
+      initializing,
+      userId,
+      language,
+      setToken,
+      toggleLanguage,
+      logout,
+      userEmail,
+      tokens,
+      loadingProfile,
+      profile,
+      refreshProfile,
+      refreshUserDetails,
+      role,
+      orgToken,
+      setOrgToken,
+      orgLogout,
+      adminToken,
+      setAdminToken,
+      adminLogout,
+    ]
+  );
 
   return (
-    <ShopContext.Provider value={value}>
-      {initializing ? null : children}
-    </ShopContext.Provider>
+    <ShopContext.Provider value={value}>{initializing ? null : children}</ShopContext.Provider>
   );
 };
 

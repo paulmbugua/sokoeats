@@ -17,11 +17,8 @@ const cfg = process.env.DATABASE_URL
       database: process.env.DB_NAME,
     };
 
-  
-    
-  const wantSsl =
-  process.env.PGSSL === 'require' ||
-  (isProd && !!process.env.DATABASE_URL);
+const wantSsl =
+  process.env.PGSSL === 'require' || (isProd && !!process.env.DATABASE_URL);
 
 const pool = new Pool({
   ...cfg,
@@ -34,22 +31,26 @@ const pool = new Pool({
 
   // TCP keepalives
   keepAlive: true,
-  keepAliveInitialDelayMillis: Number(process.env.DB_KEEPALIVE_DELAY_MS) || 10_000,
+  keepAliveInitialDelayMillis:
+    Number(process.env.DB_KEEPALIVE_DELAY_MS) || 10_000,
 
   // Helpful label in pg_stat_activity
   application_name: process.env.PGAPPNAME || 'daybreak-backend',
 });
 
-
-
 // Safe preview log (no passwords)
 (function safeLogConfig() {
   if (cfg.connectionString) {
-    const masked = cfg.connectionString.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:*****@');
+    const masked = cfg.connectionString.replace(
+      /:\/\/([^:]+):([^@]+)@/,
+      '://$1:*****@',
+    );
     console.log('Using Postgres connection (URL):', masked);
   } else {
     const { user, host, port, database } = cfg;
-    console.log(`Using Postgres connection (obj): postgres://${user || 'user'}:*****@${host}:${port}/${database}`);
+    console.log(
+      `Using Postgres connection (obj): postgres://${user || 'user'}:*****@${host}:${port}/${database}`,
+    );
   }
 })();
 
@@ -75,7 +76,12 @@ pool.on('error', (err) => {
   // Errors on *idle* clients — pool will discard & replace automatically.
   const key = `${err.code || err.name}:${(err.message || '').slice(0, 80)}`;
   if (shouldLogOnce(key)) {
-    console.warn('⚠️ PG idle client error:', err.code || err.name, '-', err.message);
+    console.warn(
+      '⚠️ PG idle client error:',
+      err.code || err.name,
+      '-',
+      err.message,
+    );
   }
 });
 
@@ -91,7 +97,9 @@ async function waitForPg({
       return;
     } catch (err) {
       const last = i === tries - 1;
-      console.warn(`⏳ Waiting for Postgres (attempt ${i + 1}/${tries}) — ${err.code || err.message}`);
+      console.warn(
+        `⏳ Waiting for Postgres (attempt ${i + 1}/${tries}) — ${err.code || err.message}`,
+      );
       if (last) {
         console.error('🚨 Startup test query failed. Exiting.');
         process.exit(1);
@@ -127,7 +135,9 @@ const RETRYABLE_NODE_CODES = new Set([
 
 function markDbDown(err) {
   const code = err?.code || err?.original?.code || '';
-  const msg = String(err?.message || err?.original?.message || '').toLowerCase();
+  const msg = String(
+    err?.message || err?.original?.message || '',
+  ).toLowerCase();
 
   const dbDown =
     DB_DOWN_CODES.has(code) ||
@@ -136,8 +146,8 @@ function markDbDown(err) {
     /connection terminated unexpectedly/.test(msg);
 
   if (dbDown) {
-    err._dbDown = true;        // for controllers/services to map to 503
-    err._serverBusy = true;    // optional: reuse your "busy" path
+    err._dbDown = true; // for controllers/services to map to 503
+    err._serverBusy = true; // optional: reuse your "busy" path
   }
   return err;
 }
@@ -183,7 +193,7 @@ export async function queryWithRetry(text, params = [], opts = {}) {
 
       attempt += 1;
       console.warn(
-        `[pg:retry] ${code || err.name || 'error'} — retry ${attempt}/${retries} in ${sleep}ms`
+        `[pg:retry] ${code || err.name || 'error'} — retry ${attempt}/${retries} in ${sleep}ms`,
       );
       await new Promise((r) => setTimeout(r, sleep));
     }
@@ -217,5 +227,3 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGQUIT']) {
 }
 
 export default pool;
-
-

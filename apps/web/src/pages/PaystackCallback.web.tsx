@@ -199,15 +199,11 @@ export default function PaystackCallbackWeb() {
         // ✅ Keep errors unmixed (org vs token)
         if (isOrg) {
           setMessage(
-            e?.response?.data?.message ||
-              e?.message ||
-              'Failed to confirm subscription payment'
+            e?.response?.data?.message || e?.message || 'Failed to confirm subscription payment'
           );
         } else {
           setMessage(
-            e?.response?.data?.message ||
-              e?.message ||
-              'Token payment verification failed.'
+            e?.response?.data?.message || e?.message || 'Token payment verification failed.'
           );
         }
       }

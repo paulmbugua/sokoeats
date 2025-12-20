@@ -19,8 +19,7 @@ const NavbarNative: React.FC<Props> = ({ onSearch }) => {
   const { orgToken } = useShopContext(); // <-- now available
   const [q, setQ] = React.useState('');
 
-  const go = (name: keyof MainStackParamList) =>
-    navigation.navigate(name as never);
+  const go = (name: keyof MainStackParamList) => navigation.navigate(name as never);
 
   const debounced = React.useMemo(
     () => debounce((text: string) => onSearch?.(text), 250),
@@ -37,10 +36,10 @@ const NavbarNative: React.FC<Props> = ({ onSearch }) => {
   const PILL_ITEMS = React.useMemo(
     () =>
       [
-        { label: 'Find Tutor',       route: 'FindTutor' },
-        { label: 'My Courses',       route: 'Courses' },
-        { label: 'Resources',        route: 'Resources' },
-        { label: 'Messages',         route: 'Messages' },
+        { label: 'Find Tutor', route: 'FindTutor' },
+        { label: 'My Courses', route: 'Courses' },
+        { label: 'Resources', route: 'Resources' },
+        { label: 'Messages', route: 'Messages' },
         {
           label: 'For Institutions',
           route: (orgToken ? 'OrgProfile' : 'InstitutionLogin') as keyof MainStackParamList,
@@ -50,10 +49,18 @@ const NavbarNative: React.FC<Props> = ({ onSearch }) => {
   );
 
   return (
-    <View style={tw`bg-white/75 dark:bg-[#0b121a]/75 border-b border-gray-200 dark:border-darkCard pt-2 pb-2`}>
+    <View
+      style={tw`bg-white/75 dark:bg-[#0b121a]/75 border-b border-gray-200 dark:border-darkCard pt-2 pb-2`}
+    >
       <View style={tw`${BAR.rowH} px-3 flex-row items-center mt-0.5`}>
-        <View style={tw`flex-1 flex-row items-center rounded-xl px-3 ${BAR.pill} bg-gray-100 dark:bg-[#172534] border border-gray-200/70`}>
-          <FontAwesome name="search" size={14} color={tw.color('text-text-white/60') || '#94a3b8'} />
+        <View
+          style={tw`flex-1 flex-row items-center rounded-xl px-3 ${BAR.pill} bg-gray-100 dark:bg-[#172534] border border-gray-200/70`}
+        >
+          <FontAwesome
+            name="search"
+            size={14}
+            color={tw.color('text-text-white/60') || '#94a3b8'}
+          />
           <TextInput
             placeholder="Search tutors, courses…"
             placeholderTextColor={tw.color('text-text-white/60') || '#94a3b8'}
@@ -67,8 +74,12 @@ const NavbarNative: React.FC<Props> = ({ onSearch }) => {
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`px-2 mt-1 gap-1.5 pb-1`}>
-        {PILL_ITEMS.map(item => (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={tw`px-2 mt-1 gap-1.5 pb-1`}
+      >
+        {PILL_ITEMS.map((item) => (
           <TouchableOpacity
             key={item.label}
             onPress={() => go(item.route)}

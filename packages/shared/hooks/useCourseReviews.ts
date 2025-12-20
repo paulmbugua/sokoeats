@@ -1,6 +1,10 @@
 // packages/shared/hooks/useCourseReviews.ts
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getCourseReviews, postCourseReview, CourseReviewsResponse } from '@mytutorapp/shared/api/reviewsApi';
+import {
+  getCourseReviews,
+  postCourseReview,
+  CourseReviewsResponse,
+} from '@mytutorapp/shared/api/reviewsApi';
 
 export function useCourseReviews(
   backendUrl: string,
@@ -50,7 +54,7 @@ export function useCourseReviews(
   );
 
   return {
-    data,                // { avgRating, totalReviews, reviews[] }
+    data, // { avgRating, totalReviews, reviews[] }
     avg: data?.avgRating ?? 0,
     count: data?.totalReviews ?? 0,
     reviews: data?.reviews ?? [],

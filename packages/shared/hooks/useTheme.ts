@@ -1,14 +1,9 @@
 // packages/shared/hooks/useTheme.ts
-import React, {
-  createContext,
-  useContext,
-  useRef,
-  useLayoutEffect,
-} from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import useAppQuery from "./useAppQuery";
+import React, { createContext, useContext, useRef, useLayoutEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import useAppQuery from './useAppQuery';
 
-export type ThemeMode = "light" | "dark";
+export type ThemeMode = 'light' | 'dark';
 
 type ThemeValue = {
   theme: ThemeMode;
@@ -28,7 +23,8 @@ export type ThemeApplier = (mode: ThemeMode) => void;
 const themeAppliers = new Set<ThemeApplier>();
 export function registerThemeApplier(applier: ThemeApplier) {
   themeAppliers.add(applier);
-  return () => {               // <- return void, ignore boolean
+  return () => {
+    // <- return void, ignore boolean
     themeAppliers.delete(applier);
   };
 }
@@ -39,27 +35,24 @@ const getSystem = (): ThemeMode => {
   try {
     // RN can polyfill this without importing RN in shared:
     // (globalThis as any).__RN_COLOR_SCHEME is set by the app.
-    const rn = (globalThis as any).__RN_COLOR_SCHEME as
-      | "light"
-      | "dark"
-      | undefined;
-    if (rn === "dark" || rn === "light") return rn;
+    const rn = (globalThis as any).__RN_COLOR_SCHEME as 'light' | 'dark' | undefined;
+    if (rn === 'dark' || rn === 'light') return rn;
 
     // Web
     if (
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-color-scheme: dark)").matches
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-color-scheme: dark)').matches
     )
-      return "dark";
+      return 'dark';
   } catch {}
-  return "light";
+  return 'light';
 };
 
 const readThemeLS = async (storageKey: string): Promise<ThemeMode> => {
   try {
-    if (typeof localStorage !== "undefined") {
+    if (typeof localStorage !== 'undefined') {
       const v = localStorage.getItem(storageKey) as ThemeMode | null;
-      if (v === "light" || v === "dark") return v;
+      if (v === 'light' || v === 'dark') return v;
     }
   } catch {}
   return getSystem();
@@ -67,7 +60,7 @@ const readThemeLS = async (storageKey: string): Promise<ThemeMode> => {
 
 const writeThemeLS = async (storageKey: string, next: ThemeMode) => {
   try {
-    if (typeof localStorage !== "undefined") {
+    if (typeof localStorage !== 'undefined') {
       localStorage.setItem(storageKey, next);
     }
   } catch {}
@@ -80,40 +73,27 @@ export const ThemeProvider: React.FC<{
   storageKey?: string;
   applyToDocument?: boolean; // web only
   storage?: ThemeStorage; // RN/alt storage adapter
-}> = ({
-  children,
-  storageKey = "theme",
-  applyToDocument = false,
-  storage,
-}) => {
+}> = ({ children, storageKey = 'theme', applyToDocument = false, storage }) => {
   const qc = useQueryClient();
 
   const read = async () => {
-    const v = storage
-      ? await storage.read(storageKey)
-      : await readThemeLS(storageKey);
-    return v ?? "light";
+    const v = storage ? await storage.read(storageKey) : await readThemeLS(storageKey);
+    return v ?? 'light';
   };
 
-  const { data } = useAppQuery<ThemeMode, Error>(
-    ["theme", storageKey],
-    read,
-    {
-      staleTime: Infinity,
-      gcTime: Infinity,
-      refetchOnMount: false,
-      refetchOnReconnect: false,
-      refetchOnWindowFocus: false,
-    }
-  );
+  const { data } = useAppQuery<ThemeMode, Error>(['theme', storageKey], read, {
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+  });
 
-  const theme = (data ?? "light") as ThemeMode;
+  const theme = (data ?? 'light') as ThemeMode;
 
   const setTheme = (next: ThemeMode) => {
-    (storage?.write(storageKey, next) ?? writeThemeLS(storageKey, next)).catch(
-      () => {}
-    );
-    qc.setQueryData<ThemeMode>(["theme", storageKey], next);
+    (storage?.write(storageKey, next) ?? writeThemeLS(storageKey, next)).catch(() => {});
+    qc.setQueryData<ThemeMode>(['theme', storageKey], next);
 
     // Notify platform appliers (RN: tw.setColorScheme, etc.)
     themeAppliers.forEach((fn) => {
@@ -123,7 +103,7 @@ export const ThemeProvider: React.FC<{
     });
   };
 
-  const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
+  const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
   // Apply side-effects (notify appliers + <html>.dark) safely after render
   const appliedRef = useRef<ThemeMode | null>(null);
@@ -136,32 +116,28 @@ export const ThemeProvider: React.FC<{
       } catch {}
     });
 
-    if (applyToDocument && typeof document !== "undefined") {
-      document.documentElement.classList.toggle("dark", theme === "dark");
+    if (applyToDocument && typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('dark', theme === 'dark');
     }
 
     appliedRef.current = theme;
   }, [theme, applyToDocument]);
 
   const value: ThemeValue = { theme, setTheme, toggleTheme };
-  return React.createElement(
-    ThemeContext.Provider,
-    { value },
-    children as React.ReactNode
-  );
+  return React.createElement(ThemeContext.Provider, { value }, children as React.ReactNode);
 };
 
 /* ---------- Hooks ---------- */
 
 export function useThemeProvider() {
   const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error("useThemeProvider must be used within <ThemeProvider>");
+  if (!ctx) throw new Error('useThemeProvider must be used within <ThemeProvider>');
   return ctx;
 }
 
 // Enforce provider usage (safer on RN; prevents accidental localStorage hits)
 export default function useTheme(): ThemeValue {
   const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error("useTheme must be used within <ThemeProvider>");
+  if (!ctx) throw new Error('useTheme must be used within <ThemeProvider>');
   return ctx;
 }

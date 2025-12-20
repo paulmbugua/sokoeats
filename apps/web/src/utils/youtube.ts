@@ -2,8 +2,8 @@
 export function parseYouTubeId(url = ''): string | null {
   // supports watch?v=, youtu.be/, and /embed/
   const m =
-    url.match(/(?:youtube\.com\/.*[?&]v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/)
-    || url.match(/^([A-Za-z0-9_-]{11})$/);
+    url.match(/(?:youtube\.com\/.*[?&]v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/) ||
+    url.match(/^([A-Za-z0-9_-]{11})$/);
   return m?.[1] || null;
 }
 

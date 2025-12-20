@@ -100,7 +100,7 @@ export const InviteModal: React.FC<{
                 <a
                   className="chip"
                   href={`mailto:?subject=${encodeURIComponent(
-                    'You’re invited',
+                    'You’re invited'
                   )}&body=${encodeURIComponent(url)}`}
                 >
                   Email

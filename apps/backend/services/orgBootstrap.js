@@ -2,11 +2,11 @@
 import pool from '../config/db.js';
 
 const slugify = (s) =>
-  (String(s || '')
+  String(s || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 64)) || `org-${Math.random().toString(36).slice(2, 8)}`;
+    .slice(0, 64) || `org-${Math.random().toString(36).slice(2, 8)}`;
 
 async function uniqueSlug(base, client) {
   const head = slugify(base);
@@ -15,7 +15,7 @@ async function uniqueSlug(base, client) {
     const candidate = (head + suffix).slice(0, 64);
     const { rows } = await (client ?? pool).query(
       'SELECT 1 FROM organizations WHERE slug=$1',
-      [candidate]
+      [candidate],
     );
     if (!rows.length) return candidate;
   }
@@ -32,7 +32,7 @@ export async function ensureOrgForUser(userId) {
       `SELECT pg_advisory_xact_lock(
          ('x'||substr(md5($1::text),1,8))::bit(32)::int
        )`,
-      [String(userId)]
+      [String(userId)],
     );
 
     // 🔍 Look for any org this user owns OR is a member of
@@ -50,7 +50,7 @@ export async function ensureOrgForUser(userId) {
          o.created_at DESC
        LIMIT 1
       `,
-      [userId]
+      [userId],
     );
 
     let orgRow;
@@ -61,7 +61,7 @@ export async function ensureOrgForUser(userId) {
       // No org found at all → create one
       const ures = await client.query(
         'SELECT name, email FROM users WHERE id=$1',
-        [userId]
+        [userId],
       );
       if (!ures.rowCount) throw new Error('User not found');
       const { name, email } = ures.rows[0];
@@ -79,8 +79,8 @@ export async function ensureOrgForUser(userId) {
         !looksLikeEmail && name?.trim()
           ? name.trim()
           : domain
-          ? `${toTitle(domain)} Institute`
-          : 'New Organization';
+            ? `${toTitle(domain)} Institute`
+            : 'New Organization';
       const orgName = base.slice(0, 80);
 
       const slug = await uniqueSlug(orgName, client);
@@ -94,7 +94,7 @@ export async function ensureOrgForUser(userId) {
           SET name = EXCLUDED.name
         RETURNING *
         `,
-        [userId, orgName, slug]
+        [userId, orgName, slug],
       );
 
       orgRow = orgIns.rows[0];
@@ -107,19 +107,18 @@ export async function ensureOrgForUser(userId) {
       VALUES ($1,$2,'owner',$2,NOW(),NOW())
       ON CONFLICT (org_id, user_id) DO NOTHING
       `,
-      [orgRow.id, userId]
+      [orgRow.id, userId],
     );
 
     // Ensure subscription exists
     await client.query(
-  `
+      `
   INSERT INTO org_subscriptions (org_id, tier, seats, active, created_at)
   VALUES ($1,'starter',50,TRUE,NOW())
   ON CONFLICT (org_id) WHERE active = TRUE DO NOTHING
   `,
-  [orgRow.id]
-);
-
+      [orgRow.id],
+    );
 
     await client.query('COMMIT');
     return orgRow;

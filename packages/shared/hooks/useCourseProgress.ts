@@ -1,7 +1,10 @@
 // packages/shared/hooks/useCourseProgress.ts
 import { useState, useEffect } from 'react';
 import type { CourseProgress, UpdateProgressPayload } from '@mytutorapp/shared/types';
-import { fetchCourseProgress, updateCourseProgress } from '@mytutorapp/shared/api/courseProgressApi'; // <-- path fix
+import {
+  fetchCourseProgress,
+  updateCourseProgress,
+} from '@mytutorapp/shared/api/courseProgressApi'; // <-- path fix
 
 export function useCourseProgress(backendUrl: string, courseId: string, token: string) {
   const [progress, setProgress] = useState<CourseProgress[]>([]);

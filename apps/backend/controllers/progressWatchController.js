@@ -1,8 +1,8 @@
 // apps/backend/controllers/progressWatchController.js
 import pool from '../config/db.js';
 
-const THRESHOLD = 0.9;   // 90% watch required
-const MIN_SECONDS = 30;  // tiny videos must still watch 30s
+const THRESHOLD = 0.9; // 90% watch required
+const MIN_SECONDS = 30; // tiny videos must still watch 30s
 
 /** Normalize a YouTube URL (or raw id) to a stable video id string */
 function normalizeYoutubeId(url = '') {
@@ -11,7 +11,8 @@ function normalizeYoutubeId(url = '') {
     const host = u.hostname.toLowerCase();
     if (host.includes('youtu.be')) return u.pathname.slice(1);
     if (host.includes('youtube.com')) {
-      if (u.pathname.startsWith('/embed/')) return u.pathname.split('/').pop() || '';
+      if (u.pathname.startsWith('/embed/'))
+        return u.pathname.split('/').pop() || '';
       return u.searchParams.get('v') || '';
     }
   } catch {
@@ -42,15 +43,18 @@ export async function postWatchEvent(req, res) {
     }
 
     const prov = String(provider || 'youtube').toLowerCase();
-    const vid =
-      String(videoId || normalizeYoutubeId(videoUrl || '') || videoUrl || '').trim();
+    const vid = String(
+      videoId || normalizeYoutubeId(videoUrl || '') || videoUrl || '',
+    ).trim();
     if (!vid) return res.status(400).json({ error: 'video id/url required' });
 
     const watched = Math.max(0, Number(watchedSeconds || 0) | 0);
     const dur = Math.max(0, Number(durationSeconds || 0) | 0);
 
     const completed =
-      dur > 0 ? watched >= Math.max(MIN_SECONDS, Math.ceil(dur * THRESHOLD)) : false;
+      dur > 0
+        ? watched >= Math.max(MIN_SECONDS, Math.ceil(dur * THRESHOLD))
+        : false;
 
     const sql = `
       INSERT INTO course_video_watch
@@ -94,7 +98,7 @@ export async function getWatchSummary(req, res) {
          FROM course_video_watch
         WHERE user_id = $1 AND course_id = $2
         ORDER BY week ASC, video_id ASC`,
-      [userId, courseId]
+      [userId, courseId],
     );
     res.json(rows);
   } catch (e) {
@@ -109,7 +113,7 @@ export async function getWeekRequirements(req, res) {
     const { courseId, week } = req.params;
     const { rows } = await pool.query(
       `SELECT syllabus FROM courses WHERE id = $1`,
-      [courseId]
+      [courseId],
     );
     const syllabus = rows[0]?.syllabus || [];
     const item = Array.isArray(syllabus)
@@ -145,7 +149,7 @@ export async function ensureWeekWatched(req, res, next) {
 
     const { rows: srows } = await pool.query(
       `SELECT syllabus FROM courses WHERE id=$1`,
-      [courseId]
+      [courseId],
     );
     const syllabus = srows[0]?.syllabus || [];
     const item = Array.isArray(syllabus)
@@ -163,15 +167,18 @@ export async function ensureWeekWatched(req, res, next) {
       `SELECT video_id, completed
          FROM course_video_watch
         WHERE user_id=$1 AND course_id=$2 AND week=$3 AND video_id = ANY($4)`,
-      [userId, courseId, Number(week), reqVideoIds]
+      [userId, courseId, Number(week), reqVideoIds],
     );
 
-    const done = new Set(rows.filter((r) => r.completed).map((r) => r.video_id));
+    const done = new Set(
+      rows.filter((r) => r.completed).map((r) => r.video_id),
+    );
     const missing = reqVideoIds.filter((v) => !done.has(v));
 
     if (missing.length) {
       return res.status(422).json({
-        error: 'You must watch all required videos before completing this week.',
+        error:
+          'You must watch all required videos before completing this week.',
         missing,
       });
     }
@@ -186,16 +193,14 @@ export async function ensureWeekWatched(req, res, next) {
 export async function getAllRequiredVideoIds(courseId) {
   const { rows } = await pool.query(
     `SELECT syllabus FROM courses WHERE id=$1`,
-    [courseId]
+    [courseId],
   );
   const syllabus = rows[0]?.syllabus || [];
   if (!Array.isArray(syllabus)) return [];
 
   // Collect EVERY video (videoUrls array OR single videoUrl) across all weeks
   const urls = syllabus.flatMap((s) =>
-    []
-      .concat(s?.videoUrls || [])
-      .concat(s?.videoUrl ? [s.videoUrl] : [])
+    [].concat(s?.videoUrls || []).concat(s?.videoUrl ? [s.videoUrl] : []),
   );
 
   return urls.map(normalizeYoutubeId).filter(Boolean);
@@ -218,7 +223,7 @@ export async function ensureCourseFullyWatched(req, res, next) {
          FROM course_video_watch
         WHERE user_id=$1 AND course_id=$2 AND completed=TRUE
           AND video_id = ANY($3)`,
-      [userId, courseId, required]
+      [userId, courseId, required],
     );
 
     const done = new Set(rows.map((r) => r.video_id));

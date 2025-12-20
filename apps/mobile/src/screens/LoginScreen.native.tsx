@@ -10,12 +10,7 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import {
-  useNavigation,
-  StackActions,
-  useRoute,
-  type RouteProp,
-} from '@react-navigation/native';
+import { useNavigation, StackActions, useRoute, type RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { FontAwesome } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,7 +36,6 @@ type AuthMode = 'Login' | 'Sign Up';
 type ResetMode = 'idle' | 'requesting' | 'verifying';
 type Role = '' | 'student' | 'tutor';
 
-
 const LoginScreenNative: React.FC = () => {
   const navigation = useNavigation<LoginNavProp>();
   const route = useRoute<LoginRoute>();
@@ -55,8 +49,7 @@ const LoginScreenNative: React.FC = () => {
   const topPad = Math.max(insets.top, 12);
 
   // 🚦 Switching flag (from InstitutionLogin link)
-  const switching =
-    route?.params?.switch === true || route?.params?.force === true;
+  const switching = route?.params?.switch === true || route?.params?.force === true;
 
   // ── Local UI state ────────────────────────────────────────
   const [authMode, setAuthMode] = useState<AuthMode>('Login');
@@ -82,8 +75,7 @@ const LoginScreenNative: React.FC = () => {
   const [busy, setBusy] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState<boolean>(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
 
   // Google-first role completion modal
   const [showRoleModal, setShowRoleModal] = useState<boolean>(false);
@@ -92,10 +84,8 @@ const LoginScreenNative: React.FC = () => {
      Theme-aware text colours (parity with ManageProfileForm)
   ─────────────────────────────────────────────── */
 
-  const placeholderColor =
-    resolvedScheme === 'dark' ? '#64748B' : '#94A3B8';
-  const selectedTextColor =
-    resolvedScheme === 'dark' ? '#E5E7EB' : '#0F172A';
+  const placeholderColor = resolvedScheme === 'dark' ? '#64748B' : '#94A3B8';
+  const selectedTextColor = resolvedScheme === 'dark' ? '#E5E7EB' : '#0F172A';
 
   // Normalize countries that might be {code,name}, {value,label}, or [code,name]
   const normCountry = (c: any) => {
@@ -141,9 +131,7 @@ const LoginScreenNative: React.FC = () => {
     navigateFn: (dest?: string) => {
       try {
         if (dest) {
-          navigation.dispatch(
-            StackActions.replace(dest as keyof MainStackParamList)
-          );
+          navigation.dispatch(StackActions.replace(dest as keyof MainStackParamList));
           return;
         }
       } catch {
@@ -350,19 +338,13 @@ const LoginScreenNative: React.FC = () => {
   };
 
   const emailFormTitle = useMemo(
-    () =>
-      authMode === 'Login'
-        ? 'Welcome back 👋'
-        : 'Create your DayBreak account',
+    () => (authMode === 'Login' ? 'Welcome back 👋' : 'Create your DayBreak account'),
     [authMode]
   );
 
   // ⬇️ UI
   return (
-    <SafeAreaView
-      style={tw`flex-1 bg-slate-50 dark:bg-[#050913]`}
-      edges={['top', 'bottom']}
-    >
+    <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#050913]`} edges={['top', 'bottom']}>
       {/* Soft background orbs for a modern look */}
       <View style={tw`absolute inset-0`}>
         <View
@@ -390,16 +372,8 @@ const LoginScreenNative: React.FC = () => {
           <View style={{ width: '100%', maxWidth: 520 }}>
             {/* Logo + app name */}
             <View style={tw`items-center mb-6`}>
-              <TouchableOpacity
-                onPress={() =>
-                  navigation.dispatch(StackActions.replace('Home'))
-                }
-              >
-                <Image
-                  source={assets.logo}
-                  style={tw`h-16 w-16 mb-2`}
-                  resizeMode="contain"
-                />
+              <TouchableOpacity onPress={() => navigation.dispatch(StackActions.replace('Home'))}>
+                <Image source={assets.logo} style={tw`h-16 w-16 mb-2`} resizeMode="contain" />
               </TouchableOpacity>
               <Text
                 style={tw`text-xs tracking-[2px] uppercase text-pink-500/80 dark:text-pink-400`}
@@ -410,14 +384,10 @@ const LoginScreenNative: React.FC = () => {
 
             {/* Hero copy */}
             <View style={tw`mb-5 items-center`}>
-              <Text
-                style={tw`text-2xl font-extrabold text-[#0d141c] dark:text-white`}
-              >
+              <Text style={tw`text-2xl font-extrabold text-[#0d141c] dark:text-white`}>
                 {emailFormTitle}
               </Text>
-              <Text
-                style={tw`mt-1 text-sm text-slate-500 dark:text-slate-400 text-center`}
-              >
+              <Text style={tw`mt-1 text-sm text-slate-500 dark:text-slate-400 text-center`}>
                 {authMode === 'Login'
                   ? 'Continue your learning journey in a few taps.'
                   : 'Just a few details to get you learning.'}
@@ -426,9 +396,7 @@ const LoginScreenNative: React.FC = () => {
 
             {/* Error banner */}
             {error && (
-              <View
-                style={tw`mb-4 rounded-xl bg-red-600/10 px-3 py-2 border border-red-600/30`}
-              >
+              <View style={tw`mb-4 rounded-xl bg-red-600/10 px-3 py-2 border border-red-600/30`}>
                 <Text style={tw`text-red-400 text-sm`}>{error}</Text>
               </View>
             )}
@@ -440,10 +408,7 @@ const LoginScreenNative: React.FC = () => {
               >
                 <Text style={tw`text-amber-300 text-xs`}>
                   You’re currently signed in. Continue to switch account or{' '}
-                  <Text
-                    onPress={handleSwitchSignOut}
-                    style={tw`underline font-semibold`}
-                  >
+                  <Text onPress={handleSwitchSignOut} style={tw`underline font-semibold`}>
                     sign out
                   </Text>
                   .
@@ -453,9 +418,7 @@ const LoginScreenNative: React.FC = () => {
 
             {/* Auth mode toggle pill (only when not in reset flow) */}
             {resetMode === 'idle' && (
-              <View
-                style={tw`mb-4 flex-row bg-slate-100 dark:bg-[#0b1016] rounded-full p-1`}
-              >
+              <View style={tw`mb-4 flex-row bg-slate-100 dark:bg-[#0b1016] rounded-full p-1`}>
                 <TouchableOpacity
                   onPress={() => {
                     clearErrors();
@@ -463,9 +426,7 @@ const LoginScreenNative: React.FC = () => {
                   }}
                   style={tw.style(
                     'flex-1 h-9 rounded-full items-center justify-center',
-                    authMode === 'Login'
-                      ? 'bg-white dark:bg-slate-900 shadow'
-                      : ''
+                    authMode === 'Login' ? 'bg-white dark:bg-slate-900 shadow' : ''
                   )}
                 >
                   <Text
@@ -486,9 +447,7 @@ const LoginScreenNative: React.FC = () => {
                   }}
                   style={tw.style(
                     'flex-1 h-9 rounded-full items-center justify-center',
-                    authMode === 'Sign Up'
-                      ? 'bg-white dark:bg-slate-900 shadow'
-                      : ''
+                    authMode === 'Sign Up' ? 'bg-white dark:bg-slate-900 shadow' : ''
                   )}
                 >
                   <Text
@@ -512,9 +471,7 @@ const LoginScreenNative: React.FC = () => {
                 <View
                   style={tw`bg-white/95 dark:bg-[#0f1821]/95 p-6 rounded-2xl border border-[#cedbe8] dark:border-white/10 shadow-lg`}
                 >
-                  <Text
-                    style={tw`text-2xl font-bold text-[#0d141c] dark:text-white mb-4`}
-                  >
+                  <Text style={tw`text-2xl font-bold text-[#0d141c] dark:text-white mb-4`}>
                     Enter OTP
                   </Text>
                   <TextInput
@@ -543,9 +500,7 @@ const LoginScreenNative: React.FC = () => {
                       }}
                       style={tw`flex-1 h-11 rounded-xl bg-slate-100 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
                     >
-                      <Text style={tw`text-[#0d141c] dark:text-white`}>
-                        Back
-                      </Text>
+                      <Text style={tw`text-[#0d141c] dark:text-white`}>Back</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleResetPassword}
@@ -554,9 +509,7 @@ const LoginScreenNative: React.FC = () => {
                         busy ? 'opacity-60' : ''
                       }`}
                     >
-                      <Text style={tw`text-white font-semibold`}>
-                        Reset Password
-                      </Text>
+                      <Text style={tw`text-white font-semibold`}>Reset Password</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -565,14 +518,10 @@ const LoginScreenNative: React.FC = () => {
                 <View
                   style={tw`bg-white/95 dark:bg-[#0f1821]/95 p-6 rounded-2xl border border-[#cedbe8] dark:border-white/10 shadow-lg`}
                 >
-                  <Text
-                    style={tw`text-2xl font-bold text-[#0d141c] dark:text-white mb-2`}
-                  >
+                  <Text style={tw`text-2xl font-bold text-[#0d141c] dark:text-white mb-2`}>
                     Reset Password
                   </Text>
-                  <Text
-                    style={tw`text-xs text-slate-500 dark:text-slate-400 mb-4`}
-                  >
+                  <Text style={tw`text-xs text-slate-500 dark:text-slate-400 mb-4`}>
                     We’ll send a one-time code to your email.
                   </Text>
                   <TextInput
@@ -592,9 +541,7 @@ const LoginScreenNative: React.FC = () => {
                       }}
                       style={tw`flex-1 h-11 rounded-xl bg-slate-100 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
                     >
-                      <Text style={tw`text-[#0d141c] dark:text-white`}>
-                        Back
-                      </Text>
+                      <Text style={tw`text-[#0d141c] dark:text-white`}>Back</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleSendOtp}
@@ -614,12 +561,8 @@ const LoginScreenNative: React.FC = () => {
                 style={tw`bg-white/95 dark:bg-[#0f1821]/95 p-6 rounded-2xl border border-[#cedbe8] dark:border-white/10 shadow-lg overflow-visible`}
               >
                 {/* Form title inside card for context on scroll */}
-                <Text
-                  style={tw`text-lg font-semibold text-[#0d141c] dark:text-white mb-4`}
-                >
-                  {authMode === 'Login'
-                    ? 'Login to DayBreak'
-                    : 'Create your DayBreak account'}
+                <Text style={tw`text-lg font-semibold text-[#0d141c] dark:text-white mb-4`}>
+                  {authMode === 'Login' ? 'Login to DayBreak' : 'Create your DayBreak account'}
                 </Text>
 
                 {authMode === 'Sign Up' && (
@@ -662,9 +605,7 @@ const LoginScreenNative: React.FC = () => {
                             <Text
                               style={tw.style(
                                 'text-sm font-semibold',
-                                active
-                                  ? 'text-white'
-                                  : 'text-slate-700 dark:text-slate-100'
+                                active ? 'text-white' : 'text-slate-700 dark:text-slate-100'
                               )}
                             >
                               {r === 'student' ? 'Student' : 'Tutor'}
@@ -679,9 +620,7 @@ const LoginScreenNative: React.FC = () => {
                         {/* Language */}
                         <SelectField
                           value={languages[0] || ''}
-                          onChange={(val) =>
-                            setLanguages(val ? [String(val)] : [])
-                          }
+                          onChange={(val) => setLanguages(val ? [String(val)] : [])}
                           options={languageOptions}
                           placeholder="Select your language"
                           placeholderColor={placeholderColor}
@@ -762,9 +701,7 @@ const LoginScreenNative: React.FC = () => {
                 <TouchableOpacity
                   onPress={onSubmit}
                   disabled={busy}
-                  style={tw`bg-pink-600 py-3 rounded-xl mb-4 ${
-                    busy ? 'opacity-60' : ''
-                  }`}
+                  style={tw`bg-pink-600 py-3 rounded-xl mb-4 ${busy ? 'opacity-60' : ''}`}
                 >
                   <Text style={tw`text-center text-white font-bold`}>
                     {authMode === 'Login' ? 'Login' : 'Sign Up'}
@@ -778,9 +715,7 @@ const LoginScreenNative: React.FC = () => {
                       setResetMode('requesting');
                     }}
                   >
-                    <Text
-                      style={tw`text-pink-600 dark:text-pink-400 underline`}
-                    >
+                    <Text style={tw`text-pink-600 dark:text-pink-400 underline`}>
                       Forgot password?
                     </Text>
                   </TouchableOpacity>
@@ -792,9 +727,7 @@ const LoginScreenNative: React.FC = () => {
                         setAuthMode('Sign Up');
                       }}
                     >
-                      <Text
-                        style={tw`text-pink-600 dark:text-pink-400 underline`}
-                      >
+                      <Text style={tw`text-pink-600 dark:text-pink-400 underline`}>
                         Create account
                       </Text>
                     </TouchableOpacity>
@@ -805,9 +738,7 @@ const LoginScreenNative: React.FC = () => {
                         setAuthMode('Login');
                       }}
                     >
-                      <Text
-                        style={tw`text-pink-600 dark:text-pink-400 underline`}
-                      >
+                      <Text style={tw`text-pink-600 dark:text-pink-400 underline`}>
                         Already have an account?
                       </Text>
                     </TouchableOpacity>
@@ -817,11 +748,7 @@ const LoginScreenNative: React.FC = () => {
                 {/* Divider */}
                 <View style={tw`flex-row items-center mb-3`}>
                   <View style={tw`flex-1 h-px bg-slate-200 dark:bg-white/10`} />
-                  <Text
-                    style={tw`mx-2 text-xs text-slate-500 dark:text-slate-400`}
-                  >
-                    OR
-                  </Text>
+                  <Text style={tw`mx-2 text-xs text-slate-500 dark:text-slate-400`}>OR</Text>
                   <View style={tw`flex-1 h-px bg-slate-200 dark:bg-white/10`} />
                 </View>
 
@@ -837,8 +764,7 @@ const LoginScreenNative: React.FC = () => {
                       await handleGoogleLoginSuccess(idToken);
                       if (isRoleModalNeeded()) {
                         if (!languages.length) setLanguages(['English']);
-                        const gName =
-                          auth?.currentUser?.displayName || '';
+                        const gName = auth?.currentUser?.displayName || '';
                         if (gName && !name) setName(gName);
                         setShowRoleModal(true);
                       }
@@ -852,28 +778,17 @@ const LoginScreenNative: React.FC = () => {
         </View>
 
         {/* Role Picker Modal (Google-first) */}
-        <Modal
-          visible={showRoleModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => {}}
-        >
+        <Modal visible={showRoleModal} transparent animationType="fade" onRequestClose={() => {}}>
           <View style={tw`flex-1 bg-black/40 justify-center p-6`}>
             <View
               style={tw`bg-white dark:bg-[#0f1821] p-6 rounded-2xl border border-[#cedbe8] dark:border-white/10 overflow-visible`}
             >
-              <Text
-                style={tw`text-2xl font-bold text-[#0d141c] dark:text-white mb-4`}
-              >
-                {role === 'tutor'
-                  ? 'Finish creating your account'
-                  : 'Create your student profile'}
+              <Text style={tw`text-2xl font-bold text-[#0d141c] dark:text-white mb-4`}>
+                {role === 'tutor' ? 'Finish creating your account' : 'Create your student profile'}
               </Text>
 
               {error && (
-                <View
-                  style={tw`mb-4 rounded-xl bg-red-600/10 px-3 py-2 border border-red-600/30`}
-                >
+                <View style={tw`mb-4 rounded-xl bg-red-600/10 px-3 py-2 border border-red-600/30`}>
                   <Text style={tw`text-red-400 text-sm`}>{error}</Text>
                 </View>
               )}
@@ -890,10 +805,7 @@ const LoginScreenNative: React.FC = () => {
                         setRole(next);
                         if (next === 'student') {
                           if (!languages.length) setLanguages(['English']);
-                          if (
-                            !name.trim() &&
-                            auth?.currentUser?.displayName
-                          ) {
+                          if (!name.trim() && auth?.currentUser?.displayName) {
                             setName(auth.currentUser.displayName);
                           }
                         } else {
@@ -912,9 +824,7 @@ const LoginScreenNative: React.FC = () => {
                       <Text
                         style={tw.style(
                           'text-sm font-semibold',
-                          active
-                            ? 'text-white'
-                            : 'text-slate-700 dark:text-slate-100'
+                          active ? 'text-white' : 'text-slate-700 dark:text-slate-100'
                         )}
                       >
                         {r === 'student' ? 'Student' : 'Tutor'}
@@ -938,9 +848,7 @@ const LoginScreenNative: React.FC = () => {
                   {/* Language */}
                   <SelectField
                     value={languages[0] || ''}
-                    onChange={(val) =>
-                      setLanguages(val ? [String(val)] : [])
-                    }
+                    onChange={(val) => setLanguages(val ? [String(val)] : [])}
                     options={languageOptions}
                     placeholder="Select your language…"
                     placeholderColor={placeholderColor}
@@ -967,9 +875,7 @@ const LoginScreenNative: React.FC = () => {
                     busy ? 'opacity-60' : ''
                   }`}
                 >
-                  <Text style={tw`text-[#0d141c] dark:text-white`}>
-                    Cancel
-                  </Text>
+                  <Text style={tw`text-[#0d141c] dark:text-white`}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={submitRoleFromModal}
@@ -978,9 +884,7 @@ const LoginScreenNative: React.FC = () => {
                     busy || !canContinue ? 'opacity-60' : ''
                   }`}
                 >
-                  <Text style={tw`text-white font-semibold`}>
-                    {busy ? 'Saving…' : ctaText}
-                  </Text>
+                  <Text style={tw`text-white font-semibold`}>{busy ? 'Saving…' : ctaText}</Text>
                 </TouchableOpacity>
               </View>
             </View>

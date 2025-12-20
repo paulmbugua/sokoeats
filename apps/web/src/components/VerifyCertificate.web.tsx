@@ -22,9 +22,7 @@ const VerifyCertificatePage: React.FC = () => {
       : 'Certificate Verification';
   const ogDesc =
     data?.valid && data.certificate
-      ? `Verified certificate issued on ${new Date(
-          data.certificate.issued_at
-        ).toDateString()}`
+      ? `Verified certificate issued on ${new Date(data.certificate.issued_at).toDateString()}`
       : 'Check if a certificate is valid.';
   const ogImage = `${backendUrl}/api/certificates/${id}/og`; // <-- server generates OG preview
 
@@ -52,9 +50,7 @@ const VerifyCertificatePage: React.FC = () => {
         </header>
 
         {loading && (
-          <div className="rounded-xl border border-[#cedbe8] bg-white p-6">
-            Verifying…
-          </div>
+          <div className="rounded-xl border border-[#cedbe8] bg-white p-6">Verifying…</div>
         )}
 
         {!loading && error && (
@@ -64,8 +60,9 @@ const VerifyCertificatePage: React.FC = () => {
           </div>
         )}
 
-        {!loading && data && (
-          data.valid ? (
+        {!loading &&
+          data &&
+          (data.valid ? (
             <div className="rounded-2xl border border-[#cedbe8] bg-white p-6 space-y-4">
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center justify-center rounded-full bg-green-100 text-green-700 w-6 h-6">
@@ -116,8 +113,7 @@ const VerifyCertificatePage: React.FC = () => {
                 {data.error || 'No matching certificate found.'}
               </p>
             </div>
-          )
-        )}
+          ))}
       </div>
     </div>
   );

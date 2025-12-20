@@ -43,7 +43,6 @@ import { useShopContext } from '@mytutorapp/shared/context';
 // org role hook
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 
-
 // Course lifecycle
 import CreateCourse from './components/CreateCourse.web';
 import CourseEnrollment from './components/CourseEnrollment.web';
@@ -75,18 +74,14 @@ import PaystackCallbackRedirectWeb from '@/pages/PaystackCallbackRedirect.web';
 /* ───────────────────────────
    Per-user "first login" helpers
    ─────────────────────────── */
-const firstLoginKey = (
-  userId?: string | number | null,
-  email?: string | null | undefined
-) => `tutorapp_hasLoggedInOnce::${userId ?? email ?? 'unknown'}`;
+const firstLoginKey = (userId?: string | number | null, email?: string | null | undefined) =>
+  `tutorapp_hasLoggedInOnce::${userId ?? email ?? 'unknown'}`;
 
 // Treat identity as "stable" only when we have userId or a non-empty email.
 // We NEVER mark the flag for the "unknown" identity to avoid poisoning first-login.
 const useIdentityKey = () => {
   const { userId, userEmail } = useShopContext();
-  const stable =
-    userId != null ||
-    (typeof userEmail === 'string' && userEmail.trim().length > 0);
+  const stable = userId != null || (typeof userEmail === 'string' && userEmail.trim().length > 0);
   const key = stable ? firstLoginKey(userId ?? null, userEmail ?? null) : firstLoginKey(null, null);
   return { key, stable };
 };
@@ -109,7 +104,9 @@ const useMarkFirstLoginSeen = () => {
 /* ───────────────────────────
    Route guards
    ─────────────────────────── */
-interface ProtectedRouteProps { children: ReactNode }
+interface ProtectedRouteProps {
+  children: ReactNode;
+}
 
 // accept either normal token OR orgToken
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
@@ -122,13 +119,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     const fromPath = location.pathname || '';
     const wantsOrg = fromPath.startsWith('/org/');
 
-    return (
-      <Navigate
-        to={wantsOrg ? '/org/login' : '/login'}
-        replace
-        state={{ from: location }}
-      />
-    );
+    return <Navigate to={wantsOrg ? '/org/login' : '/login'} replace state={{ from: location }} />;
   }
 
   return <>{children}</>;
@@ -177,8 +168,7 @@ const FirstLoginGate: React.FC = () => {
 
   // Only gate once identity is stable (prevents bounce before context loads)
   const identityStable =
-    userId != null ||
-    (typeof userEmail === 'string' && userEmail.trim().length > 0);
+    userId != null || (typeof userEmail === 'string' && userEmail.trim().length > 0);
 
   if (!identityStable) {
     // Identity not ready—do nothing instead of redirecting
@@ -227,8 +217,11 @@ const LoggedOutOnly: React.FC<{ children: ReactNode }> = ({ children }) => {
   // if we have a saved deep link (e.g., /org/join/:code or a robot link),
   // honor that FIRST so invite flows return to the landing page.
   const returnTo = (() => {
-    try { return sessionStorage.getItem('auth:returnTo') || ''; }
-    catch { return ''; }
+    try {
+      return sessionStorage.getItem('auth:returnTo') || '';
+    } catch {
+      return '';
+    }
   })();
 
   if (returnTo && (returnTo.startsWith('/org/join/') || /[?&]assignmentId=/.test(returnTo))) {
@@ -258,8 +251,6 @@ const OrgProtectedLayout: React.FC = () => (
   </OrgProtectedRoute>
 );
 
-
-
 /* Org admin-only guard for /org/profile */
 const OrgAdminOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { role, loading, isLoading } = (useOrg?.() ?? {}) as any;
@@ -270,42 +261,22 @@ const OrgAdminOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const normalizedRole = String(role || '').toLowerCase();
   const isOrgAdmin = normalizedRole === 'owner' || normalizedRole === 'admin';
-  const isInstructor =
-    normalizedRole === 'instructor' || normalizedRole === 'teacher';
-  const isLearner =
-    normalizedRole === 'learner' || normalizedRole === 'student';
+  const isInstructor = normalizedRole === 'instructor' || normalizedRole === 'teacher';
+  const isLearner = normalizedRole === 'learner' || normalizedRole === 'student';
 
   if (isOrgAdmin) return <>{children}</>;
 
   // Block cross-access:
   if (isInstructor) {
-    return (
-      <Navigate
-        to="/org/instructor"
-        replace
-        state={{ from: location }}
-      />
-    );
+    return <Navigate to="/org/instructor" replace state={{ from: location }} />;
   }
 
   if (isLearner) {
-    return (
-      <Navigate
-        to="/org/learn"
-        replace
-        state={{ from: location }}
-      />
-    );
+    return <Navigate to="/org/learn" replace state={{ from: location }} />;
   }
 
   // Unknown / weird → safest is org login
-  return (
-    <Navigate
-      to="/org/login"
-      replace
-      state={{ from: location }}
-    />
-  );
+  return <Navigate to="/org/login" replace state={{ from: location }} />;
 };
 
 /* Learner-only guard for /org/learn */
@@ -317,43 +288,23 @@ const OrgLearnerOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) =>
   if (busy || !role) return null;
 
   const normalizedRole = String(role || '').toLowerCase();
-  const isLearner =
-    normalizedRole === 'learner' || normalizedRole === 'student';
-  const isInstructor =
-    normalizedRole === 'instructor' || normalizedRole === 'teacher';
+  const isLearner = normalizedRole === 'learner' || normalizedRole === 'student';
+  const isInstructor = normalizedRole === 'instructor' || normalizedRole === 'teacher';
   const isOrgAdmin = normalizedRole === 'owner' || normalizedRole === 'admin';
 
   if (isLearner) return <>{children}</>;
 
   // Prevent admin + instructor from landing on learner home
   if (isInstructor) {
-    return (
-      <Navigate
-        to="/org/instructor"
-        replace
-        state={{ from: location }}
-      />
-    );
+    return <Navigate to="/org/instructor" replace state={{ from: location }} />;
   }
 
   if (isOrgAdmin) {
-    return (
-      <Navigate
-        to="/org/profile"
-        replace
-        state={{ from: location }}
-      />
-    );
+    return <Navigate to="/org/profile" replace state={{ from: location }} />;
   }
 
   // Unknown → kick to org login
-  return (
-    <Navigate
-      to="/org/login"
-      replace
-      state={{ from: location }}
-    />
-  );
+  return <Navigate to="/org/login" replace state={{ from: location }} />;
 };
 
 /* Instructor-only guard for /org/instructor */
@@ -365,43 +316,23 @@ const OrgInstructorOnlyRoute: React.FC<{ children: ReactNode }> = ({ children })
   if (busy || !role) return null;
 
   const normalizedRole = String(role || '').toLowerCase();
-  const isInstructor =
-    normalizedRole === 'instructor' || normalizedRole === 'teacher';
-  const isLearner =
-    normalizedRole === 'learner' || normalizedRole === 'student';
+  const isInstructor = normalizedRole === 'instructor' || normalizedRole === 'teacher';
+  const isLearner = normalizedRole === 'learner' || normalizedRole === 'student';
   const isOrgAdmin = normalizedRole === 'owner' || normalizedRole === 'admin';
 
   if (isInstructor) return <>{children}</>;
 
   // Prevent admin + learner from landing on instructor home
   if (isOrgAdmin) {
-    return (
-      <Navigate
-        to="/org/profile"
-        replace
-        state={{ from: location }}
-      />
-    );
+    return <Navigate to="/org/profile" replace state={{ from: location }} />;
   }
 
   if (isLearner) {
-    return (
-      <Navigate
-        to="/org/learn"
-        replace
-        state={{ from: location }}
-      />
-    );
+    return <Navigate to="/org/learn" replace state={{ from: location }} />;
   }
 
   // Unknown → safest is org login
-  return (
-    <Navigate
-      to="/org/login"
-      replace
-      state={{ from: location }}
-    />
-  );
+  return <Navigate to="/org/login" replace state={{ from: location }} />;
 };
 
 /* ───────────────────────────
@@ -427,7 +358,6 @@ const App: React.FC<{}> = () => {
           <Route path="/paystack/callback" element={<PaystackCallbackWeb />} />
           <Route path="/paystack/callback" element={<PaystackCallbackRedirectWeb />} />
 
-         
           {/* Org public routes */}
           <Route path="/org/login" element={<InstitutionLogin />} />
           <Route path="/org/join/:code" element={<OrgInviteLanding />} />
@@ -518,7 +448,6 @@ const App: React.FC<{}> = () => {
           <Route path="/profile/me" element={<ProfilePage />} />
           <Route path="/settings/create" element={<CreateProfileForm />} />
           <Route path="/settings/manage" element={<ManageProfileForm />} />
-          
         </Route>
 
         {/* Auth route (logged-out only) */}

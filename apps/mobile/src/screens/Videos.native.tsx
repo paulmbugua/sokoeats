@@ -101,11 +101,7 @@ const PlayThumb = ({ uri, onPress }: { uri?: string | null; onPress?: () => void
     style={tw`relative w-full rounded-lg overflow-hidden bg-black/70`}
   >
     {uri ? (
-      <Image
-        source={{ uri }}
-        style={[tw`w-full`, { aspectRatio: 16 / 9 }]}
-        resizeMode="cover"
-      />
+      <Image source={{ uri }} style={[tw`w-full`, { aspectRatio: 16 / 9 }]} resizeMode="cover" />
     ) : (
       <View style={[tw`w-full bg-black/70`, { aspectRatio: 16 / 9 }]} />
     )}
@@ -146,44 +142,49 @@ const VideosNative: React.FC = () => {
   const itemList = useMemo(() => toArray<OerItem>(items), [items]);
 
   /* ── Fetch: LIST ─────────────────────────────────────── */
- const loadCollections = useCallback(async () => {
-  if (!backendUrl) return;
-  setListLoading(true);
-  setListError(null);
-  try {
-    const tryFetch = async (qs: string) => {
-      const r = await fetch(`${backendUrl}/api/oer/collections?${qs}`);
-      if (!r.ok) return [];
-      const data = await r.json().catch(() => []);
-      return toArray<Collection>(data);
-    };
+  const loadCollections = useCallback(async () => {
+    if (!backendUrl) return;
+    setListLoading(true);
+    setListError(null);
+    try {
+      const tryFetch = async (qs: string) => {
+        const r = await fetch(`${backendUrl}/api/oer/collections?${qs}`);
+        if (!r.ok) return [];
+        const data = await r.json().catch(() => []);
+        return toArray<Collection>(data);
+      };
 
-    // 1) Preferred
-    let arr = await tryFetch('kind=video&limit=48');
-    // 2) Backend variant
-    if (arr.length === 0) arr = await tryFetch('content_kind=video&limit=48');
-    // 3) Last resort: fetch all, filter client-side
-    if (arr.length === 0) {
-      const all = await tryFetch('limit=48');
-      arr = all.filter(
-        (c) =>
-          String(c.content_kind || '').toLowerCase().includes('video') ||
-          /video/i.test(c.title || '')
-      );
+      // 1) Preferred
+      let arr = await tryFetch('kind=video&limit=48');
+      // 2) Backend variant
+      if (arr.length === 0) arr = await tryFetch('content_kind=video&limit=48');
+      // 3) Last resort: fetch all, filter client-side
+      if (arr.length === 0) {
+        const all = await tryFetch('limit=48');
+        arr = all.filter(
+          (c) =>
+            String(c.content_kind || '')
+              .toLowerCase()
+              .includes('video') || /video/i.test(c.title || '')
+        );
+      }
+
+      setCollections(arr);
+    } catch (e: any) {
+      setCollections([]);
+      setListError(String(e?.message || e) || 'Failed to load collections');
+    } finally {
+      setListLoading(false);
     }
-
-    setCollections(arr);
-  } catch (e: any) {
-    setCollections([]);
-    setListError(String(e?.message || e) || 'Failed to load collections');
-  } finally {
-    setListLoading(false);
-  }
-}, [backendUrl]);
+  }, [backendUrl]);
 
   const refreshCollections = useCallback(async () => {
     setListRefreshing(true);
-    try { await loadCollections(); } finally { setListRefreshing(false); }
+    try {
+      await loadCollections();
+    } finally {
+      setListRefreshing(false);
+    }
   }, [loadCollections]);
 
   /* ── Fetch: DETAIL ───────────────────────────────────── */
@@ -192,7 +193,9 @@ const VideosNative: React.FC = () => {
     setItemsLoading(true);
     setItemsError(null);
     try {
-      const r = await fetch(`${backendUrl}/api/oer/collections/${encodeURIComponent(String(collectionId))}/items`);
+      const r = await fetch(
+        `${backendUrl}/api/oer/collections/${encodeURIComponent(String(collectionId))}/items`
+      );
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
       const data = await r.json().catch(() => []);
       setItems(toArray<OerItem>(data));
@@ -206,7 +209,11 @@ const VideosNative: React.FC = () => {
 
   const refreshItems = useCallback(async () => {
     setItemsRefreshing(true);
-    try { await loadItems(); } finally { setItemsRefreshing(false); }
+    try {
+      await loadItems();
+    } finally {
+      setItemsRefreshing(false);
+    }
   }, [loadItems]);
 
   /* ── Effects ─────────────────────────────────────────── */
@@ -218,8 +225,6 @@ const VideosNative: React.FC = () => {
 
   /* ── Render: LIST ────────────────────────────────────── */
   if (isList) {
-   
-
     return (
       <SafeAreaView edges={['top', 'bottom']} style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
         <ScrollView
@@ -230,10 +235,7 @@ const VideosNative: React.FC = () => {
               tintColor="#3d99f5"
             />
           }
-          contentContainerStyle={[
-            tw`px-3 py-4`,
-            { paddingBottom: (insets?.bottom ?? 0) + 24 },
-          ]}
+          contentContainerStyle={[tw`px-3 py-4`, { paddingBottom: (insets?.bottom ?? 0) + 24 }]}
           keyboardShouldPersistTaps="handled"
         >
           <SectionHeader title="Free Video Collections" />
@@ -264,20 +266,28 @@ const VideosNative: React.FC = () => {
               const count = safeNumber(c.items_count, 0);
               return (
                 <View key={String(c.id)} style={tw`w-1/2 px-1 mb-3`}>
-                  <View style={tw`bg-white dark:bg-[#0f1821] rounded-lg ring-1 ring-[#e7edf4] dark:ring-darkCard shadow-sm overflow-hidden`}>
+                  <View
+                    style={tw`bg-white dark:bg-[#0f1821] rounded-lg ring-1 ring-[#e7edf4] dark:ring-darkCard shadow-sm overflow-hidden`}
+                  >
                     <PlayThumb
                       uri={c.thumbnail_url || undefined}
                       onPress={() => nav.navigate('VideoCollection', { id: c.id })}
                     />
                     <View style={tw`p-3`}>
-                      <Text numberOfLines={2} style={tw`text-[#0d141c] dark:text-white font-semibold`}>
+                      <Text
+                        numberOfLines={2}
+                        style={tw`text-[#0d141c] dark:text-white font-semibold`}
+                      >
                         {c.title}
                       </Text>
                       <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`}>
-                        {(c.subject ?? '—')} • {count} item{count === 1 ? '' : 's'}
+                        {c.subject ?? '—'} • {count} item{count === 1 ? '' : 's'}
                       </Text>
                       {c.description ? (
-                        <Text numberOfLines={2} style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`}>
+                        <Text
+                          numberOfLines={2}
+                          style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`}
+                        >
                           {c.description}
                         </Text>
                       ) : null}
@@ -286,7 +296,9 @@ const VideosNative: React.FC = () => {
                           onPress={() => nav.navigate('VideoCollection', { id: c.id })}
                           style={tw`h-9 px-4 rounded-xl bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
                         >
-                          <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>View Collection</Text>
+                          <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>
+                            View Collection
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -301,11 +313,12 @@ const VideosNative: React.FC = () => {
   }
 
   /* ── Render: DETAIL ──────────────────────────────────── */
-  
 
   const openUrl = (u?: string | null) => {
     if (!u) return;
-    try { Linking.openURL(u); } catch {}
+    try {
+      Linking.openURL(u);
+    } catch {}
   };
 
   // Optional RobotTeacher jump (requires route + hook wired in your app):
@@ -328,17 +341,19 @@ const VideosNative: React.FC = () => {
             tintColor="#3d99f5"
           />
         }
-        contentContainerStyle={[
-          tw`px-3 py-4`,
-          { paddingBottom: (insets?.bottom ?? 0) + 24 },
-        ]}
+        contentContainerStyle={[tw`px-3 py-4`, { paddingBottom: (insets?.bottom ?? 0) + 24 }]}
         keyboardShouldPersistTaps="handled"
       >
         <SectionHeader
           title="Collection"
           right={
-            <TouchableOpacity onPress={() => nav.navigate('Videos')} style={tw`px-3 py-2 rounded-lg bg-white dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15`}>
-              <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>All Collections</Text>
+            <TouchableOpacity
+              onPress={() => nav.navigate('Videos')}
+              style={tw`px-3 py-2 rounded-lg bg-white dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15`}
+            >
+              <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>
+                All Collections
+              </Text>
             </TouchableOpacity>
           }
         />
@@ -357,7 +372,9 @@ const VideosNative: React.FC = () => {
         ) : null}
 
         {!itemsLoading && !itemsError && itemList.length === 0 ? (
-          <Text style={tw`text-[#49739c] dark:text-white/70 py-10`}>No items in this collection.</Text>
+          <Text style={tw`text-[#49739c] dark:text-white/70 py-10`}>
+            No items in this collection.
+          </Text>
         ) : null}
 
         <View style={tw`flex-row flex-wrap -mx-1`}>
@@ -367,13 +384,15 @@ const VideosNative: React.FC = () => {
 
             return (
               <View key={v.slug} style={tw`w-1/2 px-1 mb-3`}>
-                <View style={tw`bg-white dark:bg-[#0f1821] rounded-lg ring-1 ring-[#e7edf4] dark:ring-darkCard shadow-sm overflow-hidden`}>
-                  <PlayThumb
-                    uri={v.thumbnail_url || undefined}
-                    onPress={() => openUrl(watchUrl)}
-                  />
+                <View
+                  style={tw`bg-white dark:bg-[#0f1821] rounded-lg ring-1 ring-[#e7edf4] dark:ring-darkCard shadow-sm overflow-hidden`}
+                >
+                  <PlayThumb uri={v.thumbnail_url || undefined} onPress={() => openUrl(watchUrl)} />
                   <View style={tw`p-3`}>
-                    <Text numberOfLines={2} style={tw`text-[#0d141c] dark:text-white font-semibold text-sm`}>
+                    <Text
+                      numberOfLines={2}
+                      style={tw`text-[#0d141c] dark:text-white font-semibold text-sm`}
+                    >
                       {v.title}
                     </Text>
                     <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70 mt-1`}>
@@ -388,7 +407,9 @@ const VideosNative: React.FC = () => {
                           onPress={() => openUrl(v.source_url!)}
                           style={tw`flex-1 h-9 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/15 items-center justify-center`}
                         >
-                          <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>View at Source</Text>
+                          <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>
+                            View at Source
+                          </Text>
                         </TouchableOpacity>
                       ) : null}
 
@@ -411,7 +432,9 @@ const VideosNative: React.FC = () => {
                     </View>
 
                     {v.license ? (
-                      <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/70`}>License: {v.license}</Text>
+                      <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/70`}>
+                        License: {v.license}
+                      </Text>
                     ) : null}
                   </View>
                 </View>

@@ -13,9 +13,9 @@ const __dirname = path.dirname(__filename);
  * ───────────────────────────────────────────────────────── */
 async function loadEnv() {
   const candidates = [
-    path.resolve(__dirname, '../../.env'),      // apps/backend/.env
-    path.resolve(__dirname, '../../../.env'),   // repo root .env
-    path.resolve(__dirname, '../.env'),         // scripts/../.env
+    path.resolve(__dirname, '../../.env'), // apps/backend/.env
+    path.resolve(__dirname, '../../../.env'), // repo root .env
+    path.resolve(__dirname, '../.env'), // scripts/../.env
   ];
   for (const p of candidates) {
     try {
@@ -41,10 +41,12 @@ const CLOUDINARY_API_SECRET =
 
 function ensureCloudinaryEnv() {
   const missing = [];
-  if (!CLOUDINARY_NAME) missing.push('CLOUDINARY_CLOUD_NAME (or CLOUDINARY_NAME)');
+  if (!CLOUDINARY_NAME)
+    missing.push('CLOUDINARY_CLOUD_NAME (or CLOUDINARY_NAME)');
   if (!CLOUDINARY_API_KEY) missing.push('CLOUDINARY_API_KEY');
   if (!CLOUDINARY_API_SECRET) missing.push('CLOUDINARY_API_SECRET');
-  if (missing.length) throw new Error(`Missing Cloudinary env vars: ${missing.join(', ')}`);
+  if (missing.length)
+    throw new Error(`Missing Cloudinary env vars: ${missing.join(', ')}`);
 }
 ensureCloudinaryEnv();
 
@@ -65,24 +67,30 @@ const getFlag = (name, fallback) => {
 };
 const hasFlag = (name) => argv.includes(`--${name}`);
 
-const filePath  = getFlag('file', path.resolve(__dirname, '../uploads/Workplace_Software_and_Skills.pdf'));
-const title     = getFlag('title', 'OpenStax: Calculus Volume 1 (2e)');
+const filePath = getFlag(
+  'file',
+  path.resolve(__dirname, '../uploads/Workplace_Software_and_Skills.pdf'),
+);
+const title = getFlag('title', 'OpenStax: Calculus Volume 1 (2e)');
 
-const provider  = getFlag('provider', 'openstax');
-const folder    = getFlag('folder', `oer/${provider}`);
-const publicId  = getFlag('public-id', slugify(title || 'oer-book')); // NO extension
-const key       = getFlag('key', `oer_pdf_${slugify(title || 'book')}_url`);
-const license   = getFlag('license', 'CC BY 4.0');
-const licenseUrl= getFlag('license-url', 'https://creativecommons.org/licenses/by/4.0/');
+const provider = getFlag('provider', 'openstax');
+const folder = getFlag('folder', `oer/${provider}`);
+const publicId = getFlag('public-id', slugify(title || 'oer-book')); // NO extension
+const key = getFlag('key', `oer_pdf_${slugify(title || 'book')}_url`);
+const license = getFlag('license', 'CC BY 4.0');
+const licenseUrl = getFlag(
+  'license-url',
+  'https://creativecommons.org/licenses/by/4.0/',
+);
 const createTbl = hasFlag('create-table');
-const skipDb    = hasFlag('no-db');
+const skipDb = hasFlag('no-db');
 const onlySettings = hasFlag('settings-only');
 
-function slugify(s='') {
+function slugify(s = '') {
   return String(s)
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g,'-')
-    .replace(/^-+|-+$/g,'');
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -96,7 +104,9 @@ async function getPool() {
     return mod.default || mod;
   } catch (err) {
     console.error('DB import/connection failed:', err.message);
-    console.error('Tip: set DATABASE_URL or PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE, or run with --no-db');
+    console.error(
+      'Tip: set DATABASE_URL or PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE, or run with --no-db',
+    );
     throw err;
   }
 }
@@ -108,7 +118,7 @@ async function detectSettingsTable(db) {
        FROM information_schema.tables
       WHERE table_schema='public'
         AND table_name = ANY($1)`,
-    [candidates]
+    [candidates],
   );
   const names = rows.map((r) => r.table_name);
   return candidates.find((c) => names.includes(c)) || null;
@@ -127,7 +137,7 @@ async function ensureOerBooksTable(db) {
   const q = await db.query(
     `SELECT 1
        FROM information_schema.tables
-      WHERE table_schema='public' AND table_name='oer_books'`
+      WHERE table_schema='public' AND table_name='oer_books'`,
   );
   if (q.rowCount) return true;
   if (!createTbl) return false;
@@ -183,42 +193,54 @@ async function upsertOerBook(db, row) {
 
 async function verifyAndPublicizeUploadAsset(fullPublicId) {
   // Check the 'upload' type variant of the RAW asset
-  const info = await cloudinary.api.resource(fullPublicId, {
-    resource_type: 'raw',
-    type: 'upload',
-  }).catch((e) => {
-    console.warn('Admin API probe failed (upload type):', e?.http_code || e?.message);
-    return null;
-  });
+  const info = await cloudinary.api
+    .resource(fullPublicId, {
+      resource_type: 'raw',
+      type: 'upload',
+    })
+    .catch((e) => {
+      console.warn(
+        'Admin API probe failed (upload type):',
+        e?.http_code || e?.message,
+      );
+      return null;
+    });
 
   if (!info) return;
 
   const needsPublic =
-    info.access_mode !== 'public' || (info.access_control && info.access_control.length > 0);
+    info.access_mode !== 'public' ||
+    (info.access_control && info.access_control.length > 0);
 
   if (needsPublic) {
     console.log('Adjusting access to public for upload asset…');
-    await cloudinary.api.update(fullPublicId, {
-      resource_type: 'raw',
-      type: 'upload',
-      access_mode: 'public',
-      access_control: null,
-    }).catch((e) => {
-      console.warn('access_mode update failed:', e?.http_code || e?.message);
-    });
+    await cloudinary.api
+      .update(fullPublicId, {
+        resource_type: 'raw',
+        type: 'upload',
+        access_mode: 'public',
+        access_control: null,
+      })
+      .catch((e) => {
+        console.warn('access_mode update failed:', e?.http_code || e?.message);
+      });
   }
 
   // Log final state
-  const after = await cloudinary.api.resource(fullPublicId, {
-    resource_type: 'raw',
-    type: 'upload',
-  }).catch(() => null);
+  const after = await cloudinary.api
+    .resource(fullPublicId, {
+      resource_type: 'raw',
+      type: 'upload',
+    })
+    .catch(() => null);
 
   if (after) {
     console.log('Upload asset (final):', {
       type: after.type,
       access_mode: after.access_mode,
-      has_access_control: !!(after.access_control && after.access_control.length),
+      has_access_control: !!(
+        after.access_control && after.access_control.length
+      ),
       url_sample: after.secure_url?.slice(0, 120) + '…',
     });
   }
@@ -247,8 +269,8 @@ async function main() {
       filePath,
       {
         resource_type: 'raw',
-        folder,                       // e.g. 'oer/openstax'
-        public_id: publicId,          // e.g. 'openstax-calculus-volume-1-2e' (no .pdf)
+        folder, // e.g. 'oer/openstax'
+        public_id: publicId, // e.g. 'openstax-calculus-volume-1-2e' (no .pdf)
         type: 'upload',
         access_mode: 'public',
         overwrite: true,
@@ -256,9 +278,9 @@ async function main() {
         use_filename: false,
         unique_filename: false,
         format: 'pdf',
-        chunk_size: 6_000_000,        // ~6MB chunks
+        chunk_size: 6_000_000, // ~6MB chunks
       },
-      (err, res) => (err ? reject(err) : resolve(res))
+      (err, res) => (err ? reject(err) : resolve(res)),
     );
   });
 
@@ -276,7 +298,9 @@ async function main() {
 
   if (skipDb) {
     console.log('ℹ️ --no-db: skipping DB write.');
-    console.log(`Use this PUBLIC URL in your app: ${pdfUrl} (append #page=NN if you like)`);
+    console.log(
+      `Use this PUBLIC URL in your app: ${pdfUrl} (append #page=NN if you like)`,
+    );
     return;
   }
 
@@ -290,7 +314,7 @@ async function main() {
       provider,
       slug: slugify(title),
       title,
-      pdf_url: pdfUrl,       // <-- public, versioned, cacheable URL
+      pdf_url: pdfUrl, // <-- public, versioned, cacheable URL
       license,
       license_url: licenseUrl,
     };
@@ -301,8 +325,12 @@ async function main() {
   } else {
     const table = await detectSettingsTable(db);
     if (!table) {
-      console.warn('⚠️ No settings table found (looked for app_settings/site_settings/settings).');
-      console.warn('   Re-run with --create-table to use "oer_books" or export env:');
+      console.warn(
+        '⚠️ No settings table found (looked for app_settings/site_settings/settings).',
+      );
+      console.warn(
+        '   Re-run with --create-table to use "oer_books" or export env:',
+      );
       console.warn(`   OER_PDF_${slugify(title).toUpperCase()}_URL=${pdfUrl}`);
       return;
     }

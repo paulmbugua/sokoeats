@@ -12,9 +12,9 @@ type Tx = {
   date: string; // ISO
 
   // common references
-  captureId?: string;     // PayPal
-  orderId?: string;       // PayPal order/transaction or M-Pesa CheckoutRequestID
-  mpesaRef?: string;      // M-Pesa receipt code
+  captureId?: string; // PayPal
+  orderId?: string; // PayPal order/transaction or M-Pesa CheckoutRequestID
+  mpesaRef?: string; // M-Pesa receipt code
   source?: 'payment' | 'withdrawal';
 
   // extra details for the expander
@@ -33,14 +33,15 @@ type Tx = {
 };
 
 type Props = {
-  token?: string;        // optional override; defaults to context token(s)
-  backendUrl?: string;   // optional override; defaults to context backendUrl
+  token?: string; // optional override; defaults to context token(s)
+  backendUrl?: string; // optional override; defaults to context backendUrl
 };
 
 function normalizeStatus(s: string | undefined | null): Tx['status'] {
   const v = String(s ?? '').toLowerCase();
   if (['completed', 'success', 'succeeded', 'captured', 'approved'].includes(v)) return 'Completed';
-  if (['pending', 'processing', 'in_progress', 'authorized', 'queued'].includes(v)) return 'Pending';
+  if (['pending', 'processing', 'in_progress', 'authorized', 'queued'].includes(v))
+    return 'Pending';
   return 'Failed';
 }
 
@@ -50,7 +51,12 @@ function guessMethod(raw: any): Tx['method'] {
   ).toLowerCase();
 
   if (m.includes('wise')) return 'Wise';
-  if (m.includes('mpesa') || m.includes('m-pesa') || raw?.mpesaReceiptNumber || raw?.mpesa_reference) {
+  if (
+    m.includes('mpesa') ||
+    m.includes('m-pesa') ||
+    raw?.mpesaReceiptNumber ||
+    raw?.mpesa_reference
+  ) {
     return 'M-Pesa';
   }
   return 'PayPal';
@@ -64,7 +70,13 @@ function coerceTx(raw: any): Tx {
     (raw?.amountKES ? 'KES' : 'USD');
 
   const amountNum = Number(
-    raw?.amount ?? raw?.amountUsd ?? raw?.amountUSD ?? raw?.amountKES ?? raw?.total ?? raw?.value ?? 0
+    raw?.amount ??
+      raw?.amountUsd ??
+      raw?.amountUSD ??
+      raw?.amountKES ??
+      raw?.total ??
+      raw?.value ??
+      0
   );
 
   const status = normalizeStatus(raw?.status ?? raw?.state ?? raw?.payment_status);
@@ -73,12 +85,18 @@ function coerceTx(raw: any): Tx {
   const updated = raw?.updated_at ?? raw?.updatedAt ?? created;
 
   const id = String(
-    raw?.id ?? raw?.payment_id ?? raw?.txId ??
-    raw?.transactionId ?? raw?.transaction_id ??
-    raw?.captureId ?? raw?.capture_id ??
-    raw?.orderId ?? raw?.order_id ??
-    raw?.mpesaReceiptNumber ?? raw?.mpesa_reference ??
-    `${Date.now()}`
+    raw?.id ??
+      raw?.payment_id ??
+      raw?.txId ??
+      raw?.transactionId ??
+      raw?.transaction_id ??
+      raw?.captureId ??
+      raw?.capture_id ??
+      raw?.orderId ??
+      raw?.order_id ??
+      raw?.mpesaReceiptNumber ??
+      raw?.mpesa_reference ??
+      `${Date.now()}`
   );
 
   const rawMeta =
@@ -95,8 +113,7 @@ function coerceTx(raw: any): Tx {
 
   return {
     id,
-    userEmail:
-      raw?.user_email ?? raw?.userEmail ?? raw?.email ?? raw?.payer?.email_address ?? '—',
+    userEmail: raw?.user_email ?? raw?.userEmail ?? raw?.email ?? raw?.payer?.email_address ?? '—',
     userName: raw?.user_name ?? raw?.userName ?? undefined,
     method,
     amount: Number.isFinite(amountNum) ? amountNum : 0,
@@ -121,7 +138,7 @@ function coerceTx(raw: any): Tx {
     offer: raw?.offer ?? undefined,
 
     rawMeta,
-    source: (raw?.source === 'withdrawal' || raw?.source === 'payment') ? raw.source : undefined,
+    source: raw?.source === 'withdrawal' || raw?.source === 'payment' ? raw.source : undefined,
   };
 }
 
@@ -132,7 +149,10 @@ function fmtAmount(t: Tx) {
 export default function Transactions({ token, backendUrl: backendUrlOverride }: Props) {
   // ⬇️ Prefer adminToken; then fall back to normal token; props.override wins if passed.
   const { backendUrl: ctxBackend, token: ctxToken, adminToken: ctxAdminToken } = useShopContext();
-  const base = useMemo(() => (backendUrlOverride || ctxBackend || '').replace(/\/+$/, ''), [backendUrlOverride, ctxBackend]);
+  const base = useMemo(
+    () => (backendUrlOverride || ctxBackend || '').replace(/\/+$/, ''),
+    [backendUrlOverride, ctxBackend]
+  );
   const authToken = token || ctxAdminToken || ctxToken || '';
 
   const [tx, setTx] = useState<Tx[]>([]);
@@ -140,7 +160,7 @@ export default function Transactions({ token, backendUrl: backendUrlOverride }: 
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
-  const toggle = (id: string) => setOpen(s => ({ ...s, [id]: !s[id] }));
+  const toggle = (id: string) => setOpen((s) => ({ ...s, [id]: !s[id] }));
 
   const fetchTx = useCallback(async () => {
     if (!base) return;
@@ -159,7 +179,7 @@ export default function Transactions({ token, backendUrl: backendUrlOverride }: 
 
     const tryUrls = [
       `${base}/api/admin/financials?kind=all&limit=100`, // unified feed (payments + withdrawals)
-      `${base}/api/admin/transactions?limit=100`,       // payments-only fallback
+      `${base}/api/admin/transactions?limit=100`, // payments-only fallback
     ];
 
     let lastError: any = null;
@@ -185,8 +205,8 @@ export default function Transactions({ token, backendUrl: backendUrlOverride }: 
         const list = Array.isArray(data?.transactions)
           ? data.transactions
           : Array.isArray(data)
-          ? data
-          : [];
+            ? data
+            : [];
 
         const mapped: Tx[] = list.map(coerceTx);
         mapped.sort((a: Tx, b: Tx) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -201,7 +221,9 @@ export default function Transactions({ token, backendUrl: backendUrlOverride }: 
     }
 
     setLoading(false);
-    setErr(`Failed to load transactions${lastError ? `: ${String((lastError as any).message || lastError)}` : ''}`);
+    setErr(
+      `Failed to load transactions${lastError ? `: ${String((lastError as any).message || lastError)}` : ''}`
+    );
   }, [base, authToken]);
 
   useEffect(() => {
@@ -265,11 +287,15 @@ export default function Transactions({ token, backendUrl: backendUrlOverride }: 
       {err && <div className="panel p-3 text-sm text-red-500">{err}</div>}
 
       {loading && (
-        <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">Loading transactions…</div>
+        <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">
+          Loading transactions…
+        </div>
       )}
 
       {!loading && tx.length === 0 && !err && (
-        <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">No transactions yet.</div>
+        <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">
+          No transactions yet.
+        </div>
       )}
 
       <div className="grid gap-3">
@@ -302,7 +328,9 @@ export default function Transactions({ token, backendUrl: backendUrlOverride }: 
               <div className="text-sm">{fmtAmount(t)}</div>
 
               <div>
-                <span className={`chip ${t.status === 'Completed' ? 'chip-active' : ''}`}>{t.status}</span>
+                <span className={`chip ${t.status === 'Completed' ? 'chip-active' : ''}`}>
+                  {t.status}
+                </span>
               </div>
 
               <div className="flex justify-end gap-2">
@@ -325,33 +353,59 @@ export default function Transactions({ token, backendUrl: backendUrlOverride }: 
             {open[t.id] && (
               <div className="rounded-lg bg-gray-50 dark:bg-white/5 p-3 text-[13px] grid sm:grid-cols-2 gap-3">
                 <div>
-                  <div><b>Payment ID:</b> {t.id}</div>
-                  <div><b>Status:</b> {t.status}</div>
+                  <div>
+                    <b>Payment ID:</b> {t.id}
+                  </div>
+                  <div>
+                    <b>Status:</b> {t.status}
+                  </div>
                   <div>
                     <b>Method:</b> {t.method}
                     {t.provider ? ` • ${t.provider}` : ''}
                   </div>
-                  <div><b>Intent:</b> {t.intent || '—'}</div>
-                  <div><b>Order / Tx Ref:</b> {t.orderId || '—'}</div>
-                  <div><b>Capture ID:</b> {t.captureId || '—'}</div>
-                  <div><b>M-Pesa Ref:</b> {t.mpesaRef || '—'}</div>
-                  {t.providerOrderId && <div><b>Provider Order:</b> {t.providerOrderId}</div>}
+                  <div>
+                    <b>Intent:</b> {t.intent || '—'}
+                  </div>
+                  <div>
+                    <b>Order / Tx Ref:</b> {t.orderId || '—'}
+                  </div>
+                  <div>
+                    <b>Capture ID:</b> {t.captureId || '—'}
+                  </div>
+                  <div>
+                    <b>M-Pesa Ref:</b> {t.mpesaRef || '—'}
+                  </div>
+                  {t.providerOrderId && (
+                    <div>
+                      <b>Provider Order:</b> {t.providerOrderId}
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <div><b>Buyer:</b> {t.userName || '—'} ({t.userEmail || '—'})</div>
-                  <div><b>Payer Email / Phone:</b> {t.payerEmail || t.phone || '—'}</div>
+                  <div>
+                    <b>Buyer:</b> {t.userName || '—'} ({t.userEmail || '—'})
+                  </div>
+                  <div>
+                    <b>Payer Email / Phone:</b> {t.payerEmail || t.phone || '—'}
+                  </div>
                   <div>
                     <b>Package:</b> {t.packageId ?? '—'}
                     {t.credits ? ` • ${t.credits} credits` : ''}
                     {t.offer ? ` • ${t.offer}` : ''}
                   </div>
-                  <div><b>Created:</b> {t.createdAt ? new Date(t.createdAt).toLocaleString() : '—'}</div>
-                  <div><b>Updated:</b> {t.updatedAt ? new Date(t.updatedAt).toLocaleString() : '—'}</div>
+                  <div>
+                    <b>Created:</b> {t.createdAt ? new Date(t.createdAt).toLocaleString() : '—'}
+                  </div>
+                  <div>
+                    <b>Updated:</b> {t.updatedAt ? new Date(t.updatedAt).toLocaleString() : '—'}
+                  </div>
                 </div>
                 {t.rawMeta && (
                   <div className="sm:col-span-2">
                     <b>Gateway Meta</b>
-                    <pre className="whitespace-pre-wrap break-words mt-1">{JSON.stringify(t.rawMeta, null, 2)}</pre>
+                    <pre className="whitespace-pre-wrap break-words mt-1">
+                      {JSON.stringify(t.rawMeta, null, 2)}
+                    </pre>
                   </div>
                 )}
               </div>

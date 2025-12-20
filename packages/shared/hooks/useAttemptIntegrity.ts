@@ -1,7 +1,12 @@
 // packages/shared/hooks/useAttemptIntegrity.ts
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { startAttemptApi, heartbeatAttemptApi, submitAttemptApi, AttemptStartResp } from '../api/attemptsApi';
+import {
+  startAttemptApi,
+  heartbeatAttemptApi,
+  submitAttemptApi,
+  AttemptStartResp,
+} from '../api/attemptsApi';
 
 type StartOpts = {
   assignmentId: string;
@@ -34,13 +39,27 @@ export function useAttemptIntegrity(backendUrl: string, token?: string) {
   const tokenRef = useRef<string | undefined>(token);
   const backendUrlRef = useRef<string>(backendUrl);
 
-  useEffect(() => { attemptIdRef.current = attemptId; }, [attemptId]);
-  useEffect(() => { deviceIdRef.current = deviceId; }, [deviceId]);
-  useEffect(() => { elapsedMsRef.current = elapsedMs; }, [elapsedMs]);
-  useEffect(() => { backgroundsRef.current = backgrounds; }, [backgrounds]);
-  useEffect(() => { suspicionsRef.current = suspicions; }, [suspicions]);
-  useEffect(() => { tokenRef.current = token; }, [token]);
-  useEffect(() => { backendUrlRef.current = backendUrl; }, [backendUrl]);
+  useEffect(() => {
+    attemptIdRef.current = attemptId;
+  }, [attemptId]);
+  useEffect(() => {
+    deviceIdRef.current = deviceId;
+  }, [deviceId]);
+  useEffect(() => {
+    elapsedMsRef.current = elapsedMs;
+  }, [elapsedMs]);
+  useEffect(() => {
+    backgroundsRef.current = backgrounds;
+  }, [backgrounds]);
+  useEffect(() => {
+    suspicionsRef.current = suspicions;
+  }, [suspicions]);
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
+  useEffect(() => {
+    backendUrlRef.current = backendUrl;
+  }, [backendUrl]);
 
   // ✅ IMPORTANT: idempotent setter (prevents render-loops if parent calls this often)
   const bindDeviceId = useCallback((id: string) => {
@@ -48,23 +67,29 @@ export function useAttemptIntegrity(backendUrl: string, token?: string) {
     setDeviceId((prev) => (prev === next ? prev : next));
   }, []);
 
-  const start = useCallback(async (opts: StartOpts) => {
-    if (!token) { setError('No token'); return null; }
-    setError(null);
+  const start = useCallback(
+    async (opts: StartOpts) => {
+      if (!token) {
+        setError('No token');
+        return null;
+      }
+      setError(null);
 
-    const res = await startAttemptApi(backendUrl, token, opts);
+      const res = await startAttemptApi(backendUrl, token, opts);
 
-    setAttempt(res);
-    setAttemptId(res.attemptId);
-    setQuizActive(true);
+      setAttempt(res);
+      setAttemptId(res.attemptId);
+      setQuizActive(true);
 
-    startTsRef.current = Date.now();
-    setElapsedMs(0);
-    setBackgrounds(0);
-    setSuspicions(0);
+      startTsRef.current = Date.now();
+      setElapsedMs(0);
+      setBackgrounds(0);
+      setSuspicions(0);
 
-    return res;
-  }, [backendUrl, token]);
+      return res;
+    },
+    [backendUrl, token]
+  );
 
   // elapsed ticker
   useEffect(() => {
@@ -86,7 +111,11 @@ export function useAttemptIntegrity(backendUrl: string, token?: string) {
         setBackgrounds((n) => n + 1);
       }
     });
-    return () => { try { sub.remove(); } catch {} };
+    return () => {
+      try {
+        sub.remove();
+      } catch {}
+    };
   }, [quizActive]);
 
   const stopHeartbeat = useCallback(() => {
@@ -137,30 +166,43 @@ export function useAttemptIntegrity(backendUrl: string, token?: string) {
     setQuizActive(true);
   }, []);
 
-  const submit = useCallback(async (assignmentId: string, answers: any[]) => {
-    if (!token || !attemptId) { setError('No attempt or token'); return null; }
-    try {
-      const resp = await submitAttemptApi(backendUrl, token, {
-        assignmentId,
-        attemptId,
-        deviceId,
-        answers,
-      });
-      markNotActive();
-      stopHeartbeat();
-      return resp;
-    } catch (e: any) {
-      setError(e?.message || 'submit failed');
-      throw e;
-    }
-  }, [backendUrl, token, attemptId, deviceId, stopHeartbeat, markNotActive]);
+  const submit = useCallback(
+    async (assignmentId: string, answers: any[]) => {
+      if (!token || !attemptId) {
+        setError('No attempt or token');
+        return null;
+      }
+      try {
+        const resp = await submitAttemptApi(backendUrl, token, {
+          assignmentId,
+          attemptId,
+          deviceId,
+          answers,
+        });
+        markNotActive();
+        stopHeartbeat();
+        return resp;
+      } catch (e: any) {
+        setError(e?.message || 'submit failed');
+        throw e;
+      }
+    },
+    [backendUrl, token, attemptId, deviceId, stopHeartbeat, markNotActive]
+  );
 
   return {
-    attempt, attemptId,
-    deviceId, bindDeviceId,
-    quizActive, markActive, markNotActive,
-    elapsedMs, backgrounds, suspicions,
-    start, submit,
+    attempt,
+    attemptId,
+    deviceId,
+    bindDeviceId,
+    quizActive,
+    markActive,
+    markNotActive,
+    elapsedMs,
+    backgrounds,
+    suspicions,
+    start,
+    submit,
     bumpSuspicion,
     error,
   };

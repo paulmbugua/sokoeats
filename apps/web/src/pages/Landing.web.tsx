@@ -3,13 +3,7 @@ import React, { useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useShopContext } from '@mytutorapp/shared/context';
-import {
-  motion,
-  useMotionValue,
-  useSpring,
-  useReducedMotion,
-  Variants,
-} from 'framer-motion';
+import { motion, useMotionValue, useSpring, useReducedMotion, Variants } from 'framer-motion';
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 28 },
@@ -31,16 +25,13 @@ const Landing: React.FC = () => {
   const ctaPath = token ? '/find-tutor' : '/login';
   const prefersReducedMotion = useReducedMotion() ?? false;
 
-   
-
   /* ---------------------------- SEO: Structured Data ---------------------------- */
   const orgJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'EducationalOrganization',
     name: BRAND,
     url: SITE_URL || undefined,
-    logo:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBgvEqh6MrQ7dVW2qwj-qjGCafebAnWEjA7iwu4aBwvJfiAvneGQcD6xH14zDIWcFdHIVF1yUOtvsMVPHtbXyU0DuxtazBEu50XMuUrx4CovU0y47zF1YjXjrNQg6DUZcEu_uJ1um9oLpY',
+    logo: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBgvEqh6MrQ7dVW2qwj-qjGCafebAnWEjA7iwu4aBwvJfiAvneGQcD6xH14zDIWcFdHIVF1yUOtvsMVPHtbXyU0DuxtazBEu50XMuUrx4CovU0y47zF1YjXjrNQg6DUZcEu_uJ1um9oLpY',
     sameAs: [],
     slogan: 'Learn anything with AI & expert tutors',
     areaServed: 'Worldwide',
@@ -65,9 +56,21 @@ const Landing: React.FC = () => {
     description:
       'Tell us your goal, match with a tutor, then learn & iterate with AI-powered feedback.',
     step: [
-      { '@type': 'HowToStep', name: 'Tell us your goal', text: 'Pick subject, level, and schedule preferences.' },
-      { '@type': 'HowToStep', name: 'Match with a tutor', text: 'We surface vetted profiles with perfect fit.' },
-      { '@type': 'HowToStep', name: 'Learn & iterate', text: 'Book, learn, review, and keep the momentum.' },
+      {
+        '@type': 'HowToStep',
+        name: 'Tell us your goal',
+        text: 'Pick subject, level, and schedule preferences.',
+      },
+      {
+        '@type': 'HowToStep',
+        name: 'Match with a tutor',
+        text: 'We surface vetted profiles with perfect fit.',
+      },
+      {
+        '@type': 'HowToStep',
+        name: 'Learn & iterate',
+        text: 'Book, learn, review, and keep the momentum.',
+      },
     ],
   };
 
@@ -202,7 +205,13 @@ const Landing: React.FC = () => {
       {/* Background */}
       {LANDING_BG && (
         <div className="absolute inset-0 z-0">
-          <img src={LANDING_BG} alt="" className="h-full w-full object-cover" loading="eager" decoding="async" />
+          <img
+            src={LANDING_BG}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="eager"
+            decoding="async"
+          />
           <div className="absolute inset-0 bg-white/70 dark:bg-slate-900/40" />
         </div>
       )}
@@ -282,26 +291,28 @@ const Landing: React.FC = () => {
       {/* Main */}
       <main id="main" className="relative z-10 flex-1">
         {/* Hero */}
-        <section aria-label="Hero" className="flex justify-center py-6 md:py-10 px-4 md:px-12 lg:px-24 xl:px-40">
-                <motion.div
-        className="layout-content-container flex flex-col max-w-[1100px] flex-1 w-full @container"
-        initial="hidden"
-        animate="show"
-        variants={stagger}
-      >
-        <motion.div variants={fadeUp} className="@[480px]:p-4">
-          <Hero
-            prefersReducedMotion={prefersReducedMotion}
-            ctaPath={ctaPath}
-          />
-
-        </motion.div>
-      </motion.div>
-
+        <section
+          aria-label="Hero"
+          className="flex justify-center py-6 md:py-10 px-4 md:px-12 lg:px-24 xl:px-40"
+        >
+          <motion.div
+            className="layout-content-container flex flex-col max-w-[1100px] flex-1 w-full @container"
+            initial="hidden"
+            animate="show"
+            variants={stagger}
+          >
+            <motion.div variants={fadeUp} className="@[480px]:p-4">
+              <Hero prefersReducedMotion={prefersReducedMotion} ctaPath={ctaPath} />
+            </motion.div>
+          </motion.div>
         </section>
 
         {/* Why choose */}
-        <section id="why" aria-label="Why choose" className="flex justify-center py-10 md:py-14 px-4 md:px-12 lg:px-24 xl:px-40">
+        <section
+          id="why"
+          aria-label="Why choose"
+          className="flex justify-center py-10 md:py-14 px-4 md:px-12 lg:px-24 xl:px-40"
+        >
           <div className="layout-content-container flex flex-col max-w-[1100px] flex-1 w-full">
             <motion.div
               className="flex flex-col gap-8 md:gap-10 px-0 @container"
@@ -341,7 +352,11 @@ const Landing: React.FC = () => {
         </section>
 
         {/* How it works */}
-        <section id="how-it-works" aria-label="How it works" className="flex justify-center py-8 md:py-12 px-4 md:px-12 lg:px-24 xl:px-40">
+        <section
+          id="how-it-works"
+          aria-label="How it works"
+          className="flex justify-center py-8 md:py-12 px-4 md:px-12 lg:px-24 xl:px-40"
+        >
           <motion.div
             className="layout-content-container flex flex-col gap-6 max-w-[1100px] flex-1 w-full"
             initial="hidden"
@@ -349,13 +364,28 @@ const Landing: React.FC = () => {
             viewport={{ once: true, amount: 0.2 }}
             variants={stagger}
           >
-            <motion.h3 variants={fadeUp} className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">
+            <motion.h3
+              variants={fadeUp}
+              className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight"
+            >
               Get started in 3 simple steps
             </motion.h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Step index={1} title="Tell us your goal" text="Pick subject, level, and schedule preferences." />
-              <Step index={2} title="Match with a tutor" text="We surface vetted profiles with perfect fit." />
-              <Step index={3} title="Learn & iterate" text="Book, learn, review, and keep the momentum." />
+              <Step
+                index={1}
+                title="Tell us your goal"
+                text="Pick subject, level, and schedule preferences."
+              />
+              <Step
+                index={2}
+                title="Match with a tutor"
+                text="We surface vetted profiles with perfect fit."
+              />
+              <Step
+                index={3}
+                title="Learn & iterate"
+                text="Book, learn, review, and keep the momentum."
+              />
             </div>
           </motion.div>
         </section>
@@ -372,9 +402,10 @@ const Landing: React.FC = () => {
                 E-Learning built for institutions
               </h2>
               <p className="mt-2 text-sm sm:text-base text-slate-600 dark:text-slate-300">
-                Launch a secure, branded learning space with an exam results portal, printable report cards and class
-                reports, AI-assisted marks entry, assignment sharing, SSO, domain restrictions, and analytics—built for
-                schools, colleges, and training academies.
+                Launch a secure, branded learning space with an exam results portal, printable
+                report cards and class reports, AI-assisted marks entry, assignment sharing, SSO,
+                domain restrictions, and analytics—built for schools, colleges, and training
+                academies.
               </p>
             </div>
 
@@ -416,32 +447,33 @@ const Landing: React.FC = () => {
             </div>
 
             <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link
-              to="/org/login"
-              state={{ next: '/org' }}
-              className="inline-flex h-11 sm:h-12 items-center justify-center rounded-xl px-5
+              <Link
+                to="/org/login"
+                state={{ next: '/org' }}
+                className="inline-flex h-11 sm:h-12 items-center justify-center rounded-xl px-5
                         bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition
                         w-full sm:w-auto"
-              aria-label="Open the Institution E-Learning portal"
-            >
-              Explore the Institutions portal
-            </Link>
-            <a
-              href="#ai-faq"
-              className="inline-flex h-11 sm:h-12 items-center justify-center rounded-xl px-5
+                aria-label="Open the Institution E-Learning portal"
+              >
+                Explore the Institutions portal
+              </Link>
+              <a
+                href="#ai-faq"
+                className="inline-flex h-11 sm:h-12 items-center justify-center rounded-xl px-5
                         ring-1 ring-slate-300 dark:ring-slate-700 text-slate-800 dark:text-slate-100
                         hover:bg-slate-50 dark:hover:bg-slate-800/40 transition w-full sm:w-auto"
-            >
-              See FAQs
-            </a>
-          </div>
-
-
+              >
+                See FAQs
+              </a>
+            </div>
           </div>
         </section>
 
         {/* CTA band */}
-        <section aria-label="Call to action" className="flex justify-center py-10 md:py-14 px-4 md:px-12 lg:px-24 xl:px-40">
+        <section
+          aria-label="Call to action"
+          className="flex justify-center py-10 md:py-14 px-4 md:px-12 lg:px-24 xl:px-40"
+        >
           <motion.div
             className="relative w-full max-w-[1100px] overflow-hidden rounded-2xl
                        border border-slate-200 dark:border-slate-700
@@ -477,7 +509,11 @@ const Landing: React.FC = () => {
         </section>
 
         {/* Reviews */}
-        <section id="reviews" aria-label="What learners say" className="flex justify-center py-12 md:py-16 px-4 md:px-12 lg:px-24 xl:px-40">
+        <section
+          id="reviews"
+          aria-label="What learners say"
+          className="flex justify-center py-12 md:py-16 px-4 md:px-12 lg:px-24 xl:px-40"
+        >
           <motion.div
             className="relative w-full max-w-[1100px]"
             initial="hidden"
@@ -507,7 +543,11 @@ const Landing: React.FC = () => {
         </section>
 
         {/* AI FAQ */}
-        <section id="ai-faq" aria-label="AI Learning FAQs" className="flex justify-center py-10 md:py-14 px-4 md:px-12 lg:px-24 xl:px-40">
+        <section
+          id="ai-faq"
+          aria-label="AI Learning FAQs"
+          className="flex justify-center py-10 md:py-14 px-4 md:px-12 lg:px-24 xl:px-40"
+        >
           <div className="w-full max-w-[1100px]">
             <h3 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
               AI Learning FAQs
@@ -516,25 +556,29 @@ const Landing: React.FC = () => {
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:p-5">
                 <dt className="font-semibold">What is the AI Robot Teacher?</dt>
                 <dd className="mt-1 text-slate-600 dark:text-slate-300 text-sm">
-                  It’s an AI assistant that guides lessons, quizzes you, and gives instant feedback alongside your human tutor.
+                  It’s an AI assistant that guides lessons, quizzes you, and gives instant feedback
+                  alongside your human tutor.
                 </dd>
               </div>
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:p-5">
                 <dt className="font-semibold">Is AI learning safe and accurate?</dt>
                 <dd className="mt-1 text-slate-600 dark:text-slate-300 text-sm">
-                  Yes. We combine vetted human tutors with AI. Tutors review AI suggestions and your plan for quality.
+                  Yes. We combine vetted human tutors with AI. Tutors review AI suggestions and your
+                  plan for quality.
                 </dd>
               </div>
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:p-5">
                 <dt className="font-semibold">How much does it cost?</dt>
                 <dd className="mt-1 text-slate-600 dark:text-slate-300 text-sm">
-                  Pricing varies by tutor and subject. Browse transparent rates before booking your first session.
+                  Pricing varies by tutor and subject. Browse transparent rates before booking your
+                  first session.
                 </dd>
               </div>
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:p-5">
                 <dt className="font-semibold">Can I learn exam prep with AI?</dt>
                 <dd className="mt-1 text-slate-600 dark:text-slate-300 text-sm">
-                  Absolutely. Practice with timed drills and targeted feedback while your tutor fine-tunes strategy.
+                  Absolutely. Practice with timed drills and targeted feedback while your tutor
+                  fine-tunes strategy.
                 </dd>
               </div>
             </dl>
@@ -559,8 +603,6 @@ const Hero: React.FC<{
   prefersReducedMotion: boolean;
   ctaPath: string;
 }> = ({ prefersReducedMotion, ctaPath }) => {
-
-
   return (
     <div className="relative overflow-hidden rounded-2xl">
       {/* Hero background */}
@@ -614,8 +656,8 @@ const Hero: React.FC<{
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: 'easeOut', delay: 0.25 }}
           >
-            Connect with expert tutors and our AI Robot Teacher. Master new skills or ace your coursework—your pace,
-            your schedule.
+            Connect with expert tutors and our AI Robot Teacher. Master new skills or ace your
+            coursework—your pace, your schedule.
           </motion.p>
 
           {/* CTAs: stack on phones, row on tablet+ */}
@@ -643,20 +685,18 @@ const Hero: React.FC<{
               </a>
             </motion.div>
 
-               <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }}>
-                <Link
-                  to="/org/login"
-                  state={{ next: '/org' }} // optional; matches how you hint target elsewhere
-                  aria-label="Open the Institution E-Learning portal"
-                  className="flex min-w-[120px] items-center justify-center rounded-xl h-11 sm:h-12 px-5
+            <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }}>
+              <Link
+                to="/org/login"
+                state={{ next: '/org' }} // optional; matches how you hint target elsewhere
+                aria-label="Open the Institution E-Learning portal"
+                className="flex min-w-[120px] items-center justify-center rounded-xl h-11 sm:h-12 px-5
                             bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold tracking-[0.01em]
                             sm:text-base w-full sm:w-auto"
-                >
-                  For Institutions
-                </Link>
-              </motion.div>
-
-
+              >
+                For Institutions
+              </Link>
+            </motion.div>
           </motion.div>
 
           {/* Learn with A.I. */}
@@ -743,7 +783,10 @@ const TiltCard: React.FC<TiltCardProps> = ({ title, text, image }) => {
               'linear-gradient(rgba(0,0,0,.12), rgba(0,0,0,.35)), radial-gradient(40% 60% at 30% 30%, rgba(255,255,255,0.18), transparent), radial-gradient(60% 40% at 80% 80%, rgba(255,255,255,0.12), transparent)',
           }}
         />
-        <div className="absolute inset-x-0 bottom-0 p-3 md:p-4 text-white" style={{ transform: 'translateZ(45px)' }}>
+        <div
+          className="absolute inset-x-0 bottom-0 p-3 md:p-4 text-white"
+          style={{ transform: 'translateZ(45px)' }}
+        >
           <p className="text-base font-semibold leading-tight">{title}</p>
           <p className="text-sm text-white/85">{text}</p>
         </div>
@@ -775,9 +818,9 @@ type Testimonial = {
   name: string;
   role: string;
   quote: string;
-  rating: number;   // 0..5
+  rating: number; // 0..5
   avatar: string;
-  result?: string;  // optional badge
+  result?: string; // optional badge
 };
 
 const TESTIMONIALS: Testimonial[] = [
@@ -902,7 +945,7 @@ const StarRating: React.FC<{ value: number }> = ({ value }) => {
       <span key={i} className="inline-block">
         {full && (
           <svg aria-hidden viewBox="0 0 20 20" className="h-4 w-4 fill-yellow-500">
-            <path d="M10 15.27L15.18 18l-1.64-5.03L18 9.24l-5.19-.04L10 4 7.19 9.2 2 9.24l4.46 3.73L4.82 18 10 15.27z"/>
+            <path d="M10 15.27L15.18 18l-1.64-5.03L18 9.24l-5.19-.04L10 4 7.19 9.2 2 9.24l4.46 3.73L4.82 18 10 15.27z" />
           </svg>
         )}
         {half && (
@@ -913,13 +956,23 @@ const StarRating: React.FC<{ value: number }> = ({ value }) => {
                 <stop offset="50%" stopOpacity="0" />
               </linearGradient>
             </defs>
-            <path d="M10 15.27L15.18 18l-1.64-5.03L18 9.24l-5.19-.04L10 4 7.19 9.2 2 9.24l4.46 3.73L4.82 18 10 15.27z" fill="url(#half)" className="fill-yellow-500"/>
-            <path d="M10 15.27L15.18 18l-1.64-5.03L18 9.24l-5.19-.04L10 4 7.19 9.2 2 9.24l4.46 3.73L4.82 18 10 15.27z" className="fill-yellow-500/20" />
+            <path
+              d="M10 15.27L15.18 18l-1.64-5.03L18 9.24l-5.19-.04L10 4 7.19 9.2 2 9.24l4.46 3.73L4.82 18 10 15.27z"
+              fill="url(#half)"
+              className="fill-yellow-500"
+            />
+            <path
+              d="M10 15.27L15.18 18l-1.64-5.03L18 9.24l-5.19-.04L10 4 7.19 9.2 2 9.24l4.46 3.73L4.82 18 10 15.27z"
+              className="fill-yellow-500/20"
+            />
           </svg>
         )}
         {!full && !half && (
           <svg aria-hidden viewBox="0 0 20 20" className="h-4 w-4">
-            <path d="M10 15.27L15.18 18l-1.64-5.03L18 9.24l-5.19-.04L10 4 7.19 9.2 2 9.24l4.46 3.73L4.82 18 10 15.27z" className="fill-yellow-500/20"/>
+            <path
+              d="M10 15.27L15.18 18l-1.64-5.03L18 9.24l-5.19-.04L10 4 7.19 9.2 2 9.24l4.46 3.73L4.82 18 10 15.27z"
+              className="fill-yellow-500/20"
+            />
           </svg>
         )}
       </span>

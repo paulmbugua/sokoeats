@@ -267,15 +267,14 @@ const LoginPage: React.FC = () => {
   // ─────────────────────────────────────────────────────────
   const isStudent = role === 'student';
   const trimmedName = (name || '').trim();
-  
 
   const isStudentValid =
-  isStudent &&
-  trimmedName.length >= 2 &&
-  trimmedName.length <= 80 &&
-  Array.isArray(languages) &&
-  (languages[0] || '').trim().length > 0 &&
-  country !== '';
+    isStudent &&
+    trimmedName.length >= 2 &&
+    trimmedName.length <= 80 &&
+    Array.isArray(languages) &&
+    (languages[0] || '').trim().length > 0 &&
+    country !== '';
   const canContinue = role === 'tutor' ? true : isStudentValid;
   const ctaText = role === 'tutor' ? 'Create account' : 'Create profile';
 
@@ -348,8 +347,7 @@ const LoginPage: React.FC = () => {
     'inline-flex items-center justify-center rounded-xl h-11 px-5 bg-primary text-white font-semibold shadow-sm hover:shadow transition active:translate-y-[1px]';
 
   const emailFormTitle = useMemo(
-    () =>
-      authMode === 'Login' ? 'Login to DayBreak' : 'Create your DayBreak account',
+    () => (authMode === 'Login' ? 'Login to DayBreak' : 'Create your DayBreak account'),
     [authMode]
   );
 
@@ -378,7 +376,12 @@ const LoginPage: React.FC = () => {
             <div className="w-full rounded-2xl p-8 lg:p-10 bg-white/70 ring-1 ring-gray-200 shadow-sm backdrop-blur-sm dark:bg-[#0f1821]/70 dark:ring-darkCard">
               <div className="flex items-center gap-3">
                 <span className="h-10 w-10 text-primary dark:text-darkTextPrimary">
-                  <svg viewBox="0 0 48 48" fill="currentColor" aria-hidden="true" className="h-full w-full">
+                  <svg
+                    viewBox="0 0 48 48"
+                    fill="currentColor"
+                    aria-hidden="true"
+                    className="h-full w-full"
+                  >
                     <path d="M36.7273 44C33.9891 44 31.6043 39.8386 30.3636 33.69C29.123 39.8386 26.7382 44 24 44C21.2618 44 18.877 39.8386 17.6364 33.69C16.3957 39.8386 14.0109 44 11.2727 44C7.25611 44 4 35.0457 4 24C4 12.9543 7.25611 4 11.2727 4C14.0109 4 16.3957 8.16144 17.6364 14.31C18.877 8.16144 21.2618 4 24 4C26.7382 4 29.123 8.16144 30.3636 14.31C31.6043 8.16144 33.9891 4 36.7273 4C40.7439 4 44 12.9543 44 24C44 35.0457 40.7439 44 36.7273 44Z" />
                   </svg>
                 </span>
@@ -386,8 +389,8 @@ const LoginPage: React.FC = () => {
               </div>
 
               <p className="mt-4 max-w-prose text-mutedGray dark:text-darkTextSecondary">
-                Sign in to continue learning with top-rated tutors. Personalized sessions, flexible schedules,
-                and real results—right at your fingertips.
+                Sign in to continue learning with top-rated tutors. Personalized sessions, flexible
+                schedules, and real results—right at your fingertips.
               </p>
 
               <ul className="mt-6 space-y-4">
@@ -397,7 +400,9 @@ const LoginPage: React.FC = () => {
                   'Secure payments and transparent pricing',
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-3">
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-primary font-bold">✓</span>
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-primary font-bold">
+                      ✓
+                    </span>
                     <span className="text-sm">{item}</span>
                   </li>
                 ))}
@@ -461,12 +466,16 @@ const LoginPage: React.FC = () => {
                       >
                         Back
                       </button>
-                      <button type="submit" className={`${primaryBtn} flex-1`}>Reset Password</button>
+                      <button type="submit" className={`${primaryBtn} flex-1`}>
+                        Reset Password
+                      </button>
                     </div>
                   </form>
                 ) : (
                   <form onSubmit={handleSendOtp} className="space-y-5">
-                    <h2 className="text-xl font-display font-semibold text-center">Reset Password</h2>
+                    <h2 className="text-xl font-display font-semibold text-center">
+                      Reset Password
+                    </h2>
                     <input
                       type="email"
                       value={email}
@@ -486,13 +495,17 @@ const LoginPage: React.FC = () => {
                       >
                         Back
                       </button>
-                      <button type="submit" className={`${primaryBtn} flex-1`}>Send OTP</button>
+                      <button type="submit" className={`${primaryBtn} flex-1`}>
+                        Send OTP
+                      </button>
                     </div>
                   </form>
                 )
               ) : (
                 <form onSubmit={onSubmit} className="space-y-5">
-                  <h2 className="text-xl font-display font-semibold text-center">{emailFormTitle}</h2>
+                  <h2 className="text-xl font-display font-semibold text-center">
+                    {emailFormTitle}
+                  </h2>
 
                   {authMode === 'Sign Up' && (
                     <>
@@ -528,13 +541,15 @@ const LoginPage: React.FC = () => {
 
                       {role === 'student' && (
                         <>
-                            <select
+                          <select
                             value={languages[0] || ''}
                             onChange={handleLanguageChange}
                             className="input"
                             required
                           >
-                            <option value="" disabled>Select your language</option>
+                            <option value="" disabled>
+                              Select your language
+                            </option>
                             <option value="English">English</option>
                             <option value="Swahili">Swahili</option>
                             <option value="French">French</option>
@@ -637,8 +652,14 @@ const LoginPage: React.FC = () => {
               {/* Subtle bottom help */}
               <p className="mt-6 text-center text-xs text-mutedGray dark:text-darkTextSecondary">
                 By continuing, you agree to our{' '}
-                <Link to="/terms" className="underline hover:text-primary">Terms</Link> and{' '}
-                <Link to="/privacy-policy" className="underline hover:text-primary">Privacy Policy</Link>.
+                <Link to="/terms" className="underline hover:text-primary">
+                  Terms
+                </Link>{' '}
+                and{' '}
+                <Link to="/privacy-policy" className="underline hover:text-primary">
+                  Privacy Policy
+                </Link>
+                .
               </p>
             </div>
           </section>
@@ -719,7 +740,9 @@ const LoginPage: React.FC = () => {
                     className="input"
                     required
                   >
-                    <option value="" disabled>Select your language</option>
+                    <option value="" disabled>
+                      Select your language
+                    </option>
                     <option value="English">English</option>
                     <option value="Swahili">Swahili</option>
                     <option value="French">French</option>

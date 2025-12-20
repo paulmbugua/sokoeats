@@ -10,9 +10,9 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 
 type Props = {
-  aiRouteName?: string;       // default: 'RobotTutor'
-  homeRouteName?: string;     // default: 'Home'
-  profileRouteName?: string;  // default: 'ProfileSelf'
+  aiRouteName?: string; // default: 'RobotTutor'
+  homeRouteName?: string; // default: 'Home'
+  profileRouteName?: string; // default: 'ProfileSelf'
 };
 
 const ICON_SIZE = 20;
@@ -97,10 +97,8 @@ const FooterNav: FC<Props> = ({
   const isOrgMember = !!orgToken;
 
   const normalizedRole = (role || '').toString().toLowerCase();
-  const isLearnerRole =
-    normalizedRole === 'learner' || normalizedRole === 'student';
-  const isInstructorRole =
-    normalizedRole === 'instructor' || normalizedRole === 'teacher';
+  const isLearnerRole = normalizedRole === 'learner' || normalizedRole === 'student';
+  const isInstructorRole = normalizedRole === 'instructor' || normalizedRole === 'teacher';
 
   // We still route to OrgProfile for all org roles; only label changes
   const effectiveProfileRoute = isOrgMember ? 'OrgProfile' : profileRouteName;
@@ -145,9 +143,7 @@ const FooterNav: FC<Props> = ({
       >
         <FontAwesome name={iconName} size={ICON_SIZE} color={iconColor} />
       </TouchableOpacity>
-      <Text style={tw`mt-1 text-[11px] text-gray-700 dark:text-white/90`}>
-        {label}
-      </Text>
+      <Text style={tw`mt-1 text-[11px] text-gray-700 dark:text-white/90`}>{label}</Text>
       {active && <Dot />}
     </View>
   );

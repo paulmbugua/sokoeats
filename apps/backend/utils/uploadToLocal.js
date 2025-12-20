@@ -26,12 +26,12 @@ const uploadToLocal = async (input, fallbackName) => {
   // Normalize to an array of { buffer, originalname }
   const files = Array.isArray(input)
     ? input
-    : [{
-        buffer: Buffer.isBuffer(input)
-          ? input
-          : input.buffer,
-        originalname: input.originalname || fallbackName,
-      }];
+    : [
+        {
+          buffer: Buffer.isBuffer(input) ? input : input.buffer,
+          originalname: input.originalname || fallbackName,
+        },
+      ];
 
   const uploadPromises = files.map((file) => {
     return new Promise((resolve, reject) => {

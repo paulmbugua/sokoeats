@@ -30,11 +30,9 @@ export async function saveOrgExamConfig(
   orgId: string,
   config: OrgExamConfig
 ): Promise<OrgExamConfig> {
-  const { data } = await axios.post(
-    `${backendUrl}/api/orgs/${orgId}/exams/config`,
-    config,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+  const { data } = await axios.post(`${backendUrl}/api/orgs/${orgId}/exams/config`, config, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
   return {
     terms: data.terms ?? [],
@@ -42,7 +40,6 @@ export async function saveOrgExamConfig(
     gradingBands: data.gradingBands ?? [],
   };
 }
-
 
 export async function getOrgExamSheet(
   backendUrl: string,
@@ -54,13 +51,10 @@ export async function getOrgExamSheet(
   const params: any = { sessionId };
   if (classLabel) params.classLabel = classLabel;
 
-  const { data } = await axios.get(
-    `${backendUrl}/api/orgs/${orgId}/exams/sheet`,
-    {
-      params,
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
+  const { data } = await axios.get(`${backendUrl}/api/orgs/${orgId}/exams/sheet`, {
+    params,
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return data.rows ?? [];
 }
 
@@ -74,11 +68,9 @@ export async function saveOrgExamSheet(
     rows: OrgExamResultRow[];
   }
 ): Promise<void> {
-  await axios.post(
-    `${backendUrl}/api/orgs/${orgId}/exams/sheet`,
-    payload,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+  await axios.post(`${backendUrl}/api/orgs/${orgId}/exams/sheet`, payload, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 export async function getOrgExamStudentCard(
@@ -120,13 +112,10 @@ export async function getOrgExamAnalytics(
   orgId: string,
   sessionId: string
 ): Promise<OrgExamAnalyticsRow[]> {
-  const { data } = await axios.get(
-    `${backendUrl}/api/orgs/${orgId}/exams/analytics`,
-    {
-      params: { sessionId },
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
+  const { data } = await axios.get(`${backendUrl}/api/orgs/${orgId}/exams/analytics`, {
+    params: { sessionId },
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return data.data ?? [];
 }
 
@@ -151,7 +140,6 @@ export async function getOrgExamStudentCardPdf(
   return data as Blob;
 }
 
-
 export async function aiTransformOrgExamConfig(
   backendUrl: string,
   token: string,
@@ -161,13 +149,9 @@ export async function aiTransformOrgExamConfig(
     instructions: string;
   }
 ): Promise<OrgExamConfig> {
-  const { data } = await axios.post(
-    `${backendUrl}/api/orgs/${orgId}/exams/config/ai`,
-    payload,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
+  const { data } = await axios.post(`${backendUrl}/api/orgs/${orgId}/exams/config/ai`, payload, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
   return (data && data.config) || (payload.config as OrgExamConfig);
 }

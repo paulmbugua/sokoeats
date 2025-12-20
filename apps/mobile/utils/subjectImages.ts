@@ -7,33 +7,54 @@ import type { Course } from '@mytutorapp/shared/types';
  * ------------------------------------------------------- */
 const SUBJECT_IMAGE_MAP_URL: Record<string, string> = {
   // Core academics
-  mathematics:       'https://images.pexels.com/photos/6238050/pexels-photo-6238050.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  science:           'https://images.pexels.com/photos/8325716/pexels-photo-8325716.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  english:           'https://images.pexels.com/photos/256541/pexels-photo-256541.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  history:           'https://images.pexels.com/photos/27352428/pexels-photo-27352428.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  'computer science':'https://images.pexels.com/photos/3861976/pexels-photo-3861976.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  'foreign languages':'https://images.pexels.com/photos/9334542/pexels-photo-9334542.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  arts:              'https://images.pexels.com/photos/7302100/pexels-photo-7302100.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  'social studies':  'https://images.pexels.com/photos/8617974/pexels-photo-8617974.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  business:          'https://images.pexels.com/photos/8145328/pexels-photo-8145328.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  engineering:       'https://images.pexels.com/photos/6285153/pexels-photo-6285153.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  law:               'https://images.pexels.com/photos/5669619/pexels-photo-5669619.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  medicine:          'https://images.pexels.com/photos/7723510/pexels-photo-7723510.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  music:             'https://images.pexels.com/photos/17249492/pexels-photo-17249492/free-photo-of-close-up-of-a-music-sheet-and-a-violin.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  philosophy:        'https://images.pexels.com/photos/26887007/pexels-photo-26887007.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  psychology:        'https://images.pexels.com/photos/8378740/pexels-photo-8378740.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  sociology:         'https://images.pexels.com/photos/5710984/pexels-photo-5710984.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  mathematics:
+    'https://images.pexels.com/photos/6238050/pexels-photo-6238050.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  science:
+    'https://images.pexels.com/photos/8325716/pexels-photo-8325716.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  english:
+    'https://images.pexels.com/photos/256541/pexels-photo-256541.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  history:
+    'https://images.pexels.com/photos/27352428/pexels-photo-27352428.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  'computer science':
+    'https://images.pexels.com/photos/3861976/pexels-photo-3861976.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  'foreign languages':
+    'https://images.pexels.com/photos/9334542/pexels-photo-9334542.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  arts: 'https://images.pexels.com/photos/7302100/pexels-photo-7302100.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  'social studies':
+    'https://images.pexels.com/photos/8617974/pexels-photo-8617974.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  business:
+    'https://images.pexels.com/photos/8145328/pexels-photo-8145328.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  engineering:
+    'https://images.pexels.com/photos/6285153/pexels-photo-6285153.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  law: 'https://images.pexels.com/photos/5669619/pexels-photo-5669619.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  medicine:
+    'https://images.pexels.com/photos/7723510/pexels-photo-7723510.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  music:
+    'https://images.pexels.com/photos/17249492/pexels-photo-17249492/free-photo-of-close-up-of-a-music-sheet-and-a-violin.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  philosophy:
+    'https://images.pexels.com/photos/26887007/pexels-photo-26887007.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  psychology:
+    'https://images.pexels.com/photos/8378740/pexels-photo-8378740.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  sociology:
+    'https://images.pexels.com/photos/5710984/pexels-photo-5710984.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
 
   // Quant/Science specifics
-  economics:         'https://images.pexels.com/photos/5980871/pexels-photo-5980871.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  biology:           'https://images.pexels.com/photos/11210346/pexels-photo-11210346.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  chemistry:         'https://images.pexels.com/photos/8326459/pexels-photo-8326459.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  physics:           'https://images.pexels.com/photos/3845162/pexels-photo-3845162.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  finance:           'https://images.pexels.com/photos/28165814/pexels-photo-28165814.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  economics:
+    'https://images.pexels.com/photos/5980871/pexels-photo-5980871.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  biology:
+    'https://images.pexels.com/photos/11210346/pexels-photo-11210346.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  chemistry:
+    'https://images.pexels.com/photos/8326459/pexels-photo-8326459.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  physics:
+    'https://images.pexels.com/photos/3845162/pexels-photo-3845162.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  finance:
+    'https://images.pexels.com/photos/28165814/pexels-photo-28165814.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
 
   // Dedicated canonicals
-  statistics:        'https://images.pexels.com/photos/7054368/pexels-photo-7054368.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
-  'deep learning':   'https://images.pexels.com/photos/17485705/pexels-photo-17485705.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  statistics:
+    'https://images.pexels.com/photos/7054368/pexels-photo-7054368.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
+  'deep learning':
+    'https://images.pexels.com/photos/17485705/pexels-photo-17485705.jpeg?auto=compress&cs=tinysrgb&w=1400&fit=crop',
 };
 
 export const FALLBACK_COURSE_IMAGE_URL =
@@ -44,41 +65,124 @@ export const FALLBACK_COURSE_IMAGE_URL =
  * ------------------------------------------------------- */
 export const SUBJECT_ALIASES: Record<string, string[]> = {
   mathematics: [
-    'math','algebra','linear algebra','fractions','decimals',
-    'calculus','discrete math','combinatorics','graphs','equations','functions','pca',
-    'quant','optimization'
+    'math',
+    'algebra',
+    'linear algebra',
+    'fractions',
+    'decimals',
+    'calculus',
+    'discrete math',
+    'combinatorics',
+    'graphs',
+    'equations',
+    'functions',
+    'pca',
+    'quant',
+    'optimization',
   ],
   statistics: [
-    'statistics','statistical','probability','hypothesis test','hypothesis testing',
-    'p-values','p value','confidence interval','ab testing','a/b testing','a b testing',
-    'time series','forecasting','econometrics','regression','anova',
-    'data analysis','pandas','dataframe','data frames',
-    'data visualization','visualization','matplotlib',
-    'charts','plots','dashboard','dashboards',
-    'business analytics','kpis','kpi'
+    'statistics',
+    'statistical',
+    'probability',
+    'hypothesis test',
+    'hypothesis testing',
+    'p-values',
+    'p value',
+    'confidence interval',
+    'ab testing',
+    'a/b testing',
+    'a b testing',
+    'time series',
+    'forecasting',
+    'econometrics',
+    'regression',
+    'anova',
+    'data analysis',
+    'pandas',
+    'dataframe',
+    'data frames',
+    'data visualization',
+    'visualization',
+    'matplotlib',
+    'charts',
+    'plots',
+    'dashboard',
+    'dashboards',
+    'business analytics',
+    'kpis',
+    'kpi',
   ],
   'deep learning': [
-    'deep learning','neural network','neural networks','cnn','rnn','lstm',
-    'transformer','attention','pytorch','keras','autoencoder','gpt'
+    'deep learning',
+    'neural network',
+    'neural networks',
+    'cnn',
+    'rnn',
+    'lstm',
+    'transformer',
+    'attention',
+    'pytorch',
+    'keras',
+    'autoencoder',
+    'gpt',
   ],
   'computer science': [
-    'data structures','algorithms','time complexity','python','javascript','typescript',
-    'react','node','graphql','sql','docker','kubernetes','cloud fundamentals','git',
-    'ml','machine learning',
-    'computer vision','nlp','rag','prompt engineering'
+    'data structures',
+    'algorithms',
+    'time complexity',
+    'python',
+    'javascript',
+    'typescript',
+    'react',
+    'node',
+    'graphql',
+    'sql',
+    'docker',
+    'kubernetes',
+    'cloud fundamentals',
+    'git',
+    'ml',
+    'machine learning',
+    'computer vision',
+    'nlp',
+    'rag',
+    'prompt engineering',
   ],
-  physics: ['mechanics','motion','forces','thermodynamics','optics','electricity','magnetism'],
-  chemistry: ['stoichiometry','periodic table','reactions','equilibrium'],
-  biology: ['cells','genetics','evolution'],
+  physics: [
+    'mechanics',
+    'motion',
+    'forces',
+    'thermodynamics',
+    'optics',
+    'electricity',
+    'magnetism',
+  ],
+  chemistry: ['stoichiometry', 'periodic table', 'reactions', 'equilibrium'],
+  biology: ['cells', 'genetics', 'evolution'],
   english: [
-    'literature','writing','composition','reading','grammar',
-    'public speaking','presentation','presentations','writing skills','communication'
+    'literature',
+    'writing',
+    'composition',
+    'reading',
+    'grammar',
+    'public speaking',
+    'presentation',
+    'presentations',
+    'writing skills',
+    'communication',
   ],
-  arts: ['art','drawing','painting','design','ui/ux','ux','ui','wireframes','prototyping'],
-  'foreign languages': ['german a1','kiswahili','vocabulary','french','spanish'],
-  business: ['marketing','seo','social media','product management','project management','entrepreneurship'],
-  finance: ['accounting','personal finance','corporate finance'],
-  economics: ['microeconomics','macroeconomics'],
+  arts: ['art', 'drawing', 'painting', 'design', 'ui/ux', 'ux', 'ui', 'wireframes', 'prototyping'],
+  'foreign languages': ['german a1', 'kiswahili', 'vocabulary', 'french', 'spanish'],
+  business: [
+    'marketing',
+    'seo',
+    'social media',
+    'product management',
+    'project management',
+    'entrepreneurship',
+  ],
+  finance: ['accounting', 'personal finance', 'corporate finance'],
+  economics: ['microeconomics', 'macroeconomics'],
 };
 
 /** --------------------------------------------------------
@@ -166,10 +270,7 @@ const asSource = (uri: string): ImageSourcePropType => ({ uri });
 /** --------------------------------------------------------
  * Public Native API
  * ------------------------------------------------------- */
-export function getImageSourceForCourse(
-  c: CourseLoose,
-  backendUrl?: string
-): ImageSourcePropType {
+export function getImageSourceForCourse(c: CourseLoose, backendUrl?: string): ImageSourcePropType {
   return asSource(pickImageUriForCourse(c, backendUrl));
 }
 

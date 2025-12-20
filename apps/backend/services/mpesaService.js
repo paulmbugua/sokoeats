@@ -9,7 +9,6 @@ import {
   getAccessToken,
   mpesaTimestamp,
   mpesaPassword,
-
   MPESA_BASE,
   resultURL,
   timestamp,
@@ -24,7 +23,6 @@ const { Pool } = pkg;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
-
 
 export async function stkPushC2B({ phone, amount, callbackUrl }) {
   if (!phone) throw new Error('phone is required');
@@ -61,10 +59,8 @@ export async function stkPushC2B({ phone, amount, callbackUrl }) {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
-  return data; 
+  return data;
 }
-
-   
 
 /**
  * B2C Payout (for tutor payouts)
@@ -85,16 +81,16 @@ export async function initiateB2CPayment(phone, amount, userId) {
 
     // 3️⃣ Build the B2C payload using your .env URLs
     const payload = {
-      InitiatorName:      initiatorName,
+      InitiatorName: initiatorName,
       SecurityCredential: securityCredential,
-      CommandID:          'SalaryPayment',
-      Amount:             amount,
-      PartyA:             b2cShortcode,
-      PartyB:             normalizedPhone,
-      Remarks:            'Tutor Payment',
-      QueueTimeOutURL:    timeoutURL,   // e.g. ".../api/mpesa/timeout"
-      ResultURL:          resultURL,    // e.g. ".../api/mpesa/b2c-result"
-      Occasion:           'Tutor Payout',
+      CommandID: 'SalaryPayment',
+      Amount: amount,
+      PartyA: b2cShortcode,
+      PartyB: normalizedPhone,
+      Remarks: 'Tutor Payment',
+      QueueTimeOutURL: timeoutURL, // e.g. ".../api/mpesa/timeout"
+      ResultURL: resultURL, // e.g. ".../api/mpesa/b2c-result"
+      Occasion: 'Tutor Payout',
     };
     console.log('📨 B2C payload:', payload);
 
@@ -111,7 +107,7 @@ export async function initiateB2CPayment(phone, amount, userId) {
     const safError = error.response?.data || error.message;
     console.error('❌ B2C Payment initiation error:', safError);
     throw new Error(
-      typeof safError === 'string' ? safError : JSON.stringify(safError)
+      typeof safError === 'string' ? safError : JSON.stringify(safError),
     );
   }
 }

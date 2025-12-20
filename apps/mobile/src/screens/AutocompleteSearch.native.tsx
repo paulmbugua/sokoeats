@@ -28,25 +28,27 @@ export const AutocompleteSearchNative: React.FC<Props> = ({
 }) => {
   // 1) vocab
   const allOptions = useMemo<string[]>(() => {
-    const category        = ['Math','Science','Programming','Art','Wellness','Languages'];
-    const teachingStyle   = ['One-on-One','Group','Workshop','Lecture'];
-    const experienceLevel = ['Beginner','Intermediate','Advanced','Expert'];
-    const expertise       = ['Exam Prep','Skill Building','Homework','Career Guidance'];
-    const ageGroup        = ['Pre-Primary','Lower Primary','Upper Primary','University','Adults'];
-    const pricing         = ['20–50','51–100','101–150','151–200'];
-    const videoCategory   = category;
-    const videoAgeGroup   = ageGroup;
+    const category = ['Math', 'Science', 'Programming', 'Art', 'Wellness', 'Languages'];
+    const teachingStyle = ['One-on-One', 'Group', 'Workshop', 'Lecture'];
+    const experienceLevel = ['Beginner', 'Intermediate', 'Advanced', 'Expert'];
+    const expertise = ['Exam Prep', 'Skill Building', 'Homework', 'Career Guidance'];
+    const ageGroup = ['Pre-Primary', 'Lower Primary', 'Upper Primary', 'University', 'Adults'];
+    const pricing = ['20–50', '51–100', '101–150', '151–200'];
+    const videoCategory = category;
+    const videoAgeGroup = ageGroup;
 
-    return Array.from(new Set<string>([
-      ...category,
-      ...teachingStyle,
-      ...experienceLevel,
-      ...expertise,
-      ...ageGroup,
-      ...pricing,
-      ...videoCategory,
-      ...videoAgeGroup,
-    ]));
+    return Array.from(
+      new Set<string>([
+        ...category,
+        ...teachingStyle,
+        ...experienceLevel,
+        ...expertise,
+        ...ageGroup,
+        ...pricing,
+        ...videoCategory,
+        ...videoAgeGroup,
+      ])
+    );
   }, []);
 
   // 2) state
@@ -63,7 +65,7 @@ export const AutocompleteSearchNative: React.FC<Props> = ({
       setActiveIndex(-1);
       return;
     }
-    const next = allOptions.filter(o => o.toLowerCase().includes(q)).slice(0, 10);
+    const next = allOptions.filter((o) => o.toLowerCase().includes(q)).slice(0, 10);
     setSuggestions(next);
     setActiveIndex(-1);
   }, [term, allOptions]);
@@ -90,10 +92,10 @@ export const AutocompleteSearchNative: React.FC<Props> = ({
     // Arrow keys are not consistently delivered on mobile; attempt where supported (Android)
     if (Platform.OS === 'android') {
       if (key === 'ArrowDown') {
-        setActiveIndex(i => Math.min(i + 1, (suggestions.length || 1) - 1));
+        setActiveIndex((i) => Math.min(i + 1, (suggestions.length || 1) - 1));
       }
       if (key === 'ArrowUp') {
-        setActiveIndex(i => Math.max(i - 1, 0));
+        setActiveIndex((i) => Math.max(i - 1, 0));
       }
     }
   };
@@ -138,10 +140,7 @@ export const AutocompleteSearchNative: React.FC<Props> = ({
               <Pressable
                 onPress={() => select(item)}
                 android_ripple={{ color: 'rgba(255,255,255,0.1)' }}
-                style={[
-                  tw`px-4 py-2`,
-                  index === activeIndex ? tw`bg-softPink` : tw``,
-                ]}
+                style={[tw`px-4 py-2`, index === activeIndex ? tw`bg-softPink` : tw``]}
               >
                 <Text style={tw`text-white`}>{item}</Text>
               </Pressable>

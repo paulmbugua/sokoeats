@@ -2,11 +2,27 @@
 import pool from '../config/db.js';
 import { cacheDeleteByPattern } from '../utils/redisCache.js';
 
-const SIZE_ALIASES = { micro:'mini', short:'standard', standard:'standard', deep_dive:'deep_dive', mini:'mini', extended:'extended', bootcamp:'bootcamp' };
-const SIZE_VALID = new Set(['mini','standard','extended','deep_dive','bootcamp']);
+const SIZE_ALIASES = {
+  micro: 'mini',
+  short: 'standard',
+  standard: 'standard',
+  deep_dive: 'deep_dive',
+  mini: 'mini',
+  extended: 'extended',
+  bootcamp: 'bootcamp',
+};
+const SIZE_VALID = new Set([
+  'mini',
+  'standard',
+  'extended',
+  'deep_dive',
+  'bootcamp',
+]);
 
 function cleanTitle(raw) {
-  return String(raw || '').replace(/\s+/g, ' ').trim();
+  return String(raw || '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function normalizeSize(input, minutes) {
@@ -28,7 +44,10 @@ function normalizeSize(input, minutes) {
  */
 export async function ensureCourse({ courseId, title, courseSize, minutes }) {
   if (courseId) {
-    const q = await pool.query(`SELECT id, title, description FROM courses WHERE id=$1`, [courseId]);
+    const q = await pool.query(
+      `SELECT id, title, description FROM courses WHERE id=$1`,
+      [courseId],
+    );
     if (!q.rowCount) throw new Error('COURSE_NOT_FOUND');
     return q.rows[0];
   }
@@ -43,7 +62,7 @@ export async function ensureCourse({ courseId, title, courseSize, minutes }) {
       WHERE is_ai_generated = TRUE
         AND LOWER(title) = LOWER($1)
       LIMIT 1`,
-    [t]
+    [t],
   );
   if (existing.rowCount) return existing.rows[0];
 
@@ -56,7 +75,7 @@ export async function ensureCourse({ courseId, title, courseSize, minutes }) {
     `INSERT INTO courses (id, title, description, course_size, is_ai_generated)
      VALUES (gen_random_uuid(), $1, $2, $3, TRUE)
      RETURNING id, title, description`,
-    [t, desc, size]
+    [t, desc, size],
   );
 
   await cacheDeleteByPattern('ai:topCourses:*');

@@ -3,13 +3,7 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import {
-  FaStar,
-  FaStarHalfAlt,
-  FaRegStar,
-  FaCertificate,
-  FaCheck,
-} from 'react-icons/fa';
+import { FaStar, FaStarHalfAlt, FaRegStar, FaCertificate, FaCheck } from 'react-icons/fa';
 import { useShopContext } from '@mytutorapp/shared/context';
 import useProfileCard from '@mytutorapp/shared/hooks/useProfileCard';
 import type { Profile } from '@mytutorapp/shared/types';
@@ -21,11 +15,7 @@ interface ProfileCardProps {
 
 const ProfileCard: React.FC<ProfileCardProps> = ({ profile }) => {
   const { backendUrl, token } = useShopContext();
-  const { ratingData, certification } = useProfileCard(
-    profile,
-    backendUrl,
-    token
-  );
+  const { ratingData, certification } = useProfileCard(profile, backendUrl, token);
 
   // Show badge if DB says certified or hook says VERIFIED
   const showCertBadge =
@@ -45,18 +35,16 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ profile }) => {
     profile.status === 'Online'
       ? 'bg-green-400'
       : profile.status === 'Busy'
-      ? 'bg-yellow-500'
-      : profile.status === 'New'
-      ? 'bg-blue-500'
-      : profile.status === 'Free'
-      ? 'bg-purple-500'
-      : 'bg-pink-300';
+        ? 'bg-yellow-500'
+        : profile.status === 'New'
+          ? 'bg-blue-500'
+          : profile.status === 'Free'
+            ? 'bg-purple-500'
+            : 'bg-pink-300';
 
   // Resolve first image
   const firstImage =
-    Array.isArray(profile.gallery) && profile.gallery.length
-      ? profile.gallery[0]
-      : null;
+    Array.isArray(profile.gallery) && profile.gallery.length ? profile.gallery[0] : null;
   const resolvedImage =
     typeof firstImage === 'string' && firstImage.startsWith('/')
       ? `${backendUrl}${firstImage}`
@@ -67,8 +55,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ profile }) => {
   const stars = Array.from({ length: 5 }, (_, i) => {
     const idx = i + 1;
     if (rating >= idx) return <FaStar key={i} className="text-yellow-500" />;
-    if (rating + 0.5 === idx)
-      return <FaStarHalfAlt key={i} className="text-yellow-500" />;
+    if (rating + 0.5 === idx) return <FaStarHalfAlt key={i} className="text-yellow-500" />;
     return <FaRegStar key={i} className="text-yellow-500" />;
   });
 
@@ -109,9 +96,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ profile }) => {
             </h3>
             {profile.status && (
               <div className={`px-2 py-1 rounded-full ${statusColor}`}>
-                <span className="text-[10px] sm:text-xs">
-                  {profile.status}
-                </span>
+                <span className="text-[10px] sm:text-xs">{profile.status}</span>
               </div>
             )}
           </div>

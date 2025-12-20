@@ -12,8 +12,11 @@ const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
 
 export default function CertificationSettings() {
   const { token, backendUrl, profile } = useShopContext();
-  const { uploading, certificationData, handleSubmit } =
-    useCertificationSettings(backendUrl, token, profile?.id);
+  const { uploading, certificationData, handleSubmit } = useCertificationSettings(
+    backendUrl,
+    token,
+    profile?.id
+  );
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
@@ -60,11 +63,13 @@ export default function CertificationSettings() {
     }
     try {
       const base64Files: Base64File[] = await Promise.all(
-        selectedFiles.map((file) => toBase64(file).then((b) => ({
-          name: file.name,
-          type: file.type,
-          base64: b,
-        })))
+        selectedFiles.map((file) =>
+          toBase64(file).then((b) => ({
+            name: file.name,
+            type: file.type,
+            base64: b,
+          }))
+        )
       );
       await handleSubmit(base64Files);
     } catch (err: any) {
@@ -77,12 +82,8 @@ export default function CertificationSettings() {
   if (!isTutor) {
     return (
       <div className="w-full max-w-3xl mx-auto bg-gray-900 p-6 rounded-lg shadow-md">
-        <h2 className="text-3xl font-bold text-pink-400 mb-4">
-          Tutor Certification
-        </h2>
-        <p className="text-gray-400 text-sm">
-          Certification upload is available only for tutors.
-        </p>
+        <h2 className="text-3xl font-bold text-pink-400 mb-4">Tutor Certification</h2>
+        <p className="text-gray-400 text-sm">Certification upload is available only for tutors.</p>
       </div>
     );
   }
@@ -98,13 +99,10 @@ export default function CertificationSettings() {
 
   return (
     <div className="w-full max-w-3xl mx-auto bg-gray-900 p-6 rounded-lg shadow-md">
-      <h2 className="text-3xl font-bold text-pink-400 mb-4">
-        Tutor Certification
-      </h2>
+      <h2 className="text-3xl font-bold text-pink-400 mb-4">Tutor Certification</h2>
       <p className="text-gray-400 mb-6 text-sm">
-        (Optional) Enhance your profile’s credibility by submitting your
-        qualification documents. You can upload multiple files (each max 5MB,
-        PDF/JPEG/PNG).
+        (Optional) Enhance your profile’s credibility by submitting your qualification documents.
+        You can upload multiple files (each max 5MB, PDF/JPEG/PNG).
       </p>
 
       <form onSubmit={onSubmit} className="space-y-4">
@@ -129,8 +127,7 @@ export default function CertificationSettings() {
           )}
         </div>
 
-        {!certificationData ||
-        certificationData.status === 'Pending' ? (
+        {!certificationData || certificationData.status === 'Pending' ? (
           <button
             type="submit"
             className="w-full py-2 px-4 bg-pink-500 hover:bg-pink-600 text-white font-medium rounded-md shadow transition duration-300"
@@ -140,10 +137,7 @@ export default function CertificationSettings() {
         ) : (
           <div className="mt-6 p-4 bg-green-600 rounded-md">
             <p className="text-white text-sm">
-              Certification status:{' '}
-              <span className="font-bold">
-                {certificationData.status}
-              </span>
+              Certification status: <span className="font-bold">{certificationData.status}</span>
             </p>
           </div>
         )}

@@ -40,7 +40,7 @@ const DRAFT_KEY = 'mt_create_course_draft_v1';
 
 type CreateCourseDraft = {
   step: number;
-  priceInput: string;        // tokens as string input
+  priceInput: string; // tokens as string input
   formData: CoursePayload;
   /** Whether the course is free (disables price requirement) */
   freeCourse?: boolean;
@@ -77,7 +77,7 @@ export default function CreateCoursePage() {
     description: '',
     level: 'Beginner',
     duration: '',
-    price: 0,                // tokens
+    price: 0, // tokens
     prerequisites: '',
     syllabus: [],
   });
@@ -187,7 +187,9 @@ export default function CreateCoursePage() {
     const key = `v-${index}`;
     try {
       const onProgress = (p: number) => setCappedPct(key, p);
-      const { url } = await uploadClassVaultAsset(backendUrl!, token!, file, 'video', onProgress, { folder: 'courses' } );
+      const { url } = await uploadClassVaultAsset(backendUrl!, token!, file, 'video', onProgress, {
+        folder: 'courses',
+      });
 
       setFormData((prev) => {
         const base = prev.syllabus ?? [];
@@ -209,7 +211,9 @@ export default function CreateCoursePage() {
     const key = `n-${index}`;
     try {
       const onProgress = (p: number) => setCappedPct(key, p);
-      const { url } = await uploadClassVaultAsset(backendUrl!, token!, file, 'pdf', onProgress, { folder: 'courses' });
+      const { url } = await uploadClassVaultAsset(backendUrl!, token!, file, 'pdf', onProgress, {
+        folder: 'courses',
+      });
 
       setFormData((prev) => {
         const base = prev.syllabus ?? [];
@@ -252,7 +256,9 @@ export default function CreateCoursePage() {
       const parsed = trimmed === '' ? NaN : Number(trimmed);
       // Tokens must be a non-negative integer.
       if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
-        alert('Please enter a valid non-negative whole number of tokens, or mark the course as Free.');
+        alert(
+          'Please enter a valid non-negative whole number of tokens, or mark the course as Free.'
+        );
         return;
       }
       tokensToSend = parsed;
@@ -335,10 +341,9 @@ export default function CreateCoursePage() {
     return true;
   }, [step, formData, priceInput, freeCourse]);
 
-  const tokensForDisplay =
-    freeCourse
-      ? 0
-      : priceInput.trim() !== '' && Number.isFinite(Number(priceInput))
+  const tokensForDisplay = freeCourse
+    ? 0
+    : priceInput.trim() !== '' && Number.isFinite(Number(priceInput))
       ? Number(priceInput)
       : formData.price;
 
@@ -378,8 +383,15 @@ export default function CreateCoursePage() {
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm">
               {/* book icon */}
               <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="currentColor" d="M6 4h9a3 3 0 0 1 3 3v11a2 2 0 0 0-2-2H6v-1h10V7a1 1 0 0 0-1-1H6z" />
-                <path fill="currentColor" d="M5 6h9a1 1 0 0 1 1 1v11H7a2 2 0 0 0-2 2z" opacity=".3" />
+                <path
+                  fill="currentColor"
+                  d="M6 4h9a3 3 0 0 1 3 3v11a2 2 0 0 0-2-2H6v-1h10V7a1 1 0 0 0-1-1H6z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M5 6h9a1 1 0 0 1 1 1v11H7a2 2 0 0 0-2 2z"
+                  opacity=".3"
+                />
               </svg>
             </span>
             <div>
@@ -412,8 +424,8 @@ export default function CreateCoursePage() {
                       done
                         ? 'bg-green-600 text-white'
                         : active
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300',
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300',
                     ].join(' ')}
                     title={label}
                   >
@@ -541,7 +553,8 @@ export default function CreateCoursePage() {
 
                   <div className="grid gap-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                      Price (Tokens) {freeCourse && <span className="text-xs">(disabled for Free)</span>}
+                      Price (Tokens){' '}
+                      {freeCourse && <span className="text-xs">(disabled for Free)</span>}
                     </label>
                     <input
                       name="price"
@@ -580,8 +593,7 @@ export default function CreateCoursePage() {
                 <div className="grid gap-4">
                   <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
                     <p className="text-sm text-slate-600 dark:text-slate-300">
-                      Syllabus for{' '}
-                      <strong>{parseWeeks(formData.duration ?? '')}</strong> week
+                      Syllabus for <strong>{parseWeeks(formData.duration ?? '')}</strong> week
                       {parseWeeks(formData.duration ?? '') === 1 ? '' : 's'} (auto-sized from
                       duration)
                     </p>
@@ -730,107 +742,110 @@ export default function CreateCoursePage() {
               )}
 
               {/* Step 3: Review */}
-              {step === 3 && (() => {
-                const cleanSyllabus = (formData.syllabus ?? [])
-                  .filter(
-                    (s) =>
-                      (s.topic?.trim().length ?? 0) > 0 ||
-                      (s.assignment?.trim().length ?? 0) > 0 ||
-                      (s.videoUrl?.trim().length ?? 0) > 0 ||
-                      (s.notesUrl?.trim().length ?? 0) > 0
-                  )
-                  .map((s, i) => ({ ...s, week: i + 1 }));
+              {step === 3 &&
+                (() => {
+                  const cleanSyllabus = (formData.syllabus ?? [])
+                    .filter(
+                      (s) =>
+                        (s.topic?.trim().length ?? 0) > 0 ||
+                        (s.assignment?.trim().length ?? 0) > 0 ||
+                        (s.videoUrl?.trim().length ?? 0) > 0 ||
+                        (s.notesUrl?.trim().length ?? 0) > 0
+                    )
+                    .map((s, i) => ({ ...s, week: i + 1 }));
 
-                return (
-                  <div className="grid gap-5">
-                    <div className="grid sm:grid-cols-2 gap-4">
-                      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Title</p>
-                        <p className="font-semibold break-words text-slate-900 dark:text-white">
-                          {formData.title || '—'}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Level</p>
-                        <p className="font-semibold text-slate-900 dark:text-white">
-                          {formData.level}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Duration</p>
-                        <p className="font-semibold break-words text-slate-900 dark:text-white">
-                          {formData.duration || '—'}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Price</p>
-                        {freeCourse ? (
-                          <span className="inline-flex items-center gap-2">
-                            <span className="px-2 py-1 rounded-lg text-xs font-semibold bg-emerald-600/10 text-emerald-700 dark:text-emerald-300">
-                              Free
-                            </span>
-                            <span className="text-slate-500 dark:text-slate-400">(saved as 0 Tokens)</span>
-                          </span>
-                        ) : (
-                          <p className="font-semibold text-slate-900 dark:text-white">
-                            {priceFmtTokens}
+                  return (
+                    <div className="grid gap-5">
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Title</p>
+                          <p className="font-semibold break-words text-slate-900 dark:text-white">
+                            {formData.title || '—'}
                           </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Level</p>
+                          <p className="font-semibold text-slate-900 dark:text-white">
+                            {formData.level}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Duration</p>
+                          <p className="font-semibold break-words text-slate-900 dark:text-white">
+                            {formData.duration || '—'}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Price</p>
+                          {freeCourse ? (
+                            <span className="inline-flex items-center gap-2">
+                              <span className="px-2 py-1 rounded-lg text-xs font-semibold bg-emerald-600/10 text-emerald-700 dark:text-emerald-300">
+                                Free
+                              </span>
+                              <span className="text-slate-500 dark:text-slate-400">
+                                (saved as 0 Tokens)
+                              </span>
+                            </span>
+                          ) : (
+                            <p className="font-semibold text-slate-900 dark:text-white">
+                              {priceFmtTokens}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                          Prerequisites
+                        </p>
+                        <p className="whitespace-pre-wrap break-words text-slate-900 dark:text-white">
+                          {formData.prerequisites || '—'}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                          Syllabus ({cleanSyllabus.length} week
+                          {cleanSyllabus.length === 1 ? '' : 's'})
+                        </p>
+                        {cleanSyllabus.length === 0 ? (
+                          <p className="text-slate-700 dark:text-slate-300">—</p>
+                        ) : (
+                          <ol className="space-y-3 list-decimal pl-5">
+                            {cleanSyllabus.map((w) => (
+                              <li key={w.week} className="max-w-full">
+                                <p className="font-medium break-words text-slate-900 dark:text-white">
+                                  {w.topic || 'Untitled topic'}
+                                </p>
+
+                                {w.assignment && (
+                                  <div className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                                    <span className="font-medium">Assignment:</span>{' '}
+                                    <span className="break-all">{w.assignment}</span>
+                                  </div>
+                                )}
+
+                                {w.videoUrl && (
+                                  <div className="text-sm text-slate-700 dark:text-slate-300">
+                                    <span className="font-medium">Video:</span>{' '}
+                                    <span className="break-all">{w.videoUrl}</span>
+                                  </div>
+                                )}
+
+                                {w.notesUrl && (
+                                  <div className="text-sm text-slate-700 dark:text-slate-300">
+                                    <span className="font-medium">Notes:</span>{' '}
+                                    <span className="break-all">{w.notesUrl}</span>
+                                  </div>
+                                )}
+                              </li>
+                            ))}
+                          </ol>
                         )}
                       </div>
                     </div>
-
-                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-                        Prerequisites
-                      </p>
-                      <p className="whitespace-pre-wrap break-words text-slate-900 dark:text-white">
-                        {formData.prerequisites || '—'}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] p-4">
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-                        Syllabus ({cleanSyllabus.length} week
-                        {cleanSyllabus.length === 1 ? '' : 's'})
-                      </p>
-                      {cleanSyllabus.length === 0 ? (
-                        <p className="text-slate-700 dark:text-slate-300">—</p>
-                      ) : (
-                        <ol className="space-y-3 list-decimal pl-5">
-                          {cleanSyllabus.map((w) => (
-                            <li key={w.week} className="max-w-full">
-                              <p className="font-medium break-words text-slate-900 dark:text-white">
-                                {w.topic || 'Untitled topic'}
-                              </p>
-
-                              {w.assignment && (
-                                <div className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
-                                  <span className="font-medium">Assignment:</span>{' '}
-                                  <span className="break-all">{w.assignment}</span>
-                                </div>
-                              )}
-
-                              {w.videoUrl && (
-                                <div className="text-sm text-slate-700 dark:text-slate-300">
-                                  <span className="font-medium">Video:</span>{' '}
-                                  <span className="break-all">{w.videoUrl}</span>
-                                </div>
-                              )}
-
-                              {w.notesUrl && (
-                                <div className="text-sm text-slate-700 dark:text-slate-300">
-                                  <span className="font-medium">Notes:</span>{' '}
-                                  <span className="break-all">{w.notesUrl}</span>
-                                </div>
-                              )}
-                            </li>
-                          ))}
-                        </ol>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
             </div>
 
             {/* Global upload banner */}

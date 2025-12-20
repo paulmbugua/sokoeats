@@ -64,9 +64,7 @@ type BrandingAssignProps = {
   uploadingInstructorSignature?: boolean;
 
   /** Native: parent handles media picker and upload. */
-  onPickImage: (
-    target: 'logo_url' | 'signature_url' | 'instructor_signature_url'
-  ) => Promise<void>;
+  onPickImage: (target: 'logo_url' | 'signature_url' | 'instructor_signature_url') => Promise<void>;
 
   onSaveBranding: () => void;
   onSendTestReport: () => Promise<void>;
@@ -166,9 +164,7 @@ export function BrandingAssignPane({
 
   // Instructor utilities (mailto chunking + WhatsApp share)
   const { instructorEmails, bccChunks } = useMemo(() => {
-    const emails = (instructors ?? [])
-      .map((i) => (i.email || '').trim())
-      .filter(Boolean);
+    const emails = (instructors ?? []).map((i) => (i.email || '').trim()).filter(Boolean);
 
     const mkMailto = (arr: string[], link: string) => {
       const subject = encodeURIComponent('Course invite');
@@ -247,9 +243,8 @@ export function BrandingAssignPane({
         <View style={tw`gap-3`}>
           {!canBranding && (
             <Text style={tw`text-sm text-amber-300`}>
-              Branding settings aren’t editable from this account. Please ask your
-              institution owner or admin to update logos, signatures, and contact
-              details.
+              Branding settings aren’t editable from this account. Please ask your institution owner
+              or admin to update logos, signatures, and contact details.
             </Text>
           )}
 
@@ -287,17 +282,9 @@ export function BrandingAssignPane({
                 style={tw`w-16 h-16 rounded bg-white/10 border border-white/10 items-center justify-center overflow-hidden`}
               >
                 {logoPreview ? (
-                  <Image
-                    source={{ uri: logoPreview }}
-                    style={tw`w-16 h-16`}
-                    resizeMode="contain"
-                  />
+                  <Image source={{ uri: logoPreview }} style={tw`w-16 h-16`} resizeMode="contain" />
                 ) : (
-                  <Text
-                    style={tw`text-[10px] text-white/60 px-1 text-center`}
-                  >
-                    No logo
-                  </Text>
+                  <Text style={tw`text-[10px] text-white/60 px-1 text-center`}>No logo</Text>
                 )}
               </View>
               <View style={tw`ml-3 flex-1`}>
@@ -314,17 +301,13 @@ export function BrandingAssignPane({
                   disabled={!canBranding || uploadingLogo || !token}
                   style={tw.style(
                     'px-3 py-2 rounded',
-                    !canBranding || uploadingLogo || !token
-                      ? 'bg-white/10'
-                      : 'bg-emerald-600'
+                    !canBranding || uploadingLogo || !token ? 'bg-white/10' : 'bg-emerald-600'
                   )}
                 >
                   {uploadingLogo ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={tw`text-white text-sm font-semibold`}>
-                      Upload Logo
-                    </Text>
+                    <Text style={tw`text-white text-sm font-semibold`}>Upload Logo</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -339,17 +322,9 @@ export function BrandingAssignPane({
                 style={tw`w-16 h-16 rounded bg-white/10 border border-white/10 items-center justify-center overflow-hidden`}
               >
                 {sigPreview ? (
-                  <Image
-                    source={{ uri: sigPreview }}
-                    style={tw`w-16 h-16`}
-                    resizeMode="contain"
-                  />
+                  <Image source={{ uri: sigPreview }} style={tw`w-16 h-16`} resizeMode="contain" />
                 ) : (
-                  <Text
-                    style={tw`text-[10px] text-white/60 px-1 text-center`}
-                  >
-                    No signature
-                  </Text>
+                  <Text style={tw`text-[10px] text-white/60 px-1 text-center`}>No signature</Text>
                 )}
               </View>
               <View style={tw`ml-3 flex-1`}>
@@ -366,17 +341,13 @@ export function BrandingAssignPane({
                   disabled={!canBranding || uploadingSignature || !token}
                   style={tw.style(
                     'px-3 py-2 rounded',
-                    !canBranding || uploadingSignature || !token
-                      ? 'bg-white/10'
-                      : 'bg-emerald-600'
+                    !canBranding || uploadingSignature || !token ? 'bg-white/10' : 'bg-emerald-600'
                   )}
                 >
                   {uploadingSignature ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={tw`text-white text-sm font-semibold`}>
-                      Upload Signature
-                    </Text>
+                    <Text style={tw`text-white text-sm font-semibold`}>Upload Signature</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -397,11 +368,7 @@ export function BrandingAssignPane({
                     resizeMode="contain"
                   />
                 ) : (
-                  <Text
-                    style={tw`text-[10px] text-white/60 px-1 text-center`}
-                  >
-                    No signature
-                  </Text>
+                  <Text style={tw`text-[10px] text-white/60 px-1 text-center`}>No signature</Text>
                 )}
               </View>
               <View style={tw`ml-3 flex-1`}>
@@ -410,16 +377,12 @@ export function BrandingAssignPane({
                   placeholder="https://..."
                   placeholderTextColor="#9CA3AF"
                   value={form.instructor_signature_url || ''}
-                  onChangeText={(t) =>
-                    setForm({ ...form, instructor_signature_url: t })
-                  }
+                  onChangeText={(t) => setForm({ ...form, instructor_signature_url: t })}
                   editable={canBranding}
                 />
                 <TouchableOpacity
                   onPress={() => onPickImage('instructor_signature_url')}
-                  disabled={
-                    !canBranding || uploadingInstructorSignature || !token
-                  }
+                  disabled={!canBranding || uploadingInstructorSignature || !token}
                   style={tw.style(
                     'px-3 py-2 rounded',
                     !canBranding || uploadingInstructorSignature || !token
@@ -430,9 +393,7 @@ export function BrandingAssignPane({
                   {uploadingInstructorSignature ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={tw`text-white text-sm font-semibold`}>
-                      Upload Signature
-                    </Text>
+                    <Text style={tw`text-white text-sm font-semibold`}>Upload Signature</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -441,13 +402,9 @@ export function BrandingAssignPane({
 
           {/* Institution contact details */}
           <View>
-            <View
-              style={tw`flex-row items-center justify-between mb-1 flex-wrap`}
-            >
+            <View style={tw`flex-row items-center justify-between mb-1 flex-wrap`}>
               <Label>Institution contact details</Label>
-              <Text style={tw`text-[10px] text-white/50`}>
-                Optional – appears on report cards.
-              </Text>
+              <Text style={tw`text-[10px] text-white/50`}>Optional – appears on report cards.</Text>
             </View>
 
             <View style={tw`gap-2`}>
@@ -457,23 +414,17 @@ export function BrandingAssignPane({
                 placeholder="123 Main Street"
                 placeholderTextColor="#9CA3AF"
                 value={form.address_line1 || ''}
-                onChangeText={(t) =>
-                  setForm({ ...form, address_line1: t })
-                }
+                onChangeText={(t) => setForm({ ...form, address_line1: t })}
                 editable={canBranding}
               />
 
-              <Text style={tw`mt-2 text-[11px] text-gray-300`}>
-                Address line 2
-              </Text>
+              <Text style={tw`mt-2 text-[11px] text-gray-300`}>Address line 2</Text>
               <TextInput
                 style={tw`w-full px-3 py-2 rounded bg-[#0f1821] text-white border border-white/10`}
                 placeholder="City / State / Country"
                 placeholderTextColor="#9CA3AF"
                 value={form.address_line2 || ''}
-                onChangeText={(t) =>
-                  setForm({ ...form, address_line2: t })
-                }
+                onChangeText={(t) => setForm({ ...form, address_line2: t })}
                 editable={canBranding}
               />
 
@@ -483,23 +434,17 @@ export function BrandingAssignPane({
                 placeholder="+00 123 456 789"
                 placeholderTextColor="#9CA3AF"
                 value={form.phone_number || ''}
-                onChangeText={(t) =>
-                  setForm({ ...form, phone_number: t })
-                }
+                onChangeText={(t) => setForm({ ...form, phone_number: t })}
                 editable={canBranding}
               />
 
-              <Text style={tw`mt-2 text-[11px] text-gray-300`}>
-                Contact email
-              </Text>
+              <Text style={tw`mt-2 text-[11px] text-gray-300`}>Contact email</Text>
               <TextInput
                 style={tw`w-full px-3 py-2 rounded bg-[#0f1821] text-white border border-white/10`}
                 placeholder="info@school.example"
                 placeholderTextColor="#9CA3AF"
                 value={form.contact_email || ''}
-                onChangeText={(t) =>
-                  setForm({ ...form, contact_email: t })
-                }
+                onChangeText={(t) => setForm({ ...form, contact_email: t })}
                 editable={canBranding}
               />
 
@@ -509,9 +454,7 @@ export function BrandingAssignPane({
                 placeholder="https://school.example"
                 placeholderTextColor="#9CA3AF"
                 value={form.website_url || ''}
-                onChangeText={(t) =>
-                  setForm({ ...form, website_url: t })
-                }
+                onChangeText={(t) => setForm({ ...form, website_url: t })}
                 editable={canBranding}
               />
             </View>
@@ -561,14 +504,11 @@ export function BrandingAssignPane({
           <View style={tw`flex-row items-center`}>
             <Switch
               value={!!form.allow_retry}
-              onValueChange={(v) =>
-                setForm({ ...form, allow_retry: v })
-              }
+              onValueChange={(v) => setForm({ ...form, allow_retry: v })}
               disabled={!canCustomPassTimers}
             />
             <Text style={tw`ml-2 text-sm text-white`}>
-              Allow retry?{' '}
-              <Text style={tw`text-white/50`}>(default off)</Text>
+              Allow retry? <Text style={tw`text-white/50`}>(default off)</Text>
             </Text>
             {!canCustomPassTimers && (
               <View style={tw`ml-2`}>
@@ -588,9 +528,7 @@ export function BrandingAssignPane({
               placeholder="example.edu, *.example.edu"
               placeholderTextColor="#9CA3AF"
               value={form.email_domain || ''}
-              onChangeText={(t) =>
-                setForm({ ...form, email_domain: t })
-              }
+              onChangeText={(t) => setForm({ ...form, email_domain: t })}
               editable={canSSO}
             />
             <Text style={tw`mt-1 text-[11px] text-white/60`}>
@@ -608,14 +546,10 @@ export function BrandingAssignPane({
             <View style={tw`flex-row items-center mt-1`}>
               <Switch
                 value={!!form.webhook_enabled}
-                onValueChange={(v) =>
-                  setForm({ ...form, webhook_enabled: v })
-                }
+                onValueChange={(v) => setForm({ ...form, webhook_enabled: v })}
                 disabled={!canWebhooks}
               />
-              <Text style={tw`ml-2 text-sm text-white`}>
-                Enable webhooks
-              </Text>
+              <Text style={tw`ml-2 text-sm text-white`}>Enable webhooks</Text>
             </View>
 
             <TextInput
@@ -623,9 +557,7 @@ export function BrandingAssignPane({
               placeholder="https://your.system/hooks/elearn"
               placeholderTextColor="#9CA3AF"
               value={form.webhook_url || ''}
-              onChangeText={(t) =>
-                setForm({ ...form, webhook_url: t })
-              }
+              onChangeText={(t) => setForm({ ...form, webhook_url: t })}
               editable={canWebhooks}
             />
 
@@ -636,12 +568,9 @@ export function BrandingAssignPane({
                 onPress={async () => {
                   if (!org?.id || !token) return;
                   try {
-                    const r = await fetch(
-                      `${backendUrl}/api/orgs/${org.id}/webhooks/secret`,
-                      {
-                        headers: { Authorization: `Bearer ${token}` },
-                      }
-                    );
+                    const r = await fetch(`${backendUrl}/api/orgs/${org.id}/webhooks/secret`, {
+                      headers: { Authorization: `Bearer ${token}` },
+                    });
                     const j = await r.json();
                     if (!j.ok && j.message) {
                       Alert.alert('Webhook', j.message);
@@ -650,16 +579,11 @@ export function BrandingAssignPane({
                     Alert.alert(
                       'Webhook secret',
                       j.present
-                        ? `Secret exists (last4: ${
-                            j.last4 || '—'
-                          }). Rotated: ${j.rotatedAt || '—'}`
+                        ? `Secret exists (last4: ${j.last4 || '—'}). Rotated: ${j.rotatedAt || '—'}`
                         : 'No secret yet. Generate one.'
                     );
                   } catch (e: any) {
-                    Alert.alert(
-                      'Webhook',
-                      e?.message || 'Failed to fetch status.'
-                    );
+                    Alert.alert('Webhook', e?.message || 'Failed to fetch status.');
                   }
                 }}
                 disabled={!org?.id || !token}
@@ -694,18 +618,12 @@ export function BrandingAssignPane({
                             );
                             const j = await r.json();
                             if (!j.ok) {
-                              Alert.alert(
-                                'Error',
-                                j.message || 'Failed to generate secret.'
-                              );
+                              Alert.alert('Error', j.message || 'Failed to generate secret.');
                               return;
                             }
                             Alert.alert('Copy secret', j.secret);
                           } catch (e: any) {
-                            Alert.alert(
-                              'Error',
-                              e?.message || 'Failed to generate.'
-                            );
+                            Alert.alert('Error', e?.message || 'Failed to generate.');
                           }
                         },
                       },
@@ -718,37 +636,25 @@ export function BrandingAssignPane({
                   !org?.id || !token ? 'bg-white/10' : 'bg-white/10'
                 )}
               >
-                <Text style={tw`text-white text-xs`}>
-                  Generate / Rotate secret
-                </Text>
+                <Text style={tw`text-white text-xs`}>Generate / Rotate secret</Text>
               </TouchableOpacity>
 
               {/* Send test webhook */}
               <TouchableOpacity
                 onPress={async () => {
-                  if (
-                    !canWebhooks ||
-                    !canSendTest ||
-                    isSending ||
-                    !org?.id ||
-                    !token
-                  )
-                    return;
+                  if (!canWebhooks || !canSendTest || isSending || !org?.id || !token) return;
                   setIsSending(true);
                   try {
-                    const r = await fetch(
-                      `${backendUrl}/api/orgs/${org.id}/webhooks/test`,
-                      {
-                        method: 'POST',
-                        headers: {
-                          Authorization: `Bearer ${token}`,
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                          overrideUrl: String(form.webhook_url || '').trim(),
-                        }),
-                      }
-                    );
+                    const r = await fetch(`${backendUrl}/api/orgs/${org.id}/webhooks/test`, {
+                      method: 'POST',
+                      headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        overrideUrl: String(form.webhook_url || '').trim(),
+                      }),
+                    });
                     let j: any = null;
                     if (r.status !== 204) {
                       try {
@@ -756,25 +662,17 @@ export function BrandingAssignPane({
                       } catch {}
                     }
                     if (!r.ok || j?.ok === false) {
-                      Alert.alert(
-                        'Webhook',
-                        j?.message || `Failed (HTTP ${r.status})`
-                      );
+                      Alert.alert('Webhook', j?.message || `Failed (HTTP ${r.status})`);
                       return;
                     }
                     Alert.alert(
                       'Webhook',
                       `Test webhook queued${
-                        j?.status
-                          ? ` and fired (HTTP ${j.status})`
-                          : ''
+                        j?.status ? ` and fired (HTTP ${j.status})` : ''
                       }. Delivery id: ${j?.id || 'n/a'}`
                     );
                   } catch (e: any) {
-                    Alert.alert(
-                      'Network',
-                      e?.message || 'Failed to queue.'
-                    );
+                    Alert.alert('Network', e?.message || 'Failed to queue.');
                   } finally {
                     setIsSending(false);
                   }
@@ -782,9 +680,7 @@ export function BrandingAssignPane({
                 disabled={!canWebhooks || !canSendTest || isSending}
                 style={tw.style(
                   'px-3 py-2 rounded mb-2',
-                  !canWebhooks || !canSendTest || isSending
-                    ? 'bg-white/10'
-                    : 'bg-pink-600'
+                  !canWebhooks || !canSendTest || isSending ? 'bg-white/10' : 'bg-pink-600'
                 )}
               >
                 <Text style={tw`text-white text-xs`}>
@@ -795,19 +691,11 @@ export function BrandingAssignPane({
 
             {/* Email reports card */}
             {canEmailReports && (
-              <View
-                style={tw`mt-3 rounded-xl bg-white/5 border border-white/10 p-3`}
-              >
-                <View
-                  style={tw`flex-row items-center justify-between`}
-                >
+              <View style={tw`mt-3 rounded-xl bg-white/5 border border-white/10 p-3`}>
+                <View style={tw`flex-row items-center justify-between`}>
                   <View>
-                    <Text style={tw`text-white font-medium`}>
-                      Email reports
-                    </Text>
-                    <Text
-                      style={tw`text-[11px] text-white/70`}
-                    >
+                    <Text style={tw`text-white font-medium`}>Email reports</Text>
+                    <Text style={tw`text-[11px] text-white/70`}>
                       Send periodic analytics to admins
                     </Text>
                   </View>
@@ -815,9 +703,7 @@ export function BrandingAssignPane({
                     onPress={onSendTestReport}
                     style={tw`px-3 py-2 rounded bg-indigo-600`}
                   >
-                    <Text style={tw`text-white text-sm`}>
-                      Send test report
-                    </Text>
+                    <Text style={tw`text-white text-sm`}>Send test report</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -831,14 +717,10 @@ export function BrandingAssignPane({
               disabled={!org?.id || !token || !canBranding}
               style={tw.style(
                 'px-3 py-2 rounded items-center',
-                !org?.id || !token || !canBranding
-                  ? 'bg-white/10'
-                  : 'bg-indigo-600'
+                !org?.id || !token || !canBranding ? 'bg-white/10' : 'bg-indigo-600'
               )}
             >
-              <Text style={tw`text-white font-semibold`}>
-                Save Branding
-              </Text>
+              <Text style={tw`text-white font-semibold`}>Save Branding</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -855,44 +737,28 @@ export function BrandingAssignPane({
 
           {/* Scope hint */}
           {(assignClassLabel || assignSubjectKey) && (
-            <View
-              style={tw`rounded-xl bg-white/10 px-3 py-2`}
-            >
+            <View style={tw`rounded-xl bg-white/10 px-3 py-2`}>
               <Text style={tw`text-[11px] text-white/70`}>
                 This work is currently scoped to{' '}
-                {assignClassLabel ? (
-                  <Text style={tw`font-bold`}>{assignClassLabel}</Text>
-                ) : null}
+                {assignClassLabel ? <Text style={tw`font-bold`}>{assignClassLabel}</Text> : null}
                 {assignClassLabel && assignSubjectKey ? ' · ' : ''}
-                {assignSubjectKey ? (
-                  <Text style={tw`font-bold`}>{assignSubjectKey}</Text>
-                ) : null}
-                . Learners in this class/subject will see it in their
-                assignments.
+                {assignSubjectKey ? <Text style={tw`font-bold`}>{assignSubjectKey}</Text> : null}.
+                Learners in this class/subject will see it in their assignments.
               </Text>
             </View>
           )}
 
           {/* Classic assignment card */}
-          <View
-            style={tw`rounded-2xl border border-white/10 bg-[#111b28] p-3`}
-          >
-            <Text
-              style={tw`text-[11px] uppercase tracking-wide text-white/60`}
-            >
+          <View style={tw`rounded-2xl border border-white/10 bg-[#111b28] p-3`}>
+            <Text style={tw`text-[11px] uppercase tracking-wide text-white/60`}>
               Classic assignment
             </Text>
-            <Text
-              style={tw`mt-1 text-sm font-semibold text-white`}
-            >
+            <Text style={tw`mt-1 text-sm font-semibold text-white`}>
               Attach a worksheet or project brief
             </Text>
-            <Text
-              style={tw`mt-1 text-[11px] text-white/70`}
-            >
-              Perfect for essays, worksheets, experiments and offline tasks.
-              Learners download your file, complete the work, then submit
-              their own file or typed answer.
+            <Text style={tw`mt-1 text-[11px] text-white/70`}>
+              Perfect for essays, worksheets, experiments and offline tasks. Learners download your
+              file, complete the work, then submit their own file or typed answer.
             </Text>
 
             {/* Class + subject */}
@@ -904,9 +770,7 @@ export function BrandingAssignPane({
                   placeholder="e.g. Grade 7 Blue"
                   placeholderTextColor="#9CA3AF"
                   value={assignClassLabel || ''}
-                  onChangeText={(t) =>
-                    setAssignScope?.({ classLabel: t || '' })
-                  }
+                  onChangeText={(t) => setAssignScope?.({ classLabel: t || '' })}
                   editable={canAssignments}
                 />
               </View>
@@ -918,9 +782,7 @@ export function BrandingAssignPane({
                   placeholder="e.g. Mathematics, English, Physics"
                   placeholderTextColor="#9CA3AF"
                   value={assignSubjectKey || ''}
-                  onChangeText={(t) =>
-                    setAssignScope?.({ subjectKey: t || '' })
-                  }
+                  onChangeText={(t) => setAssignScope?.({ subjectKey: t || '' })}
                   editable={canAssignments}
                 />
               </View>
@@ -950,11 +812,9 @@ export function BrandingAssignPane({
                   onChangeText={setLegacyDueAt}
                   editable={canAssignments}
                 />
-                <Text
-                  style={tw`mt-1 text-[11px] text-white/60`}
-                >
-                  Learners will still see the assignment after the deadline,
-                  but you can treat late submissions differently.
+                <Text style={tw`mt-1 text-[11px] text-white/60`}>
+                  Learners will still see the assignment after the deadline, but you can treat late
+                  submissions differently.
                 </Text>
               </View>
             </View>
@@ -976,54 +836,37 @@ export function BrandingAssignPane({
             {/* Attachment */}
             <View style={tw`mt-3`}>
               <Label>Attach assignment file (PDF, DOC, slides…)</Label>
-              <View
-                style={tw`mt-1 flex-row items-center justify-between`}
-              >
+              <View style={tw`mt-1 flex-row items-center justify-between`}>
                 <TouchableOpacity
                   onPress={onPickLegacyAttachment}
                   disabled={!canAssignments || legacyUploadingAttachment}
                   style={tw.style(
                     'px-3 py-2 rounded',
-                    !canAssignments || legacyUploadingAttachment
-                      ? 'bg-white/10'
-                      : 'bg-white/10'
+                    !canAssignments || legacyUploadingAttachment ? 'bg-white/10' : 'bg-white/10'
                   )}
                 >
                   <Text style={tw`text-white text-xs`}>
-                    {legacyUploadingAttachment
-                      ? 'Uploading…'
-                      : 'Pick attachment'}
+                    {legacyUploadingAttachment ? 'Uploading…' : 'Pick attachment'}
                   </Text>
                 </TouchableOpacity>
 
                 {legacyAttachmentLabel ? (
-                  <Text
-                    style={tw`ml-2 flex-1 text-[11px] text-white/70`}
-                    numberOfLines={1}
-                  >
+                  <Text style={tw`ml-2 flex-1 text-[11px] text-white/70`} numberOfLines={1}>
                     {legacyAttachmentLabel}
                   </Text>
                 ) : (
-                  <Text
-                    style={tw`ml-2 flex-1 text-[11px] text-white/40`}
-                  >
-                    No file selected
-                  </Text>
+                  <Text style={tw`ml-2 flex-1 text-[11px] text-white/40`}>No file selected</Text>
                 )}
               </View>
             </View>
 
-            <View
-              style={tw`mt-3 flex-row justify-end`}
-            >
+            <View style={tw`mt-3 flex-row justify-end`}>
               <TouchableOpacity
                 onPress={onCreateLegacyAssignment}
                 disabled={!canAssignments || creatingLegacyAssignment}
                 style={tw.style(
                   'px-4 py-2 rounded-2xl items-center',
-                  !canAssignments
-                    ? 'bg-white/10'
-                    : 'bg-emerald-600'
+                  !canAssignments ? 'bg-white/10' : 'bg-emerald-600'
                 )}
               >
                 <Text style={tw`text-white font-semibold text-sm`}>
@@ -1034,24 +877,14 @@ export function BrandingAssignPane({
           </View>
 
           {/* Teach with AI / Robot Tutor card */}
-          <View
-            style={tw`rounded-2xl border border-white/10 bg-white/5 p-3`}
-          >
-            <Text
-              style={tw`text-[11px] uppercase tracking-wide text-white/60`}
-            >
-              Teach with AI
-            </Text>
-            <Text
-              style={tw`mt-1 text-sm font-semibold text-white`}
-            >
+          <View style={tw`rounded-2xl border border-white/10 bg-white/5 p-3`}>
+            <Text style={tw`text-[11px] uppercase tracking-wide text-white/60`}>Teach with AI</Text>
+            <Text style={tw`mt-1 text-sm font-semibold text-white`}>
               Link a Robot Tutor course as an assignment
             </Text>
-            <Text
-              style={tw`mt-1 text-[11px] text-white/70`}
-            >
-              Choose one of your AI-generated courses, set optional pass marks
-              and timers, then share the invite link with specific groups.
+            <Text style={tw`mt-1 text-[11px] text-white/70`}>
+              Choose one of your AI-generated courses, set optional pass marks and timers, then
+              share the invite link with specific groups.
             </Text>
 
             <View style={tw`mt-3 gap-3`}>
@@ -1092,9 +925,7 @@ export function BrandingAssignPane({
                   style={tw`mt-1 w-full px-3 py-2 rounded bg-[#0f1821] text-white border border-white/10`}
                   keyboardType="numeric"
                   value={passMark === '' ? '' : String(passMark)}
-                  onChangeText={(t) =>
-                    setPassMark(t ? Number(t) : '')
-                  }
+                  onChangeText={(t) => setPassMark(t ? Number(t) : '')}
                   editable={canAssignments && canCustomPassTimers}
                 />
               </View>
@@ -1112,9 +943,7 @@ export function BrandingAssignPane({
                   style={tw`mt-1 w-full px-3 py-2 rounded bg-[#0f1821] text-white border border-white/10`}
                   keyboardType="numeric"
                   value={timer === '' ? '' : String(timer)}
-                  onChangeText={(t) =>
-                    setTimer(t ? Number(t) : '')
-                  }
+                  onChangeText={(t) => setTimer(t ? Number(t) : '')}
                   editable={canAssignments && canCustomPassTimers}
                 />
               </View>
@@ -1142,9 +971,7 @@ export function BrandingAssignPane({
                   canAssignments ? 'bg-indigo-600' : 'bg-white/10'
                 )}
               >
-                <Text style={tw`text-white font-semibold`}>
-                  Create AI assignment
-                </Text>
+                <Text style={tw`text-white font-semibold`}>Create AI assignment</Text>
               </TouchableOpacity>
 
               {!!inviteLink && (
@@ -1176,9 +1003,7 @@ export function BrandingAssignPane({
                         onPress={openWhatsApp}
                         style={tw`mr-2 mb-2 px-3 py-2 rounded bg-white/10`}
                       >
-                        <Text style={tw`text-white text-xs`}>
-                          WhatsApp instructors
-                        </Text>
+                        <Text style={tw`text-white text-xs`}>WhatsApp instructors</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -1187,9 +1012,7 @@ export function BrandingAssignPane({
                     onPress={copyLink}
                     style={tw`mt-2 px-3 py-2 rounded bg-pink-600 items-center self-start`}
                   >
-                    <Text style={tw`text-white text-sm font-semibold`}>
-                      Copy invite link
-                    </Text>
+                    <Text style={tw`text-white text-sm font-semibold`}>Copy invite link</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -1205,9 +1028,9 @@ export function BrandingAssignPane({
             </View>
 
             <Text style={tw`text-xs text-white/70 mt-1`}>
-              Share the AI invite link for timed quizzes and auto-marking. For
-              open-ended projects or long-form work, use the classic assignment
-              card above so learners can upload their files directly.
+              Share the AI invite link for timed quizzes and auto-marking. For open-ended projects
+              or long-form work, use the classic assignment card above so learners can upload their
+              files directly.
             </Text>
           </View>
         </View>
@@ -1294,10 +1117,8 @@ export function AnalyticsPane({
       }
     }
 
-    const overallPassRate =
-      totalAttempts > 0 ? Math.round((totalPasses * 100) / totalAttempts) : 0;
-    const overallAvgScore =
-      scoreWeight > 0 ? +(scoreWeightedSum / scoreWeight).toFixed(1) : 0;
+    const overallPassRate = totalAttempts > 0 ? Math.round((totalPasses * 100) / totalAttempts) : 0;
+    const overallAvgScore = scoreWeight > 0 ? +(scoreWeightedSum / scoreWeight).toFixed(1) : 0;
 
     return {
       totalAttempts,
@@ -1318,11 +1139,7 @@ export function AnalyticsPane({
   }, [summary, analytics]);
 
   const periodLabel =
-    period === 'month'
-      ? 'Last 30 days'
-      : period === 'term'
-      ? 'This term'
-      : 'This year';
+    period === 'month' ? 'Last 30 days' : period === 'term' ? 'This term' : 'This year';
 
   const maxAttemptsInBucket = Math.max(
     0,
@@ -1344,8 +1161,7 @@ export function AnalyticsPane({
       {/* Period selector */}
       <View style={tw`flex-row rounded-xl overflow-hidden bg-white/10`}>
         {(['month', 'term', 'year'] as Period[]).map((p) => {
-          const disabled =
-            p !== 'month' && (!canMultiPeriodAnalytics || !canMonthly);
+          const disabled = p !== 'month' && (!canMultiPeriodAnalytics || !canMonthly);
           return (
             <TouchableOpacity
               key={p}
@@ -1374,40 +1190,27 @@ export function AnalyticsPane({
             <Text style={tw`text-white text-sm`}>Export CSV</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity
-          onPress={onRefresh}
-          style={tw`px-3 py-1.5 rounded-xl bg-white/10`}
-        >
-          <Text style={tw`text-white text-sm`}>
-            {loadingAnalytics ? 'Refreshing…' : 'Refresh'}
-          </Text>
+        <TouchableOpacity onPress={onRefresh} style={tw`px-3 py-1.5 rounded-xl bg-white/10`}>
+          <Text style={tw`text-white text-sm`}>{loadingAnalytics ? 'Refreshing…' : 'Refresh'}</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
   const renderRow = ({ item }: { item: OrgAnalyticsRow }) => {
-    const bucketISO = String(
-      (item as any).bucket ?? (item as any).bucket_iso ?? ''
-    );
+    const bucketISO = String((item as any).bucket ?? (item as any).bucket_iso ?? '');
     const attempts = Number((item as any).attempts ?? 0);
     const passes = Number((item as any).passes ?? 0);
-    const avg = Number(
-      (item as any).avg_score ?? (item as any).avgScore ?? 0
-    );
+    const avg = Number((item as any).avg_score ?? (item as any).avgScore ?? 0);
     const barWidth =
-      maxAttemptsInBucket > 0
-        ? Math.max(4, Math.round((attempts / maxAttemptsInBucket) * 100))
-        : 0;
+      maxAttemptsInBucket > 0 ? Math.max(4, Math.round((attempts / maxAttemptsInBucket) * 100)) : 0;
 
     return (
       <View style={tw`py-2 border-t border-white/10`}>
         <View style={tw`flex-row`}>
           <View style={tw`w-2/5 pr-2`}>
             <Text style={tw`text-white/70 text-xs`}>Bucket</Text>
-            <Text style={tw`text-white text-xs`}>
-              {bucketISO ? formatDate(bucketISO) : '—'}
-            </Text>
+            <Text style={tw`text-white text-xs`}>{bucketISO ? formatDate(bucketISO) : '—'}</Text>
           </View>
           <View style={tw`w-1/5 pr-2`}>
             <Text style={tw`text-white/70 text-xs`}>Attempts</Text>
@@ -1427,15 +1230,8 @@ export function AnalyticsPane({
 
         {/* Mini bar */}
         <View style={tw`mt-2`}>
-          <View
-            style={tw`h-2 w-full rounded-full bg-white/5 overflow-hidden`}
-          >
-            <View
-              style={[
-                tw`h-full rounded-full bg-emerald-500`,
-                { width: `${barWidth}%` },
-              ]}
-            />
+          <View style={tw`h-2 w-full rounded-full bg-white/5 overflow-hidden`}>
+            <View style={[tw`h-full rounded-full bg-emerald-500`, { width: `${barWidth}%` }]} />
           </View>
         </View>
 
@@ -1460,12 +1256,10 @@ export function AnalyticsPane({
 
       {/* Summary row */}
       <View style={tw`mb-3`}>
-        <Text style={tw`text-white font-semibold text-sm`}>
-          Learning analytics
-        </Text>
+        <Text style={tw`text-white font-semibold text-sm`}>Learning analytics</Text>
         <Text style={tw`text-[11px] text-white/70 mt-1`}>
-          Blended view of Robot Teacher quizzes, exam results and instructor
-          assignments for {periodLabel.toLowerCase()}.
+          Blended view of Robot Teacher quizzes, exam results and instructor assignments for{' '}
+          {periodLabel.toLowerCase()}.
         </Text>
 
         <View style={tw`mt-3 flex-row`}>
@@ -1477,52 +1271,38 @@ export function AnalyticsPane({
             <Text style={tw`text-[11px] text-white/60 mt-1`}>
               Pass rate:{' '}
               <Text style={tw`font-semibold`}>
-                {effectiveSummary.examsAttempts
-                  ? `${effectiveSummary.examsPassRate}%`
-                  : '—'}
+                {effectiveSummary.examsAttempts ? `${effectiveSummary.examsPassRate}%` : '—'}
               </Text>
             </Text>
           </View>
 
           <View style={tw`flex-1 mr-2`}>
-            <Text style={tw`text-[11px] text-white/60`}>
-              Robot Teacher quizzes
-            </Text>
+            <Text style={tw`text-[11px] text-white/60`}>Robot Teacher quizzes</Text>
             <Text style={tw`text-lg text-white font-semibold`}>
               {effectiveSummary.robotQuizAttempts || 0}
             </Text>
             <Text style={tw`text-[11px] text-white/60 mt-1`}>
               Pass rate:{' '}
-              <Text style={tw`font-semibold`}>
-                {effectiveSummary.robotQuizPassRate || 0}%
-              </Text>
+              <Text style={tw`font-semibold`}>{effectiveSummary.robotQuizPassRate || 0}%</Text>
             </Text>
             <Text style={tw`text-[11px] text-white/60 mt-0.5`}>
               Avg score:{' '}
-              <Text style={tw`font-semibold`}>
-                {effectiveSummary.overallAvgScore || 0}%
-              </Text>
+              <Text style={tw`font-semibold`}>{effectiveSummary.overallAvgScore || 0}%</Text>
             </Text>
           </View>
 
           <View style={tw`flex-1`}>
-            <Text style={tw`text-[11px] text-white/60`}>
-              Graded assignments
-            </Text>
+            <Text style={tw`text-[11px] text-white/60`}>Graded assignments</Text>
             <Text style={tw`text-lg text-white font-semibold`}>
               {effectiveSummary.assignmentAttempts || 0}
             </Text>
             <Text style={tw`text-[11px] text-white/60 mt-1`}>
               Pass rate:{' '}
-              <Text style={tw`font-semibold`}>
-                {effectiveSummary.assignmentPassRate || 0}%
-              </Text>
+              <Text style={tw`font-semibold`}>{effectiveSummary.assignmentPassRate || 0}%</Text>
             </Text>
             <Text style={tw`text-[11px] text-white/60 mt-0.5`}>
               Overall graded:{' '}
-              <Text style={tw`font-semibold`}>
-                {effectiveSummary.totalAttempts || 0}
-              </Text>
+              <Text style={tw`font-semibold`}>{effectiveSummary.totalAttempts || 0}</Text>
             </Text>
           </View>
         </View>
@@ -1532,20 +1312,14 @@ export function AnalyticsPane({
       {loadingAnalytics ? (
         <View style={tw`py-6 items-center`}>
           <ActivityIndicator color="#fff" />
-          <Text style={tw`text-white/70 text-xs mt-2`}>
-            Loading…
-          </Text>
+          <Text style={tw`text-white/70 text-xs mt-2`}>Loading…</Text>
         </View>
       ) : hasData ? (
-        <FlatList
-          data={analytics}
-          keyExtractor={(_, i) => String(i)}
-          renderItem={renderRow}
-        />
+        <FlatList data={analytics} keyExtractor={(_, i) => String(i)} renderItem={renderRow} />
       ) : (
         <Text style={tw`py-6 text-white/60 text-xs`}>
-          No data for this period yet. Once learners start taking quizzes,
-          exams or assignments, you’ll see a trend here.
+          No data for this period yet. Once learners start taking quizzes, exams or assignments,
+          you’ll see a trend here.
         </Text>
       )}
 

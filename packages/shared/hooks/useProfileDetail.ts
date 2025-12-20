@@ -51,11 +51,12 @@ interface RawTutorProfile {
 }
 
 type TutorWithExtras =
-  (TutorProfile & {
-    school_grade?: string | null;
-    schoolGrade?: string | null;
-    country?: string | null;
-  }) | null;
+  | (TutorProfile & {
+      school_grade?: string | null;
+      schoolGrade?: string | null;
+      country?: string | null;
+    })
+  | null;
 
 type CreateSessionParams = {
   action: 'createSession';
@@ -78,19 +79,16 @@ export default function useProfileDetail(
   const { sendMessage, chats } = useChatContext(); // ✅ only here
   const notify = {
     success: options?.notify?.success ?? ((m: string) => console.log(`[success] ${m}`)),
-    error:   options?.notify?.error   ?? ((m: string) => console.error(`[error] ${m}`)),
-    info:    options?.notify?.info    ?? ((m: string) => console.log(`[info] ${m}`)),
-    warn:    options?.notify?.warn    ?? ((m: string) => console.warn(`[warn] ${m}`)),
+    error: options?.notify?.error ?? ((m: string) => console.error(`[error] ${m}`)),
+    info: options?.notify?.info ?? ((m: string) => console.log(`[info] ${m}`)),
+    warn: options?.notify?.warn ?? ((m: string) => console.warn(`[warn] ${m}`)),
   };
 
   const [showChat, setShowChat] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  const { data: tutorProfile = null, isLoading: loading } = useAppQuery<
-    TutorWithExtras,
-    Error
-  >(
+  const { data: tutorProfile = null, isLoading: loading } = useAppQuery<TutorWithExtras, Error>(
     ['tutorProfile', tutorId],
     async () => {
       if (!tutorId) return null;

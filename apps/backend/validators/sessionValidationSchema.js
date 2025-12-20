@@ -1,24 +1,12 @@
 import Joi from 'joi';
 
 export const sessionValidationSchema = Joi.object({
-  tutorId: Joi.string()
-    .required()
-    .label('Tutor ID'),
+  tutorId: Joi.string().required().label('Tutor ID'),
 
   // ← allow an optional tutorName
-  tutorName: Joi.string()
-    .trim()
-    .min(2)
-    .max(255)
-    .label('Tutor Name')
-    .optional(),
+  tutorName: Joi.string().trim().min(2).max(255).label('Tutor Name').optional(),
 
-  subject: Joi.string()
-    .trim()
-    .min(2)
-    .max(255)
-    .required()
-    .label('Subject'),
+  subject: Joi.string().trim().min(2).max(255).required().label('Subject'),
 
   // ← allow the pricing object
   pricing: Joi.object({
@@ -46,14 +34,10 @@ export const sessionValidationSchema = Joi.object({
     .required()
     .label('Pricing'),
 
-  date: Joi.date()
-    .iso()
-    .required()
-    .label('Date')
-    .messages({
-      'date.base': 'Invalid date format',
-      'date.format': 'Date must be in ISO format (YYYY-MM-DDTHH:MM:SSZ)',
-    }),
+  date: Joi.date().iso().required().label('Date').messages({
+    'date.base': 'Invalid date format',
+    'date.format': 'Date must be in ISO format (YYYY-MM-DDTHH:MM:SSZ)',
+  }),
 
   sessionType: Joi.string()
     .valid('privateSession', 'groupSession', 'lecture', 'workshop')
@@ -63,11 +47,8 @@ export const sessionValidationSchema = Joi.object({
   // accept numeric or numeric-string costs
   sessionCost: Joi.alternatives()
     .try(
-      Joi.number()
-        .precision(2)
-        .positive(),
-      Joi.string()
-        .pattern(/^\d+(\.\d{1,2})?$/)
+      Joi.number().precision(2).positive(),
+      Joi.string().pattern(/^\d+(\.\d{1,2})?$/),
     )
     .required()
     .label('Session Cost')
@@ -78,7 +59,6 @@ export const sessionValidationSchema = Joi.object({
 })
   // disallow any keys not listed above
   .options({ allowUnknown: false });
-
 
 // ✅ Review Validation Schema
 export const reviewValidationSchema = Joi.object({

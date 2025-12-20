@@ -118,14 +118,8 @@ const ResourcesPage: React.FC = () => {
     [query]
   );
 
-  const popular = useMemo(
-    () => POPULAR_SUBJECTS.filter(filterFn),
-    [filterFn]
-  );
-  const all = useMemo(
-    () => ALL_SUBJECTS.filter(filterFn),
-    [filterFn]
-  );
+  const popular = useMemo(() => POPULAR_SUBJECTS.filter(filterFn), [filterFn]);
+  const all = useMemo(() => ALL_SUBJECTS.filter(filterFn), [filterFn]);
 
   return (
     <div
@@ -159,7 +153,9 @@ const ResourcesPage: React.FC = () => {
           </div>
 
           {/* Popular subjects */}
-          <h2 className="text-[22px] font-bold tracking-tight px-1 sm:px-2 pb-3 pt-4">Popular subjects</h2>
+          <h2 className="text-[22px] font-bold tracking-tight px-1 sm:px-2 pb-3 pt-4">
+            Popular subjects
+          </h2>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(158px,1fr))] gap-3 p-1 sm:p-2">
             {popular.length === 0 ? (
               <p className="text-[#49739c] dark:text-darkTextSecondary px-1">No matches.</p>
@@ -169,7 +165,9 @@ const ResourcesPage: React.FC = () => {
           </div>
 
           {/* All subjects */}
-          <h2 className="text-[22px] font-bold tracking-tight px-1 sm:px-2 pb-3 pt-5">All subjects</h2>
+          <h2 className="text-[22px] font-bold tracking-tight px-1 sm:px-2 pb-3 pt-5">
+            All subjects
+          </h2>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(158px,1fr))] gap-3 p-1 sm:p-2">
             {all.length === 0 ? (
               <p className="text-[#49739c] dark:text-darkTextSecondary px-1">No matches.</p>

@@ -7,7 +7,9 @@ export function requireRole(minRole = 'admin') {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
     if (ROLE_ORDER[role] < ROLE_ORDER[minRole]) {
-      return res.status(403).json({ success: false, message: 'Insufficient role' });
+      return res
+        .status(403)
+        .json({ success: false, message: 'Insufficient role' });
     }
     next();
   };

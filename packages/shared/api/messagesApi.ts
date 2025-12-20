@@ -3,10 +3,7 @@ import axios from 'axios';
 
 const dev = typeof process !== 'undefined' ? process.env.NODE_ENV !== 'production' : false;
 
-export const fetchConversations = async (
-  backendUrl: string,
-  token: string
-) => {
+export const fetchConversations = async (backendUrl: string, token: string) => {
   if (!token) return [];
   try {
     const response = await axios.get(`${backendUrl}/api/conversations`, {
@@ -64,11 +61,7 @@ export const sendMessage = async (
   return response.data;
 };
 
-export const markAsRead = async (
-  backendUrl: string,
-  recipientId: string,
-  token: string
-) => {
+export const markAsRead = async (backendUrl: string, recipientId: string, token: string) => {
   if (!token || !recipientId) return null;
   try {
     const response = await axios.post(

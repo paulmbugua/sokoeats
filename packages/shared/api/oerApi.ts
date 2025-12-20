@@ -1,10 +1,5 @@
 // packages/shared/api/oerApi.ts
-import type {
-  OerCatalogItem,
-  OerMeta,
-  Course,
-  SyllabusItem,
-} from '@mytutorapp/shared/types';
+import type { OerCatalogItem, OerMeta, Course, SyllabusItem } from '@mytutorapp/shared/types';
 
 /* ----------------------------------------------------------------------------
  * Shared helpers / defaults for OER-backed "Course" objects
@@ -18,7 +13,7 @@ const OER_TUTOR_ID: Course['tutorId'] = 'oer' as any;
 // If Course['createdAt'] is a Date in your model, switch to new Date(0) as any.
 const OER_CREATED_AT: Course['createdAt'] = new Date(0).toISOString() as any;
 
-const ensureArray = <T,>(x: T | T[] | undefined | null): T[] =>
+const ensureArray = <T>(x: T | T[] | undefined | null): T[] =>
   Array.isArray(x) ? x : x ? [x] : [];
 
 /* ----------------------------------------------------------------------------
@@ -38,11 +33,11 @@ export type OerListParams = {
 export async function fetchOerCatalog(params: OerListParams): Promise<OerCatalogItem[]> {
   const { baseUrl, token, type, subject, provider, limit, offset } = params;
   const url = new URL(`${baseUrl.replace(/\/$/, '')}/api/oer/catalog`);
-  if (type)     url.searchParams.set('type', type);
-  if (subject)  url.searchParams.set('subject', subject);
+  if (type) url.searchParams.set('type', type);
+  if (subject) url.searchParams.set('subject', subject);
   if (provider) url.searchParams.set('provider', provider);
-  if (limit)    url.searchParams.set('limit', String(limit));
-  if (offset)   url.searchParams.set('offset', String(offset));
+  if (limit) url.searchParams.set('limit', String(limit));
+  if (offset) url.searchParams.set('offset', String(offset));
 
   const res = await fetch(url.toString(), {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -100,11 +95,11 @@ type RawOerCourseListItem = {
   description?: string | null;
   subject?: string | null;
   thumbnail_url?: string | null;
-  items_count?: number;           // number of catalog items linked
-  level?: string | null;          // optional, backend may not set
-  price?: number | null;          // optional (we’ll force to 0)
-  priceLabel?: string | null;     // optional, e.g., "Free"
-  provider?: string | null;       // optional, hint for UI
+  items_count?: number; // number of catalog items linked
+  level?: string | null; // optional, backend may not set
+  price?: number | null; // optional (we’ll force to 0)
+  priceLabel?: string | null; // optional, e.g., "Free"
+  provider?: string | null; // optional, hint for UI
   kind?: 'collection' | 'book' | string | null;
 };
 
@@ -137,7 +132,7 @@ type RawOerCourseDetail = {
 const toCourseCard = (r: RawOerCourseListItem): Course => {
   return {
     id: r.id,
-     ...(r.slug ? { slug: r.slug } : {}),
+    ...(r.slug ? { slug: r.slug } : {}),
     ...(r.kind ? { kind: r.kind } : {}),
     title: r.title,
     description: r.description ?? '',
@@ -208,9 +203,9 @@ export async function fetchOerCourses(params: {
 }): Promise<Course[]> {
   const { baseUrl, limit, offset, subject } = params;
   const url = new URL(`${baseUrl.replace(/\/$/, '')}/api/oer/courses`);
-  if (limit != null)  url.searchParams.set('limit', String(limit));
+  if (limit != null) url.searchParams.set('limit', String(limit));
   if (offset != null) url.searchParams.set('offset', String(offset));
-  if (subject)        url.searchParams.set('subject', subject);
+  if (subject) url.searchParams.set('subject', subject);
 
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(await res.text());
@@ -233,7 +228,7 @@ export async function fetchOerCourse(params: {
 
 export async function wrapOerBook(params: { baseUrl: string; token?: string; idOrSlug: string }) {
   const { baseUrl, token, idOrSlug } = params;
-  const res = await fetch(`${baseUrl.replace(/\/+$/,'')}/api/oer/wrap-book`, {
+  const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/oer/wrap-book`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -241,6 +236,6 @@ export async function wrapOerBook(params: { baseUrl: string; token?: string; idO
     },
     body: JSON.stringify({ idOrSlug }),
   });
-  if (!res.ok) throw new Error(await res.text().catch(()=> 'Failed to wrap book'));
+  if (!res.ok) throw new Error(await res.text().catch(() => 'Failed to wrap book'));
   return res.json() as Promise<{ courseId: string; firstLessonWeek: number }>;
 }

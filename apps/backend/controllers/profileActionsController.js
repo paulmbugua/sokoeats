@@ -110,7 +110,6 @@ export const sendMessage = async (req, res) => {
       },
     }).catch((e) => console.error('[push] notifyNewMessage failed', e));
 
-
     res.status(201).json({
       message: 'Message sent successfully',
       data: messageResult.rows[0],
@@ -120,7 +119,6 @@ export const sendMessage = async (req, res) => {
     res.status(500).json({ message: 'Failed to send message', error });
   }
 };
-
 
 // Get Conversations with Pagination
 export const getConversations = async (req, res) => {

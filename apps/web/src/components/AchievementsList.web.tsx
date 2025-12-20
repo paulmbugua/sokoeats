@@ -7,7 +7,11 @@ type Props = { studentId?: number; title?: string };
 
 const AchievementsList: React.FC<Props> = ({ studentId, title = 'Achievements' }) => {
   const { backendUrl, token } = useShopContext();
-  const { achievements, loading, error, refetch } = useAchievements({ backendUrl, token, studentId });
+  const { achievements, loading, error, refetch } = useAchievements({
+    backendUrl,
+    token,
+    studentId,
+  });
 
   // Skeleton card (for loading state)
   const Skeleton: React.FC = () => (
@@ -26,7 +30,10 @@ const AchievementsList: React.FC<Props> = ({ studentId, title = 'Achievements' }
   return (
     <section aria-labelledby="achievements-heading" className="space-y-4">
       <header className="flex items-center justify-between">
-        <h2 id="achievements-heading" className="text-xl font-bold text-gray-900 dark:text-gray-100">
+        <h2
+          id="achievements-heading"
+          className="text-xl font-bold text-gray-900 dark:text-gray-100"
+        >
           {title}
         </h2>
         {!loading && (
@@ -106,7 +113,9 @@ const AchievementsList: React.FC<Props> = ({ studentId, title = 'Achievements' }
                     />
                   )}
                   <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{a.title}</p>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">
+                      {a.title}
+                    </p>
                     <p className="text-xs text-[#49739c] dark:text-[#89a7c2]">
                       {new Date(a.earned_at).toLocaleString(undefined, {
                         year: 'numeric',

@@ -35,12 +35,9 @@ export const fetchTutorCertification = async (
   const response = await axios.get<{
     certification?: ProfileCardCertificationData;
     certified?: boolean;
-  }>(
-    `${backendUrl}/api/profiles/${profileId}/certification/status`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
+  }>(`${backendUrl}/api/profiles/${profileId}/certification/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
   return response.data.certification ?? null;
 };

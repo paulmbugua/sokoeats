@@ -3,7 +3,6 @@ const path = require('path');
 
 module.exports = {
   root: true,
-  // ignore build/artifacts and config files
   ignorePatterns: [
     'node_modules/',
     'apps/mobile/android/**',
@@ -24,7 +23,7 @@ module.exports = {
       './apps/mobile/tsconfig.json',
       './apps/web/tsconfig.json',
       './packages/shared/tsconfig.json',
-      './backend/tsconfig.json',
+     
     ],
     tsconfigRootDir: __dirname,
     sourceType: 'module',
@@ -32,26 +31,21 @@ module.exports = {
     ecmaFeatures: { jsx: true },
   },
 
-  plugins: [
-    '@typescript-eslint',
-    'react',
-    'react-hooks',
-    'react-native',
-    'import',
-    'prettier',
-  ],
+  // ✅ REMOVE react-native from global plugins
+  plugins: ['@typescript-eslint', 'react', 'react-hooks', 'import'],
 
-  extends: [
-    'eslint:recommended',
-    'plugin:@typescript-eslint/recommended',
-    'plugin:react/recommended',
-    'plugin:react/jsx-runtime',
-    'plugin:react-native/all',
-    'plugin:import/errors',
-    'plugin:import/warnings',
-    'plugin:import/typescript',
-    'plugin:prettier/recommended',
-  ],
+  // ✅ REMOVE plugin:react-native/all from global extends
+extends: [
+  'eslint:recommended',
+  'plugin:@typescript-eslint/recommended',
+  'plugin:react/recommended',
+  'plugin:react/jsx-runtime',
+  'plugin:import/errors',
+  'plugin:import/warnings',
+  'plugin:import/typescript',
+  'prettier',
+],
+
 
   settings: {
     react: { version: 'detect' },
@@ -63,7 +57,7 @@ module.exports = {
           path.resolve(__dirname, 'tsconfig.base.json'),
           path.resolve(__dirname, 'apps/web/tsconfig.json'),
           path.resolve(__dirname, 'packages/shared/tsconfig.json'),
-          path.resolve(__dirname, 'backend/tsconfig.json'),
+          path.resolve(__dirname, 'apps/backend/tsconfig.json'),
         ],
       },
       node: {
@@ -77,21 +71,23 @@ module.exports = {
     es6: true,
     browser: true,
     node: true,
-    'react-native/react-native': true,
   },
 
-  rules: {
-    'react/react-in-jsx-scope': 'off',
-    'react/no-unescaped-entities': 'off',
-    'prettier/prettier': 'error',
-  },
+rules: {
+  'react/react-in-jsx-scope': 'off',
+  'react/no-unescaped-entities': 'off',
+  'no-empty': ['error', { allowEmptyCatch: true }],
+},
+
 
   overrides: [
     {
-      // Mobile app: silence unused-vars and prop-types
+      // ✅ Mobile-only: RN lint lives here now
       files: ['apps/mobile/**/*.{ts,tsx}'],
       parserOptions: { project: ['./apps/mobile/tsconfig.json'], tsconfigRootDir: __dirname },
       env: { 'react-native/react-native': true },
+      plugins: ['react-native'],
+      extends: ['plugin:react-native/all'],
       rules: {
         '@typescript-eslint/no-unused-vars': 'off',
         'react/prop-types': 'off',
@@ -99,7 +95,6 @@ module.exports = {
       },
     },
     {
-      // Web app: relax TS any, prop-types, inline styles, colors
       files: ['apps/web/**/*.{js,jsx,ts,tsx}'],
       parserOptions: { project: ['./apps/web/tsconfig.json'], tsconfigRootDir: __dirname },
       env: { browser: true, node: true },
@@ -107,9 +102,6 @@ module.exports = {
         '@typescript-eslint/no-unused-vars': 'off',
         '@typescript-eslint/no-explicit-any': 'off',
         'react/prop-types': 'off',
-        'react-native/no-raw-text': 'off',
-        'react-native/no-inline-styles': 'off',
-        'react-native/no-color-literals': 'off',
         'react/display-name': 'off',
         'import/default': 'off',
         'import/no-unresolved': 'off',
@@ -117,7 +109,6 @@ module.exports = {
       },
     },
     {
-      // Shared package: suppress TS-specific rules
       files: ['packages/shared/**/*.{ts,tsx}'],
       parserOptions: { project: ['./packages/shared/tsconfig.json'], tsconfigRootDir: __dirname },
       env: { browser: true, node: true },
@@ -125,13 +116,21 @@ module.exports = {
         '@typescript-eslint/no-explicit-any': 'off',
         '@typescript-eslint/no-unused-vars': 'off',
         '@typescript-eslint/no-unused-expressions': 'off',
+
+        // If shared has intentional empty catches, this + global allowEmptyCatch is enough.
       },
     },
     {
-      // Backend: default node settings
-      files: ['backend/**/*.{ts,js}'],
-      parserOptions: { project: ['./backend/tsconfig.json'], tsconfigRootDir: __dirname },
-      env: { node: true },
-    },
+  files: ["apps/backend/**/*.{js,mjs,cjs}"],
+  parserOptions: {
+    project: null, // ✅ KEY: prevents tsconfig lookup / TS5012
+  },
+  env: { node: true },
+  rules: {
+    // Optional: if backend is ESM and you don't want import/no-unresolved noise
+    // "import/no-unresolved": "off",
+  },
+},
+
   ],
 };

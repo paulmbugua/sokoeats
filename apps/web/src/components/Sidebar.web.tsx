@@ -11,13 +11,9 @@ export interface SidebarProps {
   clearFilters: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({
-  filters,
-  onFilterChange,
-  clearFilters,
-}) => {
+const Sidebar: React.FC<SidebarProps> = ({ filters, onFilterChange, clearFilters }) => {
   const [isCategoriesOpen, setCategoriesOpen] = useState(false);
-  const [isFiltersOpen, setFiltersOpen]       = useState(false);
+  const [isFiltersOpen, setFiltersOpen] = useState(false);
 
   const sections = [
     'All Tutors',
@@ -37,13 +33,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const experienceLevels = ['Beginner', 'Intermediate', 'Advanced', 'Expert'];
-  const teachingStyles   = ['One-on-One', 'Group', 'Workshop', 'Lecture'];
-  const expertises       = [
-    'Exam Prep',
-    'Skill Building',
-    'Homework Help',
-    'Career Guidance',
-  ];
+  const teachingStyles = ['One-on-One', 'Group', 'Workshop', 'Lecture'];
+  const expertises = ['Exam Prep', 'Skill Building', 'Homework Help', 'Career Guidance'];
   const ageGroups = [
     'Pre-Primary',
     'Lower Primary',
@@ -88,9 +79,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           className="flex justify-between items-center cursor-pointer text-xl font-semibold uppercase tracking-wider text-softPink"
         >
           <span>Subjects</span>
-          <FontAwesomeIcon
-            icon={(isCategoriesOpen ? faChevronUp : faChevronDown) as IconProp}
-          />
+          <FontAwesomeIcon icon={(isCategoriesOpen ? faChevronUp : faChevronDown) as IconProp} />
         </div>
         {isCategoriesOpen &&
           categories.map((cat) => (
@@ -113,18 +102,14 @@ const Sidebar: React.FC<SidebarProps> = ({
           className="flex justify-between items-center cursor-pointer text-xl font-semibold uppercase tracking-wider text-softPink"
         >
           <span>Filters</span>
-          <FontAwesomeIcon
-            icon={(isFiltersOpen ? faChevronUp : faChevronDown) as IconProp}
-          />
+          <FontAwesomeIcon icon={(isFiltersOpen ? faChevronUp : faChevronDown) as IconProp} />
         </div>
 
         {isFiltersOpen && (
           <div className="pl-2 space-y-6">
             {/* Experience Level */}
             <div>
-              <h4 className="text-softGray text-lg font-semibold mb-2">
-                Experience Level
-              </h4>
+              <h4 className="text-softGray text-lg font-semibold mb-2">Experience Level</h4>
               {experienceLevels.map((lvl) => (
                 <label key={lvl} className="block mb-1">
                   <input
@@ -140,20 +125,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Teaching Style */}
             <div>
-              <h4 className="text-softGray text-lg font-semibold mb-2">
-                Teaching Style
-              </h4>
+              <h4 className="text-softGray text-lg font-semibold mb-2">Teaching Style</h4>
               {teachingStyles.map((style) => (
                 <label key={style} className="block mb-1">
                   <input
                     type="checkbox"
                     className="mr-2"
-                    checked={filters['description.teachingStyle']?.includes(
-                      style
-                    ) ?? false}
-                    onChange={() =>
-                      onFilterChange('description.teachingStyle', style)
-                    }
+                    checked={filters['description.teachingStyle']?.includes(style) ?? false}
+                    onChange={() => onFilterChange('description.teachingStyle', style)}
                   />
                   {style}
                 </label>
@@ -162,18 +141,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Expertise */}
             <div>
-              <h4 className="text-softGray text-lg font-semibold mb-2">
-                Expertise
-              </h4>
+              <h4 className="text-softGray text-lg font-semibold mb-2">Expertise</h4>
               {expertises.map((exp) => (
                 <label key={exp} className="block mb-1">
                   <input
                     type="checkbox"
                     className="mr-2"
                     checked={filters['description.expertise']?.includes(exp) ?? false}
-                    onChange={() =>
-                      onFilterChange('description.expertise', exp)
-                    }
+                    onChange={() => onFilterChange('description.expertise', exp)}
                   />
                   {exp}
                 </label>
@@ -182,9 +157,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Age Group */}
             <div>
-              <h4 className="text-softGray text-lg font-semibold mb-2">
-                Age Group
-              </h4>
+              <h4 className="text-softGray text-lg font-semibold mb-2">Age Group</h4>
               {ageGroups.map((age) => (
                 <label key={age} className="block mb-1">
                   <input
@@ -200,9 +173,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Pricing */}
             <div>
-              <h4 className="text-softGray text-lg font-semibold mb-2">
-                Pricing (Tokens)
-              </h4>
+              <h4 className="text-softGray text-lg font-semibold mb-2">Pricing (Tokens)</h4>
               {pricingRanges.map((range) => (
                 <label key={range} className="block mb-1">
                   <input

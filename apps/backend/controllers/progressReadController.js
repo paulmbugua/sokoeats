@@ -1,11 +1,15 @@
 import pool from '../config/db.js';
 
-const READ_PCT = 0.90;      // require 90% scroll OR …
-const WORDS_PCT = 0.85;     // 85% of words “seen”
-const MIN_SECS = 60;        // at least a minute engaged for tiny pages
+const READ_PCT = 0.9; // require 90% scroll OR …
+const WORDS_PCT = 0.85; // 85% of words “seen”
+const MIN_SECS = 60; // at least a minute engaged for tiny pages
 
-function normalizeUrl(s='') {
-  try { return new URL(s).toString(); } catch { return String(s || '').trim(); }
+function normalizeUrl(s = '') {
+  try {
+    return new URL(s).toString();
+  } catch {
+    return String(s || '').trim();
+  }
 }
 
 /** POST /api/progress/read
@@ -16,19 +20,31 @@ export async function postReadEvent(req, res) {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: 'auth required' });
 
-    const { courseId, week, sourceUrl, wordsRead=0, totalWords=0, scrolledPct=0, secondsActive=0 } = req.body || {};
+    const {
+      courseId,
+      week,
+      sourceUrl,
+      wordsRead = 0,
+      totalWords = 0,
+      scrolledPct = 0,
+      secondsActive = 0,
+    } = req.body || {};
     if (!courseId || week == null || !sourceUrl) {
-      return res.status(400).json({ error: 'courseId/week/sourceUrl required' });
+      return res
+        .status(400)
+        .json({ error: 'courseId/week/sourceUrl required' });
     }
 
     const words = Math.max(0, Number(wordsRead) | 0);
     const total = Math.max(0, Number(totalWords) | 0);
-    const pct   = Math.max(0, Math.min(1, Number(scrolledPct)));
-    const secs  = Math.max(0, Number(secondsActive) | 0);
+    const pct = Math.max(0, Math.min(1, Number(scrolledPct)));
+    const secs = Math.max(0, Number(secondsActive) | 0);
 
-    const enoughPct   = pct >= READ_PCT;
-    const enoughWords = total > 0 ? words >= Math.ceil(total * WORDS_PCT) : false;
-    const enoughSecs  = secs >= Math.max(MIN_SECS, Math.min(1200, Math.ceil(total / 3))); // ~200wpm heuristic
+    const enoughPct = pct >= READ_PCT;
+    const enoughWords =
+      total > 0 ? words >= Math.ceil(total * WORDS_PCT) : false;
+    const enoughSecs =
+      secs >= Math.max(MIN_SECS, Math.min(1200, Math.ceil(total / 3))); // ~200wpm heuristic
 
     const completed = Boolean(enoughPct || enoughWords || enoughSecs);
 
@@ -46,7 +62,15 @@ export async function postReadEvent(req, res) {
         updated_at    = now()
       RETURNING *`;
     const { rows } = await pool.query(sql, [
-      userId, courseId, Number(week), normalizeUrl(sourceUrl), words, total, pct, secs, completed
+      userId,
+      courseId,
+      Number(week),
+      normalizeUrl(sourceUrl),
+      words,
+      total,
+      pct,
+      secs,
+      completed,
     ]);
     res.json(rows[0]);
   } catch (e) {
@@ -66,7 +90,7 @@ export async function getReadSummary(req, res) {
          FROM course_text_read
         WHERE user_id=$1 AND course_id=$2
         ORDER BY week ASC, source_url ASC`,
-      [userId, courseId]
+      [userId, courseId],
     );
     res.json(rows);
   } catch (e) {
@@ -79,9 +103,14 @@ export async function getReadSummary(req, res) {
 export async function getWeekReadRequirements(req, res) {
   try {
     const { courseId, week } = req.params;
-    const { rows } = await pool.query(`SELECT syllabus FROM courses WHERE id=$1`, [courseId]);
+    const { rows } = await pool.query(
+      `SELECT syllabus FROM courses WHERE id=$1`,
+      [courseId],
+    );
     const syllabus = rows[0]?.syllabus || [];
-    const item = Array.isArray(syllabus) ? syllabus.find((s) => s.week === Number(week)) : null;
+    const item = Array.isArray(syllabus)
+      ? syllabus.find((s) => s.week === Number(week))
+      : null;
 
     const urls = []
       .concat(item?.notesUrls || [])

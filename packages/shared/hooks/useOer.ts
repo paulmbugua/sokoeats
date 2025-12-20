@@ -7,7 +7,7 @@ import {
   fetchOerMeta,
   fetchOerCourses,
   fetchOerCourse,
-  wrapOerBook ,
+  wrapOerBook,
 } from '@mytutorapp/shared/api/oerApi';
 
 /* ----------------------------------------------------------------------------
@@ -160,12 +160,14 @@ export function useOerCourse(idOrTitle?: string) {
   return { course, loading, error, reload };
 }
 
-
 export function useWrapOerBook() {
   const { backendUrl, token } = useShopContext();
   return {
-    wrapBook: useCallback((idOrSlug: string) => {
-      return wrapOerBook({ baseUrl: backendUrl, token, idOrSlug });
-    }, [backendUrl, token]),
+    wrapBook: useCallback(
+      (idOrSlug: string) => {
+        return wrapOerBook({ baseUrl: backendUrl, token, idOrSlug });
+      },
+      [backendUrl, token]
+    ),
   };
 }

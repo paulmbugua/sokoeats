@@ -10,11 +10,11 @@ import {
   Alert,
   Modal,
   TextInput,
+  Linking,
 } from 'react-native';
 import debounce from 'lodash.debounce';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Linking } from 'react-native';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useCourses, useEnrollments, useOerMeta } from '@mytutorapp/shared/hooks';
@@ -47,11 +47,7 @@ const StarRow: React.FC<{ avg?: number; count?: number }> = ({ avg = 0, count = 
           key={i}
           style={tw.style(
             'mr-0.5 text-lg',
-            a >= i
-              ? 'text-yellow-500'
-              : a + 0.5 === i
-              ? 'text-yellow-500/70'
-              : 'text-yellow-500/30',
+            a >= i ? 'text-yellow-500' : a + 0.5 === i ? 'text-yellow-500/70' : 'text-yellow-500/30'
           )}
         >
           ★
@@ -66,16 +62,13 @@ const StarRow: React.FC<{ avg?: number; count?: number }> = ({ avg = 0, count = 
 
 /** Coerce any price-like value to whole tokens (non-negative int) */
 function toTokens(v: unknown): number {
-  const n =
-    typeof v === 'number' ? v : typeof v === 'string' ? Number.parseFloat(v) : 0;
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number.parseFloat(v) : 0;
   return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
 }
 
 /* --------------------------------- UI Bits -------------------------------- */
 const Pill: React.FC<React.PropsWithChildren<{}>> = ({ children }) => (
-  <View
-    style={tw`h-8 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
-  >
+  <View style={tw`h-8 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}>
     <Text style={tw`text-sm text-slate-900 dark:text-slate-100`}>{children}</Text>
   </View>
 );
@@ -90,7 +83,7 @@ const CenterMessage: React.FC<{ text: string; variant?: 'error' | 'normal' }> = 
         'text-base text-center',
         variant === 'error'
           ? 'text-red-600 dark:text-red-400'
-          : 'text-slate-800 dark:text-slate-100',
+          : 'text-slate-800 dark:text-slate-100'
       )}
     >
       {text}
@@ -150,9 +143,7 @@ const CourseDetailsNative: React.FC = () => {
 
   const myEnrollment = useMemo(() => {
     if (!courseId) return undefined;
-    return enrollments.find(
-      (e: any) => String(e?.course_id ?? e?.courseId) === String(courseId),
-    );
+    return enrollments.find((e: any) => String(e?.course_id ?? e?.courseId) === String(courseId));
   }, [enrollments, courseId]);
 
   // Always treat price as tokens
@@ -168,14 +159,14 @@ const CourseDetailsNative: React.FC = () => {
   const { avg, count, hasMyReview, reload, submit, posting } = useCourseReviews(
     backendUrl,
     courseId,
-    { myStudentId: myId, token: token ?? '' },
+    { myStudentId: myId, token: token ?? '' }
   );
   const debouncedReload = useMemo(
     () =>
       debounce(() => {
         void reload();
       }, 200),
-    [reload],
+    [reload]
   );
   useEffect(() => () => debouncedReload.cancel(), [debouncedReload]);
 
@@ -197,14 +188,14 @@ const CourseDetailsNative: React.FC = () => {
 
     const proceed = await confirm(
       'Purchase & Enroll',
-      `You are about to purchase "${c.title}" for ${priceTokens} tokens.\n\nThis amount will be deducted from your balance (${walletTokens} tokens). Continue?`,
+      `You are about to purchase "${c.title}" for ${priceTokens} tokens.\n\nThis amount will be deducted from your balance (${walletTokens} tokens). Continue?`
     );
     if (!proceed) return;
 
     if (!hasEnough) {
       const goBuy = await confirm(
         'Insufficient balance',
-        'Not enough tokens. Would you like to buy more now?',
+        'Not enough tokens. Would you like to buy more now?'
       );
       if (goBuy) navigation.navigate('BuyTokens');
       return;
@@ -216,10 +207,7 @@ const CourseDetailsNative: React.FC = () => {
     } catch (e: any) {
       const msg: string = e?.message || '';
       if (/insufficient/i.test(msg)) {
-        const go = await confirm(
-          'Insufficient balance',
-          'Not enough tokens. Buy more now?',
-        );
+        const go = await confirm('Insufficient balance', 'Not enough tokens. Buy more now?');
         if (go) navigation.navigate('BuyTokens');
       }
     }
@@ -266,9 +254,7 @@ const CourseDetailsNative: React.FC = () => {
     body = (
       <View style={tw`flex-1 items-center justify-center px-6`}>
         <ActivityIndicator />
-        <Text style={tw`mt-2 text-[#49739c] dark:text-white/70`}>
-          Loading course…
-        </Text>
+        <Text style={tw`mt-2 text-[#49739c] dark:text-white/70`}>Loading course…</Text>
       </View>
     );
   } else if (courseError && !c) {
@@ -294,12 +280,7 @@ const CourseDetailsNative: React.FC = () => {
       >
         {/* Outer container to center content */}
         <View style={tw`w-full px-4`}>
-          <View
-            style={[
-              tw`w-full`,
-              { maxWidth: 900, alignSelf: 'center' },
-            ]}
-          >
+          <View style={[tw`w-full`, { maxWidth: 900, alignSelf: 'center' }]}>
             {/* Header */}
             <View style={tw`flex-row items-start justify-between gap-4`}>
               {/* Left: title / meta */}
@@ -316,9 +297,7 @@ const CourseDetailsNative: React.FC = () => {
                 </Text>
 
                 {!!c.description && (
-                  <Text
-                    style={tw`mt-2 text-sm text-[#49739c] dark:text-darkTextSecondary`}
-                  >
+                  <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-darkTextSecondary`}>
                     {c.description}
                   </Text>
                 )}
@@ -328,8 +307,7 @@ const CourseDetailsNative: React.FC = () => {
                   <View style={tw`mt-2`}>
                     <Pill>
                       OER •{' '}
-                      {((oerMeta as any)?.catalog_provider?.toUpperCase?.() ||
-                        'OER') as string}
+                      {((oerMeta as any)?.catalog_provider?.toUpperCase?.() || 'OER') as string}
                     </Pill>
                   </View>
                 )}
@@ -347,9 +325,7 @@ const CourseDetailsNative: React.FC = () => {
                 </View>
 
                 {/* Balance helper */}
-                <Text
-                  style={tw`mt-2 text-xs text-[#49739c] dark:text-darkTextSecondary`}
-                >
+                <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-darkTextSecondary`}>
                   Your balance: {walletTokens} tokens
                 </Text>
               </View>
@@ -361,9 +337,7 @@ const CourseDetailsNative: React.FC = () => {
                     onPress={() => navigation.navigate('Courses')}
                     style={tw`h-10 px-4 rounded-xl bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
                   >
-                    <Text
-                      style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
-                    >
+                    <Text style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}>
                       Manage / Share
                     </Text>
                   </Pressable>
@@ -373,20 +347,14 @@ const CourseDetailsNative: React.FC = () => {
                       onPress={onContinue}
                       style={tw`h-10 px-5 rounded-xl bg-[#3d99f5] items-center justify-center`}
                     >
-                      <Text
-                        style={tw`text-sm font-semibold text-white`}
-                      >
-                        Continue Course
-                      </Text>
+                      <Text style={tw`text-sm font-semibold text-white`}>Continue Course</Text>
                     </Pressable>
 
                     <Pressable
                       onPress={onUnenroll}
                       style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] items-center justify-center border border-[#cedbe8] dark:border-darkCard`}
                     >
-                      <Text
-                        style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
-                      >
+                      <Text style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}>
                         Unenroll
                       </Text>
                     </Pressable>
@@ -397,9 +365,7 @@ const CourseDetailsNative: React.FC = () => {
                         onPress={onOpenTranscript}
                         style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] items-center justify-center border border-[#cedbe8] dark:border-darkCard`}
                       >
-                        <Text
-                          style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
-                        >
+                        <Text style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}>
                           Download Transcript (Free)
                         </Text>
                       </Pressable>
@@ -411,9 +377,7 @@ const CourseDetailsNative: React.FC = () => {
                         onPress={() => setOpenReview(true)}
                         style={tw`h-10 px-4 rounded-xl bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
                       >
-                        <Text
-                          style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
-                        >
+                        <Text style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}>
                           Review this course
                         </Text>
                       </Pressable>
@@ -426,12 +390,10 @@ const CourseDetailsNative: React.FC = () => {
                       disabled={disablePrimary}
                       style={tw.style(
                         'h-10 px-5 rounded-xl items-center justify-center bg-[#3d99f5]',
-                        disablePrimary && 'opacity-60',
+                        disablePrimary && 'opacity-60'
                       )}
                     >
-                      <Text
-                        style={tw`text-sm font-semibold text-white`}
-                      >
+                      <Text style={tw`text-sm font-semibold text-white`}>
                         {enrollmentsLoading ? 'Checking…' : 'Purchase & Enroll'}
                       </Text>
                     </Pressable>
@@ -441,9 +403,7 @@ const CourseDetailsNative: React.FC = () => {
                         onPress={() => navigation.navigate('BuyTokens')}
                         style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] items-center justify-center border border-[#cedbe8] dark:border-darkCard`}
                       >
-                        <Text
-                          style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
-                        >
+                        <Text style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}>
                           Buy Tokens
                         </Text>
                       </Pressable>
@@ -456,9 +416,7 @@ const CourseDetailsNative: React.FC = () => {
                   onPress={() => navigation.navigate('Achievements')}
                   style={tw`h-10 px-4 rounded-xl bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
                 >
-                  <Text
-                    style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
-                  >
+                  <Text style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}>
                     Achievements
                   </Text>
                 </Pressable>
@@ -468,17 +426,13 @@ const CourseDetailsNative: React.FC = () => {
                   onPress={() => navigation.goBack()}
                   style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] items-center justify-center border border-[#cedbe8] dark:border-darkCard`}
                 >
-                  <Text
-                    style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
-                  >
+                  <Text style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}>
                     Back
                   </Text>
                 </Pressable>
 
                 {!!enrollError && (
-                  <Text
-                    style={tw`mt-1 text-xs text-red-600 dark:text-red-400`}
-                  >
+                  <Text style={tw`mt-1 text-xs text-red-600 dark:text-red-400`}>
                     {String(enrollError)}
                   </Text>
                 )}
@@ -489,24 +443,14 @@ const CourseDetailsNative: React.FC = () => {
             <View
               style={tw`mt-6 rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-4`}
             >
-              <Text
-                style={tw`text-lg font-bold mb-3 text-slate-900 dark:text-white`}
-              >
+              <Text style={tw`text-lg font-bold mb-3 text-slate-900 dark:text-white`}>
                 About the tutor
               </Text>
               <View style={tw`flex-row items-center gap-3`}>
-                <View
-                  style={tw`h-12 w-12 rounded-full bg-[#e7edf4] dark:bg-[#172534]`}
-                />
+                <View style={tw`h-12 w-12 rounded-full bg-[#e7edf4] dark:bg-[#172534]`} />
                 <View style={tw`flex-1`}>
-                  <Text
-                    style={tw`font-semibold text-slate-900 dark:text-white`}
-                  >
-                    {tutorName}
-                  </Text>
-                  <Text
-                    style={tw`text-sm text-[#49739c] dark:text-darkTextSecondary`}
-                  >
+                  <Text style={tw`font-semibold text-slate-900 dark:text-white`}>{tutorName}</Text>
+                  <Text style={tw`text-sm text-[#49739c] dark:text-darkTextSecondary`}>
                     {tutorBio}
                   </Text>
                 </View>
@@ -517,27 +461,21 @@ const CourseDetailsNative: React.FC = () => {
             <View
               style={tw`mt-6 rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-4`}
             >
-              <Text
-                style={tw`text-lg font-bold mb-3 text-slate-900 dark:text-white`}
-              >
+              <Text style={tw`text-lg font-bold mb-3 text-slate-900 dark:text-white`}>
                 Syllabus
               </Text>
               {Array.isArray(c.syllabus) && c.syllabus.length > 0 ? (
                 <View style={tw`gap-2`}>
                   {c.syllabus.slice(0, 12).map((w) => (
                     <View key={w.week} style={tw`mb-1`}>
-                      <Text
-                        style={tw`font-medium text-slate-900 dark:text-white`}
-                      >
+                      <Text style={tw`font-medium text-slate-900 dark:text-white`}>
                         Week {w.week}:{' '}
                         <Text style={tw`text-slate-800 dark:text-slate-300`}>
                           {w.topic || 'TBA'}
                         </Text>
                       </Text>
                       {!!w.assignment && (
-                        <Text
-                          style={tw`mt-0.5 text-xs text-[#49739c] dark:text-darkTextSecondary`}
-                        >
+                        <Text style={tw`mt-0.5 text-xs text-[#49739c] dark:text-darkTextSecondary`}>
                           Assignment: {w.assignment}
                         </Text>
                       )}
@@ -545,9 +483,7 @@ const CourseDetailsNative: React.FC = () => {
                   ))}
                 </View>
               ) : (
-                <Text
-                  style={tw`text-sm text-[#49739c] dark:text-darkTextSecondary`}
-                >
+                <Text style={tw`text-sm text-[#49739c] dark:text-darkTextSecondary`}>
                   No syllabus yet.
                 </Text>
               )}
@@ -566,14 +502,10 @@ const CourseDetailsNative: React.FC = () => {
             <View
               style={tw`w-11/12 max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-darkCard`}
             >
-              <Text
-                style={tw`text-lg font-bold mb-2 text-slate-900 dark:text-white`}
-              >
+              <Text style={tw`text-lg font-bold mb-2 text-slate-900 dark:text-white`}>
                 Rate this course
               </Text>
-              <Text
-                style={tw`text-sm text-[#49739c] dark:text-darkTextSecondary mb-3`}
-              >
+              <Text style={tw`text-sm text-[#49739c] dark:text-darkTextSecondary mb-3`}>
                 {c.title}
               </Text>
 
@@ -583,7 +515,7 @@ const CourseDetailsNative: React.FC = () => {
                     <Text
                       style={tw.style(
                         'text-2xl',
-                        n <= rating ? 'text-yellow-500' : 'text-[#49739c]',
+                        n <= rating ? 'text-yellow-500' : 'text-[#49739c]'
                       )}
                     >
                       ★
@@ -608,12 +540,10 @@ const CourseDetailsNative: React.FC = () => {
                   onPress={onSubmitReview}
                   style={tw.style(
                     'px-4 h-10 rounded-xl items-center justify-center bg-[#3d99f5]',
-                    (posting || rating < 1) && 'opacity-60',
+                    (posting || rating < 1) && 'opacity-60'
                   )}
                 >
-                  <Text
-                    style={tw`text-sm font-semibold text-white`}
-                  >
+                  <Text style={tw`text-sm font-semibold text-white`}>
                     {posting ? 'Saving…' : 'Submit'}
                   </Text>
                 </Pressable>
@@ -621,9 +551,7 @@ const CourseDetailsNative: React.FC = () => {
                   onPress={() => setOpenReview(false)}
                   style={tw`px-4 h-10 rounded-xl items-center justify-center bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-darkCard`}
                 >
-                  <Text
-                    style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}
-                  >
+                  <Text style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}>
                     Cancel
                   </Text>
                 </Pressable>
@@ -636,10 +564,7 @@ const CourseDetailsNative: React.FC = () => {
   }
 
   return (
-    <SafeAreaView
-      style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
-      edges={['top', 'bottom']}
-    >
+    <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
       {/* Soft background orbs */}
       <View style={tw`absolute inset-0`}>
         <View

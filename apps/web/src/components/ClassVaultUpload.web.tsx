@@ -6,7 +6,9 @@ import type { IconProp } from '@fortawesome/fontawesome-svg-core';
 import { faCloudUploadAlt } from '@fortawesome/free-solid-svg-icons';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { uploadClassVaultAsset, UploadResult } from '@mytutorapp/shared/api/classVaultUploadApi';
-import useUploadClassVault, { CreateRecordedVideoPayload } from '@mytutorapp/shared/hooks/useUploadClassVault';
+import useUploadClassVault, {
+  CreateRecordedVideoPayload,
+} from '@mytutorapp/shared/hooks/useUploadClassVault';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 
 /* ───────────────────────── Minimal subjects (major categories) ───────────────────────── */
@@ -25,9 +27,17 @@ type SubjectCategory = (typeof SUBJECT_CATEGORIES)[number];
 /* ───────────────────────── Local storage for country ───────────────────────── */
 const COUNTRY_KEY = 'classvault:country';
 function loadCountry(): string | null {
-  try { return localStorage.getItem(COUNTRY_KEY) || null; } catch { return null; }
+  try {
+    return localStorage.getItem(COUNTRY_KEY) || null;
+  } catch {
+    return null;
+  }
 }
-function saveCountry(c: string) { try { localStorage.setItem(COUNTRY_KEY, c); } catch {} }
+function saveCountry(c: string) {
+  try {
+    localStorage.setItem(COUNTRY_KEY, c);
+  } catch {}
+}
 
 /* ───────────────────────── Small helpers ───────────────────────── */
 const inputBase =
@@ -79,10 +89,12 @@ export default function ClassVaultUpload() {
   // Countries list from shared util (normalize keys safely)
   const countries = useMemo(
     () =>
-      (Array.isArray(COUNTRIES) ? COUNTRIES : []).map((c: any) => ({
-        code: String(c.code || c.iso2 || c.alpha2 || c.id || '').toLowerCase(),
-        label: String(c.name || c.label || c.country || c.title || ''),
-      })).filter(c => c.code && c.label),
+      (Array.isArray(COUNTRIES) ? COUNTRIES : [])
+        .map((c: any) => ({
+          code: String(c.code || c.iso2 || c.alpha2 || c.id || '').toLowerCase(),
+          label: String(c.name || c.label || c.country || c.title || ''),
+        }))
+        .filter((c) => c.code && c.label),
     []
   );
 
@@ -96,15 +108,25 @@ export default function ClassVaultUpload() {
     const file = e.target.files?.[0];
     if (!file || !backendUrl || !token) return;
     try {
-      setProgress(0); setUploadedUrl(''); setUploadingFile(true);
+      setProgress(0);
+      setUploadedUrl('');
+      setUploadingFile(true);
       const { url }: UploadResult = await uploadClassVaultAsset(
-        backendUrl, token, file, fileType, (pct) => setProgress(pct)
+        backendUrl,
+        token,
+        file,
+        fileType,
+        (pct) => setProgress(pct)
       );
-      setProgress(100); setUploadedUrl(url);
+      setProgress(100);
+      setUploadedUrl(url);
     } catch (err: any) {
       alert('Upload failed: ' + (err.message || err));
-      setProgress(0); setUploadedUrl('');
-    } finally { setUploadingFile(false); }
+      setProgress(0);
+      setUploadedUrl('');
+    } finally {
+      setUploadingFile(false);
+    }
   };
 
   /* ── Auto-tags (no region; include simple grade tag from manual input) ── */
@@ -127,13 +149,16 @@ export default function ClassVaultUpload() {
       return;
     }
 
-    const userTags = tags.split(',').map((t) => t.trim()).filter(Boolean);
+    const userTags = tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
     const hidden = deriveAutoTags();
     const allTags = Array.from(new Set([...userTags, ...hidden]));
 
     const payload: CreateRecordedVideoPayload = {
       title,
-      subject,                 // major category
+      subject, // major category
       grade_level: gradeLevel, // manual human label
       price: Number(price),
       duration: duration ? Number(duration) : undefined,
@@ -145,7 +170,9 @@ export default function ClassVaultUpload() {
     try {
       await handleSubmitMetadata(payload);
       alert('Success! Your content is now uploaded.');
-      setProgress(0); setUploadedUrl(''); navigate(-1);
+      setProgress(0);
+      setUploadedUrl('');
+      navigate(-1);
     } catch (err: any) {
       alert('Submission failed: ' + (err.message || err));
     }
@@ -162,7 +189,9 @@ export default function ClassVaultUpload() {
     return (
       <div className="flex items-center justify-center h-64 p-4 bg-slate-50 dark:bg-darkBg">
         <p className="text-red-600 dark:text-red-400 text-center text-lg">
-          Access Denied<br />Only tutors can upload content.
+          Access Denied
+          <br />
+          Only tutors can upload content.
         </p>
       </div>
     );
@@ -187,13 +216,18 @@ export default function ClassVaultUpload() {
             className={inputBase}
             required
           >
-            <option value="" disabled>Select your country…</option>
+            <option value="" disabled>
+              Select your country…
+            </option>
             {countries.map((c) => (
-              <option key={c.code} value={c.code}>{c.label}</option>
+              <option key={c.code} value={c.code}>
+                {c.label}
+              </option>
             ))}
           </select>
           <p className={`${subtleTone} mt-1`}>
-            We’ll add <span className="text-pink-600">country:{country || '...'}</span> to your tags automatically.
+            We’ll add <span className="text-pink-600">country:{country || '...'}</span> to your tags
+            automatically.
           </p>
         </div>
 
@@ -219,13 +253,18 @@ export default function ClassVaultUpload() {
             className={inputBase}
             required
           >
-            <option value="" disabled>Select category…</option>
+            <option value="" disabled>
+              Select category…
+            </option>
             {SUBJECT_CATEGORIES.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>
+                {s}
+              </option>
             ))}
           </select>
           <p className={`${subtleTone} mt-1`}>
-            Keep it broad—specific topics can go in tags (e.g., <span className="text-pink-600">algebra, optics, essay</span>).
+            Keep it broad—specific topics can go in tags (e.g.,{' '}
+            <span className="text-pink-600">algebra, optics, essay</span>).
           </p>
         </div>
 
@@ -241,7 +280,8 @@ export default function ClassVaultUpload() {
             required
           />
           <p className={`${subtleTone} mt-1`}>
-            We’ll add a tag like <span className="text-pink-600">grade:{slugify(gradeLevel) || '...'}</span>.
+            We’ll add a tag like{' '}
+            <span className="text-pink-600">grade:{slugify(gradeLevel) || '...'}</span>.
           </p>
         </div>
 
@@ -284,8 +324,18 @@ export default function ClassVaultUpload() {
           />
           <p className={`${subtleTone} mt-1`}>
             We’ll auto-add: <span className="text-pink-600">country:{country || '...'}</span>
-            {subject && <> , <span className="text-pink-600">subject:{subject}</span></>}
-            {gradeLevel.trim() && <> , <span className="text-pink-600">grade:{slugify(gradeLevel)}</span></>}
+            {subject && (
+              <>
+                {' '}
+                , <span className="text-pink-600">subject:{subject}</span>
+              </>
+            )}
+            {gradeLevel.trim() && (
+              <>
+                {' '}
+                , <span className="text-pink-600">grade:{slugify(gradeLevel)}</span>
+              </>
+            )}
           </p>
         </div>
 
@@ -293,7 +343,11 @@ export default function ClassVaultUpload() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => { setFileType('video'); setUploadedUrl(''); setProgress(0); }}
+            onClick={() => {
+              setFileType('video');
+              setUploadedUrl('');
+              setProgress(0);
+            }}
             className={toggleBtn(fileType === 'video')}
           >
             Video
@@ -301,7 +355,11 @@ export default function ClassVaultUpload() {
           <span className="text-[#49739c] dark:text-darkTextSecondary font-medium">or</span>
           <button
             type="button"
-            onClick={() => { setFileType('pdf'); setUploadedUrl(''); setProgress(0); }}
+            onClick={() => {
+              setFileType('pdf');
+              setUploadedUrl('');
+              setProgress(0);
+            }}
             className={toggleBtn(fileType === 'pdf')}
           >
             Class Notes
@@ -314,8 +372,8 @@ export default function ClassVaultUpload() {
             {uploadingFile
               ? 'Uploading…'
               : uploadedUrl
-              ? `✅ ${fileType === 'video' ? 'Video uploaded' : 'PDF selected'}`
-              : `Select ${fileType === 'video' ? 'Video' : 'PDF'} *`}
+                ? `✅ ${fileType === 'video' ? 'Video uploaded' : 'PDF selected'}`
+                : `Select ${fileType === 'video' ? 'Video' : 'PDF'} *`}
           </label>
 
           <div className="flex items-center mb-2">
@@ -362,7 +420,15 @@ export default function ClassVaultUpload() {
         {process.env.NODE_ENV !== 'production' && (
           <div className="text-xs text-[#49739c] dark:text-darkTextSecondary pt-2">
             <strong>Auto-tags preview:</strong>{' '}
-            {[...new Set([...deriveAutoTags(), ...tags.split(',').map(t=>t.trim()).filter(Boolean)])].join(', ') || '(none)'}
+            {[
+              ...new Set([
+                ...deriveAutoTags(),
+                ...tags
+                  .split(',')
+                  .map((t) => t.trim())
+                  .filter(Boolean),
+              ]),
+            ].join(', ') || '(none)'}
           </div>
         )}
       </form>

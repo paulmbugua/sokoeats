@@ -121,9 +121,7 @@ const InviteLoginScreen: React.FC = () => {
               </Text>
             </View>
           )}
-          <Text style={tw`text-white text-xl font-bold`}>
-            {loading ? 'Loading…' : orgName}
-          </Text>
+          <Text style={tw`text-white text-xl font-bold`}>{loading ? 'Loading…' : orgName}</Text>
           <Text style={tw`text-indigo-200 mt-1`}>{title}</Text>
         </View>
 

@@ -65,10 +65,8 @@ export default function BottomBar({
   childrenTopFloating?: React.ReactNode;
   isMax?: boolean;
 }) {
-  const volDown = () =>
-    setVolume(Math.max(0, +(Math.max(0, volume - 0.1)).toFixed(3)));
-  const volUp = () =>
-    setVolume(Math.min(1, +(Math.min(1, volume + 0.1)).toFixed(3)));
+  const volDown = () => setVolume(Math.max(0, +Math.max(0, volume - 0.1).toFixed(3)));
+  const volUp = () => setVolume(Math.min(1, +Math.min(1, volume + 0.1).toFixed(3)));
 
   const outerBase =
     'bg-[linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.04)_100%)] bg-black/35 backdrop-blur-xl ring-1 ring-white/10 shadow-2xl';
@@ -87,7 +85,9 @@ export default function BottomBar({
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5">
             <IconButton onClick={onBack5} title="Back 5 seconds" aria-label="Back 5 seconds">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M13 5l-7 7 7 7v-4h8v-6h-8V5z"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13 5l-7 7 7 7v-4h8v-6h-8V5z" />
+              </svg>
             </IconButton>
 
             <PrimaryButton
@@ -101,7 +101,9 @@ export default function BottomBar({
             </PrimaryButton>
 
             <IconButton onClick={onFwd5} title="Forward 5 seconds" aria-label="Forward 5 seconds">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M11 5v4H3v6h8v4l7-7-7-7z"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M11 5v4H3v6h8v4l7-7-7-7z" />
+              </svg>
             </IconButton>
           </div>
 
@@ -113,11 +115,19 @@ export default function BottomBar({
 
           {/* Volume */}
           <div className="ml-auto flex items-center gap-2 text-white">
-            <IconButton onClick={toggleMute} title={volume > 0 ? 'Mute' : 'Unmute'} aria-label={volume > 0 ? 'Mute' : 'Unmute'}>
+            <IconButton
+              onClick={toggleMute}
+              title={volume > 0 ? 'Mute' : 'Unmute'}
+              aria-label={volume > 0 ? 'Mute' : 'Unmute'}
+            >
               {volume === 0 ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12l2.5 2.5L20.5 13l-2-2 2-2-1.5-1.5L16.5 10l-2.5-2.5L12.5 9l2 2-2 2 1.5 1.5L16.5 12zM5 9v6h4l5 5V4L9 9H5z"/></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M16.5 12l2.5 2.5L20.5 13l-2-2 2-2-1.5-1.5L16.5 10l-2.5-2.5L12.5 9l2 2-2 2 1.5 1.5L16.5 12zM5 9v6h4l5 5V4L9 9H5z" />
+                </svg>
               ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 9v6h4l5 5V4L9 9H5zm11.5 3a3.5 3.5 0 000-7v2a1.5 1.5 0 010 3 1.5 1.5 0 010 3v-1z"/></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M5 9v6h4l5 5V4L9 9H5zm11.5 3a3.5 3.5 0 000-7v2a1.5 1.5 0 010 3 1.5 1.5 0 010 3v-1z" />
+                </svg>
               )}
             </IconButton>
             <button
@@ -136,7 +146,7 @@ export default function BottomBar({
                 max={1}
                 step={0.01}
                 value={volume}
-                onChange={(e)=>setVolume(+e.target.value)}
+                onChange={(e) => setVolume(+e.target.value)}
                 className="w-full accent-white [--tw-shadow:0_0_0]"
                 aria-label="Volume"
                 title="Volume"
@@ -247,7 +257,8 @@ export default function BottomBar({
             <motion.div
               className="absolute left-0 top-0 bottom-0 rounded-full pointer-events-none"
               style={{
-                background: 'linear-gradient(90deg, rgba(var(--hl-rgb),1), rgba(var(--hl-rgb),0.9))',
+                background:
+                  'linear-gradient(90deg, rgba(var(--hl-rgb),1), rgba(var(--hl-rgb),0.9))',
                 boxShadow: '0 0 12px rgba(var(--hl-rgb),0.35)',
               }}
               initial={{ width: 0 }}
@@ -263,7 +274,10 @@ export default function BottomBar({
                 boxShadow: '0 2px 10px rgba(0,0,0,0.4), 0 0 0 6px rgba(var(--hl-rgb),0.25)',
               }}
               initial={false}
-              animate={{ left: `${Math.round(progress * 100)}%`, scale: (hoveringBar || scrubbing) ? 1.08 : 1 }}
+              animate={{
+                left: `${Math.round(progress * 100)}%`,
+                scale: hoveringBar || scrubbing ? 1.08 : 1,
+              }}
               transition={{ type: 'tween', ease: 'easeOut', duration: 0.12 }}
             />
           </div>

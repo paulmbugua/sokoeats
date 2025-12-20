@@ -1,8 +1,21 @@
 // apps/web/src/components/ClassroomBackdrop.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { pickImageForCourse, SUBJECT_IMAGE_MAP, SUBJECT_ALIASES, FALLBACK_COURSE_IMAGE } from '@/utils/subjectImages';
+import {
+  pickImageForCourse,
+  SUBJECT_IMAGE_MAP,
+  SUBJECT_ALIASES,
+  FALLBACK_COURSE_IMAGE,
+} from '@/utils/subjectImages';
 
-type CourseLike = { id?: string; title?: string; subject?: string; category?: string; level?: string; description?: string; [k: string]: any };
+type CourseLike = {
+  id?: string;
+  title?: string;
+  subject?: string;
+  category?: string;
+  level?: string;
+  description?: string;
+  [k: string]: any;
+};
 type BackdropProps = {
   course?: CourseLike | null;
   outline?: { id: string; title: string; keyPoints?: string[] }[];
@@ -11,16 +24,16 @@ type BackdropProps = {
   playing?: boolean;
 
   // 🔧 Live-tunable appearance
-  dim?: number;         // 0–1
-  blurPx?: number;      // e.g. 0–6
-  brightness?: number;  // e.g. 0.3–1.2
-  saturation?: number;  // e.g. 0.6–1.3
+  dim?: number; // 0–1
+  blurPx?: number; // e.g. 0–6
+  brightness?: number; // e.g. 0.3–1.2
+  saturation?: number; // e.g. 0.6–1.3
   vignetteInner?: number; // 0–1
 
   // 🎨 Optional: override images + controlled index
   imagesOverride?: string[];
-  index?: number;                           // controlled current index
-  onIndexChange?: (next: number) => void;   // controlled change
+  index?: number; // controlled current index
+  onIndexChange?: (next: number) => void; // controlled change
 };
 
 function normalize(s: string) {
@@ -31,7 +44,7 @@ function collectSubjectKeysFromText(txt: string) {
   const hits: string[] = [];
   for (const key of Object.keys(SUBJECT_IMAGE_MAP)) if (hay.includes(key)) hits.push(key);
   for (const [canonical, aliases] of Object.entries(SUBJECT_ALIASES)) {
-    if ((aliases as string[]).some(a => hay.includes(a))) hits.push(canonical);
+    if ((aliases as string[]).some((a) => hay.includes(a))) hits.push(canonical);
   }
   return Array.from(new Set(hits));
 }
@@ -55,8 +68,11 @@ const ClassroomBackdrop: React.FC<BackdropProps> = ({
 }) => {
   // Base from helper
   const base = useMemo(() => {
-    try { return course ? pickImageForCourse(course as any, backendUrl) : FALLBACK_COURSE_IMAGE; }
-    catch { return FALLBACK_COURSE_IMAGE; }
+    try {
+      return course ? pickImageForCourse(course as any, backendUrl) : FALLBACK_COURSE_IMAGE;
+    } catch {
+      return FALLBACK_COURSE_IMAGE;
+    }
   }, [course, backendUrl]);
 
   // Build smart images (unless override provided)
@@ -68,12 +84,12 @@ const ClassroomBackdrop: React.FC<BackdropProps> = ({
     if ((course as any)?.category) textBits.push((course as any).category);
 
     if (course?.description) textBits.push(course.description || '');
-    (outline || []).forEach(s => {
+    (outline || []).forEach((s) => {
       textBits.push(s.title);
-      (s.keyPoints || []).forEach(k => textBits.push(k));
+      (s.keyPoints || []).forEach((k) => textBits.push(k));
     });
     const keys = collectSubjectKeysFromText(textBits.join(' '));
-    keys.forEach(k => pool.add(SUBJECT_IMAGE_MAP[k]));
+    keys.forEach((k) => pool.add(SUBJECT_IMAGE_MAP[k]));
     const arr = [base, ...Array.from(pool)];
     return Array.from(new Set(arr)).slice(0, 4);
   }, [base, course, outline]);
@@ -108,7 +124,10 @@ const ClassroomBackdrop: React.FC<BackdropProps> = ({
 
   // Preload
   useEffect(() => {
-    images.forEach(src => { const img = new Image(); img.src = src; });
+    images.forEach((src) => {
+      const img = new Image();
+      img.src = src;
+    });
   }, [images]);
 
   const prevIdx = (activeIdx - 1 + images.length) % images.length;

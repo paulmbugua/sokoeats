@@ -67,7 +67,10 @@ const makeApiUrl = (base: string) => (path: string) => {
   return b + p;
 };
 
-const norm = (v: any) => String(v ?? '').trim().toLowerCase();
+const norm = (v: any) =>
+  String(v ?? '')
+    .trim()
+    .toLowerCase();
 
 const isOerVideoCollectionStrict = (c: OerCollection): boolean => {
   const kind = norm(c.content_kind);
@@ -222,14 +225,9 @@ const CaretDown = ({ size = 20 }: { size?: number }) => (
 
 function StarRow({ avg, count }: { avg?: number; count?: number }) {
   const a = Math.round((avg ?? 0) * 2) / 2;
-  const stars = [1, 2, 3, 4, 5]
-    .map((i) => (a >= i ? '★' : a + 0.5 === i ? '☆' : '☆'))
-    .join('');
+  const stars = [1, 2, 3, 4, 5].map((i) => (a >= i ? '★' : a + 0.5 === i ? '☆' : '☆')).join('');
   return (
-    <span
-      className="whitespace-nowrap"
-      title={`${avg?.toFixed?.(1) ?? '0.0'} (${count ?? 0})`}
-    >
+    <span className="whitespace-nowrap" title={`${avg?.toFixed?.(1) ?? '0.0'} (${count ?? 0})`}>
       {stars} {avg ? avg.toFixed(1) : '—'} ({count ?? 0})
     </span>
   );
@@ -265,7 +263,7 @@ const MyCourses: React.FC = () => {
   const { enrollments, fetchMine } = useEnrollments({
     backendUrl,
     token: token ?? '',
-    studentId: ('me' as unknown) as string | number,
+    studentId: 'me' as unknown as string | number,
   });
 
   useEffect(() => {
@@ -346,7 +344,8 @@ const MyCourses: React.FC = () => {
       // NOTE: makeApiUrl already injects /api, so path should be "/profile..."
       const j = await tryGET(`/profile?userIds=${join}`);
 
-      const pickIdLocal = (it: any) => String(it?.user_id ?? it?.userId ?? it?.user ?? it?.id ?? '');
+      const pickIdLocal = (it: any) =>
+        String(it?.user_id ?? it?.userId ?? it?.user ?? it?.id ?? '');
       const pickNameLocal = (it: any) =>
         it?.name ?? it?.fullName ?? it?.displayName ?? it?.username ?? '—';
 
@@ -358,7 +357,12 @@ const MyCourses: React.FC = () => {
 
       if (Array.isArray(j)) j.forEach(add);
       else if (j && typeof j === 'object') {
-        const arr = (j as any).profiles ?? (j as any).items ?? (j as any).data ?? (j as any).results ?? (j as any).rows;
+        const arr =
+          (j as any).profiles ??
+          (j as any).items ??
+          (j as any).data ??
+          (j as any).results ??
+          (j as any).rows;
         if (Array.isArray(arr)) arr.forEach(add);
         else for (const v of Object.values(j)) if (v && typeof v === 'object') add(v);
       }
@@ -431,15 +435,15 @@ const MyCourses: React.FC = () => {
     };
   }, [missingTutorUserIds, fetchTutorNamesByUserIds]);
 
-  const displayRows = useMemo(() => filteredRows.filter((c) => !!resolveTutorName(c)), [
-    filteredRows,
-    resolveTutorName,
-  ]);
+  const displayRows = useMemo(
+    () => filteredRows.filter((c) => !!resolveTutorName(c)),
+    [filteredRows, resolveTutorName]
+  );
 
   /* Ratings */
-  const [ratings, setRatings] = useState<Record<string, { avg: number; count: number; my: boolean }>>(
-    {}
-  );
+  const [ratings, setRatings] = useState<
+    Record<string, { avg: number; count: number; my: boolean }>
+  >({});
   const [openReview, setOpenReview] = useState<{ id: string; title: string } | null>(null);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
@@ -518,7 +522,10 @@ const MyCourses: React.FC = () => {
     });
   }, [oerLoading, oerError, oerCourses]);
 
-  const oerBooks = useMemo(() => (oerCourses as any[]).filter((c) => c?.kind === 'book'), [oerCourses]);
+  const oerBooks = useMemo(
+    () => (oerCourses as any[]).filter((c) => c?.kind === 'book'),
+    [oerCourses]
+  );
 
   /* Fetch OER video collections */
   const [oerVideoCols, setOerVideoCols] = useState<OerCollection[]>([]);
@@ -542,7 +549,9 @@ const MyCourses: React.FC = () => {
           r = await fetch(api('/oer/collections?limit=48'));
           if (r.ok) {
             const all = toArray<OerCollection>(await r.json().catch(() => []));
-            arr = all.filter((c) => isOerVideoCollectionStrict(c) && !isDocKind(c) && !isOpenStaxDoc(c));
+            arr = all.filter(
+              (c) => isOerVideoCollectionStrict(c) && !isDocKind(c) && !isOpenStaxDoc(c)
+            );
           }
         }
         const cleaned = arr.filter(
@@ -652,10 +661,13 @@ const MyCourses: React.FC = () => {
                 {/* Free OER Video Collections */}
                 <div className="px-3 sm:px-4 pb-4">
                   <div className="mt-4 flex items-center justify-between">
-                    <h3 className="text-[16px] sm:text-[18px] font-bold">Free OER Video Collections</h3>
+                    <h3 className="text-[16px] sm:text-[18px] font-bold">
+                      Free OER Video Collections
+                    </h3>
                     {DEBUG_OER && (
                       <span className="text-[11px] text-[#49739c] dark:text-darkTextSecondary">
-                        loading={String(loadingVCols)} · error={errVCols || '—'} · total={oerVideoCols.length}
+                        loading={String(loadingVCols)} · error={errVCols || '—'} · total=
+                        {oerVideoCols.length}
                       </span>
                     )}
                   </div>
@@ -677,7 +689,9 @@ const MyCourses: React.FC = () => {
                     </div>
                   )}
 
-                  {!loadingVCols && errVCols && <div className="py-3 text-sm text-red-600">{errVCols}</div>}
+                  {!loadingVCols && errVCols && (
+                    <div className="py-3 text-sm text-red-600">{errVCols}</div>
+                  )}
 
                   {!loadingVCols && !errVCols && (
                     <>
@@ -725,7 +739,7 @@ const MyCourses: React.FC = () => {
                                   </Link>
 
                                   <div className="mt-1 text-xs text-[#49739c] dark:text-darkTextSecondary">
-                                    {(col.subject ?? '—')} • {col.items_count ?? 0} item
+                                    {col.subject ?? '—'} • {col.items_count ?? 0} item
                                     {(col.items_count ?? 0) === 1 ? '' : 's'}
                                   </div>
 
@@ -768,8 +782,8 @@ const MyCourses: React.FC = () => {
                   {DEBUG_OER && (
                     <div className="mb-2 text-[11px] text-[#49739c] dark:text-darkTextSecondary">
                       <span className="px-2 py-0.5 rounded bg-[#e7edf4] dark:bg-[#172534]">
-                        OER: loading={String(oerLoading)} · error={oerError || '—'} · total={(oerCourses as any[]).length} ·
-                        books={oerBooks.length}
+                        OER: loading={String(oerLoading)} · error={oerError || '—'} · total=
+                        {(oerCourses as any[]).length} · books={oerBooks.length}
                       </span>
                     </div>
                   )}
@@ -799,7 +813,7 @@ const MyCourses: React.FC = () => {
                               </div>
 
                               <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
-                                {(c.subject ?? '—')} {c.level ? `• ${c.level}` : ''}
+                                {c.subject ?? '—'} {c.level ? `• ${c.level}` : ''}
                               </p>
 
                               <div className="mt-1 flex gap-2">
@@ -863,7 +877,9 @@ const MyCourses: React.FC = () => {
                   <div className="flex gap-2 sm:gap-3 mt-3 flex-wrap">
                     <button
                       className="flex h-9 items-center justify-center gap-x-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] pl-3 pr-2 text-xs sm:text-sm"
-                      onClick={() => setCourseSubject(prompt('Subject (e.g., Math, English):') || '')}
+                      onClick={() =>
+                        setCourseSubject(prompt('Subject (e.g., Math, English):') || '')
+                      }
                       title="Subject"
                     >
                       <span className="font-medium">Subject</span>
@@ -874,7 +890,9 @@ const MyCourses: React.FC = () => {
 
                     <button
                       className="flex h-9 items-center justify-center gap-x-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] pl-3 pr-2 text-xs sm:text-sm"
-                      onClick={() => setCourseGradeBand(prompt('Grade band (e.g., K-5, 6-8, 9-12):') || '')}
+                      onClick={() =>
+                        setCourseGradeBand(prompt('Grade band (e.g., K-5, 6-8, 9-12):') || '')
+                      }
                       title="Grade band"
                     >
                       <span className="font-medium">Grade</span>
@@ -885,7 +903,11 @@ const MyCourses: React.FC = () => {
 
                     <button
                       className="flex h-9 items-center justify-center gap-x-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] pl-3 pr-2 text-xs sm:text-sm"
-                      onClick={() => setCourseLevel(prompt('Level (Beginner, Intermediate, Advanced, All Levels):') || '')}
+                      onClick={() =>
+                        setCourseLevel(
+                          prompt('Level (Beginner, Intermediate, Advanced, All Levels):') || ''
+                        )
+                      }
                       title="Level"
                     >
                       <span className="font-medium">Level</span>
@@ -926,7 +948,9 @@ const MyCourses: React.FC = () => {
 
                     <button
                       className="flex h-9 items-center justify-center gap-x-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] pl-3 pr-2 text-xs sm:text-sm"
-                      onClick={() => setDuration(prompt('Duration contains (e.g., "10 weeks"):') || '')}
+                      onClick={() =>
+                        setDuration(prompt('Duration contains (e.g., "10 weeks"):') || '')
+                      }
                       title="Duration (local)"
                     >
                       <span className="font-medium">Duration</span>
@@ -973,7 +997,11 @@ const MyCourses: React.FC = () => {
                       const cid = String(c.id);
                       const tutorName = resolveTutorName(c)!;
                       const priceDisplay =
-                        typeof c.price === 'number' ? `$${c.price}` : typeof c.price === 'string' ? c.price : '—';
+                        typeof c.price === 'number'
+                          ? `$${c.price}`
+                          : typeof c.price === 'string'
+                            ? c.price
+                            : '—';
                       const isEnrolled = enrolledCourseIds.has(cid);
                       const r = ratings[cid];
 
@@ -990,12 +1018,20 @@ const MyCourses: React.FC = () => {
                         >
                           <div className="flex items-start justify-between gap-2">
                             <h3 className="font-semibold text-sm">{c.title}</h3>
-                            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary">{c.level ?? '—'}</div>
+                            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary">
+                              {c.level ?? '—'}
+                            </div>
                           </div>
-                          <div className="text-xs text-[#49739c] dark:text-darkTextSecondary">{tutorName}</div>
+                          <div className="text-xs text-[#49739c] dark:text-darkTextSecondary">
+                            {tutorName}
+                          </div>
                           <div className="flex items-center justify-between text-xs">
-                            <span className="text-[#49739c] dark:text-darkTextSecondary">{c.duration ?? '—'}</span>
-                            <span className="text-[#49739c] dark:text-darkTextSecondary">{priceDisplay}</span>
+                            <span className="text-[#49739c] dark:text-darkTextSecondary">
+                              {c.duration ?? '—'}
+                            </span>
+                            <span className="text-[#49739c] dark:text-darkTextSecondary">
+                              {priceDisplay}
+                            </span>
                           </div>
                           <div className="flex items-center justify-between gap-2 pt-1">
                             <div className="text-xs text-[#49739c] dark:text-darkTextSecondary">
@@ -1080,8 +1116,8 @@ const MyCourses: React.FC = () => {
                               typeof c.price === 'number'
                                 ? `$${c.price}`
                                 : typeof c.price === 'string'
-                                ? c.price
-                                : '—';
+                                  ? c.price
+                                  : '—';
                             const isEnrolled = enrolledCourseIds.has(cid);
                             const r = ratings[cid];
 
@@ -1095,7 +1131,9 @@ const MyCourses: React.FC = () => {
                                   itemRefs.current[cid] = el;
                                 }}
                               >
-                                <td className="table-col-120 h-[72px] px-4 py-2 w-[400px] text-sm">{c.title}</td>
+                                <td className="table-col-120 h-[72px] px-4 py-2 w-[400px] text-sm">
+                                  {c.title}
+                                </td>
                                 <td className="table-col-240 h-[72px] px-4 py-2 w-[300px] text-sm text-[#49739c] dark:text-darkTextSecondary">
                                   {tutorName}
                                 </td>
@@ -1117,7 +1155,11 @@ const MyCourses: React.FC = () => {
                                 <td className="table-col-720 h-[72px] px-4 py-2 w-[280px] text-sm">
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="text-[#49739c] dark:text-darkTextSecondary">
-                                      {r ? <StarRow avg={r.avg} count={r.count} /> : <span className="opacity-70">—</span>}
+                                      {r ? (
+                                        <StarRow avg={r.avg} count={r.count} />
+                                      ) : (
+                                        <span className="opacity-70">—</span>
+                                      )}
                                     </div>
                                     {isEnrolled ? (
                                       r?.my ? (
@@ -1218,7 +1260,9 @@ const MyCourses: React.FC = () => {
                 <button
                   key={n}
                   onClick={() => setReviewRating(n)}
-                  className={n <= reviewRating ? 'text-yellow-500 text-2xl' : 'text-[#49739c] text-2xl'}
+                  className={
+                    n <= reviewRating ? 'text-yellow-500 text-2xl' : 'text-[#49739c] text-2xl'
+                  }
                   aria-label={`${n} star`}
                 >
                   ★
@@ -1250,7 +1294,9 @@ const MyCourses: React.FC = () => {
                       body: JSON.stringify({ rating: reviewRating, comment: reviewComment }),
                     });
                     if (!res.ok)
-                      throw new Error((await res.text().catch(() => '')) || 'Failed to submit review');
+                      throw new Error(
+                        (await res.text().catch(() => '')) || 'Failed to submit review'
+                      );
                     await fetchCourseRatings(openReview.id);
                     setOpenReview(null);
                   } catch (e: any) {

@@ -21,7 +21,7 @@ export default function ThemeToggle() {
 
   return (
     <button
-      onClick={() => setDark(v => !v)}
+      onClick={() => setDark((v) => !v)}
       className="chip flex items-center gap-2"
       aria-label="Toggle theme"
       title="Toggle theme"

@@ -9,7 +9,11 @@ import {
 const router = express.Router();
 
 // RFC 8058 One-Click
-router.post('/unsubscribe/one-click', express.text({ type: '*/*' }), unsubscribeOneClick);
+router.post(
+  '/unsubscribe/one-click',
+  express.text({ type: '*/*' }),
+  unsubscribeOneClick,
+);
 
 // Token link from email: /api/email/unsubscribe?e=...&t=...
 router.get('/unsubscribe', unsubscribeViaLink);

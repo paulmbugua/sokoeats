@@ -2,8 +2,11 @@
 import pool from '../config/db.js';
 import { cacheDeleteByPattern } from '../utils/redisCache.js';
 
-
-function cleanTitle(raw) { return String(raw || '').replace(/\s+/g, ' ').trim(); }
+function cleanTitle(raw) {
+  return String(raw || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 const SIZE_ALIASES = {
   micro: 'mini',
@@ -14,7 +17,13 @@ const SIZE_ALIASES = {
   extended: 'extended',
   bootcamp: 'bootcamp',
 };
-const SIZE_VALID = new Set(['mini', 'standard', 'extended', 'deep_dive', 'bootcamp']);
+const SIZE_VALID = new Set([
+  'mini',
+  'standard',
+  'extended',
+  'deep_dive',
+  'bootcamp',
+]);
 
 function normalizeSize(input, minutes) {
   const m = input && SIZE_ALIASES[input] ? SIZE_ALIASES[input] : null;
@@ -33,11 +42,7 @@ export async function createAiSandboxCourse(req, res) {
   // 🔍 Log what we received from the client (but keep it focused)
   try {
     const userId =
-      req.user?.id ||
-      req.user_id ||
-      req.userId ||
-      req.auth?.userId ||
-      null;
+      req.user?.id || req.user_id || req.userId || req.auth?.userId || null;
 
     const debugPayload = {
       source: 'createAiSandboxCourse',
@@ -78,7 +83,10 @@ export async function createAiSandboxCourse(req, res) {
     const course_size = normalizeSize(sizeRaw, minutes);
 
     if (!SIZE_VALID.has(course_size)) {
-      console.warn('[aiSandbox] INVALID_SIZE', { sizeRaw, normalized: course_size });
+      console.warn('[aiSandbox] INVALID_SIZE', {
+        sizeRaw,
+        normalized: course_size,
+      });
       return res.status(400).json({ error: 'INVALID_SIZE' });
     }
 
@@ -98,7 +106,7 @@ export async function createAiSandboxCourse(req, res) {
         AND LOWER(title) = LOWER($1)
       LIMIT 1
       `,
-      [title]
+      [title],
     );
 
     if (existing.rows.length) {
@@ -121,7 +129,7 @@ export async function createAiSandboxCourse(req, res) {
             estimated_hours = COALESCE(estimated_hours, 0.2)
           WHERE id = $1
         `,
-          [row.id]
+          [row.id],
         )
         .catch((e) => {
           console.warn('[aiSandbox] backfill update failed (non-fatal)', {
@@ -158,7 +166,7 @@ export async function createAiSandboxCourse(req, res) {
       )
       RETURNING id, title, description
     `,
-      [title, desc, course_size]
+      [title, desc, course_size],
     );
 
     const row = insert.rows[0];
@@ -196,12 +204,14 @@ export async function createAiSandboxCourse(req, res) {
           AND LOWER(title) = LOWER($1)
         LIMIT 1
       `,
-        [cleanTitle(req.body?.title)]
+        [cleanTitle(req.body?.title)],
       );
 
       if (fb.rows.length) {
         const row = fb.rows[0];
-        console.info('[aiSandbox] recovered existing after 23505', { id: row.id });
+        console.info('[aiSandbox] recovered existing after 23505', {
+          id: row.id,
+        });
         return res.status(200).json({
           id: row.id,
           title: row.title,
@@ -217,5 +227,3 @@ export async function createAiSandboxCourse(req, res) {
     return res.status(500).json({ error: 'FAILED_CREATE_AI_COURSE' });
   }
 }
-
-

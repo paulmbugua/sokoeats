@@ -15,9 +15,7 @@ import type { Profile } from '@mytutorapp/shared/types';
 import { COUNTRIES, countryName } from '@mytutorapp/shared/utils/countries';
 
 const FALLBACK_AVATAR = (name = 'Tutor') =>
-  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-    name
-  )}&background=e7edf4&color=0d141c`;
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e7edf4&color=0d141c`;
 
 const SUBJECTS = [
   'Math',
@@ -42,11 +40,15 @@ const normalizeStr = (v: unknown): string => {
   if (typeof v === 'string') return v.toLowerCase().trim();
   if (typeof v === 'number' || typeof v === 'boolean') return String(v).toLowerCase().trim();
   if (Array.isArray(v)) return v.map(normalizeStr).join(' ').trim();
-  if (typeof v === 'object') return Object.values(v as any).map(normalizeStr).join(' ').trim();
+  if (typeof v === 'object')
+    return Object.values(v as any)
+      .map(normalizeStr)
+      .join(' ')
+      .trim();
   return '';
 };
 
-const getRating = (p: any) => Number((p?.avgRating ?? p?.rating) ?? 0);
+const getRating = (p: any) => Number(p?.avgRating ?? p?.rating ?? 0);
 
 const getTokens = (p: any) => {
   const x =
@@ -62,7 +64,9 @@ const getTokens = (p: any) => {
 };
 
 const normalizeStatus = (s: any) => {
-  const v = String(s || '').trim().toLowerCase();
+  const v = String(s || '')
+    .trim()
+    .toLowerCase();
   if (!v) return '';
   if (v === 'online') return 'Online';
   if (v === 'offline') return 'Offline';
@@ -73,12 +77,17 @@ const normalizeStatus = (s: any) => {
 };
 
 const statusColorClass = (status: string) =>
-  status === 'Online' ? 'bg-green-500' :
-  status === 'Busy' ? 'bg-yellow-500' :
-  status === 'Free Session' ? 'bg-purple-500' :
-  status === 'New' ? 'bg-sky-500' :
-  status === 'Offline' ? 'bg-gray-500' :
-  'bg-gray-500';
+  status === 'Online'
+    ? 'bg-green-500'
+    : status === 'Busy'
+      ? 'bg-yellow-500'
+      : status === 'Free Session'
+        ? 'bg-purple-500'
+        : status === 'New'
+          ? 'bg-sky-500'
+          : status === 'Offline'
+            ? 'bg-gray-500'
+            : 'bg-gray-500';
 
 /**
  * "New" heuristic (super simple):
@@ -97,7 +106,7 @@ const isNewTutor = (p: any) => {
   const days = (Date.now() - t) / (1000 * 60 * 60 * 24);
   return days <= 7;
 };
- 
+
 const getDescriptionText = (p: any): string => {
   const d = p?.description;
   if (typeof d === 'string') {
@@ -137,7 +146,6 @@ const hasAvailability = (p: any, option: string) => {
   return false;
 };
 
-
 const hasLanguage = (p: any, lang: string) => {
   if (!lang) return true;
   const list = p?.languages;
@@ -160,7 +168,7 @@ const FindTutor: React.FC = () => {
   const {
     filteredProfiles, // ✅ already server-filtered by q/subject/country/minRating/maxPrice
     loading,
-    handleSearch,     // ✅ triggers server search (debounced inside hook)
+    handleSearch, // ✅ triggers server search (debounced inside hook)
     uiFilters,
     setSubjectFilter,
     setCountryFilter,
@@ -175,13 +183,16 @@ const FindTutor: React.FC = () => {
   // local-only UI state (NOT sent to server)
   const [query, setQuery] = useState('');
   const [availability, setAvailability] = useState<string>(''); // local-only
-  const [language, setLanguage] = useState<string>('');         // local-only
+  const [language, setLanguage] = useState<string>(''); // local-only
   const [page, setPage] = useState(1);
-  const [live, setLive] = useState(false); 
+  const [live, setLive] = useState(false);
 
   // Tutors already filtered by server
   const tutors = useMemo(
-    () => (filteredProfiles.filter((p) => String((p as any).role || '').toLowerCase() === 'tutor') as Profile[]),
+    () =>
+      filteredProfiles.filter(
+        (p) => String((p as any).role || '').toLowerCase() === 'tutor'
+      ) as Profile[],
     [filteredProfiles]
   );
 
@@ -246,13 +257,15 @@ const FindTutor: React.FC = () => {
               <div className="flex min-w-72 flex-col gap-3">
                 <h1 className="text-[32px] font-bold leading-tight">Find a tutor</h1>
                 <p className="text-[#49739c] dark:text-darkTextSecondary text-sm">
-                  Explore our community of expert tutors ready to help you achieve your learning goals.
+                  Explore our community of expert tutors ready to help you achieve your learning
+                  goals.
                 </p>
 
                 {/* Optional debug chip (safe to remove) */}
                 {searchMeta?.aiUsed != null && (
                   <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
-                    Search: {searchMeta.aiUsed ? 'AI' : 'Direct'} • {searchMeta.rows ?? tutors.length} results
+                    Search: {searchMeta.aiUsed ? 'AI' : 'Direct'} •{' '}
+                    {searchMeta.rows ?? tutors.length} results
                   </p>
                 )}
               </div>
@@ -303,7 +316,6 @@ const FindTutor: React.FC = () => {
                       }
                     }}
                   />
-
                 </div>
               </label>
             </div>
@@ -346,22 +358,22 @@ const FindTutor: React.FC = () => {
                 ))}
               </select>
 
-               {/* Tokens */}
+              {/* Tokens */}
               <select
-              className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-              value={uiFilters.maxTokens > 0 ? String(uiFilters.maxTokens) : '0'}
-              onChange={(e) => {
-                setMaxTokensFilter(Number(e.target.value || 0));
-                setPage(1);
-              }}
-            >
-              <option value="0">Tokens</option>
-              <option value="10">≤ 10 tokens</option>
-              <option value="20">≤ 20 tokens</option>
-              <option value="40">≤ 40 tokens</option>
-              <option value="60">≤ 60 tokens</option>
-              <option value="999999">60+ tokens</option>
-            </select>
+                className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
+                value={uiFilters.maxTokens > 0 ? String(uiFilters.maxTokens) : '0'}
+                onChange={(e) => {
+                  setMaxTokensFilter(Number(e.target.value || 0));
+                  setPage(1);
+                }}
+              >
+                <option value="0">Tokens</option>
+                <option value="10">≤ 10 tokens</option>
+                <option value="20">≤ 20 tokens</option>
+                <option value="40">≤ 40 tokens</option>
+                <option value="60">≤ 60 tokens</option>
+                <option value="999999">60+ tokens</option>
+              </select>
 
               {/* Language (local) */}
               <select
@@ -436,7 +448,6 @@ const FindTutor: React.FC = () => {
               const chipClass = statusColorClass(status);
               const showNew = isNewTutor(t);
 
-
               const bioRaw = getDescriptionText(t);
               const desc = bioRaw ? String(bioRaw).slice(0, 140) : '';
 
@@ -446,28 +457,29 @@ const FindTutor: React.FC = () => {
                   className="flex flex-col md:flex-row items-stretch justify-between gap-4 rounded-xl"
                 >
                   <div className="flex flex-col gap-1 flex-[2_2_0px]">
-                    <p className="text-darkText dark:text-darkTextPrimary text-sm font-medium">{sub}</p>
+                    <p className="text-darkText dark:text-darkTextPrimary text-sm font-medium">
+                      {sub}
+                    </p>
 
                     <div className="flex items-center gap-2">
-                          {/* status dot */}
-                          {(() => {
-                            const status = normalizeStatus(t?.status);
-                            return status ? (
-                              <span
-                                className={`inline-block size-2 rounded-full ${statusColorClass(status)}`}
-                                title={status}
-                              />
-                            ) : null;
-                          })()}
+                      {/* status dot */}
+                      {(() => {
+                        const status = normalizeStatus(t?.status);
+                        return status ? (
+                          <span
+                            className={`inline-block size-2 rounded-full ${statusColorClass(status)}`}
+                            title={status}
+                          />
+                        ) : null;
+                      })()}
 
-                          <Link
-                            to={`/profile/${t?.user_id ?? t?.id}`}
-                            className="text-base font-bold leading-tight text-darkText dark:text-darkTextPrimary hover:underline"
-                          >
-                            {t?.name ?? 'Tutor'}
-                          </Link>
-                        </div>
-
+                      <Link
+                        to={`/profile/${t?.user_id ?? t?.id}`}
+                        className="text-base font-bold leading-tight text-darkText dark:text-darkTextPrimary hover:underline"
+                      >
+                        {t?.name ?? 'Tutor'}
+                      </Link>
+                    </div>
 
                     <div className="flex flex-wrap items-center gap-3 text-sm text-darkText dark:text-darkTextPrimary">
                       {(() => {
@@ -490,7 +502,9 @@ const FindTutor: React.FC = () => {
                       })()}
                     </div>
 
-                    {desc && <p className="text-darkText dark:text-darkTextPrimary text-sm mt-1">{desc}</p>}
+                    {desc && (
+                      <p className="text-darkText dark:text-darkTextPrimary text-sm mt-1">{desc}</p>
+                    )}
                   </div>
 
                   <Link
@@ -525,7 +539,6 @@ const FindTutor: React.FC = () => {
                     {/* ✅ subtle gradient for readability */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-black/10 pointer-events-none" />
                   </Link>
-
                 </div>
               );
             })}

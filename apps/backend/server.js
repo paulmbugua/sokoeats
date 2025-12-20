@@ -1,7 +1,10 @@
 // apps/backend/server.js
 import 'dotenv/config';
 
-if (process.env.NODE_ENV === 'production' && process.env.START_PAYOUT_WORKER === 'true') {
+if (
+  process.env.NODE_ENV === 'production' &&
+  process.env.START_PAYOUT_WORKER === 'true'
+) {
   await import('./cronJobs/payoutWorker.js');
 }
 
@@ -62,20 +65,19 @@ import pushRoutes from './routes/pushRoutes.js';
 import { notifyNewMessage } from './services/pushService.js';
 import messagesRoutes from './routes/messagesRoutes.js';
 
-
 // Middleware
 import {
   morganMiddleware,
   helmetMiddleware,
   errorLogger,
-  limiter,            // global soft limiter
+  limiter, // global soft limiter
   userLimiter,
   reviewsLimiter,
   progressLimiter,
   aiKeyFn,
   certificatesLimiter,
-  aiLimiterStrict,    // ⇐ use the new per-user/per-bucket limiter
-  loginLimiterFactory, 
+  aiLimiterStrict, // ⇐ use the new per-user/per-bucket limiter
+  loginLimiterFactory,
 } from './middleware/middleware.js';
 
 connectCloudinary();
@@ -90,8 +92,6 @@ if (process.env.START_WEBHOOK_WORKER === 'true') {
   }
 }
 
-
-
 // ────────────────────────────────────────────────────────────────────────────────
 // Handle unhandled promise rejections
 // ────────────────────────────────────────────────────────────────────────────────
@@ -100,10 +100,11 @@ process.on('unhandledRejection', (err) => {
 });
 
 const app = express();
-const BUILD = process.env.RAILWAY_GIT_COMMIT_SHA
-  || process.env.GIT_SHA
-  || process.env.APP_BUILD
-  || 'dev';
+const BUILD =
+  process.env.RAILWAY_GIT_COMMIT_SHA ||
+  process.env.GIT_SHA ||
+  process.env.APP_BUILD ||
+  'dev';
 
 app.use((req, res, next) => {
   res.setHeader('x-daybreak-build', BUILD);
@@ -131,9 +132,11 @@ const port = Number(process.env.PORT ?? 4000);
 const isProduction = process.env.NODE_ENV === 'production';
 
 // ─── 1) Environment vars ────────────────────────────────────────────────────────
-const BACKEND_URL      = process.env.BACKEND_URL      || `http://localhost:${process.env.PORT || 4000}`;
-const WEB_BACKEND_URL  = process.env.WEB_BACKEND_URL  || 'http://localhost:5173';
-const PROD_BACKEND_URL = process.env.PROD_BACKEND_URL || 'https://server.daybreaklearner.com';
+const BACKEND_URL =
+  process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 4000}`;
+const WEB_BACKEND_URL = process.env.WEB_BACKEND_URL || 'http://localhost:5173';
+const PROD_BACKEND_URL =
+  process.env.PROD_BACKEND_URL || 'https://server.daybreaklearner.com';
 
 // ─── 2) Allowed origins ────────────────────────────────────────────────────────
 const productionOrigins = [
@@ -170,7 +173,7 @@ const corsOptions = {
     return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
+    allowedHeaders: [
     'Content-Type',
     'Authorization',
     'X-Requested-With',
@@ -178,7 +181,18 @@ const corsOptions = {
     'Origin',
     'X-Client-Platform',
     'X-Platform',
+
+    // ✅ AI flow extras
+    'X-Program-Track',
+    'X-Anon-Id',
+    'X-Assignment-Id',
+    'X-Org-Id',
+
+    // (optional but handy)
+    'X-Quiz-Type',
+    'X-Idempotency-Key',
   ],
+
   exposedHeaders: [
     'Content-Disposition',
     // Rate limit (IETF draft)
@@ -191,10 +205,11 @@ const corsOptions = {
     'X-RateLimit-Reset',
     // Retry advice
     'Retry-After',
+     'X-Program-Track',
+    'X-Degraded',
   ],
   credentials: true,
 };
-
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Same options for preflight
@@ -207,16 +222,18 @@ app.post(
     req.rawBody = req.body;
     next();
   },
-  webhooks
+  webhooks,
 );
 // ✅ Paystack webhook must be RAW (before express.json)
 app.post(
   '/api/paystack/webhook',
   bodyParser.raw({ type: 'application/json', limit: '1mb' }),
-  (req, _res, next) => { req.rawBody = req.body; next(); },
-  handlePaystackWebhook
+  (req, _res, next) => {
+    req.rawBody = req.body;
+    next();
+  },
+  handlePaystackWebhook,
 );
-
 
 // ─── 4) Global middleware ───────────────────────────────────────────────────────
 app.use(helmetMiddleware);
@@ -232,10 +249,14 @@ app.use(limiter);
 const loginLimiter = loginLimiterFactory({ windowMs: 15 * 60_000, limit: 5 });
 
 // Middleware-only routes that pass through to actual routers:
-app.post('/api/auth/admin-env-login',      loginLimiter, (req, _res, next) => next());
-app.post('/api/admin/login',               loginLimiter, (req, _res, next) => next());
-app.post('/api/auth/login',                loginLimiter, (req, _res, next) => next());
-app.post('/api/institutions/auth/login',   loginLimiter, (req, _res, next) => next());
+app.post('/api/auth/admin-env-login', loginLimiter, (req, _res, next) =>
+  next(),
+);
+app.post('/api/admin/login', loginLimiter, (req, _res, next) => next());
+app.post('/api/auth/login', loginLimiter, (req, _res, next) => next());
+app.post('/api/institutions/auth/login', loginLimiter, (req, _res, next) =>
+  next(),
+);
 
 app.get('/healthz', (_req, res) => res.status(200).send('ok'));
 
@@ -246,7 +267,6 @@ app.get('/__build', (_req, res) => {
     time: new Date().toISOString(),
   });
 });
-
 
 // ✅ Paystack return endpoints (support both /paystack/return and /api/paystack/return)
 function redirectToDeepLink(req, res) {
@@ -276,17 +296,24 @@ function redirectToDeepLink(req, res) {
 app.get('/paystack/return', redirectToDeepLink);
 app.get('/api/paystack/return', redirectToDeepLink);
 
-
-
 // ─── 5) Socket.IO setup ─────────────────────────────────────────────────────────
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      if (!origin || allowedOrigins.includes(origin))
+        return callback(null, true);
       return callback(new Error(`Not allowed by CORS (socket): ${origin}`));
     },
     methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+        allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Anon-Id',
+      'X-Program-Track',
+      'X-Assignment-Id',
+      'X-Org-Id',
+    ],
+
     credentials: true,
   },
   pingTimeout: 30000,
@@ -301,12 +328,11 @@ app.use((req, _res, next) => {
 
 // ─── 6) HTTPS redirect in production ────────────────────────────────────────────
 if (isProduction) {
-  
   app.use((req, res, next) => {
-     const skipRedirect =
+    const skipRedirect =
       req.path === '/healthz' ||
-      req.path === '/api/paypal/webhook' ||   
-      req.path === '/api/paystack/webhook' ||        // ← do not redirect
+      req.path === '/api/paypal/webhook' ||
+      req.path === '/api/paystack/webhook' || // ← do not redirect
       req.headers['x-railway-healthcheck'];
     if (skipRedirect) {
       return next();
@@ -316,86 +342,91 @@ if (isProduction) {
   });
 }
 
-
-
 // ─── 8) Mount REST routes (with per-route limiters where needed) ───────────────
 // User & profiles
-app.use('/api/user',              userLimiter,         userRouter);
-app.use('/api/profile',                                profileRoutes);
-app.use('/api/profileActions',                         profileActionsRoutes);
-app.use('/api/push',                                    pushRoutes);
-app.use('/api',                                         messagesRoutes);
-
+app.use('/api/user', userLimiter, userRouter);
+app.use('/api/profile', profileRoutes);
+app.use('/api/profileActions', profileActionsRoutes);
+app.use('/api/push', pushRoutes);
+app.use('/api', messagesRoutes);
 
 // Payments & webhooks
-app.use('/api/payment',                                paymentRoutes);
-app.use('/api',                                        webhookRoutes);
-app.use('/api/paypal',                                 paypalRoutes);
-app.use('/api/payouts',                                payoutRoutes);
+app.use('/api/payment', paymentRoutes);
+app.use('/api', webhookRoutes);
+app.use('/api/paypal', paypalRoutes);
+app.use('/api/payouts', payoutRoutes);
 app.use('/api/payment', refundRoutes);
 app.use('/api/paystack', paystackRoutes);
 
-
 // Tutor sessions / M-Pesa
-app.use('/api/tutor-session',                          tutorSessionRoutes);
-app.use('/api/mpesa',                                  mpesaUrlsRoutes);
+app.use('/api/tutor-session', tutorSessionRoutes);
+app.use('/api/mpesa', mpesaUrlsRoutes);
 
 // Reviews & public content
-app.use('/api/reviews',           reviewsLimiter,      reviewRouter);
-app.use('/api/profiles',                               certificationRoutes);
-app.use('/api/certificates',      certificatesLimiter, certificateRoutes);
+app.use('/api/reviews', reviewsLimiter, reviewRouter);
+app.use('/api/profiles', certificationRoutes);
+app.use('/api/certificates', certificatesLimiter, certificateRoutes);
 
 // ClassVault & media
-app.use('/api/classvault',                             classVaultRoutes);
-app.use('/api/cloudinary',                             cloudinaryRoutes);
+app.use('/api/classvault', classVaultRoutes);
+app.use('/api/cloudinary', cloudinaryRoutes);
 
 // Courses (non-AI) & enrollments
-app.use('/api/courses',                                courseRoutes);
-app.use('/api/enrollments',                            enrollmentRoutes);
-app.use('/api/earnings',                               earningsRoutes);
-app.use('/api/achievements',                           achievementsRoutes);
+app.use('/api/courses', courseRoutes);
+app.use('/api/enrollments', enrollmentRoutes);
+app.use('/api/earnings', earningsRoutes);
+app.use('/api/achievements', achievementsRoutes);
 
 // Auth & Admin
-app.use('/api/institutions/auth',                      institutionAuthRoutes);
-app.use('/api/auth',                                   authRoutes);
+app.use('/api/institutions/auth', institutionAuthRoutes);
+app.use('/api/auth', authRoutes);
 
-
-app.use('/api/admin',                                  adminStaffRoutes);   // /api/admin/staff
-app.use('/api/admin',                                  adminRoutes);
+app.use('/api/admin', adminStaffRoutes); // /api/admin/staff
+app.use('/api/admin', adminRoutes);
 
 // Organization
-app.use('/api/orgs',                                        orgRoutes);
-app.use('/api/orgs',                                    orgExamsRoutes);
-app.use('/api/orgs/attempts',                          attemptsRoutes);
+app.use('/api/orgs', orgRoutes);
+app.use('/api/orgs', orgExamsRoutes);
+app.use('/api/orgs/attempts', attemptsRoutes);
 // Course progress
-app.use('/api/course-progress',   progressLimiter,     courseProgressRoutes);
-app.use('/api',                 progressLimiter,    progressWatchRoutes);
-app.use('/api',               progressLimiter,      progressReadRoutes);
-app.use('/api',                                              oerRoutes);
-app.use('/api',                                   openstaxIngestRoutes);
+app.use('/api/course-progress', progressLimiter, courseProgressRoutes);
+app.use('/api', progressLimiter, progressWatchRoutes);
+app.use('/api', progressLimiter, progressReadRoutes);
+app.use('/api', oerRoutes);
+app.use('/api', openstaxIngestRoutes);
 
-app.use('/api',                                     youtubeIngestRoutes);
-
+app.use('/api', youtubeIngestRoutes);
 
 // ✅ Ensure course size normalization runs BEFORE AI handlers that rely on it
-app.use('/api/ai',                                     normalizeCourseSize);
+app.use('/api/ai', normalizeCourseSize);
 
-app.use('/api/ai', inflightLimiter({ keyFn: aiKeyFn, max: Number(process.env.AI_MAX_INFLIGHT || 2) }));
+app.use(
+  '/api/ai',
+  inflightLimiter({
+    keyFn: aiKeyFn,
+    max: Number(process.env.AI_MAX_INFLIGHT || 2),
+  }),
+);
 // ✅ Apply strict AI limiter to expensive AI/TTS work (per-user, per-bucket)
-app.use('/api/ai',                aiLimiterStrict,     aiRoutes);          // general AI endpoints
-app.use('/api/ai',                aiLimiterStrict,     aiCourseRoutes);    // AI course generation
+app.use('/api/ai', aiLimiterStrict, aiRoutes); // general AI endpoints
+app.use('/api/ai', aiLimiterStrict, aiCourseRoutes); // AI course generation
 
 // TTS avatars also hit Azure—protect them, too
-app.use('/api/ttsAvatar', inflightLimiter({ keyFn: aiKeyFn, max: Number(process.env.AI_MAX_INFLIGHT || 2) }));
-app.use('/api/ttsAvatar',         aiLimiterStrict,     ttsAvatarRoutes);
+app.use(
+  '/api/ttsAvatar',
+  inflightLimiter({
+    keyFn: aiKeyFn,
+    max: Number(process.env.AI_MAX_INFLIGHT || 2),
+  }),
+);
+app.use('/api/ttsAvatar', aiLimiterStrict, ttsAvatarRoutes);
 
 // Transcripts (if these call AI, consider adding aiLimiterStrict as well)
-app.use('/api/transcripts',                            transcriptsRoutes);
+app.use('/api/transcripts', transcriptsRoutes);
 
 // Legacy / secondary router for /api/courses (kept if intentional)
 
-
-app.use('/api/email',                         emailUnsubscribeRoutes);
+app.use('/api/email', emailUnsubscribeRoutes);
 
 // Root ping
 app.get('/', (_req, res) => res.send('API Working'));
@@ -409,112 +440,119 @@ io.on('connection', (socket) => {
   socket.on('joinRoom', (profileId) => {
     if (profileId) {
       socket.join(String(profileId));
-      console.log(`Socket ${socket.id} joined room for profile ID: ${profileId}`);
+      console.log(
+        `Socket ${socket.id} joined room for profile ID: ${profileId}`,
+      );
     } else {
       console.error('joinRoom: Missing or invalid profileId');
     }
   });
 
   socket.on('sendMessage', async (data, callback) => {
-  const { recipientId, content, senderId } = data;
+    const { recipientId, content, senderId } = data;
 
-  const getProfileById = async (profileId) => {
-    const result = await pool.query('SELECT id FROM profiles WHERE id = $1', [profileId]);
-    return result.rows.length > 0 ? result.rows[0].id : null;
-  };
+    const getProfileById = async (profileId) => {
+      const result = await pool.query('SELECT id FROM profiles WHERE id = $1', [
+        profileId,
+      ]);
+      return result.rows.length > 0 ? result.rows[0].id : null;
+    };
 
-  try {
-    const senderProfileId = await getProfileById(senderId);
-    const recipientProfileId = await getProfileById(recipientId);
+    try {
+      const senderProfileId = await getProfileById(senderId);
+      const recipientProfileId = await getProfileById(recipientId);
 
-    if (!senderProfileId || !recipientProfileId) {
-      return callback?.({ status: 'error', message: 'Sender or recipient profile not found.' });
-    }
+      if (!senderProfileId || !recipientProfileId) {
+        return callback?.({
+          status: 'error',
+          message: 'Sender or recipient profile not found.',
+        });
+      }
 
-    // Find or create conversation
-    let conversation = await pool.query(
-      `SELECT id FROM conversations
+      // Find or create conversation
+      let conversation = await pool.query(
+        `SELECT id FROM conversations
        WHERE (sender_id = $1 AND recipient_id = $2)
           OR (sender_id = $2 AND recipient_id = $1)`,
-      [senderProfileId, recipientProfileId]
-    );
-
-    let conversationId;
-    if (conversation.rows.length === 0) {
-      const newConversation = await pool.query(
-        `INSERT INTO conversations (sender_id, recipient_id, unread_count)
-         VALUES ($1, $2, 1) RETURNING id`,
-        [senderProfileId, recipientProfileId]
+        [senderProfileId, recipientProfileId],
       );
-      conversationId = newConversation.rows[0].id;
-    } else {
-      conversationId = conversation.rows[0].id;
-      await pool.query(
-        `UPDATE conversations
+
+      let conversationId;
+      if (conversation.rows.length === 0) {
+        const newConversation = await pool.query(
+          `INSERT INTO conversations (sender_id, recipient_id, unread_count)
+         VALUES ($1, $2, 1) RETURNING id`,
+          [senderProfileId, recipientProfileId],
+        );
+        conversationId = newConversation.rows[0].id;
+      } else {
+        conversationId = conversation.rows[0].id;
+        await pool.query(
+          `UPDATE conversations
          SET unread_count = unread_count + 1, updated_at = NOW()
          WHERE id = $1 AND recipient_id = $2`,
-        [conversationId, recipientProfileId]
-      );
-    }
+          [conversationId, recipientProfileId],
+        );
+      }
 
-    // Store message
-    await pool.query(
-      `INSERT INTO messages (conversation_id, sender_id, content)
+      // Store message
+      await pool.query(
+        `INSERT INTO messages (conversation_id, sender_id, content)
        VALUES ($1, $2, $3)`,
-      [conversationId, senderProfileId, content]
-    );
+        [conversationId, senderProfileId, content],
+      );
 
-    // Emit realtime events (socket rooms are profile ids)
-    io.to(String(recipientProfileId)).emit('messageReceived', {
-      recipientId: String(recipientProfileId),
-      content,
-      senderId: String(senderProfileId),
-      senderName: null,
-      unread: true,
-      conversationId: String(conversationId),
-    });
+      // Emit realtime events (socket rooms are profile ids)
+      io.to(String(recipientProfileId)).emit('messageReceived', {
+        recipientId: String(recipientProfileId),
+        content,
+        senderId: String(senderProfileId),
+        senderName: null,
+        unread: true,
+        conversationId: String(conversationId),
+      });
 
-    io.to(String(senderProfileId)).emit('messageReceived', {
-      recipientId: String(recipientProfileId),
-      content,
-      senderId: String(senderProfileId),
-      senderName: 'You',
-      unread: false,
-      conversationId: String(conversationId),
-    });
+      io.to(String(senderProfileId)).emit('messageReceived', {
+        recipientId: String(recipientProfileId),
+        content,
+        senderId: String(senderProfileId),
+        senderName: 'You',
+        unread: false,
+        conversationId: String(conversationId),
+      });
 
-    // ✅ PUSH NOTIFICATION (must be inside this async handler)
-    // Fetch sender name from DB (don’t trust client payload)
-    const senderNameRes = await pool.query(
-      'SELECT name FROM profiles WHERE id = $1',
-      [senderProfileId]
-    );
-    const senderNameDb = senderNameRes.rows[0]?.name || 'New message';
+      // ✅ PUSH NOTIFICATION (must be inside this async handler)
+      // Fetch sender name from DB (don’t trust client payload)
+      const senderNameRes = await pool.query(
+        'SELECT name FROM profiles WHERE id = $1',
+        [senderProfileId],
+      );
+      const senderNameDb = senderNameRes.rows[0]?.name || 'New message';
 
-    // Don’t block socket response if Expo is slow
-    void notifyNewMessage({
-      recipientProfileId: recipientProfileId,
-      title: senderNameDb,
-      body: String(content || 'You have a new message').slice(0, 140),
-      data: {
-        screen: 'Messages',
-        params: { studentId: String(senderProfileId) },
-      },
-    }).catch((e) => console.warn('[push] notifyNewMessage failed', e?.message || e));
+      // Don’t block socket response if Expo is slow
+      void notifyNewMessage({
+        recipientProfileId: recipientProfileId,
+        title: senderNameDb,
+        body: String(content || 'You have a new message').slice(0, 140),
+        data: {
+          screen: 'Messages',
+          params: { studentId: String(senderProfileId) },
+        },
+      }).catch((e) =>
+        console.warn('[push] notifyNewMessage failed', e?.message || e),
+      );
 
-    callback?.({ status: 'success', message: 'Message sent successfully' });
-  } catch (error) {
-    console.error('Error sending message:', error);
-    callback?.({ status: 'error', message: 'Failed to send message' });
-  }
-});
-
+      callback?.({ status: 'success', message: 'Message sent successfully' });
+    } catch (error) {
+      console.error('Error sending message:', error);
+      callback?.({ status: 'error', message: 'Failed to send message' });
+    }
+  });
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });
 });
-
 
 app.use(errorLogger);
 
@@ -531,7 +569,6 @@ app.use((req, res) => {
   }
   res.status(404).json({ message: 'Route Not Found' });
 });
-
 
 // 500 handler
 app.use((err, req, res, next) => {

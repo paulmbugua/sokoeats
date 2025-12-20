@@ -62,7 +62,9 @@ const VerifyCertificateScreen: React.FC = () => {
 
         {/* Loading */}
         {loading && (
-          <View style={tw`rounded-2xl border border-[#cedbe8] bg-white p-6 flex-row items-center gap-3`}>
+          <View
+            style={tw`rounded-2xl border border-[#cedbe8] bg-white p-6 flex-row items-center gap-3`}
+          >
             <ActivityIndicator />
             <Text style={tw`text-[#0d141c]`}>Verifying…</Text>
           </View>
@@ -77,8 +79,10 @@ const VerifyCertificateScreen: React.FC = () => {
         )}
 
         {/* Result */}
-        {!loading && !error && !!data && (
-          isValid ? (
+        {!loading &&
+          !error &&
+          !!data &&
+          (isValid ? (
             <View style={tw`rounded-2xl border border-[#cedbe8] bg-white p-6`}>
               <View style={tw`flex-row items-center gap-2 mb-3`}>
                 <View style={tw`w-6 h-6 rounded-full bg-green-100 items-center justify-center`}>
@@ -126,14 +130,16 @@ const VerifyCertificateScreen: React.FC = () => {
                 {data.error || 'No matching certificate found.'}
               </Text>
             </View>
-          )
-        )}
+          ))}
       </ScrollView>
     </SafeAreaView>
   );
 };
 
-const DetailRow: React.FC<{ label: string; value?: string | number | null }> = ({ label, value }) => (
+const DetailRow: React.FC<{ label: string; value?: string | number | null }> = ({
+  label,
+  value,
+}) => (
   <View style={tw`flex-row items-center justify-between`}>
     <Text style={tw`text-sm text-[#49739c]`}>{label}</Text>
     <Text style={tw`text-sm font-medium text-[#0d141c]`}>{value ?? '-'}</Text>

@@ -10,7 +10,7 @@ import {
 } from '../controllers/orgBillingController.js';
 
 import {
-   updateOrgBranding,
+  updateOrgBranding,
   createAssignment,
   resolveInvite,
   acceptInvite,
@@ -28,9 +28,8 @@ import {
   acceptOrgMembershipInvite,
   getMyAttemptForAssignment,
   startAttempt,
- setClassTeacherSignature,
-   
-  } from '../controllers/orgController.js';
+  setClassTeacherSignature,
+} from '../controllers/orgController.js';
 
 // ⬇️ NEW: learner controllers
 import {
@@ -49,7 +48,7 @@ import {
   createOrgLegacyAssignment,
   getOrgAssignments,
   submitOrgLegacyAssignment,
-   getOrgAssignmentSubmissions,
+  getOrgAssignmentSubmissions,
 } from '../controllers/orgLegacyAssignmentsController.js';
 
 const router = express.Router();
@@ -64,11 +63,14 @@ router.get('/:orgId/roster', requireAuth, getOrgRoster);
 router.post('/:orgId/invites', requireAuth, createOrgInvite);
 router.post('/accept-membership', requireAuth, acceptOrgMembershipInvite);
 
-
 /* ───────────── Assignment / attempt read APIs (non-:orgId first) ───────────── */
 
 router.get('/attempts/:attemptId/meta', requireAuth, getAttemptMeta);
-router.get('/assignments/:assignmentId/mine', requireAuth, getMyAttemptForAssignment);
+router.get(
+  '/assignments/:assignmentId/mine',
+  requireAuth,
+  getMyAttemptForAssignment,
+);
 
 /* ───────────────────── Branding / assignments / analytics ─────────────────── */
 
@@ -100,11 +102,7 @@ router.delete('/:orgId/members/:userId', requireAuth, removeOrgMember);
  *   app.use('/api/orgs', orgRoutes);
  */
 
-router.post(
-  '/:orgId/learners',
-  requireAuth,
-  createOrgLearner,
-);
+router.post('/:orgId/learners', requireAuth, createOrgLearner);
 
 router.post(
   '/:orgId/learners/csv',
@@ -112,7 +110,6 @@ router.post(
   upload.single('file'),
   bulkCreateOrgLearnersCsv,
 );
-
 
 /**
  * NEW: map learner photos by admission code.
@@ -127,7 +124,6 @@ router.post(
   setOrgLearnerPhotoByAdmission,
 );
 
-
 router.post(
   '/:orgId/learners/:studentId/attendance',
   requireAuth,
@@ -135,11 +131,7 @@ router.post(
 );
 /* ───────────────────────── NEW: instructor management ────────────────────── */
 
-router.post(
-  '/:orgId/instructors',
-  requireAuth,
-  createOrgInstructor,
-);
+router.post('/:orgId/instructors', requireAuth, createOrgInstructor);
 
 router.post(
   '/:orgId/instructors/csv',
@@ -148,40 +140,34 @@ router.post(
   bulkCreateOrgInstructorsCsv,
 );
 
-
 // List assignments (learner/admin)
-router.get(
-  '/:orgId/assignments',
-  requireAuth,
-  getOrgAssignments
-);
+router.get('/:orgId/assignments', requireAuth, getOrgAssignments);
 
 // e.g. in org routes
 router.put(
   '/:orgId/classes/:classLabel/class-teacher-signature',
   requireAuth,
-  setClassTeacherSignature
+  setClassTeacherSignature,
 );
-
 
 // Create classic / legacy assignment
 router.post(
   '/:orgId/assignments/legacy',
   requireAuth,
-  createOrgLegacyAssignment
+  createOrgLegacyAssignment,
 );
 
 // Submit learner work for a legacy assignment
 router.post(
   '/:orgId/assignments/:assignmentId/legacy/submit',
   requireAuth,
-  submitOrgLegacyAssignment
+  submitOrgLegacyAssignment,
 );
 
 router.get(
   '/:orgId/assignments/:assignmentId/submissions',
   requireAuth,
-  getOrgAssignmentSubmissions
+  getOrgAssignmentSubmissions,
 );
 
 // Public: portal needs this before login sometimes
@@ -191,7 +177,11 @@ router.get('/pricing', getOrgPricing);
 
 router.post('/bootstrap', requireAuth, bootstrapMyOrg);
 router.post('/:orgId/subscribe/init', requireAuth, initOrgSubscription);
-router.post('/subscriptions/:paymentId/confirm', requireAuth, confirmOrgSubscription);
+router.post(
+  '/subscriptions/:paymentId/confirm',
+  requireAuth,
+  confirmOrgSubscription,
+);
 
 // optional stubs
 router.post('/:orgId/upgrade', requireAuth, async (req, res) => {
@@ -200,7 +190,10 @@ router.post('/:orgId/upgrade', requireAuth, async (req, res) => {
   if (!['starter', 'pro', 'enterprise'].includes(tier)) {
     return res.status(400).json({ message: 'Invalid tier' });
   }
-  await req.app.get('pool')?.query?.('DO $$ BEGIN END $$;').catch(() => {});
+  await req.app
+    .get('pool')
+    ?.query?.('DO $$ BEGIN END $$;')
+    .catch(() => {});
   res.json({
     tier,
     seats: tier === 'starter' ? 50 : tier === 'pro' ? 500 : 5000,
@@ -215,4 +208,3 @@ router.post('/:orgId/reports/send', requireAuth, (_req, res) =>
 );
 
 export default router;
-

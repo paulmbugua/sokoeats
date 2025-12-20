@@ -1,12 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, { useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import {
   useNavigation,
   useRoute,
@@ -42,9 +36,7 @@ function usePalette() {
     textSubtle: isDark ? 'rgba(255,255,255,0.60)' : 'rgba(61,88,115,0.75)',
     inputBg: isDark ? 'rgba(10,16,23,0.6)' : 'rgba(255,255,255,0.92)',
     inputBorder: isDark ? 'rgba(255,255,255,0.15)' : '#cedbe8',
-    inputPlaceholder: isDark
-      ? 'rgba(255,255,255,0.65)'
-      : 'rgba(13,20,28,0.55)',
+    inputPlaceholder: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(13,20,28,0.55)',
 
     surface(style?: any) {
       return [
@@ -110,12 +102,11 @@ const OrgChangePasswordNative: React.FC = () => {
                 await orgLogout?.();
               } catch {}
               navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'InstitutionLogin', params: { logoutOrg: true } }],
-                });
-
+                index: 0,
+                routes: [{ name: 'InstitutionLogin', params: { logoutOrg: true } }],
+              });
             }}
-            style={[tw`mt-4 h-11 rounded-xl items-center justify-center bg-indigo-600`]}
+            style={tw`mt-4 h-11 rounded-xl items-center justify-center bg-indigo-600`}
           >
             <Text style={tw`text-white font-semibold`}>Go to login</Text>
           </TouchableOpacity>
@@ -178,8 +169,8 @@ const OrgChangePasswordNative: React.FC = () => {
           </Text>
 
           <Text style={[tw`text-xs text-center mb-4`, { color: palette.textSubtle }]}>
-            For security, your institution asked you to change the temporary password
-            before using the portal.
+            For security, your institution asked you to change the temporary password before using
+            the portal.
           </Text>
 
           {!!error && (
@@ -187,7 +178,9 @@ const OrgChangePasswordNative: React.FC = () => {
               style={[
                 tw`mb-4 rounded-lg px-3 py-2`,
                 {
-                  backgroundColor: palette.isDark ? 'rgba(127,29,29,0.35)' : 'rgba(254,226,226,0.9)',
+                  backgroundColor: palette.isDark
+                    ? 'rgba(127,29,29,0.35)'
+                    : 'rgba(254,226,226,0.9)',
                   borderColor: palette.isDark ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.35)',
                   borderWidth: 1,
                 },

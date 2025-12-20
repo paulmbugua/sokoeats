@@ -85,10 +85,7 @@ const DeleteAccountNative: React.FC = () => {
         You can request permanent deletion of your DayBreak account. This removes your profile and
         personal data subject to legal/financial retention obligations.
       </Text>
-      <TouchableOpacity
-        onPress={onRequestDelete}
-        style={tw`mt-4 px-4 py-3 rounded-xl bg-rose-600`}
-      >
+      <TouchableOpacity onPress={onRequestDelete} style={tw`mt-4 px-4 py-3 rounded-xl bg-rose-600`}>
         <Text style={tw`text-white text-center font-semibold`}>Request Account Deletion</Text>
       </TouchableOpacity>
       <Text style={tw`mt-2 text-xs text-slate-400`}>
@@ -253,7 +250,9 @@ const HelpPageNative: React.FC = () => {
       </ScrollView>
 
       {/* Sticky footer-like info */}
-      <View style={tw`absolute bottom-0 left-0 right-0 p-4 bg-[#0f1821]/80 border-t border-[#182430]`}>
+      <View
+        style={tw`absolute bottom-0 left-0 right-0 p-4 bg-[#0f1821]/80 border-t border-[#182430]`}
+      >
         <Text style={tw`text-center text-[11px] text-slate-400`}>
           Need more help?{' '}
           <Text

@@ -6,9 +6,9 @@ import path from 'node:path';
 import pool from '../config/db.js'; // your db (already logs connection)
 
 const ICONS = [
-  { code: 'COURSE_STARTED',   file: 'course_started.svg'   },
-  { code: 'FIRST_WEEK_DONE',  file: 'first_week_done.svg'  },
-  { code: 'HALFWAY_THERE',    file: 'halfway_there.svg'    },
+  { code: 'COURSE_STARTED', file: 'course_started.svg' },
+  { code: 'FIRST_WEEK_DONE', file: 'first_week_done.svg' },
+  { code: 'HALFWAY_THERE', file: 'halfway_there.svg' },
   { code: 'COURSE_COMPLETED', file: 'course_completed.svg' },
 ];
 
@@ -21,7 +21,8 @@ const CLOUDINARY_API_SECRET =
 
 function ensureEnv() {
   const missing = [];
-  if (!CLOUDINARY_NAME) missing.push('CLOUDINARY_CLOUD_NAME (or CLOUDINARY_NAME)');
+  if (!CLOUDINARY_NAME)
+    missing.push('CLOUDINARY_CLOUD_NAME (or CLOUDINARY_NAME)');
   if (!CLOUDINARY_API_KEY) missing.push('CLOUDINARY_API_KEY');
   if (!CLOUDINARY_API_SECRET) missing.push('CLOUDINARY_API_SECRET');
   if (missing.length) {
@@ -45,7 +46,7 @@ async function upsertRuleIcon(code, iconUrl) {
      VALUES ($1, INITCAP(REPLACE($1, '_',' ')), $2, TRUE)
      ON CONFLICT (code)
      DO UPDATE SET icon_url = EXCLUDED.icon_url, active = TRUE`,
-    [code, iconUrl]
+    [code, iconUrl],
   );
 }
 

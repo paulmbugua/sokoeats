@@ -8,6 +8,6 @@ export default function requireAuthWhenAssignment(req, res, next) {
     req.query?.assignmentId ||
     req.get('x-assignment-id');
 
-  if (!a) return next();          // self-serve flow → no auth required here
+  if (!a) return next(); // self-serve flow → no auth required here
   return requireAuth(req, res, next);
 }

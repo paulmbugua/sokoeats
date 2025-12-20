@@ -2,8 +2,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import debounce from 'lodash.debounce';
-import { useHomePage } from '@mytutorapp/shared/hooks';
-import { useCourses } from '@mytutorapp/shared/hooks';
+import { useHomePage, useCourses } from '@mytutorapp/shared/hooks';
+
 import type { Profile, Course } from '@mytutorapp/shared/types';
 import { fetchVideoReviews } from '@mytutorapp/shared/api/classVaultApi';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -153,7 +153,9 @@ function StarRow({ avg }: { avg: number }) {
 
 function extractRating(x: any): { avg: number; count: number } {
   const avg = Number(x?.avgRating ?? x?.rating ?? x?.stars ?? x?.avg_rating ?? 0);
-  const count = Number(x?.ratingsCount ?? x?.reviewCount ?? x?.totalReviews ?? x?.ratings_count ?? 0);
+  const count = Number(
+    x?.ratingsCount ?? x?.reviewCount ?? x?.totalReviews ?? x?.ratings_count ?? 0
+  );
   return { avg: Number.isFinite(avg) ? avg : 0, count: Number.isFinite(count) ? count : 0 };
 }
 
@@ -404,7 +406,7 @@ const HomePage: React.FC = () => {
   }, [tutorProfiles, backendUrl]);
 
   const coursePrice = (c: Course) =>
-    typeof c.price === 'number' ? `${c.price} Tokens` : c.price ?? '';
+    typeof c.price === 'number' ? `${c.price} Tokens` : (c.price ?? '');
 
   /* ----------------------- Ratings Prefetch (Courses) -------------------- */
   const [courseRatings, setCourseRatings] = useState<
@@ -413,7 +415,8 @@ const HomePage: React.FC = () => {
   const fetchingCourseIdsRef = useRef<Set<string>>(new Set());
 
   const fetchCourseRatings = async (courseId: string) => {
-    if (!backendUrl || fetchingCourseIdsRef.current.has(courseId) || courseRatings[courseId]) return;
+    if (!backendUrl || fetchingCourseIdsRef.current.has(courseId) || courseRatings[courseId])
+      return;
     try {
       fetchingCourseIdsRef.current.add(courseId);
       const res = await fetch(`${backendUrl}/api/reviews/courses/${courseId}`);
@@ -421,9 +424,7 @@ const HomePage: React.FC = () => {
       const data = await res.json();
       const avg = Number(data?.avgRating ?? 0) || 0;
       const count = Number(data?.totalReviews ?? 0) || 0;
-      setCourseRatings((prev) =>
-        prev[courseId] ? prev : { ...prev, [courseId]: { avg, count } }
-      );
+      setCourseRatings((prev) => (prev[courseId] ? prev : { ...prev, [courseId]: { avg, count } }));
     } catch {
       // silent
     } finally {
@@ -547,12 +548,8 @@ const HomePage: React.FC = () => {
       | { kind: 'recorded'; data: any }
       | { kind: 'oerCollection'; data: OerCollection };
 
-    const a = recordedFeatured.map(
-      (v) => ({ kind: 'recorded', data: v } as MixedVideoItem)
-    );
-    const b = oerForFeatured.map(
-      (c) => ({ kind: 'oerCollection', data: c } as MixedVideoItem)
-    );
+    const a = recordedFeatured.map((v) => ({ kind: 'recorded', data: v }) as MixedVideoItem);
+    const b = oerForFeatured.map((c) => ({ kind: 'oerCollection', data: c }) as MixedVideoItem);
 
     const mixed = interleave(a, b, FEATURED_VIDEOS_LIMIT_DESKTOP) as MixedVideoItem[];
 
@@ -740,9 +737,7 @@ const HomePage: React.FC = () => {
             {/* Mobile */}
             <div className="mt-4 grid grid-cols-2 gap-4 md:hidden">
               {featuredTutors.length === 0 && (
-                <p className="text-darkTextSecondary px-1 col-span-2">
-                  No featured tutors yet.
-                </p>
+                <p className="text-darkTextSecondary px-1 col-span-2">No featured tutors yet.</p>
               )}
               {featuredTutors.slice(0, FEATURED_TUTOR_LIMIT_MOBILE).map((t, idx) => (
                 <motion.div
@@ -779,9 +774,7 @@ const HomePage: React.FC = () => {
             {/* Desktop */}
             <div className="mt-4 hidden md:grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
               {featuredTutors.length === 0 && (
-                <p className="text-darkTextSecondary px-1 col-span-full">
-                  No featured tutors yet.
-                </p>
+                <p className="text-darkTextSecondary px-1 col-span-full">No featured tutors yet.</p>
               )}
               {featuredTutors.slice(0, FEATURED_TUTOR_LIMIT_DESKTOP).map((t, idx) => (
                 <motion.div
@@ -804,9 +797,7 @@ const HomePage: React.FC = () => {
                       <div className="mt-1 flex items-center justify-center gap-2">
                         <StarRow avg={t.ratingAvg} />
                         {t.ratingCount > 0 && (
-                          <span className="text-xs text-darkTextSecondary">
-                            ({t.ratingCount})
-                          </span>
+                          <span className="text-xs text-darkTextSecondary">({t.ratingCount})</span>
                         )}
                       </div>
                     </div>
@@ -839,28 +830,17 @@ const HomePage: React.FC = () => {
               {featuredVideosMixed.slice(0, FEATURED_VIDEOS_LIMIT_MOBILE).map((item, idx) => {
                 if (item.kind === 'recorded') {
                   const v = item.data;
-                  const subject =
-                    v?.subject ?? v?.category ?? v?.topic ?? v?.title ?? 'Video';
+                  const subject = v?.subject ?? v?.category ?? v?.topic ?? v?.title ?? 'Video';
                   const grade = v?.grade_level ?? v?.grade ?? v?.level ?? '—';
-                  const priceTokens = Number.isFinite(Number(v?.price))
-                    ? Number(v?.price)
-                    : 0;
+                  const priceTokens = Number.isFinite(Number(v?.price)) ? Number(v?.price) : 0;
 
                   const base = extractRating(v);
                   const r = videoRatings[v.id] ?? base;
 
                   const thumb =
-                    v?.thumbnail_url ||
-                    v?.thumb ||
-                    v?.thumbnail ||
-                    v?.previewImage ||
-                    '';
+                    v?.thumbnail_url || v?.thumb || v?.thumbnail || v?.previewImage || '';
                   const previewSrc =
-                    v?.preview_url ||
-                    v?.previewUrl ||
-                    v?.preview ||
-                    v?.sample ||
-                    '';
+                    v?.preview_url || v?.previewUrl || v?.preview || v?.sample || '';
                   const isControls = openPreviewId === v.id;
 
                   // 🔍 debug + navigation target
@@ -918,17 +898,15 @@ const HomePage: React.FC = () => {
                           <div className="mt-1 flex items-center gap-2">
                             <StarRow avg={r.avg} />
                             {r.count > 0 && (
-                              <span className="text-xs text-darkTextSecondary">
-                                ({r.count})
-                              </span>
+                              <span className="text-xs text-darkTextSecondary">({r.count})</span>
                             )}
                           </div>
                           <p className="text-sm text-darkTextSecondary mt-1">
                             {subject} • Grade {grade}
                           </p>
                           <p className="text-sm mt-3">
-                            <span className="font-medium">Price:</span>{' '}
-                            {priceTokens.toFixed(0)} tokens
+                            <span className="font-medium">Price:</span> {priceTokens.toFixed(0)}{' '}
+                            tokens
                           </p>
                           <div className="mt-3">
                             <Link
@@ -964,11 +942,7 @@ const HomePage: React.FC = () => {
                       className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
                     >
                       {thumb ? (
-                        <img
-                          src={thumb}
-                          alt={title}
-                          className="w-full aspect-video object-cover"
-                        />
+                        <img src={thumb} alt={title} className="w-full aspect-video object-cover" />
                       ) : (
                         <div className="w-full aspect-video bg-black/70" />
                       )}
@@ -993,36 +967,23 @@ const HomePage: React.FC = () => {
             {/* Desktop */}
             <div className="mt-4 hidden md:grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {featuredVideosMixed.length === 0 && (
-                <p className="text-darkTextSecondary px-1 col-span-full">
-                  No videos to show yet.
-                </p>
+                <p className="text-darkTextSecondary px-1 col-span-full">No videos to show yet.</p>
               )}
 
               {featuredVideosMixed.slice(0, FEATURED_VIDEOS_LIMIT_DESKTOP).map((item, idx) => {
                 if (item.kind === 'recorded') {
                   const v = item.data;
-                  const subject =
-                    v?.subject ?? v?.category ?? v?.topic ?? v?.title ?? 'Video';
+                  const subject = v?.subject ?? v?.category ?? v?.topic ?? v?.title ?? 'Video';
                   const grade = v?.grade_level ?? v?.grade ?? v?.level ?? '—';
-                  const priceTokens = Number.isFinite(Number(v?.price))
-                    ? Number(v?.price)
-                    : 0;
+                  const priceTokens = Number.isFinite(Number(v?.price)) ? Number(v?.price) : 0;
 
                   const base = extractRating(v);
                   const r = videoRatings[v.id] ?? base;
 
                   const thumb =
-                    v?.thumbnail_url ||
-                    v?.thumb ||
-                    v?.thumbnail ||
-                    v?.previewImage ||
-                    '';
+                    v?.thumbnail_url || v?.thumb || v?.thumbnail || v?.previewImage || '';
                   const previewSrc =
-                    v?.preview_url ||
-                    v?.previewUrl ||
-                    v?.preview ||
-                    v?.sample ||
-                    '';
+                    v?.preview_url || v?.previewUrl || v?.preview || v?.sample || '';
                   const isControls = openPreviewId === v.id;
 
                   const href = debugHrefFor(v, 'FeaturedVideos:recorded');
@@ -1079,17 +1040,15 @@ const HomePage: React.FC = () => {
                           <div className="mt-1 flex items-center gap-2">
                             <StarRow avg={r.avg} />
                             {r.count > 0 && (
-                              <span className="text-xs text-darkTextSecondary">
-                                ({r.count})
-                              </span>
+                              <span className="text-xs text-darkTextSecondary">({r.count})</span>
                             )}
                           </div>
                           <p className="text-sm text-darkTextSecondary mt-1">
                             {subject} • Grade {grade}
                           </p>
                           <p className="text-sm mt-3">
-                            <span className="font-medium">Price:</span>{' '}
-                            {priceTokens.toFixed(0)} tokens
+                            <span className="font-medium">Price:</span> {priceTokens.toFixed(0)}{' '}
+                            tokens
                           </p>
                           <div className="mt-3">
                             <Link
@@ -1125,11 +1084,7 @@ const HomePage: React.FC = () => {
                       className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
                     >
                       {thumb ? (
-                        <img
-                          src={thumb}
-                          alt={title}
-                          className="w-full aspect-video object-cover"
-                        />
+                        <img src={thumb} alt={title} className="w-full aspect-video object-cover" />
                       ) : (
                         <div className="w-full aspect-video bg-black/70" />
                       )}
@@ -1170,9 +1125,7 @@ const HomePage: React.FC = () => {
             {/* Mobile */}
             <div className="mt-4 grid grid-cols-2 gap-4 md:hidden">
               {featuredCoursesDisplay.length === 0 && (
-                <p className="text-darkTextSecondary px-1 col-span-2">
-                  No featured courses yet.
-                </p>
+                <p className="text-darkTextSecondary px-1 col-span-2">No featured courses yet.</p>
               )}
               {featuredCoursesDisplay
                 .slice(0, FEATURED_COURSES_LIMIT_MOBILE)
@@ -1284,9 +1237,7 @@ const HomePage: React.FC = () => {
                           <div className="mt-1 flex items-center gap-2">
                             <StarRow avg={r.avg} />
                             {r.count > 0 && (
-                              <span className="text-xs text-darkTextSecondary">
-                                ({r.count})
-                              </span>
+                              <span className="text-xs text-darkTextSecondary">({r.count})</span>
                             )}
                           </div>
                           <p className="text-sm text-darkTextSecondary line-clamp-2 mt-1">
@@ -1351,9 +1302,7 @@ const HomePage: React.FC = () => {
                   {/* Mobile */}
                   <div className="mt-4 grid grid-cols-2 gap-4 md:hidden">
                     {freeFiltered.length === 0 && (
-                      <p className="text-darkTextSecondary px-1 col-span-2">
-                        No free courses yet.
-                      </p>
+                      <p className="text-darkTextSecondary px-1 col-span-2">No free courses yet.</p>
                     )}
                     {freeFiltered
                       .slice(0, FREE_COURSES_LIMIT_MOBILE)
@@ -1489,9 +1438,7 @@ const HomePage: React.FC = () => {
                   {/* Mobile */}
                   <div className="mt-4 grid grid-cols-1 gap-4 md:hidden">
                     {freeVideoCols.length === 0 && (
-                      <p className="text-darkTextSecondary px-1">
-                        No free videos to show yet.
-                      </p>
+                      <p className="text-darkTextSecondary px-1">No free videos to show yet.</p>
                     )}
                     {freeVideoCols
                       .slice(0, FREE_VIDEOS_LIMIT_MOBILE)
@@ -1608,107 +1555,95 @@ const HomePage: React.FC = () => {
             {/* Mobile */}
             <div className="mt-4 grid grid-cols-2 gap-4 md:hidden">
               {recommendedCoursesOnly.length === 0 && (
-                <p className="text-darkTextSecondary px-1 col-span-2">
-                  No recommendations yet.
-                </p>
+                <p className="text-darkTextSecondary px-1 col-span-2">No recommendations yet.</p>
               )}
-              {recommendedCoursesOnly
-                .slice(0, RECOMMENDED_COURSES_LIMIT_MOBILE)
-                .map((c, idx) => {
-                  const cid = String(c.id);
-                  const base = extractRating(c);
-                  const r = courseRatings[cid] ?? base;
-                  return (
-                    <motion.div
-                      key={`recc-m-${cid}`}
-                      variants={fadeInScale}
-                      transition={{ delay: 0.02 * idx }}
-                      whileHover={{ y: -3 }}
+              {recommendedCoursesOnly.slice(0, RECOMMENDED_COURSES_LIMIT_MOBILE).map((c, idx) => {
+                const cid = String(c.id);
+                const base = extractRating(c);
+                const r = courseRatings[cid] ?? base;
+                return (
+                  <motion.div
+                    key={`recc-m-${cid}`}
+                    variants={fadeInScale}
+                    transition={{ delay: 0.02 * idx }}
+                    whileHover={{ y: -3 }}
+                  >
+                    <Link
+                      to={getHrefForItem(c)}
+                      className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                      onMouseEnter={() => {
+                        if (isRealCourse(c)) prefetchCourseOnHover(String(c.id));
+                      }}
                     >
-                      <Link
-                        to={getHrefForItem(c)}
-                        className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
-                        onMouseEnter={() => {
-                          if (isRealCourse(c)) prefetchCourseOnHover(String(c.id));
-                        }}
-                      >
-                        <CourseHero course={c} backendUrl={backendUrl} />
-                        <div className="p-3">
-                          <h4 className="font-semibold text-sm truncate">{c.title}</h4>
-                          <div className="mt-1 flex items-center gap-1.5">
-                            <StarRow avg={r.avg} />
-                            {r.count > 0 && (
-                              <span className="text-[11px] text-darkTextSecondary">
-                                ({r.count})
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-darkTextSecondary line-clamp-2 mt-1">
-                            {c.description || 'Top picks based on quality and popularity.'}
-                          </p>
-                          <div className="mt-2">
-                            <span className="inline-flex items-center justify-center rounded-lg h-8 px-3 bg-primary text-white text-xs font-medium hover:brightness-110">
-                              View Course
-                            </span>
-                          </div>
+                      <CourseHero course={c} backendUrl={backendUrl} />
+                      <div className="p-3">
+                        <h4 className="font-semibold text-sm truncate">{c.title}</h4>
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <StarRow avg={r.avg} />
+                          {r.count > 0 && (
+                            <span className="text-[11px] text-darkTextSecondary">({r.count})</span>
+                          )}
                         </div>
-                      </Link>
-                    </motion.div>
-                  );
-                })}
+                        <p className="text-xs text-darkTextSecondary line-clamp-2 mt-1">
+                          {c.description || 'Top picks based on quality and popularity.'}
+                        </p>
+                        <div className="mt-2">
+                          <span className="inline-flex items-center justify-center rounded-lg h-8 px-3 bg-primary text-white text-xs font-medium hover:brightness-110">
+                            View Course
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  </motion.div>
+                );
+              })}
             </div>
 
             {/* Desktop */}
             <div className="mt-4 hidden md:grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {recommendedCoursesOnly.length === 0 && (
-                <p className="text-darkTextSecondary px-1 col-span-full">
-                  No recommendations yet.
-                </p>
+                <p className="text-darkTextSecondary px-1 col-span-full">No recommendations yet.</p>
               )}
-              {recommendedCoursesOnly
-                .slice(0, RECOMMENDED_COURSES_LIMIT_DESKTOP)
-                .map((c, idx) => {
-                  const cid = String(c.id);
-                  const base = extractRating(c);
-                  const r = courseRatings[cid] ?? base;
-                  return (
-                    <motion.div
-                      key={`recc-${cid}`}
-                      variants={fadeInScale}
-                      transition={{ delay: 0.02 * idx }}
-                      whileHover={{ y: -4 }}
+              {recommendedCoursesOnly.slice(0, RECOMMENDED_COURSES_LIMIT_DESKTOP).map((c, idx) => {
+                const cid = String(c.id);
+                const base = extractRating(c);
+                const r = courseRatings[cid] ?? base;
+                return (
+                  <motion.div
+                    key={`recc-${cid}`}
+                    variants={fadeInScale}
+                    transition={{ delay: 0.02 * idx }}
+                    whileHover={{ y: -4 }}
+                  >
+                    <Link
+                      to={getHrefForItem(c)}
+                      className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+                      onMouseEnter={() => {
+                        if (isRealCourse(c)) prefetchCourseOnHover(String(c.id));
+                      }}
                     >
-                      <Link
-                        to={getHrefForItem(c)}
-                        className="block bg-white dark:bg-[#0f1821] rounded-xl overflow-hidden ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
-                        onMouseEnter={() => {
-                          if (isRealCourse(c)) prefetchCourseOnHover(String(c.id));
-                        }}
-                      >
-                        <CourseHero course={c} backendUrl={backendUrl} />
-                        <div className="p-4">
-                          <h4 className="font-semibold truncate">{c.title}</h4>
-                          <div className="mt-1 flex items-center gap-2">
-                            <StarRow avg={r.avg} />
-                            {r.count > 0 && (
-                              <span className="text-xs text-darkTextSecondary">
-                                ({r.count})
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-darkTextSecondary line-clamp-2 mt-1">
-                            {c.description || 'Top picks based on quality and popularity.'}
-                          </p>
-                          <div className="mt-3">
-                            <span className="inline-flex items-center justify-center rounded-lg h-9 px-4 bg-primary text-white text-sm font-medium hover:brightness-110">
-                              View Course
-                            </span>
-                          </div>
+                      <CourseHero course={c} backendUrl={backendUrl} />
+                      <div className="p-4">
+                        <h4 className="font-semibold truncate">{c.title}</h4>
+                        <div className="mt-1 flex items-center gap-2">
+                          <StarRow avg={r.avg} />
+                          {r.count > 0 && (
+                            <span className="text-xs text-darkTextSecondary">({r.count})</span>
+                          )}
                         </div>
-                      </Link>
-                    </motion.div>
-                  );
-                })}
+                        <p className="text-sm text-darkTextSecondary line-clamp-2 mt-1">
+                          {c.description || 'Top picks based on quality and popularity.'}
+                        </p>
+                        <div className="mt-3">
+                          <span className="inline-flex items-center justify-center rounded-lg h-9 px-4 bg-primary text-white text-sm font-medium hover:brightness-110">
+                            View Course
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  </motion.div>
+                );
+              })}
             </div>
           </motion.section>
         </div>

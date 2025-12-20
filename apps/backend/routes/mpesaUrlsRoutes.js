@@ -1,5 +1,9 @@
 import express from 'express';
-import { mpesaCallback, b2cResult, b2cTimeout } from '../controllers/mpesaUrls.js'; // Keeping original controller file name
+import {
+  mpesaCallback,
+  b2cResult,
+  b2cTimeout,
+} from '../controllers/mpesaUrls.js'; // Keeping original controller file name
 import { orgStkCallback } from '../controllers/orgMpesaUrls.js';
 
 const router = express.Router();

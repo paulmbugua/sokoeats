@@ -23,10 +23,7 @@ export default defineConfig({
       'react-native-web',
       'three',
     ],
-    extensions: [
-      '.web.tsx', '.web.ts', '.web.js',
-      '.tsx', '.ts', '.js', '.jsx', '.json'
-    ],
+    extensions: ['.web.tsx', '.web.ts', '.web.js', '.tsx', '.ts', '.js', '.jsx', '.json'],
     alias: [
       // RN → web
       { find: /^react-native$/, replacement: 'react-native-web' },
@@ -35,15 +32,30 @@ export default defineConfig({
       // Monorepo shared
       { find: /^@shared$/, replacement: path.resolve(__dirname, '../../packages/shared/index.ts') },
       { find: /^@shared\/(.*)$/, replacement: path.resolve(__dirname, '../../packages/shared/$1') },
-      { find: /^@mytutorapp\/shared$/, replacement: path.resolve(__dirname, '../../packages/shared/index.ts') },
-      { find: /^@mytutorapp\/shared\/(.*)$/, replacement: path.resolve(__dirname, '../../packages/shared/$1') },
+      {
+        find: /^@mytutorapp\/shared$/,
+        replacement: path.resolve(__dirname, '../../packages/shared/index.ts'),
+      },
+      {
+        find: /^@mytutorapp\/shared\/(.*)$/,
+        replacement: path.resolve(__dirname, '../../packages/shared/$1'),
+      },
 
       // explicit types barrel (matches web)
-      { find: /^@mytutorapp\/shared\/types$/, replacement: path.resolve(__dirname, '../../packages/shared/types/index.ts') },
-      { find: /^@shared\/types$/, replacement: path.resolve(__dirname, '../../packages/shared/types/index.ts') },
+      {
+        find: /^@mytutorapp\/shared\/types$/,
+        replacement: path.resolve(__dirname, '../../packages/shared/types/index.ts'),
+      },
+      {
+        find: /^@shared\/types$/,
+        replacement: path.resolve(__dirname, '../../packages/shared/types/index.ts'),
+      },
 
       // pin toastify to app-local (matches web)
-      { find: /^react-toastify$/, replacement: path.resolve(__dirname, 'node_modules/react-toastify') },
+      {
+        find: /^react-toastify$/,
+        replacement: path.resolve(__dirname, 'node_modules/react-toastify'),
+      },
 
       // App-local alias
       { find: '@', replacement: path.resolve(__dirname, 'src') },
@@ -54,12 +66,7 @@ export default defineConfig({
   },
 
   optimizeDeps: {
-    include: [
-      'framer-motion',
-      'motion-dom',
-      'react-native-web',
-      '@tanstack/react-query',
-    ],
+    include: ['framer-motion', 'motion-dom', 'react-native-web', '@tanstack/react-query'],
     // ⛔ explicitly exclude firebase to avoid accidental prebundle
     exclude: ['react-native', 'three', 'firebase', 'firebase/app', 'firebase/auth'],
   },
@@ -74,10 +81,7 @@ export default defineConfig({
   server: {
     port: 5174, // avoid clashing with web (5173)
     fs: {
-      allow: [
-        path.resolve(__dirname),
-        path.resolve(__dirname, '../../packages/shared'),
-      ],
+      allow: [path.resolve(__dirname), path.resolve(__dirname, '../../packages/shared')],
     },
     proxy: {
       '/api': { target: BACKEND_TARGET, changeOrigin: true, secure: false },

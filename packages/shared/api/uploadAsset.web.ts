@@ -22,10 +22,10 @@ export async function uploadAsset(
     uriOrFile instanceof File
       ? uriOrFile.name
       : type === 'video'
-      ? 'upload.mp4'
-      : type === 'doc'
-      ? 'upload.pdf'
-      : 'upload.jpg';
+        ? 'upload.mp4'
+        : type === 'doc'
+          ? 'upload.pdf'
+          : 'upload.jpg';
 
   formData.append('file', blobOrFile as Blob, filename);
 

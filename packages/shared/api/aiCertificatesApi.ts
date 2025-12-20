@@ -1,7 +1,9 @@
 import axios from 'axios';
-import type { AICertificateSKU, AICertificateIssuance, Certificate } from '@mytutorapp/shared/types';
-
-
+import type {
+  AICertificateSKU,
+  AICertificateIssuance,
+  Certificate,
+} from '@mytutorapp/shared/types';
 
 /** List available AI certificate SKUs (token-priced) */
 export async function listAICertificates(

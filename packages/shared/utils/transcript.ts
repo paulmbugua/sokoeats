@@ -9,7 +9,7 @@ export function ssmlToDisplayTokens(ssml: string, timings: WordTiming[]): Displa
     // strip outer SSML but keep punctuation
     .replace(/<speak[^>]*>/gi, '')
     .replace(/<\/speak>/gi, '')
-    .replace(/<[^>]+>/g, ' ')   // drop tags, keep spacing
+    .replace(/<[^>]+>/g, ' ') // drop tags, keep spacing
     .replace(/\s+/g, ' ')
     .trim();
 

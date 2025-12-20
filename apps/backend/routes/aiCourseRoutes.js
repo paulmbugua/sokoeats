@@ -1,4 +1,4 @@
-// apps/backend/routes/aiRoutes.js
+// apps/backend/routes/aiCourseRoutes.js
 import express from 'express';
 import {
   listTopCourses,
@@ -7,80 +7,66 @@ import {
   generateQuiz,
   gradeQuiz,
   generateCoursePackage,
-  // Cache admin handlers
   clearCourseCache,
   clearTopCoursesCache,
 } from '../controllers/aiCourseController.js';
 
-// 🔒 assignment-aware guards
+import optionalAuth from '../middleware/optionalAuth.js';
+import requireAuth from '../middleware/auth.js'; // your existing requireAuth
+
 import requireAuthWhenAssignment from '../middleware/requireAuthWhenAssignment.js';
 import enforceAssignmentKnobs from '../middleware/enforceAssignmentKnobs.js';
 
-/**
- * NOTE:
- * normalizeCourseSize is applied globally in server.js:
- *   app.use('/api/ai', normalizeCourseSize)
- * Do NOT mount it here again to avoid double-execution.
- */
-
 const router = express.Router();
 
-/**
- * Public (self-serve) listing
- * Learners coming from invites can still see titles, but generation
- * below is locked if `assignmentId` is present.
- */
 router.get('/courses/top', listTopCourses);
 
 /**
- * Any POST that might generate content:
- * If `assignmentId` is present:
- *   1) require auth
- *   2) force minutes/lessons/quiz/courseId from org locked_config
- * Then controllers run (with course size already normalized at server level).
+ * Self-serve: optional auth (so req.user exists if token supplied)
+ * Assignment flow: still enforces auth + org membership + locked knobs
  */
-
 router.post(
   '/outline',
+  optionalAuth,
   requireAuthWhenAssignment,
   enforceAssignmentKnobs,
-  generateOutline
+  generateOutline,
 );
 
 router.post(
   '/lesson-ssml',
+  optionalAuth,
   requireAuthWhenAssignment,
   enforceAssignmentKnobs,
-  generateLessonSSML
+  generateLessonSSML,
 );
 
 router.post(
   '/quiz',
+  optionalAuth,
   requireAuthWhenAssignment,
   enforceAssignmentKnobs,
-  generateQuiz
-);
-
-router.post(
-  '/grade',
-  requireAuthWhenAssignment,
-  enforceAssignmentKnobs,
-  gradeQuiz
+  generateQuiz,
 );
 
 router.post(
   '/course-package',
+  optionalAuth,
   requireAuthWhenAssignment,
   enforceAssignmentKnobs,
-  generateCoursePackage
+  generateCoursePackage,
 );
 
 /**
- * Cache admin routes (POST to avoid accidental clears via GET).
- * If you want to lock these further, add your admin guard middleware here.
+ * 🔒 Grade should be auth-required (even for self-serve)
+ * (Still allow assignment knobs enforcement when assignmentId is present)
  */
-router.post('/cache/clear-course', clearCourseCache);
-router.post('/cache/clear-top-courses', clearTopCoursesCache);
+router.post('/grade', requireAuth, enforceAssignmentKnobs, gradeQuiz);
+
+/**
+ * 🔒 Cache clears: recommend locking
+ */
+router.post('/cache/clear-course', requireAuth, clearCourseCache);
+router.post('/cache/clear-top-courses', requireAuth, clearTopCoursesCache);
 
 export default router;
-

@@ -16,12 +16,18 @@ type GoogleSignInError = {
 };
 
 function getErrCode(e: unknown): string {
-  return (typeof e === 'object' && e && 'code' in e && typeof (e as GoogleSignInError).code === 'string')
+  return typeof e === 'object' &&
+    e &&
+    'code' in e &&
+    typeof (e as GoogleSignInError).code === 'string'
     ? (e as GoogleSignInError).code!
     : '';
 }
 function getErrMessage(e: unknown): string {
-  return (typeof e === 'object' && e && 'message' in e && typeof (e as GoogleSignInError).message === 'string')
+  return typeof e === 'object' &&
+    e &&
+    'message' in e &&
+    typeof (e as GoogleSignInError).message === 'string'
     ? (e as GoogleSignInError).message!
     : String(e);
 }
@@ -58,16 +64,16 @@ const CustomGoogleLoginButtonNative: React.FC<GoogleButtonProps> = ({ onSuccess,
     } catch (e: unknown) {
       const code = getErrCode(e);
       const base = 'Failed to sign in with Google';
-      let message =
+      const message =
         code === statusCodes.SIGN_IN_CANCELLED
           ? 'Sign in cancelled'
           : code === statusCodes.IN_PROGRESS
-          ? 'Sign in already in progress'
-          : code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE
-          ? 'Google Play services not available'
-          : getErrMessage(e).includes('No ID token')
-          ? 'Google authentication failed – no token'
-          : base;
+            ? 'Sign in already in progress'
+            : code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE
+              ? 'Google Play services not available'
+              : getErrMessage(e).includes('No ID token')
+                ? 'Google authentication failed – no token'
+                : base;
 
       // Surface error and notify caller
       Alert.alert('Google Sign-In', message);

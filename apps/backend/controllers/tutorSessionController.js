@@ -11,9 +11,8 @@ import {
 } from '../utils/paystack.js';
 import { initiateB2CPayment } from '../services/mpesaService.js';
 
-
-const PLATFORM_FEE = 0.15;       // 15%
-const USD_TO_KES_DEFAULT = 133.75;  // fallback; replace with your FX source
+const PLATFORM_FEE = 0.15; // 15%
+const USD_TO_KES_DEFAULT = 133.75; // fallback; replace with your FX source
 
 async function getFxRate(base, quote) {
   if (base === 'USD' && quote === 'KES') return USD_TO_KES_DEFAULT;
@@ -39,7 +38,7 @@ export const createSession = async (req, res) => {
     // Fetch tutor's profile by matching profiles.user_id = tutorId
     const tutorProfileRes = await pool.query(
       'SELECT * FROM profiles WHERE user_id = $1',
-      [tutorId]
+      [tutorId],
     );
     if (tutorProfileRes.rows.length === 0)
       return res.status(404).json({ message: 'Tutor not found.' });
@@ -79,14 +78,14 @@ export const createSession = async (req, res) => {
        VALUES ($1,      $2,         $3,         $4,           $5,      $6,   'upcoming', $7,     'session', NOW()) 
        RETURNING *`,
       [
-        tutorId,        // users.id
-        tutorName,      // newly captured tutor name
-        studentUserId,  // users.id
+        tutorId, // users.id
+        tutorName, // newly captured tutor name
+        studentUserId, // users.id
         sessionType,
         subject,
         date,
         sessionCost,
-      ]
+      ],
     );
 
     // Send email notifications
@@ -100,7 +99,7 @@ export const createSession = async (req, res) => {
       to: tutorUser.rows[0].email,
       subject: 'New Tutoring Session Scheduled',
       body: `Dear ${tutorUser.rows[0].name},\n\nA new session has been scheduled with you by ${studentUser.rows[0].name}.\n\nSession Details:\nSubject: ${subject}\nDate: ${new Date(
-        date
+        date,
       ).toLocaleString()}\nSession Type: ${sessionType}\n\nBest regards,\nTutoring Platform`,
     });
 
@@ -113,7 +112,6 @@ export const createSession = async (req, res) => {
     res.status(500).json({ message: 'Internal server error.' });
   }
 };
-
 
 export const acceptSession = async (req, res) => {
   try {
@@ -128,7 +126,7 @@ export const acceptSession = async (req, res) => {
        SET status = 'accepted' 
        WHERE id = $1 
        RETURNING *`,
-      [sessionId]
+      [sessionId],
     );
 
     console.log('[acceptSession] session rowCount:', session.rowCount);
@@ -151,11 +149,11 @@ export const acceptSession = async (req, res) => {
     // 2) Fetch student and tutor details directly from users table
     const studentUser = await pool.query(
       'SELECT id, name, email FROM users WHERE id = $1',
-      [sessionData.student_id]
+      [sessionData.student_id],
     );
     const tutorUser = await pool.query(
       'SELECT id, name, email FROM users WHERE id = $1',
-      [sessionData.tutor_id]
+      [sessionData.tutor_id],
     );
 
     console.log('[acceptSession] studentUser.rowCount:', studentUser.rowCount);
@@ -177,15 +175,21 @@ export const acceptSession = async (req, res) => {
     // 3) Ensure a conversation exists: fetch profile IDs first
     const studentProfileRes = await pool.query(
       'SELECT id FROM profiles WHERE user_id = $1',
-      [sessionData.student_id]
+      [sessionData.student_id],
     );
     const tutorProfileRes = await pool.query(
       'SELECT id FROM profiles WHERE user_id = $1',
-      [sessionData.tutor_id]
+      [sessionData.tutor_id],
     );
 
-    console.log('[acceptSession] studentProfileRes.rowCount:', studentProfileRes.rowCount);
-    console.log('[acceptSession] tutorProfileRes.rowCount:', tutorProfileRes.rowCount);
+    console.log(
+      '[acceptSession] studentProfileRes.rowCount:',
+      studentProfileRes.rowCount,
+    );
+    console.log(
+      '[acceptSession] tutorProfileRes.rowCount:',
+      tutorProfileRes.rowCount,
+    );
 
     if (
       studentProfileRes.rows.length === 0 ||
@@ -208,7 +212,7 @@ export const acceptSession = async (req, res) => {
        VALUES ($1, $2, 1) 
        ON CONFLICT (sender_id, recipient_id) 
        DO UPDATE SET unread_count = conversations.unread_count + 1`,
-      [tutorProfileId, studentProfileId]
+      [tutorProfileId, studentProfileId],
     );
 
     // Insert message into the messages table using the conversation ID
@@ -224,7 +228,7 @@ export const acceptSession = async (req, res) => {
         tutorProfileId,
         studentProfileId,
         `Your session request for "${sessionData.subject}" has been accepted by the tutor.`,
-      ]
+      ],
     );
 
     // ─────────────────────────────────────────────────────────────
@@ -235,13 +239,16 @@ export const acceptSession = async (req, res) => {
        FROM profiles
        WHERE user_id = $1 AND role = 'tutor'
        LIMIT 1`,
-      [sessionData.tutor_id]
+      [sessionData.tutor_id],
     );
 
-    console.log('[acceptSession] tutorProfilePayout.rows:', tutorProfilePayout.rows);
+    console.log(
+      '[acceptSession] tutorProfilePayout.rows:',
+      tutorProfilePayout.rows,
+    );
 
     const payoutCurrency = String(
-      tutorProfilePayout.rows[0]?.payout_currency || 'USD'
+      tutorProfilePayout.rows[0]?.payout_currency || 'USD',
     ).toUpperCase();
 
     console.log('[acceptSession] RESOLVED payoutCurrency:', payoutCurrency);
@@ -250,9 +257,9 @@ export const acceptSession = async (req, res) => {
     // 5) Compute net earnings in payout currency (LOGGED)
     // ─────────────────────────────────────────────────────────────
     const grossTokens = Math.round(Number(sessionData.amount ?? 0)); // e.g. 5
-    const grossUsd    = +grossTokens.toFixed(2);                     // 5.00
-    const feeUsd      = +(grossUsd * PLATFORM_FEE).toFixed(2);       // 0.75
-    const netUsd      = +(grossUsd - feeUsd).toFixed(2);             // 4.25
+    const grossUsd = +grossTokens.toFixed(2); // 5.00
+    const feeUsd = +(grossUsd * PLATFORM_FEE).toFixed(2); // 0.75
+    const netUsd = +(grossUsd - feeUsd).toFixed(2); // 4.25
 
     console.log('[acceptSession] Earnings base (USD):', {
       grossTokens,
@@ -272,10 +279,13 @@ export const acceptSession = async (req, res) => {
         creditedAmount,
       });
     } else {
-      console.log('[acceptSession] No FX applied (payoutCurrency is not KES):', {
-        payoutCurrency,
-        creditedAmount,
-      });
+      console.log(
+        '[acceptSession] No FX applied (payoutCurrency is not KES):',
+        {
+          payoutCurrency,
+          creditedAmount,
+        },
+      );
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -283,10 +293,13 @@ export const acceptSession = async (req, res) => {
     // ─────────────────────────────────────────────────────────────
     const paymentRecord = await pool.query(
       'SELECT * FROM payments WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-      [sessionData.student_id]
+      [sessionData.student_id],
     );
 
-    console.log('[acceptSession] paymentRecord.rowCount:', paymentRecord.rowCount);
+    console.log(
+      '[acceptSession] paymentRecord.rowCount:',
+      paymentRecord.rowCount,
+    );
 
     let paystackRef = null;
     let mpesaRef = null;
@@ -296,7 +309,7 @@ export const acceptSession = async (req, res) => {
     if (paymentRecord.rows.length === 0) {
       console.warn(
         '[acceptSession] Payment record not found; using PlatformBalance as payment_method for Expected Earnings',
-        { sessionId, studentId: sessionData.student_id }
+        { sessionId, studentId: sessionData.student_id },
       );
     } else {
       const pr = paymentRecord.rows[0];
@@ -350,7 +363,7 @@ export const acceptSession = async (req, res) => {
         paystackRef,
         mpesaRef,
         paymentMethod,
-      ]
+      ],
     );
 
     console.log('[acceptSession] INSERT into transactions completed.');
@@ -385,8 +398,6 @@ export const acceptSession = async (req, res) => {
   }
 };
 
-
-
 export const cancelSession = async (req, res) => {
   const { sessionId } = req.params;
   const { reason } = req.body;
@@ -399,7 +410,7 @@ export const cancelSession = async (req, res) => {
        JOIN profiles p1 ON ts.student_id = p1.user_id
        JOIN profiles p2 ON ts.tutor_id = p2.user_id
        WHERE ts.id = $1`,
-      [sessionId]
+      [sessionId],
     );
 
     if (session.rows.length === 0)
@@ -445,17 +456,17 @@ export const cancelSession = async (req, res) => {
       `UPDATE tutor_sessions 
        SET status = 'cancelled', description = $1 
        WHERE id = $2`,
-      [reason, sessionId]
+      [reason, sessionId],
     );
 
     // Send email notifications
     const studentUser = await pool.query(
       'SELECT email, name FROM users WHERE id = $1',
-      [sessionData.student_user_id]
+      [sessionData.student_user_id],
     );
     const tutorUser = await pool.query(
       'SELECT email, name FROM users WHERE id = $1',
-      [sessionData.tutor_user_id]
+      [sessionData.tutor_user_id],
     );
 
     await Promise.all([
@@ -507,7 +518,7 @@ export const completeSession = async (req, res) => {
       `SELECT id, tutor_id, student_id, session_type, zoom_meeting_ids
        FROM tutor_sessions
        WHERE id = $1 AND tutor_id = $2 AND status = 'accepted'`,
-      [sessionId, tutorUserId]
+      [sessionId, tutorUserId],
     );
 
     console.log('Session query rowCount:', sessionResult.rowCount);
@@ -534,7 +545,7 @@ export const completeSession = async (req, res) => {
       `SELECT event, timestamp
        FROM zoomwebhooks
        WHERE meeting_ids && $1::text[]`,
-      [meetingIds]
+      [meetingIds],
     );
 
     if (attendanceResult.rowCount === 0) {
@@ -553,7 +564,7 @@ export const completeSession = async (req, res) => {
     const expectedDuration = sessionDurationMap[session.session_type] || 60;
     const requiredAttendance = expectedDuration * 0.75;
     console.log(
-      `Expected Duration: ${expectedDuration} mins, Required Attendance (75%): ${requiredAttendance} mins`
+      `Expected Duration: ${expectedDuration} mins, Required Attendance (75%): ${requiredAttendance} mins`,
     );
 
     // Calculate total meeting duration:
@@ -587,7 +598,7 @@ export const completeSession = async (req, res) => {
     }
 
     const totalMeetingDuration = Math.round(
-      (lastLeaveTime - firstJoinTime) / (1000 * 60)
+      (lastLeaveTime - firstJoinTime) / (1000 * 60),
     );
     console.log(`Total Meeting Duration: ${totalMeetingDuration} mins`);
 
@@ -607,14 +618,14 @@ export const completeSession = async (req, res) => {
            completion_request_time = NOW(), 
            completion_deadline = NOW() + INTERVAL '24 hours'
        WHERE id = $3`,
-      [totalMeetingDuration, lastLeaveTime, sessionId]
+      [totalMeetingDuration, lastLeaveTime, sessionId],
     );
     console.log('Session marked as complete-pending.');
 
     // Notify the student: Fetch student's email using student_id (which is users.id)
     const studentEmailResult = await pool.query(
       'SELECT email FROM users WHERE id = $1',
-      [session.student_id]
+      [session.student_id],
     );
     if (studentEmailResult.rowCount > 0) {
       await sendNotification({
@@ -624,7 +635,7 @@ export const completeSession = async (req, res) => {
       });
       console.log(
         'Notification sent to student:',
-        studentEmailResult.rows[0].email
+        studentEmailResult.rows[0].email,
       );
     }
 
@@ -637,14 +648,11 @@ export const completeSession = async (req, res) => {
   }
 };
 
-
 export const confirmCompletion = async (req, res) => {
   const client = await pool.connect();
-  const LOG  = (...a) => console.log('[confirmCompletion]', ...a);
+  const LOG = (...a) => console.log('[confirmCompletion]', ...a);
   const WARN = (...a) => console.warn('[confirmCompletion]', ...a);
-  const ERR  = (...a) => console.error('[confirmCompletion]', ...a);
-
-  
+  const ERR = (...a) => console.error('[confirmCompletion]', ...a);
 
   try {
     if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
@@ -654,13 +662,18 @@ export const confirmCompletion = async (req, res) => {
     const sessionId =
       typeof raw === 'number' && Number.isInteger(raw)
         ? raw
-        : (typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : null);
-    if (!sessionId) return res.status(400).json({ message: 'Invalid session id' });
+        : typeof raw === 'string' && /^\d+$/.test(raw)
+          ? Number(raw)
+          : null;
+    if (!sessionId)
+      return res.status(400).json({ message: 'Invalid session id' });
 
     const studentId =
       typeof req.user.id === 'number'
         ? req.user.id
-        : (typeof req.user.id === 'string' && /^\d+$/.test(req.user.id) ? Number(req.user.id) : null);
+        : typeof req.user.id === 'string' && /^\d+$/.test(req.user.id)
+          ? Number(req.user.id)
+          : null;
     if (!studentId) return res.status(401).json({ message: 'Unauthorized' });
 
     LOG('BEGIN', { sessionId, studentId });
@@ -681,30 +694,39 @@ export const confirmCompletion = async (req, res) => {
         AND ts.status = 'completed_pending'
       FOR UPDATE
       `,
-      [sessionId, studentId]
+      [sessionId, studentId],
     );
     if (!sessions.length) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ message: 'Session not found or already processed.' });
+      return res
+        .status(404)
+        .json({ message: 'Session not found or already processed.' });
     }
     const s = sessions[0];
 
     // 2) Compute accrual (1 token = $1)
     const grossTokens = Math.round(Number(s.amount ?? 0));
-    const grossUsd    = +grossTokens.toFixed(2);
-    const feeUsd      = +(grossUsd * PLATFORM_FEE).toFixed(2);
-    const netUsd      = +(grossUsd - feeUsd).toFixed(2);
+    const grossUsd = +grossTokens.toFixed(2);
+    const feeUsd = +(grossUsd * PLATFORM_FEE).toFixed(2);
+    const netUsd = +(grossUsd - feeUsd).toFixed(2);
 
     const payoutCurrency = String(s.payout_currency || 'USD').toUpperCase();
     let fxRateUsed = 1;
     let creditedAmount = netUsd;
 
     if (payoutCurrency === 'KES') {
-      fxRateUsed = await getFxRate('USD', 'KES');  // function defined at top of file
+      fxRateUsed = await getFxRate('USD', 'KES'); // function defined at top of file
       creditedAmount = +(netUsd * fxRateUsed).toFixed(2);
     }
 
-    LOG('Earnings', { grossUsd, feeUsd, netUsd, payoutCurrency, creditedAmount, fxRateUsed });
+    LOG('Earnings', {
+      grossUsd,
+      feeUsd,
+      netUsd,
+      payoutCurrency,
+      creditedAmount,
+      fxRateUsed,
+    });
 
     // 3) Accrue to tutor earnings balance
     await client.query(
@@ -714,7 +736,7 @@ export const confirmCompletion = async (req, res) => {
        DO UPDATE SET
          available_amount = earnings_balances.available_amount + EXCLUDED.available_amount,
          updated_at = NOW()`,
-      [s.tutor_user_id, payoutCurrency, creditedAmount]
+      [s.tutor_user_id, payoutCurrency, creditedAmount],
     );
 
     // 4) Mark session completed (supports schemas without completed_at)
@@ -723,7 +745,7 @@ export const confirmCompletion = async (req, res) => {
          FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name   = 'tutor_sessions'
-          AND column_name  = 'completed_at'`
+          AND column_name  = 'completed_at'`,
     );
     const hasCompletedAt = colCheck.length > 0;
 
@@ -747,14 +769,23 @@ export const confirmCompletion = async (req, res) => {
       (payoutCurrency === 'KES' ? ` @ ${fxRateUsed} FX` : '');
 
     LOG('Insert txn', {
-      userId: s.tutor_user_id, amount: creditedAmount, currency: payoutCurrency, paymentMethod: 'PlatformBalance'
+      userId: s.tutor_user_id,
+      amount: creditedAmount,
+      currency: payoutCurrency,
+      paymentMethod: 'PlatformBalance',
     });
 
     await client.query(
       `INSERT INTO transactions
          (user_id, type, amount, description, date, status, currency, payment_method, created_at, updated_at)
        VALUES ($1, 'Completed Earnings', $2, $3, NOW(), 'Completed', $4, $5, NOW(), NOW())`,
-      [s.tutor_user_id, creditedAmount, desc, payoutCurrency, 'PlatformBalance']
+      [
+        s.tutor_user_id,
+        creditedAmount,
+        desc,
+        payoutCurrency,
+        'PlatformBalance',
+      ],
     );
 
     await client.query('COMMIT');
@@ -763,25 +794,32 @@ export const confirmCompletion = async (req, res) => {
     // 6) Notifications (best-effort, post-commit)
     (async () => {
       try {
-        const [{ email: studentEmail } = {}] =
-          (await pool.query('SELECT email FROM users WHERE id = $1', [s.student_id])).rows;
+        const [{ email: studentEmail } = {}] = (
+          await pool.query('SELECT email FROM users WHERE id = $1', [
+            s.student_id,
+          ])
+        ).rows;
 
         const tasks = [];
         if (studentEmail) {
-          tasks.push(sendNotification({
-            to: studentEmail,
-            subject: 'Your session is complete',
-            body: `Your session "${s.subject}" has been marked complete.`,
-          }));
+          tasks.push(
+            sendNotification({
+              to: studentEmail,
+              subject: 'Your session is complete',
+              body: `Your session "${s.subject}" has been marked complete.`,
+            }),
+          );
         }
         if (s.tutor_email) {
-          tasks.push(sendNotification({
-            to: s.tutor_email,
-            subject: 'Earnings accrued for your session',
-            body:
-              `We’ve added ${creditedAmount} ${payoutCurrency} to your available balance ` +
-              `(after ${Math.round(PLATFORM_FEE * 100)}% fee).`,
-          }));
+          tasks.push(
+            sendNotification({
+              to: s.tutor_email,
+              subject: 'Earnings accrued for your session',
+              body:
+                `We’ve added ${creditedAmount} ${payoutCurrency} to your available balance ` +
+                `(after ${Math.round(PLATFORM_FEE * 100)}% fee).`,
+            }),
+          );
         }
         await Promise.all(tasks);
         LOG('Notifications sent');
@@ -803,9 +841,13 @@ export const confirmCompletion = async (req, res) => {
       },
     });
   } catch (error) {
-    try { await client.query('ROLLBACK'); } catch {}
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     ERR('confirmCompletion error:', error);
-    return res.status(500).json({ message: 'Internal server error.', error: error?.message });
+    return res
+      .status(500)
+      .json({ message: 'Internal server error.', error: error?.message });
   } finally {
     client.release();
   }
@@ -837,7 +879,7 @@ export const fetchDataByType = async (req, res) => {
        JOIN profiles p1 ON ts.tutor_id = p1.user_id
        JOIN profiles p2 ON ts.student_id = p2.user_id
        WHERE ts.type = $1 AND (ts.tutor_id = $2 OR ts.student_id = $2)`,
-      [type, userId]
+      [type, userId],
     );
 
     console.log(`Fetched ${type} data:`, dataResult.rows);
@@ -848,8 +890,6 @@ export const fetchDataByType = async (req, res) => {
     res.status(500).json({ message: 'Internal server error.' });
   }
 };
-
-
 
 export const createZoomLink = async (req, res) => {
   try {
@@ -876,7 +916,7 @@ export const createZoomLink = async (req, res) => {
        JOIN profiles p2 ON ts.student_id = p2.user_id
        JOIN users    u2 ON p2.user_id = u2.id
        WHERE ts.id = $1`,
-      [sessionId]
+      [sessionId],
     );
 
     if (sessionResult.rows.length === 0) {
@@ -886,7 +926,7 @@ export const createZoomLink = async (req, res) => {
     const session = sessionResult.rows[0];
 
     console.log(
-      `✅ Session found for tutor ${session.tutor_id} and student ${session.student_id}`
+      `✅ Session found for tutor ${session.tutor_id} and student ${session.student_id}`,
     );
 
     // Calculate required Zoom meetings
@@ -897,14 +937,14 @@ export const createZoomLink = async (req, res) => {
     for (let i = 0; i < meetingCount; i++) {
       const meetingStartTime = new Date(startTime);
       meetingStartTime.setMinutes(
-        meetingStartTime.getMinutes() + i * maxDuration
+        meetingStartTime.getMinutes() + i * maxDuration,
       );
 
       const zoomMeeting = await createZoomMeeting(
         `${topic} (Part ${i + 1})`,
         meetingStartTime.toISOString(),
         Math.min(maxDuration, duration - i * maxDuration),
-        tutorName
+        tutorName,
       );
 
       if (!zoomMeeting || !zoomMeeting.join_url || !zoomMeeting.id) {
@@ -920,7 +960,7 @@ export const createZoomLink = async (req, res) => {
       `UPDATE tutor_sessions 
        SET zoom_links = $1, zoom_meeting_ids = $2 
        WHERE id = $3`,
-      [meetings.map((m) => m.join_url), meetings.map((m) => m.id), sessionId]
+      [meetings.map((m) => m.join_url), meetings.map((m) => m.id), sessionId],
     );
 
     console.log('✅ Zoom Links and Meeting IDs saved to the database.');

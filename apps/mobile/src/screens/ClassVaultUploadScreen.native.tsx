@@ -111,17 +111,16 @@ const ClassVaultUploadScreen: React.FC = () => {
     const arr = Array.isArray(COUNTRIES) ? COUNTRIES : [];
     return arr
       .map((c: any) => {
-        const code = String(c?.code ?? c?.iso2 ?? c?.alpha2 ?? '').trim().toLowerCase();
+        const code = String(c?.code ?? c?.iso2 ?? c?.alpha2 ?? '')
+          .trim()
+          .toLowerCase();
         const label = String(c?.name ?? c?.label ?? c?.country ?? c?.title ?? '').trim();
         return code && label ? { label, value: code } : null;
       })
       .filter(Boolean) as { label: string; value: string }[];
   }, []);
 
-  const subjectOptions = useMemo(
-    () => SUBJECT_CATEGORIES.map((s) => ({ label: s, value: s })),
-    []
-  );
+  const subjectOptions = useMemo(() => SUBJECT_CATEGORIES.map((s) => ({ label: s, value: s })), []);
 
   /* ────────────────────── Role gates ────────────────────── */
   if (role === null) {
@@ -132,9 +131,7 @@ const ClassVaultUploadScreen: React.FC = () => {
             size="large"
             color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'}
           />
-          <Text style={tw`mt-3 text-slate-700 dark:text-slate-200`}>
-            Checking permissions…
-          </Text>
+          <Text style={tw`mt-3 text-slate-700 dark:text-slate-200`}>Checking permissions…</Text>
         </View>
       </SafeAreaView>
     );
@@ -147,9 +144,7 @@ const ClassVaultUploadScreen: React.FC = () => {
           <View
             style={tw`rounded-2xl p-5 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
           >
-            <Text
-              style={tw`text-xl font-semibold text-center text-[#0d141c] dark:text-white`}
-            >
+            <Text style={tw`text-xl font-semibold text-center text-[#0d141c] dark:text-white`}>
               Access Denied
             </Text>
             <Text style={tw`mt-2 text-center text-slate-700 dark:text-slate-300`}>
@@ -189,8 +184,7 @@ const ClassVaultUploadScreen: React.FC = () => {
           name,
           type: mimeType ?? (fileType === 'video' ? 'video/*' : 'application/pdf'),
         },
-        onProgress: (pct: number) =>
-          setProgress(Math.max(1, Math.min(99, Math.floor(pct)))),
+        onProgress: (pct: number) => setProgress(Math.max(1, Math.min(99, Math.floor(pct)))),
       });
 
       setUploadedUrl(url);
@@ -207,7 +201,7 @@ const ClassVaultUploadScreen: React.FC = () => {
     if (!country || !title || !subject || !gradeLevel.trim() || !price || !uploadedUrl) {
       Alert.alert(
         'Incomplete',
-        'Fill all required fields (Country, Title, Subject, Grade/Level, Price, File).',
+        'Fill all required fields (Country, Title, Subject, Grade/Level, Price, File).'
       );
       return;
     }
@@ -260,10 +254,7 @@ const ClassVaultUploadScreen: React.FC = () => {
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={[
-          tw`px-4 pt-4`,
-          { paddingBottom: Math.max(insets.bottom, 16) + 24 },
-        ]}
+        contentContainerStyle={[tw`px-4 pt-4`, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.select({ ios: 'on-drag', android: 'none' })}
         contentInsetAdjustmentBehavior="automatic"
@@ -285,9 +276,7 @@ const ClassVaultUploadScreen: React.FC = () => {
               size="small"
               color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'}
             />
-            <Text style={tw`ml-2 text-slate-700 dark:text-slate-200`}>
-              Uploading… {progress}%
-            </Text>
+            <Text style={tw`ml-2 text-slate-700 dark:text-slate-200`}>Uploading… {progress}%</Text>
           </View>
         )}
 
@@ -368,9 +357,7 @@ const ClassVaultUploadScreen: React.FC = () => {
           />
           <Text style={tw`text-xs mt-1 text-slate-600 dark:text-slate-400`}>
             Auto-tags:{' '}
-            <Text style={tw`text-pink-600 dark:text-pink-400`}>
-              country:{country || '…'}
-            </Text>
+            <Text style={tw`text-pink-600 dark:text-pink-400`}>country:{country || '…'}</Text>
             {subject ? (
               <Text style={tw`text-pink-600 dark:text-pink-400`}> , subject:{subject}</Text>
             ) : null}
@@ -396,15 +383,13 @@ const ClassVaultUploadScreen: React.FC = () => {
               'px-4 py-2 rounded-xl border',
               fileType === 'video'
                 ? 'bg-pink-600 border-pink-600'
-                : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10',
+                : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10'
             )}
           >
             <Text
               style={tw.style(
                 'font-medium',
-                fileType === 'video'
-                  ? 'text-white'
-                  : 'text-[#0d141c] dark:text-slate-100',
+                fileType === 'video' ? 'text-white' : 'text-[#0d141c] dark:text-slate-100'
               )}
             >
               Video
@@ -424,15 +409,13 @@ const ClassVaultUploadScreen: React.FC = () => {
               'px-4 py-2 rounded-xl border',
               fileType === 'pdf'
                 ? 'bg-pink-600 border-pink-600'
-                : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10',
+                : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10'
             )}
           >
             <Text
               style={tw.style(
                 'font-medium',
-                fileType === 'pdf'
-                  ? 'text-white'
-                  : 'text-[#0d141c] dark:text-slate-100',
+                fileType === 'pdf' ? 'text-white' : 'text-[#0d141c] dark:text-slate-100'
               )}
             >
               Class Notes
@@ -470,9 +453,7 @@ const ClassVaultUploadScreen: React.FC = () => {
           {uploadingMeta ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text style={tw`text-white text-center font-semibold`}>
-              Submit to ClassVault
-            </Text>
+            <Text style={tw`text-white text-center font-semibold`}>Submit to ClassVault</Text>
           )}
         </TouchableOpacity>
 

@@ -13,8 +13,15 @@ function getCredential() {
   }
   // 2) Local file for dev
   try {
-    const p = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
-      || path.join(process.cwd(), 'apps', 'backend', 'bootstrap', 'serviceAccount.json');
+    const p =
+      process.env.FIREBASE_SERVICE_ACCOUNT_PATH ||
+      path.join(
+        process.cwd(),
+        'apps',
+        'backend',
+        'bootstrap',
+        'serviceAccount.json',
+      );
     const json = JSON.parse(readFileSync(p, 'utf8'));
     return admin.credential.cert(json);
   } catch (e) {
@@ -28,7 +35,10 @@ if (!admin.apps.length) {
     credential: getCredential(),
     projectId: PROJECT_ID, // 👈 ensures project id is known even if ADC lacks it
   });
-  console.log('[firebaseAdmin] initialized with projectId:', admin.app().options.projectId);
+  console.log(
+    '[firebaseAdmin] initialized with projectId:',
+    admin.app().options.projectId,
+  );
 }
 
 export { admin };

@@ -25,11 +25,9 @@ export async function updateCourseProgress(
   token: string
 ): Promise<CourseProgress> {
   const { courseId, ...body } = payload; // body: { week, status, score?, notes? }
-  const res = await axios.post(
-    `${backendUrl}/api/course-progress/${courseId}`,
-    body,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+  const res = await axios.post(`${backendUrl}/api/course-progress/${courseId}`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   const r = res.data?.updated;
   return {
     week: r.week,

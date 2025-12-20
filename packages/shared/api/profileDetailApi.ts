@@ -2,11 +2,7 @@
 
 import axios, { AxiosError } from 'axios';
 
-export const getTutorProfile = async (
-  backendUrl: string,
-  token: string,
-  tutorId: string
-) => {
+export const getTutorProfile = async (backendUrl: string, token: string, tutorId: string) => {
   console.log('🔍 [API Debug] Starting getTutorProfile with:', {
     backendUrl,
     tutorId,
@@ -16,10 +12,7 @@ export const getTutorProfile = async (
   // ensure no trailing slash
   const base = backendUrl.replace(/\/$/, '');
 
-  console.log(
-    '🔗 [API Debug] Attempting request to:',
-    `${base}/api/profile/user/${tutorId}`
-  );
+  console.log('🔗 [API Debug] Attempting request to:', `${base}/api/profile/user/${tutorId}`);
 
   try {
     const response = await axios.get(`${base}/api/profile/user/${tutorId}`, {

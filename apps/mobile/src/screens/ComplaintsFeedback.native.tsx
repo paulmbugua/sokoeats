@@ -1,13 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, { useMemo } from 'react';
-import {
-  SafeAreaView,
-  ScrollView,
-  View,
-  Text,
-  Pressable,
-  Linking,
-} from 'react-native';
+import { SafeAreaView, ScrollView, View, Text, Pressable, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../tailwind';
 
@@ -23,7 +16,7 @@ const POLICY_ROUTES = [
   'PaymentFlow',
 ] as const;
 
-type PolicyRoute = typeof POLICY_ROUTES[number];
+type PolicyRoute = (typeof POLICY_ROUTES)[number];
 type Nav = StackNavigationProp<MainStackParamList, PolicyRoute>;
 
 const email = (addr: string) => Linking.openURL(`mailto:${addr}`);
@@ -34,13 +27,7 @@ const ComplaintsFeedbackScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const lastUpdated = useMemo(() => new Date().toLocaleDateString(), []);
 
-  const NavLink = ({
-    title,
-    route,
-  }: {
-    title: string;
-    route: PolicyRoute;
-  }) => (
+  const NavLink = ({ title, route }: { title: string; route: PolicyRoute }) => (
     <Pressable onPress={() => navigation.navigate(route)} style={tw`py-1`}>
       <Text style={tw`text-primary underline`}>{title}</Text>
     </Pressable>
@@ -70,8 +57,8 @@ const ComplaintsFeedbackScreen: React.FC = () => {
 
         <View style={tw`mt-6 gap-5`}>
           <Text style={tw`text-sm leading-6 text-darkText dark:text-white/90`}>
-            We want every learner, tutor, and institution to have a great
-            experience. Tell us what went well and what we should improve.
+            We want every learner, tutor, and institution to have a great experience. Tell us what
+            went well and what we should improve.
           </Text>
 
           {/* 1) How to contact us */}
@@ -115,8 +102,8 @@ const ComplaintsFeedbackScreen: React.FC = () => {
             2) What to include
           </Text>
           <Text style={tw`text-sm leading-6 text-darkText dark:text-white/90`}>
-            Order/booking ID (if any), your account email, date/time, tutor/course
-            title, screenshots, and a short description of the issue.
+            Order/booking ID (if any), your account email, date/time, tutor/course title,
+            screenshots, and a short description of the issue.
           </Text>
 
           {/* 3) Our response times */}
@@ -126,19 +113,17 @@ const ComplaintsFeedbackScreen: React.FC = () => {
           <View style={tw`pl-4`}>
             <Bullet>General support: initial response within 2 business days.</Bullet>
             <Bullet>
-              Payment/refund issues: initial response within 2 business days; resolution as
-              fast as your processor allows.
+              Payment/refund issues: initial response within 2 business days; resolution as fast as
+              your processor allows.
             </Bullet>
             <Bullet>Abuse/spam reports: we triage within 24 hours.</Bullet>
           </View>
 
           {/* 4) Escalation */}
-          <Text style={tw`text-lg font-semibold text-darkText dark:text-white`}>
-            4) Escalation
-          </Text>
+          <Text style={tw`text-lg font-semibold text-darkText dark:text-white`}>4) Escalation</Text>
           <Text style={tw`text-sm leading-6 text-darkText dark:text-white/90`}>
-            If you’re not satisfied with the outcome, reply to the thread requesting
-            escalation. A senior reviewer will reassess the case.
+            If you’re not satisfied with the outcome, reply to the thread requesting escalation. A
+            senior reviewer will reassess the case.
           </Text>
 
           {/* 5) Helpful links */}

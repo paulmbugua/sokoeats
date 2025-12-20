@@ -5,7 +5,9 @@ import pool from '../config/db.js';
 const PAYSTACK_SECRET = (process.env.PAYSTACK_SECRET_KEY || '').trim();
 if (!PAYSTACK_SECRET) throw new Error('Missing PAYSTACK_SECRET_KEY');
 
-const PAYSTACK_CURRENCY = (process.env.PAYSTACK_CURRENCY || 'KES').toUpperCase();
+const PAYSTACK_CURRENCY = (
+  process.env.PAYSTACK_CURRENCY || 'KES'
+).toUpperCase();
 if (PAYSTACK_CURRENCY !== 'KES') {
   throw new Error(`PAYSTACK_CURRENCY must be KES, got ${PAYSTACK_CURRENCY}`);
 }
@@ -16,7 +18,7 @@ const FX_USD_TO_KES = Number(process.env.PAYSTACK_USD_TO_GATEWAY_RATE || 130);
 async function verifyPaystack(reference) {
   const r = await fetch(
     `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
-    { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } }
+    { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } },
   );
 
   const j = await r.json().catch(() => null);
@@ -50,22 +52,29 @@ function usdToKesMinor(amountUsdStr) {
   return Math.round(kes * 100);
 }
 
-async function creditTokensAndCompletePayment(client, { paymentId, userId, packageId }) {
-  const pkgRes = await client.query('SELECT credits FROM packages WHERE id = $1', [packageId]);
+async function creditTokensAndCompletePayment(
+  client,
+  { paymentId, userId, packageId },
+) {
+  const pkgRes = await client.query(
+    'SELECT credits FROM packages WHERE id = $1',
+    [packageId],
+  );
   if (!pkgRes.rows[0]) throw new Error('Package not found');
 
   const credits = Number(pkgRes.rows[0].credits || 0);
-  if (!Number.isFinite(credits) || credits <= 0) throw new Error('Invalid package credits');
+  if (!Number.isFinite(credits) || credits <= 0)
+    throw new Error('Invalid package credits');
 
   const userRes = await client.query(
     'UPDATE users SET tokens = tokens + $1 WHERE id = $2 RETURNING tokens',
-    [credits, userId]
+    [credits, userId],
   );
   if (!userRes.rows[0]) throw new Error('User not found');
 
   await client.query(
     "UPDATE payments SET status = 'Completed', updated_at = NOW() WHERE id = $1 AND status <> 'Completed'",
-    [paymentId]
+    [paymentId],
   );
 
   return { tokens: Number(userRes.rows[0].tokens ?? 0), credits };
@@ -79,7 +88,10 @@ async function creditTokensAndCompletePayment(client, { paymentId, userId, packa
  */
 export async function verifyAndFinalize(req, res) {
   const reference = String(req.params.reference || '').trim();
-  if (!reference) return res.status(400).json({ ok: false, status: 'failed', message: 'missing-reference' });
+  if (!reference)
+    return res
+      .status(400)
+      .json({ ok: false, status: 'failed', message: 'missing-reference' });
 
   const client = await pool.connect();
   try {
@@ -100,7 +112,7 @@ export async function verifyAndFinalize(req, res) {
         ORDER BY id DESC
         LIMIT 1
         FOR UPDATE`,
-      [reference]
+      [reference],
     );
 
     const payment = lockRes.rows[0];
@@ -116,7 +128,9 @@ export async function verifyAndFinalize(req, res) {
 
     // Idempotent: if already completed, return balance
     if (String(payment.status).toLowerCase() === 'completed') {
-      const bal = await client.query('SELECT tokens FROM users WHERE id = $1', [payment.user_id]);
+      const bal = await client.query('SELECT tokens FROM users WHERE id = $1', [
+        payment.user_id,
+      ]);
       await client.query('COMMIT');
       return res.json({
         ok: true,
@@ -154,7 +168,7 @@ export async function verifyAndFinalize(req, res) {
                 meta = COALESCE(meta,'{}'::jsonb) ||
                       jsonb_build_object('failReason','currency_mismatch','gotCurrency',$1)
           WHERE id = $2`,
-        [currency, payment.id]
+        [currency, payment.id],
       );
       await client.query('COMMIT');
       return res.json({
@@ -174,13 +188,18 @@ export async function verifyAndFinalize(req, res) {
       expectedMinor = metaCharge;
     } else {
       // Fallback: recompute from package USD price (less reliable)
-      const pkgRes = await client.query(`SELECT price, currency FROM packages WHERE id = $1 LIMIT 1`, [
-        payment.package_id,
-      ]);
+      const pkgRes = await client.query(
+        `SELECT price, currency FROM packages WHERE id = $1 LIMIT 1`,
+        [payment.package_id],
+      );
       const pkg = pkgRes.rows[0];
       if (!pkg) {
         await client.query('ROLLBACK');
-        return res.status(500).json({ ok: false, status: 'failed', message: 'package-missing-during-verify' });
+        return res.status(500).json({
+          ok: false,
+          status: 'failed',
+          message: 'package-missing-during-verify',
+        });
       }
       const pkgCur = String(pkg.currency || '').toUpperCase();
       if (pkgCur !== 'USD') {
@@ -197,7 +216,12 @@ export async function verifyAndFinalize(req, res) {
 
     const paidMinor = typeof d.amount === 'number' ? d.amount : null;
 
-    if (!Number.isFinite(expectedMinor) || expectedMinor <= 0 || paidMinor == null || paidMinor !== expectedMinor) {
+    if (
+      !Number.isFinite(expectedMinor) ||
+      expectedMinor <= 0 ||
+      paidMinor == null ||
+      paidMinor !== expectedMinor
+    ) {
       await client.query(
         `UPDATE payments
             SET status = 'Failed',
@@ -210,7 +234,7 @@ export async function verifyAndFinalize(req, res) {
                         'fxUsdToKes', $3::numeric
                       )
           WHERE id = $4::int`,
-        [expectedMinor, paidMinor, FX_USD_TO_KES, payment.id]
+        [expectedMinor, paidMinor, FX_USD_TO_KES, payment.id],
       );
       await client.query('COMMIT');
       return res.json({
@@ -229,10 +253,11 @@ export async function verifyAndFinalize(req, res) {
     const feesMinor = typeof d.fees === 'number' ? d.fees : null;
 
     const capturedAmountKes = (paidMinor / 100).toFixed(2);
-    const feeKes = feesMinor != null ? Number((feesMinor / 100).toFixed(2)) : null;
+    const feeKes =
+      feesMinor != null ? Number((feesMinor / 100).toFixed(2)) : null;
 
     await client.query(
-  `UPDATE payments
+      `UPDATE payments
       SET capture_id   = COALESCE($1::text, capture_id),
           payer_email  = COALESCE($2::text, payer_email),
           fee_total    = COALESCE($3::numeric, fee_total),
@@ -248,9 +273,15 @@ export async function verifyAndFinalize(req, res) {
                 ),
           updated_at = NOW()
     WHERE id = $6::int`,
-  [providerId, payerEmail, feeKes, capturedAmountKes, paidMinor, payment.id]
-);
-
+      [
+        providerId,
+        payerEmail,
+        feeKes,
+        capturedAmountKes,
+        paidMinor,
+        payment.id,
+      ],
+    );
 
     // Finalize + credit exactly once
     const { tokens, credits } = await creditTokensAndCompletePayment(client, {
@@ -268,7 +299,9 @@ export async function verifyAndFinalize(req, res) {
       creditsPurchased: credits,
     });
   } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
 
     // Make provider errors readable on the client (instead of generic 500)
     const status = Number(e?.statusCode) || 500;

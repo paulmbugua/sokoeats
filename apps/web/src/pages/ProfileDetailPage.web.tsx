@@ -85,13 +85,9 @@ const ProfileDetailPage: React.FC = () => {
     closeModal,
   } = useProfileDetail(id!, backendUrl);
 
-  const resolveAsset = (raw: string) =>
-    raw?.startsWith('/') ? `${backendUrl}${raw}` : raw;
+  const resolveAsset = (raw: string) => (raw?.startsWith('/') ? `${backendUrl}${raw}` : raw);
 
-  const debouncedSendMessage = useMemo(
-    () => debounce(handleSendMessage, 300),
-    [handleSendMessage]
-  );
+  const debouncedSendMessage = useMemo(() => debounce(handleSendMessage, 300), [handleSendMessage]);
   useEffect(() => () => debouncedSendMessage.cancel(), [debouncedSendMessage]);
 
   const profile: TutorProfile = useMemo(() => {
@@ -144,31 +140,32 @@ const ProfileDetailPage: React.FC = () => {
   }
 
   const statusColor =
-    profile.status === 'Online' ? 'bg-green-500' :
-    profile.status === 'Busy' ? 'bg-yellow-500' :
-    profile.status === 'Free' ? 'bg-purple-500' :
-    'bg-gray-500';
+    profile.status === 'Online'
+      ? 'bg-green-500'
+      : profile.status === 'Busy'
+        ? 'bg-yellow-500'
+        : profile.status === 'Free'
+          ? 'bg-purple-500'
+          : 'bg-gray-500';
 
-  const languages     = profile.languages ?? [];
-  const expertise     = profile.description?.expertise ?? [];
+  const languages = profile.languages ?? [];
+  const expertise = profile.description?.expertise ?? [];
   const teachingStyle = profile.description?.teachingStyle ?? [];
 
   // Tutor-only display of School Grade / Year / Level, read from server fields
   const isTutor = (profile.role || '').toLowerCase() === 'tutor';
-  const gradeRaw =
-    (tutorProfile as any)?.school_grade ??
-    (tutorProfile as any)?.schoolGrade;
+  const gradeRaw = (tutorProfile as any)?.school_grade ?? (tutorProfile as any)?.schoolGrade;
   const displayGrade = typeof gradeRaw === 'string' ? gradeRaw : '';
 
   const pricingSections: [string, string][] = [
     ['Private Session (60 mins)', profile.pricing.privateSession],
-    ['Group Session (90 mins)',   profile.pricing.groupSession],
-    ['Workshop (120 mins)',       profile.pricing.workshop],
-    ['Lecture (180 mins)',        profile.pricing.lecture],
+    ['Group Session (90 mins)', profile.pricing.groupSession],
+    ['Workshop (120 mins)', profile.pricing.workshop],
+    ['Lecture (180 mins)', profile.pricing.lecture],
   ];
 
   const aboutSections: [string, string[]][] = [
-    ['Expertise',      expertise],
+    ['Expertise', expertise],
     ['Teaching Style', teachingStyle],
   ];
 
@@ -256,7 +253,9 @@ const ProfileDetailPage: React.FC = () => {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.35, ease: 'easeOut', delay: 0.1 }}
                 >
-                  <span className="font-medium text-darkText dark:text-darkTextPrimary">Category:</span>{' '}
+                  <span className="font-medium text-darkText dark:text-darkTextPrimary">
+                    Category:
+                  </span>{' '}
                   <span className="text-primary font-medium">{profile.category || 'N/A'}</span>
                 </motion.p>
 
@@ -266,8 +265,12 @@ const ProfileDetailPage: React.FC = () => {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.35, ease: 'easeOut', delay: 0.13 }}
                 >
-                  <span className="font-medium text-darkText dark:text-darkTextPrimary">Speaks:</span>{' '}
-                  <span className="text-darkText dark:text-darkTextPrimary">{languages.join(', ') || 'N/A'}</span>
+                  <span className="font-medium text-darkText dark:text-darkTextPrimary">
+                    Speaks:
+                  </span>{' '}
+                  <span className="text-darkText dark:text-darkTextPrimary">
+                    {languages.join(', ') || 'N/A'}
+                  </span>
                 </motion.p>
 
                 {profile.status && (
@@ -301,7 +304,9 @@ const ProfileDetailPage: React.FC = () => {
               {pricingSections.map(([label, val]) => (
                 <motion.div key={label} className="flex justify-between" variants={listItem}>
                   <span className="text-darkText dark:text-darkTextPrimary">{label}</span>
-                  <span className="font-semibold text-darkText dark:text-darkTextPrimary">{val} tokens</span>
+                  <span className="font-semibold text-darkText dark:text-darkTextPrimary">
+                    {val} tokens
+                  </span>
                 </motion.div>
               ))}
             </motion.div>
@@ -341,9 +346,7 @@ const ProfileDetailPage: React.FC = () => {
             {isTutor && displayGrade && (
               <motion.div variants={fadeUp} transition={{ delay: 0.06 }}>
                 <h3 className="text-xl font-semibold text-primary">Grade / Class</h3>
-                <p className="text-darkText dark:text-darkTextPrimary mt-1">
-                  {displayGrade}
-                </p>
+                <p className="text-darkText dark:text-darkTextPrimary mt-1">{displayGrade}</p>
               </motion.div>
             )}
 
@@ -365,7 +368,9 @@ const ProfileDetailPage: React.FC = () => {
                       ))}
                     </motion.div>
                   ) : (
-                    <p className="text-mutedGray dark:text-darkTextSecondary text-sm">Not specified</p>
+                    <p className="text-mutedGray dark:text-darkTextSecondary text-sm">
+                      Not specified
+                    </p>
                   )}
                 </motion.div>
               ))}
@@ -390,10 +395,7 @@ const ProfileDetailPage: React.FC = () => {
           viewport={{ once: true, amount: 0.15 }}
           whileHover={{ y: prefersReducedMotion ? 0 : -2 }}
         >
-          <ProfileActions.Recommended
-            recommended={profile.recommended}
-            statusColor={statusColor}
-          />
+          <ProfileActions.Recommended recommended={profile.recommended} statusColor={statusColor} />
         </motion.section>
       </main>
 

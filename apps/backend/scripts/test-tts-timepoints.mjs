@@ -40,7 +40,7 @@ async function main() {
   console.log('\n=== Pretty print marks ===');
   (response.timepoints || []).forEach((tp, i) => {
     console.log(
-      `#${i} name=${tp.markName || tp.timepointName}  timeSeconds=${tp.timeSeconds}`
+      `#${i} name=${tp.markName || tp.timepointName}  timeSeconds=${tp.timeSeconds}`,
     );
   });
 

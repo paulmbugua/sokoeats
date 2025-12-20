@@ -7,34 +7,23 @@ const formatRank = (n: number | null | undefined): string => {
   return String(n); // 👈 1, 2, 3… no “st/nd/th”
 };
 
-
 const buildProgressSeries = (card: any): { label: string; percent: number }[] => {
   if (!card) return [];
 
   const seriesSource =
-    card.progressSeries ||
-    card.history ||
-    card.previousSummaries ||
-    card.previous_terms ||
-    [];
+    card.progressSeries || card.history || card.previousSummaries || card.previous_terms || [];
 
   const out: { label: string; percent: number }[] = [];
 
   if (Array.isArray(seriesSource)) {
     seriesSource.forEach((p: any, idx: number) => {
-      const label =
-        p.label ||
-        p.termLabel ||
-        p.term ||
-        p.name ||
-        p.examLabel ||
-        `Term ${idx + 1}`;
+      const label = p.label || p.termLabel || p.term || p.name || p.examLabel || `Term ${idx + 1}`;
       const percent =
         typeof p.percent === 'number'
           ? p.percent
           : typeof p.totalPercent === 'number'
-          ? p.totalPercent
-          : null;
+            ? p.totalPercent
+            : null;
       if (percent != null) {
         out.push({ label, percent });
       }
@@ -134,10 +123,7 @@ const buildAiExtrasMatrix = (subjects: any[] | undefined | null) => {
 };
 
 const AiExtrasTable: React.FC<{ subjects: any[] }> = ({ subjects }) => {
-  const matrix = React.useMemo(
-    () => buildAiExtrasMatrix(subjects),
-    [subjects],
-  );
+  const matrix = React.useMemo(() => buildAiExtrasMatrix(subjects), [subjects]);
 
   if (!matrix) return null;
 
@@ -151,8 +137,8 @@ const AiExtrasTable: React.FC<{ subjects: any[] }> = ({ subjects }) => {
             AI-assisted extra columns
           </h4>
           <p className="text-[9px] text-[#64748b] dark:text-slate-400">
-            A compact view of AI-generated fields such as Effort, Homework, or
-            Next step – kept separate from teacher remarks.
+            A compact view of AI-generated fields such as Effort, Homework, or Next step – kept
+            separate from teacher remarks.
           </p>
         </div>
         <span className="hidden sm:inline-flex items-center rounded-full bg-[#3b82f6]/10 text-[#1d4ed8] px-2 py-0.5 text-[9px] uppercase tracking-wide">
@@ -196,8 +182,8 @@ const AiExtrasTable: React.FC<{ subjects: any[] }> = ({ subjects }) => {
 
       <p className="mt-1.5 text-[9px] text-[#94a3b8] dark:text-slate-500">
         Note: This table reflects <span className="font-semibold">AI-driven column changes</span>{' '}
-        (Effort, targets, homework, etc.). The main subject remarks column on
-        the report card remains reserved for <span className="font-semibold">teacher comments</span>.
+        (Effort, targets, homework, etc.). The main subject remarks column on the report card
+        remains reserved for <span className="font-semibold">teacher comments</span>.
       </p>
     </div>
   );
@@ -231,12 +217,11 @@ type OrgExamReportsTabProps = {
   onDownloadPdf: () => void;
   onRegenerateRemarks: (instructions?: string) => void;
   onSaveRemarks: () => void;
-  onSaveAttendance: () => void;   // 👈 NEW
+  onSaveAttendance: () => void; // 👈 NEW
   canDownloadClass: boolean;
   onDownloadClassPdf: () => void;
   onRegenerateTeacherComment?: (instructions?: string) => void;
 };
-
 
 const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
   isLearnerView,
@@ -257,7 +242,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
   onDownloadPdf,
   onRegenerateRemarks,
   onSaveRemarks,
-   onSaveAttendance,
+  onSaveAttendance,
   canDownloadClass,
   onDownloadClassPdf,
   onRegenerateTeacherComment,
@@ -265,7 +250,6 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
   // 🔹 small local textbox for AI hints
   const [aiInstructions, setAiInstructions] = React.useState('');
   const [teacherAiInstructions, setTeacherAiInstructions] = React.useState('');
-
 
   if (isLearnerView) {
     // 🎓 Learner: only own card
@@ -291,8 +275,8 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
         <div className="mt-3 flex-1 rounded-xl border border-[#e7edf4] dark:border-darkCard bg-slate-50 dark:bg-[#0b1420] p-3 text-[11px] sm:text-xs overflow-y-auto">
           {!studentCard && !studentCardText && (
             <div className="text-[#49739c] dark:text-darkTextSecondary">
-              Your report card will appear here once your school publishes marks
-              for this exam, or once you choose a term and exam above.
+              Your report card will appear here once your school publishes marks for this exam, or
+              once you choose a term and exam above.
             </div>
           )}
 
@@ -351,16 +335,15 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                       </span>
                     )}
                   </div>
-                  {studentCard.summary?.classRank &&
-                    studentCard.summary?.classSize && (
-                      <div className="text-[10px] text-[#49739c] dark:text-darkTextSecondary">
-                        Position{' '}
-                        <span className="font-semibold">
-                          {formatRank(studentCard.summary.classRank)}
-                        </span>{' '}
-                        out of {studentCard.summary.classSize}
-                      </div>
-                    )}
+                  {studentCard.summary?.classRank && studentCard.summary?.classSize && (
+                    <div className="text-[10px] text-[#49739c] dark:text-darkTextSecondary">
+                      Position{' '}
+                      <span className="font-semibold">
+                        {formatRank(studentCard.summary.classRank)}
+                      </span>{' '}
+                      out of {studentCard.summary.classSize}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -392,9 +375,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                           >
                             <td className="py-1 pr-2 align-top">
                               <div className="flex flex-col">
-                                <span className="font-medium">
-                                  {s.subject || '—'}
-                                </span>
+                                <span className="font-medium">{s.subject || '—'}</span>
 
                                 {/* 🔹 Mirror extra tags from marks tab as chips – learner-facing */}
                                 {renderSubjectExtraChips((s as any).extra)}
@@ -404,15 +385,13 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                               {s.score}/{s.max_score}
                             </td>
                             <td className="py-1 pr-2 text-right">
-                              {typeof s.percent === 'number'
-                                ? `${Math.round(s.percent)}%`
-                                : '—'}{' '}
+                              {typeof s.percent === 'number' ? `${Math.round(s.percent)}%` : '—'}{' '}
                               {s.grade ? `• ${s.grade}` : ''}
                             </td>
                             <td className="py-1 pr-0 text-right">
                               {s.classRank && s.classSize ? (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-[#e7edf4] dark:bg-[#111827] text-[9px] font-semibold">
-                                 {formatRank(s.classRank)} / {s.classSize}
+                                  {formatRank(s.classRank)} / {s.classSize}
                                 </span>
                               ) : (
                                 <span className="text-[9px] text-[#9ca3af]">—</span>
@@ -457,7 +436,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                           <li>
                             <span className="font-semibold">Overall: </span>
                             {studentCard.summary.totalPercent.toFixed(1)}% – position{' '}
-                           {formatRank(studentCard.summary.classRank)} of{' '}
+                            {formatRank(studentCard.summary.classRank)} of{' '}
                             {studentCard.summary.classSize}
                           </li>
                         )}
@@ -476,8 +455,8 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                       if (!series.length) {
                         return (
                           <div className="text-[10px] text-[#49739c] dark:text-darkTextSecondary">
-                            Historical data not available yet. Once previous exams are
-                            synced, this chart will show your trend.
+                            Historical data not available yet. Once previous exams are synced, this
+                            chart will show your trend.
                           </div>
                         );
                       }
@@ -487,18 +466,13 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                             <div key={`${p.label}-${idx}`}>
                               <div className="flex items-center justify-between text-[10px] mb-0.5">
                                 <span>{p.label}</span>
-                                <span className="font-semibold">
-                                  {p.percent.toFixed(1)}%
-                                </span>
+                                <span className="font-semibold">{p.percent.toFixed(1)}%</span>
                               </div>
                               <div className="h-2 rounded-full bg-[#e5e7eb] dark:bg-[#111827] overflow-hidden">
                                 <div
                                   className="h-2 rounded-full bg-[#3d99f5]"
                                   style={{
-                                    width: `${Math.max(
-                                      5,
-                                      Math.min(100, p.percent),
-                                    )}%`,
+                                    width: `${Math.max(5, Math.min(100, p.percent))}%`,
                                   }}
                                 />
                               </div>
@@ -513,9 +487,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
 
               {reportRemarks && (
                 <div className="rounded-lg bg-white dark:bg-[#020617] border border-[#e7edf4] dark:border-darkCard p-2.5">
-                  <h3 className="text-[11px] font-semibold mb-1">
-                    Teacher / principal remarks
-                  </h3>
+                  <h3 className="text-[11px] font-semibold mb-1">Teacher / principal remarks</h3>
                   <p className="text-[10px] leading-relaxed text-[#111827] dark:text-darkTextPrimary">
                     {reportRemarks}
                   </p>
@@ -540,8 +512,8 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
               Distribution per subject for this exam, plus a downloadable class booklet.
             </p>
             <p className="mt-0.5 text-[10px] text-[#9ca3af] dark:text-darkTextSecondary">
-              Class report includes: per-subject stats, full learner list with totals,
-              grades, positions, and remarks – ready to share with parents.
+              Class report includes: per-subject stats, full learner list with totals, grades,
+              positions, and remarks – ready to share with parents.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 justify-end">
@@ -583,10 +555,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
               )}
               {!analyticsLoading &&
                 analytics.map((r: any, idx: number) => (
-                  <tr
-                    key={idx}
-                    className="border-t border-[#e7edf4] dark:border-darkCard"
-                  >
+                  <tr key={idx} className="border-t border-[#e7edf4] dark:border-darkCard">
                     <td className="py-1 pr-3">{r.subject}</td>
                     <td className="py-1 pr-3">{r.scripts}</td>
                     <td className="py-1 pr-3">{r.avg_percent}</td>
@@ -615,8 +584,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
           <div>
             <h2 className="text-sm sm:text-base font-bold">Report card preview</h2>
             <p className="text-[11px] text-[#49739c] dark:text-darkTextSecondary">
-              Select any learner in Marks view and click “Card” to preview a full
-              modern report.
+              Select any learner in Marks view and click “Card” to preview a full modern report.
             </p>
           </div>
           {selectedStudentId && (
@@ -690,16 +658,15 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                       </span>
                     )}
                   </div>
-                  {studentCard.summary?.classRank &&
-                    studentCard.summary?.classSize && (
-                      <div className="text-[10px] text-[#49739c] dark:text-darkTextSecondary">
-                        Position{' '}
-                        <span className="font-semibold">
-                          {formatRank(studentCard.summary.classRank)}
-                        </span>{' '}
-                        out of {studentCard.summary.classSize}
-                      </div>
-                    )}
+                  {studentCard.summary?.classRank && studentCard.summary?.classSize && (
+                    <div className="text-[10px] text-[#49739c] dark:text-darkTextSecondary">
+                      Position{' '}
+                      <span className="font-semibold">
+                        {formatRank(studentCard.summary.classRank)}
+                      </span>{' '}
+                      out of {studentCard.summary.classSize}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -731,9 +698,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                           >
                             <td className="py-1 pr-2 align-top">
                               <div className="flex flex-col">
-                                <span className="font-medium">
-                                  {s.subject || '—'}
-                                </span>
+                                <span className="font-medium">{s.subject || '—'}</span>
                                 {/* 🔹 Show the same chips here so teachers see what learners see */}
                                 {renderSubjectExtraChips((s as any).extra)}
                               </div>
@@ -742,15 +707,13 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                               {s.score}/{s.max_score}
                             </td>
                             <td className="py-1 pr-2 text-right">
-                              {typeof s.percent === 'number'
-                                ? `${Math.round(s.percent)}%`
-                                : '—'}{' '}
+                              {typeof s.percent === 'number' ? `${Math.round(s.percent)}%` : '—'}{' '}
                               {s.grade ? `• ${s.grade}` : ''}
                             </td>
                             <td className="py-1 pr-0 text-right">
                               {s.classRank && s.classSize ? (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-[#e7edf4] dark:bg-[#111827] text-[9px] font-semibold">
-                                 {formatRank(s.classRank)} / {s.classSize}
+                                  {formatRank(s.classRank)} / {s.classSize}
                                 </span>
                               ) : (
                                 <span className="text-[9px] text-[#9ca3af]">—</span>
@@ -763,7 +726,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                   </div>
                 </div>
 
-                 {/* 🔮 AI extras table (admin view) */}
+                {/* 🔮 AI extras table (admin view) */}
                 <AiExtrasTable subjects={studentCard.subjects} />
 
                 {/* Highlights + progress */}
@@ -816,8 +779,8 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                       if (!series.length) {
                         return (
                           <div className="text-[10px] text-[#49739c] dark:text-darkTextSecondary">
-                            Historical data not available yet. Once previous exams are
-                            synced, this chart will show the learner&apos;s trend.
+                            Historical data not available yet. Once previous exams are synced, this
+                            chart will show the learner&apos;s trend.
                           </div>
                         );
                       }
@@ -827,18 +790,13 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                             <div key={`${p.label}-${idx}`}>
                               <div className="flex items-center justify-between text-[10px] mb-0.5">
                                 <span>{p.label}</span>
-                                <span className="font-semibold">
-                                  {p.percent.toFixed(1)}%
-                                </span>
+                                <span className="font-semibold">{p.percent.toFixed(1)}%</span>
                               </div>
                               <div className="h-2 rounded-full bg-[#e5e7eb] dark:bg-[#111827] overflow-hidden">
                                 <div
                                   className="h-2 rounded-full bg-[#3d99f5]"
                                   style={{
-                                    width: `${Math.max(
-                                      5,
-                                      Math.min(100, p.percent),
-                                    )}%`,
+                                    width: `${Math.max(5, Math.min(100, p.percent))}%`,
                                   }}
                                 />
                               </div>
@@ -854,71 +812,65 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
               {/* Attendance & behaviour */}
               <div className="rounded-lg bg-white dark:bg-[#020617] border-2 border-[#e7edf4] dark:border-darkCard p-2.5">
                 <div className="flex items-center justify-between mb-1">
-                  <h3 className="text-[11px] font-semibold">
-                    Attendance &amp; behaviour
-                  </h3>
-                  <span className="text-[9px] text-[#9ca3af]">
-                    Admin / instructor only
-                  </span>
+                  <h3 className="text-[11px] font-semibold">Attendance &amp; behaviour</h3>
+                  <span className="text-[9px] text-[#9ca3af]">Admin / instructor only</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-[10px]">
                   <label className="flex flex-col gap-0.5">
                     <span className="text-[#6b7280]">Lessons attended</span>
                     <input
-                    className="h-7 rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 text-[10px]"
-                    value={attendanceForm.lessonsAttended ?? ''}
-                    onChange={(e) =>
-                      setAttendanceForm((prev: AttendanceFormState) => {
-                        const next: AttendanceFormState = {
-                          ...prev,
-                          lessonsAttended: e.target.value,
-                        };
-                        const attended = Number(next.lessonsAttended);
-                        const held = Number(next.lessonsHeld);
-                        if (Number.isFinite(attended) && Number.isFinite(held) && held > 0) {
-                          next.attendancePercent = ((attended / held) * 100).toFixed(1);
-                        } else {
-                          next.attendancePercent = '';
-                        }
-                        return next;
-                      })
-                    }
-                  />
-
+                      className="h-7 rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 text-[10px]"
+                      value={attendanceForm.lessonsAttended ?? ''}
+                      onChange={(e) =>
+                        setAttendanceForm((prev: AttendanceFormState) => {
+                          const next: AttendanceFormState = {
+                            ...prev,
+                            lessonsAttended: e.target.value,
+                          };
+                          const attended = Number(next.lessonsAttended);
+                          const held = Number(next.lessonsHeld);
+                          if (Number.isFinite(attended) && Number.isFinite(held) && held > 0) {
+                            next.attendancePercent = ((attended / held) * 100).toFixed(1);
+                          } else {
+                            next.attendancePercent = '';
+                          }
+                          return next;
+                        })
+                      }
+                    />
                   </label>
                   <label className="flex flex-col gap-0.5">
                     <span className="text-[#6b7280]">Lessons held</span>
                     <input
-                          className="h-7 rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 text-[10px]"
-                          value={attendanceForm.lessonsHeld ?? ''}
-                          onChange={(e) =>
-                            setAttendanceForm((prev: AttendanceFormState) => {
-                              const next: AttendanceFormState = {
-                                ...prev,
-                                lessonsHeld: e.target.value,
-                              };
-                              const attended = Number(next.lessonsAttended);
-                              const held = Number(next.lessonsHeld);
-                              if (Number.isFinite(attended) && Number.isFinite(held) && held > 0) {
-                                next.attendancePercent = ((attended / held) * 100).toFixed(1);
-                              } else {
-                                next.attendancePercent = '';
-                              }
-                              return next;
-                            })
+                      className="h-7 rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 text-[10px]"
+                      value={attendanceForm.lessonsHeld ?? ''}
+                      onChange={(e) =>
+                        setAttendanceForm((prev: AttendanceFormState) => {
+                          const next: AttendanceFormState = {
+                            ...prev,
+                            lessonsHeld: e.target.value,
+                          };
+                          const attended = Number(next.lessonsAttended);
+                          const held = Number(next.lessonsHeld);
+                          if (Number.isFinite(attended) && Number.isFinite(held) && held > 0) {
+                            next.attendancePercent = ((attended / held) * 100).toFixed(1);
+                          } else {
+                            next.attendancePercent = '';
                           }
-                        />
-
+                          return next;
+                        })
+                      }
+                    />
                   </label>
                   <label className="flex flex-col gap-0.5">
-                  <span className="text-[#6b7280]">Attendance %</span>
-                  <input
-                    className="h-7 rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 text-[10px]"
-                    value={attendanceForm.attendancePercent ?? ''}
-                    readOnly
-                  />
-                </label>
+                    <span className="text-[#6b7280]">Attendance %</span>
+                    <input
+                      className="h-7 rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 text-[10px]"
+                      value={attendanceForm.attendancePercent ?? ''}
+                      readOnly
+                    />
+                  </label>
 
                   <label className="flex flex-col gap-0.5">
                     <span className="text-[#6b7280]">Behaviour (1–5)</span>
@@ -948,71 +900,67 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                   </label>
                 </div>
 
-               <label className="mt-2 flex flex-col gap-0.5 text-[10px]">
-              <span className="text-[#6b7280]">Teacher behaviour note</span>
-              <textarea
-                className="min-h-[40px] rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 py-1 text-[10px]"
-                value={attendanceForm.teacherComment ?? ''}
-                onChange={(e) =>
-                  setAttendanceForm((prev: AttendanceFormState) => ({
-                    ...prev,
-                    teacherComment: e.target.value,
-                  }))
-                }
-              />
-            </label>
+                <label className="mt-2 flex flex-col gap-0.5 text-[10px]">
+                  <span className="text-[#6b7280]">Teacher behaviour note</span>
+                  <textarea
+                    className="min-h-[40px] rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 py-1 text-[10px]"
+                    value={attendanceForm.teacherComment ?? ''}
+                    onChange={(e) =>
+                      setAttendanceForm((prev: AttendanceFormState) => ({
+                        ...prev,
+                        teacherComment: e.target.value,
+                      }))
+                    }
+                  />
+                </label>
 
-            {/* 🔮 AI controls for teacher note */}
-            <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-[9px]">
-              <div className="flex-1 space-y-1">
-                <p className="text-[#9ca3af] dark:text-slate-400">
-                  Attendance % is calculated automatically from lessons attended vs held.
-                  Use “Save attendance” to store it on the learner’s report card and PDF.
-                </p>
-                <input
-                  type="text"
-                  className="w-full sm:w-[260px] h-7 rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 text-[10px]"
-                  placeholder='AI hint (optional)… e.g. "Highlight improved punctuality"'
-                  value={teacherAiInstructions}
-                  onChange={(e) => setTeacherAiInstructions(e.target.value)}
-                />
-              </div>
+                {/* 🔮 AI controls for teacher note */}
+                <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-[9px]">
+                  <div className="flex-1 space-y-1">
+                    <p className="text-[#9ca3af] dark:text-slate-400">
+                      Attendance % is calculated automatically from lessons attended vs held. Use
+                      “Save attendance” to store it on the learner’s report card and PDF.
+                    </p>
+                    <input
+                      type="text"
+                      className="w-full sm:w-[260px] h-7 rounded-lg border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] px-2 text-[10px]"
+                      placeholder='AI hint (optional)… e.g. "Highlight improved punctuality"'
+                      value={teacherAiInstructions}
+                      onChange={(e) => setTeacherAiInstructions(e.target.value)}
+                    />
+                  </div>
 
-              <div className="flex flex-wrap gap-1 justify-end">
-                <button
-                  type="button"
-                  className="h-7 px-2 rounded-lg bg-[#e7edf4] dark:bg-[#172534] text-[10px] font-semibold"
-                  onClick={() =>
-                    onRegenerateTeacherComment?.(teacherAiInstructions)
-                  }
-                  disabled={!selectedStudentId}
-                >
-                  AI regenerate
-                </button>
-                <button
-                  type="button"
-                  className="h-7 px-2 rounded-lg bg-white dark:bg-[#020617] border border-[#e7edf4] dark:border-darkCard text-[10px] font-semibold"
-                  onClick={onSaveAttendance}
-                  disabled={!selectedStudentId || !selectedTerm}
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  className="h-7 px-2 rounded-lg bg-white dark:bg-[#020617] border border-[#e7edf4] dark:border-darkCard text-[10px] font-semibold"
-                  onClick={() =>
-                    setAttendanceForm((prev: AttendanceFormState) => ({
-                      ...prev,
-                      teacherComment: '',
-                    }))
-                  }
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-
-
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    <button
+                      type="button"
+                      className="h-7 px-2 rounded-lg bg-[#e7edf4] dark:bg-[#172534] text-[10px] font-semibold"
+                      onClick={() => onRegenerateTeacherComment?.(teacherAiInstructions)}
+                      disabled={!selectedStudentId}
+                    >
+                      AI regenerate
+                    </button>
+                    <button
+                      type="button"
+                      className="h-7 px-2 rounded-lg bg-white dark:bg-[#020617] border border-[#e7edf4] dark:border-darkCard text-[10px] font-semibold"
+                      onClick={onSaveAttendance}
+                      disabled={!selectedStudentId || !selectedTerm}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="h-7 px-2 rounded-lg bg-white dark:bg-[#020617] border border-[#e7edf4] dark:border-darkCard text-[10px] font-semibold"
+                      onClick={() =>
+                        setAttendanceForm((prev: AttendanceFormState) => ({
+                          ...prev,
+                          teacherComment: '',
+                        }))
+                      }
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Remarks */}
@@ -1021,8 +969,7 @@ const OrgExamReportsTab: React.FC<OrgExamReportsTabProps> = ({
                   <div className="flex-1">
                     <h3 className="text-[11px] font-semibold">Remarks</h3>
                     <p className="text-[10px] text-[#49739c] dark:text-darkTextSecondary">
-                      Auto-generated summary that the class teacher or principal can
-                      edit.
+                      Auto-generated summary that the class teacher or principal can edit.
                     </p>
                     {/* 🔹 AI instructions input */}
                     <div className="mt-1">

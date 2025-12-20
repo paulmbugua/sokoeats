@@ -8,26 +8,36 @@ import { isUuid, upsertEntitlement } from './_entitlements.js';
 function looksExtendedSku(skuOrCodeOrTitle) {
   const s = (v) => (typeof v === 'string' ? v.toLowerCase() : '');
   const title = s(skuOrCodeOrTitle?.title);
-  const code  = s(skuOrCodeOrTitle?.code ?? skuOrCodeOrTitle);
-  const tier  = s(skuOrCodeOrTitle?.tier || skuOrCodeOrTitle?.plan || skuOrCodeOrTitle?.level || skuOrCodeOrTitle?.kind);
-  const tags  = Array.isArray(skuOrCodeOrTitle?.tags) ? skuOrCodeOrTitle.tags.map(s) : [];
+  const code = s(skuOrCodeOrTitle?.code ?? skuOrCodeOrTitle);
+  const tier = s(
+    skuOrCodeOrTitle?.tier ||
+      skuOrCodeOrTitle?.plan ||
+      skuOrCodeOrTitle?.level ||
+      skuOrCodeOrTitle?.kind,
+  );
+  const tags = Array.isArray(skuOrCodeOrTitle?.tags)
+    ? skuOrCodeOrTitle.tags.map(s)
+    : [];
   return (
     tier.includes('extended') ||
     title.includes('extended') ||
     title.includes('transcript') ||
     /\b(ext|extended|xtra|plus)\b/.test(code) ||
-    tags.includes('extended') || tags.includes('transcript')
+    tags.includes('extended') ||
+    tags.includes('transcript')
   );
 }
 
 function isExtendedSkuRow(row) {
   const s = (v) => (typeof v === 'string' ? v.toLowerCase() : '');
   const title = s(row?.title);
-  const code  = s(row?.code);
-  const tier  = s(row?.tier);
-  return tier === 'extended'
-      || /extended|transcript/.test(title)
-      || /\bext\b|extended|transcript/.test(code);
+  const code = s(row?.code);
+  const tier = s(row?.tier);
+  return (
+    tier === 'extended' ||
+    /extended|transcript/.test(title) ||
+    /\bext\b|extended|transcript/.test(code)
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -57,9 +67,10 @@ export async function listIssuedCertificates(req, res) {
   } catch (err) {
     const missing = /relation "([^"]+)"/i.exec(err.message)?.[1];
     console.error('[certs.list] SQL failed', { code: err.code, missing, sql });
-    const msg = err.code === '42P01'
-      ? `Missing relation${missing ? `: ${missing}` : ''}.`
-      : 'Failed to list certificates.';
+    const msg =
+      err.code === '42P01'
+        ? `Missing relation${missing ? `: ${missing}` : ''}.`
+        : 'Failed to list certificates.';
     res.status(500).json({ ok: false, error: msg });
   }
 }
@@ -71,18 +82,24 @@ export async function listIssuedCertificates(req, res) {
 export async function issueCertificate(req, res) {
   const userId = req.user?.id;
   const { code, courseId } = req.body || {};
-  if (!userId) return res.status(401).json({ ok: false, message: 'Unauthorized' });
-  if (!code)   return res.status(400).json({ ok: false, message: 'Missing certificate code' });
+  if (!userId)
+    return res.status(401).json({ ok: false, message: 'Unauthorized' });
+  if (!code)
+    return res
+      .status(400)
+      .json({ ok: false, message: 'Missing certificate code' });
 
   try {
     const certQ = await pool.query(
       `SELECT id, code, title, tier, price_tokens
          FROM ai_certificates
         WHERE code = $1 AND active = true`,
-      [code]
+      [code],
     );
     if (!certQ.rowCount) {
-      return res.status(404).json({ ok: false, message: 'Certificate not found/active' });
+      return res
+        .status(404)
+        .json({ ok: false, message: 'Certificate not found/active' });
     }
     const cert = certQ.rows[0];
     const priceTokens = Number(cert.price_tokens) || 0;
@@ -97,7 +114,7 @@ export async function issueCertificate(req, res) {
           AND passed = TRUE
         ORDER BY submitted_at DESC
         LIMIT 1`,
-      [userId]
+      [userId],
     );
 
     if (cov.rowCount) {
@@ -105,7 +122,7 @@ export async function issueCertificate(req, res) {
         `INSERT INTO ai_certificate_issuances (user_id, course_id, certificate_id, price_tokens)
          VALUES ($1, $2, $3, 0)
          RETURNING id, created_at`,
-        [userId, isUuid(courseId) ? courseId : null, cert.id]
+        [userId, isUuid(courseId) ? courseId : null, cert.id],
       );
 
       if (isUuid(courseId)) {
@@ -132,7 +149,10 @@ export async function issueCertificate(req, res) {
     // Tokens flow
     await pool.query('BEGIN');
 
-    const uQ = await pool.query('SELECT tokens FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    const uQ = await pool.query(
+      'SELECT tokens FROM users WHERE id = $1 FOR UPDATE',
+      [userId],
+    );
     if (!uQ.rowCount) {
       await pool.query('ROLLBACK');
       return res.status(404).json({ ok: false, message: 'User not found' });
@@ -141,16 +161,21 @@ export async function issueCertificate(req, res) {
     const current = Number(uQ.rows[0].tokens) || 0;
     if (current < priceTokens) {
       await pool.query('ROLLBACK');
-      return res.status(400).json({ ok: false, message: 'Insufficient tokens' });
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Insufficient tokens' });
     }
 
-    await pool.query('UPDATE users SET tokens = tokens - $1 WHERE id = $2', [priceTokens, userId]);
+    await pool.query('UPDATE users SET tokens = tokens - $1 WHERE id = $2', [
+      priceTokens,
+      userId,
+    ]);
 
     const ins = await pool.query(
       `INSERT INTO ai_certificate_issuances (user_id, course_id, certificate_id, price_tokens)
        VALUES ($1, $2, $3, $4)
        RETURNING id, created_at`,
-      [userId, isUuid(courseId) ? courseId : null, cert.id, priceTokens]
+      [userId, isUuid(courseId) ? courseId : null, cert.id, priceTokens],
     );
 
     await pool.query('COMMIT');
@@ -188,7 +213,7 @@ export async function listAICertificateSKUs(req, res) {
       `SELECT id, code, title, tier, price_tokens
          FROM ai_certificates
         WHERE active = true
-        ORDER BY id DESC`
+        ORDER BY id DESC`,
     );
     res.json({ ok: true, data: rows });
   } catch (e) {
@@ -196,4 +221,3 @@ export async function listAICertificateSKUs(req, res) {
     res.status(500).json({ ok: false, message: 'Internal server error' });
   }
 }
-

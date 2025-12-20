@@ -28,12 +28,19 @@ export default function TemplateMenu({ value, onChange }: Props) {
         {
           id: 'clean-stripe',
           label: 'Clean Stripe',
-          preview: <div className="w-full h-1 rounded" style={{ backgroundColor: 'rgba(255,255,255,0.5)' }} />,
+          preview: (
+            <div
+              className="w-full h-1 rounded"
+              style={{ backgroundColor: 'rgba(255,255,255,0.5)' }}
+            />
+          ),
         },
         {
           id: 'underline-glow',
           label: 'Underline Glow',
-          preview: <div className="w-full h-0.5 rounded" style={{ background: 'rgb(var(--hl-rgb))' }} />,
+          preview: (
+            <div className="w-full h-0.5 rounded" style={{ background: 'rgb(var(--hl-rgb))' }} />
+          ),
         },
         {
           id: 'karaoke-glow',
@@ -41,7 +48,10 @@ export default function TemplateMenu({ value, onChange }: Props) {
           preview: (
             <div
               className="w-3 h-3 rounded-full"
-              style={{ background: 'rgb(var(--hl-rgb))', boxShadow: '0 0 10px rgba(var(--hl-rgb),0.9)' }}
+              style={{
+                background: 'rgb(var(--hl-rgb))',
+                boxShadow: '0 0 10px rgba(var(--hl-rgb),0.9)',
+              }}
             />
           ),
         },

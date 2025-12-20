@@ -137,17 +137,11 @@ const useProfileForm = (options?: UseProfileFormOptions) => {
   const [payoutMethod, setPayoutMethod] = useState<PayoutMethod>('wise');
   const payoutCurrency: PayoutCurrency = payoutMethod === 'mpesa' ? 'KES' : 'USD';
 
-  const [images, setImages] = useState<(UploadAsset | File | null)[]>([
-    null,
-    null,
-    null,
-    null,
-  ]);
+  const [images, setImages] = useState<(UploadAsset | File | null)[]>([null, null, null, null]);
   const [video, setVideo] = useState<UploadAsset | File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
 
-  const [step, setStep] =
-    useState<'idle' | 'uploading' | 'creating' | 'done' | 'bg-video'>('idle');
+  const [step, setStep] = useState<'idle' | 'uploading' | 'creating' | 'done' | 'bg-video'>('idle');
 
   const handleLanguageSelect = (language: string) =>
     setLanguages((prev) => ({ ...prev, [language]: !prev[language] }));
@@ -190,9 +184,7 @@ const useProfileForm = (options?: UseProfileFormOptions) => {
       const uploadImages = async (): Promise<string[]> => {
         if (role !== 'tutor') return [];
 
-        const valid = images.filter(
-          (i): i is UploadAsset | File => i !== null
-        );
+        const valid = images.filter((i): i is UploadAsset | File => i !== null);
         if (valid.length === 0) {
           throw new Error('At least one profile image is required.');
         }
@@ -209,9 +201,7 @@ const useProfileForm = (options?: UseProfileFormOptions) => {
               const ua = file as UploadAsset;
               input = {
                 uri: ua.uri,
-                name:
-                  ua.name ||
-                  `profile-${Date.now()}.jpg`,
+                name: ua.name || `profile-${Date.now()}.jpg`,
                 type: ua.type || 'image/jpeg',
               };
             } else if ((file as any).url) {
@@ -254,9 +244,7 @@ const useProfileForm = (options?: UseProfileFormOptions) => {
         languages: selectedLanguages,
         country,
         schoolGrade,
-        ...(age && age.trim()
-          ? { age: Number(age) }
-          : {}),
+        ...(age && age.trim() ? { age: Number(age) } : {}),
         ...(role === 'tutor' && {
           category,
           description: { bio, expertise, teachingStyle },
@@ -276,10 +264,7 @@ const useProfileForm = (options?: UseProfileFormOptions) => {
 
       if (isDev) {
         try {
-          console.log(
-            '🔎 useProfileForm → payload (no video):',
-            JSON.stringify(payload, null, 2)
-          );
+          console.log('🔎 useProfileForm → payload (no video):', JSON.stringify(payload, null, 2));
         } catch {}
       }
 
@@ -290,10 +275,7 @@ const useProfileForm = (options?: UseProfileFormOptions) => {
       } catch (err) {
         if (axios.isAxiosError(err) && err.response) {
           if (isDev) {
-            console.error(
-              '❌ useProfileForm → error response:',
-              err.response.data
-            );
+            console.error('❌ useProfileForm → error response:', err.response.data);
           }
           throw new Error(err.response.data.message);
         }

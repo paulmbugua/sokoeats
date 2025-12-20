@@ -21,7 +21,9 @@ export function useVerifyCertificate(opts: { backendUrl: string; certificateId: 
     }
   }, [backendUrl, certificateId]);
 
-  useEffect(() => { refetch(); }, [refetch]);
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
 
   return { data, loading, error, refetch };
 }

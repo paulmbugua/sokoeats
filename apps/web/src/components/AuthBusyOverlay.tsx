@@ -29,12 +29,21 @@ export default function AuthBusyOverlay() {
     <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center">
       <div className="rounded-2xl bg-white dark:bg-[#0f1821] px-6 py-5 shadow-xl ring-1 ring-black/5 flex items-center gap-4">
         <svg className="h-6 w-6 animate-spin" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+          />
         </svg>
-        <p className="text-sm text-darkText dark:text-darkTextPrimary">
-          Signing you in…
-        </p>
+        <p className="text-sm text-darkText dark:text-darkTextPrimary">Signing you in…</p>
       </div>
     </div>
   );

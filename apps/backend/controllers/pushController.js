@@ -5,14 +5,20 @@ async function resolveProfileId(req) {
   const userId = req.user?.id;
   if (!userId) return null;
 
-  const prof = await pool.query('SELECT id FROM profiles WHERE user_id = $1', [userId]);
+  const prof = await pool.query('SELECT id FROM profiles WHERE user_id = $1', [
+    userId,
+  ]);
   return prof.rows[0]?.id ?? null;
 }
 
 export async function registerPushToken(req, res) {
   const profileId = await resolveProfileId(req);
 
-  const { expoPushToken, platform = 'unknown', deviceId = null } = req.body ?? {};
+  const {
+    expoPushToken,
+    platform = 'unknown',
+    deviceId = null,
+  } = req.body ?? {};
   if (!profileId) return res.status(401).json({ error: 'Unauthorized' });
   if (!expoPushToken || typeof expoPushToken !== 'string') {
     return res.status(400).json({ error: 'expoPushToken is required' });
@@ -30,7 +36,7 @@ export async function registerPushToken(req, res) {
       updated_at = now(),
       last_seen_at = now()
     `,
-    [profileId, expoPushToken, platform, deviceId]
+    [profileId, expoPushToken, platform, deviceId],
   );
 
   return res.json({ ok: true });
@@ -47,7 +53,7 @@ export async function unregisterPushToken(req, res) {
 
   await pool.query(
     `delete from push_tokens where expo_push_token = $1 and profile_id = $2`,
-    [expoPushToken, profileId]
+    [expoPushToken, profileId],
   );
 
   return res.json({ ok: true });

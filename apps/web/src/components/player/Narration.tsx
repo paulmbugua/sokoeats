@@ -24,9 +24,7 @@ type Paragraph = {
   wordIndices: number[];
 };
 
-type DisplayToken =
-  | { kind: 'word'; text: string; index: number }
-  | { kind: 'punct'; text: string };
+type DisplayToken = { kind: 'word'; text: string; index: number } | { kind: 'punct'; text: string };
 
 // Optional loose timing seen in some pipes
 type LooseTiming = { start: number; end: number; index: number; text?: string };
@@ -136,7 +134,10 @@ export default function Narration({
   // Screen-reader: announce the active paragraph
   const srText = React.useMemo(() => {
     if (!activePara) return '';
-    return activePara.wordIndices.map((i) => words[i]?.text).filter(Boolean).join(' ');
+    return activePara.wordIndices
+      .map((i) => words[i]?.text)
+      .filter(Boolean)
+      .join(' ');
   }, [activePara, words]);
 
   // Transitions
@@ -149,8 +150,7 @@ export default function Narration({
   const maskFade: React.CSSProperties = {
     WebkitMaskImage:
       'linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%)',
-    maskImage:
-      'linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%)',
+    maskImage: 'linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%)',
   };
 
   // ====== SSML TIMINGS NORMALIZATION ======
@@ -275,13 +275,13 @@ export default function Narration({
         return highlightStyle === 'stripe'
           ? baseSentenceStripe
           : highlightStyle === 'underline'
-          ? {
-              textDecoration: 'underline',
-              textDecorationThickness: '0.14em',
-              textUnderlineOffset: '0.2em',
-              textDecorationColor: 'rgb(var(--hl-rgb) / 0.85)',
-            }
-          : undefined;
+            ? {
+                textDecoration: 'underline',
+                textDecorationThickness: '0.14em',
+                textUnderlineOffset: '0.2em',
+                textDecorationColor: 'rgb(var(--hl-rgb) / 0.85)',
+              }
+            : undefined;
     }
   }
 
@@ -360,12 +360,14 @@ export default function Narration({
           >
             <div
               className="leading-[1.45] font-medium whitespace-pre-wrap break-words select-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
-              style={{
-                fontSize: stageFontSize,
-                fontVariantLigatures: 'none',
-                textRendering: 'optimizeLegibility',
-                ...maskFade,
-              } as React.CSSProperties}
+              style={
+                {
+                  fontSize: stageFontSize,
+                  fontVariantLigatures: 'none',
+                  textRendering: 'optimizeLegibility',
+                  ...maskFade,
+                } as React.CSSProperties
+              }
             >
               {(() => {
                 // Prefer SSML token path when available
@@ -408,7 +410,12 @@ export default function Narration({
                     return (
                       <p
                         className="pointer-events-none"
-                        style={{ ['textWrap' as any]: 'pretty', letterSpacing: '0.005em' } as React.CSSProperties}
+                        style={
+                          {
+                            ['textWrap' as any]: 'pretty',
+                            letterSpacing: '0.005em',
+                          } as React.CSSProperties
+                        }
                       >
                         {visibleTokens.map(renderTok)}
                       </p>
@@ -426,7 +433,12 @@ export default function Narration({
                   return (
                     <p
                       className="pointer-events-none"
-                      style={{ ['textWrap' as any]: 'pretty', letterSpacing: '0.005em' } as React.CSSProperties}
+                      style={
+                        {
+                          ['textWrap' as any]: 'pretty',
+                          letterSpacing: '0.005em',
+                        } as React.CSSProperties
+                      }
                     >
                       {left.map(renderTok)}
                       <span style={sentenceStyleFor(true)} data-sentence-active="">
@@ -442,7 +454,12 @@ export default function Narration({
                   return (
                     <div
                       className="pointer-events-none"
-                      style={{ ['textWrap' as any]: 'pretty', letterSpacing: '0.005em' } as React.CSSProperties}
+                      style={
+                        {
+                          ['textWrap' as any]: 'pretty',
+                          letterSpacing: '0.005em',
+                        } as React.CSSProperties
+                      }
                     >
                       {Array.from(
                         { length: activePara.sentEnd - activePara.sentStart + 1 },

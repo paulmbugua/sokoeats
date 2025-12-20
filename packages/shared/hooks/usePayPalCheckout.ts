@@ -76,8 +76,7 @@ export default function usePayPalCheckout(opts: UsePayPalCheckoutOptions) {
 
   // Load PayPal SDK
   useEffect(() => {
-    const clientId =
-      import.meta.env.VITE_PAYPAL_CLIENT_ID || window.PP_CLIENT_ID || '';
+    const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID || window.PP_CLIENT_ID || '';
     if (!clientId) {
       setError('Missing PayPal Client ID (VITE_PAYPAL_CLIENT_ID)');
       return;
@@ -152,10 +151,11 @@ export default function usePayPalCheckout(opts: UsePayPalCheckoutOptions) {
 
     // Mode B: org subscriptions (use caller-provided flow)
     const effectiveCreateOrder = createOrderOverride ?? defaultCreateOrder;
-    const effectiveOnApprove: PayPalButtonsOptions['onApprove'] =
-      createOrderOverride
-        ? async () => { await onApproved?.(); }
-        : defaultOnApprove;
+    const effectiveOnApprove: PayPalButtonsOptions['onApprove'] = createOrderOverride
+      ? async () => {
+          await onApproved?.();
+        }
+      : defaultOnApprove;
 
     paypal
       .Buttons({
@@ -168,16 +168,7 @@ export default function usePayPalCheckout(opts: UsePayPalCheckoutOptions) {
         },
       })
       .render(containerRef.current);
-  }, [
-    ready,
-    packageId,
-    createOrderOverride,
-    onApproved,
-    style,
-    token,
-    backendUrl,
-    onError,
-  ]);
+  }, [ready, packageId, createOrderOverride, onApproved, style, token, backendUrl, onError]);
 
   return { containerRef, ready, error };
 }

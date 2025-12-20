@@ -1,8 +1,9 @@
 import axios from 'axios';
-import type { Certificate } from '@mytutorapp/shared/types';
-import type { VerifyCertificateResponse, CertificateRecord } from '@mytutorapp/shared/types';
-
-
+import type {
+  Certificate,
+  VerifyCertificateResponse,
+  CertificateRecord,
+} from '@mytutorapp/shared/types';
 
 export async function verifyCertificatePublic(
   backendUrl: string,
@@ -26,10 +27,9 @@ export async function getEligibility(
 }
 
 export async function listMyCertificates(backendUrl: string, token: string) {
-  const { data } = await axios.get<CertificateRecord[]>(
-    `${backendUrl}/api/certificates/me`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+  const { data } = await axios.get<CertificateRecord[]>(`${backendUrl}/api/certificates/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return data;
 }
 
@@ -46,10 +46,7 @@ export async function generateCertificate(
   return res.data;
 }
 
-export async function getMyCertificates(
-  backendUrl: string,
-  token: string
-): Promise<Certificate[]> {
+export async function getMyCertificates(backendUrl: string, token: string): Promise<Certificate[]> {
   const res = await axios.get(`${backendUrl}/api/certificates/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });

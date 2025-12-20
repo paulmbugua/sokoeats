@@ -17,8 +17,6 @@ export type PayoutCurrency = 'USD' | 'KES';
 export type OrgCycle = 'monthly' | 'yearly';
 export type OrgTier = 'starter' | 'pro' | 'enterprise';
 
-
-
 // UI-friendly strings (for display forms etc.)
 export type Pricing = {
   privateSession: string;
@@ -83,8 +81,8 @@ export interface UpdatedProfileData {
   // include 'New' to match ManageProfileForm status choices
   status: 'Online' | 'Offline' | 'Busy' | 'Away' | 'Free' | 'New';
   notifications: boolean;
-  country: string;       // ISO-3166 alpha-2 (e.g. "KE")
-  schoolGrade: string;   // free text: "Grade 7", "Form 2", "Year 10", etc.
+  country: string; // ISO-3166 alpha-2 (e.g. "KE")
+  schoolGrade: string; // free text: "Grade 7", "Form 2", "Year 10", etc.
   gallery: GalleryImage[];
   video: string | File | '';
 
@@ -98,7 +96,7 @@ export interface UpdatedProfileData {
   };
 
   experienceLevel: string;
- 
+
   category: string;
   recommended: string[];
 
@@ -122,9 +120,9 @@ export interface UpdateProfilePayload {
   name: string;
   age?: string; // server expects string
   languages: string[];
-  
+
   country?: string;
-  schoolGrade?: string;   // camelCase for client
+  schoolGrade?: string; // camelCase for client
   gallery?: string[];
   video?: string;
 
@@ -207,8 +205,8 @@ export type MappedProfile = Profile & {
   bank_code?: string;
 
   region?: string | null;
-    country?: string | null;        // e.g. "ke", "uk", "ae"
-    gradeBandKey?: string | null
+  country?: string | null; // e.g. "ke", "uk", "ae"
+  gradeBandKey?: string | null;
   // current payout model
   mpesa_phone_number?: string;
   wise_email?: string;
@@ -365,19 +363,18 @@ export interface RegisterPayload {
   role: Role;
   age?: string;
   languages?: string[];
-  country?: string;         // e.g. "ke"
-  gradeBands?: string[];    // e.g. ["Primary (Grades 1–6)"]
+  country?: string; // e.g. "ke"
+  gradeBands?: string[]; // e.g. ["Primary (Grades 1–6)"]
 }
 
 export interface UpdateRolePayload {
-  userId?: string; 
+  userId?: string;
   role: Role;
   age?: string;
-  name?: string; 
+  name?: string;
   languages?: string[];
-   country?: string;       // "ke"
-  gradeBands?: string[];  // labels array
-
+  country?: string; // "ke"
+  gradeBands?: string[]; // labels array
 }
 
 export interface AuthResponse {
@@ -414,14 +411,13 @@ export interface TutorProfile {
     expertise?: string[];
     teachingStyle?: string[];
     region?: string | null;
-    country?: string | null;        // e.g. "ke", "uk", "ae"
-    gradeBandKey?: string | null;   // e.g. "lower-secondary"
+    country?: string | null; // e.g. "ke", "uk", "ae"
+    gradeBandKey?: string | null; // e.g. "lower-secondary"
   };
   recommended?: TutorProfile[];
   languages?: string[];
   rating?: number;
   totalReviews?: number;
-
 }
 
 // -------------------------------------------------------------
@@ -442,8 +438,8 @@ export interface ProfilePayload {
   name: string;
   age?: number;
   languages: string[];
-  country: string;           // ISO-3166 alpha-2
-  schoolGrade: string;       // free textay
+  country: string; // ISO-3166 alpha-2
+  schoolGrade: string; // free textay
   // tutor-only
   category?: string;
   description?: {
@@ -585,7 +581,6 @@ export interface AICertificateIssuance {
   createdAt: string;
   debitedTokens: number;
 }
-
 
 export interface UpdateProgressPayload {
   courseId: string;
@@ -794,7 +789,6 @@ export type EligibilityResponse = {
   reason: string | null;
 };
 
-
 export interface OrgMembership {
   orgId: string;
   role: OrgRole;
@@ -822,11 +816,11 @@ export interface OrgInviteInfo {
   pass_mark?: number | null;
   timer_s?: number | null;
   max_attempts: number;
-  due_at?: string | null;        // ISO
+  due_at?: string | null; // ISO
   invite_code: string;
   created_by: number;
-  created_at: string;            // ISO
-  signature_url?: string | null; 
+  created_at: string; // ISO
+  signature_url?: string | null;
 
   // joined organization fields
   org_name: string;
@@ -847,7 +841,7 @@ export type AcceptInviteResp = {
   enrollment?: {
     orgId: string;
     assignmentId: string;
-    courseId?: string;     // ← add this in the controller if you need it
+    courseId?: string; // ← add this in the controller if you need it
     passMark?: number | null;
     timerS?: number | null;
     maxAttempts?: number | null;
@@ -856,15 +850,14 @@ export type AcceptInviteResp = {
   message?: string;
 };
 
-
 /** org_quiz_attempts row (subset) */
 export interface OrgAttemptRow {
   id: string;
   org_id: string;
   assignment_id: string;
   user_id: number;
-  started_at: string;    // ISO
-  due_at: string;        // ISO
+  started_at: string; // ISO
+  due_at: string; // ISO
   submitted_at?: string | null;
   status: 'active' | 'submitted' | 'expired' | 'locked';
   score_pct?: number | null;
@@ -879,11 +872,11 @@ export interface OrgSubscription {
   tier: OrgTier;
   cycle: OrgCycle;
   seats: number;
-  currency: PayoutCurrency;      // 'USD' | 'KES'
-  amount_cents: number;          // e.g. 9900 => $99.00
+  currency: PayoutCurrency; // 'USD' | 'KES'
+  amount_cents: number; // e.g. 9900 => $99.00
   active: boolean;
-  started_at: string;            // ISO
-  expires_at: string;            // ISO
+  started_at: string; // ISO
+  expires_at: string; // ISO
   canceled_at?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -895,13 +888,13 @@ export interface OrgSubscriptionPayment {
   org_id: string;
   tier: OrgTier;
   cycle: OrgCycle;
-  currency: PayoutCurrency;      // 'USD' | 'KES'
+  currency: PayoutCurrency; // 'USD' | 'KES'
   amount_cents: number;
   provider: 'MPESA' | 'PAYPAL';
   status: 'pending' | 'completed' | 'failed' | 'canceled';
   provider_order_id?: string | null; // PayPal order id (before capture)
-  provider_txn_id?: string | null;   // MPESA CheckoutRequestID or PayPal capture id
-  mpesa_reference?: string | null;   // e.g. QHX123...
+  provider_txn_id?: string | null; // MPESA CheckoutRequestID or PayPal capture id
+  mpesa_reference?: string | null; // e.g. QHX123...
   error_message?: string | null;
   created_at: string;
   updated_at: string;
@@ -910,8 +903,8 @@ export interface OrgSubscriptionPayment {
 // Ensures a shareable assignment for an existing courseId OR an AI sandbox title.
 export type EnsureShareBody = {
   // One of these two must be present:
-  courseId?: string;   // existing row in `courses`
-  title?: string;      // will (re)use/create AI sandbox course with this title
+  courseId?: string; // existing row in `courses`
+  title?: string; // will (re)use/create AI sandbox course with this title
 
   // Optional knobs when using `title` (mirrors your server normalization):
   courseSize?: 'mini' | 'standard' | 'extended' | 'deep_dive' | 'bootcamp';
@@ -921,7 +914,7 @@ export type EnsureShareBody = {
   title_override?: string | null;
   pass_mark?: number | null;
   timer_s?: number | null;
-  due_at?: string | null;        // ISO
+  due_at?: string | null; // ISO
   max_attempts?: number | null;
 };
 
@@ -933,7 +926,6 @@ export type EnsureShareResp = {
   // Keep assignment open so you can show extra info if desired
   assignment: Record<string, any>;
 };
-
 
 // ---------- Cross-platform Expo FileSystem typing (no any) ----------
 export type Base64Encoding = 'utf8' | 'base64';
@@ -1024,7 +1016,6 @@ export type OerMeta = {
   attribution_html?: string | null;
 } | null;
 
-
 // packages/shared/types/orgExams.ts
 export type OrgExamTerm = {
   id: string;
@@ -1059,7 +1050,7 @@ export type OrgExamConfig = {
   terms: OrgExamTerm[];
   sessions: OrgExamSession[];
   gradingBands: OrgExamGradingBand[];
-  reportTitle?: string | null; 
+  reportTitle?: string | null;
 };
 
 export type OrgExamResultRow = {

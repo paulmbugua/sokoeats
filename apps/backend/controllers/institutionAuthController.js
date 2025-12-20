@@ -10,32 +10,42 @@ import { ensureOrgForUser } from '../services/orgBootstrap.js';
 import { admin } from '../bootstrap/firebaseAdmin.js';
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID_WEB);
-const signToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '1d' });
+const signToken = (id) =>
+  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '1d' });
 
 /** Email/password login (no role logic) */
 export const institutionLogin = async (req, res) => {
   try {
     const { email, password } = req.body || {};
     if (!email?.trim() || !password) {
-      return res.status(400).json({ success: false, message: 'Email and password are required' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Email and password are required' });
     }
 
-    const { rows } = await pool.query('SELECT * FROM users WHERE email=$1', [email.trim()]);
+    const { rows } = await pool.query('SELECT * FROM users WHERE email=$1', [
+      email.trim(),
+    ]);
     if (!rows.length) {
-      return res.status(401).json({ success: false, message: 'User not found' });
+      return res
+        .status(401)
+        .json({ success: false, message: 'User not found' });
     }
 
     const user = rows[0];
 
     if (!user.password) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Use Google sign-in for this account' });
+      return res.status(400).json({
+        success: false,
+        message: 'Use Google sign-in for this account',
+      });
     }
 
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      return res
+        .status(401)
+        .json({ success: false, message: 'Invalid credentials' });
     }
 
     // Ensure the user has an org and owner/admin membership (idempotent)
@@ -44,8 +54,6 @@ export const institutionLogin = async (req, res) => {
     } catch (e) {
       console.warn('[institutionLogin] ensureOrgForUser', e?.message);
     }
-
-    
 
     const token = signToken(user.id);
 
@@ -64,45 +72,62 @@ export const institutionLogin = async (req, res) => {
   }
 };
 
-
 /** Registration (no role asked; silently defaults to 'tutor' to avoid student profile flow) */
 export const institutionRegister = async (req, res) => {
   try {
     const { name, email, password } = req.body || {};
     if (!name || !email?.trim() || !password) {
-      return res.status(400).json({ success: false, message: 'Name, email and password are required' });
+      return res.status(400).json({
+        success: false,
+        message: 'Name, email and password are required',
+      });
     }
     if (!validator.isEmail(email.trim())) {
-      return res.status(400).json({ success: false, message: 'Invalid email format' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid email format' });
     }
     if (password.length < 8) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters',
+      });
     }
 
-    const exists = await pool.query('SELECT 1 FROM users WHERE email=$1', [email.trim()]);
+    const exists = await pool.query('SELECT 1 FROM users WHERE email=$1', [
+      email.trim(),
+    ]);
     if (exists.rows.length) {
-      return res.status(409).json({ success: false, message: 'User already exists' });
+      return res
+        .status(409)
+        .json({ success: false, message: 'User already exists' });
     }
 
     const hashed = await bcrypt.hash(password, 10);
     const uins = await pool.query(
       'INSERT INTO users (name, email, password, role) VALUES ($1,$2,$3,$4) RETURNING id, name, email, must_change_password',
-      [name.trim().slice(0, 80), email.trim(), hashed, 'admin']
+      [name.trim().slice(0, 80), email.trim(), hashed, 'admin'],
     );
-       const userId = uins.rows[0].id;
+    const userId = uins.rows[0].id;
 
     // ✅ Single source of truth for org + membership
     try {
       await ensureOrgForUser(userId);
     } catch (bootErr) {
-      console.warn('[institutionRegister] ensureOrgForUser failed (non-fatal):', bootErr?.message);
+      console.warn(
+        '[institutionRegister] ensureOrgForUser failed (non-fatal):',
+        bootErr?.message,
+      );
     }
 
     const token = signToken(userId);
     const mustChangePassword = !!uins.rows[0].must_change_password;
-   return res
-      .status(201)
-      .json({ success: true, token, message: 'Sign up successful', mustChangePassword });
+    return res.status(201).json({
+      success: true,
+      token,
+      message: 'Sign up successful',
+      mustChangePassword,
+    });
   } catch (e) {
     console.error('[institutionRegister]', e);
     return res.status(500).json({ success: false, message: 'Server error' });
@@ -122,12 +147,21 @@ export const institutionGoogleLogin = async (req, res) => {
     const decodePayload = (t) => {
       const parts = String(t).split('.');
       if (parts.length !== 3) return null;
-      const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+      const b64 = parts[1]
+        .replace(/-/g, '+')
+        .replace(/_/g, '/')
         .padEnd(Math.ceil(parts[1].length / 4) * 4, '=');
-      try { return JSON.parse(Buffer.from(b64, 'base64').toString('utf8')); } catch { return null; }
+      try {
+        return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+      } catch {
+        return null;
+      }
     };
     const payload = decodePayload(rawToken);
-    if (!payload) return res.status(400).json({ success: false, message: 'Malformed token' });
+    if (!payload)
+      return res
+        .status(400)
+        .json({ success: false, message: 'Malformed token' });
 
     const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'mytutorapp-d3c91';
     const allowedAudiences = [
@@ -139,9 +173,14 @@ export const institutionGoogleLogin = async (req, res) => {
     let email, googleId, displayName;
 
     // Firebase ID token path
-    if (typeof payload.iss === 'string' && payload.iss.startsWith('https://securetoken.google.com/')) {
+    if (
+      typeof payload.iss === 'string' &&
+      payload.iss.startsWith('https://securetoken.google.com/')
+    ) {
       if (payload.aud !== PROJECT_ID) {
-        return res.status(401).json({ success: false, message: 'Token audience mismatch' });
+        return res
+          .status(401)
+          .json({ success: false, message: 'Token audience mismatch' });
       }
       const decoded = await admin.auth().verifyIdToken(rawToken);
       email = decoded.email;
@@ -149,33 +188,51 @@ export const institutionGoogleLogin = async (req, res) => {
       displayName = preferredName || decoded.name || email || '';
     }
     // Google ID token path
-    else if (payload.iss === 'https://accounts.google.com' || payload.iss === 'accounts.google.com') {
+    else if (
+      payload.iss === 'https://accounts.google.com' ||
+      payload.iss === 'accounts.google.com'
+    ) {
       const ticket = await googleClient.verifyIdToken({
         idToken: rawToken,
         audience: allowedAudiences.length ? allowedAudiences : undefined,
       });
       const g = ticket.getPayload();
-      if (!g) return res.status(401).json({ success: false, message: 'Invalid Google token' });
-      if (g.aud && allowedAudiences.length && !allowedAudiences.includes(g.aud)) {
-        return res.status(401).json({ success: false, message: 'Google audience mismatch' });
+      if (!g)
+        return res
+          .status(401)
+          .json({ success: false, message: 'Invalid Google token' });
+      if (
+        g.aud &&
+        allowedAudiences.length &&
+        !allowedAudiences.includes(g.aud)
+      ) {
+        return res
+          .status(401)
+          .json({ success: false, message: 'Google audience mismatch' });
       }
       if (g.email_verified === false) {
-        return res.status(401).json({ success: false, message: 'Email not verified' });
+        return res
+          .status(401)
+          .json({ success: false, message: 'Email not verified' });
       }
       email = g.email;
       googleId = g.sub;
       displayName = preferredName || g.name || email || '';
     } else {
-      return res.status(400).json({ success: false, message: 'Unsupported token issuer' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Unsupported token issuer' });
     }
 
     if (!email || !googleId) {
-      return res.status(400).json({ success: false, message: 'Invalid token claims' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid token claims' });
     }
 
     // Upsert user; default role to 'admin' for new accounts and upgrade if null/non-admin (but never downgrade superadmin)
     const { rows } = await pool.query(
-  `
+      `
   INSERT INTO users (name, email, google_id, role)
   VALUES ($1, $2, $3, 'admin')
   ON CONFLICT (email) DO UPDATE
@@ -184,10 +241,8 @@ export const institutionGoogleLogin = async (req, res) => {
       -- ❌ no role change on conflict
   RETURNING id, email, name, role, must_change_password
   `,
-  [displayName || email, email, googleId]
-);
-
-
+      [displayName || email, email, googleId],
+    );
 
     const user = rows[0];
 
@@ -195,12 +250,15 @@ export const institutionGoogleLogin = async (req, res) => {
     try {
       await ensureOrgForUser(user.id);
     } catch (e) {
-      console.warn('[institutionGoogleLogin] ensureOrgForUser failed (non-fatal):', e?.message);
+      console.warn(
+        '[institutionGoogleLogin] ensureOrgForUser failed (non-fatal):',
+        e?.message,
+      );
     }
 
     const token = signToken(user.id);
     const mustChangePassword = !!user.must_change_password;
-   return res.status(200).json({
+    return res.status(200).json({
       success: true,
       token,
       userId: user.id,
@@ -209,10 +267,11 @@ export const institutionGoogleLogin = async (req, res) => {
     });
   } catch (e) {
     console.error('[institutionGoogleLogin]', e);
-    return res.status(500).json({ success: false, message: 'Google authentication failed' });
+    return res
+      .status(500)
+      .json({ success: false, message: 'Google authentication failed' });
   }
 };
-
 
 /** Request OTP for password reset (shared semantics) */
 export const institutionRequestPasswordReset = async (req, res) => {
@@ -262,9 +321,7 @@ export const institutionRequestPasswordReset = async (req, res) => {
     });
   } catch (e) {
     console.error('[institutionRequestPasswordReset]', e);
-    return res
-      .status(500)
-      .json({ success: false, message: 'Server error' });
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
@@ -279,12 +336,10 @@ export const institutionVerifyOTPAndResetPassword = async (req, res) => {
     }
 
     if (newPassword.length < 8) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: 'New password must be at least 8 characters',
-        });
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 8 characters',
+      });
     }
 
     const emailLower = rawEmail.toLowerCase();
@@ -309,15 +364,14 @@ export const institutionVerifyOTPAndResetPassword = async (req, res) => {
 
     // Validate OTP and expiry
     if (!u.reset_otp || u.reset_otp !== otp) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Invalid OTP' });
+      return res.status(400).json({ success: false, message: 'Invalid OTP' });
     }
 
-    if (!u.reset_otp_expires_at || new Date(u.reset_otp_expires_at) < new Date()) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Expired OTP' });
+    if (
+      !u.reset_otp_expires_at ||
+      new Date(u.reset_otp_expires_at) < new Date()
+    ) {
+      return res.status(400).json({ success: false, message: 'Expired OTP' });
     }
 
     // Hash new password
@@ -342,9 +396,7 @@ export const institutionVerifyOTPAndResetPassword = async (req, res) => {
     });
   } catch (e) {
     console.error('[institutionVerifyOTPAndResetPassword]', e);
-    return res
-      .status(500)
-      .json({ success: false, message: 'Server error' });
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
@@ -357,23 +409,27 @@ export const institutionChangePassword = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
     if (!currentPassword || !newPassword) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Current and new password are required' });
+      return res.status(400).json({
+        success: false,
+        message: 'Current and new password are required',
+      });
     }
     if (newPassword.length < 8) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'New password must be at least 8 characters' });
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 8 characters',
+      });
     }
 
     // Load user
     const { rows } = await pool.query(
       'SELECT id, password FROM users WHERE id=$1 LIMIT 1',
-      [userId]
+      [userId],
     );
     if (!rows.length || !rows[0].password) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: 'User not found' });
     }
 
     const user = rows[0];
@@ -381,7 +437,9 @@ export const institutionChangePassword = async (req, res) => {
     // Check current password
     const ok = await bcrypt.compare(currentPassword, user.password);
     if (!ok) {
-      return res.status(401).json({ success: false, message: 'Invalid current password' });
+      return res
+        .status(401)
+        .json({ success: false, message: 'Invalid current password' });
     }
 
     // Hash and update
@@ -394,7 +452,7 @@ export const institutionChangePassword = async (req, res) => {
              must_change_password = FALSE   -- ✅ clear the flag
        WHERE id = $2
       `,
-      [hash, userId]
+      [hash, userId],
     );
 
     return res.json({ success: true, message: 'Password updated' });

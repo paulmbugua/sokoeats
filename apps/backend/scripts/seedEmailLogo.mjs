@@ -13,9 +13,9 @@ const __dirname = path.dirname(__filename);
  * ───────────────────────────────────────────────────────── */
 async function loadEnv() {
   const candidates = [
-    path.resolve(__dirname, '../../.env'),      // apps/backend/.env
-    path.resolve(__dirname, '../../../.env'),   // repo root .env
-    path.resolve(__dirname, '../.env'),         // scripts/../.env (fallback)
+    path.resolve(__dirname, '../../.env'), // apps/backend/.env
+    path.resolve(__dirname, '../../../.env'), // repo root .env
+    path.resolve(__dirname, '../.env'), // scripts/../.env (fallback)
   ];
   for (const p of candidates) {
     try {
@@ -42,10 +42,12 @@ const CLOUDINARY_API_SECRET =
 
 function ensureCloudinaryEnv() {
   const missing = [];
-  if (!CLOUDINARY_NAME) missing.push('CLOUDINARY_CLOUD_NAME (or CLOUDINARY_NAME)');
+  if (!CLOUDINARY_NAME)
+    missing.push('CLOUDINARY_CLOUD_NAME (or CLOUDINARY_NAME)');
   if (!CLOUDINARY_API_KEY) missing.push('CLOUDINARY_API_KEY');
   if (!CLOUDINARY_API_SECRET) missing.push('CLOUDINARY_API_SECRET');
-  if (missing.length) throw new Error(`Missing Cloudinary env vars: ${missing.join(', ')}`);
+  if (missing.length)
+    throw new Error(`Missing Cloudinary env vars: ${missing.join(', ')}`);
 }
 ensureCloudinaryEnv();
 
@@ -66,7 +68,10 @@ const getFlag = (name, fallback) => {
 };
 const hasFlag = (name) => argv.includes(`--${name}`);
 
-const filePath = getFlag('file', path.resolve(__dirname, '../uploads/logo.png'));
+const filePath = getFlag(
+  'file',
+  path.resolve(__dirname, '../uploads/logo.png'),
+);
 const folder = getFlag('folder', 'branding');
 const publicId = getFlag('public-id', 'email_logo');
 const settingKey = getFlag('key', 'email_logo_url');
@@ -83,7 +88,9 @@ async function getPool() {
     return mod.default || mod; // support both default/named export patterns
   } catch (err) {
     console.error('DB import/connection failed:', err.message);
-    console.error('Tip: set DATABASE_URL or PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE, or run with --no-db');
+    console.error(
+      'Tip: set DATABASE_URL or PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE, or run with --no-db',
+    );
     throw err;
   }
 }
@@ -95,7 +102,7 @@ async function detectSettingsTable(db) {
        FROM information_schema.tables
       WHERE table_schema='public'
         AND table_name = ANY($1)`,
-    [candidates]
+    [candidates],
   );
   const names = rows.map((r) => r.table_name);
   return candidates.find((c) => names.includes(c)) || null;
@@ -143,7 +150,9 @@ async function main() {
     await upsertSetting(db, table, settingKey, secure_url);
     console.log(`✅ Saved to ${table}.${settingKey}`);
   } else {
-    console.warn('⚠️ No settings table found (looked for app_settings/site_settings/settings).');
+    console.warn(
+      '⚠️ No settings table found (looked for app_settings/site_settings/settings).',
+    );
     console.warn(`   Use env instead: EMAIL_LOGO_URL=${secure_url}`);
   }
 }

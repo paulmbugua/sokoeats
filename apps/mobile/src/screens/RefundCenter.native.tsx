@@ -1,5 +1,5 @@
 // apps/mobile/src/screens/RefundCenter.native.tsx
-import React, { useRef, useState } from "react";
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,11 @@ import {
   AccessibilityInfo,
   findNodeHandle,
   Platform,
-} from "react-native";
-import { useColorScheme } from "react-native";
+  useColorScheme,
+} from 'react-native';
 
 // ✅ same selector used in CreateProfile
-import SelectField from "./SelectField.native";
+import SelectField from './SelectField.native';
 
 type RefundCenterProps = {
   backendUrl: string;
@@ -26,51 +26,53 @@ type RefundCenterProps = {
 };
 
 const REASON_OPTIONS = [
-  { label: "Accidental purchase", value: "accidental_purchase" },
-  { label: "Duplicate charge", value: "duplicate_charge" },
-  { label: "Didn’t receive service", value: "didnt_receive_service" },
-  { label: "Quality issue", value: "quality_issue" },
-  { label: "Other", value: "other" },
+  { label: 'Accidental purchase', value: 'accidental_purchase' },
+  { label: 'Duplicate charge', value: 'duplicate_charge' },
+  { label: 'Didn’t receive service', value: 'didnt_receive_service' },
+  { label: 'Quality issue', value: 'quality_issue' },
+  { label: 'Other', value: 'other' },
 ] as const;
 
 const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, className }) => {
   const scheme = useColorScheme();
-  const isDark = scheme === "dark";
+  const isDark = scheme === 'dark';
 
   const [isOpen, setIsOpen] = useState(false);
 
   // form states
-  const [txId, setTxId] = useState("");
-  const [amount, setAmount] = useState("");
-  const [reason, setReason] = useState<string>("accidental_purchase");
-  const [details, setDetails] = useState("");
-  const [resolution, setResolution] = useState<"original" | "tokens">("original");
-  const [attachmentUrl, setAttachmentUrl] = useState("");
+  const [txId, setTxId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState<string>('accidental_purchase');
+  const [details, setDetails] = useState('');
+  const [resolution, setResolution] = useState<'original' | 'tokens'>('original');
+  const [attachmentUrl, setAttachmentUrl] = useState('');
   const [agree, setAgree] = useState(false);
   const [showPolicy, setShowPolicy] = useState(false);
   const [agreeErr, setAgreeErr] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const scrollRef = useRef<ScrollView | null>(null);
   const agreeRowRef = useRef<View | null>(null);
 
   const fmtErr = (e: unknown) =>
-    typeof e === "object" && e && (e as any).message ? (e as any).message : String(e ?? "Request failed");
+    typeof e === 'object' && e && (e as any).message
+      ? (e as any).message
+      : String(e ?? 'Request failed');
 
   // Helpers
-  const clampApiBase = (u: string) => u.replace(/\/+$/, "");
+  const clampApiBase = (u: string) => u.replace(/\/+$/, '');
 
   async function submit() {
     setMsg(null);
     setAgreeErr(false);
 
     if (!token) {
-      setMsg({ kind: "err", text: "You must be logged in to request a refund." });
+      setMsg({ kind: 'err', text: 'You must be logged in to request a refund.' });
       return;
     }
     if (!txId.trim()) {
-      setMsg({ kind: "err", text: "Please enter your Transaction / Order ID." });
+      setMsg({ kind: 'err', text: 'Please enter your Transaction / Order ID.' });
       return;
     }
     if (!agree) {
@@ -86,15 +88,15 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
         }
       });
 
-      setMsg({ kind: "err", text: "Please acknowledge the refund policy." });
+      setMsg({ kind: 'err', text: 'Please acknowledge the refund policy.' });
       return;
     }
 
     setBusy(true);
     try {
       const r = await fetch(`${clampApiBase(backendUrl)}/api/payment/refunds`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           transactionId: txId.trim(),
           amount: amount ? Number(amount) : undefined,
@@ -108,16 +110,19 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.message || `HTTP ${r.status}`);
 
-      setMsg({ kind: "ok", text: "Your refund request has been submitted. We’ll email you updates." });
-      setAmount("");
-      setDetails("");
-      setAttachmentUrl("");
+      setMsg({
+        kind: 'ok',
+        text: 'Your refund request has been submitted. We’ll email you updates.',
+      });
+      setAmount('');
+      setDetails('');
+      setAttachmentUrl('');
       setAgree(false);
       setShowPolicy(false);
       setIsOpen(false);
     } catch (e) {
       const text = fmtErr(e);
-      setMsg({ kind: "err", text });
+      setMsg({ kind: 'err', text });
     } finally {
       setBusy(false);
     }
@@ -126,7 +131,7 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
   return (
     <View
       className={`rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-4 ${
-        className || ""
+        className || ''
       }`}
     >
       {!isOpen ? (
@@ -134,7 +139,7 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
           <Pressable
             onPress={() => setIsOpen(true)}
             className="h-10 px-4 rounded-xl bg-indigo-600"
-            android_ripple={{ color: isDark ? "rgba(255,255,255,0.08)" : "#c7d2fe" }}
+            android_ripple={{ color: isDark ? 'rgba(255,255,255,0.08)' : '#c7d2fe' }}
           >
             <Text className="text-white font-semibold leading-10">Request a refund</Text>
           </Pressable>
@@ -155,7 +160,9 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
           {/* Policy */}
           {showPolicy && (
             <View className="mt-3 rounded-xl p-3 bg-[#f6f9fc] dark:bg-[#0b1620] border border-[#cedbe8] dark:border-[#182430]">
-              <Text className="font-semibold mb-1 text-slate-900 dark:text-white">Refund policy (summary)</Text>
+              <Text className="font-semibold mb-1 text-slate-900 dark:text-white">
+                Refund policy (summary)
+              </Text>
               <View className="pl-3">
                 <Text className="text-sm leading-5 text-slate-700 dark:text-white/80">
                   • Requests within 7 days of purchase are usually eligible.
@@ -177,12 +184,14 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
           {msg && (
             <View
               className={`mt-3 rounded-lg px-3 py-2 ${
-                msg.kind === "ok"
-                  ? "bg-emerald-50 border border-emerald-200"
-                  : "bg-rose-50 border border-rose-200"
+                msg.kind === 'ok'
+                  ? 'bg-emerald-50 border border-emerald-200'
+                  : 'bg-rose-50 border border-rose-200'
               }`}
             >
-              <Text className={msg.kind === "ok" ? "text-emerald-900" : "text-rose-900"}>{msg.text}</Text>
+              <Text className={msg.kind === 'ok' ? 'text-emerald-900' : 'text-rose-900'}>
+                {msg.text}
+              </Text>
             </View>
           )}
 
@@ -205,7 +214,9 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
               </View>
 
               <View className="mb-3">
-                <Text className="text-sm font-medium mb-1 text-slate-800 dark:text-white">Amount (optional)</Text>
+                <Text className="text-sm font-medium mb-1 text-slate-800 dark:text-white">
+                  Amount (optional)
+                </Text>
                 <TextInput
                   value={amount}
                   onChangeText={setAmount}
@@ -258,39 +269,41 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
 
             {/* Resolution toggle */}
             <View className="mt-3">
-              <Text className="text-sm font-medium mb-1 text-slate-800 dark:text-white">Refund as</Text>
+              <Text className="text-sm font-medium mb-1 text-slate-800 dark:text-white">
+                Refund as
+              </Text>
               <View className="flex-row gap-2">
                 <Pressable
-                  onPress={() => setResolution("original")}
+                  onPress={() => setResolution('original')}
                   className={`px-3 py-2 rounded-xl border ${
-                    resolution === "original"
-                      ? "bg-indigo-600 border-indigo-600"
-                      : "bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-darkCard"
+                    resolution === 'original'
+                      ? 'bg-indigo-600 border-indigo-600'
+                      : 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-darkCard'
                   }`}
                 >
                   <Text
                     className={
-                      resolution === "original"
-                        ? "text-white font-semibold"
-                        : "text-slate-800 dark:text-white"
+                      resolution === 'original'
+                        ? 'text-white font-semibold'
+                        : 'text-slate-800 dark:text-white'
                     }
                   >
                     Original method
                   </Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => setResolution("tokens")}
+                  onPress={() => setResolution('tokens')}
                   className={`px-3 py-2 rounded-xl border ${
-                    resolution === "tokens"
-                      ? "bg-indigo-600 border-indigo-600"
-                      : "bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-darkCard"
+                    resolution === 'tokens'
+                      ? 'bg-indigo-600 border-indigo-600'
+                      : 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-darkCard'
                   }`}
                 >
                   <Text
                     className={
-                      resolution === "tokens"
-                        ? "text-white font-semibold"
-                        : "text-slate-800 dark:text-white"
+                      resolution === 'tokens'
+                        ? 'text-white font-semibold'
+                        : 'text-slate-800 dark:text-white'
                     }
                   >
                     Tokens
@@ -302,7 +315,7 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
             {/* Agree row */}
             <View
               ref={agreeRowRef}
-              className={`mt-3 rounded-xl px-3 py-2 ${agreeErr ? "border border-rose-400" : ""}`}
+              className={`mt-3 rounded-xl px-3 py-2 ${agreeErr ? 'border border-rose-400' : ''}`}
               accessible
               accessibilityLabel="Agree to refund policy"
             >
@@ -320,7 +333,7 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
               </View>
               <Pressable onPress={() => setShowPolicy((v) => !v)} className="mt-1">
                 <Text className="text-xs underline text-[#49739c]">
-                  {showPolicy ? "Hide policy" : "View policy"}
+                  {showPolicy ? 'Hide policy' : 'View policy'}
                 </Text>
               </Pressable>
             </View>
@@ -330,10 +343,10 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
               <Pressable
                 disabled={busy}
                 onPress={submit}
-                className={`h-10 px-4 rounded-xl bg-indigo-600 ${busy ? "opacity-60" : ""}`}
+                className={`h-10 px-4 rounded-xl bg-indigo-600 ${busy ? 'opacity-60' : ''}`}
               >
                 <Text className="text-white font-semibold leading-10">
-                  {busy ? "Submitting…" : "Submit refund request"}
+                  {busy ? 'Submitting…' : 'Submit refund request'}
                 </Text>
               </Pressable>
 
@@ -341,13 +354,11 @@ const RefundCenter: React.FC<RefundCenterProps> = ({ backendUrl, token, classNam
                 onPress={() => {
                   const url = `${clampApiBase(backendUrl)}/support`;
                   Linking.openURL(url).catch(() => {
-                    Alert.alert("Support", "Please contact support via the website.");
+                    Alert.alert('Support', 'Please contact support via the website.');
                   });
                 }}
               >
-                <Text className="text-xs underline text-[#49739c]">
-                  Need help? Contact support
-                </Text>
+                <Text className="text-xs underline text-[#49739c]">Need help? Contact support</Text>
               </Pressable>
             </View>
 

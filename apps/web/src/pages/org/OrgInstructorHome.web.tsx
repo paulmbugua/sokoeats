@@ -24,8 +24,7 @@ const OrgInstructorHome: React.FC = () => {
     (org as any)?.org_name ||
     'Your Institution';
 
-  const tierLabel: string =
-    (org?.tier && String(org.tier).toUpperCase()) || 'STARTER';
+  const tierLabel: string = (org?.tier && String(org.tier).toUpperCase()) || 'STARTER';
 
   const handleLogout = useCallback(async () => {
     if (orgLogout) {
@@ -37,10 +36,9 @@ const OrgInstructorHome: React.FC = () => {
   // ─────────────────────────────────────────────────────────
   // Instructor signature state (org-level instructor_signature_url)
   // ─────────────────────────────────────────────────────────
-  const initialSigUrl =
-    org?.instructor_signature_url
-      ? resolveAsset(org.instructor_signature_url, backendUrl, orgName)
-      : null;
+  const initialSigUrl = org?.instructor_signature_url
+    ? resolveAsset(org.instructor_signature_url, backendUrl, orgName)
+    : null;
 
   const [savingSig, setSavingSig] = useState(false);
   const [sigError, setSigError] = useState<string | null>(null);
@@ -100,9 +98,7 @@ const OrgInstructorHome: React.FC = () => {
       const res: any = await uploadAsset(backendUrl, authToken, selectedFile, 'image');
 
       const rawUrl =
-        typeof res === 'string'
-          ? res
-          : res?.url || res?.secure_url || res?.data?.url || '';
+        typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || '';
 
       if (!rawUrl) {
         console.error('[OrgInstructorHome] uploadAsset response with no url:', res);
@@ -116,10 +112,9 @@ const OrgInstructorHome: React.FC = () => {
 
       const updated = await updateOrgBranding(backendUrl, authToken, org.id, payload);
 
-      const savedUrl =
-        updated?.instructor_signature_url
-          ? resolveAsset(updated.instructor_signature_url, backendUrl, orgName)
-          : finalUrl;
+      const savedUrl = updated?.instructor_signature_url
+        ? resolveAsset(updated.instructor_signature_url, backendUrl, orgName)
+        : finalUrl;
 
       setPreviewUrl(savedUrl);
       setSelectedFile(null);
@@ -166,29 +161,17 @@ const OrgInstructorHome: React.FC = () => {
 
         // Keep only assignments that have at least one submission
         const withSubs = rows.filter((row: any) => {
-          const count =
-            row.submission_count ??
-            row.submissions_count ??
-            row.answers_count ??
-            0;
+          const count = row.submission_count ?? row.submissions_count ?? row.answers_count ?? 0;
           return row.has_submission || row.hasSubmitted || count > 0;
         });
 
         // Sort by latest submission date desc (fallback to due_at/created_at)
         withSubs.sort((a: any, b: any) => {
           const aDate = new Date(
-            a.latest_submission_at ||
-              a.submitted_at ||
-              a.due_at ||
-              a.created_at ||
-              0
+            a.latest_submission_at || a.submitted_at || a.due_at || a.created_at || 0
           ).getTime();
           const bDate = new Date(
-            b.latest_submission_at ||
-              b.submitted_at ||
-              b.due_at ||
-              b.created_at ||
-              0
+            b.latest_submission_at || b.submitted_at || b.due_at || b.created_at || 0
           ).getTime();
           return bDate - aDate;
         });
@@ -235,9 +218,8 @@ const OrgInstructorHome: React.FC = () => {
               Welcome back, instructor
             </h1>
             <p className="text-xs sm:text-sm text-mutedGray dark:text-darkTextSecondary">
-              You’re managing learning for{' '}
-              <span className="font-semibold">{orgName}</span>. Use this space to
-              create assignments, enter exam marks, and keep your classes organized.
+              You’re managing learning for <span className="font-semibold">{orgName}</span>. Use
+              this space to create assignments, enter exam marks, and keep your classes organized.
             </p>
             <div className="flex flex-wrap gap-2 mt-1.5">
               <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
@@ -282,9 +264,7 @@ const OrgInstructorHome: React.FC = () => {
         <section className="rounded-3xl border border-slate-200/70 dark:border-darkCard bg-white/90 dark:bg-[#020617] px-4 sm:px-5 py-4 sm:py-5">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <div>
-              <h2 className="text-sm sm:text-base font-semibold">
-                Quick actions
-              </h2>
+              <h2 className="text-sm sm:text-base font-semibold">Quick actions</h2>
               <p className="text-xs sm:text-sm text-mutedGray dark:text-darkTextSecondary">
                 Jump straight into the tools you use most often.
               </p>
@@ -304,8 +284,9 @@ const OrgInstructorHome: React.FC = () => {
           </div>
 
           <p className="mt-3 text-[11px] sm:text-xs text-mutedGray dark:text-darkTextSecondary">
-            Use the E-Learning Portal to configure assignments and review analytics. Use the Exams &amp; results
-            area to directly capture marks, auto-grade, and generate rich PDF report cards for guardians.
+            Use the E-Learning Portal to configure assignments and review analytics. Use the Exams
+            &amp; results area to directly capture marks, auto-grade, and generate rich PDF report
+            cards for guardians.
           </p>
         </section>
 
@@ -313,16 +294,12 @@ const OrgInstructorHome: React.FC = () => {
         <section className="rounded-3xl border border-slate-200/70 dark:border-darkCard bg-white/90 dark:bg-[#020617] px-4 sm:px-5 py-4 sm:py-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-sm sm:text-base font-semibold">
-                Instructor signature
-              </h2>
+              <h2 className="text-sm sm:text-base font-semibold">Instructor signature</h2>
               <p className="text-xs sm:text-sm text-mutedGray dark:text-darkTextSecondary">
                 Upload a clear signature image to appear in the{' '}
-                <span className="font-semibold">
-                  “Class teacher / Instructor”
-                </span>{' '}
-                section of your report cards. This uses the same branding field as the
-                Institution E-Learning portal.
+                <span className="font-semibold">“Class teacher / Instructor”</span> section of your
+                report cards. This uses the same branding field as the Institution E-Learning
+                portal.
               </p>
             </div>
             {previewUrl && (
@@ -365,9 +342,9 @@ const OrgInstructorHome: React.FC = () => {
           </div>
 
           <p className="mt-2 text-[11px] sm:text-xs text-mutedGray dark:text-darkTextSecondary">
-            Tip: use a transparent PNG (around 600×200px) with a dark pen on a light
-            background. Once saved, future report cards and certificates will
-            automatically use this signature image.
+            Tip: use a transparent PNG (around 600×200px) with a dark pen on a light background.
+            Once saved, future report cards and certificates will automatically use this signature
+            image.
           </p>
 
           {/* NEW: Apply preview as class-teacher signature for a specific class */}
@@ -423,15 +400,9 @@ const OrgInstructorHome: React.FC = () => {
             </button>
           </div>
 
-          {sigError && (
-            <p className="mt-2 text-[11px] sm:text-xs text-red-500">
-              {sigError}
-            </p>
-          )}
+          {sigError && <p className="mt-2 text-[11px] sm:text-xs text-red-500">{sigError}</p>}
           {sigSuccess && (
-            <p className="mt-2 text-[11px] sm:text-xs text-emerald-500">
-              {sigSuccess}
-            </p>
+            <p className="mt-2 text-[11px] sm:text-xs text-emerald-500">{sigSuccess}</p>
           )}
         </section>
 
@@ -450,8 +421,8 @@ const OrgInstructorHome: React.FC = () => {
               </span>
             </div>
             <p className="mt-2 text-sm text-mutedGray dark:text-darkTextSecondary">
-              Create AI-powered lessons, configure assignments, and share
-              links that drop learners directly into RobotTeacher.
+              Create AI-powered lessons, configure assignments, and share links that drop learners
+              directly into RobotTeacher.
             </p>
           </Link>
 
@@ -468,8 +439,8 @@ const OrgInstructorHome: React.FC = () => {
               </span>
             </div>
             <p className="mt-2 text-sm text-mutedGray dark:text-darkTextSecondary">
-              Enter student marks directly, auto-grade using your bands, and generate
-              modern report cards with analytics and email sending to guardians.
+              Enter student marks directly, auto-grade using your bands, and generate modern report
+              cards with analytics and email sending to guardians.
             </p>
           </Link>
 
@@ -486,8 +457,8 @@ const OrgInstructorHome: React.FC = () => {
               </span>
             </div>
             <p className="mt-2 text-sm text-mutedGray dark:text-darkTextSecondary">
-              Build structured courses with topics, lessons, and assessments that plug
-              directly into your institution’s portal and learner home.
+              Build structured courses with topics, lessons, and assessments that plug directly into
+              your institution’s portal and learner home.
             </p>
           </Link>
 
@@ -504,8 +475,8 @@ const OrgInstructorHome: React.FC = () => {
               </span>
             </div>
             <p className="mt-2 text-sm text-mutedGray dark:text-darkTextSecondary">
-              Add video lessons, slides, and PDFs to your ClassVault so students can
-              revisit key sessions on their own time.
+              Add video lessons, slides, and PDFs to your ClassVault so students can revisit key
+              sessions on their own time.
             </p>
           </Link>
 
@@ -522,8 +493,8 @@ const OrgInstructorHome: React.FC = () => {
               </span>
             </div>
             <p className="mt-2 text-sm text-mutedGray dark:text-darkTextSecondary">
-              Keep in touch with learners and guardians, respond to questions, and
-              coordinate support from a single inbox.
+              Keep in touch with learners and guardians, respond to questions, and coordinate
+              support from a single inbox.
             </p>
           </Link>
 
@@ -547,83 +518,66 @@ const OrgInstructorHome: React.FC = () => {
               </p>
             )}
 
-            {!recentLoading && recentError && (
-              <p className="text-xs text-red-500">
-                {recentError}
+            {!recentLoading && recentError && <p className="text-xs text-red-500">{recentError}</p>}
+
+            {!recentLoading && !recentError && recentAssignments.length === 0 && (
+              <p className="text-xs text-mutedGray dark:text-darkTextSecondary">
+                No submissions yet. Once learners start turning in work, their latest assignments
+                will appear here.
               </p>
             )}
 
-            {!recentLoading &&
-              !recentError &&
-              recentAssignments.length === 0 && (
-                <p className="text-xs text-mutedGray dark:text-darkTextSecondary">
-                  No submissions yet. Once learners start turning in work, their
-                  latest assignments will appear here.
-                </p>
-              )}
+            {!recentLoading && !recentError && recentAssignments.length > 0 && (
+              <div className="mt-1 space-y-2">
+                {recentAssignments.map((a) => {
+                  const count =
+                    (a as any).submission_count ??
+                    (a as any).submissions_count ??
+                    (a as any).answers_count ??
+                    0;
 
-            {!recentLoading &&
-              !recentError &&
-              recentAssignments.length > 0 && (
-                <div className="mt-1 space-y-2">
-                  {recentAssignments.map((a) => {
-                    const count =
-                      (a as any).submission_count ??
-                      (a as any).submissions_count ??
-                      (a as any).answers_count ??
-                      0;
+                  const latest = (a as any).latest_submission_at ?? (a as any).submitted_at ?? null;
 
-                    const latest =
-                      (a as any).latest_submission_at ??
-                      (a as any).submitted_at ??
-                      null;
-
-                    let latestLabel = '';
-                    if (latest) {
-                      try {
-                        latestLabel = new Date(latest).toLocaleString();
-                      } catch {
-                        latestLabel = String(latest);
-                      }
+                  let latestLabel = '';
+                  if (latest) {
+                    try {
+                      latestLabel = new Date(latest).toLocaleString();
+                    } catch {
+                      latestLabel = String(latest);
                     }
+                  }
 
-                    return (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() => handleOpenSubmissions(a.id)}
-                        className="w-full text-left flex items-start justify-between gap-2 border-b border-slate-100/80 dark:border-slate-800 pb-1.5 last:border-b-0 last:pb-0 hover:bg-slate-50/70 dark:hover:bg-slate-900/40 rounded-lg px-1 -mx-1 transition"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-medium text-slate-900 dark:text-darkTextPrimary">
-                            {a.title || a.course_title || 'Untitled assignment'}
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => handleOpenSubmissions(a.id)}
+                      className="w-full text-left flex items-start justify-between gap-2 border-b border-slate-100/80 dark:border-slate-800 pb-1.5 last:border-b-0 last:pb-0 hover:bg-slate-50/70 dark:hover:bg-slate-900/40 rounded-lg px-1 -mx-1 transition"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium text-slate-900 dark:text-darkTextPrimary">
+                          {a.title || a.course_title || 'Untitled assignment'}
+                        </p>
+                        <p className="truncate text-[11px] text-mutedGray dark:text-darkTextSecondary">
+                          {a.org_class_label || (a as any).class_label || 'All classes'} •{' '}
+                          {a.org_subject_key || (a as any).subject_key || 'Subject'}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-semibold text-emerald-500">
+                          {count} <span className="font-normal text-[11px]">subm.</span>
+                        </p>
+                        {latestLabel && (
+                          <p className="text-[10px] text-mutedGray dark:text-darkTextSecondary">
+                            {latestLabel}
                           </p>
-                          <p className="truncate text-[11px] text-mutedGray dark:text-darkTextSecondary">
-                            {(a.org_class_label || (a as any).class_label || 'All classes')}{' '}
-                            •{' '}
-                            {(a.org_subject_key ||
-                              (a as any).subject_key ||
-                              'Subject')}
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-xs font-semibold text-emerald-500">
-                            {count}{' '}
-                            <span className="font-normal text-[11px]">
-                              subm.
-                            </span>
-                          </p>
-                          {latestLabel && (
-                            <p className="text-[10px] text-mutedGray dark:text-darkTextSecondary">
-                              {latestLabel}
-                            </p>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </section>
       </div>

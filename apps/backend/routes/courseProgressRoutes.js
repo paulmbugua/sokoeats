@@ -19,7 +19,12 @@ const requireWatchedBeforeComplete = (req, res, next) => {
 
 router.get('/:courseId', authUser, getProgress);
 // ⬇️ add the guard *before* updateProgress
-router.post('/:courseId', authUser, requireWatchedBeforeComplete, updateProgress);
+router.post(
+  '/:courseId',
+  authUser,
+  requireWatchedBeforeComplete,
+  updateProgress,
+);
 router.get('/:courseId/summary', authUser, getProgressSummary);
 
 export default router;

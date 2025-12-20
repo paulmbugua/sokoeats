@@ -86,8 +86,9 @@ const VerifyCertificatePrintScreen: React.FC = () => {
                 </View>
               )}
 
-              {!loading && !!data && (
-                isValid ? (
+              {!loading &&
+                !!data &&
+                (isValid ? (
                   <PrintableContent
                     certId={id}
                     issuedAt={issuedOn}
@@ -102,8 +103,7 @@ const VerifyCertificatePrintScreen: React.FC = () => {
                       {data.error || 'No matching certificate found.'}
                     </Text>
                   </View>
-                )
-              )}
+                ))}
             </View>
           </View>
         </View>
@@ -168,7 +168,8 @@ const PrintableContent: React.FC<{
         </View>
 
         <Text style={tw`mt-8 text-center text-xs text-[#94a3b8]`}>
-          To verify offline, scan the QR on the certificate or visit yourdomain.example/verify/{certId}
+          To verify offline, scan the QR on the certificate or visit yourdomain.example/verify/
+          {certId}
         </Text>
       </View>
 
@@ -182,7 +183,11 @@ const PrintableContent: React.FC<{
   );
 };
 
-const Detail: React.FC<{ label: string; value: string; mono?: boolean }> = ({ label, value, mono }) => (
+const Detail: React.FC<{ label: string; value: string; mono?: boolean }> = ({
+  label,
+  value,
+  mono,
+}) => (
   <View style={tw`py-2`}>
     <Text style={tw`text-xs text-[#64748b]`}>{label}</Text>
     <Text style={[tw`text-sm font-semibold`, mono ? tw`font-mono` : null]}>{value}</Text>

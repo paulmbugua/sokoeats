@@ -1,12 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  Linking,
-  Platform,
-} from 'react-native';
+import { View, Text, Pressable, Linking, Platform } from 'react-native';
 import tw from '../../../tailwind';
 import { useThemePref } from '../../theme/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,15 +27,9 @@ export type MiniUser = {
 /* ----------------------------- shared helpers ----------------------------- */
 
 const FALLBACK = (n = 'Org') =>
-  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-    n,
-  )}&background=047857&color=ffffff`;
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(n)}&background=047857&color=ffffff`;
 
-export const resolveAsset = (
-  raw?: string,
-  backendUrl?: string,
-  fallbackName?: string,
-) => {
+export const resolveAsset = (raw?: string, backendUrl?: string, fallbackName?: string) => {
   if (!raw) return FALLBACK(fallbackName ?? 'Org');
   if (raw.startsWith('/') && backendUrl) {
     return `${backendUrl.replace(/\/+$/, '')}${raw}`;
@@ -52,11 +40,7 @@ export const resolveAsset = (
 export const getInitials = (name?: string, email?: string) => {
   const src = (name && name.trim()) || (email && email.split('@')[0]) || '';
   const parts = src.split(/\s+/).slice(0, 2);
-  return (
-    parts
-      .map((p) => p[0]?.toUpperCase() || '')
-      .join('') || '👤'
-  );
+  return parts.map((p) => p[0]?.toUpperCase() || '').join('') || '👤';
 };
 
 /**
@@ -88,13 +72,7 @@ export const tierTone = (t?: string) => {
 /* -------------------------- shared UI components ------------------------- */
 
 export const Skeleton: React.FC<{ style?: any }> = ({ style }) => (
-  <View
-    style={[
-      tw`rounded-xl`,
-      { backgroundColor: 'rgba(148,163,184,0.16)' },
-      style,
-    ]}
-  />
+  <View style={[tw`rounded-xl`, { backgroundColor: 'rgba(148,163,184,0.16)' }, style]} />
 );
 
 /**
@@ -202,9 +180,7 @@ export const PersonRow: React.FC<{
           style={[
             tw`h-9 w-9 rounded-full items-center justify-center`,
             {
-              backgroundColor: palette.isDark
-                ? 'rgba(148,163,184,0.16)'
-                : '#f1f5f9',
+              backgroundColor: palette.isDark ? 'rgba(148,163,184,0.16)' : '#f1f5f9',
             },
           ]}
         >
@@ -219,10 +195,7 @@ export const PersonRow: React.FC<{
             {label}
           </Text>
           {!!u.email && (
-            <Text
-              numberOfLines={1}
-              style={[tw`text-xs mt-0.5`, { color: palette.textMuted }]}
-            >
+            <Text numberOfLines={1} style={[tw`text-xs mt-0.5`, { color: palette.textMuted }]}>
               {u.email}
             </Text>
           )}

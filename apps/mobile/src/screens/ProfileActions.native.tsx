@@ -49,8 +49,15 @@ const ProfileActions: React.FC<ProfileActionsProps> & ProfileActionsStatic = ({
                    border border-gray-200/70 shadow-sm shadow-sm
                    dark:bg-[#0f1821] dark:border-darkCard`}
       >
-        <FontAwesome name="heart" size={16} color={tw.color('softPink') || '#ec4899'} style={tw`mr-2`} />
-        <Text style={tw`text-darkText font-medium dark:text-darkTextPrimary`}>Add to Favorites</Text>
+        <FontAwesome
+          name="heart"
+          size={16}
+          color={tw.color('softPink') || '#ec4899'}
+          style={tw`mr-2`}
+        />
+        <Text style={tw`text-darkText font-medium dark:text-darkTextPrimary`}>
+          Add to Favorites
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -62,10 +69,7 @@ ProfileActions.Header = ({ profile, statusColor }) => (
     <Text style={tw`text-xl font-bold text-darkText dark:text-darkTextPrimary`} numberOfLines={1}>
       {profile.name}
     </Text>
-    <View
-      accessibilityLabel="Status"
-      style={tw.style('rounded-full w-3 h-3', statusColor)}
-    />
+    <View accessibilityLabel="Status" style={tw.style('rounded-full w-3 h-3', statusColor)} />
   </View>
 );
 
@@ -99,12 +103,7 @@ ProfileActions.StatusButton = ({ status, statusColor, lastOnline }) => (
   <View style={tw`flex-row items-center justify-between mt-2`}>
     <Text style={tw`text-sm text-darkTextSecondary`}>
       Status:{' '}
-      <Text
-        style={tw.style(
-          'px-2 py-1 rounded-md text-white text-xs',
-          statusColor
-        )}
-      >
+      <Text style={tw.style('px-2 py-1 rounded-md text-white text-xs', statusColor)}>
         {status || 'Unknown'}
       </Text>
     </Text>
@@ -134,7 +133,10 @@ ProfileActions.Recommended = ({ recommended, statusColor }) => {
                       dark:bg-[#0f1821] dark:border-darkCard`}
           >
             <View style={tw`flex-row items-center justify-between mb-2`}>
-              <Text style={tw`font-semibold text-darkText dark:text-darkTextPrimary`} numberOfLines={1}>
+              <Text
+                style={tw`font-semibold text-darkText dark:text-darkTextPrimary`}
+                numberOfLines={1}
+              >
                 {item.name}
               </Text>
               <View style={tw.style('rounded-full w-2.5 h-2.5', statusColor)} />

@@ -27,7 +27,8 @@ export const helmetMiddleware = helmet({
 const isDev = process.env.NODE_ENV !== 'production';
 
 // Default OFF in dev, ON in prod
-const rateLimitEnv = process.env.RATE_LIMIT_ENABLED ?? (isDev ? 'false' : 'true');
+const rateLimitEnv =
+  process.env.RATE_LIMIT_ENABLED ?? (isDev ? 'false' : 'true');
 const rateLimitEnabled = rateLimitEnv === 'true';
 
 function shouldBypass(req) {
@@ -44,8 +45,6 @@ function shouldBypass(req) {
 
   return false;
 }
-
-
 
 function defaultKeyFn(req) {
   const user = req.user || {};
@@ -96,7 +95,12 @@ function startMemCleanup() {
   if (typeof timer.unref === 'function') timer.unref();
 }
 
-function memoryLimiter({ windowMs, limit, message = 'Too many requests, try again later.', keyFn = defaultKeyFn }) {
+function memoryLimiter({
+  windowMs,
+  limit,
+  message = 'Too many requests, try again later.',
+  keyFn = defaultKeyFn,
+}) {
   startMemCleanup();
   return (req, res, next) => {
     if (shouldBypass(req)) return next();
@@ -112,7 +116,11 @@ function memoryLimiter({ windowMs, limit, message = 'Too many requests, try agai
     memBuckets.set(key, bucket);
 
     const remaining = Math.max(0, limit - bucket.count);
-    setRateHeaders(res, { limit, remaining, resetMs: Math.max(0, bucket.resetAt - now) });
+    setRateHeaders(res, {
+      limit,
+      remaining,
+      resetMs: Math.max(0, bucket.resetAt - now),
+    });
 
     if (bucket.count > limit) {
       const secs = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
@@ -136,7 +144,8 @@ function redisSlidingWindowLimiter({
   return async (req, res, next) => {
     if (shouldBypass(req)) return next();
 
-    if (!redis) return memoryLimiter({ windowMs, limit, message, keyFn })(req, res, next);
+    if (!redis)
+      return memoryLimiter({ windowMs, limit, message, keyFn })(req, res, next);
 
     const key = `rl:${keyFn(req)}`;
     const now = Date.now();
@@ -147,7 +156,8 @@ function redisSlidingWindowLimiter({
       const member = `${now}-${Math.random().toString(36).slice(2)}`;
 
       // Pipeline: trim old, add current, get count, set TTL, and read TTL for accurate headers
-      const pipeline = redis.multi()
+      const pipeline = redis
+        .multi()
         .zremrangebyscore(key, 0, windowStart)
         .zadd(key, now, member)
         .zcard(key)
@@ -158,7 +168,8 @@ function redisSlidingWindowLimiter({
 
       // ioredis: results is [[null, res], [null, res], ...]
       // node-redis v4: results is [res, res, ...]
-      const get = (i) => Array.isArray(results?.[i]) ? results[i][1] : results?.[i];
+      const get = (i) =>
+        Array.isArray(results?.[i]) ? results[i][1] : results?.[i];
 
       const count = Number(get(2) ?? 0);
       let ttl = Number(get(4));
@@ -175,7 +186,10 @@ function redisSlidingWindowLimiter({
 
       next();
     } catch (e) {
-      console.warn('[rate-limit] Redis error, falling back to memory:', e?.message || e);
+      console.warn(
+        '[rate-limit] Redis error, falling back to memory:',
+        e?.message || e,
+      );
       return memoryLimiter({ windowMs, limit, message, keyFn })(req, res, next);
     }
   };
@@ -197,7 +211,10 @@ function extractUidFromAuth(req) {
     const parts = token.split('.');
     if (parts.length < 2) return null;
     const payloadB64 = parts[1];
-    const json = Buffer.from(payloadB64.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    const json = Buffer.from(
+      payloadB64.replace(/-/g, '+').replace(/_/g, '/'),
+      'base64',
+    ).toString('utf8');
     const payload = JSON.parse(json);
     return payload.sub || payload.uid || payload.user_id || payload.id || null;
   } catch {
@@ -210,11 +227,13 @@ function aiKeyFn(req) {
   const path = String(req.path || '');
   let bucket = 'ai';
   if (path.includes('outline')) bucket = 'ai:outline';
-  else if (path.includes('lesson') || path.includes('ssml')) bucket = 'ai:lesson';
+  else if (path.includes('lesson') || path.includes('ssml'))
+    bucket = 'ai:lesson';
   else if (path.includes('quiz')) bucket = 'ai:quiz';
   else if (path.includes('ttsAvatar')) bucket = 'ai:tts';
 
-  const uid = (req.user && (req.user.id || req.user.user_id)) || extractUidFromAuth(req);
+  const uid =
+    (req.user && (req.user.id || req.user.user_id)) || extractUidFromAuth(req);
   const id = uid ? `u:${uid}` : `ip:${req.ip}`;
   return `${bucket}:${id}`;
 }
@@ -224,33 +243,44 @@ function aiKeyFn(req) {
  * ──────────────────────────────────────────────────────── */
 export const userLimiter = makeLimiter({
   windowMs: 60_000,
-  limit: isDev ? 5000 : 600,  // 600 /api/user writes per minute
+  limit: isDev ? 5000 : 600, // 600 /api/user writes per minute
   message: 'Too many /api/user requests, slow down a bit.',
 });
-export const progressLimiter     = makeLimiter({ windowMs: 30_000, limit: isDev ? 1000 : 300 });
-export const certificatesLimiter = makeLimiter({ windowMs: 30_000, limit: isDev ? 1000 : 200 });
-export const reviewsLimiter      = makeLimiter({ windowMs: 60_000, limit: isDev ? 2000 : 300 });
+export const progressLimiter = makeLimiter({
+  windowMs: 30_000,
+  limit: isDev ? 1000 : 300,
+});
+export const certificatesLimiter = makeLimiter({
+  windowMs: 30_000,
+  limit: isDev ? 1000 : 200,
+});
+export const reviewsLimiter = makeLimiter({
+  windowMs: 60_000,
+  limit: isDev ? 2000 : 300,
+});
 
 // Mild global guard
 
 export const limiter = makeLimiter({
-  windowMs: 60_000,               // 1 minute
-  limit: isDev ? 10_000 : 1000,   // 1000 write-ops per IP/min in prod
-  message: 'Too many requests from this client, please try again after a short while.',
+  windowMs: 60_000, // 1 minute
+  limit: isDev ? 10_000 : 1000, // 1000 write-ops per IP/min in prod
+  message:
+    'Too many requests from this client, please try again after a short while.',
 });
 
-
 // Legacy simple AI limiter (kept for backward compatibility if anything else imports it)
-export const aiLimiter = makeLimiter({ windowMs: 60_000, limit: isDev ? 200 : 10 });
+export const aiLimiter = makeLimiter({
+  windowMs: 60_000,
+  limit: isDev ? 200 : 10,
+});
 
 // New: STRICT (but fair) per-user, per-bucket AI limiter
 export const aiLimiterStrict = makeLimiter({
   windowMs: 60_000,
-  limit: isDev ? 200 : 120,  // 120 AI calls/min/user
+  limit: isDev ? 200 : 120, // 120 AI calls/min/user
   keyFn: aiKeyFn,
   message: 'Too many AI requests, slow down briefly.',
 });
-
 
 // ────────────────────────────────────────────────────────
 // Login limiter: per ip|origin|email, skip successful attempts
@@ -258,8 +288,9 @@ export const aiLimiterStrict = makeLimiter({
 function loginKeyFn(req) {
   const ip = req.ip || '';
   const origin = (req.headers?.origin || '').toString();
-  const email =
-    (req.body?.email || req.body?.username || '').toString().toLowerCase();
+  const email = (req.body?.email || req.body?.username || '')
+    .toString()
+    .toLowerCase();
   return `login:${ip}|${origin}|${email}`;
 }
 
@@ -269,7 +300,10 @@ function loginKeyFn(req) {
  * - limit: 5 attempts
  * - skips successful requests (2xx/3xx)
  */
-export function loginLimiterFactory({ windowMs = 15 * 60_000, limit = 5 } = {}) {
+export function loginLimiterFactory({
+  windowMs = 15 * 60_000,
+  limit = 5,
+} = {}) {
   return async function loginLimiter(req, res, next) {
     if (shouldBypass(req)) return next();
 
@@ -279,12 +313,10 @@ export function loginLimiterFactory({ windowMs = 15 * 60_000, limit = 5 } = {}) 
 
     const isLoginPath =
       m === 'POST' &&
-      (
-        url.endsWith('/api/auth/login') ||
+      (url.endsWith('/api/auth/login') ||
         url.endsWith('/api/admin/login') ||
         url.endsWith('/api/auth/admin-env-login') ||
-        url.endsWith('/api/institutions/auth/login')
-      );
+        url.endsWith('/api/institutions/auth/login'));
 
     if (!isLoginPath) return next();
 
@@ -305,7 +337,8 @@ export function loginLimiterFactory({ windowMs = 15 * 60_000, limit = 5 } = {}) 
 
     try {
       // trim, add, count, set TTL, read TTL
-      const pipeline = redis.multi()
+      const pipeline = redis
+        .multi()
         .zremrangebyscore(key, 0, windowStart)
         .zadd(key, now, member)
         .zcard(key)
@@ -313,7 +346,8 @@ export function loginLimiterFactory({ windowMs = 15 * 60_000, limit = 5 } = {}) 
         .pttl(key);
 
       const results = await pipeline.exec();
-      const get = (i) => Array.isArray(results?.[i]) ? results[i][1] : results?.[i];
+      const get = (i) =>
+        Array.isArray(results?.[i]) ? results[i][1] : results?.[i];
 
       const count = Number(get(2) ?? 0);
       let ttl = Number(get(4));
@@ -325,7 +359,9 @@ export function loginLimiterFactory({ windowMs = 15 * 60_000, limit = 5 } = {}) 
       if (count > limit) {
         const secs = Math.max(1, Math.ceil(ttl / 1000));
         res.setHeader('Retry-After', String(secs));
-        return res.status(429).json({ message: 'Too many login attempts. Try again later.' });
+        return res
+          .status(429)
+          .json({ message: 'Too many login attempts. Try again later.' });
       }
 
       // If login succeeds (2xx/3xx), remove the just-counted member
@@ -339,7 +375,10 @@ export function loginLimiterFactory({ windowMs = 15 * 60_000, limit = 5 } = {}) 
 
       return next();
     } catch (e) {
-      console.warn('[login-limit] Redis error, falling back to memory:', e?.message || e);
+      console.warn(
+        '[login-limit] Redis error, falling back to memory:',
+        e?.message || e,
+      );
       return memoryLimiter({
         windowMs,
         limit,
@@ -370,7 +409,11 @@ export const logger = winston.createLogger({
 });
 
 if (process.env.NODE_ENV !== 'production') {
-  logger.add(new transports.Console({ format: format.combine(format.colorize(), format.simple()) }));
+  logger.add(
+    new transports.Console({
+      format: format.combine(format.colorize(), format.simple()),
+    }),
+  );
 }
 
 /* ────────────────────────────────────────────────────────

@@ -89,9 +89,7 @@ const QuizConfirmModal: React.FC<QuizConfirmModalProps> = ({
       accessibilityViewIsModal
     >
       {/* Backdrop */}
-      <Animated.View
-        style={[tw`absolute inset-0 bg-black/45`, { opacity: fade }]}
-      />
+      <Animated.View style={[tw`absolute inset-0 bg-black/45`, { opacity: fade }]} />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Close dialog"

@@ -5,10 +5,7 @@ import { searchTutorsApi } from '@mytutorapp/shared/api/profileApi';
 import { useShopContext } from '@mytutorapp/shared/context';
 import useAppQuery from './useAppQuery';
 
-const dev =
-  typeof process !== 'undefined'
-    ? process.env.NODE_ENV !== 'production'
-    : false;
+const dev = typeof process !== 'undefined' ? process.env.NODE_ENV !== 'production' : false;
 
 type UiFilters = {
   country: string;
@@ -23,7 +20,6 @@ const DEFAULT_UI: UiFilters = {
   minRating: 0,
   maxTokens: 0,
 };
-
 
 const throttle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -58,21 +54,24 @@ const useHomePage = (opts?: { backendUrl?: string }) => {
     return () => clearTimeout(t);
   }, [rawQ]);
 
- const queryKey = useMemo(
-  () => [
-    'tutorSearch',
-    backendUrl,
-    q,
-    uiFilters.country,
-    uiFilters.subject,
-    uiFilters.minRating,
-    uiFilters.maxTokens,
-  ],
-  [backendUrl, q, uiFilters.country, uiFilters.subject, uiFilters.minRating, uiFilters.maxTokens]
-);
+  const queryKey = useMemo(
+    () => [
+      'tutorSearch',
+      backendUrl,
+      q,
+      uiFilters.country,
+      uiFilters.subject,
+      uiFilters.minRating,
+      uiFilters.maxTokens,
+    ],
+    [backendUrl, q, uiFilters.country, uiFilters.subject, uiFilters.minRating, uiFilters.maxTokens]
+  );
 
-
-  const { data, isLoading: loading, refetch: reloadProfiles } = useAppQuery<Profile[]>(
+  const {
+    data,
+    isLoading: loading,
+    refetch: reloadProfiles,
+  } = useAppQuery<Profile[]>(
     queryKey,
     async (): Promise<Profile[]> => {
       if (!backendUrl) return [];
@@ -86,7 +85,6 @@ const useHomePage = (opts?: { backendUrl?: string }) => {
       if (uiFilters.minRating > 0) params.minRating = uiFilters.minRating;
       if (uiFilters.maxTokens > 0) params.maxTokens = uiFilters.maxTokens; // ✅
 
-
       const t0 = Date.now();
 
       try {
@@ -99,10 +97,10 @@ const useHomePage = (opts?: { backendUrl?: string }) => {
         const profiles = Array.isArray(resp)
           ? resp
           : Array.isArray(resp?.profiles)
-          ? resp.profiles
-          : Array.isArray(resp?.rows)
-          ? resp.rows
-          : [];
+            ? resp.profiles
+            : Array.isArray(resp?.rows)
+              ? resp.rows
+              : [];
 
         setSearchMeta({
           usingServer: true,
@@ -116,10 +114,7 @@ const useHomePage = (opts?: { backendUrl?: string }) => {
         return profiles.filter((p: any) => String(p?.role || '').toLowerCase() === 'tutor');
       } catch (err: any) {
         const ms = Date.now() - t0;
-        const msg =
-          err?.response?.data?.message ||
-          err?.message ||
-          'searchTutorsApi failed';
+        const msg = err?.response?.data?.message || err?.message || 'searchTutorsApi failed';
 
         setSearchMeta({ usingServer: false, serverError: msg, ms });
         console.error('[useHomePage] searchTutorsApi failed → fallback:', msg);
@@ -143,7 +138,12 @@ const useHomePage = (opts?: { backendUrl?: string }) => {
   }, []);
 
   const setCountryFilter = useCallback((iso2: string) => {
-    setUiFilters((prev) => ({ ...prev, country: String(iso2 || '').toUpperCase().trim() }));
+    setUiFilters((prev) => ({
+      ...prev,
+      country: String(iso2 || '')
+        .toUpperCase()
+        .trim(),
+    }));
   }, []);
 
   const setSubjectFilter = useCallback((subject: string) => {
@@ -156,10 +156,9 @@ const useHomePage = (opts?: { backendUrl?: string }) => {
   }, []);
 
   const setMaxTokensFilter = useCallback((n: number) => {
-  const v = Number(n || 0);
-  setUiFilters((prev) => ({ ...prev, maxTokens: Number.isFinite(v) ? v : 0 }));
-}, []);
-
+    const v = Number(n || 0);
+    setUiFilters((prev) => ({ ...prev, maxTokens: Number.isFinite(v) ? v : 0 }));
+  }, []);
 
   const clearFilters = useCallback(() => {
     setRawQ('');

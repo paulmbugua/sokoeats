@@ -1,13 +1,7 @@
 /* eslint-disable prettier/prettier */
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type {ThemeTokens, HighlightTemplate } from './types.native';
+import type { ThemeTokens, HighlightTemplate } from './types.native';
 import { hexToRgb, pickTextOnBg } from './utils.native';
 
 const Ctx = createContext<ThemeTokens | null>(null);
@@ -36,7 +30,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         if (!alive) return;
         if (savedHl) setHlHex(savedHl);
         if (savedGen) setGenHex(savedGen);
-        if (savedTemplate && (['clean-stripe', 'underline-glow', 'karaoke-glow', 'boxed-pill', 'ribbon'] as HighlightTemplate[]).includes(savedTemplate as HighlightTemplate)) {
+        if (
+          savedTemplate &&
+          (
+            [
+              'clean-stripe',
+              'underline-glow',
+              'karaoke-glow',
+              'boxed-pill',
+              'ribbon',
+            ] as HighlightTemplate[]
+          ).includes(savedTemplate as HighlightTemplate)
+        ) {
           setTemplateId(savedTemplate as HighlightTemplate);
         }
       } catch {
@@ -64,10 +69,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const hlRgb = useMemo(() => hexToRgb(hlHex), [hlHex]);
   const genRgb = useMemo(() => hexToRgb(genHex), [genHex]);
-  const activeTextOnHl = useMemo(
-    () => pickTextOnBg(hlHex),
-    [hlHex],
-  );
+  const activeTextOnHl = useMemo(() => pickTextOnBg(hlHex), [hlHex]);
 
   const value: ThemeTokens = {
     hlHex,
@@ -87,9 +89,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 export function useThemeTokens() {
   const ctx = useContext(Ctx);
   if (!ctx) {
-    throw new Error(
-      'useThemeTokens must be used inside <ThemeProvider>',
-    );
+    throw new Error('useThemeTokens must be used inside <ThemeProvider>');
   }
   return ctx;
 }

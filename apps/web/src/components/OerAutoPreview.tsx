@@ -41,7 +41,9 @@ const OerAutoPreview: React.FC<Props> = ({ title, embedUrl, thumbnailUrl, badge,
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : -1}
-      onKeyDown={(e) => { if (onClick && (e.key === 'Enter' || e.key === ' ')) onClick(); }}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === 'Enter' || e.key === ' ')) onClick();
+      }}
     >
       {/* Motion state */}
       {showIframe ? (

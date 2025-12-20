@@ -55,7 +55,8 @@ export default function Users() {
       if (!data?.success) throw new Error('Request failed');
       setRows(data.users || []);
     } catch (e: unknown) {
-      const msg = (e as any)?.response?.data?.message || (e as Error)?.message || 'Failed to fetch users';
+      const msg =
+        (e as any)?.response?.data?.message || (e as Error)?.message || 'Failed to fetch users';
       setErr(msg);
       toast.error(msg);
     } finally {
@@ -73,10 +74,16 @@ export default function Users() {
     return () => clearTimeout(t);
   }, [q, fetchUsers]);
 
-  const withBusy = <R,>(id: number, fn: () => Promise<R>) => async () => {
-    setBusyId(id);
-    try { await fn(); } finally { setBusyId(null); }
-  };
+  const withBusy =
+    <R,>(id: number, fn: () => Promise<R>) =>
+    async () => {
+      setBusyId(id);
+      try {
+        await fn();
+      } finally {
+        setBusyId(null);
+      }
+    };
 
   const changeRole = (u: AdminUser, role: Role) =>
     withBusy(u.id, async () => {
@@ -87,7 +94,7 @@ export default function Users() {
         { headers: { ...authHeaders, 'Content-Type': 'application/json' } }
       );
       if (!data.success) throw new Error('Failed to set role');
-      setRows(prev => prev.map(r => (r.id === u.id ? { ...r, role } : r)));
+      setRows((prev) => prev.map((r) => (r.id === u.id ? { ...r, role } : r)));
       toast.success(`Role updated → ${role}`);
     });
 
@@ -99,7 +106,7 @@ export default function Users() {
         { headers: { ...authHeaders, 'Content-Type': 'application/json' } }
       );
       if (!data.success) throw new Error('Failed to adjust tokens');
-      setRows(prev => prev.map(r => (r.id === u.id ? { ...r, tokens: data.tokens } : r)));
+      setRows((prev) => prev.map((r) => (r.id === u.id ? { ...r, tokens: data.tokens } : r)));
       toast.success(`${delta >= 0 ? 'Added' : 'Removed'} ${Math.abs(delta)} token(s)`);
     });
 
@@ -118,7 +125,7 @@ export default function Users() {
         { headers: { ...authHeaders, 'Content-Type': 'application/json' } }
       );
       if (!data.success) throw new Error('Failed to set tokens');
-      setRows(prev => prev.map(r => (r.id === u.id ? { ...r, tokens: data.tokens } : r)));
+      setRows((prev) => prev.map((r) => (r.id === u.id ? { ...r, tokens: data.tokens } : r)));
       toast.success(`Tokens set → ${value}`);
     })();
   };
@@ -153,7 +160,7 @@ export default function Users() {
       await axios.delete(`${base}/api/admin/users/${u.id}`, {
         headers: authHeaders,
       });
-      setRows(prev => prev.filter(r => r.id !== u.id));
+      setRows((prev) => prev.filter((r) => r.id !== u.id));
       toast.success('User deleted');
     });
 
@@ -181,9 +188,15 @@ export default function Users() {
       </div>
 
       {err && <div className="panel p-3 text-sm text-red-500">{err}</div>}
-      {loading && <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">Loading users…</div>}
+      {loading && (
+        <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">
+          Loading users…
+        </div>
+      )}
       {!loading && rows.length === 0 && !err && (
-        <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">No users found.</div>
+        <div className="panel p-4 text-sm text-mutedGray dark:text-darkTextSecondary">
+          No users found.
+        </div>
       )}
 
       <div className="panel overflow-hidden">
@@ -205,7 +218,11 @@ export default function Users() {
                 <td className="p-3">
                   <div className="flex flex-col">
                     <span className="font-medium">{u.email}</span>
-                    {u.name ? <span className="text-xs text-mutedGray dark:text-darkTextSecondary">{u.name}</span> : null}
+                    {u.name ? (
+                      <span className="text-xs text-mutedGray dark:text-darkTextSecondary">
+                        {u.name}
+                      </span>
+                    ) : null}
                   </div>
                 </td>
                 <td className="p-3">
@@ -218,8 +235,10 @@ export default function Users() {
                       disabled={busyId === u.id || !authToken}
                     >
                       <option value="">(none)</option>
-                      {ROLES.map(r => (
-                        <option key={r ?? 'none'} value={r ?? ''}>{r}</option>
+                      {ROLES.map((r) => (
+                        <option key={r ?? 'none'} value={r ?? ''}>
+                          {r}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -227,13 +246,25 @@ export default function Users() {
                 <td className="p-3">
                   <div className="flex items-center gap-2">
                     <span className="font-mono">{u.tokens}</span>
-                    <button className="chip" disabled={busyId === u.id || !authToken} onClick={() => void addTokens(u, +10)()}>
+                    <button
+                      className="chip"
+                      disabled={busyId === u.id || !authToken}
+                      onClick={() => void addTokens(u, +10)()}
+                    >
                       +10
                     </button>
-                    <button className="chip" disabled={busyId === u.id || !authToken} onClick={() => void addTokens(u, -10)()}>
+                    <button
+                      className="chip"
+                      disabled={busyId === u.id || !authToken}
+                      onClick={() => void addTokens(u, -10)()}
+                    >
                       –10
                     </button>
-                    <button className="chip" disabled={busyId === u.id || !authToken} onClick={() => setTokensExact(u)}>
+                    <button
+                      className="chip"
+                      disabled={busyId === u.id || !authToken}
+                      onClick={() => setTokensExact(u)}
+                    >
                       set
                     </button>
                   </div>
@@ -287,7 +318,8 @@ export default function Users() {
       </div>
 
       <p className="text-xs text-mutedGray dark:text-darkTextSecondary">
-        Tip: use the search box for email or name. Role changes and token edits are saved immediately.
+        Tip: use the search box for email or name. Role changes and token edits are saved
+        immediately.
       </p>
     </div>
   );

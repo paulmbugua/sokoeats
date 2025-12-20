@@ -28,7 +28,7 @@ export default async function requireProfile(req, res, next) {
          FROM profiles
         WHERE user_id = $1
         LIMIT 1`,
-      [userId]
+      [userId],
     );
 
     if (!rows.length) {

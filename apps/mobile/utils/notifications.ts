@@ -59,11 +59,7 @@ export async function registerForPushToken(): Promise<string | null> {
 }
 
 /** Fire a local notification immediately (or pass trigger to schedule). */
-export async function notifyNow(
-  title: string,
-  body: string,
-  data?: Record<string, any>,
-) {
+export async function notifyNow(title: string, body: string, data?: Record<string, any>) {
   return Notifications.scheduleNotificationAsync({
     content: { title, body, data },
     trigger: null, // change to { seconds: 5 } to delay
