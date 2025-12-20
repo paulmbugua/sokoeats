@@ -317,7 +317,7 @@ const ins = await pool.query(
       stk = await stkPushC2B({
         phone,
         amount: amountKesInt,
-        // callbackUrl: process.env.MPESA_CALLBACK_URL,
+        callbackUrl: process.env.MPESA_CALLBACK_URL,
       });
     } catch (stkError) {
       console.error(
