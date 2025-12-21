@@ -52,22 +52,56 @@ import {
 } from '../controllers/orgLegacyAssignmentsController.js';
 
 import {
-  createAttendanceSession,
-  upsertAttendanceEntries,
-  getAttendanceReport,
-  createFeeCharge,
-  bulkFeeCharges,
-  recordFeePayment,
-  getFeeBalances,
-  getFeeStatement,
   createNewsletter,
   generateNewsletterContent,
   saveNewsletterContent,
   sendNewsletter,
   listNewsletters,
-  createAnnouncement,
-  listAnnouncements,
 } from '../controllers/orgProToolsController.js';
+import {
+  listAttendanceSessions,
+  getAttendanceSession,
+  createAttendanceSession,
+  updateAttendanceSession,
+  deleteAttendanceSession,
+  upsertAttendanceEntries,
+  getAttendanceReport,
+  getAttendanceReportCsv,
+  createAnnouncement,
+  updateAnnouncement,
+  deleteAnnouncement,
+  listAnnouncements,
+  getAnnouncementFeed,
+  getAnnouncementAgmPdf,
+  createSportsEvent,
+  updateSportsEvent,
+  deleteSportsEvent,
+  listSportsEvents,
+  createClub,
+  updateClub,
+  deleteClub,
+  listClubs,
+  listClubMembers,
+  enrollClubMember,
+  unenrollClubMember,
+  getMyClubs,
+  listMessageLogs,
+  sendMessageNow,
+} from '../controllers/orgEngagementController.js';
+import {
+  createFeeStructure,
+  listFeeStructures,
+  updateFeeStructure,
+  activateFeeStructure,
+  createFeeCharge,
+  bulkFeeCharges,
+  recordFeePayment,
+  getFeeBalances,
+  getFeeStatement,
+  getFeeStatementPdf,
+  getFeeStructurePdf,
+} from '../controllers/orgFeesController.js';
+import { requireOrgInstructor, requireOrgProTier } from '../middleware/orgAccess.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -219,15 +253,142 @@ router.post('/:orgId/upgrade', requireAuth, async (req, res) => {
 });
 
 /* ─────────────────────── Pro/Enterprise org tools ─────────────────────── */
-router.post('/:orgId/attendance/sessions', requireAuth, createAttendanceSession);
-router.post('/:orgId/attendance/entries', requireAuth, upsertAttendanceEntries);
-router.get('/:orgId/attendance/report', requireAuth, getAttendanceReport);
+router.get(
+  '/:orgId/attendance/sessions',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  listAttendanceSessions,
+);
+router.get(
+  '/:orgId/attendance/sessions/:sessionId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  getAttendanceSession,
+);
+router.post(
+  '/:orgId/attendance/sessions',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  createAttendanceSession,
+);
+router.put(
+  '/:orgId/attendance/sessions/:sessionId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  updateAttendanceSession,
+);
+router.delete(
+  '/:orgId/attendance/sessions/:sessionId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  deleteAttendanceSession,
+);
+router.post(
+  '/:orgId/attendance/sessions/:sessionId/entries',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  upsertAttendanceEntries,
+);
+router.post(
+  '/:orgId/attendance/entries',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  upsertAttendanceEntries,
+);
+router.get(
+  '/:orgId/attendance/report',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  getAttendanceReport,
+);
+router.get(
+  '/:orgId/attendance/report.csv',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  getAttendanceReportCsv,
+);
 
-router.post('/:orgId/fees/charges', requireAuth, createFeeCharge);
-router.post('/:orgId/fees/charges/bulk', requireAuth, bulkFeeCharges);
-router.post('/:orgId/fees/payments', requireAuth, recordFeePayment);
-router.get('/:orgId/fees/balances', requireAuth, getFeeBalances);
-router.get('/:orgId/fees/learners/:learnerId/statement', requireAuth, getFeeStatement);
+router.get(
+  '/:orgId/fees/structures',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  listFeeStructures,
+);
+router.post(
+  '/:orgId/fees/structures',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  createFeeStructure,
+);
+router.put(
+  '/:orgId/fees/structures/:structureId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  updateFeeStructure,
+);
+router.post(
+  '/:orgId/fees/structures/:structureId/activate',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  activateFeeStructure,
+);
+router.get(
+  '/:orgId/fees/structures/:structureId.pdf',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  getFeeStructurePdf,
+);
+
+router.post('/:orgId/fees/charges', requireAuth, requireOrgProTier, requireOrgInstructor, createFeeCharge);
+router.post(
+  '/:orgId/fees/charges/bulk',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  bulkFeeCharges,
+);
+router.post(
+  '/:orgId/fees/payments',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  recordFeePayment,
+);
+router.get(
+  '/:orgId/fees/balances',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  getFeeBalances,
+);
+router.get(
+  '/:orgId/fees/learners/:learnerId/statement',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  getFeeStatement,
+);
+router.get(
+  '/:orgId/fees/learners/:learnerId/statement.pdf',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  getFeeStatementPdf,
+);
 
 router.post('/:orgId/newsletters', requireAuth, createNewsletter);
 router.post('/:orgId/newsletters/generate', requireAuth, generateNewsletterContent);
@@ -235,8 +396,105 @@ router.put('/:orgId/newsletters/:id', requireAuth, saveNewsletterContent);
 router.post('/:orgId/newsletters/:id/send', requireAuth, sendNewsletter);
 router.get('/:orgId/newsletters', requireAuth, listNewsletters);
 
-router.post('/:orgId/announcements', requireAuth, createAnnouncement);
-router.get('/:orgId/announcements', requireAuth, listAnnouncements);
+router.get('/:orgId/announcements/feed', requireAuth, requireOrgProTier, getAnnouncementFeed);
+router.get('/:orgId/announcements/:announcementId/agm.pdf', requireAuth, requireOrgProTier, getAnnouncementAgmPdf);
+router.get('/:orgId/announcements', requireAuth, requireOrgProTier, listAnnouncements);
+router.post(
+  '/:orgId/announcements',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  createAnnouncement,
+);
+router.put(
+  '/:orgId/announcements/:announcementId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  updateAnnouncement,
+);
+router.delete(
+  '/:orgId/announcements/:announcementId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  deleteAnnouncement,
+);
+
+router.get('/:orgId/sports/events.csv', (req, res, next) => {
+  req.query.format = 'csv';
+  return next();
+});
+router.get('/:orgId/sports/events', requireAuth, requireOrgProTier, listSportsEvents);
+router.post('/:orgId/sports/events', requireAuth, requireOrgProTier, requireOrgInstructor, createSportsEvent);
+router.put(
+  '/:orgId/sports/events/:eventId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  updateSportsEvent,
+);
+router.delete(
+  '/:orgId/sports/events/:eventId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  deleteSportsEvent,
+);
+
+router.get('/:orgId/clubs', requireAuth, requireOrgProTier, listClubs);
+router.get('/:orgId/clubs/mine', requireAuth, requireOrgProTier, getMyClubs);
+router.post('/:orgId/clubs', requireAuth, requireOrgProTier, requireOrgInstructor, createClub);
+router.put(
+  '/:orgId/clubs/:clubId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  updateClub,
+);
+router.delete(
+  '/:orgId/clubs/:clubId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  deleteClub,
+);
+router.get(
+  '/:orgId/clubs/:clubId/members',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  listClubMembers,
+);
+router.post(
+  '/:orgId/clubs/:clubId/enroll',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  enrollClubMember,
+);
+router.post(
+  '/:orgId/clubs/:clubId/unenroll',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  unenrollClubMember,
+);
+
+router.get(
+  '/:orgId/messages/log',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  listMessageLogs,
+);
+router.post(
+  '/:orgId/messages/send-now',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  sendMessageNow,
+);
 
 router.post('/:orgId/reports/test-send', requireAuth, (_req, res) =>
   res.json({ ok: true }),
