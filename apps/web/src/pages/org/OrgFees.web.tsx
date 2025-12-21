@@ -1,18 +1,15 @@
 // apps/web/src/pages/org/OrgFees.web.tsx
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import axios from 'axios';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
-import {
-  apiCreateFeeCharge,
-  apiBulkFeeCharges,
-  apiRecordFeePayment,
-  apiGetFeeBalances,
-  apiGetFeeStatement,
-} from '@mytutorapp/shared/api/orgProApi';
+import { getOrgRoster } from '@mytutorapp/shared/api/orgApi';
+import { useOrgFeeStructures } from '@mytutorapp/shared/hooks/useOrgFeeStructures';
+import { useOrgFeeBalances } from '@mytutorapp/shared/hooks/useOrgFeeBalances';
+import { useOrgFeeStatement } from '@mytutorapp/shared/hooks/useOrgFeeStatement';
+import type { FeeStructure, FeeStructureItem } from '@mytutorapp/shared/types';
 
 function cn(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
@@ -34,10 +31,6 @@ function toCents(amountMajor: string) {
   return Math.round(n * 100);
 }
 
-function stripBase(base: string) {
-  return String(base || '').replace(/\/+$/, '');
-}
-
 type LearnerLite = {
   id?: string;
   user_id?: string;
@@ -49,7 +42,6 @@ type LearnerLite = {
   grade?: string;
 };
 
-// ✅ Canonical learner identifier preference: use DB pk/id first.
 function pickLearnerId(l: LearnerLite) {
   return l.id || l.learner_id || l.user_id || l.admission_code || '';
 }
@@ -58,10 +50,7 @@ function pickLearnerName(l: LearnerLite) {
   return l.name || l.full_name || l.admission_code || l.learner_id || l.id || 'Learner';
 }
 
-const Badge: React.FC<{ children: React.ReactNode; tone?: 'warn' | 'ok' | 'neutral' }> = ({
-  children,
-  tone = 'neutral',
-}) => {
+const Badge: React.FC<{ children: React.ReactNode; tone?: 'warn' | 'ok' | 'neutral' }> = ({ children, tone = 'neutral' }) => {
   const cls =
     tone === 'warn'
       ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200'
@@ -72,11 +61,7 @@ const Badge: React.FC<{ children: React.ReactNode; tone?: 'warn' | 'ok' | 'neutr
   return <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', cls)}>{children}</span>;
 };
 
-const Modal: React.FC<{
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}> = ({ title, onClose, children }) => {
+const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => {
   return (
     <div className="fixed inset-0 z-50">
       <button type="button" aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/40" />
@@ -88,7 +73,7 @@ const Modal: React.FC<{
             'rounded-t-2xl md:rounded-2xl',
             'max-h-[92vh] md:max-h-[88vh]',
             'overflow-hidden',
-            'md:max-w-2xl',
+            'md:max-w-3xl',
           )}
         >
           <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-800">
@@ -102,20 +87,14 @@ const Modal: React.FC<{
             </button>
           </div>
 
-          <div className="max-h-[calc(92vh-64px)] overflow-y-auto p-4 md:max-h-[calc(88vh-64px)]">
-            {children}
-          </div>
+          <div className="max-h-[calc(92vh-64px)] overflow-y-auto p-4 md:max-h-[calc(88vh-64px)]">{children}</div>
         </div>
       </div>
     </div>
   );
 };
 
-const EmptyState: React.FC<{ title: string; body: string; action?: React.ReactNode }> = ({
-  title,
-  body,
-  action,
-}) => (
+const EmptyState: React.FC<{ title: string; body: string; action?: React.ReactNode }> = ({ title, body, action }) => (
   <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
     <div className="font-semibold">{title}</div>
     <div className="mt-1 text-sm">{body}</div>
@@ -123,11 +102,7 @@ const EmptyState: React.FC<{ title: string; body: string; action?: React.ReactNo
   </div>
 );
 
-const SectionCard: React.FC<{ title: string; subtitle?: string; children: React.ReactNode }> = ({
-  title,
-  subtitle,
-  children,
-}) => (
+const SectionCard: React.FC<{ title: string; subtitle?: string; children: React.ReactNode }> = ({ title, subtitle, children }) => (
   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
     <div className="flex items-start justify-between gap-3">
       <div>
@@ -139,15 +114,24 @@ const SectionCard: React.FC<{ title: string; subtitle?: string; children: React.
   </div>
 );
 
+const emptyItem = (): FeeStructureItem => ({
+  id: 0,
+  structure_id: 0,
+  label: '',
+  amount_cents: 0,
+  currency: 'USD',
+  cadence: '',
+  is_optional: false,
+  sort_order: 0,
+});
+
 const OrgFeesPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const qc = useQueryClient();
 
   const { backendUrl, orgToken } = useShopContext() as any;
   const { isPro, upgradeCta, org, activeOrgId } = useOrgProTools() as any;
-
   const orgId: string | undefined = activeOrgId || org?.id;
 
   const mode = useMemo<'none' | 'charge' | 'payment' | 'statement' | 'print'>(() => {
@@ -162,55 +146,18 @@ const OrgFeesPage: React.FC = () => {
   const selectedLearnerId = searchParams.get('learnerId') || '';
   const closeToHome = () => navigate('/org/fees');
 
-  // ✅ One helper: always keep balances and statements fresh
-  const invalidateFees = useCallback(
-    async (learnerId?: string) => {
-      if (!backendUrl || !orgId || !orgToken) return;
-
-      await qc.invalidateQueries({
-        queryKey: ['orgFeeBalances', backendUrl, orgId, orgToken],
-      });
-
-      // If we know the learner, invalidate that learner statement
-      if (learnerId) {
-        await qc.invalidateQueries({
-          queryKey: ['orgFeeStatement', backendUrl, orgId, orgToken, learnerId],
-        });
-      } else {
-        // Otherwise invalidate the statement prefix
-        await qc.invalidateQueries({
-          queryKey: ['orgFeeStatement', backendUrl, orgId, orgToken],
-        });
-      }
-    },
-    [qc, backendUrl, orgId, orgToken],
-  );
-
-  // Roster
   const rosterQuery = useQuery({
     queryKey: ['orgRoster', backendUrl, orgId, orgToken],
     enabled: Boolean(backendUrl && orgId && orgToken),
     queryFn: async () => {
-      const base = stripBase(backendUrl);
-      const { data } = await axios.get(`${base}/api/orgs/${orgId}/roster`, {
-        headers: orgToken ? { Authorization: `Bearer ${orgToken}` } : undefined,
-      });
-
-      const learners: LearnerLite[] =
-        data?.learners ||
-        data?.items?.learners ||
-        data?.roster?.learners ||
-        data?.roster ||
-        data?.items ||
-        [];
-
+      const data = await getOrgRoster(backendUrl, orgToken as string, orgId as string);
+      const learners: LearnerLite[] = data?.learners || data?.items || [];
       return { raw: data, learners: Array.isArray(learners) ? learners : [] };
     },
     staleTime: 30_000,
   });
 
   const learners: LearnerLite[] = rosterQuery.data?.learners || [];
-
   const classLabels = useMemo(() => {
     const s = new Set<string>();
     for (const l of learners) {
@@ -220,19 +167,93 @@ const OrgFeesPage: React.FC = () => {
     return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [learners]);
 
-  // Balances
-  const balancesQuery = useQuery({
-    queryKey: ['orgFeeBalances', backendUrl, orgId, orgToken],
-    enabled: Boolean(backendUrl && orgId && orgToken && isPro),
-    queryFn: () => apiGetFeeBalances(backendUrl, orgId!, orgToken),
-    staleTime: 15_000,
+  const {
+    structures,
+    loading: structuresLoading,
+    saving: structuresSaving,
+    fetchStructures,
+    saveStructure,
+    editStructure,
+    activateStructure,
+    downloadStructurePdf,
+  } = useOrgFeeStructures({ backendUrl, token: orgToken, orgId });
+
+  const { balances, loading: balancesLoading, fetchBalances } = useOrgFeeBalances({
+    backendUrl,
+    token: orgToken,
+    orgId,
   });
 
-  const balances = balancesQuery.data?.balances || [];
+  const {
+    charges,
+    payments,
+    summary,
+    loading: statementLoading,
+    fetchStatement,
+    addCharge,
+    addBulkCharges,
+    addPayment,
+    downloadStatementPdf,
+  } = useOrgFeeStatement({ backendUrl, token: orgToken, orgId });
+
+  const [structureForm, setStructureForm] = useState({
+    title: '',
+    description: '',
+    currency: 'USD',
+    effective_term: '',
+    scopeType: 'class',
+    scopeValue: '',
+  });
+  const [structureItems, setStructureItems] = useState<FeeStructureItem[]>([emptyItem()]);
+  const [selectedStructureId, setSelectedStructureId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (backendUrl && orgId && orgToken && isPro) {
+      fetchStructures();
+      fetchBalances();
+    }
+  }, [backendUrl, orgId, orgToken, fetchStructures, fetchBalances, isPro]);
+
+  useEffect(() => {
+    if (selectedLearnerId && (mode === 'statement' || mode === 'print')) {
+      fetchStatement(selectedLearnerId);
+    }
+  }, [selectedLearnerId, mode, fetchStatement]);
+
+  useEffect(() => {
+    if (!structures?.length) return;
+    const active = structures.find((s) => s.is_active) || structures[0];
+    setSelectedStructureId((prev) => prev ?? active.id);
+  }, [structures]);
+
+  useEffect(() => {
+    if (!selectedStructureId) return;
+    const s = structures.find((x) => x.id === selectedStructureId);
+    if (!s) return;
+
+    setStructureForm({
+      title: s.title || '',
+      description: (s.description || '').replace(/\s+\|\s+Scope:.+$/, ''),
+      currency: s.currency || 'USD',
+      effective_term: s.effective_term || '',
+      scopeType: 'class',
+      scopeValue: (s.description || '').includes('Scope:')
+        ? (s.description || '').split('Scope:')[1]?.trim() || ''
+        : '',
+    });
+    setStructureItems(
+      (s.items || []).map((it, idx) => ({
+        ...it,
+        id: it.id || idx + 1,
+        sort_order: it.sort_order ?? idx,
+        currency: it.currency || s.currency || 'USD',
+      })) || [emptyItem()],
+    );
+  }, [selectedStructureId, structures]);
 
   const mergedRows = useMemo(() => {
     const byLearner = new Map<string, { charges: number; payments: number; balance: number }>();
-    for (const b of balances) byLearner.set(String(b.learner_id), b);
+    for (const b of balances || []) byLearner.set(String(b.learner_id), b);
 
     return learners.map((l) => {
       const id = pickLearnerId(l);
@@ -249,7 +270,6 @@ const OrgFeesPage: React.FC = () => {
     });
   }, [learners, balances]);
 
-  // Search/filter
   const [q, setQ] = useState('');
   const [classFilter, setClassFilter] = useState<string>('all');
 
@@ -268,62 +288,47 @@ const OrgFeesPage: React.FC = () => {
       .sort((a, b) => (b.balance || 0) - (a.balance || 0));
   }, [mergedRows, q, classFilter]);
 
-  // Mutations
-  const createChargeMut = useMutation({
-    mutationFn: async (payload: {
-      learner_id: string;
-      amount_cents: number;
-      currency: string;
-      description?: string;
-      class_label?: string;
-      due_date?: string;
-    }) => apiCreateFeeCharge(backendUrl, orgId!, payload as any, orgToken),
-    onSuccess: async (_data, vars) => {
-      await invalidateFees(vars?.learner_id);
-    },
-  });
+  const totalStructure = useMemo(
+    () => structureItems.reduce((acc, item) => acc + Number(item.amount_cents || 0), 0),
+    [structureItems],
+  );
 
-  const bulkChargeMut = useMutation({
-    mutationFn: async (payload: {
-      learner_ids: string[];
-      amount_cents: number;
-      currency: string;
-      description?: string;
-      class_label?: string;
-      due_date?: string;
-    }) => apiBulkFeeCharges(backendUrl, orgId!, payload as any, orgToken),
-    onSuccess: async () => {
-      // bulk affects many learners; invalidate balances + statement prefix
-      await invalidateFees();
-    },
-  });
+  const handleSaveStructure = async () => {
+    const payload = {
+      title: structureForm.title,
+      description: [structureForm.description, structureForm.scopeValue ? `Scope: ${structureForm.scopeType} ${structureForm.scopeValue}` : '']
+        .filter(Boolean)
+        .join(' | '),
+      currency: structureForm.currency,
+      effective_term: structureForm.effective_term || null,
+      items: structureItems
+        .filter((i) => i.label && i.amount_cents > 0)
+        .map((item, idx) => ({
+          label: item.label,
+          amount_cents: item.amount_cents,
+          currency: item.currency || structureForm.currency,
+          cadence: item.cadence || null,
+          is_optional: item.is_optional ?? false,
+          sort_order: idx,
+          metadata: item.metadata || {},
+        })),
+    } as Partial<FeeStructure>;
 
-  const paymentMut = useMutation({
-    mutationFn: async (payload: {
-      learner_id: string;
-      amount_cents: number;
-      currency: string;
-      method?: string;
-      reference?: string;
-      note?: string;
-      received_at?: string;
-    }) => apiRecordFeePayment(backendUrl, orgId!, payload as any, orgToken),
-    onSuccess: async (_data, vars) => {
-      await invalidateFees(vars?.learner_id);
-    },
-  });
+    if (selectedStructureId) {
+      await editStructure(selectedStructureId, payload);
+    } else {
+      const created = await saveStructure(payload);
+      if (created?.id) setSelectedStructureId(created.id);
+    }
+    fetchStructures();
+  };
 
-  // Statement
-  const statementQuery = useQuery({
-    queryKey: ['orgFeeStatement', backendUrl, orgId, orgToken, selectedLearnerId],
-    enabled: Boolean(backendUrl && orgId && orgToken && selectedLearnerId && isPro),
-    queryFn: () => apiGetFeeStatement(backendUrl, orgId!, selectedLearnerId, orgToken),
-    staleTime: 10_000,
-  });
+  const handleActivateStructure = async (structureId?: number | null) => {
+    if (!structureId) return;
+    await activateStructure(structureId);
+    fetchStructures();
+  };
 
-  const statement = statementQuery.data as any;
-
-  // Navigation helpers
   const openCharge = (learnerId?: string) => {
     navigate('/org/fees/charge/new' + (learnerId ? `?learnerId=${encodeURIComponent(learnerId)}` : ''));
   };
@@ -340,7 +345,16 @@ const OrgFeesPage: React.FC = () => {
     navigate(`/org/fees/print?learnerId=${encodeURIComponent(learnerId)}`);
   };
 
-  // ───────────────────────── Print view ─────────────────────────
+  if (!isPro) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-4 px-4 py-8">
+        <h1 className="text-2xl font-semibold">Fees</h1>
+        <p className="text-sm text-slate-500">Upgrade to Pro to manage org fee structures and balances.</p>
+        {upgradeCta}
+      </div>
+    );
+  }
+
   if (mode === 'print') {
     const learner = learners.find((l) => pickLearnerId(l) === selectedLearnerId);
     const learnerName = learner ? pickLearnerName(learner) : selectedLearnerId || 'Learner';
@@ -350,22 +364,27 @@ const OrgFeesPage: React.FC = () => {
         <div className="flex items-center justify-between print:hidden">
           <button
             type="button"
-            onClick={() =>
-              navigate(
-                '/org/fees' + (selectedLearnerId ? `?learnerId=${encodeURIComponent(selectedLearnerId)}` : ''),
-              )
-            }
+            onClick={() => navigate('/org/fees' + (selectedLearnerId ? `?learnerId=${encodeURIComponent(selectedLearnerId)}` : ''))}
             className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             Back
           </button>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600"
-          >
-            Print
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => downloadStatementPdf(selectedLearnerId, 'statement.pdf')}
+              className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              Download PDF
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600"
+            >
+              Print
+            </button>
+          </div>
         </div>
 
         {!selectedLearnerId ? (
@@ -378,10 +397,8 @@ const OrgFeesPage: React.FC = () => {
               </Link>
             }
           />
-        ) : statementQuery.isLoading ? (
+        ) : statementLoading ? (
           <div className="text-sm text-slate-500">Loading statement…</div>
-        ) : statementQuery.isError ? (
-          <EmptyState title="Could not load statement" body="Check the learner ID and try again." />
         ) : (
           <div className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6 dark:border-slate-800 dark:bg-slate-900">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -394,38 +411,21 @@ const OrgFeesPage: React.FC = () => {
                   Learner ID: <span className="font-mono">{selectedLearnerId}</span>
                 </div>
               </div>
-              <div className="text-left text-xs text-slate-500 sm:text-right">
-                Generated: {new Date().toLocaleString()}
-              </div>
+              <div className="text-left text-xs text-slate-500 sm:text-right">Generated: {new Date().toLocaleString()}</div>
             </div>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
                 <div className="text-xs text-slate-500">Total charges</div>
-                <div className="mt-1 text-base font-semibold">
-                  {moneyFromCents(
-                    (statement?.charges || []).reduce((a: number, c: any) => a + Number(c.amount_cents || 0), 0),
-                    statement?.charges?.[0]?.currency || 'USD',
-                  )}
-                </div>
+                <div className="mt-1 text-base font-semibold">{moneyFromCents(summary.total_charges, payments[0]?.currency || 'USD')}</div>
               </div>
               <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
                 <div className="text-xs text-slate-500">Total payments</div>
-                <div className="mt-1 text-base font-semibold">
-                  {moneyFromCents(
-                    (statement?.payments || []).reduce((a: number, p: any) => a + Number(p.amount_cents || 0), 0),
-                    statement?.payments?.[0]?.currency || 'USD',
-                  )}
-                </div>
+                <div className="mt-1 text-base font-semibold">{moneyFromCents(summary.total_payments, payments[0]?.currency || 'USD')}</div>
               </div>
               <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
                 <div className="text-xs text-slate-500">Balance</div>
-                <div className="mt-1 text-base font-semibold">
-                  {moneyFromCents(
-                    Number(statement?.balance || 0),
-                    statement?.charges?.[0]?.currency || statement?.payments?.[0]?.currency || 'USD',
-                  )}
-                </div>
+                <div className="mt-1 text-base font-semibold">{moneyFromCents(summary.balance, payments[0]?.currency || 'USD')}</div>
               </div>
             </div>
 
@@ -442,14 +442,14 @@ const OrgFeesPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {(statement?.charges || []).map((c: any) => (
+                      {(charges || []).map((c: any) => (
                         <tr key={`c-${c.id}`} className="border-t border-slate-200 dark:border-slate-800">
                           <td className="px-3 py-2">{c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
                           <td className="px-3 py-2">{c.description || 'Fee'}</td>
                           <td className="px-3 py-2 text-right">{moneyFromCents(Number(c.amount_cents || 0), c.currency)}</td>
                         </tr>
                       ))}
-                      {(!statement?.charges || statement.charges.length === 0) && (
+                      {(!charges || charges.length === 0) && (
                         <tr>
                           <td className="px-3 py-3 text-slate-500" colSpan={3}>
                             No charges yet.
@@ -473,20 +473,16 @@ const OrgFeesPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {(statement?.payments || []).map((p: any) => (
+                      {(payments || []).map((p: any) => (
                         <tr key={`p-${p.id}`} className="border-t border-slate-200 dark:border-slate-800">
                           <td className="px-3 py-2">
-                            {p.received_at
-                              ? new Date(p.received_at).toLocaleString()
-                              : p.created_at
-                                ? new Date(p.created_at).toLocaleString()
-                                : '-'}
+                            {p.received_at ? new Date(p.received_at).toLocaleString() : p.created_at ? new Date(p.created_at).toLocaleString() : '-'}
                           </td>
                           <td className="px-3 py-2">{p.method || '-'}</td>
                           <td className="px-3 py-2 text-right">{moneyFromCents(Number(p.amount_cents || 0), p.currency)}</td>
                         </tr>
                       ))}
-                      {(!statement?.payments || statement.payments.length === 0) && (
+                      {(!payments || payments.length === 0) && (
                         <tr>
                           <td className="px-3 py-3 text-slate-500" colSpan={3}>
                             No payments yet.
@@ -498,17 +494,12 @@ const OrgFeesPage: React.FC = () => {
                 </div>
               </div>
             </div>
-
-            <div className="mt-6 text-xs text-slate-500">
-              Note: This statement is generated from recorded charges and payments in the system.
-            </div>
           </div>
         )}
       </div>
     );
   }
 
-  // ───────────────────────── Main dashboard (/org/fees) ─────────────────────────
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 md:py-10">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -516,74 +507,311 @@ const OrgFeesPage: React.FC = () => {
           <p className="text-sm uppercase tracking-wide text-blue-500">Org tools</p>
           <h1 className="text-2xl font-semibold">Fees & balances</h1>
           <p className="text-sm text-slate-500 dark:text-slate-300">
-            Create charges, record payments, and generate printable statements.
+            Build fee structures, create charges, record payments, and generate printable statements.
           </p>
         </div>
-
-        <span className="w-fit rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-slate-800 dark:text-slate-200">
-          Pro / Enterprise
-        </span>
       </div>
 
-      {!isPro && upgradeCta ? (
-        <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-700 dark:bg-amber-900/20">
-          <div className="font-semibold">{upgradeCta.headline}</div>
-          <p className="text-sm">{upgradeCta.body}</p>
-          <Link className="text-blue-600 underline" to="/org/profile">
-            Upgrade {org?.name || 'org'}
-          </Link>
-        </div>
-      ) : !orgId ? (
-        <EmptyState title="Org not ready" body="We could not resolve orgId yet. Try refreshing." />
-      ) : (
-        <>
-          <div className="grid gap-3 md:grid-cols-3">
-            <SectionCard title="New charge" subtitle="Single learner or whole class.">
-              <button
-                type="button"
-                onClick={() => openCharge()}
-                className="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:scale-[0.99]"
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SectionCard title="Fee structure builder" subtitle="Line items, totals, and activation per scope">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Title</div>
+              <input
+                value={structureForm.title}
+                onChange={(e) => setStructureForm((f) => ({ ...f, title: e.target.value }))}
+                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
+                placeholder="e.g. Term 1 Fees"
+              />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Currency</div>
+              <select
+                value={structureForm.currency}
+                onChange={(e) => setStructureForm((f) => ({ ...f, currency: e.target.value }))}
+                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
               >
-                Create charge
-              </button>
-            </SectionCard>
-
-            <SectionCard title="Record payment" subtitle="Cash, POS, transfer, M-Pesa.">
-              <button
-                type="button"
-                onClick={() => openPayment()}
-                className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600 active:scale-[0.99]"
+                <option value="USD">USD</option>
+                <option value="KES">KES</option>
+                <option value="QAR">QAR</option>
+              </select>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Scope type</div>
+              <select
+                value={structureForm.scopeType}
+                onChange={(e) => setStructureForm((f) => ({ ...f, scopeType: e.target.value }))}
+                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
               >
-                Add payment
-              </button>
-            </SectionCard>
-
-            <SectionCard title="Statements" subtitle="Select a learner then print.">
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedLearnerId) openStatement(selectedLearnerId);
-                  else alert('Select a learner below first.');
-                }}
-                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 active:scale-[0.99]"
-              >
-                Open statement
-              </button>
-            </SectionCard>
+                <option value="class">Class</option>
+                <option value="group">Group</option>
+                <option value="grade">Grade</option>
+                <option value="term">Term</option>
+              </select>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Scope value</div>
+              <input
+                value={structureForm.scopeValue}
+                onChange={(e) => setStructureForm((f) => ({ ...f, scopeValue: e.target.value }))}
+                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
+                placeholder="e.g. Grade 6"
+              />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Effective term</div>
+              <input
+                value={structureForm.effective_term}
+                onChange={(e) => setStructureForm((f) => ({ ...f, effective_term: e.target.value }))}
+                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
+                placeholder="e.g. 2025 Term 1"
+              />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Description</div>
+              <input
+                value={structureForm.description}
+                onChange={(e) => setStructureForm((f) => ({ ...f, description: e.target.value }))}
+                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
+                placeholder="Optional notes"
+              />
+            </div>
           </div>
 
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2 md:flex-1">
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-200">
+              <span>Line items</span>
+              <button
+                type="button"
+                onClick={() => setStructureItems((prev) => [...prev, { ...emptyItem(), currency: structureForm.currency }])}
+                className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Add item
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {structureItems.map((item, idx) => (
+                <div
+                  key={`item-${idx}`}
+                  className="grid gap-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-800 md:grid-cols-12"
+                >
+                  <div className="md:col-span-4">
+                    <div className="text-[11px] font-semibold text-slate-500">Label</div>
+                    <input
+                      value={item.label}
+                      onChange={(e) => setStructureItems((prev) => prev.map((it, i) => (i === idx ? { ...it, label: e.target.value } : it)))}
+                      className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-900"
+                      placeholder="Tuition"
+                    />
+                  </div>
+                  <div className="md:col-span-3">
+                    <div className="text-[11px] font-semibold text-slate-500">Amount</div>
+                    <input
+                      value={(item.amount_cents / 100 || '').toString()}
+                      onChange={(e) => setStructureItems((prev) => prev.map((it, i) => (i === idx ? { ...it, amount_cents: toCents(e.target.value) } : it)))}
+                      inputMode="decimal"
+                      className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-900"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="md:col-span-3">
+                    <div className="text-[11px] font-semibold text-slate-500">Cadence</div>
+                    <input
+                      value={item.cadence || ''}
+                      onChange={(e) => setStructureItems((prev) => prev.map((it, i) => (i === idx ? { ...it, cadence: e.target.value } : it)))}
+                      className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-900"
+                      placeholder="per term"
+                    />
+                  </div>
+                  <div className="md:col-span-1 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(item.is_optional)}
+                      onChange={(e) => setStructureItems((prev) => prev.map((it, i) => (i === idx ? { ...it, is_optional: e.target.checked } : it)))}
+                    />
+                    <span className="text-xs text-slate-600 dark:text-slate-200">Optional</span>
+                  </div>
+                  <div className="md:col-span-1 flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setStructureItems((prev) => (prev.length === 1 ? [emptyItem()] : prev.filter((_, i) => i !== idx)))}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-xs font-semibold text-slate-500">Live total</div>
+                <div className="text-lg font-semibold">{moneyFromCents(totalStructure, structureForm.currency)}</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={structuresSaving || !structureForm.title}
+                  onClick={handleSaveStructure}
+                  className={cn('rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700', structuresSaving && 'opacity-60')}
+                >
+                  {selectedStructureId ? 'Update structure' : 'Save structure'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedStructureId || structuresSaving}
+                  onClick={() => handleActivateStructure(selectedStructureId)}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Activate
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedStructureId || structuresLoading}
+                  onClick={() => selectedStructureId && downloadStructurePdf(selectedStructureId, 'fee-structure.pdf')}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Structure PDF
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Existing structures</div>
+              <div className="space-y-2">
+                {(structures || []).map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSelectedStructureId(s.id)}
+                    className={cn(
+                      'flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm',
+                      'border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800',
+                      selectedStructureId === s.id && 'border-blue-400 bg-blue-50/60 dark:border-blue-500/50 dark:bg-blue-900/10',
+                    )}
+                  >
+                    <div>
+                      <div className="font-semibold">{s.title}</div>
+                      <div className="text-xs text-slate-500">{s.description || 'No description'} • {s.currency}</div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      {s.is_active ? <Badge tone="ok">Active</Badge> : <Badge tone="neutral">Draft</Badge>}
+                      {s.effective_term ? <Badge tone="neutral">{s.effective_term}</Badge> : null}
+                    </div>
+                  </button>
+                ))}
+
+                {!structures?.length && !structuresLoading && (
+                  <EmptyState
+                    title="No fee structures yet"
+                    body="Add line items and save to create your first structure."
+                    action={
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedStructureId(null);
+                          setStructureForm({ title: '', description: '', currency: 'USD', effective_term: '', scopeType: 'class', scopeValue: '' });
+                          setStructureItems([emptyItem()]);
+                        }}
+                        className="text-blue-600 hover:underline"
+                      >
+                        Start now
+                      </button>
+                    }
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Quick actions" subtitle="Charges, payments, balances, and statements">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800">
+              <div className="text-xs text-slate-500">Balances</div>
+              <div className="mt-1 text-lg font-semibold">{balancesLoading ? 'Loading…' : `${balances?.length || 0} learners`}</div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => fetchBalances()}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800">
+              <div className="text-xs text-slate-500">Statements</div>
+              <div className="mt-1 text-lg font-semibold">Download PDFs</div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  disabled={!selectedLearnerId}
+                  onClick={() => selectedLearnerId && downloadStatementPdf(selectedLearnerId, 'fee-statement.pdf')}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Statement PDF
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedLearnerId}
+                  onClick={() => selectedLearnerId && openPrint(selectedLearnerId)}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Print view
+                </button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800">
+              <div className="text-xs text-slate-500">Charges</div>
+              <div className="mt-1 text-lg font-semibold">Create per learner or bulk</div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => openCharge(selectedLearnerId || undefined)}
+                  className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+                >
+                  New charge
+                </button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800">
+              <div className="text-xs text-slate-500">Payments</div>
+              <div className="mt-1 text-lg font-semibold">Record receipts</div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => openPayment(selectedLearnerId || undefined)}
+                  className="rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600"
+                >
+                  Record payment
+                </button>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      </div>
+
+      <SectionCard title="Balances" subtitle="Search learners and open statements">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div className="grid gap-2 md:grid-cols-3 md:items-end">
+            <div>
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Search</div>
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search learner / ID / class…"
-                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-blue-900/30"
+                placeholder="Name, ID, or class"
+                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
               />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Class filter</div>
               <select
                 value={classFilter}
                 onChange={(e) => setClassFilter(e.target.value)}
-                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 sm:w-[200px]"
+                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
               >
                 <option value="all">All classes</option>
                 {classLabels.map((c) => (
@@ -593,190 +821,100 @@ const OrgFeesPage: React.FC = () => {
                 ))}
               </select>
             </div>
-
-            <div className="text-xs text-slate-500">
-              {balancesQuery.isFetching ? 'Refreshing balances…' : 'Up to date'}
+            <div className="flex items-center gap-2 pt-5 text-sm text-slate-500">
+              {balancesLoading ? 'Refreshing balances…' : `${filtered.length} rows`}
             </div>
           </div>
+        </div>
 
-          {/* MOBILE + TABLET: cards */}
-          <div className="grid gap-3 md:hidden">
-            {filtered.map((r) => {
-              const isSelected = selectedLearnerId && r.learnerId === selectedLearnerId;
-              const tone = r.balance > 0 ? 'warn' : 'ok';
-
-              return (
-                <div
-                  key={r.learnerId}
-                  onClick={() => setSearchParams({ learnerId: r.learnerId })}
-                  className={cn(
-                    'rounded-2xl border p-4 shadow-sm',
-                    isSelected
-                      ? 'border-blue-300 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-900/10'
-                      : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
-                  )}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold">{r.name}</div>
-                      <div className="mt-1 text-xs text-slate-500">
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-200">
+              <tr>
+                <th className="px-3 py-2 text-left">Learner</th>
+                <th className="px-3 py-2 text-left">Class</th>
+                <th className="px-3 py-2 text-right">Charges</th>
+                <th className="px-3 py-2 text-right">Payments</th>
+                <th className="px-3 py-2 text-right">Balance</th>
+                <th className="px-3 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => {
+                const isSelected = selectedLearnerId && r.learnerId === selectedLearnerId;
+                return (
+                  <tr
+                    key={r.learnerId}
+                    className={cn('border-t border-slate-200 dark:border-slate-800', isSelected && 'bg-blue-50/60 dark:bg-blue-900/10')}
+                    onClick={() => setSearchParams({ learnerId: r.learnerId })}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td className="px-3 py-2">
+                      <div className="font-medium">{r.name}</div>
+                      <div className="text-xs text-slate-500">
                         <span className="font-mono">{r.learnerId}</span>
-                        {r.class_label ? <span> • {r.class_label}</span> : null}
                       </div>
-                    </div>
-                    <Badge tone={tone}>{moneyFromCents(r.balance, 'USD')}</Badge>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-200">
-                    <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-800">
-                      <div className="text-[11px] text-slate-500">Charges</div>
-                      <div className="font-semibold">{moneyFromCents(r.charges, 'USD')}</div>
-                    </div>
-                    <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-800">
-                      <div className="text-[11px] text-slate-500">Payments</div>
-                      <div className="font-semibold">{moneyFromCents(r.payments, 'USD')}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openCharge(r.learnerId);
-                      }}
-                      className="flex-1 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-                    >
-                      Charge
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openPayment(r.learnerId);
-                      }}
-                      className="flex-1 rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600"
-                    >
-                      Pay
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openStatement(r.learnerId);
-                      }}
-                      className="w-full rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                      Statement
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-
-            {filtered.length === 0 && (
-              <EmptyState
-                title={rosterQuery.isLoading ? 'Loading roster…' : 'No learners found'}
-                body="Try adjusting your search or class filter."
-              />
-            )}
-          </div>
-
-          {/* DESKTOP: full table */}
-          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 md:block">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-200">
-                <tr>
-                  <th className="px-3 py-2 text-left">Learner</th>
-                  <th className="px-3 py-2 text-left">Class</th>
-                  <th className="px-3 py-2 text-right">Charges</th>
-                  <th className="px-3 py-2 text-right">Payments</th>
-                  <th className="px-3 py-2 text-right">Balance</th>
-                  <th className="px-3 py-2 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r) => {
-                  const isSelected = selectedLearnerId && r.learnerId === selectedLearnerId;
-                  return (
-                    <tr
-                      key={r.learnerId}
-                      className={cn(
-                        'border-t border-slate-200 dark:border-slate-800',
-                        isSelected && 'bg-blue-50/60 dark:bg-blue-900/10',
-                      )}
-                      onClick={() => setSearchParams({ learnerId: r.learnerId })}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{r.name}</div>
-                        <div className="text-xs text-slate-500">
-                          <span className="font-mono">{r.learnerId}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">{r.class_label || '-'}</td>
-                      <td className="px-3 py-2 text-right">{moneyFromCents(r.charges, 'USD')}</td>
-                      <td className="px-3 py-2 text-right">{moneyFromCents(r.payments, 'USD')}</td>
-                      <td className="px-3 py-2 text-right">
-                        <Badge tone={r.balance > 0 ? 'warn' : 'ok'}>{moneyFromCents(r.balance, 'USD')}</Badge>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openCharge(r.learnerId);
-                            }}
-                            className="rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-                          >
-                            Charge
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openPayment(r.learnerId);
-                            }}
-                            className="rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600"
-                          >
-                            Pay
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openStatement(r.learnerId);
-                            }}
-                            className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                          >
-                            Statement
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
-                      {rosterQuery.isLoading ? 'Loading roster…' : 'No learners match your search.'}
+                    </td>
+                    <td className="px-3 py-2">{r.class_label || '-'}</td>
+                    <td className="px-3 py-2 text-right">{moneyFromCents(r.charges, 'USD')}</td>
+                    <td className="px-3 py-2 text-right">{moneyFromCents(r.payments, 'USD')}</td>
+                    <td className="px-3 py-2 text-right">
+                      <Badge tone={r.balance > 0 ? 'warn' : 'ok'}>{moneyFromCents(r.balance, 'USD')}</Badge>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openCharge(r.learnerId);
+                          }}
+                          className="rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                        >
+                          Charge
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPayment(r.learnerId);
+                          }}
+                          className="rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600"
+                        >
+                          Pay
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openStatement(r.learnerId);
+                          }}
+                          className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                          Statement
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
 
-          <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-            Tip: select a learner, then open <span className="font-semibold">Statement</span> to view history and print.
-          </div>
-        </>
-      )}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
+                    {rosterQuery.isLoading ? 'Loading roster…' : 'No learners match your search.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-      {/* ───────────────────────── Charge modal ───────────────────────── */}
+        <div className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+          Tip: select a learner, then open <span className="font-semibold">Statement</span> to view history and print.
+        </div>
+      </SectionCard>
+
       {mode === 'charge' && (
         <ResponsiveChargeModal
           title="Create fee charge"
@@ -784,155 +922,50 @@ const OrgFeesPage: React.FC = () => {
           learners={learners}
           classLabels={classLabels}
           selectedLearnerId={selectedLearnerId}
-          createChargeMut={createChargeMut}
-          bulkChargeMut={bulkChargeMut}
+          onCharge={async (payload, isBulk) => {
+            if (isBulk) {
+              await addBulkCharges(payload as any);
+            } else {
+              await addCharge(payload as any);
+            }
+            await fetchBalances();
+            if (payload?.learner_id) await fetchStatement(payload.learner_id);
+          }}
         />
       )}
 
-      {/* ───────────────────────── Payment modal ───────────────────────── */}
       {mode === 'payment' && (
         <ResponsivePaymentModal
           title="Record payment"
           onClose={closeToHome}
           learners={learners}
           selectedLearnerId={selectedLearnerId}
-          paymentMut={paymentMut}
+          onPayment={async (payload) => {
+            await addPayment(payload as any);
+            await fetchBalances();
+            if (payload?.learner_id) await fetchStatement(payload.learner_id);
+          }}
         />
       )}
 
-      {/* ───────────────────────── Statement modal ───────────────────────── */}
       {mode === 'statement' && (
-        <Modal title={`Statement${selectedLearnerId ? ` • ${selectedLearnerId}` : ''}`} onClose={closeToHome}>
-          {!selectedLearnerId ? (
-            <EmptyState title="Select a learner" body="Pick a learner from the Fees list first." />
-          ) : statementQuery.isLoading ? (
-            <div className="text-sm text-slate-500">Loading statement…</div>
-          ) : statementQuery.isError ? (
-            <EmptyState title="Could not load statement" body="Try again or verify learnerId." />
-          ) : (
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
-                  <div className="text-xs text-slate-500">Charges</div>
-                  <div className="mt-1 text-base font-semibold">
-                    {moneyFromCents(
-                      (statement?.charges || []).reduce((a: number, c: any) => a + Number(c.amount_cents || 0), 0),
-                      statement?.charges?.[0]?.currency || 'USD',
-                    )}
-                  </div>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
-                  <div className="text-xs text-slate-500">Payments</div>
-                  <div className="mt-1 text-base font-semibold">
-                    {moneyFromCents(
-                      (statement?.payments || []).reduce((a: number, p: any) => a + Number(p.amount_cents || 0), 0),
-                      statement?.payments?.[0]?.currency || 'USD',
-                    )}
-                  </div>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
-                  <div className="text-xs text-slate-500">Balance</div>
-                  <div className="mt-1 text-base font-semibold">
-                    {moneyFromCents(
-                      Number(statement?.balance || 0),
-                      statement?.charges?.[0]?.currency || statement?.payments?.[0]?.currency || 'USD',
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm font-semibold">History</div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openCharge(selectedLearnerId)}
-                    className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-                  >
-                    Add charge
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openPayment(selectedLearnerId)}
-                    className="rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600"
-                  >
-                    Add payment
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openPrint(selectedLearnerId)}
-                    className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    Print
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <div className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-200">Charges</div>
-                  <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800">
-                    {(statement?.charges || []).map((c: any) => (
-                      <div key={`c-${c.id}`} className="border-b border-slate-200 p-3 text-sm dark:border-slate-800">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">{c.description || 'Fee'}</div>
-                            <div className="mt-1 text-xs text-slate-500">
-                              {c.created_at ? new Date(c.created_at).toLocaleString() : '-'}
-                              {c.class_label ? ` • ${c.class_label}` : ''}
-                            </div>
-                          </div>
-                          <div className="shrink-0 font-semibold">
-                            {moneyFromCents(Number(c.amount_cents || 0), c.currency)}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {(!statement?.charges || statement.charges.length === 0) && (
-                      <div className="p-3 text-sm text-slate-500">No charges yet.</div>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-200">Payments</div>
-                  <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800">
-                    {(statement?.payments || []).map((p: any) => (
-                      <div key={`p-${p.id}`} className="border-b border-slate-200 p-3 text-sm dark:border-slate-800">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">{p.method || 'payment'}</div>
-                            <div className="mt-1 text-xs text-slate-500">
-                              {p.received_at || p.created_at ? new Date(p.received_at || p.created_at).toLocaleString() : '-'}
-                              {p.reference ? ` • ${p.reference}` : ''}
-                            </div>
-                            {p.note ? <div className="mt-1 truncate text-xs text-slate-500">{p.note}</div> : null}
-                          </div>
-                          <div className="shrink-0 font-semibold">
-                            {moneyFromCents(Number(p.amount_cents || 0), p.currency)}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {(!statement?.payments || statement.payments.length === 0) && (
-                      <div className="p-3 text-sm text-slate-500">No payments yet.</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </Modal>
+        <StatementModal
+          title={`Statement${selectedLearnerId ? ` • ${selectedLearnerId}` : ''}`}
+          onClose={closeToHome}
+          learnerId={selectedLearnerId}
+          summary={summary}
+          charges={charges}
+          payments={payments}
+          loading={statementLoading}
+          onOpenCharge={() => openCharge(selectedLearnerId)}
+          onOpenPayment={() => openPayment(selectedLearnerId)}
+          onPrint={() => openPrint(selectedLearnerId)}
+          onDownload={() => downloadStatementPdf(selectedLearnerId, 'fee-statement.pdf')}
+        />
       )}
     </div>
   );
 };
-
-export default OrgFeesPage;
-
-/* ─────────────────────────────────────────────────────────
-   Extracted responsive modals
-   ───────────────────────────────────────────────────────── */
 
 function ResponsiveChargeModal({
   title,
@@ -940,148 +973,91 @@ function ResponsiveChargeModal({
   learners,
   classLabels,
   selectedLearnerId,
-  createChargeMut,
-  bulkChargeMut,
+  onCharge,
 }: {
   title: string;
   onClose: () => void;
   learners: LearnerLite[];
   classLabels: string[];
   selectedLearnerId: string;
-  createChargeMut: any;
-  bulkChargeMut: any;
+  onCharge: (payload: any, isBulk?: boolean) => Promise<void>;
 }) {
-  const [chargeMode, setChargeMode] = useState<'single' | 'bulk'>('single');
   const [chargeLearnerId, setChargeLearnerId] = useState('');
-  const [chargeClassLabel, setChargeClassLabel] = useState('');
-  const [chargeCurrency, setChargeCurrency] = useState('USD');
   const [chargeAmount, setChargeAmount] = useState('');
+  const [chargeCurrency, setChargeCurrency] = useState('USD');
   const [chargeDesc, setChargeDesc] = useState('');
+  const [chargeClassLabel, setChargeClassLabel] = useState('');
   const [chargeDueDate, setChargeDueDate] = useState('');
+  const [chargeMode, setChargeMode] = useState<'single' | 'bulk'>('single');
   const [bulkLearnerIds, setBulkLearnerIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (selectedLearnerId) setChargeLearnerId(selectedLearnerId);
   }, [selectedLearnerId]);
 
-  useEffect(() => {
-    if (chargeMode !== 'bulk') return;
-    if (chargeClassLabel) return;
-    if (classLabels[0]) setChargeClassLabel(classLabels[0]);
-  }, [chargeMode, chargeClassLabel, classLabels]);
-
-  const bulkCandidates = useMemo(() => {
-    if (!chargeClassLabel) return learners;
-    return learners.filter((l) => String(l.class_label || '') === chargeClassLabel);
-  }, [learners, chargeClassLabel]);
-
   const amount_cents = toCents(chargeAmount);
+  const bulkCandidates = chargeClassLabel ? learners.filter((l) => String(l.class_label || '') === chargeClassLabel) : learners;
 
   return (
     <Modal title={title} onClose={onClose}>
       <div className="space-y-4">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setChargeMode('single')}
-            className={cn(
-              'flex-1 rounded-md px-3 py-2 text-sm font-semibold',
-              chargeMode === 'single'
-                ? 'bg-blue-600 text-white'
-                : 'border border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800',
-            )}
-          >
-            Single
-          </button>
-          <button
-            type="button"
-            onClick={() => setChargeMode('bulk')}
-            className={cn(
-              'flex-1 rounded-md px-3 py-2 text-sm font-semibold',
-              chargeMode === 'bulk'
-                ? 'bg-blue-600 text-white'
-                : 'border border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800',
-            )}
-          >
-            Whole class
-          </button>
+        <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-600 dark:text-slate-200">
+          <label className="flex cursor-pointer items-center gap-2 rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-800">
+            <input type="radio" checked={chargeMode === 'single'} onChange={() => setChargeMode('single')} />
+            Single learner
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-800">
+            <input type="radio" checked={chargeMode === 'bulk'} onChange={() => setChargeMode('bulk')} />
+            Bulk by class
+          </label>
         </div>
 
         {chargeMode === 'single' ? (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Learner</div>
+            <select
+              value={chargeLearnerId}
+              onChange={(e) => setChargeLearnerId(e.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
+            >
+              <option value="">Select learner…</option>
+              {learners.map((l) => {
+                const id = pickLearnerId(l);
+                if (!id) return null;
+                return (
+                  <option key={id} value={id}>
+                    {pickLearnerName(l)} ({id})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        ) : (
+          <div className="space-y-2">
             <div>
-              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Learner</div>
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Class</div>
               <select
-                value={chargeLearnerId}
-                onChange={(e) => setChargeLearnerId(e.target.value)}
+                value={chargeClassLabel}
+                onChange={(e) => setChargeClassLabel(e.target.value)}
                 className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
               >
-                <option value="">Select learner…</option>
-                {learners.map((l) => {
-                  const id = pickLearnerId(l);
-                  if (!id) return null;
-                  return (
-                    <option key={id} value={id}>
-                      {pickLearnerName(l)} ({id})
-                    </option>
-                  );
-                })}
+                <option value="">All classes</option>
+                {classLabels.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </select>
             </div>
 
-            <div>
-              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Class label (optional)</div>
-              <input
-                value={chargeClassLabel}
-                onChange={(e) => setChargeClassLabel(e.target.value)}
-                placeholder="e.g. Grade 7 Blue"
-                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Class label</div>
-                <select
-                  value={chargeClassLabel}
-                  onChange={(e) => {
-                    setChargeClassLabel(e.target.value);
-                    setBulkLearnerIds([]);
-                  }}
-                  className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
-                >
-                  {classLabels.length === 0 ? (
-                    <option value="">No classes found</option>
-                  ) : (
-                    classLabels.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-200">
-                Select learners in this class, then create charges in one click.
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">
-                Learners ({bulkLearnerIds.length}/{bulkCandidates.length})
-              </div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs text-slate-500">{bulkLearnerIds.length} selected</div>
               <button
                 type="button"
                 onClick={() => {
-                  const allIds = bulkCandidates
-                    .map((l) => pickLearnerId(l))
-                    .map((x) => String(x || '').trim())
-                    .filter((x) => x && x !== 'undefined' && x !== 'null');
-
-                  const allSelected = allIds.length > 0 && allIds.every((id) => bulkLearnerIds.includes(id));
+                  const allIds = bulkCandidates.map((l) => pickLearnerId(l)).filter((x) => x && x !== 'undefined' && x !== 'null');
+                  const allSelected = bulkLearnerIds.length === allIds.length;
                   setBulkLearnerIds(allSelected ? [] : allIds);
                 }}
                 className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -1104,9 +1080,7 @@ function ResponsiveChargeModal({
                     <input
                       type="checkbox"
                       checked={checked}
-                      onChange={() => {
-                        setBulkLearnerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-                      }}
+                      onChange={() => setBulkLearnerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))}
                     />
                     <span className="text-sm">
                       {pickLearnerName(l)} <span className="text-xs text-slate-500">({id})</span>
@@ -1115,9 +1089,7 @@ function ResponsiveChargeModal({
                 );
               })}
 
-              {bulkCandidates.length === 0 && (
-                <div className="p-2 text-sm text-slate-500">No learners found for this class.</div>
-              )}
+              {bulkCandidates.length === 0 && <div className="p-2 text-sm text-slate-500">No learners found for this class.</div>}
             </div>
           </div>
         )}
@@ -1172,13 +1144,7 @@ function ResponsiveChargeModal({
           </div>
         </div>
 
-        {(createChargeMut.isError || bulkChargeMut.isError) && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
-            {(createChargeMut.error as any)?.message ||
-              (bulkChargeMut.error as any)?.message ||
-              'Failed to create charge.'}
-          </div>
-        )}
+        {saving && <div className="text-xs text-slate-500">Saving charge…</div>}
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
@@ -1195,65 +1161,48 @@ function ResponsiveChargeModal({
               (chargeMode === 'single' && !chargeLearnerId) ||
               (chargeMode === 'bulk' && bulkLearnerIds.length === 0) ||
               amount_cents <= 0 ||
-              createChargeMut.isPending ||
-              bulkChargeMut.isPending
+              saving
             }
             onClick={async () => {
               if (amount_cents <= 0) return;
-
-              if (chargeMode === 'single') {
-                await createChargeMut.mutateAsync({
-                  learner_id: chargeLearnerId,
-                  amount_cents,
-                  currency: chargeCurrency,
-                  description: chargeDesc || undefined,
-                  class_label: chargeClassLabel || undefined,
-                  due_date: chargeDueDate || undefined,
-                });
-              } else {
-                const safeIds = bulkLearnerIds
-                  .map((x) => String(x || '').trim())
-                  .filter((x) => x && x !== 'undefined' && x !== 'null');
-
-                if (safeIds.length === 0) {
-                  alert('No valid learners selected.');
-                  return;
-                }
-
-                const resp = await bulkChargeMut.mutateAsync({
-                  learner_ids: safeIds,
-                  amount_cents,
-                  currency: chargeCurrency,
-                  description: chargeDesc || undefined,
-                  class_label: chargeClassLabel || undefined,
-                  due_date: chargeDueDate || undefined,
-                });
-
-                const failedCount = (resp as any)?.failed?.length || 0;
-                if (failedCount > 0) {
-                  alert(`Created ${(resp as any)?.inserted?.length || 0} charges. Skipped ${failedCount} learners.`);
+              setSaving(true);
+              try {
+                if (chargeMode === 'single') {
+                  await onCharge(
+                    {
+                      learner_id: chargeLearnerId,
+                      amount_cents,
+                      currency: chargeCurrency,
+                      description: chargeDesc || undefined,
+                      class_label: chargeClassLabel || undefined,
+                      due_date: chargeDueDate || undefined,
+                    },
+                    false,
+                  );
                 } else {
-                  alert(`Created ${(resp as any)?.inserted?.length || safeIds.length} charges.`);
+                  await onCharge(
+                    {
+                      learner_ids: bulkLearnerIds,
+                      amount_cents,
+                      currency: chargeCurrency,
+                      description: chargeDesc || undefined,
+                      class_label: chargeClassLabel || undefined,
+                      due_date: chargeDueDate || undefined,
+                    },
+                    true,
+                  );
                 }
+                setChargeAmount('');
+                setChargeDesc('');
+                setChargeDueDate('');
+                onClose();
+              } finally {
+                setSaving(false);
               }
-
-              setChargeAmount('');
-              setChargeDesc('');
-              setChargeDueDate('');
-              onClose();
             }}
-            className={cn(
-              'w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700',
-              'disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto',
-            )}
+            className={cn('w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700', 'disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto')}
           >
-            {chargeMode === 'bulk'
-              ? bulkChargeMut.isPending
-                ? 'Creating…'
-                : `Create charges (${bulkLearnerIds.length})`
-              : createChargeMut.isPending
-                ? 'Creating…'
-                : 'Create charge'}
+            {chargeMode === 'bulk' ? `Create charges (${bulkLearnerIds.length})` : 'Create charge'}
           </button>
         </div>
       </div>
@@ -1266,13 +1215,13 @@ function ResponsivePaymentModal({
   onClose,
   learners,
   selectedLearnerId,
-  paymentMut,
+  onPayment,
 }: {
   title: string;
   onClose: () => void;
   learners: LearnerLite[];
   selectedLearnerId: string;
-  paymentMut: any;
+  onPayment: (payload: any) => Promise<void>;
 }) {
   const [payLearnerId, setPayLearnerId] = useState('');
   const [payCurrency, setPayCurrency] = useState('USD');
@@ -1281,6 +1230,7 @@ function ResponsivePaymentModal({
   const [payReference, setPayReference] = useState('');
   const [payNote, setPayNote] = useState('');
   const [payReceivedAt, setPayReceivedAt] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (selectedLearnerId) setPayLearnerId(selectedLearnerId);
@@ -1387,11 +1337,7 @@ function ResponsivePaymentModal({
           </div>
         </div>
 
-        {paymentMut.isError && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
-            {(paymentMut.error as any)?.message || 'Failed to record payment.'}
-          </div>
-        )}
+        {saving && <div className="text-xs text-slate-500">Saving payment…</div>}
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
@@ -1404,35 +1350,163 @@ function ResponsivePaymentModal({
 
           <button
             type="button"
-            disabled={!payLearnerId || amount_cents <= 0 || paymentMut.isPending}
+            disabled={!payLearnerId || amount_cents <= 0 || saving}
             onClick={async () => {
               if (amount_cents <= 0) return;
-
-              await paymentMut.mutateAsync({
-                learner_id: payLearnerId,
-                amount_cents,
-                currency: payCurrency,
-                method: payMethod || undefined,
-                reference: payReference || undefined,
-                note: payNote || undefined,
-                received_at: payReceivedAt ? new Date(payReceivedAt).toISOString() : undefined,
-              });
-
-              setPayAmount('');
-              setPayReference('');
-              setPayNote('');
-              setPayReceivedAt('');
-              onClose();
+              setSaving(true);
+              try {
+                await onPayment({
+                  learner_id: payLearnerId,
+                  amount_cents,
+                  currency: payCurrency,
+                  method: payMethod || undefined,
+                  reference: payReference || undefined,
+                  note: payNote || undefined,
+                  received_at: payReceivedAt ? new Date(payReceivedAt).toISOString() : undefined,
+                });
+                setPayAmount('');
+                setPayReference('');
+                setPayNote('');
+                setPayReceivedAt('');
+                onClose();
+              } finally {
+                setSaving(false);
+              }
             }}
-            className={cn(
-              'w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600',
-              'disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto',
-            )}
+            className={cn('w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600', 'disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto')}
           >
-            {paymentMut.isPending ? 'Saving…' : 'Record payment'}
+            Record payment
           </button>
         </div>
       </div>
     </Modal>
   );
 }
+
+function StatementModal({
+  title,
+  onClose,
+  learnerId,
+  summary,
+  charges,
+  payments,
+  loading,
+  onOpenCharge,
+  onOpenPayment,
+  onPrint,
+  onDownload,
+}: {
+  title: string;
+  onClose: () => void;
+  learnerId: string;
+  summary: { total_charges: number; total_payments: number; balance: number };
+  charges: any[];
+  payments: any[];
+  loading: boolean;
+  onOpenCharge: () => void;
+  onOpenPayment: () => void;
+  onPrint: () => void;
+  onDownload: () => void;
+}) {
+  return (
+    <Modal title={title} onClose={onClose}>
+      {!learnerId ? (
+        <EmptyState title="Select a learner" body="Pick a learner from the Fees list first." />
+      ) : loading ? (
+        <div className="text-sm text-slate-500">Loading statement…</div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+              <div className="text-xs text-slate-500">Charges</div>
+              <div className="mt-1 text-base font-semibold">{moneyFromCents(summary.total_charges, charges?.[0]?.currency || 'USD')}</div>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+              <div className="text-xs text-slate-500">Payments</div>
+              <div className="mt-1 text-base font-semibold">{moneyFromCents(summary.total_payments, payments?.[0]?.currency || 'USD')}</div>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+              <div className="text-xs text-slate-500">Balance</div>
+              <div className="mt-1 text-base font-semibold">{moneyFromCents(summary.balance, payments?.[0]?.currency || 'USD')}</div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm font-semibold">History</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onOpenCharge}
+                className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                Add charge
+              </button>
+              <button
+                type="button"
+                onClick={onOpenPayment}
+                className="rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600"
+              >
+                Add payment
+              </button>
+              <button
+                type="button"
+                onClick={onDownload}
+                className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Statement PDF
+              </button>
+              <button
+                type="button"
+                onClick={onPrint}
+                className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Print
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <div className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-200">Charges</div>
+              <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                {(charges || []).map((c: any) => (
+                  <div key={`c-${c.id}`} className="border-b border-slate-200 p-3 text-sm dark:border-slate-800">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{c.description || 'Fee'}</div>
+                        <div className="mt-1 text-xs text-slate-500">{c.created_at ? new Date(c.created_at).toLocaleString() : '-'}{c.class_label ? ` • ${c.class_label}` : ''}</div>
+                      </div>
+                      <div className="shrink-0 font-semibold">{moneyFromCents(Number(c.amount_cents || 0), c.currency)}</div>
+                    </div>
+                  </div>
+                ))}
+                {(!charges || charges.length === 0) && <div className="p-3 text-sm text-slate-500">No charges yet.</div>}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-200">Payments</div>
+              <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                {(payments || []).map((p: any) => (
+                  <div key={`p-${p.id}`} className="border-b border-slate-200 p-3 text-sm dark:border-slate-800">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{p.method || 'payment'}</div>
+                        <div className="mt-1 text-xs text-slate-500">{p.received_at || p.created_at ? new Date(p.received_at || p.created_at).toLocaleString() : '-'}{p.reference ? ` • ${p.reference}` : ''}</div>
+                        {p.note ? <div className="mt-1 truncate text-xs text-slate-500">{p.note}</div> : null}
+                      </div>
+                      <div className="shrink-0 font-semibold">{moneyFromCents(Number(p.amount_cents || 0), p.currency)}</div>
+                    </div>
+                  </div>
+                ))}
+                {(!payments || payments.length === 0) && <div className="p-3 text-sm text-slate-500">No payments yet.</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+export default OrgFeesPage;
