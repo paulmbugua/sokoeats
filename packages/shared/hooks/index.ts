@@ -33,5 +33,8 @@ export { default as useInstitutionAuth } from './useInstitutionAuth';
 
 export * from './useOer';
 export * from './useOrgExams';
+export * from './useOrgFeeStructures';
+export * from './useOrgFeeBalances';
+export * from './useOrgFeeStatement';
 
 export type { CreateRecordedVideoPayload } from './useUploadClassVault';
