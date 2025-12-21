@@ -52,17 +52,42 @@ import {
 } from '../controllers/orgLegacyAssignmentsController.js';
 
 import {
-  createAttendanceSession,
-  upsertAttendanceEntries,
-  getAttendanceReport,
   createNewsletter,
   generateNewsletterContent,
   saveNewsletterContent,
   sendNewsletter,
   listNewsletters,
-  createAnnouncement,
-  listAnnouncements,
 } from '../controllers/orgProToolsController.js';
+import {
+  listAttendanceSessions,
+  getAttendanceSession,
+  createAttendanceSession,
+  updateAttendanceSession,
+  deleteAttendanceSession,
+  upsertAttendanceEntries,
+  getAttendanceReport,
+  getAttendanceReportCsv,
+  createAnnouncement,
+  updateAnnouncement,
+  deleteAnnouncement,
+  listAnnouncements,
+  getAnnouncementFeed,
+  getAnnouncementAgmPdf,
+  createSportsEvent,
+  updateSportsEvent,
+  deleteSportsEvent,
+  listSportsEvents,
+  createClub,
+  updateClub,
+  deleteClub,
+  listClubs,
+  listClubMembers,
+  enrollClubMember,
+  unenrollClubMember,
+  getMyClubs,
+  listMessageLogs,
+  sendMessageNow,
+} from '../controllers/orgEngagementController.js';
 import {
   createFeeStructure,
   listFeeStructures,
@@ -228,9 +253,69 @@ router.post('/:orgId/upgrade', requireAuth, async (req, res) => {
 });
 
 /* ─────────────────────── Pro/Enterprise org tools ─────────────────────── */
-router.post('/:orgId/attendance/sessions', requireAuth, createAttendanceSession);
-router.post('/:orgId/attendance/entries', requireAuth, upsertAttendanceEntries);
-router.get('/:orgId/attendance/report', requireAuth, getAttendanceReport);
+router.get(
+  '/:orgId/attendance/sessions',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  listAttendanceSessions,
+);
+router.get(
+  '/:orgId/attendance/sessions/:sessionId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  getAttendanceSession,
+);
+router.post(
+  '/:orgId/attendance/sessions',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  createAttendanceSession,
+);
+router.put(
+  '/:orgId/attendance/sessions/:sessionId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  updateAttendanceSession,
+);
+router.delete(
+  '/:orgId/attendance/sessions/:sessionId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  deleteAttendanceSession,
+);
+router.post(
+  '/:orgId/attendance/sessions/:sessionId/entries',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  upsertAttendanceEntries,
+);
+router.post(
+  '/:orgId/attendance/entries',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  upsertAttendanceEntries,
+);
+router.get(
+  '/:orgId/attendance/report',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  getAttendanceReport,
+);
+router.get(
+  '/:orgId/attendance/report.csv',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  getAttendanceReportCsv,
+);
 
 router.get(
   '/:orgId/fees/structures',
@@ -311,8 +396,105 @@ router.put('/:orgId/newsletters/:id', requireAuth, saveNewsletterContent);
 router.post('/:orgId/newsletters/:id/send', requireAuth, sendNewsletter);
 router.get('/:orgId/newsletters', requireAuth, listNewsletters);
 
-router.post('/:orgId/announcements', requireAuth, createAnnouncement);
-router.get('/:orgId/announcements', requireAuth, listAnnouncements);
+router.get('/:orgId/announcements/feed', requireAuth, requireOrgProTier, getAnnouncementFeed);
+router.get('/:orgId/announcements/:announcementId/agm.pdf', requireAuth, requireOrgProTier, getAnnouncementAgmPdf);
+router.get('/:orgId/announcements', requireAuth, requireOrgProTier, listAnnouncements);
+router.post(
+  '/:orgId/announcements',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  createAnnouncement,
+);
+router.put(
+  '/:orgId/announcements/:announcementId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  updateAnnouncement,
+);
+router.delete(
+  '/:orgId/announcements/:announcementId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  deleteAnnouncement,
+);
+
+router.get('/:orgId/sports/events.csv', (req, res, next) => {
+  req.query.format = 'csv';
+  return next();
+});
+router.get('/:orgId/sports/events', requireAuth, requireOrgProTier, listSportsEvents);
+router.post('/:orgId/sports/events', requireAuth, requireOrgProTier, requireOrgInstructor, createSportsEvent);
+router.put(
+  '/:orgId/sports/events/:eventId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  updateSportsEvent,
+);
+router.delete(
+  '/:orgId/sports/events/:eventId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  deleteSportsEvent,
+);
+
+router.get('/:orgId/clubs', requireAuth, requireOrgProTier, listClubs);
+router.get('/:orgId/clubs/mine', requireAuth, requireOrgProTier, getMyClubs);
+router.post('/:orgId/clubs', requireAuth, requireOrgProTier, requireOrgInstructor, createClub);
+router.put(
+  '/:orgId/clubs/:clubId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  updateClub,
+);
+router.delete(
+  '/:orgId/clubs/:clubId',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  deleteClub,
+);
+router.get(
+  '/:orgId/clubs/:clubId/members',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  listClubMembers,
+);
+router.post(
+  '/:orgId/clubs/:clubId/enroll',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  enrollClubMember,
+);
+router.post(
+  '/:orgId/clubs/:clubId/unenroll',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  unenrollClubMember,
+);
+
+router.get(
+  '/:orgId/messages/log',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  listMessageLogs,
+);
+router.post(
+  '/:orgId/messages/send-now',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  sendMessageNow,
+);
 
 router.post('/:orgId/reports/test-send', requireAuth, (_req, res) =>
   res.json({ ok: true }),

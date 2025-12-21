@@ -27,5 +27,6 @@ export * from './oerApi';
 export * from './orgInstructorsApi';
 export * from './orgLearnersApi';
 export * from './orgFeesApi';
+export * from './orgEngagementApi';
 
 export { fetchTutorReviews as fetchTutorReviewsFromTutorReviewsApi } from './tutorReviewsApi';

@@ -10,6 +10,11 @@ export interface OrgAttendanceSession {
   entries?: OrgAttendanceEntry[];
 }
 
+export interface OrgAttendanceReport {
+  sessions: OrgAttendanceSession[];
+  summary: Record<string, number>;
+}
+
 export interface OrgAttendanceEntry {
   learner_id: string;
   status: AttendanceStatus;
@@ -144,5 +149,58 @@ export interface OrgAnnouncement {
   pinned?: boolean;
   start_at?: string | null;
   end_at?: string | null;
+  category?: string | null;
+  meeting_at?: string | null;
+  meeting_location?: string | null;
+  meeting_url?: string | null;
+  agenda_md?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+}
+
+export interface OrgSportsEvent {
+  id: number;
+  org_id?: string;
+  title: string;
+  description?: string | null;
+  event_at?: string | null;
+  location?: string | null;
+  audience?: string | null;
+  created_at?: string;
+}
+
+export interface OrgClub {
+  id: number;
+  org_id?: string;
+  name: string;
+  description?: string | null;
+  advisor_id?: string | null;
+  meeting_schedule?: string | null;
+  is_active?: boolean;
+  member_count?: number;
+}
+
+export interface OrgClubMembership {
+  id: number;
+  club_id: number;
+  member_id: string;
+  role?: string;
+  joined_at?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+}
+
+export interface OrgMessageLog {
+  id: number;
+  org_id?: string;
+  recipient_id?: string | null;
+  channel?: string | null;
+  template_key?: string | null;
+  subject?: string | null;
+  payload?: Record<string, unknown>;
+  status?: string;
+  error?: string | null;
+  sent_at?: string | null;
   created_at?: string;
 }
