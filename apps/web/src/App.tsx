@@ -67,6 +67,8 @@ import OrgAttendancePage from './pages/org/OrgAttendance.web';
 import OrgFeesPage from './pages/org/OrgFees.web';
 import OrgNewslettersPage from './pages/org/OrgNewsletters.web';
 import OrgAnnouncementsPage from './pages/org/OrgAnnouncements.web';
+import OrgToolsSportsPage from './pages/org/OrgToolsSports.web';
+import OrgToolsClubsPage from './pages/org/OrgToolsClubs.web';
 import OrgChangePassword from './pages/org/OrgChangePassword.web';
 
 // OER
@@ -462,6 +464,22 @@ const App: React.FC = () => {
               <OrgAdminOnlyRoute>
                 <OrgAnnouncementsPage />
               </OrgAdminOnlyRoute>
+            }
+          />
+          <Route
+            path="/org/tools/sports"
+            element={
+              <OrgInstructorOnlyRoute>
+                <OrgToolsSportsPage />
+              </OrgInstructorOnlyRoute>
+            }
+          />
+          <Route
+            path="/org/tools/clubs"
+            element={
+              <OrgInstructorOnlyRoute>
+                <OrgToolsClubsPage />
+              </OrgInstructorOnlyRoute>
             }
           />
 

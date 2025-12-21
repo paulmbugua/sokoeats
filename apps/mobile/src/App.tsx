@@ -88,6 +88,8 @@ import OrgAttendanceNative from './screens/org/OrgAttendance.native';
 import OrgFeesNative from './screens/org/OrgFees.native';
 import OrgNewslettersNative from './screens/org/OrgNewsletters.native';
 import OrgAnnouncementsNative from './screens/org/OrgAnnouncements.native';
+import OrgToolsSportsNative from './screens/org/OrgToolsSports.native';
+import OrgToolsClubsNative from './screens/org/OrgToolsClubs.native';
 
 const Stack = createStackNavigator<MainStackParamList>();
 
@@ -411,6 +413,24 @@ const App: React.FC = () => {
                 <OrgAdminOnlyGuard>
                   <OrgAnnouncementsNative />
                 </OrgAdminOnlyGuard>
+              </OrgProtectedRoute>
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="OrgToolsSports">
+            {() => (
+              <OrgProtectedRoute>
+                <OrgInstructorOnlyGuard>
+                  <OrgToolsSportsNative />
+                </OrgInstructorOnlyGuard>
+              </OrgProtectedRoute>
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="OrgToolsClubs">
+            {() => (
+              <OrgProtectedRoute>
+                <OrgInstructorOnlyGuard>
+                  <OrgToolsClubsNative />
+                </OrgInstructorOnlyGuard>
               </OrgProtectedRoute>
             )}
           </Stack.Screen>

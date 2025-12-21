@@ -2927,6 +2927,16 @@ const OrgElearnPortalNative: React.FC = () => {
                     route: 'OrgFees',
                   },
                   {
+                    title: 'Sports calendar',
+                    body: 'Track fixtures and practice sessions.',
+                    route: 'OrgToolsSports',
+                  },
+                  {
+                    title: 'Clubs & societies',
+                    body: 'Create clubs and manage members.',
+                    route: 'OrgToolsClubs',
+                  },
+                  {
                     title: 'Newsletters',
                     body: 'Draft term updates and archive sends.',
                     route: 'OrgNewsletters',
