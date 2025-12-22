@@ -1,10 +1,29 @@
 // apps/web/src/pages/org/OrgLearnerHome.web.tsx
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useShopContext } from '@mytutorapp/shared/context';
+import { useOrgLearnerFees } from '@mytutorapp/shared/hooks/useOrgLearnerFees';
+import { apiListLearnerNewsletters } from '@mytutorapp/shared/api/orgProApi';
+
 
 const card = 'rounded-2xl ring-1 ring-white/10 bg-white/5 p-4 sm:p-5';
+
+function moneyFromCents(cents?: number, currency?: string) {
+  const cur = (currency || 'USD').toUpperCase();
+  const v = Number(cents || 0) / 100;
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }).format(v);
+  } catch {
+    return `${cur} ${v.toFixed(2)}`;
+  }
+}
+
+function sumCents(items: any[]) {
+  return (items || []).reduce((acc, it) => acc + Number(it?.amount_cents ?? it?.amountCents ?? 0), 0);
+}
+
 
 const OrgLearnerHome: React.FC = () => {
   const { org, role, currentUser } = (useOrg?.() ?? {}) as any;
@@ -18,7 +37,50 @@ const OrgLearnerHome: React.FC = () => {
     user: shopUser,
     orgLearner: ctxOrgLearner,
     orgUser: ctxOrgUser,
+    backendUrl,
+     orgToken,
   } = useShopContext() as any;
+
+  const orgId = org?.id;
+
+const fees = useOrgLearnerFees({ backendUrl, token: orgToken, orgId: orgId || undefined });
+
+
+const feeLoading = (fees as any)?.loading ?? (fees as any)?.isLoading ?? false;
+const feeError = (fees as any)?.error ?? null;
+
+const feeStructure =
+  (fees as any)?.structure ??
+  (fees as any)?.feeStructure ??
+  (fees as any)?.myFeeStructure ??
+  null;
+
+const feeItems: any[] = feeStructure?.items ?? feeStructure?.structure_items ?? [];
+const feeCurrency: string =
+  feeStructure?.currency ||
+  (fees as any)?.currency ||
+  (fees as any)?.balances?.currency ||
+  'USD';
+
+const totalStructureCents = sumCents(feeItems);
+
+const newslettersQ = useQuery({
+  queryKey: ['learner-newsletters', orgId],
+  queryFn: async () => {
+    if (!backendUrl || !orgId) return { items: [] };
+    return apiListLearnerNewsletters(backendUrl, String(orgId), orgToken);
+  },
+  enabled: !!backendUrl && !!orgToken && !!orgId,
+});
+
+const learnerNewsletters = newslettersQ.data?.items || [];
+const newslettersLoading = newslettersQ.isLoading;
+
+
+React.useEffect(() => {
+  if (backendUrl && orgToken && orgId && fees?.refresh) fees.refresh();
+
+}, [backendUrl, orgToken, orgId]); // eslint-disable-line
 
   // 🔐 support studentId coming from QR / login link
   const rawStudentIdParam = params.get('studentId') ?? params.get('student_id') ?? '';
@@ -85,6 +147,10 @@ const OrgLearnerHome: React.FC = () => {
         ? String(learnerUserId)
         : '';
 
+        const learnerFeesHref = learnerStudentId
+  ? `/org/fees?view=learner&studentId=${encodeURIComponent(learnerStudentId)}`
+  : `/org/fees?view=learner`;
+
   // Optional: treat "no learner yet" + no studentId param as loading
   const isLoading = !learner && !rawStudentIdParam;
 
@@ -137,10 +203,12 @@ const OrgLearnerHome: React.FC = () => {
     learner?.guardian_email || // fallback to guardian email
     '';
 
-  ('');
+
 
   const learnerGrade: string | null =
     learner?.class_label || learner?.classLabel || learner?.grade || null;
+
+
 
   // NEW: Try to resolve a default subject for this learner
   const learnerSubject: string | null =
@@ -170,6 +238,16 @@ const OrgLearnerHome: React.FC = () => {
     }
     navigate('/org/login', { replace: true }); // go to institution login
   }, [orgLogout, navigate]);
+
+
+const toolsQueryParts: string[] = [];
+toolsQueryParts.push('view=learner', 'tab=tools');
+if (learnerStudentId) toolsQueryParts.push(`studentId=${encodeURIComponent(learnerStudentId)}`);
+if (learnerGrade) toolsQueryParts.push(`class=${encodeURIComponent(learnerGrade)}`);
+if (learnerSubject) toolsQueryParts.push(`subject=${encodeURIComponent(learnerSubject)}`);
+
+const learnerToolsHref = `/org/portal${toolsQueryParts.length ? `?${toolsQueryParts.join('&')}` : ''}`;
+
 
   // 🧭 Course library URL – learner-aware (view=learner, studentId, class, subject)
   const courseQueryParts: string[] = [];
@@ -329,6 +407,99 @@ const OrgLearnerHome: React.FC = () => {
           </div>
         </section>
 
+{/* Fees & fee structure */}
+<section className={card}>
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div>
+      <h2 className="text-lg font-semibold">Fees &amp; balances</h2>
+      <p className="text-sm text-white/70">
+        View your fee structure and current balance from the school office.
+      </p>
+    </div>
+
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => fees?.refresh?.()}
+        className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 text-white/80 font-medium transition"
+      >
+        Refresh
+      </button>
+
+      <Link
+        to={learnerFeesHref}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm"
+      >
+        <span>💳</span>
+        Open fees
+      </Link>
+    </div>
+  </div>
+
+  {!isProTier ? (
+    <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-900/20 p-3 text-sm text-amber-100">
+      This institution’s fees module is available on <b>Pro/Enterprise</b>. If you need fee access, ask your admin.
+    </div>
+  ) : feeLoading ? (
+    <div className="mt-3 text-sm text-white/70">Loading your fee structure…</div>
+  ) : feeError ? (
+    <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-900/20 p-3 text-sm text-rose-100">
+      Could not load fees.{" "}
+      <span className="text-white/70">
+        {String((feeError as any)?.message || feeError)}
+      </span>
+    </div>
+  ) : !feeStructure ? (
+    <div className="mt-3 text-sm text-white/70">
+      No fee structure has been assigned to your class yet. Please ask the school office.
+    </div>
+  ) : (
+    <div className="mt-3 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm text-white/70">
+          Fee structure:{" "}
+          <span className="text-white font-semibold">
+            {feeStructure?.name || feeStructure?.title || `Structure #${feeStructure?.id ?? ''}`}
+          </span>
+        </div>
+
+        <div className="text-sm">
+          <span className="text-white/60">Total:</span>{" "}
+          <span className="font-semibold">
+            {moneyFromCents(totalStructureCents, feeCurrency)}
+          </span>
+        </div>
+      </div>
+
+      {feeItems?.length ? (
+        <div className="rounded-xl border border-white/10 bg-white/5 overflow-hidden">
+          <div className="divide-y divide-white/10">
+            {feeItems.slice(0, 6).map((it, idx) => (
+              <div key={it?.id ?? idx} className="px-3 py-2 flex items-center justify-between gap-2">
+                <div className="text-sm text-white/80 truncate">
+                  {it?.label || it?.name || it?.title || `Item ${idx + 1}`}
+                </div>
+                <div className="text-sm font-semibold">
+                  {moneyFromCents(it?.amount_cents ?? it?.amountCents ?? 0, feeCurrency)}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {feeItems.length > 6 && (
+            <div className="px-3 py-2 text-xs text-white/60">
+              + {feeItems.length - 6} more items (open fees to view all)
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="text-sm text-white/70">This structure has no items yet.</div>
+      )}
+    </div>
+  )}
+</section>
+
+
         {/* Exam results & report cards (institution legacy exams) */}
         <section className={card}>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -396,27 +567,72 @@ const OrgLearnerHome: React.FC = () => {
               </div>
             </Link>
 
-            {/* Announcements & newsletters */}
-            <Link
-              to="/org/portal?tab=tools"
-              className={`group rounded-xl px-3 py-3 flex flex-col justify-between transition border ${
-                isProTier
-                  ? 'bg-white/5 hover:bg-white/10 border-white/10'
-                  : 'bg-amber-900/20 border-amber-500/30'
-              }`}
-            >
+            {/* Announcements & newsletters (preview) */}
+          <div
+            className={`rounded-xl px-3 py-3 flex flex-col justify-between transition border ${
+              isProTier
+                ? 'bg-white/5 hover:bg-white/10 border-white/10'
+                : 'bg-amber-900/20 border-amber-500/30'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2">
               <div>
-                <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold">Announcements &amp; newsletters</h4>
-                  <span className="text-[11px] text-indigo-300 group-hover:translate-x-0.5 transition">
-                    {isProTier ? 'Open →' : 'Locked'}
-                  </span>
-                </div>
+                <h4 className="text-sm font-semibold">Announcements &amp; newsletters</h4>
                 <p className="mt-1 text-xs text-white/70">
                   Stay updated with institution notices and end-of-term newsletters. Pro/Enterprise unlocks the full feed.
                 </p>
               </div>
-            </Link>
+
+              {isProTier ? (
+                <Link
+                 to={learnerToolsHref}
+                  className="text-[11px] text-indigo-300 hover:text-indigo-200 whitespace-nowrap"
+                >
+                  Open →
+                </Link>
+              ) : (
+                <span className="text-[11px] text-amber-200 whitespace-nowrap">Locked</span>
+              )}
+            </div>
+
+            {isProTier ? (
+              <>
+                {newslettersLoading ? (
+                  <div className="mt-3 text-xs text-white/60">Loading latest newsletter…</div>
+                ) : learnerNewsletters.length ? (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-semibold text-white/80">Latest newsletters</div>
+                      <Link
+                        to={learnerToolsHref}
+                        className="text-[11px] px-2 py-1 rounded-full bg-white/10 border border-white/10 hover:bg-white/15"
+                      >
+                        View all →
+                      </Link>
+                    </div>
+
+                    {learnerNewsletters.slice(0, 3).map((n: any) => (
+                      <div key={n.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                        <div className="text-sm font-semibold">{n.title}</div>
+                        <div className="text-xs text-white/60">
+                          {n.term_label || ''}{n.term_label ? ' • ' : ''}
+                          {n.sent_at ? new Date(n.sent_at).toLocaleDateString() : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-3 text-xs text-white/60">
+                    No newsletters shared with your class yet.
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="mt-3 text-xs text-amber-200/90">
+                Your school admin needs to upgrade to Pro/Enterprise to enable newsletters.
+              </div>
+            )}
+          </div>
 
             {/* Course library – learner-aware */}
             <Link

@@ -64,6 +64,9 @@ import { handlePaystackWebhook } from './controllers/paystackController.js';
 import pushRoutes from './routes/pushRoutes.js';
 import { notifyNewMessage } from './services/pushService.js';
 import messagesRoutes from './routes/messagesRoutes.js';
+import orgFeesRoutes from './routes/orgFeesRoutes.js';
+import orgProToolsRoutes from './routes/orgProToolsRoutes.js';
+
 
 // Middleware
 import {
@@ -79,6 +82,7 @@ import {
   aiLimiterStrict, // ⇐ use the new per-user/per-bucket limiter
   loginLimiterFactory,
 } from './middleware/middleware.js';
+
 
 connectCloudinary();
 
@@ -330,10 +334,15 @@ app.use((req, _res, next) => {
 if (isProduction) {
   app.use((req, res, next) => {
     const skipRedirect =
-      req.path === '/healthz' ||
-      req.path === '/api/paypal/webhook' ||
-      req.path === '/api/paystack/webhook' || // ← do not redirect
-      req.headers['x-railway-healthcheck'];
+  req.path === '/healthz' ||
+  req.path === '/api/paypal/webhook' ||
+  req.path === '/api/paystack/webhook' ||
+  req.path === '/api/fees/inbound/mpesa' ||
+  req.path === '/api/fees/inbound/confirm' ||
+  req.path === '/api/fees/inbound/validate' ||
+  req.path === '/api/fees/inbound/bank' ||
+  req.headers['x-railway-healthcheck'];
+
     if (skipRedirect) {
       return next();
     }
@@ -357,6 +366,7 @@ app.use('/api/paypal', paypalRoutes);
 app.use('/api/payouts', payoutRoutes);
 app.use('/api/payment', refundRoutes);
 app.use('/api/paystack', paystackRoutes);
+app.use('/api',           orgFeesRoutes);
 
 // Tutor sessions / M-Pesa
 app.use('/api/tutor-session', tutorSessionRoutes);
@@ -388,6 +398,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/orgs', orgRoutes);
 app.use('/api/orgs', orgExamsRoutes);
 app.use('/api/orgs/attempts', attemptsRoutes);
+app.use('/api/org', orgProToolsRoutes);
+
 // Course progress
 app.use('/api/course-progress', progressLimiter, courseProgressRoutes);
 app.use('/api', progressLimiter, progressWatchRoutes);

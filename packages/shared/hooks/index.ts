@@ -41,5 +41,7 @@ export * from './useOrgAnnouncements';
 export * from './useOrgSports';
 export * from './useOrgClubs';
 export * from './useOrgMessageLog';
+export * from './useOrgNewsletters';
+
 
 export type { CreateRecordedVideoPayload } from './useUploadClassVault';

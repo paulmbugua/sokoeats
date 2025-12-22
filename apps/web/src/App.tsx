@@ -263,6 +263,27 @@ const OrgProtectedLayout: React.FC = () => (
 );
 
 /* Org admin-only guard for /org/profile (and other admin-only tools) */
+
+/* Staff-only guard (owner/admin/instructor) */
+const OrgStaffOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { role, loading, isLoading } = (useOrg?.() ?? {}) as any;
+  const location = useLocation();
+  const busy = typeof loading === 'boolean' ? loading : isLoading;
+
+  if (busy || !role) return null;
+
+  const normalizedRole = String(role || '').toLowerCase();
+  const isOrgAdmin = normalizedRole === 'owner' || normalizedRole === 'admin';
+  const isInstructor = normalizedRole === 'instructor' || normalizedRole === 'teacher';
+  const isLearner = normalizedRole === 'learner' || normalizedRole === 'student';
+
+  if (isOrgAdmin || isInstructor) return <>{children}</>;
+
+  if (isLearner) return <Navigate to="/org/learn" replace state={{ from: location }} />;
+
+  return <Navigate to="/org/login" replace state={{ from: location }} />;
+};
+
 const OrgAdminOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { role, loading, isLoading } = (useOrg?.() ?? {}) as any;
   const location = useLocation();
@@ -423,9 +444,9 @@ const App: React.FC = () => {
           <Route
             path="/org/attendance"
             element={
-              <OrgInstructorOnlyRoute>
+              <OrgStaffOnlyRoute>
                 <OrgAttendancePage />
-              </OrgInstructorOnlyRoute>
+              </OrgStaffOnlyRoute>
             }
           />
 
@@ -469,19 +490,19 @@ const App: React.FC = () => {
           <Route
             path="/org/tools/sports"
             element={
-              <OrgInstructorOnlyRoute>
+              <OrgStaffOnlyRoute>
                 <OrgToolsSportsPage />
-              </OrgInstructorOnlyRoute>
+              </OrgStaffOnlyRoute>
             }
           />
           <Route
-            path="/org/tools/clubs"
-            element={
-              <OrgInstructorOnlyRoute>
-                <OrgToolsClubsPage />
-              </OrgInstructorOnlyRoute>
-            }
-          />
+          path="/org/tools/clubs"
+          element={
+            <OrgStaffOnlyRoute>
+              <OrgToolsClubsPage />
+            </OrgStaffOnlyRoute>
+          }
+        />
 
           <Route path="/org/change-password" element={<OrgChangePassword />} />
         </Route>

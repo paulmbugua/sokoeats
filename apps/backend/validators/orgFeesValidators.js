@@ -5,6 +5,19 @@ const money = Joi.number().integer().min(0);
 const uuidLike = Joi.string().min(1);
 const isoDate = Joi.date();
 
+// ✅ ADD THIS
+export const orgParamsSchema = Joi.object({
+  orgId: uuidLike.required(),
+});
+
+// ✅ ADD THIS (use on routes that have both :orgId and :learnerId)
+export const orgLearnerParamsSchema = Joi.object({
+  orgId: uuidLike.required(),
+  learnerId: uuidLike.required(),
+});
+
+
+
 const feeItemSchema = Joi.object({
   label: Joi.string().min(1).required(),
   amount_cents: money.required(),

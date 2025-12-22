@@ -6,29 +6,51 @@ import type {
   OrgFeeCharge,
   OrgFeePayment,
   OrgFeeStatement,
-  OrgNewsletter,
   OrgAnnouncement,
 } from '@mytutorapp/shared/types';
 
-function url(base: string, path: string) {
-  return `${base.replace(/\/+$/, '')}${path}`;
-}
+/* ─────────────────────────────────────────────────────────
+ * Helpers
+ * ───────────────────────────────────────────────────────── */
 
 function authHeaders(token?: string) {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-// Attendance
+function axiosCfg(token?: string) {
+  // backend uses Bearer-only today; keep withCredentials harmless
+  return {
+    headers: authHeaders(token),
+    withCredentials: true,
+  };
+}
+
+function apiBaseFromEnv() {
+  return (process.env.EXPO_PUBLIC_API_URL ||
+    process.env.VITE_API_URL ||
+    process.env.API_URL ||
+    '').replace(/\/+$/, '');
+}
+
+function orgProBase(backendUrl: string | undefined, orgId: string) {
+  const base = (backendUrl?.trim() || apiBaseFromEnv()).replace(/\/+$/, '');
+  return `${base}/api/org/${orgId}/pro`;
+}
+
+/* ─────────────────────────────────────────────────────────
+ * Attendance
+ * ───────────────────────────────────────────────────────── */
+
 export async function apiCreateAttendanceSession(
   backendUrl: string,
   orgId: string,
   payload: Partial<OrgAttendanceSession>,
-  token?: string,
+  orgToken?: string,
 ): Promise<OrgAttendanceSession> {
   const { data } = await axios.post(
-    url(backendUrl, `/api/orgs/${orgId}/attendance/sessions`),
+    `${orgProBase(backendUrl, orgId)}/attendance/sessions`,
     payload,
-    { headers: authHeaders(token) },
+    axiosCfg(orgToken),
   );
   return data;
 }
@@ -38,12 +60,12 @@ export async function apiSaveAttendanceEntries(
   orgId: string,
   sessionId: number,
   entries: OrgAttendanceEntry[],
-  token?: string,
+  orgToken?: string,
 ): Promise<{ ok: boolean }> {
   const { data } = await axios.post(
-    url(backendUrl, `/api/orgs/${orgId}/attendance/entries`),
+    `${orgProBase(backendUrl, orgId)}/attendance/entries`,
     { session_id: sessionId, entries },
-    { headers: authHeaders(token) },
+    axiosCfg(orgToken),
   );
   return data;
 }
@@ -52,26 +74,29 @@ export async function apiGetAttendanceReport(
   backendUrl: string,
   orgId: string,
   params: { start?: string; end?: string; class_label?: string },
-  token?: string,
+  orgToken?: string,
 ): Promise<{ sessions: OrgAttendanceSession[]; summary: Record<string, number> }> {
-  const { data } = await axios.get(url(backendUrl, `/api/orgs/${orgId}/attendance/report`), {
-    params,
-    headers: authHeaders(token),
-  });
+  const { data } = await axios.get(
+    `${orgProBase(backendUrl, orgId)}/attendance/report`,
+    { ...axiosCfg(orgToken), params },
+  );
   return data;
 }
 
-// Fees & balances
+/* ─────────────────────────────────────────────────────────
+ * Fees & balances
+ * ───────────────────────────────────────────────────────── */
+
 export async function apiCreateFeeCharge(
   backendUrl: string,
   orgId: string,
   payload: Partial<OrgFeeCharge>,
-  token?: string,
+  orgToken?: string,
 ): Promise<OrgFeeCharge> {
   const { data } = await axios.post(
-    url(backendUrl, `/api/orgs/${orgId}/fees/charges`),
+    `${orgProBase(backendUrl, orgId)}/fees/charges`,
     payload,
-    { headers: authHeaders(token) },
+    axiosCfg(orgToken),
   );
   return data;
 }
@@ -87,27 +112,26 @@ export async function apiBulkFeeCharges(
     class_label?: string;
     due_date?: string;
   },
-  token?: string,
+  orgToken?: string,
 ): Promise<{ inserted: OrgFeeCharge[]; failed?: { learner_id: string; reason: string }[] }> {
   const { data } = await axios.post(
-    url(backendUrl, `/api/orgs/${orgId}/fees/charges/bulk`),
+    `${orgProBase(backendUrl, orgId)}/fees/charges/bulk`,
     payload,
-    { headers: authHeaders(token) },
+    axiosCfg(orgToken),
   );
   return data;
 }
-
 
 export async function apiRecordFeePayment(
   backendUrl: string,
   orgId: string,
   payload: Partial<OrgFeePayment>,
-  token?: string,
+  orgToken?: string,
 ): Promise<OrgFeePayment> {
   const { data } = await axios.post(
-    url(backendUrl, `/api/orgs/${orgId}/fees/payments`),
+    `${orgProBase(backendUrl, orgId)}/fees/payments`,
     payload,
-    { headers: authHeaders(token) },
+    axiosCfg(orgToken),
   );
   return data;
 }
@@ -115,11 +139,12 @@ export async function apiRecordFeePayment(
 export async function apiGetFeeBalances(
   backendUrl: string,
   orgId: string,
-  token?: string,
+  orgToken?: string,
 ): Promise<{ balances: { learner_id: string; charges: number; payments: number; balance: number }[] }> {
-  const { data } = await axios.get(url(backendUrl, `/api/orgs/${orgId}/fees/balances`), {
-    headers: authHeaders(token),
-  });
+  const { data } = await axios.get(
+    `${orgProBase(backendUrl, orgId)}/fees/balances`,
+    axiosCfg(orgToken),
+  );
   return data;
 }
 
@@ -127,93 +152,180 @@ export async function apiGetFeeStatement(
   backendUrl: string,
   orgId: string,
   learnerId: string,
-  token?: string,
+  orgToken?: string,
 ): Promise<OrgFeeStatement> {
   const { data } = await axios.get(
-    url(backendUrl, `/api/orgs/${orgId}/fees/learners/${learnerId}/statement`),
-    { headers: authHeaders(token) },
+    `${orgProBase(backendUrl, orgId)}/fees/learners/${learnerId}/statement`,
+    axiosCfg(orgToken),
   );
   return data;
 }
 
-// Newsletters
-export async function apiCreateNewsletter(
+/* ─────────────────────────────────────────────────────────
+ * Newsletters
+ * ───────────────────────────────────────────────────────── */
+
+export type OrgNewsletter = {
+  id: string; // uuid
+  org_id: string;
+  term_label?: string | null;
+  title: string;
+  content_md: string;
+  status: 'draft' | 'sending' | 'sent' | 'archived';
+  class_label?: string | null;
+  created_at: string;
+  updated_at: string;
+  sent_at?: string | null;
+};
+
+export type NewsletterSendMode = 'all' | 'class' | 'custom';
+
+export type OrgNewsletterRecipientsResp = {
+  items: Array<{
+    recipient_email: string;
+    delivered: boolean;
+    delivered_at?: string | null;
+    error?: string | null;
+    created_at: string;
+  }>;
+  summary: { total: number; delivered: number; failed: number };
+};
+
+export async function apiListOrgNewsletters(
   backendUrl: string,
   orgId: string,
-  payload: Partial<OrgNewsletter>,
-  token?: string,
+  orgToken?: string,
+): Promise<{ items: OrgNewsletter[] }> {
+  const { data } = await axios.get(
+    `${orgProBase(backendUrl, orgId)}/newsletters`,
+    axiosCfg(orgToken),
+  );
+  return data;
+}
+
+export async function apiCreateOrgNewsletter(
+  backendUrl: string,
+  orgId: string,
+  body: { term_label?: string; title: string },
+  orgToken?: string,
 ): Promise<OrgNewsletter> {
-  const { data } = await axios.post(url(backendUrl, `/api/orgs/${orgId}/newsletters`), payload, {
-    headers: authHeaders(token),
-  });
-  return data;
-}
-
-export async function apiGenerateNewsletter(
-  backendUrl: string,
-  orgId: string,
-  payload: { term_label?: string; title?: string; notes?: string },
-  token?: string,
-): Promise<{ content_md: string }> {
   const { data } = await axios.post(
-    url(backendUrl, `/api/orgs/${orgId}/newsletters/generate`),
-    payload,
-    { headers: authHeaders(token) },
+    `${orgProBase(backendUrl, orgId)}/newsletters`,
+    body,
+    axiosCfg(orgToken),
   );
   return data;
 }
 
-export async function apiSaveNewsletter(
+export type NewsletterGenerated = {
+  content_md: string;
+  titleSuggestion: string;
+  sections: Array<{ heading: string; bullets?: string[]; paragraphs?: string[] }>;
+  closing: string;
+  ai_fallback?: boolean;
+  ai_error?: string;
+};
+
+export async function apiGenerateOrgNewsletterContent(
   backendUrl: string,
   orgId: string,
-  id: number,
-  payload: Partial<OrgNewsletter>,
-  token?: string,
+  body: { term_label?: string; title?: string; notes?: string },
+  orgToken?: string,
+): Promise<NewsletterGenerated> {
+  const { data } = await axios.post(
+    `${orgProBase(backendUrl, orgId)}/newsletters/generate`,
+    body,
+    axiosCfg(orgToken),
+  );
+  return data;
+}
+
+export async function apiGetOrgNewsletter(
+  backendUrl: string,
+  orgId: string,
+  id: string,
+  orgToken?: string,
+): Promise<OrgNewsletter> {
+  const { data } = await axios.get(
+    `${orgProBase(backendUrl, orgId)}/newsletters/${id}`,
+    axiosCfg(orgToken),
+  );
+  return data;
+}
+
+export async function apiUpdateOrgNewsletter(
+  backendUrl: string,
+  orgId: string,
+  id: string,
+  body: Partial<Pick<OrgNewsletter, 'content_md' | 'title' | 'term_label' | 'status' | 'class_label'>>,
+  orgToken?: string,
 ): Promise<OrgNewsletter> {
   const { data } = await axios.put(
-    url(backendUrl, `/api/orgs/${orgId}/newsletters/${id}`),
-    payload,
-    { headers: authHeaders(token) },
+    `${orgProBase(backendUrl, orgId)}/newsletters/${id}`,
+    body,
+    axiosCfg(orgToken),
   );
   return data;
 }
 
-export async function apiSendNewsletter(
+export async function apiPreviewNewsletterRecipients(
   backendUrl: string,
   orgId: string,
-  id: number,
-  recipients: string[],
-  token?: string,
+  id: string,
+  body: { mode?: NewsletterSendMode; class_label?: string; recipients?: string[] },
+  orgToken?: string,
+): Promise<{ count: number; sample: string[] }> {
+  const { data } = await axios.post(
+    `${orgProBase(backendUrl, orgId)}/newsletters/${id}/preview-recipients`,
+    body,
+    axiosCfg(orgToken),
+  );
+  return data;
+}
+
+export async function apiListNewsletterRecipients(
+  backendUrl: string,
+  orgId: string,
+  id: string,
+  orgToken?: string,
+): Promise<OrgNewsletterRecipientsResp> {
+  const { data } = await axios.get(
+    `${orgProBase(backendUrl, orgId)}/newsletters/${id}/recipients`,
+    axiosCfg(orgToken),
+  );
+  return data;
+}
+
+export async function apiSendOrgNewsletter(
+  backendUrl: string,
+  orgId: string,
+  id: string,
+  body: { mode?: NewsletterSendMode; class_label?: string; recipients?: string[] },
+  orgToken?: string,
 ): Promise<OrgNewsletter> {
   const { data } = await axios.post(
-    url(backendUrl, `/api/orgs/${orgId}/newsletters/${id}/send`),
-    { recipients },
-    { headers: authHeaders(token) },
+    `${orgProBase(backendUrl, orgId)}/newsletters/${id}/send`,
+    body,
+    axiosCfg(orgToken),
   );
   return data;
 }
 
-export async function apiListNewsletters(
-  backendUrl: string,
-  orgId: string,
-  token?: string,
-): Promise<{ items: OrgNewsletter[] }> {
-  const { data } = await axios.get(url(backendUrl, `/api/orgs/${orgId}/newsletters`), {
-    headers: authHeaders(token),
-  });
-  return data;
-}
+/* ─────────────────────────────────────────────────────────
+ * Announcements
+ * ───────────────────────────────────────────────────────── */
 
-// Announcements
 export async function apiCreateAnnouncement(
   backendUrl: string,
   orgId: string,
   payload: Partial<OrgAnnouncement>,
-  token?: string,
+  orgToken?: string,
 ): Promise<OrgAnnouncement> {
-  const { data } = await axios.post(url(backendUrl, `/api/orgs/${orgId}/announcements`), payload, {
-    headers: authHeaders(token),
-  });
+  const { data } = await axios.post(
+    `${orgProBase(backendUrl, orgId)}/announcements`,
+    payload,
+    axiosCfg(orgToken),
+  );
   return data;
 }
 
@@ -221,11 +333,23 @@ export async function apiListAnnouncements(
   backendUrl: string,
   orgId: string,
   audience: string,
-  token?: string,
+  orgToken?: string,
 ): Promise<{ items: OrgAnnouncement[] }> {
-  const { data } = await axios.get(url(backendUrl, `/api/orgs/${orgId}/announcements`), {
-    params: { audience },
-    headers: authHeaders(token),
-  });
+  const { data } = await axios.get(
+    `${orgProBase(backendUrl, orgId)}/announcements`,
+    { ...axiosCfg(orgToken), params: { audience } },
+  );
   return data;
+}
+
+export async function apiListLearnerNewsletters(
+  backendUrl: string,
+  orgId: string,
+  token?: string,
+) {
+  const res = await fetch(`${backendUrl}/api/org/${orgId}/learner/newsletters`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }

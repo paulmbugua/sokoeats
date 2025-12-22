@@ -7,6 +7,18 @@ import type {
   FeeStructure,
 } from '@mytutorapp/shared/types';
 
+// Add near the top of file
+function stripNullish<T extends Record<string, any>>(obj: T): Partial<T> {
+  const out: any = { ...obj };
+  for (const k of Object.keys(out)) {
+    const v = out[k];
+    if (v === undefined || v === null) delete out[k];
+    if (typeof v === 'string' && v.trim() === '') delete out[k];
+  }
+  return out;
+}
+
+
 export async function listFeeStructures(
   backendUrl: string,
   token: string,
@@ -83,7 +95,10 @@ export async function createFeeCharge(
   orgId: string,
   payload: Partial<FeeCharge>,
 ): Promise<FeeCharge> {
-  const { data } = await axios.post(`${backendUrl}/api/orgs/${orgId}/fees/charges`, payload, {
+  const body = stripNullish(payload as any);
+  // IMPORTANT: do NOT send structure_id / structure_item_id unless they are real numbers
+  // stripNullish already deletes null/undefined/""
+  const { data } = await axios.post(`${backendUrl}/api/orgs/${orgId}/fees/charges`, body, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;
@@ -95,11 +110,17 @@ export async function createBulkFeeCharges(
   orgId: string,
   payload: { learner_ids: (string | number)[] } & Partial<FeeCharge>,
 ): Promise<{ inserted: FeeCharge[]; failed: { learner_id: string; reason: string }[] }> {
-  const { data } = await axios.post(`${backendUrl}/api/orgs/${orgId}/fees/charges/bulk`, payload, {
+  const body = stripNullish(payload as any);
+
+  // extra safety: bulk schema does NOT include learner_id, so remove if UI accidentally passes it
+  delete (body as any).learner_id;
+
+  const { data } = await axios.post(`${backendUrl}/api/orgs/${orgId}/fees/charges/bulk`, body, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;
 }
+
 
 export async function recordFeePayment(
   backendUrl: string,
@@ -151,3 +172,47 @@ export async function getFeeStatementPdf(
   });
   return data as Blob;
 }
+
+
+export type FeeInboundRow = {
+  id: string | number;
+  org_id: string;
+  amount_cents: number;
+  currency?: string;
+  status?: string; // e.g. "unmatched" | "matched"
+  payer_phone?: string | null;
+  payer_name?: string | null;
+  reference?: string | null;
+  raw?: any;
+  created_at?: string;
+};
+
+export async function listFeeInbound(
+  backendUrl: string,
+  token: string,
+  orgId: string,
+  params?: { status?: string },
+): Promise<FeeInboundRow[]> {
+  const { data } = await axios.get(`${backendUrl}/api/orgs/${orgId}/fees/inbound`, {
+    params,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  // be defensive about backend shape:
+  return data.items ?? data.inbound ?? data.rows ?? [];
+}
+
+export async function attachFeeInboundToLearner(
+  backendUrl: string,
+  token: string,
+  orgId: string,
+  inboundId: string | number,
+  payload: { learner_id: string },
+): Promise<FeeInboundRow> {
+  const { data } = await axios.post(
+    `${backendUrl}/api/orgs/${orgId}/fees/inbound/${encodeURIComponent(String(inboundId))}/attach`,
+    payload,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return data;
+}
+

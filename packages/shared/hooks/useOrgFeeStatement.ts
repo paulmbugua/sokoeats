@@ -29,11 +29,36 @@ export function useOrgFeeStatement(opts?: UseOrgFeeStatementProps) {
 
   const ensure = () => Boolean(backendUrl && token && orgId);
 
-  const summary = useMemo(() => {
-    const total_charges = charges.reduce((acc, c) => acc + Number(c.amount_cents || 0), 0);
-    const total_payments = payments.reduce((acc, p) => acc + Number(p.amount_cents || 0), 0);
-    return { total_charges, total_payments, balance: total_charges - total_payments };
-  }, [charges, payments]);
+  const summary_by_currency = useMemo(() => {
+  const sumByCur = (rows: Array<{ currency?: string; amount_cents?: number }>) => {
+    const m = new Map<string, number>();
+    for (const r of rows || []) {
+      const cur = String(r.currency || 'USD').toUpperCase();
+      m.set(cur, (m.get(cur) || 0) + Number(r.amount_cents || 0));
+    }
+    return Array.from(m.entries()).map(([currency, amount_cents]) => ({ currency, amount_cents }));
+  };
+
+  const chargesBy = sumByCur(charges);
+  const paymentsBy = sumByCur(payments);
+
+  const all = new Set([...chargesBy.map(x => x.currency), ...paymentsBy.map(x => x.currency)]);
+
+  return Array.from(all).map((cur) => {
+    const ch = chargesBy.find(x => x.currency === cur)?.amount_cents || 0;
+    const pay = paymentsBy.find(x => x.currency === cur)?.amount_cents || 0;
+    return { currency: cur, total_charges: ch, total_payments: pay, balance: ch - pay };
+  });
+}, [charges, payments]);
+
+// optional legacy summary for older UI pieces:
+const summary = useMemo(() => {
+  const first = summary_by_currency.find(x => x.currency === 'USD') || summary_by_currency[0];
+  return first
+    ? { total_charges: first.total_charges, total_payments: first.total_payments, balance: first.balance }
+    : { total_charges: 0, total_payments: 0, balance: 0 };
+}, [summary_by_currency]);
+
 
   const fetchStatement = useCallback(
     async (learnerId: string) => {
@@ -143,5 +168,6 @@ export function useOrgFeeStatement(opts?: UseOrgFeeStatementProps) {
     addBulkCharges,
     addPayment,
     downloadStatementPdf,
+     summary_by_currency,
   };
 }

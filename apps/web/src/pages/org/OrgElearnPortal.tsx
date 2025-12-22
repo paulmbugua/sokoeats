@@ -231,6 +231,14 @@ export default function OrgElearnPortal() {
 
   const viewParam = searchParams.get('view');
   const isLearnerView = viewParam === 'learner';
+  const tabParamRaw = (searchParams.get('tab') || '').toLowerCase();
+
+// Learner only needs a small set of tabs (what we allow via URL)
+const learnerAllowedTabs = new Set(['assign', 'tools']); // add 'exams' if you later handle it here
+
+const resolvedTabForLearner: TabKey =
+  (tabParamRaw === 'tools' ? 'tools' : 'assign'); // default to assign
+
 
   const learnerStudentId = searchParams.get('studentId') ?? searchParams.get('student_id') ?? '';
 
@@ -253,9 +261,11 @@ export default function OrgElearnPortal() {
 
   const isInstructor = role === 'instructor';
 
-  const [tab, setTab] = useState<TabKey>(
-    isLearnerView ? 'assign' : isInstructor ? 'assign' : 'branding'
-  );
+  const [tab, setTab] = useState<TabKey>(() => {
+  if (isLearnerView) return resolvedTabForLearner;
+  return isInstructor ? 'assign' : 'branding';
+});
+
   const [instructors, setInstructors] = useState<MiniUser[]>([]);
 
   // org & plan
@@ -928,6 +938,12 @@ export default function OrgElearnPortal() {
     }
   }, [canBranding, isInstructor, isLearnerView]);
 
+  useEffect(() => {
+  if (!isLearnerView) return;
+  setTab(resolvedTabForLearner);
+}, [isLearnerView, resolvedTabForLearner]);
+
+
   /** Plan controls */
   const onUpgradeClick = (next: OrgTier) => {
     if (!canUpgradePlan) return;
@@ -1202,13 +1218,15 @@ export default function OrgElearnPortal() {
   }, [legacyAssignments]);
 
   return (
-    <div
-      className="relative min-h-screen flex flex-col bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary overflow-x-hidden"
-      style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
-    >
-      <main className="flex-1 flex justify-center py-6 px-3 sm:px-4 lg:px-10">
-        <div className="w-full max-w-screen-xl mx-auto space-y-4">
-          {isLearnerView ? (
+<div
+  className="relative min-h-screen flex flex-col bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary overflow-x-hidden"
+  style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
+>
+  <main className="flex-1 flex justify-center py-6 px-3 sm:px-4 lg:px-10">
+    <div className="w-full max-w-screen-xl mx-auto space-y-4">
+      {isLearnerView ? (
+        <>
+          {tab === 'assign' && (
             <>
               {/* ─────────────────────────────
                   LEARNER VIEW: read-only list
@@ -1616,7 +1634,56 @@ export default function OrgElearnPortal() {
                 </div>
               )}
             </>
-          ) : (
+          )}
+
+          {tab === 'tools' && (
+            <section className="rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10 bg-white dark:bg-[#0f1821] p-3 sm:p-4 space-y-3">
+              <h1 className="text-[24px] sm:text-[28px] md:text-[32px] font-bold leading-tight">
+                Tools & updates
+              </h1>
+              <p className="text-[#49739c] dark:text-white/70 text-xs sm:text-sm">
+                Announcements and newsletters shared by your institution.
+              </p>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/org/newsletters')}
+                  className="rounded-2xl border border-[#d9e5f2] bg-white px-4 py-3 text-left hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#0b1420]"
+                >
+                  <div className="text-sm font-semibold">Newsletters</div>
+                  <p className="text-xs text-[#49739c] dark:text-white/70">
+                    View termly newsletters from your school.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => navigate('/org/announcements')}
+                  className="rounded-2xl border border-[#d9e5f2] bg-white px-4 py-3 text-left hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#0b1420]"
+                >
+                  <div className="text-sm font-semibold">Announcements</div>
+                  <p className="text-xs text-[#49739c] dark:text-white/70">
+                    Read school notices and pinned updates.
+                  </p>
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTab('assign')}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                >
+                  ← Back to assignments
+                </button>
+              </div>
+            </section>
+          )}
+        </>
+      ) : (
+        
+
             <>
               {/* ─────────────────────────────
                   OWNER / INSTRUCTOR VIEW
@@ -2208,6 +2275,18 @@ export default function OrgElearnPortal() {
                         body: 'Post pinned notices to learners and instructors.',
                         onClick: () => navigate('/org/announcements'),
                       },
+
+                      {
+                        title: 'Clubs & societies',
+                        body: 'Create clubs and enroll members.',
+                        onClick: () => navigate('/org/tools/clubs'),
+                      },
+                      {
+                        title: 'Sports calendar',
+                        body: 'Manage fixtures and practice sessions.',
+                        onClick: () => navigate('/org/tools/sports'),
+                      },
+
                     ].map((card) => (
                       <button
                         key={card.title}

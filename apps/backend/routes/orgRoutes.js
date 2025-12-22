@@ -51,13 +51,7 @@ import {
   getOrgAssignmentSubmissions,
 } from '../controllers/orgLegacyAssignmentsController.js';
 
-import {
-  createNewsletter,
-  generateNewsletterContent,
-  saveNewsletterContent,
-  sendNewsletter,
-  listNewsletters,
-} from '../controllers/orgProToolsController.js';
+
 import {
   listAttendanceSessions,
   getAttendanceSession,
@@ -100,6 +94,10 @@ import {
   getFeeStatement,
   getFeeStatementPdf,
   getFeeStructurePdf,
+  getMyFeeStructure,
+  getMyFeeStructurePdf,
+  getMyFeeStatement,
+  getMyFeeStatementPdf,
 } from '../controllers/orgFeesController.js';
 import { requireOrgInstructor, requireOrgProTier } from '../middleware/orgAccess.js';
 
@@ -252,6 +250,16 @@ router.post('/:orgId/upgrade', requireAuth, async (req, res) => {
   });
 });
 
+// ─────────────────────── Learner self-service fees ───────────────────────
+// NOTE: orgRoutes is mounted at /api/orgs, so DO NOT prefix with /api/orgs here.
+
+router.get('/:orgId/fees/learner/structure', requireAuth, getMyFeeStructure);
+router.get('/:orgId/fees/learner/structure.pdf', requireAuth, getMyFeeStructurePdf);
+
+router.get('/:orgId/fees/learner/statement', requireAuth, getMyFeeStatement);
+router.get('/:orgId/fees/learner/statement.pdf', requireAuth, getMyFeeStatementPdf);
+
+
 /* ─────────────────────── Pro/Enterprise org tools ─────────────────────── */
 router.get(
   '/:orgId/attendance/sessions',
@@ -390,11 +398,7 @@ router.get(
   getFeeStatementPdf,
 );
 
-router.post('/:orgId/newsletters', requireAuth, createNewsletter);
-router.post('/:orgId/newsletters/generate', requireAuth, generateNewsletterContent);
-router.put('/:orgId/newsletters/:id', requireAuth, saveNewsletterContent);
-router.post('/:orgId/newsletters/:id/send', requireAuth, sendNewsletter);
-router.get('/:orgId/newsletters', requireAuth, listNewsletters);
+
 
 router.get('/:orgId/announcements/feed', requireAuth, requireOrgProTier, getAnnouncementFeed);
 router.get('/:orgId/announcements/:announcementId/agm.pdf', requireAuth, requireOrgProTier, getAnnouncementAgmPdf);
