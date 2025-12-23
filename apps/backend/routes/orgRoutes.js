@@ -51,6 +51,10 @@ import {
   getOrgAssignmentSubmissions,
 } from '../controllers/orgLegacyAssignmentsController.js';
 
+import {
+  // ...other handlers
+  listOrgClassLabels,
+} from '../controllers/orgProToolsController.js'; // adjust filename
 
 import {
   listAttendanceSessions,
@@ -258,7 +262,7 @@ router.get('/:orgId/fees/learner/structure.pdf', requireAuth, getMyFeeStructureP
 
 router.get('/:orgId/fees/learner/statement', requireAuth, getMyFeeStatement);
 router.get('/:orgId/fees/learner/statement.pdf', requireAuth, getMyFeeStatementPdf);
-
+router.get('/:orgId/class-labels', requireAuth, listOrgClassLabels);
 
 /* ─────────────────────── Pro/Enterprise org tools ─────────────────────── */
 router.get(

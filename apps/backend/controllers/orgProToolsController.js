@@ -5,7 +5,7 @@ import {
   generateNewsletterDraftAI,
   newsletterDraftToMarkdown,
 } from '../services/newsletterAiService.js';
-
+import { buildNewsletterEmailHtml } from '../services/newsletterEmailTemplate.js';
 
 const PRO_ONLY = ['pro', 'enterprise'];
 
@@ -20,19 +20,46 @@ function normEmail(s) {
   return v;
 }
 
-async function listGuardianEmails(orgId, classLabel) {
-  const { rows } = await pool.query(
-    `SELECT DISTINCT lower(trim(guardian_email)) AS email
-     FROM org_learner_profiles
-     WHERE org_id = $1
-       AND guardian_email IS NOT NULL
-       AND trim(guardian_email) <> ''
-       AND ($2::text IS NULL OR class_label = $2)
-     ORDER BY email ASC`,
-    [orgId, classLabel || null],
-  );
-  return rows.map((r) => r.email).filter(Boolean);
+function stripPdfDataUrl(b64) {
+  const s = String(b64 || '');
+  return s.replace(/^data:application\/pdf;base64,/i, '').trim();
 }
+
+function safePdfFilename(newsletterTitle) {
+  return `${String(newsletterTitle || 'newsletter')
+    .trim()
+    .replace(/[^\w\d-_]+/g, '_')
+    .slice(0, 60)}.pdf`;
+}
+
+
+async function listLearnerTargets(orgId, classLabel) {
+  const params = [orgId];
+  let where = `olp.org_id = $1`;
+
+  if (classLabel) {
+    params.push(String(classLabel).trim());
+    // ✅ case-insensitive + trimmed match (reduces "Class 4" vs "class 4 " issues)
+    where += ` AND lower(btrim(coalesce(olp.class_label,''))) = lower(btrim($2))`;
+  }
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      olp.user_id,
+      olp.class_label,
+      olp.admission_code,
+      lower(trim(coalesce(u.email, olp.guardian_email))) AS email
+    FROM org_learner_profiles olp
+    LEFT JOIN users u ON u.id = olp.user_id
+    WHERE ${where}
+    `,
+    params,
+  );
+
+  return rows.filter((r) => r.user_id);
+}
+
 
 // ───────────────────────── Attendance ─────────────────────────
 export async function createAttendanceSession(req, res) {
@@ -468,22 +495,62 @@ export async function previewNewsletterRecipients(req, res) {
     const orgId = normalizeOrgId(req);
     await requireOrgTier(orgId, PRO_ONLY);
 
-    const { mode = 'all', class_label, recipients = [] } = req.body || {};
+    const { mode = 'all', class_label, recipients = [], channel = 'in_app' } = req.body || {};
 
+    const ch = String(channel || 'in_app').toLowerCase();
+    const wantsInApp = ch === 'in_app' || ch === 'both';
+    const wantsEmail = ch === 'email' || ch === 'both';
+
+    let learnerTargets = [];
     let emails = [];
+
     if (mode === 'custom') {
       emails = (recipients || []).map(normEmail).filter(Boolean);
-    } else if (mode === 'class') {
-      emails = await listGuardianEmails(orgId, class_label);
-    } else {
-      emails = await listGuardianEmails(orgId, null);
+      return res.json({
+        count: emails.length,
+        sample: emails.slice(0, 20),
+        emails: emails.length,
+        email_sample: emails.slice(0, 20),
+        learners: 0,
+        learner_sample: [],
+      });
     }
 
-    res.json({ count: emails.length, sample: emails.slice(0, 20) });
+    if (mode === 'class') {
+      const cls = String(class_label || '').trim();
+      if (!cls) return res.status(400).json({ message: 'class_label required for class mode' });
+
+      learnerTargets = await listLearnerTargets(orgId, cls);
+    } else {
+      learnerTargets = await listLearnerTargets(orgId, null);
+    }
+
+    if (wantsEmail) {
+      emails = learnerTargets.map((x) => normEmail(x.email)).filter(Boolean);
+    }
+
+    // ✅ sample admissions for in-app preview (what you want to see)
+    const learnerSample = learnerTargets
+      .map((x) => String(x.admission_code || x.user_id || '').trim())
+      .filter(Boolean)
+      .slice(0, 20);
+
+    // ✅ keep UI simple: "count/sample" always work
+    return res.json({
+      count: wantsInApp ? learnerTargets.length : emails.length,
+      sample: wantsInApp ? learnerSample : emails.slice(0, 20),
+
+      // extra debug fields (optional but helpful)
+      learners: learnerTargets.length,
+      learner_sample: learnerSample,
+      emails: emails.length,
+      email_sample: emails.slice(0, 20),
+    });
   } catch (e) {
-    res.status(e.status || 500).json({ message: e.message || 'Unable to preview recipients' });
+    return res.status(e.status || 500).json({ message: e.message || 'Unable to preview recipients' });
   }
 }
+
 
 export async function listNewsletterRecipients(req, res) {
   try {
@@ -524,6 +591,10 @@ export async function listNewsletterRecipients(req, res) {
   }
 }
 
+function stripThemeFromContent(md = '') {
+  return String(md || '').replace(/^\s*<!--THEME[\s\S]*?-->\s*/i, '').trim();
+}
+
 export async function sendNewsletter(req, res) {
   const client = await pool.connect();
   try {
@@ -531,7 +602,18 @@ export async function sendNewsletter(req, res) {
     await requireOrgTier(orgId, PRO_ONLY);
 
     const { id } = req.params;
-    const { mode = 'all', class_label, recipients = [] } = req.body || {};
+    const {
+  mode = 'all',
+  class_label,
+  recipients = [],
+  channel = 'in_app',
+  pdf_base64 = null, // ✅ add this
+} = req.body || {};
+
+
+    const ch = String(channel || 'in_app').toLowerCase();
+    const wantsInApp = ch === 'in_app' || ch === 'both';
+    const wantsEmail = ch === 'email' || ch === 'both';
 
     const nRes = await client.query(
       `SELECT * FROM org_newsletters WHERE org_id = $1 AND id = $2 LIMIT 1`,
@@ -540,81 +622,155 @@ export async function sendNewsletter(req, res) {
     if (!nRes.rows.length) return res.status(404).json({ message: 'Newsletter not found' });
     const newsletter = nRes.rows[0];
 
-    // Build recipient list
+    let learnerTargets = [];
     let emails = [];
+
     if (mode === 'custom') {
       emails = (recipients || []).map(normEmail).filter(Boolean);
     } else if (mode === 'class') {
-      emails = await listGuardianEmails(orgId, class_label);
+      const cls = String(class_label || '').trim();
+      if (!cls) return res.status(400).json({ message: 'class_label required for class mode' });
+      learnerTargets = await listLearnerTargets(orgId, cls);
+      if (wantsEmail) emails = learnerTargets.map((x) => normEmail(x.email)).filter(Boolean);
     } else {
-      emails = await listGuardianEmails(orgId, null);
+      learnerTargets = await listLearnerTargets(orgId, null);
+      if (wantsEmail) emails = learnerTargets.map((x) => normEmail(x.email)).filter(Boolean);
     }
 
-    if (!emails.length) return res.status(400).json({ message: 'No recipients found' });
+    if (!wantsInApp && wantsEmail && emails.length === 0) {
+      return res.status(400).json({ message: 'No email recipients found' });
+    }
+    if (!wantsInApp && !wantsEmail) {
+      return res.status(400).json({ message: 'Invalid channel' });
+    }
 
     await client.query('BEGIN');
 
-    // Mark as sending
     await client.query(
-  `UPDATE org_newsletters
-     SET status = 'sending',
-         updated_at = now(),
-         class_label = COALESCE($3, class_label),
-         target_mode = $4
-   WHERE id = $1 AND org_id = $2`,
-  [id, orgId, class_label || null, mode],
-);
-
+      `UPDATE org_newsletters
+         SET status = 'sending',
+             updated_at = now(),
+             sent_at = COALESCE(sent_at, now()),
+             class_label = $3,
+             target_mode = $4
+       WHERE id = $1 AND org_id = $2`,
+      [
+        id,
+        orgId,
+        mode === 'class' ? String(class_label || '').trim() : null,
+        mode,
+      ],
+    );
 
     await client.query('COMMIT');
 
-    // Send + record delivery (best effort; not inside transaction)
-    const subject = `${newsletter.title}`;
-    const body = `${newsletter.content_md || ''}`;
+    const safePdfBase64 =
+  pdf_base64 && typeof pdf_base64 === 'string' && pdf_base64.length > 50
+    ? pdf_base64
+    : null;
 
-    for (const email of emails) {
-      let delivered = false;
-      let error = null;
 
-      try {
-        await sendNotification({ to: email, subject, body });
-        delivered = true;
-      } catch (e) {
-        delivered = false;
-        error = e?.message || 'send failed';
-      }
+    const pdfFilename = safePdfBase64 ? safePdfFilename(newsletter.title) : null;
 
-      await pool.query(
-        `INSERT INTO org_newsletter_recipients
-           (newsletter_id, recipient_email, delivered, delivered_at, error)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (newsletter_id, recipient_email)
-         DO UPDATE SET
-           delivered = EXCLUDED.delivered,
-           delivered_at = EXCLUDED.delivered_at,
-           error = EXCLUDED.error`,
-        [id, email, delivered, delivered ? new Date() : null, delivered ? null : error],
-      );
+let pdfBytes = null;
+if (safePdfBase64) {
+  const clean = stripPdfDataUrl(safePdfBase64);
+  pdfBytes = Buffer.from(clean, 'base64');
+
+  // simple guard (optional)
+  const MAX = 8 * 1024 * 1024; // 8MB
+  if (pdfBytes.length > MAX) {
+    return res.status(413).json({ message: 'PDF too large (max 8MB)' });
+  }
+
+  // ✅ persist for learner portal (store once)
+  await client.query(
+    `UPDATE org_newsletters
+       SET pdf_bytes = $3,
+           pdf_filename = $4,
+           pdf_uploaded_at = now(),
+           updated_at = now()
+     WHERE id = $1 AND org_id = $2`,
+    [id, orgId, pdfBytes, pdfFilename],
+  );
+}
+// EMAIL: branded HTML + plain fallback
+if (wantsEmail && emails.length) {
+  const orgRes = await client.query(
+    `SELECT name, logo_url, signature_url, address_line1, address_line2, phone_number, contact_email, website_url
+     FROM organizations WHERE id=$1 LIMIT 1`,
+    [orgId],
+  );
+  const orgRow = orgRes.rows[0] || {};
+
+  const subject = `${newsletter.title}`;
+  const text = stripThemeFromContent(newsletter.content_md || '');
+
+  const html = buildNewsletterEmailHtml({
+    org: orgRow,
+    newsletter,
+    principalLabel: 'Head teacher / Principal',
+  });
+
+  for (const email of emails) {
+    let delivered = false;
+    let error = null;
+
+    try {
+      await sendNotification({
+  to: email,
+  subject,
+  text,
+  html,
+  attachments: pdfBytes
+    ? [
+        {
+          filename: pdfFilename,
+          content: pdfBytes, // ✅ Buffer
+          contentType: 'application/pdf',
+        },
+      ]
+    : [],
+});
+
+      delivered = true;
+    } catch (e) {
+      delivered = false;
+      error = e?.message || 'send failed';
     }
 
-    // Finalize status as sent
+    await client.query(
+      `INSERT INTO org_newsletter_recipients
+         (newsletter_id, recipient_email, delivered, delivered_at, error)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (newsletter_id, recipient_email)
+       DO UPDATE SET
+         delivered = EXCLUDED.delivered,
+         delivered_at = EXCLUDED.delivered_at,
+         error = EXCLUDED.error`,
+      [id, email, delivered, delivered ? new Date() : null, delivered ? null : error],
+    );
+  }
+}
+
     const { rows } = await pool.query(
       `UPDATE org_newsletters
-         SET status = 'sent', sent_at = now(), updated_at = now()
+         SET status = 'sent',
+             sent_at = now(),
+             updated_at = now()
        WHERE id = $1 AND org_id = $2
        RETURNING *`,
       [id, orgId],
     );
 
-    res.json(rows[0]);
+    return res.json({
+      newsletter: rows[0],
+      in_app_recipients: wantsInApp ? learnerTargets.length : 0,
+      emailed: wantsEmail ? emails.length : 0,
+    });
   } catch (e) {
-    try {
-      // if we started a transaction but didn't commit
-      await client.query('ROLLBACK');
-    } catch {
-      /* ignore */
-    }
-    res.status(e.status || 500).json({ message: e.message || 'Unable to send newsletter' });
+    try { await client.query('ROLLBACK'); } catch {}
+    return res.status(e.status || 500).json({ message: e.message || 'Unable to send newsletter' });
   } finally {
     client.release();
   }
@@ -682,25 +838,36 @@ export async function listLearnerNewsletters(req, res) {
     );
 
     const classLabel = lp.rows[0]?.class_label || null;
-    if (!classLabel) return res.json({ items: [] });
 
-    const { rows } = await pool.query(
-      `SELECT id, title, term_label, sent_at, updated_at, class_label
-       FROM org_newsletters
-       WHERE org_id = $1
-         AND status = 'sent'
+    // If learner has no class label, they can still see "all" newsletters
+   const { rows } = await pool.query(
+  `SELECT id, title, term_label, sent_at, updated_at, class_label, target_mode,
+          (pdf_bytes IS NOT NULL) AS has_pdf
+   FROM org_newsletters
+   WHERE org_id = $1
+     AND status = 'sent'
+     AND (
+       target_mode = 'all'
+       OR (
+         $2::text IS NOT NULL
          AND target_mode = 'class'
-         AND class_label = $2
-       ORDER BY sent_at DESC NULLS LAST, updated_at DESC
-       LIMIT 20`,
-      [orgId, classLabel],
-    );
+         AND lower(btrim(class_label)) = lower(btrim($2))
+       )
+     )
+   ORDER BY sent_at DESC NULLS LAST, updated_at DESC
+   LIMIT 20`,
+  [orgId, classLabel],
+);
+
 
     return res.json({ items: rows });
   } catch (e) {
-    return res.status(e.status || 500).json({ message: e.message || 'Unable to load newsletters' });
+    return res
+      .status(e.status || 500)
+      .json({ message: e.message || 'Unable to load newsletters' });
   }
 }
+
 
 export async function getLearnerNewsletter(req, res) {
   try {
@@ -724,20 +891,110 @@ export async function getLearnerNewsletter(req, res) {
     const classLabel = lp.rows[0]?.class_label || null;
 
     const { rows } = await pool.query(
-      `SELECT id, title, term_label, content_md, sent_at, updated_at
-       FROM org_newsletters
-       WHERE org_id = $1
-         AND id = $2
-         AND status = 'sent'
+  `SELECT id, title, term_label, content_md, sent_at, updated_at, class_label, target_mode,
+          (pdf_bytes IS NOT NULL) AS has_pdf,
+          pdf_filename
+   FROM org_newsletters
+   WHERE org_id = $1
+     AND id = $2
+     AND status = 'sent'
+     AND (
+       target_mode = 'all'
+       OR (
+         $3::text IS NOT NULL
          AND target_mode = 'class'
-         AND class_label = $3
-       LIMIT 1`,
-      [orgId, id, classLabel],
-    );
+         AND lower(btrim(class_label)) = lower(btrim($3))
+       )
+     )
+   LIMIT 1`,
+  [orgId, id, classLabel],
+);
+
+
 
     if (!rows.length) return res.status(404).json({ message: 'Newsletter not found' });
     return res.json(rows[0]);
   } catch (e) {
     return res.status(e.status || 500).json({ message: e.message || 'Unable to load newsletter' });
+  }
+}
+
+export async function listOrgClassLabels(req, res) {
+  try {
+    const orgId = normalizeOrgId(req);
+    await requireOrgTier(orgId, PRO_ONLY);
+
+    const { rows } = await pool.query(
+      `SELECT
+         class_label,
+         COUNT(*) AS learners,
+         COUNT(*) FILTER (WHERE guardian_email IS NOT NULL AND btrim(guardian_email) <> '') AS with_emails
+       FROM org_learner_profiles
+       WHERE org_id = $1
+         AND class_label IS NOT NULL
+         AND btrim(class_label) <> ''
+       GROUP BY class_label
+       ORDER BY learners DESC, class_label ASC
+       LIMIT 200`,
+      [orgId],
+    );
+
+    res.json({ items: rows });
+  } catch (e) {
+    res.status(e.status || 500).json({ message: e.message || 'Unable to list class labels' });
+  }
+}
+
+
+export async function getLearnerNewsletterPdf(req, res) {
+  try {
+    const orgId = normalizeOrgId(req);
+    await requireOrgTier(orgId, PRO_ONLY);
+
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+    const { id } = req.params;
+
+    const lp = await pool.query(
+      `SELECT class_label
+       FROM org_learner_profiles
+       WHERE org_id = $1 AND user_id = $2
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [orgId, userId],
+    );
+
+    const classLabel = lp.rows[0]?.class_label || null;
+
+    const { rows } = await pool.query(
+      `SELECT title, pdf_bytes, pdf_filename, target_mode, class_label
+       FROM org_newsletters
+       WHERE org_id = $1
+         AND id = $2
+         AND status = 'sent'
+         AND (
+           target_mode = 'all'
+           OR (
+             $3::text IS NOT NULL
+             AND target_mode = 'class'
+             AND lower(btrim(class_label)) = lower(btrim($3))
+           )
+         )
+       LIMIT 1`,
+      [orgId, id, classLabel],
+    );
+
+    if (!rows.length || !rows[0]?.pdf_bytes) {
+      return res.status(404).json({ message: 'PDF not found' });
+    }
+
+    const filename = rows[0].pdf_filename || safePdfFilename(rows[0].title);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    return res.send(rows[0].pdf_bytes);
+  } catch (e) {
+    return res.status(e.status || 500).json({ message: e.message || 'Unable to load PDF' });
   }
 }

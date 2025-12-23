@@ -11,6 +11,7 @@ import {
   listNewsletterRecipients,
   listLearnerNewsletters,
   getLearnerNewsletter,
+  getLearnerNewsletterPdf,
 } from '../controllers/orgProToolsController.js';
 
 import requireAuth from '../middleware/auth.js';
@@ -31,6 +32,7 @@ router.get('/:orgId/pro/newsletters/:id/recipients', listNewsletterRecipients);
 router.post('/:orgId/pro/newsletters/:id/send', sendNewsletter);
 router.get('/:orgId/learner/newsletters',  listLearnerNewsletters);
 router.get('/:orgId/learner/newsletters/:id', getLearnerNewsletter);
+router.get('/:orgId/learner/newsletters/:id/pdf',  getLearnerNewsletterPdf,);
 
 
 export default router;

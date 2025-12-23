@@ -32,11 +32,21 @@ function apiBaseFromEnv() {
     '').replace(/\/+$/, '');
 }
 
+// ✅ Pro tools are mounted under /api/orgs/:orgId/...
 function orgProBase(backendUrl: string | undefined, orgId: string) {
   const base = (backendUrl?.trim() || apiBaseFromEnv()).replace(/\/+$/, '');
-  return `${base}/api/org/${orgId}/pro`;
+  return `${base}/api/orgs/${orgId}`;
 }
 
+function looksLikeJwt(v: any) {
+  const s = String(v || '');
+  return s.split('.').length === 3 && s.length > 20;
+}
+
+function orgFeesBase(backendUrl: string | undefined, orgId: string) {
+  const base = (backendUrl?.trim() || apiBaseFromEnv()).replace(/\/+$/, '');
+  return `${base}/api/orgs/${orgId}`;
+}
 /* ─────────────────────────────────────────────────────────
  * Attendance
  * ───────────────────────────────────────────────────────── */
@@ -84,7 +94,7 @@ export async function apiGetAttendanceReport(
 }
 
 /* ─────────────────────────────────────────────────────────
- * Fees & balances
+ * Fees & balances (PRO / instructor tools)
  * ───────────────────────────────────────────────────────── */
 
 export async function apiCreateFeeCharge(
@@ -94,7 +104,7 @@ export async function apiCreateFeeCharge(
   orgToken?: string,
 ): Promise<OrgFeeCharge> {
   const { data } = await axios.post(
-    `${orgProBase(backendUrl, orgId)}/fees/charges`,
+    `${orgFeesBase(backendUrl, orgId)}/fees/charges`,
     payload,
     axiosCfg(orgToken),
   );
@@ -115,7 +125,7 @@ export async function apiBulkFeeCharges(
   orgToken?: string,
 ): Promise<{ inserted: OrgFeeCharge[]; failed?: { learner_id: string; reason: string }[] }> {
   const { data } = await axios.post(
-    `${orgProBase(backendUrl, orgId)}/fees/charges/bulk`,
+    `${orgFeesBase(backendUrl, orgId)}/fees/charges/bulk`,
     payload,
     axiosCfg(orgToken),
   );
@@ -129,7 +139,7 @@ export async function apiRecordFeePayment(
   orgToken?: string,
 ): Promise<OrgFeePayment> {
   const { data } = await axios.post(
-    `${orgProBase(backendUrl, orgId)}/fees/payments`,
+    `${orgFeesBase(backendUrl, orgId)}/fees/payments`,
     payload,
     axiosCfg(orgToken),
   );
@@ -142,23 +152,103 @@ export async function apiGetFeeBalances(
   orgToken?: string,
 ): Promise<{ balances: { learner_id: string; charges: number; payments: number; balance: number }[] }> {
   const { data } = await axios.get(
-    `${orgProBase(backendUrl, orgId)}/fees/balances`,
+    `${orgFeesBase(backendUrl, orgId)}/fees/balances`,
     axiosCfg(orgToken),
   );
   return data;
 }
 
+/**
+ * ✅ PRO statement (requires pro tier + instructor on backend routes)
+ * GET /api/orgs/:orgId/fees/learners/:learnerId/statement
+ */
 export async function apiGetFeeStatement(
+  backendUrl: string,
+  orgId: string,
+  a: string | number,
+  b: string | number,
+) {
+  let token: string;
+  let learnerId: string | number;
+
+  if (looksLikeJwt(a) && !looksLikeJwt(b)) {
+    token = String(a);
+    learnerId = b;
+  } else if (!looksLikeJwt(a) && looksLikeJwt(b)) {
+    learnerId = a;
+    token = String(b);
+  } else {
+    // fallback to common old order (learnerId, token)
+    learnerId = a;
+    token = String(b);
+  }
+
+  if (!looksLikeJwt(token)) {
+    throw new Error(
+      `Invalid auth token passed to apiGetFeeStatement (got: "${String(token).slice(0, 30)}...")`,
+    );
+  }
+
+  const url = `${orgFeesBase(backendUrl, orgId)}/fees/learners/${encodeURIComponent(
+    String(learnerId),
+  )}/statement`;
+
+  const r = await axios.get(url, axiosCfg(token));
+  return r.data;
+}
+
+/**
+ * ✅ Convenience: URL only (use for <a href>, iframe, window.open)
+ */
+export function apiGetFeeStatementPdfUrl(
+  backendUrl: string,
+  orgId: string,
+  learnerId: string | number,
+) {
+  return `${orgFeesBase(backendUrl, orgId)}/fees/learners/${encodeURIComponent(
+    String(learnerId),
+  )}/statement.pdf`;
+}
+
+/**
+ * ✅ If you still want a Blob download helper
+ */
+export async function apiDownloadFeeStatementPdf(
   backendUrl: string,
   orgId: string,
   learnerId: string,
   orgToken?: string,
-): Promise<OrgFeeStatement> {
+): Promise<Blob> {
   const { data } = await axios.get(
-    `${orgProBase(backendUrl, orgId)}/fees/learners/${learnerId}/statement`,
-    axiosCfg(orgToken),
+    `${orgFeesBase(backendUrl, orgId)}/fees/learners/${encodeURIComponent(learnerId)}/statement.pdf`,
+    {
+      ...axiosCfg(orgToken),
+      responseType: 'blob',
+    },
   );
-  return data;
+  return data as Blob;
+}
+
+/* ─────────────────────────────────────────────────────────
+ * Fees (Learner self-service)
+ * ───────────────────────────────────────────────────────── */
+
+/**
+ * ✅ Learner: GET /api/orgs/:orgId/fees/learner/statement
+ */
+// Learner self-service (these MUST get a real JWT token, not userId)
+export async function apiGetMyFeeStatement(backendUrl: string, orgId: string, token: string) {
+  if (!looksLikeJwt(token)) throw new Error('Invalid auth token for apiGetMyFeeStatement');
+  const url = `${orgFeesBase(backendUrl, orgId)}/fees/learner/statement`;
+  const r = await axios.get(url, axiosCfg(token));
+  return r.data;
+}
+
+export async function apiGetMyFeeStructure(backendUrl: string, orgId: string, token: string) {
+  if (!looksLikeJwt(token)) throw new Error('Invalid auth token for apiGetMyFeeStructure');
+  const url = `${orgFeesBase(backendUrl, orgId)}/fees/learner/structure`;
+  const r = await axios.get(url, axiosCfg(token));
+  return r.data;
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -179,6 +269,29 @@ export type OrgNewsletter = {
 };
 
 export type NewsletterSendMode = 'all' | 'class' | 'custom';
+
+/**
+ * channel:
+ *  - in_app: deliver to learner home page / in-app inbox only
+ *  - email: email only (if emails exist)
+ *  - both: do both (best-effort)
+ */
+export type NewsletterChannel = 'in_app' | 'email' | 'both';
+
+export type PreviewNewsletterRecipientsReq = {
+  mode?: NewsletterSendMode;
+  class_label?: string;
+  recipients?: string[];
+  channel?: NewsletterChannel;
+};
+
+export type SendNewsletterReq = {
+  mode?: NewsletterSendMode;
+  class_label?: string;
+  recipients?: string[];
+  channel?: NewsletterChannel;
+  pdf_base64?: string | null;
+};
 
 export type OrgNewsletterRecipientsResp = {
   items: Array<{
@@ -272,7 +385,7 @@ export async function apiPreviewNewsletterRecipients(
   backendUrl: string,
   orgId: string,
   id: string,
-  body: { mode?: NewsletterSendMode; class_label?: string; recipients?: string[] },
+  body: PreviewNewsletterRecipientsReq,
   orgToken?: string,
 ): Promise<{ count: number; sample: string[] }> {
   const { data } = await axios.post(
@@ -300,7 +413,7 @@ export async function apiSendOrgNewsletter(
   backendUrl: string,
   orgId: string,
   id: string,
-  body: { mode?: NewsletterSendMode; class_label?: string; recipients?: string[] },
+  body: SendNewsletterReq,
   orgToken?: string,
 ): Promise<OrgNewsletter> {
   const { data } = await axios.post(
@@ -342,14 +455,69 @@ export async function apiListAnnouncements(
   return data;
 }
 
+/* ─────────────────────────────────────────────────────────
+ * Learner newsletters (learner-side)
+ * ───────────────────────────────────────────────────────── */
+
 export async function apiListLearnerNewsletters(
   backendUrl: string,
   orgId: string,
   token?: string,
 ) {
-  const res = await fetch(`${backendUrl}/api/org/${orgId}/learner/newsletters`, {
+  // ✅ match backend mount: /api/orgs/:orgId/...
+  const base = (backendUrl?.trim() || apiBaseFromEnv()).replace(/\/+$/, '');
+  const res = await fetch(`${base}/api/orgs/${orgId}/learner/newsletters`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+export async function apiGetLearnerNewsletter(
+  backendUrl: string,
+  orgId: string,
+  id: string,
+  token?: string,
+) {
+  // ✅ match backend mount: /api/orgs/:orgId/...
+  const base = (backendUrl?.trim() || apiBaseFromEnv()).replace(/\/+$/, '');
+  const res = await fetch(`${base}/api/orgs/${orgId}/learner/newsletters/${id}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export function apiGetMyFeeStatementPdfUrl(backendUrl: string, orgId: string) {
+  return `${orgFeesBase(backendUrl, orgId)}/fees/learner/statement.pdf`;
+}
+
+export async function apiDownloadMyFeeStatementPdf(
+  backendUrl: string,
+  orgId: string,
+  token: string,
+): Promise<Blob> {
+  if (!looksLikeJwt(token)) throw new Error('Invalid auth token for apiDownloadMyFeeStatementPdf');
+  const { data } = await axios.get(apiGetMyFeeStatementPdfUrl(backendUrl, orgId), {
+    ...axiosCfg(token),
+    responseType: 'blob',
+  });
+  return data as Blob;
+}
+
+export function apiGetMyFeeStructurePdfUrl(backendUrl: string, orgId: string) {
+  return `${orgFeesBase(backendUrl, orgId)}/fees/learner/structure.pdf`;
+}
+
+export async function apiDownloadMyFeeStructurePdf(
+  backendUrl: string,
+  orgId: string,
+  token: string,
+): Promise<Blob> {
+  if (!looksLikeJwt(token)) throw new Error('Invalid auth token for apiDownloadMyFeeStructurePdf');
+  const { data } = await axios.get(apiGetMyFeeStructurePdfUrl(backendUrl, orgId), {
+    ...axiosCfg(token),
+    responseType: 'blob',
+  });
+  return data as Blob;
 }

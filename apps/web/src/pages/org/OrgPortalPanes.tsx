@@ -46,9 +46,10 @@ type BrandingAssignProps = {
   uploadingLogo: boolean;
   uploadingSignature: boolean;
   uploadingInstructorSignature: boolean;
+  uploadingBursarSignature: boolean;
   onUpload: (
     file: File | null,
-    target: 'logo_url' | 'signature_url' | 'instructor_signature_url'
+    target: 'logo_url' | 'signature_url' | 'instructor_signature_url' | 'bursar_signature_url'
   ) => Promise<void>;
 
   onSaveBranding: () => void;
@@ -108,6 +109,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
     uploadingLogo,
     uploadingSignature,
     uploadingInstructorSignature,
+    uploadingBursarSignature,
     onUpload,
     onSaveBranding,
     onSendTestReport,
@@ -147,6 +149,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
   const sigInputId = React.useId();
   const instructorSigInputId = React.useId();
   const coursesToken = tutorToken || token || null;
+  const bursarSigInputId = React.useId();
 
   const {
     courses = [],
@@ -209,7 +212,8 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
   // File picker handler
   const handlePick = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    target: 'logo_url' | 'signature_url' | 'instructor_signature_url'
+    target: 'logo_url' | 'signature_url' | 'instructor_signature_url' | 'bursar_signature_url'
+
   ) => {
     const inputEl = e.currentTarget; // cache before await
     const file = inputEl.files?.[0] ?? null;
@@ -351,7 +355,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
           </div>
 
           {/* Signature */}
-          <div className="space-y-2">
+          <div className="space-y-2 sm:col-span-2">
             <Label>Registrar Signature</Label>
             <div className="flex items-center gap-3">
               <div className="w-16 h-16 rounded bg-[#e7edf4] dark:bg-[#172534] ring-1 ring-[#cedbe8] dark:ring-darkCard overflow-hidden flex items-center justify-center">
@@ -460,6 +464,57 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
               </div>
             </div>
           </div>
+          {/* Bursar / Finance Office Signature */}
+<div className="space-y-2">
+  <Label>Bursar / Finance Office Signature</Label>
+  <div className="flex items-center gap-3">
+    <div className="w-16 h-16 rounded bg-[#e7edf4] dark:bg-[#172534] ring-1 ring-[#cedbe8] dark:ring-darkCard overflow-hidden flex items-center justify-center">
+      {form.bursar_signature_url ? (
+        <img
+          src={form.bursar_signature_url}
+          alt="Bursar / Finance Office Signature"
+          className="w-full h-full object-contain"
+        />
+      ) : (
+        <span className="text-[10px] text-[#49739c] dark:text-white/60 px-1 text-center">
+          No signature
+        </span>
+      )}
+    </div>
+
+    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <input
+        className="input w-full"
+        value={form.bursar_signature_url || ''}
+        onChange={(e) => setForm({ ...form, bursar_signature_url: e.target.value })}
+        placeholder="https://..."
+        disabled={!canBranding}
+      />
+
+      <input
+        id={bursarSigInputId}
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        onChange={(e) => handlePick(e, 'bursar_signature_url')}
+      />
+
+      <label
+        htmlFor={bursarSigInputId}
+        className={[
+          'btn w-full sm:w-auto text-center',
+          uploadingBursarSignature || !canBranding || !token
+            ? 'opacity-60 cursor-not-allowed bg-white/10'
+            : 'bg-emerald-600 hover:bg-emerald-500 cursor-pointer',
+        ].join(' ')}
+        aria-disabled={uploadingBursarSignature || !canBranding || !token || undefined}
+        title={!token ? 'Login required' : undefined}
+      >
+        {uploadingBursarSignature ? 'Uploading…' : 'Upload Signature'}
+      </label>
+    </div>
+  </div>
+</div>
 
           {/* Institution contact details – universal */}
           <div className="sm:col-span-2 mt-1">

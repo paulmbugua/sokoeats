@@ -750,3 +750,24 @@ export async function fetchOrgPricingTable(
 
   return r.data;
 }
+
+export async function apiListOrgClassLabels(
+  backendUrl: string,
+  orgId: string,
+  orgToken?: string,
+): Promise<{ items: Array<{ class_label: string; learners: number; with_emails: number }> }> {
+  const url = `${backendUrl}/api/orgs/${encodeURIComponent(orgId)}/class-labels`;
+
+  const { data } = await axios.get(url, {
+    headers: orgToken ? { Authorization: `Bearer ${orgToken}` } : undefined,
+  });
+
+  // normalize numbers (PG can return strings depending on driver)
+  return {
+    items: (data?.items || []).map((r: any) => ({
+      class_label: String(r.class_label || ''),
+      learners: Number(r.learners || 0),
+      with_emails: Number(r.with_emails || 0),
+    })),
+  };
+}

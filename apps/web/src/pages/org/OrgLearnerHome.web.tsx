@@ -147,9 +147,9 @@ React.useEffect(() => {
         ? String(learnerUserId)
         : '';
 
-        const learnerFeesHref = learnerStudentId
-  ? `/org/fees?view=learner&studentId=${encodeURIComponent(learnerStudentId)}`
-  : `/org/fees?view=learner`;
+ const learnerFeesHref = learnerStudentId
+  ? `/org/learn/fees?studentId=${encodeURIComponent(learnerStudentId)}`
+  : `/org/learn/fees`;
 
   // Optional: treat "no learner yet" + no studentId param as loading
   const isLoading = !learner && !rawStudentIdParam;
@@ -575,63 +575,23 @@ const learnerToolsHref = `/org/portal${toolsQueryParts.length ? `?${toolsQueryPa
                 : 'bg-amber-900/20 border-amber-500/30'
             }`}
           >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h4 className="text-sm font-semibold">Announcements &amp; newsletters</h4>
-                <p className="mt-1 text-xs text-white/70">
-                  Stay updated with institution notices and end-of-term newsletters. Pro/Enterprise unlocks the full feed.
-                </p>
-              </div>
+           <div className="flex items-start justify-between gap-2">
+  <div className="min-w-0">
+    <h4 className="text-sm font-semibold">School newsletters</h4>
+    <p className="mt-1 text-xs text-white/70">
+      Read end-of-term newsletters from your school. Download as PDF anytime.
+    </p>
+  </div>
 
-              {isProTier ? (
-                <Link
-                 to={learnerToolsHref}
-                  className="text-[11px] text-indigo-300 hover:text-indigo-200 whitespace-nowrap"
-                >
-                  Open →
-                </Link>
-              ) : (
-                <span className="text-[11px] text-amber-200 whitespace-nowrap">Locked</span>
-              )}
-            </div>
+  <Link
+    to="/org/learner/newsletters"
+    className="text-[11px] text-indigo-300 hover:text-indigo-200 whitespace-nowrap"
+  >
+    Open →
+  </Link>
+</div>
 
-            {isProTier ? (
-              <>
-                {newslettersLoading ? (
-                  <div className="mt-3 text-xs text-white/60">Loading latest newsletter…</div>
-                ) : learnerNewsletters.length ? (
-                  <div className="mt-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs font-semibold text-white/80">Latest newsletters</div>
-                      <Link
-                        to={learnerToolsHref}
-                        className="text-[11px] px-2 py-1 rounded-full bg-white/10 border border-white/10 hover:bg-white/15"
-                      >
-                        View all →
-                      </Link>
-                    </div>
 
-                    {learnerNewsletters.slice(0, 3).map((n: any) => (
-                      <div key={n.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-sm font-semibold">{n.title}</div>
-                        <div className="text-xs text-white/60">
-                          {n.term_label || ''}{n.term_label ? ' • ' : ''}
-                          {n.sent_at ? new Date(n.sent_at).toLocaleDateString() : ''}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-3 text-xs text-white/60">
-                    No newsletters shared with your class yet.
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="mt-3 text-xs text-amber-200/90">
-                Your school admin needs to upgrade to Pro/Enterprise to enable newsletters.
-              </div>
-            )}
           </div>
 
             {/* Course library – learner-aware */}

@@ -137,16 +137,134 @@ async function resolveCreatedByProfileId(clientOrPool, req) {
 
 const normalizeOrgId = (req) => req.params?.orgId || req.body?.org_id || req.query?.org_id;
 
-async function loadOrgMeta(orgId) {
-  const { rows } = await pool.query(
-    `select id, name, logo_url, address_line1, address_line2, phone_number, contact_email
-       from organizations
-      where id = $1
-      limit 1`,
-    [orgId],
-  );
-  return rows[0] || null;
+async function loadOrgMeta(clientOrReqOrOrgId, maybeOrgId) {
+  const db =
+    clientOrReqOrOrgId && typeof clientOrReqOrOrgId.query === 'function'
+      ? clientOrReqOrOrgId
+      : pool;
+
+  let orgId = maybeOrgId;
+
+  // loadOrgMeta(orgId)
+  if (!orgId && (typeof clientOrReqOrOrgId === 'string' || typeof clientOrReqOrOrgId === 'number')) {
+    orgId = clientOrReqOrOrgId;
+  }
+
+  // loadOrgMeta(req, orgId?)
+  if (!orgId && clientOrReqOrOrgId && typeof clientOrReqOrOrgId === 'object') {
+    orgId =
+      clientOrReqOrOrgId.org_id ||
+      clientOrReqOrOrgId.orgId ||
+      clientOrReqOrOrgId.params?.orgId ||
+      clientOrReqOrOrgId.params?.org_id ||
+      clientOrReqOrOrgId.query?.orgId ||
+      clientOrReqOrOrgId.query?.org_id ||
+      null;
+  }
+
+  if (!orgId) throw new Error('loadOrgMeta: missing orgId');
+
+  // ✅ Start with a broad list, then auto-remove any missing columns (42703) and retry.
+  let cols = [
+    'id',
+    'name',
+    'slug',
+    'logo_url',
+    'contact_email',
+    'phone_number',
+    'address_line1',
+    'address_line2',
+
+    // optional / newer columns (may not exist)
+    'website_url',
+    'signature_url',
+    'instructor_signature_url',
+    'finance_signature_url',
+    'bursar_signature_url',
+    'registrar_signature_url',
+    'principal_signature_url',
+    'headteacher_signature_url',
+  ];
+
+  const run = async () => {
+    const sql = `
+      SELECT ${cols.join(', ')}
+      FROM organizations
+      WHERE id = $1
+      LIMIT 1
+    `;
+    const r = await db.query(sql, [orgId]);
+    return r.rows[0] || null;
+  };
+
+  let row = null;
+
+  for (let i = 0; i < 10; i++) {
+    try {
+      row = await run();
+      break;
+    } catch (e) {
+      // undefined_column
+      if (e?.code === '42703') {
+        const msg = String(e?.message || '');
+
+        // try extract the missing column name
+        // examples:
+        //  - column "registrar_signature_url" does not exist
+        //  - column organizations.registrar_signature_url does not exist
+        const m = msg.match(/column\s+"?([a-zA-Z0-9_\.]+)"?\s+does not exist/i);
+        const missingRaw = m?.[1] || '';
+        const missing = missingRaw.includes('.') ? missingRaw.split('.').pop() : missingRaw;
+
+        if (missing && cols.includes(missing)) {
+          cols = cols.filter((c) => c !== missing);
+          continue; // retry with column removed
+        }
+
+        // if we can't identify the column, fall back to a very safe minimal query
+        cols = [
+          'id',
+          'name',
+          'slug',
+          'logo_url',
+          'contact_email',
+          'phone_number',
+          'address_line1',
+          'address_line2',
+          'signature_url',
+          'instructor_signature_url',
+        ];
+        row = await run();
+        break;
+      }
+
+      throw e;
+    }
+  }
+
+  if (!row) return null;
+
+  // Normalize missing fields so downstream code can safely read them
+  const ensure = (k) => {
+    if (row[k] === undefined) row[k] = null;
+  };
+
+  ensure('website_url');
+  ensure('signature_url');
+  ensure('instructor_signature_url');
+  ensure('finance_signature_url');
+  ensure('bursar_signature_url');
+  ensure('registrar_signature_url');
+  ensure('principal_signature_url');
+  ensure('headteacher_signature_url');
+
+  // ✅ CRITICAL: never fallback bursar/finance to principal
+  row.bursar_signature_resolved =
+    row.bursar_signature_url || row.finance_signature_url || null;
+
+  return row;
 }
+
 
 async function resolveOrgIdByAccountRef(client, provider, accountRef) {
   if (!provider || !accountRef) return null;
@@ -581,7 +699,9 @@ export async function createFeeStructure(req, res) {
 export async function updateFeeStructure(req, res) {
   const orgId = normalizeOrgId(req);
   const { error: paramErr, value: params } = structureParamsSchema.validate(req.params);
-  if (paramErr) return res.status(400).json({ message: paramErr.message });
+if (paramErr) return res.status(400).json({ message: paramErr.message });
+
+
 
   const { error, value } = updateStructureSchema.validate(req.body, { abortEarly: false });
   if (error) return res.status(400).json({ message: error.message });
@@ -874,22 +994,40 @@ export async function getFeeBalances(req, res) {
 
   try {
     const { rows } = await pool.query(
-      `SELECT
-          ch.learner_id::text AS learner_id,
-          ch.currency AS currency,
-          COALESCE(SUM(ch.amount_cents), 0)::bigint AS charges,
-          COALESCE(SUM(p.amount_cents), 0)::bigint AS payments
-        FROM org_fee_charges ch
-        LEFT JOIN org_fee_payments p
-          ON p.org_id = ch.org_id
-         AND p.learner_id::text = ch.learner_id::text
-         AND p.currency = ch.currency
-        WHERE ch.org_id = $1
-          AND ($2::text IS NULL OR ch.class_label = $2)
-        GROUP BY ch.learner_id::text, ch.currency
-        ORDER BY ch.learner_id::text, ch.currency`,
-      [orgId, value.class_label || null],
-    );
+  `
+  WITH ch AS (
+    SELECT
+      ch.learner_id::text AS learner_id,
+      UPPER(COALESCE(ch.currency,'USD')) AS currency,
+      COALESCE(SUM(ch.amount_cents), 0)::bigint AS charges
+    FROM org_fee_charges ch
+    WHERE ch.org_id = $1
+      AND ($2::text IS NULL OR ch.class_label = $2)
+    GROUP BY ch.learner_id::text, UPPER(COALESCE(ch.currency,'USD'))
+  ),
+  p AS (
+    SELECT
+      p.learner_id::text AS learner_id,
+      UPPER(COALESCE(p.currency,'USD')) AS currency,
+      COALESCE(SUM(p.amount_cents), 0)::bigint AS payments
+    FROM org_fee_payments p
+    WHERE p.org_id = $1
+    GROUP BY p.learner_id::text, UPPER(COALESCE(p.currency,'USD'))
+  )
+  SELECT
+    COALESCE(ch.learner_id, p.learner_id) AS learner_id,
+    COALESCE(ch.currency, p.currency) AS currency,
+    COALESCE(ch.charges, 0)::bigint AS charges,
+    COALESCE(p.payments, 0)::bigint AS payments
+  FROM ch
+  FULL OUTER JOIN p
+    ON p.learner_id = ch.learner_id
+   AND p.currency = ch.currency
+  ORDER BY learner_id, currency
+  `,
+  [orgId, value.class_label || null],
+);
+
 
     // return grouped payload so UI is simple
     const byLearner = new Map();
@@ -917,79 +1055,352 @@ export async function getFeeBalances(req, res) {
 }
 
 
+
+function uniqText(xs) {
+  const out = [];
+  const seen = new Set();
+  for (const x of xs || []) {
+    const s = String(x ?? '').trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
 export async function getFeeStatement(req, res) {
   const orgId = normalizeOrgId(req);
-  const { error: paramErr, value: params } = learnerParamsSchema.validate(req.params);
+
+  const { error: paramErr, value: params } = learnerParamsSchema.validate(req.params, {
+    allowUnknown: true,
+  });
   if (paramErr) return res.status(400).json({ message: paramErr.message });
 
   try {
+    const learnerRef = String(params.learnerId || '').trim();
+    const learnerMeta = await loadLearnerMetaForStatement(pool, orgId, learnerRef);
+
+    const learnerRefs = uniqText([
+      learnerRef,
+      learnerMeta?.user_id,
+      learnerMeta?.admission_code,
+      learnerMeta?.learner_profile_id,
+    ]);
+
+    if (!learnerRefs.length) {
+      return res.status(400).json({ message: 'Missing learner reference' });
+    }
+
     const charges = await pool.query(
-      `SELECT id, amount_cents, currency, description, class_label, due_date, created_at, structure_id, structure_item_id
-         FROM org_fee_charges
-        WHERE org_id = $1 AND learner_id::text = $2
-        ORDER BY created_at DESC`,
-      [orgId, String(params.learnerId)],
+      `
+      SELECT id, amount_cents, currency, description, class_label, due_date, created_at, structure_id, structure_item_id, learner_id
+        FROM org_fee_charges
+       WHERE org_id = $1
+         AND learner_id::text = ANY($2::text[])
+       ORDER BY created_at DESC
+      `,
+      [orgId, learnerRefs],
     );
 
     const payments = await pool.query(
-      `SELECT id, amount_cents, currency, method, reference, note, received_at, created_at, charge_id
-         FROM org_fee_payments
-        WHERE org_id = $1 AND learner_id::text = $2
-        ORDER BY COALESCE(received_at, created_at) DESC`,
-      [orgId, String(params.learnerId)],
+      `
+      SELECT id, amount_cents, currency, method, reference, note, received_at, created_at, charge_id, learner_id
+        FROM org_fee_payments
+       WHERE org_id = $1
+         AND learner_id::text = ANY($2::text[])
+       ORDER BY COALESCE(received_at, created_at) DESC
+      `,
+      [orgId, learnerRefs],
     );
 
-   const sumByCur = (rows) => {
-  const m = new Map();
-  for (const r of rows || []) {
-    const cur = String(r.currency || 'USD').toUpperCase();
-    m.set(cur, (m.get(cur) || 0) + Number(r.amount_cents || 0));
-  }
-  return Array.from(m.entries()).map(([currency, amount_cents]) => ({ currency, amount_cents }));
-};
+    const sumByCur = (rows) => {
+      const m = new Map();
+      for (const r of rows || []) {
+        const cur = String(r.currency || 'USD').toUpperCase();
+        m.set(cur, (m.get(cur) || 0) + Number(r.amount_cents || 0));
+      }
+      return Array.from(m.entries()).map(([currency, amount_cents]) => ({
+        currency,
+        amount_cents,
+      }));
+    };
 
-const chargesBy = sumByCur(charges.rows);
-const paymentsBy = sumByCur(payments.rows);
+    const chargesBy = sumByCur(charges.rows);
+    const paymentsBy = sumByCur(payments.rows);
 
-const allCurrencies = new Set([
-  ...chargesBy.map((x) => x.currency),
-  ...paymentsBy.map((x) => x.currency),
-]);
+    const allCurrencies = new Set([
+      ...chargesBy.map((x) => x.currency),
+      ...paymentsBy.map((x) => x.currency),
+    ]);
 
-const summary_by_currency = Array.from(allCurrencies).map((cur) => {
-  const ch = chargesBy.find((x) => x.currency === cur)?.amount_cents || 0;
-  const pay = paymentsBy.find((x) => x.currency === cur)?.amount_cents || 0;
-  return { currency: cur, total_charges: ch, total_payments: pay, balance: ch - pay };
-});
+    const summary_by_currency = Array.from(allCurrencies).map((cur) => {
+      const ch = chargesBy.find((x) => x.currency === cur)?.amount_cents || 0;
+      const pay = paymentsBy.find((x) => x.currency === cur)?.amount_cents || 0;
+      return { currency: cur, total_charges: ch, total_payments: pay, balance: ch - pay };
+    });
 
-// ✅ optional: keep legacy single summary for old UI (pick first currency or USD)
-const legacy = summary_by_currency.find((x) => x.currency === 'USD') || summary_by_currency[0] || null;
+    const legacy =
+      summary_by_currency.find((x) => x.currency === 'USD') ||
+      summary_by_currency[0] ||
+      null;
 
-return res.json({
-  charges: charges.rows,
-  payments: payments.rows,
-  summary_by_currency,
-  summary: legacy
-    ? { total_charges: legacy.total_charges, total_payments: legacy.total_payments, balance: legacy.balance }
-    : { total_charges: 0, total_payments: 0, balance: 0 },
-});
-
+    return res.json({
+      learner_refs: learnerRefs,     // ✅ helpful for debugging
+      learner_meta: learnerMeta,     // ✅ optional (remove if you don’t want to expose)
+      charges: charges.rows,
+      payments: payments.rows,
+      summary_by_currency,
+      summary: legacy
+        ? {
+            total_charges: legacy.total_charges,
+            total_payments: legacy.total_payments,
+            balance: legacy.balance,
+          }
+        : { total_charges: 0, total_payments: 0, balance: 0 },
+    });
   } catch (err) {
     console.error('[getFeeStatement] error', err);
     return res.status(500).json({ message: 'Unable to load statement' });
   }
 }
 
+
+
+function looksLikeUuid(v) {
+  return typeof v === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+async function loadLearnerMetaForStatement(db, orgId, learnerRef) {
+  // learnerRef can be:
+  // - learner_profile_id (uuid)
+  // - user_id (number / numeric string)
+  // - admission_code (string)
+
+  const ref = learnerRef;
+
+  // Detect UUID (learner_profile_id)
+  const isUuid =
+    typeof ref === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ref.trim());
+
+  // Detect numeric user id
+  const isNumeric =
+    ref !== null &&
+    ref !== undefined &&
+    String(ref).trim() !== '' &&
+    /^[0-9]+$/.test(String(ref).trim());
+
+  // Build WHERE
+  let whereSql = '';
+  let params = [orgId];
+
+  if (isUuid) {
+    whereSql = `olp.id = $2`;
+    params.push(ref.trim());
+  } else if (isNumeric) {
+    whereSql = `olp.user_id = $2`;
+    params.push(Number(String(ref).trim()));
+  } else {
+    // admission_code
+    whereSql = `olp.admission_code = $2`;
+    params.push(String(ref ?? '').trim());
+  }
+
+  // Query variants
+  const qWithPhone = `
+    SELECT
+      olp.id            AS learner_profile_id,
+      olp.org_id,
+      olp.user_id,
+      olp.admission_code,
+      olp.class_label,
+      olp.house_label,
+      olp.dorm_label,
+      olp.club_label,
+      olp.photo_url,
+      olp.guardian_email,
+
+      u.email           AS user_email,
+      u.name            AS user_name,
+      u.phone_number    AS user_phone,
+
+      p.name            AS profile_name
+    FROM org_learner_profiles olp
+    LEFT JOIN users u ON u.id = olp.user_id
+    LEFT JOIN profiles p ON p.user_id = olp.user_id
+    WHERE olp.org_id = $1
+      AND ${whereSql}
+    LIMIT 1
+  `;
+
+  const qNoPhone = `
+    SELECT
+      olp.id            AS learner_profile_id,
+      olp.org_id,
+      olp.user_id,
+      olp.admission_code,
+      olp.class_label,
+      olp.house_label,
+      olp.dorm_label,
+      olp.club_label,
+      olp.photo_url,
+      olp.guardian_email,
+
+      u.email           AS user_email,
+      u.name            AS user_name,
+
+      p.name            AS profile_name
+    FROM org_learner_profiles olp
+    LEFT JOIN users u ON u.id = olp.user_id
+    LEFT JOIN profiles p ON p.user_id = olp.user_id
+    WHERE olp.org_id = $1
+      AND ${whereSql}
+    LIMIT 1
+  `;
+
+  const qNoPhoneNoName = `
+    SELECT
+      olp.id            AS learner_profile_id,
+      olp.org_id,
+      olp.user_id,
+      olp.admission_code,
+      olp.class_label,
+      olp.house_label,
+      olp.dorm_label,
+      olp.club_label,
+      olp.photo_url,
+      olp.guardian_email,
+
+      u.email           AS user_email,
+
+      p.name            AS profile_name
+    FROM org_learner_profiles olp
+    LEFT JOIN users u ON u.id = olp.user_id
+    LEFT JOIN profiles p ON p.user_id = olp.user_id
+    WHERE olp.org_id = $1
+      AND ${whereSql}
+    LIMIT 1
+  `;
+
+  // Execute with graceful fallbacks
+  let r;
+  try {
+    r = await db.query(qWithPhone, params);
+  } catch (e) {
+    if (e?.code === '42703') {
+      const msg = String(e?.message || '');
+
+      // Missing phone_number column -> try without phone
+      if (msg.includes('phone_number') || msg.includes('u.phone_number')) {
+        try {
+          r = await db.query(qNoPhone, params);
+        } catch (e2) {
+          if (e2?.code === '42703' && String(e2?.message || '').includes('u.name')) {
+            r = await db.query(qNoPhoneNoName, params);
+          } else {
+            throw e2;
+          }
+        }
+      }
+      // Missing name column -> try without name
+      else if (msg.includes('u.name') || msg.includes('name')) {
+        r = await db.query(qNoPhoneNoName, params);
+      } else {
+        throw e;
+      }
+    } else {
+      throw e;
+    }
+  }
+
+  const row = r?.rows?.[0] || null;
+  if (!row) return null;
+
+  // ✅ final display name preference:
+  const displayName =
+    row.profile_name ||
+    row.user_name ||
+    row.admission_code ||
+    row.user_email ||
+    `Learner ${row.user_id ?? ''}`.trim();
+
+  return { ...row, display_name: displayName };
+}
+
+
 export async function getFeeStatementPdf(req, res) {
   const orgId = normalizeOrgId(req);
-  const { error: paramErr, value: params } = learnerParamsSchema.validate(req.params);
+
+  const { error: paramErr, value: params } = learnerParamsSchema.validate(req.params, {
+    allowUnknown: true,
+  });
   if (paramErr) return res.status(400).json({ message: paramErr.message });
 
-  const org = await loadOrgMeta(orgId);
-  if (!org) return res.status(404).json({ message: 'Org not found' });
+  const learnerIdText = String(params.learnerId || '').trim();
 
-  const statementRes = await pool.query(
-    `select
+  // helper: unique non-empty strings
+  function uniqText(xs) {
+    const out = [];
+    const seen = new Set();
+    for (const x of xs) {
+      const s = String(x ?? '').trim();
+      if (!s) continue;
+      if (seen.has(s)) continue;
+      seen.add(s);
+      out.push(s);
+    }
+    return out;
+  }
+
+  const client = await pool.connect();
+  try {
+    /* -------------------------------------------------------
+     * Resolve org table name (organizations vs orgs)
+     * ----------------------------------------------------- */
+    const orgTableCandidates = ['organizations', 'orgs'];
+    const tRes = await client.query(
+      `select table_name
+         from information_schema.tables
+        where table_schema='public'
+          and table_name = any($1::text[])`,
+      [orgTableCandidates],
+    );
+
+    const orgTable = tRes.rows?.[0]?.table_name;
+    if (!orgTable) {
+      return res.status(500).json({
+        message: `Org table not found. Expected one of: ${orgTableCandidates.join(', ')}`,
+      });
+    }
+
+    /* -------------------------------------------------------
+     * Load org
+     * ----------------------------------------------------- */
+    const orgRes = await client.query(`select * from ${orgTable} where id=$1`, [orgId]);
+    const org = orgRes.rows?.[0];
+    if (!org) return res.status(404).json({ message: 'Org not found' });
+
+    /* -------------------------------------------------------
+     * Load learner meta (robust: uuid OR user_id OR admission_code)
+     * ----------------------------------------------------- */
+    const learnerMeta = await loadLearnerMetaForStatement(client, orgId, learnerIdText);
+
+    // Build a “match everything” ref set so legacy rows still appear
+    const learnerRefs = uniqText([
+      learnerIdText, // whatever came in
+      learnerMeta?.user_id, // numeric
+      learnerMeta?.admission_code, // ADM
+      learnerMeta?.learner_profile_id, // UUID
+    ]);
+
+    /* -------------------------------------------------------
+     * Statement entries (charges + linked payments)
+     * - match charges by ANY learner ref (uuid/user_id/adm)
+     * ----------------------------------------------------- */
+    const statementRes = await client.query(
+      `
+      select
         ch.id as charge_id,
         ch.amount_cents as charge_amount,
         ch.currency as charge_currency,
@@ -997,6 +1408,7 @@ export async function getFeeStatementPdf(req, res) {
         ch.class_label,
         ch.due_date,
         ch.created_at as charge_created_at,
+
         p.id as payment_id,
         p.amount_cents as payment_amount,
         p.currency as payment_currency,
@@ -1005,64 +1417,125 @@ export async function getFeeStatementPdf(req, res) {
         p.note,
         p.received_at,
         p.created_at as payment_created_at
+
       from org_fee_charges ch
       left join org_fee_payments p
         on p.charge_id = ch.id
-      where ch.org_id = $1 and ch.learner_id::text = $2
-      order by ch.created_at asc, p.created_at asc`,
-    [orgId, String(params.learnerId)],
-  );
+       and p.org_id = ch.org_id
+      where ch.org_id = $1
+        and ch.learner_id::text = any($2::text[])
+      order by ch.created_at asc, p.created_at asc
+      `,
+      [orgId, learnerRefs],
+    );
 
-  const paymentsRes = await pool.query(
-    `select * from org_fee_payments where org_id=$1 and learner_id::text=$2 order by created_at asc`,
-    [orgId, String(params.learnerId)],
-  );
+    /* -------------------------------------------------------
+     * All payments (including unlinked / extra payments)
+     * - match by ANY learner ref (uuid/user_id/adm)
+     * ----------------------------------------------------- */
+    const paymentsRes = await client.query(
+      `
+      select *
+        from org_fee_payments
+       where org_id = $1
+         and learner_id::text = any($2::text[])
+       order by created_at asc
+      `,
+      [orgId, learnerRefs],
+    );
 
-  const summary = paymentsRes.rows.reduce(
-    (acc, row) => {
-      acc.total_payments += Number(row.amount_cents || 0);
-      return acc;
-    },
-    { total_payments: 0 },
-  );
+    const summary = paymentsRes.rows.reduce(
+      (acc, row) => {
+        acc.total_payments += Number(row.amount_cents || 0);
+        return acc;
+      },
+      { total_payments: 0 },
+    );
 
-  const seenCharges = new Set();
-  let totalCharges = 0;
-  for (const row of statementRes.rows) {
-    if (row.charge_id && !seenCharges.has(row.charge_id)) {
-      totalCharges += Number(row.charge_amount || 0);
-      seenCharges.add(row.charge_id);
+    // Unique charge totals
+    const seenCharges = new Set();
+    let totalCharges = 0;
+    for (const row of statementRes.rows) {
+      if (row.charge_id && !seenCharges.has(row.charge_id)) {
+        totalCharges += Number(row.charge_amount || 0);
+        seenCharges.add(row.charge_id);
+      }
     }
-  }
-  const extraPayments = paymentsRes.rows.filter((p) => !p.charge_id);
-  const combinedEntries = [...statementRes.rows, ...extraPayments.map((p) => ({ payment_id: p.id, ...p }))].sort(
-    (a, b) => {
-      const left =
-        new Date(a.payment_created_at || a.received_at || a.charge_created_at || a.created_at || 0).getTime();
-      const right =
-        new Date(b.payment_created_at || b.received_at || b.charge_created_at || b.created_at || 0).getTime();
+
+    // Payments without charge_id
+    const extraPayments = paymentsRes.rows.filter((p) => !p.charge_id);
+
+    const combinedEntries = [
+      ...statementRes.rows,
+      ...extraPayments.map((p) => ({ payment_id: p.id, ...p })),
+    ].sort((a, b) => {
+      const left = new Date(
+        a.payment_created_at || a.received_at || a.charge_created_at || a.created_at || 0,
+      ).getTime();
+      const right = new Date(
+        b.payment_created_at || b.received_at || b.charge_created_at || b.created_at || 0,
+      ).getTime();
       return left - right;
-    },
-  );
+    });
 
-  const balance = totalCharges - summary.total_payments;
+    const balance = totalCharges - summary.total_payments;
 
-  const pdfBuffer = await renderFeeStatementPdf({
-    org,
-    learnerId: params.learnerId,
-    entries: combinedEntries,
-    totals: { totalCharges, totalPayments: summary.total_payments, balance },
-  });
+    /* -------------------------------------------------------
+     * Signature resolution
+     * ----------------------------------------------------- */
+    const bursarSig =
+      org?.bursar_signature_resolved ||
+      org?.bursar_signature_url ||
+      org?.finance_signature_url ||
+      null;
 
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="fee-statement-${params.learnerId}.pdf"`);
-  return res.send(pdfBuffer);
+    /* -------------------------------------------------------
+     * Render PDF (always Name + ADM when available)
+     * ----------------------------------------------------- */
+    const pdfBuffer = await renderFeeStatementPdf({
+      org,
+      learnerId: params.learnerId, // legacy fallback
+      learner: learnerMeta
+        ? {
+            name: learnerMeta.display_name || 'Learner',
+            admission_code: learnerMeta.admission_code || null,
+          }
+        : undefined,
+
+      bursar_signature_url: bursarSig,
+      entries: combinedEntries,
+      totals: {
+        totalCharges,
+        totalPayments: summary.total_payments,
+        balance,
+      },
+    });
+
+    // nicer filename (prefer ADM)
+    const fileTag = String(learnerMeta?.admission_code || learnerIdText || 'learner')
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]+/g, '_');
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="fee-statement-${fileTag}.pdf"`);
+    return res.send(pdfBuffer);
+  } catch (e) {
+    console.error('getFeeStatementPdf error:', e);
+    return res.status(500).json({ message: e?.message || 'Failed to generate statement' });
+  } finally {
+    client.release();
+  }
 }
+
+
 
 export async function getFeeStructurePdf(req, res) {
   const orgId = normalizeOrgId(req);
-  const { error: paramErr, value: params } = structureParamsSchema.validate(req.params);
-  if (paramErr) return res.status(400).json({ message: paramErr.message });
+ const { error: paramErr, value: params } = structureParamsSchema.validate(
+  { structureId: req.params.structureId }
+);
+if (paramErr) return res.status(400).json({ message: paramErr.message });
+
 
   const org = await loadOrgMeta(orgId);
   if (!org) return res.status(404).json({ message: 'Org not found' });

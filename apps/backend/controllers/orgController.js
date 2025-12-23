@@ -1143,6 +1143,7 @@ export async function updateOrgBranding(req, res) {
     'logo_url',
     'signature_url',
     'instructor_signature_url',
+    'bursar_signature_url',
     'certificate_title',
     'default_pass_mark',
     'quiz_time_limit_s',

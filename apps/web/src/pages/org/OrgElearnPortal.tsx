@@ -286,6 +286,7 @@ const resolvedTabForLearner: TabKey =
     logo_url: '',
     signature_url: '',
     instructor_signature_url: '',
+    bursar_signature_url: '',
     certificate_title: 'Certificate of Completion',
     default_pass_mark: 70,
     quiz_time_limit_s: 900,
@@ -331,6 +332,7 @@ const resolvedTabForLearner: TabKey =
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingSignature, setUploadingSignature] = useState(false);
   const [uploadingInstructorSignature, setUploadingInstructorSignature] = useState(false);
+const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
 
   const mpesaPaymentIdRef = useRef<string | null>(null);
 
@@ -717,7 +719,7 @@ const resolvedTabForLearner: TabKey =
   /** Upload helper (passed down) */
   const handleUpload = async (
     file: File | null,
-    target: 'logo_url' | 'signature_url' | 'instructor_signature_url'
+     target: 'logo_url' | 'signature_url' | 'instructor_signature_url' | 'bursar_signature_url'
   ) => {
     if (!file) return;
 
@@ -731,12 +733,14 @@ const resolvedTabForLearner: TabKey =
       return;
     }
 
-    const setBusy =
-      target === 'logo_url'
-        ? setUploadingLogo
-        : target === 'signature_url'
-          ? setUploadingSignature
-          : setUploadingInstructorSignature;
+   const setBusy =
+    target === 'logo_url'
+      ? setUploadingLogo
+      : target === 'signature_url'
+        ? setUploadingSignature
+        : target === 'instructor_signature_url'
+          ? setUploadingInstructorSignature
+          : setUploadingBursarSignature; // ✅ new
 
     setBusy(true);
     try {
@@ -2043,6 +2047,7 @@ const resolvedTabForLearner: TabKey =
                 <BrandingAssignPane
                   tab={tab}
                   setTab={setTab}
+                  uploadingBursarSignature={uploadingBursarSignature}
                   // capabilities
                   canBranding={canBranding}
                   canAssignments={canAssignments}

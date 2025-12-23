@@ -535,57 +535,48 @@ const OrgFeesPage: React.FC = () => {
         </div>
       </div>
 
-      <SectionCard
-        title="Payment callback URLs (share with the school)"
-        subtitle="Daraja will call these URLs when parents pay the PayBill. Bank integrations can post to the bank endpoint."
-      >
-        <div className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <CopyRow label="M-Pesa Daraja Validation URL" value={`${PROD_BASE}/api/fees/inbound/validate`} />
-            <CopyRow label="M-Pesa Daraja Confirmation URL" value={`${PROD_BASE}/api/fees/inbound/confirm`} />
-          </div>
+     <SectionCard
+  title="Payment callback URLs (share with the school)"
+  subtitle="Daraja will call these URLs when parents pay the PayBill. Bank integrations can post to the bank endpoint."
+>
+  <div className="space-y-3">
+    <div className="grid gap-3 md:grid-cols-2">
+      <CopyRow label="M-Pesa Daraja Validation URL" value={`${PROD_BASE}/api/fees/inbound/validate`} />
+      <CopyRow label="M-Pesa Daraja Confirmation URL" value={`${PROD_BASE}/api/fees/inbound/confirm`} />
+    </div>
 
-          <CopyRow label="Bank inbound URL (for bank/partner system)" value={`${PROD_BASE}/api/fees/inbound/bank`} />
+    <CopyRow label="Bank inbound URL (for bank/partner system)" value={`${PROD_BASE}/api/fees/inbound/bank`} />
 
-          <div className="mt-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-            <div className="font-semibold">Admin tooling (unmatched payments)</div>
-            <div className="mt-1 text-slate-600 dark:text-slate-300">
-              Use these when a parent used a wrong admission number / no reference.
-            </div>
-
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <CopyRow
-                label="List unmatched inbound"
-                value={`${PROD_BASE}/api/orgs/${encodeURIComponent(orgId || '')}/fees/inbound?status=unmatched`}
-              />
-              <CopyRow
-                label="Attach inbound to learner (POST)"
-                value={`${PROD_BASE}/api/orgs/${encodeURIComponent(orgId || '')}/fees/inbound/{inbound_id}/attach`}
-              />
-            </div>
-
-            <div className="mt-3 rounded-lg bg-white p-2 text-[11px] dark:bg-slate-900">
-              <div className="font-semibold">Attach payload example</div>
-              <pre className="mt-1 overflow-x-auto">{`{
-  "learner_id": "ADM00123"
-}`}</pre>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  setUnmatchedOpen(true);
-                  await fetchUnmatched();
-                }}
-                className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-              >
-                View unmatched inbound
-              </button>
-            </div>
+    {/* ✅ simplified admin actions */}
+    <div className="mt-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-semibold">Unmatched payments</div>
+          <div className="mt-1 text-slate-600 dark:text-slate-300">
+            If a parent used the wrong admission number / no reference, open the unmatched list and attach it to the
+            correct learner.
           </div>
         </div>
-      </SectionCard>
+
+        <button
+          type="button"
+          onClick={async () => {
+            setUnmatchedOpen(true);
+            // modal also fetches on open, but keeping this makes it feel instant
+            await fetchUnmatched();
+          }}
+          className="shrink-0 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+        >
+          View unmatched
+        </button>
+      </div>
+
+      <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-300">
+        Tip: pick a payment, search the learner, then click <span className="font-semibold">Attach</span>.
+      </div>
+    </div>
+  </div>
+</SectionCard>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard title="Fee structure builder" subtitle="Line items, totals, and activation per scope">

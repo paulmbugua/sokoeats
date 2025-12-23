@@ -16,7 +16,7 @@ import ResourcesPage from './pages/Resources.web';
 import ProfileDetailPage from './pages/ProfileDetailPage.web';
 import ProfilePage from './pages/Profile.web';
 import LoginPage from './pages/LoginPage.web';
-
+import OrgLearnerNewslettersPage from './pages/org/OrgLearnerNewsletters.web';
 import RefundsAndCancellations from './pages/RefundsAndCancellations';
 import FulfillmentPolicy from './pages/FulfillmentPolicy';
 import PaymentFlow from './pages/PaymentFlow';
@@ -26,7 +26,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import AntiSpamPolicy from './pages/AntiSpamPolicy';
 import ComplaintsFeedback from './pages/ComplaintsFeedback';
-
+import OrgLearnerFeesPage from './pages/org/OrgLearnerFees.web';
 import Messages from './pages/Messages.web';
 import ResultsPage from './pages/Results.web';
 
@@ -408,6 +408,9 @@ const App: React.FC = () => {
 
           {/* keep portal reachable */}
           <Route path="/org/portal" element={<OrgElearnPortal />} />
+          <Route path="/org/learner/newsletters" element={<OrgLearnerNewslettersPage />} />
+          <Route path="/org/learner/newsletters/:id" element={<OrgLearnerNewslettersPage />} />
+
 
           {/* Admin-only profile */}
           <Route
@@ -416,6 +419,15 @@ const App: React.FC = () => {
               <OrgAdminOnlyRoute>
                 <OrgProfilePage />
               </OrgAdminOnlyRoute>
+            }
+          />
+
+          <Route
+            path="/org/learn/fees"
+            element={
+              <OrgLearnerOnlyRoute>
+                <OrgLearnerFeesPage />
+              </OrgLearnerOnlyRoute>
             }
           />
 
