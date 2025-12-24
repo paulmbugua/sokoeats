@@ -1,11 +1,14 @@
 // packages/shared/api/orgFeesApi.ts
 import axios from 'axios';
-import type {
-  FeeBalanceRow,
-  FeeCharge,
-  FeePayment,
-  FeeStructure,
-} from '@mytutorapp/shared/types';
+import type { FeeBalanceRow, FeeCharge, FeePayment, FeeStructure } from '@mytutorapp/shared/types';
+
+/* ─────────────────────────────────────────────────────────
+ * Helpers
+ * ───────────────────────────────────────────────────────── */
+
+function authHeaders(token?: string) {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 // Add near the top of file
 function stripNullish<T extends Record<string, any>>(obj: T): Partial<T> {
@@ -18,16 +21,18 @@ function stripNullish<T extends Record<string, any>>(obj: T): Partial<T> {
   return out;
 }
 
+/* ─────────────────────────────────────────────────────────
+ * Fee structures
+ * ───────────────────────────────────────────────────────── */
 
-export async function listFeeStructures(
-  backendUrl: string,
-  token: string,
-  orgId: string,
-): Promise<FeeStructure[]> {
-  const { data } = await axios.get(`${backendUrl}/api/orgs/${orgId}/fees/structures`, {
-    headers: { Authorization: `Bearer ${token}` },
+export async function listFeeStructures(backendUrl: string, token: string, orgId: string) {
+  const url = `${backendUrl}/api/orgs/${orgId}/fees/structures`;
+  const r = await axios.get(url, {
+    headers: authHeaders(token),
+    params: { _ts: Date.now() }, // ✅ cache buster
+    withCredentials: true,
   });
-  return data.items ?? [];
+  return r.data?.items || [];
 }
 
 export async function createFeeStructure(
@@ -37,25 +42,50 @@ export async function createFeeStructure(
   payload: Partial<FeeStructure>,
 ): Promise<FeeStructure> {
   const { data } = await axios.post(`${backendUrl}/api/orgs/${orgId}/fees/structures`, payload, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: authHeaders(token),
+    withCredentials: true,
   });
   return data;
+}
+
+export type StructurePatch = {
+  title?: string;
+  description?: string | null;
+  currency?: string | null;
+  effective_term?: string | null;
+  is_active?: boolean;
+  scope_type?: string | null;
+  scope_value?: string | null;
+  items?: any[];
+};
+
+function pickStructurePatch(x: any): StructurePatch {
+  return stripNullish({
+    title: x?.title,
+    description: x?.description ?? null,
+    currency: x?.currency ?? undefined, // undefined => don't send
+    effective_term: x?.effective_term ?? null,
+    is_active: x?.is_active ?? undefined,
+    scope_type: x?.scope_type ?? null,
+    scope_value: x?.scope_value ?? null,
+    items: Array.isArray(x?.items) ? x.items : undefined,
+  } as any) as StructurePatch;
 }
 
 export async function updateFeeStructure(
   backendUrl: string,
   token: string,
   orgId: string,
-  structureId: number,
-  payload: Partial<FeeStructure>,
+  structureId: number | string,
+  patch: any,
 ): Promise<FeeStructure> {
-  const { data } = await axios.put(
-    `${backendUrl}/api/orgs/${orgId}/fees/structures/${structureId}`,
-    payload,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
+  const url = `${backendUrl}/api/orgs/${orgId}/fees/structures/${structureId}`;
+  const body = pickStructurePatch(patch);
+
+  const { data } = await axios.put(url, body, {
+    headers: authHeaders(token),
+    withCredentials: true,
+  });
   return data;
 }
 
@@ -68,7 +98,7 @@ export async function activateFeeStructure(
   const { data } = await axios.post(
     `${backendUrl}/api/orgs/${orgId}/fees/structures/${structureId}/activate`,
     {},
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: authHeaders(token), withCredentials: true },
   );
   return data;
 }
@@ -79,15 +109,17 @@ export async function getFeeStructurePdf(
   orgId: string,
   structureId: number,
 ): Promise<Blob> {
-  const { data } = await axios.get(
-    `${backendUrl}/api/orgs/${orgId}/fees/structures/${structureId}.pdf`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-      responseType: 'blob',
-    },
-  );
+  const { data } = await axios.get(`${backendUrl}/api/orgs/${orgId}/fees/structures/${structureId}.pdf`, {
+    headers: authHeaders(token),
+    responseType: 'blob',
+    withCredentials: true,
+  });
   return data as Blob;
 }
+
+/* ─────────────────────────────────────────────────────────
+ * Charges
+ * ───────────────────────────────────────────────────────── */
 
 export async function createFeeCharge(
   backendUrl: string,
@@ -99,7 +131,8 @@ export async function createFeeCharge(
   // IMPORTANT: do NOT send structure_id / structure_item_id unless they are real numbers
   // stripNullish already deletes null/undefined/""
   const { data } = await axios.post(`${backendUrl}/api/orgs/${orgId}/fees/charges`, body, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: authHeaders(token),
+    withCredentials: true,
   });
   return data;
 }
@@ -116,11 +149,15 @@ export async function createBulkFeeCharges(
   delete (body as any).learner_id;
 
   const { data } = await axios.post(`${backendUrl}/api/orgs/${orgId}/fees/charges/bulk`, body, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: authHeaders(token),
+    withCredentials: true,
   });
   return data;
 }
 
+/* ─────────────────────────────────────────────────────────
+ * Payments
+ * ───────────────────────────────────────────────────────── */
 
 export async function recordFeePayment(
   backendUrl: string,
@@ -128,11 +165,17 @@ export async function recordFeePayment(
   orgId: string,
   payload: Partial<FeePayment>,
 ): Promise<FeePayment> {
-  const { data } = await axios.post(`${backendUrl}/api/orgs/${orgId}/fees/payments`, payload, {
-    headers: { Authorization: `Bearer ${token}` },
+  const body = stripNullish(payload as any);
+  const { data } = await axios.post(`${backendUrl}/api/orgs/${orgId}/fees/payments`, body, {
+    headers: authHeaders(token),
+    withCredentials: true,
   });
   return data;
 }
+
+/* ─────────────────────────────────────────────────────────
+ * Balances + statement
+ * ───────────────────────────────────────────────────────── */
 
 export async function getFeeBalances(
   backendUrl: string,
@@ -142,7 +185,8 @@ export async function getFeeBalances(
 ): Promise<FeeBalanceRow[]> {
   const { data } = await axios.get(`${backendUrl}/api/orgs/${orgId}/fees/balances`, {
     params,
-    headers: { Authorization: `Bearer ${token}` },
+    headers: authHeaders(token),
+    withCredentials: true,
   });
   return data.balances ?? [];
 }
@@ -152,10 +196,14 @@ export async function getFeeStatement(
   token: string,
   orgId: string,
   learnerId: string,
-): Promise<{ charges: FeeCharge[]; payments: FeePayment[]; summary: { total_charges: number; total_payments: number; balance: number } }>
-{
+): Promise<{
+  charges: FeeCharge[];
+  payments: FeePayment[];
+  summary: { total_charges: number; total_payments: number; balance: number };
+}> {
   const { data } = await axios.get(`${backendUrl}/api/orgs/${orgId}/fees/learners/${learnerId}/statement`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: authHeaders(token),
+    withCredentials: true,
   });
   return data;
 }
@@ -167,12 +215,16 @@ export async function getFeeStatementPdf(
   learnerId: string,
 ): Promise<Blob> {
   const { data } = await axios.get(`${backendUrl}/api/orgs/${orgId}/fees/learners/${learnerId}/statement.pdf`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: authHeaders(token),
     responseType: 'blob',
+    withCredentials: true,
   });
   return data as Blob;
 }
 
+/* ─────────────────────────────────────────────────────────
+ * Inbound payments
+ * ───────────────────────────────────────────────────────── */
 
 export type FeeInboundRow = {
   id: string | number;
@@ -195,7 +247,8 @@ export async function listFeeInbound(
 ): Promise<FeeInboundRow[]> {
   const { data } = await axios.get(`${backendUrl}/api/orgs/${orgId}/fees/inbound`, {
     params,
-    headers: { Authorization: `Bearer ${token}` },
+    headers: authHeaders(token),
+    withCredentials: true,
   });
   // be defensive about backend shape:
   return data.items ?? data.inbound ?? data.rows ?? [];
@@ -211,8 +264,7 @@ export async function attachFeeInboundToLearner(
   const { data } = await axios.post(
     `${backendUrl}/api/orgs/${orgId}/fees/inbound/${encodeURIComponent(String(inboundId))}/attach`,
     payload,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: authHeaders(token), withCredentials: true },
   );
   return data;
 }
-

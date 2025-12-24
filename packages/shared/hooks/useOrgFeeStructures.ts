@@ -1,3 +1,4 @@
+// packages/shared/hooks/useOrgFeeStructures.ts
 import { useCallback, useState } from 'react';
 import { useShopContext } from '@mytutorapp/shared/context';
 import type { FeeStructure } from '@mytutorapp/shared/types';
@@ -14,6 +15,8 @@ interface UseOrgFeeStructuresProps {
   token?: string | null;
   orgId?: string | null;
 }
+
+const sameId = (a: any, b: any) => String(a ?? '') === String(b ?? '');
 
 export function useOrgFeeStructures(opts?: UseOrgFeeStructuresProps) {
   const { backendUrl: ctxBackendUrl, token: ctxToken, orgId: ctxOrgId } = useShopContext() as any;
@@ -33,7 +36,7 @@ export function useOrgFeeStructures(opts?: UseOrgFeeStructuresProps) {
     setLoading(true);
     try {
       const items = await listFeeStructures(backendUrl, token as string, orgId as string);
-      setStructures(items || []);
+      setStructures(Array.isArray(items) ? (items as any) : []);
     } finally {
       setLoading(false);
     }
@@ -45,8 +48,8 @@ export function useOrgFeeStructures(opts?: UseOrgFeeStructuresProps) {
       setSaving(true);
       try {
         const created = await createFeeStructure(backendUrl, token as string, orgId as string, payload);
-        setStructures((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
-        return created;
+        setStructures((prev) => [created as any, ...prev.filter((s: any) => !sameId(s.id, (created as any).id))]);
+        return created as any;
       } finally {
         setSaving(false);
       }
@@ -59,15 +62,9 @@ export function useOrgFeeStructures(opts?: UseOrgFeeStructuresProps) {
       if (!ensure()) return null;
       setSaving(true);
       try {
-        const updated = await updateFeeStructure(
-          backendUrl,
-          token as string,
-          orgId as string,
-          structureId,
-          payload,
-        );
-        setStructures((prev) => prev.map((s) => (s.id === structureId ? updated : s)));
-        return updated;
+        const updated = await updateFeeStructure(backendUrl, token as string, orgId as string, structureId, payload);
+        setStructures((prev) => prev.map((s: any) => (sameId(s.id, structureId) ? (updated as any) : s)));
+        return updated as any;
       } finally {
         setSaving(false);
       }
@@ -82,9 +79,9 @@ export function useOrgFeeStructures(opts?: UseOrgFeeStructuresProps) {
       try {
         const activated = await activateFeeStructure(backendUrl, token as string, orgId as string, structureId);
         setStructures((prev) =>
-          (prev || []).map((s) => ({ ...s, is_active: s.id === activated.id ? true : false })),
+          (prev || []).map((s: any) => ({ ...s, is_active: sameId(s.id, (activated as any).id) })),
         );
-        return activated;
+        return activated as any;
       } finally {
         setSaving(false);
       }

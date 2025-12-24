@@ -85,6 +85,7 @@ import {
   getMyClubs,
   listMessageLogs,
   sendMessageNow,
+  clearAttendanceEntries,
 } from '../controllers/orgEngagementController.js';
 import {
   createFeeStructure,
@@ -300,6 +301,15 @@ router.delete(
   requireOrgInstructor,
   deleteAttendanceSession,
 );
+
+router.delete(
+  '/:orgId/attendance/sessions/:sessionId/entries',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgInstructor,
+  clearAttendanceEntries,
+);
+
 router.post(
   '/:orgId/attendance/sessions/:sessionId/entries',
   requireAuth,

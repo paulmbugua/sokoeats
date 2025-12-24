@@ -1,11 +1,72 @@
-import React from 'react';
+// OrgFees.ui.tsx
+import React, { useEffect, useState } from 'react';
 import { cn, moneyFromCents } from './OrgFees.shared';
 
+/* ─────────────────────────────────────────────────────────
+ * CircleCheckbox (small circle “ack” checkbox)
+ * ───────────────────────────────────────────────────────── */
+
+export function CircleCheckbox({
+  checked,
+  onChange,
+  label,
+  disabled,
+  className,
+  labelClassName,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: React.ReactNode;
+  disabled?: boolean;
+  className?: string;
+  labelClassName?: string;
+}) {
+  return (
+    <label
+      className={cn(
+        'inline-flex items-center gap-2 select-none',
+        disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
+        className,
+      )}
+    >
+      <input
+        type="checkbox"
+        className="peer sr-only"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+
+      {/* Small circle + dot */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          'relative h-4 w-4 rounded-full border flex items-center justify-center transition',
+          'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900',
+          'peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500/40',
+          'peer-checked:border-blue-600 peer-checked:bg-blue-600 dark:peer-checked:border-blue-500 dark:peer-checked:bg-blue-500',
+          "after:content-[''] after:h-2 after:w-2 after:rounded-full after:bg-white after:opacity-0 after:transition-opacity",
+          'peer-checked:after:opacity-100',
+        )}
+      />
+
+      <span className={cn('text-xs text-slate-600 dark:text-slate-200', labelClassName)}>{label}</span>
+    </label>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+ * CopyRow
+ * ───────────────────────────────────────────────────────── */
+
 export function CopyRow({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+
   const onCopy = async () => {
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(value);
+        setCopied(true);
         return;
       }
     } catch {
@@ -22,31 +83,47 @@ export function CopyRow({ label, value }: { label: string; value: string }) {
       el.select();
       document.execCommand('copy');
       document.body.removeChild(el);
+      setCopied(true);
     } catch {
       // no-op
     }
   };
 
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 1200);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+
   return (
     <div className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
       <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">{label}</div>
+
       <div className="flex items-center justify-between gap-3">
         <code className="min-w-0 break-all rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
           {value}
         </code>
+
         <button
           type="button"
           onClick={onCopy}
-          className="shrink-0 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          className={cn(
+            'shrink-0 rounded-md border px-2 py-1 text-xs font-semibold transition',
+            'border-slate-200 text-slate-700 hover:bg-slate-50',
+            'dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800',
+          )}
         >
-          Copy
+          {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
     </div>
   );
 }
 
-/** ✅ Place MoneyStack here (right after money helpers) */
+/* ─────────────────────────────────────────────────────────
+ * MoneyStack
+ * ───────────────────────────────────────────────────────── */
+
 export function MoneyStack({ rows }: { rows: Array<{ currency: string; value: number }> }) {
   const cleaned =
     (rows || [])
@@ -69,6 +146,10 @@ export function MoneyStack({ rows }: { rows: Array<{ currency: string; value: nu
     </span>
   );
 }
+
+/* ─────────────────────────────────────────────────────────
+ * EmptyState / Badge
+ * ───────────────────────────────────────────────────────── */
 
 export const EmptyState: React.FC<{ title: string; body: string; action?: React.ReactNode }> = ({
   title,
@@ -96,11 +177,23 @@ export const Badge: React.FC<{ children: React.ReactNode; tone?: 'warn' | 'ok' |
   return <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', cls)}>{children}</span>;
 };
 
+/* ─────────────────────────────────────────────────────────
+ * Modal
+ * ───────────────────────────────────────────────────────── */
+
 export const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({
   title,
   onClose,
   children,
 }) => {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50">
       <button type="button" aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/40" />
@@ -114,6 +207,8 @@ export const Modal: React.FC<{ title: string; onClose: () => void; children: Rea
             'overflow-hidden',
             'md:max-w-3xl',
           )}
+          role="dialog"
+          aria-modal="true"
         >
           <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-800">
             <div className="text-base font-semibold">{title}</div>
@@ -132,6 +227,10 @@ export const Modal: React.FC<{ title: string; onClose: () => void; children: Rea
     </div>
   );
 };
+
+/* ─────────────────────────────────────────────────────────
+ * SectionCard
+ * ───────────────────────────────────────────────────────── */
 
 export const SectionCard: React.FC<{ title: string; subtitle?: string; children: React.ReactNode }> = ({
   title,

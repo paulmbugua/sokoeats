@@ -18,6 +18,7 @@ export interface OrgAttendanceReport {
 export interface OrgAttendanceEntry {
   learner_id: string;
   status: AttendanceStatus;
+  user_id?: number; 
   note?: string | null;
 }
 

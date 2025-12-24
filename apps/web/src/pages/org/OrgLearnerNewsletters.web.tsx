@@ -164,7 +164,7 @@ export const OrgLearnerNewslettersPage: React.FC = () => {
           </div>
 
           <Link
-            to="/org/learner-home"
+             to="/org/learn"
             className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 text-white/80 font-medium transition"
           >
             ← Back

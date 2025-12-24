@@ -16,6 +16,13 @@ import {
   renderFeeStructurePdf,
 } from '../services/orgFeePdfService.js';
 
+
+function normalizeCurrency(v, fallback = 'USD') {
+  const s = String(v ?? '').trim();
+  const out = (s || String(fallback || 'USD')).trim().toUpperCase();
+  return /^[A-Z]{2,12}$/.test(out) ? out : String(fallback || 'USD').toUpperCase();
+}
+
 function parseScopeFromDescription(descRaw) {
   const desc = String(descRaw || '');
   const m = desc.match(/\bScope:\s*([a-zA-Z_]+)\s+(.+)\s*$/i);
@@ -33,6 +40,45 @@ function parseScopeFromDescription(descRaw) {
     scope_value: scope_value || null,
   };
 }
+
+function normalizeScopeType(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  return s ? s : 'all';
+}
+
+function normalizeScopeValue(v) {
+  return String(v ?? '').trim().toLowerCase();
+}
+
+// Resolve the effective currency for a charge linked to a structure/item.
+// Prefers item currency, then structure currency.
+async function resolveStructureChargeCurrency(clientOrPool, orgId, structureId, structureItemId) {
+  if (!orgId || !structureId) return null;
+
+  const { rows } = await clientOrPool.query(
+    `
+    SELECT
+      UPPER(COALESCE(i.currency, s.currency, 'USD')) AS currency
+    FROM org_fee_structures s
+    LEFT JOIN org_fee_structure_items i
+      ON i.structure_id = s.id
+     AND ($3::bigint IS NULL OR i.id = $3)
+    WHERE s.org_id = $1
+      AND s.id = $2
+    LIMIT 1
+    `,
+    [orgId, structureId, structureItemId || null],
+  );
+
+  const cur = rows?.[0]?.currency;
+  return cur ? normalizeCurrency(cur, 'USD') : null;
+}
+
+function addCentsByCurrency(map, currency, amountCents) {
+  const cur = normalizeCurrency(currency, 'USD');
+  map.set(cur, (map.get(cur) || 0) + Number(amountCents || 0));
+}
+
 
 function feeInboundNameJoinSql() {
   return `
@@ -111,6 +157,34 @@ async function pickBestStructureForLearner(orgId, classLabel) {
 
   return rows[0] || null;
 }
+
+async function pickActiveStructureForLearner(orgId, classLabel) {
+  const classKey = String(classLabel || '').trim().toLowerCase();
+const keys = deriveGradeKeys(classLabel); // already lower
+
+const { rows } = await pool.query(
+  `
+  select *
+    from org_fee_structures s
+   where s.org_id = $1
+     and s.is_active = true
+   order by
+     case
+       when trim(lower(coalesce(s.scope_value,''))) = $2 then 1
+       when trim(lower(coalesce(s.scope_value,''))) = any($3::text[]) then 2
+       when trim(lower(coalesce(s.scope_value,''))) in ('', 'all', '*') then 3
+       else 9
+     end,
+     s.updated_at desc
+   limit 1
+  `,
+  [orgId, classKey, keys],
+);
+
+return rows[0] || null;
+
+}
+
 
 async function resolveCreatedByProfileId(clientOrPool, req) {
   // If your auth middleware already attaches a profile UUID, use it (ONLY if valid UUID)
@@ -581,8 +655,16 @@ async function fetchStructureWithItems(a, b, c) {
 
 
 
+// apps/backend/controllers/orgFeesController.js
 export async function listFeeStructures(req, res) {
   const orgId = normalizeOrgId(req);
+
+  // ✅ stop browser/proxy/CDN caching (this is the refresh issue)
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Vary', 'Authorization, Cookie');
+
   try {
     const { rows } = await pool.query(
       `select *
@@ -615,6 +697,7 @@ export async function listFeeStructures(req, res) {
   }
 }
 
+
 export async function createFeeStructure(req, res) {
   const orgId = normalizeOrgId(req);
   const { error, value } = createStructureSchema.validate(req.body, { abortEarly: false });
@@ -624,33 +707,54 @@ export async function createFeeStructure(req, res) {
   try {
     await client.query('BEGIN');
 
-    if (value.is_active) {
-      await client.query(`update org_fee_structures set is_active = false where org_id = $1`, [orgId]);
-    }
     const parsed = parseScopeFromDescription(value.description || '');
-    const scope_type = value.scope_type || parsed.scope_type || null;
-    const scope_value = value.scope_value || parsed.scope_value || null;
+    const scope_type = value.scope_type ?? parsed.scope_type ?? null;
+    const scope_value = value.scope_value ?? parsed.scope_value ?? null;
+
+    const scopeTypeKey = normalizeScopeType(scope_type);
+    const scopeValueKey = normalizeScopeValue(scope_value);
+
+    // If publishing this structure, deactivate others in SAME (scope_type + scope_value) bucket
+    if (value.is_active === true) {
+      await client.query(
+        `
+        UPDATE org_fee_structures
+           SET is_active=false, updated_at=now()
+         WHERE org_id=$1
+           AND lower(coalesce(scope_type,'all')) = $2
+           AND (
+             ($3 = ''  AND trim(lower(coalesce(scope_value,''))) IN ('', 'all', '*'))
+             OR
+             ($3 <> '' AND trim(lower(coalesce(scope_value,''))) = $3)
+           )
+        `,
+        [orgId, scopeTypeKey, scopeValueKey],
+      );
+    }
+
     const cleanDescription = parsed.cleanDescription || null;
+    const structureCurrency = normalizeCurrency(value.currency, 'USD');
+    const createdBy = await resolveCreatedByProfileId(client, req);
 
-
-   const structureRes = await client.query(
-  `insert into org_fee_structures
-     (org_id, title, description, currency, is_active, effective_term, created_by, scope_type, scope_value)
-   values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-   returning *`,
-  [
-    orgId,
-    value.title,
-    cleanDescription,
-    value.currency || 'USD',
-    value.is_active,
-    value.effective_term || null,
-    await resolveCreatedByProfileId(client, req),
-    scope_type,
-    scope_value,
-  ],
-);
-
+    const structureRes = await client.query(
+      `
+      INSERT INTO org_fee_structures
+        (org_id, title, description, currency, is_active, effective_term, created_by, scope_type, scope_value)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      RETURNING *
+      `,
+      [
+        orgId,
+        value.title,
+        cleanDescription,
+        structureCurrency,
+        value.is_active,
+        value.effective_term || null,
+        createdBy,
+        scope_type,
+        scope_value,
+      ],
+    );
 
     const structure = structureRes.rows[0];
     let items = [];
@@ -658,17 +762,19 @@ export async function createFeeStructure(req, res) {
     if (Array.isArray(value.items) && value.items.length) {
       const insertValues = [];
       const params = [];
+
       value.items.forEach((item, idx) => {
         params.push(
           structure.id,
           item.label,
           item.amount_cents,
-          item.currency || value.currency || 'USD',
+          normalizeCurrency(item.currency, structureCurrency), // ✅ inherit structure currency
           item.cadence || null,
           item.is_optional ?? false,
           item.sort_order ?? idx,
           item.metadata || {},
         );
+
         const base = idx * 8;
         insertValues.push(
           `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8})`,
@@ -676,12 +782,15 @@ export async function createFeeStructure(req, res) {
       });
 
       const itemsRes = await client.query(
-        `insert into org_fee_structure_items
-           (structure_id, label, amount_cents, currency, cadence, is_optional, sort_order, metadata)
-         values ${insertValues.join(',')}
-         returning *`,
+        `
+        INSERT INTO org_fee_structure_items
+          (structure_id, label, amount_cents, currency, cadence, is_optional, sort_order, metadata)
+        VALUES ${insertValues.join(',')}
+        RETURNING *
+        `,
         params,
       );
+
       items = itemsRes.rows;
     }
 
@@ -696,21 +805,27 @@ export async function createFeeStructure(req, res) {
   }
 }
 
+
 export async function updateFeeStructure(req, res) {
   const orgId = normalizeOrgId(req);
+
   const { error: paramErr, value: params } = structureParamsSchema.validate(req.params);
-if (paramErr) return res.status(400).json({ message: paramErr.message });
+  if (paramErr) return res.status(400).json({ message: paramErr.message });
 
+  // Tip: if you want to ignore unknown keys instead of erroring:
+  // const { error, value } = updateStructureSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+  const { error, value } = updateStructureSchema.validate(req.body, {
+  abortEarly: false,
+  allowUnknown: true,
+  stripUnknown: true,
+});
 
-
-  const { error, value } = updateStructureSchema.validate(req.body, { abortEarly: false });
-  if (error) return res.status(400).json({ message: error.message });
-
+if (error) return res.status(400).json({ message: error.message });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const existing = await fetchStructureWithItems(orgId, params.structureId);
+    const existing = await fetchStructureWithItems(client, orgId, params.structureId);
     if (!existing) {
       await client.query('ROLLBACK');
       return res.status(404).json({ message: 'Structure not found' });
@@ -718,46 +833,135 @@ if (paramErr) return res.status(400).json({ message: paramErr.message });
 
     const sets = [];
     const vals = [];
-
     const pushSet = (col, val) => {
       sets.push(`${col} = $${vals.length + 1}`);
       vals.push(val);
     };
 
-    // ✅ NEW: parse scope out of description (legacy) and support explicit scope fields (new)
-    const parsed = parseScopeFromDescription(value.description ?? existing.description ?? '');
-    const scope_type = value.scope_type ?? parsed.scope_type ?? existing.scope_type ?? null;
-    const scope_value = value.scope_value ?? parsed.scope_value ?? existing.scope_value ?? null;
+    // ─────────────────────────────────────────────
+    // Description + legacy scope parsing
+    // ─────────────────────────────────────────────
+    const descTouched = value.description !== undefined;
 
+    // Existing legacy scope (if old records had " | Scope: ..." in description)
+    const parsedExistingDesc = parseScopeFromDescription(existing.description ?? '');
+
+    // If description is being updated (even if null), parse THAT, not existing.
+    const parsedIncomingDesc = descTouched
+      ? parseScopeFromDescription(value.description)
+      : null;
+
+    // Base scope comes from columns, or legacy description if columns missing
+    const baseScopeType =
+      existing.scope_type ?? parsedExistingDesc.scope_type ?? null;
+    const baseScopeValue =
+      existing.scope_value ?? parsedExistingDesc.scope_value ?? null;
+
+    // Next scope raw (prefer explicit payload, else scope parsed from NEW description if present,
+    // else keep existing/base)
+    const nextScopeTypeRaw =
+      value.scope_type !== undefined
+        ? value.scope_type
+        : (parsedIncomingDesc?.scope_type ? parsedIncomingDesc.scope_type : baseScopeType);
+
+    const nextScopeValueRaw =
+      value.scope_value !== undefined
+        ? value.scope_value
+        : (parsedIncomingDesc?.scope_value ? parsedIncomingDesc.scope_value : baseScopeValue);
+
+    // Normalize for bucket matching
+    const nextScopeTypeKey = normalizeScopeType(nextScopeTypeRaw);   // e.g. 'all' | 'class'
+    const nextScopeValueKey = normalizeScopeValue(nextScopeValueRaw); // e.g. '' for all, or 'grade-3'
+
+    // Normalize values written to DB:
+    // - store NULL for "all"/empty to keep SQL coalesce logic consistent
+    const nextScopeTypeDb = (nextScopeTypeKey === 'all') ? null : nextScopeTypeKey;
+    const nextScopeValueDb = (nextScopeValueKey === '') ? null : nextScopeValueKey;
+
+    const willBeActive =
+      (value.is_active !== undefined ? value.is_active : existing.is_active) === true;
+
+    // If active after update: enforce one-active per SAME (scope_type + scope_value) bucket
+    if (willBeActive) {
+      await client.query(
+        `
+        UPDATE org_fee_structures
+           SET is_active=false, updated_at=now()
+         WHERE org_id=$1
+           AND id <> $2
+           AND lower(coalesce(scope_type,'all')) = $3
+           AND (
+             ($4 = ''  AND trim(lower(coalesce(scope_value,''))) IN ('', 'all', '*'))
+             OR
+             ($4 <> '' AND trim(lower(coalesce(scope_value,''))) = $4)
+           )
+        `,
+        [orgId, params.structureId, nextScopeTypeKey, nextScopeValueKey],
+      );
+    }
+
+    // ─────────────────────────────────────────────
+    // Apply fields (PATCH semantics)
+    // ─────────────────────────────────────────────
     if (value.title !== undefined) pushSet('title', value.title);
 
-    // ✅ UPDATED: store clean description + persist scope columns
-    if (value.description !== undefined) pushSet('description', parsed.cleanDescription || null);
-    if (value.scope_type !== undefined || parsed.scope_type) pushSet('scope_type', scope_type);
-    if (value.scope_value !== undefined || parsed.scope_value) pushSet('scope_value', scope_value);
+    if (descTouched) {
+      // strip legacy scope tag from description, if present
+      const clean = (parsedIncomingDesc?.cleanDescription ?? '').trim();
+      pushSet('description', clean); // keep consistent with create default ''
+    }
 
-    if (value.currency !== undefined) pushSet('currency', value.currency);
+    // Update scope columns if:
+    // - user provided them, OR
+    // - new description includes a scope tag, OR
+    // - migrating legacy scope (columns empty but legacy description had scope)
+    const needsScopeMigration =
+      (existing.scope_type == null && parsedExistingDesc.scope_type) ||
+      (existing.scope_value == null && parsedExistingDesc.scope_value);
+
+    const shouldWriteScope =
+      value.scope_type !== undefined ||
+      value.scope_value !== undefined ||
+      (descTouched && (parsedIncomingDesc?.scope_type || parsedIncomingDesc?.scope_value)) ||
+      needsScopeMigration;
+
+    if (shouldWriteScope) {
+      pushSet('scope_type', nextScopeTypeDb);
+      pushSet('scope_value', nextScopeValueDb);
+    }
+
+    // Currency: only update if actually provided and non-empty
+    if (value.currency !== undefined && value.currency !== null && String(value.currency).trim() !== '') {
+      pushSet('currency', normalizeCurrency(value.currency, existing.currency || 'USD'));
+    }
+
     if (value.effective_term !== undefined) pushSet('effective_term', value.effective_term || null);
     if (value.is_active !== undefined) pushSet('is_active', value.is_active);
 
     if (sets.length) {
       sets.push('updated_at = now()');
-
-      if (value.is_active) {
-        await client.query(`update org_fee_structures set is_active=false where org_id=$1`, [orgId]);
-      }
-
       await client.query(
-        `update org_fee_structures
-            set ${sets.join(', ')}
-          where org_id = $${vals.length + 1}
-            and id = $${vals.length + 2}`,
+        `
+        UPDATE org_fee_structures
+           SET ${sets.join(', ')}
+         WHERE org_id = $${vals.length + 1}
+           AND id = $${vals.length + 2}
+        `,
         [...vals, orgId, params.structureId],
       );
     }
 
-    if (value.items) {
-      await client.query(`delete from org_fee_structure_items where structure_id=$1`, [params.structureId]);
+    // Determine structure currency for item inheritance
+    const finalStructureCurrency =
+      (value.currency !== undefined && value.currency !== null && String(value.currency).trim() !== '')
+        ? normalizeCurrency(value.currency, existing.currency || 'USD')
+        : normalizeCurrency(existing.currency, 'USD');
+
+    // Replace items (if provided)
+    if (value.items !== undefined) {
+      await client.query(`DELETE FROM org_fee_structure_items WHERE structure_id=$1`, [
+        params.structureId,
+      ]);
 
       if (value.items.length) {
         const insertValues = [];
@@ -768,7 +972,7 @@ if (paramErr) return res.status(400).json({ message: paramErr.message });
             params.structureId,
             item.label,
             item.amount_cents,
-            item.currency || value.currency || existing.currency,
+            normalizeCurrency(item.currency, finalStructureCurrency), // inherit if null/empty
             item.cadence || null,
             item.is_optional ?? false,
             item.sort_order ?? idx,
@@ -782,9 +986,11 @@ if (paramErr) return res.status(400).json({ message: paramErr.message });
         });
 
         await client.query(
-          `insert into org_fee_structure_items
-             (structure_id, label, amount_cents, currency, cadence, is_optional, sort_order, metadata)
-           values ${insertValues.join(',')}`,
+          `
+          INSERT INTO org_fee_structure_items
+            (structure_id, label, amount_cents, currency, cadence, is_optional, sort_order, metadata)
+          VALUES ${insertValues.join(',')}
+          `,
           paramsArr,
         );
       }
@@ -792,7 +998,7 @@ if (paramErr) return res.status(400).json({ message: paramErr.message });
 
     await client.query('COMMIT');
 
-    const updated = await fetchStructureWithItems(orgId, params.structureId);
+    const updated = await fetchStructureWithItems(client, orgId, params.structureId);
     return res.json(updated);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -802,6 +1008,9 @@ if (paramErr) return res.status(400).json({ message: paramErr.message });
     client.release();
   }
 }
+
+
+
 export async function activateFeeStructure(req, res) {
   const orgId = normalizeOrgId(req);
   const { error: paramErr, value: params } = structureParamsSchema.validate(req.params);
@@ -810,19 +1019,43 @@ export async function activateFeeStructure(req, res) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const structure = await fetchStructureWithItems(orgId, params.structureId);
+
+    const structure = await fetchStructureWithItems(client, orgId, params.structureId);
     if (!structure) {
       await client.query('ROLLBACK');
       return res.status(404).json({ message: 'Structure not found' });
     }
 
-    await client.query(`update org_fee_structures set is_active=false where org_id=$1`, [orgId]);
+    const scopeTypeKey = normalizeScopeType(structure.scope_type);
+    const scopeValueKey = normalizeScopeValue(structure.scope_value);
+
+    // Deactivate all in same (scope_type + scope_value) bucket
     await client.query(
-      `update org_fee_structures set is_active=true, updated_at = now() where org_id=$1 and id=$2`,
+      `
+      UPDATE org_fee_structures
+         SET is_active=false, updated_at=now()
+       WHERE org_id=$1
+         AND lower(coalesce(scope_type,'all')) = $2
+         AND (
+           ($3 = ''  AND trim(lower(coalesce(scope_value,''))) IN ('', 'all', '*'))
+           OR
+           ($3 <> '' AND trim(lower(coalesce(scope_value,''))) = $3)
+         )
+      `,
+      [orgId, scopeTypeKey, scopeValueKey],
+    );
+
+    // Activate chosen
+    await client.query(
+      `
+      UPDATE org_fee_structures
+         SET is_active=true, updated_at=now()
+       WHERE org_id=$1 AND id=$2
+      `,
       [orgId, params.structureId],
     );
-    await client.query('COMMIT');
 
+    await client.query('COMMIT');
     return res.json({ ...structure, is_active: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -832,6 +1065,7 @@ export async function activateFeeStructure(req, res) {
     client.release();
   }
 }
+
 
 async function verifyStructureScope(orgId, structureId, structureItemId) {
   if (!structureId && !structureItemId) return null;
@@ -852,29 +1086,55 @@ export async function createFeeCharge(req, res) {
   if (error) return res.status(400).json({ message: error.message });
 
   try {
-     const createdBy = await resolveCreatedByProfileId(pool, req);
+    const createdBy = await resolveCreatedByProfileId(pool, req);
 
     const scope = await verifyStructureScope(orgId, value.structure_id, value.structure_item_id);
     if ((value.structure_id || value.structure_item_id) && !scope) {
       return res.status(400).json({ message: 'Invalid structure reference' });
     }
 
+    const structureId = value.structure_id || scope?.structure_id || null;
+    const itemId = value.structure_item_id || scope?.item_id || null;
+
+    // ✅ inherit currency if linked to a structure/item
+    let inheritedCurrency = null;
+    if (structureId) {
+      inheritedCurrency = await resolveStructureChargeCurrency(pool, orgId, structureId, itemId);
+    }
+
+    // Final currency decision:
+    // - linked => inherit if omitted, and enforce match if provided
+    // - unlinked => default USD
+    let chargeCurrency = null;
+    if (inheritedCurrency) {
+      chargeCurrency = normalizeCurrency(value.currency, inheritedCurrency);
+      if (chargeCurrency !== inheritedCurrency) {
+        return res.status(400).json({
+          message: `Charge currency must match structure currency (${inheritedCurrency})`,
+        });
+      }
+    } else {
+      chargeCurrency = normalizeCurrency(value.currency, 'USD');
+    }
+
     const { rows } = await pool.query(
-      `insert into org_fee_charges
-         (org_id, learner_id, amount_cents, currency, description, class_label, due_date, created_by, structure_id, structure_item_id, metadata)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       returning *`,
+      `
+      INSERT INTO org_fee_charges
+        (org_id, learner_id, amount_cents, currency, description, class_label, due_date, created_by, structure_id, structure_item_id, metadata)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      RETURNING *
+      `,
       [
         orgId,
         value.learner_id,
         value.amount_cents,
-        value.currency || 'USD',
+        chargeCurrency, // ✅ inherited / normalized
         value.description || null,
         value.class_label || null,
         value.due_date || null,
         createdBy,
-        value.structure_id || scope?.structure_id || null,
-        value.structure_item_id || scope?.item_id || null,
+        structureId,
+        itemId,
         value.metadata || {},
       ],
     );
@@ -896,32 +1156,57 @@ export async function bulkFeeCharges(req, res) {
     return res.status(400).json({ message: 'Invalid structure reference' });
   }
 
+  const structureId = value.structure_id || scope?.structure_id || null;
+  const itemId = value.structure_item_id || scope?.item_id || null;
+
+  // ✅ resolve charge currency ONCE for the whole bulk op
+  let inheritedCurrency = null;
+  if (structureId) {
+    inheritedCurrency = await resolveStructureChargeCurrency(pool, orgId, structureId, itemId);
+  }
+
+  let chargeCurrency = null;
+  if (inheritedCurrency) {
+    chargeCurrency = normalizeCurrency(value.currency, inheritedCurrency);
+    if (chargeCurrency !== inheritedCurrency) {
+      return res.status(400).json({
+        message: `Charge currency must match structure currency (${inheritedCurrency})`,
+      });
+    }
+  } else {
+    chargeCurrency = normalizeCurrency(value.currency, 'USD');
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const inserted = [];
     const failed = [];
 
+    const createdBy = await resolveCreatedByProfileId(client, req);
+
     for (const rawId of value.learner_ids) {
       const learnerId = String(rawId || '').trim();
       if (!learnerId) continue;
       try {
         const { rows } = await client.query(
-          `insert into org_fee_charges
-             (org_id, learner_id, amount_cents, currency, description, class_label, due_date, created_by, structure_id, structure_item_id, metadata)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-           returning *`,
+          `
+          INSERT INTO org_fee_charges
+            (org_id, learner_id, amount_cents, currency, description, class_label, due_date, created_by, structure_id, structure_item_id, metadata)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          RETURNING *
+          `,
           [
             orgId,
             learnerId,
             value.amount_cents,
-            value.currency || 'USD',
+            chargeCurrency, // ✅ inherited / normalized
             value.description || null,
             value.class_label || null,
             value.due_date || null,
-             await resolveCreatedByProfileId(client, req),
-            value.structure_id || scope?.structure_id || null,
-            value.structure_item_id || scope?.item_id || null,
+            createdBy,
+            structureId,
+            itemId,
             value.metadata || {},
           ],
         );
@@ -947,20 +1232,45 @@ export async function recordFeePayment(req, res) {
   const { error, value } = feePaymentSchema.validate(req.body, { abortEarly: false });
   if (error) return res.status(400).json({ message: error.message });
 
-  if (value.charge_id) {
-    const { rows } = await pool.query(
-      `select learner_id from org_fee_charges where org_id=$1 and id=$2 limit 1`,
-      [orgId, value.charge_id],
-    );
-    if (!rows.length) {
-      return res.status(400).json({ message: 'charge_id not found in org' });
-    }
-    if (!value.learner_id) value.learner_id = rows[0].learner_id;
-  }
-
   try {
+    let chargeCurrency = null;
+
+    if (value.charge_id) {
+      const { rows } = await pool.query(
+        `select learner_id, currency
+           from org_fee_charges
+          where org_id=$1 and id=$2
+          limit 1`,
+        [orgId, value.charge_id],
+      );
+
+      if (!rows.length) {
+        return res.status(400).json({ message: 'charge_id not found in org' });
+      }
+
+      if (!value.learner_id) value.learner_id = rows[0].learner_id;
+
+      chargeCurrency = normalizeCurrency(rows[0].currency, 'USD');
+
+      // ✅ inherit if omitted
+      if (!value.currency) value.currency = chargeCurrency;
+
+      // ✅ must match if provided
+      const payCur = normalizeCurrency(value.currency, chargeCurrency);
+      if (payCur !== chargeCurrency) {
+        return res
+          .status(400)
+          .json({ message: `Payment currency must match charge currency (${chargeCurrency})` });
+      }
+
+      value.currency = payCur;
+    } else {
+      // not linked → normalize/default USD
+      value.currency = normalizeCurrency(value.currency, 'USD');
+    }
 
     const createdBy = await resolveCreatedByProfileId(pool, req);
+
     const { rows } = await pool.query(
       `insert into org_fee_payments
          (org_id, learner_id, amount_cents, currency, method, reference, note, received_at, created_by, charge_id, metadata)
@@ -970,7 +1280,7 @@ export async function recordFeePayment(req, res) {
         orgId,
         value.learner_id,
         value.amount_cents,
-        value.currency || 'USD',
+        value.currency, // ✅ normalized / enforced
         value.method || null,
         value.reference || null,
         value.note || null,
@@ -980,6 +1290,7 @@ export async function recordFeePayment(req, res) {
         value.metadata || {},
       ],
     );
+
     return res.status(201).json(rows[0]);
   } catch (err) {
     console.error('[recordFeePayment] error', err);
@@ -1328,7 +1639,6 @@ async function loadLearnerMetaForStatement(db, orgId, learnerRef) {
   return { ...row, display_name: displayName };
 }
 
-
 export async function getFeeStatementPdf(req, res) {
   const orgId = normalizeOrgId(req);
 
@@ -1339,7 +1649,6 @@ export async function getFeeStatementPdf(req, res) {
 
   const learnerIdText = String(params.learnerId || '').trim();
 
-  // helper: unique non-empty strings
   function uniqText(xs) {
     const out = [];
     const seen = new Set();
@@ -1355,9 +1664,7 @@ export async function getFeeStatementPdf(req, res) {
 
   const client = await pool.connect();
   try {
-    /* -------------------------------------------------------
-     * Resolve org table name (organizations vs orgs)
-     * ----------------------------------------------------- */
+    // Resolve org table name (organizations vs orgs)
     const orgTableCandidates = ['organizations', 'orgs'];
     const tRes = await client.query(
       `select table_name
@@ -1374,30 +1681,22 @@ export async function getFeeStatementPdf(req, res) {
       });
     }
 
-    /* -------------------------------------------------------
-     * Load org
-     * ----------------------------------------------------- */
+    // Load org
     const orgRes = await client.query(`select * from ${orgTable} where id=$1`, [orgId]);
     const org = orgRes.rows?.[0];
     if (!org) return res.status(404).json({ message: 'Org not found' });
 
-    /* -------------------------------------------------------
-     * Load learner meta (robust: uuid OR user_id OR admission_code)
-     * ----------------------------------------------------- */
+    // Learner meta
     const learnerMeta = await loadLearnerMetaForStatement(client, orgId, learnerIdText);
 
-    // Build a “match everything” ref set so legacy rows still appear
     const learnerRefs = uniqText([
-      learnerIdText, // whatever came in
-      learnerMeta?.user_id, // numeric
-      learnerMeta?.admission_code, // ADM
-      learnerMeta?.learner_profile_id, // UUID
+      learnerIdText,
+      learnerMeta?.user_id,
+      learnerMeta?.admission_code,
+      learnerMeta?.learner_profile_id,
     ]);
 
-    /* -------------------------------------------------------
-     * Statement entries (charges + linked payments)
-     * - match charges by ANY learner ref (uuid/user_id/adm)
-     * ----------------------------------------------------- */
+    // Charges + linked payments
     const statementRes = await client.query(
       `
       select
@@ -1429,10 +1728,7 @@ export async function getFeeStatementPdf(req, res) {
       [orgId, learnerRefs],
     );
 
-    /* -------------------------------------------------------
-     * All payments (including unlinked / extra payments)
-     * - match by ANY learner ref (uuid/user_id/adm)
-     * ----------------------------------------------------- */
+    // All payments (including unlinked)
     const paymentsRes = await client.query(
       `
       select *
@@ -1444,25 +1740,32 @@ export async function getFeeStatementPdf(req, res) {
       [orgId, learnerRefs],
     );
 
-    const summary = paymentsRes.rows.reduce(
-      (acc, row) => {
-        acc.total_payments += Number(row.amount_cents || 0);
-        return acc;
-      },
-      { total_payments: 0 },
-    );
+    // ✅ Totals by currency (never mix currencies)
+    const chargesByCur = new Map();
+    const paymentsByCur = new Map();
 
-    // Unique charge totals
     const seenCharges = new Set();
-    let totalCharges = 0;
     for (const row of statementRes.rows) {
       if (row.charge_id && !seenCharges.has(row.charge_id)) {
-        totalCharges += Number(row.charge_amount || 0);
         seenCharges.add(row.charge_id);
+        addCentsByCurrency(chargesByCur, row.charge_currency, row.charge_amount);
       }
     }
 
-    // Payments without charge_id
+    for (const p of paymentsRes.rows) {
+      addCentsByCurrency(paymentsByCur, p.currency, p.amount_cents);
+    }
+
+    const currencySet = new Set([...chargesByCur.keys(), ...paymentsByCur.keys()]);
+    const totals_by_currency = Array.from(currencySet)
+      .sort()
+      .map((cur) => {
+        const totalCharges = chargesByCur.get(cur) || 0;
+        const totalPayments = paymentsByCur.get(cur) || 0;
+        return { currency: cur, totalCharges, totalPayments, balance: totalCharges - totalPayments };
+      });
+
+    // Extra payments without charge_id
     const extraPayments = paymentsRes.rows.filter((p) => !p.charge_id);
 
     const combinedEntries = [
@@ -1478,40 +1781,46 @@ export async function getFeeStatementPdf(req, res) {
       return left - right;
     });
 
-    const balance = totalCharges - summary.total_payments;
-
-    /* -------------------------------------------------------
-     * Signature resolution
-     * ----------------------------------------------------- */
+    // Signature resolution
     const bursarSig =
       org?.bursar_signature_resolved ||
       org?.bursar_signature_url ||
       org?.finance_signature_url ||
       null;
 
-    /* -------------------------------------------------------
-     * Render PDF (always Name + ADM when available)
-     * ----------------------------------------------------- */
+    // Legacy single-currency totals (only if exactly one currency)
+    const legacy = totals_by_currency.length === 1 ? totals_by_currency[0] : null;
+
     const pdfBuffer = await renderFeeStatementPdf({
       org,
-      learnerId: params.learnerId, // legacy fallback
+      learnerId: params.learnerId,
       learner: learnerMeta
-        ? {
-            name: learnerMeta.display_name || 'Learner',
-            admission_code: learnerMeta.admission_code || null,
-          }
+        ? { name: learnerMeta.display_name || 'Learner', admission_code: learnerMeta.admission_code || null }
         : undefined,
 
       bursar_signature_url: bursarSig,
+
       entries: combinedEntries,
-      totals: {
-        totalCharges,
-        totalPayments: summary.total_payments,
-        balance,
-      },
+
+      // ✅ NEW: renderer should display these totals per currency
+      totals_by_currency,
+
+      // keep backward-compat fields; only meaningful when single-currency
+      totals: legacy
+        ? {
+            currency: legacy.currency,
+            totalCharges: legacy.totalCharges,
+            totalPayments: legacy.totalPayments,
+            balance: legacy.balance,
+          }
+        : {
+            currency: 'MIXED',
+            totalCharges: 0,
+            totalPayments: 0,
+            balance: 0,
+          },
     });
 
-    // nicer filename (prefer ADM)
     const fileTag = String(learnerMeta?.admission_code || learnerIdText || 'learner')
       .trim()
       .replace(/[^a-zA-Z0-9_-]+/g, '_');
@@ -1528,14 +1837,13 @@ export async function getFeeStatementPdf(req, res) {
 }
 
 
-
 export async function getFeeStructurePdf(req, res) {
   const orgId = normalizeOrgId(req);
- const { error: paramErr, value: params } = structureParamsSchema.validate(
-  { structureId: req.params.structureId }
-);
-if (paramErr) return res.status(400).json({ message: paramErr.message });
 
+  const { error: paramErr, value: params } = structureParamsSchema.validate(req.params, {
+    allowUnknown: true,
+  });
+  if (paramErr) return res.status(400).json({ message: paramErr.message });
 
   const org = await loadOrgMeta(orgId);
   if (!org) return res.status(404).json({ message: 'Org not found' });
@@ -1563,6 +1871,7 @@ export async function mpesaFeeInboundWebhook(req, res) {
   try {
     const parsed = parseMpesaC2B(req.body || {});
 
+    // Always ACK quickly to Daraja; ignore malformed payloads safely
     if (!parsed.account_ref || !parsed.provider_ref || !(parsed.amount_cents > 0)) {
       return darajaReply(res, true, 'Accepted');
     }
@@ -1572,7 +1881,7 @@ export async function mpesaFeeInboundWebhook(req, res) {
       client,
       'mpesa',
       parsed.account_ref,
-      secret,
+      secret
     );
     if (!secretOk) return darajaReply(res, false, 'Invalid webhook secret');
 
@@ -1586,18 +1895,12 @@ export async function mpesaFeeInboundWebhook(req, res) {
       provider: 'mpesa',
       provider_ref: parsed.provider_ref,
       amount_cents: parsed.amount_cents,
-      currency: parsed.currency,
+      currency: parsed.currency || 'KES',
       registration_ref: parsed.registration_ref,
       raw: req.body || {},
     });
 
-    // ✅ ADD THIS: lock the inbound row so only ONE request can post it
-    await client.query(
-      `select id from org_fee_inbound_transactions where id=$1 for update`,
-      [inbound.id],
-    );
-
-    // Now safe: only one concurrent request can get here at a time for this inbound row
+    // ✅ No redundant lock here — tryAutoPostInbound() already locks the row FOR UPDATE.
     const posted = await tryAutoPostInbound(client, orgId, inbound, req);
 
     await client.query('COMMIT');
@@ -1614,12 +1917,13 @@ export async function mpesaFeeInboundWebhook(req, res) {
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch {}
     console.error('[mpesaFeeInboundWebhook] error', err);
+
+    // Daraja best practice: ACK even on errors to avoid retries storm
     return darajaReply(res, true, 'Accepted');
   } finally {
     client.release();
   }
 }
-
 
 export async function bankFeeInbound(req, res) {
   const body = req.body || {};
@@ -1717,7 +2021,7 @@ export async function mpesaFeeInboundValidate(req, res) {
           and (
             l.admission_code::text = $2
             or l.id::text = $2
-            or l.learner_id::text = $2
+           
             or l.user_id::text = $2
           )
         limit 1`,
@@ -1895,10 +2199,9 @@ export async function getMyFeeStructure(req, res) {
       return res.status(403).json({ message: 'Not a learner in this organization' });
     }
 
-    const structure = await pickBestStructureForLearner(orgId, learner.class_label);
-    if (!structure) {
-      return res.status(404).json({ message: 'No fee structure found for your class/grade' });
-    }
+    const structure = await pickActiveStructureForLearner(orgId, learner.class_label);
+if (!structure) return res.status(404).json({ message: 'No published fee structure found for your class/grade' });
+
 
     const full = await fetchStructureWithItems(orgId, structure.id);
 
@@ -2002,3 +2305,4 @@ export async function getMyFeeStatementPdf(req, res) {
     return res.status(500).json({ message: 'Unable to render statement PDF' });
   }
 }
+

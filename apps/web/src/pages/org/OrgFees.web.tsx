@@ -1,3 +1,4 @@
+// apps/web/src/pages/org/OrgFees.web.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -33,6 +34,52 @@ import {
   StatementModal,
   UnmatchedPaymentsModal,
 } from './OrgFees.modals';
+
+/* ─────────────────────────────────────────────────────────
+ * Small circular checkbox (better UX: tiny click target + clean look)
+ * ───────────────────────────────────────────────────────── */
+function CircleCheckbox({
+  checked,
+  onChange,
+  label,
+  disabled,
+  className,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: React.ReactNode;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <label
+      className={cn(
+        'inline-flex items-center gap-2 select-none',
+        disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
+        className,
+      )}
+    >
+      <input
+        type="checkbox"
+        className="peer sr-only"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span
+        className={cn(
+          'h-4 w-4 rounded-full border flex items-center justify-center transition',
+          'border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900',
+          'peer-checked:border-blue-600 peer-checked:bg-blue-600 dark:peer-checked:border-blue-500 dark:peer-checked:bg-blue-500',
+        )}
+        aria-hidden="true"
+      >
+        <span className={cn('h-1.5 w-1.5 rounded-full bg-white opacity-0 peer-checked:opacity-100')} />
+      </span>
+      <span className="text-xs text-slate-600 dark:text-slate-200">{label}</span>
+    </label>
+  );
+}
 
 function renderUpgradeCta(upgradeCta: any) {
   if (!upgradeCta) return null;
@@ -72,6 +119,26 @@ function renderUpgradeCta(upgradeCta: any) {
   );
 }
 
+/** ✅ scope helper: prefer scope_value, fallback to legacy "Scope:" in description */
+function pickScopeValueFromStructure(s: any): string {
+  const direct = String(s?.scope_value ?? '').trim();
+  if (direct) return direct;
+
+  const desc = String(s?.description ?? '');
+  const m = desc.match(/\bScope:\s*([a-zA-Z_]+)\s+(.+)\s*$/i);
+  if (!m) return '';
+  return String(m[2] || '').trim();
+}
+
+/** ✅ helper: compare ids safely as strings */
+const sameId = (a: any, b: any) => String(a ?? '') === String(b ?? '');
+
+/** small guard */
+function safePageSize(v: number) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 10;
+}
+
 const OrgFeesPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -82,6 +149,20 @@ const OrgFeesPage: React.FC = () => {
   const { backendUrl, orgToken } = useShopContext() as any;
   const { isPro, upgradeCta, org, activeOrgId } = useOrgProTools() as any;
   const orgId: string | undefined = activeOrgId || org?.id;
+
+  // ✅ (1) Keep as string in URL + state
+  const structureIdParam = useMemo(() => {
+    const raw = searchParams.get('structureId');
+    const s = String(raw || '').trim();
+    return s ? s : null;
+  }, [searchParams]);
+
+  function setParam(key: string, val?: string | null) {
+    const next = new URLSearchParams(searchParams);
+    if (val && String(val).trim()) next.set(key, String(val));
+    else next.delete(key);
+    setSearchParams(next, { replace: true });
+  }
 
   const mode = useMemo<'none' | 'charge' | 'payment' | 'statement' | 'print'>(() => {
     const p = location.pathname;
@@ -113,7 +194,7 @@ const OrgFeesPage: React.FC = () => {
   const classLabels = useMemo(() => {
     const s = new Set<string>();
     for (const l of learners) {
-      const c = String(l.class_label || '').trim();
+      const c = String((l as any).class_label || '').trim();
       if (c) s.add(c);
     }
     return Array.from(s).sort((a, b) => a.localeCompare(b));
@@ -148,19 +229,27 @@ const OrgFeesPage: React.FC = () => {
     downloadStatementPdf,
   } = useOrgFeeStatement({ backendUrl, token: orgToken, orgId });
 
+  /** ✅ structure form */
+  const [creatingNew, setCreatingNew] = useState(false);
+
   const [structureForm, setStructureForm] = useState({
     title: '',
     description: '',
     currency: 'USD',
     effective_term: '',
-    scopeType: 'class',
     scopeValue: '',
   });
-  const [structureItems, setStructureItems] = useState<FeeStructureItem[]>([emptyItem()]);
-  const [selectedStructureId, setSelectedStructureId] = useState<number | null>(null);
 
-  const { rows: inboundUnmatched, loading: inboundLoading, fetchUnmatched, attachToLearner } =
-    useOrgFeeInbound({ backendUrl, token: orgToken, orgId });
+  const [structureItems, setStructureItems] = useState<FeeStructureItem[]>([emptyItem()]);
+
+  // ✅ (2) selected id is string
+  const [selectedStructureId, setSelectedStructureId] = useState<string | null>(null);
+
+  const { rows: inboundUnmatched, loading: inboundLoading, fetchUnmatched, attachToLearner } = useOrgFeeInbound({
+    backendUrl,
+    token: orgToken,
+    orgId,
+  });
 
   const [unmatchedOpen, setUnmatchedOpen] = useState(false);
 
@@ -177,41 +266,58 @@ const OrgFeesPage: React.FC = () => {
     }
   }, [selectedLearnerId, mode, fetchStatement]);
 
+  // ✅ (3) auto-select respects "New structure" mode (string ids)
   useEffect(() => {
     if (!structures?.length) return;
-    const active = structures.find((s: any) => s.is_active) || structures[0];
-    setSelectedStructureId((prev) => prev ?? active.id);
-  }, [structures]);
+    if (creatingNew) return;
 
+    const wanted = structureIdParam;
+    const exists = wanted && structures.some((x: any) => sameId(x.id, wanted));
+
+    const fallback = structures.find((s: any) => s.is_active) || structures[0];
+    const id = exists ? wanted : fallback?.id ? String(fallback.id) : null;
+
+    if (id && !sameId(id, selectedStructureId)) {
+      setSelectedStructureId(String(id));
+      setParam('structureId', String(id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structures, structureIdParam, creatingNew]);
+
+  // ✅ (4) load selected structure into form (scope_value)
   useEffect(() => {
-    if (!selectedStructureId) return;
-    const s = (structures || []).find((x: any) => x.id === selectedStructureId);
-    if (!s) return;
+  if (!selectedStructureId) return;
 
-    setStructureForm({
-      title: s.title || '',
-      description: (s.description || '').replace(/\s+\|\s+Scope:.+$/, ''),
-      currency: s.currency || 'USD',
-      effective_term: s.effective_term || '',
-      scopeType: 'class',
-      scopeValue: (s.description || '').includes('Scope:')
-        ? (s.description || '').split('Scope:')[1]?.trim() || ''
-        : '',
-    });
+  const s = (structures || []).find((x: any) => sameId(x.id, selectedStructureId));
+  if (!s) return;
 
-    setStructureItems(
-      ((s.items || []) as FeeStructureItem[]).map((it, idx) => ({
-        ...it,
-        id: it.id || idx + 1,
-        sort_order: it.sort_order ?? idx,
-        currency: it.currency || s.currency || 'USD',
-      })) || [emptyItem()],
-    );
-  }, [selectedStructureId, structures]);
+  setCreatingNew(false);
+
+  setStructureForm({
+    title: s.title || '',
+    description: String(s.description || '').replace(/\s+\|\s+Scope:.+$/i, '').trim(),
+    currency: (s.currency || 'USD').toUpperCase(),
+    effective_term: s.effective_term || '',
+    scopeValue: pickScopeValueFromStructure(s),
+  });
+
+  const nextItems =
+    Array.isArray(s.items) && s.items.length
+      ? (s.items as any[]).map((it: any, idx: number) => ({
+          ...it,
+          id: it.id || idx + 1,
+          sort_order: it.sort_order ?? idx,
+          currency: (it.currency || s.currency || 'USD').toUpperCase(),
+        }))
+      : [emptyItem()];
+
+  setStructureItems(nextItems);
+}, [selectedStructureId, structures]);
+
 
   const mergedRows = useMemo(() => {
     const byLearner = new Map<string, any>();
-    for (const b of balances || []) byLearner.set(String(b.learner_id), b);
+    for (const b of balances || []) byLearner.set(String((b as any).learner_id), b);
 
     return learners.map((l) => {
       const feeLearnerId = pickFeeLearnerRef(l); // used for API calls
@@ -223,7 +329,7 @@ const OrgFeesPage: React.FC = () => {
         feeLearnerId,
         admission_code: admission,
         name: pickLearnerName(l),
-        class_label: l.class_label || '',
+        class_label: (l as any).class_label || '',
         currencies: Array.isArray(b.currencies) ? b.currencies : [],
       };
     });
@@ -256,16 +362,16 @@ const OrgFeesPage: React.FC = () => {
 
   const totalLearnerPages = useMemo(() => {
     if (!filtered.length) return 1;
-    return Math.max(1, Math.ceil(filtered.length / learnerPageSize));
+    return Math.max(1, Math.ceil(filtered.length / safePageSize(learnerPageSize)));
   }, [filtered.length, learnerPageSize]);
 
   const paginatedFiltered = useMemo(() => {
-    const start = (learnerPage - 1) * learnerPageSize;
-    return filtered.slice(start, start + learnerPageSize);
+    const size = safePageSize(learnerPageSize);
+    const start = (learnerPage - 1) * size;
+    return filtered.slice(start, start + size);
   }, [filtered, learnerPage, learnerPageSize]);
 
   useEffect(() => {
-    // reset to first page when filters change
     setLearnerPage(1);
   }, [q, classFilter]);
 
@@ -275,52 +381,146 @@ const OrgFeesPage: React.FC = () => {
 
   const learnerRangeText = useMemo(() => {
     if (!filtered.length) return 'No learners found';
-    const start = (learnerPage - 1) * learnerPageSize + 1;
-    const end = Math.min(learnerPage * learnerPageSize, filtered.length);
+    const size = safePageSize(learnerPageSize);
+    const start = (learnerPage - 1) * size + 1;
+    const end = Math.min(learnerPage * size, filtered.length);
     return `Showing ${start}–${end} of ${filtered.length} learners`;
   }, [filtered.length, learnerPage, learnerPageSize]);
 
   const totalStructure = useMemo(
-    () => structureItems.reduce((acc, item) => acc + Number(item.amount_cents || 0), 0),
+    () => structureItems.reduce((acc, item) => acc + Number((item as any).amount_cents || 0), 0),
     [structureItems],
   );
 
-  const handleSaveStructure = async () => {
-    const payload = {
-      title: structureForm.title,
-      description: [
-        structureForm.description,
-        structureForm.scopeValue ? `Scope: ${structureForm.scopeType} ${structureForm.scopeValue}` : '',
-      ]
-        .filter(Boolean)
-        .join(' | '),
-      currency: structureForm.currency,
-      effective_term: structureForm.effective_term || null,
-      items: structureItems
-        .filter((i) => i.label && i.amount_cents > 0)
-        .map((item, idx) => ({
-          label: item.label,
-          amount_cents: item.amount_cents,
-          currency: item.currency || structureForm.currency,
-          cadence: item.cadence || null,
-          is_optional: item.is_optional ?? false,
-          sort_order: idx,
-          metadata: (item as any).metadata || {},
-        })),
-    } as Partial<FeeStructure>;
+  const activeStructureCurrency = useMemo(() => {
+    const s =
+      (structures || []).find((x: any) => x.is_active) ||
+      (structures || []).find((x: any) => (selectedStructureId ? sameId(x.id, selectedStructureId) : false));
 
-    if (selectedStructureId) {
-      await editStructure(selectedStructureId, payload);
-    } else {
-      const created = await saveStructure(payload);
-      if (created?.id) setSelectedStructureId(created.id);
+    return String(s?.currency || structureForm.currency || 'USD').toUpperCase();
+  }, [structures, selectedStructureId, structureForm.currency]);
+
+  const learnerCurrenciesMap = useMemo(() => {
+    const m = new Map<string, string[]>();
+
+    for (const r of mergedRows) {
+      const uniques: string[] = Array.from(
+        new Set<string>(
+          ((r.currencies as any[]) || [])
+            .map((x: any): string => String(x?.currency || '').trim().toUpperCase())
+            .filter((c): c is string => Boolean(c)),
+        ),
+      );
+
+      m.set(String(r.feeLearnerId), uniques);
     }
-    fetchStructures();
-  };
 
-  const handleActivateStructure = async (structureId?: number | null) => {
-    if (!structureId) return;
-    await activateStructure(structureId);
+    return m;
+  }, [mergedRows]);
+
+  const currencyHintForLearner = useMemo(() => {
+    return (learnerId: string) => {
+      const curList = learnerCurrenciesMap.get(String(learnerId)) || [];
+      if (curList.length === 1) return curList[0];
+      if (curList.includes(activeStructureCurrency)) return activeStructureCurrency;
+      return activeStructureCurrency || 'USD';
+    };
+  }, [learnerCurrenciesMap, activeStructureCurrency]);
+
+  // ✅ used for activation + pdf numeric calls
+  const selectedStructureIdNum = selectedStructureId ? Number(selectedStructureId) : null;
+
+  function deriveScope(scopeValueRaw: string): { scope_type: 'all' | 'class' | 'grade'; scope_value: string } {
+  const raw = String(scopeValueRaw || '').trim();
+  const low = raw.toLowerCase();
+
+  // treat these as "all"
+  if (!raw || low === 'all' || low === '*' || low === 'any') {
+    return { scope_type: 'all', scope_value: '' };
+  }
+
+  // grade heuristics: "grade 6", "class 6", "6"
+  const digits = (low.match(/\d+/) || [])[0] || '';
+  const looksGrade = low.startsWith('grade ') || low.startsWith('class ') || (/^\d+$/.test(low) && !!digits);
+
+  return { scope_type: looksGrade ? 'grade' : 'class', scope_value: raw };
+}
+
+
+const handleSaveStructure = async ({ forceActive }: { forceActive?: boolean } = {}) => {
+  const current = selectedStructureId
+    ? (structures || []).find((x: any) => sameId(x.id, selectedStructureId))
+    : null;
+
+  const willBeActive =
+    typeof forceActive === 'boolean'
+      ? forceActive
+      : Boolean(current?.is_active);
+
+  const { scope_type, scope_value } = deriveScope(structureForm.scopeValue);
+
+  const payload = {
+    title: String(structureForm.title || '').trim(),
+
+    // ✅ send strings (not null) to satisfy strict Joi by default
+    description: String(structureForm.description || '').trim(),
+    effective_term: String(structureForm.effective_term || '').trim(),
+
+    currency: String(structureForm.currency || 'USD').toUpperCase(),
+
+    // ✅ send both as a pair
+    scope_type,
+    scope_value,
+
+    is_active: Boolean(willBeActive),
+
+    items: (structureItems || [])
+      .filter((i: any) => String(i?.label || '').trim() && Number(i?.amount_cents || 0) > 0)
+      .map((item: any, idx: number) => ({
+        label: String(item.label || '').trim(),
+        amount_cents: Math.max(0, Math.round(Number(item.amount_cents || 0))),
+        currency: String(item.currency || structureForm.currency || 'USD').toUpperCase(),
+        cadence: String(item.cadence || '').trim() || null,
+        is_optional: Boolean(item.is_optional),
+        sort_order: idx,
+        metadata: (item.metadata && typeof item.metadata === 'object') ? item.metadata : {},
+      })),
+  } as any;
+
+  const idNum = selectedStructureId ? Number(selectedStructureId) : null;
+
+  let saved: any = null;
+
+  try {
+    if (idNum && Number.isFinite(idNum)) {
+      saved = await editStructure(idNum, payload as Partial<FeeStructure>);
+    } else {
+      saved = await saveStructure(payload as Partial<FeeStructure>);
+    }
+
+    setCreatingNew(false);
+
+    if (saved?.id) {
+      setSelectedStructureId(String(saved.id));
+      setParam('structureId', String(saved.id));
+    }
+
+    await fetchStructures();
+  } catch (e: any) {
+    // ✅ show the real backend message instead of a generic Axios error
+    const msg = e?.response?.data?.message || e?.message || 'Failed to save structure';
+    console.error('[handleSaveStructure] failed:', msg, e?.response?.data);
+    alert(msg);
+    throw e;
+  }
+};
+
+
+
+  // ✅ requested numeric-safe activate (used in banner as quick fix)
+  const handleActivateStructure = async () => {
+    if (!selectedStructureIdNum || !Number.isFinite(selectedStructureIdNum)) return;
+    await activateStructure(selectedStructureIdNum);
     fetchStructures();
   };
 
@@ -523,6 +723,8 @@ const OrgFeesPage: React.FC = () => {
   }
 
   // ---------------- MAIN PAGE ----------------
+  const editing = selectedStructureId ? (structures || []).find((x: any) => sameId(x.id, selectedStructureId)) : null;
+
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 md:py-10">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -535,52 +737,79 @@ const OrgFeesPage: React.FC = () => {
         </div>
       </div>
 
-     <SectionCard
-  title="Payment callback URLs (share with the school)"
-  subtitle="Daraja will call these URLs when parents pay the PayBill. Bank integrations can post to the bank endpoint."
->
-  <div className="space-y-3">
-    <div className="grid gap-3 md:grid-cols-2">
-      <CopyRow label="M-Pesa Daraja Validation URL" value={`${PROD_BASE}/api/fees/inbound/validate`} />
-      <CopyRow label="M-Pesa Daraja Confirmation URL" value={`${PROD_BASE}/api/fees/inbound/confirm`} />
-    </div>
+      <SectionCard
+        title="Payment callback URLs (share with the school)"
+        subtitle="Daraja will call these URLs when parents pay the PayBill. Bank integrations can post to the bank endpoint."
+      >
+        <div className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2">
+            <CopyRow label="M-Pesa Daraja Validation URL" value={`${PROD_BASE}/api/fees/inbound/validate`} />
+            <CopyRow label="M-Pesa Daraja Confirmation URL" value={`${PROD_BASE}/api/fees/inbound/confirm`} />
+          </div>
 
-    <CopyRow label="Bank inbound URL (for bank/partner system)" value={`${PROD_BASE}/api/fees/inbound/bank`} />
+          <CopyRow label="Bank inbound URL (for bank/partner system)" value={`${PROD_BASE}/api/fees/inbound/bank`} />
 
-    {/* ✅ simplified admin actions */}
-    <div className="mt-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="font-semibold">Unmatched payments</div>
-          <div className="mt-1 text-slate-600 dark:text-slate-300">
-            If a parent used the wrong admission number / no reference, open the unmatched list and attach it to the
-            correct learner.
+          <div className="mt-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold">Unmatched payments</div>
+                <div className="mt-1 text-slate-600 dark:text-slate-300">
+                  If a parent used the wrong admission number / no reference, open the unmatched list and attach it to
+                  the correct learner.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setUnmatchedOpen(true);
+                  await fetchUnmatched();
+                }}
+                className="shrink-0 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                View unmatched
+              </button>
+            </div>
+
+            <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-300">
+              Tip: pick a payment, search the learner, then click <span className="font-semibold">Attach</span>.
+            </div>
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={async () => {
-            setUnmatchedOpen(true);
-            // modal also fetches on open, but keeping this makes it feel instant
-            await fetchUnmatched();
-          }}
-          className="shrink-0 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-        >
-          View unmatched
-        </button>
-      </div>
-
-      <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-300">
-        Tip: pick a payment, search the learner, then click <span className="font-semibold">Attach</span>.
-      </div>
-    </div>
-  </div>
-</SectionCard>
+      </SectionCard>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard title="Fee structure builder" subtitle="Line items, totals, and activation per scope">
-          {/* ... unchanged builder UI ... */}
+          {/* ✅ Editing banner (requested) */}
+          <div className="mb-3 flex items-center justify-between rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+            <div className="min-w-0">
+              <div className="text-xs text-slate-500">Editing</div>
+              <div className="truncate text-sm font-semibold">{creatingNew ? 'New structure' : editing?.title || '—'}</div>
+              <div className="text-[11px] text-slate-500">
+                {editing?.is_active ? 'Active' : 'Draft'}
+                {editing ? ` • ${pickScopeValueFromStructure(editing) || 'All learners'}` : ''}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {editing?.is_active ? <Badge tone="ok">Active</Badge> : <Badge tone="neutral">Draft</Badge>}
+              {/* quick activate (uses numeric-safe handler) */}
+              {editing && !editing.is_active && (
+                <button
+                  type="button"
+                  disabled={!selectedStructureIdNum || structuresSaving}
+                  onClick={handleActivateStructure}
+                  className={cn(
+                    'rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900',
+                    (!selectedStructureIdNum || structuresSaving) && 'opacity-60',
+                  )}
+                >
+                  Activate
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="grid gap-3 md:grid-cols-2">
             <div>
               <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Title</div>
@@ -591,11 +820,22 @@ const OrgFeesPage: React.FC = () => {
                 placeholder="e.g. Term 1 Fees"
               />
             </div>
+
             <div>
               <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Currency</div>
               <select
                 value={structureForm.currency}
-                onChange={(e) => setStructureForm((f) => ({ ...f, currency: e.target.value }))}
+                onChange={(e) => {
+                  const nextCur = String(e.target.value || 'USD').toUpperCase();
+                  setStructureForm((f) => ({ ...f, currency: nextCur }));
+                  // keep items in sync
+                  setStructureItems((prev) =>
+                    prev.map((it: any) => ({
+                      ...it,
+                      currency: String(it.currency || nextCur).toUpperCase(),
+                    })),
+                  );
+                }}
                 className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
               >
                 <option value="USD">USD</option>
@@ -603,28 +843,52 @@ const OrgFeesPage: React.FC = () => {
                 <option value="QAR">QAR</option>
               </select>
             </div>
-            <div>
-              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Scope type</div>
-              <select
-                value={structureForm.scopeType}
-                onChange={(e) => setStructureForm((f) => ({ ...f, scopeType: e.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
-              >
-                <option value="class">Class</option>
-                <option value="group">Group</option>
-                <option value="grade">Grade</option>
-                <option value="term">Term</option>
-              </select>
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Scope value</div>
+
+            {/* Applies-to UI: datalist + quick chips */}
+            <div className="md:col-span-2">
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">
+                Applies to (class / grade / group)
+              </div>
+
               <input
+                list="classLabelSuggestions"
                 value={structureForm.scopeValue}
                 onChange={(e) => setStructureForm((f) => ({ ...f, scopeValue: e.target.value }))}
                 className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
-                placeholder="e.g. Grade 6"
+                placeholder="e.g. Grade 6, 6A, Form 2, All"
               />
+
+              <datalist id="classLabelSuggestions">
+                {classLabels.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+                <option value="Grade 6" />
+                <option value="Grade 7" />
+                <option value="All" />
+              </datalist>
+
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setStructureForm((f) => ({ ...f, scopeValue: '' }))}
+                  className="rounded-full border border-slate-200 px-2 py-1 dark:border-slate-700"
+                >
+                  All
+                </button>
+
+                {classLabels.slice(0, 8).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setStructureForm((f) => ({ ...f, scopeValue: c }))}
+                    className="rounded-full border border-slate-200 px-2 py-1 dark:border-slate-700"
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
             </div>
+
             <div>
               <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Effective term</div>
               <input
@@ -634,6 +898,7 @@ const OrgFeesPage: React.FC = () => {
                 placeholder="e.g. 2025 Term 1"
               />
             </div>
+
             <div>
               <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Description</div>
               <input
@@ -645,7 +910,6 @@ const OrgFeesPage: React.FC = () => {
             </div>
           </div>
 
-          {/* ... rest of builder unchanged ... */}
           <div className="mt-4 space-y-2">
             <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-200">
               <span>Line items</span>
@@ -667,23 +931,24 @@ const OrgFeesPage: React.FC = () => {
                   <div className="md:col-span-4">
                     <div className="text-[11px] font-semibold text-slate-500">Label</div>
                     <input
-                      value={item.label}
+                      value={(item as any).label}
                       onChange={(e) =>
                         setStructureItems((prev) =>
-                          prev.map((it, i) => (i === idx ? { ...it, label: e.target.value } : it)),
+                          prev.map((it: any, i: number) => (i === idx ? { ...it, label: e.target.value } : it)),
                         )
                       }
                       className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-900"
                       placeholder="Tuition"
                     />
                   </div>
+
                   <div className="md:col-span-3">
                     <div className="text-[11px] font-semibold text-slate-500">Amount</div>
                     <input
-                      value={(item.amount_cents / 100 || '').toString()}
+                      value={(Number((item as any).amount_cents || 0) / 100 || '').toString()}
                       onChange={(e) =>
                         setStructureItems((prev) =>
-                          prev.map((it, i) => (i === idx ? { ...it, amount_cents: toCents(e.target.value) } : it)),
+                          prev.map((it: any, i: number) => (i === idx ? { ...it, amount_cents: toCents(e.target.value) } : it)),
                         )
                       }
                       inputMode="decimal"
@@ -691,32 +956,31 @@ const OrgFeesPage: React.FC = () => {
                       placeholder="0.00"
                     />
                   </div>
+
                   <div className="md:col-span-3">
                     <div className="text-[11px] font-semibold text-slate-500">Cadence</div>
                     <input
-                      value={item.cadence || ''}
+                      value={(item as any).cadence || ''}
                       onChange={(e) =>
                         setStructureItems((prev) =>
-                          prev.map((it, i) => (i === idx ? { ...it, cadence: e.target.value } : it)),
+                          prev.map((it: any, i: number) => (i === idx ? { ...it, cadence: e.target.value } : it)),
                         )
                       }
                       className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-900"
                       placeholder="per term"
                     />
                   </div>
+
                   <div className="md:col-span-2 flex flex-col justify-center gap-2 md:items-end">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(item.is_optional)}
-                        onChange={(e) =>
-                          setStructureItems((prev) =>
-                            prev.map((it, i) => (i === idx ? { ...it, is_optional: e.target.checked } : it)),
-                          )
-                        }
-                      />
-                      <span className="text-xs text-slate-600 dark:text-slate-200">Optional</span>
-                    </label>
+                    <CircleCheckbox
+                      checked={Boolean((item as any).is_optional)}
+                      onChange={(next) =>
+                        setStructureItems((prev) =>
+                          prev.map((it: any, i: number) => (i === idx ? { ...it, is_optional: next } : it)),
+                        )
+                      }
+                      label="Optional"
+                    />
 
                     <button
                       type="button"
@@ -737,31 +1001,69 @@ const OrgFeesPage: React.FC = () => {
                 <div className="text-xs font-semibold text-slate-500">Live total</div>
                 <div className="text-lg font-semibold">{moneyFromCents(totalStructure, structureForm.currency)}</div>
               </div>
+
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
+                  onClick={() => {
+                    setCreatingNew(true);
+                    setSelectedStructureId(null);
+                    setParam('structureId', null);
+
+                    setStructureForm({
+                      title: '',
+                      description: '',
+                      currency: 'USD',
+                      effective_term: '',
+                      scopeValue: '',
+                    });
+                    setStructureItems([emptyItem()]);
+                  }}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  New structure
+                </button>
+
+                {/* ✅ requested button set */}
+                <button
+                  type="button"
                   disabled={structuresSaving || !structureForm.title}
-                  onClick={handleSaveStructure}
+                  onClick={async () => {
+                    await handleSaveStructure({ forceActive: false });
+                  }}
                   className={cn(
-                    'rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700',
-                    structuresSaving && 'opacity-60',
+                    'rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800',
+                    (structuresSaving || !structureForm.title) && 'opacity-60',
                   )}
                 >
-                  {selectedStructureId ? 'Update structure' : 'Save structure'}
+                  Save draft
                 </button>
+
                 <button
                   type="button"
-                  disabled={!selectedStructureId || structuresSaving}
-                  onClick={() => handleActivateStructure(selectedStructureId)}
-                  className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  disabled={structuresSaving || !structureForm.title}
+                  onClick={async () => {
+                    await handleSaveStructure({ forceActive: true });
+                  }}
+                  className={cn(
+                    'rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700',
+                    (structuresSaving || !structureForm.title) && 'opacity-60',
+                  )}
                 >
-                  Activate
+                  Save & activate
                 </button>
+
                 <button
                   type="button"
-                  disabled={!selectedStructureId || structuresLoading}
-                  onClick={() => selectedStructureId && downloadStructurePdf(selectedStructureId, 'fee-structure.pdf')}
-                  className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  disabled={!selectedStructureIdNum || structuresLoading}
+                  onClick={() => {
+                    if (!selectedStructureIdNum || !Number.isFinite(selectedStructureIdNum)) return;
+                    downloadStructurePdf(selectedStructureIdNum, 'fee-structure.pdf');
+                  }}
+                  className={cn(
+                    'rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800',
+                    (!selectedStructureIdNum || structuresLoading) && 'opacity-60',
+                  )}
                 >
                   Structure PDF
                 </button>
@@ -773,22 +1075,28 @@ const OrgFeesPage: React.FC = () => {
               <div className="space-y-2">
                 {(structures || []).map((s: any) => (
                   <button
-                    key={s.id}
+                    key={String(s.id)}
                     type="button"
-                    onClick={() => setSelectedStructureId(s.id)}
+                    onClick={() => {
+                      setCreatingNew(false);
+                      setSelectedStructureId(String(s.id));
+                      setParam('structureId', String(s.id));
+                    }}
                     className={cn(
                       'flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm',
                       'border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800',
-                      selectedStructureId === s.id &&
+                      selectedStructureId && sameId(selectedStructureId, s.id) &&
                         'border-blue-400 bg-blue-50/60 dark:border-blue-500/50 dark:bg-blue-900/10',
                     )}
                   >
-                    <div>
-                      <div className="font-semibold">{s.title}</div>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{s.title}</div>
                       <div className="text-xs text-slate-500">
-                        {s.description || 'No description'} • {s.currency}
+                        {pickScopeValueFromStructure(s) ? `Applies to: ${pickScopeValueFromStructure(s)}` : 'Applies to: All learners'} •{' '}
+                        {String(s.currency || 'USD').toUpperCase()}
                       </div>
                     </div>
+
                     <div className="flex items-center gap-2 text-xs">
                       {s.is_active ? <Badge tone="ok">Active</Badge> : <Badge tone="neutral">Draft</Badge>}
                       {s.effective_term ? <Badge tone="neutral">{s.effective_term}</Badge> : null}
@@ -804,13 +1112,15 @@ const OrgFeesPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => {
+                          setCreatingNew(true);
                           setSelectedStructureId(null);
+                          setParam('structureId', null);
+
                           setStructureForm({
                             title: '',
                             description: '',
                             currency: 'USD',
                             effective_term: '',
-                            scopeType: 'class',
                             scopeValue: '',
                           });
                           setStructureItems([emptyItem()]);
@@ -831,9 +1141,7 @@ const OrgFeesPage: React.FC = () => {
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800">
               <div className="text-xs text-slate-500">Balances</div>
-              <div className="mt-1 text-lg font-semibold">
-                {balancesLoading ? 'Loading…' : `${balances?.length || 0} learners`}
-              </div>
+              <div className="mt-1 text-lg font-semibold">{balancesLoading ? 'Loading…' : `${balances?.length || 0} learners`}</div>
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
@@ -911,6 +1219,7 @@ const OrgFeesPage: React.FC = () => {
                 className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
               />
             </div>
+
             <div>
               <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Class filter</div>
               <select
@@ -927,7 +1236,6 @@ const OrgFeesPage: React.FC = () => {
               </select>
             </div>
 
-            {/* ✅ Pagination + range text */}
             <div className="md:col-span-3">
               <div className="flex items-center gap-3 pt-5 text-sm text-slate-500">
                 <span>{balancesLoading ? 'Refreshing balances…' : learnerRangeText}</span>
@@ -1008,7 +1316,7 @@ const OrgFeesPage: React.FC = () => {
                       'border-t border-slate-200 dark:border-slate-800',
                       isSelected && 'bg-blue-50/60 dark:bg-blue-900/10',
                     )}
-                    onClick={() => setSearchParams({ learnerId: r.feeLearnerId })}
+                    onClick={() => setParam('learnerId', r.feeLearnerId)}
                     style={{ cursor: 'pointer' }}
                   >
                     <td className="px-3 py-2">
@@ -1020,15 +1328,17 @@ const OrgFeesPage: React.FC = () => {
                         Internal: <span className="font-mono">{r.feeLearnerId}</span>
                       </div>
                     </td>
+
                     <td className="px-3 py-2">{r.class_label || '-'}</td>
 
-                    {/* ✅ per-currency stacks */}
                     <td className="px-3 py-2 text-right">
                       <MoneyStack rows={chargeRows} />
                     </td>
+
                     <td className="px-3 py-2 text-right">
                       <MoneyStack rows={paymentRows} />
                     </td>
+
                     <td className="px-3 py-2 text-right">
                       <Badge tone={maxBal > 0 ? 'warn' : 'ok'}>
                         <MoneyStack rows={balanceRows} />
@@ -1096,6 +1406,9 @@ const OrgFeesPage: React.FC = () => {
           learners={learners}
           classLabels={classLabels}
           selectedLearnerId={selectedLearnerId}
+          defaultCurrency={activeStructureCurrency}
+          currencyHintForLearner={currencyHintForLearner}
+          learnerCurrenciesMap={learnerCurrenciesMap}
           onCharge={async (payload, isBulk) => {
             if (isBulk) {
               await addBulkCharges(payload as any);
@@ -1103,7 +1416,7 @@ const OrgFeesPage: React.FC = () => {
               await addCharge(payload as any);
             }
             await fetchBalances();
-            if (payload?.learner_id) await fetchStatement(payload.learner_id);
+            if ((payload as any)?.learner_id) await fetchStatement((payload as any).learner_id);
           }}
         />
       )}
@@ -1114,10 +1427,13 @@ const OrgFeesPage: React.FC = () => {
           onClose={closeToHome}
           learners={learners}
           selectedLearnerId={selectedLearnerId}
+          defaultCurrency={activeStructureCurrency}
+          currencyHintForLearner={currencyHintForLearner}
+          learnerCurrenciesMap={learnerCurrenciesMap}
           onPayment={async (payload) => {
             await addPayment(payload as any);
             await fetchBalances();
-            if (payload?.learner_id) await fetchStatement(payload.learner_id);
+            if ((payload as any)?.learner_id) await fetchStatement((payload as any).learner_id);
           }}
         />
       )}
@@ -1149,7 +1465,7 @@ const OrgFeesPage: React.FC = () => {
           onAttach={async (inboundId, learnerId) => {
             await attachToLearner(inboundId, learnerId);
             await fetchUnmatched();
-            await fetchBalances(); // refresh balances after matching
+            await fetchBalances();
           }}
         />
       )}

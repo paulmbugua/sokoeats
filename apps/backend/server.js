@@ -185,6 +185,7 @@ const corsOptions = {
     'Origin',
     'X-Client-Platform',
     'X-Platform',
+    'Cache-Control',
 
     // ✅ AI flow extras
     'X-Program-Track',

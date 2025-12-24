@@ -47,6 +47,23 @@ function orgFeesBase(backendUrl: string | undefined, orgId: string) {
   const base = (backendUrl?.trim() || apiBaseFromEnv()).replace(/\/+$/, '');
   return `${base}/api/orgs/${orgId}`;
 }
+
+/**
+ * ✅ Newsletters are mounted under /api/org/:orgId/... (SINGULAR)
+ * Backend routes:
+ *  - /api/org/:orgId/pro/newsletters...
+ *  - /api/org/:orgId/learner/newsletters...
+ */
+function orgNewsletterProBase(backendUrl: string | undefined, orgId: string) {
+  const base = (backendUrl?.trim() || apiBaseFromEnv()).replace(/\/+$/, '');
+  return `${base}/api/org/${orgId}/pro`;
+}
+
+function orgNewsletterLearnerBase(backendUrl: string | undefined, orgId: string) {
+  const base = (backendUrl?.trim() || apiBaseFromEnv()).replace(/\/+$/, '');
+  return `${base}/api/org/${orgId}`;
+}
+
 /* ─────────────────────────────────────────────────────────
  * Attendance
  * ───────────────────────────────────────────────────────── */
@@ -233,10 +250,6 @@ export async function apiDownloadFeeStatementPdf(
  * Fees (Learner self-service)
  * ───────────────────────────────────────────────────────── */
 
-/**
- * ✅ Learner: GET /api/orgs/:orgId/fees/learner/statement
- */
-// Learner self-service (these MUST get a real JWT token, not userId)
 export async function apiGetMyFeeStatement(backendUrl: string, orgId: string, token: string) {
   if (!looksLikeJwt(token)) throw new Error('Invalid auth token for apiGetMyFeeStatement');
   const url = `${orgFeesBase(backendUrl, orgId)}/fees/learner/statement`;
@@ -252,7 +265,7 @@ export async function apiGetMyFeeStructure(backendUrl: string, orgId: string, to
 }
 
 /* ─────────────────────────────────────────────────────────
- * Newsletters
+ * Newsletters ✅ /api/org/:orgId/pro/... (staff) & /api/org/:orgId/learner/... (learner)
  * ───────────────────────────────────────────────────────── */
 
 export type OrgNewsletter = {
@@ -270,12 +283,6 @@ export type OrgNewsletter = {
 
 export type NewsletterSendMode = 'all' | 'class' | 'custom';
 
-/**
- * channel:
- *  - in_app: deliver to learner home page / in-app inbox only
- *  - email: email only (if emails exist)
- *  - both: do both (best-effort)
- */
 export type NewsletterChannel = 'in_app' | 'email' | 'both';
 
 export type PreviewNewsletterRecipientsReq = {
@@ -310,7 +317,7 @@ export async function apiListOrgNewsletters(
   orgToken?: string,
 ): Promise<{ items: OrgNewsletter[] }> {
   const { data } = await axios.get(
-    `${orgProBase(backendUrl, orgId)}/newsletters`,
+    `${orgNewsletterProBase(backendUrl, orgId)}/newsletters`,
     axiosCfg(orgToken),
   );
   return data;
@@ -323,7 +330,7 @@ export async function apiCreateOrgNewsletter(
   orgToken?: string,
 ): Promise<OrgNewsletter> {
   const { data } = await axios.post(
-    `${orgProBase(backendUrl, orgId)}/newsletters`,
+    `${orgNewsletterProBase(backendUrl, orgId)}/newsletters`,
     body,
     axiosCfg(orgToken),
   );
@@ -346,7 +353,7 @@ export async function apiGenerateOrgNewsletterContent(
   orgToken?: string,
 ): Promise<NewsletterGenerated> {
   const { data } = await axios.post(
-    `${orgProBase(backendUrl, orgId)}/newsletters/generate`,
+    `${orgNewsletterProBase(backendUrl, orgId)}/newsletters/generate`,
     body,
     axiosCfg(orgToken),
   );
@@ -360,7 +367,7 @@ export async function apiGetOrgNewsletter(
   orgToken?: string,
 ): Promise<OrgNewsletter> {
   const { data } = await axios.get(
-    `${orgProBase(backendUrl, orgId)}/newsletters/${id}`,
+    `${orgNewsletterProBase(backendUrl, orgId)}/newsletters/${id}`,
     axiosCfg(orgToken),
   );
   return data;
@@ -374,7 +381,7 @@ export async function apiUpdateOrgNewsletter(
   orgToken?: string,
 ): Promise<OrgNewsletter> {
   const { data } = await axios.put(
-    `${orgProBase(backendUrl, orgId)}/newsletters/${id}`,
+    `${orgNewsletterProBase(backendUrl, orgId)}/newsletters/${id}`,
     body,
     axiosCfg(orgToken),
   );
@@ -389,7 +396,7 @@ export async function apiPreviewNewsletterRecipients(
   orgToken?: string,
 ): Promise<{ count: number; sample: string[] }> {
   const { data } = await axios.post(
-    `${orgProBase(backendUrl, orgId)}/newsletters/${id}/preview-recipients`,
+    `${orgNewsletterProBase(backendUrl, orgId)}/newsletters/${id}/preview-recipients`,
     body,
     axiosCfg(orgToken),
   );
@@ -403,7 +410,7 @@ export async function apiListNewsletterRecipients(
   orgToken?: string,
 ): Promise<OrgNewsletterRecipientsResp> {
   const { data } = await axios.get(
-    `${orgProBase(backendUrl, orgId)}/newsletters/${id}/recipients`,
+    `${orgNewsletterProBase(backendUrl, orgId)}/newsletters/${id}/recipients`,
     axiosCfg(orgToken),
   );
   return data;
@@ -417,7 +424,7 @@ export async function apiSendOrgNewsletter(
   orgToken?: string,
 ): Promise<OrgNewsletter> {
   const { data } = await axios.post(
-    `${orgProBase(backendUrl, orgId)}/newsletters/${id}/send`,
+    `${orgNewsletterProBase(backendUrl, orgId)}/newsletters/${id}/send`,
     body,
     axiosCfg(orgToken),
   );
@@ -456,7 +463,7 @@ export async function apiListAnnouncements(
 }
 
 /* ─────────────────────────────────────────────────────────
- * Learner newsletters (learner-side)
+ * Learner newsletters (learner-side) ✅ /api/org/:orgId/learner/...
  * ───────────────────────────────────────────────────────── */
 
 export async function apiListLearnerNewsletters(
@@ -464,9 +471,7 @@ export async function apiListLearnerNewsletters(
   orgId: string,
   token?: string,
 ) {
-  // ✅ match backend mount: /api/orgs/:orgId/...
-  const base = (backendUrl?.trim() || apiBaseFromEnv()).replace(/\/+$/, '');
-  const res = await fetch(`${base}/api/orgs/${orgId}/learner/newsletters`, {
+  const res = await fetch(`${orgNewsletterLearnerBase(backendUrl, orgId)}/learner/newsletters`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!res.ok) throw new Error(await res.text());
@@ -479,11 +484,12 @@ export async function apiGetLearnerNewsletter(
   id: string,
   token?: string,
 ) {
-  // ✅ match backend mount: /api/orgs/:orgId/...
-  const base = (backendUrl?.trim() || apiBaseFromEnv()).replace(/\/+$/, '');
-  const res = await fetch(`${base}/api/orgs/${orgId}/learner/newsletters/${id}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
+  const res = await fetch(
+    `${orgNewsletterLearnerBase(backendUrl, orgId)}/learner/newsletters/${id}`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
+  );
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

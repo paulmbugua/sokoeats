@@ -13,7 +13,22 @@ import {
   toCents,
 } from './OrgFees.shared';
 
-import { Badge, EmptyState, Modal, MoneyStack } from './OrgFees.ui';
+import { Badge, EmptyState, Modal, MoneyStack, CircleCheckbox } from './OrgFees.ui';
+
+
+
+type PendingCharge = { payload: any; isBulk: boolean };
+
+type PendingPayment = {
+  learner_id: string;
+  amount_cents: number;
+  currency: string;
+  method?: string;
+  reference?: string;
+  note?: string;
+  received_at?: string;
+};
+
 
 export function UnmatchedPaymentsModal({
   title,
@@ -162,12 +177,17 @@ export function UnmatchedPaymentsModal({
   );
 }
 
+ 
+
 export function ResponsiveChargeModal({
   title,
   onClose,
   learners,
   classLabels,
   selectedLearnerId,
+  defaultCurrency,
+  currencyHintForLearner,
+  learnerCurrenciesMap,
   onCharge,
 }: {
   title: string;
@@ -175,26 +195,64 @@ export function ResponsiveChargeModal({
   learners: LearnerLite[];
   classLabels: string[];
   selectedLearnerId: string;
+  defaultCurrency: string;
+  currencyHintForLearner: (learnerId: string) => string;
+  learnerCurrenciesMap: Map<string, string[]>;
   onCharge: (payload: any, isBulk?: boolean) => Promise<void>;
 }) {
   const [chargeLearnerId, setChargeLearnerId] = useState('');
   const [chargeAmount, setChargeAmount] = useState('');
-  const [chargeCurrency, setChargeCurrency] = useState('USD');
+ const [chargeCurrency, setChargeCurrency] = useState(() => String(defaultCurrency || 'USD').toUpperCase());
   const [chargeDesc, setChargeDesc] = useState('');
   const [chargeClassLabel, setChargeClassLabel] = useState('');
   const [chargeDueDate, setChargeDueDate] = useState('');
   const [chargeMode, setChargeMode] = useState<'single' | 'bulk'>('single');
   const [bulkLearnerIds, setBulkLearnerIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [step, setStep] = useState<'form' | 'confirm'>('form');
+const [ack, setAck] = useState(false);
+const [pending, setPending] = useState<PendingCharge | null>(null);
 
-  useEffect(() => {
-    if (selectedLearnerId) setChargeLearnerId(selectedLearnerId);
-  }, [selectedLearnerId]);
+useEffect(() => {
+  if (step === 'confirm') setAck(false);
+}, [step]);
+
+
+ useEffect(() => {
+  if (selectedLearnerId) {
+    setChargeLearnerId(selectedLearnerId);
+    setChargeCurrency(currencyHintForLearner(selectedLearnerId));
+  }
+}, [selectedLearnerId, currencyHintForLearner]);
+
+useEffect(() => {
+  if (chargeMode === 'bulk') {
+    // bulk = always follow structure currency (recommended)
+    setChargeCurrency(String(defaultCurrency || 'USD').toUpperCase());
+    return;
+  }
+  if (chargeLearnerId) {
+    setChargeCurrency(currencyHintForLearner(chargeLearnerId));
+  }
+}, [chargeLearnerId, chargeMode, currencyHintForLearner, defaultCurrency]);
 
   const amount_cents = toCents(chargeAmount);
   const bulkCandidates = chargeClassLabel
     ? learners.filter((l) => String(l.class_label || '') === chargeClassLabel)
     : learners;
+
+     // ─────────────────────────────────────────
+  // Currency mismatch warning (single learner)
+  // ─────────────────────────────────────────
+  const existingCurrencies =
+    chargeMode === 'single'
+      ? (learnerCurrenciesMap.get(String(chargeLearnerId)) || [])
+      : [];
+
+  const isMismatch =
+    chargeMode === 'single' &&
+    existingCurrencies.length > 0 &&
+    !existingCurrencies.includes(String(chargeCurrency).toUpperCase());
 
   return (
     <Modal title={title} onClose={onClose}>
@@ -313,13 +371,24 @@ export function ResponsiveChargeModal({
             <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Currency</div>
             <select
               value={chargeCurrency}
+              disabled={chargeMode === 'bulk'}
               onChange={(e) => setChargeCurrency(e.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
+              className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900"
             >
+
               <option value="USD">USD</option>
               <option value="KES">KES</option>
               <option value="QAR">QAR</option>
             </select>
+
+            {isMismatch && (
+              <div className="mt-1 text-[11px] text-amber-600 dark:text-amber-300">
+                This learner already has history in:{' '}
+                <span className="font-semibold">{existingCurrencies.join(', ')}</span>. Creating a charge in{' '}
+                <span className="font-semibold">{chargeCurrency}</span> will start a new currency bucket.
+              </div>
+            )}
+
           </div>
 
           <div className="md:col-span-2">
@@ -347,90 +416,174 @@ export function ResponsiveChargeModal({
           </div>
         </div>
 
-        {saving && <div className="text-xs text-slate-500">Saving charge…</div>}
+                {saving && <div className="text-xs text-slate-500">Saving charge…</div>}
 
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 sm:w-auto"
-          >
-            Cancel
-          </button>
+        {step === 'confirm' && pending ? (
+          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-100">
+            <div className="font-semibold">Confirm & commit</div>
+            <div className="text-sm">
+              This will immediately post the charge to the learner statement and update balances.
+              <span className="font-semibold"> It can’t be undone.</span>
+            </div>
 
-          <button
-            type="button"
-            disabled={
-              (chargeMode === 'single' && !chargeLearnerId) ||
-              (chargeMode === 'bulk' && bulkLearnerIds.length === 0) ||
-              amount_cents <= 0 ||
-              saving
-            }
-            onClick={async () => {
-              if (amount_cents <= 0) return;
-              setSaving(true);
-              try {
-                if (chargeMode === 'single') {
-                  await onCharge(
-                    {
-                      learner_id: chargeLearnerId,
-                      amount_cents,
-                      currency: chargeCurrency,
-                      description: chargeDesc || undefined,
-                      class_label: chargeClassLabel || undefined,
-                      due_date: chargeDueDate || undefined,
-                    },
-                    false,
-                  );
-                } else {
-                  await onCharge(
-                    {
-                      learner_ids: bulkLearnerIds,
-                      amount_cents,
-                      currency: chargeCurrency,
-                      description: chargeDesc || undefined,
-                      class_label: chargeClassLabel || undefined,
-                      due_date: chargeDueDate || undefined,
-                    },
-                    true,
-                  );
-                }
-                setChargeAmount('');
-                setChargeDesc('');
-                setChargeDueDate('');
-                onClose();
-              } finally {
-                setSaving(false);
+            <div className="rounded-xl bg-white/60 p-3 text-sm dark:bg-black/20">
+              <div className="text-xs font-semibold uppercase tracking-wide opacity-70">Summary</div>
+              <div className="mt-2 space-y-1">
+                <div>
+                  <span className="font-semibold">Type:</span>{' '}
+                  {pending.isBulk ? `Bulk (${pending.payload.learner_ids?.length || 0} learners)` : 'Single learner'}
+                </div>
+                <div>
+                  <span className="font-semibold">Amount:</span>{' '}
+                  {moneyFromCents(Number(pending.payload.amount_cents || 0), pending.payload.currency)}
+                </div>
+                {pending.payload.description ? (
+                  <div>
+                    <span className="font-semibold">Description:</span> {pending.payload.description}
+                  </div>
+                ) : null}
+                {pending.payload.due_date ? (
+                  <div>
+                    <span className="font-semibold">Due date:</span> {pending.payload.due_date}
+                  </div>
+                ) : null}
+                {isMismatch ? (
+                  <div className="text-xs opacity-80">
+                    Note: This creates a new currency bucket for this learner.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <CircleCheckbox
+              checked={ack}
+              onChange={setAck}
+              label="I understand this action is irreversible."
+              labelClassName="text-sm"
+              className="mt-1"
+            />
+
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setStep('form')}
+                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 sm:w-auto"
+              >
+                Back to edit
+              </button>
+
+              <button
+                type="button"
+                disabled={!ack || saving}
+                onClick={async () => {
+                  if (!pending) return;
+                  setSaving(true);
+                  try {
+                    await onCharge(pending.payload, pending.isBulk);
+
+                    // clear & close
+                    setChargeAmount('');
+                    setChargeDesc('');
+                    setChargeDueDate('');
+                    setBulkLearnerIds([]);
+                    setPending(null);
+                    setStep('form');
+                    onClose();
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                className={cn(
+                  'w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700',
+                  'disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto',
+                )}
+              >
+                Confirm & commit
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 sm:w-auto"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              disabled={
+                (chargeMode === 'single' && !chargeLearnerId) ||
+                (chargeMode === 'bulk' && bulkLearnerIds.length === 0) ||
+                amount_cents <= 0 ||
+                saving
               }
-            }}
-            className={cn(
-              'w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700',
-              'disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto',
-            )}
-          >
-            {chargeMode === 'bulk' ? `Create charges (${bulkLearnerIds.length})` : 'Create charge'}
-          </button>
-        </div>
+              onClick={() => {
+                if (amount_cents <= 0) return;
+
+                const payload =
+                  chargeMode === 'single'
+                    ? {
+                        learner_id: chargeLearnerId,
+                        amount_cents,
+                        currency: chargeCurrency,
+                        description: chargeDesc || undefined,
+                        class_label: chargeClassLabel || undefined,
+                        due_date: chargeDueDate || undefined,
+                      }
+                    : {
+                        learner_ids: bulkLearnerIds,
+                        amount_cents,
+                        currency: chargeCurrency,
+                        description: chargeDesc || undefined,
+                        class_label: chargeClassLabel || undefined,
+                        due_date: chargeDueDate || undefined,
+                      };
+
+                setPending({ payload, isBulk: chargeMode === 'bulk' });
+                setStep('confirm');
+              }}
+              className={cn(
+                'w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700',
+                'disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto',
+              )}
+            >
+              {chargeMode === 'bulk' ? `Review charges (${bulkLearnerIds.length})` : 'Review charge'}
+            </button>
+          </div>
+        )}
+
       </div>
     </Modal>
   );
 }
+
+
 
 export function ResponsivePaymentModal({
   title,
   onClose,
   learners,
   selectedLearnerId,
+  defaultCurrency,
+  currencyHintForLearner,
+  learnerCurrenciesMap,
   onPayment,
 }: {
   title: string;
   onClose: () => void;
   learners: LearnerLite[];
   selectedLearnerId: string;
+  defaultCurrency: string;
+  currencyHintForLearner: (learnerId: string) => string;
+  learnerCurrenciesMap: Map<string, string[]>;
   onPayment: (payload: any) => Promise<void>;
 }) {
   const [payLearnerId, setPayLearnerId] = useState('');
-  const [payCurrency, setPayCurrency] = useState('USD');
+  const [payCurrency, setPayCurrency] = useState(() => String(defaultCurrency || 'USD').toUpperCase());
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
   const [payReference, setPayReference] = useState('');
@@ -438,11 +591,36 @@ export function ResponsivePaymentModal({
   const [payReceivedAt, setPayReceivedAt] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [step, setStep] = useState<'form' | 'confirm'>('form');
+const [ack, setAck] = useState(false);
+const [pending, setPending] = useState<PendingPayment | null>(null);
+
+useEffect(() => {
+  if (step === 'confirm') setAck(false);
+}, [step]);
+
+
   useEffect(() => {
-    if (selectedLearnerId) setPayLearnerId(selectedLearnerId);
-  }, [selectedLearnerId]);
+  if (selectedLearnerId) {
+    setPayLearnerId(selectedLearnerId);
+    setPayCurrency(currencyHintForLearner(selectedLearnerId));
+  }
+}, [selectedLearnerId, currencyHintForLearner]);
+
+useEffect(() => {
+  if (payLearnerId) setPayCurrency(currencyHintForLearner(payLearnerId));
+}, [payLearnerId, currencyHintForLearner]);
 
   const amount_cents = toCents(payAmount);
+
+    // ─────────────────────────────────────────
+  // Currency mismatch warning
+  // ─────────────────────────────────────────
+  const existingCurrencies = learnerCurrenciesMap.get(String(payLearnerId)) || [];
+  const isMismatch =
+    existingCurrencies.length > 0 &&
+    !existingCurrencies.includes(String(payCurrency).toUpperCase());
+
 
   return (
     <Modal title={title} onClose={onClose}>
@@ -490,7 +668,16 @@ export function ResponsivePaymentModal({
               <option value="KES">KES</option>
               <option value="QAR">QAR</option>
             </select>
+            {isMismatch && (
+              <div className="mt-1 text-[11px] text-amber-600 dark:text-amber-300">
+                This learner already has history in:{' '}
+                <span className="font-semibold">{existingCurrencies.join(', ')}</span>. Recording a payment in{' '}
+                <span className="font-semibold">{payCurrency}</span> will be tracked separately.
+              </div>
+            )}
+
           </div>
+          
 
           <div>
             <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">Method</div>
@@ -543,50 +730,136 @@ export function ResponsivePaymentModal({
           </div>
         </div>
 
-        {saving && <div className="text-xs text-slate-500">Saving payment…</div>}
+                {saving && <div className="text-xs text-slate-500">Saving payment…</div>}
 
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 sm:w-auto"
-          >
-            Cancel
-          </button>
+        {step === 'confirm' && pending ? (
+          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-100">
+            <div className="font-semibold">Confirm & commit</div>
+            <div className="text-sm">
+              This will immediately post the payment to the learner statement and update balances.
+              <span className="font-semibold"> It can’t be undone.</span>
+            </div>
 
-          <button
-            type="button"
-            disabled={!payLearnerId || amount_cents <= 0 || saving}
-            onClick={async () => {
-              if (amount_cents <= 0) return;
-              setSaving(true);
-              try {
-                await onPayment({
-                  learner_id: payLearnerId,
-                  amount_cents,
-                  currency: payCurrency,
-                  method: payMethod || undefined,
-                  reference: payReference || undefined,
-                  note: payNote || undefined,
-                  received_at: payReceivedAt ? new Date(payReceivedAt).toISOString() : undefined,
-                });
-                setPayAmount('');
-                setPayReference('');
-                setPayNote('');
-                setPayReceivedAt('');
-                onClose();
-              } finally {
-                setSaving(false);
-              }
-            }}
-            className={cn(
-              'w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600',
-              'disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto',
-            )}
-          >
-            Record payment
-          </button>
-        </div>
+            <div className="rounded-xl bg-white/60 p-3 text-sm dark:bg-black/20">
+              <div className="text-xs font-semibold uppercase tracking-wide opacity-70">Summary</div>
+              <div className="mt-2 space-y-1">
+                <div>
+                  <span className="font-semibold">Amount:</span>{' '}
+                  {moneyFromCents(Number(pending.amount_cents || 0), pending.currency)}
+                </div>
+                <div>
+                  <span className="font-semibold">Method:</span> {pending.method || '—'}
+                </div>
+                {pending.reference ? (
+                  <div>
+                    <span className="font-semibold">Reference:</span> {pending.reference}
+                  </div>
+                ) : null}
+                {pending.received_at ? (
+                  <div>
+                    <span className="font-semibold">Received at:</span> {new Date(pending.received_at).toLocaleString()}
+                  </div>
+                ) : null}
+                {pending.note ? (
+                  <div>
+                    <span className="font-semibold">Note:</span> {pending.note}
+                  </div>
+                ) : null}
+                {isMismatch ? (
+                  <div className="text-xs opacity-80">
+                    Note: This payment will be tracked in a separate currency bucket.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+          <CircleCheckbox
+              checked={ack}
+              onChange={setAck}
+              label="I understand this action is irreversible."
+              labelClassName="text-sm"
+              className="mt-1"
+            />
+
+
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setStep('form')}
+                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 sm:w-auto"
+              >
+                Back to edit
+              </button>
+
+              <button
+                type="button"
+                disabled={!ack || saving}
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    await onPayment(pending);
+
+                    // clear & close
+                    setPayAmount('');
+                    setPayReference('');
+                    setPayNote('');
+                    setPayReceivedAt('');
+                    setPending(null);
+                    setStep('form');
+                    onClose();
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                className={cn(
+                  'w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600',
+                  'disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto',
+                )}
+              >
+                Confirm & commit
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 sm:w-auto"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              disabled={!payLearnerId || amount_cents <= 0 || saving}
+              onClick={() => {
+                if (amount_cents <= 0) return;
+
+                const payload: PendingPayment = {
+                learner_id: payLearnerId,
+                amount_cents,
+                currency: payCurrency,
+                method: payMethod || undefined,
+                reference: payReference || undefined,
+                note: payNote || undefined,
+                received_at: payReceivedAt ? new Date(payReceivedAt).toISOString() : undefined,
+              };
+
+              setPending(payload);
+              setStep('confirm');
+              }}
+              className={cn(
+                'w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600',
+                'disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto',
+              )}
+            >
+              Review payment
+            </button>
+          </div>
+        )}
+
       </div>
     </Modal>
   );
@@ -621,6 +894,8 @@ export function StatementModal({
   const chargeRows = totals.map((t) => ({ currency: t.currency, value: t.charges }));
   const paymentRows = totals.map((t) => ({ currency: t.currency, value: t.payments }));
   const balanceRows = totals.map((t) => ({ currency: t.currency, value: t.balance }));
+
+  
 
   return (
     <Modal title={title} onClose={onClose}>

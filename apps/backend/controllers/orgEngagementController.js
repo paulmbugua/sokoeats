@@ -20,6 +20,165 @@ import { renderAnnouncementPdf } from '../services/orgAnnouncementPdfService.js'
 
 const normalizeOrgId = (req) => req.params?.orgId || req.body?.org_id || req.query?.org_id;
 
+function isUuid(v) {
+  const s = String(v || '').trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+}
+
+function safeIdent(name) {
+  // allow only simple identifiers (no injection)
+  return /^[a-z_][a-z0-9_]*$/i.test(name) ? name : null;
+}
+
+async function tableExists(pool, tableName) {
+  const fq = tableName.includes('.') ? tableName : `public.${tableName}`;
+  const { rows } = await pool.query(`select to_regclass($1) as reg`, [fq]);
+  return Boolean(rows?.[0]?.reg);
+}
+
+const _uuidColCache = new Map(); // key: "schema.table" -> uuid column or null
+
+async function pickUuidColumn(pool, tableName) {
+  const fq = tableName.includes('.') ? tableName : `public.${tableName}`;
+  if (_uuidColCache.has(fq)) return _uuidColCache.get(fq);
+
+  const [schema, table] = fq.split('.');
+  const { rows } = await pool.query(
+    `select column_name, data_type, udt_name
+       from information_schema.columns
+      where table_schema = $1
+        and table_name   = $2
+      order by ordinal_position`,
+    [schema, table]
+  );
+
+  // prefer these names IF they are uuid-typed
+  const preferred = [
+    'id',
+    'uuid',
+    'profile_id',
+    'actor_id',
+    'author_id',
+    'created_by',
+    'staff_id',
+    'member_id',
+    'learner_id',
+    'instructor_id',
+  ];
+
+  const isUuidCol = (r) => r && (r.data_type === 'uuid' || r.udt_name === 'uuid');
+
+  let picked = null;
+
+  for (const name of preferred) {
+    const r = rows.find((x) => x.column_name === name);
+    if (isUuidCol(r)) {
+      picked = name;
+      break;
+    }
+  }
+
+  // fallback: first uuid column in the table
+  if (!picked) {
+    const r = rows.find((x) => isUuidCol(x));
+    if (r) picked = r.column_name;
+  }
+
+  // must be a safe identifier
+  picked = safeIdent(picked);
+
+  _uuidColCache.set(fq, picked || null);
+
+  console.log('[resolveOrgActorUuid] uuid column scan', {
+    table: fq,
+    picked,
+    availableCols: rows.map((r) => `${r.column_name}:${r.data_type}`),
+  });
+
+  return picked || null;
+}
+
+async function tryResolveActorUuidFromTable(pool, orgId, userId, tableName) {
+  const fq = tableName.includes('.') ? tableName : `public.${tableName}`;
+
+  const exists = await tableExists(pool, fq);
+  if (!exists) {
+    console.log('[resolveOrgActorUuid] table missing:', fq);
+    return null;
+  }
+
+  const uuidCol = await pickUuidColumn(pool, fq);
+  if (!uuidCol) {
+    console.log('[resolveOrgActorUuid] no uuid column found for table:', fq);
+    return null;
+  }
+
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid <= 0) return null;
+
+  // safe identifiers only (already validated)
+  const safeTable = fq.split('.').map(safeIdent);
+  if (!safeTable[0] || !safeTable[1]) return null;
+
+  const sql = `
+    select ${uuidCol} as actor_uuid
+      from ${safeTable[0]}.${safeTable[1]}
+     where org_id = $1
+       and user_id = $2
+     limit 1
+  `;
+
+  const { rows } = await pool.query(sql, [orgId, uid]);
+  return rows?.[0]?.actor_uuid || null;
+}
+
+async function resolveOrgActorUuid(pool, orgId, user) {
+  if (!orgId || !user) return null;
+
+  // If auth middleware provides a UUID anywhere, use it.
+  const direct =
+    user.profile_id || user.profileId || user.uuid || user.user_uuid || user.userUuid;
+  if (isUuid(direct)) {
+    console.log('[resolveOrgActorUuid] using direct uuid from req.user', { direct });
+    return String(direct);
+  }
+
+  // otherwise use numeric user.id and resolve from org profile tables
+  const userId = user.id ?? user.user_id ?? null;
+  if (!userId) return null;
+  if (isUuid(userId)) return String(userId);
+
+  // Try tables you *actually* have. Add more here if needed.
+  const candidates = [
+    'org_instructor_profiles',
+    'org_learner_profiles',
+    // 'org_members' (if you have it),
+    // 'org_users' (if you have it),
+  ];
+
+  for (const t of candidates) {
+    try {
+      const actorUuid = await tryResolveActorUuidFromTable(pool, orgId, userId, t);
+      console.log('[resolveOrgActorUuid] try', { table: t, userId, actorUuid });
+      if (actorUuid) return actorUuid;
+    } catch (e) {
+      // keep it resilient across envs
+      console.error('[resolveOrgActorUuid] table resolve failed', { table: t, code: e?.code, msg: e?.message });
+      if (e?.code === '42P01' || e?.code === '42703') continue; // undefined_table / undefined_column
+      throw e;
+    }
+  }
+
+  return null;
+}
+
+
+
+function isIntLike(v) {
+  const s = String(v || '');
+  return /^\d+$/.test(s);
+}
+
 // ───────────────────────── Attendance ─────────────────────────
 export async function listAttendanceSessions(req, res) {
   const orgId = normalizeOrgId(req);
@@ -28,19 +187,28 @@ export async function listAttendanceSessions(req, res) {
 
   try {
     const { rows } = await pool.query(
-      `select s.*, json_agg(json_build_object('learner_id', e.learner_id, 'status', e.status, 'note', e.note))
-         filter (where e.id is not null) as entries
-         from org_attendance_sessions s
-         left join org_attendance_entries e on e.session_id = s.id
-        where s.org_id = $1
-          and ($2::date is null or s.session_date >= $2)
-          and ($3::date is null or s.session_date <= $3)
-          and ($4::text is null or s.class_label = $4)
-        group by s.id
-        order by s.session_date desc, s.id desc
-        limit $5 offset $6`,
-      [orgId, value.start || null, value.end || null, value.class_label || null, value.limit, value.offset],
-    );
+  `select s.*,
+          json_agg(
+            json_build_object(
+              'learner_id', e.learner_id,
+              'user_id', lp.user_id,
+              'status', e.status,
+              'note', e.note
+            )
+          ) filter (where e.id is not null) as entries
+     from org_attendance_sessions s
+     left join org_attendance_entries e on e.session_id = s.id
+     left join org_learner_profiles lp on lp.id = e.learner_id
+    where s.org_id = $1
+      and ($2::date is null or s.session_date >= $2)
+      and ($3::date is null or s.session_date <= $3)
+      and ($4::text is null or s.class_label = $4)
+    group by s.id
+    order by s.session_date desc, s.id desc
+    limit $5 offset $6`,
+  [orgId, value.start || null, value.end || null, value.class_label || null, value.limit, value.offset],
+);
+
 
     res.json({ sessions: rows });
   } catch (err) {
@@ -55,16 +223,25 @@ export async function getAttendanceSession(req, res) {
   if (!sessionId) return res.status(400).json({ message: 'sessionId required' });
 
   try {
-    const { rows } = await pool.query(
-      `select s.*, json_agg(json_build_object('learner_id', e.learner_id, 'status', e.status, 'note', e.note))
-         filter (where e.id is not null) as entries
-         from org_attendance_sessions s
-         left join org_attendance_entries e on e.session_id = s.id
-        where s.org_id = $1 and s.id = $2
-        group by s.id
-        limit 1`,
-      [orgId, sessionId],
-    );
+   const { rows } = await pool.query(
+  `select s.*,
+          json_agg(
+            json_build_object(
+              'learner_id', e.learner_id,
+              'user_id', lp.user_id,
+              'status', e.status,
+              'note', e.note
+            )
+          ) filter (where e.id is not null) as entries
+     from org_attendance_sessions s
+     left join org_attendance_entries e on e.session_id = s.id
+     left join org_learner_profiles lp on lp.id = e.learner_id
+    where s.org_id = $1 and s.id = $2
+    group by s.id
+    limit 1`,
+  [orgId, sessionId],
+);
+
     if (!rows.length) return res.status(404).json({ message: 'Session not found' });
     res.json(rows[0]);
   } catch (err) {
@@ -73,24 +250,52 @@ export async function getAttendanceSession(req, res) {
   }
 }
 
+// createAttendanceSession (FIX)
 export async function createAttendanceSession(req, res) {
-  const orgId = normalizeOrgId(req);
-  const { error, value } = attendanceSessionSchema.validate(req.body, { abortEarly: false });
-  if (error) return res.status(400).json({ message: error.message });
+  const orgId = req.params.orgId; // uuid from route
+  const { session_date, class_label, period_label } = req.body || {};
+
+  const userId = Number(req.user?.id || 0) || null;
+
+  // ✅ instructor_id is UUID, so DO NOT put userId here
+  // Option A (safe now): set instructor_id null
+  let instructorId = null;
+
+  // Option B (recommended): resolve org instructor profile UUID by user_id + org_id
+  // Uncomment if you have org_instructor_profiles (id uuid, org_id uuid, user_id int)
+  /*
+  const ir = await pool.query(
+    `SELECT id FROM org_instructor_profiles WHERE org_id=$1 AND user_id=$2 LIMIT 1`,
+    [orgId, userId],
+  );
+  instructorId = ir.rows?.[0]?.id || null; // uuid or null
+  */
 
   try {
     const { rows } = await pool.query(
-      `insert into org_attendance_sessions (org_id, instructor_id, session_date, class_label, period_label)
-       values ($1,$2,$3,$4,$5)
-       returning *`,
-      [orgId, req.user?.id ?? null, value.session_date, value.class_label || null, value.period_label || null],
+      `
+      INSERT INTO org_attendance_sessions
+        (org_id, instructor_id, session_date, class_label, period_label, created_by_user_id)
+      VALUES ($1,$2,$3,$4,$5,$6)
+      RETURNING *
+      `,
+      [
+        orgId,
+        instructorId,                 // ✅ uuid or null
+        session_date,                 // date
+        class_label || null,
+        period_label || null,
+        userId,                       // ✅ integer
+      ],
     );
-    res.json(rows[0]);
-  } catch (err) {
-    console.error('[createAttendanceSession]', err);
-    res.status(500).json({ message: 'Unable to create session' });
+
+    return res.json(rows[0]);
+  } catch (e) {
+    console.error('[createAttendanceSession] error:', e);
+    return res.status(500).json({ message: 'failed' });
   }
 }
+
 
 export async function updateAttendanceSession(req, res) {
   const orgId = normalizeOrgId(req);
@@ -137,34 +342,98 @@ export async function deleteAttendanceSession(req, res) {
   }
 }
 
+// apps/backend/controllers/orgEngagementController.js
+
+
+
 export async function upsertAttendanceEntries(req, res) {
   const orgId = normalizeOrgId(req);
+
+  // keep your current “either params or body” pattern
   const sessionId = Number(req.params?.sessionId || req.body?.session_id);
   if (!sessionId) return res.status(400).json({ message: 'session_id required' });
+
+  // validate (keep as-is)
   const { error, value } = attendanceEntrySchema.validate(req.body, { abortEarly: false });
   if (error) return res.status(400).json({ message: error.message });
 
   try {
-    const session = await pool.query(`select id from org_attendance_sessions where org_id=$1 and id=$2 limit 1`, [
-      orgId,
-      sessionId,
-    ]);
+    // ensure session exists for org
+    const session = await pool.query(
+      `select id
+         from org_attendance_sessions
+        where org_id=$1 and id=$2
+        limit 1`,
+      [orgId, sessionId],
+    );
     if (!session.rows.length) return res.status(404).json({ message: 'Session not found' });
+
+    const entries = Array.isArray(value?.entries) ? value.entries : [];
+
+    // 1) collect numeric learner ids (user_ids)
+    const userIds = Array.from(
+      new Set(
+        entries
+          .map((e) => e?.learner_id)
+          .filter((x) => isIntLike(x))
+          .map((x) => Number(x)),
+      ),
+    );
+
+    // 2) resolve user_id -> org_learner_profiles.id (uuid)
+    const userIdToLearnerUuid = new Map();
+    if (userIds.length) {
+      const r = await pool.query(
+        `select id, user_id
+           from org_learner_profiles
+          where org_id = $1
+            and user_id = any($2::int[])`,
+        [orgId, userIds],
+      );
+      for (const row of r.rows) {
+        userIdToLearnerUuid.set(String(row.user_id), row.id);
+      }
+    }
+
+    // 3) normalize entries to always use uuid learner_id
+    const normalized = entries.map((e) => {
+      const raw = String(e?.learner_id || '').trim();
+      const learner_id = isUuid(raw) ? raw : userIdToLearnerUuid.get(raw);
+
+      if (!learner_id) {
+        // turn this into a 400 (bad request) rather than a 500
+        const msg = `Invalid learner_id "${raw}" (expected learner profile uuid or valid org user_id)`;
+        const err = new Error(msg);
+        err.statusCode = 400;
+        throw err;
+      }
+
+      return {
+        learner_id,
+        status: String(e?.status || '').toLowerCase(),
+        note: e?.note ?? null,
+      };
+    });
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      for (const entry of value.entries || []) {
+
+      for (const entry of normalized) {
         await client.query(
           `insert into org_attendance_entries (session_id, learner_id, status, note, updated_at)
            values ($1,$2,$3,$4, now())
            on conflict (session_id, learner_id)
-           do update set status = excluded.status, note = excluded.note, updated_at = now()`,
-          [sessionId, entry.learner_id, entry.status, entry.note || null],
+           do update
+             set status = excluded.status,
+                 note = excluded.note,
+                 updated_at = now()`,
+          [sessionId, entry.learner_id, entry.status, entry.note],
         );
       }
+
       await client.query('COMMIT');
-      res.json({ ok: true });
+      return res.json({ ok: true });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -172,8 +441,12 @@ export async function upsertAttendanceEntries(req, res) {
       client.release();
     }
   } catch (err) {
+    const status = err?.statusCode || 500;
+    if (status === 400) {
+      return res.status(400).json({ message: err.message });
+    }
     console.error('[upsertAttendanceEntries]', err);
-    res.status(500).json({ message: 'Unable to save attendance' });
+    return res.status(500).json({ message: 'Unable to save attendance' });
   }
 }
 
@@ -186,6 +459,7 @@ function summarizeAttendance(rows = []) {
   }, {});
 }
 
+
 export async function getAttendanceReport(req, res) {
   const orgId = normalizeOrgId(req);
   const { error, value } = attendanceQuerySchema.validate(req.query, { abortEarly: false });
@@ -193,25 +467,40 @@ export async function getAttendanceReport(req, res) {
 
   try {
     const { rows } = await pool.query(
-      `select s.id as session_id, s.session_date, s.class_label, s.period_label,
-              json_agg(json_build_object('learner_id', e.learner_id, 'status', e.status, 'note', e.note))
-                filter (where e.id is not null) as entries
-         from org_attendance_sessions s
-         left join org_attendance_entries e on e.session_id = s.id
-        where s.org_id = $1
-          and ($2::date is null or s.session_date >= $2)
-          and ($3::date is null or s.session_date <= $3)
-          and ($4::text is null or s.class_label = $4)
-        group by s.id
-        order by s.session_date desc
-        limit $5 offset $6`,
+      `
+      select
+        s.id as session_id,
+        s.session_date,
+        s.class_label,
+        s.period_label,
+        json_agg(
+          json_build_object(
+            'learner_id', e.learner_id,
+            'user_id', lp.user_id,         -- ✅ add
+            'status', e.status,
+            'note', e.note
+          )
+        ) filter (where e.id is not null) as entries
+      from org_attendance_sessions s
+      left join org_attendance_entries e
+        on e.session_id = s.id
+      left join org_learner_profiles lp
+        on lp.id = e.learner_id           -- ✅ add
+      where s.org_id = $1
+        and ($2::date is null or s.session_date >= $2)
+        and ($3::date is null or s.session_date <= $3)
+        and ($4::text is null or s.class_label = $4)
+      group by s.id
+      order by s.session_date desc, s.id desc
+      limit $5 offset $6
+      `,
       [orgId, value.start || null, value.end || null, value.class_label || null, value.limit, value.offset],
     );
 
-    res.json({ sessions: rows, summary: summarizeAttendance(rows) });
+    return res.json({ sessions: rows, summary: summarizeAttendance(rows) });
   } catch (err) {
     console.error('[getAttendanceReport]', err);
-    res.status(500).json({ message: 'Unable to load attendance' });
+    return res.status(500).json({ message: 'Unable to load attendance' });
   }
 }
 
@@ -266,19 +555,56 @@ export async function getAttendanceReportCsv(req, res) {
 }
 
 // ───────────────────────── Announcements ─────────────────────────
+function normalizeAnnouncementPayload(raw = {}) {
+  return {
+    ...raw,
+
+    // allow both client styles
+    pinned: raw.pinned ?? raw.is_pinned ?? false,
+    start_at: raw.start_at ?? raw.visible_from ?? null,
+    end_at: raw.end_at ?? raw.visible_to ?? null,
+    category: raw.category ?? raw.kind ?? 'general',
+
+    // safe default
+    audience: raw.audience ?? 'all',
+  };
+}
+
 export async function createAnnouncement(req, res) {
-  const orgId = normalizeOrgId(req);
-  const { error, value } = announcementSchema.validate(req.body, { abortEarly: false });
+  const orgId = req.params?.orgId || normalizeOrgId(req);
+  if (!orgId) return res.status(400).json({ message: 'orgId required' });
+
+  const body = normalizeAnnouncementPayload(req.body);
+  const { error, value } = announcementSchema.validate(body, { abortEarly: false });
   if (error) return res.status(400).json({ message: error.message });
 
   try {
+    const actorUuid = await resolveOrgActorUuid(pool, orgId, req.user || {});
+
+    console.log('[createAnnouncement] ctx', {
+      orgId,
+      userId: req.user?.id,
+      userIdType: typeof req.user?.id,
+      actorUuid,
+      actorUuid_ok: Boolean(actorUuid),
+    });
+
+    if (!actorUuid) {
+      return res.status(400).json({
+        message: 'Unable to resolve actor profile for this org user.',
+        debug: { orgId, userId: req.user?.id },
+      });
+    }
+
     const { rows } = await pool.query(
-      `insert into org_announcements (org_id, author_id, audience, title, body, pinned, start_at, end_at, category, meeting_at, meeting_location, meeting_url, agenda_md, metadata)
+      `insert into org_announcements
+         (org_id, author_id, audience, title, body, pinned, start_at, end_at, category,
+          meeting_at, meeting_location, meeting_url, agenda_md, metadata)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        returning *`,
       [
         orgId,
-        req.user?.id ?? null,
+        actorUuid, // ✅ uuid now
         value.audience,
         value.title,
         value.body,
@@ -293,17 +619,27 @@ export async function createAnnouncement(req, res) {
         value.metadata || {},
       ],
     );
-    res.json(rows[0]);
+
+    return res.json(rows[0]);
   } catch (err) {
-    console.error('[createAnnouncement]', err);
-    res.status(500).json({ message: 'Unable to post announcement' });
+    console.error('[createAnnouncement] error:', err, {
+      orgId,
+      userId: req.user?.id,
+      userIdType: typeof req.user?.id,
+    });
+    return res.status(500).json({ message: 'Unable to post announcement' });
   }
 }
+
+
 
 export async function updateAnnouncement(req, res) {
   const orgId = normalizeOrgId(req);
   const announcementId = Number(req.params?.announcementId);
-  const { error, value } = announcementUpdateSchema.validate(req.body, { abortEarly: false });
+
+  const body = normalizeAnnouncementPayload(req.body);
+
+  const { error, value } = announcementUpdateSchema.validate(body, { abortEarly: false });
   if (error) return res.status(400).json({ message: error.message });
 
   try {
@@ -375,12 +711,15 @@ export async function listAnnouncements(req, res) {
 
   try {
     const { rows } = await pool.query(
-      `select *
+      `select *,
+              case
+                when end_at is not null and end_at < now() then 'expired'
+                when start_at is not null and start_at > now() then 'scheduled'
+                else 'live'
+              end as status
          from org_announcements
         where org_id = $1
           and (audience = 'all' or audience = $2)
-          and (start_at is null or start_at <= now())
-          and (end_at is null or end_at >= now())
         order by pinned desc, created_at desc
         limit $3 offset $4`,
       [orgId, audience, value.limit, value.offset],
@@ -391,6 +730,7 @@ export async function listAnnouncements(req, res) {
     res.status(500).json({ message: 'Unable to load announcements' });
   }
 }
+
 
 export async function getAnnouncementFeed(req, res) {
   const orgId = normalizeOrgId(req);
@@ -827,3 +1167,32 @@ export async function sendMessageNow(req, res) {
   res.json({ items: results });
 }
 
+// ✅ Clear ALL saved attendance entries for a session (DB clear)
+export async function clearAttendanceEntries(req, res) {
+  const orgId = normalizeOrgId(req);
+  const sessionId = Number(req.params?.sessionId);
+  if (!sessionId) return res.status(400).json({ message: 'sessionId required' });
+
+  try {
+    // ensure session exists and belongs to org
+    const s = await pool.query(
+      `select id
+         from org_attendance_sessions
+        where org_id = $1 and id = $2
+        limit 1`,
+      [orgId, sessionId],
+    );
+    if (!s.rows.length) return res.status(404).json({ message: 'Session not found' });
+
+    const { rowCount } = await pool.query(
+      `delete from org_attendance_entries
+        where session_id = $1`,
+      [sessionId],
+    );
+
+    return res.json({ ok: true, deleted: rowCount || 0 });
+  } catch (err) {
+    console.error('[clearAttendanceEntries]', err);
+    return res.status(500).json({ message: 'Unable to clear attendance' });
+  }
+}

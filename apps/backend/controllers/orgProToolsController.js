@@ -1,4 +1,5 @@
 import pool from '../config/db.js';
+import { v2 as cloudinary } from 'cloudinary';
 import { requireOrgTier } from '../utils/orgTierGuard.js';
 import { sendNotification } from '../utils/sendNotification.js';
 import {
@@ -32,6 +33,21 @@ function safePdfFilename(newsletterTitle) {
     .slice(0, 60)}.pdf`;
 }
 
+function uploadPdfBuf({ buffer, public_id, folder = 'org_newsletters' }) {
+  return new Promise((resolve, reject) => {
+    const upload = cloudinary.uploader.upload_stream(
+      {
+        public_id: `${folder}/${public_id}`,
+        resource_type: 'raw',   // ✅ PDFs go as raw
+        overwrite: true,
+        type: 'upload',
+        format: 'pdf',
+      },
+      (err, result) => (err ? reject(err) : resolve(result)),
+    );
+    upload.end(buffer);
+  });
+}
 
 async function listLearnerTargets(orgId, classLabel) {
   const params = [orgId];
@@ -603,13 +619,12 @@ export async function sendNewsletter(req, res) {
 
     const { id } = req.params;
     const {
-  mode = 'all',
-  class_label,
-  recipients = [],
-  channel = 'in_app',
-  pdf_base64 = null, // ✅ add this
-} = req.body || {};
-
+      mode = 'all',
+      class_label,
+      recipients = [],
+      channel = 'in_app',
+      pdf_base64 = null, // ✅ add this
+    } = req.body || {};
 
     const ch = String(channel || 'in_app').toLowerCase();
     const wantsInApp = ch === 'in_app' || ch === 'both';
@@ -665,93 +680,115 @@ export async function sendNewsletter(req, res) {
     await client.query('COMMIT');
 
     const safePdfBase64 =
-  pdf_base64 && typeof pdf_base64 === 'string' && pdf_base64.length > 50
-    ? pdf_base64
-    : null;
+      pdf_base64 && typeof pdf_base64 === 'string' && pdf_base64.length > 50
+        ? pdf_base64
+        : null;
 
+    // ✅ UPDATED: cloud-first PDF persistence (Cloudinary → DB fallback)
+    let pdfBytes = null;
+    let pdfFilename = null;
 
-    const pdfFilename = safePdfBase64 ? safePdfFilename(newsletter.title) : null;
+    if (safePdfBase64) {
+      const clean = stripPdfDataUrl(safePdfBase64);
+      pdfBytes = Buffer.from(clean, 'base64');
 
-let pdfBytes = null;
-if (safePdfBase64) {
-  const clean = stripPdfDataUrl(safePdfBase64);
-  pdfBytes = Buffer.from(clean, 'base64');
+      const MAX = 8 * 1024 * 1024; // 8MB
+      if (pdfBytes.length > MAX) {
+        return res.status(413).json({ message: 'PDF too large (max 8MB)' });
+      }
 
-  // simple guard (optional)
-  const MAX = 8 * 1024 * 1024; // 8MB
-  if (pdfBytes.length > MAX) {
-    return res.status(413).json({ message: 'PDF too large (max 8MB)' });
-  }
+      pdfFilename = safePdfFilename(newsletter.title);
 
-  // ✅ persist for learner portal (store once)
-  await client.query(
-    `UPDATE org_newsletters
-       SET pdf_bytes = $3,
-           pdf_filename = $4,
-           pdf_uploaded_at = now(),
-           updated_at = now()
-     WHERE id = $1 AND org_id = $2`,
-    [id, orgId, pdfBytes, pdfFilename],
-  );
-}
-// EMAIL: branded HTML + plain fallback
-if (wantsEmail && emails.length) {
-  const orgRes = await client.query(
-    `SELECT name, logo_url, signature_url, address_line1, address_line2, phone_number, contact_email, website_url
-     FROM organizations WHERE id=$1 LIMIT 1`,
-    [orgId],
-  );
-  const orgRow = orgRes.rows[0] || {};
+      // ✅ Upload to Cloudinary "Newsletter Vault"
+      let pdfUrl = null;
+      let pdfPublicId = null;
 
-  const subject = `${newsletter.title}`;
-  const text = stripThemeFromContent(newsletter.content_md || '');
+      try {
+        const publicId = `${orgId}/${id}`; // predictable + grouped by org
+        const up = await uploadPdfBuf({
+          buffer: pdfBytes,
+          public_id: publicId,
+          folder: 'org_newsletters',
+        });
 
-  const html = buildNewsletterEmailHtml({
-    org: orgRow,
-    newsletter,
-    principalLabel: 'Head teacher / Principal',
-  });
+        pdfUrl = up?.secure_url || null;
+        pdfPublicId = up?.public_id || `org_newsletters/${publicId}`;
+      } catch (e) {
+        console.warn('[sendNewsletter] cloud upload failed, fallback to DB bytes:', e?.message);
+      }
 
-  for (const email of emails) {
-    let delivered = false;
-    let error = null;
-
-    try {
-      await sendNotification({
-  to: email,
-  subject,
-  text,
-  html,
-  attachments: pdfBytes
-    ? [
-        {
-          filename: pdfFilename,
-          content: pdfBytes, // ✅ Buffer
-          contentType: 'application/pdf',
-        },
-      ]
-    : [],
-});
-
-      delivered = true;
-    } catch (e) {
-      delivered = false;
-      error = e?.message || 'send failed';
+      // ✅ Persist for learner portal (prefer URL, fallback bytes)
+      await client.query(
+        `UPDATE org_newsletters
+           SET pdf_url = COALESCE($3, pdf_url),
+               pdf_public_id = COALESCE($4, pdf_public_id),
+               pdf_filename = COALESCE($5, pdf_filename),
+               pdf_uploaded_at = now(),
+               updated_at = now(),
+               pdf_bytes = CASE WHEN $3 IS NOT NULL THEN NULL ELSE $6 END
+         WHERE id = $1 AND org_id = $2`,
+        [id, orgId, pdfUrl, pdfPublicId, pdfFilename, pdfUrl ? null : pdfBytes],
+      );
     }
 
-    await client.query(
-      `INSERT INTO org_newsletter_recipients
-         (newsletter_id, recipient_email, delivered, delivered_at, error)
-       VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (newsletter_id, recipient_email)
-       DO UPDATE SET
-         delivered = EXCLUDED.delivered,
-         delivered_at = EXCLUDED.delivered_at,
-         error = EXCLUDED.error`,
-      [id, email, delivered, delivered ? new Date() : null, delivered ? null : error],
-    );
-  }
-}
+    // EMAIL: branded HTML + plain fallback
+    if (wantsEmail && emails.length) {
+      const orgRes = await client.query(
+        `SELECT name, logo_url, signature_url, address_line1, address_line2, phone_number, contact_email, website_url
+         FROM organizations WHERE id=$1 LIMIT 1`,
+        [orgId],
+      );
+      const orgRow = orgRes.rows[0] || {};
+
+      const subject = `${newsletter.title}`;
+      const text = stripThemeFromContent(newsletter.content_md || '');
+
+      const html = buildNewsletterEmailHtml({
+        org: orgRow,
+        newsletter,
+        principalLabel: 'Head teacher / Principal',
+      });
+
+      for (const email of emails) {
+        let delivered = false;
+        let error = null;
+
+        try {
+          await sendNotification({
+            to: email,
+            subject,
+            text,
+            html,
+            attachments: pdfBytes
+              ? [
+                  {
+                    filename: pdfFilename,
+                    content: pdfBytes, // ✅ Buffer
+                    contentType: 'application/pdf',
+                  },
+                ]
+              : [],
+          });
+
+          delivered = true;
+        } catch (e) {
+          delivered = false;
+          error = e?.message || 'send failed';
+        }
+
+        await client.query(
+          `INSERT INTO org_newsletter_recipients
+             (newsletter_id, recipient_email, delivered, delivered_at, error)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (newsletter_id, recipient_email)
+           DO UPDATE SET
+             delivered = EXCLUDED.delivered,
+             delivered_at = EXCLUDED.delivered_at,
+             error = EXCLUDED.error`,
+          [id, email, delivered, delivered ? new Date() : null, delivered ? null : error],
+        );
+      }
+    }
 
     const { rows } = await pool.query(
       `UPDATE org_newsletters
@@ -769,12 +806,17 @@ if (wantsEmail && emails.length) {
       emailed: wantsEmail ? emails.length : 0,
     });
   } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
-    return res.status(e.status || 500).json({ message: e.message || 'Unable to send newsletter' });
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
+    return res
+      .status(e.status || 500)
+      .json({ message: e.message || 'Unable to send newsletter' });
   } finally {
     client.release();
   }
 }
+
 
 // ───────────────────────── Announcements ─────────────────────────
 export async function createAnnouncement(req, res) {
@@ -842,7 +884,7 @@ export async function listLearnerNewsletters(req, res) {
     // If learner has no class label, they can still see "all" newsletters
    const { rows } = await pool.query(
   `SELECT id, title, term_label, sent_at, updated_at, class_label, target_mode,
-          (pdf_bytes IS NOT NULL) AS has_pdf
+          (pdf_url IS NOT NULL OR pdf_bytes IS NOT NULL) AS has_pdf
    FROM org_newsletters
    WHERE org_id = $1
      AND status = 'sent'
@@ -892,7 +934,7 @@ export async function getLearnerNewsletter(req, res) {
 
     const { rows } = await pool.query(
   `SELECT id, title, term_label, content_md, sent_at, updated_at, class_label, target_mode,
-          (pdf_bytes IS NOT NULL) AS has_pdf,
+           (pdf_url IS NOT NULL OR pdf_bytes IS NOT NULL) AS has_pdf,
           pdf_filename
    FROM org_newsletters
    WHERE org_id = $1
@@ -968,7 +1010,7 @@ export async function getLearnerNewsletterPdf(req, res) {
     const classLabel = lp.rows[0]?.class_label || null;
 
     const { rows } = await pool.query(
-      `SELECT title, pdf_bytes, pdf_filename, target_mode, class_label
+      `SELECT title, pdf_bytes, pdf_url, pdf_filename, target_mode, class_label
        FROM org_newsletters
        WHERE org_id = $1
          AND id = $2
@@ -985,15 +1027,36 @@ export async function getLearnerNewsletterPdf(req, res) {
       [orgId, id, classLabel],
     );
 
-    if (!rows.length || !rows[0]?.pdf_bytes) {
-      return res.status(404).json({ message: 'PDF not found' });
+    if (!rows.length) return res.status(404).json({ message: 'PDF not found' });
+
+    const row = rows[0];
+    const filename = row.pdf_filename || safePdfFilename(row.title);
+
+    // 1) If stored in DB (fallback path)
+    if (row.pdf_bytes) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      return res.send(row.pdf_bytes);
     }
 
-    const filename = rows[0].pdf_filename || safePdfFilename(rows[0].title);
+    // 2) If stored in Cloudinary (preferred path)
+    if (row.pdf_url) {
+      const r = await fetch(row.pdf_url);
+      if (!r.ok) {
+        return res.status(502).json({ message: 'Unable to fetch PDF from storage' });
+      }
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-    return res.send(rows[0].pdf_bytes);
+      const ab = await r.arrayBuffer();
+      const buf = Buffer.from(ab);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      return res.send(buf);
+    }
+
+    return res.status(404).json({ message: 'PDF not found' });
   } catch (e) {
     return res.status(e.status || 500).json({ message: e.message || 'Unable to load PDF' });
   }

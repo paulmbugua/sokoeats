@@ -145,6 +145,18 @@ const normCur = (c) =>
     .trim()
     .toUpperCase();
 
+  function normalizeCurrency(input, fallback = null) {
+  const cur = normCur(input);
+
+  // allow only 2–12 letters (same rule you use elsewhere)
+  if (cur && /^[A-Z]{2,12}$/.test(cur)) return cur;
+
+  const fb = normCur(fallback);
+  if (fb && /^[A-Z]{2,12}$/.test(fb)) return fb;
+
+  return null;
+}
+
 function guessCurrency({ org, structure, rows, totalsCurrency } = {}) {
   const c1 = normCur(totalsCurrency);
   if (c1) return c1;
@@ -166,6 +178,8 @@ function guessCurrency({ org, structure, rows, totalsCurrency } = {}) {
   // true fallback only if absolutely nothing is present
   return 'USD';
 }
+
+
 
 function moneyFromCents(cents, currency) {
   const cur = normCur(currency);
@@ -225,6 +239,57 @@ function pickPaymentAmountCents(r) {
 
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+/* ─────────────────────────────────────────────────────────
+ * Multi-currency totals (NO MIXING)
+ * - Dedup charges by charge_id (LEFT JOIN repeats charges per payment)
+ * - Dedup payments by payment_id
+ * ───────────────────────────────────────────────────────── */
+
+function computeStatementTotalsByCurrency(rows) {
+  const m = new Map(); // cur -> { currency, totalCharges, totalPayments, balance }
+
+  const ensureCur = (curRaw) => {
+    const cur = normCur(curRaw) || 'USD';
+    if (!m.has(cur)) {
+      m.set(cur, { currency: cur, totalCharges: 0, totalPayments: 0, balance: 0 });
+    }
+    return m.get(cur);
+  };
+
+  const seenCharges = new Set();
+  const seenPayments = new Set();
+
+  for (const r of rows || []) {
+    // Charges (dedupe by charge_id)
+    if (r?.charge_id) {
+      const cid = String(r.charge_id);
+      if (!seenCharges.has(cid)) {
+        seenCharges.add(cid);
+        const cur = normCur(r?.charge_currency || r?.currency) || 'USD';
+        ensureCur(cur).totalCharges += Number(pickChargeAmountCents(r) || 0);
+      }
+    }
+
+    // Payments (dedupe by payment_id)
+    if (r?.payment_id) {
+      const pid = String(r.payment_id);
+      if (!seenPayments.has(pid)) {
+        seenPayments.add(pid);
+        const cur = normCur(r?.payment_currency || r?.currency) || 'USD';
+        ensureCur(cur).totalPayments += Number(pickPaymentAmountCents(r) || 0);
+      }
+    }
+  }
+
+  const out = Array.from(m.values()).map((x) => ({
+    ...x,
+    balance: Number(x.totalCharges || 0) - Number(x.totalPayments || 0),
+  }));
+
+  out.sort((a, b) => String(a.currency).localeCompare(String(b.currency)));
+  return out;
 }
 
 function deriveLearnerMeta({ learner, learnerName, admissionCode, learnerId, rows }) {
@@ -400,6 +465,168 @@ function drawSummaryTiles(doc, { leftMargin, innerWidth, tiles }) {
   doc.fillColor('#111827');
 }
 
+function drawTotalsByCurrencyTable(doc, {
+  pageWidth,
+  pageHeight,
+  leftMargin,
+  rightMargin,
+  innerWidth,
+  bottomMarginY,
+  totalsByCurrency,
+  drawPageHeader,
+  fallbackCurrency, // ✅ pass from renderFeeStatementPdf (NOT hardcoded to USD)
+}) {
+  const rowsRaw = Array.isArray(totalsByCurrency) ? totalsByCurrency : [];
+  if (!rowsRaw.length) return;
+
+  // Normalize + sanitize rows
+  const rows = rowsRaw
+    .map((t) => {
+      const cur = normCur(t?.currency) || (fallbackCurrency ? normCur(fallbackCurrency) : null);
+
+      const totalCharges = Number(
+        t?.totalCharges ?? t?.total_charges ?? t?.charges ?? 0
+      );
+      const totalPayments = Number(
+        t?.totalPayments ?? t?.total_payments ?? t?.payments ?? 0
+      );
+      const balance =
+        t?.balance !== undefined && t?.balance !== null
+          ? Number(t.balance)
+          : totalCharges - totalPayments;
+
+      return {
+        currency: cur,               // may be null if truly unknown
+        totalCharges,
+        totalPayments,
+        balance,
+      };
+    })
+    // if currency still missing, keep it but label as '—' (don’t pretend it's USD)
+    .sort((a, b) => {
+      const ac = a.currency || '';
+      const bc = b.currency || '';
+      return ac.localeCompare(bc);
+    });
+
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#111827');
+  doc.text('TOTALS BY CURRENCY', leftMargin, doc.y);
+  doc.moveDown(0.35);
+
+  const tableLeft = leftMargin;
+  const tableRight = pageWidth - rightMargin;
+  const tableWidth = tableRight - tableLeft;
+
+  const colCur = tableLeft;
+  const colCharges = colCur + 74;
+  const colPays = colCharges + Math.floor(tableWidth * 0.33);
+  const colBal = colPays + Math.floor(tableWidth * 0.33);
+
+  const rowHeight = 14;
+
+  const drawHeader = (continued = false) => {
+    const y0 = doc.y;
+    const y1 = y0 + rowHeight;
+
+    doc.font('Helvetica-Bold').fontSize(8).fillColor('#374151');
+    const lh = doc.currentLineHeight();
+    const ty = y0 + (rowHeight - lh) / 2;
+
+    doc.text('CUR', colCur + 6, ty, { width: colCharges - colCur - 10 });
+    doc.text('CHARGES', colCharges, ty, { width: colPays - colCharges - 8, align: 'right' });
+    doc.text('PAYMENTS', colPays, ty, { width: colBal - colPays - 8, align: 'right' });
+    doc.text('BALANCE', colBal, ty, { width: tableRight - colBal - 6, align: 'right' });
+
+    doc
+      .strokeColor('#9ca3af')
+      .lineWidth(0.7)
+      .moveTo(tableLeft, y0)
+      .lineTo(tableRight, y0)
+      .stroke();
+    doc.moveTo(tableLeft, y1).lineTo(tableRight, y1).stroke();
+
+    doc.moveTo(tableLeft, y0).lineTo(tableLeft, y1).stroke();
+    doc.moveTo(colCharges, y0).lineTo(colCharges, y1).stroke();
+    doc.moveTo(colPays, y0).lineTo(colPays, y1).stroke();
+    doc.moveTo(colBal, y0).lineTo(colBal, y1).stroke();
+    doc.moveTo(tableRight, y0).lineTo(tableRight, y1).stroke();
+
+    doc.font('Helvetica').fontSize(8).fillColor('#111827');
+    doc.y = y1;
+  };
+
+  drawHeader(false);
+
+  for (const t of rows) {
+    ensureSpace(
+      doc,
+      bottomMarginY,
+      () => {
+        drawPageHeader(true);
+        doc.moveDown(0.2);
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(9.5)
+          .text('TOTALS BY CURRENCY (cont.)', leftMargin, doc.y);
+        doc.moveDown(0.35);
+        drawHeader(true);
+      },
+      rowHeight + 10,
+    );
+
+    const y0 = doc.y;
+    const y1 = y0 + rowHeight;
+    const lh = doc.currentLineHeight();
+    const ty = y0 + (rowHeight - lh) / 2;
+
+    const curLabel = t.currency || '—';
+
+    // If currency is missing, do NOT format as USD. Render raw cents-ish numbers safely.
+    const fmtMoney = (cents, cur) => {
+      if (!cur) {
+        // show as numeric cents with grouping (still better than pretending USD)
+        const n = Number(cents || 0);
+        return Number.isFinite(n) ? String(n) : '0';
+      }
+      return moneyFromCents(cents, cur);
+    };
+
+    doc.text(curLabel, colCur + 6, ty, { width: colCharges - colCur - 10 });
+    doc.text(fmtMoney(t.totalCharges, t.currency), colCharges, ty, {
+      width: colPays - colCharges - 8,
+      align: 'right',
+    });
+    doc.text(fmtMoney(t.totalPayments, t.currency), colPays, ty, {
+      width: colBal - colPays - 8,
+      align: 'right',
+    });
+    doc.text(fmtMoney(t.balance, t.currency), colBal, ty, {
+      width: tableRight - colBal - 6,
+      align: 'right',
+    });
+
+    doc
+      .strokeColor('#9ca3af')
+      .lineWidth(0.5)
+      .moveTo(tableLeft, y0)
+      .lineTo(tableRight, y0)
+      .stroke();
+    doc.moveTo(tableLeft, y1).lineTo(tableRight, y1).stroke();
+
+    doc.moveTo(tableLeft, y0).lineTo(tableLeft, y1).stroke();
+    doc.moveTo(colCharges, y0).lineTo(colCharges, y1).stroke();
+    doc.moveTo(colPays, y0).lineTo(colPays, y1).stroke();
+    doc.moveTo(colBal, y0).lineTo(colBal, y1).stroke();
+    doc.moveTo(tableRight, y0).lineTo(tableRight, y1).stroke();
+
+    doc.y = y1;
+  }
+
+  doc.moveDown(0.6);
+  doc.fillColor('#111827');
+}
+
+
 /* ─────────────────────────────────────────────────────────
  * Signatures block (Bursar/Finance + Principal)
  * ───────────────────────────────────────────────────────── */
@@ -411,7 +638,7 @@ function drawSignaturesBlock(
     rightMargin,
     innerWidth,
     pageHeight,
-    bursarSigBuf,    
+    bursarSigBuf,
     principalSigBuf,
   },
 ) {
@@ -436,7 +663,7 @@ function drawSignaturesBlock(
   const sigMaxH = 45;
   const gap = 10;
 
-  // LEFT: Bursar / Finance Office  ✅
+  // LEFT: Bursar / Finance Office
   const leftLabel = 'Bursar / Finance Office';
   doc
     .font('Helvetica')
@@ -458,7 +685,7 @@ function drawSignaturesBlock(
     }
   }
 
-  // RIGHT: Principal/Registrar (unchanged)
+  // RIGHT: Head teacher / Principal
   const rightLabel = 'Head teacher / Principal';
   doc
     .font('Helvetica')
@@ -684,17 +911,20 @@ export async function renderFeeStructurePdf({ org, structure }) {
 
 /* ─────────────────────────────────────────────────────────
  * Fee Statement PDF (NAME + Admission No + signatures)
+ * - Totals are MULTI-CURRENCY (never mixed)
  * ───────────────────────────────────────────────────────── */
 
 export async function renderFeeStatementPdf({
   org,
   learnerId,              // legacy fallback
-  learner,                // ✅ NEW: { name, admission_code }
-  learnerName,            // ✅ optional
-  admissionCode,          // ✅ optional
-   bursar_signature_url,
+  learner,                // { name, admission_code }
+  learnerName,            // optional
+  admissionCode,          // optional
+  bursar_signature_url,
   entries,
-  totals,
+
+  totals,                 // legacy (single currency only; keep for backward compat)
+  totals_by_currency,     // ✅ NEW: [{ currency, totalCharges, totalPayments, balance }]
 }) {
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   const pass = new PassThrough();
@@ -711,14 +941,44 @@ export async function renderFeeStatementPdf({
     rows,
   });
 
-  const currency = guessCurrency({
+  // Normalize + validate totals_by_currency payload
+  const coerceTotalsByCurrency = (arr) => {
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map((x) => {
+        const currency = x?.currency ? normalizeCurrency(x.currency, 'USD') : null;
+        if (!currency) return null;
+
+        const totalCharges = Number(x?.totalCharges ?? x?.total_charges ?? 0);
+        const totalPayments = Number(x?.totalPayments ?? x?.total_payments ?? 0);
+        const balance =
+          x?.balance !== undefined
+            ? Number(x.balance)
+            : totalCharges - totalPayments;
+
+        return { currency, totalCharges, totalPayments, balance };
+      })
+      .filter(Boolean);
+  };
+
+  // ✅ Prefer controller-provided totals_by_currency (includes unlinked payments, etc.)
+  const coerced = coerceTotalsByCurrency(totals_by_currency);
+const totalsByCurrency = coerced.length ? coerced : computeStatementTotalsByCurrency(rows);
+
+
+  const currencies = totalsByCurrency.map((x) => x.currency).filter(Boolean);
+  const currenciesLabel = currencies.length ? currencies.join(', ') : (normCur(totals?.currency) || 'USD');
+  const singleCurrency = currencies.length === 1 ? currencies[0] : null;
+
+  // Fallback currency (used ONLY when a row has no currency)
+  const fallbackCurrency = guessCurrency({
     org,
     structure: null,
     rows,
-    totalsCurrency: totals?.currency,
+    totalsCurrency: singleCurrency || normCur(totals?.currency) || null,
   });
 
-  // ✅ Principal/Registrar signature source
+  // Principal/Registrar signature source
   const principalSigSource =
     org?.registrar_signature_url ||
     org?.signature_url ||
@@ -726,20 +986,18 @@ export async function renderFeeStatementPdf({
     org?.headteacher_signature_url ||
     null;
 
-  // ✅ Teacher signature source (org-level or per-request override)
-  // ✅ Bursar / Finance signature source (ONLY for fee PDFs)
-   const bursarSigSource =
-   bursar_signature_url ||
-   org?.bursar_signature_url ||
-   org?.finance_signature_url ||
-   null;
+  // Bursar/Finance signature source
+  const bursarSigSource =
+    bursar_signature_url ||
+    org?.bursar_signature_url ||
+    org?.finance_signature_url ||
+    null;
 
-const [logoBuf, principalSigBuf, bursarSigBuf] = await Promise.all([
-  tryLoadImageBuffer(org?.logo_url, { w: 240, h: 240, dpr: 2 }),
-  tryLoadImageBuffer(principalSigSource, { w: 520, h: 200, trim: true, dpr: 2 }),
-  tryLoadImageBuffer(bursarSigSource, { w: 520, h: 200, trim: true, dpr: 2 }),
-]);
-
+  const [logoBuf, principalSigBuf, bursarSigBuf] = await Promise.all([
+    tryLoadImageBuffer(org?.logo_url, { w: 240, h: 240, dpr: 2 }),
+    tryLoadImageBuffer(principalSigSource, { w: 520, h: 200, trim: true, dpr: 2 }),
+    tryLoadImageBuffer(bursarSigSource, { w: 520, h: 200, trim: true, dpr: 2 }),
+  ]);
 
   const drawPageHeader = (continued = false) => {
     const learnerLine = derivedAdm
@@ -748,7 +1006,7 @@ const [logoBuf, principalSigBuf, bursarSigBuf] = await Promise.all([
 
     const meta = [
       learnerLine,
-      `Currency: ${currency}`,
+      `Currencies: ${currenciesLabel || (fallbackCurrency || 'USD')}`,
       `Generated: ${fmtDate(new Date())}`,
     ].join('   •   ');
 
@@ -760,9 +1018,7 @@ const [logoBuf, principalSigBuf, bursarSigBuf] = await Promise.all([
     });
   };
 
-  const { pageWidth, pageHeight, leftMargin, rightMargin, innerWidth } =
-    drawPageHeader(false);
-
+  const { pageWidth, pageHeight, leftMargin, rightMargin, innerWidth } = drawPageHeader(false);
   const bottomMarginY = pageHeight - 60;
 
   if (!rows.length) {
@@ -783,23 +1039,64 @@ const [logoBuf, principalSigBuf, bursarSigBuf] = await Promise.all([
     return bufferPromise;
   }
 
-  // Summary tiles
-  const totalCharges = Number(totals?.totalCharges ?? totals?.total_charges ?? 0);
-  const totalPayments = Number(totals?.totalPayments ?? totals?.total_payments ?? 0);
-  const balance = Number(totals?.balance ?? 0);
+  // ─────────────────────────────────────────────
+  // Summary
+  // ─────────────────────────────────────────────
+  if (singleCurrency) {
+    const only =
+      totalsByCurrency.find((x) => x.currency === singleCurrency) ||
+      totalsByCurrency[0] ||
+      { totalCharges: 0, totalPayments: 0, balance: 0 };
 
-  drawSummaryTiles(doc, {
-    leftMargin,
-    innerWidth,
-    tiles: [
-      ['TOTAL CHARGES', moneyFromCents(totalCharges, currency)],
-      ['TOTAL PAYMENTS', moneyFromCents(totalPayments, currency)],
-      ['BALANCE', moneyFromCents(balance, currency)],
-      ['TRANSACTIONS', String(rows.length)],
-    ],
-  });
+    drawSummaryTiles(doc, {
+      leftMargin,
+      innerWidth,
+      tiles: [
+        ['TOTAL CHARGES', moneyFromCents(only.totalCharges, singleCurrency)],
+        ['TOTAL PAYMENTS', moneyFromCents(only.totalPayments, singleCurrency)],
+        ['BALANCE', moneyFromCents(only.balance, singleCurrency)],
+        ['TRANSACTIONS', String(rows.length)],
+      ],
+    });
+  } else {
+    drawSummaryTiles(doc, {
+      leftMargin,
+      innerWidth,
+      tiles: [
+        ['CURRENCIES', currenciesLabel || (fallbackCurrency || 'USD')],
+        ['TRANSACTIONS', String(rows.length)],
+      ],
+    });
 
+    drawTotalsByCurrencyTable(doc, {
+      pageWidth,
+      pageHeight,
+      leftMargin,
+      rightMargin,
+      innerWidth,
+      bottomMarginY,
+      totalsByCurrency, // ✅ now driven by totals_by_currency
+      drawPageHeader,
+      fallbackCurrency,
+    });
+
+    doc
+      .font('Helvetica')
+      .fontSize(7)
+      .fillColor('#6b7280')
+      .text(
+        'Note: Totals are shown per currency. No exchange-rate conversion is applied.',
+        leftMargin,
+        doc.y,
+        { width: innerWidth },
+      );
+    doc.fillColor('#111827');
+    doc.moveDown(0.6);
+  }
+
+  // ─────────────────────────────────────────────
   // Transactions table
+  // ─────────────────────────────────────────────
   doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#111827');
   doc.text('TRANSACTIONS', leftMargin, doc.y);
   doc.moveDown(0.35);
@@ -808,14 +1105,12 @@ const [logoBuf, principalSigBuf, bursarSigBuf] = await Promise.all([
   const tableRight = pageWidth - rightMargin;
   const tableWidth = tableRight - tableLeft;
 
-  // ✅ Widen PAYMENT column
   // DATE | REF | DESCRIPTION | CHARGE | PAYMENT
   const colDate = tableLeft;
-  const colRef = colDate + 66; // slightly smaller than before
-  const colDesc = colRef + 74; // slightly smaller than before
-  const colCharge = colDesc + Math.floor(tableWidth * 0.42); // reduced
-  const colPay = colCharge + 86; // charge a bit wider
-  // payment width = tableRight - colPay (bigger)
+  const colRef = colDate + 66;
+  const colDesc = colRef + 74;
+  const colCharge = colDesc + Math.floor(tableWidth * 0.42);
+  const colPay = colCharge + 86;
 
   const rowHeight = 14;
 
@@ -888,10 +1183,9 @@ const [logoBuf, principalSigBuf, bursarSigBuf] = await Promise.all([
     if (r?.method) descBits.push(`via ${oneline(r.method)}`);
     const desc = descBits.join(' • ') || '—';
 
-    const chargeCur = normCur(r?.charge_currency) || currency;
-    const payCur = normCur(r?.payment_currency) || currency;
+    const chargeCur = normCur(r?.charge_currency) || fallbackCurrency;
+    const payCur = normCur(r?.payment_currency) || fallbackCurrency;
 
-    // ✅ FIX: robust amount pickers (prevents 0.00 when fields differ)
     const chargeAmt =
       r?.charge_id ? moneyFromCents(pickChargeAmountCents(r), chargeCur) : '—';
 
@@ -944,8 +1238,8 @@ const [logoBuf, principalSigBuf, bursarSigBuf] = await Promise.all([
       { width: innerWidth },
     );
   doc.fillColor('#111827');
-  
-  // ✅ Signatures (teacher + principal/registrar)
+
+  // Signatures
   doc.moveDown(1.0);
   drawSignaturesBlock(doc, {
     leftMargin,
