@@ -102,7 +102,16 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
     return profileAvatarRaw;
   }, [profileAvatarRaw, backendUrl, profile?.name]);
 
-  const avatarHref = token ? '/profile/me' : '/login';
+  const avatarHref = useMemo(() => {
+   if (orgToken) {
+     if (isLearnerRole) return '/org/learn';
+     if (isInstructorRole) return '/org/instructor';
+     return '/org/profile';
+   }
+   return token ? '/profile/me' : '/login';
+ }, [orgToken, isLearnerRole, isInstructorRole, token]);
+
+ 
   const myCoursesHref = '/courses';
 
   const handleThemeToggle = () => {
@@ -275,7 +284,6 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
             {isOrg && orgPillMeta ? (
               <Link
                 to={orgPillMeta.href}
-                onClick={handleOrgButtonClick}
                 className={ORG_PILL}
                 title={orgPillMeta.title}
               >

@@ -527,3 +527,4 @@ export async function apiDownloadMyFeeStructurePdf(
   });
   return data as Blob;
 }
+

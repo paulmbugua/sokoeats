@@ -159,16 +159,38 @@ export interface OrgAnnouncement {
   created_at?: string;
 }
 
-export interface OrgSportsEvent {
+export type OrgSportsEvent = {
   id: number;
   org_id?: string;
+
   title: string;
   description?: string | null;
+
+  kind?: 'fixture' | 'practice' | 'tournament' | 'other' | string | null;
+  team_label?: string | null;
+  opponent?: string | null;
+
   event_at?: string | null;
+  end_at?: string | null;
+
   location?: string | null;
-  audience?: string | null;
-  created_at?: string;
-}
+  audience?: 'all' | 'learners' | 'instructors' | 'parents' | string | null;
+
+  status?: 'scheduled' | 'completed' | 'cancelled' | string | null;
+
+  score_home?: number | null;
+  score_away?: number | null;
+
+  metadata?: any;
+
+  created_by?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+
+  // from list query
+  bucket?: 'upcoming' | 'past' | 'completed' | 'cancelled' | string;
+};
+
 
 export interface OrgClub {
   id: number;

@@ -414,7 +414,7 @@ router.get(
 
 
 
-router.get('/:orgId/announcements/feed', requireAuth, requireOrgProTier, getAnnouncementFeed);
+router.get('/:orgId/announcements/feed', requireAuth, getAnnouncementFeed);
 router.get('/:orgId/announcements/:announcementId/agm.pdf', requireAuth, requireOrgProTier, getAnnouncementAgmPdf);
 router.get('/:orgId/announcements', requireAuth, requireOrgProTier, listAnnouncements);
 router.post(

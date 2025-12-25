@@ -29,7 +29,7 @@ import ComplaintsFeedback from './pages/ComplaintsFeedback';
 import OrgLearnerFeesPage from './pages/org/OrgLearnerFees.web';
 import Messages from './pages/Messages.web';
 import ResultsPage from './pages/Results.web';
-
+import OrgLearnerSportsClubsPage from './pages/org/OrgLearnerSportsClubs.web'
 import MyCourses from './pages/MyCourses.web';
 import CourseDetails from './pages/CourseDetails.web';
 import EditCoursePage from './components/EditCourse.web';
@@ -410,6 +410,7 @@ const App: React.FC = () => {
           <Route path="/org/portal" element={<OrgElearnPortal />} />
           <Route path="/org/learner/newsletters" element={<OrgLearnerNewslettersPage />} />
           <Route path="/org/learner/newsletters/:id" element={<OrgLearnerNewslettersPage />} />
+          <Route path="/org/learn/activities" element={<OrgLearnerSportsClubsPage />} />
 
 
           {/* Admin-only profile */}

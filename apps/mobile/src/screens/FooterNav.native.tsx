@@ -1,6 +1,6 @@
 // apps/mobile/src/components/FooterNav.native.tsx
 import React, { FC, useEffect, useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Platform, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { FontAwesome } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import tw from '../../tailwind';
 import { useThemePref } from '../theme/ThemeContext';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
+import { Buffer } from 'buffer';
 
 type Props = {
   aiRouteName?: string; // default: 'RobotTutor'
@@ -19,6 +20,27 @@ const ICON_SIZE = 20;
 const BTN_H = 46;
 const isAndroid = Platform.OS === 'android';
 const ICON_GAP = 90;
+
+function b64UrlToUtf8(input: string) {
+  let s = (input || '').replace(/-/g, '+').replace(/_/g, '/');
+  const pad = s.length % 4;
+  if (pad) s += '='.repeat(4 - pad);
+  return Buffer.from(s, 'base64').toString('utf8');
+}
+
+function isJwtExpired(token?: string, skewSec = 30) {
+  if (!token) return false;
+  try {
+    const [, payloadB64] = token.split('.');
+    if (!payloadB64) return false;
+    const payload = JSON.parse(b64UrlToUtf8(payloadB64));
+    const exp = Number(payload?.exp);
+    if (!Number.isFinite(exp)) return false;
+    return Date.now() / 1000 > exp - skewSec;
+  } catch {
+    return false;
+  }
+}
 
 function getActiveRouteName(state: any): string {
   try {
@@ -48,7 +70,8 @@ const FooterNav: FC<Props> = ({
   const isDark = resolvedScheme === 'dark';
 
   // Shop context
-  const { token, orgToken } = (useShopContext() as any) ?? {};
+  const { token, orgToken, orgLogout } = (useShopContext() as any) ?? {};
+
 
   // Org hook (same source of truth as web Navbar)
   const { role } = (useOrg?.() ?? {}) as any;
@@ -94,7 +117,31 @@ const FooterNav: FC<Props> = ({
   // ORG MODE + ROLE (mirrors web Navbar logic)
   // ────────────────────────────────────────────────────────────
 
-  const isOrgMember = !!orgToken;
+  const orgTokenExpired = useMemo(() => isJwtExpired(orgToken), [orgToken]);
+const isOrgMember = !!orgToken && !orgTokenExpired;
+
+
+useEffect(() => {
+  const sub = AppState.addEventListener('change', async (state) => {
+    if (state !== 'active') return;
+
+    if (orgToken && isJwtExpired(orgToken)) {
+      await orgLogout?.();
+
+      // If user is on an org screen, force them to InstitutionLogin
+      const current = getActiveRouteName(navigation.getState?.());
+      if ((current || '').startsWith('Org')) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'InstitutionLogin', params: { force: 'logout' } }],
+        });
+      }
+    }
+  });
+
+  return () => sub.remove();
+}, [orgToken, orgLogout, navigation]);
+
 
   const normalizedRole = (role || '').toString().toLowerCase();
   const isLearnerRole = normalizedRole === 'learner' || normalizedRole === 'student';
@@ -180,7 +227,18 @@ const FooterNav: FC<Props> = ({
 
           {/* Profile / Org / Learner / Instructor */}
           <RoundBtn
-            onPress={() => go(effectiveProfileRoute)}
+           onPress={async () => {
+              if (orgToken && isJwtExpired(orgToken)) {
+                await orgLogout?.();
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'InstitutionLogin', params: { force: 'logout' } }],
+                });
+                return;
+              }
+              go(effectiveProfileRoute);
+            }}
+
             bgClassActive="bg-emerald-100 dark:bg-emerald-900/40"
             iconName="user"
             iconColor={profileIsActive ? profileActiveIcon : baseIcon}

@@ -25,6 +25,108 @@ function isUuid(v) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 }
 
+async function resolveLearnerProfileId(orgId, memberRefRaw) {
+  const raw = String(memberRefRaw || '').trim();
+  if (!raw) return null;
+
+  // Case A: already a learner_profile UUID
+  if (isUuid(raw)) {
+    const { rows } = await pool.query(
+      `select id
+         from org_learner_profiles
+        where org_id = $1 and id = $2
+        limit 1`,
+      [orgId, raw],
+    );
+    return rows?.[0]?.id || null;
+  }
+
+  // Case B: numeric user_id -> lookup learner_profile
+  const n = Number(raw);
+  if (Number.isFinite(n)) {
+    const { rows } = await pool.query(
+      `select id
+         from org_learner_profiles
+        where org_id = $1 and user_id = $2
+        limit 1`,
+      [orgId, n],
+    );
+    return rows?.[0]?.id || null;
+  }
+
+  return null;
+}
+
+async function resolveClubMemberUserId(orgId, memberRefRaw) {
+  const raw = String(memberRefRaw || '').trim();
+  if (!raw) return null;
+
+  // A) If they sent learner_profile UUID -> convert to user_id
+  if (isUuid(raw)) {
+    // try learner profiles first
+    const a = await pool.query(
+      `select user_id
+         from org_learner_profiles
+        where org_id = $1 and id = $2
+        limit 1`,
+      [orgId, raw],
+    );
+    if (a.rows?.[0]?.user_id) return Number(a.rows[0].user_id);
+
+    // optionally support instructors too
+    const b = await pool.query(
+      `select user_id
+         from org_instructor_profiles
+        where org_id = $1 and id = $2
+        limit 1`,
+      [orgId, raw],
+    );
+    if (b.rows?.[0]?.user_id) return Number(b.rows[0].user_id);
+
+    return null;
+  }
+
+  // B) Numeric user_id -> verify user belongs to this org
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+
+  const ok = await pool.query(
+    `select 1
+       from org_learner_profiles
+      where org_id=$1 and user_id=$2
+      union all
+     select 1
+       from org_instructor_profiles
+      where org_id=$1 and user_id=$2
+      limit 1`,
+    [orgId, n],
+  );
+
+  return ok.rows?.length ? n : null;
+}
+
+
+function normalizeClassLabel(v) {
+  const s = String(v || '').trim().replace(/\s+/g, ' ');
+  return s ? s : null;
+}
+
+async function resolveMyLearnerClassLabel(pool, orgId, userId) {
+  const uid = Number(userId);
+  if (!orgId || !Number.isFinite(uid) || uid <= 0) return null;
+
+  const { rows } = await pool.query(
+    `select class_label
+       from org_learner_profiles
+      where org_id = $1 and user_id = $2
+      limit 1`,
+    [orgId, uid],
+  );
+
+  return normalizeClassLabel(rows?.[0]?.class_label);
+}
+
+
 function safeIdent(name) {
   // allow only simple identifiers (no injection)
   return /^[a-z_][a-z0-9_]*$/i.test(name) ? name : null;
@@ -567,48 +669,36 @@ function normalizeAnnouncementPayload(raw = {}) {
 
     // safe default
     audience: raw.audience ?? 'all',
+     class_label: normalizeClassLabel(raw.class_label ?? raw.classLabel ?? raw.class ?? null),
   };
 }
 
 export async function createAnnouncement(req, res) {
   const orgId = req.params?.orgId || normalizeOrgId(req);
+  const userId = req.user?.id;
+
   if (!orgId) return res.status(400).json({ message: 'orgId required' });
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
   const body = normalizeAnnouncementPayload(req.body);
   const { error, value } = announcementSchema.validate(body, { abortEarly: false });
   if (error) return res.status(400).json({ message: error.message });
 
   try {
-    const actorUuid = await resolveOrgActorUuid(pool, orgId, req.user || {});
-
-    console.log('[createAnnouncement] ctx', {
-      orgId,
-      userId: req.user?.id,
-      userIdType: typeof req.user?.id,
-      actorUuid,
-      actorUuid_ok: Boolean(actorUuid),
-    });
-
-    if (!actorUuid) {
-      return res.status(400).json({
-        message: 'Unable to resolve actor profile for this org user.',
-        debug: { orgId, userId: req.user?.id },
-      });
-    }
-
     const { rows } = await pool.query(
       `insert into org_announcements
-         (org_id, author_id, audience, title, body, pinned, start_at, end_at, category,
+         (org_id, author_id, audience, class_label, title, body, pinned, start_at, end_at, category,
           meeting_at, meeting_location, meeting_url, agenda_md, metadata)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        returning *`,
       [
         orgId,
-        actorUuid, // ✅ uuid now
+        Number(userId),
         value.audience,
+        value.class_label || null, // ✅ NEW
         value.title,
         value.body,
-        value.pinned,
+        !!value.pinned,
         value.start_at || null,
         value.end_at || null,
         value.category || 'general',
@@ -622,15 +712,10 @@ export async function createAnnouncement(req, res) {
 
     return res.json(rows[0]);
   } catch (err) {
-    console.error('[createAnnouncement] error:', err, {
-      orgId,
-      userId: req.user?.id,
-      userIdType: typeof req.user?.id,
-    });
+    console.error('[createAnnouncement] error:', err);
     return res.status(500).json({ message: 'Unable to post announcement' });
   }
 }
-
 
 
 export async function updateAnnouncement(req, res) {
@@ -638,7 +723,6 @@ export async function updateAnnouncement(req, res) {
   const announcementId = Number(req.params?.announcementId);
 
   const body = normalizeAnnouncementPayload(req.body);
-
   const { error, value } = announcementUpdateSchema.validate(body, { abortEarly: false });
   if (error) return res.status(400).json({ message: error.message });
 
@@ -646,43 +730,47 @@ export async function updateAnnouncement(req, res) {
     const { rows } = await pool.query(
       `update org_announcements
           set audience = coalesce($3, audience),
-              title = coalesce($4, title),
-              body = coalesce($5, body),
-              pinned = coalesce($6, pinned),
-              start_at = coalesce($7, start_at),
-              end_at = coalesce($8, end_at),
-              category = coalesce($9, category),
-              meeting_at = coalesce($10, meeting_at),
-              meeting_location = coalesce($11, meeting_location),
-              meeting_url = coalesce($12, meeting_url),
-              agenda_md = coalesce($13, agenda_md),
-              metadata = coalesce($14, metadata)
+              class_label = coalesce($4, class_label), -- ✅ NEW
+              title = coalesce($5, title),
+              body = coalesce($6, body),
+              pinned = coalesce($7, pinned),
+              start_at = coalesce($8, start_at),
+              end_at = coalesce($9, end_at),
+              category = coalesce($10, category),
+              meeting_at = coalesce($11, meeting_at),
+              meeting_location = coalesce($12, meeting_location),
+              meeting_url = coalesce($13, meeting_url),
+              agenda_md = coalesce($14, agenda_md),
+              metadata = coalesce($15, metadata)
         where org_id = $1 and id = $2
         returning *`,
       [
         orgId,
         announcementId,
-        value.audience || null,
-        value.title || null,
-        value.body || null,
+        value.audience ?? null,
+        value.class_label ?? null, // ✅ NEW
+        value.title ?? null,
+        value.body ?? null,
         value.pinned,
-        value.start_at || null,
-        value.end_at || null,
-        value.category || null,
-        value.meeting_at || null,
-        value.meeting_location || null,
-        value.meeting_url || null,
-        value.agenda_md || null,
-        value.metadata || null,
+        value.start_at ?? null,
+        value.end_at ?? null,
+        value.category ?? null,
+        value.meeting_at ?? null,
+        value.meeting_location ?? null,
+        value.meeting_url ?? null,
+        value.agenda_md ?? null,
+        value.metadata ?? null,
       ],
     );
+
     if (!rows.length) return res.status(404).json({ message: 'Announcement not found' });
-    res.json(rows[0]);
+    return res.json(rows[0]);
   } catch (err) {
     console.error('[updateAnnouncement]', err);
-    res.status(500).json({ message: 'Unable to update announcement' });
+    return res.status(500).json({ message: 'Unable to update announcement' });
   }
 }
+
 
 export async function deleteAnnouncement(req, res) {
   const orgId = normalizeOrgId(req);
@@ -708,6 +796,7 @@ export async function listAnnouncements(req, res) {
   if (error) return res.status(400).json({ message: error.message });
 
   const audience = req.query?.audience || 'all';
+  const classLabel = normalizeClassLabel(req.query?.class_label || null);
 
   try {
     const { rows } = await pool.query(
@@ -720,43 +809,213 @@ export async function listAnnouncements(req, res) {
          from org_announcements
         where org_id = $1
           and (audience = 'all' or audience = $2)
+          and ($3::text is null or class_label = $3) -- ✅ admin filter
         order by pinned desc, created_at desc
-        limit $3 offset $4`,
-      [orgId, audience, value.limit, value.offset],
+        limit $4 offset $5`,
+      [orgId, audience, classLabel, value.limit, value.offset],
     );
-    res.json({ items: rows });
+
+    return res.json({ items: rows });
   } catch (err) {
     console.error('[listAnnouncements]', err);
-    res.status(500).json({ message: 'Unable to load announcements' });
+    return res.status(500).json({ message: 'Unable to load announcements' });
   }
 }
 
 
 export async function getAnnouncementFeed(req, res) {
   const orgId = normalizeOrgId(req);
+
   const page = Math.max(1, parseInt(req.query?.page, 10) || 1);
   const limit = Math.min(50, parseInt(req.query?.limit, 10) || 20);
   const offset = (page - 1) * limit;
-  const audience = req.query?.audience || 'all';
+
+  const userId = req.user?.id;
+
+  // allow /?debug=1 to get step-by-step counts
+  const debug = String(req.query?.debug || '') === '1';
+
+  // ─────────────────────────────────────────────
+  // Helpers
+  // ─────────────────────────────────────────────
+  const normAudience = (v) =>
+    String(v || '')
+      .trim()
+      .toLowerCase();
+
+  const roleToAudience = (role) => {
+    const r = String(role || '').toLowerCase();
+    if (r.includes('learner') || r.includes('student')) return 'learners';
+    if (r.includes('instructor') || r.includes('teacher') || r.includes('tutor')) return 'instructors';
+    if (r.includes('parent') || r.includes('guardian')) return 'parents';
+    return 'all'; // staff/admin/unknown
+  };
+
+  // ─────────────────────────────────────────────
+  // Role + class resolution (works even when req.user.role is empty)
+  // ─────────────────────────────────────────────
+  const roleRaw = String(req.user?.role || req.user?.type || req.user?.account_type || '').toLowerCase();
+
+  // If this returns a class label, they are definitely a learner in this org
+  const resolvedLearnerClass = await resolveMyLearnerClassLabel(pool, orgId, userId);
+
+  // infer role if token doesn't carry it
+  const inferredRole = roleRaw || (resolvedLearnerClass ? 'learner' : 'staff');
+  const myAudience = roleToAudience(inferredRole);
+
+  // class override: ONLY allow staff/admin to override (learners shouldn't browse other classes)
+  const classOverrideRaw = req.query?.class_label || null;
+  const classOverride = normalizeClassLabel(classOverrideRaw);
+
+  const effectiveClass = myAudience === 'all' ? (classOverride || null) : (resolvedLearnerClass || null);
+
+  // audience filtering
+  // - learners see: ['all','learners']
+  // - instructors see: ['all','instructors']
+  // - staff see: all audiences unless narrowed by ?audience=
+  const audienceReq = normAudience(req.query?.audience || '');
+  let audiences;
+
+  if (myAudience === 'all') {
+    // staff/admin: allow filter by any audience string, else show everything
+    audiences = audienceReq ? [audienceReq] : ['all', 'learners', 'instructors', 'parents'];
+  } else {
+    // learner/instructor/parent: always include global + their audience
+    audiences = ['all', myAudience];
+  }
+
+  // ─────────────────────────────────────────────
+  // ✅ NEW: scope (live / live_upcoming / all)
+  // learners: default live_upcoming (so they see scheduled items too)
+  // staff: default all
+  // ─────────────────────────────────────────────
+  const scopeReq = String(req.query?.scope || '').toLowerCase();
+  const scope = scopeReq || (myAudience === 'all' ? 'all' : 'live_upcoming');
+
+  const timeWhere =
+    scope === 'all'
+      ? `true`
+      : scope === 'live'
+        ? `(start_at is null or start_at <= now())
+           and (end_at is null or end_at >= now())`
+        : // live_upcoming: exclude expired, include future
+          `(end_at is null or end_at >= now())`;
+
+  if (debug) {
+    console.log('[getAnnouncementFeed] filters', {
+      orgId,
+      userId,
+      roleRaw,
+      inferredRole,
+      myAudience,
+      audienceReq,
+      audiences,
+      classOverride,
+      resolvedLearnerClass,
+      effectiveClass,
+      scopeReq,
+      scope,
+      now: new Date().toISOString(),
+    });
+  }
 
   try {
+    // ✅ Main feed query (adds status)
     const { rows } = await pool.query(
-      `select *
+      `select *,
+              case
+                when end_at is not null and end_at < now() then 'expired'
+                when start_at is not null and start_at > now() then 'scheduled'
+                else 'live'
+              end as status
          from org_announcements
         where org_id = $1
-          and (audience = 'all' or audience = $2)
-          and (start_at is null or start_at <= now())
-          and (end_at is null or end_at >= now())
+          and audience = any($2::text[])
+          and (${timeWhere})
+          and (
+            class_label is null
+            or ($3::text is not null and class_label = $3)
+          )
         order by pinned desc, created_at desc
-        limit $3 offset $4`,
-      [orgId, audience, limit, offset],
+        limit $4 offset $5`,
+      [orgId, audiences, effectiveClass, limit, offset],
     );
-    res.json({ items: rows, page, limit });
+
+    // ✅ Debug: show which filter killed results (ONLY when debug=1)
+    let diag = null;
+    if (debug) {
+      const c0 = await pool.query(`select count(*)::int as c from org_announcements where org_id=$1`, [orgId]);
+
+      const c1 = await pool.query(
+        `select count(*)::int as c
+           from org_announcements
+          where org_id=$1
+            and audience = any($2::text[])`,
+        [orgId, audiences],
+      );
+
+      // scope-aware time window count
+      const c2 = await pool.query(
+        `select count(*)::int as c
+           from org_announcements
+          where org_id=$1
+            and audience = any($2::text[])
+            and (${timeWhere})`,
+        [orgId, audiences],
+      );
+
+      const c3 = await pool.query(
+        `select count(*)::int as c
+           from org_announcements
+          where org_id=$1
+            and audience = any($2::text[])
+            and (${timeWhere})
+            and (class_label is null or ($3::text is not null and class_label = $3))`,
+        [orgId, audiences, effectiveClass],
+      );
+
+      diag = {
+        base_org: c0.rows[0]?.c ?? 0,
+        after_audience: c1.rows[0]?.c ?? 0,
+        after_time_window: c2.rows[0]?.c ?? 0,
+        after_class: c3.rows[0]?.c ?? 0,
+        scope,
+      };
+
+      console.log('[getAnnouncementFeed] diag', diag);
+      console.log('[getAnnouncementFeed] result', {
+        count: rows.length,
+        sample: rows[0]
+          ? {
+              id: rows[0].id,
+              title: rows[0].title,
+              audience: rows[0].audience,
+              class_label: rows[0].class_label,
+              start_at: rows[0].start_at,
+              end_at: rows[0].end_at,
+              pinned: rows[0].pinned,
+              status: rows[0].status,
+            }
+          : null,
+      });
+    }
+
+    return res.json({
+      items: rows,
+      page,
+      limit,
+      audiences,
+      class_label: effectiveClass || null,
+      scope,
+      ...(debug ? { diag } : {}),
+    });
   } catch (err) {
     console.error('[getAnnouncementFeed]', err);
-    res.status(500).json({ message: 'Unable to load announcement feed' });
+    return res.status(500).json({ message: 'Unable to load announcement feed' });
   }
 }
+
+
 
 export async function getAnnouncementAgmPdf(req, res) {
   const orgId = normalizeOrgId(req);
@@ -786,23 +1045,61 @@ export async function getAnnouncementAgmPdf(req, res) {
 }
 
 // ───────────────────────── Sports & clubs ─────────────────────────
+
+function normalizeSportsPayload(raw = {}) {
+  // support both styles (older UI used start_at/end_at)
+  return {
+    title: raw.title,
+    description: raw.description ?? null,
+
+    kind: raw.kind ?? raw.type ?? 'fixture',
+    team_label: raw.team_label ?? raw.teamLabel ?? raw.team ?? null,
+    opponent: raw.opponent ?? raw.vs ?? null,
+
+    event_at: raw.event_at ?? raw.start_at ?? raw.startAt ?? null,
+    end_at: raw.end_at ?? raw.endAt ?? null,
+
+    location: raw.location ?? null,
+    audience: raw.audience ?? 'all',
+    status: raw.status ?? 'scheduled',
+
+    score_home: raw.score_home ?? raw.scoreHome ?? null,
+    score_away: raw.score_away ?? raw.scoreAway ?? null,
+
+    metadata: raw.metadata ?? {},
+  };
+}
+
 export async function createSportsEvent(req, res) {
   const orgId = normalizeOrgId(req);
-  const { error, value } = sportsEventSchema.validate(req.body, { abortEarly: false });
+  const body = normalizeSportsPayload(req.body);
+
+  const { error, value } = sportsEventSchema.validate(body, { abortEarly: false });
   if (error) return res.status(400).json({ message: error.message });
 
   try {
     const { rows } = await pool.query(
-      `insert into org_sports_events (org_id, title, description, event_at, location, audience, created_by)
-       values ($1,$2,$3,$4,$5,$6,$7)
+      `insert into org_sports_events
+         (org_id, title, description, kind, team_label, opponent, event_at, end_at, location, audience, status,
+          score_home, score_away, metadata, created_by)
+       values
+         ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        returning *`,
       [
         orgId,
         value.title,
         value.description || null,
+        value.kind || 'fixture',
+        value.team_label || null,
+        value.opponent || null,
         value.event_at || null,
+        value.end_at || null,
         value.location || null,
         value.audience || 'all',
+        value.status || 'scheduled',
+        value.score_home ?? null,
+        value.score_away ?? null,
+        value.metadata || {},
         req.user?.id ?? null,
       ],
     );
@@ -817,7 +1114,9 @@ export async function updateSportsEvent(req, res) {
   const orgId = normalizeOrgId(req);
   const eventId = Number(req.params?.eventId);
   if (!eventId) return res.status(400).json({ message: 'eventId required' });
-  const { error, value } = sportsEventUpdateSchema.min(1).validate(req.body, { abortEarly: false });
+
+  const body = normalizeSportsPayload(req.body);
+  const { error, value } = sportsEventUpdateSchema.min(1).validate(body, { abortEarly: false });
   if (error) return res.status(400).json({ message: error.message });
 
   try {
@@ -825,12 +1124,37 @@ export async function updateSportsEvent(req, res) {
       `update org_sports_events
           set title = coalesce($3, title),
               description = coalesce($4, description),
-              event_at = coalesce($5, event_at),
-              location = coalesce($6, location),
-              audience = coalesce($7, audience)
+              kind = coalesce($5, kind),
+              team_label = coalesce($6, team_label),
+              opponent = coalesce($7, opponent),
+              event_at = coalesce($8, event_at),
+              end_at = coalesce($9, end_at),
+              location = coalesce($10, location),
+              audience = coalesce($11, audience),
+              status = coalesce($12, status),
+              score_home = coalesce($13, score_home),
+              score_away = coalesce($14, score_away),
+              metadata = coalesce($15, metadata),
+              updated_at = now()
         where org_id = $1 and id = $2
         returning *`,
-      [orgId, eventId, value.title || null, value.description || null, value.event_at || null, value.location || null, value.audience || null],
+      [
+        orgId,
+        eventId,
+        value.title ?? null,
+        value.description ?? null,
+        value.kind ?? null,
+        value.team_label ?? null,
+        value.opponent ?? null,
+        value.event_at ?? null,
+        value.end_at ?? null,
+        value.location ?? null,
+        value.audience ?? null,
+        value.status ?? null,
+        value.score_home ?? null,
+        value.score_away ?? null,
+        value.metadata ?? null,
+      ],
     );
     if (!rows.length) return res.status(404).json({ message: 'Event not found' });
     res.json(rows[0]);
@@ -846,10 +1170,10 @@ export async function deleteSportsEvent(req, res) {
   if (!eventId) return res.status(400).json({ message: 'eventId required' });
 
   try {
-    const { rowCount } = await pool.query(`delete from org_sports_events where org_id=$1 and id=$2`, [
-      orgId,
-      eventId,
-    ]);
+    const { rowCount } = await pool.query(
+      `delete from org_sports_events where org_id=$1 and id=$2`,
+      [orgId, eventId],
+    );
     if (!rowCount) return res.status(404).json({ message: 'Event not found' });
     res.json({ ok: true });
   } catch (err) {
@@ -863,23 +1187,68 @@ export async function listSportsEvents(req, res) {
   const { error, value } = sportsQuerySchema.validate(req.query, { abortEarly: false });
   if (error) return res.status(400).json({ message: error.message });
 
+  const q = value.q ? `%${String(value.q).trim()}%` : null;
+
   try {
     const { rows } = await pool.query(
-      `select *
+      `select *,
+              case
+                when status = 'completed' then 'completed'
+                when status = 'cancelled' then 'cancelled'
+                when event_at is not null and event_at < now() then 'past'
+                else 'upcoming'
+              end as bucket
          from org_sports_events
         where org_id = $1
           and ($2::timestamptz is null or event_at >= $2)
           and ($3::timestamptz is null or event_at <= $3)
+          and ($4::text is null or status = $4)
+          and ($5::text is null or kind = $5)
+          and ($6::text is null or team_label = $6)
+          and ($7::text is null or audience = $7)
+          and ($8::text is null or (
+                title ilike $8
+                or coalesce(description,'') ilike $8
+                or coalesce(opponent,'') ilike $8
+                or coalesce(team_label,'') ilike $8
+              ))
         order by event_at asc nulls last, created_at desc
-        limit $4 offset $5`,
-      [orgId, value.start || null, value.end || null, value.limit, value.offset],
+        limit $9 offset $10`,
+      [
+        orgId,
+        value.start || null,
+        value.end || null,
+        value.status || null,
+        value.kind || null,
+        value.team_label || null,
+        value.audience || null,
+        q,
+        value.limit,
+        value.offset,
+      ],
     );
 
     if (value.format === 'csv') {
-      const lines = ['id,title,description,event_at,location,audience'];
+      const lines = [
+        'id,title,kind,team_label,opponent,status,event_at,end_at,location,audience,score_home,score_away,description',
+      ];
       rows.forEach((r) =>
         lines.push(
-          [r.id, r.title, r.description || '', r.event_at || '', r.location || '', r.audience || '']
+          [
+            r.id,
+            r.title,
+            r.kind || '',
+            r.team_label || '',
+            r.opponent || '',
+            r.status || '',
+            r.event_at || '',
+            r.end_at || '',
+            r.location || '',
+            r.audience || '',
+            r.score_home ?? '',
+            r.score_away ?? '',
+            (r.description || '').replace(/\s+/g, ' ').trim(),
+          ]
             .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
             .join(','),
         ),
@@ -895,6 +1264,7 @@ export async function listSportsEvents(req, res) {
     res.status(500).json({ message: 'Unable to load sports events' });
   }
 }
+
 
 export async function createClub(req, res) {
   const orgId = normalizeOrgId(req);
@@ -992,90 +1362,158 @@ export async function listClubMembers(req, res) {
 
   try {
     const { rows } = await pool.query(
-      `select m.*, u.first_name, u.last_name, u.email
-         from org_club_memberships m
-         left join users u on u.id = m.member_id
-        where m.club_id = $1
-          and exists (select 1 from org_clubs c where c.id = m.club_id and c.org_id = $2)
-        order by m.joined_at desc`,
+      `
+      select
+        m.id,
+        m.club_id,
+        m.member_id,
+        m.role,
+        m.joined_at,
+
+        lp.user_id,
+        lp.admission_code,
+        lp.class_label,
+
+        u.email,
+
+        coalesce(
+          nullif(u.email, ''),
+          nullif(lp.admission_code, ''),
+          'Member ' || m.member_id::text
+        ) as member_name
+
+      from org_club_memberships m
+      join org_clubs c
+        on c.id = m.club_id
+       and c.org_id = $2
+      left join org_learner_profiles lp
+        on lp.id = m.member_id
+      left join users u
+        on u.id = lp.user_id
+      where m.club_id = $1
+      order by m.joined_at desc nulls last, m.id desc
+      `,
       [clubId, orgId],
     );
-    res.json({ members: rows });
+
+    return res.json({ members: rows });
   } catch (err) {
     console.error('[listClubMembers]', err);
-    res.status(500).json({ message: 'Unable to load club members' });
+    return res.status(500).json({ message: 'Unable to load club members' });
   }
 }
+
 
 export async function enrollClubMember(req, res) {
   const orgId = normalizeOrgId(req);
   const clubId = Number(req.params?.clubId);
-  const { error, value } = membershipParamsSchema.validate(req.body, { abortEarly: false });
-  if (error) return res.status(400).json({ message: error.message });
 
   try {
-    const clubRes = await pool.query(`select id from org_clubs where org_id=$1 and id=$2 limit 1`, [
-      orgId,
-      clubId,
-    ]);
-    if (!clubRes.rows.length) return res.status(404).json({ message: 'Club not found' });
+    if (!clubId) return res.status(400).json({ message: 'clubId required' });
+
+    const club = await pool.query(
+      `select id from org_clubs where org_id=$1 and id=$2 limit 1`,
+      [orgId, clubId],
+    );
+    if (!club.rows.length) return res.status(404).json({ message: 'Club not found' });
+
+    const { member_id, role } = req.body || {};
+
+    // ✅ MUST be UUID for org_club_memberships.member_id
+    const learnerProfileId = await resolveLearnerProfileId(orgId, member_id);
+
+    if (!learnerProfileId) {
+      return res.status(400).json({
+        message: 'Invalid member_id. Provide learner profile UUID OR numeric user_id that belongs to this org.',
+      });
+    }
+
+    const safeRole = String(role || 'member').trim() || 'member';
 
     const { rows } = await pool.query(
       `insert into org_club_memberships (club_id, member_id, role)
        values ($1,$2,$3)
        on conflict (club_id, member_id)
        do update set role = excluded.role
-       returning *`,
-      [clubId, value.member_id, value.role || 'member'],
+       returning club_id, member_id, role`,
+      [clubId, learnerProfileId, safeRole],
     );
-    res.json(rows[0]);
-  } catch (err) {
-    console.error('[enrollClubMember]', err);
-    res.status(500).json({ message: 'Unable to enroll member' });
+
+    return res.json(rows[0]);
+  } catch (e) {
+    console.error('[enrollClubMember] failed', e);
+    return res.status(500).json({ message: 'Failed to enroll member' });
   }
 }
 
 export async function unenrollClubMember(req, res) {
   const orgId = normalizeOrgId(req);
   const clubId = Number(req.params?.clubId);
+
   const { error, value } = membershipParamsSchema.validate(req.body, { abortEarly: false });
   if (error) return res.status(400).json({ message: error.message });
 
   try {
+    const learnerProfileId = await resolveLearnerProfileId(orgId, value.member_id);
+    if (!learnerProfileId) {
+      return res.status(400).json({
+        message: 'Invalid member_id. Provide learner profile UUID OR numeric user_id that belongs to this org.',
+      });
+    }
+
     const { rowCount } = await pool.query(
       `delete from org_club_memberships
         where club_id = $1 and member_id = $2
           and exists (select 1 from org_clubs c where c.id=$1 and c.org_id=$3)`,
-      [clubId, value.member_id, orgId],
+      [clubId, learnerProfileId, orgId],
     );
+
     if (!rowCount) return res.status(404).json({ message: 'Membership not found' });
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
     console.error('[unenrollClubMember]', err);
-    res.status(500).json({ message: 'Unable to unenroll member' });
+    return res.status(500).json({ message: 'Unable to unenroll member' });
   }
 }
+
 
 export async function getMyClubs(req, res) {
   const orgId = normalizeOrgId(req);
-  const userId = req.user?.id;
-  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
   try {
-    const { rows } = await pool.query(
-      `select c.*
-         from org_club_memberships m
-         join org_clubs c on c.id = m.club_id
-        where m.member_id = $1 and c.org_id = $2
-        order by c.name asc`,
-      [userId, orgId],
+    const userId = Number(req.user?.id || 0);
+    if (!userId) return res.json({ items: [] });
+
+    // ✅ resolve learner_profile UUID
+    const lp = await pool.query(
+      `select id
+         from org_learner_profiles
+        where org_id=$1 and user_id=$2
+        limit 1`,
+      [orgId, userId],
     );
-    res.json({ items: rows });
-  } catch (err) {
-    console.error('[getMyClubs]', err);
-    res.status(500).json({ message: 'Unable to load clubs' });
+    if (!lp.rows.length) return res.json({ items: [] });
+
+    const learnerProfileId = lp.rows[0].id;
+
+    const { rows } = await pool.query(
+      `select c.*,
+              (select count(*)::int from org_club_memberships mm where mm.club_id = c.id) as member_count
+         from org_clubs c
+         join org_club_memberships m on m.club_id = c.id
+        where c.org_id = $1
+          and m.member_id = $2
+        order by c.created_at desc nulls last, c.id desc`,
+      [orgId, learnerProfileId],
+    );
+
+    return res.json({ items: rows });
+  } catch (e) {
+    console.error('[getMyClubs] failed', e);
+    return res.status(500).json({ message: 'Failed to load my clubs' });
   }
 }
+
 
 // ───────────────────────── Message log ─────────────────────────
 export async function listMessageLogs(req, res) {

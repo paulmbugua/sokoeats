@@ -90,6 +90,8 @@ import OrgNewslettersNative from './screens/org/OrgNewsletters.native';
 import OrgAnnouncementsNative from './screens/org/OrgAnnouncements.native';
 import OrgToolsSportsNative from './screens/org/OrgToolsSports.native';
 import OrgToolsClubsNative from './screens/org/OrgToolsClubs.native';
+import OrgLearnerNewslettersNative from './screens/org/OrgLearnerNewsletters.native';
+import OrgLearnerSportsClubsNative from './screens/org/OrgLearnerSportsClubs.native';
 
 const Stack = createStackNavigator<MainStackParamList>();
 
@@ -310,6 +312,8 @@ const App: React.FC = () => {
           {/* Org public */}
           <Stack.Screen name="InstitutionLogin" component={InstitutionLogin} />
           <Stack.Screen name="OrgInviteLanding" component={OrgInviteLanding} />
+          <Stack.Screen name="OrgLearnerNewsletters" component={OrgLearnerNewslettersNative} />
+          <Stack.Screen name="OrgLearnerSportsClubs" component={OrgLearnerSportsClubsNative} />
 
           {/* 🔁 ORG HOME ROUTER (like /org on web) */}
           <Stack.Screen name="OrgHome">

@@ -18,17 +18,31 @@ const InstitutionLogin: React.FC = () => {
 
   const { orgToken } = useShopContext() as any;
 
-  // If already authenticated as an institution member, go via /org router
+  // ✅ NEW: read query params (supports step-up / reauth flows)
+  const qs = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const reauth = (qs.get('reauth') || '').trim(); // e.g. "fees"
+  const isFeesReauth = reauth === 'fees';
+  const orgIdParam = (qs.get('orgId') || qs.get('org_id') || '').trim();
+  const returnToParam = (qs.get('returnTo') || qs.get('return_to') || '').trim();
+
+  const forcedKindRaw = (qs.get('kind') || '').toLowerCase().trim();
+  const forcedKind: AccountKind | null =
+    forcedKindRaw === 'institution' || forcedKindRaw === 'instructor' || forcedKindRaw === 'learner'
+      ? (forcedKindRaw as AccountKind)
+      : null;
+
+  // ✅ IMPORTANT: If already authenticated, only redirect for normal login (NOT reauth)
   useEffect(() => {
-    if (orgToken) navigate('/org', { replace: true });
-  }, [orgToken, navigate]);
+    if (orgToken && !reauth) navigate('/org', { replace: true });
+  }, [orgToken, navigate, reauth]);
 
   // —— Local state —— //
   const [authMode, setAuthMode] = useState<AuthMode>('Login');
   const [resetMode, setResetMode] = useState<ResetMode>('idle');
   const [otpSent, setOtpSent] = useState(false);
 
-  const [accountKind, setAccountKind] = useState<AccountKind>('institution'); // Institution | Instructor | Student
+  // ✅ CHANGED: initialize accountKind from ?kind=... (or default institution)
+  const [accountKind, setAccountKind] = useState<AccountKind>(forcedKind || 'institution');
 
   const [name, setName] = useState(''); // sign-up only
   const [email, setEmail] = useState('');
@@ -40,18 +54,52 @@ const InstitutionLogin: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const clearErrors = () => setError(null);
-  const canSignUp = accountKind === 'institution';
+
+  // ✅ When forcedKind changes (nav), sync state
+  useEffect(() => {
+    if (forcedKind && accountKind !== forcedKind) setAccountKind(forcedKind);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forcedKindRaw]);
+
+  // ✅ Step-up mode: force Instructor + Login (no sign up, no reset screens)
+  useEffect(() => {
+    if (!isFeesReauth) return;
+    setAccountKind('instructor');
+    setAuthMode('Login');
+    setResetMode('idle');
+    setOtpSent(false);
+    setName('');
+    clearErrors();
+  }, [isFeesReauth]);
+
+  const canSignUp = accountKind === 'institution' && !isFeesReauth;
 
   // make sure we never stay in "Sign Up" for non-institution
   useEffect(() => {
-    if (!canSignUp && authMode === 'Sign Up') {
-      setAuthMode('Login');
-    }
+    if (!canSignUp && authMode === 'Sign Up') setAuthMode('Login');
   }, [canSignUp, authMode]);
 
   // —— Auth hook —— //
   const navigateAfterAuth = useCallback(() => {
-    // 1) Prefer an explicit returnTo from the invite flow
+    const search = new URLSearchParams(location.search);
+    const reauthQ = (search.get('reauth') || '').trim();
+    const orgIdQ = (search.get('orgId') || search.get('org_id') || '').trim();
+    const returnToQ = (search.get('returnTo') || search.get('return_to') || '').trim();
+
+    // ✅ NEW: mark fees unlock window (client-side UX lock)
+    if (reauthQ === 'fees' && orgIdQ) {
+      try {
+        sessionStorage.setItem(`org:feesUnlock:${orgIdQ}`, String(Date.now()));
+      } catch {}
+    }
+
+    // ✅ NEW: explicit returnTo in URL wins (used by Fees & balances)
+    if (returnToQ) {
+      navigate(returnToQ, { replace: true });
+      return;
+    }
+
+    // 1) Prefer an explicit returnTo from storage
     try {
       const saved = sessionStorage.getItem('auth:returnTo');
       if (saved) {
@@ -59,19 +107,16 @@ const InstitutionLogin: React.FC = () => {
         navigate(saved, { replace: true });
         return;
       }
-    } catch {
-      // ignore storage errors and fall through
-    }
+    } catch {}
 
-    // 2) If there’s an invite code in the URL, go back to that invite
-    const search = new URLSearchParams(location.search);
+    // 2) Invite flow
     const inviteCode = search.get('code');
     if (inviteCode) {
       navigate(`/org/join/${inviteCode}`, { replace: true });
       return;
     }
 
-    // 3) Default: normal institution flow
+    // 3) Default
     navigate('/org', { replace: true });
   }, [navigate, location.search]);
 
@@ -92,39 +137,46 @@ const InstitutionLogin: React.FC = () => {
     clearErrors();
     try {
       setBusy(true);
+
       if (authMode === 'Login') {
         if (!email || !password) {
           setError('Please enter email and password.');
           return;
         }
-        await loginWithEmail({ email: email.trim(), password });
-        // navigateFn in hook will route to /org
-      } else {
-        if (!name || !email || !password || !confirmPassword) {
-          setError('Please fill all required fields.');
-          return;
-        }
-        if (password !== confirmPassword) {
-          setError('Passwords do not match.');
-          return;
-        }
 
-        // Map selected tab → org role hint (your backend can use this)
-        const roleHint: string =
-          accountKind === 'institution'
-            ? 'owner'
-            : accountKind === 'instructor'
-              ? 'instructor'
-              : 'learner'; // student
+        // ✅ NEW: pass reauth payload through (safe even if backend ignores)
+        const extra =
+          reauth && orgIdParam
+            ? ({ reauth, orgId: orgIdParam } as any)
+            : reauth
+              ? ({ reauth } as any)
+              : ({} as any);
 
-        await registerWithEmail({
-          name: name.trim(),
-          email: email.trim(),
-          password,
-          role: roleHint,
-        } as any);
-        // navigateFn in hook will route to /org
+        await loginWithEmail({ email: email.trim(), password, ...extra } as any);
+        return;
       }
+
+      // Sign Up (disabled for fees reauth and non-institution)
+      if (!canSignUp) {
+        setError('Sign up is only available for Institution accounts.');
+        return;
+      }
+
+      if (!name || !email || !password || !confirmPassword) {
+        setError('Please fill all required fields.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.');
+        return;
+      }
+
+      await registerWithEmail({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        role: 'owner',
+      } as any);
     } catch (err: any) {
       setError(err?.message || 'Authentication failed');
     } finally {
@@ -176,9 +228,7 @@ const InstitutionLogin: React.FC = () => {
 
   const onGoogleSuccess = useCallback(
     async (idToken: string) => {
-      // (If needed later, you can also let the backend infer role from this selection)
       await handleGoogleLoginSuccess(idToken, name || undefined);
-      // navigateFn in hook will route to /org
     },
     [handleGoogleLoginSuccess, name]
   );
@@ -197,33 +247,26 @@ const InstitutionLogin: React.FC = () => {
     kind === 'institution' ? 'Institution' : kind === 'instructor' ? 'Instructor' : 'Learner';
 
   const emailFormTitle = useMemo(() => {
+    if (isFeesReauth) return 'Unlock Fees & balances';
     const base = labelForKind(accountKind);
     return authMode === 'Login' ? `${base} Login` : `Create your ${base} account`;
-  }, [authMode, accountKind]);
+  }, [authMode, accountKind, isFeesReauth]);
 
   const accountOptions: { key: AccountKind; label: string; helper: string }[] = [
-    {
-      key: 'institution',
-      label: 'Institution',
-      helper: 'Admins & coordinators',
-    },
-    {
-      key: 'instructor',
-      label: 'Instructor',
-      helper: 'Teachers & trainers',
-    },
-    {
-      key: 'learner', // ✅ lowercase to match AccountKind
-      label: 'Learner', // ✅ display text can stay capitalized
-      helper: 'Learners in this institution',
-    },
+    { key: 'institution', label: 'Institution', helper: 'Admins & coordinators' },
+    { key: 'instructor', label: 'Instructor', helper: 'Teachers & trainers' },
+    { key: 'learner', label: 'Learner', helper: 'Learners in this institution' },
   ];
 
   const switchAccountKind = (kind: AccountKind) => {
+    if (isFeesReauth) return; // ✅ lock in fees reauth
     setAccountKind(kind);
     clearErrors();
     setResetMode('idle');
   };
+
+  // In fees reauth mode we do not allow reset screens
+  const effectiveResetMode: ResetMode = isFeesReauth ? 'idle' : resetMode;
 
   return (
     <div className="relative min-h-screen overflow-hidden text-darkText dark:text-darkTextPrimary">
@@ -247,12 +290,7 @@ const InstitutionLogin: React.FC = () => {
             <div className="w-full rounded-2xl p-8 lg:p-10 bg-white/70 ring-1 ring-gray-200 shadow-sm backdrop-blur-sm dark:bg-[#0f1821]/70 dark:ring-darkCard">
               <div className="flex items-center gap-3">
                 <span className="h-10 w-10 text-indigo-600">
-                  <svg
-                    viewBox="0 0 48 48"
-                    fill="currentColor"
-                    className="h-full w-full"
-                    aria-hidden
-                  >
+                  <svg viewBox="0 0 48 48" fill="currentColor" className="h-full w-full" aria-hidden>
                     <path d="M36.7273 44C33.9891 44 31.6043 39.8386 30.3636 33.69C29.123 39.8386 26.7382 44 24 44C21.2618 44 18.877 39.8386 17.6364 33.69C16.3957 39.8386 14.0109 44 11.2727 44C7.25611 44 4 35.0457 4 24C4 12.9543 7.25611 4 11.2727 4C14.0109 4 16.3957 8.16144 17.6364 14.31C18.877 8.16144 21.2618 4 24 4C26.7382 4 29.123 8.16144 30.3636 14.31C31.6043 8.16144 33.9891 4 36.7273 4C40.7439 4 44 12.9543 44 24C44 35.0457 40.7439 44 36.7273 44Z" />
                   </svg>
                 </span>
@@ -260,8 +298,7 @@ const InstitutionLogin: React.FC = () => {
               </div>
 
               <p className="mt-4 text-sm text-gray-700 dark:text-darkTextSecondary">
-                This login is for institutions, instructors, and students using your
-                organization&apos;s DayBreak portal.
+                This login is for institutions, instructors, and students using your organization&apos;s DayBreak portal.
               </p>
 
               <ul className="mt-6 space-y-3 text-sm">
@@ -283,42 +320,54 @@ const InstitutionLogin: React.FC = () => {
           {/* Right: auth card */}
           <section className="md:col-span-6 flex">
             <div className="w-full rounded-2xl bg-white ring-1 ring-gray-200 shadow-sm p-6 sm:p-8 lg:p-10 backdrop-blur-sm dark:bg-[#0f1821] dark:ring-darkCard">
-              {/* Account type toggle: Institution | Instructor | Student */}
-              <div className="mb-5">
-                <p className="text-xs font-medium text-gray-500 dark:text-darkTextSecondary mb-2 text-center">
-                  Who is logging in?
-                </p>
-                <div className="flex justify-center">
-                  <div className="inline-flex rounded-full bg-gray-100 dark:bg-[#101826] p-1 gap-1">
-                    {accountOptions.map((opt) => {
-                      const selected = accountKind === opt.key;
-                      return (
-                        <button
-                          key={opt.key}
-                          type="button"
-                          onClick={() => switchAccountKind(opt.key)}
-                          className={`flex items-center px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition ${
-                            selected
-                              ? 'bg-white text-indigo-600 shadow-sm dark:bg-[#1b2430]'
-                              : 'text-gray-600 hover:bg-white/60 dark:text-darkTextSecondary dark:hover:bg-[#151c26]'
-                          }`}
-                        >
-                          <span
-                            className={`mr-2 inline-flex h-4 w-4 items-center justify-center rounded-full border text-[10px] ${
+              {/* ✅ NEW: Fees lock notice */}
+              {isFeesReauth && (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 px-3 py-2 text-xs">
+                  🔒 Fees &amp; balances is protected. Please re-enter the <b>Instructor</b> login to continue.
+                  {!!returnToParam && (
+                    <div className="mt-1 opacity-80">You will be returned to your fees page after login.</div>
+                  )}
+                </div>
+              )}
+
+              {/* Account type toggle (hidden during fees reauth) */}
+              {!isFeesReauth && (
+                <div className="mb-5">
+                  <p className="text-xs font-medium text-gray-500 dark:text-darkTextSecondary mb-2 text-center">
+                    Who is logging in?
+                  </p>
+                  <div className="flex justify-center">
+                    <div className="inline-flex rounded-full bg-gray-100 dark:bg-[#101826] p-1 gap-1">
+                      {accountOptions.map((opt) => {
+                        const selected = accountKind === opt.key;
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => switchAccountKind(opt.key)}
+                            className={`flex items-center px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition ${
                               selected
-                                ? 'border-indigo-500 bg-indigo-500 text-white'
-                                : 'border-gray-400 bg-transparent text-transparent'
+                                ? 'bg-white text-indigo-600 shadow-sm dark:bg-[#1b2430]'
+                                : 'text-gray-600 hover:bg-white/60 dark:text-darkTextSecondary dark:hover:bg-[#151c26]'
                             }`}
                           >
-                            {selected ? '✓' : '•'}
-                          </span>
-                          <span>{opt.label}</span>
-                        </button>
-                      );
-                    })}
+                            <span
+                              className={`mr-2 inline-flex h-4 w-4 items-center justify-center rounded-full border text-[10px] ${
+                                selected
+                                  ? 'border-indigo-500 bg-indigo-500 text-white'
+                                  : 'border-gray-400 bg-transparent text-transparent'
+                              }`}
+                            >
+                              {selected ? '✓' : '•'}
+                            </span>
+                            <span>{opt.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {error && (
                 <div className="mb-4 rounded-lg bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200 px-3 py-2 text-sm">
@@ -327,7 +376,7 @@ const InstitutionLogin: React.FC = () => {
               )}
 
               {/* Forms */}
-              {resetMode !== 'idle' ? (
+              {effectiveResetMode !== 'idle' ? (
                 otpSent ? (
                   <form onSubmit={handleResetPassword} className="space-y-5">
                     <h2 className="text-xl font-display font-semibold text-center">Enter OTP</h2>
@@ -365,9 +414,7 @@ const InstitutionLogin: React.FC = () => {
                   </form>
                 ) : (
                   <form onSubmit={handleSendOtp} className="space-y-5">
-                    <h2 className="text-xl font-display font-semibold text-center">
-                      Reset Password
-                    </h2>
+                    <h2 className="text-xl font-display font-semibold text-center">Reset Password</h2>
                     <input
                       className="input"
                       type="email"
@@ -395,9 +442,7 @@ const InstitutionLogin: React.FC = () => {
                 )
               ) : (
                 <form onSubmit={onSubmit} className="space-y-5">
-                  <h2 className="text-xl font-display font-semibold text-center">
-                    {emailFormTitle}
-                  </h2>
+                  <h2 className="text-xl font-display font-semibold text-center">{emailFormTitle}</h2>
 
                   {authMode === 'Sign Up' && (
                     <input
@@ -408,10 +453,11 @@ const InstitutionLogin: React.FC = () => {
                       required
                     />
                   )}
+
                   <input
                     className="input"
                     type="email"
-                    placeholder="Email"
+                    placeholder={isFeesReauth ? 'Instructor email' : 'Email'}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -424,6 +470,7 @@ const InstitutionLogin: React.FC = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                   />
+
                   {authMode === 'Sign Up' && (
                     <input
                       className="input"
@@ -440,68 +487,75 @@ const InstitutionLogin: React.FC = () => {
                     disabled={busy}
                     className={`${primaryBtn} w-full ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >
-                    {authMode === 'Login' ? 'Login' : 'Sign Up'}
+                    {authMode === 'Login' ? (isFeesReauth ? 'Unlock fees' : 'Login') : 'Sign Up'}
                   </button>
 
-                  <div className="flex justify-between text-sm">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearErrors();
-                        setResetMode('requesting');
-                      }}
-                      className="link"
-                    >
-                      Forgot password?
-                    </button>
+                  {/* Links row (hidden during fees reauth) */}
+                  {!isFeesReauth && (
+                    <div className="flex justify-between text-sm">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearErrors();
+                          setResetMode('requesting');
+                        }}
+                        className="link"
+                      >
+                        Forgot password?
+                      </button>
 
-                    {canSignUp &&
-                      (authMode === 'Login' ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            clearErrors();
-                            setAuthMode('Sign Up');
-                          }}
-                          className="link"
-                        >
-                          Create account
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            clearErrors();
-                            setAuthMode('Login');
-                          }}
-                          className="link"
-                        >
-                          Already have an account?
-                        </button>
-                      ))}
-                  </div>
-                  {accountKind !== 'institution' && (
+                      {canSignUp &&
+                        (authMode === 'Login' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              clearErrors();
+                              setAuthMode('Sign Up');
+                            }}
+                            className="link"
+                          >
+                            Create account
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              clearErrors();
+                              setAuthMode('Login');
+                            }}
+                            className="link"
+                          >
+                            Already have an account?
+                          </button>
+                        ))}
+                    </div>
+                  )}
+
+                  {!isFeesReauth && accountKind !== 'institution' && (
                     <p className="mt-3 text-[11px] text-gray-500 dark:text-darkTextSecondary text-center">
                       Instructors and learners: please log in using the email/ID and password shared
                       by your school or the invite link.
                     </p>
                   )}
+
+                  {isFeesReauth && (
+                    <p className="mt-3 text-[11px] text-gray-600 dark:text-darkTextSecondary text-center">
+                      Tip: this is a quick security check for sensitive fee actions.
+                    </p>
+                  )}
                 </form>
               )}
 
-              {accountKind === 'institution' && (
+              {/* Google login only for Institution (not in fees reauth) */}
+              {accountKind === 'institution' && !isFeesReauth && (
                 <>
-                  {/* Divider / Google */}
                   <div className="my-6 flex items-center gap-3">
                     <div className="h-px flex-1 bg-gray-200 dark:bg-darkCard" />
                     <span className="text-xs text-gray-500 dark:text-darkTextSecondary">OR</span>
                     <div className="h-px flex-1 bg-gray-200 dark:bg-darkCard" />
                   </div>
                   <div className="flex justify-center">
-                    <CustomGoogleLoginButton
-                      onSuccess={onGoogleSuccess}
-                      onFailure={onGoogleFailure}
-                    />
+                    <CustomGoogleLoginButton onSuccess={onGoogleSuccess} onFailure={onGoogleFailure} />
                   </div>
                 </>
               )}

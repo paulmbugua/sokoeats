@@ -5,6 +5,8 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
 import { useOrgAnnouncements } from '@mytutorapp/shared/hooks/useOrgAnnouncements';
+import { CircleCheckbox } from './OrgFees.ui';
+
 
 function toIsoOrNull(v: string) {
   const s = String(v || '').trim();
@@ -117,8 +119,11 @@ const OrgAnnouncementsPage: React.FC = () => {
     meeting_location: '',
     meeting_url: '',
     agenda_md: '',
+    class_label: '',
+
   });
 
+  const [limitToClass, setLimitToClass] = useState(false);
   const isAgm = form.category === 'agm';
   const canPost = useMemo(
     () => Boolean(form.title.trim() && form.body.trim()),
@@ -163,15 +168,16 @@ Thank you.`;
       has_user_token: Boolean(ctxUserToken),
     });
 
-    const payload: any = {
-      title: form.title.trim(),
-      body: form.body.trim(),
-      audience: form.audience,
-      pinned: !!form.pinned,
-      start_at: toIsoOrNull(form.start_at),
-      end_at: toIsoOrNull(form.end_at),
-      category: form.category,
-    };
+   const payload: any = {
+  title: form.title.trim(),
+  body: form.body.trim(),
+  audience: String(form.audience || 'all').trim().toLowerCase(),
+  class_label: limitToClass && form.class_label?.trim() ? form.class_label.trim() : null,
+  pinned: !!form.pinned,
+  start_at: toIsoOrNull(form.start_at),
+  end_at: toIsoOrNull(form.end_at),
+  category: form.category,
+};
 
     if (isAgm) {
       payload.meeting_at = toIsoOrNull(form.meeting_at);
@@ -195,6 +201,7 @@ Thank you.`;
         meeting_location: '',
         meeting_url: '',
         agenda_md: '',
+        class_label: '',
       });
 
       fetchAnnouncements();
@@ -206,6 +213,8 @@ Thank you.`;
   };
 
   const missingCtx = !orgId || !token;
+
+  
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-10">
@@ -302,6 +311,21 @@ Thank you.`;
                 <option value="instructors">Instructors</option>
               </select>
             </label>
+            <label className="flex flex-col text-sm text-slate-600 dark:text-slate-200">
+            <span className="mb-1 text-xs uppercase tracking-wide">Target class (optional)</span>
+            <input
+              value={form.class_label}
+              onChange={(e) => setForm((p) => ({ ...p, class_label: e.target.value }))}
+              placeholder="e.g. Grade 5"
+              disabled={!limitToClass}
+              className={cn(
+                "rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100",
+                !limitToClass && "opacity-60 cursor-not-allowed"
+              )}
+            />
+
+          </label>
+
 
             <label className="flex flex-col text-sm text-slate-600 dark:text-slate-200 md:col-span-2">
               <span className="mb-1 text-xs uppercase tracking-wide">Title</span>
@@ -333,14 +357,27 @@ Thank you.`;
               />
             </label>
 
-            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-200 md:col-span-2">
-              <input
-                type="checkbox"
-                checked={form.pinned}
-                onChange={(e) => setForm((p) => ({ ...p, pinned: e.target.checked }))}
-              />
-              <span>Pin announcement</span>
-            </label>
+            <div className="flex flex-wrap items-center gap-4 md:col-span-2">
+                <CircleCheckbox
+                  checked={!!form.pinned}
+                  onChange={(next) => setForm((p) => ({ ...p, pinned: next }))}
+                  label="Pin announcement"
+                  labelClassName="text-sm"
+                />
+
+                <CircleCheckbox
+                  checked={!!limitToClass}
+                  onChange={(next) => {
+                    setLimitToClass(next);
+                    if (!next) setForm((p) => ({ ...p, class_label: '' }));
+                  }}
+                  label="Target a class"
+                  labelClassName="text-sm"
+                />
+
+                <span className="text-xs text-slate-500 dark:text-slate-400">(optional)</span>
+              </div>
+
 
             {isAgm ? (
               <>

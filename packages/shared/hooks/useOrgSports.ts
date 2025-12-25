@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useShopContext } from '@mytutorapp/shared/context';
 import type { OrgSportsEvent } from '@mytutorapp/shared/types';
 import {
@@ -10,74 +10,131 @@ import {
 
 interface UseOrgSportsOptions {
   backendUrl?: string;
-  token?: string | null;
+  token?: string | null; // can be user token OR orgToken (we prefer orgToken)
   orgId?: string | null;
 }
 
+function errMsg(e: any) {
+  return e?.response?.data?.message || e?.message || 'Request failed';
+}
+
 export function useOrgSports(opts?: UseOrgSportsOptions) {
-  const { backendUrl: ctxBackendUrl, token: ctxToken, orgId: ctxOrgId } = useShopContext() as any;
-  const backendUrl = opts?.backendUrl ?? ctxBackendUrl;
-  const token = opts?.token ?? ctxToken;
-  const orgId = opts?.orgId ?? ctxOrgId;
+  const ctx = useShopContext() as any;
+
+  const backendUrl = opts?.backendUrl ?? ctx?.backendUrl;
+
+  // ✅ org tools MUST prefer orgToken (same style as clubs)
+  const token = (opts?.token ?? ctx?.orgToken ?? ctx?.token ?? null) as string | null;
+
+  const orgId = (opts?.orgId ?? ctx?.orgId ?? ctx?.org_id ?? null) as string | null;
 
   const [events, setEvents] = useState<OrgSportsEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const ensure = () => Boolean(backendUrl && token && orgId);
+  // ✅ allow backendUrl env fallback in API
+  const ensure = useCallback(() => Boolean(token && orgId), [token, orgId]);
+
+  const debugSnapshot = useMemo(
+    () => ({
+      orgId,
+      hasToken: Boolean(token),
+      hasUserToken: Boolean(ctx?.token),
+      hasOrgToken: Boolean(ctx?.orgToken),
+      backendUrl: backendUrl || '(env fallback)',
+    }),
+    [orgId, token, ctx?.token, ctx?.orgToken, backendUrl],
+  );
 
   const fetchEvents = useCallback(
     async (params?: Record<string, unknown>) => {
       if (!ensure()) return [] as OrgSportsEvent[];
       setLoading(true);
+      setError(null);
       try {
         const res = await listSportsEvents(backendUrl, token as string, orgId as string, params);
         setEvents(res || []);
-        return res;
+        return res || [];
+      } catch (e: any) {
+        setError(errMsg(e));
+        return [] as OrgSportsEvent[];
       } finally {
         setLoading(false);
       }
     },
-    [backendUrl, token, orgId],
+    [backendUrl, token, orgId, ensure],
   );
 
   const saveEvent = useCallback(
     async (payload: Partial<OrgSportsEvent>) => {
-      if (!ensure()) return null;
+      if (!ensure()) {
+        console.warn('[useOrgSports] blocked save: missing context', debugSnapshot);
+        setError('Missing org/session context (orgId, token).');
+        return null;
+      }
       setSaving(true);
+      setError(null);
+      setNotice(null);
       try {
         const created = await createSportsEvent(backendUrl, token as string, orgId as string, payload);
-        setEvents((prev) => [created, ...prev]);
+        setEvents((prev) => [created, ...(Array.isArray(prev) ? prev : [])]);
+        setNotice('Saved ✅');
         return created;
+      } catch (e: any) {
+        setError(errMsg(e));
+        return null;
       } finally {
         setSaving(false);
       }
     },
-    [backendUrl, token, orgId],
+    [backendUrl, token, orgId, ensure, debugSnapshot],
   );
 
   const editEvent = useCallback(
     async (eventId: number, payload: Partial<OrgSportsEvent>) => {
-      if (!ensure()) return null;
+      if (!ensure()) {
+        console.warn('[useOrgSports] blocked update: missing context', debugSnapshot);
+        setError('Missing org/session context (orgId, token).');
+        return null;
+      }
       setSaving(true);
+      setError(null);
+      setNotice(null);
       try {
         const updated = await updateSportsEvent(backendUrl, token as string, orgId as string, eventId, payload);
-        setEvents((prev) => prev.map((e) => (e.id === eventId ? updated : e)));
+        setEvents((prev) => (prev || []).map((e: any) => (e.id === eventId ? updated : e)));
+        setNotice('Updated ✅');
         return updated;
+      } catch (e: any) {
+        setError(errMsg(e));
+        return null;
       } finally {
         setSaving(false);
       }
     },
-    [backendUrl, token, orgId],
+    [backendUrl, token, orgId, ensure, debugSnapshot],
   );
 
   const removeEvent = useCallback(
     async (eventId: number) => {
-      if (!ensure()) return;
-      await deleteSportsEvent(backendUrl, token as string, orgId as string, eventId);
-      setEvents((prev) => prev.filter((e) => e.id !== eventId));
+      if (!ensure()) {
+        console.warn('[useOrgSports] blocked delete: missing context', debugSnapshot);
+        setError('Missing org/session context (orgId, token).');
+        return;
+      }
+      setError(null);
+      setNotice(null);
+      try {
+        await deleteSportsEvent(backendUrl, token as string, orgId as string, eventId);
+        setEvents((prev) => (prev || []).filter((e: any) => e.id !== eventId));
+        setNotice('Deleted ✅');
+      } catch (e: any) {
+        setError(errMsg(e));
+      }
     },
-    [backendUrl, token, orgId],
+    [backendUrl, token, orgId, ensure, debugSnapshot],
   );
 
   return {
@@ -86,6 +143,8 @@ export function useOrgSports(opts?: UseOrgSportsOptions) {
     events,
     loading,
     saving,
+    error,
+    notice,
     fetchEvents,
     saveEvent,
     editEvent,

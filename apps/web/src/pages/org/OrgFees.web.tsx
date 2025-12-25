@@ -150,6 +150,33 @@ const OrgFeesPage: React.FC = () => {
   const { isPro, upgradeCta, org, activeOrgId } = useOrgProTools() as any;
   const orgId: string | undefined = activeOrgId || org?.id;
 
+  useEffect(() => {
+  if (!orgId) return;
+
+  const key = `org:feesUnlock:${orgId}`;
+  const at = Number(sessionStorage.getItem(key) || 0);
+  const ok = at > 0 && Date.now() - at < 10 * 60 * 1000;
+
+  if (!ok) {
+    const sp = new URLSearchParams({
+      kind: 'instructor',
+      reauth: 'fees',
+      orgId: String(orgId),
+      returnTo: window.location.pathname + window.location.search,
+    });
+    navigate(`/org/login?${sp.toString()}`, { replace: true });
+  }
+}, [orgId, navigate]);
+
+const feesUnlocked = useMemo(() => {
+  if (!orgId) return false;
+  const key = `org:feesUnlock:${orgId}`;
+  const at = Number(sessionStorage.getItem(key) || 0);
+  return at > 0 && Date.now() - at < 10 * 60 * 1000;
+}, [orgId]);
+
+
+
   // ✅ (1) Keep as string in URL + state
   const structureIdParam = useMemo(() => {
     const raw = searchParams.get('structureId');
@@ -313,6 +340,14 @@ const OrgFeesPage: React.FC = () => {
 
   setStructureItems(nextItems);
 }, [selectedStructureId, structures]);
+
+useEffect(() => {
+  if (backendUrl && orgId && orgToken && isPro && feesUnlocked) {
+    fetchStructures();
+    fetchBalances();
+  }
+}, [backendUrl, orgId, orgToken, isPro, feesUnlocked, fetchStructures, fetchBalances]);
+
 
 
   const mergedRows = useMemo(() => {

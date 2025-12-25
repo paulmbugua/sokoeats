@@ -11,7 +11,16 @@ import {
   apiDownloadMyFeeStructurePdf, // ✅ ADD
 } from '@mytutorapp/shared/api/orgProApi';
 
-const card = 'rounded-2xl ring-1 ring-white/10 bg-white/5 p-4 sm:p-5';
+function cn(...xs: Array<string | false | null | undefined>) {
+  return xs.filter(Boolean).join(' ');
+}
+
+// ✅ Theme-aware shell + card (same style language as OrgLearnerHome / Newsletters)
+const pageShell =
+  'min-h-screen bg-slate-50 dark:bg-[#020617] text-slate-900 dark:text-darkTextPrimary px-3 sm:px-4 py-6';
+
+const card =
+  'rounded-3xl border border-slate-200/70 dark:border-darkCard bg-white/90 dark:bg-[#0b1220] p-4 sm:p-5 shadow-sm';
 
 function moneyFromCents(cents?: number, currency?: string) {
   const cur = (currency || 'USD').toUpperCase();
@@ -153,7 +162,7 @@ const OrgLearnerFeesPage: React.FC = () => {
   const learnerInitial = (learnerName || 'L').trim().charAt(0).toUpperCase();
 
   // ─────────────────────────────────────────────
-  // Statement query (reuses your existing API route)
+  // Statement query
   // ─────────────────────────────────────────────
   const statementQ = useQuery({
     queryKey: ['org-my-fee-statement', orgId],
@@ -167,15 +176,8 @@ const OrgLearnerFeesPage: React.FC = () => {
   const summaryBy = pickArray(statement?.summary_by_currency, statement?.summaryByCurrency, []);
   const summary0 = summaryBy?.[0] || null;
 
-  // ✅ Primary currency for top summary cards (single-currency UX)
-  const primaryCurrency = pickString(
-    statement?.summary?.currency,
-    statement?.currency,
-    summary0?.currency,
-    'KES',
-  );
+  const primaryCurrency = pickString(statement?.summary?.currency, statement?.currency, summary0?.currency, 'KES');
 
-  // ✅ Totals (prefer backend summary; fall back to summary_by_currency[0]; then other shapes)
   const billedCents = pickNumber(
     statement?.summary?.total_charges,
     summary0?.total_charges,
@@ -232,12 +234,7 @@ const OrgLearnerFeesPage: React.FC = () => {
     }, 0);
   }, [structureItems]);
 
-  const structureCurrency = pickString(
-    structure?.currency,
-    structure?.structure?.currency,
-    structureItems?.[0]?.currency,
-    'KES',
-  );
+  const structureCurrency = pickString(structure?.currency, structure?.structure?.currency, structureItems?.[0]?.currency, 'KES');
 
   // ─────────────────────────────────────────────
   // Download Statement PDF
@@ -247,7 +244,6 @@ const OrgLearnerFeesPage: React.FC = () => {
 
   const downloadPdf = React.useCallback(async () => {
     setDownloadError(null);
-
     if (!backendUrl || !orgToken || !orgId || !learnerStudentId) return;
 
     setDownloading(true);
@@ -320,25 +316,28 @@ const OrgLearnerFeesPage: React.FC = () => {
   const portalLabel = role ? `${String(role).toUpperCase()} PORTAL` : 'LEARNER PORTAL';
   const planLabel = org?.tier ? String(org.tier).toUpperCase() : 'STARTER';
 
+  const pillBase =
+    'px-3 py-1.5 rounded-full text-[11px] sm:text-xs font-semibold transition ' +
+    'focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 dark:focus-visible:ring-white/20';
+
   return (
-    <div className="min-h-screen bg-[#0b1220] text-white px-3 sm:px-4 py-6">
+    <div className={pageShell}>
       <div className="max-w-screen-lg mx-auto space-y-4">
         {/* Header */}
-        <header className={`${card} flex items-start justify-between gap-3`}>
+        <header className={cn(card, 'flex items-start justify-between gap-3')}>
           <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-white/60">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-600 dark:text-darkTextSecondary">
               {portalLabel} • FEES
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold truncate mt-0.5">
-              {org?.name || 'Your Institution'}
-            </h1>
-            <div className="text-xs text-white/60 mt-1">{planLabel} plan</div>
+            <h1 className="text-xl sm:text-2xl font-bold truncate mt-0.5">{org?.name || 'Your Institution'}</h1>
+            <div className="text-xs text-slate-600 dark:text-darkTextSecondary mt-1">{planLabel} plan</div>
           </div>
 
           <div className="shrink-0 flex items-center gap-2">
             <Link
               to="/org/learn"
-              className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 text-white/80 font-medium transition"
+              className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium transition
+                         dark:border-white/15 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white/80"
             >
               ← Back
             </Link>
@@ -346,30 +345,38 @@ const OrgLearnerFeesPage: React.FC = () => {
         </header>
 
         {/* Learner identity */}
-        <section className={card}>
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-gradient-to-br from-emerald-500/60 to-sky-500/60 flex items-center justify-center text-lg sm:text-xl font-bold shadow-inner overflow-hidden">
+        <section className={cn(card, 'relative overflow-hidden')}>
+          <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-emerald-500/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-sky-500/10 blur-3xl" />
+
+          <div className="relative flex items-center gap-3 sm:gap-4">
+            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-gradient-to-br from-emerald-500/60 to-sky-500/60 flex items-center justify-center text-lg sm:text-xl font-bold shadow-inner overflow-hidden ring-1 ring-slate-200/50 dark:ring-white/10">
               {learnerPhoto ? (
                 <img src={learnerPhoto} alt={learnerName} className="h-full w-full object-cover" />
               ) : (
-                <span>{learnerInitial}</span>
+                <span className="text-white">{learnerInitial}</span>
               )}
             </div>
 
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-white/60">Fee statement for</p>
+              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-600 dark:text-darkTextSecondary">
+                Fee statement for
+              </p>
 
               <div className="mt-0.5 flex flex-wrap items-center gap-2">
                 <div className="text-base sm:text-lg font-semibold truncate">{learnerName}</div>
 
                 {learnerGrade ? (
-                  <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-200 border border-emerald-400/30">
+                  <span
+                    className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800
+                               dark:bg-emerald-500/15 dark:text-emerald-200 dark:border-emerald-400/30"
+                  >
                     Grade / Class: {learnerGrade}
                   </span>
                 ) : null}
               </div>
 
-              <div className="mt-2 space-y-0.5 text-xs text-white/70">
+              <div className="mt-2 space-y-0.5 text-xs text-slate-700 dark:text-white/70">
                 <div className="flex flex-wrap gap-1 items-baseline">
                   <span className="opacity-80">📧 Email:</span>
                   <span className="font-mono break-all">
@@ -396,33 +403,39 @@ const OrgLearnerFeesPage: React.FC = () => {
         {/* Switcher */}
         <section className={card}>
           <div className="flex items-center justify-between gap-3">
-            <div className="inline-flex rounded-full border border-white/15 bg-white/5 p-1">
+            <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-white/15 dark:bg-white/5">
               <button
                 type="button"
                 onClick={() => setView('statement')}
-                className={`px-3 py-1.5 rounded-full text-[11px] sm:text-xs font-semibold transition ${
-                  view === 'statement' ? 'bg-white text-[#0b1220]' : 'text-white/80 hover:bg-white/10'
-                }`}
+                className={cn(
+                  pillBase,
+                  view === 'statement'
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-[#0b1220]'
+                    : 'text-slate-700 hover:bg-white dark:text-white/80 dark:hover:bg-white/10',
+                )}
               >
                 Statement
               </button>
               <button
                 type="button"
                 onClick={() => setView('structure')}
-                className={`px-3 py-1.5 rounded-full text-[11px] sm:text-xs font-semibold transition ${
-                  view === 'structure' ? 'bg-white text-[#0b1220]' : 'text-white/80 hover:bg-white/10'
-                }`}
+                className={cn(
+                  pillBase,
+                  view === 'structure'
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-[#0b1220]'
+                    : 'text-slate-700 hover:bg-white dark:text-white/80 dark:hover:bg-white/10',
+                )}
               >
                 Fee structure
               </button>
             </div>
 
-            <div className="text-[11px] text-white/60">
+            <div className="text-[11px] text-slate-500 dark:text-white/60">
               {view === 'statement' ? 'Your history' : 'Official breakdown'}
             </div>
           </div>
 
-          <p className="mt-2 text-sm text-white/70">
+          <p className="mt-2 text-sm text-slate-600 dark:text-darkTextSecondary">
             {view === 'statement'
               ? 'This shows charges and payments recorded by the school.'
               : 'This shows the school’s current fee breakdown for your class/grade.'}
@@ -432,16 +445,16 @@ const OrgLearnerFeesPage: React.FC = () => {
         {/* Pro gating */}
         {!isProTier ? (
           <section className={card}>
-            <div className="rounded-xl border border-amber-500/30 bg-amber-900/20 p-3 text-sm text-amber-100">
-              This institution’s fees module is available on <b>Pro/Enterprise</b>. If you need fee
-              details here, ask your admin.
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-100">
+              This institution’s fees module is available on <b>Pro/Enterprise</b>. If you need fee details here, ask your
+              admin.
             </div>
           </section>
         ) : !learnerStudentId ? (
           <section className={card}>
-            <div className="rounded-xl border border-rose-500/30 bg-rose-900/20 p-3 text-sm text-rose-100">
-              Could not determine your student ID. Please sign out and use the correct learner login
-              card (or open this page with <span className="font-mono">?studentId=...</span>).
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-900/20 dark:text-rose-100">
+              Could not determine your student ID. Please sign out and use the correct learner login card (or open this page
+              with <span className="font-mono">?studentId=...</span>).
             </div>
           </section>
         ) : view === 'structure' ? (
@@ -449,22 +462,21 @@ const OrgLearnerFeesPage: React.FC = () => {
             {/* STRUCTURE VIEW */}
             {structureQ.isLoading ? (
               <section className={card}>
-                <div className="text-sm text-white/70">Loading fee structure…</div>
+                <div className="text-sm text-slate-600 dark:text-darkTextSecondary">Loading fee structure…</div>
               </section>
             ) : structureQ.error ? (
               <section className={card}>
-                <div className="rounded-xl border border-rose-500/30 bg-rose-900/20 p-3 text-sm text-rose-100">
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-900/20 dark:text-rose-100">
                   Could not load fee structure.{' '}
-                  <span className="text-white/70">
+                  <span className="text-slate-600 dark:text-white/70">
                     {String((structureQ.error as any)?.message || structureQ.error)}
                   </span>
                 </div>
               </section>
             ) : !structure || (!structureItems?.length && !structure?.title) ? (
               <section className={card}>
-                <div className="text-sm text-white/70">
-                  No fee structure has been published for your class yet. Please ask the school
-                  office.
+                <div className="text-sm text-slate-600 dark:text-darkTextSecondary">
+                  No fee structure has been published for your class yet. Please ask the school office.
                 </div>
               </section>
             ) : (
@@ -473,24 +485,24 @@ const OrgLearnerFeesPage: React.FC = () => {
                   <div className="min-w-0">
                     <h2 className="text-lg font-semibold truncate">{structureTitle}</h2>
 
-                    <div className="mt-1 text-xs text-white/60 space-y-1">
+                    <div className="mt-1 text-xs text-slate-600 dark:text-white/60 space-y-1">
                       {structureTerm ? (
                         <div>
-                          Term: <span className="text-white/80">{structureTerm}</span>
+                          Term: <span className="text-slate-900 dark:text-white/80">{structureTerm}</span>
                         </div>
                       ) : null}
 
                       {structureScopeType || structureScopeValue ? (
                         <div>
                           Applies to:{' '}
-                          <span className="text-white/80">
+                          <span className="text-slate-900 dark:text-white/80">
                             {structureScopeType ? structureScopeType.toUpperCase() : 'SCOPE'}{' '}
                             {structureScopeValue ? `• ${structureScopeValue}` : ''}
                           </span>
                         </div>
                       ) : null}
 
-                      {structureDesc ? <div className="text-white/60">{structureDesc}</div> : null}
+                      {structureDesc ? <div className="text-slate-600 dark:text-white/60">{structureDesc}</div> : null}
                     </div>
                   </div>
 
@@ -498,7 +510,8 @@ const OrgLearnerFeesPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => structureQ.refetch()}
-                      className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 text-white/80 font-medium transition"
+                      className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium transition
+                                 dark:border-white/15 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white/80"
                     >
                       Refresh
                     </button>
@@ -507,11 +520,11 @@ const OrgLearnerFeesPage: React.FC = () => {
                       type="button"
                       onClick={downloadStructurePdf}
                       disabled={downloadingStructure}
-                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl font-semibold text-sm transition ${
-                        downloadingStructure
-                          ? 'bg-sky-600/50 cursor-not-allowed'
-                          : 'bg-sky-600 hover:bg-sky-500'
-                      }`}
+                      className={cn(
+                        'inline-flex items-center gap-2 px-4 py-2 rounded-2xl font-semibold text-sm transition',
+                        downloadingStructure ? 'bg-sky-600/60 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-500',
+                        'text-white',
+                      )}
                     >
                       {downloadingStructure ? 'Preparing…' : '⬇️ Structure PDF'}
                     </button>
@@ -519,26 +532,24 @@ const OrgLearnerFeesPage: React.FC = () => {
                 </div>
 
                 {downloadStructureError ? (
-                  <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-900/20 p-3 text-sm text-rose-100">
+                  <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-900/20 dark:text-rose-100">
                     {downloadStructureError}
                   </div>
                 ) : null}
 
-                {/* Total */}
+                {/* Total + Breakdown */}
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3 sm:col-span-1">
-                    <div className="text-xs text-white/60">Total</div>
-                    <div className="text-lg font-bold">
-                      {moneyFromCents(structureTotalCents, structureCurrency)}
-                    </div>
-                    <div className="mt-1 text-[11px] text-white/50">Optional items may not be required.</div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:col-span-1 dark:border-white/10 dark:bg-white/5">
+                    <div className="text-xs text-slate-600 dark:text-white/60">Total</div>
+                    <div className="text-lg font-bold">{moneyFromCents(structureTotalCents, structureCurrency)}</div>
+                    <div className="mt-1 text-[11px] text-slate-500 dark:text-white/50">Optional items may not be required.</div>
                   </div>
 
-                  <div className="rounded-xl border border-white/10 bg-white/5 overflow-hidden sm:col-span-2">
-                    <div className="px-3 py-2 text-xs text-white/60 border-b border-white/10">
+                  <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden sm:col-span-2 dark:border-white/10 dark:bg-white/5">
+                    <div className="px-3 py-2 text-xs text-slate-600 dark:text-white/60 border-b border-slate-200/70 dark:border-white/10">
                       Breakdown
                     </div>
-                    <div className="divide-y divide-white/10">
+                    <div className="divide-y divide-slate-200/70 dark:divide-white/10">
                       {structureItems.map((it: any, idx: number) => {
                         const label = pickString(it?.label, it?.name, `Item ${idx + 1}`);
                         const amt = pickNumber(it?.amount_cents, it?.amountCents, it?.amount, 0);
@@ -547,13 +558,10 @@ const OrgLearnerFeesPage: React.FC = () => {
                         const isOpt = Boolean(it?.is_optional ?? it?.isOptional);
 
                         return (
-                          <div
-                            key={it?.id ?? `${label}-${idx}`}
-                            className="px-3 py-2 flex items-center justify-between gap-2"
-                          >
+                          <div key={it?.id ?? `${label}-${idx}`} className="px-3 py-2 flex items-center justify-between gap-2">
                             <div className="min-w-0">
-                              <div className="text-sm text-white/85 truncate">{label}</div>
-                              <div className="text-[11px] text-white/50">
+                              <div className="text-sm text-slate-800 dark:text-white/85 truncate">{label}</div>
+                              <div className="text-[11px] text-slate-500 dark:text-white/50">
                                 {cadence ? cadence : '—'} {isOpt ? '• Optional' : '• Required'}
                               </div>
                             </div>
@@ -565,32 +573,31 @@ const OrgLearnerFeesPage: React.FC = () => {
                   </div>
                 </div>
 
-                <p className="mt-3 text-[11px] text-white/50">
-                  Tip: “Fee structure” is the published plan. Your “Statement” reflects what has actually
-                  been billed/paid.
+                <p className="mt-3 text-[11px] text-slate-500 dark:text-white/50">
+                  Tip: “Fee structure” is the published plan. Your “Statement” reflects what has actually been billed/paid.
                 </p>
               </section>
             )}
           </>
         ) : (
           <>
-            {/* STATEMENT VIEW (your existing UI unchanged) */}
+            {/* STATEMENT VIEW */}
             {statementQ.isLoading ? (
               <section className={card}>
-                <div className="text-sm text-white/70">Loading your fee statement…</div>
+                <div className="text-sm text-slate-600 dark:text-darkTextSecondary">Loading your fee statement…</div>
               </section>
             ) : statementQ.error ? (
               <section className={card}>
-                <div className="rounded-xl border border-rose-500/30 bg-rose-900/20 p-3 text-sm text-rose-100">
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-900/20 dark:text-rose-100">
                   Could not load fee statement.{' '}
-                  <span className="text-white/70">
+                  <span className="text-slate-600 dark:text-white/70">
                     {String((statementQ.error as any)?.message || statementQ.error)}
                   </span>
                 </div>
               </section>
             ) : !statement ? (
               <section className={card}>
-                <div className="text-sm text-white/70">
+                <div className="text-sm text-slate-600 dark:text-darkTextSecondary">
                   No fee statement is available yet. Please ask the school office.
                 </div>
               </section>
@@ -601,7 +608,7 @@ const OrgLearnerFeesPage: React.FC = () => {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
                       <h2 className="text-lg font-semibold">Statement summary</h2>
-                      <p className="text-sm text-white/70">
+                      <p className="text-sm text-slate-600 dark:text-darkTextSecondary">
                         Totals are based on charges and payments recorded by the school.
                       </p>
                     </div>
@@ -610,7 +617,8 @@ const OrgLearnerFeesPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => statementQ.refetch()}
-                        className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 text-white/80 font-medium transition"
+                        className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium transition
+                                   dark:border-white/15 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white/80"
                       >
                         Refresh
                       </button>
@@ -619,11 +627,10 @@ const OrgLearnerFeesPage: React.FC = () => {
                         type="button"
                         onClick={downloadPdf}
                         disabled={downloading}
-                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl font-semibold text-sm transition ${
-                          downloading
-                            ? 'bg-emerald-600/50 cursor-not-allowed'
-                            : 'bg-emerald-600 hover:bg-emerald-500'
-                        }`}
+                        className={cn(
+                          'inline-flex items-center gap-2 px-4 py-2 rounded-2xl font-semibold text-sm transition text-white',
+                          downloading ? 'bg-emerald-600/60 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500',
+                        )}
                       >
                         {downloading ? 'Preparing…' : '⬇️ Download PDF'}
                       </button>
@@ -631,7 +638,7 @@ const OrgLearnerFeesPage: React.FC = () => {
                   </div>
 
                   {downloadError ? (
-                    <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-900/20 p-3 text-sm text-rose-100">
+                    <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-900/20 dark:text-rose-100">
                       {downloadError}
                     </div>
                   ) : null}
@@ -639,11 +646,12 @@ const OrgLearnerFeesPage: React.FC = () => {
                   {summaryBy.length > 1 ? (
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       {summaryBy.map((r: any) => (
-                        <div key={r.currency} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                          <div className="text-xs text-white/60">
-                            {String(r.currency || '').toUpperCase()}
-                          </div>
-                          <div className="mt-2 text-sm space-y-1">
+                        <div
+                          key={r.currency}
+                          className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-white/5"
+                        >
+                          <div className="text-xs text-slate-600 dark:text-white/60">{String(r.currency || '').toUpperCase()}</div>
+                          <div className="mt-2 text-sm space-y-1 text-slate-700 dark:text-white/80">
                             <div className="flex justify-between">
                               <span>Total billed</span>
                               <b>{moneyFromCents(r.total_charges, r.currency)}</b>
@@ -662,24 +670,23 @@ const OrgLearnerFeesPage: React.FC = () => {
                     </div>
                   ) : (
                     <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-xs text-white/60">Total billed</div>
+                      <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-white/5">
+                        <div className="text-xs text-slate-600 dark:text-white/60">Total billed</div>
                         <div className="text-lg font-bold">{moneyFromCents(billedCents, primaryCurrency)}</div>
                       </div>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-xs text-white/60">Total paid</div>
+                      <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-white/5">
+                        <div className="text-xs text-slate-600 dark:text-white/60">Total paid</div>
                         <div className="text-lg font-bold">{moneyFromCents(paidCents, primaryCurrency)}</div>
                       </div>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-xs text-white/60">Balance</div>
+                      <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-white/5">
+                        <div className="text-xs text-slate-600 dark:text-white/60">Balance</div>
                         <div className="text-lg font-bold">{moneyFromCents(balanceCents, primaryCurrency)}</div>
                       </div>
                     </div>
                   )}
 
-                  <p className="mt-3 text-[11px] text-white/50">
-                    If anything looks wrong, contact the school office. Learners can only view their own
-                    statement.
+                  <p className="mt-3 text-[11px] text-slate-500 dark:text-white/50">
+                    If anything looks wrong, contact the school office. Learners can only view their own statement.
                   </p>
                 </section>
 
@@ -687,24 +694,19 @@ const OrgLearnerFeesPage: React.FC = () => {
                 <section className={card}>
                   <h3 className="text-base font-semibold">Recent charges</h3>
                   {charges.length ? (
-                    <div className="mt-3 rounded-xl border border-white/10 bg-white/5 overflow-hidden">
-                      <div className="divide-y divide-white/10">
+                    <div className="mt-3 rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-white/10 dark:bg-white/5">
+                      <div className="divide-y divide-slate-200/70 dark:divide-white/10">
                         {charges.slice(0, 12).map((c: any, idx: number) => {
                           const desc = pickString(c?.description, c?.label, c?.name, 'Charge');
                           const date = pickString(c?.due_date, c?.date, c?.created_at, '');
                           const amt = pickNumber(c?.amount_cents, c?.amountCents, c?.amount, 0);
-
-                          // ✅ row currency: use backend row currency first
                           const rowCur = pickString(c?.currency, primaryCurrency);
 
                           return (
-                            <div
-                              key={c?.id ?? `${desc}-${idx}`}
-                              className="px-3 py-2 flex items-center justify-between gap-2"
-                            >
+                            <div key={c?.id ?? `${desc}-${idx}`} className="px-3 py-2 flex items-center justify-between gap-2">
                               <div className="min-w-0">
-                                <div className="text-sm text-white/85 truncate">{desc}</div>
-                                {date ? <div className="text-[11px] text-white/50">{date}</div> : null}
+                                <div className="text-sm text-slate-800 dark:text-white/85 truncate">{desc}</div>
+                                {date ? <div className="text-[11px] text-slate-500 dark:text-white/50">{date}</div> : null}
                               </div>
                               <div className="text-sm font-semibold">{moneyFromCents(amt, rowCur)}</div>
                             </div>
@@ -713,7 +715,7 @@ const OrgLearnerFeesPage: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <p className="mt-2 text-sm text-white/70">No charges recorded yet.</p>
+                    <p className="mt-2 text-sm text-slate-600 dark:text-darkTextSecondary">No charges recorded yet.</p>
                   )}
                 </section>
 
@@ -721,25 +723,20 @@ const OrgLearnerFeesPage: React.FC = () => {
                 <section className={card}>
                   <h3 className="text-base font-semibold">Recent payments</h3>
                   {payments.length ? (
-                    <div className="mt-3 rounded-xl border border-white/10 bg-white/5 overflow-hidden">
-                      <div className="divide-y divide-white/10">
+                    <div className="mt-3 rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-white/10 dark:bg-white/5">
+                      <div className="divide-y divide-slate-200/70 dark:divide-white/10">
                         {payments.slice(0, 12).map((p: any, idx: number) => {
                           const method = pickString(p?.method, p?.payment_method, p?.channel, '');
                           const title = method ? `Payment (${method})` : 'Payment';
                           const date = pickString(p?.date, p?.received_at, p?.created_at, '');
                           const amt = pickNumber(p?.amount_cents, p?.amountCents, p?.amount, 0);
-
-                          // ✅ row currency: use backend row currency first
                           const rowCur = pickString(p?.currency, primaryCurrency);
 
                           return (
-                            <div
-                              key={p?.id ?? `${title}-${idx}`}
-                              className="px-3 py-2 flex items-center justify-between gap-2"
-                            >
+                            <div key={p?.id ?? `${title}-${idx}`} className="px-3 py-2 flex items-center justify-between gap-2">
                               <div className="min-w-0">
-                                <div className="text-sm text-white/85 truncate">{title}</div>
-                                {date ? <div className="text-[11px] text-white/50">{date}</div> : null}
+                                <div className="text-sm text-slate-800 dark:text-white/85 truncate">{title}</div>
+                                {date ? <div className="text-[11px] text-slate-500 dark:text-white/50">{date}</div> : null}
                               </div>
                               <div className="text-sm font-semibold">{moneyFromCents(amt, rowCur)}</div>
                             </div>
@@ -748,7 +745,7 @@ const OrgLearnerFeesPage: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <p className="mt-2 text-sm text-white/70">No payments recorded yet.</p>
+                    <p className="mt-2 text-sm text-slate-600 dark:text-darkTextSecondary">No payments recorded yet.</p>
                   )}
                 </section>
               </>

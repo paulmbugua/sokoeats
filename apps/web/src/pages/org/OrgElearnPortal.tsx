@@ -623,10 +623,41 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     return () => clearInterval(interval);
   }, [isLearnerView]);
 
-  const goCreateAI = useCallback(() => {
+    const goCreateAI = useCallback(() => {
     navigate('/robot-teach');
   }, [navigate]);
 
+  // ✅ ADD THIS (right after goCreateAI is perfect)
+  const goFeesSecure = useCallback(() => {
+    if (!org?.id) {
+      alert('Open your institution portal first.');
+      return;
+    }
+
+    // 10 minute UX unlock (avoid prompting repeatedly)
+    const unlockKey = `org:feesUnlock:${org.id}`;
+    let unlocked = false;
+    try {
+      const at = Number(sessionStorage.getItem(unlockKey) || 0);
+      unlocked = at > 0 && Date.now() - at < 10 * 60 * 1000;
+    } catch {}
+
+    if (unlocked) {
+      navigate('/org/fees');
+      return;
+    }
+
+    const sp = new URLSearchParams();
+    sp.set('kind', 'instructor');
+    sp.set('reauth', 'fees');
+    sp.set('orgId', String(org.id));
+    sp.set('returnTo', '/org/fees');
+
+    navigate(`/org/login?${sp.toString()}`);
+  }, [navigate, org?.id]); // (org is in scope; org?.id is enough)
+
+
+  
   const handleBackToAssignments = useCallback(() => {
     const sp = new URLSearchParams(window.location.search);
     sp.delete('view');
@@ -2266,10 +2297,11 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                         onClick: () => navigate('/org/attendance'),
                       },
                       {
-                        title: 'Fees & balances',
-                        body: 'Charge fees, record payments, and download statements.',
-                        onClick: () => navigate('/org/fees'),
-                      },
+                          title: 'Fees & balances',
+                          body: 'Charge fees, record payments, and download statements.',
+                          onClick: goFeesSecure, // ✅ secure step-up instead of direct navigate
+                        },
+
                       {
                         title: 'Newsletters',
                         body: 'Draft and archive end-of-term updates with AI help.',

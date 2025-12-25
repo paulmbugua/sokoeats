@@ -23,17 +23,33 @@ function pickArray(data: any, keys: string[]) {
   return [];
 }
 
-function apiBaseFromEnv() {
-  return (
-    process.env.EXPO_PUBLIC_API_URL ||
-    process.env.VITE_API_URL ||
-    process.env.API_URL ||
-    ''
-  ).replace(/\/+$/, '');
-}
-
 function authHeaders(token?: string) {
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * ✅ Robust backend URL resolver (web + native + SSR)
+ * - prefers explicit backendUrl
+ * - supports window.__BACKEND_URL__
+ * - supports Vite import.meta.env
+ * - falls back to process.env (Expo / Node)
+ */
+function resolveBackendUrl(backendUrl?: string) {
+  const w = typeof window !== 'undefined' ? (window as any) : null;
+  const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : null;
+  const pEnv = typeof process !== 'undefined' ? (process as any).env : null;
+
+  const base =
+    backendUrl ||
+    w?.__BACKEND_URL__ ||
+    metaEnv?.VITE_BACKEND_URL ||
+    metaEnv?.VITE_API_URL ||
+    pEnv?.EXPO_PUBLIC_API_URL ||
+    pEnv?.VITE_API_URL ||
+    pEnv?.API_URL ||
+    '';
+
+  return String(base || '').replace(/\/+$/, '');
 }
 
 function axiosCfg(token?: string) {
@@ -46,7 +62,7 @@ function axiosCfg(token?: string) {
 
 // ✅ Engagement tools are mounted under /api/orgs/:orgId/...
 function orgBase(backendUrl: string | undefined, orgId: string) {
-  const base = (backendUrl?.trim() || apiBaseFromEnv()).replace(/\/+$/, '');
+  const base = resolveBackendUrl(backendUrl);
   return `${base}/api/orgs/${orgId}`;
 }
 
@@ -287,20 +303,21 @@ export async function getAnnouncementAgmPdf(
 }
 
 /* ─────────────────────────────────────────────────────────
- * Sports
+ * Sports (UPDATED per your requested resolver + return shapes)
  * ───────────────────────────────────────────────────────── */
 
 export async function listSportsEvents(
   backendUrl: string | undefined,
   token: string,
   orgId: string,
-  params?: Record<string, unknown>,
+  params?: Record<string, any>,
 ): Promise<OrgSportsEvent[]> {
-  const { data } = await axios.get(`${orgBase(backendUrl, orgId)}/sports/events`, {
-    ...axiosCfg(token),
-    params,
-  });
-  return pickArray(data, ['items', 'events', 'rows']);
+  const base = resolveBackendUrl(backendUrl);
+  const url = `${base}/api/orgs/${orgId}/sports/events`;
+  const r = await axios.get(url, { ...axiosCfg(token), params });
+
+  // Prefer { items: [...] } (new), but keep legacy support too
+  return (r.data?.items ?? pickArray(r.data, ['items', 'events', 'rows'])) as OrgSportsEvent[];
 }
 
 export async function createSportsEvent(
@@ -309,12 +326,10 @@ export async function createSportsEvent(
   orgId: string,
   payload: Partial<OrgSportsEvent>,
 ): Promise<OrgSportsEvent> {
-  const { data } = await axios.post(
-    `${orgBase(backendUrl, orgId)}/sports/events`,
-    payload,
-    axiosCfg(token),
-  );
-  return data;
+  const base = resolveBackendUrl(backendUrl);
+  const url = `${base}/api/orgs/${orgId}/sports/events`;
+  const r = await axios.post(url, payload, axiosCfg(token));
+  return r.data as OrgSportsEvent;
 }
 
 export async function updateSportsEvent(
@@ -324,12 +339,10 @@ export async function updateSportsEvent(
   eventId: number,
   payload: Partial<OrgSportsEvent>,
 ): Promise<OrgSportsEvent> {
-  const { data } = await axios.put(
-    `${orgBase(backendUrl, orgId)}/sports/events/${eventId}`,
-    payload,
-    axiosCfg(token),
-  );
-  return data;
+  const base = resolveBackendUrl(backendUrl);
+  const url = `${base}/api/orgs/${orgId}/sports/events/${eventId}`;
+  const r = await axios.put(url, payload, axiosCfg(token));
+  return r.data as OrgSportsEvent;
 }
 
 export async function deleteSportsEvent(
@@ -337,11 +350,11 @@ export async function deleteSportsEvent(
   token: string,
   orgId: string,
   eventId: number,
-): Promise<void> {
-  await axios.delete(
-    `${orgBase(backendUrl, orgId)}/sports/events/${eventId}`,
-    axiosCfg(token),
-  );
+): Promise<{ ok: boolean }> {
+  const base = resolveBackendUrl(backendUrl);
+  const url = `${base}/api/orgs/${orgId}/sports/events/${eventId}`;
+  const r = await axios.delete(url, axiosCfg(token));
+  return r.data as { ok: boolean };
 }
 
 // optional convenience (your backend exposes /sports/events.csv)
@@ -351,12 +364,14 @@ export async function downloadSportsEventsCsv(
   orgId: string,
   params?: Record<string, unknown>,
 ): Promise<Blob> {
-  const { data } = await axios.get(`${orgBase(backendUrl, orgId)}/sports/events.csv`, {
+  const base = resolveBackendUrl(backendUrl);
+  const url = `${base}/api/orgs/${orgId}/sports/events.csv`;
+  const r = await axios.get(url, {
     ...axiosCfg(token),
     params,
     responseType: 'blob',
   });
-  return data as Blob;
+  return r.data as Blob;
 }
 
 /* ─────────────────────────────────────────────────────────
