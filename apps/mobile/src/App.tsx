@@ -93,6 +93,8 @@ import OrgToolsClubsNative from './screens/org/OrgToolsClubs.native';
 import OrgLearnerNewslettersNative from './screens/org/OrgLearnerNewsletters.native';
 import OrgLearnerSportsClubsNative from './screens/org/OrgLearnerSportsClubs.native';
 
+
+
 const Stack = createStackNavigator<MainStackParamList>();
 
 /* ───────── First-login helpers (per identity) ───────── */
@@ -314,6 +316,9 @@ const App: React.FC = () => {
           <Stack.Screen name="OrgInviteLanding" component={OrgInviteLanding} />
           <Stack.Screen name="OrgLearnerNewsletters" component={OrgLearnerNewslettersNative} />
           <Stack.Screen name="OrgLearnerSportsClubs" component={OrgLearnerSportsClubsNative} />
+          <Stack.Screen name="OrgNewsletters" component={OrgNewslettersNative} />
+          <Stack.Screen name="OrgToolsSports" component={OrgToolsSportsNative} />
+
 
           {/* 🔁 ORG HOME ROUTER (like /org on web) */}
           <Stack.Screen name="OrgHome">

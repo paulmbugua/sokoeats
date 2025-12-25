@@ -1,10 +1,10 @@
 import React from 'react';
-import { ActivityIndicator, Image, Alert, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import * as Linking from 'expo-linking';
-import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+
 import tw from '../../../tailwind';
 
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
@@ -57,7 +57,7 @@ function joinUrl(base: string, path: string) {
   return `${b}/${p}`;
 }
 
-async function downloadAndOpenPdf({
+async function downloadAndSharePdf({
   backendUrl,
   orgId,
   orgToken,
@@ -68,7 +68,7 @@ async function downloadAndOpenPdf({
   orgId: string;
   orgToken: string;
   kind: 'statement' | 'structure';
-  filename: string; // without .pdf
+  filename: string;
 }) {
   const endpoint =
     kind === 'statement'
@@ -77,45 +77,32 @@ async function downloadAndOpenPdf({
 
   const url = joinUrl(backendUrl, endpoint);
 
-  const safeName = (filename || 'file')
-    .trim()
-    .replace(/[^a-z0-9]+/gi, '-')
-    .replace(/^-+|-+$/g, '')
-    .toLowerCase()
-    .slice(0, 80) || 'file';
+  const safeName = sanitizeFilenamePart(filename || 'file') || 'file';
+  const outUri = `${FileSystem.cacheDirectory}${safeName}.pdf`;
 
-  const outUri = `${FileSystem.documentDirectory}${safeName}.pdf`;
-
-  // 1) download with auth header
   const res = await FileSystem.downloadAsync(url, outUri, {
     headers: { Authorization: `Bearer ${orgToken}` },
   });
 
-  // 2) try open
-  try {
-    const canOpen = await Linking.canOpenURL(res.uri);
-    if (canOpen) {
-      await Linking.openURL(res.uri);
-      return res.uri;
-    }
-  } catch {
-    // fallthrough
+  const canShare = await Sharing.isAvailableAsync();
+  if (canShare) {
+    await Sharing.shareAsync(res.uri, {
+      dialogTitle: filename,
+      mimeType: 'application/pdf',
+      UTI: 'com.adobe.pdf',
+    });
+  } else {
+    // Fallback: at least return the local path (Sharing not available)
+    // (Most Expo apps have Sharing available on iOS/Android; web differs)
+    throw new Error(
+      Platform.select({
+        ios: `PDF saved to: ${res.uri}`,
+        android: `PDF saved to: ${res.uri}`,
+        default: `PDF saved to: ${res.uri}`,
+      }) || `PDF saved to: ${res.uri}`,
+    );
   }
-
-  // 3) fallback: copy path so user can access it
-  await Clipboard.setStringAsync(res.uri);
-
-  Alert.alert(
-    'PDF downloaded',
-    Platform.OS === 'android'
-      ? 'Saved to app storage. We couldn’t open it automatically. The file path has been copied to your clipboard.'
-      : 'Saved to app storage. We couldn’t open it automatically. The file path has been copied to your clipboard.',
-    [{ text: 'OK' }],
-  );
-
-  return res.uri;
 }
-
 
 /* ─────────────────────────────────────────────
  * Small themed UI atoms
@@ -458,7 +445,7 @@ export default function OrgLearnerFeesNative() {
       const safeAdm = sanitizeFilenamePart(admissionCode || learnerStudentId);
       const filename = `fee-statement-${safeOrg}-${safeAdm}`;
 
-      await downloadAndOpenPdf({
+      await downloadAndSharePdf({
         backendUrl,
         orgId: String(orgId),
         orgToken,
@@ -482,7 +469,7 @@ export default function OrgLearnerFeesNative() {
       const safeAdm = sanitizeFilenamePart(admissionCode || learnerStudentId || 'learner');
       const filename = `fee-structure-${safeOrg}-${safeAdm}`;
 
-      await downloadAndOpenPdf({
+      await downloadAndSharePdf({
         backendUrl,
         orgId: String(orgId),
         orgToken,
