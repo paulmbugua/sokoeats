@@ -83,3 +83,51 @@ export function requireOrgRole(minRole = 'admin') {
 
 export const requireOrgInstructor = requireOrgRole('instructor');
 export const requireOrgAdmin = requireOrgRole('admin');
+
+export async function requireOrgFeeAccess(req, res, next) {
+  const orgId = normalizeOrgId(req);
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  if (!orgId) {
+    return res.status(400).json({ message: 'org_id required' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT m.role, COALESCE(i.can_access_fees, false) AS can_access_fees
+         FROM org_memberships m
+         LEFT JOIN org_instructors i
+           ON i.org_id = m.org_id
+          AND i.user_id = m.user_id
+        WHERE m.org_id = $1
+          AND m.user_id = $2
+        LIMIT 1`,
+      [orgId, userId],
+    );
+
+    if (!rows.length) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const role = String(rows[0].role || '').toLowerCase();
+    const canAccessFees = rows[0].can_access_fees === true;
+
+    if (ORG_ROLE_ORDER[role] >= ORG_ROLE_ORDER.admin) {
+      res.locals.orgMembership = { orgId, userId, role, canAccessFees };
+      return next();
+    }
+
+    if (role === 'instructor' && canAccessFees) {
+      res.locals.orgMembership = { orgId, userId, role, canAccessFees };
+      return next();
+    }
+
+    return res.status(403).json({ message: 'Forbidden' });
+  } catch (err) {
+    console.error('[requireOrgFeeAccess] failed', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}

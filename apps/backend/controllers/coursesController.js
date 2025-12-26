@@ -144,6 +144,7 @@ export async function createAiSandboxCourse(req, res) {
 
       return res.status(200).json({
         id: row.id,
+        course_id: row.id,
         title: row.title,
         description: row.description,
         blurb: row.description,
@@ -183,6 +184,7 @@ export async function createAiSandboxCourse(req, res) {
 
     return res.status(201).json({
       id: row.id,
+      course_id: row.id,
       title: row.title,
       description: row.description,
       blurb: row.description,

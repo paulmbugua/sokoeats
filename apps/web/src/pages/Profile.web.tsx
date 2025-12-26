@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import RefundCenter from '../components/RefundCenter.web';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useCourses } from '@mytutorapp/shared/hooks';
+import { useAiCourseEntitlements, useCourses } from '@mytutorapp/shared/hooks';
 import { useEnrollments } from '@mytutorapp/shared/hooks/useEnrollments';
 import { useCourseProgress } from '@mytutorapp/shared/hooks/useCourseProgress';
 import type {
@@ -206,6 +206,13 @@ const ProfilePage: React.FC = () => {
     refreshWallet,
     setTokens: setCtxTokens,
   } = useShopContext() as any;
+
+  const {
+    items: aiCourses,
+    loading: aiCoursesLoading,
+    error: aiCoursesError,
+    refresh: refreshAiCourses,
+  } = useAiCourseEntitlements({ backendUrl, token: token || '' });
 
   // Fetch /api/user/me when we need email/role fallback
   const [meEmail, setMeEmail] = useState<string | null>(null);
@@ -726,11 +733,93 @@ const ProfilePage: React.FC = () => {
                   {ctaLabel}
                 </button>
               </div>
-              {isTutor && !hasTutorProfile && !loadingProfile && (
-                <p className="mt-2 text-sm text-blue-600 dark:text-blue-400 font-medium">
-                  👉 Please create your tutor profile to get started!
-                </p>
-              )}
+            {isTutor && !hasTutorProfile && !loadingProfile && (
+              <p className="mt-2 text-sm text-blue-600 dark:text-blue-400 font-medium">
+                👉 Please create your tutor profile to get started!
+              </p>
+            )}
+
+            {token && (
+              <div className="px-4 mt-4">
+                <div className="rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="font-semibold">Certificates</div>
+                      <div className="text-sm text-[#49739c] dark:text-darkTextSecondary">
+                        Purchased AI courses (certificate unlocks)
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => refreshAiCourses().catch(() => null)}
+                      className="h-10 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] text-sm font-semibold"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {aiCoursesLoading && (
+                    <div className="text-sm text-[#49739c] dark:text-darkTextSecondary">Loading certificates…</div>
+                  )}
+                  {aiCoursesError && (
+                    <div className="text-sm text-red-600 dark:text-red-400">{aiCoursesError}</div>
+                  )}
+
+                  {aiCourses.length === 0 && !aiCoursesLoading ? (
+                    <div className="text-sm text-[#49739c] dark:text-darkTextSecondary">
+                      You have no purchased AI courses yet. Buy a certificate to unlock lessons.
+                    </div>
+                  ) : null}
+
+                  {aiCourses.length > 0 && (
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {aiCourses.map((item) => {
+                        const status = item.completion?.passed
+                          ? 'Completed'
+                          : item.completion?.attempted
+                            ? 'In progress'
+                            : 'Not started';
+                        return (
+                          <div
+                            key={item.course_id}
+                            className="rounded-xl border border-[#cedbe8] dark:border-white/10 bg-[#f6f9fc] dark:bg-[#0b1620] p-3 space-y-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold truncate">{item.title}</div>
+                                <div className="text-xs text-[#49739c] dark:text-darkTextSecondary">
+                                  Lessons used {item.lessons_used}/{item.max_lessons}
+                                </div>
+                              </div>
+                              <span className="text-[11px] px-2 py-1 rounded-full bg-[#e7edf4] dark:bg-[#172534] text-[#0d141c] dark:text-white/80">
+                                {status}
+                              </span>
+                            </div>
+                            <div className="flex gap-2 flex-wrap">
+                              {!item.completion?.passed ? (
+                                <Link
+                                  to={`/courses/${item.course_id}`}
+                                  className="text-sm px-3 py-2 rounded-lg bg-[#e7edf4] dark:bg-[#172534] text-[#0d141c] dark:text-white"
+                                >
+                                  Continue course
+                                </Link>
+                              ) : (
+                                <Link
+                                  to={`/results?courseId=${encodeURIComponent(item.course_id)}`}
+                                  className="text-sm px-3 py-2 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
+                                >
+                                  View certificate
+                                </Link>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             </div>
 
             {/* Personal info */}

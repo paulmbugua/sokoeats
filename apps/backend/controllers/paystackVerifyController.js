@@ -1,6 +1,7 @@
 // controllers/paystackVerifyController.js (ESM)
 import fetch from 'node-fetch';
 import pool from '../config/db.js';
+import { upsertAiCertificateEntitlement } from './_aiCourseEntitlements.js';
 
 const PAYSTACK_SECRET = (process.env.PAYSTACK_SECRET_KEY || '').trim();
 if (!PAYSTACK_SECRET) throw new Error('Missing PAYSTACK_SECRET_KEY');
@@ -282,6 +283,44 @@ export async function verifyAndFinalize(req, res) {
         payment.id,
       ],
     );
+
+    // If this was a certificate purchase, upsert entitlement instead of crediting tokens
+    const purchaseType = String(
+      payment?.meta?.purchaseType || payment?.meta?.purpose || '',
+    ).toLowerCase();
+    if (purchaseType === 'certificate') {
+      const courseId =
+        payment?.meta?.courseId || payment?.meta?.course_id || payment?.meta?.course_id;
+      const courseSource =
+        payment?.meta?.courseSource || payment?.meta?.course_source || 'catalog';
+
+      await client.query(
+        "UPDATE payments SET status = 'Completed', updated_at = NOW() WHERE id = $1",
+        [payment.id],
+      );
+
+      if (courseId) {
+        try {
+          await upsertAiCertificateEntitlement({
+            userId: payment.user_id,
+            orgId: null,
+            courseId: String(courseId),
+            courseSource,
+            maxLessons: 60,
+          });
+        } catch (err) {
+          console.warn('[paystack][verify] entitlement upsert failed', err?.message);
+        }
+      }
+
+      await client.query('COMMIT');
+      return res.json({
+        ok: true,
+        status: 'success',
+        reference,
+        designatedCourseId: courseId || null,
+      });
+    }
 
     // Finalize + credit exactly once
     const { tokens, credits } = await creditTokensAndCompletePayment(client, {

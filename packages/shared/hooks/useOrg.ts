@@ -167,6 +167,33 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
       setOrg(o ?? null);
       setOrgChecked(true);
 
+      // Ensure membership reflects fee-access capability even if /api/user/me omitted it
+      setMembership((prev) => {
+        if (Array.isArray(prev)) {
+          return prev.map((m) =>
+            m.orgId === o?.id && m.can_access_fees === undefined
+              ? { ...m, can_access_fees: Boolean((o as any)?.can_access_fees) }
+              : m,
+          );
+        }
+
+        if (prev) {
+          if (prev.can_access_fees === undefined && (o as any)?.can_access_fees !== undefined) {
+            return { ...prev, can_access_fees: Boolean((o as any)?.can_access_fees) };
+          }
+          return prev;
+        }
+
+        if (!o) return prev;
+
+        return {
+          orgId: (o as any)?.id ?? '',
+          role: ((o as any)?.my_role || (o as any)?.role || '').toLowerCase(),
+          tier: (o as any)?.tier,
+          can_access_fees: Boolean((o as any)?.can_access_fees),
+        } as any;
+      });
+
       if (o?.id) {
         setActiveOrgId((prev) => prev ?? o.id);
         await storage.setItem('org:activeId', o.id);
