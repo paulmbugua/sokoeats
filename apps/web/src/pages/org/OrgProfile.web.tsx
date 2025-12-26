@@ -34,6 +34,7 @@ import {
   cardBase,
   type MiniUser,
 } from './portal/OrgProfileShared.web';
+import { useOrgInstructorFeeAccess } from '@mytutorapp/shared/hooks/useOrgInstructorFeeAccess';
 
 // Modals
 import { InviteModal, AddInstructorModal, AddLearnerModal } from './portal/OrgProfileModals.web';
@@ -99,6 +100,7 @@ const OrgProfilePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [instructors, setInstructors] = useState<MiniUser[]>([]);
   const [learners, setLearners] = useState<MiniUser[]>([]);
+  const [feeInstructorId, setFeeInstructorId] = useState<string | number | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<'instructor' | 'learner'>('learner');
 
@@ -195,6 +197,8 @@ const OrgProfilePage: React.FC = () => {
         const roster = await apiRoster(backendUrl, orgToken, orgId);
         setInstructors(Array.isArray(roster?.instructors) ? roster.instructors : []);
         setLearners(Array.isArray(roster?.learners) ? roster.learners : []);
+        const designated = (roster?.instructors || []).find((x: any) => x?.can_access_fees);
+        setFeeInstructorId(designated?.id ?? null);
         setInstructorPage(1);
         setLearnerPage(1);
       } catch {
@@ -202,6 +206,8 @@ const OrgProfilePage: React.FC = () => {
           const roster = await tryFetchRoster(backendUrl, orgToken, orgId);
           setInstructors(Array.isArray(roster?.instructors) ? roster.instructors : []);
           setLearners(Array.isArray(roster?.learners) ? roster.learners : []);
+          const designated = (roster?.instructors || []).find((x: any) => x?.can_access_fees);
+          setFeeInstructorId(designated?.id ?? null);
           setInstructorPage(1);
           setLearnerPage(1);
         } catch {
@@ -467,6 +473,37 @@ const OrgProfilePage: React.FC = () => {
     const slug = org.slug || org.name || org.id;
     downloadCsv(`login-sheet-${slug}.csv`, rows);
   };
+
+  const { ready: feeReady, saving: feeSaving, updateFeeAccess } = useOrgInstructorFeeAccess({
+    backendUrl,
+    token: orgToken,
+    orgId: org?.id,
+  });
+
+  const handleFeeAccess = useCallback(
+    async (u: MiniUser, enable: boolean) => {
+      if (!org?.id || !feeReady || feeSaving) return;
+      const label = u.name || u.email || `User #${u.id}`;
+      const ok = window.confirm(
+        enable
+          ? `Grant Fees access to ${label}? This will remove access from other instructors.`
+          : `Remove Fees access from ${label}?`,
+      );
+      if (!ok) return;
+      try {
+        await updateFeeAccess(u.id, enable);
+        setInstructors((prev) =>
+          prev.map((p) => ({ ...p, can_access_fees: String(p.id) === String(u.id) ? enable : false })),
+        );
+        setFeeInstructorId(enable ? u.id : null);
+        window.alert(enable ? 'Fee access granted.' : 'Fee access removed.');
+      } catch (e: any) {
+        const msg = e?.response?.data?.message || e?.message || 'Unable to update fee access.';
+        window.alert(msg);
+      }
+    },
+    [feeReady, feeSaving, org?.id, updateFeeAccess],
+  );
 
   // create learner handler
   const handleCreateLearner = useCallback(
@@ -832,9 +869,32 @@ const OrgProfilePage: React.FC = () => {
             ) : instructors.length ? (
               <>
                 <ul className="mt-3 divide-y divide-black/5 dark:divide-white/10 rounded-xl">
-                  {paginatedInstructors.map((u) => (
-                    <PersonRow key={String(u.id)} u={u} onRemove={() => handleRemoveMember(u)} />
-                  ))}
+                  {paginatedInstructors.map((u) => {
+                    const hasFees = u.can_access_fees || String(feeInstructorId) === String(u.id);
+                    return (
+                      <PersonRow
+                        key={String(u.id)}
+                        u={{ ...u, can_access_fees: hasFees }}
+                        onRemove={() => handleRemoveMember(u)}
+                        badge={hasFees ? 'Fees access' : null}
+                        extraActions={
+                          <button
+                            type="button"
+                            onClick={() => void handleFeeAccess(u, !hasFees)}
+                            disabled={!feeReady || feeSaving || (!hasFees && !orgToken)}
+                            className={`text-[11px] sm:text-xs font-semibold px-2 py-1 rounded-full border transition ${
+                              hasFees
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-100'
+                                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10'
+                            }`}
+                            title={hasFees ? 'Remove fees access' : 'Grant fees access'}
+                          >
+                            {hasFees ? 'Remove' : 'Grant fees'}
+                          </button>
+                        }
+                      />
+                    );
+                  })}
                 </ul>
 
                 {/* Pagination strip */}

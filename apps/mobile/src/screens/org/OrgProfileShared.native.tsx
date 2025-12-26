@@ -11,6 +11,7 @@ export type MiniUser = {
   id: string | number;
   name?: string;
   email?: string;
+  can_access_fees?: boolean;
 
   // optional staff fields (instructors)
   staff_code?: string | null;
@@ -138,7 +139,9 @@ const IconBtn: React.FC<{
 export const PersonRow: React.FC<{
   u: MiniUser;
   onRemove?: () => Promise<void> | void;
-}> = ({ u, onRemove }) => {
+  badge?: React.ReactNode;
+  extraActions?: React.ReactNode;
+}> = ({ u, onRemove, badge, extraActions }) => {
   const palette = usePersonPalette();
   const [removing, setRemoving] = useState(false);
 
@@ -199,11 +202,15 @@ export const PersonRow: React.FC<{
               {u.email}
             </Text>
           )}
+          {badge ? (
+            <View style={tw`mt-1`}>{typeof badge === 'string' ? <Text style={[tw`text-[11px]`, { color: palette.icon }]}>{badge}</Text> : badge}</View>
+          ) : null}
         </View>
       </View>
 
       {/* Right: ICON actions only */}
       <View style={tw`flex-row items-center gap-1.5 ml-2`}>
+        {extraActions}
         <IconBtn
           label={hasEmail ? 'Email' : 'No email'}
           onPress={hasEmail ? openEmail : undefined}

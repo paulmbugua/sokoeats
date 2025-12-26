@@ -745,8 +745,19 @@ export async function renderFeeStructurePdf({ org, structure }) {
 
   const currency = guessCurrency({ org, structure });
 
-  const [logoBuf] = await Promise.all([
+  const principalSigSource =
+    org?.registrar_signature_url ||
+    org?.signature_url ||
+    org?.principal_signature_url ||
+    org?.headteacher_signature_url ||
+    null;
+
+  const bursarSigSource = org?.bursar_signature_url || org?.finance_signature_url || null;
+
+  const [logoBuf, principalSigBuf, bursarSigBuf] = await Promise.all([
     tryLoadImageBuffer(org?.logo_url, { w: 240, h: 240, dpr: 2 }),
+    tryLoadImageBuffer(principalSigSource, { w: 520, h: 200, trim: true, dpr: 2 }),
+    tryLoadImageBuffer(bursarSigSource, { w: 520, h: 200, trim: true, dpr: 2 }),
   ]);
 
   const drawPageHeader = () =>
@@ -799,6 +810,14 @@ export async function renderFeeStructurePdf({ org, structure }) {
   const items = Array.isArray(structure?.items) ? structure.items : [];
   if (!items.length) {
     doc.font('Helvetica').fontSize(10).fillColor('#111827').text('No items configured.');
+    drawSignaturesBlock(doc, {
+      leftMargin,
+      rightMargin,
+      innerWidth,
+      pageHeight,
+      bursarSigBuf,
+      principalSigBuf,
+    });
     doc.end();
     return bufferPromise;
   }
@@ -904,6 +923,15 @@ export async function renderFeeStructurePdf({ org, structure }) {
       doc.moveDown(0.5);
     }
   }
+
+  drawSignaturesBlock(doc, {
+    leftMargin,
+    rightMargin,
+    innerWidth,
+    pageHeight,
+    bursarSigBuf,
+    principalSigBuf,
+  });
 
   doc.end();
   return bufferPromise;
@@ -1246,6 +1274,124 @@ const totalsByCurrency = coerced.length ? coerced : computeStatementTotalsByCurr
     rightMargin,
     innerWidth,
     pageHeight,
+    bursarSigBuf,
+    principalSigBuf,
+  });
+
+  doc.end();
+  return bufferPromise;
+}
+
+/* ─────────────────────────────────────────────────────────
+ * Institution-wide fee statement PDF
+ * ───────────────────────────────────────────────────────── */
+
+export async function renderInstitutionFeeStatementPdf({ org, rows, totalsByCurrency, dateLabel }) {
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  const pass = new PassThrough();
+  const bufferPromise = getStream.buffer(pass);
+  doc.pipe(pass);
+
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const totals = Array.isArray(totalsByCurrency) ? totalsByCurrency : [];
+
+  const [logoBuf, principalSigBuf, bursarSigBuf] = await Promise.all([
+    tryLoadImageBuffer(org?.logo_url, { w: 240, h: 240, dpr: 2 }),
+    tryLoadImageBuffer(org?.principal_signature_url || org?.registrar_signature_url || org?.signature_url, {
+      w: 520,
+      h: 200,
+      trim: true,
+      dpr: 2,
+    }),
+    tryLoadImageBuffer(org?.finance_signature_url || org?.bursar_signature_url, {
+      w: 520,
+      h: 200,
+      trim: true,
+      dpr: 2,
+    }),
+  ]);
+
+  const drawHeader = () => {
+    const startY = doc.y;
+    if (logoBuf) {
+      doc.image(logoBuf, doc.x, startY, { width: 90, height: 90, fit: [90, 90] });
+      doc.moveDown(0.2);
+    }
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(16)
+      .text(org?.name || 'Institution', logoBuf ? doc.x + 100 : doc.x, startY, {
+        continued: false,
+      });
+
+    doc
+      .font('Helvetica')
+      .fontSize(9)
+      .fillColor('#4b5563')
+      .text(dateLabel || `Generated: ${fmtDate(new Date())}`, logoBuf ? doc.x + 100 : doc.x, doc.y + 2);
+
+    doc.moveDown();
+    doc.fillColor('#111827');
+  };
+
+  drawHeader();
+  doc.moveDown(1);
+
+  const headers = ['Admission', 'Learner', 'Grade', 'Currency', 'Charged', 'Paid', 'Balance'];
+  const colWidths = [70, 120, 70, 60, 70, 70, 70];
+  const startX = doc.x;
+
+  const drawRow = (values, isHeader = false) => {
+    const y = doc.y;
+    const lineHeight = isHeader ? 16 : 14;
+    ensureSpace(doc, doc.page.height - 80, drawHeader, lineHeight + 6);
+    let x = startX;
+    doc.font(isHeader ? 'Helvetica-Bold' : 'Helvetica').fontSize(isHeader ? 10 : 9);
+
+    values.forEach((val, idx) => {
+      doc.text(String(val ?? ''), x, doc.y, { width: colWidths[idx], continued: false });
+      x += colWidths[idx] + 6;
+    });
+    doc.moveDown(isHeader ? 0.4 : 0.2);
+    doc.y = y + lineHeight;
+  };
+
+  drawRow(headers, true);
+  doc.moveDown(0.2);
+
+  safeRows.forEach((row) => {
+    drawRow([
+      row.admission_no || '—',
+      row.learner_name || '—',
+      row.grade || '—',
+      row.currency || 'USD',
+      money(row.total_charged || 0, row.currency || 'USD'),
+      money(row.total_paid || 0, row.currency || 'USD'),
+      money((row.total_charged || 0) - (row.total_paid || 0), row.currency || 'USD'),
+    ]);
+  });
+
+  doc.moveDown(1);
+  doc.font('Helvetica-Bold').fontSize(11).text('Totals');
+  doc.moveDown(0.4);
+  doc.font('Helvetica').fontSize(9);
+
+  (totals.length ? totals : [{ currency: 'USD', total_charged: 0, total_paid: 0 }]).forEach((t) => {
+    const cur = t.currency || 'USD';
+    const charged = Number(t.total_charged || 0);
+    const paid = Number(t.total_paid || 0);
+    doc.text(
+      `${cur}: Charged ${money(charged, cur)} • Paid ${money(paid, cur)} • Balance ${money(charged - paid, cur)}`,
+      { width: doc.page.width - 80 },
+    );
+  });
+
+  drawSignaturesBlock(doc, {
+    leftMargin: doc.page.margins.left,
+    rightMargin: doc.page.margins.right,
+    innerWidth: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+    pageHeight: doc.page.height,
     bursarSigBuf,
     principalSigBuf,
   });

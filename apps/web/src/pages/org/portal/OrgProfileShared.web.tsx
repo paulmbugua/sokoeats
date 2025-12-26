@@ -7,6 +7,7 @@ export type MiniUser = {
   id: string | number;
   name?: string;
   email?: string;
+  can_access_fees?: boolean;
 
   // optional staff fields (instructors)
   staff_code?: string | null;
@@ -132,10 +133,12 @@ const TrashIcon = (p: React.SVGProps<SVGSVGElement>) => (
 
 /* ------------------------------ PersonRow ------------------------------ */
 
-export const PersonRow: React.FC<{ u: MiniUser; onRemove?: () => Promise<void> | void }> = ({
-  u,
-  onRemove,
-}) => {
+export const PersonRow: React.FC<{
+  u: MiniUser;
+  onRemove?: () => Promise<void> | void;
+  badge?: React.ReactNode;
+  extraActions?: React.ReactNode;
+}> = ({ u, onRemove, badge, extraActions }) => {
   const msg = `Hi${u.name ? ` ${u.name}` : ''}, I’d like to get in touch.`;
   const [removing, setRemoving] = useState(false);
 
@@ -167,11 +170,13 @@ export const PersonRow: React.FC<{ u: MiniUser; onRemove?: () => Promise<void> |
               {u.email}
             </div>
           )}
+          {badge ? <div className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-200">{badge}</div> : null}
         </div>
       </div>
 
       {/* Right side actions: ICONS ONLY */}
       <div className="flex items-center gap-1.5 shrink-0">
+        {extraActions}
         <IconBtn
           title={hasEmail ? 'Email' : 'No email'}
           href={hasEmail ? `mailto:${u.email}` : undefined}

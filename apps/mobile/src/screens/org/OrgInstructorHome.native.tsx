@@ -311,7 +311,7 @@ const OrgInstructorHomeNative: React.FC = () => {
   const insets = useSafeAreaInsets();
   const palette = usePalette();
 
-  const { org, role } = (useOrg?.() ?? {}) as any;
+  const { org, role, membership } = (useOrg?.() ?? {}) as any;
   const { backendUrl, orgToken, token: userToken, orgLogout, orgUser } = useShopContext() as any;
 
   const authToken = orgToken || userToken;
@@ -342,6 +342,12 @@ const OrgInstructorHomeNative: React.FC = () => {
 
   const isProTier =
     String(tier || '').toLowerCase() === 'pro' || String(tier || '').toLowerCase() === 'enterprise';
+
+  const primaryMembership = Array.isArray(membership) ? membership[0] : membership;
+  const roleLower = (role || '').toLowerCase();
+  const hasFeeAccess =
+    isProTier &&
+    (roleLower === 'owner' || roleLower === 'admin' || (primaryMembership as any)?.can_access_fees === true);
 
   const roleLabel = useMemo(() => {
     if (orgUser?.role) return String(orgUser.role).toUpperCase();
@@ -869,8 +875,8 @@ const OrgInstructorHomeNative: React.FC = () => {
                 title="Fees"
                 subtitle="Balances"
                 tone="emerald"
-                disabled={!isProTier}
-                badge={!isProTier ? 'Locked' : undefined}
+                disabled={!hasFeeAccess}
+                badge={!hasFeeAccess ? 'No access' : undefined}
                 onPress={() => navigation.navigate('OrgFees')}
               />
             </View>

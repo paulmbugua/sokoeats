@@ -98,13 +98,22 @@ import {
   getFeeBalances,
   getFeeStatement,
   getFeeStatementPdf,
+  getInstitutionFeeStatement,
+  getInstitutionFeeStatementPdf,
   getFeeStructurePdf,
+  getOrgFeeStructurePdf,
   getMyFeeStructure,
   getMyFeeStructurePdf,
   getMyFeeStatement,
   getMyFeeStatementPdf,
+  setInstructorFeeAccess,
 } from '../controllers/orgFeesController.js';
-import { requireOrgInstructor, requireOrgProTier } from '../middleware/orgAccess.js';
+import {
+  requireOrgAdmin,
+  requireOrgFeeAccess,
+  requireOrgInstructor,
+  requireOrgProTier,
+} from '../middleware/orgAccess.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -193,6 +202,12 @@ router.post(
   requireAuth,
   upload.single('file'),
   bulkCreateOrgInstructorsCsv,
+);
+router.post(
+  '/:orgId/instructors/:instructorId/fee-access',
+  requireAuth,
+  requireOrgAdmin,
+  setInstructorFeeAccess,
 );
 
 // List assignments (learner/admin)
@@ -343,73 +358,95 @@ router.get(
   '/:orgId/fees/structures',
   requireAuth,
   requireOrgProTier,
-  requireOrgInstructor,
+  requireOrgFeeAccess,
   listFeeStructures,
 );
 router.post(
   '/:orgId/fees/structures',
   requireAuth,
   requireOrgProTier,
-  requireOrgInstructor,
+  requireOrgFeeAccess,
   createFeeStructure,
 );
 router.put(
   '/:orgId/fees/structures/:structureId',
   requireAuth,
   requireOrgProTier,
-  requireOrgInstructor,
+  requireOrgFeeAccess,
   updateFeeStructure,
 );
 router.post(
   '/:orgId/fees/structures/:structureId/activate',
   requireAuth,
   requireOrgProTier,
-  requireOrgInstructor,
+  requireOrgFeeAccess,
   activateFeeStructure,
 );
 router.get(
   '/:orgId/fees/structures/:structureId.pdf',
   requireAuth,
   requireOrgProTier,
-  requireOrgInstructor,
+  requireOrgFeeAccess,
   getFeeStructurePdf,
 );
+router.get(
+  '/:orgId/fees/structure.pdf',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgFeeAccess,
+  getOrgFeeStructurePdf,
+);
 
-router.post('/:orgId/fees/charges', requireAuth, requireOrgProTier, requireOrgInstructor, createFeeCharge);
+router.post('/:orgId/fees/charges', requireAuth, requireOrgProTier, requireOrgFeeAccess, createFeeCharge);
 router.post(
   '/:orgId/fees/charges/bulk',
   requireAuth,
   requireOrgProTier,
-  requireOrgInstructor,
+  requireOrgFeeAccess,
   bulkFeeCharges,
 );
 router.post(
   '/:orgId/fees/payments',
   requireAuth,
   requireOrgProTier,
-  requireOrgInstructor,
+  requireOrgFeeAccess,
   recordFeePayment,
 );
 router.get(
   '/:orgId/fees/balances',
   requireAuth,
   requireOrgProTier,
-  requireOrgInstructor,
+  requireOrgFeeAccess,
   getFeeBalances,
 );
 router.get(
   '/:orgId/fees/learners/:learnerId/statement',
   requireAuth,
   requireOrgProTier,
-  requireOrgInstructor,
+  requireOrgFeeAccess,
   getFeeStatement,
 );
 router.get(
   '/:orgId/fees/learners/:learnerId/statement.pdf',
   requireAuth,
   requireOrgProTier,
-  requireOrgInstructor,
+  requireOrgFeeAccess,
   getFeeStatementPdf,
+);
+
+router.get(
+  '/:orgId/fees/institution-statement',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgFeeAccess,
+  getInstitutionFeeStatement,
+);
+router.get(
+  '/:orgId/fees/institution-statement.pdf',
+  requireAuth,
+  requireOrgProTier,
+  requireOrgFeeAccess,
+  getInstitutionFeeStatementPdf,
 );
 
 

@@ -1,5 +1,5 @@
 // apps/web/src/pages/org/OrgFees.web.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useOrgFeeInbound } from '@mytutorapp/shared/hooks/useOrgFeeInbound';
@@ -256,6 +256,15 @@ const feesUnlocked = useMemo(() => {
     downloadStatementPdf,
   } = useOrgFeeStatement({ backendUrl, token: orgToken, orgId });
 
+  const [institutionTotals, setInstitutionTotals] = useState<
+    { currency: string; total_charged: number; total_paid: number; balance: number }[]
+  >([]);
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
+  const [loadingInstitution, setLoadingInstitution] = useState(false);
+  const [downloadingOrgPdf, setDownloadingOrgPdf] = useState(false);
+  const [downloadingInstitutionPdf, setDownloadingInstitutionPdf] = useState(false);
+
   /** ✅ structure form */
   const [creatingNew, setCreatingNew] = useState(false);
 
@@ -292,6 +301,85 @@ const feesUnlocked = useMemo(() => {
       fetchStatement(selectedLearnerId);
     }
   }, [selectedLearnerId, mode, fetchStatement]);
+
+  const fetchInstitutionStatement = useCallback(async () => {
+    if (!backendUrl || !orgId || !orgToken) return;
+
+    setLoadingInstitution(true);
+    try {
+      const params = new URLSearchParams();
+      if (rangeFrom) params.set('from', rangeFrom);
+      if (rangeTo) params.set('to', rangeTo);
+
+      const resp = await fetch(
+        `${backendUrl}/api/orgs/${orgId}/fees/institution-statement?${params.toString()}`,
+        {
+          headers: { Authorization: `Bearer ${orgToken}` },
+        },
+      );
+
+      if (!resp.ok) throw new Error('Unable to load institution statement');
+      const json = await resp.json();
+      setInstitutionTotals(Array.isArray(json?.totals_by_currency) ? json.totals_by_currency : []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingInstitution(false);
+    }
+  }, [backendUrl, orgId, orgToken, rangeFrom, rangeTo]);
+
+  useEffect(() => {
+    fetchInstitutionStatement();
+  }, [fetchInstitutionStatement]);
+
+  const downloadOrgStructurePdf = useCallback(async () => {
+    if (!backendUrl || !orgId || !orgToken) return;
+    setDownloadingOrgPdf(true);
+    try {
+      const resp = await fetch(`${backendUrl}/api/orgs/${orgId}/fees/structure.pdf`, {
+        headers: { Authorization: `Bearer ${orgToken}` },
+      });
+      if (!resp.ok) throw new Error('Unable to download fee structure');
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'fee-structure.pdf';
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDownloadingOrgPdf(false);
+    }
+  }, [backendUrl, orgId, orgToken]);
+
+  const downloadInstitutionStatementPdf = useCallback(async () => {
+    if (!backendUrl || !orgId || !orgToken) return;
+    setDownloadingInstitutionPdf(true);
+    try {
+      const params = new URLSearchParams();
+      if (rangeFrom) params.set('from', rangeFrom);
+      if (rangeTo) params.set('to', rangeTo);
+
+      const resp = await fetch(
+        `${backendUrl}/api/orgs/${orgId}/fees/institution-statement.pdf?${params.toString()}`,
+        { headers: { Authorization: `Bearer ${orgToken}` } },
+      );
+      if (!resp.ok) throw new Error('Unable to download institution statement');
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'institution-fee-statement.pdf';
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDownloadingInstitutionPdf(false);
+    }
+  }, [backendUrl, orgId, orgToken, rangeFrom, rangeTo]);
 
   // ✅ (3) auto-select respects "New structure" mode (string ids)
   useEffect(() => {
@@ -771,6 +859,88 @@ const handleSaveStructure = async ({ forceActive }: { forceActive?: boolean } = 
           </p>
         </div>
       </div>
+
+      <SectionCard
+        title="Institution totals"
+        subtitle="Summaries per currency plus quick PDF downloads for admins"
+      >
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">From</div>
+            <input
+              type="date"
+              value={rangeFrom}
+              onChange={(e) => setRangeFrom(e.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
+            />
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-slate-600 dark:text-slate-200">To</div>
+            <input
+              type="date"
+              value={rangeTo}
+              onChange={(e) => setRangeTo(e.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900"
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={loadingInstitution}
+            onClick={fetchInstitutionStatement}
+            className={cn(
+              'rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800',
+              loadingInstitution && 'opacity-60',
+            )}
+          >
+            {loadingInstitution ? 'Refreshing…' : 'Refresh totals'}
+          </button>
+
+          <button
+            type="button"
+            disabled={downloadingInstitutionPdf}
+            onClick={downloadInstitutionStatementPdf}
+            className={cn(
+              'rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600',
+              downloadingInstitutionPdf && 'opacity-60',
+            )}
+          >
+            {downloadingInstitutionPdf ? 'Downloading…' : 'Download institution statement PDF'}
+          </button>
+
+          <button
+            type="button"
+            disabled={downloadingOrgPdf}
+            onClick={downloadOrgStructurePdf}
+            className={cn(
+              'rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800',
+              downloadingOrgPdf && 'opacity-60',
+            )}
+          >
+            {downloadingOrgPdf ? 'Preparing…' : 'Download fee structure PDF'}
+          </button>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-3">
+          {institutionTotals && institutionTotals.length ? (
+            institutionTotals.map((t) => (
+              <div
+                key={t.currency}
+                className="min-w-[180px] rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900"
+              >
+                <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{t.currency}</div>
+                <div className="mt-1 space-y-1 text-slate-700 dark:text-slate-100">
+                  <div>Charged: {moneyFromCents(t.total_charged || 0, t.currency)}</div>
+                  <div>Paid: {moneyFromCents(t.total_paid || 0, t.currency)}</div>
+                  <div className="font-semibold">Balance: {moneyFromCents(t.balance || 0, t.currency)}</div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-sm text-slate-500">No totals yet. Refresh after recording charges/payments.</div>
+          )}
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="Payment callback URLs (share with the school)"

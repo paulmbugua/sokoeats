@@ -142,7 +142,11 @@ function IconTile({
 }
 
 const OrgInstructorHome: React.FC = () => {
-  const { org, role } = (useOrg?.() ?? {}) as { org?: Org | null; role?: string | null };
+  const { org, role, membership } = (useOrg?.() ?? {}) as {
+    org?: Org | null;
+    role?: string | null;
+    membership?: any;
+  };
   const shop = (useShopContext?.() ?? {}) as any;
 
   const backendUrl: string | null = shop?.backendUrl ?? null;
@@ -158,6 +162,12 @@ const OrgInstructorHome: React.FC = () => {
   const isProTier =
     String(org?.tier || '').toLowerCase() === 'pro' ||
     String(org?.tier || '').toLowerCase() === 'enterprise';
+
+  const primaryMembership = Array.isArray(membership) ? membership[0] : membership;
+  const roleLower = (role || '').toLowerCase();
+  const hasFeeAccess =
+    isProTier &&
+    (roleLower === 'owner' || roleLower === 'admin' || (primaryMembership as any)?.can_access_fees === true);
 
   const portalLabel = role ? `${String(role).toUpperCase()} PORTAL` : 'INSTRUCTOR PORTAL';
 
@@ -433,7 +443,15 @@ const OrgInstructorHome: React.FC = () => {
 
           <div className="mt-4 grid gap-3 grid-cols-3 sm:grid-cols-4 lg:grid-cols-6">
             <IconTile to="/org/attendance" icon={<span className="text-2xl">✅</span>} title="Attendance" subtitle="Sessions" tone="emerald" disabled={!isProTier} badge={!isProTier ? 'Locked' : undefined} />
-            <IconTile to="/org/fees" icon={<span className="text-2xl">💳</span>} title="Fees" subtitle="Balances" tone="emerald" disabled={!isProTier} badge={!isProTier ? 'Locked' : undefined} />
+            <IconTile
+              to="/org/fees"
+              icon={<span className="text-2xl">💳</span>}
+              title="Fees"
+              subtitle="Balances"
+              tone="emerald"
+              disabled={!hasFeeAccess}
+              badge={!hasFeeAccess ? 'No access' : undefined}
+            />
             <IconTile to="/org/newsletters" icon={<span className="text-2xl">📰</span>} title="Newsletters" subtitle="Send" tone="sky" disabled={!isProTier} badge={!isProTier ? 'Locked' : undefined} />
             <IconTile to="/org/announcements" icon={<span className="text-2xl">📣</span>} title="Announcements" subtitle="Post" tone="indigo" disabled={!isProTier} badge={!isProTier ? 'Locked' : undefined} />
             <IconTile to="/org/tools/clubs" icon={<span className="text-2xl">🤝</span>} title="Clubs" subtitle="Manage" tone="slate" />

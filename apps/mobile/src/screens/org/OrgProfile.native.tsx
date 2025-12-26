@@ -40,6 +40,7 @@ import { useThemePref } from '../../theme/ThemeContext';
 
 // Shared native helpers + UI
 import { MiniUser, resolveAsset, tierTone, Skeleton, PersonRow } from './OrgProfileShared.native';
+import { useOrgInstructorFeeAccess } from '@mytutorapp/shared/hooks/useOrgInstructorFeeAccess';
 
 // Native modals
 import { InviteModal, AddInstructorModal, AddLearnerModal } from './OrgProfileModals.native';
@@ -464,6 +465,7 @@ const OrgProfileNative: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [instructors, setInstructors] = useState<MiniUser[]>([]);
   const [learners, setLearners] = useState<MiniUser[]>([]);
+  const [feeInstructorId, setFeeInstructorId] = useState<string | number | null>(null);
 
   // invite sheet state
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -509,6 +511,8 @@ const OrgProfileNative: React.FC = () => {
         const roster = await apiRoster(backendUrl, orgToken, orgId);
         setInstructors(Array.isArray(roster?.instructors) ? roster.instructors : []);
         setLearners(Array.isArray(roster?.learners) ? roster.learners : []);
+        const designated = (roster?.instructors || []).find((x: any) => x?.can_access_fees);
+        setFeeInstructorId(designated?.id ?? null);
         setInstructorPage(1);
         setLearnerPage(1);
       } catch {
@@ -516,6 +520,8 @@ const OrgProfileNative: React.FC = () => {
           const roster = await tryFetchRoster(backendUrl, orgToken, orgId);
           setInstructors(Array.isArray(roster?.instructors) ? roster.instructors : []);
           setLearners(Array.isArray(roster?.learners) ? roster.learners : []);
+          const designated = (roster?.instructors || []).find((x: any) => x?.can_access_fees);
+          setFeeInstructorId(designated?.id ?? null);
           setInstructorPage(1);
           setLearnerPage(1);
         } catch {
@@ -883,6 +889,38 @@ const OrgProfileNative: React.FC = () => {
     const slug = org.slug || org.name || org.id;
     await downloadCsvNative(`login-sheet-${slug}.csv`, rows);
   }, [org, instructors, learners]);
+
+  const { ready: feeReady, saving: feeSaving, updateFeeAccess } = useOrgInstructorFeeAccess({
+    backendUrl,
+    token: orgToken,
+    orgId: org?.id,
+  });
+
+  const handleFeeAccess = useCallback(
+    async (u: MiniUser, enable: boolean) => {
+      if (!org?.id || !feeReady || feeSaving) return;
+      const label = u.name || u.email || `User #${u.id}`;
+      const ok = await confirmAsync(
+        enable ? 'Grant Fees access' : 'Remove Fees access',
+        enable
+          ? `Grant Fees access to ${label}? This will remove access from other instructors.`
+          : `Remove Fees access from ${label}?`,
+      );
+      if (!ok) return;
+      try {
+        await updateFeeAccess(u.id, enable);
+        setInstructors((prev) =>
+          prev.map((p) => ({ ...p, can_access_fees: String(p.id) === String(u.id) ? enable : false })),
+        );
+        setFeeInstructorId(enable ? u.id : null);
+        Alert.alert('Fees access', enable ? 'Access granted.' : 'Access removed.');
+      } catch (e: any) {
+        const msg = e?.response?.data?.message || e?.message || 'Unable to update fee access.';
+        Alert.alert('Fees access', msg);
+      }
+    },
+    [feeReady, feeSaving, org?.id, updateFeeAccess],
+  );
 
   // A–H parity: Sample learners CSV
   const downloadLearnerSampleCsv = useCallback(async () => {
@@ -1307,6 +1345,27 @@ const OrgProfileNative: React.FC = () => {
                     navigation.navigate('OrgElearnPortal', { tab: 'assign', from: 'profile' })
                   }
                 />
+
+                {typeof feeInstructorId !== 'undefined' && (
+                  <View
+                    style={[
+                      tw`flex-row items-center px-3 py-2 rounded-2xl mt-2`,
+                      { backgroundColor: palette.chipBg('#10b981'), borderColor: palette.border, borderWidth: 1 },
+                    ]}
+                  >
+                    <Text style={[tw`text-xs font-semibold`, { color: palette.textMuted }]}>Fee access:</Text>
+                    <Text
+                      style={[
+                        tw`text-xs font-bold ml-2`,
+                        { color: feeInstructorId ? '#059669' : palette.textSubtle },
+                      ]}
+                    >
+                      {feeInstructorId
+                        ? instructors.find((i) => String(i.id) === String(feeInstructorId))?.name || 'Assigned'
+                        : 'Not set'}
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
 
@@ -1319,9 +1378,40 @@ const OrgProfileNative: React.FC = () => {
             ) : instructors.length ? (
               <>
                 <View style={tw`mt-3`}>
-                  {paginatedInstructors.map((u) => (
-                    <PersonRow key={String(u.id)} u={u} onRemove={() => handleRemoveMember(u)} />
-                  ))}
+                  {paginatedInstructors.map((u) => {
+                    const hasFees = u.can_access_fees || String(feeInstructorId) === String(u.id);
+                    return (
+                      <PersonRow
+                        key={String(u.id)}
+                        u={{ ...u, can_access_fees: hasFees }}
+                        onRemove={() => handleRemoveMember(u)}
+                        badge={hasFees ? 'Fees access' : undefined}
+                        extraActions={
+                          <TouchableOpacity
+                            onPress={() => handleFeeAccess(u, !hasFees)}
+                            disabled={!feeReady || feeSaving || (!hasFees && !orgToken)}
+                            style={[
+                              tw`px-2 py-1 rounded-full border`,
+                              hasFees
+                                ? { borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.15)' }
+                                : { borderColor: palette.border, backgroundColor: palette.chipBg('#0f172a') },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                tw`text-[11px] font-semibold`,
+                                hasFees
+                                  ? { color: '#059669' }
+                                  : { color: palette.isDark ? '#e5f0ff' : '#0f172a' },
+                              ]}
+                            >
+                              {hasFees ? 'Remove' : 'Grant fees'}
+                            </Text>
+                          </TouchableOpacity>
+                        }
+                      />
+                    );
+                  })}
                 </View>
 
                 <PaginationStrip

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import PaymentWidget from '../components/PaymentWidget.web';
-import { useAICertificates } from '@mytutorapp/shared/hooks';
+import { useAICertificates, useAiCourseEntitlements } from '@mytutorapp/shared/hooks';
 import { downloadCertificateFile, downloadTranscriptFile } from '@mytutorapp/shared/api';
 
 type GradeLike = {
@@ -203,6 +203,10 @@ const ResultsPage: React.FC = () => {
     claim,
     generate,
   } = useAICertificates({ backendUrl, token: token || '', courseId });
+  const { items: aiCourses } = useAiCourseEntitlements({
+    backendUrl,
+    token: token || '',
+  });
 
   return (
     <div className="min-h-screen bg-[#0b1220] text-white px-3 sm:px-4 py-4 sm:py-6">
@@ -255,6 +259,58 @@ const ResultsPage: React.FC = () => {
             folderHint="transcripts"
           />
         </div>
+
+        {aiCourses.length > 0 && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-white font-semibold">Purchased AI courses</div>
+                <div className="text-white/60 text-sm">Certificate purchases unlock up to 60 lessons</div>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              {aiCourses.map((item) => {
+                const status = item.completion?.passed
+                  ? 'Completed'
+                  : item.completion?.attempted
+                    ? 'In progress'
+                    : 'Not started';
+                return (
+                  <div
+                    key={item.course_id}
+                    className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-white font-semibold truncate">{item.title}</div>
+                        <div className="text-white/60 text-xs">Lessons used {item.lessons_used}/{item.max_lessons}</div>
+                      </div>
+                      <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/80">{status}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      {!item.completion?.passed ? (
+                        <Link
+                          to={`/courses/${item.course_id}`}
+                          className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white"
+                        >
+                          Continue course
+                        </Link>
+                      ) : (
+                        <Link
+                          to={`/results?courseId=${encodeURIComponent(item.course_id)}`}
+                          className="text-sm px-3 py-2 rounded-lg bg-emerald-500/20 text-emerald-100 hover:bg-emerald-500/30"
+                        >
+                          View certificate
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="rounded-2xl p-4 ring-1 ring-white/10 bg-white/5">
@@ -396,13 +452,43 @@ const ResultsPage: React.FC = () => {
             </button>
           </div>
 
-          {!passed && (
-            <div className="mt-3 text-[12px] text-white/60">
-              Tip: Revisit the lesson and retry the quiz to reach the pass mark.
-            </div>
-          )}
-        </div>
+        {!passed && (
+          <div className="mt-3 text-[12px] text-white/60">
+            Tip: Revisit the lesson and retry the quiz to reach the pass mark.
+          </div>
+        )}
       </div>
+    </div>
+
+      {aiCourses.length > 0 && (
+        <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 space-y-2">
+          <div className="flex items-center gap-2 text-white/80 text-sm font-semibold">
+            <span>Purchased AI courses</span>
+            <span className="text-white/50 text-xs">certificate unlocks</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {aiCourses.map((c) => {
+              const status = c.completion.passed
+                ? 'Completed'
+                : c.completion.attempted
+                  ? 'In progress'
+                  : 'Not started';
+              return (
+                <div
+                  key={`${c.course_id}-${c.course_source}`}
+                  className="rounded-xl bg-white/5 ring-1 ring-white/10 p-3 flex flex-col gap-1"
+                >
+                  <div className="text-white font-semibold text-sm">{c.title || 'AI Course'}</div>
+                  <div className="text-white/60 text-xs">Lessons: {c.lessons_used}/{c.max_lessons}</div>
+                  <div className="text-xs text-white/70">
+                    Status: <span className="font-semibold">{status}</span> (pass ≥ {c.completion.pass_mark}%)
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Payment slide-over — same component you already use */}
       <PaymentWidget

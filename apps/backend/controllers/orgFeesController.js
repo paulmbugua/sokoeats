@@ -10,10 +10,12 @@ import {
   learnerParamsSchema,
   orgParamsSchema,
   balancesQuerySchema,
+  dateRangeQuerySchema,
 } from '../validators/orgFeesValidators.js';
 import {
   renderFeeStatementPdf,
   renderFeeStructurePdf,
+  renderInstitutionFeeStatementPdf,
 } from '../services/orgFeePdfService.js';
 
 
@@ -183,6 +185,63 @@ const { rows } = await pool.query(
 
 return rows[0] || null;
 
+}
+
+export async function setInstructorFeeAccess(req, res) {
+  const orgId = normalizeOrgId(req);
+  const { instructorId } = req.params || {};
+  const { enabled } = req.body || {};
+
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ message: 'enabled must be a boolean' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    const membershipRes = await client.query(
+      `select role from org_memberships where org_id=$1 and user_id=$2 limit 1`,
+      [orgId, instructorId],
+    );
+
+    const role = String(membershipRes.rows?.[0]?.role || '').toLowerCase();
+    if (!membershipRes.rows.length || role !== 'instructor') {
+      return res.status(404).json({ message: 'Instructor not found in org' });
+    }
+
+    await client.query('BEGIN');
+
+    if (enabled) {
+      await client.query(`update org_instructors set can_access_fees=false, updated_at=now() where org_id=$1`, [orgId]);
+    }
+
+    const updateRes = await client.query(
+      `update org_instructors
+          set can_access_fees=$3,
+              updated_at=now()
+        where org_id=$1 and user_id=$2`,
+      [orgId, instructorId, enabled],
+    );
+
+    if (updateRes.rowCount === 0) {
+      await client.query(
+        `insert into org_instructors (org_id, user_id, can_access_fees)
+         values ($1, $2, $3)
+         on conflict (org_id, user_id)
+         do update set can_access_fees=excluded.can_access_fees, updated_at=now()`,
+        [orgId, instructorId, enabled],
+      );
+    }
+
+    await client.query('COMMIT');
+    return res.json({ ok: true, designatedInstructorId: enabled ? String(instructorId) : null });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[setInstructorFeeAccess] failed', err);
+    return res.status(500).json({ message: 'Unable to update fee access' });
+  } finally {
+    client.release();
+  }
 }
 
 
@@ -1855,6 +1914,228 @@ export async function getFeeStructurePdf(req, res) {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="fee-structure-${structure.id}.pdf"`);
   return res.send(pdfBuffer);
+}
+
+export async function getOrgFeeStructurePdf(req, res) {
+  const orgId = normalizeOrgId(req);
+
+  const { error: pErr } = orgParamsSchema.validate(req.params, { allowUnknown: true });
+  if (pErr) return res.status(400).json({ message: pErr.message });
+
+  try {
+    const { rows } = await pool.query(
+      `select id
+         from org_fee_structures
+        where org_id=$1
+          and is_active=true
+        order by updated_at desc
+        limit 1`,
+      [orgId],
+    );
+
+    const picked = rows[0];
+    if (!picked?.id) return res.status(404).json({ message: 'No active fee structure found' });
+
+    const org = await loadOrgMeta(orgId);
+    if (!org) return res.status(404).json({ message: 'Org not found' });
+
+    const structure = await fetchStructureWithItems(orgId, picked.id);
+    const pdfBuffer = await renderFeeStructurePdf({ org, structure });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="fee-structure-${orgId}.pdf"`);
+    return res.send(pdfBuffer);
+  } catch (err) {
+    console.error('[getOrgFeeStructurePdf] error', err);
+    return res.status(500).json({ message: 'Unable to render fee structure PDF' });
+  }
+}
+
+export async function getInstitutionFeeStatement(req, res) {
+  const orgId = normalizeOrgId(req);
+
+  const { error: qErr, value: query } = dateRangeQuerySchema.validate(req.query || {}, {
+    allowUnknown: true,
+  });
+  if (qErr) return res.status(400).json({ message: qErr.message });
+
+  const from = query?.from ? new Date(query.from) : null;
+  const to = query?.to ? new Date(query.to) : null;
+
+  const client = await pool.connect();
+  try {
+    const learnerRes = await client.query(
+      `
+      SELECT lp.user_id::text AS learner_id,
+             lp.admission_code,
+             lp.class_label,
+             lp.grade,
+             ${feeInboundLearnerNameExpr()} AS learner_name
+        FROM org_learner_profiles lp
+        ${feeInboundNameJoinSql()}
+       WHERE lp.org_id = $1
+      `,
+      [orgId],
+    );
+
+    const learnerMap = new Map();
+    for (const row of learnerRes.rows || []) {
+      learnerMap.set(String(row.learner_id), row);
+    }
+
+    const buildFilter = (column) => {
+      const filters = [];
+      const params = [orgId];
+      let idx = 2;
+      if (from) {
+        filters.push(`${column} >= $${idx++}`);
+        params.push(from);
+      }
+      if (to) {
+        filters.push(`${column} <= $${idx++}`);
+        params.push(to);
+      }
+      const clause = filters.length ? ` AND ${filters.join(' AND ')}` : '';
+      return { clause, params };
+    };
+
+    const chargeFilter = buildFilter('created_at');
+    const paymentFilter = buildFilter('COALESCE(received_at, created_at)');
+
+    const charges = await client.query(
+      `
+      SELECT learner_id::text AS learner_id,
+             UPPER(COALESCE(currency, 'USD')) AS currency,
+             SUM(amount_cents)::bigint AS total_charged
+        FROM org_fee_charges
+       WHERE org_id = $1${chargeFilter.clause}
+       GROUP BY learner_id, currency
+      `,
+      chargeFilter.params,
+    );
+
+    const payments = await client.query(
+      `
+      SELECT learner_id::text AS learner_id,
+             UPPER(COALESCE(currency, 'USD')) AS currency,
+             SUM(amount_cents)::bigint AS total_paid
+        FROM org_fee_payments
+       WHERE org_id = $1${paymentFilter.clause}
+       GROUP BY learner_id, currency
+      `,
+      paymentFilter.params,
+    );
+
+    const rowsMap = new Map();
+    const touchRow = (learnerId, currency) => {
+      const key = `${learnerId || 'unknown'}__${currency}`;
+      if (rowsMap.has(key)) return rowsMap.get(key);
+
+      const meta = learnerMap.get(String(learnerId)) || {};
+      const row = {
+        learner_id: String(learnerId || ''),
+        admission_no: meta.admission_code || null,
+        learner_name: meta.learner_name || null,
+        grade: meta.grade || meta.class_label || null,
+        currency: currency || 'USD',
+        total_charged: 0,
+        total_paid: 0,
+      };
+      rowsMap.set(key, row);
+      return row;
+    };
+
+    const totalCharges = new Map();
+    const totalPaid = new Map();
+
+    for (const ch of charges.rows || []) {
+      const row = touchRow(ch.learner_id, ch.currency);
+      row.total_charged += Number(ch.total_charged || 0);
+      totalCharges.set(ch.currency, (totalCharges.get(ch.currency) || 0) + Number(ch.total_charged || 0));
+    }
+
+    for (const p of payments.rows || []) {
+      const row = touchRow(p.learner_id, p.currency);
+      row.total_paid += Number(p.total_paid || 0);
+      row.total_paid = Number(row.total_paid || 0);
+      totalPaid.set(p.currency, (totalPaid.get(p.currency) || 0) + Number(p.total_paid || 0));
+    }
+
+    const rows = Array.from(rowsMap.values()).map((r) => ({
+      ...r,
+      balance: Number(r.total_charged || 0) - Number(r.total_paid || 0),
+    }));
+
+    rows.sort((a, b) => String(a.learner_name || '').localeCompare(String(b.learner_name || '')));
+
+    const currencies = new Set([
+      ...Array.from(totalCharges.keys()),
+      ...Array.from(totalPaid.keys()),
+    ]);
+
+    const totals_by_currency = Array.from(currencies).map((currency) => {
+      const charged = Number(totalCharges.get(currency) || 0);
+      const paid = Number(totalPaid.get(currency) || 0);
+      return { currency, total_charged: charged, total_paid: paid, balance: charged - paid };
+    });
+
+    return res.json({ rows, totals_by_currency });
+  } catch (err) {
+    console.error('[getInstitutionFeeStatement] error', err);
+    return res.status(500).json({ message: 'Unable to load institution statement' });
+  } finally {
+    client.release();
+  }
+}
+
+export async function getInstitutionFeeStatementPdf(req, res) {
+  const orgId = normalizeOrgId(req);
+
+  const { error: qErr, value: query } = dateRangeQuerySchema.validate(req.query || {}, {
+    allowUnknown: true,
+  });
+  if (qErr) return res.status(400).json({ message: qErr.message });
+
+  const from = query?.from ? new Date(query.from) : null;
+  const to = query?.to ? new Date(query.to) : null;
+
+  const statementPayload = await (async () => {
+    const fakeReq = { ...req, query };
+    const fakeRes = {
+      status: () => fakeRes,
+      json: (payload) => payload,
+    };
+    return getInstitutionFeeStatement(fakeReq, fakeRes);
+  })();
+
+  const rows = Array.isArray(statementPayload?.rows) ? statementPayload.rows : [];
+  const totals_by_currency = Array.isArray(statementPayload?.totals_by_currency)
+    ? statementPayload.totals_by_currency
+    : [];
+
+  const org = await loadOrgMeta(orgId);
+  if (!org) return res.status(404).json({ message: 'Org not found' });
+
+  try {
+    const pdfBuffer = await renderInstitutionFeeStatementPdf({
+      org,
+      rows,
+      totalsByCurrency: totals_by_currency,
+      dateLabel:
+        from || to
+          ? `Range: ${from ? from.toISOString().slice(0, 10) : '...'} → ${
+              to ? to.toISOString().slice(0, 10) : '...'
+            }`
+          : null,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="institution-fee-statement-${orgId}.pdf"`);
+    return res.send(pdfBuffer);
+  } catch (err) {
+    console.error('[getInstitutionFeeStatementPdf] error', err);
+    return res.status(500).json({ message: 'Unable to render institution statement PDF' });
+  }
 }
 
 
