@@ -618,6 +618,24 @@ const OrgProfileNative: React.FC = () => {
     navigation.replace('ProfileSelf');
   };
 
+  const goFees = useCallback(() => {
+  const orgId = org?.id;
+
+  // If org session is missing, send them to login and bring them back to OrgFees
+  if (!orgToken) {
+    navigation.navigate('InstitutionLogin', {
+      reauth: 'fees',
+      orgId,
+      returnTo: 'OrgFees', // ✅ use native screen name
+    });
+    return;
+  }
+
+  // Otherwise go straight to fees tool
+  navigation.navigate('OrgFees');
+}, [navigation, org?.id, orgToken]);
+
+
   const logoutInstitution = async () => {
     try {
       await orgLogout?.();
@@ -1835,6 +1853,16 @@ const OrgProfileNative: React.FC = () => {
                   </Text>
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                onPress={goFees}
+                style={tw`flex-row items-center justify-center h-11 px-4 rounded-2xl bg-white/10`}
+                accessibilityRole="button"
+                accessibilityLabel="Open fees tool"
+              >
+                <Ionicons name="cash-outline" size={18} color={palette.text} />
+                <Text style={[tw`ml-2 text-[11px] font-semibold`, { color: palette.text }]}>Fees</Text>
+              </TouchableOpacity>
+
             </View>
           </Animated.View>
         </View>

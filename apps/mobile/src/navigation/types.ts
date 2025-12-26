@@ -33,14 +33,14 @@ export type MainStackParamList = {
     | {
         logoutOrg?: boolean;
         force?: 'logout';
-        next?: string; // 👈 NEW – where to go after org login
+        next?: string;
       }
     | undefined;
 
   OrgInviteLanding: { code?: string } | undefined;
 
-  // ⬇️ NEW – mirror /org router on web
   OrgHome: { next?: string } | undefined;
+
   OrgLearnerHome:
     | {
         assignmentId?: string | number;
@@ -49,6 +49,7 @@ export type MainStackParamList = {
         qs?: string | number;
       }
     | undefined;
+
   OrgInstructorHome: undefined;
 
   OrgElearnPortal:
@@ -61,7 +62,13 @@ export type MainStackParamList = {
   OrgFees: undefined;
   OrgNewsletters: undefined;
   OrgAnnouncements: undefined;
+
   OrgToolsSports: { orgId?: string } | undefined;
+
+  // ✅ ADD these (you used them in App.tsx)
+  OrgToolsClubs: undefined;
+  OrgLearnerNewsletters: undefined;
+  OrgLearnerSportsClubs: undefined;
 
   OrgExamResultsPortal:
     | { view?: 'learner' | 'admin'; studentId?: string | number | null }
@@ -133,7 +140,7 @@ export type MainStackParamList = {
 
   OrgChangePassword:
     | {
-        returnTo?: string; // web-style path e.g. "/org?assignmentId=..."
+        returnTo?: string;
       }
     | undefined;
 };

@@ -1,6 +1,7 @@
-/* eslint-disable prettier/prettier */
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useEffect, useMemo, useState } from 'react';
+// apps/mobile/src/screens/org/InstitutionLogin.native.tsx
+
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -21,6 +22,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import tw from '../../../tailwind';
+
 import CustomGoogleLoginButtonNative from '../CustomGoogleLoginButton.native';
 import { useThemePref } from '../../theme/ThemeContext';
 
@@ -58,8 +60,10 @@ const normalizeOrgNext = (v?: string) => {
   return /^\/org\/?$/.test(v) ? '/org/profile' : v;
 };
 
-const computeNextFromRoute = (params?: { next?: string }) =>
-  normalizeOrgNext(params?.next) || '/org/profile';
+const computeNextFromRoute = (params?: any) => {
+  const raw = String(params?.returnTo || params?.return_to || params?.next || '').trim();
+  return normalizeOrgNext(raw) || '/org/profile';
+};
 
 const writeReturnTo = async (v: string) => {
   try {
@@ -81,6 +85,40 @@ const readReturnTo = async (): Promise<string> => {
 const clearReturnTo = async () => {
   await Promise.all(RETURN_TO_ALIASES.map((k) => AsyncStorage.removeItem(k)));
 };
+
+function parseParams(params: any) {
+  const p = params || {};
+  const str = (v: any) => String(v ?? '').trim();
+
+  // allow deep link style url param too (optional)
+  let qs: URLSearchParams | null = null;
+  const maybeUrl = typeof p?.url === 'string' ? p.url : typeof p?.href === 'string' ? p.href : '';
+  if (maybeUrl && maybeUrl.includes('?')) {
+    const query = maybeUrl.split('?')[1]?.split('#')[0] || '';
+    try {
+      qs = new URLSearchParams(query);
+    } catch {
+      qs = null;
+    }
+  }
+
+  const get = (key: string) => str(p?.[key]) || str(qs?.get(key));
+
+  const reauth = get('reauth');
+  const orgIdParam = get('orgId') || get('org_id');
+  const returnToParam = get('returnTo') || get('return_to');
+  const codeParam = get('code');
+
+  const forcedKindRaw = (get('kind') || '').toLowerCase();
+  const forcedKind: AccountKind | null =
+    forcedKindRaw === 'institution' || forcedKindRaw === 'instructor' || forcedKindRaw === 'learner'
+      ? (forcedKindRaw as AccountKind)
+      : null;
+
+  const isFeesReauth = reauth === 'fees';
+
+  return { reauth, orgIdParam, returnToParam, codeParam, forcedKindRaw, forcedKind, isFeesReauth };
+}
 
 /* ───────────────────────────────────────────────────────────
    Palette (adapts to theme)
@@ -132,36 +170,90 @@ function usePalette() {
 }
 
 /* ───────────────────────────────────────────────────────────
+   Small UI bits
+   ─────────────────────────────────────────────────────────── */
+function Pill({
+  selected,
+  label,
+  onPress,
+  disabled,
+  palette,
+}: {
+  selected: boolean;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  palette: any;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      style={[
+        tw`px-3 py-2 rounded-full flex-row items-center`,
+        {
+          backgroundColor: selected
+            ? palette.isDark
+              ? '#1b2430'
+              : 'rgba(255,255,255,0.9)'
+            : palette.isDark
+              ? 'rgba(16,24,38,0.9)'
+              : 'rgba(243,244,246,0.85)',
+          opacity: disabled ? 0.6 : 1,
+        },
+      ]}
+      accessibilityRole="button"
+      accessibilityState={{ selected, disabled: !!disabled }}
+    >
+      <View
+        style={[
+          tw`mr-2 h-4 w-4 rounded-full items-center justify-center`,
+          {
+            borderWidth: 1,
+            borderColor: selected ? '#4f46e5' : palette.isDark ? 'rgba(255,255,255,0.35)' : '#9ca3af',
+            backgroundColor: selected ? '#4f46e5' : 'transparent',
+          },
+        ]}
+      >
+        <Text style={[tw`text-[10px]`, { color: selected ? '#fff' : 'transparent' }]}>✓</Text>
+      </View>
+      <Text style={[tw`text-xs font-semibold`, { color: selected ? '#4f46e5' : palette.textSoft }]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+/* ───────────────────────────────────────────────────────────
    Screen
    ─────────────────────────────────────────────────────────── */
 const InstitutionLoginNative: React.FC = () => {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'InstitutionLogin'>>();
+
   const { orgToken, orgLogout } = useShopContext() as any;
   const palette = usePalette();
 
-  // orgMode is still read but not strictly required for new features
-  const [orgMode, setOrgMode] = useState(false);
+  // keep latest params for navigateFn (avoids stale closures)
+  const routeParamsRef = useRef<any>(route.params);
+  useEffect(() => {
+    routeParamsRef.current = route.params;
+  }, [route.params]);
 
-  const [authMode, setAuthMode] = useState<AuthMode>('Login');
-  const [resetMode, setResetMode] = useState<ResetMode>('idle');
-  const [otpSent, setOtpSent] = useState(false);
+  const { reauth, orgIdParam, returnToParam, codeParam, forcedKindRaw, forcedKind, isFeesReauth } =
+    useMemo(() => parseParams(route.params as any), [route.params]);
 
-  // NEW: institution | instructor | learner selector
-  const [accountKind, setAccountKind] = useState<AccountKind>('institution');
-  const canSignUp = accountKind === 'institution';
-  const showSignUpTab = canSignUp;
-
-  const [name, setName] = useState(''); // sign-up only
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [otp, setOtp] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const clearErrors = () => setError(null);
+  // ✅ IMPORTANT: If already authenticated, only redirect for normal login (NOT reauth)
+  useEffect(() => {
+    if (orgToken && !reauth) {
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'OrgHome' as any }],
+        })
+      );
+    }
+  }, [orgToken, reauth, navigation]);
 
   // ❗️Clear existing org-session when asked
   useEffect(() => {
@@ -173,7 +265,7 @@ const InstitutionLoginNative: React.FC = () => {
         navigation.dispatch(
           CommonActions.reset({
             index: 0,
-            routes: [{ name: 'InstitutionLogin' }],
+            routes: [{ name: 'InstitutionLogin' as any }],
           })
         );
       })();
@@ -186,54 +278,114 @@ const InstitutionLoginNative: React.FC = () => {
     void writeReturnTo(seed);
   }, []);
 
-  // Read auth:mode once (used to gate auto-forward to OrgProfile)
-  useEffect(() => {
-    (async () => {
-      try {
-        const v = await AsyncStorage.getItem('auth:mode');
-        setOrgMode(v === 'org');
-      } catch {}
-    })();
-  }, []);
+  // —— Local state —— //
+  const [authMode, setAuthMode] = useState<AuthMode>('Login');
+  const [resetMode, setResetMode] = useState<ResetMode>('idle');
+  const [otpSent, setOtpSent] = useState(false);
 
-  // Keep Sign Up disabled for non-institution accounts
+  // ✅ CHANGED: initialize accountKind from forcedKind (or institution)
+  const [accountKind, setAccountKind] = useState<AccountKind>(forcedKind || 'institution');
+
+  const [name, setName] = useState(''); // sign-up only
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const clearErrors = () => setError(null);
+
+  // ✅ When forcedKind changes (nav), sync state (unless fees reauth locks it)
   useEffect(() => {
-    if (!canSignUp && authMode === 'Sign Up') {
-      setAuthMode('Login');
-    }
+    if (isFeesReauth) return;
+    if (forcedKind && accountKind !== forcedKind) setAccountKind(forcedKind);
+  }, [forcedKindRaw]);
+
+  // ✅ Step-up mode: force Instructor + Login (no sign up, no reset screens)
+  useEffect(() => {
+    if (!isFeesReauth) return;
+    setAccountKind('instructor');
+    setAuthMode('Login');
+    setResetMode('idle');
+    setOtpSent(false);
+    setName('');
+    clearErrors();
+  }, [isFeesReauth]);
+
+  const canSignUp = accountKind === 'institution' && !isFeesReauth;
+
+  // never stay in Sign Up when it is not allowed
+  useEffect(() => {
+    if (!canSignUp && authMode === 'Sign Up') setAuthMode('Login');
   }, [canSignUp, authMode]);
 
   const labelForKind = (kind: AccountKind) =>
     kind === 'institution' ? 'Institution' : kind === 'instructor' ? 'Instructor' : 'Learner';
 
+  const emailFormTitle = useMemo(() => {
+    if (isFeesReauth) return 'Unlock Fees & balances';
+    const base = labelForKind(accountKind);
+    return authMode === 'Login' ? `${base} Login` : `Create your ${base} account`;
+  }, [authMode, accountKind, isFeesReauth]);
+
   const accountOptions: { key: AccountKind; label: string; helper: string }[] = [
-    {
-      key: 'institution',
-      label: 'Institution',
-      helper: 'Admins & coordinators',
-    },
-    {
-      key: 'instructor',
-      label: 'Instructor',
-      helper: 'Teachers & trainers',
-    },
-    {
-      key: 'learner',
-      label: 'Learner',
-      helper: 'Learners in this institution',
-    },
+    { key: 'institution', label: 'Institution', helper: 'Admins & coordinators' },
+    { key: 'instructor', label: 'Instructor', helper: 'Teachers & trainers' },
+    { key: 'learner', label: 'Learner', helper: 'Learners in this institution' },
   ];
 
   const switchAccountKind = (kind: AccountKind) => {
+    if (isFeesReauth) return; // lock in fees reauth
     setAccountKind(kind);
     clearErrors();
     setResetMode('idle');
   };
 
-  const emailFormTitle = useMemo(() => {
-    const base = labelForKind(accountKind);
-    return authMode === 'Login' ? `${base} Login` : `Create your ${base} account`;
-  }, [authMode, accountKind]);
+  // In fees reauth mode we do not allow reset screens
+  const effectiveResetMode: ResetMode = isFeesReauth ? 'idle' : resetMode;
+
+  const setFeesUnlockWindow = async (orgId: string) => {
+    try {
+      await AsyncStorage.setItem(`org:feesUnlock:${orgId}`, String(Date.now()));
+    } catch {}
+  };
+
+  // —— Auth hook —— //
+  const navigateAfterAuth = useCallback(async () => {
+    const latest = parseParams(routeParamsRef.current);
+
+    // ✅ mark fees unlock window (native equivalent of sessionStorage)
+    if (latest.reauth === 'fees' && latest.orgIdParam) {
+      await setFeesUnlockWindow(latest.orgIdParam);
+    }
+
+    // ✅ explicit returnTo wins
+    let next = normalizeOrgNext(latest.returnToParam) || '';
+
+    // 1) otherwise: use saved returnTo
+    if (!next) next = await readReturnTo();
+
+    // cleanup
+    await clearReturnTo();
+
+    // 2) invite flow (only if no explicit returnTo was provided)
+    if (!latest.returnToParam && latest.codeParam) {
+      next = `/org/join/${latest.codeParam}`;
+    }
+
+    // 3) default
+    if (!next) next = '/org/profile';
+
+    // Finally go to OrgHome (it will handle next routing)
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'OrgHome' as any, params: next ? { next } : undefined } as any],
+      })
+    );
+  }, [navigation]);
 
   const {
     handleGoogleLoginSuccess,
@@ -243,40 +395,32 @@ const InstitutionLoginNative: React.FC = () => {
     sendResetOTP,
     resetPasswordWithOTP,
   } = useInstitutionAuth({
-    alertFn: (msg) => console.log('[institution-auth]', msg),
+    alertFn: (msg) => console.log('[org-auth]', msg),
 
-    // ✅ native persists the flag here (before navigation)
+    // native persists mustChange flag here
     onAuthMeta: async ({ mustChangePassword }) => {
       await setMustChangeFlagNative(mustChangePassword);
     },
 
-    // ✅ IMPORTANT: accept `dest` and route properly
+    // ✅ accept `dest` and route properly
     navigateFn: async (dest?: string) => {
-      const saved = await readReturnTo(); // deep links / invites
-      await clearReturnTo();
-
+      // change-password flow wins
       if (dest === '/org/change-password') {
-        navigation.reset({
-          index: 0,
-          routes: [
-            {
-              name: 'OrgChangePassword',
-              params: { returnTo: saved },
-            },
-          ],
-        });
+        const latest = parseParams(routeParamsRef.current);
+        let saved = normalizeOrgNext(latest.returnToParam) || '';
+        if (!saved) saved = await readReturnTo();
+        await clearReturnTo();
+
+        navigation.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: 'OrgChangePassword' as any, params: { returnTo: saved } } as any],
+          })
+        );
         return;
       }
 
-      navigation.reset({
-        index: 0,
-        routes: [
-          {
-            name: 'OrgHome',
-            params: saved ? { next: saved } : undefined,
-          },
-        ],
-      });
+      await navigateAfterAuth();
     },
   });
 
@@ -285,38 +429,48 @@ const InstitutionLoginNative: React.FC = () => {
     clearErrors();
     try {
       setBusy(true);
+
       const trimmedEmail = email.trim();
+
       if (authMode === 'Login') {
         if (!trimmedEmail || !password) {
           setError('Please enter email and password.');
           return;
         }
-        await loginWithEmail({ email: trimmedEmail, password });
-      } else {
-        // Sign Up (institution only, but effect also guards)
-        if (!name || !trimmedEmail || !password || !confirmPassword) {
-          setError('Please fill all required fields.');
-          return;
-        }
-        if (password !== confirmPassword) {
-          setError('Passwords do not match.');
-          return;
-        }
 
-        const roleHint: string =
-          accountKind === 'institution'
-            ? 'owner'
-            : accountKind === 'instructor'
-              ? 'instructor'
-              : 'learner';
+        // ✅ NEW: pass reauth payload through (safe even if backend ignores)
+        const extra =
+          reauth && orgIdParam
+            ? ({ reauth, orgId: orgIdParam } as any)
+            : reauth
+              ? ({ reauth } as any)
+              : ({} as any);
 
-        await registerWithEmail({
-          name: name.trim(),
-          email: trimmedEmail,
-          password,
-          role: roleHint,
-        } as any);
+        await loginWithEmail({ email: trimmedEmail, password, ...extra } as any);
+        return;
       }
+
+      // Sign Up (disabled for fees reauth and non-institution)
+      if (!canSignUp) {
+        setError('Sign up is only available for Institution accounts.');
+        return;
+      }
+
+      if (!name || !trimmedEmail || !password || !confirmPassword) {
+        setError('Please fill all required fields.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.');
+        return;
+      }
+
+      await registerWithEmail({
+        name: name.trim(),
+        email: trimmedEmail,
+        password,
+        role: 'owner',
+      } as any);
     } catch (err: any) {
       setError(err?.message || 'Authentication failed');
     } finally {
@@ -383,98 +537,70 @@ const InstitutionLoginNative: React.FC = () => {
         {/* theme-aware veil for legibility */}
         <View style={[tw`absolute inset-0`, { backgroundColor: palette.overlayTint }]} />
 
-        {/* Removed theme toggle top bar */}
-
         <ScrollView contentContainerStyle={tw`px-5 pb-12 pt-6`} keyboardShouldPersistTaps="handled">
           <View style={tw`w-full max-w-[520px] self-center`}>
-            {/* Card */}
             <View style={palette.surface()}>
-              {/* NEW: Account type toggle (always fits inside card) */}
-              <View style={tw`mb-4`}>
-                <Text
+              {/* ✅ Fees lock notice */}
+              {isFeesReauth && (
+                <View
                   style={[
-                    tw`text-xs font-semibold text-center mb-2`,
-                    { color: palette.textSubtle },
+                    tw`mb-4 rounded-xl px-3 py-2`,
+                    {
+                      borderWidth: 1,
+                      borderColor: palette.isDark ? 'rgba(245,158,11,0.35)' : '#fde68a',
+                      backgroundColor: palette.isDark ? 'rgba(245,158,11,0.10)' : '#fffbeb',
+                    },
                   ]}
                 >
-                  Who is logging in?
-                </Text>
+                  <Text
+                    style={[
+                      tw`text-xs font-semibold`,
+                      { color: palette.isDark ? 'rgba(255,255,255,0.9)' : '#92400e' },
+                    ]}
+                  >
+                    🔒 Fees &amp; balances is protected. Please re-enter the{' '}
+                    <Text style={tw`font-bold`}>Instructor</Text> login to continue.
+                  </Text>
 
-                <View
-                  style={{
-                    borderRadius: 16,
-                    overflow: 'hidden', // keeps children clipped inside
-                    backgroundColor: palette.isDark
-                      ? 'rgba(15,24,33,0.9)'
-                      : 'rgba(255,255,255,0.95)',
-                  }}
-                >
-                  {accountOptions.map((opt, idx) => {
-                    const selected = accountKind === opt.key;
-                    const isLast = idx === accountOptions.length - 1;
-                    return (
-                      <TouchableOpacity
-                        key={opt.key}
-                        onPress={() => switchAccountKind(opt.key)}
-                        style={[
-                          tw`flex-row items-center px-3 py-2`,
-                          selected && {
-                            backgroundColor: palette.isDark ? '#1b2430' : '#eef2ff',
-                          },
-                          !isLast && {
-                            borderBottomWidth: 0.5,
-                            borderBottomColor: palette.isDark
-                              ? 'rgba(148,163,184,0.5)'
-                              : 'rgba(148,163,184,0.6)',
-                          },
-                        ]}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                      >
-                        <View
-                          style={[
-                            tw`mr-3 h-4 w-4 rounded-full items-center justify-center`,
-                            {
-                              borderWidth: 1,
-                              borderColor: selected ? '#4f46e5' : '#9ca3af',
-                              backgroundColor: selected ? '#4f46e5' : 'transparent',
-                            },
-                          ]}
-                        >
-                          {selected && <Text style={tw`text-[10px] text-white`}>✓</Text>}
-                        </View>
-
-                        <View style={tw`flex-1`}>
-                          <Text
-                            style={[
-                              tw`text-xs font-semibold`,
-                              {
-                                color: selected ? '#4f46e5' : palette.textSoft,
-                              },
-                            ]}
-                          >
-                            {opt.label}
-                          </Text>
-                          <Text style={[tw`text-[10px] mt-0.5`, { color: palette.textSubtle }]}>
-                            {opt.helper}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
+                  {!!returnToParam && (
+                    <Text style={[tw`mt-1 text-[11px]`, { color: palette.textSubtle }]}>
+                      You will be returned to your fees page after login.
+                    </Text>
+                  )}
                 </View>
-              </View>
+              )}
+
+              {/* Account type toggle (hidden during fees reauth) */}
+              {!isFeesReauth && (
+                <View style={tw`mb-4`}>
+                  <Text style={[tw`text-xs font-semibold text-center mb-2`, { color: palette.textSubtle }]}>
+                    Who is logging in?
+                  </Text>
+
+                  <View style={[tw`flex-row flex-wrap justify-center gap-2` as any]}>
+                    {accountOptions.map((opt) => (
+                      <Pill
+                        key={opt.key}
+                        selected={accountKind === opt.key}
+                        label={opt.label}
+                        palette={palette}
+                        onPress={() => switchAccountKind(opt.key)}
+                      />
+                    ))}
+                  </View>
+                </View>
+              )}
 
               {/* Title */}
-              <Text
-                style={[tw`text-2xl font-bold text-center mb-1`, { color: palette.text }]}
-                accessibilityRole="header"
-              >
+              <Text style={[tw`text-2xl font-bold text-center mb-1`, { color: palette.text }]} accessibilityRole="header">
                 {emailFormTitle}
               </Text>
-              <Text style={[tw`text-center mb-5`, { color: palette.textSoft }]}>
-                Branding • Assignments • Analytics
-              </Text>
+
+              {!isFeesReauth && (
+                <Text style={[tw`text-center mb-5`, { color: palette.textSoft }]}>
+                  Branding • Assignments • Analytics
+                </Text>
+              )}
 
               {/* Error */}
               {!!error && (
@@ -485,7 +611,6 @@ const InstitutionLoginNative: React.FC = () => {
 
               {/* Auth mode switch */}
               <View style={tw`flex-row bg-white/10 rounded-xl p-1 mb-4`}>
-                {/* Login tab (always visible) */}
                 <TouchableOpacity
                   onPress={() => {
                     clearErrors();
@@ -498,18 +623,13 @@ const InstitutionLoginNative: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityState={{ selected: authMode === 'Login' }}
                 >
-                  <Text
-                    style={[
-                      tw`font-semibold`,
-                      { color: authMode === 'Login' ? palette.text : palette.textSoft },
-                    ]}
-                  >
+                  <Text style={[tw`font-semibold`, { color: authMode === 'Login' ? palette.text : palette.textSoft }]}>
                     Login
                   </Text>
                 </TouchableOpacity>
 
-                {/* Sign Up tab (ONLY when Institution selected) */}
-                {showSignUpTab && (
+                {/* Sign Up tab (ONLY when Institution selected AND not fees reauth) */}
+                {canSignUp && (
                   <TouchableOpacity
                     onPress={() => {
                       clearErrors();
@@ -522,12 +642,7 @@ const InstitutionLoginNative: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityState={{ selected: authMode === 'Sign Up' }}
                   >
-                    <Text
-                      style={[
-                        tw`font-semibold`,
-                        { color: authMode === 'Sign Up' ? palette.text : palette.textSoft },
-                      ]}
-                    >
+                    <Text style={[tw`font-semibold`, { color: authMode === 'Sign Up' ? palette.text : palette.textSoft }]}>
                       Sign Up
                     </Text>
                   </TouchableOpacity>
@@ -535,7 +650,7 @@ const InstitutionLoginNative: React.FC = () => {
               </View>
 
               {/* Forms */}
-              {resetMode !== 'idle' ? (
+              {effectiveResetMode !== 'idle' ? (
                 otpSent ? (
                   <View style={tw`gap-4`}>
                     <TextInput
@@ -619,7 +734,7 @@ const InstitutionLoginNative: React.FC = () => {
                   )}
 
                   <TextInput
-                    placeholder="Email"
+                    placeholder={isFeesReauth ? 'Instructor email' : 'Email'}
                     placeholderTextColor={palette.inputPlaceholder}
                     value={email}
                     onChangeText={setEmail}
@@ -655,53 +770,61 @@ const InstitutionLoginNative: React.FC = () => {
                     accessibilityRole="button"
                   >
                     <Text style={tw`text-white font-semibold`}>
-                      {authMode === 'Login' ? 'Login' : 'Sign Up'}
+                      {authMode === 'Login' ? (isFeesReauth ? 'Unlock fees' : 'Login') : 'Sign Up'}
                     </Text>
                   </TouchableOpacity>
 
-                  <View style={tw`flex-row justify-between`}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        clearErrors();
-                        setResetMode('requesting');
-                      }}
-                    >
-                      <Text style={palette.linkText() as any}>Forgot password?</Text>
-                    </TouchableOpacity>
+                  {/* Links row (hidden during fees reauth) */}
+                  {!isFeesReauth && (
+                    <View style={tw`flex-row justify-between`}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          clearErrors();
+                          setResetMode('requesting');
+                        }}
+                      >
+                        <Text style={palette.linkText() as any}>Forgot password?</Text>
+                      </TouchableOpacity>
 
-                    {canSignUp &&
-                      (authMode === 'Login' ? (
-                        <TouchableOpacity
-                          onPress={() => {
-                            clearErrors();
-                            setAuthMode('Sign Up');
-                          }}
-                        >
-                          <Text style={palette.linkText() as any}>Create account</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          onPress={() => {
-                            clearErrors();
-                            setAuthMode('Login');
-                          }}
-                        >
-                          <Text style={palette.linkText() as any}>Already have an account?</Text>
-                        </TouchableOpacity>
-                      ))}
-                  </View>
+                      {canSignUp &&
+                        (authMode === 'Login' ? (
+                          <TouchableOpacity
+                            onPress={() => {
+                              clearErrors();
+                              setAuthMode('Sign Up');
+                            }}
+                          >
+                            <Text style={palette.linkText() as any}>Create account</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => {
+                              clearErrors();
+                              setAuthMode('Login');
+                            }}
+                          >
+                            <Text style={palette.linkText() as any}>Already have an account?</Text>
+                          </TouchableOpacity>
+                        ))}
+                    </View>
+                  )}
 
-                  {accountKind !== 'institution' && (
+                  {!isFeesReauth && accountKind !== 'institution' && (
                     <Text style={[tw`mt-2 text-[11px] text-center`, { color: palette.textSubtle }]}>
-                      Instructors and learners: please log in using the email/ID and password shared
-                      by your school or the invite link.
+                      Instructors and learners: please log in using the email/ID and password shared by your school or the invite link.
+                    </Text>
+                  )}
+
+                  {isFeesReauth && (
+                    <Text style={[tw`mt-2 text-[11px] text-center`, { color: palette.textSubtle }]}>
+                      Tip: this is a quick security check for sensitive fee actions.
                     </Text>
                   )}
                 </View>
               )}
 
-              {/* Divider + Google (institution only) */}
-              {accountKind === 'institution' && (
+              {/* Google login only for Institution (not in fees reauth) */}
+              {accountKind === 'institution' && !isFeesReauth && (
                 <>
                   <View style={tw`my-6 flex-row items-center`}>
                     <View style={tw`flex-1 h-px bg-white/10`} />
@@ -717,7 +840,6 @@ const InstitutionLoginNative: React.FC = () => {
                         } catch (e: any) {
                           Alert.alert('Google sign-in failed', e?.message || 'Please try again.');
                         }
-                        // Navigation handled by navigateFn after token.
                       }}
                       onFailure={(err?: Error) => handleGoogleLoginFailure(err)}
                     />
@@ -726,24 +848,25 @@ const InstitutionLoginNative: React.FC = () => {
               )}
 
               {/* Helper: switch to regular DayBreak login */}
-              <View style={tw`mt-6 items-center`}>
-                <Text style={[tw`text-xs`, { color: palette.textSubtle }]}>
-                  Not an institution?{' '}
-                  <Text
-                    style={palette.linkText() as any}
-                    onPress={async () => {
-                      try {
-                        await AsyncStorage.setItem('auth:mode', 'user');
-                        await clearReturnTo();
-                      } catch {}
-                      // 👇 pass a "switch" flag so mobile Login won't bounce away
-                      navigation.navigate('Login', { switch: true });
-                    }}
-                  >
-                    Sign in as Student/Tutor
+              {!isFeesReauth && (
+                <View style={tw`mt-6 items-center`}>
+                  <Text style={[tw`text-xs`, { color: palette.textSubtle }]}>
+                    Need a normal DayBreak account?{' '}
+                    <Text
+                      style={palette.linkText() as any}
+                      onPress={async () => {
+                        try {
+                          await AsyncStorage.setItem('auth:mode', 'user');
+                          await clearReturnTo();
+                        } catch {}
+                        navigation.navigate('Login' as any, { switch: true } as any);
+                      }}
+                    >
+                      Sign in as Learner/Tutor
+                    </Text>
                   </Text>
-                </Text>
-              </View>
+                </View>
+              )}
 
               {/* Policies */}
               <Text style={[tw`mt-6 text-center text-[10px]`, { color: palette.textSubtle }]}>
@@ -752,10 +875,7 @@ const InstitutionLoginNative: React.FC = () => {
                   Terms
                 </Text>{' '}
                 and{' '}
-                <Text
-                  style={tw`underline`}
-                  onPress={() => Linking.openURL(`${WEB_BASE}/privacy-policy`)}
-                >
+                <Text style={tw`underline`} onPress={() => Linking.openURL(`${WEB_BASE}/privacy-policy`)}>
                   Privacy Policy
                 </Text>
                 .

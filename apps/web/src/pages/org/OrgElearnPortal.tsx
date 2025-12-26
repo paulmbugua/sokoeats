@@ -225,6 +225,93 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
+function cx(...xs: Array<string | false | null | undefined>) {
+  return xs.filter(Boolean).join(' ');
+}
+
+function PortalIconTile({
+  title,
+  subtitle,
+  icon,
+  tone = 'indigo',
+  badge,
+  disabled,
+  onClick,
+}: {
+  title: string;
+  subtitle?: string;
+  icon: React.ReactNode;
+  tone?: 'indigo' | 'emerald' | 'sky' | 'amber' | 'rose' | 'slate';
+  badge?: string;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
+  const toneCls =
+    tone === 'emerald'
+      ? 'from-emerald-500/20 to-emerald-500/5 ring-emerald-300/50 text-emerald-700 dark:from-emerald-500/25 dark:to-emerald-500/5 dark:ring-emerald-400/30 dark:text-emerald-100'
+      : tone === 'sky'
+        ? 'from-sky-500/20 to-sky-500/5 ring-sky-300/50 text-sky-700 dark:from-sky-500/25 dark:to-sky-500/5 dark:ring-sky-400/30 dark:text-sky-100'
+        : tone === 'amber'
+          ? 'from-amber-500/20 to-amber-500/5 ring-amber-300/50 text-amber-800 dark:from-amber-500/25 dark:to-amber-500/5 dark:ring-amber-400/30 dark:text-amber-100'
+          : tone === 'rose'
+            ? 'from-rose-500/20 to-rose-500/5 ring-rose-300/50 text-rose-700 dark:from-rose-500/25 dark:to-rose-500/5 dark:ring-rose-400/30 dark:text-rose-100'
+            : tone === 'slate'
+              ? 'from-slate-200/70 to-slate-50 ring-slate-200 text-slate-700 dark:from-white/10 dark:to-white/5 dark:ring-white/10 dark:text-white'
+              : 'from-indigo-500/20 to-indigo-500/5 ring-indigo-300/50 text-indigo-700 dark:from-indigo-500/25 dark:to-indigo-500/5 dark:ring-indigo-400/30 dark:text-indigo-100';
+
+  const base =
+    'group relative rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10 ' +
+    'bg-white dark:bg-[#0b1420] transition overflow-hidden ' +
+    'hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3d99f5]';
+
+  const disabledCls = 'opacity-60 cursor-not-allowed hover:translate-y-0 hover:shadow-none';
+
+  const inner =
+    'flex flex-col items-center justify-center text-center px-2 py-3 min-h-[104px]';
+
+  const iconWrap =
+    'h-12 w-12 rounded-2xl grid place-items-center bg-gradient-to-br ring-1 shadow-inner ' + toneCls;
+
+  const titleCls = 'mt-2 text-[12px] sm:text-sm font-semibold text-[#0d141c] dark:text-white/95';
+  const subCls = 'mt-1 text-[10px] sm:text-[11px] leading-snug text-[#49739c] dark:text-white/65';
+
+  const content = (
+    <>
+      <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition">
+        <div className="absolute -top-10 -right-10 h-28 w-28 rounded-full bg-slate-400/10 dark:bg-white/10 blur-2xl" />
+        <div className="absolute -bottom-10 -left-10 h-28 w-28 rounded-full bg-slate-400/10 dark:bg-white/10 blur-2xl" />
+      </div>
+
+      <div className="absolute top-2 right-2 text-[11px] text-slate-400 dark:text-white/40 group-hover:text-slate-500 dark:group-hover:text-white/70 transition">
+        ↗
+      </div>
+
+      {badge ? (
+        <div className="absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-700 dark:bg-white/10 dark:text-white/70 dark:border-white/10">
+          {badge}
+        </div>
+      ) : null}
+
+      <div className={inner}>
+        <div className={iconWrap}>{icon}</div>
+        <div className={titleCls}>{title}</div>
+        {subtitle ? <div className={subCls}>{subtitle}</div> : null}
+      </div>
+    </>
+  );
+
+  if (disabled || !onClick) {
+    return <div className={cx(base, disabledCls)}>{content}</div>;
+  }
+
+  return (
+    <button type="button" onClick={onClick} className={base} title={title}>
+      {content}
+    </button>
+  );
+}
+
+
 export default function OrgElearnPortal() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -2289,63 +2376,68 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {[
-                      {
-                        title: 'Attendance',
-                        body: 'Create sessions and bulk mark learners with notes.',
-                        onClick: () => navigate('/org/attendance'),
-                      },
-                      {
-                          title: 'Fees & balances',
-                          body: 'Charge fees, record payments, and download statements.',
-                          onClick: goFeesSecure, // ✅ secure step-up instead of direct navigate
-                        },
+<div className="mt-3 grid gap-3 grid-cols-3 sm:grid-cols-4 lg:grid-cols-6">
+  <PortalIconTile
+    title="Attendance"
+    subtitle="Sessions"
+    icon={<span className="text-2xl">✅</span>}
+    tone="emerald"
+    disabled={!isProTier}
+    badge={!isProTier ? 'Locked' : undefined}
+    onClick={() => navigate('/org/attendance')}
+  />
 
-                      {
-                        title: 'Newsletters',
-                        body: 'Draft and archive end-of-term updates with AI help.',
-                        onClick: () => navigate('/org/newsletters'),
-                      },
-                      {
-                        title: 'Announcements',
-                        body: 'Post pinned notices to learners and instructors.',
-                        onClick: () => navigate('/org/announcements'),
-                      },
+  <PortalIconTile
+    title="Fees"
+    subtitle="Balances"
+    icon={<span className="text-2xl">💳</span>}
+    tone="emerald"
+    disabled={!isProTier}
+    badge={!isProTier ? 'Locked' : undefined}
+    onClick={goFeesSecure}
+  />
 
-                      {
-                        title: 'Clubs & societies',
-                        body: 'Create clubs and enroll members.',
-                        onClick: () => navigate('/org/tools/clubs'),
-                      },
-                      {
-                        title: 'Sports calendar',
-                        body: 'Manage fixtures and practice sessions.',
-                        onClick: () => navigate('/org/tools/sports'),
-                      },
+  <PortalIconTile
+    title="Newsletters"
+    subtitle="Send"
+    icon={<span className="text-2xl">📰</span>}
+    tone="sky"
+    disabled={!isProTier}
+    badge={!isProTier ? 'Locked' : undefined}
+    onClick={() => navigate('/org/newsletters')}
+  />
 
-                    ].map((card) => (
-                      <button
-                        key={card.title}
-                        type="button"
-                        onClick={card.onClick}
-                        disabled={!isProTier}
-                        className={`rounded-2xl border px-4 py-3 text-left transition shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3d99f5] dark:border-white/10 ${
-                          isProTier
-                            ? 'border-[#d9e5f2] bg-white hover:-translate-y-0.5 hover:shadow-md dark:bg-[#0b1420]'
-                            : 'border-dashed border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/10 dark:text-amber-100'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="text-sm font-semibold">{card.title}</div>
-                            <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">{card.body}</p>
-                          </div>
-                          {!isProTier && <span className="text-[11px] font-semibold">Locked</span>}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+  <PortalIconTile
+    title="Announcements"
+    subtitle="Post"
+    icon={<span className="text-2xl">📣</span>}
+    tone="indigo"
+    disabled={!isProTier}
+    badge={!isProTier ? 'Locked' : undefined}
+    onClick={() => navigate('/org/announcements')}
+  />
+
+  <PortalIconTile
+    title="Clubs"
+    subtitle="Manage"
+    icon={<span className="text-2xl">🤝</span>}
+    tone="slate"
+    disabled={!isProTier}
+    badge={!isProTier ? 'Locked' : undefined}
+    onClick={() => navigate('/org/tools/clubs')}
+  />
+
+  <PortalIconTile
+    title="Sports"
+    subtitle="Publish"
+    icon={<span className="text-2xl">🏆</span>}
+    tone="amber"
+    disabled={!isProTier}
+    badge={!isProTier ? 'Locked' : undefined}
+    onClick={() => navigate('/org/tools/sports')}
+  />
+</div>
+
                 </section>
               )}
             </>

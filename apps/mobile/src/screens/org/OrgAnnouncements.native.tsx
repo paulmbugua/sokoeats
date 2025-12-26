@@ -1,22 +1,31 @@
+/* eslint-disable prettier/prettier */
+/* eslint-disable react-hooks/exhaustive-deps */
+
 // apps/mobile/src/screens/org/OrgAnnouncements.native.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
-  useColorScheme,
   View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import tw from '../../../tailwind';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
 import { useOrgAnnouncements } from '@mytutorapp/shared/hooks/useOrgAnnouncements';
+
+import { useThemePref } from '../../theme/ThemeContext';
+
+// Optional but recommended (parity with Newsletter screen)
+import { RefreshableScrollView } from '../../refresh/Refreshable';
+import { useRegisterScreenRefresh } from '../../refresh/GlobalRefreshProvider';
 
 /* ─────────────────────────────────────────────────────────
  * Helpers (ported)
@@ -47,25 +56,38 @@ function statusBadge(a: any) {
 }
 
 /* ─────────────────────────────────────────────────────────
- * Theme + UI bits
+ * Theme + UI bits (aligned to Newsletter screen)
  * ───────────────────────────────────────────────────────── */
 
-const Pill = ({ label, tone, theme }: { label: string; tone?: 'base' | 'warn' | 'info'; theme: any }) => {
-  const bg =
-    tone === 'warn' ? theme.warnBg : tone === 'info' ? theme.primarySoft : theme.chipBg;
-  const border =
-    tone === 'warn' ? theme.warnBorder : tone === 'info' ? theme.primary : theme.border;
-  const color =
-    tone === 'warn' ? theme.warnText : tone === 'info' ? theme.primary : theme.subtext;
+const Pill = ({
+  label,
+  tone,
+  theme,
+}: {
+  label: string;
+  tone?: 'base' | 'warn' | 'info';
+  theme: any;
+}) => {
+  const bg = tone === 'warn' ? theme.warnBg : tone === 'info' ? theme.primarySoft : theme.chipBg;
+  const border = tone === 'warn' ? theme.warnBorder : tone === 'info' ? theme.primaryBorder : theme.border;
+  const color = tone === 'warn' ? theme.warnText : tone === 'info' ? theme.primaryText : theme.subtext;
 
   return (
     <View style={[tw`px-2 py-1 rounded-full border`, { backgroundColor: bg, borderColor: border }]}>
-      <Text style={[tw`text-xs font-semibold`, { color }]}>{label}</Text>
+      <Text style={[tw`text-[11px] font-extrabold`, { color }]}>{label}</Text>
     </View>
   );
 };
 
-const Banner = ({ tone, msg, theme }: { tone: 'ok' | 'warn' | 'bad'; msg: string; theme: any }) => {
+const Banner = ({
+  tone,
+  msg,
+  theme,
+}: {
+  tone: 'ok' | 'warn' | 'bad';
+  msg: string;
+  theme: any;
+}) => {
   const bg = tone === 'ok' ? theme.okBg : tone === 'warn' ? theme.warnBg : theme.badBg;
   const border = tone === 'ok' ? theme.okBorder : tone === 'warn' ? theme.warnBorder : theme.badBorder;
   const color = tone === 'ok' ? theme.okText : tone === 'warn' ? theme.warnText : theme.badText;
@@ -95,18 +117,20 @@ const Field = ({
   height?: number;
 }) => (
   <View style={tw`mb-3`}>
-    <Text style={[tw`text-xs uppercase tracking-wider mb-1`, { color: theme.muted }]}>{label}</Text>
+    <Text style={[tw`text-xs font-extrabold mb-1`, { color: theme.label }]}>
+      {label}
+    </Text>
     <TextInput
       value={value}
       onChangeText={onChange}
       placeholder={placeholder}
-      placeholderTextColor={theme.muted}
+      placeholderTextColor={theme.placeholder}
       multiline={multiline}
       style={[
         tw`rounded-2xl px-3 py-3 border`,
         {
           borderColor: theme.border,
-          backgroundColor: theme.card,
+          backgroundColor: theme.inputBg,
           color: theme.text,
           minHeight: height,
           textAlignVertical: multiline ? 'top' : 'center',
@@ -132,10 +156,10 @@ const PrimaryBtn = ({
     disabled={disabled}
     style={[
       tw`px-4 py-3 rounded-2xl`,
-      { backgroundColor: disabled ? theme.border : theme.primary, opacity: disabled ? 0.6 : 1 },
+      { backgroundColor: disabled ? theme.btnDisabledBg : theme.btnPrimaryBg, opacity: disabled ? 0.7 : 1 },
     ]}
   >
-    <Text style={tw`text-white font-semibold text-sm`}>{label}</Text>
+    <Text style={tw`text-white font-extrabold text-sm`}>{label}</Text>
   </TouchableOpacity>
 );
 
@@ -159,11 +183,14 @@ const GhostBtn = ({
       tw`px-4 py-3 rounded-2xl border`,
       {
         borderColor: danger ? theme.badBorder : theme.border,
+        backgroundColor: theme.btnGhostBg,
         opacity: disabled ? 0.6 : 1,
       },
     ]}
   >
-    <Text style={[tw`font-semibold text-sm`, { color: danger ? theme.badText : theme.text }]}>{label}</Text>
+    <Text style={[tw`font-extrabold text-sm`, { color: danger ? theme.badText : theme.text }]}>
+      {label}
+    </Text>
   </TouchableOpacity>
 );
 
@@ -184,11 +211,11 @@ const SegBtn = ({
       tw`flex-1 px-3 py-3 rounded-2xl border`,
       {
         borderColor: active ? theme.primary : theme.border,
-        backgroundColor: active ? theme.primarySoft : 'transparent',
+        backgroundColor: active ? theme.primarySoft : theme.btnGhostBg,
       },
     ]}
   >
-    <Text style={[tw`text-sm font-semibold text-center`, { color: active ? theme.primary : theme.text }]}>
+    <Text style={[tw`text-sm font-extrabold text-center`, { color: active ? theme.primaryText : theme.text }]}>
       {label}
     </Text>
   </TouchableOpacity>
@@ -223,34 +250,58 @@ const CircleCheckboxNative = ({
  * ───────────────────────────────────────────────────────── */
 
 export default function OrgAnnouncementsNative() {
-  const scheme = useColorScheme();
+  const insets = useSafeAreaInsets();
+  const { resolvedScheme } = useThemePref();
+  const isDark = resolvedScheme === 'dark';
+
+  // Match Newsletter layout paddings (avoid footer overlay)
+  const NAV_SPACER_PX = 12;
+  const FOOTER_OVERLAY_PX = 84;
+  const bottomPad = Math.max(FOOTER_OVERLAY_PX, FOOTER_OVERLAY_PX + insets.bottom);
+
   const theme = useMemo(() => {
-    const dark = scheme === 'dark';
     return {
-      dark,
-      bg: dark ? '#0b1220' : '#f8fafc',
-      card: dark ? '#0f172a' : '#ffffff',
-      border: dark ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.12)',
-      text: dark ? '#e2e8f0' : '#0f172a',
-      subtext: dark ? 'rgba(226,232,240,0.78)' : 'rgba(15,23,42,0.65)',
-      muted: dark ? 'rgba(226,232,240,0.55)' : 'rgba(15,23,42,0.45)',
+      dark: isDark,
+
+      // Screen + cards (match Newsletter)
+      bg: isDark ? '#0b1016' : '#f8fafc',
+      card: isDark ? '#0f1821' : '#ffffff',
+      card2: isDark ? '#0b1620' : '#ffffff',
+
+      border: isDark ? 'rgba(255,255,255,0.10)' : '#cedbe8',
+      text: isDark ? '#ffffff' : '#0d141c',
+      subtext: isDark ? 'rgba(255,255,255,0.70)' : '#49739c',
+      label: isDark ? 'rgba(255,255,255,0.70)' : '#49739c',
+      placeholder: isDark ? 'rgba(255,255,255,0.45)' : '#94a3b8',
+      inputBg: isDark ? '#0b1620' : '#f8fafc',
+
+      // Primary
       primary: '#2563eb',
-      primarySoft: dark ? 'rgba(37,99,235,0.18)' : 'rgba(37,99,235,0.10)',
-      chipBg: dark ? 'rgba(148,163,184,0.10)' : 'rgba(15,23,42,0.06)',
+      primarySoft: isDark ? 'rgba(37,99,235,0.18)' : 'rgba(37,99,235,0.10)',
+      primaryBorder: isDark ? 'rgba(37,99,235,0.35)' : 'rgba(37,99,235,0.25)',
+      primaryText: isDark ? '#bfdbfe' : '#1d4ed8',
 
-      okBg: dark ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.12)',
-      okBorder: dark ? 'rgba(16,185,129,0.35)' : 'rgba(16,185,129,0.25)',
-      okText: dark ? '#d1fae5' : '#064e3b',
+      chipBg: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)',
 
-      warnBg: dark ? 'rgba(245,158,11,0.16)' : 'rgba(245,158,11,0.12)',
-      warnBorder: dark ? 'rgba(245,158,11,0.40)' : 'rgba(245,158,11,0.28)',
-      warnText: dark ? '#fde68a' : '#7c2d12',
+      // Buttons
+      btnPrimaryBg: '#3d99f5',
+      btnDisabledBg: isDark ? '#334155' : '#cbd5e1',
+      btnGhostBg: isDark ? '#172534' : '#e7edf4',
 
-      badBg: dark ? 'rgba(244,63,94,0.14)' : 'rgba(244,63,94,0.10)',
-      badBorder: dark ? 'rgba(244,63,94,0.38)' : 'rgba(244,63,94,0.22)',
-      badText: dark ? '#fecdd3' : '#9f1239',
+      // Status colors
+      okBg: isDark ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.12)',
+      okBorder: isDark ? 'rgba(16,185,129,0.35)' : 'rgba(16,185,129,0.25)',
+      okText: isDark ? '#d1fae5' : '#064e3b',
+
+      warnBg: isDark ? 'rgba(245,158,11,0.16)' : 'rgba(245,158,11,0.12)',
+      warnBorder: isDark ? 'rgba(245,158,11,0.40)' : 'rgba(245,158,11,0.28)',
+      warnText: isDark ? '#fde68a' : '#7c2d12',
+
+      badBg: isDark ? 'rgba(244,63,94,0.14)' : 'rgba(244,63,94,0.10)',
+      badBorder: isDark ? 'rgba(244,63,94,0.38)' : 'rgba(244,63,94,0.22)',
+      badText: isDark ? '#fecdd3' : '#9f1239',
     };
-  }, [scheme]);
+  }, [isDark]);
 
   const { isPro, upgradeCta, classLabels = [] } = (useOrgProTools?.() ?? {}) as any;
 
@@ -264,8 +315,10 @@ export default function OrgAnnouncementsNative() {
   const orgState = (useOrg?.() ?? {}) as any;
   const orgFromHook = orgState?.org || orgState?.organization || null;
 
-  const token = (ctxOrgToken as string) || (ctxUserToken as string) || null;
-  const orgId = (ctxOrgId as string) || (orgFromHook?.id as string) || null;
+  const token: string | undefined = (ctxOrgToken as string) || (ctxUserToken as string) || undefined;
+const orgId: string | undefined = (ctxOrgId as string) || (orgFromHook?.id as string) || undefined;
+const backendUrl: string | undefined = (ctxBackendUrl as string) || undefined;
+
 
   const {
     announcements,
@@ -280,7 +333,7 @@ export default function OrgAnnouncementsNative() {
   } = useOrgAnnouncements({
     orgId,
     token,
-    backendUrl: ctxBackendUrl,
+    backendUrl,
   }) as any;
 
   const [form, setForm] = useState({
@@ -304,12 +357,23 @@ export default function OrgAnnouncementsNative() {
   const isAgm = String(form.category || '').toLowerCase() === 'agm';
   const canPost = useMemo(() => Boolean(form.title.trim() && form.body.trim()), [form.title, form.body]);
 
-  const missingCtx = !orgId || !token;
+  const missingCtx = !orgId || !token || !backendUrl;
 
   useEffect(() => {
-    if (!orgId || !token) return;
+    if (!orgId || !token || !backendUrl) return;
     fetchAnnouncements();
-  }, [orgId, token, fetchAnnouncements]);
+  }, [orgId, token, backendUrl, fetchAnnouncements]);
+
+  const refreshAll = useCallback(async () => {
+    if (!orgId || !token || !backendUrl) return;
+    try {
+      await fetchAnnouncements();
+    } catch {
+      // ignore
+    }
+  }, [orgId, token, backendUrl, fetchAnnouncements]);
+
+  useRegisterScreenRefresh(refreshAll);
 
   const autoFillAgm = () => {
     const when = form.meeting_at ? fmtWhen(toIsoOrNull(form.meeting_at)) : 'TBD';
@@ -426,56 +490,76 @@ Thank you.`;
   }, [classLabels]);
 
   return (
-    <View style={[tw`flex-1`, { backgroundColor: theme.bg }]}>
-      <ScrollView contentContainerStyle={tw`px-4 pt-6 pb-28`}>
+    <SafeAreaView style={[tw`flex-1`, { backgroundColor: theme.bg }]}>
+      <RefreshableScrollView
+        style={tw`flex-1`}
+        contentContainerStyle={[
+          tw`px-4`,
+          { paddingTop: insets.top + NAV_SPACER_PX, paddingBottom: bottomPad },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Header (matches Newsletter feel) */}
+        <View style={tw`flex-row items-start justify-between`}>
+          <View style={tw`flex-1 pr-3`}>
+            <Text style={[tw`text-[26px] font-extrabold`, { color: theme.text }]}>
+              Announcements
+            </Text>
+            <Text style={[tw`mt-1 text-sm`, { color: theme.subtext }]}>
+              Post updates. Schedule visibility. Pin important messages. AGM notices can export PDF.
+            </Text>
+          </View>
+
+          <View style={tw`items-end`}>
+            <View
+              style={[
+                tw`px-3 py-1 rounded-full border`,
+                { backgroundColor: theme.card, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[tw`text-xs font-extrabold`, { color: theme.text }]}>
+                Pro / Enterprise
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Upgrade gate */}
+        {!isPro && upgradeCta ? (
+          <View style={[tw`mt-4 rounded-2xl border p-4`, { borderColor: theme.warnBorder, backgroundColor: theme.warnBg }]}>
+            <Text style={[tw`font-extrabold`, { color: theme.warnText }]}>{upgradeCta.headline}</Text>
+            <Text style={[tw`mt-1 text-sm`, { color: theme.warnText }]}>{upgradeCta.body}</Text>
+          </View>
+        ) : null}
+
         {/* Missing context banner */}
         {missingCtx ? (
-          <View style={tw`mb-3`}>
+          <View style={tw`mt-4`}>
             <Banner
               tone="bad"
-              msg={`Missing org/session context\norgId: ${orgId ?? 'null'} • token: ${token ? 'present' : 'missing'}`}
+              msg={`Missing org/session context\norgId: ${orgId ?? 'null'} • token: ${token ? 'present' : 'missing'} • backendUrl: ${backendUrl ? 'present' : 'missing'}`}
               theme={theme}
             />
           </View>
         ) : null}
 
-        {/* Header */}
-        <View style={tw`mb-3`}>
-          <Text style={[tw`text-xs uppercase tracking-wider`, { color: theme.primary }]}>Org tools</Text>
-          <View style={tw`flex-row items-center justify-between mt-1`}>
-            <Text style={[tw`text-2xl font-bold`, { color: theme.text }]}>Announcements</Text>
-            <Pill label="Pro / Enterprise" tone="info" theme={theme} />
-          </View>
-          <Text style={[tw`text-sm mt-1`, { color: theme.subtext }]}>
-            Post updates. Schedule visibility. Pin important messages. AGM notices can export PDF.
-          </Text>
-        </View>
-
-        {/* Upgrade CTA */}
-        {!isPro && upgradeCta ? (
-          <View style={[tw`rounded-3xl border p-4 mb-3`, { borderColor: theme.warnBorder, backgroundColor: theme.warnBg }]}>
-            <Text style={[tw`font-bold`, { color: theme.warnText }]}>{upgradeCta.headline}</Text>
-            <Text style={[tw`mt-1`, { color: theme.warnText }]}>{upgradeCta.body}</Text>
-          </View>
-        ) : null}
-
         {/* Flash + hook notice/error */}
         {flash?.msg ? (
-          <View style={tw`mb-3`}>
+          <View style={tw`mt-4`}>
             <Banner tone={flash.tone} msg={flash.msg} theme={theme} />
           </View>
         ) : null}
 
         {(error || notice) ? (
-          <View style={tw`mb-3`}>
+          <View style={tw`mt-4`}>
             <Banner tone={error ? 'bad' : 'ok'} msg={String(error || notice)} theme={theme} />
           </View>
         ) : null}
 
         {/* Composer card */}
-        <View style={[tw`rounded-3xl border p-4`, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={[tw`mt-4 rounded-2xl border p-4`, { backgroundColor: theme.card, borderColor: theme.border }]}>
           {/* Type */}
-          <Text style={[tw`text-xs uppercase tracking-wider mb-2`, { color: theme.muted }]}>Type</Text>
+          <Text style={[tw`text-xs font-extrabold mb-2`, { color: theme.label }]}>Type</Text>
           <View style={tw`flex-row gap-2`}>
             <SegBtn
               label="General"
@@ -492,29 +576,32 @@ Thank you.`;
           </View>
 
           {/* Audience */}
-          <Text style={[tw`text-xs uppercase tracking-wider mt-4 mb-2`, { color: theme.muted }]}>Audience</Text>
+          <Text style={[tw`mt-4 text-xs font-extrabold mb-2`, { color: theme.label }]}>Audience</Text>
           <View style={tw`flex-row flex-wrap`}>
-            {(['all', 'learners', 'instructors'] as const).map((k) => (
-              <TouchableOpacity
-                key={k}
-                onPress={() => setForm((p) => ({ ...p, audience: k }))}
-                style={[
-                  tw`mr-2 mb-2 px-3 py-2 rounded-full border`,
-                  {
-                    borderColor: form.audience === k ? theme.primary : theme.border,
-                    backgroundColor: form.audience === k ? theme.primarySoft : 'transparent',
-                  },
-                ]}
-              >
-                <Text style={[tw`text-xs font-semibold`, { color: form.audience === k ? theme.primary : theme.text }]}>
-                  {k === 'all' ? 'All' : k === 'learners' ? 'Learners' : 'Instructors'}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {(['all', 'learners', 'instructors'] as const).map((k) => {
+              const active = form.audience === k;
+              return (
+                <TouchableOpacity
+                  key={k}
+                  onPress={() => setForm((p) => ({ ...p, audience: k }))}
+                  style={[
+                    tw`mr-2 mb-2 px-3 py-2 rounded-full border`,
+                    {
+                      borderColor: active ? theme.primaryBorder : theme.border,
+                      backgroundColor: active ? theme.primarySoft : theme.btnGhostBg,
+                    },
+                  ]}
+                >
+                  <Text style={[tw`text-xs font-extrabold`, { color: active ? theme.primaryText : theme.text }]}>
+                    {k === 'all' ? 'All' : k === 'learners' ? 'Learners' : 'Instructors'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          {/* Class targeting */}
-          <View style={tw`mt-2 flex-row flex-wrap items-center`}>
+          {/* Pin + class targeting */}
+          <View style={tw`mt-1 flex-row flex-wrap items-center`}>
             <CircleCheckboxNative
               checked={!!form.pinned}
               onChange={(next) => setForm((p) => ({ ...p, pinned: next }))}
@@ -533,7 +620,7 @@ Thank you.`;
           </View>
 
           {/* Target class */}
-          <Text style={[tw`text-xs uppercase tracking-wider mb-2`, { color: theme.muted }]}>
+          <Text style={[tw`text-xs font-extrabold mb-2`, { color: theme.label }]}>
             Target class (optional)
           </Text>
           {classOptions.length ? (
@@ -548,13 +635,13 @@ Thank you.`;
                     style={[
                       tw`mr-2 mb-2 px-3 py-2 rounded-full border`,
                       {
-                        borderColor: active ? theme.primary : theme.border,
-                        backgroundColor: active ? theme.primarySoft : 'transparent',
+                        borderColor: active ? theme.primaryBorder : theme.border,
+                        backgroundColor: active ? theme.primarySoft : theme.btnGhostBg,
                         opacity: limitToClass ? 1 : 0.55,
                       },
                     ]}
                   >
-                    <Text style={[tw`text-xs font-semibold`, { color: active ? theme.primary : theme.text }]}>
+                    <Text style={[tw`text-xs font-extrabold`, { color: active ? theme.primaryText : theme.text }]}>
                       {c}
                     </Text>
                   </TouchableOpacity>
@@ -581,8 +668,8 @@ Thank you.`;
           />
 
           {/* Visible windows (simple text inputs for datetime) */}
-          <Text style={[tw`text-xs`, { color: theme.muted }]}>
-            Date/time tip: use ISO-ish text like <Text style={{ color: theme.subtext }}>2025-12-25T08:30</Text>
+          <Text style={[tw`text-[11px]`, { color: theme.subtext }]}>
+            Date/time tip: use ISO-ish text like <Text style={{ color: theme.text }}>2025-12-25T08:30</Text>
           </Text>
 
           <View style={tw`mt-2`}>
@@ -663,7 +750,7 @@ Thank you.`;
             />
             <GhostBtn
               label="Refresh"
-              onPress={() => fetchAnnouncements()}
+              onPress={refreshAll}
               disabled={missingCtx}
               theme={theme}
             />
@@ -671,13 +758,13 @@ Thank you.`;
         </View>
 
         {/* List card */}
-        <View style={[tw`mt-4 rounded-3xl border p-4`, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={[tw`mt-4 rounded-2xl border p-4`, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={tw`flex-row items-center justify-between`}>
-            <Text style={[tw`text-sm font-bold`, { color: theme.text }]}>Recent</Text>
+            <Text style={[tw`text-sm font-extrabold`, { color: theme.text }]}>Recent</Text>
             {loading ? (
               <View style={tw`flex-row items-center`}>
                 <ActivityIndicator />
-                <Text style={[tw`ml-2 text-xs`, { color: theme.muted }]}>Loading…</Text>
+                <Text style={[tw`ml-2 text-xs`, { color: theme.subtext }]}>Loading…</Text>
               </View>
             ) : null}
           </View>
@@ -695,15 +782,16 @@ Thank you.`;
                 return (
                   <View
                     key={String(a?.id)}
-                    style={[tw`mb-3 rounded-3xl border p-3`, { borderColor: theme.border, backgroundColor: 'transparent' }]}
+                    style={[
+                      tw`mb-3 rounded-2xl border p-3`,
+                      { borderColor: theme.border, backgroundColor: theme.card2 },
+                    ]}
                   >
                     <View style={tw`flex-row items-start justify-between`}>
                       <View style={tw`flex-1 pr-3`}>
-                        <View style={tw`flex-row flex-wrap items-center gap-2`}>
-                          <Text style={[tw`text-base font-bold`, { color: theme.text }]} numberOfLines={2}>
-                            {a?.title || 'Untitled'}
-                          </Text>
-                        </View>
+                        <Text style={[tw`text-base font-extrabold`, { color: theme.text }]} numberOfLines={2}>
+                          {a?.title || 'Untitled'}
+                        </Text>
 
                         <View style={tw`flex-row flex-wrap items-center gap-2 mt-2`}>
                           {isPinned ? <Pill label="Pinned" tone="warn" theme={theme} /> : null}
@@ -712,7 +800,7 @@ Thank you.`;
                           {cls ? <Pill label={cls} theme={theme} /> : null}
                         </View>
 
-                        <Text style={[tw`text-xs mt-2`, { color: theme.muted }]}>
+                        <Text style={[tw`text-xs mt-2`, { color: theme.subtext }]}>
                           {a?.start_at ? `From: ${fmtWhen(a.start_at)}` : 'From: now'} •{' '}
                           {a?.end_at ? `To: ${fmtWhen(a.end_at)}` : 'No end'}
                         </Text>
@@ -721,12 +809,14 @@ Thank you.`;
                       <View style={tw`items-end`}>
                         {isAgmRow ? (
                           <TouchableOpacity onPress={() => downloadAgm(Number(a.id))} style={tw`mb-2`}>
-                            <Text style={[tw`text-xs font-semibold`, { color: theme.primary }]}>Download AGM PDF</Text>
+                            <Text style={[tw`text-xs font-extrabold`, { color: theme.primaryText }]}>
+                              Download AGM PDF
+                            </Text>
                           </TouchableOpacity>
                         ) : null}
 
                         <TouchableOpacity onPress={() => handleDelete(Number(a.id))}>
-                          <Text style={[tw`text-xs font-semibold`, { color: theme.badText }]}>Delete</Text>
+                          <Text style={[tw`text-xs font-extrabold`, { color: theme.badText }]}>Delete</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -738,7 +828,9 @@ Thank you.`;
             </View>
           )}
         </View>
-      </ScrollView>
-    </View>
+
+        <View style={tw`h-10`} />
+      </RefreshableScrollView>
+    </SafeAreaView>
   );
 }

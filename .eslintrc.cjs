@@ -3,6 +3,13 @@ const path = require('path');
 
 module.exports = {
   root: true,
+
+  // NOTE:
+  // You currently ignore ALL native files:
+  // 'apps/mobile/src/**/*.{native,android,ios}.{js,ts,tsx}'
+  // If you want ESLint to actually lint those, remove that ignore pattern.
+  // Keeping it as-is since you asked to only update this file.
+
   ignorePatterns: [
     'node_modules/',
     'apps/mobile/android/**',
@@ -23,7 +30,6 @@ module.exports = {
       './apps/mobile/tsconfig.json',
       './apps/web/tsconfig.json',
       './packages/shared/tsconfig.json',
-     
     ],
     tsconfigRootDir: __dirname,
     sourceType: 'module',
@@ -31,21 +37,20 @@ module.exports = {
     ecmaFeatures: { jsx: true },
   },
 
-  // ✅ REMOVE react-native from global plugins
+  // ✅ Global plugins (RN plugin is mobile-only in overrides)
   plugins: ['@typescript-eslint', 'react', 'react-hooks', 'import'],
 
-  // ✅ REMOVE plugin:react-native/all from global extends
-extends: [
-  'eslint:recommended',
-  'plugin:@typescript-eslint/recommended',
-  'plugin:react/recommended',
-  'plugin:react/jsx-runtime',
-  'plugin:import/errors',
-  'plugin:import/warnings',
-  'plugin:import/typescript',
-  'prettier',
-],
-
+  // ✅ Global extends
+  extends: [
+    'eslint:recommended',
+    'plugin:@typescript-eslint/recommended',
+    'plugin:react/recommended',
+    'plugin:react/jsx-runtime',
+    'plugin:import/errors',
+    'plugin:import/warnings',
+    'plugin:import/typescript',
+    'prettier',
+  ],
 
   settings: {
     react: { version: 'detect' },
@@ -73,22 +78,27 @@ extends: [
     node: true,
   },
 
-rules: {
-  'react/react-in-jsx-scope': 'off',
-  'react/no-unescaped-entities': 'off',
-  'no-empty': ['error', { allowEmptyCatch: true }],
-},
-
+  rules: {
+    'react/react-in-jsx-scope': 'off',
+    'react/no-unescaped-entities': 'off',
+    'no-empty': ['error', { allowEmptyCatch: true }],
+  },
 
   overrides: [
     {
-      // ✅ Mobile-only: RN lint lives here now
-      files: ['apps/mobile/**/*.{ts,tsx}'],
+      // ✅ Mobile-only: React Native lint lives here
+      files: ['apps/mobile/**/*.{ts,tsx,js,jsx}'],
       parserOptions: { project: ['./apps/mobile/tsconfig.json'], tsconfigRootDir: __dirname },
       env: { 'react-native/react-native': true },
       plugins: ['react-native'],
       extends: ['plugin:react-native/all'],
       rules: {
+        // ✅ Disable across app for now (your request)
+        '@typescript-eslint/no-explicit-any': 'off',
+        'react-native/no-inline-styles': 'off',
+        'react-native/no-color-literals': 'off',
+
+        // Existing relaxations
         '@typescript-eslint/no-unused-vars': 'off',
         'react/prop-types': 'off',
         'react-native/split-platform-components': 'off',
@@ -109,28 +119,24 @@ rules: {
       },
     },
     {
-      files: ['packages/shared/**/*.{ts,tsx}'],
+      files: ['packages/shared/**/*.{ts,tsx,js,jsx}'],
       parserOptions: { project: ['./packages/shared/tsconfig.json'], tsconfigRootDir: __dirname },
       env: { browser: true, node: true },
       rules: {
         '@typescript-eslint/no-explicit-any': 'off',
         '@typescript-eslint/no-unused-vars': 'off',
         '@typescript-eslint/no-unused-expressions': 'off',
-
-        // If shared has intentional empty catches, this + global allowEmptyCatch is enough.
       },
     },
     {
-  files: ["apps/backend/**/*.{js,mjs,cjs}"],
-  parserOptions: {
-    project: null, // ✅ KEY: prevents tsconfig lookup / TS5012
-  },
-  env: { node: true },
-  rules: {
-    // Optional: if backend is ESM and you don't want import/no-unresolved noise
-    // "import/no-unresolved": "off",
-  },
-},
-
+      files: ['apps/backend/**/*.{js,mjs,cjs}'],
+      parserOptions: {
+        project: null, // ✅ prevents TS project lookup for backend JS
+      },
+      env: { node: true },
+      rules: {
+        // keep as-is
+      },
+    },
   ],
 };

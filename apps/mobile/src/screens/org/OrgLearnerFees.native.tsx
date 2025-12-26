@@ -2,7 +2,7 @@ import React from 'react';
 import { ActivityIndicator, Image, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
 import tw from '../../../tailwind';
@@ -20,6 +20,8 @@ import { moneyFromCents } from './OrgFees.shared.native';
 /* ─────────────────────────────────────────────
  * Helpers (same logic as web)
  * ───────────────────────────────────────────── */
+
+const CACHE_DIR = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
 
 function sanitizeFilenamePart(s: string) {
   return String(s || '')
@@ -78,7 +80,8 @@ async function downloadAndSharePdf({
   const url = joinUrl(backendUrl, endpoint);
 
   const safeName = sanitizeFilenamePart(filename || 'file') || 'file';
-  const outUri = `${FileSystem.cacheDirectory}${safeName}.pdf`;
+if (!CACHE_DIR) throw new Error('No file cache directory available on this platform.');
+  const outUri = `${CACHE_DIR}${safeName}.pdf`;
 
   const res = await FileSystem.downloadAsync(url, outUri, {
     headers: { Authorization: `Bearer ${orgToken}` },

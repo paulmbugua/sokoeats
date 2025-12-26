@@ -652,10 +652,10 @@ const certCta = useMemo(
     '-': '⁻',
   };
   function toSub(s: string) {
-    return s.replace(/[0-9+\-]/g, (m) => SUBS[m] || m);
+    return s.replace(/[0-9+-]/g, (m) => SUBS[m] || m);
   }
   function toSup(s: string) {
-    return s.replace(/[0-9+\-]/g, (m) => SUPS[m] || m);
+    return s.replace(/[0-9+-]/g, (m) => SUPS[m] || m);
   }
 
   // Selection helpers

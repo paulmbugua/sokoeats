@@ -15,6 +15,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
+import { useThemePref } from '../../theme/ThemeContext';
 
 import tw from '../../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -73,6 +74,13 @@ const HEADER_STYLE_OPTIONS: Array<{ k: NewsletterTheme['headerStyle']; label: st
   { k: 'card', label: 'Card' },
   { k: 'underline', label: 'Underline' },
 ];
+
+const ACCENT_PRESETS = [
+  ['Neutral', '#0f172a'],
+  ['Ocean', '#2563eb'],
+  ['Emerald', '#059669'],
+] as const satisfies ReadonlyArray<readonly [string, string]>;
+
 
 const TEMPLATE_TYPES = [
   { key: 'wrapup', label: 'End-of-term wrap-up', hint: 'Warm summary + appreciation + what’s next' },
@@ -467,6 +475,72 @@ function normalizeHex(s: string) {
   return v.startsWith('#') ? v : `#${v}`;
 }
 
+function hexToRgb(hex: string) {
+  const h = String(hex || '').trim().replace('#', '');
+
+  if (h.length === 3) {
+    const a = h[0];
+    const b = h[1];
+    const c = h[2];
+    if (!a || !b || !c) return null;
+
+    const r = parseInt(a + a, 16);
+    const g = parseInt(b + b, 16);
+    const b2 = parseInt(c + c, 16);
+    return { r, g, b: b2 };
+  }
+
+  if (h.length !== 6) return null;
+
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+
+  if ([r, g, b].some((x) => Number.isNaN(x))) return null;
+  return { r, g, b };
+}
+
+
+function relLuminance(hex: string) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+
+  const toLin = (v: number) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+
+  const R = toLin(rgb.r);
+  const G = toLin(rgb.g);
+  const B = toLin(rgb.b);
+  return 0.2126 * R + 0.7152 * G + 0.0722 * B;
+}
+
+function contrastRatio(fg: string, bg: string) {
+  const L1 = relLuminance(fg);
+  const L2 = relLuminance(bg);
+  if (L1 == null || L2 == null) return null;
+  const light = Math.max(L1, L2);
+  const dark = Math.min(L1, L2);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+/**
+ * If fg is low-contrast on bg, return fallback.
+ * Works only for hex colors; otherwise returns fg unchanged.
+ */
+function ensureContrastHex(fg: string, bg: string, fallback: string, min = 4.5) {
+  const f = String(fg || '').trim();
+  const b = String(bg || '').trim();
+  if (!hexOk(f) || !hexOk(b) || !hexOk(fallback)) return fg;
+  const fgN = normalizeHex(f);
+  const bgN = normalizeHex(b);
+  const ratio = contrastRatio(fgN, bgN);
+  if (!ratio) return fgN;
+  return ratio >= min ? fgN : normalizeHex(fallback);
+}
+
+
 function markdownToHtmlSimple(md: string) {
   const clean = stripThemeFromContent(md || '');
   const lines = clean.split('\n');
@@ -695,16 +769,21 @@ async function buildPdfBase64Native(args: {
     base64: true,
   });
 
+  // Some expo-file-system typings may not expose EncodingType/cacheDirectory in your monorepo.
+  const FS = FileSystem as any;
+  const base64Encoding = FS?.EncodingType?.Base64 ?? 'base64';
+
   // expo-print returns base64 on SDKs that support it; fallback to read file
   let b64 = (res as any)?.base64 || '';
   if (!b64 && res?.uri) {
-    b64 = await FileSystem.readAsStringAsync(res.uri, { encoding: FileSystem.EncodingType.Base64 });
+    b64 = await FileSystem.readAsStringAsync(res.uri, { encoding: base64Encoding });
   }
 
   // Ensure file has a .pdf extension for sharing
   let uri = res.uri;
   if (uri && !uri.toLowerCase().endsWith('.pdf')) {
-    const next = `${FileSystem.cacheDirectory}${args.fileName}`;
+    const cacheDir = FS?.cacheDirectory ?? FS?.documentDirectory ?? '';
+    const next = `${cacheDir}${args.fileName}`;
     try {
       await FileSystem.copyAsync({ from: uri, to: next });
       uri = next;
@@ -715,6 +794,7 @@ async function buildPdfBase64Native(args: {
 
   return { uri, base64: b64 };
 }
+
 
 const OrgNewslettersNativeScreen: React.FC = () => {
   const qc = useQueryClient();
@@ -727,6 +807,7 @@ const OrgNewslettersNativeScreen: React.FC = () => {
   const shop = (useShopContext?.() ?? {}) as any;
   const backendUrl: string = shop?.backendUrl || shop?.apiUrl || '';
   const orgToken: string | undefined = shop?.orgToken;
+  
 
   const { isPro, upgradeCta, org } = useOrgProTools();
   const orgId = org?.id as string | undefined;
@@ -771,6 +852,38 @@ const OrgNewslettersNativeScreen: React.FC = () => {
   const [customEmails, setCustomEmails] = useState('');
 
   const classLabelsQ = useOrgClassLabels(orgId, Boolean(sendOpen && sendMode === 'class'));
+  const { resolvedScheme } = useThemePref();
+const isDark = resolvedScheme === 'dark';
+
+// These are your preview card backgrounds (match your Tailwind dark bg values)
+const previewCardBg = isDark ? '#0f1821' : '#ffffff';
+
+const previewTheme = useMemo<NewsletterTheme>(() => {
+  // Only adjust *preview* text colors so they are readable on the preview card.
+  // Do NOT mutate the actual saved theme / PDF theme.
+  const safeHeading = ensureContrastHex(
+    theme.headingColor,
+    previewCardBg,
+    isDark ? '#e5f0ff' : '#0f172a',
+    4.5
+  );
+
+  const safeText = ensureContrastHex(
+    theme.textColor,
+    previewCardBg,
+    isDark ? '#e5f0ff' : '#0f172a',
+    4.5
+  );
+
+  return {
+    ...theme,
+    headingColor: safeHeading,
+    textColor: safeText,
+  };
+}, [theme, isDark, previewCardBg]);
+
+const previewMuted = isDark ? 'rgba(255,255,255,0.7)' : '#49739c';
+
 
   const [recipientPreview, setRecipientPreview] = useState<null | {
     count: number;
@@ -1435,11 +1548,8 @@ const OrgNewslettersNativeScreen: React.FC = () => {
                   Accent preset
                 </Text>
                 <View style={tw`flex-row gap-2 mt-2`}>
-                  {[
-                    ['Neutral', '#0f172a'],
-                    ['Ocean', '#2563eb'],
-                    ['Emerald', '#059669'],
-                  ].map(([label, hex]) => (
+                  {ACCENT_PRESETS.map(([label, hex]) => (
+
                     <Pressable
                       key={label}
                       onPress={() => setThemeAndSync({ ...theme, primaryColor: String(hex) })}
@@ -1521,18 +1631,18 @@ const OrgNewslettersNativeScreen: React.FC = () => {
                 </Text>
 
                 <View style={tw`mt-3 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0b1620] p-3`}>
-                  <NewsletterHeaderNative org={org} title={title} termLabel={termLabel} theme={theme} />
+                  <NewsletterHeaderNative org={org} title={title} termLabel={termLabel} theme={previewTheme} />
                   <View style={tw`mt-3 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}>
-                    <MarkdownPreview md={content} theme={theme} />
+                    <MarkdownPreview md={content} theme={previewTheme} />
                     <View style={tw`h-[1px] bg-[#cedbe8] dark:bg-white/10 my-3`} />
                     <View style={tw`flex-row items-end justify-between`}>
                       <View>
-                        <Text style={[tw`font-extrabold`, { color: theme.headingColor }]}>{principalLabel}</Text>
-                        <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>{org?.name || ''}</Text>
+                       <Text style={[tw`font-extrabold`, { color: previewTheme.headingColor }]}>{principalLabel}</Text>
+                        <Text style={[tw`text-xs`, { color: previewMuted }]}>{org?.name || ''}</Text>
                       </View>
                       <View style={tw`items-end`}>
                         <View style={tw`h-10 w-40 border-b border-[#cedbe8] dark:border-white/20`} />
-                        <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70 mt-1`}>Signature</Text>
+                       <Text style={[tw`text-[11px] mt-1`, { color: previewMuted }]}>Signature</Text>
                       </View>
                     </View>
                   </View>
@@ -1614,9 +1724,15 @@ const OrgNewslettersNativeScreen: React.FC = () => {
                   />
                   {classLabelsQ.data?.items?.length ? (
                     <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/70`}>
-                      Suggestions: {classLabelsQ.data.items.slice(0, 6).map((x: any) => x.class_label).join(', ')}
+                      Suggestions:{' '}
+                      {(classLabelsQ.data?.items ?? [])
+                        .slice(0, 6)
+                        .map((x: any) => x?.class_label)
+                        .filter(Boolean)
+                        .join(', ')}
                     </Text>
                   ) : null}
+
                 </View>
               ) : sendMode === 'custom' ? (
                 <View style={tw`mt-3`}>

@@ -1,4 +1,3 @@
-// apps/mobile/src/screens/org/OrgFees.native.tsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
@@ -22,17 +21,10 @@ import { useOrgFeeStructures } from '@mytutorapp/shared/hooks/useOrgFeeStructure
 import { useOrgFeeBalances } from '@mytutorapp/shared/hooks/useOrgFeeBalances';
 import { useOrgFeeStatement } from '@mytutorapp/shared/hooks/useOrgFeeStatement';
 import { PROD_BASE, moneyFromCents, toCents, emptyItem } from './OrgFees.shared.native';
-import { CopyRow, MoneyStack, Badge, EmptyState, SectionCard, CircleCheckbox, Modal } from './OrgFees.ui.native';
-import {
-  UnmatchedPaymentsModal,
-  ResponsiveChargeModal,
-  ResponsivePaymentModal,
-  StatementModal,
-} from './OrgFees.modals.native';
+import { MoneyStack, Badge, CircleCheckbox } from './OrgFees.ui.native';
+import { UnmatchedPaymentsModal, ResponsiveChargeModal, ResponsivePaymentModal, StatementModal } from './OrgFees.modals.native';
 
 import type { FeeStructure, FeeStructureItem } from '@mytutorapp/shared/types';
-
-
 
 function pickString(...xs: any[]) {
   for (const x of xs) {
@@ -54,13 +46,7 @@ function pickAdmissionCode(l: any) {
 }
 
 function pickLearnerName(l: any) {
-  const full = pickString(
-    l?.name,
-    l?.full_name,
-    l?.display_name,
-    l?.profile?.name,
-    l?.profile?.full_name,
-  );
+  const full = pickString(l?.name, l?.full_name, l?.display_name, l?.profile?.name, l?.profile?.full_name);
   if (full) return full;
 
   const first = pickString(l?.first_name, l?.profile?.first_name);
@@ -92,27 +78,6 @@ const sameId = (a: any, b: any) => String(a ?? '') === String(b ?? '');
 function safePageSize(v: number) {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? n : 10;
-}
-
-function calcTotalsPerCurrency(charges: any[] = [], payments: any[] = []) {
-  const m = new Map<string, { currency: string; charges: number; payments: number; balance: number }>();
-
-  for (const c of charges || []) {
-    const cur = String(c?.currency || 'USD').toUpperCase();
-    const row = m.get(cur) || { currency: cur, charges: 0, payments: 0, balance: 0 };
-    row.charges += Number(c?.amount_cents || 0);
-    m.set(cur, row);
-  }
-  for (const p of payments || []) {
-    const cur = String(p?.currency || 'USD').toUpperCase();
-    const row = m.get(cur) || { currency: cur, charges: 0, payments: 0, balance: 0 };
-    row.payments += Number(p?.amount_cents || 0);
-    m.set(cur, row);
-  }
-
-  const out = Array.from(m.values()).map((x) => ({ ...x, balance: x.charges - x.payments }));
-  out.sort((a, b) => b.balance - a.balance);
-  return out;
 }
 
 function maxCurrencyValue(rows: Array<{ currency: string; value: number }>) {
@@ -169,18 +134,12 @@ function useTheme() {
 }
 
 const Card = ({ theme, children }: any) => (
-  <View style={[tw`rounded-3xl border p-4`, { backgroundColor: theme.card, borderColor: theme.border }]}>
-    {children}
-  </View>
+  <View style={[tw`rounded-3xl border p-4`, { backgroundColor: theme.card, borderColor: theme.border }]}>{children}</View>
 );
 
 const H = ({ theme, children }: any) => <Text style={[tw`text-base font-bold`, { color: theme.text }]}>{children}</Text>;
-
 const P = ({ theme, children }: any) => <Text style={[tw`text-sm`, { color: theme.subtext }]}>{children}</Text>;
-
 const Tiny = ({ theme, children }: any) => <Text style={[tw`text-xs`, { color: theme.muted }]}>{children}</Text>;
-
-
 
 const Btn = ({ theme, label, onPress, kind = 'primary', disabled }: any) => {
   const bg =
@@ -215,15 +174,13 @@ const Chip = ({ theme, active, label, onPress, disabled }: any) => (
       {
         borderColor: active ? theme.primary : theme.border,
         backgroundColor: active ? theme.primarySoft : 'transparent',
-        opacity: disabled ? 0.55 : 1,
+        opacity: disabled ? 0.45 : 1,
       },
     ]}
   >
     <Text style={[tw`text-xs font-semibold`, { color: active ? theme.primary : theme.text }]}>{label}</Text>
   </TouchableOpacity>
 );
-
-
 
 const Divider = ({ theme }: any) => <View style={[tw`h-px my-3`, { backgroundColor: theme.border }]} />;
 
@@ -311,7 +268,6 @@ export default function OrgFeesNative() {
   const {
     charges,
     payments,
-    summary,
     loading: statementLoading,
     fetchStatement,
     addCharge,
@@ -349,6 +305,9 @@ export default function OrgFeesNative() {
 
   const [structureItems, setStructureItems] = useState<FeeStructureItem[]>([emptyItem('USD')]);
   const [selectedStructureId, setSelectedStructureId] = useState<string | null>(null);
+
+  // ✅ accordion open (only one open at a time)
+  const [openStructureRowId, setOpenStructureRowId] = useState<string | null>(null);
 
   // auto-select default structure (active or first) unless creatingNew
   useEffect(() => {
@@ -423,7 +382,6 @@ export default function OrgFeesNative() {
     const current = selectedStructureId ? (structures || []).find((x: any) => sameId(x.id, selectedStructureId)) : null;
 
     const willBeActive = typeof forceActive === 'boolean' ? forceActive : Boolean(current?.is_active);
-
     const { scope_type, scope_value } = deriveScope(structureForm.scopeValue);
 
     const payload = {
@@ -472,7 +430,7 @@ export default function OrgFeesNative() {
   };
 
   /* ─────────────────────────────────────────────────────────
-   * Balances table logic (mobile list)
+   * Balances table logic
    * ───────────────────────────────────────────────────────── */
   const mergedRows = useMemo(() => {
     const byLearner = new Map<string, any>();
@@ -564,65 +522,57 @@ export default function OrgFeesNative() {
     return m;
   }, [mergedRows]);
 
-  const currencyHintForLearner = useMemo(() => {
-    return (learnerId: string) => {
-      const curList = learnerCurrenciesMap.get(String(learnerId)) || [];
-      if (curList.length === 1) return curList[0];
-      if (curList.includes(activeStructureCurrency)) return activeStructureCurrency;
-      return activeStructureCurrency || 'USD';
-    };
-  }, [learnerCurrenciesMap, activeStructureCurrency]);
+  const currencyHintForLearner = useCallback(
+    (learnerId: string): string => {
+      const curList = learnerCurrenciesMap.get(String(learnerId)) ?? [];
+      const fallback = String(activeStructureCurrency || structureForm.currency || 'USD').toUpperCase();
+
+      if (curList.length === 1) return (curList[0] ?? fallback).toUpperCase();
+      if (curList.includes(fallback)) return fallback;
+      return fallback;
+    },
+    [learnerCurrenciesMap, activeStructureCurrency, structureForm.currency],
+  );
 
   /* ─────────────────────────────────────────────────────────
    * Modals
    * ───────────────────────────────────────────────────────── */
   const [mode, setMode] = useState<'none' | 'charge' | 'payment' | 'statement'>('none');
 
+  const ensureSelectedLearner = (candidate?: string) => {
+    const next = String(candidate || selectedLearnerId || '').trim();
+    if (!next) {
+      Alert.alert('Select a learner', 'Pick a learner in Balances first.');
+      return null;
+    }
+    setSelectedLearnerId(next);
+    return next;
+  };
+
   const openCharge = (learnerId?: string) => {
-    if (learnerId) setSelectedLearnerId(learnerId);
+    const id = ensureSelectedLearner(learnerId);
+    if (!id) return;
     setMode('charge');
   };
 
   const openPayment = (learnerId?: string) => {
-    if (learnerId) setSelectedLearnerId(learnerId);
+    const id = ensureSelectedLearner(learnerId);
+    if (!id) return;
     setMode('payment');
   };
 
-  const openStatement = async (learnerId: string) => {
-    setSelectedLearnerId(learnerId);
+  const openStatement = async (learnerId?: string) => {
+    const id = ensureSelectedLearner(learnerId);
+    if (!id) return;
     setMode('statement');
     try {
-      await fetchStatement(learnerId);
+      await fetchStatement(id);
     } catch {}
   };
 
   useEffect(() => {
     if (unmatchedOpen) fetchUnmatched();
   }, [unmatchedOpen, fetchUnmatched]);
-
-  /* charge form */
-  const [chargeDesc, setChargeDesc] = useState('Fee charge');
-  const [chargeAmount, setChargeAmount] = useState('');
-  const [chargeCurrency, setChargeCurrency] = useState('USD');
-
-  useEffect(() => {
-    if (mode === 'charge' && selectedLearnerId) {
-      setChargeCurrency(currencyHintForLearner(selectedLearnerId));
-    }
-  }, [mode, selectedLearnerId, currencyHintForLearner]);
-
-  /* payment form */
-  const [payAmount, setPayAmount] = useState('');
-  const [payCurrency, setPayCurrency] = useState('USD');
-  const [payMethod, setPayMethod] = useState('cash');
-  const [payRef, setPayRef] = useState('');
-  const [payNote, setPayNote] = useState('');
-
-  useEffect(() => {
-    if (mode === 'payment' && selectedLearnerId) {
-      setPayCurrency(currencyHintForLearner(selectedLearnerId));
-    }
-  }, [mode, selectedLearnerId, currencyHintForLearner]);
 
   const selectedLearner = useMemo(() => {
     return learners.find((l: any) => sameId(pickFeeLearnerRef(l), selectedLearnerId)) || null;
@@ -643,17 +593,15 @@ export default function OrgFeesNative() {
           <View style={tw`mt-4`}>
             <Card theme={theme}>
               <H theme={theme}>{String(upgradeCta?.headline || upgradeCta?.title || 'Upgrade required')}</H>
-              <P theme={theme}>{String(upgradeCta?.body || upgradeCta?.message || 'Upgrade to Pro to use this feature.')}</P>
+              <P theme={theme}>
+                {String(upgradeCta?.body || upgradeCta?.message || 'Upgrade to Pro to use this feature.')}
+              </P>
             </Card>
           </View>
         </ScrollView>
       </View>
     );
   }
-
-  /* ─────────────────────────────────────────────────────────
-   * Render
-   * ───────────────────────────────────────────────────────── */
 
   return (
     <View style={[tw`flex-1`, { backgroundColor: theme.bg }]}>
@@ -736,13 +684,7 @@ export default function OrgFeesNative() {
                 <Badge theme={theme} tone={editing?.is_active ? 'ok' : 'neutral'} label={editing?.is_active ? 'Active' : 'Draft'} />
                 <View style={tw`w-2`} />
                 {editing && !editing.is_active ? (
-                  <Btn
-                    theme={theme}
-                    kind="ghost"
-                    label="Activate"
-                    disabled={!selectedStructureIdNum || structuresSaving}
-                    onPress={handleActivateStructure}
-                  />
+                  <Btn theme={theme} kind="ghost" label="Activate" disabled={!selectedStructureIdNum || structuresSaving} onPress={handleActivateStructure} />
                 ) : null}
               </View>
             </View>
@@ -785,13 +727,7 @@ export default function OrgFeesNative() {
               <View style={tw`flex-row flex-wrap`}>
                 <Chip theme={theme} label="All" active={!structureForm.scopeValue} onPress={() => setStructureForm((f) => ({ ...f, scopeValue: '' }))} />
                 {classLabels.slice(0, 8).map((c) => (
-                  <Chip
-                    key={c}
-                    theme={theme}
-                    label={c}
-                    active={structureForm.scopeValue === c}
-                    onPress={() => setStructureForm((f) => ({ ...f, scopeValue: c }))}
-                  />
+                  <Chip key={c} theme={theme} label={c} active={structureForm.scopeValue === c} onPress={() => setStructureForm((f) => ({ ...f, scopeValue: c }))} />
                 ))}
               </View>
 
@@ -815,17 +751,14 @@ export default function OrgFeesNative() {
 
               <View style={tw`flex-row items-center justify-between`}>
                 <Text style={[tw`text-sm font-bold`, { color: theme.text }]}>Line items</Text>
-                <TouchableOpacity
-                  onPress={() => setStructureItems((prev: any[]) => [...prev, { ...emptyItem(structureForm.currency), currency: structureForm.currency }])}
-                >
+                <TouchableOpacity onPress={() => setStructureItems((prev: any[]) => [...prev, { ...emptyItem(structureForm.currency), currency: structureForm.currency }])}>
                   <Text style={[tw`text-sm font-semibold`, { color: theme.primary }]}>+ Add item</Text>
                 </TouchableOpacity>
               </View>
 
               <View style={tw`mt-2`}>
                 {structureItems.map((item: any, idx: number) => {
-                  const amountMajor =
-                    Number(item?.amount_cents || 0) > 0 ? (Number(item.amount_cents) / 100).toString() : '';
+                  const amountMajor = Number(item?.amount_cents || 0) > 0 ? (Number(item.amount_cents) / 100).toString() : '';
 
                   return (
                     <View key={`item-${idx}`} style={[tw`rounded-3xl border p-3 mb-2`, { borderColor: theme.border }]}>
@@ -833,9 +766,7 @@ export default function OrgFeesNative() {
                         theme={theme}
                         label="Label"
                         value={String(item?.label || '')}
-                        onChange={(label: string) =>
-                          setStructureItems((prev: any[]) => prev.map((it, i) => (i === idx ? { ...it, label } : it)))
-                        }
+                        onChange={(label: string) => setStructureItems((prev: any[]) => prev.map((it, i) => (i === idx ? { ...it, label } : it)))}
                         placeholder="Tuition"
                       />
 
@@ -844,9 +775,7 @@ export default function OrgFeesNative() {
                         label="Amount"
                         value={amountMajor}
                         onChange={(v: string) =>
-                          setStructureItems((prev: any[]) =>
-                            prev.map((it, i) => (i === idx ? { ...it, amount_cents: toCents(v) } : it)),
-                          )
+                          setStructureItems((prev: any[]) => prev.map((it, i) => (i === idx ? { ...it, amount_cents: toCents(v) } : it)))
                         }
                         placeholder="0.00"
                       />
@@ -855,9 +784,7 @@ export default function OrgFeesNative() {
                         theme={theme}
                         label="Cadence (optional)"
                         value={String(item?.cadence || '')}
-                        onChange={(cadence: string) =>
-                          setStructureItems((prev: any[]) => prev.map((it, i) => (i === idx ? { ...it, cadence } : it)))
-                        }
+                        onChange={(cadence: string) => setStructureItems((prev: any[]) => prev.map((it, i) => (i === idx ? { ...it, cadence } : it)))}
                         placeholder="per term"
                       />
 
@@ -866,16 +793,10 @@ export default function OrgFeesNative() {
                           theme={theme}
                           checked={!!item?.is_optional}
                           label="Optional"
-                          onChange={(next: boolean) =>
-                            setStructureItems((prev: any[]) => prev.map((it, i) => (i === idx ? { ...it, is_optional: next } : it)))
-                          }
+                          onChange={(next: boolean) => setStructureItems((prev: any[]) => prev.map((it, i) => (i === idx ? { ...it, is_optional: next } : it)))}
                         />
 
-                        <TouchableOpacity
-                          onPress={() =>
-                            setStructureItems((prev: any[]) => (prev.length === 1 ? [emptyItem(structureForm.currency)] : prev.filter((_, i) => i !== idx)))
-                          }
-                        >
+                        <TouchableOpacity onPress={() => setStructureItems((prev: any[]) => (prev.length === 1 ? [emptyItem(structureForm.currency)] : prev.filter((_, i) => i !== idx)))}>
                           <Text style={[tw`text-sm font-semibold`, { color: theme.badText }]}>Remove</Text>
                         </TouchableOpacity>
                       </View>
@@ -886,9 +807,7 @@ export default function OrgFeesNative() {
 
               <View style={[tw`rounded-3xl border p-3`, { borderColor: theme.border, backgroundColor: theme.primarySoft }]}>
                 <Tiny theme={theme}>Live total</Tiny>
-                <Text style={[tw`text-xl font-bold mt-1`, { color: theme.text }]}>
-                  {moneyFromCents(totalStructure, structureForm.currency)}
-                </Text>
+                <Text style={[tw`text-xl font-bold mt-1`, { color: theme.text }]}>{moneyFromCents(totalStructure, structureForm.currency)}</Text>
 
                 <View style={tw`mt-3`}>
                   <Btn
@@ -898,6 +817,7 @@ export default function OrgFeesNative() {
                     onPress={() => {
                       setCreatingNew(true);
                       setSelectedStructureId(null);
+                      setOpenStructureRowId(null);
 
                       setStructureForm({
                         title: '',
@@ -912,23 +832,11 @@ export default function OrgFeesNative() {
                 </View>
 
                 <View style={tw`mt-2`}>
-                  <Btn
-                    theme={theme}
-                    kind="ghost"
-                    disabled={structuresSaving || !structureForm.title?.trim()}
-                    label={structuresSaving ? 'Saving…' : 'Save draft'}
-                    onPress={() => handleSaveStructure({ forceActive: false })}
-                  />
+                  <Btn theme={theme} kind="ghost" disabled={structuresSaving || !structureForm.title?.trim()} label={structuresSaving ? 'Saving…' : 'Save draft'} onPress={() => handleSaveStructure({ forceActive: false })} />
                 </View>
 
                 <View style={tw`mt-2`}>
-                  <Btn
-                    theme={theme}
-                    kind="primary"
-                    disabled={structuresSaving || !structureForm.title?.trim()}
-                    label={structuresSaving ? 'Saving…' : 'Save & activate'}
-                    onPress={() => handleSaveStructure({ forceActive: true })}
-                  />
+                  <Btn theme={theme} kind="primary" disabled={structuresSaving || !structureForm.title?.trim()} label={structuresSaving ? 'Saving…' : 'Save & activate'} onPress={() => handleSaveStructure({ forceActive: true })} />
                 </View>
 
                 <View style={tw`mt-2`}>
@@ -940,8 +848,6 @@ export default function OrgFeesNative() {
                     onPress={async () => {
                       if (!selectedStructureIdNum || !Number.isFinite(selectedStructureIdNum)) return;
                       try {
-                        // NOTE: This may be web-oriented in your shared hook.
-                        // If it fails on native, we’ll swap it to an Expo FileSystem + Sharing implementation.
                         await downloadStructurePdf(selectedStructureIdNum, 'fee-structure.pdf');
                       } catch (e: any) {
                         Alert.alert('PDF', e?.message || 'PDF download not configured for mobile yet.');
@@ -956,39 +862,110 @@ export default function OrgFeesNative() {
               <Text style={[tw`text-sm font-bold mb-2`, { color: theme.text }]}>Existing structures</Text>
               {structuresLoading ? <ActivityIndicator /> : null}
 
-              {(structures || []).map((s: any) => (
-                <TouchableOpacity
-                  key={String(s.id)}
-                  onPress={() => {
-                    setCreatingNew(false);
-                    setSelectedStructureId(String(s.id));
-                  }}
-                  style={[
-                    tw`rounded-3xl border p-3 mb-2`,
-                    {
-                      borderColor: selectedStructureId && sameId(selectedStructureId, s.id) ? theme.primary : theme.border,
-                      backgroundColor: selectedStructureId && sameId(selectedStructureId, s.id) ? theme.primarySoft : 'transparent',
-                    },
-                  ]}
-                >
-                  <Text style={[tw`text-sm font-bold`, { color: theme.text }]} numberOfLines={1}>
-                    {s.title}
-                  </Text>
-                  <Text style={[tw`text-xs mt-1`, { color: theme.subtext }]}>
-                    {(pickScopeValueFromStructure(s) ? `Applies to: ${pickScopeValueFromStructure(s)}` : 'Applies to: All learners') +
-                      ` • ${String(s.currency || 'USD').toUpperCase()}`}
-                  </Text>
+              {(structures || []).map((s: any) => {
+                const id = String(s.id);
+                const isSelected = selectedStructureId && sameId(selectedStructureId, s.id);
+                const isOpen = openStructureRowId && sameId(openStructureRowId, s.id);
 
-                  <View style={tw`flex-row flex-wrap mt-2`}>
-                    <Badge theme={theme} tone={s.is_active ? 'ok' : 'neutral'} label={s.is_active ? 'Active' : 'Draft'} />
-                    {s.effective_term ? (
-                      <View style={tw`ml-2`}>
-                        <Badge theme={theme} tone="neutral" label={String(s.effective_term)} />
+                const itemCount = Array.isArray(s.items) ? s.items.length : 0;
+                const totalCents = Array.isArray(s.items)
+                  ? s.items.reduce((acc: number, it: any) => acc + Number(it?.amount_cents || 0), 0)
+                  : 0;
+
+                return (
+                  <View key={id} style={[tw`rounded-3xl border mb-2`, { borderColor: isSelected ? theme.primary : theme.border, backgroundColor: isSelected ? theme.primarySoft : 'transparent' }]}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setCreatingNew(false);
+                        setSelectedStructureId(id);
+                        setOpenStructureRowId((prev) => (prev && sameId(prev, id) ? null : id)); // ✅ only one opens
+                      }}
+                      style={tw`p-3`}
+                    >
+                      <View style={tw`flex-row items-center justify-between`}>
+                        <View style={tw`flex-1 pr-3`}>
+                          <Text style={[tw`text-sm font-bold`, { color: theme.text }]} numberOfLines={1}>
+                            {s.title}
+                          </Text>
+                          <Text style={[tw`text-xs mt-1`, { color: theme.subtext }]} numberOfLines={1}>
+                            {(pickScopeValueFromStructure(s) ? `Applies to: ${pickScopeValueFromStructure(s)}` : 'Applies to: All learners') +
+                              ` • ${String(s.currency || 'USD').toUpperCase()}`}
+                          </Text>
+                        </View>
+                        <Text style={[tw`text-lg`, { color: theme.muted }]}>{isOpen ? '▾' : '▸'}</Text>
+                      </View>
+
+                      <View style={tw`flex-row flex-wrap mt-2`}>
+                        <Badge theme={theme} tone={s.is_active ? 'ok' : 'neutral'} label={s.is_active ? 'Active' : 'Draft'} />
+                        {s.effective_term ? (
+                          <View style={tw`ml-2`}>
+                            <Badge theme={theme} tone="neutral" label={String(s.effective_term)} />
+                          </View>
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+
+                    {isOpen ? (
+                      <View style={[tw`px-3 pb-3`, { borderTopColor: theme.border }]}>
+                        <View style={[tw`rounded-2xl border p-3`, { borderColor: theme.border, backgroundColor: theme.card }]}>
+                          <Text style={[tw`text-xs`, { color: theme.muted }]}>Items</Text>
+                          <Text style={[tw`text-sm font-bold mt-1`, { color: theme.text }]}>
+                            {itemCount} • {moneyFromCents(totalCents, s.currency || 'USD')}
+                          </Text>
+
+                          <View style={tw`mt-3 flex-row flex-wrap`}>
+                            {!s.is_active ? (
+                              <View style={tw`mr-2 mb-2`}>
+                                <Btn
+                                  theme={theme}
+                                  kind="primary"
+                                  disabled={structuresSaving}
+                                  label={structuresSaving ? 'Activating…' : 'Activate'}
+                                  onPress={async () => {
+                                    try {
+                                      await activateStructure(Number(s.id));
+                                      await fetchStructures();
+                                    } catch (e: any) {
+                                      Alert.alert('Activation failed', e?.response?.data?.message || e?.message || 'Failed');
+                                    }
+                                  }}
+                                />
+                              </View>
+                            ) : null}
+
+                            <View style={tw`mr-2 mb-2`}>
+                              <Btn
+                                theme={theme}
+                                kind="ghost"
+                                label="PDF"
+                                onPress={async () => {
+                                  try {
+                                    await downloadStructurePdf(Number(s.id), 'fee-structure.pdf');
+                                  } catch (e: any) {
+                                    Alert.alert('PDF', e?.message || 'PDF download not configured for mobile yet.');
+                                  }
+                                }}
+                              />
+                            </View>
+
+                            <View style={tw`mb-2`}>
+                              <Btn
+                                theme={theme}
+                                kind="ghost"
+                                label="Edit"
+                                onPress={() => {
+                                  setSelectedStructureId(id);
+                                  // keep open
+                                }}
+                              />
+                            </View>
+                          </View>
+                        </View>
                       </View>
                     ) : null}
                   </View>
-                </TouchableOpacity>
-              ))}
+                );
+              })}
 
               {!structures?.length && !structuresLoading ? (
                 <Text style={[tw`text-sm`, { color: theme.subtext }]}>No fee structures yet. Create one above.</Text>
@@ -1011,12 +988,14 @@ export default function OrgFeesNative() {
                 theme={theme}
                 label="Record payment"
                 active={false}
+                disabled={!selectedLearnerId}
                 onPress={() => openPayment(selectedLearnerId || undefined)}
               />
               <Chip
                 theme={theme}
                 label="New charge"
                 active={false}
+                disabled={!selectedLearnerId}
                 onPress={() => openCharge(selectedLearnerId || undefined)}
               />
               <Chip
@@ -1029,12 +1008,12 @@ export default function OrgFeesNative() {
             </View>
 
             <Text style={[tw`text-xs mt-2`, { color: theme.muted }]}>
-              Tip: select a learner below, then open Statement.
+              Tip: select a learner below (Balances), then use Quick actions.
             </Text>
           </Card>
         </View>
 
-        {/* Balances */}
+        {/* Balances (ONLY place we show full learner list) */}
         <View style={tw`mt-4`}>
           <Card theme={theme}>
             <H theme={theme}>Balances</H>
@@ -1042,13 +1021,7 @@ export default function OrgFeesNative() {
 
             <Divider theme={theme} />
 
-            <Field
-              theme={theme}
-              label="Search"
-              value={q}
-              onChange={setQ}
-              placeholder="Name, ID, admission, or class"
-            />
+            <Field theme={theme} label="Search" value={q} onChange={setQ} placeholder="Name, ID, admission, or class" />
 
             <Text style={[tw`text-xs uppercase tracking-wider mb-2`, { color: theme.muted }]}>Class filter</Text>
             <View style={tw`flex-row flex-wrap`}>
@@ -1059,9 +1032,7 @@ export default function OrgFeesNative() {
             </View>
 
             <View style={tw`mt-2 flex-row items-center justify-between`}>
-              <Text style={[tw`text-xs`, { color: theme.muted }]}>
-                {balancesLoading ? 'Refreshing balances…' : learnerRangeText}
-              </Text>
+              <Text style={[tw`text-xs`, { color: theme.muted }]}>{balancesLoading ? 'Refreshing balances…' : learnerRangeText}</Text>
 
               <View style={tw`flex-row items-center`}>
                 <TouchableOpacity
@@ -1079,10 +1050,7 @@ export default function OrgFeesNative() {
                 <TouchableOpacity
                   disabled={learnerPage >= totalLearnerPages}
                   onPress={() => setLearnerPage((p) => Math.min(totalLearnerPages, p + 1))}
-                  style={[
-                    tw`px-3 py-2 rounded-2xl border`,
-                    { borderColor: theme.border, opacity: learnerPage >= totalLearnerPages ? 0.5 : 1 },
-                  ]}
+                  style={[tw`px-3 py-2 rounded-2xl border`, { borderColor: theme.border, opacity: learnerPage >= totalLearnerPages ? 0.5 : 1 }]}
                 >
                   <Text style={[tw`text-xs font-semibold`, { color: theme.text }]}>Next</Text>
                 </TouchableOpacity>
@@ -1112,10 +1080,7 @@ export default function OrgFeesNative() {
                       onPress={() => setSelectedLearnerId(feeLearnerId)}
                       style={[
                         tw`rounded-3xl border p-3 mb-2`,
-                        {
-                          borderColor: isSelected ? theme.primary : theme.border,
-                          backgroundColor: isSelected ? theme.primarySoft : 'transparent',
-                        },
+                        { borderColor: isSelected ? theme.primary : theme.border, backgroundColor: isSelected ? theme.primarySoft : 'transparent' },
                       ]}
                     >
                       <View style={tw`flex-row items-start justify-between`}>
@@ -1123,7 +1088,7 @@ export default function OrgFeesNative() {
                           <Text style={[tw`text-sm font-bold`, { color: theme.text }]} numberOfLines={1}>
                             {r.name}
                           </Text>
-                          <Text style={[tw`text-xs mt-1`, { color: theme.subtext }]}>
+                          <Text style={[tw`text-xs mt-1`, { color: theme.subtext }]} numberOfLines={1}>
                             {r.class_label || '—'} • ADM: {r.admission_code || '—'}
                           </Text>
                           <Text style={[tw`text-[11px] mt-1`, { color: theme.muted }]} numberOfLines={1}>
@@ -1131,11 +1096,7 @@ export default function OrgFeesNative() {
                           </Text>
                         </View>
 
-                        <Badge
-                          theme={theme}
-                          tone={maxBal > 0 ? 'warn' : 'ok'}
-                          label={maxBal > 0 ? 'Owes' : 'Clear'}
-                        />
+                        <Badge theme={theme} tone={maxBal > 0 ? 'warn' : 'ok'} label={maxBal > 0 ? 'Owes' : 'Clear'} />
                       </View>
 
                       <View style={tw`mt-3 flex-row`}>
@@ -1173,9 +1134,7 @@ export default function OrgFeesNative() {
         </View>
       </ScrollView>
 
-      {/* ─────────────────────────────
-       * Charge modal
-       * ───────────────────────────── */}
+      {/* Charge modal */}
       {mode === 'charge' ? (
         <ResponsiveChargeModal
           title={`Create charge${selectedLearner ? ` • ${pickLearnerName(selectedLearner)}` : ''}`}
@@ -1187,7 +1146,7 @@ export default function OrgFeesNative() {
           currencyHintForLearner={currencyHintForLearner}
           learnerCurrenciesMap={learnerCurrenciesMap}
           onCharge={async (payload, isBulk) => {
-            await addCharge(payload);        // assumes backend accepts bulk if payload.learner_ids exists
+            await addCharge(payload);
             await fetchBalances();
             if (!isBulk && payload?.learner_id) await fetchStatement(payload.learner_id);
           }}
@@ -1195,69 +1154,59 @@ export default function OrgFeesNative() {
         />
       ) : null}
 
+      {/* Payment modal */}
+      {mode === 'payment' ? (
+        <ResponsivePaymentModal
+          title={`Record payment${selectedLearner ? ` • ${pickLearnerName(selectedLearner)}` : ''}`}
+          onClose={() => setMode('none')}
+          learners={learners}
+          selectedLearnerId={selectedLearnerId}
+          defaultCurrency={activeStructureCurrency}
+          currencyHintForLearner={currencyHintForLearner}
+          learnerCurrenciesMap={learnerCurrenciesMap}
+          onPayment={async (payload) => {
+            await addPayment(payload);
+            await fetchBalances();
+            if (payload?.learner_id) await fetchStatement(payload.learner_id);
+          }}
+          theme={theme}
+        />
+      ) : null}
 
-      {/* ─────────────────────────────
-       * Payment modal
-       * ───────────────────────────── */}
-            {mode === 'payment' ? (
-          <ResponsivePaymentModal
-            title={`Record payment${selectedLearner ? ` • ${pickLearnerName(selectedLearner)}` : ''}`}
-            onClose={() => setMode('none')}
-            learners={learners}
-            selectedLearnerId={selectedLearnerId}
-            defaultCurrency={activeStructureCurrency}
-            currencyHintForLearner={currencyHintForLearner}
-            learnerCurrenciesMap={learnerCurrenciesMap}
-            onPayment={async (payload) => {
-              await addPayment(payload);
-              await fetchBalances();
-              if (payload?.learner_id) await fetchStatement(payload.learner_id);
-            }}
-            theme={theme}
-          />
-        ) : null}
+      {/* Statement modal */}
+      {mode === 'statement' ? (
+        <StatementModal
+          title={`Statement${selectedLearner ? ` • ${pickLearnerName(selectedLearner)}` : ''}`}
+          onClose={() => setMode('none')}
+          learnerId={selectedLearnerId}
+          charges={charges}
+          payments={payments}
+          loading={statementLoading}
+          onOpenCharge={() => setMode('charge')}
+          onOpenPayment={() => setMode('payment')}
+          onDownload={() => downloadStatementPdf(selectedLearnerId, 'fee-statement.pdf')}
+          onPrint={() => {}}
+          theme={theme}
+        />
+      ) : null}
 
-
-      {/* ─────────────────────────────
-       * Statement modal
-       * ───────────────────────────── */}
-     {mode === 'statement' ? (
-            <StatementModal
-              title={`Statement${selectedLearner ? ` • ${pickLearnerName(selectedLearner)}` : ''}`}
-              onClose={() => setMode('none')}
-              learnerId={selectedLearnerId}
-              charges={charges}
-              payments={payments}
-              loading={statementLoading}
-              onOpenCharge={() => setMode('charge')}
-              onOpenPayment={() => setMode('payment')}
-              onDownload={() => downloadStatementPdf(selectedLearnerId, 'fee-statement.pdf')}
-              onPrint={() => {}}
-              theme={theme}
-            />
-          ) : null}
-
-
-      {/* ─────────────────────────────
-       * Unmatched modal
-       * ───────────────────────────── */}
+      {/* Unmatched modal */}
       {unmatchedOpen ? (
-            <UnmatchedPaymentsModal
-              title="Unmatched inbound payments"
-              onClose={() => setUnmatchedOpen(false)}
-              loading={inboundLoading}
-              rows={inboundUnmatched}
-              learners={learners}
-              onRefresh={fetchUnmatched}
-              onAttach={async (inboundId, learnerId) => {
-                await attachToLearner(inboundId, learnerId);
-                await fetchUnmatched();
-                await fetchBalances();
-              }}
-              theme={theme}
-            />
-          ) : null}
-
+        <UnmatchedPaymentsModal
+          title="Unmatched inbound payments"
+          onClose={() => setUnmatchedOpen(false)}
+          loading={inboundLoading}
+          rows={inboundUnmatched}
+          learners={learners}
+          onRefresh={fetchUnmatched}
+          onAttach={async (inboundId, learnerId) => {
+            await attachToLearner(inboundId, learnerId);
+            await fetchUnmatched();
+            await fetchBalances();
+          }}
+          theme={theme}
+        />
+      ) : null}
     </View>
   );
 }

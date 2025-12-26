@@ -1,259 +1,439 @@
-// apps/mobile/src/screens/org/OrgFees.ui.native.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Dimensions,
   Modal as RNModal,
+  PanResponder,
+  Pressable,
+  ScrollView,
   Text,
   TouchableOpacity,
-  useColorScheme,
   View,
-  ScrollView,
+  useColorScheme,
+  Platform,
 } from 'react-native';
-import tw from '../../../tailwind'; // ✅ adjust if your tw import lives elsewhere
-
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import tw from '../../../tailwind';
 import { moneyFromCents } from './OrgFees.shared.native';
 
-// If you don't have this yet: npx expo install expo-clipboard
-import * as Clipboard from 'expo-clipboard';
+export type FeeTheme = {
+  dark: boolean;
+  bg: string;
+  card: string;
+  border: string;
+  text: string;
+  subtext: string;
+  muted: string;
 
-/* ─────────────────────────────────────────────────────────
- * Theme
- * ───────────────────────────────────────────────────────── */
+  primary: string;
+  primarySoft: string;
 
-function useTheme() {
+  okBg: string;
+  okBorder: string;
+  okText: string;
+
+  warnBg: string;
+  warnBorder: string;
+  warnText: string;
+
+  badBg: string;
+  badBorder: string;
+  badText: string;
+};
+
+function defaultTheme(dark: boolean): FeeTheme {
+  return {
+    dark,
+    bg: dark ? '#0b1220' : '#f8fafc',
+    card: dark ? '#0f172a' : '#ffffff',
+    border: dark ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.12)',
+    text: dark ? '#e2e8f0' : '#0f172a',
+    subtext: dark ? 'rgba(226,232,240,0.78)' : 'rgba(15,23,42,0.65)',
+    muted: dark ? 'rgba(226,232,240,0.55)' : 'rgba(15,23,42,0.45)',
+
+    primary: '#2563eb',
+    primarySoft: dark ? 'rgba(37,99,235,0.18)' : 'rgba(37,99,235,0.10)',
+
+    okBg: dark ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.12)',
+    okBorder: dark ? 'rgba(16,185,129,0.35)' : 'rgba(16,185,129,0.25)',
+    okText: dark ? '#d1fae5' : '#064e3b',
+
+    warnBg: dark ? 'rgba(245,158,11,0.16)' : 'rgba(245,158,11,0.12)',
+    warnBorder: dark ? 'rgba(245,158,11,0.40)' : 'rgba(245,158,11,0.28)',
+    warnText: dark ? '#fde68a' : '#7c2d12',
+
+    badBg: dark ? 'rgba(244,63,94,0.14)' : 'rgba(244,63,94,0.10)',
+    badBorder: dark ? 'rgba(244,63,94,0.38)' : 'rgba(244,63,94,0.22)',
+    badText: dark ? '#fecdd3' : '#9f1239',
+  };
+}
+
+/** ✅ Exported + safe */
+export function useFeeTheme(explicitTheme?: Partial<FeeTheme> | FeeTheme): FeeTheme {
   const scheme = useColorScheme();
   return useMemo(() => {
-    const dark = scheme === 'dark';
-    return {
-      dark,
-      card: dark ? '#0f172a' : '#ffffff',
-      border: dark ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.12)',
-      text: dark ? '#e2e8f0' : '#0f172a',
-      subtext: dark ? 'rgba(226,232,240,0.78)' : 'rgba(15,23,42,0.65)',
-      muted: dark ? 'rgba(226,232,240,0.55)' : 'rgba(15,23,42,0.45)',
-      soft: dark ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.06)',
-      primary: '#2563eb',
-
-      okBg: dark ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.12)',
-      okBorder: dark ? 'rgba(16,185,129,0.35)' : 'rgba(16,185,129,0.25)',
-      okText: dark ? '#d1fae5' : '#064e3b',
-
-      warnBg: dark ? 'rgba(245,158,11,0.16)' : 'rgba(245,158,11,0.12)',
-      warnBorder: dark ? 'rgba(245,158,11,0.40)' : 'rgba(245,158,11,0.28)',
-      warnText: dark ? '#fde68a' : '#7c2d12',
-
-      neutralBg: dark ? 'rgba(148,163,184,0.14)' : 'rgba(15,23,42,0.08)',
-      neutralText: dark ? '#e2e8f0' : '#0f172a',
-    };
-  }, [scheme]);
+    const base = defaultTheme(scheme === 'dark');
+    if (!explicitTheme) return base;
+    return { ...base, ...(explicitTheme as any) };
+  }, [scheme, explicitTheme]);
 }
 
-function toneColors(theme: any, tone: 'warn' | 'ok' | 'neutral') {
-  if (tone === 'ok') return { bg: theme.okBg, border: theme.okBorder, text: theme.okText };
-  if (tone === 'warn') return { bg: theme.warnBg, border: theme.warnBorder, text: theme.warnText };
-  return { bg: theme.neutralBg, border: theme.border, text: theme.neutralText };
+/* ─────────────────────────────
+ * SheetModal (snap-point bottom sheet)
+ * ───────────────────────────── */
+
+type NonEmptyArray<T> = [T, ...T[]];
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
-/* ─────────────────────────────────────────────────────────
- * CircleCheckbox
- * ───────────────────────────────────────────────────────── */
+function toNonEmpty(arr: number[], fallback: number): NonEmptyArray<number> {
+  return (arr.length ? arr : [fallback]) as NonEmptyArray<number>;
+}
+
+// ✅ Make “best” always a number (works with noUncheckedIndexedAccess)
+function nearestSnap(current: number, snaps: NonEmptyArray<number>) {
+  let best = snaps[0] ?? current;
+  for (const s of snaps) {
+    if (Math.abs(s - current) < Math.abs(best - current)) best = s;
+  }
+  return best;
+}
+
+function lowerOrEqualSnap(current: number, snaps: NonEmptyArray<number>) {
+  let best = snaps[0] ?? current;
+  for (const s of snaps) {
+    if (s <= current) best = Math.max(best, s);
+  }
+  return best;
+}
+
+function upperOrEqualSnap(current: number, snaps: NonEmptyArray<number>) {
+  let best = snaps[snaps.length - 1] ?? current;
+  for (const s of snaps) {
+    if (s >= current) best = Math.min(best, s);
+  }
+  return best;
+}
+
+
+export function Modal({
+  title,
+  onClose,
+  children,
+  theme: explicitTheme,
+  snapPoints = [0.58, 0.84],
+  initialSnap = 1,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  theme?: Partial<FeeTheme> | FeeTheme;
+  snapPoints?: number[];
+  initialSnap?: number;
+}) {
+  const theme = useFeeTheme(explicitTheme);
+  const insets = useSafeAreaInsets();
+  const winH = Dimensions.get('window').height;
+
+  const safeMax = Math.max(320, Math.round(winH - (insets.top || 0) - 10));
+  const fallbackH = clamp(Math.round(winH * 0.8), 280, safeMax);
+
+  const snapKey = (snapPoints && snapPoints.length ? snapPoints : [0.58, 0.84]).join('|');
+
+  // ✅ sps is guaranteed non-empty -> no more "number | undefined"
+  const sps = useMemo<NonEmptyArray<number>>(() => {
+    const raw = (snapPoints && snapPoints.length ? snapPoints : [0.58, 0.84])
+      .map((p) => clamp(Math.round(winH * p), 280, safeMax))
+      .sort((a, b) => a - b);
+
+    return toNonEmpty(raw, fallbackH);
+  }, [winH, safeMax, fallbackH, snapKey]);
+
+  const minSnap = sps[0] ?? fallbackH;
+const maxSnap = sps[sps.length - 1] ?? fallbackH;
+
+// keep this (now safe)
+const initIdx = clamp(initialSnap ?? 1, 0, sps.length - 1);
+const initH = sps[initIdx] ?? maxSnap;
+
+  const sheetH = useRef(new Animated.Value(0)).current;
+  const [mounted, setMounted] = useState(true);
+  const closingRef = useRef(false);
+  const startH = useRef(0);
+
+  const backdropOpacity = sheetH.interpolate({
+    inputRange: [0, Math.max(1, minSnap)],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const animateTo = (h: number, cb?: () => void) => {
+    Animated.spring(sheetH, {
+      toValue: h,
+      useNativeDriver: false,
+      damping: 18,
+      stiffness: 180,
+      mass: 0.8,
+    }).start(() => cb?.());
+  };
+
+  useEffect(() => {
+    animateTo(initH);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const close = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    Animated.timing(sheetH, {
+      toValue: 0,
+      duration: 180,
+      useNativeDriver: false,
+    }).start(() => {
+      setMounted(false);
+      onClose?.();
+    });
+  };
+
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6,
+        onPanResponderGrant: () => {
+          sheetH.stopAnimation((v: any) => {
+            startH.current = Number(v || 0);
+          });
+        },
+        onPanResponderMove: (_, g) => {
+          const next = clamp(startH.current - g.dy, 0, maxSnap);
+          sheetH.setValue(next);
+        },
+        onPanResponderRelease: (_, g) => {
+          const vy = g.vy || 0;
+
+          sheetH.stopAnimation((v: any) => {
+            const current = Number(v || 0);
+
+            // quick close
+            if (current < 140 || vy > 1.1) return close();
+
+            const target =
+              vy > 0.6
+                ? lowerOrEqualSnap(current, sps)
+                : vy < -0.6
+                ? upperOrEqualSnap(current, sps)
+                : nearestSnap(current, sps);
+
+            animateTo(target);
+          });
+        },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [maxSnap, sps.join('|')],
+  );
+
+  if (!mounted) return null;
+
+  return (
+    <RNModal transparent visible onRequestClose={close} animationType="none">
+      <View style={tw`flex-1`}>
+        <Pressable onPress={close} style={tw`absolute inset-0`}>
+          <Animated.View
+            style={[tw`absolute inset-0`, { backgroundColor: 'rgba(0,0,0,0.55)', opacity: backdropOpacity }]}
+          />
+        </Pressable>
+
+        <View style={tw`flex-1 justify-end`}>
+          <Animated.View
+            style={[
+              tw`w-full border-t`,
+              {
+                height: sheetH,
+                backgroundColor: theme.bg,
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
+                borderColor: theme.border,
+                overflow: 'hidden',
+              },
+            ]}
+          >
+            {/* drag handle */}
+            <View {...pan.panHandlers} style={[tw`pt-2 pb-1 items-center`, { backgroundColor: theme.bg }]}>
+              <View style={[tw`w-12 h-1.5 rounded-full`, { backgroundColor: theme.border }]} />
+            </View>
+
+            {/* header */}
+            <View style={[tw`px-4 py-3 flex-row items-center justify-between border-b`, { borderBottomColor: theme.border }]}>
+              <Text style={[tw`text-base font-bold`, { color: theme.text }]} numberOfLines={1}>
+                {title}
+              </Text>
+              <TouchableOpacity onPress={close} style={[tw`px-3 py-2 rounded-2xl`, { backgroundColor: theme.primarySoft }]}>
+                <Text style={[tw`text-sm font-bold`, { color: theme.text }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={[
+                tw`p-4`,
+                { paddingBottom: (insets.bottom || 0) + (Platform.OS === 'ios' ? 18 : 12) },
+              ]}
+            >
+              {children}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </View>
+    </RNModal>
+  );
+}
+
+/* ─────────────────────────────
+ * Cards / helpers
+ * ───────────────────────────── */
+
+export function SectionCard({
+  children,
+  theme: explicitTheme,
+}: {
+  children: ReactNode;
+  theme?: Partial<FeeTheme> | FeeTheme;
+}) {
+  const theme = useFeeTheme(explicitTheme);
+  return (
+    <View style={[tw`rounded-3xl border p-4`, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      {children}
+    </View>
+  );
+}
+
+export function EmptyState({
+  title,
+  body,
+  action,
+  theme: explicitTheme,
+}: {
+  title: string;
+  body: string;
+  action?: ReactNode;
+  theme?: Partial<FeeTheme> | FeeTheme;
+}) {
+  const theme = useFeeTheme(explicitTheme);
+  return (
+    <View style={[tw`rounded-3xl border p-4`, { borderColor: theme.border, backgroundColor: theme.primarySoft }]}>
+      <Text style={[tw`text-base font-bold`, { color: theme.text }]}>{title}</Text>
+      <Text style={[tw`text-sm mt-1`, { color: theme.subtext }]}>{body}</Text>
+      {action ? <View style={tw`mt-3`}>{action}</View> : null}
+    </View>
+  );
+}
+
+export function Badge({
+  tone = 'neutral',
+  label,
+  children,
+  theme: explicitTheme,
+}: {
+  tone?: 'warn' | 'ok' | 'neutral';
+  label?: string;
+  children?: ReactNode;
+  theme?: Partial<FeeTheme> | FeeTheme;
+}) {
+  const theme = useFeeTheme(explicitTheme);
+
+  const styles =
+    tone === 'ok'
+      ? { bg: theme.okBg, border: theme.okBorder, text: theme.okText }
+      : tone === 'warn'
+      ? { bg: theme.warnBg, border: theme.warnBorder, text: theme.warnText }
+      : { bg: theme.primarySoft, border: theme.border, text: theme.text };
+
+  return (
+    <View style={[tw`px-3 py-1 rounded-full border`, { backgroundColor: styles.bg, borderColor: styles.border }]}>
+      <Text style={[tw`text-[11px] font-bold`, { color: styles.text }]}>{label ?? children}</Text>
+    </View>
+  );
+}
 
 export function CircleCheckbox({
   checked,
   onChange,
   label,
   disabled,
+  theme: explicitTheme,
 }: {
   checked: boolean;
   onChange: (next: boolean) => void;
-  label: React.ReactNode;
+  label: ReactNode;
   disabled?: boolean;
+  theme?: Partial<FeeTheme> | FeeTheme;
 }) {
-  const theme = useTheme();
+  const theme = useFeeTheme(explicitTheme);
 
   return (
     <TouchableOpacity
       disabled={disabled}
       onPress={() => onChange(!checked)}
-      style={[tw`flex-row items-center`, { opacity: disabled ? 0.6 : 1 }]}
+      style={[tw`flex-row items-center`, { opacity: disabled ? 0.55 : 1 }]}
     >
       <View
         style={[
-          tw`w-5 h-5 rounded-full border items-center justify-center`,
-          { borderColor: checked ? theme.primary : theme.border },
+          tw`w-5 h-5 rounded-full border mr-2 items-center justify-center`,
+          { borderColor: checked ? theme.primary : theme.border, backgroundColor: checked ? theme.primarySoft : 'transparent' },
         ]}
       >
-        {checked ? <View style={[tw`w-3 h-3 rounded-full`, { backgroundColor: theme.primary }]} /> : null}
+        {checked ? <View style={[tw`w-2.5 h-2.5 rounded-full`, { backgroundColor: theme.primary }]} /> : null}
       </View>
 
-      <Text style={[tw`ml-2 text-xs`, { color: theme.subtext }]}>{label as any}</Text>
+      {typeof label === 'string' ? <Text style={[tw`text-sm`, { color: theme.text }]}>{label}</Text> : label}
     </TouchableOpacity>
   );
 }
 
-/* ─────────────────────────────────────────────────────────
- * CopyRow (native clipboard)
- * ───────────────────────────────────────────────────────── */
+export function MoneyStack({
+  rows,
+  theme: explicitTheme,
+}: {
+  rows: Array<{ currency: string; value: number }>;
+  theme?: Partial<FeeTheme> | FeeTheme;
+}) {
+  const theme = useFeeTheme(explicitTheme);
 
-export function CopyRow({ label, value }: { label: string; value: string }) {
-  const theme = useTheme();
-  const [copied, setCopied] = useState(false);
-
-  const onCopy = async () => {
-    try {
-      await Clipboard.setStringAsync(String(value || ''));
-      setCopied(true);
-    } catch {
-      // no-op
-    }
-  };
-
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1200);
-    return () => clearTimeout(t);
-  }, [copied]);
+  const safe = Array.isArray(rows) ? rows : [];
+  if (!safe.length) return <Text style={[tw`text-xs`, { color: theme.muted }]}>—</Text>;
 
   return (
-    <View style={[tw`rounded-3xl border p-3`, { backgroundColor: theme.card, borderColor: theme.border }]}>
-      <Text style={[tw`text-xs font-semibold`, { color: theme.subtext }]}>{label}</Text>
-
-      <View style={tw`mt-2 flex-row items-center justify-between`}>
-        <View style={[tw`flex-1 rounded-2xl px-3 py-2 border mr-3`, { borderColor: theme.border, backgroundColor: theme.soft }]}>
-          <Text style={[tw`text-xs`, { color: theme.text }]} selectable numberOfLines={4}>
-            {value}
+    <View style={tw`mt-1`}>
+      {safe.map((r) => (
+        <View key={`${r.currency}`} style={tw`flex-row items-center justify-between`}>
+          <Text style={[tw`text-[11px]`, { color: theme.muted }]}>{String(r.currency).toUpperCase()}</Text>
+          <Text style={[tw`text-[11px] font-bold`, { color: theme.text }]}>
+            {moneyFromCents(Number(r.value || 0), String(r.currency || 'USD').toUpperCase())}
           </Text>
-        </View>
-
-        <TouchableOpacity
-          onPress={onCopy}
-          style={[tw`px-3 py-2 rounded-2xl border`, { borderColor: theme.border }]}
-        >
-          <Text style={[tw`text-xs font-semibold`, { color: theme.text }]}>{copied ? 'Copied' : 'Copy'}</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────
- * MoneyStack
- * ───────────────────────────────────────────────────────── */
-
-export function MoneyStack({ rows }: { rows: Array<{ currency: string; value: number }> }) {
-  const theme = useTheme();
-
-  const cleaned =
-    (rows || [])
-      .filter((r) => r && r.currency && Number.isFinite(Number(r.value)))
-      .map((r) => ({ currency: String(r.currency).toUpperCase(), value: Number(r.value) }))
-      .filter((r) => r.value !== 0);
-
-  if (!cleaned.length) return <Text style={[tw`text-xs`, { color: theme.muted }]}>—</Text>;
-
-  return (
-    <View style={tw`flex-row flex-wrap justify-end`}>
-      {cleaned.map((r) => (
-        <View
-          key={r.currency}
-          style={[
-            tw`px-2 py-1 rounded-full border mr-1 mb-1`,
-            { backgroundColor: theme.soft, borderColor: theme.border },
-          ]}
-        >
-          <Text style={[tw`text-xs`, { color: theme.text }]}>{moneyFromCents(r.value, r.currency)}</Text>
         </View>
       ))}
     </View>
   );
 }
 
-/* ─────────────────────────────────────────────────────────
- * EmptyState / Badge
- * ───────────────────────────────────────────────────────── */
-
-export const EmptyState: React.FC<{ title: string; body: string; action?: React.ReactNode }> = ({
-  title,
-  body,
-  action,
-}) => {
-  const theme = useTheme();
+export function CopyRow({
+  label,
+  value,
+  theme: explicitTheme,
+}: {
+  label: string;
+  value: string;
+  theme?: Partial<FeeTheme> | FeeTheme;
+}) {
+  const theme = useFeeTheme(explicitTheme);
   return (
-    <View
-      style={[
-        tw`rounded-3xl p-4 border`,
-        { borderColor: theme.border, backgroundColor: theme.soft, borderStyle: 'dashed' as any },
-      ]}
-    >
-      <Text style={[tw`text-sm font-bold`, { color: theme.text }]}>{title}</Text>
-      <Text style={[tw`text-sm mt-1`, { color: theme.subtext }]}>{body}</Text>
-      {action ? <View style={tw`mt-3`}>{action}</View> : null}
+    <View style={[tw`rounded-2xl border p-3`, { borderColor: theme.border, backgroundColor: theme.card }]}>
+      <Text style={[tw`text-xs uppercase tracking-wider`, { color: theme.muted }]}>{label}</Text>
+      <Text style={[tw`text-xs mt-1`, { color: theme.text }]} selectable>
+        {value}
+      </Text>
     </View>
   );
-};
-
-export const Badge: React.FC<{ children: React.ReactNode; tone?: 'warn' | 'ok' | 'neutral' }> = ({
-  children,
-  tone = 'neutral',
-}) => {
-  const theme = useTheme();
-  const c = toneColors(theme, tone);
-
-  return (
-    <View style={[tw`px-2 py-1 rounded-full border`, { backgroundColor: c.bg, borderColor: c.border }]}>
-      <Text style={[tw`text-xs font-semibold`, { color: c.text }]}>{children as any}</Text>
-    </View>
-  );
-};
-
-/* ─────────────────────────────────────────────────────────
- * Modal (native sheet style)
- * ───────────────────────────────────────────────────────── */
-
-export const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({
-  title,
-  onClose,
-  children,
-}) => {
-  const theme = useTheme();
-
-  return (
-    <RNModal transparent animationType="slide" onRequestClose={onClose} visible>
-      <View style={[tw`flex-1 justify-end`, { backgroundColor: 'rgba(0,0,0,0.40)' }]}>
-        <View style={[tw`rounded-t-3xl border`, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={[tw`p-4 flex-row items-center justify-between border-b`, { borderColor: theme.border }]}>
-            <Text style={[tw`text-base font-bold`, { color: theme.text }]}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={[tw`px-3 py-2 rounded-2xl border`, { borderColor: theme.border }]}>
-              <Text style={[tw`text-sm font-semibold`, { color: theme.text }]}>Close</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={tw`max-h-[520px]`} contentContainerStyle={tw`p-4`}>
-            {children}
-          </ScrollView>
-        </View>
-      </View>
-    </RNModal>
-  );
-};
-
-/* ─────────────────────────────────────────────────────────
- * SectionCard
- * ───────────────────────────────────────────────────────── */
-
-export const SectionCard: React.FC<{ title: string; subtitle?: string; children: React.ReactNode }> = ({
-  title,
-  subtitle,
-  children,
-}) => {
-  const theme = useTheme();
-
-  return (
-    <View style={[tw`rounded-3xl border p-4`, { backgroundColor: theme.card, borderColor: theme.border }]}>
-      <View>
-        <Text style={[tw`text-sm font-bold`, { color: theme.text }]}>{title}</Text>
-        {subtitle ? <Text style={[tw`text-xs mt-1`, { color: theme.subtext }]}>{subtitle}</Text> : null}
-      </View>
-      <View style={tw`mt-3`}>{children}</View>
-    </View>
-  );
-};
+}

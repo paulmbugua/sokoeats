@@ -6,6 +6,7 @@ import {
   Platform,
   ScrollView,
   Text,
+  Share,
   TextInput,
   TouchableOpacity,
   useColorScheme,
@@ -17,6 +18,11 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
 import { useOrgAttendance } from '@mytutorapp/shared/hooks/useOrgAttendance';
 import { getOrgRoster } from '@mytutorapp/shared/api/orgApi';
+import FileSystem from 'expo-file-system';
+import * as FileSystemNS from 'expo-file-system';
+import Sharing from 'expo-sharing';
+import * as SharingNS from 'expo-sharing';
+
 
 /* ─────────────────────────────────────────────────────────
  * Shared helpers (ported from web)
@@ -92,30 +98,32 @@ function csvEscape(v: any) {
 }
 
 async function shareCsvNative(filename: string, csvText: string) {
-  // Best effort: expo-file-system + expo-sharing; fallback to Share message
   try {
-    const FileSystem = await import('expo-file-system');
-    const path = (FileSystem.cacheDirectory || FileSystem.documentDirectory || '') + filename;
+    const FS: any = (FileSystem as any) ?? (FileSystemNS as any);
+    const SH: any = (Sharing as any) ?? (SharingNS as any);
 
-    await FileSystem.writeAsStringAsync(path, csvText, {
-      encoding: FileSystem.EncodingType.UTF8,
+    const baseDir = FS.cacheDirectory ?? FS.documentDirectory;
+    if (!baseDir) {
+      await Share.share({ title: filename, message: csvText });
+      return true;
+    }
+
+    const path = `${baseDir}${filename}`;
+
+    await FS.writeAsStringAsync(path, csvText, {
+      encoding: FS.EncodingType?.UTF8 ?? 'utf8',
     });
 
-    try {
-      const Sharing = await import('expo-sharing');
-      const ok = await Sharing.isAvailableAsync?.();
-      if (ok) {
-        await Sharing.shareAsync(path, {
-          mimeType: 'text/csv',
-          dialogTitle: 'Share attendance CSV',
-          UTI: 'public.comma-separated-values-text',
-        });
-        return true;
-      }
-    } catch {}
+    const ok = await SH.isAvailableAsync?.();
+    if (ok) {
+      await SH.shareAsync(path, {
+        mimeType: 'text/csv',
+        dialogTitle: 'Share attendance CSV',
+        UTI: 'public.comma-separated-values-text',
+      });
+      return true;
+    }
 
-    // Fallback: plain share text
-    const { Share } = await import('react-native');
     await Share.share({ title: filename, message: csvText });
     return true;
   } catch {

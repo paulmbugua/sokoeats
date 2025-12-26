@@ -1,4 +1,3 @@
-//apps/mobile/src/screens/org/OrgFees.shared.native.ts
 import type { FeeStructureItem } from '@mytutorapp/shared/types';
 
 export function cn(...xs: Array<string | false | null | undefined>) {
@@ -24,7 +23,7 @@ export function toCents(amountMajor: string) {
   return Math.round(n * 100);
 }
 
-/** ✅ FIX: allow id to be string | number, and always stringify when using it */
+/** ✅ allow id to be string | number, and always stringify when using it */
 export type LearnerLite = {
   id?: string | number;
   user_id?: string | number;

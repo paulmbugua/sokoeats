@@ -344,9 +344,9 @@ function Markdown({
     <div className={`prose max-w-none dark:prose-invert ${sizeClasses} ${className}`}>
       <div style={zoomStyle}>
         <ReactMarkdown
-          // @ts-ignore
+        
           remarkPlugins={[remarkGfm, remarkMath]}
-          // @ts-ignore
+         
           rehypePlugins={[[rehypeKatex, katexOptions]]}
           components={components as any}
         >

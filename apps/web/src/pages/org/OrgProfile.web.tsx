@@ -1,6 +1,8 @@
 // apps/web/src/pages/org/OrgProfile.web.tsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { CalendarCheck2, Wallet, Mail, Megaphone } from 'lucide-react';
+
 import { useShopContext } from '@mytutorapp/shared/context';
 import {
   getOrgRoster as apiRoster,
@@ -690,59 +692,92 @@ const OrgProfilePage: React.FC = () => {
             </Link>
           </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Link
-              to="/org/attendance"
-              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold">Attendance</div>
-                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">Create sessions and bulk mark learners.</p>
-                </div>
-                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
+      <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4">
+        {/* Attendance */}
+        <Link
+          to="/org/attendance"
+          className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+        >
+          <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
+            <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
+                <CalendarCheck2 className="h-5 w-5" />
+              </span>
+              <div>
+                <div className="text-sm font-semibold">Attendance</div>
+                <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
+                  Create sessions and bulk mark learners.
+                </p>
               </div>
-            </Link>
-
-            <Link
-              to="/org/fees"
-              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold">Fees &amp; balances</div>
-                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">Charges, payments, and statements.</p>
-                </div>
-                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
-              </div>
-            </Link>
-
-            <Link
-              to="/org/newsletters"
-              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold">Newsletters</div>
-                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">Draft, preview, and archive updates.</p>
-                </div>
-                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
-              </div>
-            </Link>
-
-            <Link
-              to="/org/announcements"
-              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold">Announcements</div>
-                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">Pinned notices for learners and instructors.</p>
-                </div>
-                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
-              </div>
-            </Link>
+            </div>
+            <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
           </div>
+        </Link>
+
+        {/* Fees */}
+        <Link
+          to="/org/fees"
+          className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+        >
+          <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
+            <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
+                <Wallet className="h-5 w-5" />
+              </span>
+              <div>
+                <div className="text-sm font-semibold">Fees</div>
+                <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
+                  Charges, payments, and statements.
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
+          </div>
+        </Link>
+
+        {/* Newsletters */}
+        <Link
+          to="/org/newsletters"
+          className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+        >
+          <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
+            <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
+                <Mail className="h-5 w-5" />
+              </span>
+              <div>
+                <div className="text-sm font-semibold">Newsletters</div>
+                <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
+                  Draft, preview, and archive updates.
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
+          </div>
+        </Link>
+
+        {/* Announcements */}
+        <Link
+          to="/org/announcements"
+          className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+        >
+          <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
+            <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
+                <Megaphone className="h-5 w-5" />
+              </span>
+              <div>
+                <div className="text-sm font-semibold">Announcements</div>
+                <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
+                  Pinned notices for learners and instructors.
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
+          </div>
+        </Link>
+      </div>
+
         </section>
 
         {/* People */}

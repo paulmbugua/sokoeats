@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { CommonActions } from '@react-navigation/native';
 
 import * as DocumentPicker from 'expo-document-picker';
 
@@ -334,6 +335,54 @@ function deriveAnalyticsSummary(
   } as OrgAnalyticsSummary;
 }
 
+const ToolIconTile = ({
+  emoji,
+  title,
+  subtitle,
+  disabled,
+  badge,
+  onPress,
+}: {
+  emoji: string;
+  title: string;
+  subtitle?: string;
+  disabled?: boolean;
+  badge?: string;
+  onPress?: () => void;
+}) => {
+  const Wrap: any = disabled ? View : TouchableOpacity;
+
+  return (
+    <Wrap
+      {...(!disabled ? { onPress } : {})}
+      style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] overflow-hidden ${disabled ? 'opacity-60' : ''}`}
+    >
+      <View style={tw`p-3 min-h-[108px] items-center justify-center`}>
+        {!!badge && (
+          <View style={tw`absolute top-2 left-2 px-2 py-0.5 rounded-full border border-[#cedbe8] dark:border-white/10 bg-[#e7edf4] dark:bg-white/10`}>
+            <Text style={tw`text-[10px] text-[#49739c] dark:text-white/70`}>{badge}</Text>
+          </View>
+        )}
+
+        <View style={tw`h-12 w-12 rounded-2xl items-center justify-center border border-[#d1e2f4] dark:border-white/10 bg-[#f2f6fb] dark:bg-white/10`}>
+          <Text style={tw`text-2xl`}>{emoji}</Text>
+        </View>
+
+        <Text style={tw`mt-2 text-sm font-semibold text-[#0d141c] dark:text-white`} numberOfLines={1}>
+          {title}
+        </Text>
+
+        {!!subtitle && (
+          <Text style={tw`mt-1 text-[11px] text-center text-[#6b7280] dark:text-white/70`} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
+    </Wrap>
+  );
+};
+
+
 /* ──────────────────────────────
    Main screen
 ────────────────────────────── */
@@ -347,6 +396,23 @@ const OrgElearnPortalNative: React.FC = () => {
 
   const route = useRoute<RouteProp<MainStackParamList, 'OrgElearnPortal'>>();
   const navigation = useNavigation<any>();
+  function smartNavigate(routeName: string, params?: any) {
+  let nav: any = navigation;
+
+  // climb up until we find a navigator that actually knows this route
+  while (nav) {
+    const names = nav.getState?.()?.routeNames;
+    if (Array.isArray(names) && names.includes(routeName)) {
+      nav.navigate(routeName, params);
+      return;
+    }
+    nav = nav.getParent?.();
+  }
+
+  // last resort: dispatch a navigate action (may bubble)
+  navigation.dispatch(CommonActions.navigate({ name: routeName as never, params } as never));
+}
+
   const paramsAny = (route.params || {}) as any;
 
   const viewParam = paramsAny.view;
@@ -479,6 +545,9 @@ const OrgElearnPortalNative: React.FC = () => {
   } = useFeatureGates(tier);
 
   type AndroidPickerEvent = { type?: 'set' | 'dismissed' | 'neutralButtonPressed' | string };
+  const TOOL_GAP = 12; // px
+  const TOOL_COLS = 3;
+
 
   type AndroidOpenOptions = {
     value: Date;
@@ -514,6 +583,55 @@ const OrgElearnPortalNative: React.FC = () => {
       },
     });
   }, []);
+
+    const openWebPath = useCallback(
+    async (path: string) => {
+      const base = String(backendUrl || '').replace(/\/$/, '');
+      if (!base) {
+        Alert.alert('Unavailable', 'Missing backend URL.');
+        return;
+      }
+      const url = `${base}${path.startsWith('/') ? path : `/${path}`}`;
+
+      try {
+        const can = await Linking.canOpenURL(url);
+        if (!can) throw new Error('cannot_open');
+        await Linking.openURL(url);
+      } catch {
+        Alert.alert('Cannot open link', url);
+      }
+    },
+    [backendUrl]
+  );
+
+  const hasRoute = useCallback(
+    (routeName: string) => {
+      let nav: any = navigation;
+      while (nav) {
+        const names = nav.getState?.()?.routeNames;
+        if (Array.isArray(names) && names.includes(routeName)) return true;
+        nav = nav.getParent?.();
+      }
+      return false;
+    },
+    [navigation]
+  );
+
+  const navOrWeb = useCallback(
+    async (routeName: string, params?: any, webPath?: string) => {
+      if (hasRoute(routeName)) {
+        smartNavigate(routeName, params);
+        return;
+      }
+      if (webPath) {
+        await openWebPath(webPath);
+        return;
+      }
+      Alert.alert('Unavailable', 'This tool is not available in this build yet.');
+    },
+    [hasRoute, openWebPath]
+  );
+
 
   // keep per-tier payment state (so pro/enterprise don’t conflict)
   const proPaymentIdRef = useRef<string | null>(null);
@@ -2889,84 +3007,131 @@ const OrgElearnPortalNative: React.FC = () => {
                 </View>
               )}
               {/* PRO TOOLS */}
+              {/* TOOLS */}
               {tab === 'tools' && (
-                <View
-                  style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
-                >
-                  <View style={tw`flex-row items-center justify-between mb-3`}>
-                    <View>
-                      <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold`}>Org tools</Text>
-                      <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
-                        Attendance, balances, newsletters, and announcements.
-                      </Text>
+                <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4 mb-6`}>
+                  <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold`}>
+                    Tools
+                  </Text>
+                  <Text style={tw`text-[#49739c] dark:text-white/70 text-xs mt-1`}>
+                    Quick shortcuts for attendance, fees, announcements, newsletters, clubs & sports.
+                  </Text>
+
+                <View style={[tw`mt-4 flex-row flex-wrap`, { marginHorizontal: -TOOL_GAP / 2 }]}>
+                  {[
+                    {
+                      emoji: '✅',
+                      title: 'Attendance',
+                      subtitle: 'Sessions',
+                      locked: !isProTier,
+                      onPress: () => navOrWeb('OrgAttendance'),
+                    },
+                    {
+                      emoji: '💳',
+                      title: 'Fees',
+                      subtitle: 'Balances',
+                      locked: !isProTier,
+                      onPress: () => navOrWeb('OrgFees'),
+                    },
+                    {
+                      emoji: '📣',
+                      title: 'Announcements',
+                      subtitle: 'Post',
+                      locked: !isProTier,
+                      onPress: () => navOrWeb('OrgAnnouncements'),
+                    },
+                    {
+                      emoji: '📰',
+                      title: 'Newsletters',
+                      subtitle: 'Send',
+                      locked: !isProTier,
+                      onPress: () => navOrWeb('OrgNewsletters'),
+                    },
+                    {
+                      emoji: '🤝',
+                      title: 'Clubs',
+                      subtitle: 'Manage',
+                      locked: !isProTier,
+                      onPress: () => navOrWeb('OrgClubs', undefined, '/org/clubs'),
+                    },
+                    {
+                      emoji: '🏆',
+                      title: 'Sports',
+                      subtitle: 'Publish',
+                      locked: !isProTier,
+                      onPress: () => navOrWeb('OrgSports', undefined, '/org/sports'),
+                    },
+                    ...(canBrandingRole
+                      ? [
+                          {
+                            emoji: '🎨',
+                            title: 'Branding',
+                            subtitle: 'Logo & info',
+                            locked: false,
+                            onPress: () => setTab('branding'),
+                          },
+                          {
+                            emoji: '🔒',
+                            title: 'SSO & Access',
+                            subtitle: 'Domains',
+                            locked: false,
+                            onPress: () => {
+                              setTab('branding');
+                              setShowSsoSection(true);
+                              setShowLogoSection(false);
+                            },
+                          },
+                          {
+                            emoji: '🔗',
+                            title: 'Webhooks',
+                            subtitle: 'Completions',
+                            locked: !canWebhooks,
+                            onPress: () => {
+                              setTab('branding');
+                              setShowSsoSection(true);
+                              setShowLogoSection(false);
+                            },
+                          },
+                        ]
+                      : []),
+                  ].map((it, idx) => (
+                    <View
+                      key={`${it.title}-${idx}`}
+                      style={{
+                        width: `${100 / TOOL_COLS}%`,
+                        paddingHorizontal: TOOL_GAP / 2,
+                        marginBottom: TOOL_GAP,
+                      }}
+                    >
+                      <ToolIconTile
+                        emoji={it.emoji}
+                        title={it.title}
+                        subtitle={it.subtitle}
+                        disabled={it.locked}
+                        badge={it.locked ? (it.title === 'Webhooks' ? 'Enterprise' : 'Locked') : undefined}
+                        onPress={it.onPress}
+                      />
                     </View>
-                    <View style={tw`px-2 py-1 rounded-full bg-[#e7edf4] dark:bg-white/10`}>
-                      <Text style={tw`text-[11px] font-semibold text-[#0d141c] dark:text-white`}>Pro & Enterprise</Text>
-                    </View>
-                  </View>
+                  ))}
+                </View>
+
 
                   {!isProTier && (
-                    <View style={tw`rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/20`}>
-                      <Text style={tw`text-sm font-semibold text-amber-800 dark:text-amber-100`}>
-                        Upgrade to unlock org tools
-                      </Text>
-                      <Text style={tw`text-xs text-amber-700 dark:text-amber-200`}>
-                        These shortcuts are available on Pro and Enterprise.
+                    <View style={tw`mt-3 rounded-2xl p-3 border border-amber-200/40 dark:border-amber-300/30 bg-amber-50/60 dark:bg-amber-500/10`}>
+                      <Text style={tw`text-xs text-[#0d141c] dark:text-white/90`}>
+                        Some tools are locked on <Text style={tw`font-semibold`}>Starter</Text>. Ask your institution admin to upgrade to PRO.
                       </Text>
                     </View>
                   )}
 
-                  {[{
-                    title: 'Attendance',
-                    body: 'Create sessions and mark learners quickly.',
-                    route: 'OrgAttendance',
-                  },
-                  {
-                    title: 'Fees & balances',
-                    body: 'Charge fees, record payments, and view statements.',
-                    route: 'OrgFees',
-                  },
-                  {
-                    title: 'Sports calendar',
-                    body: 'Track fixtures and practice sessions.',
-                    route: 'OrgToolsSports',
-                  },
-                  {
-                    title: 'Clubs & societies',
-                    body: 'Create clubs and manage members.',
-                    route: 'OrgToolsClubs',
-                  },
-                  {
-                    title: 'Newsletters',
-                    body: 'Draft term updates and archive sends.',
-                    route: 'OrgNewsletters',
-                  },
-                  {
-                    title: 'Announcements',
-                    body: 'Post pinned notices for learners and instructors.',
-                    route: 'OrgAnnouncements',
-                  }].map((card) => (
-                    <TouchableOpacity
-                      key={card.title}
-                      disabled={!isProTier}
-                      onPress={() => navigation.navigate(card.route as any)}
-                      style={tw`mt-2 rounded-2xl px-3 py-3 border ${
-                        isProTier
-                          ? 'border-[#cedbe8] bg-[#f8fbff] dark:border-white/10 dark:bg-[#111b28]'
-                          : 'border-dashed border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20'
-                      }`}
-                    >
-                      <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>{card.title}</Text>
-                      <Text style={tw`mt-1 text-xs text-[#49739c] dark:text-white/70`}>{card.body}</Text>
-                      {!isProTier && (
-                        <Text style={tw`mt-1 text-[11px] font-semibold text-amber-700 dark:text-amber-200`}>
-                          Locked – upgrade to use
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  ))}
+                  {isInstructor && (
+                    <Text style={tw`mt-3 text-[11px] text-[#49739c] dark:text-white/70`}>
+                      Instructor view: you can use unlocked tools and manage learning, but plan upgrades & branding are controlled by your institution admin.
+                    </Text>
+                  )}
                 </View>
               )}
+
             </>
           )}
         </ScrollView>
