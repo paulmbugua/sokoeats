@@ -830,6 +830,7 @@ export interface OrgMembership {
   role: OrgRole;
   tier?: 'starter' | 'pro' | 'enterprise';
   features?: unknown;
+  can_access_fees?: boolean;
 }
 
 /** What /api/user/me returns (extend as needed) */

@@ -458,9 +458,11 @@ export async function getMyOrg(req, res) {
             END AS tier,
             s.seats,
             u.email AS owner_email,
-            m.role AS my_role
+            m.role AS my_role,
+            COALESCE(i.can_access_fees, false) AS can_access_fees
        FROM organizations o
        JOIN org_memberships m ON m.org_id = o.id
+  LEFT JOIN org_instructors i ON i.org_id = m.org_id AND i.user_id = m.user_id
   LEFT JOIN org_subscriptions s ON s.org_id = o.id AND s.active = TRUE
   LEFT JOIN users u ON u.id = o.owner_user_id
       WHERE m.user_id = $1
