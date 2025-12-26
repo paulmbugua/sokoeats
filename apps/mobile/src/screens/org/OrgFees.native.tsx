@@ -9,6 +9,8 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import tw from '../../../tailwind';
 
 import { useQuery } from '@tanstack/react-query';
@@ -43,6 +45,17 @@ function pickAdmissionCode(l: any) {
     l?.admission,
     l?.profile?.admission_code,
   );
+}
+
+const CACHE_DIR = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+
+function sanitizeFilenamePart(s: string) {
+  return String(s || '')
+    .trim()
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+    .slice(0, 80);
 }
 
 function pickLearnerName(l: any) {
@@ -275,6 +288,15 @@ export default function OrgFeesNative() {
     downloadStatementPdf,
   } = useOrgFeeStatement({ backendUrl, token: orgToken, orgId });
 
+  const [institutionTotals, setInstitutionTotals] = useState<
+    { currency: string; total_charged: number; total_paid: number; balance: number }[]
+  >([]);
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
+  const [loadingInstitution, setLoadingInstitution] = useState(false);
+  const [downloadingOrgPdf, setDownloadingOrgPdf] = useState(false);
+  const [downloadingInstitutionPdf, setDownloadingInstitutionPdf] = useState(false);
+
   const { rows: inboundUnmatched, loading: inboundLoading, fetchUnmatched, attachToLearner } = useOrgFeeInbound({
     backendUrl,
     token: orgToken,
@@ -289,6 +311,84 @@ export default function OrgFeesNative() {
       fetchBalances();
     }
   }, [backendUrl, orgId, orgToken, isPro, fetchStructures, fetchBalances]);
+
+  const fetchInstitutionStatement = useCallback(async () => {
+    if (!backendUrl || !orgId || !orgToken) return;
+    setLoadingInstitution(true);
+    try {
+      const params = new URLSearchParams();
+      if (rangeFrom) params.set('from', rangeFrom);
+      if (rangeTo) params.set('to', rangeTo);
+
+      const resp = await fetch(
+        `${backendUrl}/api/orgs/${orgId}/fees/institution-statement?${params.toString()}`,
+        { headers: { Authorization: `Bearer ${orgToken}` } },
+      );
+      if (!resp.ok) throw new Error('Unable to load totals');
+      const json = await resp.json();
+      setInstitutionTotals(Array.isArray(json?.totals_by_currency) ? json.totals_by_currency : []);
+    } catch (e: any) {
+      console.error(e);
+    } finally {
+      setLoadingInstitution(false);
+    }
+  }, [backendUrl, orgId, orgToken, rangeFrom, rangeTo]);
+
+  useEffect(() => {
+    fetchInstitutionStatement();
+  }, [fetchInstitutionStatement]);
+
+  const downloadPdfToDevice = useCallback(
+    async (path: string, fileLabel: string) => {
+      if (!backendUrl || !orgId || !orgToken || !CACHE_DIR) return;
+      const safeName = sanitizeFilenamePart(fileLabel || 'file') || 'file';
+      const res = await FileSystem.downloadAsync(`${backendUrl}${path}`, `${CACHE_DIR}${safeName}.pdf`, {
+        headers: { Authorization: `Bearer ${orgToken}` },
+      });
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(res.uri, {
+          dialogTitle: fileLabel,
+          mimeType: 'application/pdf',
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert('Downloaded', res.uri);
+      }
+    },
+    [backendUrl, orgId, orgToken],
+  );
+
+  const downloadOrgStructurePdf = useCallback(async () => {
+    if (!backendUrl || !orgId || !orgToken) return;
+    setDownloadingOrgPdf(true);
+    try {
+      await downloadPdfToDevice(`/api/orgs/${orgId}/fees/structure.pdf`, 'fee-structure');
+    } catch (e: any) {
+      Alert.alert('PDF', e?.message || 'Unable to download structure');
+    } finally {
+      setDownloadingOrgPdf(false);
+    }
+  }, [backendUrl, orgId, orgToken, downloadPdfToDevice]);
+
+  const downloadInstitutionStatementPdf = useCallback(async () => {
+    if (!backendUrl || !orgId || !orgToken) return;
+    setDownloadingInstitutionPdf(true);
+    try {
+      const params = new URLSearchParams();
+      if (rangeFrom) params.set('from', rangeFrom);
+      if (rangeTo) params.set('to', rangeTo);
+      await downloadPdfToDevice(
+        `/api/orgs/${orgId}/fees/institution-statement.pdf?${params.toString()}`,
+        'institution-fee-statement',
+      );
+    } catch (e: any) {
+      Alert.alert('PDF', e?.message || 'Unable to download statement');
+    } finally {
+      setDownloadingInstitutionPdf(false);
+    }
+  }, [backendUrl, orgId, orgToken, rangeFrom, rangeTo, downloadPdfToDevice]);
 
   /* ─────────────────────────────────────────────────────────
    * Structure builder state
@@ -611,6 +711,109 @@ export default function OrgFeesNative() {
         <Text style={[tw`text-sm mt-1`, { color: theme.subtext }]}>
           Build fee structures, create charges, record payments, and view statements.
         </Text>
+
+        {/* Institution summary + downloads */}
+        <View style={tw`mt-4`}>
+          <Card theme={theme}>
+            <H theme={theme}>Institution totals</H>
+            <P theme={theme}>Refresh multi-currency totals and download PDFs.</P>
+
+            <Divider theme={theme} />
+
+            <View style={tw`flex-row flex-wrap gap-3`}>
+              <View style={tw`flex-1 min-w-32`}>
+                <Tiny theme={theme}>From</Tiny>
+                <TextInput
+                  value={rangeFrom}
+                  onChangeText={setRangeFrom}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={theme.subtext}
+                  style={[tw`mt-1 rounded-2xl border px-3 py-2 text-sm`, { borderColor: theme.border, color: theme.text }]}
+                />
+              </View>
+              <View style={tw`flex-1 min-w-32`}>
+                <Tiny theme={theme}>To</Tiny>
+                <TextInput
+                  value={rangeTo}
+                  onChangeText={setRangeTo}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={theme.subtext}
+                  style={[tw`mt-1 rounded-2xl border px-3 py-2 text-sm`, { borderColor: theme.border, color: theme.text }]}
+                />
+              </View>
+            </View>
+
+            <View style={tw`flex-row flex-wrap gap-2 mt-3`}>
+              <TouchableOpacity
+                onPress={fetchInstitutionStatement}
+                disabled={loadingInstitution}
+                style={[
+                  tw`px-3 py-2 rounded-2xl`,
+                  { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1 },
+                  loadingInstitution ? tw`opacity-60` : null,
+                ]}
+              >
+                <Text style={[tw`text-xs font-semibold`, { color: theme.text }]}>
+                  {loadingInstitution ? 'Refreshing…' : 'Refresh totals'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={downloadInstitutionStatementPdf}
+                disabled={downloadingInstitutionPdf}
+                style={[
+                  tw`px-3 py-2 rounded-2xl`,
+                  { backgroundColor: theme.primary },
+                  downloadingInstitutionPdf ? tw`opacity-60` : null,
+                ]}
+              >
+                <Text style={tw`text-white text-xs font-semibold`}>
+                  {downloadingInstitutionPdf ? 'Downloading…' : 'Download institution statement PDF'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={downloadOrgStructurePdf}
+                disabled={downloadingOrgPdf}
+                style={[
+                  tw`px-3 py-2 rounded-2xl`,
+                  { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1 },
+                  downloadingOrgPdf ? tw`opacity-60` : null,
+                ]}
+              >
+                <Text style={[tw`text-xs font-semibold`, { color: theme.text }]}>
+                  {downloadingOrgPdf ? 'Preparing…' : 'Download fee structure PDF'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={tw`mt-3`}>
+              {institutionTotals && institutionTotals.length ? (
+                institutionTotals.map((t) => (
+                  <View
+                    key={t.currency}
+                    style={[tw`mb-2 rounded-2xl border p-3`, { borderColor: theme.border, backgroundColor: theme.card }]}
+                  >
+                    <Text style={[tw`text-xs uppercase`, { color: theme.subtext }]}>{t.currency}</Text>
+                    <Text style={[tw`text-sm mt-1`, { color: theme.text }]}>
+                      Charged: {moneyFromCents(t.total_charged || 0, t.currency)}
+                    </Text>
+                    <Text style={[tw`text-sm`, { color: theme.text }]}>
+                      Paid: {moneyFromCents(t.total_paid || 0, t.currency)}
+                    </Text>
+                    <Text style={[tw`text-sm font-semibold`, { color: theme.text }]}>
+                      Balance: {moneyFromCents(t.balance || 0, t.currency)}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={[tw`text-sm`, { color: theme.subtext }]}>
+                  No totals yet. Refresh after recording charges/payments.
+                </Text>
+              )}
+            </View>
+          </Card>
+        </View>
 
         {/* Callback URLs */}
         <View style={tw`mt-4`}>

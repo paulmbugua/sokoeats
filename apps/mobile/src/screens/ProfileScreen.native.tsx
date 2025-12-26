@@ -8,7 +8,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as ImagePicker from 'expo-image-picker';
 import tw from '../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useCourses } from '@mytutorapp/shared/hooks';
+import { useAiCourseEntitlements, useCourses } from '@mytutorapp/shared/hooks';
 import { useEnrollments } from '@mytutorapp/shared/hooks/useEnrollments';
 import { useCourseProgress } from '@mytutorapp/shared/hooks/useCourseProgress';
 import type {
@@ -300,6 +300,13 @@ const ProfileScreen: React.FC = () => {
     refreshWallet,
     setTokens: setCtxTokens,
   } = useShopContext() as any;
+
+  const {
+    items: aiCourses,
+    loading: aiCoursesLoading,
+    error: aiCoursesError,
+    refresh: refreshAiCourses,
+  } = useAiCourseEntitlements({ backendUrl, token: token || '' });
 
   // routing helpers
   const goHome = () => navigation.navigate('Home');
@@ -813,6 +820,93 @@ const ProfileScreen: React.FC = () => {
             </Pressable>
           </View>
         </View>
+
+        {token ? (
+          <View
+            style={tw`mb-4 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
+          >
+            <View style={tw`flex-row items-center justify-between mb-3`}>
+              <View style={tw`flex-1 mr-2`}>
+                <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                  Certificates
+                </Text>
+                <Text style={tw`text-sm text-[#49739c] dark:text-white/70`}>
+                  Purchased AI courses (certificate unlocks)
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => refreshAiCourses().catch(() => {})}
+                style={tw`px-3 py-2 rounded-lg bg-[#e7edf4] dark:bg-[#172534]`}
+              >
+                <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Refresh</Text>
+              </Pressable>
+            </View>
+
+            {aiCoursesLoading ? (
+              <Text style={tw`text-sm text-[#49739c] dark:text-white/70`}>Loading certificates…</Text>
+            ) : null}
+            {aiCoursesError ? (
+              <Text style={tw`text-sm text-red-600 dark:text-red-400`}>{aiCoursesError}</Text>
+            ) : null}
+
+            {aiCourses.length === 0 && !aiCoursesLoading ? (
+              <Text style={tw`text-sm text-[#49739c] dark:text-white/70`}>
+                You have no purchased AI courses yet. Buy a certificate to unlock lessons.
+              </Text>
+            ) : null}
+
+            {aiCourses.length > 0 && (
+              <View style={tw`gap-3`}>
+                {aiCourses.map((item) => {
+                  const status = item.completion?.passed
+                    ? 'Completed'
+                    : item.completion?.attempted
+                      ? 'In progress'
+                      : 'Not started';
+                  return (
+                    <View
+                      key={item.course_id}
+                      style={tw`border border-[#cedbe8] dark:border-white/10 bg-[#f6f9fc] dark:bg-[#0b1620] rounded-xl p-3`}
+                    >
+                      <View style={tw`flex-row items-center justify-between mb-2`}>
+                        <View style={tw`flex-1 mr-2`}>
+                          <Text style={tw`font-semibold text-[#0d141c] dark:text-white`} numberOfLines={1}>
+                            {item.title}
+                          </Text>
+                          <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+                            Lessons used {item.lessons_used}/{item.max_lessons}
+                          </Text>
+                        </View>
+                        <Text style={tw`text-[11px] px-2 py-1 rounded-full bg-[#e7edf4] dark:bg-[#172534] text-[#0d141c] dark:text-white/80`}>
+                          {status}
+                        </Text>
+                      </View>
+                      <View style={tw`flex-row gap-2 flex-wrap`}>
+                        {!item.completion?.passed ? (
+                          <Pressable
+                            onPress={() => navigation.navigate('CourseDetails', { courseId: item.course_id })}
+                            style={tw`px-3 py-2 rounded-lg bg-[#e7edf4] dark:bg-[#172534]`}
+                          >
+                            <Text style={tw`text-sm text-[#0d141c] dark:text-white`}>Continue course</Text>
+                          </Pressable>
+                        ) : (
+                          <Pressable
+                            onPress={() => navigation.navigate('Results', { courseId: item.course_id })}
+                            style={tw`px-3 py-2 rounded-lg bg-emerald-500/20`}
+                          >
+                            <Text style={tw`text-sm text-emerald-700 dark:text-emerald-200`}>
+                              View certificate
+                            </Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Tutor missing-profile alert */}
         {isTutor && !hasAnyProfile && !loadingProfile && (

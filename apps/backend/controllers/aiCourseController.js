@@ -26,6 +26,10 @@ import {
   blankLessonsFromOutline,
 } from '../services/narrationGate.js';
 import { getEntitlement } from './_entitlements.js';
+import {
+  incrementLessonUsage,
+  getCertificateEntitlement,
+} from './_aiCourseEntitlements.js';
 
 
 /* ─────────────────────────────────────────────────────────
@@ -524,6 +528,31 @@ const estimateText = Array.isArray(outline)
 }
 
 
+      let entitlementUsage = null;
+      if (userId) {
+        try {
+          const ent = await getCertificateEntitlement(userId, courseId);
+          if (ent) {
+            const inc = await incrementLessonUsage({
+              userId,
+              courseId,
+              amount: count,
+            });
+            if (!inc) {
+              return res
+                .status(403)
+                .json({ error: 'LESSON_LIMIT_REACHED', max: ent.max_lessons || 60 });
+            }
+            entitlementUsage = {
+              max: inc.max_lessons,
+              used: inc.lessons_used,
+            };
+          }
+        } catch (e) {
+          console.warn('[ai] entitlement check failed', e.message);
+        }
+      }
+
       const { status, data, headers } = await generateLessonSSMLService(
         {
           courseId,
@@ -547,6 +576,7 @@ const estimateText = Array.isArray(outline)
       data.mode = 'narration';
       data.notice = data.notice || buildGateNotice(gate);
       data.usage = data.usage || gate?.usage || [];
+      if (entitlementUsage) data.entitlement = entitlementUsage;
 
       // Compute actual usage + settle reservation
       let actualSeconds = 0;

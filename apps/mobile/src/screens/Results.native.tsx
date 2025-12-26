@@ -6,7 +6,7 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import type { MainStackParamList } from '../navigation/types';
 
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useAICertificates } from '@mytutorapp/shared/hooks';
+import { useAICertificates, useAiCourseEntitlements } from '@mytutorapp/shared/hooks';
 
 // Native payment slide-over/panel (implement this in your native screens folder)
 import PaymentWidget from './PaymentWidget.native';
@@ -171,6 +171,10 @@ const ResultsPage: React.FC = () => {
     claim,
     generate,
   } = useAICertificates({ backendUrl, token: token || '', courseId });
+  const { items: aiCourses } = useAiCourseEntitlements({
+    backendUrl,
+    token: token || '',
+  });
 
   const openExternal = (url?: string) => {
     if (!url) {
@@ -225,16 +229,65 @@ const ResultsPage: React.FC = () => {
               backendUrl={backendUrl}
               folderHint="certificates"
             />
-            <WatermarkPreview
-              title="Transcript"
-              pdfUrl={trans?.url || null}
-              folderHint="transcripts"
-            />
-          </View>
+          <WatermarkPreview
+            title="Transcript"
+            pdfUrl={trans?.url || null}
+            folderHint="transcripts"
+          />
+        </View>
 
-          {/* Actions */}
-          <View className="rounded-2xl p-4 border border-white bg-white/5">
-            <Text className="text-white font-semibold mb-2">Downloads</Text>
+        {aiCourses.length > 0 && (
+          <View className="gap-3">
+            <Text className="text-white font-semibold text-lg">Purchased AI courses</Text>
+            {aiCourses.map((item) => {
+              const status = item.completion?.passed
+                ? 'Completed'
+                : item.completion?.attempted
+                  ? 'In progress'
+                  : 'Not started';
+              return (
+                <View
+                  key={item.course_id}
+                  className="border border-white/10 bg-white/5 rounded-xl p-3 space-y-2"
+                >
+                  <View className="flex-row items-center justify-between">
+                    <View className="flex-1 mr-2">
+                      <Text className="text-white font-semibold" numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      <Text className="text-white/60 text-xs">
+                        Lessons used {item.lessons_used}/{item.max_lessons}
+                      </Text>
+                    </View>
+                    <Text className="text-white/70 text-xs">{status}</Text>
+                  </View>
+
+                  <View className="flex-row gap-2">
+                    {!item.completion?.passed ? (
+                      <Pressable
+                        onPress={() => navigation.navigate('CourseDetails', { courseId: item.course_id })}
+                        className="px-3 py-2 rounded-lg bg-white/10"
+                      >
+                        <Text className="text-white text-sm">Continue course</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable
+                        onPress={() => navigation.navigate('Results', { courseId: item.course_id })}
+                        className="px-3 py-2 rounded-lg bg-emerald-500/20"
+                      >
+                        <Text className="text-emerald-100 text-sm">View certificate</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Actions */}
+        <View className="rounded-2xl p-4 border border-white bg-white/5">
+          <Text className="text-white font-semibold mb-2">Downloads</Text>
             <Text className="text-white/70 text-sm mb-3">
               Pay the certificate fee once to download both the{' '}
               <Text className="font-medium">Certificate</Text> and{' '}
@@ -326,6 +379,36 @@ const ResultsPage: React.FC = () => {
             )}
           </View>
         </View>
+
+        {aiCourses.length > 0 && (
+          <View className="rounded-2xl bg-white/5 border border-white/10 p-3 space-y-2">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-white font-semibold text-sm">Purchased AI courses</Text>
+              <Text className="text-white/60 text-xs">certificate unlocks</Text>
+            </View>
+            {aiCourses.map((c) => {
+              const status = c.completion.passed
+                ? 'Completed'
+                : c.completion.attempted
+                  ? 'In progress'
+                  : 'Not started';
+              return (
+                <View
+                  key={`${c.course_id}-${c.course_source}`}
+                  className="rounded-xl bg-white/5 border border-white/10 p-3 mb-2"
+                >
+                  <Text className="text-white font-semibold text-sm">{c.title || 'AI Course'}</Text>
+                  <Text className="text-white/60 text-xs">
+                    Lessons: {c.lessons_used}/{c.max_lessons}
+                  </Text>
+                  <Text className="text-white/70 text-xs">
+                    Status: <Text className="font-semibold">{status}</Text> (pass ≥ {c.completion.pass_mark}%)
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
 
       {/* Payment slide-over (native) */}

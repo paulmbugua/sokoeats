@@ -3,6 +3,7 @@ import type {
   Certificate,
   VerifyCertificateResponse,
   CertificateRecord,
+  AiCourseCertificateEntitlement,
 } from '@mytutorapp/shared/types';
 
 export async function verifyCertificatePublic(
@@ -62,6 +63,16 @@ export async function getCertificateById(
     headers: { Authorization: `Bearer ${token}` },
   });
   return res.data;
+}
+
+export async function listMyAiCourses(
+  backendUrl: string,
+  token: string,
+): Promise<AiCourseCertificateEntitlement[]> {
+  const res = await axios.get(`${backendUrl}/api/certificates/my-ai-courses`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data?.items || [];
 }
 
 /** Convenience: secure, owner-checked download route (CERT) */

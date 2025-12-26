@@ -1,6 +1,7 @@
 // apps/backend/controllers/certificatesController.js
 import pool from '../config/db.js';
 import { isUuid, upsertEntitlement } from './_entitlements.js';
+import { upsertAiCertificateEntitlement } from './_aiCourseEntitlements.js';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -132,6 +133,12 @@ export async function issueCertificate(req, res) {
             courseId,
             extended: true, // org covers transcript
           });
+          await upsertAiCertificateEntitlement({
+            userId,
+            courseId,
+            courseSource: 'catalog',
+            maxLessons: 60,
+          });
         } catch (e) {
           console.warn('[aiCert] upsertEntitlement (org) failed:', e.message);
         }
@@ -187,6 +194,12 @@ export async function issueCertificate(req, res) {
           userId,
           courseId,
           extended: Boolean(extendedTier), // true => can_transcript + can_certificate
+        });
+        await upsertAiCertificateEntitlement({
+          userId,
+          courseId,
+          courseSource: 'catalog',
+          maxLessons: 60,
         });
       } catch (e) {
         console.warn('[aiCert] upsertEntitlement failed:', e.message);

@@ -603,6 +603,21 @@ export interface AICertificateIssuance {
   debitedTokens: number;
 }
 
+export interface AiCourseCertificateEntitlement {
+  course_id: string;
+  course_source: 'catalog' | 'sandbox' | string;
+  title?: string;
+  purchased_at?: string;
+  lessons_used: number;
+  max_lessons: number;
+  completion: {
+    attempted: boolean;
+    passed: boolean;
+    score_pct?: number | null;
+    pass_mark: number;
+  };
+}
+
 export interface UpdateProgressPayload {
   courseId: string;
   week: number;

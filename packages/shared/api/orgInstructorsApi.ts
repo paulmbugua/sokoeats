@@ -72,6 +72,42 @@ export async function createOrgInstructor(
   return resp.json();
 }
 
+export interface SetInstructorFeeAccessResponse {
+  ok: boolean;
+  designatedInstructorId?: string | number;
+}
+
+export async function setInstructorFeeAccess(
+  backendUrl: string,
+  token: string,
+  orgId: string | number,
+  instructorId: string | number,
+  enabled: boolean,
+): Promise<SetInstructorFeeAccessResponse> {
+  const base = backendUrl.replace(/\/+$/, '');
+  const resp = await fetch(`${base}/api/orgs/${orgId}/instructors/${instructorId}/fee-access`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ enabled }),
+  });
+
+  if (!resp.ok) {
+    let message = `Failed to update fee access (status ${resp.status})`;
+    try {
+      const data: any = await resp.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // ignore json parse errors
+    }
+    throw new Error(message);
+  }
+
+  return resp.json();
+}
+
 /**
  * Upload instructors CSV (used by instructor CSV import).
  * Expects field name "file" (matches orgRoutes upload.single('file')).

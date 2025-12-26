@@ -6,6 +6,7 @@ import axios from 'axios';
 import pool from '../config/db.js'; // PG pool
 import { generateCertificatePdfBuffer } from '../services/certificateService.js';
 import { getEntitlement, upsertEntitlement, isUuid } from './_entitlements.js';
+import { getEntitlementsForUser } from './_aiCourseEntitlements.js';
 
 // ---------- Validators ----------
 const generateSchema = Joi.object({
@@ -1152,5 +1153,78 @@ export async function getStatus(req, res) {
   } catch (err) {
     console.error('[cert] getStatus error', err);
     return res.status(500).json({ paid: false, error: err.message });
+  }
+}
+
+export async function listMyAiCourses(req, res) {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'UNAUTHORIZED' });
+
+    const entitlements = await getEntitlementsForUser(userId);
+    if (!entitlements?.length) return res.json({ items: [] });
+
+    const courseIds = entitlements
+      .map((e) => e.course_id)
+      .filter((c) => typeof c === 'string' && c.length);
+
+    const courseMeta = courseIds.length
+      ? await pool.query(
+          `SELECT id::text, title, pass_mark FROM courses WHERE id = ANY($1::uuid[])`,
+          [courseIds.filter((c) => isUuid(c))],
+        )
+      : { rows: [] };
+    const metaById = new Map(courseMeta.rows.map((r) => [r.id, r]));
+
+    const attemptsQ = courseIds.length
+      ? await pool.query(
+          `
+          SELECT a.course_id::text AS course_id,
+                 qa.score_pct,
+                 qa.pass_mark,
+                 qa.passed
+            FROM org_quiz_attempts qa
+            JOIN org_course_assignments a ON a.id = qa.assignment_id
+           WHERE qa.user_id::text = $1::text
+             AND a.course_id = ANY($2::uuid[])
+           ORDER BY qa.created_at DESC
+          `,
+          [userId, courseIds.filter((c) => isUuid(c))],
+        )
+      : { rows: [] };
+
+    const attemptByCourse = new Map();
+    for (const row of attemptsQ.rows || []) {
+      if (!attemptByCourse.has(row.course_id)) {
+        attemptByCourse.set(row.course_id, row);
+      }
+    }
+
+    const items = entitlements.map((ent) => {
+      const meta = metaById.get(ent.course_id) || {};
+      const att = attemptByCourse.get(ent.course_id) || {};
+      const passMark = Number(meta.pass_mark ?? att.pass_mark ?? 60) || 60;
+      const attempted = att.score_pct != null;
+      const passed = att.passed === true || (attempted && att.score_pct >= passMark);
+      return {
+        course_id: ent.course_id,
+        course_source: ent.course_source,
+        title: meta.title || 'AI Course',
+        purchased_at: ent.created_at,
+        lessons_used: ent.lessons_used,
+        max_lessons: ent.max_lessons,
+        completion: {
+          attempted,
+          passed,
+          score_pct: att.score_pct ?? null,
+          pass_mark: passMark,
+        },
+      };
+    });
+
+    return res.json({ items });
+  } catch (err) {
+    console.error('[cert] listMyAiCourses error', err);
+    return res.status(500).json({ error: 'FAILED_TO_LIST' });
   }
 }

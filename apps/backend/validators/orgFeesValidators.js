@@ -173,3 +173,8 @@ export const feePaymentSchema = Joi.object({
 export const balancesQuerySchema = Joi.object({
   class_label: Joi.string().allow('', null).default(null),
 }).default();
+
+export const dateRangeQuerySchema = Joi.object({
+  from: isoDate.allow(null).optional(),
+  to: isoDate.allow(null).optional(),
+}).default();

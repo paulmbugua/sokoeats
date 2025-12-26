@@ -10,6 +10,7 @@ import {
   ogPreview,
   downloadCertificate, // ⬅️ add this import
   getStatus,
+  listMyAiCourses,
 } from '../controllers/certificatesController.js';
 
 const router = express.Router();
@@ -24,6 +25,7 @@ router.get(`/:id(${UUID_RE})/og`, ogPreview);
 router.get(`/:id(${UUID_RE})/download`, anyAuth, downloadCertificate);
 
 router.get('/status', anyAuth, getStatus);
+router.get('/my-ai-courses', anyAuth, listMyAiCourses);
 
 router.get('/eligibility/:courseId', anyAuth, checkEligibility);
 router.get('/me', anyAuth, listMyCertificates);
