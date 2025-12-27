@@ -604,11 +604,15 @@ export interface AICertificateIssuance {
 }
 
 export interface AiCourseCertificateEntitlement {
+  purchased?: boolean;
+  tier?: string | null;
+  courseId?: string;
   course_id: string;
   course_source: 'catalog' | 'sandbox' | string;
   title?: string;
   purchased_at?: string;
   lessons_used: number;
+  lesson_cap?: number;
   max_lessons: number;
   completion: {
     attempted: boolean;

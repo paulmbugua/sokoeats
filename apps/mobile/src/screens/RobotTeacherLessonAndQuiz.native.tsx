@@ -9,7 +9,6 @@ import {
   Modal,
   Linking,
   useWindowDimensions,
-  Pressable,
   ActivityIndicator,
 } from 'react-native';
 import tw from '../../tailwind';
@@ -475,6 +474,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   } | null>(null);
   const [hideCertPill, setHideCertPill] = useState(false);
   const [paymentOk, setPaymentOk] = useState(false);
+  const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
 
   // NEW: standard vs extended flags
   const [certPaid, setCertPaid] = useState(false);
@@ -561,12 +561,15 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
     [gateMode, gateNotice?.reason, isLoggedIn]
   );
 
+  const narrationBlocked = gateMode === 'notes_only';
+
   useEffect(() => {
     restoreOnceRef.current = false;
     awaitingTopUpRef.current = false;
     debitInFlightRef.current = false;
     setUnlockReady(false);
     setPrePurchaseState(null);
+    setPurchaseNotice(null);
   }, [course?.id]);
 
   // Small helper to call your backend consistently
@@ -617,26 +620,15 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
       setCertPaid(Boolean(hasAnyCert || downUrl));
       setExtendedPaid(Boolean(isOrgFlowFlag || hasExtended));
       setPaymentOk(Boolean(hasAnyCert || downUrl));
+      if (hasAnyCert) {
+        setPurchaseNotice((prev) => prev || '✅ Purchased — narration unlocked. Pass quiz (≥70%) to generate PDF.');
+      }
     } catch {
       setCertPaid(Boolean(downUrl));
       setExtendedPaid((prev) => Boolean(prev || isOrgFlowFlag));
       setPaymentOk(Boolean(downUrl));
     }
   }, [api, course?.id, downUrl, isOrgFlowFlag]);
-
-  const unlockCertificate = useCallback(async () => {
-    try {
-      const doc = (await tryGenerateCertificate().catch(() => null)) || (await generateAICert().catch(() => null));
-
-      if (doc) {
-        const c: any = doc;
-        setCertUrl(c.url ?? null);
-        setDownUrl(c.download_url ?? c.downloadUrl ?? c.url ?? null);
-      }
-    } catch {
-      /* ignore unlock failures; status will still be refreshed */
-    }
-  }, [generateAICert, setCertUrl, setDownUrl, tryGenerateCertificate]);
 
   const debitAndUnlock = useCallback(async () => {
     if (debitInFlightRef.current) return;
@@ -645,41 +637,21 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
     try {
       // ✅ Use SKU claim (deducts tokens + grants entitlement)
       const sku = pickStandardCertSku(skus);
-        const code = sku ? skuCodeOf(sku) : '';
+      const code = sku ? skuCodeOf(sku) : '';
 
-        if (!code) {
-          console.warn('[cert unlock] missing sku code', {
-            skusLen: Array.isArray(skus) ? skus.length : 0,
-            sample: Array.isArray(skus) ? skus[0] : null,
-            aiCertLoading,
-            aiCertError,
-          });
-          throw new Error('Certificate SKU not available. Please refresh and try again.');
-        }
-
-        // 1) “Debit” via claim
-        try {
-          await claim(code);
-        } catch (e: any) {
-          console.error('[cert claim] FAIL', {
-            status: e?.status,
-            message: e?.message,
-            data: e?.data,
-          });
-
-          if (e?.status === 402 || e?.status === 409 || /insufficient|not enough|tokens/i.test(String(e?.message || ''))) {
-            awaitingTopUpRef.current = true;
-            setPaymentOpen(true);
-            return;
-          }
-
-          throw e;
-        }
-
+      if (!code) {
+        console.warn('[cert unlock] missing sku code', {
+          skusLen: Array.isArray(skus) ? skus.length : 0,
+          sample: Array.isArray(skus) ? skus[0] : null,
+          aiCertLoading,
+          aiCertError,
+        });
+        throw new Error('Certificate SKU not available. Please refresh and try again.');
+      }
 
       // 1) “Debit” via claim
       try {
-        await claim(sku.code);
+        await claim(code);
       } catch (e: any) {
         console.error('[cert claim] FAIL', {
           status: e?.status,
@@ -687,7 +659,6 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
           data: e?.data,
         });
 
-        // If backend signals insufficient tokens, open top-up
         if (e?.status === 402 || e?.status === 409 || /insufficient|not enough|tokens/i.test(String(e?.message || ''))) {
           awaitingTopUpRef.current = true;
           setPaymentOpen(true);
@@ -708,19 +679,14 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
       // 3) mark paid + unlock narration (main effect of pre-purchase)
       setPaymentOk(true);
       setCertPaid(true);
+      setPurchaseNotice('✅ Purchased — narration unlocked. Pass quiz (≥70%) to generate PDF.');
 
       // Close payment + go back to the exact UI state they were in
       setPaymentOpen(false);
       try {
         await restorePrePurchaseState();
       } catch {}
-
-      // 4) Only generate if they already passed
-      if (grade?.passed) {
-        await unlockCertificate();
-      } else {
-        Alert.alert('Narration unlocked', 'Certificate purchased. Pass the quiz (≥ 70%) to generate your PDF certificate.');
-      }
+      Alert.alert('Narration unlocked', 'Certificate purchased. Pass the quiz (≥ 70%) to generate your PDF certificate.');
     } catch (e: any) {
       console.error('[cert unlock] failed', e);
       Alert.alert('Certificate', e?.message || 'Could not unlock certificate.');
@@ -728,40 +694,36 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
       debitInFlightRef.current = false;
       awaitingTopUpRef.current = false;
     }
-  }, [
-    skus,
-    claim,
-    refreshUserDetails,
-    checkPaymentStatus,
-    unlockCertificate,
-    restorePrePurchaseState,
-    setPaymentOpen,
-    grade?.passed,
-    setCertPaid,
-  ]);
+    }, [
+      skus,
+      claim,
+      refreshUserDetails,
+      checkPaymentStatus,
+      restorePrePurchaseState,
+      setPaymentOpen,
+      setCertPaid,
+    ]);
 
-  
+  const handleBuyCertificate = useCallback(async () => {
+    if (!skusReady) {
+      Alert.alert('Certificate', 'Loading certificate options… please try again in a moment.');
+      return;
+    }
 
- const handleBuyCertificate = useCallback(async () => {
-  if (!skusReady) {
-    Alert.alert('Certificate', 'Loading certificate options… please try again in a moment.');
-    return;
-  }
+    if (!requireAuth('buy_certificate', 'Please sign in to buy your certificate.')) return;
+    if (debitInFlightRef.current) return;
 
-  if (!requireAuth('buy_certificate', 'Please sign in to buy your certificate.')) return;
-  if (debitInFlightRef.current) return;
+    const snap = snapshotPrePurchaseState();
 
-  const snap = snapshotPrePurchaseState();
+    if ((Number(tokens) || 0) >= CERT_COST_TOKENS) {
+      await debitAndUnlock();
+      return;
+    }
 
-  if ((Number(tokens) || 0) >= CERT_COST_TOKENS) {
-    await debitAndUnlock();
-    return;
-  }
-
-  awaitingTopUpRef.current = true;
-  setPaymentOpen(true);
-  setPrePurchaseState(snap);
-}, [debitAndUnlock, skusReady, requireAuth, snapshotPrePurchaseState, tokens]);
+    awaitingTopUpRef.current = true;
+    setPaymentOpen(true);
+    setPrePurchaseState(snap);
+  }, [debitAndUnlock, skusReady, requireAuth, snapshotPrePurchaseState, tokens]);
 
   // Capture state when the gate is shown or the payment drawer opens
   useEffect(() => {
@@ -1130,7 +1092,7 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
 
   // handlers
   const handleAnswer = (qid: string, value: number | string) => {
-    if (isLocked) return;
+    if (isLocked || narrationBlocked) return;
     const isMcq = enforcedQuizType === 'mcq';
     const next = isMcq ? Number(value) : value;
     setWorkingAnswers((prev) => ({ ...prev, [qid]: next }));
@@ -1340,6 +1302,39 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
 
   const hasTranscriptAccess = Boolean(isOrgFlowFlag || extendedPaid);
 
+  const generateCertificateNow = useCallback(
+    async (assumeExtended?: boolean) => {
+      if (!requireAuth('generate_certificate', 'Please sign in to generate your certificate.')) return;
+      if (!grade?.passed) {
+        Alert.alert('Certificate', 'Pass the quiz (≥ 70%) to generate your certificate.');
+        return;
+      }
+
+      try {
+        const doc =
+          (await tryGenerateCertificate().catch((e) => {
+            throw e;
+          })) ||
+          (await generateAICert().catch((e) => {
+            throw e;
+          }));
+
+        await handleGeneratedCert(doc, Boolean(assumeExtended));
+      } catch (e: any) {
+        if (
+          (e?.status === 409 || e?.status === 403) &&
+          (e?.data?.error === 'PASS_REQUIRED' || e?.data?.errorCode === 'PASS_REQUIRED' || e?.message === 'PASS_REQUIRED')
+        ) {
+          Alert.alert('Certificate', e?.data?.message || 'Pass the quiz (≥ 70%) to generate your certificate.');
+          return;
+        }
+
+        Alert.alert('Certificate', e?.data?.message || e?.message || 'Could not generate certificate. Please try again.');
+      }
+    },
+    [generateAICert, grade?.passed, handleGeneratedCert, requireAuth, tryGenerateCertificate]
+  );
+
   // persisted cert pill visibility
   const showPersistedCertPill = useMemo(() => {
     if (hideCertPill) return false;
@@ -1357,46 +1352,60 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
     <>
       {/* Gate CTA (parity with web) */}
       {certCta.show && !isOrgFlowFlag && !paymentOk ? (
-        <View style={tw`mb-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3`}>
-          <Text style={tw`text-amber-200 text-sm`}>Certificate costs 20 tokens (≈ USD 20).</Text>
-          <Text style={tw`text-amber-200 text-sm mt-1`}>Buying now unlocks narration immediately.</Text>
-          <Text style={tw`text-amber-200 text-sm mt-1`}>Generate the certificate after you pass the quiz.</Text>
+        <View
+          style={tw`mb-3 rounded-2xl bg-amber-100 dark:bg-amber-500/10 border border-amber-400 dark:border-amber-500/30 p-3`}
+        >
+          <Text style={tw`text-amber-900 dark:text-amber-200 text-sm`}>
+            Certificate costs 20 tokens (≈ USD 20).
+          </Text>
+          <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
+            Buying now unlocks narration immediately.
+          </Text>
+          <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
+            Generate the certificate after you pass the quiz.
+          </Text>
 
-          <Text style={tw`text-amber-200 text-sm mt-1`}>
+          <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
             If you don’t have enough tokens, the payment widget opens so you can buy tokens.
           </Text>
 
           <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
-           <TouchableOpacity
-            onPress={handleBuyCertificate}
-            disabled={!skusReady || debitInFlightRef.current}
-            style={tw.style(
-              'px-4 py-2 rounded-xl',
-              !skusReady || debitInFlightRef.current ? 'bg-indigo-600/40' : 'bg-indigo-600'
-            )}
-          >
-            <Text style={tw`text-white font-semibold`}>
-              {aiCertLoading ? 'Loading…' : debitInFlightRef.current ? 'Processing…' : 'Buy'}
-            </Text>
-          </TouchableOpacity>
-
-            </View>
+            <TouchableOpacity
+              onPress={handleBuyCertificate}
+              disabled={!skusReady || debitInFlightRef.current}
+              style={tw.style(
+                'px-4 py-2 rounded-xl',
+                !skusReady || debitInFlightRef.current ? 'bg-indigo-600/40' : 'bg-indigo-600'
+              )}
+            >
+              <Text style={tw`text-white font-semibold`}>
+                {aiCertLoading ? 'Loading…' : debitInFlightRef.current ? 'Processing…' : 'Buy certificate (20 tokens)'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : null}
 
       {/* ✅ Paid but not passed: narration unlocked notice */}
       {!isOrgFlowFlag && paymentOk && !grade?.passed ? (
-        <View style={tw`mb-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 p-3`}>
-          <Text style={tw`text-emerald-200 text-sm`}>✅ Certificate purchased — narration unlocked.</Text>
-          <Text style={tw`text-white/70 text-[12px] mt-1`}>Pass the quiz (≥ 70%) to generate your certificate PDF.</Text>
+        <View
+          style={tw`mb-3 rounded-2xl bg-emerald-100 dark:bg-emerald-500/10 border border-emerald-400 dark:border-emerald-500/30 p-3`}
+        >
+          <Text style={tw`text-emerald-900 dark:text-emerald-200 text-sm`}>
+            {purchaseNotice || '✅ Purchased — narration unlocked. Pass quiz (≥70%) to generate PDF.'}
+          </Text>
         </View>
       ) : null}
 
       {/* Persisted certificate pill (AsyncStorage) */}
       {showPersistedCertPill ? (
-        <View style={tw`mb-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 p-3`}>
-          <Text style={tw`text-emerald-200 text-sm font-semibold`}>Certificate available</Text>
-          <Text style={tw`text-white/70 text-[12px] mt-1`}>We found a previously generated certificate for this course.</Text>
+        <View
+          style={tw`mb-3 rounded-2xl bg-emerald-100 dark:bg-emerald-500/10 border border-emerald-400 dark:border-emerald-500/30 p-3`}
+        >
+          <Text style={tw`text-emerald-900 dark:text-emerald-200 text-sm font-semibold`}>Certificate available</Text>
+          <Text style={tw`text-emerald-900 dark:text-white/80 text-[12px] mt-1`}>
+            We found a previously generated certificate for this course.
+          </Text>
 
           <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
             {(persistedCert?.certUrl || certUrl) ? (
@@ -1510,13 +1519,20 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
           <View style={tw`mt-3 flex-row items-center gap-2`}>
             <TouchableOpacity
               onPress={() => {
+                if (narrationBlocked) return;
                 const timeLabel = displayTimerSec > 0 ? fmtHMS(displayTimerSec) : 'No time limit';
                 setConfirmInfo({ lessons: displayLessons, questions: displayQuestions, timeLabel });
                 setConfirmOpen(true);
               }}
-              style={tw`px-3 py-2 rounded-full bg-indigo-600`}
+              disabled={narrationBlocked}
+              style={tw.style(
+                'px-3 py-2 rounded-full',
+                narrationBlocked ? 'bg-indigo-400/50' : 'bg-indigo-600'
+              )}
             >
-              <Text style={tw`text-white font-semibold text-sm`}>Generate quiz</Text>
+              <Text style={tw`text-white font-semibold text-sm`}>
+                {narrationBlocked ? 'Quiz locked' : 'Generate quiz'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1664,28 +1680,29 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
                           const isSelected = current === i;
 
                           return (
-                            <Pressable
+                            <TouchableOpacity
                               key={`${q.id}:${i}`}
                               onPress={() => handleAnswer(q.id, i)}
-                              disabled={isLocked}
-                              hitSlop={8}
-                              pressRetentionOffset={{ top: 16, left: 16, right: 16, bottom: 16 }}
-                              android_ripple={{ borderless: false }}
+                              disabled={isLocked || narrationBlocked}
                               accessibilityRole="button"
-                              accessibilityState={{ disabled: isLocked, selected: isSelected }}
+                              accessibilityState={{
+                                disabled: isLocked || narrationBlocked,
+                                selected: isSelected,
+                              }}
                               style={({ pressed }) =>
                                 tw.style(
                                   'px-4 py-3 rounded-xl border',
                                   isSelected ? 'bg-emerald-600/30 border-emerald-500' : 'bg-white/5 border-white/10',
                                   pressed ? 'opacity-80' : '',
-                                  isLocked ? 'opacity-60' : ''
+                                  isLocked || narrationBlocked ? 'opacity-60' : ''
                                 )
                               }
+                              activeOpacity={0.7}
                             >
                               <Text style={tw`text-white`}>
                                 <Markdown inline>{String(c || '')}</Markdown>
                               </Text>
-                            </Pressable>
+                            </TouchableOpacity>
                           );
                         })
                       ) : (
@@ -1741,9 +1758,7 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
                               await claim(sku.code);
                             } catch {}
                           }
-                          const doc =
-                            (await tryGenerateCertificate().catch(() => null)) || (await generateAICert().catch(() => null));
-                          await handleGeneratedCert(doc, true);
+                          await generateCertificateNow(true);
                         } catch (e) {
                           console.error('[org] manual issue failed', e);
                           Alert.alert('Issue failed', 'Please try again.');
@@ -1785,20 +1800,13 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
                   <View style={tw`mt-2`}>
                     {paymentOk ? (
                       <View style={tw`mt-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3`}>
-                        <Text style={tw`text-emerald-200 text-sm`}>✅ Certificate already purchased (20 tokens). You can generate it now.</Text>
+                        <Text style={tw`text-emerald-200 text-sm`}>
+                          ✅ Certificate already purchased (20 tokens). You can generate it now.
+                        </Text>
 
                         <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
                           <TouchableOpacity
-                            onPress={async () => {
-                              try {
-                                const doc =
-                                  (await tryGenerateCertificate().catch(() => null)) || (await generateAICert().catch(() => null));
-                                await handleGeneratedCert(doc, false);
-                              } catch (e) {
-                                console.error('[generate after pass] failed', e);
-                                Alert.alert('Certificate', 'Could not generate certificate. Please try again.');
-                              }
-                            }}
+                            onPress={() => generateCertificateNow(false)}
                             style={tw`px-4 py-2 rounded-xl bg-emerald-600`}
                           >
                             <Text style={tw`text-white font-semibold`}>Generate Certificate</Text>
@@ -1831,8 +1839,6 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
                         <View style={tw`mt-2`}>
                           {(skus || []).map((sku) => {
                             const price = Number(sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? 0);
-                            const hasEnoughTokens = (Number(tokens) || 0) >= price;
-                            const canClaimNow = Boolean(grade?.passed) && hasEnoughTokens;
                             const isExtended = looksExtendedSku(sku);
 
                             return (
@@ -1849,26 +1855,19 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
                                   <Text style={tw`text-white font-semibold`}>{price} Tokens</Text>
 
                                   <TouchableOpacity
-                                    disabled={!canClaimNow}
+                                    disabled={!skusReady || debitInFlightRef.current}
                                     onPress={async () => {
-                                      if (!token || !canClaimNow) return;
-                                      try {
-                                        await claim(sku.code);
-                                        const doc: any = await generateAICert();
-                                        setCertPaid(true);
-                                        if (isExtended) setExtendedPaid(true);
-                                        await handleGeneratedCert(doc, isExtended);
-                                        try {
-                                          await refreshUserDetails?.();
-                                        } catch {}
-                                      } catch (e) {
-                                        console.error('[tokens] claim/generate failed', e);
-                                        Alert.alert('Certificate', 'Could not generate certificate.');
-                                      }
+                                      await handleBuyCertificate();
+                                      if (isExtended) setExtendedPaid(true);
                                     }}
-                                    style={tw.style('px-3 py-1.5 rounded', canClaimNow ? 'bg-emerald-600' : 'bg-emerald-600/50')}
+                                    style={tw.style(
+                                      'px-3 py-1.5 rounded',
+                                      !skusReady || debitInFlightRef.current ? 'bg-emerald-600/50' : 'bg-emerald-600'
+                                    )}
                                   >
-                                    <Text style={tw`text-white text-sm font-semibold`}>Claim &amp; Generate</Text>
+                                    <Text style={tw`text-white text-sm font-semibold`}>
+                                      Buy certificate (20 tokens)
+                                    </Text>
                                   </TouchableOpacity>
                                 </View>
                               </View>

@@ -250,16 +250,6 @@ async function hasCertificateEntitlement(userId, courseId) {
   return false;
 }
 
-/**
- * ✅ Policy knobs:
- * - REQUIRE_CERT_ENTITLEMENT_FOR_NARRATION=true + programTrack=certificate => narration requires entitlement.
- * - CERTIFICATE_UNLOCKS_NARRATION=true => if user has entitlement, narration cap is bypassed (self-serve only).
- */
-const REQUIRE_CERT_ENTITLEMENT_FOR_NARRATION =
-  String(process.env.REQUIRE_CERT_ENTITLEMENT_FOR_NARRATION || '')
-    .trim()
-    .toLowerCase() === 'true';
-
 const CERTIFICATE_UNLOCKS_NARRATION =
   String(process.env.CERTIFICATE_UNLOCKS_NARRATION || 'true')
     .trim()

@@ -136,6 +136,28 @@ function getMessage(err: unknown): string | undefined {
   return (err as { message?: string })?.message;
 }
 
+function parseLessonCapMessage(err: unknown): string | null {
+  const status = getStatusCode(err);
+  if (status !== 409) return null;
+
+  const bodyText = (err as any)?.bodyText;
+  if (typeof bodyText === 'string' && bodyText.trim()) {
+    try {
+      const parsed = JSON.parse(bodyText);
+      if (parsed?.error === 'LESSON_CAP_REACHED') {
+        return parsed?.message || 'Lesson limit reached (60).';
+      }
+    } catch {
+      if (bodyText.toLowerCase().includes('lesson limit')) return bodyText;
+    }
+  }
+
+  const msg = getMessage(err);
+  if (msg && msg.toLowerCase().includes('lesson limit')) return msg;
+
+  return 'Lesson limit reached (60).';
+}
+
 function getOrCreateAnonId(): string {
   const key = 'ANON_ID';
   try {
@@ -197,6 +219,9 @@ export function useAiCourse(backendUrl: string, authToken?: string, flowHints?: 
   const [gateMode, setGateMode] = useState<LessonGateMode>('narration');
   const [gateNotice, setGateNotice] = useState<LessonGateNotice | null>(null);
   const [gateUsage, setGateUsage] = useState<LessonGateUsage[]>([]);
+  const [entitlementUsage, setEntitlementUsage] = useState<
+    { used: number; max: number } | null
+  >(null);
   const [certificate, setCertificate] = useState<Certificate | null>(null);
 
   const [hasMoreCourses, setHasMoreCourses] = useState<boolean>(false);
@@ -327,6 +352,7 @@ export function useAiCourse(backendUrl: string, authToken?: string, flowHints?: 
       setAnswers({});
       setGrade(null);
       setCertificate(null);
+      setEntitlementUsage(null);
       setDegradedNotice(null);
       resetTts();
       setStep('idle');
@@ -429,48 +455,72 @@ export function useAiCourse(backendUrl: string, authToken?: string, flowHints?: 
           });
         }
 
-        const pack = await createLessonSSML(
-          backendUrl,
-          {
-            courseId,
-            outline: ol,
-            voiceName: lastVoiceRef.current,
-            courseSize: lastSizeRef.current,
-            start: index,
-            count: 1,
-            programTrack: buildKnobs({ courseSize: lastSizeRef.current }).programTrack,
-             assignmentId: assignmentIdRef.current ?? undefined,
-            noPrewarm: 1,
-          } as any,
-          { token,anonId }
-        );
+        const pack = await (async () => {
+          try {
+            return await createLessonSSML(
+              backendUrl,
+              {
+                courseId,
+                outline: ol,
+                voiceName: lastVoiceRef.current,
+                courseSize: lastSizeRef.current,
+                start: index,
+                count: 1,
+                programTrack: buildKnobs({ courseSize: lastSizeRef.current }).programTrack,
+                assignmentId: assignmentIdRef.current ?? undefined,
+                noPrewarm: 1,
+              } as any,
+              { token, anonId },
+            );
+          } catch (e: unknown) {
+            const capMsg = parseLessonCapMessage(e);
+            if (capMsg && getStatusCode(e) === 409) {
+              setError(capMsg);
+              setStep('error');
+              const err: any = new Error(capMsg);
+              err.code = 'LESSON_CAP_REACHED';
+              err.status = getStatusCode(e);
+              throw err;
+            }
+            throw e;
+          }
+        })();
 
-       const mode = ((pack as any)?.mode as LessonGateMode | undefined) || 'narration';
+        const mode = ((pack as any)?.mode as LessonGateMode | undefined) || 'narration';
 
-setGateMode(mode);
-setGateNotice(((pack as any)?.notice as LessonGateNotice) || null);
-setGateUsage(((pack as any)?.usage as LessonGateUsage[]) || []);
+        setGateMode(mode);
+        setGateNotice(((pack as any)?.notice as LessonGateNotice) || null);
+        setGateUsage(((pack as any)?.usage as LessonGateUsage[]) || []);
 
-const maybeL = pack?.lessons?.[0] as LessonLite | undefined;
+        const ent =
+          (pack as any)?.entitlement as { max?: number; used?: number } | undefined;
+        if (ent && typeof ent.max === 'number') {
+          setEntitlementUsage({
+            max: Number(ent.max),
+            used: Number(ent.used ?? 0),
+          });
+        }
 
-// Ensure we ALWAYS end up with a real LessonLite (never undefined)
-let L: LessonLite;
+        const maybeL = pack?.lessons?.[0] as LessonLite | undefined;
 
-if (maybeL) {
-  L = maybeL;
-} else if (mode === 'notes_only') {
-  // Notes-only mode may legitimately not have SSML; provide a safe placeholder lesson
-  const fallbackTitle = String(ol?.[index]?.title || `Lesson ${index + 1}`);
-  L = {
-    id: `${courseId}:notes_only:${index}`,
-    title: fallbackTitle,
-    ssml: '',
-    markdown: '_Notes are available, but narration is currently locked._',
-  };
-} else {
-  // Not notes_only and no lesson returned -> backend didn’t give what we need
-  throw new Error('lesson_missing');
-}
+        // Ensure we ALWAYS end up with a real LessonLite (never undefined)
+        let L: LessonLite;
+
+        if (maybeL) {
+          L = maybeL;
+        } else if (mode === 'notes_only') {
+          // Notes-only mode may legitimately not have SSML; provide a safe placeholder lesson
+          const fallbackTitle = String(ol?.[index]?.title || `Lesson ${index + 1}`);
+          L = {
+            id: `${courseId}:notes_only:${index}`,
+            title: fallbackTitle,
+            ssml: '',
+            markdown: '_Notes are available, but narration is currently locked._',
+          };
+        } else {
+          // Not notes_only and no lesson returned -> backend didn’t give what we need
+          throw new Error('lesson_missing');
+        }
 
 // If narration is allowed, SSML must be present
 if (!L.ssml && mode !== 'notes_only') {
@@ -622,6 +672,7 @@ return L;
 
       setError(null);
       setStep('outlining');
+      setEntitlementUsage(null);
 
       const voice = opts?.voiceName || DEFAULT_SIZE.voiceName;
       const knobs = buildKnobs({
@@ -1126,6 +1177,7 @@ return L;
     gateMode,
     gateNotice,
     gateUsage,
+    entitlementUsage,
 
     quiz,
     answers,
