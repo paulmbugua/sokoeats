@@ -1,4 +1,4 @@
-// apps/backend/controllers/certificateController.js
+// apps/backend/controllers/certificatesController.js
 import Joi from 'joi';
 import { v2 as cloudinary } from 'cloudinary';
 import { Readable } from 'stream';
@@ -6,7 +6,7 @@ import axios from 'axios';
 import pool from '../config/db.js'; // PG pool
 import { generateCertificatePdfBuffer } from '../services/certificateService.js';
 import { getEntitlement, upsertEntitlement, isUuid } from './_entitlements.js';
-import { getEntitlementsForUser } from './_aiCourseEntitlements.js';
+import { getEntitlementsForUser,upsertAiCertificateEntitlement, } from './_aiCourseEntitlements.js';
 
 // ---------- Validators ----------
 const generateSchema = Joi.object({
@@ -1178,7 +1178,9 @@ export async function downloadCertificate(req, res) {
 
 export async function getStatus(req, res) {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.id; // numeric users.id
+    const authUuid = pickAuthUuidFromReqUser(req.user); // ✅ ADD THIS LINE
+
     const courseId = String(req.query.courseId || '');
     if (!userId)
       return res.status(401).json({ paid: false, error: 'Unauthorized' });
@@ -1192,17 +1194,17 @@ export async function getStatus(req, res) {
       ),
       pool.query(
         `SELECT 1
-                    FROM org_quiz_attempts q
-                    JOIN org_course_assignments a ON a.id = q.assignment_id
-                   WHERE q.user_id = $1 AND a.course_id = $2
-                     AND q.submitted_at IS NOT NULL AND q.passed = TRUE
-                   LIMIT 1`,
+           FROM org_quiz_attempts q
+           JOIN org_course_assignments a ON a.id = q.assignment_id
+          WHERE q.user_id = $1 AND a.course_id = $2
+            AND q.submitted_at IS NOT NULL AND q.passed = TRUE
+          LIMIT 1`,
         [userId, courseId],
       ),
       pool.query(
         `SELECT 1 FROM ai_certificate_issuances
-                   WHERE user_id = $1 AND (course_id IS NULL OR course_id = $2)
-                   LIMIT 1`,
+          WHERE user_id = $1 AND (course_id IS NULL OR course_id = $2)
+          LIMIT 1`,
         [userId, courseId],
       ),
       getEntitlement(pool, userId, courseId).catch(() => null),
@@ -1220,10 +1222,8 @@ export async function getStatus(req, res) {
     const purchased = purQ.rowCount > 0;
     const enrolled = enrQ.rowCount > 0;
 
-    // NEW: treat Extended by issuance as extended even if entitlement row hasn’t been written yet
     const extendedByIssuance = await hasExtendedByIssuance(userId, courseId);
 
-    // Any cert? (purchase/enrollment also grants cert access for free)
     const hasAnyCert =
       orgCovered ||
       purchased ||
@@ -1232,7 +1232,6 @@ export async function getStatus(req, res) {
       certQ.rowCount > 0 ||
       issuQ.rowCount > 0;
 
-    // Extended?
     const extended =
       orgCovered || ent?.can_transcript === true || extendedByIssuance;
 
@@ -1245,6 +1244,31 @@ export async function getStatus(req, res) {
       try {
         await upsertEntitlement(pool, { userId, courseId, extended: false });
       } catch {}
+    }
+
+    // ✅ INSERT YOUR BLOCK RIGHT HERE (after hasAnyCert is known)
+    // Ensure "Purchased AI courses" reflects certificate pre-purchases (and org cover).
+    if (hasAnyCert) {
+      const userUuid =
+        authUuid ||
+        (userId ? await resolveAuthUuidForNumericUserId(userId) : null);
+
+      if (userUuid) {
+        try {
+          await upsertAiCertificateEntitlement({
+            userId: userUuid,           // ✅ UUID, not numeric
+            courseId,                   // validated uuid
+            courseSource: 'catalog',
+            maxLessons: 60,
+            // orgId: orgCovered ? someOrgId : null, // optional if you track it
+          });
+        } catch (e) {
+          console.warn(
+            '[cert] getStatus: upsertAiCertificateEntitlement failed',
+            e?.message,
+          );
+        }
+      }
     }
 
     const tier = extended
@@ -1265,6 +1289,7 @@ export async function getStatus(req, res) {
   }
 }
 
+
 export async function listMyAiCourses(req, res) {
   try {
     const numericUserId = req.user?.id; // your existing numeric users.id (e.g. 1631)
@@ -1281,6 +1306,39 @@ export async function listMyAiCourses(req, res) {
 
     // If we can’t resolve a UUID, don’t 500
     if (!userUuid) {
+      let entitlements = await getEntitlementsForUser(userUuid);
+
+      // ✅ Heal missing entitlements from issuances (token purchases)
+      if ((!entitlements || !entitlements.length) && numericUserId) {
+        try {
+          const issu = await pool.query(
+            `
+            SELECT DISTINCT course_id
+              FROM ai_certificate_issuances
+            WHERE user_id = $1
+              AND course_id IS NOT NULL
+            `,
+            [numericUserId],
+          );
+
+          for (const r of issu.rows) {
+            const cid = String(r.course_id || '').trim();
+            if (!cid) continue;
+
+            await upsertAiCertificateEntitlement({
+              userId: userUuid,
+              courseId: cid,
+              courseSource: isUuid(cid) ? 'catalog' : 'typed',
+              maxLessons: 60,
+            });
+          }
+
+          entitlements = await getEntitlementsForUser(userUuid);
+        } catch (e) {
+          console.warn('[cert] listMyAiCourses: seed from issuances failed', e?.message);
+        }
+      }
+
       console.warn('[cert] listMyAiCourses: could not resolve auth UUID', {
         numericUserId,
         hasTokenSub: !!req.user?.sub,

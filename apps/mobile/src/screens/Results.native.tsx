@@ -8,7 +8,7 @@ import type { MainStackParamList } from '../navigation/types';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useAICertificates, useAiCourseEntitlements } from '@mytutorapp/shared/hooks';
 
-// Native payment slide-over/panel (implement this in your native screens folder)
+// Native payment slide-over/panel
 import PaymentWidget from './PaymentWidget.native';
 
 type GradeLike = {
@@ -89,13 +89,16 @@ function WatermarkPreview({
 
 const ResultsPage: React.FC = () => {
   const navigation = useNavigation<Nav>();
-  const route = useRoute<any>(); // expect params from previous screen
+  const route = useRoute<any>();
   const { backendUrl, token } = useShopContext();
 
   // Prior screen should pass these via route.params
   const courseId: string | undefined = route.params?.courseId;
   const courseTitle: string | undefined = route.params?.courseTitle;
   const grade: GradeLike | undefined = route.params?.grade;
+
+  // ✅ FIX: declare passed BEFORE any effect uses it
+  const passed = Boolean(grade?.passed);
 
   const [paymentOpen, setPaymentOpen] = useState(false);
 
@@ -117,7 +120,7 @@ const ResultsPage: React.FC = () => {
     if (r.status === 204) return null as any;
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
-      const e: any = new Error(data?.error || `Request failed: ${r.status}`);
+      const e: any = new Error((data as any)?.error || `Request failed: ${r.status}`);
       e.status = r.status;
       e.data = data;
       throw e;
@@ -131,14 +134,15 @@ const ResultsPage: React.FC = () => {
 
     (async () => {
       if (!courseId) return;
+      if (!passed) return; // ✅ don’t even try before passing
 
       try {
         const c = await api(`/api/certificates/generate`, {
           method: 'POST',
           body: JSON.stringify({ courseId }),
         }).catch((e) => {
-          if (e?.status === 402) return null; // payment required
-          throw e;
+          if (e?.status === 402) return null;
+          return null;
         });
         if (!abort && c?.id) setCert(c);
       } catch {}
@@ -149,7 +153,7 @@ const ResultsPage: React.FC = () => {
           body: JSON.stringify({ courseId }),
         }).catch((e) => {
           if (e?.status === 402) return null;
-          throw e;
+          return null;
         });
         if (!abort && t?.id) setTrans(t);
       } catch {}
@@ -158,9 +162,8 @@ const ResultsPage: React.FC = () => {
     return () => {
       abort = true;
     };
-  }, [backendUrl, token, courseId]);
-
-  const passed = Boolean(grade?.passed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendUrl, token, courseId, passed]);
 
   // Tokens-first hook (AI certificates)
   const {
@@ -171,7 +174,9 @@ const ResultsPage: React.FC = () => {
     claim,
     generate,
   } = useAICertificates({ backendUrl, token: token || '', courseId });
-  const { items: aiCourses } = useAiCourseEntitlements({
+
+  // ✅ safer default to avoid crashes if items is undefined
+  const { items: aiCourses = [] } = useAiCourseEntitlements({
     backendUrl,
     token: token || '',
   });
@@ -206,7 +211,9 @@ const ResultsPage: React.FC = () => {
 
           {/* Score card */}
           <View
-            className={`rounded-2xl p-4 ${passed ? 'bg-emerald-500/10' : 'bg-red-500/10'} ${passed ? 'ring-emerald-500/40' : 'ring-red-500/40'} ring-1`}
+            className={`rounded-2xl p-4 ${
+              passed ? 'bg-emerald-500/10' : 'bg-red-500/10'
+            } ${passed ? 'ring-emerald-500/40' : 'ring-red-500/40'} ring-1`}
           >
             <Text className="text-white/80 text-sm">Score</Text>
             <Text className="text-2xl font-semibold text-white">
@@ -229,65 +236,67 @@ const ResultsPage: React.FC = () => {
               backendUrl={backendUrl}
               folderHint="certificates"
             />
-          <WatermarkPreview
-            title="Transcript"
-            pdfUrl={trans?.url || null}
-            folderHint="transcripts"
-          />
-        </View>
+            <WatermarkPreview
+              title="Transcript"
+              pdfUrl={trans?.url || null}
+              folderHint="transcripts"
+            />
+          </View>
 
-        {aiCourses.length > 0 && (
-          <View className="gap-3">
-            <Text className="text-white font-semibold text-lg">Purchased AI courses</Text>
-            {aiCourses.map((item) => {
-              const status = item.completion?.passed
-                ? 'Completed'
-                : item.completion?.attempted
+          {aiCourses.length > 0 && (
+            <View className="gap-3">
+              <Text className="text-white font-semibold text-lg">Purchased AI courses</Text>
+              {aiCourses.map((item: any) => {
+                const status = item.completion?.passed
+                  ? 'Completed'
+                  : item.completion?.attempted
                   ? 'In progress'
                   : 'Not started';
-              return (
-                <View
-                  key={item.course_id}
-                  className="border border-white/10 bg-white/5 rounded-xl p-3 space-y-2"
-                >
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-1 mr-2">
-                      <Text className="text-white font-semibold" numberOfLines={1}>
-                        {item.title}
-                      </Text>
-                      <Text className="text-white/60 text-xs">
-                        Lessons used {item.lessons_used}/{item.max_lessons}
-                      </Text>
+                return (
+                  <View
+                    key={item.course_id}
+                    className="border border-white/10 bg-white/5 rounded-xl p-3 space-y-2"
+                  >
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-1 mr-2">
+                        <Text className="text-white font-semibold" numberOfLines={1}>
+                          {item.title}
+                        </Text>
+                        <Text className="text-white/60 text-xs">
+                          Lessons used {item.lessons_used}/{item.max_lessons}
+                        </Text>
+                      </View>
+                      <Text className="text-white/70 text-xs">{status}</Text>
                     </View>
-                    <Text className="text-white/70 text-xs">{status}</Text>
-                  </View>
 
-                  <View className="flex-row gap-2">
-                    {!item.completion?.passed ? (
-                      <Pressable
-                        onPress={() => navigation.navigate('CourseDetails', { courseId: item.course_id })}
-                        className="px-3 py-2 rounded-lg bg-white/10"
-                      >
-                        <Text className="text-white text-sm">Continue course</Text>
-                      </Pressable>
-                    ) : (
-                      <Pressable
-                        onPress={() => navigation.navigate('Results', { courseId: item.course_id })}
-                        className="px-3 py-2 rounded-lg bg-emerald-500/20"
-                      >
-                        <Text className="text-emerald-100 text-sm">View certificate</Text>
-                      </Pressable>
-                    )}
+                    <View className="flex-row gap-2">
+                      {!item.completion?.passed ? (
+                        <Pressable
+                          onPress={() =>
+                            navigation.navigate('CourseDetails', { courseId: item.course_id })
+                          }
+                          className="px-3 py-2 rounded-lg bg-white/10"
+                        >
+                          <Text className="text-white text-sm">Continue course</Text>
+                        </Pressable>
+                      ) : (
+                        <Pressable
+                          onPress={() => navigation.navigate('Results', { courseId: item.course_id })}
+                          className="px-3 py-2 rounded-lg bg-emerald-500/20"
+                        >
+                          <Text className="text-emerald-100 text-sm">View certificate</Text>
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
+                );
+              })}
+            </View>
+          )}
 
-        {/* Actions */}
-        <View className="rounded-2xl p-4 border border-white bg-white/5">
-          <Text className="text-white font-semibold mb-2">Downloads</Text>
+          {/* Actions */}
+          <View className="rounded-2xl p-4 border border-white bg-white/5">
+            <Text className="text-white font-semibold mb-2">Downloads</Text>
             <Text className="text-white/70 text-sm mb-3">
               Pay the certificate fee once to download both the{' '}
               <Text className="font-medium">Certificate</Text> and{' '}
@@ -297,9 +306,7 @@ const ResultsPage: React.FC = () => {
             {/* Tokens-first block */}
             <View className="mb-4 p-3 rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/30">
               <Text className="text-white font-medium text-sm">Claim with Tokens</Text>
-              <Text className="text-white/70 text-xs mb-2">
-                No processor fees for AI certificates.
-              </Text>
+              <Text className="text-white/70 text-xs mb-2">No processor fees for AI certificates.</Text>
 
               {aiCertLoading ? (
                 <Text className="text-xs text-white/60">Loading certificate options…</Text>
@@ -308,7 +315,7 @@ const ResultsPage: React.FC = () => {
               {aiCertMsg ? <Text className="text-xs text-emerald-300">{aiCertMsg}</Text> : null}
 
               <View className="gap-2 mt-2">
-                {(skus || []).map((sku) => (
+                {(skus || []).map((sku: any) => (
                   <View
                     key={sku.code}
                     className="flex-row items-center justify-between rounded-lg p-2 bg-white/5 ring-1 ring-white/15"
@@ -328,17 +335,20 @@ const ResultsPage: React.FC = () => {
                           try {
                             await claim(sku.code);
                             const doc = await generate();
-                            if (doc?.id)
+                            if (doc?.id) {
                               setCert({
                                 id: doc.id,
                                 url: doc.url,
                                 download_url: (doc as any).download_url,
                               });
+                            }
                           } catch (e) {
                             console.error('[Results] token claim/generate failed', e);
                           }
                         }}
-                        className={`px-3 py-1.5 rounded ${passed ? 'bg-emerald-600' : 'bg-emerald-600/50'}`}
+                        className={`px-3 py-1.5 rounded ${
+                          passed ? 'bg-emerald-600' : 'bg-emerald-600/50'
+                        }`}
                       >
                         <Text className="text-white text-sm">Claim & Generate</Text>
                       </Pressable>
@@ -352,21 +362,27 @@ const ResultsPage: React.FC = () => {
               <Pressable
                 onPress={() => setPaymentOpen(true)}
                 disabled={!passed}
-                className={`h-10 px-4 rounded-lg justify-center ${passed ? 'bg-indigo-600' : 'bg-indigo-600/40'}`}
+                className={`h-10 px-4 rounded-lg justify-center ${
+                  passed ? 'bg-indigo-600' : 'bg-indigo-600/40'
+                }`}
               >
                 <Text className="text-white text-sm font-semibold">Pay certificate fee</Text>
               </Pressable>
 
               <Pressable
                 onPress={() => openExternal(cert?.download_url)}
-                className={`h-10 px-4 rounded-lg justify-center ${cert?.download_url ? 'bg-white/10' : 'bg-white/5'} ring-1 ${cert?.download_url ? 'ring-white/20' : 'ring-white/10'}`}
+                className={`h-10 px-4 rounded-lg justify-center ${
+                  cert?.download_url ? 'bg-white/10' : 'bg-white/5'
+                } ring-1 ${cert?.download_url ? 'ring-white/20' : 'ring-white/10'}`}
               >
                 <Text className="text-white text-sm font-semibold">Download Certificate (PDF)</Text>
               </Pressable>
 
               <Pressable
                 onPress={() => openExternal(trans?.download_url)}
-                className={`h-10 px-4 rounded-lg justify-center ${trans?.download_url ? 'bg-white/10' : 'bg-white/5'} ring-1 ${trans?.download_url ? 'ring-white/20' : 'ring-white/10'}`}
+                className={`h-10 px-4 rounded-lg justify-center ${
+                  trans?.download_url ? 'bg-white/10' : 'bg-white/5'
+                } ring-1 ${trans?.download_url ? 'ring-white/20' : 'ring-white/10'}`}
               >
                 <Text className="text-white text-sm font-semibold">Download Transcript (PDF)</Text>
               </Pressable>
@@ -379,36 +395,6 @@ const ResultsPage: React.FC = () => {
             )}
           </View>
         </View>
-
-        {aiCourses.length > 0 && (
-          <View className="rounded-2xl bg-white/5 border border-white/10 p-3 space-y-2">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-white font-semibold text-sm">Purchased AI courses</Text>
-              <Text className="text-white/60 text-xs">certificate unlocks</Text>
-            </View>
-            {aiCourses.map((c) => {
-              const status = c.completion.passed
-                ? 'Completed'
-                : c.completion.attempted
-                  ? 'In progress'
-                  : 'Not started';
-              return (
-                <View
-                  key={`${c.course_id}-${c.course_source}`}
-                  className="rounded-xl bg-white/5 border border-white/10 p-3 mb-2"
-                >
-                  <Text className="text-white font-semibold text-sm">{c.title || 'AI Course'}</Text>
-                  <Text className="text-white/60 text-xs">
-                    Lessons: {c.lessons_used}/{c.max_lessons}
-                  </Text>
-                  <Text className="text-white/70 text-xs">
-                    Status: <Text className="font-semibold">{status}</Text> (pass ≥ {c.completion.pass_mark}%)
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        )}
       </ScrollView>
 
       {/* Payment slide-over (native) */}

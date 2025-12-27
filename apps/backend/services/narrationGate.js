@@ -494,38 +494,39 @@ export async function narrationPreflight({
     }
   }
 
-  // --- SELF-SERVE LOGGED-IN (daily cap; certificate can unlock) ---
+ 
+ // --- SELF-SERVE LOGGED-IN (daily cap; certificate can unlock) ---
 
-  // Optional: if you truly want certificate-track narration gated, make it explicit and consistent
-  if (REQUIRE_CERT_ENTITLEMENT_FOR_NARRATION && track === 'certificate') {
-    const entitled = await hasCertificateEntitlement(userId, courseId);
-    if (!entitled) {
-      return {
-        ok: false,
-        mode: 'notes_only',
-        reason: 'entitlement_required', // client: "Buy certificate to unlock narration"
-        resetsAt: null,
-        remainingMinutes: 0,
-      };
-    }
+// ✅ Always require entitlement for certificate track narration access
+if (track === 'certificate') {
+  const entitled = await hasCertificateEntitlement(userId, courseId);
+  if (!entitled) {
+    return {
+      ok: false,
+      mode: 'notes_only',
+      reason: 'entitlement_required', // client: "Buy certificate to unlock narration"
+      resetsAt: null,
+      remainingMinutes: 0,
+    };
   }
+}
 
-  // ✅ If certificate is purchased, narration quota restriction is removed (self-serve only)
-  if (CERTIFICATE_UNLOCKS_NARRATION) {
-    const entitled = await hasCertificateEntitlement(userId, courseId);
-    if (entitled) {
-      return {
-        ok: true,
-        mode: 'narration',
-        reserveMin,
-        resetsAt: null,
-        remainingMinutes: null,
-        usage: [],
-        // no reservation => no quota tracking / no finalize needed
-        unlimited: true,
-      };
-    }
+// ✅ If certificate is purchased, narration quota restriction is removed (self-serve only)
+if (CERTIFICATE_UNLOCKS_NARRATION) {
+  const entitled = await hasCertificateEntitlement(userId, courseId);
+  if (entitled) {
+    return {
+      ok: true,
+      mode: 'narration',
+      reserveMin,
+      resetsAt: null,
+      remainingMinutes: null,
+      usage: [],
+      unlimited: true,
+    };
   }
+}
+
 
   // Otherwise: enforce daily cap
   const profileSubjectId = await resolveProfileSubjectUuid(userId);

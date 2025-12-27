@@ -528,30 +528,40 @@ const estimateText = Array.isArray(outline)
 }
 
 
-      let entitlementUsage = null;
-      if (userId) {
-        try {
-          const ent = await getCertificateEntitlement(userId, courseId);
-          if (ent) {
-            const inc = await incrementLessonUsage({
-              userId,
-              courseId,
-              amount: count,
-            });
-            if (!inc) {
-              return res
-                .status(403)
-                .json({ error: 'LESSON_LIMIT_REACHED', max: ent.max_lessons || 60 });
-            }
-            entitlementUsage = {
-              max: inc.max_lessons,
-              used: inc.lessons_used,
-            };
-          }
-        } catch (e) {
-          console.warn('[ai] entitlement check failed', e.message);
-        }
+      // ✅ Enforce 60-lesson cap for certificate entitlement (only when entitlement exists)
+let entitlementUsage = null;
+
+if (userId) {
+  try {
+    const ent = await getCertificateEntitlement(userId, courseId);
+
+    // Only enforce lesson cap when the user has the certificate entitlement row
+    if (ent) {
+      const ok = await incrementLessonUsage({
+        userId,          // can be numeric; helper normalizes to UUID inside
+        courseId,
+        amount: count,   // IMPORTANT: count, not 1
+      });
+
+      if (!ok) {
+        return res.status(402).json({
+          error: 'LESSON_LIMIT_REACHED',
+          message: 'You have reached the 60-lesson limit for this AI course.',
+          max: ent.max_lessons || 60,
+        });
       }
+
+      entitlementUsage = {
+        max: ok.max_lessons,
+        used: ok.lessons_used,
+      };
+    }
+  } catch (e) {
+    console.warn('[ai] entitlement check failed', e?.message);
+  }
+}
+
+
 
       const { status, data, headers } = await generateLessonSSMLService(
         {

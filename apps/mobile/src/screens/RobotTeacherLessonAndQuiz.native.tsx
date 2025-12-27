@@ -1,5 +1,5 @@
 // apps/mobile/src/screens/RobotTeacherLessonAndQuiz.native.tsx
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -40,10 +40,7 @@ const fmtHMS = (totalSeconds: number) => {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(
-    2,
-    '0'
-  )}`;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 };
 const fmtHMSms = (ms: number) => fmtHMS(Math.floor(Math.max(0, ms) / 1000));
 const CERT_COST_TOKENS = 20;
@@ -56,11 +53,7 @@ function minQuestionsFor(totalLessons: number, opts?: { lessonIndex?: number }) 
   const units = isInt(opts?.lessonIndex) ? 1 : Math.max(1, Number(totalLessons) || 0);
   return MIN_PER_LESSON * units;
 }
-function applyMinPerLesson(
-  requested: number | undefined | null,
-  totalLessons: number,
-  opts?: { lessonIndex?: number }
-) {
+function applyMinPerLesson(requested: number | undefined | null, totalLessons: number, opts?: { lessonIndex?: number }) {
   const req = Number(requested ?? 0);
   const minQ = minQuestionsFor(totalLessons, opts);
   return Math.max(minQ, Number.isFinite(req) ? req : 0);
@@ -71,8 +64,7 @@ const extractCertId = (docOrUrl: any): string | null => {
   const direct = docOrUrl?.certId || docOrUrl?.certificateId || docOrUrl?.id;
   if (typeof direct === 'string' && direct) return direct;
   const u = String(docOrUrl?.download_url || docOrUrl?.downloadUrl || docOrUrl?.url || docOrUrl || '');
-  const m =
-    u.match(/\/certificates\/([^/]+)\/(?:download|view|raw)?/i) || u.match(/[?&]certId=([^&]+)/i);
+  const m = u.match(/\/certificates\/([^/]+)\/(?:download|view|raw)?/i) || u.match(/[?&]certId=([^&]+)/i);
   return m?.[1] ?? null;
 };
 const extractTranscriptId = (docOrUrl: any): string | null => {
@@ -409,9 +401,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
   // working answers (number | string)
   const [retakeMode, setRetakeMode] = useState(false);
-  const [workingAnswers, setWorkingAnswers] = useState<Record<string, number | string | undefined>>(
-    {}
-  );
+  const [workingAnswers, setWorkingAnswers] = useState<Record<string, number | string | undefined>>({});
 
   // certificate pre-purchase snapshot + restore
   const [prePurchaseState, setPrePurchaseState] = useState<{
@@ -446,9 +436,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     restoreOnceRef.current = true;
 
     try {
-      const targetLesson = Number.isFinite(prePurchaseState.lessonIndex)
-        ? prePurchaseState.lessonIndex
-        : currentIdx;
+      const targetLesson = Number.isFinite(prePurchaseState.lessonIndex) ? prePurchaseState.lessonIndex : currentIdx;
       const delta = targetLesson - currentIdx;
 
       if (delta !== 0) {
@@ -491,22 +479,75 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   // NEW: standard vs extended flags
   const [certPaid, setCertPaid] = useState(false);
   const [extendedPaid, setExtendedPaid] = useState(false);
+  
+  const skusReady = useMemo(
+  () => Array.isArray(skus) && skus.length > 0 && !aiCertLoading && !aiCertError,
+  [skus, aiCertLoading, aiCertError]
+);
 
-  const looksExtendedSku = (sku: any): boolean => {
-    const s = (v: any) => (typeof v === 'string' ? v.toLowerCase() : '');
-    const title = s(sku?.title);
-    const code = s(sku?.code);
-    const tier = s(sku?.tier || sku?.plan || sku?.level || sku?.kind);
-    const tags = Array.isArray(sku?.tags) ? sku.tags.map(s) : [];
-    return (
-      tier.includes('extended') ||
-      title.includes('extended') ||
-      title.includes('transcript') ||
-      /\b(ext|extended|xtra|plus)\b/.test(code) ||
-      tags.includes('extended') ||
-      tags.includes('transcript')
-    );
-  };
+  const normStr = (v: any) => (typeof v === 'string' ? v.trim() : '');
+const lower = (v: any) => normStr(v).toLowerCase();
+
+const skuCodeOf = (sku: any) =>
+  normStr(sku?.code) ||
+  normStr(sku?.skuCode) ||
+  normStr(sku?.sku_code) ||
+  normStr(sku?.product_code) ||
+  normStr(sku?.sku) ||
+  ''; // must be non-empty for claim()
+
+const priceTokensOf = (sku: any) =>
+  Number(sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? sku?.tokens ?? 0) || 0;
+
+const looksCertificateSku = (sku: any) => {
+  const title = lower(sku?.title);
+  const kind = lower(sku?.kind ?? sku?.type ?? sku?.purpose ?? sku?.meta?.purpose);
+  // adjust if your backend uses a different marker
+  return (
+    kind.includes('certificate') ||
+    title.includes('certificate') ||
+    title.includes('cert')
+  );
+};
+
+const looksExtendedSku = (sku: any): boolean => {
+  const title = lower(sku?.title);
+  const code = lower(sku?.code ?? sku?.skuCode ?? sku?.sku_code);
+  const tier = lower(sku?.tier || sku?.plan || sku?.level || sku?.kind);
+  const tags = Array.isArray(sku?.tags) ? sku.tags.map(lower) : [];
+  return (
+    tier.includes('extended') ||
+    title.includes('extended') ||
+    title.includes('transcript') ||
+    /\b(ext|extended|xtra|plus)\b/.test(code) ||
+    tags.includes('extended') ||
+    tags.includes('transcript')
+  );
+};
+
+const pickStandardCertSku = (skusList: any[] | undefined | null) => {
+  const list = Array.isArray(skusList) ? skusList : [];
+  if (!list.length) return null;
+
+  // ✅ only certificate skus
+  const certs = list.filter(looksCertificateSku);
+  const pool0 = certs.length ? certs : list;
+
+  // ✅ prefer standard
+  const standard = pool0.filter((s) => !looksExtendedSku(s));
+  const pool = standard.length ? standard : pool0;
+
+  // ✅ must have a claim code
+  const withCode = pool.filter((s) => skuCodeOf(s));
+  if (!withCode.length) return null;
+
+  // ✅ prefer exact 20 tokens else cheapest
+  const exact = withCode.filter((s) => priceTokensOf(s) === CERT_COST_TOKENS);
+  const base = exact.length ? exact : withCode;
+
+  return base.sort((a, b) => priceTokensOf(a) - priceTokensOf(b))[0] || null;
+};
+
 
   // CTA banner parity with web (for narration lock)
   const isLoggedIn = Boolean(token);
@@ -562,9 +603,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
         setExtendedPaid(false);
         return;
       }
-      const s = await api<any>(
-        `/api/certificates/status?courseId=${encodeURIComponent(courseId)}`
-      ).catch(() => null);
+      const s = await api<any>(`/api/certificates/status?courseId=${encodeURIComponent(courseId)}`).catch(() => null);
 
       const tier = typeof s?.tier === 'string' ? s.tier.toLowerCase() : null;
       const hasExtended = s?.extended === true || s?.canTranscript === true || tier === 'extended';
@@ -587,9 +626,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
   const unlockCertificate = useCallback(async () => {
     try {
-      const doc =
-        (await tryGenerateCertificate().catch(() => null)) ||
-        (await generateAICert().catch(() => null));
+      const doc = (await tryGenerateCertificate().catch(() => null)) || (await generateAICert().catch(() => null));
 
       if (doc) {
         const c: any = doc;
@@ -604,69 +641,127 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   const debitAndUnlock = useCallback(async () => {
     if (debitInFlightRef.current) return;
     debitInFlightRef.current = true;
-    try {
-      const res = await fetch(`${backendUrl}/api/payments/debit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          amountTokens: CERT_COST_TOKENS,
-          reason: 'ai_certificate_unlock',
-        }),
-      });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as any)?.error || 'Could not deduct tokens.');
+    try {
+      // ✅ Use SKU claim (deducts tokens + grants entitlement)
+      const sku = pickStandardCertSku(skus);
+        const code = sku ? skuCodeOf(sku) : '';
+
+        if (!code) {
+          console.warn('[cert unlock] missing sku code', {
+            skusLen: Array.isArray(skus) ? skus.length : 0,
+            sample: Array.isArray(skus) ? skus[0] : null,
+            aiCertLoading,
+            aiCertError,
+          });
+          throw new Error('Certificate SKU not available. Please refresh and try again.');
+        }
+
+        // 1) “Debit” via claim
+        try {
+          await claim(code);
+        } catch (e: any) {
+          console.error('[cert claim] FAIL', {
+            status: e?.status,
+            message: e?.message,
+            data: e?.data,
+          });
+
+          if (e?.status === 402 || e?.status === 409 || /insufficient|not enough|tokens/i.test(String(e?.message || ''))) {
+            awaitingTopUpRef.current = true;
+            setPaymentOpen(true);
+            return;
+          }
+
+          throw e;
+        }
+
+
+      // 1) “Debit” via claim
+      try {
+        await claim(sku.code);
+      } catch (e: any) {
+        console.error('[cert claim] FAIL', {
+          status: e?.status,
+          message: e?.message,
+          data: e?.data,
+        });
+
+        // If backend signals insufficient tokens, open top-up
+        if (e?.status === 402 || e?.status === 409 || /insufficient|not enough|tokens/i.test(String(e?.message || ''))) {
+          awaitingTopUpRef.current = true;
+          setPaymentOpen(true);
+          return;
+        }
+
+        throw e;
       }
 
+      // 2) refresh wallet + entitlement status (best-effort)
       try {
         await refreshUserDetails?.();
       } catch {}
-
       try {
         await checkPaymentStatus();
       } catch {}
 
+      // 3) mark paid + unlock narration (main effect of pre-purchase)
       setPaymentOk(true);
-      setForceUnlock(true);
-      setUnlockReady(true);
-      await unlockCertificate();
+      setCertPaid(true);
 
+      // Close payment + go back to the exact UI state they were in
       setPaymentOpen(false);
-      await restorePrePurchaseState();
+      try {
+        await restorePrePurchaseState();
+      } catch {}
+
+      // 4) Only generate if they already passed
+      if (grade?.passed) {
+        await unlockCertificate();
+      } else {
+        Alert.alert('Narration unlocked', 'Certificate purchased. Pass the quiz (≥ 70%) to generate your PDF certificate.');
+      }
     } catch (e: any) {
-      console.error('[cert debit] failed', e);
-      Alert.alert('Certificate', e?.message || 'Could not deduct tokens.');
+      console.error('[cert unlock] failed', e);
+      Alert.alert('Certificate', e?.message || 'Could not unlock certificate.');
     } finally {
       debitInFlightRef.current = false;
       awaitingTopUpRef.current = false;
     }
   }, [
-    backendUrl,
-    checkPaymentStatus,
+    skus,
+    claim,
     refreshUserDetails,
-    restorePrePurchaseState,
-    token,
+    checkPaymentStatus,
     unlockCertificate,
+    restorePrePurchaseState,
+    setPaymentOpen,
+    grade?.passed,
+    setCertPaid,
   ]);
 
-  const handleBuyCertificate = useCallback(async () => {
-    const snap = snapshotPrePurchaseState();
-    if (!requireAuth('buy_certificate', 'Please sign in to buy your certificate.')) return;
-    if (debitInFlightRef.current) return;
+  
 
-    if ((Number(tokens) || 0) >= CERT_COST_TOKENS) {
-      await debitAndUnlock();
-      return;
-    }
+ const handleBuyCertificate = useCallback(async () => {
+  if (!skusReady) {
+    Alert.alert('Certificate', 'Loading certificate options… please try again in a moment.');
+    return;
+  }
 
-    awaitingTopUpRef.current = true;
-    setPaymentOpen(true);
-    setPrePurchaseState(snap);
-  }, [debitAndUnlock, requireAuth, snapshotPrePurchaseState, tokens]);
+  if (!requireAuth('buy_certificate', 'Please sign in to buy your certificate.')) return;
+  if (debitInFlightRef.current) return;
+
+  const snap = snapshotPrePurchaseState();
+
+  if ((Number(tokens) || 0) >= CERT_COST_TOKENS) {
+    await debitAndUnlock();
+    return;
+  }
+
+  awaitingTopUpRef.current = true;
+  setPaymentOpen(true);
+  setPrePurchaseState(snap);
+}, [debitAndUnlock, skusReady, requireAuth, snapshotPrePurchaseState, tokens]);
 
   // Capture state when the gate is shown or the payment drawer opens
   useEffect(() => {
@@ -683,11 +778,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
   // Auto-run once the wallet becomes sufficient after top-up
   useEffect(() => {
-    if (
-      awaitingTopUpRef.current &&
-      prePurchaseState &&
-      (Number(tokens) || 0) >= CERT_COST_TOKENS
-    ) {
+    if (awaitingTopUpRef.current && prePurchaseState && (Number(tokens) || 0) >= CERT_COST_TOKENS) {
       debitAndUnlock();
     }
   }, [debitAndUnlock, prePurchaseState, tokens]);
@@ -716,9 +807,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   // quiz type helpers
   // ───────────────────────────────────────────────────────
   const normQt = (v: unknown): 'mcq' | 'short' | undefined => {
-    const s = String(v ?? '')
-      .trim()
-      .toLowerCase();
+    const s = String(v ?? '').trim().toLowerCase();
     if (s === 'short') return 'short';
     if (s === 'mcq') return 'mcq';
     return undefined;
@@ -755,9 +844,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   }, [pendingQuizGen, quiz?.questions, enforcedQuizType]);
 
   // What we *ask* the generator to create (if org lock not known yet)
-  const desiredQuizType: 'mcq' | 'short' = (orgMeta?.quizType || urlQuizTypeHint || 'mcq') as
-    | 'mcq'
-    | 'short';
+  const desiredQuizType: 'mcq' | 'short' = (orgMeta?.quizType || urlQuizTypeHint || 'mcq') as 'mcq' | 'short';
 
   const assignmentKey = useMemo(() => {
     if (assignmentId) return String(assignmentId);
@@ -782,10 +869,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     (async () => {
       if (!isOrgFlow || !assignmentId || !token) return;
       try {
-        const r = await fetch(
-          `${backendUrl}/api/orgs/assignments/${encodeURIComponent(assignmentId)}/mine`,
-          { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } }
-        );
+        const r = await fetch(`${backendUrl}/api/orgs/assignments/${encodeURIComponent(assignmentId)}/mine`, {
+          headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        });
         if (!r.ok) return;
         const data = await r.json();
         const lc = data?.meta?.locked_config ?? data?.locked_config ?? data?.assignment?.locked_config ?? {};
@@ -915,10 +1001,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
         null;
 
       if (certId) {
-        const fileName = `${(courseTitle || 'certificate')
-          .trim()
-          .replace(/\s+/g, '-')
-          .toLowerCase()}-${certId}.pdf`;
+        const fileName = `${(courseTitle || 'certificate').trim().replace(/\s+/g, '-').toLowerCase()}-${certId}.pdf`;
         await downloadCertificateFile(backendUrl, token, certId, fileName);
         return;
       }
@@ -1006,8 +1089,10 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     '+': '⁺',
     '-': '⁻',
   };
-  const toSub = (s: string) => s.replace(/[0-9+\-]/g, (m) => SUBS[m] || m);
-  const toSup = (s: string) => s.replace(/[0-9+\-]/g, (m) => SUPS[m] || m);
+
+  // ✅ Fix eslint no-useless-escape: no need to escape '-' in a char class when it's last
+  const toSub = (s: string) => s.replace(/[0-9+-]/g, (m) => SUBS[m] || m);
+  const toSup = (s: string) => s.replace(/[0-9+-]/g, (m) => SUPS[m] || m);
 
   const applyToLastShort = (transformer: (s: string) => string) => {
     const qid = lastShortQidRef.current;
@@ -1120,8 +1205,8 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
   // Non-org: did the user manually set lesson count?
   const manualLessonsSelected = useMemo(
-    () => userOverrodeLessons && Number.isFinite(Number(safeLessons)) && Number(safeLessons) > 0,
-    [userOverrodeLessons, safeLessons]
+    () => !!overrideLessons && !isOrgFlow && Number.isFinite(Number(safeLessons)) && Number(safeLessons) > 0,
+    [overrideLessons, isOrgFlow, safeLessons]
   );
 
   const startQuiz = useCallback(async () => {
@@ -1132,8 +1217,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       if (isOrgFlow && typeof assignmentId === 'string' && assignmentId.length > 0) {
         if (!requireAuth('start_attempt', 'Please sign in to start your attempt.')) return;
 
-        const timerSecEff =
-          (orgMeta?.timer_s ?? timerSec ?? 0) > 0 ? Number(orgMeta?.timer_s ?? timerSec) : 0;
+        const timerSecEff = (orgMeta?.timer_s ?? timerSec ?? 0) > 0 ? Number(orgMeta?.timer_s ?? timerSec) : 0;
 
         const att = await startAttempt({
           assignmentId,
@@ -1154,10 +1238,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
         markActive();
       }
 
-      const desiredRequested =
-        orgMeta?.quizSize ?? safeQuiz ?? Number(confirmInfo.questions || 0);
+      const desiredRequested = orgMeta?.quizSize ?? safeQuiz ?? Number(confirmInfo.questions || 0);
 
-      const minOpts = userOverrodeLessons ? {} : { lessonIndex: currentIdx };
+      const minOpts = manualLessonsSelected ? {} : { lessonIndex: currentIdx };
       const desiredQ = applyMinPerLesson(Number(desiredRequested || 0), displayLessons, minOpts);
 
       const passNumQ = isOrgFlow && assignmentId && Number.isFinite(orgMeta?.quizSize) ? undefined : desiredQ;
@@ -1165,15 +1248,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
       await Promise.resolve(
         generateQuizNow
-          ? generateQuizNow(
-              passNumQ,
-              undefined,
-              undefined,
-              passTotalLessons,
-              assignmentId,
-              desiredQuizType,
-              { lessonIndex: currentIdx }
-            )
+          ? generateQuizNow(passNumQ, undefined, undefined, passTotalLessons, assignmentId, desiredQuizType, {
+              lessonIndex: currentIdx,
+            })
           : Promise.reject(new Error('generateQuizNow is not provided'))
       );
 
@@ -1211,7 +1288,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     displayLessons,
     safeLessons,
     manualLessonsSelected,
-    userOverrodeLessons,
+    overrideLessons,
   ]);
 
   // Transcript generation (native)
@@ -1259,18 +1336,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       }
       Alert.alert('Transcript', 'Could not generate/download transcript. Please try again.');
     }
-  }, [
-    api,
-    course?.id,
-    isOrgFlowFlag,
-    extendedPaid,
-    requireAuth,
-    setPaymentOpen,
-    backendUrl,
-    token,
-    courseTitle,
-    outline,
-  ]);
+  }, [api, course?.id, isOrgFlowFlag, extendedPaid, requireAuth, setPaymentOpen, backendUrl, token, courseTitle, outline]);
 
   const hasTranscriptAccess = Boolean(isOrgFlowFlag || extendedPaid);
 
@@ -1284,27 +1350,45 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     return true;
   }, [persistedCert, hideCertPill]);
 
+  
+
+
   return (
     <>
       {/* Gate CTA (parity with web) */}
-      {certCta.show && !isOrgFlowFlag ? (
+      {certCta.show && !isOrgFlowFlag && !paymentOk ? (
         <View style={tw`mb-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3`}>
           <Text style={tw`text-amber-200 text-sm`}>Certificate costs 20 tokens (≈ USD 20).</Text>
-          <Text style={tw`text-amber-200 text-sm mt-1`}>
-            If you have enough tokens, 20 tokens will be deducted immediately when you click Buy.
-          </Text>
+          <Text style={tw`text-amber-200 text-sm mt-1`}>Buying now unlocks narration immediately.</Text>
+          <Text style={tw`text-amber-200 text-sm mt-1`}>Generate the certificate after you pass the quiz.</Text>
+
           <Text style={tw`text-amber-200 text-sm mt-1`}>
             If you don’t have enough tokens, the payment widget opens so you can buy tokens.
           </Text>
 
           <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
-            <TouchableOpacity
-              onPress={handleBuyCertificate}
-              style={tw`px-4 py-2 rounded-xl bg-indigo-600`}
-            >
-              <Text style={tw`text-white font-semibold`}>Buy</Text>
-            </TouchableOpacity>
-          </View>
+           <TouchableOpacity
+            onPress={handleBuyCertificate}
+            disabled={!skusReady || debitInFlightRef.current}
+            style={tw.style(
+              'px-4 py-2 rounded-xl',
+              !skusReady || debitInFlightRef.current ? 'bg-indigo-600/40' : 'bg-indigo-600'
+            )}
+          >
+            <Text style={tw`text-white font-semibold`}>
+              {aiCertLoading ? 'Loading…' : debitInFlightRef.current ? 'Processing…' : 'Buy'}
+            </Text>
+          </TouchableOpacity>
+
+            </View>
+        </View>
+      ) : null}
+
+      {/* ✅ Paid but not passed: narration unlocked notice */}
+      {!isOrgFlowFlag && paymentOk && !grade?.passed ? (
+        <View style={tw`mb-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 p-3`}>
+          <Text style={tw`text-emerald-200 text-sm`}>✅ Certificate purchased — narration unlocked.</Text>
+          <Text style={tw`text-white/70 text-[12px] mt-1`}>Pass the quiz (≥ 70%) to generate your certificate PDF.</Text>
         </View>
       ) : null}
 
@@ -1312,9 +1396,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       {showPersistedCertPill ? (
         <View style={tw`mb-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 p-3`}>
           <Text style={tw`text-emerald-200 text-sm font-semibold`}>Certificate available</Text>
-          <Text style={tw`text-white/70 text-[12px] mt-1`}>
-            We found a previously generated certificate for this course.
-          </Text>
+          <Text style={tw`text-white/70 text-[12px] mt-1`}>We found a previously generated certificate for this course.</Text>
 
           <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
             {(persistedCert?.certUrl || certUrl) ? (
@@ -1497,7 +1579,10 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
               </Text>
             </Text>
             {enforcedQuizType === 'short' && !isLocked ? (
-              <TouchableOpacity onPress={() => setMathOpen((v) => !v)} style={tw`mt-2 px-3 py-1.5 rounded-full bg-indigo-600`}>
+              <TouchableOpacity
+                onPress={() => setMathOpen((v) => !v)}
+                style={tw`mt-2 px-3 py-1.5 rounded-full bg-indigo-600`}
+              >
                 <Text style={tw`text-white text-sm`}>∑ Math keypad</Text>
               </TouchableOpacity>
             ) : null}
@@ -1575,8 +1660,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                       {Array.isArray(q.choices) && q.choices.length > 0 ? (
                         q.choices.map((c: string, i: number) => {
                           const raw = workingAnswers[q.id];
-                          const current =
-                            typeof raw === 'string' ? Number(raw) : typeof raw === 'number' ? raw : NaN;
+                          const current = typeof raw === 'string' ? Number(raw) : typeof raw === 'number' ? raw : NaN;
                           const isSelected = current === i;
 
                           return (
@@ -1632,10 +1716,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
             ) : null}
 
             {grade && course?.id ? (
-              <TouchableOpacity
-                onPress={() => onViewResults(course.id, courseTitle, grade)}
-                style={tw`px-3 py-2 rounded-full bg-slate-800`}
-              >
+              <TouchableOpacity onPress={() => onViewResults(course.id, courseTitle, grade)} style={tw`px-3 py-2 rounded-full bg-slate-800`}>
                 <Text style={tw`text-white text-sm`}>View Results</Text>
               </TouchableOpacity>
             ) : null}
@@ -1661,8 +1742,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                             } catch {}
                           }
                           const doc =
-                            (await tryGenerateCertificate().catch(() => null)) ||
-                            (await generateAICert().catch(() => null));
+                            (await tryGenerateCertificate().catch(() => null)) || (await generateAICert().catch(() => null));
                           await handleGeneratedCert(doc, true);
                         } catch (e) {
                           console.error('[org] manual issue failed', e);
@@ -1701,126 +1781,157 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                 </>
               ) : (
                 <>
+                  {/* ✅ FIXED: JSX structure + fragment closing */}
                   <View style={tw`mt-2`}>
-                    <Text style={tw`text-white/70 text-xs`}>Pay in tokens (no processing fees)</Text>
-                    {aiCertLoading ? <Text style={tw`text-white/60 text-xs mt-1`}>Loading certificate options…</Text> : null}
-                    {aiCertError ? <Text style={tw`text-red-300 text-xs mt-1`}>{aiCertError}</Text> : null}
-                    {aiCertMsg ? <Text style={tw`text-emerald-300 text-xs mt-1`}>{aiCertMsg}</Text> : null}
+                    {paymentOk ? (
+                      <View style={tw`mt-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3`}>
+                        <Text style={tw`text-emerald-200 text-sm`}>✅ Certificate already purchased (20 tokens). You can generate it now.</Text>
 
-                    {!paymentOk ? (
-                      <Text style={tw`text-white/70 text-[11px] mt-2`}>
-                        Payment required to unlock <Text style={tw`font-semibold`}>Claim &amp; Generate</Text>.
-                      </Text>
-                    ) : null}
-
-                    <Text style={tw`text-white/70 text-[11px] mt-2`}>
-                      Your balance: <Text style={tw`font-semibold`}>{Number(tokens) || 0}</Text> tokens
-                    </Text>
-
-                    <View style={tw`mt-2`}>
-                      {(skus || []).map((sku) => {
-                        const price = Number(sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? 0);
-                        const hasEnoughTokens = (Number(tokens) || 0) >= price;
-                        const canClaimNow = Boolean(grade?.passed) && hasEnoughTokens;
-                        const isExtended = looksExtendedSku(sku);
-
-                        return (
-                          <View
-                            key={sku.code}
-                            style={tw`flex-row items-center justify-between rounded-lg border border-white/10 p-2 bg-white/5 mb-2`}
+                        <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
+                          <TouchableOpacity
+                            onPress={async () => {
+                              try {
+                                const doc =
+                                  (await tryGenerateCertificate().catch(() => null)) || (await generateAICert().catch(() => null));
+                                await handleGeneratedCert(doc, false);
+                              } catch (e) {
+                                console.error('[generate after pass] failed', e);
+                                Alert.alert('Certificate', 'Could not generate certificate. Please try again.');
+                              }
+                            }}
+                            style={tw`px-4 py-2 rounded-xl bg-emerald-600`}
                           >
-                            <View>
-                              <Text style={tw`text-white font-medium`}>{sku.title}</Text>
-                              <Text style={tw`text-white/60 text-[11px]`}>{sku.code}</Text>
-                            </View>
+                            <Text style={tw`text-white font-semibold`}>Generate Certificate</Text>
+                          </TouchableOpacity>
 
-                            <View style={tw`flex-row items-center gap-2`}>
-                              <Text style={tw`text-white font-semibold`}>{price} Tokens</Text>
+                          <TouchableOpacity onPress={handleDownloadCertificate} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
+                            <Text style={tw`text-white font-semibold`}>Download PDF</Text>
+                          </TouchableOpacity>
 
-                              <TouchableOpacity
-                                disabled={!canClaimNow}
-                                onPress={async () => {
-                                  if (!token || !canClaimNow) return;
-                                  try {
-                                    await claim(sku.code);
-                                    const doc: any = await generateAICert();
-
-                                    setCertPaid(true);
-                                    if (isExtended) setExtendedPaid(true);
-
-                                    await handleGeneratedCert(doc, isExtended);
-
-                                    try {
-                                      await refreshUserDetails?.();
-                                    } catch {}
-                                  } catch (e) {
-                                    console.error('[tokens] claim/generate failed', e);
-                                    Alert.alert('Certificate', 'Could not generate certificate.');
-                                  }
-                                }}
-                                style={tw.style('px-3 py-1.5 rounded', canClaimNow ? 'bg-emerald-600' : 'bg-emerald-600/50')}
-                              >
-                                <Text style={tw`text-white text-sm font-semibold`}>Claim &amp; Generate</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-
-                    {(skus?.length ?? 0) > 0 && (Number(tokens) || 0) < Number(skus?.[0]?.price_tokens ?? 0) ? (
-                      <View style={tw`mt-2`}>
-                        <Text style={tw`text-white/70 text-[11px]`}>
-                          Not enough tokens? <Text style={tw`font-semibold`}>Top up and try again.</Text>
-                        </Text>
-                        <View style={tw`mt-2 flex-row gap-2`}>
-                          <TouchableOpacity onPress={() => setPaymentOpen(true)} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
-                            <Text style={tw`text-white font-semibold`}>Buy tokens</Text>
+                          <TouchableOpacity
+                            onPress={downloadTranscript}
+                            disabled={!hasTranscriptAccess}
+                            style={tw.style('px-4 py-2 rounded-xl', hasTranscriptAccess ? 'bg-indigo-600' : 'bg-indigo-600/40')}
+                          >
+                            <Text style={tw`text-white font-semibold`}>Download Transcript</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
-                    ) : null}
+                    ) : (
+                      <>
+                        <Text style={tw`text-white/70 text-xs`}>Pay in tokens (no processing fees)</Text>
+                        {aiCertLoading ? <Text style={tw`text-white/60 text-xs mt-1`}>Loading certificate options…</Text> : null}
+                        {aiCertError ? <Text style={tw`text-red-300 text-xs mt-1`}>{aiCertError}</Text> : null}
+                        {aiCertMsg ? <Text style={tw`text-emerald-300 text-xs mt-1`}>{aiCertMsg}</Text> : null}
+
+                        <Text style={tw`text-white/70 text-[11px] mt-2`}>
+                          Your balance: <Text style={tw`font-semibold`}>{Number(tokens) || 0}</Text> tokens
+                        </Text>
+
+                        <View style={tw`mt-2`}>
+                          {(skus || []).map((sku) => {
+                            const price = Number(sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? 0);
+                            const hasEnoughTokens = (Number(tokens) || 0) >= price;
+                            const canClaimNow = Boolean(grade?.passed) && hasEnoughTokens;
+                            const isExtended = looksExtendedSku(sku);
+
+                            return (
+                              <View
+                                key={sku.code}
+                                style={tw`flex-row items-center justify-between rounded-lg border border-white/10 p-2 bg-white/5 mb-2`}
+                              >
+                                <View>
+                                  <Text style={tw`text-white font-medium`}>{sku.title}</Text>
+                                  <Text style={tw`text-white/60 text-[11px]`}>{sku.code}</Text>
+                                </View>
+
+                                <View style={tw`flex-row items-center gap-2`}>
+                                  <Text style={tw`text-white font-semibold`}>{price} Tokens</Text>
+
+                                  <TouchableOpacity
+                                    disabled={!canClaimNow}
+                                    onPress={async () => {
+                                      if (!token || !canClaimNow) return;
+                                      try {
+                                        await claim(sku.code);
+                                        const doc: any = await generateAICert();
+                                        setCertPaid(true);
+                                        if (isExtended) setExtendedPaid(true);
+                                        await handleGeneratedCert(doc, isExtended);
+                                        try {
+                                          await refreshUserDetails?.();
+                                        } catch {}
+                                      } catch (e) {
+                                        console.error('[tokens] claim/generate failed', e);
+                                        Alert.alert('Certificate', 'Could not generate certificate.');
+                                      }
+                                    }}
+                                    style={tw.style('px-3 py-1.5 rounded', canClaimNow ? 'bg-emerald-600' : 'bg-emerald-600/50')}
+                                  >
+                                    <Text style={tw`text-white text-sm font-semibold`}>Claim &amp; Generate</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            );
+                          })}
+                        </View>
+
+                        {(skus?.length ?? 0) > 0 &&
+                        (Number(tokens) || 0) < Number(skus?.[0]?.price_tokens ?? skus?.[0]?.priceTokens ?? skus?.[0]?.price ?? 0) ? (
+                          <View style={tw`mt-2`}>
+                            <Text style={tw`text-white/70 text-[11px]`}>
+                              Not enough tokens? <Text style={tw`font-semibold`}>Top up and try again.</Text>
+                            </Text>
+                            <View style={tw`mt-2 flex-row gap-2`}>
+                              <TouchableOpacity onPress={() => setPaymentOpen(true)} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
+                                <Text style={tw`text-white font-semibold`}>Buy tokens</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : null}
+
+                        <Text style={tw`text-white/60 text-xs mt-3`}>Prefer paying with card or PayPal/M-Pesa?</Text>
+                        <View style={tw`mt-1 flex-row flex-wrap items-center gap-2`}>
+                          <TouchableOpacity onPress={() => setPaymentOpen(true)} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
+                            <Text style={tw`text-white font-semibold`}>Pay with PayPal / M-Pesa</Text>
+                          </TouchableOpacity>
+
+                          {certUrl ? (
+                            <TouchableOpacity
+                              onPress={() => {
+                                if (certUrl) Linking.openURL(certUrl);
+                              }}
+                              style={tw`px-3 py-2 rounded-full bg-slate-800`}
+                            >
+                              <Text style={tw`text-white text-sm`}>View certificate</Text>
+                            </TouchableOpacity>
+                          ) : null}
+
+                          <TouchableOpacity
+                            onPress={handleDownloadCertificate}
+                            disabled={!(certUrl || downUrl || persistedCert?.certUrl || persistedCert?.downUrl)}
+                            style={tw.style('px-4 py-2 rounded-xl', 'bg-indigo-600')}
+                          >
+                            <Text style={tw`text-white font-semibold`}>Download PDF</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={downloadTranscript}
+                            disabled={!hasTranscriptAccess}
+                            style={tw.style('px-4 py-2 rounded-xl', hasTranscriptAccess ? 'bg-indigo-600' : 'bg-indigo-600/40')}
+                          >
+                            <Text style={tw`text-white font-semibold`}>Download Transcript</Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {!certUrl ? (
+                          <Text style={tw`text-white/70 text-[12px] mt-2`}>
+                            Once payment completes (tokens or fiat), we’ll generate your certificate instantly.
+                          </Text>
+                        ) : null}
+                      </>
+                    )}
                   </View>
-
-                  <Text style={tw`text-white/60 text-xs mt-3`}>Prefer paying with card or PayPal/M-Pesa?</Text>
-                  <View style={tw`mt-1 flex-row flex-wrap items-center gap-2`}>
-                    <TouchableOpacity onPress={() => setPaymentOpen(true)} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
-                      <Text style={tw`text-white font-semibold`}>Pay with PayPal / M-Pesa</Text>
-                    </TouchableOpacity>
-
-                    {certUrl ? (
-                      <TouchableOpacity
-                        onPress={() => {
-                          if (certUrl) Linking.openURL(certUrl);
-                        }}
-                        style={tw`px-3 py-2 rounded-full bg-slate-800`}
-                      >
-                        <Text style={tw`text-white text-sm`}>View certificate</Text>
-                      </TouchableOpacity>
-                    ) : null}
-
-                    <TouchableOpacity
-                      onPress={handleDownloadCertificate}
-                      disabled={!(certUrl || downUrl || persistedCert?.certUrl || persistedCert?.downUrl)}
-                      style={tw.style('px-4 py-2 rounded-xl', 'bg-indigo-600')}
-                    >
-                      <Text style={tw`text-white font-semibold`}>Download PDF</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={downloadTranscript}
-                      disabled={!hasTranscriptAccess}
-                      style={tw.style('px-4 py-2 rounded-xl', hasTranscriptAccess ? 'bg-indigo-600' : 'bg-indigo-600/40')}
-                    >
-                      <Text style={tw`text-white font-semibold`}>Download Transcript</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {!certUrl ? (
-                    <Text style={tw`text-white/70 text-[12px] mt-2`}>
-                      Once payment completes (tokens or fiat), we’ll generate your certificate instantly.
-                    </Text>
-                  ) : null}
                 </>
               )}
             </View>
@@ -1828,9 +1939,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
           {grade && !grade.passed && !retakeMode ? (
             <View style={tw`mt-3 rounded-xl bg-red-600/10 border border-red-500 p-3`}>
-              <Text style={tw`text-red-200 text-sm`}>
-                You scored {grade.scorePct}%. Review the lesson and try again.
-              </Text>
+              <Text style={tw`text-red-200 text-sm`}>You scored {grade.scorePct}%. Review the lesson and try again.</Text>
 
               {/* Retry CTA */}
               <View style={tw`mt-3`}>
@@ -1845,8 +1954,7 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
                     try {
                       // (re)arm timer
                       if (isOrgFlow && assignmentId) {
-                        const timerSecEff =
-                          (orgMeta?.timer_s ?? timerSec ?? 0) > 0 ? Number(orgMeta?.timer_s ?? timerSec) : 0;
+                        const timerSecEff = (orgMeta?.timer_s ?? timerSec ?? 0) > 0 ? Number(orgMeta?.timer_s ?? timerSec) : 0;
 
                         const att = await startAttempt({
                           assignmentId: assignmentId!,
@@ -1925,7 +2033,37 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
                 <View style={tw`flex-row flex-wrap -m-1`}>
                   {[
-                    'π','×','÷','±','√','^','≤','≥','≈','∞','°','·','θ','α','β','γ','µ','∑','∫','≠','→','←','↔','∈','∉','∩','∪','∧','∨','⊂','⊆',
+                    'π',
+                    '×',
+                    '÷',
+                    '±',
+                    '√',
+                    '^',
+                    '≤',
+                    '≥',
+                    '≈',
+                    '∞',
+                    '°',
+                    '·',
+                    'θ',
+                    'α',
+                    'β',
+                    'γ',
+                    'µ',
+                    '∑',
+                    '∫',
+                    '≠',
+                    '→',
+                    '←',
+                    '↔',
+                    '∈',
+                    '∉',
+                    '∩',
+                    '∪',
+                    '∧',
+                    '∨',
+                    '⊂',
+                    '⊆',
                   ].map((k) => (
                     <TouchableOpacity key={k} onPress={() => insertSymbol(k)} style={tw`m-1 px-3 py-2 rounded-md bg-slate-800`}>
                       <Text style={tw`text-white text-base`}>{k}</Text>
@@ -1982,4 +2120,4 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   );
 };
 
-export default React.memo(LessonAndQuizPane);
+export default memo(LessonAndQuizPane);
