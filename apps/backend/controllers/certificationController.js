@@ -7,6 +7,14 @@ import { v4 as uuid } from 'uuid';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Strict UUID (v1–v5) check */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(v) {
+  return UUID_RE.test(String(v || '').trim());
+}
+
 /**
  * Upload an array of { buffer, originalname, mimeType } to Cloudinary.
  * Chooses resource_type based on mimeType.
@@ -14,15 +22,13 @@ import { v4 as uuid } from 'uuid';
 async function uploadCertDocs(files) {
   return Promise.all(
     files.map(({ buffer, originalname, mimeType }) => {
-      // Build a Data URI
       const dataUri = `data:${mimeType};base64,${buffer.toString('base64')}`;
-      // Decide Cloudinary resource type
       const resourceType = mimeType.startsWith('image/')
         ? 'image'
         : mimeType === 'application/pdf'
           ? 'raw'
           : 'auto';
-      // Upload
+
       return cloudinary.uploader
         .upload(dataUri, {
           resource_type: resourceType,
@@ -34,6 +40,32 @@ async function uploadCertDocs(files) {
   );
 }
 
+/** Cache detected profile column types (avoid re-checking every request) */
+let _profilesShapeCache = null;
+
+async function getProfilesShape() {
+  if (_profilesShapeCache) return _profilesShapeCache;
+
+  // We care about whether profiles.user_id exists and what type it is.
+  // If it’s uuid, never compare it with integers.
+  const { rows } = await pool.query(
+    `
+    SELECT column_name, data_type
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name   = 'profiles'
+       AND column_name IN ('id','user_id')
+    `,
+  );
+
+  const hasUserId = rows.some((r) => r.column_name === 'user_id');
+  const userIdType =
+    rows.find((r) => r.column_name === 'user_id')?.data_type || null;
+
+  _profilesShapeCache = { hasUserId, userIdType };
+  return _profilesShapeCache;
+}
+
 // ─── 1. Submit Certification ─────────────────────────────────────────────────
 export const submitCertification = [
   // allow large JSON payloads for base64 files
@@ -41,7 +73,7 @@ export const submitCertification = [
 
   async (req, res) => {
     try {
-      // a) Validate profileId
+      // a) Validate profileId (this endpoint expects numeric profile id)
       const profileId = parseInt(req.params.profileId, 10);
       if (isNaN(profileId)) {
         return res.status(400).json({ message: 'Invalid profileId' });
@@ -168,23 +200,60 @@ export const verifyCertification = async (req, res) => {
 // ─── 3. Get Certification Status ─────────────────────────────────────────────
 export const getCertificationStatus = async (req, res) => {
   try {
-    const raw = req.params.profileId;
-    const param = parseInt(raw, 10);
-    if (isNaN(param)) {
+    const raw = String(req.params.profileId ?? '').trim();
+    if (!raw) {
       return res.status(400).json({ message: 'Invalid profileId' });
     }
 
-    // Resolve real profile
-    const profRes = await pool.query(
-      `SELECT id, certified
-         FROM profiles
-        WHERE id = $1 OR user_id = $1
-        LIMIT 1`,
-      [param],
-    );
-    if (profRes.rowCount === 0) {
+    const shape = await getProfilesShape();
+
+    let profRes;
+
+    // If caller passes a UUID (usually auth user id), match by profiles.user_id::uuid
+    if (isUuid(raw)) {
+      if (!shape.hasUserId) {
+        return res.status(404).json({ message: 'Profile not found.' });
+      }
+      profRes = await pool.query(
+        `SELECT id, certified
+           FROM profiles
+          WHERE user_id = $1::uuid
+          LIMIT 1`,
+        [raw],
+      );
+    } else {
+      // Numeric param (profile id). Only compare to profiles.user_id if it's numeric.
+      const param = Number(raw);
+      if (!Number.isFinite(param)) {
+        return res.status(400).json({ message: 'Invalid profileId' });
+      }
+
+      // Safe: always allow lookup by profiles.id
+      // Optional: allow lookup by profiles.user_id ONLY if user_id is integer/bigint
+      const userIdNumericOk =
+        shape.hasUserId && (shape.userIdType === 'integer' || shape.userIdType === 'bigint');
+
+      profRes = userIdNumericOk
+        ? await pool.query(
+            `SELECT id, certified
+               FROM profiles
+              WHERE id = $1 OR user_id = $1
+              LIMIT 1`,
+            [param],
+          )
+        : await pool.query(
+            `SELECT id, certified
+               FROM profiles
+              WHERE id = $1
+              LIMIT 1`,
+            [param],
+          );
+    }
+
+    if (!profRes || profRes.rowCount === 0) {
       return res.status(404).json({ message: 'Profile not found.' });
     }
+
     const { id: realProfileId, certified } = profRes.rows[0];
 
     // Fetch latest certification

@@ -821,7 +821,7 @@ const ProfileScreen: React.FC = () => {
           </View>
         </View>
 
-        {token ? (
+       {!!token && (
           <View
             style={tw`mb-4 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
           >

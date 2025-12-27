@@ -198,6 +198,7 @@ function moneyFromCents(cents, currency) {
     return `${cur} ${v.toFixed(2)}`;
   }
 }
+const money = (amountCents, currency = 'USD') => moneyFromCents(amountCents, currency);
 
 function fmtDate(dtLike) {
   if (!dtLike) return '';
@@ -743,7 +744,14 @@ export async function renderFeeStructurePdf({ org, structure }) {
   const bufferPromise = getStream.buffer(pass);
   doc.pipe(pass);
 
-  const currency = guessCurrency({ org, structure });
+  // ✅ move this up
+  const items = Array.isArray(structure?.items) ? structure.items : [];
+
+  // ✅ pass rows/items into guessCurrency (prevents falling back to USD)
+  const guessed = guessCurrency({ org, structure, rows: items });
+
+  // ✅ treat structure.currency as the source of truth when present
+  const currency = normalizeCurrency(structure?.currency, guessed) || guessed;
 
   const principalSigSource =
     org?.registrar_signature_url ||
@@ -787,7 +795,8 @@ export async function renderFeeStructurePdf({ org, structure }) {
   const boxTopY = doc.y;
   const boxPad = 10;
 
-  doc.save()
+  doc
+    .save()
     .roundedRect(leftMargin, boxTopY, innerWidth, 62, 8)
     .fill('#ffffff')
     .strokeColor('#e5e7eb')
@@ -798,16 +807,24 @@ export async function renderFeeStructurePdf({ org, structure }) {
   let y = boxTopY + boxPad;
   metaLines.slice(0, 4).forEach(([k, v], idx) => {
     const rowY = y + idx * 12;
-    doc.font('Helvetica').fontSize(8).fillColor('#6b7280').text(`${k}:`, leftMargin + boxPad, rowY, { width: 90 });
-    doc.font('Helvetica-Bold').fontSize(9).fillColor('#111827').text(String(v), leftMargin + boxPad + 92, rowY, {
-      width: innerWidth - (boxPad * 2 + 92),
-    });
+    doc
+      .font('Helvetica')
+      .fontSize(8)
+      .fillColor('#6b7280')
+      .text(`${k}:`, leftMargin + boxPad, rowY, { width: 90 });
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(9)
+      .fillColor('#111827')
+      .text(String(v), leftMargin + boxPad + 92, rowY, {
+        width: innerWidth - (boxPad * 2 + 92),
+      });
   });
 
   doc.y = boxTopY + 62 + 14;
   doc.fillColor('#111827');
 
-  const items = Array.isArray(structure?.items) ? structure.items : [];
+  // ✅ items already declared above
   if (!items.length) {
     doc.font('Helvetica').fontSize(10).fillColor('#111827').text('No items configured.');
     drawSignaturesBlock(doc, {
@@ -831,7 +848,7 @@ export async function renderFeeStructurePdf({ org, structure }) {
 
   const colItem = tableLeft;
   const colAmount = colItem + Math.floor(tableWidth * 0.52);
-  const colCadence = colAmount + Math.floor(tableWidth * 0.20);
+  const colCadence = colAmount + Math.floor(tableWidth * 0.2);
   const colOpt = colCadence + Math.floor(tableWidth * 0.16);
 
   const rowHeight = 14;
@@ -844,9 +861,18 @@ export async function renderFeeStructurePdf({ org, structure }) {
     const textY = headerTopY + (rowHeight - lh) / 2;
 
     doc.text('ITEM', colItem + 6, textY, { width: colAmount - colItem - 10 });
-    doc.text('AMOUNT', colAmount, textY, { width: colCadence - colAmount - 8, align: 'right' });
-    doc.text('CADENCE', colCadence, textY, { width: colOpt - colCadence - 8, align: 'center' });
-    doc.text('OPTIONAL', colOpt, textY, { width: tableRight - colOpt - 6, align: 'center' });
+    doc.text('AMOUNT', colAmount, textY, {
+      width: colCadence - colAmount - 8,
+      align: 'right',
+    });
+    doc.text('CADENCE', colCadence, textY, {
+      width: colOpt - colCadence - 8,
+      align: 'center',
+    });
+    doc.text('OPTIONAL', colOpt, textY, {
+      width: tableRight - colOpt - 6,
+      align: 'center',
+    });
 
     const bottomY = headerTopY + rowHeight;
 
@@ -870,13 +896,18 @@ export async function renderFeeStructurePdf({ org, structure }) {
   drawItemsHeader();
 
   for (const it of items) {
-    ensureSpace(doc, bottomMarginY, () => {
-      drawPageHeader();
-      doc.moveDown(0.2);
-      doc.font('Helvetica-Bold').fontSize(9.5).text('ITEMS (cont.)', leftMargin, doc.y);
-      doc.moveDown(0.35);
-      drawItemsHeader();
-    }, rowHeight + 10);
+    ensureSpace(
+      doc,
+      bottomMarginY,
+      () => {
+        drawPageHeader();
+        doc.moveDown(0.2);
+        doc.font('Helvetica-Bold').fontSize(9.5).text('ITEMS (cont.)', leftMargin, doc.y);
+        doc.moveDown(0.35);
+        drawItemsHeader();
+      },
+      rowHeight + 10,
+    );
 
     const rowTopY = doc.y;
     const rowBottomY = rowTopY + rowHeight;
@@ -884,15 +915,26 @@ export async function renderFeeStructurePdf({ org, structure }) {
     const textY = rowTopY + (rowHeight - lh) / 2;
 
     const itemLabel = oneline(it?.label || '—');
-    const cur = normCur(it?.currency) || currency;
-    const amt = moneyFromCents(it?.amount_cents, cur);
+
+    // ✅ force fee-structure currency for display (prevents USD leaks)
+    const amt = moneyFromCents(it?.amount_cents, currency);
+
     const cadence = oneline(it?.cadence || '—');
     const opt = it?.is_optional ? 'YES' : 'NO';
 
     doc.text(itemLabel, colItem + 6, textY, { width: colAmount - colItem - 10 });
-    doc.text(amt, colAmount, textY, { width: colCadence - colAmount - 8, align: 'right' });
-    doc.text(cadence, colCadence, textY, { width: colOpt - colCadence - 8, align: 'center' });
-    doc.text(opt, colOpt, textY, { width: tableRight - colOpt - 6, align: 'center' });
+    doc.text(amt, colAmount, textY, {
+      width: colCadence - colAmount - 8,
+      align: 'right',
+    });
+    doc.text(cadence, colCadence, textY, {
+      width: colOpt - colCadence - 8,
+      align: 'center',
+    });
+    doc.text(opt, colOpt, textY, {
+      width: tableRight - colOpt - 6,
+      align: 'center',
+    });
 
     doc
       .strokeColor('#9ca3af')
@@ -936,6 +978,7 @@ export async function renderFeeStructurePdf({ org, structure }) {
   doc.end();
   return bufferPromise;
 }
+
 
 /* ─────────────────────────────────────────────────────────
  * Fee Statement PDF (NAME + Admission No + signatures)
@@ -1286,23 +1329,28 @@ const totalsByCurrency = coerced.length ? coerced : computeStatementTotalsByCurr
  * Institution-wide fee statement PDF
  * ───────────────────────────────────────────────────────── */
 
-export async function renderInstitutionFeeStatementPdf({ org, rows, totalsByCurrency, dateLabel }) {
+export async function renderInstitutionFeeStatementPdf({
+  org,
+  rows,
+  totalsByCurrency,
+  dateLabel,
+}) {
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   const pass = new PassThrough();
   const bufferPromise = getStream.buffer(pass);
   doc.pipe(pass);
 
   const safeRows = Array.isArray(rows) ? rows : [];
-  const totals = Array.isArray(totalsByCurrency) ? totalsByCurrency : [];
+  const rawTotals = Array.isArray(totalsByCurrency) ? totalsByCurrency : [];
 
   const [logoBuf, principalSigBuf, bursarSigBuf] = await Promise.all([
     tryLoadImageBuffer(org?.logo_url, { w: 240, h: 240, dpr: 2 }),
-    tryLoadImageBuffer(org?.principal_signature_url || org?.registrar_signature_url || org?.signature_url, {
-      w: 520,
-      h: 200,
-      trim: true,
-      dpr: 2,
-    }),
+    tryLoadImageBuffer(
+      org?.principal_signature_url ||
+        org?.registrar_signature_url ||
+        org?.signature_url,
+      { w: 520, h: 200, trim: true, dpr: 2 },
+    ),
     tryLoadImageBuffer(org?.finance_signature_url || org?.bursar_signature_url, {
       w: 520,
       h: 200,
@@ -1311,87 +1359,241 @@ export async function renderInstitutionFeeStatementPdf({ org, rows, totalsByCurr
     }),
   ]);
 
-  const drawHeader = () => {
-    const startY = doc.y;
-    if (logoBuf) {
-      doc.image(logoBuf, doc.x, startY, { width: 90, height: 90, fit: [90, 90] });
-      doc.moveDown(0.2);
-    }
+  // currencies label (like student statement)
+  const curSet = new Set();
+  for (const r of safeRows) {
+    const c = normalizeCurrency(r?.currency, null);
+    if (c) curSet.add(c);
+  }
+  for (const t of rawTotals) {
+    const c = normalizeCurrency(t?.currency, null);
+    if (c) curSet.add(c);
+  }
+  const currencies = Array.from(curSet.values()).sort();
+  const currenciesLabel =
+    currencies.length ? currencies.join(', ') : guessCurrency({ org, rows: safeRows });
 
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(16)
-      .text(org?.name || 'Institution', logoBuf ? doc.x + 100 : doc.x, startY, {
-        continued: false,
-      });
+  const fallbackCurrency = guessCurrency({ org, rows: safeRows });
 
-    doc
-      .font('Helvetica')
-      .fontSize(9)
-      .fillColor('#4b5563')
-      .text(dateLabel || `Generated: ${fmtDate(new Date())}`, logoBuf ? doc.x + 100 : doc.x, doc.y + 2);
+  const drawPageHeader = (continued = false) => {
+    const rangeLine = dateLabel ? oneline(dateLabel) : '';
+    const subtitle = [
+      rangeLine,
+      `Currencies: ${currenciesLabel || fallbackCurrency || 'USD'}`,
+      `Generated: ${fmtDate(new Date())}`,
+    ]
+      .filter(Boolean)
+      .join('   •   ');
 
-    doc.moveDown();
-    doc.fillColor('#111827');
-  };
-
-  drawHeader();
-  doc.moveDown(1);
-
-  const headers = ['Admission', 'Learner', 'Grade', 'Currency', 'Charged', 'Paid', 'Balance'];
-  const colWidths = [70, 120, 70, 60, 70, 70, 70];
-  const startX = doc.x;
-
-  const drawRow = (values, isHeader = false) => {
-    const y = doc.y;
-    const lineHeight = isHeader ? 16 : 14;
-    ensureSpace(doc, doc.page.height - 80, drawHeader, lineHeight + 6);
-    let x = startX;
-    doc.font(isHeader ? 'Helvetica-Bold' : 'Helvetica').fontSize(isHeader ? 10 : 9);
-
-    values.forEach((val, idx) => {
-      doc.text(String(val ?? ''), x, doc.y, { width: colWidths[idx], continued: false });
-      x += colWidths[idx] + 6;
+    return drawHeaderBand(doc, {
+      org,
+      title: continued
+        ? 'INSTITUTION FEE STATEMENT (cont.)'
+        : 'INSTITUTION FEE STATEMENT',
+      subtitle,
+      logoBuf,
     });
-    doc.moveDown(isHeader ? 0.4 : 0.2);
-    doc.y = y + lineHeight;
   };
 
-  drawRow(headers, true);
-  doc.moveDown(0.2);
+  const { pageWidth, pageHeight, leftMargin, rightMargin, innerWidth } =
+    drawPageHeader(false);
+  const bottomMarginY = pageHeight - 60;
 
-  safeRows.forEach((row) => {
-    drawRow([
-      row.admission_no || '—',
-      row.learner_name || '—',
-      row.grade || '—',
-      row.currency || 'USD',
-      money(row.total_charged || 0, row.currency || 'USD'),
-      money(row.total_paid || 0, row.currency || 'USD'),
-      money((row.total_charged || 0) - (row.total_paid || 0), row.currency || 'USD'),
-    ]);
+  // Summary tiles (keeps it similar to student PDF)
+  const uniqueLearners = new Set(
+    safeRows.map((r) => oneline(r?.admission_no || r?.admission || ''))
+  );
+  if (uniqueLearners.has('')) uniqueLearners.delete('');
+
+  drawSummaryTiles(doc, {
+    leftMargin,
+    innerWidth,
+    tiles: [
+      ['CURRENCIES', currenciesLabel || fallbackCurrency || 'USD'],
+      ['LEARNERS', String(uniqueLearners.size || 0)],
+      ['ROWS', String(safeRows.length || 0)],
+    ],
   });
 
-  doc.moveDown(1);
-  doc.font('Helvetica-Bold').fontSize(11).text('Totals');
-  doc.moveDown(0.4);
-  doc.font('Helvetica').fontSize(9);
+  // ─────────────────────────────────────────────
+  // Centered grid table (Learner balances)
+  // ─────────────────────────────────────────────
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#111827');
+  doc.text('LEARNER BALANCES', leftMargin, doc.y);
+  doc.moveDown(0.35);
 
-  (totals.length ? totals : [{ currency: 'USD', total_charged: 0, total_paid: 0 }]).forEach((t) => {
-    const cur = t.currency || 'USD';
-    const charged = Number(t.total_charged || 0);
-    const paid = Number(t.total_paid || 0);
-    doc.text(
-      `${cur}: Charged ${money(charged, cur)} • Paid ${money(paid, cur)} • Balance ${money(charged - paid, cur)}`,
-      { width: doc.page.width - 80 },
+  const tableLeft = leftMargin;
+  const tableRight = pageWidth - rightMargin;
+  const tableWidth = tableRight - tableLeft;
+
+  // widths sum exactly to tableWidth (keeps table centered in margins)
+  const wAdm = 62;
+  const wGrade = 58;
+  const wCur = 44;
+  const wMoney = 76;
+  const wName = Math.max(
+    120,
+    tableWidth - (wAdm + wGrade + wCur + wMoney * 3),
+  );
+
+  const colAdm = tableLeft;
+  const colName = colAdm + wAdm;
+  const colGrade = colName + wName;
+  const colCur = colGrade + wGrade;
+  const colCharged = colCur + wCur;
+  const colPaid = colCharged + wMoney;
+  const colBal = colPaid + wMoney;
+
+  const rowHeight = 14;
+
+  const fit1 = (s, maxW) => {
+    const t = oneline(s);
+    if (!t) return '—';
+    if (doc.widthOfString(t) <= maxW) return t;
+    let out = t;
+    while (out.length > 3 && doc.widthOfString(out + '…') > maxW) {
+      out = out.slice(0, -1);
+    }
+    return out.length ? out + '…' : '—';
+  };
+
+  const drawListHeader = () => {
+    const y0 = doc.y;
+    const y1 = y0 + rowHeight;
+
+    doc.font('Helvetica-Bold').fontSize(8).fillColor('#374151');
+    const lh = doc.currentLineHeight();
+    const ty = y0 + (rowHeight - lh) / 2;
+
+    doc.text('ADM', colAdm + 6, ty, { width: wAdm - 10 });
+    doc.text('LEARNER', colName + 4, ty, { width: wName - 8 });
+    doc.text('GRADE', colGrade + 4, ty, { width: wGrade - 8 });
+    doc.text('CUR', colCur + 4, ty, { width: wCur - 8, align: 'center' });
+    doc.text('CHARGED', colCharged, ty, { width: wMoney - 8, align: 'right' });
+    doc.text('PAID', colPaid, ty, { width: wMoney - 8, align: 'right' });
+    doc.text('BAL', colBal, ty, {
+      width: tableRight - colBal - 6,
+      align: 'right',
+    });
+
+    doc
+      .strokeColor('#9ca3af')
+      .lineWidth(0.7)
+      .moveTo(tableLeft, y0)
+      .lineTo(tableRight, y0)
+      .stroke();
+    doc.moveTo(tableLeft, y1).lineTo(tableRight, y1).stroke();
+
+    // verticals
+    doc.moveTo(tableLeft, y0).lineTo(tableLeft, y1).stroke();
+    doc.moveTo(colName, y0).lineTo(colName, y1).stroke();
+    doc.moveTo(colGrade, y0).lineTo(colGrade, y1).stroke();
+    doc.moveTo(colCur, y0).lineTo(colCur, y1).stroke();
+    doc.moveTo(colCharged, y0).lineTo(colCharged, y1).stroke();
+    doc.moveTo(colPaid, y0).lineTo(colPaid, y1).stroke();
+    doc.moveTo(colBal, y0).lineTo(colBal, y1).stroke();
+    doc.moveTo(tableRight, y0).lineTo(tableRight, y1).stroke();
+
+    doc.font('Helvetica').fontSize(8).fillColor('#111827');
+    doc.y = y1;
+  };
+
+  drawListHeader();
+
+  for (const r of safeRows) {
+    ensureSpace(
+      doc,
+      bottomMarginY,
+      () => {
+        drawPageHeader(true);
+        doc.moveDown(0.2);
+        doc.font('Helvetica-Bold').fontSize(9.5).text('LEARNER BALANCES (cont.)', leftMargin, doc.y);
+        doc.moveDown(0.35);
+        drawListHeader();
+      },
+      rowHeight + 10,
     );
-  });
 
+    const y0 = doc.y;
+    const y1 = y0 + rowHeight;
+
+    const lh = doc.currentLineHeight();
+    const ty = y0 + (rowHeight - lh) / 2;
+
+    const cur = normalizeCurrency(r?.currency, fallbackCurrency) || fallbackCurrency || 'USD';
+
+    const chargedCents = Number(r?.total_charged ?? r?.totalCharged ?? 0);
+    const paidCents = Number(r?.total_paid ?? r?.totalPaid ?? 0);
+    const balCents = chargedCents - paidCents;
+
+    doc.text(fit1(r?.admission_no || r?.admission || '—', wAdm - 10), colAdm + 6, ty, { width: wAdm - 10 });
+    doc.text(fit1(r?.learner_name || r?.name || '—', wName - 8), colName + 4, ty, { width: wName - 8 });
+    doc.text(fit1(r?.grade || '—', wGrade - 8), colGrade + 4, ty, { width: wGrade - 8 });
+    doc.text(cur, colCur + 4, ty, { width: wCur - 8, align: 'center' });
+
+    doc.text(moneyFromCents(chargedCents, cur), colCharged, ty, { width: wMoney - 8, align: 'right' });
+    doc.text(moneyFromCents(paidCents, cur), colPaid, ty, { width: wMoney - 8, align: 'right' });
+    doc.text(moneyFromCents(balCents, cur), colBal, ty, { width: tableRight - colBal - 6, align: 'right' });
+
+    // borders
+    doc
+      .strokeColor('#9ca3af')
+      .lineWidth(0.5)
+      .moveTo(tableLeft, y0)
+      .lineTo(tableRight, y0)
+      .stroke();
+    doc.moveTo(tableLeft, y1).lineTo(tableRight, y1).stroke();
+
+    doc.moveTo(tableLeft, y0).lineTo(tableLeft, y1).stroke();
+    doc.moveTo(colName, y0).lineTo(colName, y1).stroke();
+    doc.moveTo(colGrade, y0).lineTo(colGrade, y1).stroke();
+    doc.moveTo(colCur, y0).lineTo(colCur, y1).stroke();
+    doc.moveTo(colCharged, y0).lineTo(colCharged, y1).stroke();
+    doc.moveTo(colPaid, y0).lineTo(colPaid, y1).stroke();
+    doc.moveTo(colBal, y0).lineTo(colBal, y1).stroke();
+    doc.moveTo(tableRight, y0).lineTo(tableRight, y1).stroke();
+
+    doc.y = y1;
+  }
+
+  doc.moveDown(0.8);
+
+  // ─────────────────────────────────────────────
+  // Totals by currency (same style as student PDF)
+  // ─────────────────────────────────────────────
+  const totalsForTable = rawTotals
+    .map((t) => {
+      const currency = normalizeCurrency(t?.currency, fallbackCurrency);
+      if (!currency) return null;
+
+      const totalCharges = Number(t?.total_charged ?? t?.totalCharges ?? t?.total_charges ?? 0);
+      const totalPayments = Number(t?.total_paid ?? t?.totalPayments ?? t?.total_payments ?? 0);
+      return { currency, totalCharges, totalPayments, balance: totalCharges - totalPayments };
+    })
+    .filter(Boolean);
+
+  if (totalsForTable.length) {
+    drawTotalsByCurrencyTable(doc, {
+      pageWidth,
+      pageHeight,
+      leftMargin,
+      rightMargin,
+      innerWidth,
+      bottomMarginY,
+      totalsByCurrency: totalsForTable,
+      drawPageHeader,
+      fallbackCurrency,
+    });
+  }
+
+  // Signatures (same footer block as student PDF)
+  doc.moveDown(0.6);
+  ensureSpace(doc, bottomMarginY, drawPageHeader, 60);
   drawSignaturesBlock(doc, {
-    leftMargin: doc.page.margins.left,
-    rightMargin: doc.page.margins.right,
-    innerWidth: doc.page.width - doc.page.margins.left - doc.page.margins.right,
-    pageHeight: doc.page.height,
+    leftMargin,
+    rightMargin,
+    innerWidth,
+    pageHeight,
     bursarSigBuf,
     principalSigBuf,
   });

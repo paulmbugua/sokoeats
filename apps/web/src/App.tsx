@@ -264,6 +264,37 @@ const OrgProtectedLayout: React.FC = () => (
 
 /* Org admin-only guard for /org/profile (and other admin-only tools) */
 
+// ✅ Fees-access guard: allows owner/admin OR instructors explicitly granted can_access_fees
+const OrgFeesAccessRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { role, membership, org, loading, isLoading } = (useOrg?.() ?? {}) as any;
+  const location = useLocation();
+
+  const busy = typeof loading === 'boolean' ? loading : isLoading;
+  if (busy || !role) return null;
+
+  const roleLower = String(role || '').toLowerCase();
+  const primaryMembership = Array.isArray(membership) ? membership[0] : membership;
+
+  const tierLower = String(org?.tier || '').toLowerCase();
+  const isProTier = tierLower === 'pro' || tierLower === 'enterprise';
+
+  const hasFeeAccess =
+    isProTier &&
+    (roleLower === 'owner' ||
+      roleLower === 'admin' ||
+      primaryMembership?.can_access_fees === true);
+
+  if (hasFeeAccess) return <>{children}</>;
+
+  // Redirects (keep it simple + predictable)
+  const isLearner = roleLower === 'learner' || roleLower === 'student';
+  if (isLearner) return <Navigate to="/org/learn" replace state={{ from: location }} />;
+
+  // Staff but no fee access → back to instructor home (or portal tools)
+  return <Navigate to="/org/instructor" replace state={{ from: location }} />;
+};
+
+
 /* Staff-only guard (owner/admin/instructor) */
 const OrgStaffOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { role, loading, isLoading } = (useOrg?.() ?? {}) as any;
@@ -464,25 +495,26 @@ const App: React.FC = () => {
           />
 
           {/* Fees (admin tool) */}
-          <Route
-            path="/org/fees"
+         <Route
+            path="/org/fees/*"
             element={
-              <OrgAdminOnlyRoute>
+              <OrgFeesAccessRoute>
                 <OrgFeesPage />
-              </OrgAdminOnlyRoute>
+              </OrgFeesAccessRoute>
             }
           />
+
+
 
           {/* Fees actions (wired destinations) */}
           <Route
-            path="/org/fees/*"
+            path="/org/fees"
             element={
-              <OrgAdminOnlyRoute>
+              <OrgFeesAccessRoute>
                 <OrgFeesPage />
-              </OrgAdminOnlyRoute>
+              </OrgFeesAccessRoute>
             }
           />
-
          <Route
             path="/org/newsletters"
             element={

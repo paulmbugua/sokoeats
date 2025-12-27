@@ -1,6 +1,4 @@
 /* eslint-disable prettier/prettier */
-/* eslint-disable react-hooks/exhaustive-deps */
-
 // apps/mobile/src/screens/org/OrgAnnouncements.native.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {

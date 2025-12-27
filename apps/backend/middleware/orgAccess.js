@@ -96,15 +96,55 @@ export async function requireOrgFeeAccess(req, res, next) {
   }
 
   try {
+    // Detect which instructor table exists in this DB
+    const t = await pool.query(`
+      select
+        to_regclass('public.org_instructors') as t_instructors,
+        to_regclass('public.org_instructor_profiles') as t_profiles
+    `);
+
+    const instructorTable = t.rows?.[0]?.t_instructors
+      ? 'org_instructors'
+      : t.rows?.[0]?.t_profiles
+      ? 'org_instructor_profiles'
+      : null;
+
+    if (!instructorTable) {
+      // No instructor table in schema; only allow admins
+      const { rows } = await pool.query(
+        `select role
+           from org_memberships
+          where org_id=$1 and user_id=$2
+          limit 1`,
+        [orgId, userId],
+      );
+
+      if (!rows.length) return res.status(403).json({ message: 'Forbidden' });
+
+      const role = String(rows[0].role || '').toLowerCase();
+      const canAccessFees = false;
+
+      if ((ORG_ROLE_ORDER?.[role] ?? 0) >= (ORG_ROLE_ORDER?.admin ?? 0)) {
+        res.locals.orgMembership = { orgId, userId, role, canAccessFees };
+        return next();
+      }
+
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
     const { rows } = await pool.query(
-      `SELECT m.role, COALESCE(i.can_access_fees, false) AS can_access_fees
-         FROM org_memberships m
-         LEFT JOIN org_instructors i
-           ON i.org_id = m.org_id
-          AND i.user_id = m.user_id
-        WHERE m.org_id = $1
-          AND m.user_id = $2
-        LIMIT 1`,
+      `
+      SELECT
+        m.role,
+        COALESCE(i.can_access_fees, false) AS can_access_fees
+      FROM org_memberships m
+      LEFT JOIN ${instructorTable} i
+        ON i.org_id = m.org_id
+       AND i.user_id = m.user_id
+      WHERE m.org_id = $1
+        AND m.user_id = $2
+      LIMIT 1
+      `,
       [orgId, userId],
     );
 
@@ -115,11 +155,13 @@ export async function requireOrgFeeAccess(req, res, next) {
     const role = String(rows[0].role || '').toLowerCase();
     const canAccessFees = rows[0].can_access_fees === true;
 
-    if (ORG_ROLE_ORDER[role] >= ORG_ROLE_ORDER.admin) {
+    // Admins and above always allowed
+    if ((ORG_ROLE_ORDER?.[role] ?? 0) >= (ORG_ROLE_ORDER?.admin ?? 0)) {
       res.locals.orgMembership = { orgId, userId, role, canAccessFees };
       return next();
     }
 
+    // Exactly one instructor can be granted fee access
     if (role === 'instructor' && canAccessFees) {
       res.locals.orgMembership = { orgId, userId, role, canAccessFees };
       return next();

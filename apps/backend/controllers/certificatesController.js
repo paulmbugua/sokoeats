@@ -1,4 +1,4 @@
-// apps/backend/controllers/certificatesController.js
+// apps/backend/controllers/certificateController.js
 import Joi from 'joi';
 import { v2 as cloudinary } from 'cloudinary';
 import { Readable } from 'stream';
@@ -102,6 +102,115 @@ function logErr(tag, err, extra = {}) {
     ...extra,
   });
 }
+
+// ----- AI user UUID resolution (prevents "1631" -> uuid crash) -----
+
+let _authUuidShapeCache = null;
+
+async function detectAuthUuidShape(client) {
+  if (_authUuidShapeCache) return _authUuidShapeCache;
+
+  // users table: look for auth_user_id uuid
+  const usersCols = await client.query(`
+    SELECT column_name, data_type
+      FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name='users'
+       AND column_name IN ('auth_user_id','user_uuid','user_id')
+  `);
+
+  // profiles table: look for auth uuid columns + user_id numeric
+  const profCols = await client.query(`
+    SELECT column_name, data_type
+      FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name='profiles'
+       AND column_name IN ('auth_user_id','user_uuid','user_id')
+  `);
+
+  const uMap = new Map(usersCols.rows.map((r) => [r.column_name, r.data_type]));
+  const pMap = new Map(profCols.rows.map((r) => [r.column_name, r.data_type]));
+
+  const usersAuthUuidCol =
+    ['auth_user_id', 'user_uuid', 'user_id'].find((c) => uMap.get(c) === 'uuid') || null;
+
+  const profilesAuthUuidCol =
+    ['auth_user_id', 'user_uuid', 'user_id'].find((c) => pMap.get(c) === 'uuid') || null;
+
+  const profilesUserIdIsNumeric =
+    pMap.get('user_id') === 'integer' || pMap.get('user_id') === 'bigint';
+
+  _authUuidShapeCache = {
+    usersAuthUuidCol,
+    profilesAuthUuidCol,
+    profilesUserIdIsNumeric,
+  };
+  return _authUuidShapeCache;
+}
+
+function pickAuthUuidFromReqUser(u) {
+  const cand = [
+    u?.uid,
+    u?.sub,
+    u?.auth_user_id,
+    u?.user_uuid,
+    u?.userIdUuid,
+    u?.userUUID,
+  ];
+  for (const v of cand) {
+    if (isUuid(v)) return String(v);
+  }
+  return null;
+}
+
+async function resolveAuthUuidForNumericUserId(userIdNum) {
+  const n = Number(userIdNum);
+  if (!Number.isFinite(n)) return null;
+
+  const shape = await detectAuthUuidShape(pool);
+
+  // 1) users table (best)
+  if (shape.usersAuthUuidCol) {
+    try {
+      const q = await pool.query(
+        `SELECT ${shape.usersAuthUuidCol} AS uid FROM users WHERE id = $1 LIMIT 1`,
+        [n],
+      );
+      const uid = q.rows?.[0]?.uid ? String(q.rows[0].uid) : null;
+      if (uid && isUuid(uid)) return uid;
+    } catch {}
+  }
+
+  // 2) profiles table (common in your app)
+  if (shape.profilesAuthUuidCol) {
+    // Most common: profiles.user_id = users.id (numeric)
+    if (shape.profilesUserIdIsNumeric) {
+      const q = await pool.query(
+        `SELECT ${shape.profilesAuthUuidCol} AS uid
+           FROM profiles
+          WHERE user_id = $1
+          LIMIT 1`,
+        [n],
+      );
+      const uid = q.rows?.[0]?.uid ? String(q.rows[0].uid) : null;
+      if (uid && isUuid(uid)) return uid;
+    }
+
+    // Fallback: sometimes numeric is profile.id (less likely here, but safe)
+    const q2 = await pool.query(
+      `SELECT ${shape.profilesAuthUuidCol} AS uid
+         FROM profiles
+        WHERE id = $1
+        LIMIT 1`,
+      [n],
+    );
+    const uid2 = q2.rows?.[0]?.uid ? String(q2.rows[0].uid) : null;
+    if (uid2 && isUuid(uid2)) return uid2;
+  }
+
+  return null;
+}
+
 
 // add near top with other helpers
 async function hasExtendedByIssuance(userId, courseId) {
@@ -1158,40 +1267,67 @@ export async function getStatus(req, res) {
 
 export async function listMyAiCourses(req, res) {
   try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: 'UNAUTHORIZED' });
+    const numericUserId = req.user?.id; // your existing numeric users.id (e.g. 1631)
+    const authUuidFromToken = pickAuthUuidFromReqUser(req.user);
 
-    const entitlements = await getEntitlementsForUser(userId);
+    if (!numericUserId && !authUuidFromToken) {
+      return res.status(401).json({ error: 'UNAUTHORIZED' });
+    }
+
+    // ✅ This is the critical fix: use a UUID for ai_course_entitlements.user_id
+    const userUuid =
+      authUuidFromToken ||
+      (numericUserId ? await resolveAuthUuidForNumericUserId(numericUserId) : null);
+
+    // If we can’t resolve a UUID, don’t 500
+    if (!userUuid) {
+      console.warn('[cert] listMyAiCourses: could not resolve auth UUID', {
+        numericUserId,
+        hasTokenSub: !!req.user?.sub,
+      });
+      return res.json({ items: [] });
+    }
+
+    // Pull entitlements by UUID (prevents "1631" -> uuid crash)
+    const entitlements = await getEntitlementsForUser(userUuid);
     if (!entitlements?.length) return res.json({ items: [] });
 
     const courseIds = entitlements
       .map((e) => e.course_id)
       .filter((c) => typeof c === 'string' && c.length);
 
-    const courseMeta = courseIds.length
+    const uuidCourseIds = courseIds.filter((c) => isUuid(c));
+
+    const courseMeta = uuidCourseIds.length
       ? await pool.query(
-          `SELECT id::text, title, pass_mark FROM courses WHERE id = ANY($1::uuid[])`,
-          [courseIds.filter((c) => isUuid(c))],
+          `SELECT id::text, title, pass_mark
+             FROM courses
+            WHERE id = ANY($1::uuid[])`,
+          [uuidCourseIds],
         )
       : { rows: [] };
+
     const metaById = new Map(courseMeta.rows.map((r) => [r.id, r]));
 
-    const attemptsQ = courseIds.length
-      ? await pool.query(
-          `
-          SELECT a.course_id::text AS course_id,
-                 qa.score_pct,
-                 qa.pass_mark,
-                 qa.passed
-            FROM org_quiz_attempts qa
-            JOIN org_course_assignments a ON a.id = qa.assignment_id
-           WHERE qa.user_id::text = $1::text
-             AND a.course_id = ANY($2::uuid[])
-           ORDER BY qa.created_at DESC
-          `,
-          [userId, courseIds.filter((c) => isUuid(c))],
-        )
-      : { rows: [] };
+    // Org attempts are tied to your numeric users.id in this schema,
+    // so only query attempts when numericUserId exists.
+    const attemptsQ =
+      uuidCourseIds.length && numericUserId
+        ? await pool.query(
+            `
+            SELECT a.course_id::text AS course_id,
+                   qa.score_pct,
+                   qa.pass_mark,
+                   qa.passed
+              FROM org_quiz_attempts qa
+              JOIN org_course_assignments a ON a.id = qa.assignment_id
+             WHERE qa.user_id::text = $1::text
+               AND a.course_id = ANY($2::uuid[])
+             ORDER BY qa.created_at DESC
+            `,
+            [numericUserId, uuidCourseIds],
+          )
+        : { rows: [] };
 
     const attemptByCourse = new Map();
     for (const row of attemptsQ.rows || []) {
@@ -1205,7 +1341,9 @@ export async function listMyAiCourses(req, res) {
       const att = attemptByCourse.get(ent.course_id) || {};
       const passMark = Number(meta.pass_mark ?? att.pass_mark ?? 60) || 60;
       const attempted = att.score_pct != null;
-      const passed = att.passed === true || (attempted && att.score_pct >= passMark);
+      const passed =
+        att.passed === true || (attempted && Number(att.score_pct) >= passMark);
+
       return {
         course_id: ent.course_id,
         course_source: ent.course_source,

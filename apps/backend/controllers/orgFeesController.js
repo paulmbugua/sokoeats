@@ -91,9 +91,15 @@ function feeInboundNameJoinSql() {
   `;
 }
 
-function feeInboundLearnerNameExpr() {
-  return `COALESCE(pr.name, u.name, lp.admission_code, t.matched_learner_id)`;
+function feeInboundLearnerNameExpr(opts = {}) {
+  const inboundAlias = opts?.inboundAlias ? String(opts.inboundAlias) : null;
+
+  const parts = ['pr.name', 'u.name', 'lp.admission_code'];
+  if (inboundAlias) parts.push(`${inboundAlias}.matched_learner_id`);
+
+  return `COALESCE(${parts.join(', ')})`;
 }
+
 
 function isUuid(v) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || ''));
@@ -110,6 +116,46 @@ async function requireLearnerInOrg(clientOrPool, orgId, userId) {
   );
   return q.rows[0] || null;
 }
+
+
+function safeQualifiedRel(rel, fallback = 'public.org_learner_profiles') {
+  const s = String(rel || '').trim();
+  return /^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$/.test(s) ? s : fallback;
+}
+
+async function resolveLearnerProfilesRel(client) {
+  const r = await client.query(`select to_regclass('org_learner_profiles') as rel`);
+  return safeQualifiedRel(r.rows?.[0]?.rel);
+}
+
+async function pickLearnerGradeExpr(client) {
+  const rel = await resolveLearnerProfilesRel(client);
+  const [schema, table] = rel.split('.');
+
+  const candidates = ['grade', 'school_grade', 'school_grade_label'];
+
+  const r = await client.query(
+    `
+    select column_name
+      from information_schema.columns
+     where table_schema=$1
+       and table_name=$2
+       and column_name = any($3::text[])
+     order by array_position($3::text[], column_name)
+     limit 1
+    `,
+    [schema, table, candidates],
+  );
+
+  const col = r.rows?.[0]?.column_name;
+
+  if (col === 'grade') return 'lp.grade::text';
+  if (col === 'school_grade') return 'lp.school_grade::text';
+  if (col === 'school_grade_label') return 'lp.school_grade_label::text';
+
+  return 'lp.class_label::text';
+}
+
 
 function deriveGradeKeys(classLabel) {
   const s = String(classLabel || '').trim();
@@ -192,49 +238,112 @@ export async function setInstructorFeeAccess(req, res) {
   const { instructorId } = req.params || {};
   const { enabled } = req.body || {};
 
-  if (typeof enabled !== 'boolean') {
-    return res.status(400).json({ message: 'enabled must be a boolean' });
-  }
+  if (typeof enabled !== 'boolean') return res.status(400).json({ message: 'enabled must be a boolean' });
+  if (!orgId) return res.status(400).json({ message: 'org_id required' });
+  if (!instructorId) return res.status(400).json({ message: 'instructorId is required' });
+
+  const actorUserId = req.user?.id || req.user?.userId || req.auth?.userId;
+  if (!actorUserId) return res.status(401).json({ message: 'Unauthorized' });
+
+  const s = String(instructorId).trim();
+  let targetUserId = null;
+  if (isUuid(s)) targetUserId = s;
+  else if (/^[0-9]+$/.test(s)) targetUserId = Number(s);
+  else return res.status(400).json({ message: 'Invalid instructorId' });
 
   const client = await pool.connect();
-
   try {
-    const membershipRes = await client.query(
-      `select role from org_memberships where org_id=$1 and user_id=$2 limit 1`,
-      [orgId, instructorId],
-    );
+    const feeTable = await resolveInstructorFeeTable(pool);
+    if (!feeTable) {
+      return res.status(500).json({ message: 'Fee access table not found (missing migrations).' });
+    }
 
-    const role = String(membershipRes.rows?.[0]?.role || '').toLowerCase();
-    if (!membershipRes.rows.length || role !== 'instructor') {
+    const hasUpdatedAtRes = await client.query(
+      `select 1
+         from information_schema.columns
+        where table_schema='public'
+          and table_name=$1
+          and column_name='updated_at'
+        limit 1`,
+      [feeTable],
+    );
+    const hasUpdatedAt = hasUpdatedAtRes.rowCount > 0;
+    const updAt = hasUpdatedAt ? `, updated_at=now()` : ``;
+
+    // 1) verify actor is admin-ish
+    const adminRes = await client.query(
+      `select role
+         from org_memberships
+        where org_id=$1 and user_id=$2
+        limit 1`,
+      [orgId, actorUserId],
+    );
+    const actorRole = String(adminRes.rows?.[0]?.role || '').toLowerCase();
+    if (!adminRes.rowCount || !['admin', 'owner', 'superadmin'].includes(actorRole)) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    // 2) verify target is instructor in org
+    const memRes = await client.query(
+      `select role
+         from org_memberships
+        where org_id=$1 and user_id=$2
+        limit 1`,
+      [orgId, targetUserId],
+    );
+    const role = String(memRes.rows?.[0]?.role || '').toLowerCase();
+    if (!memRes.rowCount || role !== 'instructor') {
       return res.status(404).json({ message: 'Instructor not found in org' });
     }
 
     await client.query('BEGIN');
 
+    // 3) enforce ONE instructor max: revoke all first if enabling
     if (enabled) {
-      await client.query(`update org_instructors set can_access_fees=false, updated_at=now() where org_id=$1`, [orgId]);
-    }
-
-    const updateRes = await client.query(
-      `update org_instructors
-          set can_access_fees=$3,
-              updated_at=now()
-        where org_id=$1 and user_id=$2`,
-      [orgId, instructorId, enabled],
-    );
-
-    if (updateRes.rowCount === 0) {
       await client.query(
-        `insert into org_instructors (org_id, user_id, can_access_fees)
-         values ($1, $2, $3)
-         on conflict (org_id, user_id)
-         do update set can_access_fees=excluded.can_access_fees, updated_at=now()`,
-        [orgId, instructorId, enabled],
+        `update ${feeTable}
+            set can_access_fees=false${updAt}
+          where org_id=$1`,
+        [orgId],
       );
     }
 
+    // 4) set target instructor fee access (update then upsert)
+    const upd = await client.query(
+      `update ${feeTable}
+          set can_access_fees=$3${updAt}
+        where org_id=$1 and user_id=$2`,
+      [orgId, targetUserId, enabled],
+    );
+
+    if (upd.rowCount === 0) {
+      // insert + upsert safety
+      await client.query(
+        `insert into ${feeTable} (org_id, user_id, can_access_fees${hasUpdatedAt ? ', updated_at' : ''})
+         values ($1,$2,$3${hasUpdatedAt ? ', now()' : ''})
+         on conflict (org_id, user_id)
+         do update set can_access_fees=excluded.can_access_fees${updAt}`,
+        [orgId, targetUserId, enabled],
+      );
+    }
+
+    // read back (so UI/hook can trust the response)
+    const readBack = await client.query(
+      `select user_id, can_access_fees
+         from ${feeTable}
+        where org_id=$1 and user_id=$2
+        limit 1`,
+      [orgId, targetUserId],
+    );
+
     await client.query('COMMIT');
-    return res.json({ ok: true, designatedInstructorId: enabled ? String(instructorId) : null });
+
+    return res.json({
+      ok: true,
+      designatedInstructorId: enabled ? String(targetUserId) : null,
+      can_access_fees: readBack.rows?.[0]?.can_access_fees === true,
+      feeTable,
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[setInstructorFeeAccess] failed', err);
@@ -243,6 +352,7 @@ export async function setInstructorFeeAccess(req, res) {
     client.release();
   }
 }
+
 
 
 async function resolveCreatedByProfileId(clientOrPool, req) {
@@ -1964,14 +2074,19 @@ export async function getInstitutionFeeStatement(req, res) {
 
   const client = await pool.connect();
   try {
+
+    const learnerRel = await resolveLearnerProfilesRel(client);
+    // ✅ Pick a safe grade expression depending on what column exists
+    const gradeExpr = await pickLearnerGradeExpr(client);
+
     const learnerRes = await client.query(
       `
       SELECT lp.user_id::text AS learner_id,
              lp.admission_code,
              lp.class_label,
-             lp.grade,
+             ${gradeExpr} AS grade,
              ${feeInboundLearnerNameExpr()} AS learner_name
-        FROM org_learner_profiles lp
+        FROM ${learnerRel} lp
         ${feeInboundNameJoinSql()}
        WHERE lp.org_id = $1
       `,
@@ -1987,6 +2102,7 @@ export async function getInstitutionFeeStatement(req, res) {
       const filters = [];
       const params = [orgId];
       let idx = 2;
+
       if (from) {
         filters.push(`${column} >= $${idx++}`);
         params.push(from);
@@ -1995,6 +2111,7 @@ export async function getInstitutionFeeStatement(req, res) {
         filters.push(`${column} <= $${idx++}`);
         params.push(to);
       }
+
       const clause = filters.length ? ` AND ${filters.join(' AND ')}` : '';
       return { clause, params };
     };
@@ -2036,11 +2153,12 @@ export async function getInstitutionFeeStatement(req, res) {
         learner_id: String(learnerId || ''),
         admission_no: meta.admission_code || null,
         learner_name: meta.learner_name || null,
-        grade: meta.grade || meta.class_label || null,
+        grade: meta.grade || meta.class_label || null, // ✅ grade now always exists from query
         currency: currency || 'USD',
         total_charged: 0,
         total_paid: 0,
       };
+
       rowsMap.set(key, row);
       return row;
     };
@@ -2051,14 +2169,19 @@ export async function getInstitutionFeeStatement(req, res) {
     for (const ch of charges.rows || []) {
       const row = touchRow(ch.learner_id, ch.currency);
       row.total_charged += Number(ch.total_charged || 0);
-      totalCharges.set(ch.currency, (totalCharges.get(ch.currency) || 0) + Number(ch.total_charged || 0));
+      totalCharges.set(
+        ch.currency,
+        (totalCharges.get(ch.currency) || 0) + Number(ch.total_charged || 0),
+      );
     }
 
     for (const p of payments.rows || []) {
       const row = touchRow(p.learner_id, p.currency);
       row.total_paid += Number(p.total_paid || 0);
-      row.total_paid = Number(row.total_paid || 0);
-      totalPaid.set(p.currency, (totalPaid.get(p.currency) || 0) + Number(p.total_paid || 0));
+      totalPaid.set(
+        p.currency,
+        (totalPaid.get(p.currency) || 0) + Number(p.total_paid || 0),
+      );
     }
 
     const rows = Array.from(rowsMap.values()).map((r) => ({
@@ -2066,12 +2189,11 @@ export async function getInstitutionFeeStatement(req, res) {
       balance: Number(r.total_charged || 0) - Number(r.total_paid || 0),
     }));
 
-    rows.sort((a, b) => String(a.learner_name || '').localeCompare(String(b.learner_name || '')));
+    rows.sort((a, b) =>
+      String(a.learner_name || '').localeCompare(String(b.learner_name || '')),
+    );
 
-    const currencies = new Set([
-      ...Array.from(totalCharges.keys()),
-      ...Array.from(totalPaid.keys()),
-    ]);
+    const currencies = new Set([...totalCharges.keys(), ...totalPaid.keys()]);
 
     const totals_by_currency = Array.from(currencies).map((currency) => {
       const charged = Number(totalCharges.get(currency) || 0);
@@ -2087,6 +2209,7 @@ export async function getInstitutionFeeStatement(req, res) {
     client.release();
   }
 }
+
 
 export async function getInstitutionFeeStatementPdf(req, res) {
   const orgId = normalizeOrgId(req);
@@ -2373,7 +2496,8 @@ export async function listFeeInbound(req, res) {
         lp.admission_code     AS learner_admission_code,
         lp.class_label        AS learner_class_label,
 
-        COALESCE(pr.name, u.name, lp.admission_code, t.matched_learner_id) AS learner_name
+       ${feeInboundLearnerNameExpr({ inboundAlias: 't' })} AS learner_name
+
 
       FROM org_fee_inbound_transactions t
 

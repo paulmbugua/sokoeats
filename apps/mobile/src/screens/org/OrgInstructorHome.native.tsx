@@ -43,6 +43,9 @@ import { useThemePref } from '../../theme/ThemeContext';
 /* ------------------------------------------------------------------ */
 /* Theming                                                            */
 /* ------------------------------------------------------------------ */
+const TOOL_GAP = 12; // px
+const TOOL_COLS = 3;
+
 
 function usePalette() {
   const { resolvedScheme } = useThemePref();
@@ -303,6 +306,41 @@ function IconTileNative({
 }
 
 /* ------------------------------------------------------------------ */
+/* 3-column grid helper (pixel-perfect on all phone widths)            */
+/* ------------------------------------------------------------------ */
+function ToolsGrid({ children }: { children: React.ReactNode }) {
+  const [containerW, setContainerW] = useState(0);
+
+  const itemW =
+    containerW > 0 ? Math.floor((containerW - TOOL_GAP * (TOOL_COLS - 1)) / TOOL_COLS) : 0;
+
+  return (
+    <View
+      onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}
+      style={{ flexDirection: 'row', flexWrap: 'wrap' }}
+    >
+      {React.Children.toArray(children).map((child, idx) => {
+        const isLastCol = idx % TOOL_COLS === TOOL_COLS - 1;
+
+        return (
+          <View
+            key={idx}
+            style={{
+              width: itemW || '31.5%', // fallback while layout measures
+              marginRight: isLastCol ? 0 : TOOL_GAP,
+              marginBottom: TOOL_GAP,
+            }}
+          >
+            {child as any}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+
+/* ------------------------------------------------------------------ */
 /* Screen                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -456,7 +494,10 @@ const OrgInstructorHomeNative: React.FC = () => {
       // ignore
     }
     navigation.replace('InstitutionLogin', { logoutOrg: true });
+    
   }, [orgLogout, navigation]);
+
+  
 
   const onCreateInvite = useCallback(async () => {
     if (!orgId || !orgToken) return;
@@ -566,6 +607,47 @@ const OrgInstructorHomeNative: React.FC = () => {
       setSavingSig(false);
     }
   }, [backendUrl, authToken, orgId, localSigFile]);
+
+    function smartNavigate(routeName: string, params?: any) {
+    let nav: any = navigation;
+
+    // climb up until we find a navigator that actually knows this route
+    while (nav) {
+      const names = nav.getState?.()?.routeNames;
+      if (Array.isArray(names) && names.includes(routeName)) {
+        nav.navigate(routeName, params);
+        return;
+      }
+      nav = nav.getParent?.();
+    }
+
+    Alert.alert('Unavailable', 'This tool is not available in this build yet.');
+  }
+
+  const hasRoute = useCallback(
+    (routeName: string) => {
+      let nav: any = navigation;
+      while (nav) {
+        const names = nav.getState?.()?.routeNames;
+        if (Array.isArray(names) && names.includes(routeName)) return true;
+        nav = nav.getParent?.();
+      }
+      return false;
+    },
+    [navigation]
+  );
+
+  const navOrAlert = useCallback(
+    (routeName: string, params?: any) => {
+      if (hasRoute(routeName)) {
+        smartNavigate(routeName, params);
+        return;
+      }
+      Alert.alert('Unavailable', 'This tool is not available in this build yet.');
+    },
+    [hasRoute]
+  );
+
 
   const handleSaveClassSignature = useCallback(async () => {
     setSigError(null);
@@ -758,74 +840,64 @@ const OrgInstructorHomeNative: React.FC = () => {
             </View>
           </View>
 
-          <View style={tw`mt-4 flex-row flex-wrap gap-3`}>
-            {/* 3 cols on phones */}
-            <View style={tw`w-[31%]`}>
-              <IconTileNative
-                palette={palette}
-                emoji="📝"
-                title="Assignments"
-                subtitle="Portal"
-                tone="indigo"
-                onPress={() => navigation.navigate('OrgElearnPortal', { tab: 'assign', from: 'instructor' })}
-              />
-            </View>
+          <View style={tw`mt-4`}>
+  <ToolsGrid>
+    <IconTileNative
+      palette={palette}
+      emoji="📝"
+      title="Assignments"
+      subtitle="Portal"
+      tone="indigo"
+      onPress={() => navigation.navigate('OrgElearnPortal', { tab: 'assign', from: 'instructor' })}
+    />
 
-            <View style={tw`w-[31%]`}>
-              <IconTileNative
-                palette={palette}
-                emoji="🧾"
-                title="Exams"
-                subtitle="Marks & PDFs"
-                tone="sky"
-                onPress={() => navigation.navigate('OrgExamResultsPortal')}
-              />
-            </View>
+    <IconTileNative
+      palette={palette}
+      emoji="🧾"
+      title="Exams"
+      subtitle="Marks & PDFs"
+      tone="sky"
+      onPress={() => navigation.navigate('OrgExamResultsPortal')}
+    />
 
-            <View style={tw`w-[31%]`}>
-              <IconTileNative
-                palette={palette}
-                emoji="🧠"
-                title="Courses"
-                subtitle="Create"
-                tone="emerald"
-                onPress={() => navigation.navigate('CreateCourse')}
-              />
-            </View>
+    <IconTileNative
+      palette={palette}
+      emoji="🧠"
+      title="Courses"
+      subtitle="Create"
+      tone="emerald"
+      onPress={() => navigation.navigate('CreateCourse')}
+    />
 
-            <View style={tw`w-[31%]`}>
-              <IconTileNative
-                palette={palette}
-                emoji="🎥"
-                title="ClassVault"
-                subtitle="Upload"
-                tone="amber"
-                onPress={() => navigation.navigate('ClassVaultUpload')}
-              />
-            </View>
+    <IconTileNative
+      palette={palette}
+      emoji="🎥"
+      title="ClassVault"
+      subtitle="Upload"
+      tone="amber"
+      onPress={() => navigation.navigate('ClassVaultUpload')}
+    />
 
-            <View style={tw`w-[31%]`}>
-              <IconTileNative
-                palette={palette}
-                emoji="💬"
-                title="Messages"
-                subtitle="Inbox"
-                tone="rose"
-                onPress={() => navigation.navigate('Messages', { studentId: undefined })}
-              />
-            </View>
+    <IconTileNative
+      palette={palette}
+      emoji="💬"
+      title="Messages"
+      subtitle="Inbox"
+      tone="rose"
+      onPress={() => navigation.navigate('Messages', { studentId: undefined })}
+    />
 
-            <View style={tw`w-[31%]`}>
-              <IconTileNative
-                palette={palette}
-                emoji="🏫"
-                title="Institution"
-                subtitle="Profile"
-                tone="slate"
-                onPress={() => navigation.navigate('OrgProfile')}
-              />
-            </View>
-          </View>
+    <IconTileNative
+      palette={palette}
+      emoji="🏫"
+      title="Institution"
+      subtitle="Profile"
+      tone="slate"
+      onPress={() => navigation.navigate('OrgProfile')}
+    />
+  </ToolsGrid>
+</View>
+
 
           <Text style={[tw`mt-4 text-[11px]`, { color: palette.textSubtle }]}>
             Tip: Use <Text style={tw`font-semibold`}>Assignments</Text> to publish tasks & review submissions. Use{' '}
@@ -854,8 +926,8 @@ const OrgInstructorHomeNative: React.FC = () => {
             )}
           </View>
 
-          <View style={tw`mt-4 flex-row flex-wrap gap-3`}>
-            <View style={tw`w-[31%]`}>
+          <View style={tw`mt-4`}>
+            <ToolsGrid>
               <IconTileNative
                 palette={palette}
                 emoji="✅"
@@ -866,9 +938,7 @@ const OrgInstructorHomeNative: React.FC = () => {
                 badge={!isProTier ? 'Locked' : undefined}
                 onPress={() => navigation.navigate('OrgAttendance')}
               />
-            </View>
 
-            <View style={tw`w-[31%]`}>
               <IconTileNative
                 palette={palette}
                 emoji="💳"
@@ -879,9 +949,7 @@ const OrgInstructorHomeNative: React.FC = () => {
                 badge={!hasFeeAccess ? 'No access' : undefined}
                 onPress={() => navigation.navigate('OrgFees')}
               />
-            </View>
 
-            <View style={tw`w-[31%]`}>
               <IconTileNative
                 palette={palette}
                 emoji="📰"
@@ -892,9 +960,7 @@ const OrgInstructorHomeNative: React.FC = () => {
                 badge={!isProTier ? 'Locked' : undefined}
                 onPress={() => navigation.navigate('OrgNewsletters')}
               />
-            </View>
 
-            <View style={tw`w-[31%]`}>
               <IconTileNative
                 palette={palette}
                 emoji="📣"
@@ -905,9 +971,7 @@ const OrgInstructorHomeNative: React.FC = () => {
                 badge={!isProTier ? 'Locked' : undefined}
                 onPress={() => navigation.navigate('OrgAnnouncements')}
               />
-            </View>
 
-            <View style={tw`w-[31%]`}>
               <IconTileNative
                 palette={palette}
                 emoji="🤝"
@@ -916,9 +980,7 @@ const OrgInstructorHomeNative: React.FC = () => {
                 tone="slate"
                 onPress={() => navigation.navigate('OrgElearnPortal', { tab: 'clubs', from: 'instructor' })}
               />
-            </View>
 
-            <View style={tw`w-[31%]`}>
               <IconTileNative
                 palette={palette}
                 emoji="🏆"
@@ -927,8 +989,9 @@ const OrgInstructorHomeNative: React.FC = () => {
                 tone="amber"
                 onPress={() => navigation.navigate('OrgElearnPortal', { tab: 'sports', from: 'instructor' })}
               />
-            </View>
+            </ToolsGrid>
           </View>
+
 
           {!isProTier ? (
             <View

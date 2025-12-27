@@ -1,3 +1,7 @@
+/* eslint-disable prettier/prettier */
+/* eslint-disable react-hooks/exhaustive-deps */
+
+// apps/mobile/src/screens/org/OrgFees.ui.native.tsx
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -80,6 +84,8 @@ export function useFeeTheme(explicitTheme?: Partial<FeeTheme> | FeeTheme): FeeTh
 
 /* ─────────────────────────────
  * SheetModal (snap-point bottom sheet)
+ * - real slide up/down via translateY (native driver)
+ * - snaps are HEIGHTS; translateY = maxSnap - height
  * ───────────────────────────── */
 
 type NonEmptyArray<T> = [T, ...T[]];
@@ -92,7 +98,6 @@ function toNonEmpty(arr: number[], fallback: number): NonEmptyArray<number> {
   return (arr.length ? arr : [fallback]) as NonEmptyArray<number>;
 }
 
-// ✅ Make “best” always a number (works with noUncheckedIndexedAccess)
 function nearestSnap(current: number, snaps: NonEmptyArray<number>) {
   let best = snaps[0] ?? current;
   for (const s of snaps) {
@@ -116,7 +121,6 @@ function upperOrEqualSnap(current: number, snaps: NonEmptyArray<number>) {
   }
   return best;
 }
-
 
 export function Modal({
   title,
@@ -142,95 +146,100 @@ export function Modal({
 
   const snapKey = (snapPoints && snapPoints.length ? snapPoints : [0.58, 0.84]).join('|');
 
-  // ✅ sps is guaranteed non-empty -> no more "number | undefined"
+  // snaps in px (heights), guaranteed non-empty
   const sps = useMemo<NonEmptyArray<number>>(() => {
     const raw = (snapPoints && snapPoints.length ? snapPoints : [0.58, 0.84])
       .map((p) => clamp(Math.round(winH * p), 280, safeMax))
       .sort((a, b) => a - b);
-
     return toNonEmpty(raw, fallbackH);
   }, [winH, safeMax, fallbackH, snapKey]);
 
   const minSnap = sps[0] ?? fallbackH;
-const maxSnap = sps[sps.length - 1] ?? fallbackH;
+  const maxSnap = sps[sps.length - 1] ?? fallbackH;
 
-// keep this (now safe)
-const initIdx = clamp(initialSnap ?? 1, 0, sps.length - 1);
-const initH = sps[initIdx] ?? maxSnap;
+  const initIdx = clamp(initialSnap ?? 1, 0, sps.length - 1);
+  const initH = sps[initIdx] ?? maxSnap;
 
-  const sheetH = useRef(new Animated.Value(0)).current;
+  // translateY: 0 = fully open (height=maxSnap), maxSnap = closed (offscreen)
+  const sheetY = useRef(new Animated.Value(maxSnap)).current;
+
   const [mounted, setMounted] = useState(true);
   const closingRef = useRef(false);
-  const startH = useRef(0);
+  const startY = useRef(0);
 
-  const backdropOpacity = sheetH.interpolate({
-    inputRange: [0, Math.max(1, minSnap)],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
-
-  const animateTo = (h: number, cb?: () => void) => {
-    Animated.spring(sheetH, {
-      toValue: h,
-      useNativeDriver: false,
-      damping: 18,
-      stiffness: 180,
-      mass: 0.8,
+  const openToHeight = (h: number, cb?: () => void) => {
+    const y = clamp(maxSnap - h, 0, maxSnap);
+    Animated.spring(sheetY, {
+      toValue: y,
+      useNativeDriver: true,
+      damping: 20,
+      stiffness: 220,
+      mass: 0.85,
     }).start(() => cb?.());
   };
-
-  useEffect(() => {
-    animateTo(initH);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const close = () => {
     if (closingRef.current) return;
     closingRef.current = true;
-    Animated.timing(sheetH, {
-      toValue: 0,
+    Animated.timing(sheetY, {
+      toValue: maxSnap,
       duration: 180,
-      useNativeDriver: false,
+      useNativeDriver: true,
     }).start(() => {
       setMounted(false);
       onClose?.();
     });
   };
 
+  useEffect(() => {
+    // ensure consistent closed baseline then open to initial snap
+    sheetY.setValue(maxSnap);
+    requestAnimationFrame(() => openToHeight(initH));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const snapTravel = Math.max(1, maxSnap - minSnap);
+
+  const backdropOpacity = sheetY.interpolate({
+    inputRange: [maxSnap - snapTravel, maxSnap],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
   const pan = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6,
         onPanResponderGrant: () => {
-          sheetH.stopAnimation((v: any) => {
-            startH.current = Number(v || 0);
+          sheetY.stopAnimation((v: number) => {
+            startY.current = Number(v || 0);
           });
         },
         onPanResponderMove: (_, g) => {
-          const next = clamp(startH.current - g.dy, 0, maxSnap);
-          sheetH.setValue(next);
+          const next = clamp(startY.current + g.dy, 0, maxSnap);
+          sheetY.setValue(next);
         },
         onPanResponderRelease: (_, g) => {
           const vy = g.vy || 0;
 
-          sheetH.stopAnimation((v: any) => {
-            const current = Number(v || 0);
+          sheetY.stopAnimation((v: number) => {
+            const currentY = Number(v || 0);
+            const currentH = clamp(maxSnap - currentY, 0, maxSnap);
 
             // quick close
-            if (current < 140 || vy > 1.1) return close();
+            if (currentH < 140 || vy > 1.1) return close();
 
-            const target =
+            const targetH =
               vy > 0.6
-                ? lowerOrEqualSnap(current, sps)
+                ? lowerOrEqualSnap(currentH, sps)
                 : vy < -0.6
-                ? upperOrEqualSnap(current, sps)
-                : nearestSnap(current, sps);
+                ? upperOrEqualSnap(currentH, sps)
+                : nearestSnap(currentH, sps);
 
-            animateTo(target);
+            openToHeight(targetH);
           });
         },
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [maxSnap, sps.join('|')],
   );
 
@@ -239,37 +248,73 @@ const initH = sps[initIdx] ?? maxSnap;
   return (
     <RNModal transparent visible onRequestClose={close} animationType="none">
       <View style={tw`flex-1`}>
+        {/* backdrop */}
         <Pressable onPress={close} style={tw`absolute inset-0`}>
           <Animated.View
-            style={[tw`absolute inset-0`, { backgroundColor: 'rgba(0,0,0,0.55)', opacity: backdropOpacity }]}
+            style={[
+              tw`absolute inset-0`,
+              {
+                backgroundColor: 'rgba(0,0,0,0.55)',
+                opacity: backdropOpacity,
+              },
+            ]}
           />
         </Pressable>
 
+        {/* sheet */}
         <View style={tw`flex-1 justify-end`}>
           <Animated.View
             style={[
               tw`w-full border-t`,
               {
-                height: sheetH,
+                height: maxSnap,
+                transform: [{ translateY: sheetY }],
                 backgroundColor: theme.bg,
                 borderTopLeftRadius: 28,
                 borderTopRightRadius: 28,
                 borderColor: theme.border,
                 overflow: 'hidden',
+
+                // subtle depth
+                ...(Platform.OS === 'android'
+                  ? { elevation: 10 }
+                  : {
+                      shadowColor: '#000',
+                      shadowOpacity: theme.dark ? 0.35 : 0.18,
+                      shadowRadius: 18,
+                      shadowOffset: { width: 0, height: -10 },
+                    }),
               },
             ]}
           >
             {/* drag handle */}
-            <View {...pan.panHandlers} style={[tw`pt-2 pb-1 items-center`, { backgroundColor: theme.bg }]}>
+            <View
+              {...pan.panHandlers}
+              style={[
+                tw`pt-2 pb-1 items-center`,
+                { backgroundColor: theme.bg },
+              ]}
+            >
               <View style={[tw`w-12 h-1.5 rounded-full`, { backgroundColor: theme.border }]} />
             </View>
 
             {/* header */}
-            <View style={[tw`px-4 py-3 flex-row items-center justify-between border-b`, { borderBottomColor: theme.border }]}>
+            <View
+              style={[
+                tw`px-4 py-3 flex-row items-center justify-between border-b`,
+                { borderBottomColor: theme.border, backgroundColor: theme.bg },
+              ]}
+            >
               <Text style={[tw`text-base font-bold`, { color: theme.text }]} numberOfLines={1}>
                 {title}
               </Text>
-              <TouchableOpacity onPress={close} style={[tw`px-3 py-2 rounded-2xl`, { backgroundColor: theme.primarySoft }]}>
+
+              <TouchableOpacity
+                onPress={close}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                style={[tw`px-3 py-2 rounded-2xl`, { backgroundColor: theme.primarySoft }]}
+              >
                 <Text style={[tw`text-sm font-bold`, { color: theme.text }]}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -381,7 +426,10 @@ export function CircleCheckbox({
       <View
         style={[
           tw`w-5 h-5 rounded-full border mr-2 items-center justify-center`,
-          { borderColor: checked ? theme.primary : theme.border, backgroundColor: checked ? theme.primarySoft : 'transparent' },
+          {
+            borderColor: checked ? theme.primary : theme.border,
+            backgroundColor: checked ? theme.primarySoft : 'transparent',
+          },
         ]}
       >
         {checked ? <View style={[tw`w-2.5 h-2.5 rounded-full`, { backgroundColor: theme.primary }]} /> : null}

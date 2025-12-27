@@ -58,6 +58,19 @@ function emailMatches(email, domainList) {
   });
 }
 
+async function resolveInstructorFeeTable(db) {
+  const { rows } = await db.query(`
+    select
+      to_regclass('public.org_instructor_profiles') as t_profiles,
+      to_regclass('public.org_instructors') as t_instructors
+  `);
+
+  if (rows?.[0]?.t_profiles) return 'org_instructor_profiles';
+  if (rows?.[0]?.t_instructors) return 'org_instructors';
+  return null;
+}
+
+
 // Simple stub: replace with your real grading service
 async function fakeGrade(courseId, answers) {
   const correct = Array.isArray(answers)
@@ -447,35 +460,56 @@ export async function getMyOrg(req, res) {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-  // Pick the first org the user belongs to (prefer owner/admin)
-  const q = await pool.query(
-    `SELECT o.*,
-            CASE
-              WHEN LOWER(COALESCE(s.tier,'')) IN ('start','starter') THEN 'starter'
-              WHEN LOWER(COALESCE(s.tier,'')) = 'pro' THEN 'pro'
-              WHEN LOWER(COALESCE(s.tier,'')) = 'enterprise' THEN 'enterprise'
-              ELSE COALESCE(s.tier, 'starter')
-            END AS tier,
-            s.seats,
-            u.email AS owner_email,
-            m.role AS my_role,
-            COALESCE(i.can_access_fees, false) AS can_access_fees
-       FROM organizations o
-       JOIN org_memberships m ON m.org_id = o.id
-  LEFT JOIN org_instructors i ON i.org_id = m.org_id AND i.user_id = m.user_id
-  LEFT JOIN org_subscriptions s ON s.org_id = o.id AND s.active = TRUE
-  LEFT JOIN users u ON u.id = o.owner_user_id
-      WHERE m.user_id = $1
-      ORDER BY CASE WHEN m.role IN ('owner','admin') THEN 0 ELSE 1 END,
-               o.created_at DESC
-      LIMIT 1`,
-    [userId],
-  );
+  try {
+    const feeTable = await resolveInstructorFeeTable(pool); // ✅ you added this helper
 
-  if (!q.rowCount)
-    return res.status(404).json({ message: 'No organization for user' });
-  return res.json(q.rows[0]);
+    // whitelist join/selection only (prevents SQL injection)
+    const feeJoin = feeTable
+      ? `LEFT JOIN ${feeTable} i ON i.org_id = m.org_id AND i.user_id = m.user_id`
+      : ``;
+
+    const feeSelect = feeTable
+      ? `COALESCE(i.can_access_fees, false) AS can_access_fees`
+      : `false AS can_access_fees`;
+
+    // Pick the first org the user belongs to (prefer owner/admin)
+    const q = await pool.query(
+      `
+      SELECT o.*,
+             CASE
+               WHEN LOWER(COALESCE(s.tier,'')) IN ('start','starter') THEN 'starter'
+               WHEN LOWER(COALESCE(s.tier,'')) = 'pro' THEN 'pro'
+               WHEN LOWER(COALESCE(s.tier,'')) = 'enterprise' THEN 'enterprise'
+               ELSE COALESCE(s.tier, 'starter')
+             END AS tier,
+             s.seats,
+             u.email AS owner_email,
+             m.role AS my_role,
+             ${feeSelect}
+        FROM organizations o
+        JOIN org_memberships m ON m.org_id = o.id
+        ${feeJoin}
+        LEFT JOIN org_subscriptions s ON s.org_id = o.id AND s.active = TRUE
+        LEFT JOIN users u ON u.id = o.owner_user_id
+       WHERE m.user_id = $1
+       ORDER BY CASE WHEN m.role IN ('owner','admin') THEN 0 ELSE 1 END,
+                o.created_at DESC
+       LIMIT 1
+      `,
+      [userId],
+    );
+
+    if (!q.rowCount) {
+      return res.status(404).json({ message: 'No organization for user' });
+    }
+
+    return res.json(q.rows[0]);
+  } catch (e) {
+    console.error('[getMyOrg] failed', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
 }
+
 
 // controllers/orgController.js
 export async function getOrgUsage(req, res) {
@@ -1633,13 +1667,6 @@ export async function getOrgLearnersProgress(req, res) {
 
 // ─────────────────────────────────────────────────────────
 // ROSTER: GET /api/orgs/:orgId/roster
-// returns { instructors: MiniUser[], learners: MiniUser[] }
-// ─────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────
-// ROSTER: GET /api/orgs/:orgId/roster
-// returns { instructors: MiniUser[], learners: LearnerUser[] }
-// Learners now include admission_code, class_label, guardian_email
-// ─────────────────────────────────────────────────────────
 export async function getOrgRoster(req, res) {
   const userId = req.user?.id;
   const { orgId } = req.params;
@@ -1653,81 +1680,104 @@ export async function getOrgRoster(req, res) {
   );
   if (!mem.rowCount) return res.status(403).json({ message: 'Forbidden' });
 
-  // Pull memberships + user + learner + instructor profiles in one query
-  const q = await pool.query(
-    `
-    SELECT
-      m.user_id         AS id,
-      m.role,
-      u.name,
-      u.email,
+  try {
+    // ✅ resolve fee table (org_instructors vs org_instructor_profiles, etc)
+    const feeTable = await resolveInstructorFeeTable(pool);
 
-      -- learner profile
-      lp.admission_code,
-      lp.class_label,
-      lp.guardian_email,
-      lp.temp_password AS learner_temp_password,
+    // whitelist join/selection only (prevents SQL injection)
+    const feeJoin = feeTable
+      ? `LEFT JOIN ${feeTable} fi ON fi.org_id = m.org_id AND fi.user_id = m.user_id`
+      : ``;
 
-      -- instructor profile
-      ip.staff_code,
-      ip.temp_password AS instructor_temp_password
-    FROM org_memberships m
-    JOIN users u
-      ON u.id = m.user_id
-    LEFT JOIN org_learner_profiles lp
-      ON lp.org_id = m.org_id
-     AND lp.user_id = m.user_id
-    LEFT JOIN org_instructor_profiles ip
-      ON ip.org_id = m.org_id
-     AND ip.user_id = m.user_id
-    WHERE m.org_id = $1
-    ORDER BY
-      -- staff first when needed, but mostly sort learners nicely
-      CASE
-        WHEN m.role IN ('owner','admin','instructor') THEN 0
-        ELSE 1
-      END,
-      COALESCE(lp.class_label, '') ASC,
-      COALESCE(lp.admission_code, '') ASC,
-      COALESCE(u.name, u.email, '') ASC
-    `,
-    [orgId],
-  );
+    const feeSelect = feeTable
+      ? `COALESCE(fi.can_access_fees, false) AS can_access_fees`
+      : `false AS can_access_fees`;
 
-  const instructors = [];
-  const learners = [];
+    // Pull memberships + user + learner + instructor profiles in one query
+    const q = await pool.query(
+      `
+      SELECT
+        m.user_id         AS id,
+        m.role,
+        u.name,
+        u.email,
 
-  for (const r of q.rows) {
-    const base = {
-      id: r.id,
-      name: r.name,
-      email: r.email,
-    };
+        -- ✅ fee access (only meaningful for instructors; safe default false)
+        ${feeSelect},
 
-    const role = String(r.role || '').toLowerCase();
+        -- learner profile
+        lp.admission_code,
+        lp.class_label,
+        lp.guardian_email,
+        lp.temp_password AS learner_temp_password,
 
-    // staff: owner/admin/instructor
-    if (['owner', 'admin', 'instructor'].includes(role)) {
-      instructors.push({
-        ...base,
-        staff_code: r.staff_code || null,
-        temp_password: r.instructor_temp_password || null,
-      });
+        -- instructor profile
+        ip.staff_code,
+        ip.temp_password AS instructor_temp_password
+      FROM org_memberships m
+      JOIN users u
+        ON u.id = m.user_id
+      LEFT JOIN org_learner_profiles lp
+        ON lp.org_id = m.org_id
+       AND lp.user_id = m.user_id
+      LEFT JOIN org_instructor_profiles ip
+        ON ip.org_id = m.org_id
+       AND ip.user_id = m.user_id
+      ${feeJoin}
+      WHERE m.org_id = $1
+      ORDER BY
+        CASE
+          WHEN m.role IN ('owner','admin','instructor') THEN 0
+          ELSE 1
+        END,
+        COALESCE(lp.class_label, '') ASC,
+        COALESCE(lp.admission_code, '') ASC,
+        COALESCE(u.name, u.email, '') ASC
+      `,
+      [orgId],
+    );
+
+    const instructors = [];
+    const learners = [];
+
+    for (const r of q.rows) {
+      const base = {
+        id: r.id,
+        name: r.name,
+        email: r.email,
+      };
+
+      const role = String(r.role || '').toLowerCase();
+
+      // staff: owner/admin/instructor
+      if (['owner', 'admin', 'instructor'].includes(role)) {
+        instructors.push({
+          ...base,
+          staff_code: r.staff_code || null,
+          temp_password: r.instructor_temp_password || null,
+
+          // ✅ this is what your UI uses after refresh
+          can_access_fees: r.can_access_fees === true,
+        });
+      }
+
+      // learners: include profile fields + temp_password
+      if (role === 'learner') {
+        learners.push({
+          ...base,
+          admission_code: r.admission_code || null,
+          class_label: r.class_label || null,
+          guardian_email: r.guardian_email || null,
+          temp_password: r.learner_temp_password || null,
+        });
+      }
     }
 
-    // learners: include profile fields + temp_password
-    if (role === 'learner') {
-      learners.push({
-        ...base,
-        admission_code: r.admission_code || null,
-        class_label: r.class_label || null,
-        guardian_email: r.guardian_email || null,
-        temp_password: r.learner_temp_password || null,
-      });
-    }
+    return res.json({ instructors, learners });
+  } catch (e) {
+    console.error('[getOrgRoster] failed', e);
+    return res.status(500).json({ message: 'Server error' });
   }
-
-  return res.json({ instructors, learners });
 }
 
 // ─────────────────────────────────────────────────────────
