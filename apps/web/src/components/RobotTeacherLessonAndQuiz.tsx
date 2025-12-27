@@ -19,6 +19,8 @@ const fmtDuration = (s: number) => {
   return m > 0 ? `${m}m ${String(sec).padStart(2, '0')}s` : `${sec}s`;
 };
 
+const CERT_COST_TOKENS = 20;
+
 const fmtHMS = (totalSeconds: number) => {
   const s = Math.max(0, Math.floor(totalSeconds));
   const h = Math.floor(s / 3600);
@@ -194,6 +196,69 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   currentIdx,
 }) => {
   const { tokens = 0, refreshUserDetails } = useShopContext();
+  const [prePurchaseState, setPrePurchaseState] = useState<{
+    courseId?: string | null;
+    lessonIndex: number;
+    maximized: boolean;
+    answers: Record<string, number | string | undefined>;
+    quizActive: boolean;
+    scrollY: number;
+  } | null>(null);
+  const [unlockReady, setUnlockReady] = useState(false);
+  const restoreOnceRef = useRef(false);
+  const awaitingTopUpRef = useRef(false);
+  const debitInFlightRef = useRef(false);
+
+  const snapshotPrePurchaseState = useCallback(() => {
+    const snap = {
+      courseId: course?.id ?? null,
+      lessonIndex: currentIdx ?? 0,
+      maximized: isMaximized,
+      answers: { ...workingAnswers },
+      quizActive,
+      scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
+    };
+    setPrePurchaseState(snap);
+    return snap;
+  }, [course?.id, currentIdx, isMaximized, quizActive, workingAnswers]);
+
+  const restorePrePurchaseState = useCallback(async () => {
+    if (!prePurchaseState || restoreOnceRef.current) return;
+    restoreOnceRef.current = true;
+
+    try {
+      const targetLesson = Number.isFinite(prePurchaseState.lessonIndex)
+        ? prePurchaseState.lessonIndex
+        : currentIdx;
+      const delta = targetLesson - currentIdx;
+
+      if (delta !== 0) {
+        const mover = delta > 0 ? onNext : onPrev;
+        const steps = Math.abs(delta);
+        for (let i = 0; i < steps; i++) {
+          const r = mover?.();
+          if (r instanceof Promise) await r;
+        }
+      }
+
+      setWorkingAnswers((prev) => ({
+        ...prev,
+        ...prePurchaseState.answers,
+      }));
+
+      if (prePurchaseState.quizActive) markActive();
+
+      if (prePurchaseState.maximized !== isMaximized) {
+        onToggleMaximized();
+      }
+
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: prePurchaseState.scrollY, behavior: 'auto' });
+      }
+    } catch {
+      /* ignore restore errors */
+    }
+  }, [currentIdx, isMaximized, markActive, onNext, onPrev, onToggleMaximized, prePurchaseState]);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmInfo, setConfirmInfo] = useState<{
@@ -472,10 +537,121 @@ const certCta = useMemo(
     setPaymentOk(Boolean(downUrl));
   }, [api, course?.id, downUrl]);
 
+  // Capture pre-purchase state as soon as we show the gate CTA
+  useEffect(() => {
+    if (certCta.show && !prePurchaseState) {
+      snapshotPrePurchaseState();
+    }
+  }, [certCta.show, prePurchaseState, snapshotPrePurchaseState]);
+
+  const unlockCertificate = useCallback(async () => {
+    try {
+      const doc =
+        (await tryGenerateCertificate().catch(() => null)) ||
+        (await generateAICert().catch(() => null));
+
+      if (doc) {
+        const c: any = doc;
+        setCertUrl(c.url ?? null);
+        setDownUrl(c.download_url ?? c.downloadUrl ?? c.url ?? null);
+      }
+    } catch {
+      /* unlock fallback: ignore errors, rely on paid flag */
+    }
+  }, [generateAICert, setCertUrl, setDownUrl, tryGenerateCertificate]);
+
+  const debitAndUnlock = useCallback(async () => {
+    if (debitInFlightRef.current) return;
+    debitInFlightRef.current = true;
+    try {
+      const res = await fetch(`${backendUrl}/api/payments/debit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          amountTokens: CERT_COST_TOKENS,
+          reason: 'ai_certificate_unlock',
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as any)?.error || 'Could not deduct tokens.');
+      }
+
+      try {
+        await refreshUserDetails?.();
+      } catch {
+        /* ignore */
+      }
+      try {
+        await checkPaymentStatus();
+      } catch {
+        /* ignore */
+      }
+
+      setPaymentOk(true);
+      setForceUnlock(true);
+      setUnlockReady(true);
+      await unlockCertificate();
+
+      setPaymentOpen(false);
+      await restorePrePurchaseState();
+    } catch (e: any) {
+      const msg = e?.message || 'Could not deduct tokens.';
+      console.error('[cert debit] failed', e);
+      alert(msg);
+    } finally {
+      debitInFlightRef.current = false;
+      awaitingTopUpRef.current = false;
+    }
+  }, [
+    backendUrl,
+    checkPaymentStatus,
+    refreshUserDetails,
+    restorePrePurchaseState,
+    token,
+    unlockCertificate,
+  ]);
+
+  const handleBuyCertificate = useCallback(async () => {
+    const snap = snapshotPrePurchaseState();
+    if (!requireAuth('buy_certificate', 'Please sign in to buy your certificate.')) return;
+    if (debitInFlightRef.current) return;
+
+    if ((Number(tokens) || 0) >= CERT_COST_TOKENS) {
+      await debitAndUnlock();
+      return;
+    }
+
+    awaitingTopUpRef.current = true;
+    setPaymentOpen(true);
+    setPrePurchaseState(snap);
+  }, [debitAndUnlock, requireAuth, snapshotPrePurchaseState, tokens]);
+
+  // Auto-run once the wallet balance becomes sufficient (after top-up)
+  useEffect(() => {
+    if (
+      awaitingTopUpRef.current &&
+      prePurchaseState &&
+      (Number(tokens) || 0) >= CERT_COST_TOKENS
+    ) {
+      debitAndUnlock();
+    }
+  }, [debitAndUnlock, prePurchaseState, tokens]);
+
   // Initial + course-change checks
   useEffect(() => {
     checkPaymentStatus();
   }, [checkPaymentStatus]);
+
+  useEffect(() => {
+    if (paymentOk && unlockReady) {
+      restorePrePurchaseState();
+    }
+  }, [paymentOk, restorePrePurchaseState, unlockReady]);
 
   // Re-check after the payment panel closes
   const prevPaymentOpenRef = useRef(paymentOpen);
@@ -836,13 +1012,21 @@ const certCta = useMemo(
   const currentLesson =
     lessonsArr && lessonsArr.length ? (lessonsArr[currentIdx] ?? lessonsArr[0]) : null;
 
+  const hasUnlockedCertificate = paymentOk || forceUnlock;
+
   return (
     <>
-    {certCta.show && !isOrgFlowFlag && (
+    {certCta.show && !isOrgFlowFlag && !hasUnlockedCertificate && (
       <div className="mb-3 rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 dark:bg-amber-500/10 dark:ring-amber-500/30">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="text-sm text-amber-900 dark:text-amber-200">
             Narration is locked right now. Unlock it with a certificate.
+          </div>
+
+          <div className="text-xs text-gray-700 dark:text-amber-100/80">
+            <div>Certificate costs 20 tokens (≈ USD 20).</div>
+            <div>If you have enough tokens, 20 tokens will be deducted immediately when you click Buy.</div>
+            <div>If you don’t have enough tokens, the payment widget opens so you can buy tokens.</div>
           </div>
 
           <button
@@ -852,8 +1036,7 @@ const certCta = useMemo(
                 requireAuth('buy_certificate', 'Please sign in to buy your certificate.');
                 return;
               }
-              // buy_certificate → open your existing payment widget/modal
-              setPaymentOpen(true);
+              handleBuyCertificate();
             }}
           >
             {certCta.label}

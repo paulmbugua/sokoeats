@@ -46,6 +46,7 @@ const fmtHMS = (totalSeconds: number) => {
   )}`;
 };
 const fmtHMSms = (ms: number) => fmtHMS(Math.floor(Math.max(0, ms) / 1000));
+const CERT_COST_TOKENS = 20;
 
 // ---- Quiz size helpers (match web) ----
 const MIN_PER_LESSON = 4;
@@ -412,6 +413,68 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     {}
   );
 
+  // certificate pre-purchase snapshot + restore
+  const [prePurchaseState, setPrePurchaseState] = useState<{
+    courseId?: string | null;
+    lessonIndex: number;
+    maximized: boolean;
+    answers: Record<string, number | string | undefined>;
+    quizActive: boolean;
+    scrollY: number;
+  } | null>(null);
+  const [unlockReady, setUnlockReady] = useState(false);
+  const restoreOnceRef = useRef(false);
+  const awaitingTopUpRef = useRef(false);
+  const debitInFlightRef = useRef(false);
+
+  const snapshotPrePurchaseState = useCallback(() => {
+    restoreOnceRef.current = false;
+    const snap = {
+      courseId: course?.id ?? null,
+      lessonIndex: currentIdx ?? 0,
+      maximized: isMaximized,
+      answers: { ...workingAnswers },
+      quizActive,
+      scrollY: 0,
+    };
+    setPrePurchaseState(snap);
+    return snap;
+  }, [course?.id, currentIdx, isMaximized, quizActive, workingAnswers]);
+
+  const restorePrePurchaseState = useCallback(async () => {
+    if (!prePurchaseState || restoreOnceRef.current) return;
+    restoreOnceRef.current = true;
+
+    try {
+      const targetLesson = Number.isFinite(prePurchaseState.lessonIndex)
+        ? prePurchaseState.lessonIndex
+        : currentIdx;
+      const delta = targetLesson - currentIdx;
+
+      if (delta !== 0) {
+        const mover = delta > 0 ? onNext : onPrev;
+        const steps = Math.abs(delta);
+        for (let i = 0; i < steps; i++) {
+          const r = mover?.();
+          if (r instanceof Promise) await r;
+        }
+      }
+
+      setWorkingAnswers((prev) => ({
+        ...prev,
+        ...prePurchaseState.answers,
+      }));
+
+      if (prePurchaseState.quizActive) markActive();
+
+      if (prePurchaseState.maximized !== isMaximized) {
+        onToggleMaximized();
+      }
+    } catch {
+      /* ignore restore errors */
+    }
+  }, [currentIdx, isMaximized, markActive, onNext, onPrev, onToggleMaximized, prePurchaseState]);
+
   // certificate persistence (AsyncStorage)
   const lsKey = useMemo(() => (course?.id ? `cert:last:${course.id}` : null), [course?.id]);
   const [persistedCert, setPersistedCert] = useState<{
@@ -456,6 +519,14 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       }),
     [gateMode, gateNotice?.reason, isLoggedIn]
   );
+
+  useEffect(() => {
+    restoreOnceRef.current = false;
+    awaitingTopUpRef.current = false;
+    debitInFlightRef.current = false;
+    setUnlockReady(false);
+    setPrePurchaseState(null);
+  }, [course?.id]);
 
   // Small helper to call your backend consistently
   const api = useCallback(
@@ -514,10 +585,123 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     }
   }, [api, course?.id, downUrl, isOrgFlowFlag]);
 
+  const unlockCertificate = useCallback(async () => {
+    try {
+      const doc =
+        (await tryGenerateCertificate().catch(() => null)) ||
+        (await generateAICert().catch(() => null));
+
+      if (doc) {
+        const c: any = doc;
+        setCertUrl(c.url ?? null);
+        setDownUrl(c.download_url ?? c.downloadUrl ?? c.url ?? null);
+      }
+    } catch {
+      /* ignore unlock failures; status will still be refreshed */
+    }
+  }, [generateAICert, setCertUrl, setDownUrl, tryGenerateCertificate]);
+
+  const debitAndUnlock = useCallback(async () => {
+    if (debitInFlightRef.current) return;
+    debitInFlightRef.current = true;
+    try {
+      const res = await fetch(`${backendUrl}/api/payments/debit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          amountTokens: CERT_COST_TOKENS,
+          reason: 'ai_certificate_unlock',
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as any)?.error || 'Could not deduct tokens.');
+      }
+
+      try {
+        await refreshUserDetails?.();
+      } catch {}
+
+      try {
+        await checkPaymentStatus();
+      } catch {}
+
+      setPaymentOk(true);
+      setForceUnlock(true);
+      setUnlockReady(true);
+      await unlockCertificate();
+
+      setPaymentOpen(false);
+      await restorePrePurchaseState();
+    } catch (e: any) {
+      console.error('[cert debit] failed', e);
+      Alert.alert('Certificate', e?.message || 'Could not deduct tokens.');
+    } finally {
+      debitInFlightRef.current = false;
+      awaitingTopUpRef.current = false;
+    }
+  }, [
+    backendUrl,
+    checkPaymentStatus,
+    refreshUserDetails,
+    restorePrePurchaseState,
+    token,
+    unlockCertificate,
+  ]);
+
+  const handleBuyCertificate = useCallback(async () => {
+    const snap = snapshotPrePurchaseState();
+    if (!requireAuth('buy_certificate', 'Please sign in to buy your certificate.')) return;
+    if (debitInFlightRef.current) return;
+
+    if ((Number(tokens) || 0) >= CERT_COST_TOKENS) {
+      await debitAndUnlock();
+      return;
+    }
+
+    awaitingTopUpRef.current = true;
+    setPaymentOpen(true);
+    setPrePurchaseState(snap);
+  }, [debitAndUnlock, requireAuth, snapshotPrePurchaseState, tokens]);
+
+  // Capture state when the gate is shown or the payment drawer opens
+  useEffect(() => {
+    if (certCta.show && !prePurchaseState) {
+      snapshotPrePurchaseState();
+    }
+  }, [certCta.show, prePurchaseState, snapshotPrePurchaseState]);
+
+  useEffect(() => {
+    if (paymentOpen && !prePurchaseState) {
+      snapshotPrePurchaseState();
+    }
+  }, [paymentOpen, prePurchaseState, snapshotPrePurchaseState]);
+
+  // Auto-run once the wallet becomes sufficient after top-up
+  useEffect(() => {
+    if (
+      awaitingTopUpRef.current &&
+      prePurchaseState &&
+      (Number(tokens) || 0) >= CERT_COST_TOKENS
+    ) {
+      debitAndUnlock();
+    }
+  }, [debitAndUnlock, prePurchaseState, tokens]);
+
   // Initial + course-change checks
   useEffect(() => {
     checkPaymentStatus();
   }, [checkPaymentStatus]);
+
+  useEffect(() => {
+    if (paymentOk && unlockReady) {
+      restorePrePurchaseState();
+    }
+  }, [paymentOk, restorePrePurchaseState, unlockReady]);
 
   // Re-check after the payment panel closes
   const prevPaymentOpenRef = useRef(paymentOpen);
@@ -1105,22 +1289,20 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
       {/* Gate CTA (parity with web) */}
       {certCta.show && !isOrgFlowFlag ? (
         <View style={tw`mb-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3`}>
-          <Text style={tw`text-amber-200 text-sm`}>
-            Narration is locked right now. Unlock it with a certificate.
+          <Text style={tw`text-amber-200 text-sm`}>Certificate costs 20 tokens (≈ USD 20).</Text>
+          <Text style={tw`text-amber-200 text-sm mt-1`}>
+            If you have enough tokens, 20 tokens will be deducted immediately when you click Buy.
+          </Text>
+          <Text style={tw`text-amber-200 text-sm mt-1`}>
+            If you don’t have enough tokens, the payment widget opens so you can buy tokens.
           </Text>
 
           <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
             <TouchableOpacity
-              onPress={() => {
-                if (certCta.action === 'login') {
-                  requireAuth('buy_certificate', 'Please sign in to buy your certificate.');
-                  return;
-                }
-                setPaymentOpen(true);
-              }}
+              onPress={handleBuyCertificate}
               style={tw`px-4 py-2 rounded-xl bg-indigo-600`}
             >
-              <Text style={tw`text-white font-semibold`}>{certCta.label}</Text>
+              <Text style={tw`text-white font-semibold`}>Buy</Text>
             </TouchableOpacity>
           </View>
         </View>
