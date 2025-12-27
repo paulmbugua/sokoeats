@@ -25,7 +25,6 @@ import {
   buildGateNotice,
   blankLessonsFromOutline,
 } from '../services/narrationGate.js';
-import { getEntitlement } from './_entitlements.js';
 import {
   incrementLessonUsage,
   getCertificateEntitlement,
@@ -136,16 +135,6 @@ function isAbortLike(err) {
     msg.includes('timeout') ||
     err?.code === 'UND_ERR_ABORTED'
   );
-}
-
-async function hasCertificateEntitlement(userId, courseId) {
-  if (!userId || !courseId) return false;
-  try {
-    const ent = await getEntitlement(pool, userId, courseId);
-    return !!(ent && (ent.can_certificate || ent.tier));
-  } catch {
-    return false;
-  }
 }
 
 async function notesAllowed({ userId, orgId }) {
@@ -529,37 +518,51 @@ const estimateText = Array.isArray(outline)
 
 
       // ✅ Enforce 60-lesson cap for certificate entitlement (only when entitlement exists)
-let entitlementUsage = null;
+      let entitlementUsage = null;
 
-if (userId) {
-  try {
-    const ent = await getCertificateEntitlement(userId, courseId);
+      if (userId) {
+        try {
+          const ent = await getCertificateEntitlement(userId, courseId);
 
-    // Only enforce lesson cap when the user has the certificate entitlement row
-    if (ent) {
-      const ok = await incrementLessonUsage({
-        userId,          // can be numeric; helper normalizes to UUID inside
-        courseId,
-        amount: count,   // IMPORTANT: count, not 1
-      });
+          if (ent) {
+            const lessonCap = Number(ent.max_lessons ?? 60) || 60;
+            const currentUsed = Number(ent.lessons_used ?? 0);
 
-      if (!ok) {
-        return res.status(402).json({
-          error: 'LESSON_LIMIT_REACHED',
-          message: 'You have reached the 60-lesson limit for this AI course.',
-          max: ent.max_lessons || 60,
-        });
+            if (currentUsed >= lessonCap) {
+              return res.status(409).json({
+                error: 'LESSON_CAP_REACHED',
+                message: 'Lesson limit reached (60).',
+                lessons_used: currentUsed,
+                lesson_cap: lessonCap,
+              });
+            }
+
+            const ok = await incrementLessonUsage({
+              userId, // can be numeric; helper normalizes to UUID inside
+              courseId,
+              amount: count, // IMPORTANT: count, not 1
+            });
+
+            if (!ok || ok.reachedCap) {
+              const used = Number(ok?.lessons_used ?? currentUsed);
+              const cap = Number(ok?.max_lessons ?? lessonCap);
+              return res.status(409).json({
+                error: 'LESSON_CAP_REACHED',
+                message: 'Lesson limit reached (60).',
+                lessons_used: used,
+                lesson_cap: cap,
+              });
+            }
+
+            entitlementUsage = {
+              max: ok.max_lessons,
+              used: ok.lessons_used,
+            };
+          }
+        } catch (e) {
+          console.warn('[ai] entitlement check failed', e?.message);
+        }
       }
-
-      entitlementUsage = {
-        max: ok.max_lessons,
-        used: ok.lessons_used,
-      };
-    }
-  } catch (e) {
-    console.warn('[ai] entitlement check failed', e?.message);
-  }
-}
 
 
 
@@ -779,11 +782,6 @@ export async function generateQuiz(req, res) {
         }
       }
 
-      const programTrack =
-        req.body?.programTrack ||
-        req.query?.programTrack ||
-        req.headers['x-program-track'] ||
-        'general';
       // Respect org lock if present; otherwise use the caller's number (or let the service decide)
       let effectiveNumQ =
         (Number.isFinite(lockedNumQ) ? lockedNumQ : undefined) ??

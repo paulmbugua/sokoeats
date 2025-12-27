@@ -173,7 +173,26 @@ export async function incrementLessonUsage({ userId, courseId, amount }) {
   `;
 
   const { rows } = await pool.query(sql, [userUuid, courseId, inc, CERT_TYPE]);
-  return rows[0] || null;
+  if (rows[0]) return { ...rows[0], reachedCap: false };
+
+  // When cap is hit, surface current usage/cap instead of null
+  const fallback = await pool.query(
+    `
+    SELECT max_lessons, lessons_used
+      FROM ai_course_entitlements
+     WHERE user_id = $1::uuid
+       AND course_id = $2
+       AND purchase_type = $3
+     LIMIT 1
+    `,
+    [userUuid, courseId, CERT_TYPE],
+  );
+
+  if (fallback.rows?.[0]) {
+    return { ...fallback.rows[0], reachedCap: true };
+  }
+
+  return null;
 }
 
 /**

@@ -6,7 +6,11 @@ import axios from 'axios';
 import pool from '../config/db.js'; // PG pool
 import { generateCertificatePdfBuffer } from '../services/certificateService.js';
 import { getEntitlement, upsertEntitlement, isUuid } from './_entitlements.js';
-import { getEntitlementsForUser,upsertAiCertificateEntitlement, } from './_aiCourseEntitlements.js';
+import {
+  getEntitlementsForUser,
+  upsertAiCertificateEntitlement,
+  getCertificateEntitlement,
+} from './_aiCourseEntitlements.js';
 
 // ---------- Validators ----------
 const generateSchema = Joi.object({
@@ -29,66 +33,6 @@ async function hasEnrollment(studentId, courseId) {
     [studentId, courseId],
   );
   return q.rowCount > 0;
-}
-
-// Map internal token purchases to a valid payment_method in your CHECK
-function resolvePaymentMethod(source) {
-  const env = (process.env.PLATFORM_BALANCE_METHOD || '').trim(); // e.g., 'Tokens' or 'Manual'
-  if (env) return env;
-  const s = String(source || '').toLowerCase();
-  if (
-    [
-      'platformbalance',
-      'platform_balance',
-      'wallet',
-      'tokens',
-      'internal',
-    ].includes(s)
-  )
-    return 'Tokens';
-  if (s.includes('paypal')) return 'PayPal';
-  if (s.includes('mpesa') || s.includes('m-pesa')) return 'M-Pesa';
-  if (s.includes('stripe')) return 'Stripe';
-  return 'Manual';
-}
-
-// Insert into transactions using only columns that exist in this DB
-async function insertTransactionDynamic(client, row) {
-  const { rows: txColsRows } = await client.query(`
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'transactions'
-  `);
-  const txCols = new Set(txColsRows.map((r) => r.column_name));
-
-  const cols = [];
-  const vals = [];
-  const push = (col, val) => {
-    cols.push(col);
-    vals.push(val);
-  };
-
-  // required/common
-  push('user_id', row.user_id);
-  push('type', row.type);
-  push('amount', row.amount);
-  push('description', row.description);
-  if (txCols.has('date')) push('date', row.date || new Date());
-  push('status', row.status || 'Completed');
-  if (txCols.has('currency')) push('currency', row.currency || 'USD');
-  if (txCols.has('payment_method')) push('payment_method', row.payment_method);
-  if (txCols.has('source')) push('source', row.source);
-
-  if (txCols.has('created_at')) push('created_at', new Date());
-  if (txCols.has('updated_at')) push('updated_at', new Date());
-  if (txCols.has('payer_email')) push('payer_email', row.payer_email ?? null);
-  if (txCols.has('payer_id')) push('payer_id', row.payer_id ?? null);
-
-  const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
-  await client.query(
-    `INSERT INTO transactions (${cols.join(', ')}) VALUES (${placeholders})`,
-    vals,
-  );
 }
 
 function logErr(tag, err, extra = {}) {
@@ -333,6 +277,122 @@ async function isEligibleForCertificate(studentId, courseId) {
   return a || b || c;
 }
 
+async function resolveCoursePassMark(courseId) {
+  try {
+    const q = await pool.query(
+      `SELECT COALESCE(NULLIF(pass_mark, 0), 70)::int AS pass_mark
+         FROM courses
+        WHERE id = $1
+        LIMIT 1`,
+      [courseId],
+    );
+    if (q.rowCount && q.rows[0]?.pass_mark != null) {
+      return Math.max(0, Math.min(100, Number(q.rows[0].pass_mark) || 70));
+    }
+  } catch (e) {
+    console.warn('[cert] resolveCoursePassMark failed', e?.message || e);
+  }
+  return 70;
+}
+
+async function getLatestQuizResult({ studentId, authUuid, courseId, requiredPassMark }) {
+  const fallbackPassMark = Math.max(0, Math.min(100, Number(requiredPassMark) || 70));
+
+  try {
+    const orgQ = await pool.query(
+      `
+      SELECT qa.score_pct, qa.pass_mark, qa.passed
+        FROM org_quiz_attempts qa
+        JOIN org_course_assignments a ON a.id = qa.assignment_id
+       WHERE qa.user_id = $1
+         AND a.course_id = $2
+         AND qa.submitted_at IS NOT NULL
+       ORDER BY qa.submitted_at DESC
+       LIMIT 1
+      `,
+      [studentId, courseId],
+    );
+
+    if (orgQ.rowCount) {
+      const row = orgQ.rows[0];
+      const passMark = Math.max(
+        0,
+        Math.min(100, Number(row.pass_mark ?? fallbackPassMark) || fallbackPassMark),
+      );
+      const scorePct = row.score_pct != null ? Number(row.score_pct) : null;
+      const passed = row.passed === true || (scorePct != null && scorePct >= passMark);
+      return { attempted: true, passed, scorePct, passMark };
+    }
+  } catch (e) {
+    console.warn('[cert] quiz pass check (org) failed', e?.message || e);
+  }
+
+  const userUuid =
+    authUuid && isUuid(authUuid)
+      ? authUuid
+      : await resolveAuthUuidForNumericUserId(studentId);
+
+  if (userUuid) {
+    try {
+      const quizQ = await pool.query(
+        `
+        SELECT score_pct, pass_mark
+          FROM quiz_attempts
+         WHERE user_id = $1::uuid
+           AND course_id = $2::uuid
+           AND submitted_at IS NOT NULL
+         ORDER BY submitted_at DESC
+         LIMIT 1
+        `,
+        [userUuid, courseId],
+      );
+
+      if (quizQ.rowCount) {
+        const row = quizQ.rows[0];
+        const passMark = Math.max(
+          0,
+          Math.min(100, Number(row.pass_mark ?? fallbackPassMark) || fallbackPassMark),
+        );
+        const scorePct = row.score_pct != null ? Number(row.score_pct) : null;
+        const passed = scorePct != null && scorePct >= passMark;
+        return { attempted: true, passed, scorePct, passMark };
+      }
+    } catch (e) {
+      console.warn('[cert] quiz pass check (user_id) failed', e?.message || e);
+    }
+  }
+
+  try {
+    const quizQ = await pool.query(
+      `
+      SELECT score_pct, pass_mark
+        FROM quiz_attempts
+       WHERE student_id = $1
+         AND course_id = $2::uuid
+         AND submitted_at IS NOT NULL
+       ORDER BY submitted_at DESC
+       LIMIT 1
+      `,
+      [studentId, courseId],
+    );
+
+    if (quizQ.rowCount) {
+      const row = quizQ.rows[0];
+      const passMark = Math.max(
+        0,
+        Math.min(100, Number(row.pass_mark ?? fallbackPassMark) || fallbackPassMark),
+      );
+      const scorePct = row.score_pct != null ? Number(row.score_pct) : null;
+      const passed = scorePct != null && scorePct >= passMark;
+      return { attempted: true, passed, scorePct, passMark };
+    }
+  } catch (e) {
+    console.warn('[cert] quiz pass check (student_id) failed', e?.message || e);
+  }
+
+  return { attempted: false, passed: false, scorePct: null, passMark: fallbackPassMark };
+}
+
 // Build a crawler-friendly OG image URL (no client Cloudinary logic).
 function buildOgRedirectUrl({
   cloudName,
@@ -362,34 +422,6 @@ function buildOgRedirectUrl({
   }
 
   return `https://res.cloudinary.com/${cloudName}/image/upload/${transforms.join('/')}/certificates:${certificateId}.pdf.jpg`;
-}
-
-// Parse Cloudinary public_id from a secure URL, else null
-function publicIdFromCloudinaryUrl(u) {
-  try {
-    if (!u) return null;
-    const url = new URL(u);
-    // Expect: /image/upload/<optional transforms>/<publicId>.<ext>
-    const parts = url.pathname.split('/');
-    const uploadIdx = parts.findIndex((p) => p === 'upload');
-    if (uploadIdx === -1) return null;
-    const tail = parts.slice(uploadIdx + 1).join('/'); // "<transforms>/<publicId>.<ext>" OR "<publicId>.<ext>"
-    const last = tail.split('/').pop(); // "<publicId>.<ext>"
-    if (!last) return null;
-    const publicId = tail
-      .replace(/^(.*\/)?/, '')
-      .replace(/\.[a-zA-Z0-9]+$/, ''); // drop transforms + extension
-    // If transforms existed, the above loses folders. Safer path:
-    const afterUpload = parts.slice(uploadIdx + 1);
-    // drop any transformation segments until we hit something with a dot or known folder:
-    // We'll rebuild by stripping the final extension only.
-    const joined = afterUpload.join('/');
-    return joined
-      .replace(/^.*?\/(?=[^/]+\.[a-zA-Z0-9]+$)/, '')
-      .replace(/\.[a-zA-Z0-9]+$/, '');
-  } catch {
-    return null;
-  }
 }
 
 // Get the most recent org (name, logo_url, signature_url, certificate_title) that covered this user/course
@@ -448,7 +480,7 @@ export async function checkEligibility(req, res) {
     let c = false;
     try {
       c = await hasOrgCoverForCourse(studentId, courseId);
-    } catch (_) {}
+    } catch {}
 
     const eligible = a || b || c;
 
@@ -633,6 +665,7 @@ export async function generateCertificate(req, res) {
     const studentId = req.user.id;
     const { courseId } = value;
     console.log('[cert] generateCertificate start', { studentId, courseId });
+    const authUuid = pickAuthUuidFromReqUser(req.user);
 
     // 0) Quick Cloudinary config sanity log
     const cldcfg = cloudinary.config() || {};
@@ -755,6 +788,22 @@ export async function generateCertificate(req, res) {
           message: 'Please use tokens to claim your certificate first.',
         });
       }
+    }
+
+    const coursePassMark = await resolveCoursePassMark(courseId);
+    const quizResult = await getLatestQuizResult({
+      studentId,
+      authUuid,
+      courseId,
+      requiredPassMark: coursePassMark,
+    });
+    if (!quizResult.passed) {
+      return res.status(409).json({
+        error: 'PASS_REQUIRED',
+        message: 'Pass the quiz (≥ 70%) to generate your certificate.',
+        scorePct: quizResult.scorePct,
+        passMark: quizResult.passMark,
+      });
     }
 
     // 3) Names + per-course/tutor signature
@@ -895,12 +944,17 @@ export async function generateCertificate(req, res) {
     });
 
     const uploadTimeoutMs = Number(process.env.CERT_UPLOAD_TIMEOUT_MS || 45000);
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(
+    const timeoutPromise = new Promise((resolve, reject) => {
+      const timer = setTimeout(
         () => reject(new Error('Cloudinary upload timed out')),
         uploadTimeoutMs,
-      ),
-    );
+      );
+
+      uploadPromise.finally(() => {
+        clearTimeout(timer);
+        resolve(null);
+      });
+    });
 
     const url = await Promise.race([uploadPromise, timeoutPromise]);
     console.timeEnd('[cert] generate:cloudinaryUpload');
@@ -1086,7 +1140,7 @@ export async function downloadCertificate(req, res) {
         if (idx >= 0 && parts[idx + 1]) {
           publicId = `certificates/${parts[idx + 1].replace(/\.pdf$/i, '')}`;
         }
-      } catch (_) {}
+      } catch {}
       if (!publicId) {
         console.warn(
           '[cert] Could not parse public_id from URL; using DB id fallback',
@@ -1187,7 +1241,7 @@ export async function getStatus(req, res) {
     if (!courseId || !isUuid(courseId))
       return res.status(400).json({ paid: false, error: 'Invalid courseId' });
 
-    const [certQ, orgQ, issuQ, ent, purQ, enrQ] = await Promise.all([
+    const [certQ, orgQ, issuQ, ent, purQ, enrQ, aiEnt] = await Promise.all([
       pool.query(
         `SELECT 1 FROM certificates WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
         [userId, courseId],
@@ -1216,6 +1270,7 @@ export async function getStatus(req, res) {
         `SELECT 1 FROM enrollments WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
         [userId, courseId],
       ),
+      getCertificateEntitlement(userId, courseId).catch(() => null),
     ]);
 
     const orgCovered = orgQ.rowCount > 0;
@@ -1234,6 +1289,11 @@ export async function getStatus(req, res) {
 
     const extended =
       orgCovered || ent?.can_transcript === true || extendedByIssuance;
+
+    const lessonsUsed =
+      aiEnt && aiEnt.lessons_used != null ? Number(aiEnt.lessons_used) : null;
+    const lessonCap =
+      aiEnt && aiEnt.max_lessons != null ? Number(aiEnt.max_lessons) : null;
 
     // Heal entitlement if we learned something new
     if (extended && (!ent || ent.can_transcript !== true)) {
@@ -1282,6 +1342,8 @@ export async function getStatus(req, res) {
       canTranscript: Boolean(extended),
       hasCertificate: Boolean(ent?.can_certificate || certQ.rowCount),
       canCertificate: Boolean(hasAnyCert),
+      lessons_used: lessonsUsed,
+      lesson_cap: lessonCap,
     });
   } catch (err) {
     console.error('[cert] getStatus error', err);
@@ -1401,14 +1463,20 @@ export async function listMyAiCourses(req, res) {
       const attempted = att.score_pct != null;
       const passed =
         att.passed === true || (attempted && Number(att.score_pct) >= passMark);
+      const lessonCap = Number(ent.max_lessons ?? 60) || 60;
+      const tier = ent.tier || 'standard';
 
       return {
+        purchased: true,
+        tier,
+        courseId: ent.course_id,
         course_id: ent.course_id,
         course_source: ent.course_source,
         title: meta.title || 'AI Course',
         purchased_at: ent.created_at,
         lessons_used: ent.lessons_used,
-        max_lessons: ent.max_lessons,
+        lesson_cap: lessonCap,
+        max_lessons: lessonCap,
         completion: {
           attempted,
           passed,

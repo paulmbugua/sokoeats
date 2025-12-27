@@ -1,7 +1,10 @@
 // apps/backend/controllers/certificatesController.js
 import pool from '../config/db.js';
-import { isUuid, upsertEntitlement } from './_entitlements.js';
-import { upsertAiCertificateEntitlement } from './_aiCourseEntitlements.js';
+import { getEntitlement, isUuid, upsertEntitlement } from './_entitlements.js';
+import {
+  getCertificateEntitlement,
+  upsertAiCertificateEntitlement,
+} from './_aiCourseEntitlements.js';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -90,6 +93,10 @@ export async function issueCertificate(req, res) {
       .status(400)
       .json({ ok: false, message: 'Missing certificate code' });
 
+  const normalizedCourseId = isUuid(courseId) ? courseId : null;
+  if (!normalizedCourseId)
+    return res.status(400).json({ ok: false, message: 'Invalid courseId' });
+
   try {
     const certQ = await pool.query(
       `SELECT id, code, title, tier, price_tokens
@@ -106,6 +113,32 @@ export async function issueCertificate(req, res) {
     const priceTokens = Number(cert.price_tokens) || 0;
     const extendedTier = isExtendedSkuRow(cert) || looksExtendedSku(cert);
 
+    // Idempotent: if entitlement already exists, return success without charging again.
+    const existingEntitlement = await getCertificateEntitlement(
+      userId,
+      normalizedCourseId,
+    ).catch(() => null);
+
+    const existingCourseEntitlement = await getEntitlement(
+      pool,
+      userId,
+      normalizedCourseId,
+    ).catch(() => null);
+
+    if (existingEntitlement) {
+      const tier =
+        existingCourseEntitlement?.tier || (extendedTier ? 'extended' : 'standard');
+
+      return res.status(200).json({
+        ok: true,
+        courseId: normalizedCourseId,
+        purchased: true,
+        tier,
+        lessons_used: existingEntitlement.lessons_used ?? 0,
+        lesson_cap: existingEntitlement.max_lessons ?? 60,
+      });
+    }
+
     // Org coverage shortcut
     const cov = await pool.query(
       `SELECT 1
@@ -118,38 +151,47 @@ export async function issueCertificate(req, res) {
       [userId],
     );
 
+    let aiEntitlementRow = null;
+    let courseEntitlement = existingCourseEntitlement;
+
     if (cov.rowCount) {
-      const ins = await pool.query(
+      await pool.query(
         `INSERT INTO ai_certificate_issuances (user_id, course_id, certificate_id, price_tokens)
          VALUES ($1, $2, $3, 0)
          RETURNING id, created_at`,
-        [userId, isUuid(courseId) ? courseId : null, cert.id],
+        [userId, normalizedCourseId, cert.id],
       );
 
-      if (isUuid(courseId)) {
-        try {
-          await upsertEntitlement(pool, {
-            userId,
-            courseId,
-            extended: true, // org covers transcript
-          });
-          await upsertAiCertificateEntitlement({
-            userId,
-            courseId,
-            courseSource: 'catalog',
-            maxLessons: 60,
-          });
-        } catch (e) {
-          console.warn('[aiCert] upsertEntitlement (org) failed:', e.message);
-        }
+      try {
+        await upsertEntitlement(pool, {
+          userId,
+          courseId: normalizedCourseId,
+          extended: true, // org covers transcript
+        });
+        aiEntitlementRow = await upsertAiCertificateEntitlement({
+          userId,
+          courseId: normalizedCourseId,
+          courseSource: 'catalog',
+          maxLessons: 60,
+        });
+        courseEntitlement = await getEntitlement(
+          pool,
+          userId,
+          normalizedCourseId,
+        ).catch(() => courseEntitlement);
+      } catch (e) {
+        console.warn('[aiCert] upsertEntitlement (org) failed:', e.message);
       }
+
+      const tier = courseEntitlement?.tier || 'extended';
 
       return res.status(200).json({
         ok: true,
-        issuanceId: ins.rows[0].id,
-        createdAt: ins.rows[0].created_at,
-        debitedTokens: 0,
-        coveredByOrg: true,
+        courseId: normalizedCourseId,
+        purchased: true,
+        tier,
+        lessons_used: aiEntitlementRow?.lessons_used ?? 0,
+        lesson_cap: aiEntitlementRow?.max_lessons ?? 60,
       });
     }
 
@@ -178,39 +220,47 @@ export async function issueCertificate(req, res) {
       userId,
     ]);
 
-    const ins = await pool.query(
+    await pool.query(
       `INSERT INTO ai_certificate_issuances (user_id, course_id, certificate_id, price_tokens)
        VALUES ($1, $2, $3, $4)
        RETURNING id, created_at`,
-      [userId, isUuid(courseId) ? courseId : null, cert.id, priceTokens],
+      [userId, normalizedCourseId, cert.id, priceTokens],
     );
 
     await pool.query('COMMIT');
 
     // Entitlement AFTER commit
-    if (isUuid(courseId)) {
-      try {
-        await upsertEntitlement(pool, {
-          userId,
-          courseId,
-          extended: Boolean(extendedTier), // true => can_transcript + can_certificate
-        });
-        await upsertAiCertificateEntitlement({
-          userId,
-          courseId,
-          courseSource: 'catalog',
-          maxLessons: 60,
-        });
-      } catch (e) {
-        console.warn('[aiCert] upsertEntitlement failed:', e.message);
-      }
+    try {
+      await upsertEntitlement(pool, {
+        userId,
+        courseId: normalizedCourseId,
+        extended: Boolean(extendedTier), // true => can_transcript + can_certificate
+      });
+      aiEntitlementRow = await upsertAiCertificateEntitlement({
+        userId,
+        courseId: normalizedCourseId,
+        courseSource: 'catalog',
+        maxLessons: 60,
+      });
+      courseEntitlement = await getEntitlement(
+        pool,
+        userId,
+        normalizedCourseId,
+      ).catch(() => courseEntitlement);
+    } catch (e) {
+      console.warn('[aiCert] upsertEntitlement failed:', e.message);
     }
+
+    const tier =
+      courseEntitlement?.tier || (extendedTier ? 'extended' : 'standard');
 
     return res.status(200).json({
       ok: true,
-      issuanceId: ins.rows[0].id,
-      createdAt: ins.rows[0].created_at,
-      debitedTokens: priceTokens,
+      courseId: normalizedCourseId,
+      purchased: true,
+      tier,
+      lessons_used: aiEntitlementRow?.lessons_used ?? 0,
+      lesson_cap: aiEntitlementRow?.max_lessons ?? 60,
     });
   } catch (e) {
     await pool.query('ROLLBACK').catch(() => {});

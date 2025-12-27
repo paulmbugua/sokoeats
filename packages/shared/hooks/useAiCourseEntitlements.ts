@@ -21,8 +21,27 @@ export function useAiCourseEntitlements({ backendUrl, token }: Options) {
     setError(null);
     try {
       const rows = await listMyAiCourses(backendUrl, token);
-      setItems(rows);
-      return rows;
+      const normalized = (rows || []).map((row) => {
+        const lessonCap =
+          typeof (row as any).lesson_cap === 'number'
+            ? (row as any).lesson_cap
+            : typeof row.max_lessons === 'number'
+              ? row.max_lessons
+              : 60;
+
+        return {
+          ...row,
+          purchased: row.purchased ?? true,
+          tier: row.tier || 'standard',
+          courseId: row.courseId || (row as any).course_id,
+          course_id: row.course_id || (row as any).courseId,
+          lesson_cap: lessonCap,
+          max_lessons: lessonCap,
+          lessons_used: row.lessons_used ?? (row as any).lessons_used ?? 0,
+        } as AiCourseCertificateEntitlement;
+      });
+      setItems(normalized);
+      return normalized;
     } catch (e: any) {
       const msg = e?.message || 'Failed to load AI course entitlements';
       setError(msg);

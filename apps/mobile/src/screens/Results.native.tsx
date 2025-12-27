@@ -247,6 +247,7 @@ const ResultsPage: React.FC = () => {
             <View className="gap-3">
               <Text className="text-white font-semibold text-lg">Purchased AI courses</Text>
               {aiCourses.map((item: any) => {
+                const courseIdForNav = item.courseId || item.course_id;
                 const status = item.completion?.passed
                   ? 'Completed'
                   : item.completion?.attempted
@@ -263,8 +264,11 @@ const ResultsPage: React.FC = () => {
                           {item.title}
                         </Text>
                         <Text className="text-white/60 text-xs">
-                          Lessons used {item.lessons_used}/{item.max_lessons}
+                          Lessons used {item.lessons_used}/{item.lesson_cap || item.max_lessons}
                         </Text>
+                        {item.tier ? (
+                          <Text className="text-white/60 text-[11px]">Tier: {item.tier}</Text>
+                        ) : null}
                       </View>
                       <Text className="text-white/70 text-xs">{status}</Text>
                     </View>
@@ -273,7 +277,7 @@ const ResultsPage: React.FC = () => {
                       {!item.completion?.passed ? (
                         <Pressable
                           onPress={() =>
-                            navigation.navigate('CourseDetails', { courseId: item.course_id })
+                            navigation.navigate('CourseDetails', { courseId: courseIdForNav })
                           }
                           className="px-3 py-2 rounded-lg bg-white/10"
                         >
@@ -281,7 +285,7 @@ const ResultsPage: React.FC = () => {
                         </Pressable>
                       ) : (
                         <Pressable
-                          onPress={() => navigation.navigate('Results', { courseId: item.course_id })}
+                          onPress={() => navigation.navigate('Results', { courseId: courseIdForNav })}
                           className="px-3 py-2 rounded-lg bg-emerald-500/20"
                         >
                           <Text className="text-emerald-100 text-sm">View certificate</Text>
