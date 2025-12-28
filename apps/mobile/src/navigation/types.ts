@@ -50,10 +50,29 @@ export type MainStackParamList = {
       }
     | undefined;
 
+  OrgLearnerFees:
+    | {
+        studentId?: string | number;
+        student_id?: string | number;
+      }
+    | undefined;
+
   OrgInstructorHome: undefined;
 
   OrgElearnPortal:
-    | { tab?: 'branding' | 'assign' | 'analytics' | 'tools'; from?: string; courseId?: string }
+    | {
+        tab?:
+          | 'branding'
+          | 'assign'
+          | 'analytics'
+          | 'tools'
+          | 'fees'
+          | 'sports'
+          | 'clubs'
+          | 'newsletters';
+        from?: string;
+        courseId?: string;
+      }
     | undefined;
 
   OrgProfile: undefined;
@@ -68,7 +87,7 @@ export type MainStackParamList = {
   // ✅ ADD these (you used them in App.tsx)
   OrgToolsClubs: undefined;
   OrgLearnerNewsletters: undefined;
-  OrgLearnerSportsClubs: undefined;
+  OrgLearnerSportsClubs: { tab?: 'sports' | 'clubs' } | undefined;
 
   OrgExamResultsPortal:
     | { view?: 'learner' | 'admin'; studentId?: string | number | null }
@@ -79,7 +98,14 @@ export type MainStackParamList = {
   RobotTutor: undefined;
 
   /* Catalog & course details */
-  Courses: undefined;
+  Courses:
+    | {
+        view?: 'learner' | 'admin';
+        studentId?: string | number;
+        class?: string;
+        subject?: string;
+      }
+    | undefined;
   CourseDetails: { courseId: string };
   CourseProgress: { courseId: string };
 
