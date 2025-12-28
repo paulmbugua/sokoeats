@@ -555,9 +555,140 @@ const OrgLearnerHomeNative: React.FC = () => {
   const resultsNavParams: any = learnerStudentId ? { studentId: learnerStudentId } : {};
 
   const goFees = () => {
-    // If you later add a dedicated learner fees screen, swap this route name.
-    navigation.navigate('OrgElearnPortal', { view: 'learner', tab: 'fees', ...(learnerStudentId ? { studentId: learnerStudentId } : {}) });
+    navigation.navigate('OrgLearnerFees', {
+      ...(learnerStudentId ? { studentId: learnerStudentId } : {}),
+    });
   };
+
+  const navTargets = React.useMemo(
+    () => ({
+      assignments: () => navigation.navigate('OrgElearnPortal', { ...assignNavParams, from: 'learner' }),
+      courses: () => navigation.navigate('Courses', courseNavParams),
+      exams: () => navigation.navigate('OrgExamResultsPortal', examsParams),
+      certificates: () => navigation.navigate('Results', resultsNavParams),
+      sports: () => navigation.navigate('OrgLearnerSportsClubs', { tab: 'sports' }),
+      clubs: () => navigation.navigate('OrgLearnerSportsClubs', { tab: 'clubs' }),
+      newsletters: () => navigation.navigate('OrgLearnerNewsletters'),
+      messages: () => navigation.navigate('Messages', { studentId: learnerStudentId || undefined }),
+      fees: goFees,
+      announcements: () =>
+        navigation.navigate('OrgElearnPortal', { ...activitiesNavParams, tab: 'tools', from: 'learner' }),
+    }),
+    [
+      navigation,
+      assignNavParams,
+      courseNavParams,
+      examsParams,
+      resultsNavParams,
+      activitiesNavParams,
+      learnerStudentId,
+      goFees,
+    ],
+  );
+
+  const tileConfig = React.useMemo(
+    () =>
+      [
+        {
+          key: 'assignments',
+          emoji: '📝',
+          title: 'Assignments',
+          subtitle: 'Files',
+          tone: 'indigo' as const,
+          onPress: navTargets.assignments,
+        },
+        {
+          key: 'courses',
+          emoji: '📚',
+          title: 'Courses',
+          subtitle: 'Library',
+          tone: 'sky' as const,
+          onPress: navTargets.courses,
+        },
+        {
+          key: 'exams',
+          emoji: '🧾',
+          title: 'Exams',
+          subtitle: 'Results',
+          tone: 'sky' as const,
+          onPress: navTargets.exams,
+        },
+        {
+          key: 'certificates',
+          emoji: '🏅',
+          title: 'Certificates',
+          subtitle: 'Achievements',
+          tone: 'emerald' as const,
+          onPress: navTargets.certificates,
+        },
+        {
+          key: 'sports',
+          emoji: '🏆',
+          title: 'Sports',
+          subtitle: 'Calendar',
+          tone: 'amber' as const,
+          onPress: navTargets.sports,
+        },
+        {
+          key: 'clubs',
+          emoji: '🤝',
+          title: 'Clubs',
+          subtitle: 'Societies',
+          tone: 'indigo' as const,
+          onPress: navTargets.clubs,
+        },
+        {
+          key: 'newsletters',
+          emoji: '📰',
+          title: 'Newsletters',
+          subtitle: newslettersLoading ? 'Loading…' : learnerNewsletters?.length ? 'New!' : 'Archive',
+          tone: (learnerNewsletters?.length ? 'emerald' : 'slate') as const,
+          badge: newslettersLoading ? '' : learnerNewsletters?.length ? 'Latest' : undefined,
+          onPress: navTargets.newsletters,
+        },
+        {
+          key: 'messages',
+          emoji: '💬',
+          title: 'Messages',
+          subtitle: 'Help',
+          tone: 'rose' as const,
+          onPress: navTargets.messages,
+        },
+        {
+          key: 'fees',
+          emoji: '💳',
+          title: 'Fees',
+          subtitle: isProTier ? 'Statement' : 'Locked',
+          tone: (isProTier ? 'emerald' : 'slate') as const,
+          disabled: !isProTier,
+          badge: !isProTier ? 'Pro required' : undefined,
+          onPress: isProTier ? navTargets.fees : undefined,
+        },
+        {
+          key: 'announcements',
+          emoji: '📣',
+          title: 'Announcements',
+          subtitle: isProTier ? 'Feed' : 'Locked',
+          tone: (isProTier ? 'sky' : 'slate') as const,
+          disabled: !isProTier,
+          badge: !isProTier ? 'Pro required' : undefined,
+          onPress: isProTier ? navTargets.announcements : undefined,
+        },
+      ],
+    [
+      navTargets,
+      newslettersLoading,
+      learnerNewsletters?.length,
+      isProTier,
+    ],
+  );
+
+  const tileRows = React.useMemo(() => {
+    const rows: any[][] = [];
+    const items = tileConfig || [];
+    for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2));
+    return rows;
+  }, [tileConfig]);
 
   const refreshFees = () => {
     (fees as any)?.refresh?.();
@@ -768,7 +899,7 @@ const OrgLearnerHomeNative: React.FC = () => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={goFees}
+                onPress={navTargets.fees}
                 style={[tw`px-4 py-2 rounded-2xl`, { backgroundColor: '#059669' }]}
               >
                 <Text style={[tw`text-sm font-semibold`, { color: '#fff' }]}>💳 Open fees</Text>
@@ -960,7 +1091,7 @@ const OrgLearnerHomeNative: React.FC = () => {
           </Text>
 
           <TouchableOpacity
-            onPress={() => navigation.navigate('OrgExamResultsPortal', examsParams)}
+            onPress={navTargets.exams}
             style={[tw`mt-3 px-4 py-2 rounded-2xl items-center`, { backgroundColor: '#0284c7' }]}
           >
             <Text style={[tw`text-sm font-semibold`, { color: '#fff' }]}>📄 Open my results</Text>
@@ -983,131 +1114,25 @@ const OrgLearnerHomeNative: React.FC = () => {
           </View>
 
           <View style={tw`mt-4 gap-3`}>
-            <View style={tw`flex-row gap-3`}>
-              <View style={tw`flex-1`}>
-                <Tile
-                  palette={palette}
-                  emoji="📝"
-                  title="Assignments"
-                  subtitle="Files"
-                  tone="indigo"
-                  onPress={() => navigation.navigate('OrgElearnPortal', { ...assignNavParams, from: 'learner' })}
-                />
+            {tileRows.map((row, idx) => (
+              <View key={`row-${idx}`} style={tw`flex-row gap-3`}>
+                {row.map((tile: any) => (
+                  <View key={tile.key} style={tw`flex-1`}>
+                    <Tile
+                      palette={palette}
+                      emoji={tile.emoji}
+                      title={tile.title}
+                      subtitle={tile.subtitle}
+                      tone={tile.tone}
+                      badge={tile.badge}
+                      disabled={tile.disabled}
+                      onPress={tile.onPress}
+                    />
+                  </View>
+                ))}
+                {row.length === 1 ? <View style={tw`flex-1`} /> : null}
               </View>
-              <View style={tw`flex-1`}>
-                <Tile
-                  palette={palette}
-                  emoji="📚"
-                  title="Courses"
-                  subtitle="Library"
-                  tone="sky"
-                  onPress={() => navigation.navigate('Courses', courseNavParams)}
-                />
-              </View>
-            </View>
-
-            <View style={tw`flex-row gap-3`}>
-              <View style={tw`flex-1`}>
-                <Tile
-                  palette={palette}
-                  emoji="🧾"
-                  title="Exams"
-                  subtitle="Results"
-                  tone="sky"
-                  onPress={() => navigation.navigate('OrgExamResultsPortal', examsParams)}
-                />
-              </View>
-              <View style={tw`flex-1`}>
-                <Tile
-                  palette={palette}
-                  emoji="🏅"
-                  title="Certificates"
-                  subtitle="Achievements"
-                  tone="emerald"
-                  onPress={() => navigation.navigate('Results', resultsNavParams)}
-                />
-              </View>
-            </View>
-
-            <View style={tw`flex-row gap-3`}>
-              <View style={tw`flex-1`}>
-                <Tile
-                  palette={palette}
-                  emoji="🏆"
-                  title="Sports"
-                  subtitle="Calendar"
-                  tone="amber"
-                  onPress={() => navigation.navigate('OrgElearnPortal', { ...activitiesNavParams, tab: 'sports', from: 'learner' })}
-                />
-              </View>
-              <View style={tw`flex-1`}>
-                <Tile
-                  palette={palette}
-                  emoji="🤝"
-                  title="Clubs"
-                  subtitle="Societies"
-                  tone="indigo"
-                  onPress={() => navigation.navigate('OrgElearnPortal', { ...activitiesNavParams, tab: 'clubs', from: 'learner' })}
-                />
-              </View>
-            </View>
-
-            <View style={tw`flex-row gap-3`}>
-              <View style={tw`flex-1`}>
-                <Tile
-                  palette={palette}
-                  emoji="📰"
-                  title="Newsletters"
-                  subtitle={newslettersLoading ? 'Loading…' : learnerNewsletters?.length ? 'New!' : 'Archive'}
-                  tone={learnerNewsletters?.length ? 'emerald' : 'slate'}
-                  badge={newslettersLoading ? '' : learnerNewsletters?.length ? 'Latest' : undefined}
-                  onPress={() =>
-                    navigation.navigate('OrgElearnPortal', { ...activitiesNavParams, tab: 'newsletters', from: 'learner' })
-                  }
-                />
-              </View>
-              <View style={tw`flex-1`}>
-                <Tile
-                  palette={palette}
-                  emoji="💬"
-                  title="Messages"
-                  subtitle="Help"
-                  tone="rose"
-                  onPress={() => navigation.navigate('Messages', { studentId: learnerStudentId || undefined })}
-                />
-              </View>
-            </View>
-
-            <View style={tw`flex-row gap-3`}>
-              <View style={tw`flex-1`}>
-                <Tile
-                  palette={palette}
-                  emoji="💳"
-                  title="Fees"
-                  subtitle={isProTier ? 'Statement' : 'Locked'}
-                  tone={isProTier ? 'emerald' : 'slate'}
-                  disabled={!isProTier}
-                  badge={!isProTier ? 'Pro required' : undefined}
-                  onPress={isProTier ? goFees : undefined}
-                />
-              </View>
-              <View style={tw`flex-1`}>
-                <Tile
-                  palette={palette}
-                  emoji="📣"
-                  title="Announcements"
-                  subtitle={isProTier ? 'Feed' : 'Locked'}
-                  tone={isProTier ? 'sky' : 'slate'}
-                  disabled={!isProTier}
-                  badge={!isProTier ? 'Pro required' : undefined}
-                  onPress={
-                    isProTier
-                      ? () => navigation.navigate('OrgElearnPortal', { ...activitiesNavParams, tab: 'tools', from: 'learner' })
-                      : undefined
-                  }
-                />
-              </View>
-            </View>
+            ))}
 
             {!newslettersLoading && learnerNewsletters?.length ? (
               <View
@@ -1122,12 +1147,7 @@ const OrgLearnerHomeNative: React.FC = () => {
                 <Text style={[tw`mt-1 text-sm font-semibold`, { color: palette.text }]} numberOfLines={2}>
                   {latestNewsletterTitle}
                 </Text>
-                <TouchableOpacity
-                  onPress={() =>
-                    navigation.navigate('OrgElearnPortal', { ...activitiesNavParams, tab: 'newsletters', from: 'learner' })
-                  }
-                  style={tw`mt-2`}
-                >
+                <TouchableOpacity onPress={navTargets.newsletters} style={tw`mt-2`}>
                   <Text style={[tw`text-xs font-semibold`, { color: palette.isDark ? '#a5b4fc' : '#4f46e5' }]}>
                     Open newsletters →
                   </Text>
@@ -1143,10 +1163,10 @@ const OrgLearnerHomeNative: React.FC = () => {
 
           <View style={tw`flex-row flex-wrap gap-2`}>
             {[
-              { label: 'Assignments', go: () => navigation.navigate('OrgElearnPortal', { ...assignNavParams, from: 'learner' }) },
-              { label: 'Exam results', go: () => navigation.navigate('OrgExamResultsPortal', examsParams) },
-              { label: 'Certificates', go: () => navigation.navigate('Results', resultsNavParams) },
-              { label: 'Course library', go: () => navigation.navigate('Courses', courseNavParams) },
+              { label: 'Assignments', go: navTargets.assignments },
+              { label: 'Exam results', go: navTargets.exams },
+              { label: 'Certificates', go: navTargets.certificates },
+              { label: 'Course library', go: navTargets.courses },
               { label: 'Institution profile', go: () => navigation.navigate('OrgProfile') },
               { label: 'Help', go: () => navigation.navigate('Help') },
             ].map((x) => (

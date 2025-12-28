@@ -100,6 +100,7 @@ import OrgHomeRouterNative from './screens/org/OrgHomeRouter.native';
 import OrgProfilePage from './screens/org/OrgProfile.native';
 import OrgElearnPortal from './screens/org/OrgElearnPortal.native';
 import OrgLearnerHomeNative from './screens/org/OrgLearnerHome.native';
+import OrgLearnerFeesNative from './screens/org/OrgLearnerFees.native';
 import OrgInstructorHomeNative from './screens/org/OrgInstructorHome.native';
 
 import OrgExamResultsPortal from './screens/org/OrgExamResultsPortal.native';
@@ -335,6 +336,15 @@ function OrgLearnerHomeScreen() {
     <OrgProtectedRoute>
       <OrgLearnerOnlyGuard>
         <OrgLearnerHomeNative />
+      </OrgLearnerOnlyGuard>
+    </OrgProtectedRoute>
+  );
+}
+function OrgLearnerFeesScreen() {
+  return (
+    <OrgProtectedRoute>
+      <OrgLearnerOnlyGuard>
+        <OrgLearnerFeesNative />
       </OrgLearnerOnlyGuard>
     </OrgProtectedRoute>
   );
@@ -613,6 +623,7 @@ const App: React.FC = () => {
           <Stack.Screen name="OrgHome" component={OrgHomeScreen} />
           <Stack.Screen name="OrgChangePassword" component={OrgChangePasswordScreen} />
           <Stack.Screen name="OrgLearnerHome" component={OrgLearnerHomeScreen} />
+          <Stack.Screen name="OrgLearnerFees" component={OrgLearnerFeesScreen} />
           <Stack.Screen name="OrgInstructorHome" component={OrgInstructorHomeScreen} />
           <Stack.Screen name="OrgElearnPortal" component={OrgElearnPortalScreen} />
           <Stack.Screen name="OrgProfile" component={OrgProfileScreen} />
