@@ -1823,71 +1823,75 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                     </div>
                   </div>
 
-                  {/* Tabs + CTA */}
-                  <div className="-mx-1 px-1 overflow-x-auto">
-                    <div className="flex items-center gap-2 min-w-max">
-                      <div className="flex gap-2">
-                        {visibleTabs.map((t) => (
-                          <button
-                            key={t}
-                            className={`px-3 py-1.5 rounded-xl text-sm ring-1 whitespace-nowrap ${
-                              tab === t
-                                ? 'bg-[#3d99f5] text-white ring-[#3d99f5]'
-                                : 'bg-white/80 text-[#0d141c] ring-[#3d99f5]/60 hover:bg-[#e7edf4] dark:bg-[#0b1420]/80 dark:text-darkTextPrimary dark:ring-[#3d99f5]/90 dark:hover:bg:white/5'
-                            }`}
-                            onClick={() => setTab(t)}
-                          >
-                            {t[0].toUpperCase() + t.slice(1)}
-                          </button>
-                        ))}
-                      </div>
+{/* Tabs + CTA (wrap-friendly) */}
+<div className="-mx-1 px-1">
+  <div className="flex flex-col gap-2">
+    {/* Tabs (wrap on small screens) */}
+    <div className="flex flex-wrap items-center gap-2">
+      {visibleTabs.map((t) => (
+        <button
+          key={t}
+          className={`px-3 py-1.5 rounded-xl text-sm ring-1 whitespace-nowrap ${
+            tab === t
+              ? 'bg-[#3d99f5] text-white ring-[#3d99f5]'
+              : 'bg-white/80 text-[#0d141c] ring-[#3d99f5]/60 hover:bg-[#e7edf4] dark:bg-[#0b1420]/80 dark:text-darkTextPrimary dark:ring-[#3d99f5]/90 dark:hover:bg:white/5'
+          }`}
+          onClick={() => setTab(t)}
+        >
+          {t[0].toUpperCase() + t.slice(1)}
+        </button>
+      ))}
+    </div>
 
-                      {/* 📊 Exam results – PRO & ENTERPRISE only */}
-                      {(tier === 'pro' || tier === 'enterprise') && (
-                        <button
-                          onClick={() => navigate('/org/exams')}
-                          className="
-                            hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold
-                            bg-[#e7edf4] text-[#0d141c] hover:bg-[#d7e4f0]
-                            dark:bg-[#172534] dark:text-white dark:hover:bg-[#1f2f46]
-                            focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3d99f5]
-                            focus-visible:ring-offset-2 focus-visible:ring-offset-white
-                            dark:focus-visible:ring-offset-slate-900
-                          "
-                        >
-                          <span className="text-base">📊</span>
-                          <span>Exam results</span>
-                        </button>
-                      )}
+    {/* Exam Results on next line (below tabs) + desktop CTA */}
+    <div className="flex flex-wrap items-center gap-2">
+      {(tier === 'pro' || tier === 'enterprise') && (
+        <button
+          onClick={() => navigate('/org/exams')}
+          className="
+            inline-flex w-full sm:w-auto justify-center items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold
+            bg-[#e7edf4] text-[#0d141c] hover:bg-[#d7e4f0]
+            dark:bg-[#172534] dark:text-white dark:hover:bg-[#1f2f46]
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3d99f5]
+            focus-visible:ring-offset-2 focus-visible:ring-offset-white
+            dark:focus-visible:ring-offset-slate-900
+          "
+        >
+          <span className="text-base">📊</span>
+          <span>Exam results</span>
+        </button>
+      )}
 
-                      {/* Primary CTA */}
-                      <button
-                        onClick={goCreateAI}
-                        title="Type any topic — AI builds your course"
-                        className={[
-                          'relative group hidden sm:inline-flex items-center gap-1.5',
-                          'ml-1 px-4 py-2 rounded-2xl text-sm font-semibold',
-                          'bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-500',
-                          'text-white ring-1 ring-emerald-300/30 shadow-lg shadow-emerald-500/20',
-                          'transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]',
-                          'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300',
-                          ctaPulse ? 'motion-safe:animate-pulse' : '',
-                          'motion-reduce:transition-none motion-reduce:animate-none',
-                        ].join(' ')}
-                      >
-                        <span className="text-base leading-none">🤖</span>
-                        <span>Create with AI</span>
-                        <span className="relative ml-1 h-2 w-2">
-                          <span className="absolute inline-flex h-full w-full rounded-full bg-white/70 opacity-60 motion-safe:animate-ping motion-reduce:hidden"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                        </span>
-                        <span
-                          aria-hidden
-                          className="pointer-events-none absolute -inset-px rounded-2xl opacity-0 group-hover:opacity-60 transition duration-300 blur-lg bg-emerald-400/30"
-                        />
-                      </button>
-                    </div>
-                  </div>
+      {/* Primary CTA (keeps your existing behavior: hidden on mobile, sticky CTA handles mobile) */}
+      <button
+        onClick={goCreateAI}
+        title="Type any topic — AI builds your course"
+        className={[
+          'relative group hidden sm:inline-flex items-center gap-1.5',
+          'ml-1 px-4 py-2 rounded-2xl text-sm font-semibold',
+          'bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-500',
+          'text-white ring-1 ring-emerald-300/30 shadow-lg shadow-emerald-500/20',
+          'transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300',
+          ctaPulse ? 'motion-safe:animate-pulse' : '',
+          'motion-reduce:transition-none motion-reduce:animate-none',
+        ].join(' ')}
+      >
+        <span className="text-base leading-none">🤖</span>
+        <span>Create with AI</span>
+        <span className="relative ml-1 h-2 w-2">
+          <span className="absolute inline-flex h-full w-full rounded-full bg-white/70 opacity-60 motion-safe:animate-ping motion-reduce:hidden"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+        </span>
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -inset-px rounded-2xl opacity-0 group-hover:opacity-60 transition duration-300 blur-lg bg-emerald-400/30"
+        />
+      </button>
+    </div>
+  </div>
+</div>
+
                 </div>
 
                 {/* Plan bar */}

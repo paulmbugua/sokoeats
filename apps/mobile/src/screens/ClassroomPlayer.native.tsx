@@ -7,6 +7,7 @@ import {
   Pressable,
   Modal,
   useColorScheme,
+  AppState,
   useWindowDimensions,
   ActivityIndicator,
 } from 'react-native';
@@ -16,7 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Slider from '@react-native-community/slider';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
-
+import { useFocusEffect } from '@react-navigation/native';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useWordSync } from '@mytutorapp/shared/hooks/useWordSync';
 
@@ -304,6 +305,36 @@ const InnerPlayer: React.FC<Props> = (props) => {
 
   // Local playback state (expo-av)
   const [sound, setSound] = useState<Audio.Sound | null>(null);
+  // Keep a ref so we can stop/unload even if state is stale during navigation changes
+const soundRef = useRef<Audio.Sound | null>(null);
+useEffect(() => {
+  soundRef.current = sound;
+}, [sound]);
+
+const pausePlayback = useCallback(async (reason: string) => {
+  autoPlayRef.current = false;
+  try {
+    const s = soundRef.current;
+    if (s) await s.pauseAsync();
+  } catch {}
+  setNativeIsPlaying(false);
+}, []);
+
+const unloadPlayback = useCallback(async (reason: string) => {
+  autoPlayRef.current = false;
+
+  const s = soundRef.current;
+  soundRef.current = null;
+
+  try {
+    if (s) {
+      // stopAsync resets position; if you prefer "pause only", remove stopAsync
+      await s.stopAsync().catch(() => {});
+      await s.unloadAsync().catch(() => {});
+    }
+  } catch {}
+}, []);
+
   const [nativeIsPlaying, setNativeIsPlaying] = useState(false);
   const [nativePositionSec, setNativePositionSec] = useState(0);
 
@@ -338,6 +369,34 @@ const InnerPlayer: React.FC<Props> = (props) => {
   useEffect(() => {
     AsyncStorage.setItem(TEMPLATE_KEY, templateId).catch(() => {});
   }, [templateId]);
+
+  useFocusEffect(
+  useCallback(() => {
+    // when focused: do nothing
+    return () => {
+      // when blurred/unfocused: stop audio
+      pausePlayback('blur');
+    };
+  }, [pausePlayback])
+);
+
+useEffect(() => {
+  const sub = AppState.addEventListener('change', (st) => {
+    if (st !== 'active') pausePlayback(`appstate:${st}`);
+  });
+  return () => sub.remove();
+}, [pausePlayback]);
+
+useEffect(() => {
+  return () => {
+    // hard cleanup: guarantees no orphaned native audio keeps playing
+    unloadPlayback('unmount');
+    try {
+      clearForNewSession(); // optional: stops word-sync timers/state
+    } catch {}
+  };
+}, [unloadPlayback, clearForNewSession]);
+
 
   // Reader scale persisted
   useEffect(() => {

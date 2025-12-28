@@ -641,6 +641,14 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     [activeRunId]
   );
 
+  const handlePlayerReady = useCallback(() => {
+  // only mark ready for an active run (prevents stale “ready” from old mounts)
+  if (activeRunId === null) return;
+  setPlayerReady(true);
+  setPlayerLoading(false);
+}, [activeRunId]);
+
+
   const refreshCourseList = useCallback(async () => {
     const preserveIds = courseIdParam ? [courseIdParam] : [];
     dlog('refreshCourseList → clearTopCoursesCacheNow + reload', { preserveIds });
@@ -995,6 +1003,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
             showCourseList={!isLockedLearner}
             onNext={goNext}
             onPrev={goPrev}
+            onPlayerReady={handlePlayerReady}
+             isAdmin={Boolean(isGlobalAdmin || isAdminOwner)}
             isBuildingNext={isBuildingNext}
             lessonsArr={lessonsArr}
             voiceName={voiceName || defaultVoice}

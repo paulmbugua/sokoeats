@@ -13,9 +13,10 @@ import {
 
 import optionalAuth from '../middleware/optionalAuth.js';
 import requireAuth from '../middleware/auth.js'; // your existing requireAuth
-
+import { purchaseAiCourseAccess } from '../controllers/aiCoursePurchaseController.js';
 import requireAuthWhenAssignment from '../middleware/requireAuthWhenAssignment.js';
 import enforceAssignmentKnobs from '../middleware/enforceAssignmentKnobs.js';
+import { enforceAiCourseAccess } from '../middleware/enforceAiCourseAccess.js';
 
 const router = express.Router();
 
@@ -57,12 +58,29 @@ router.post(
   generateCoursePackage,
 );
 
+
+router.post('/lesson-ssml',
+  optionalAuth,
+  requireAuthWhenAssignment,
+  enforceAssignmentKnobs,
+  enforceAiCourseAccess,
+  generateLessonSSML
+);
+
+router.post('/course-package',
+  optionalAuth,
+  requireAuthWhenAssignment,
+  enforceAssignmentKnobs,
+  enforceAiCourseAccess,
+  generateCoursePackage
+);
+
 /**
  * 🔒 Grade should be auth-required (even for self-serve)
  * (Still allow assignment knobs enforcement when assignmentId is present)
  */
 router.post('/grade', requireAuth, enforceAssignmentKnobs, gradeQuiz);
-
+router.post('/courses/:courseId/purchase', requireAuth, purchaseAiCourseAccess);
 /**
  * 🔒 Cache clears: recommend locking
  */

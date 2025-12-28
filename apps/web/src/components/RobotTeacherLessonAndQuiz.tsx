@@ -195,70 +195,112 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   isAdmin = false,
   currentIdx,
 }) => {
-  const { tokens = 0, refreshUserDetails } = useShopContext();
-  const [prePurchaseState, setPrePurchaseState] = useState<{
-    courseId?: string | null;
-    lessonIndex: number;
-    maximized: boolean;
-    answers: Record<string, number | string | undefined>;
-    quizActive: boolean;
-    scrollY: number;
-  } | null>(null);
-  const [unlockReady, setUnlockReady] = useState(false);
-  const restoreOnceRef = useRef(false);
-  const awaitingTopUpRef = useRef(false);
-  const debitInFlightRef = useRef(false);
+const { tokens = 0, refreshUserDetails } = useShopContext();
 
-  const snapshotPrePurchaseState = useCallback(() => {
-    const snap = {
-      courseId: course?.id ?? null,
-      lessonIndex: currentIdx ?? 0,
-      maximized: isMaximized,
-      answers: { ...workingAnswers },
-      quizActive,
-      scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
-    };
-    setPrePurchaseState(snap);
-    return snap;
-  }, [course?.id, currentIdx, isMaximized, quizActive, workingAnswers]);
+/** local retry & working answers (supports number | string) */
+const [retakeMode, setRetakeMode] = useState(false);
+const [workingAnswers, setWorkingAnswers] = useState<Record<string, number | string | undefined>>(
+  {}
+);
 
-  const restorePrePurchaseState = useCallback(async () => {
-    if (!prePurchaseState || restoreOnceRef.current) return;
-    restoreOnceRef.current = true;
+/** Purchase-flow state (restore user context after gate purchase) */
+const [prePurchaseState, setPrePurchaseState] = useState<{
+  courseId?: string | null;
+  lessonIndex: number;
+  maximized: boolean;
+  answers: Record<string, number | string | undefined>;
+  quizActive: boolean;
+  scrollY: number;
+} | null>(null);
 
-    try {
-      const targetLesson = Number.isFinite(prePurchaseState.lessonIndex)
-        ? prePurchaseState.lessonIndex
-        : currentIdx;
-      const delta = targetLesson - currentIdx;
+const [unlockReady, setUnlockReady] = useState(false);
+const restoreOnceRef = useRef(false);
+const awaitingTopUpRef = useRef(false);
+const debitInFlightRef = useRef(false);
 
-      if (delta !== 0) {
-        const mover = delta > 0 ? onNext : onPrev;
-        const steps = Math.abs(delta);
-        for (let i = 0; i < steps; i++) {
-          const r = mover?.();
-          if (r instanceof Promise) await r;
-        }
+// prevent rapid double POSTs
+const startingAttemptRef = useRef(false);
+const submittingRef = useRef(false);
+
+// ─── Attempt integrity (web) ─────────────────────────────────────────
+const {
+  attempt,
+  attemptId,
+  deviceId: boundDeviceId,
+  bindDeviceId,
+  quizActive,
+  markActive,
+  markNotActive,
+  elapsedMs,
+  backgrounds,
+  suspicions,
+  start: startAttempt,
+  submit: submitAttempt,
+  bumpSuspicion,
+} = useAttemptIntegrity(backendUrl, token);
+
+/** Snapshot what user was doing before we prompt for certificate purchase */
+const snapshotPrePurchaseState = useCallback(() => {
+  const snap = {
+    courseId: course?.id ?? null,
+    lessonIndex: Number.isFinite(currentIdx) ? currentIdx : 0,
+    maximized: isMaximized,
+    answers: { ...workingAnswers },
+    quizActive,
+    scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
+  };
+  setPrePurchaseState(snap);
+  return snap;
+}, [course?.id, currentIdx, isMaximized, quizActive, workingAnswers]);
+
+/** Restore snapshot after purchase (or after top-up → auto-debit) */
+const restorePrePurchaseState = useCallback(async () => {
+  if (!prePurchaseState || restoreOnceRef.current) return;
+  restoreOnceRef.current = true;
+
+  try {
+    const targetLesson = Number.isFinite(prePurchaseState.lessonIndex)
+      ? prePurchaseState.lessonIndex
+      : currentIdx;
+
+    const delta = targetLesson - currentIdx;
+
+    if (delta !== 0) {
+      const mover = delta > 0 ? onNext : onPrev;
+      const steps = Math.abs(delta);
+      for (let i = 0; i < steps; i++) {
+        const r = mover?.();
+        if (r instanceof Promise) await r;
       }
-
-      setWorkingAnswers((prev) => ({
-        ...prev,
-        ...prePurchaseState.answers,
-      }));
-
-      if (prePurchaseState.quizActive) markActive();
-
-      if (prePurchaseState.maximized !== isMaximized) {
-        onToggleMaximized();
-      }
-
-      if (typeof window !== 'undefined') {
-        window.scrollTo({ top: prePurchaseState.scrollY, behavior: 'auto' });
-      }
-    } catch {
-      /* ignore restore errors */
     }
-  }, [currentIdx, isMaximized, markActive, onNext, onPrev, onToggleMaximized, prePurchaseState]);
+
+    setWorkingAnswers((prev) => ({
+      ...prev,
+      ...prePurchaseState.answers,
+    }));
+
+    if (prePurchaseState.quizActive) markActive();
+
+    if (prePurchaseState.maximized !== isMaximized) {
+      onToggleMaximized();
+    }
+
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: prePurchaseState.scrollY, behavior: 'auto' });
+    }
+  } catch {
+    /* ignore restore errors */
+  }
+}, [
+  prePurchaseState,
+  currentIdx,
+  isMaximized,
+  onNext,
+  onPrev,
+  onToggleMaximized,
+  markActive,
+]);
+
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmInfo, setConfirmInfo] = useState<{
@@ -269,32 +311,8 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     elapsedMs?: number | string | null;
   } | null>(null);
 
-  // local retry & working answers (supports number | string)
-  const [retakeMode, setRetakeMode] = useState(false);
-  const [workingAnswers, setWorkingAnswers] = useState<Record<string, number | string | undefined>>(
-    {}
-  );
+ 
 
-  // prevent rapid double POSTs
-  const startingAttemptRef = useRef(false);
-  const submittingRef = useRef(false);
-
-  // ─── Attempt integrity (web) ─────────────────────────────────────────
-  const {
-    attempt,
-    attemptId,
-    deviceId: boundDeviceId,
-    bindDeviceId,
-    quizActive,
-    markActive,
-    markNotActive,
-    elapsedMs,
-    backgrounds,
-    suspicions,
-    start: startAttempt,
-    submit: submitAttempt,
-    bumpSuspicion,
-  } = useAttemptIntegrity(backendUrl, token);
 
   const lastPlayClickRef = useRef(0);
   const guardedBeforePlay = useCallback(async () => {

@@ -1,6 +1,6 @@
 // apps/mobile/src/pages/Results.native.tsx
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Image, Pressable, Linking } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, ScrollView, Image, Pressable, Linking, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { MainStackParamList } from '../navigation/types';
@@ -9,7 +9,7 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { useAICertificates, useAiCourseEntitlements } from '@mytutorapp/shared/hooks';
 
 // Native payment slide-over/panel
-import PaymentWidget from './PaymentWidget.native';
+import PaymentWidget from '../screens/PaymentWidget.native';
 
 type GradeLike = {
   scorePct: number;
@@ -19,36 +19,101 @@ type GradeLike = {
 
 type Nav = StackNavigationProp<MainStackParamList>;
 
+const CERT_COST_TOKENS = 20;
+
+function normStr(v: any) {
+  return typeof v === 'string' ? v.trim() : '';
+}
+function lower(v: any) {
+  return normStr(v).toLowerCase();
+}
+function skuCodeOf(sku: any) {
+  return (
+    normStr(sku?.code) ||
+    normStr(sku?.skuCode) ||
+    normStr(sku?.sku_code) ||
+    normStr(sku?.product_code) ||
+    normStr(sku?.sku) ||
+    ''
+  );
+}
+function priceTokensOf(sku: any) {
+  return Number(sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? sku?.tokens ?? 0) || 0;
+}
+function looksExtendedSku(sku: any) {
+  const title = lower(sku?.title);
+  const code = lower(sku?.code ?? sku?.skuCode ?? sku?.sku_code);
+  const tier = lower(sku?.tier || sku?.plan || sku?.level || sku?.kind);
+  const tags = Array.isArray(sku?.tags) ? sku.tags.map(lower) : [];
+  return (
+    tier.includes('extended') ||
+    title.includes('extended') ||
+    title.includes('transcript') ||
+    /\b(ext|extended|xtra|plus)\b/.test(code) ||
+    tags.includes('extended') ||
+    tags.includes('transcript')
+  );
+}
+function looksCertificateSku(sku: any) {
+  const title = lower(sku?.title);
+  const kind = lower(sku?.kind ?? sku?.type ?? sku?.purpose ?? sku?.meta?.purpose);
+  return kind.includes('certificate') || title.includes('certificate') || title.includes('cert');
+}
+function pickStandardCertSku(skusList: any[] | undefined | null) {
+  const list = Array.isArray(skusList) ? skusList : [];
+  if (!list.length) return null;
+
+  const certs = list.filter(looksCertificateSku);
+  const pool0 = certs.length ? certs : list;
+
+  const standard = pool0.filter((s) => !looksExtendedSku(s));
+  const pool = standard.length ? standard : pool0;
+
+  const withCode = pool.filter((s) => skuCodeOf(s));
+  if (!withCode.length) return null;
+
+  const exact = withCode.filter((s) => priceTokensOf(s) === CERT_COST_TOKENS);
+  const base = exact.length ? exact : withCode;
+
+  return base.sort((a, b) => priceTokensOf(a) - priceTokensOf(b))[0] || null;
+}
+
 function WatermarkPreview({
   title,
   pdfUrl,
-  certId,
+  docId,
   backendUrl,
-  folderHint = 'certificates',
+  docType,
 }: {
   title: string;
   pdfUrl?: string | null;
-  certId?: string | null;
+  docId?: string | null;
   backendUrl?: string;
-  folderHint?: 'certificates' | 'transcripts';
+  docType: 'certificates' | 'transcripts';
 }) {
   const previewUrl = useMemo(() => {
-    if (certId && backendUrl) {
-      return `${backendUrl.replace(/\/+$/, '')}/api/certificates/${certId}/og`;
+    // Prefer backend OG preview if we have an id
+    if (docId && backendUrl) {
+      const base = backendUrl.replace(/\/+$/, '');
+      return `${base}/api/${docType}/${encodeURIComponent(docId)}/og`;
     }
+
+    // Fallback: if PDF is Cloudinary, convert page 1 to JPG
     if (!pdfUrl) return null;
     try {
       const u = new URL(pdfUrl);
-      const [left, right] = u.pathname.split('/upload/');
-      if (!right) return null;
+      const parts = u.pathname.split('/upload/');
+      if (parts.length < 2) return null;
+      const left = parts[0];
+      const right = parts.slice(1).join('/upload/');
       return `${u.origin}${left}/upload/pg_1/${right.replace(/\.pdf$/i, '.jpg')}`;
     } catch {
       return null;
     }
-  }, [certId, backendUrl, pdfUrl]);
+  }, [docId, backendUrl, docType, pdfUrl]);
 
   return (
-    <View className="relative rounded-2xl overflow-hidden bg-white/5 border border-white">
+    <View className="relative rounded-2xl overflow-hidden bg-white/5 border border-white/10">
       <View className="px-3 pt-3">
         <Text className="text-white font-semibold">{title}</Text>
         <Text className="text-white/60 text-xs mb-2">Preview (watermarked)</Text>
@@ -69,18 +134,14 @@ function WatermarkPreview({
         </View>
 
         {/* Watermark overlay */}
-        <View
-          pointerEvents="none"
-          className="absolute inset-0 items-center justify-center"
-          style={{ mixBlendMode: 'multiply' } as any}
-        >
-          <Text className="text-white/20 font-black tracking-widest text-4xl">PREVIEW</Text>
+        <View pointerEvents="none" className="absolute inset-0 items-center justify-center">
+          <Text className="text-white/15 font-black tracking-widest text-4xl">PREVIEW</Text>
         </View>
       </View>
 
       <View className="px-3 pb-3">
         <Text className="text-white/60 text-xs">
-          Downloads are clean (no watermark) after certificate payment.
+          Clean downloads unlock after you purchase the course certificate (20 tokens ≈ USD 20).
         </Text>
       </View>
     </View>
@@ -90,82 +151,82 @@ function WatermarkPreview({
 const ResultsPage: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const route = useRoute<any>();
-  const { backendUrl, token } = useShopContext();
+
+  const { backendUrl, token, tokens, refreshUserDetails } = useShopContext() as any;
 
   // Prior screen should pass these via route.params
   const courseId: string | undefined = route.params?.courseId;
   const courseTitle: string | undefined = route.params?.courseTitle;
   const grade: GradeLike | undefined = route.params?.grade;
 
-  // ✅ FIX: declare passed BEFORE any effect uses it
   const passed = Boolean(grade?.passed);
 
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const pendingAutoBuyRef = useRef(false);
+
+  const [status, setStatus] = useState<{
+    paid?: boolean;
+    tier?: 'standard' | 'extended' | string | null;
+    extended?: boolean;
+    canCertificate?: boolean;
+    canTranscript?: boolean;
+    hasCertificate?: boolean;
+    message?: string | null;
+  } | null>(null);
 
   const [cert, setCert] = useState<{ id: string; url: string; download_url?: string } | null>(null);
   const [trans, setTrans] = useState<{ id: string; url: string; download_url?: string } | null>(
     null
   );
 
-  // Helper to call API
-  async function api<T = any>(path: string, init?: RequestInit): Promise<T> {
-    const r = await fetch(`${backendUrl}${path}`, {
-      ...init,
-      headers: {
-        ...(init?.headers || {}),
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    });
-    if (r.status === 204) return null as any;
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      const e: any = new Error((data as any)?.error || `Request failed: ${r.status}`);
-      e.status = r.status;
-      e.data = data;
-      throw e;
+  const api = useCallback(
+    async function <T = any>(path: string, init?: RequestInit): Promise<T> {
+      const base = String(backendUrl || '').replace(/\/+$/, '');
+      const r = await fetch(`${base}${path}`, {
+        ...init,
+        headers: {
+          ...(init?.headers || {}),
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (r.status === 204) return null as any;
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const e: any = new Error((data as any)?.error || (data as any)?.message || `Request failed: ${r.status}`);
+        e.status = r.status;
+        e.data = data;
+        throw e;
+      }
+      return data as T;
+    },
+    [backendUrl, token]
+  );
+
+  const reloadStatus = useCallback(async () => {
+    if (!courseId) return;
+    try {
+      const s = await api<any>(`/api/certificates/status?courseId=${encodeURIComponent(courseId)}`);
+      setStatus(s || null);
+    } catch {
+      setStatus(null);
     }
-    return data;
-  }
+  }, [api, courseId]);
 
-  // Attempt to fetch existing cert/transcript (backend may return existing on "generate" POST)
-  useEffect(() => {
-    let abort = false;
+  const hasPaid = useMemo(() => {
+    const tier = typeof status?.tier === 'string' ? status?.tier.toLowerCase() : '';
+    const extended =
+      status?.extended === true || status?.canTranscript === true || tier === 'extended';
+    const anyPaid =
+      extended ||
+      status?.paid === true ||
+      status?.hasCertificate === true ||
+      status?.canCertificate === true ||
+      tier === 'standard';
+    return Boolean(anyPaid);
+  }, [status]);
 
-    (async () => {
-      if (!courseId) return;
-      if (!passed) return; // ✅ don’t even try before passing
-
-      try {
-        const c = await api(`/api/certificates/generate`, {
-          method: 'POST',
-          body: JSON.stringify({ courseId }),
-        }).catch((e) => {
-          if (e?.status === 402) return null;
-          return null;
-        });
-        if (!abort && c?.id) setCert(c);
-      } catch {}
-
-      try {
-        const t = await api(`/api/transcripts/generate`, {
-          method: 'POST',
-          body: JSON.stringify({ courseId }),
-        }).catch((e) => {
-          if (e?.status === 402) return null;
-          return null;
-        });
-        if (!abort && t?.id) setTrans(t);
-      } catch {}
-    })();
-
-    return () => {
-      abort = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendUrl, token, courseId, passed]);
-
-  // Tokens-first hook (AI certificates)
+  // Tokens-first hook (SKUs + claim debit + optional generate)
   const {
     skus,
     loading: aiCertLoading,
@@ -175,19 +236,134 @@ const ResultsPage: React.FC = () => {
     generate,
   } = useAICertificates({ backendUrl, token: token || '', courseId });
 
-  // ✅ safer default to avoid crashes if items is undefined
-  const { items: aiCourses = [] } = useAiCourseEntitlements({
-    backendUrl,
-    token: token || '',
-  });
+  const skusReady = useMemo(
+    () => Array.isArray(skus) && skus.length > 0 && !aiCertLoading && !aiCertError,
+    [skus, aiCertLoading, aiCertError]
+  );
 
-  const openExternal = (url?: string) => {
+  const buyStandard = useCallback(async () => {
+    if (!token) {
+      navigation.navigate('Login' as any, {
+        reason: 'buy_certificate',
+        message: 'Please sign in to buy your certificate.',
+      } as any);
+      return;
+    }
+
+    // If wallet is short → open PaymentWidget and auto-debit once topped up
+    const bal = Number(tokens) || 0;
+    if (bal < CERT_COST_TOKENS) {
+      pendingAutoBuyRef.current = true;
+      setPaymentOpen(true);
+      return;
+    }
+
+    if (!skusReady) {
+      Alert.alert('Loading', 'Loading certificate options. Please try again in a moment.');
+      return;
+    }
+
+    const sku = pickStandardCertSku(skus);
+    const code = sku ? skuCodeOf(sku) : '';
+    if (!code) {
+      Alert.alert('Certificate', 'Certificate SKU not available. Please refresh and try again.');
+      return;
+    }
+
+    try {
+      await claim(code); // debits tokens + grants entitlement
+      try {
+        await refreshUserDetails?.();
+      } catch {}
+      await reloadStatus();
+
+      Alert.alert(
+        'Unlocked',
+        '✅ Course unlocked (20 tokens ≈ USD 20). Narration is unlocked. Pass the quiz (≥ 70%) to generate/download your certificate.'
+      );
+    } catch (e: any) {
+      const msg = String(e?.message || '');
+      if (e?.status === 402 || /insufficient|not enough|tokens/i.test(msg)) {
+        pendingAutoBuyRef.current = true;
+        setPaymentOpen(true);
+        return;
+      }
+      Alert.alert('Certificate', msg || 'Could not complete purchase.');
+    }
+  }, [
+    token,
+    tokens,
+    skusReady,
+    skus,
+    claim,
+    refreshUserDetails,
+    reloadStatus,
+    navigation,
+  ]);
+
+  // Auto-debit after top-up (PaymentWidget closed + wallet sufficient)
+  const tryAutoBuyIfNeeded = useCallback(async () => {
+    if (!pendingAutoBuyRef.current) return;
+    const bal = Number(tokens) || 0;
+    if (bal < CERT_COST_TOKENS) return;
+    if (!skusReady) return;
+
+    pendingAutoBuyRef.current = false;
+    await buyStandard();
+  }, [tokens, skusReady, buyStandard]);
+
+  const tryFetchDocs = useCallback(async () => {
+    if (!courseId) return;
+    if (!passed) return;
+
+    // Generate endpoints may return existing docs if already generated.
+    try {
+      const c = await api<any>(`/api/certificates/generate`, {
+        method: 'POST',
+        body: JSON.stringify({ courseId }),
+      }).catch((e) => {
+        // 402 = needs purchase/unlock in some flows
+        // 409/403 PASS_REQUIRED = not passed (shouldn’t happen if passed)
+        if (e?.status === 402 || e?.status === 409 || e?.status === 403) return null;
+        return null;
+      });
+      if (c?.id) setCert(c);
+    } catch {}
+
+    try {
+      const t = await api<any>(`/api/transcripts/generate`, {
+        method: 'POST',
+        body: JSON.stringify({ courseId }),
+      }).catch((e) => {
+        if (e?.status === 402) return null;
+        return null;
+      });
+      if (t?.id) setTrans(t);
+    } catch {}
+  }, [api, courseId, passed]);
+
+  // Initial load: status + (if passed) docs
+  useEffect(() => {
+    (async () => {
+      if (!courseId) return;
+      await reloadStatus();
+      await tryFetchDocs();
+    })();
+  }, [courseId, reloadStatus, tryFetchDocs]);
+
+  const openExternal = useCallback((url?: string | null) => {
     if (!url) {
       setPaymentOpen(true);
       return;
     }
     Linking.openURL(url).catch(() => {});
-  };
+  }, []);
+
+  // ✅ safer default to avoid crashes if items is undefined
+  const { items: aiCourses = [] } = useAiCourseEntitlements({
+    backendUrl,
+    token: token || '',
+  });
 
   return (
     <View className="flex-1 bg-[#0b1220]">
@@ -222,40 +398,128 @@ const ResultsPage: React.FC = () => {
             </Text>
             <Text className="mt-1 text-white/70">
               {passed
-                ? 'Nice! You passed. You can unlock clean downloads.'
-                : 'Review the lesson and try again to pass.'}
+                ? 'Nice! You passed. You can generate your certificate now.'
+                : 'You didn’t pass yet. You can still unlock the course (20 tokens) to keep learning, then retry the quiz.'}
             </Text>
           </View>
+
+          {/* Purchase / Unlock (tokens-first) */}
+          {!hasPaid ? (
+            <View className="rounded-2xl p-4 border border-amber-500/30 bg-amber-500/10">
+              <Text className="text-amber-100 font-semibold">Unlock course</Text>
+              <Text className="text-white/80 text-sm mt-1">
+                Buy the course certificate for <Text className="font-semibold">20 tokens</Text> (≈
+                USD 20). Tokens are deducted from your balance. If you don’t have enough, you’ll be
+                prompted to buy tokens.
+              </Text>
+
+              <View className="mt-3 flex-row flex-wrap gap-2 items-center">
+                <Pressable
+                  onPress={buyStandard}
+                  className={`h-10 px-4 rounded-lg justify-center ${
+                    aiCertLoading ? 'bg-indigo-600/60' : 'bg-indigo-600'
+                  }`}
+                >
+                  <Text className="text-white text-sm font-semibold">
+                    {aiCertLoading ? 'Loading…' : 'Buy certificate (20 tokens)'}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={async () => {
+                    await reloadStatus();
+                    await tryFetchDocs();
+                  }}
+                  className="h-10 px-4 rounded-lg justify-center bg-white/10 ring-1 ring-white/15"
+                >
+                  <Text className="text-white text-sm font-semibold">Refresh</Text>
+                </Pressable>
+              </View>
+
+              {aiCertError ? <Text className="text-red-300 text-xs mt-2">{aiCertError}</Text> : null}
+              {aiCertMsg ? <Text className="text-emerald-300 text-xs mt-1">{aiCertMsg}</Text> : null}
+
+              {/* Optional SKU list (debug-friendly, safe) */}
+              {skusReady ? (
+                <View className="mt-3 gap-2">
+                  {(skus || [])
+                    .filter(looksCertificateSku)
+                    .slice(0, 3)
+                    .map((sku: any) => (
+                      <View
+                        key={skuCodeOf(sku) || sku?.title}
+                        className="flex-row items-center justify-between rounded-lg p-2 bg-white/5 ring-1 ring-white/10"
+                      >
+                        <View className="flex-1 mr-2">
+                          <Text className="text-white font-medium" numberOfLines={1}>
+                            {sku?.title || 'Certificate'}
+                          </Text>
+                          <Text className="text-white/60 text-[11px]" numberOfLines={1}>
+                            {skuCodeOf(sku)}
+                          </Text>
+                        </View>
+                        <Text className="text-white font-semibold text-sm">
+                          {priceTokensOf(sku)} Tokens
+                        </Text>
+                      </View>
+                    ))}
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <View className="rounded-2xl p-4 border border-emerald-500/30 bg-emerald-500/10">
+              <Text className="text-emerald-100 font-semibold">Unlocked</Text>
+              <Text className="text-white/80 text-sm mt-1">
+                ✅ Course unlocked. {passed ? 'You can generate/download your certificate now.' : 'Go back and continue learning, then retry the quiz.'}
+              </Text>
+
+              <View className="mt-3 flex-row flex-wrap gap-2">
+                <Pressable
+                  onPress={async () => {
+                    await reloadStatus();
+                    await tryFetchDocs();
+                  }}
+                  className="h-10 px-4 rounded-lg justify-center bg-white/10 ring-1 ring-white/15"
+                >
+                  <Text className="text-white text-sm font-semibold">Refresh documents</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
 
           {/* Previews */}
           <View className="gap-4">
             <WatermarkPreview
               title="Certificate"
               pdfUrl={cert?.url || null}
-              certId={cert?.id || null}
+              docId={cert?.id || null}
               backendUrl={backendUrl}
-              folderHint="certificates"
+              docType="certificates"
             />
             <WatermarkPreview
               title="Transcript"
               pdfUrl={trans?.url || null}
-              folderHint="transcripts"
+              docId={trans?.id || null}
+              backendUrl={backendUrl}
+              docType="transcripts"
             />
           </View>
 
+          {/* Purchased AI courses */}
           {aiCourses.length > 0 && (
             <View className="gap-3">
               <Text className="text-white font-semibold text-lg">Purchased AI courses</Text>
               {aiCourses.map((item: any) => {
                 const courseIdForNav = item.courseId || item.course_id;
-                const status = item.completion?.passed
+                const statusText = item.completion?.passed
                   ? 'Completed'
                   : item.completion?.attempted
                   ? 'In progress'
                   : 'Not started';
+
                 return (
                   <View
-                    key={item.course_id}
+                    key={String(item.course_id || courseIdForNav)}
                     className="border border-white/10 bg-white/5 rounded-xl p-3 space-y-2"
                   >
                     <View className="flex-row items-center justify-between">
@@ -270,22 +534,26 @@ const ResultsPage: React.FC = () => {
                           <Text className="text-white/60 text-[11px]">Tier: {item.tier}</Text>
                         ) : null}
                       </View>
-                      <Text className="text-white/70 text-xs">{status}</Text>
+                      <Text className="text-white/70 text-xs">{statusText}</Text>
                     </View>
 
                     <View className="flex-row gap-2">
                       {!item.completion?.passed ? (
                         <Pressable
-                          onPress={() =>
-                            navigation.navigate('CourseDetails', { courseId: courseIdForNav })
-                          }
+                          onPress={() => navigation.navigate('CourseDetails', { courseId: courseIdForNav } as any)}
                           className="px-3 py-2 rounded-lg bg-white/10"
                         >
                           <Text className="text-white text-sm">Continue course</Text>
                         </Pressable>
                       ) : (
                         <Pressable
-                          onPress={() => navigation.navigate('Results', { courseId: courseIdForNav })}
+                          onPress={() =>
+                            navigation.navigate('Results', {
+                              courseId: courseIdForNav,
+                              courseTitle: item.title,
+                              grade: item.completion,
+                            } as any)
+                          }
                           className="px-3 py-2 rounded-lg bg-emerald-500/20"
                         >
                           <Text className="text-emerald-100 text-sm">View certificate</Text>
@@ -298,79 +566,45 @@ const ResultsPage: React.FC = () => {
             </View>
           )}
 
-          {/* Actions */}
-          <View className="rounded-2xl p-4 border border-white bg-white/5">
+          {/* Downloads */}
+          <View className="rounded-2xl p-4 border border-white/10 bg-white/5">
             <Text className="text-white font-semibold mb-2">Downloads</Text>
             <Text className="text-white/70 text-sm mb-3">
-              Pay the certificate fee once to download both the{' '}
-              <Text className="font-medium">Certificate</Text> and{' '}
-              <Text className="font-medium">Transcript</Text> without watermark.
+              {passed ? (
+                <>
+                  Generate your certificate now. If your course is unlocked, downloads are clean (no watermark).
+                </>
+              ) : (
+                <>
+                  Pass the quiz (≥ {grade?.passMark ?? 70}%) to generate your certificate. You can still unlock the course
+                  now (20 tokens) to continue learning with narration.
+                </>
+              )}
             </Text>
-
-            {/* Tokens-first block */}
-            <View className="mb-4 p-3 rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/30">
-              <Text className="text-white font-medium text-sm">Claim with Tokens</Text>
-              <Text className="text-white/70 text-xs mb-2">No processor fees for AI certificates.</Text>
-
-              {aiCertLoading ? (
-                <Text className="text-xs text-white/60">Loading certificate options…</Text>
-              ) : null}
-              {aiCertError ? <Text className="text-xs text-red-300">{aiCertError}</Text> : null}
-              {aiCertMsg ? <Text className="text-xs text-emerald-300">{aiCertMsg}</Text> : null}
-
-              <View className="gap-2 mt-2">
-                {(skus || []).map((sku: any) => (
-                  <View
-                    key={sku.code}
-                    className="flex-row items-center justify-between rounded-lg p-2 bg-white/5 ring-1 ring-white/15"
-                  >
-                    <View>
-                      <Text className="text-sm font-medium text-white">{sku.title}</Text>
-                      <Text className="text-[11px] text-white/60">{sku.code}</Text>
-                    </View>
-                    <View className="flex-row items-center gap-2">
-                      <Text className="text-sm font-semibold text-white">
-                        {sku.price_tokens} Tokens
-                      </Text>
-                      <Pressable
-                        disabled={!passed}
-                        onPress={async () => {
-                          if (!token) return;
-                          try {
-                            await claim(sku.code);
-                            const doc = await generate();
-                            if (doc?.id) {
-                              setCert({
-                                id: doc.id,
-                                url: doc.url,
-                                download_url: (doc as any).download_url,
-                              });
-                            }
-                          } catch (e) {
-                            console.error('[Results] token claim/generate failed', e);
-                          }
-                        }}
-                        className={`px-3 py-1.5 rounded ${
-                          passed ? 'bg-emerald-600' : 'bg-emerald-600/50'
-                        }`}
-                      >
-                        <Text className="text-white text-sm">Claim & Generate</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
 
             <View className="flex-row flex-wrap gap-2">
               <Pressable
-                onPress={() => setPaymentOpen(true)}
-                disabled={!passed}
+                onPress={async () => {
+                  if (!passed) {
+                    Alert.alert('Certificate', 'Pass the quiz (≥ 70%) to generate your certificate.');
+                    return;
+                  }
+                  try {
+                    // If the hook generate uses new routes internally, prefer it.
+                    const doc = await generate?.().catch(() => null);
+                    if (doc?.id) {
+                      setCert({ id: doc.id, url: doc.url, download_url: (doc as any).download_url });
+                      return;
+                    }
+                  } catch {}
+                  // Fallback to server generate
+                  await tryFetchDocs();
+                }}
                 className={`h-10 px-4 rounded-lg justify-center ${
-                  passed ? 'bg-indigo-600' : 'bg-indigo-600/40'
+                  passed ? 'bg-emerald-600' : 'bg-emerald-600/40'
                 }`}
               >
-                <Text className="text-white text-sm font-semibold">Pay certificate fee</Text>
+                <Text className="text-white text-sm font-semibold">Generate certificate</Text>
               </Pressable>
 
               <Pressable
@@ -392,11 +626,11 @@ const ResultsPage: React.FC = () => {
               </Pressable>
             </View>
 
-            {!passed && (
+            {!passed ? (
               <Text className="mt-3 text-[12px] text-white/60">
                 Tip: Revisit the lesson and retry the quiz to reach the pass mark.
               </Text>
-            )}
+            ) : null}
           </View>
         </View>
       </ScrollView>
@@ -404,36 +638,22 @@ const ResultsPage: React.FC = () => {
       {/* Payment slide-over (native) */}
       <PaymentWidget
         isOpen={paymentOpen}
+        title="Buy tokens"
+        showTutorPreview={false}
         onClose={async () => {
           setPaymentOpen(false);
-          if (!courseId) return;
 
+          // refresh wallet + status + documents
           try {
-            const c = await fetch(`${backendUrl}/api/certificates/generate`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-              },
-              body: JSON.stringify({ courseId }),
-            }).then((r) => (r.ok ? r.json() : null));
-            if (c?.id) setCert(c);
+            await refreshUserDetails?.();
           } catch {}
 
-          try {
-            const t = await fetch(`${backendUrl}/api/transcripts/generate`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-              },
-              body: JSON.stringify({ courseId }),
-            }).then((r) => (r.ok ? r.json() : null));
-            if (t?.id) setTrans(t);
-          } catch {}
+          await reloadStatus();
+          await tryFetchDocs();
+
+          // if user came here because they were short and wanted auto-buy, try it now
+          await tryAutoBuyIfNeeded();
         }}
-        title="Unlock Certificate"
-        showTutorPreview={false}
       />
     </View>
   );

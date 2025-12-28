@@ -1,46 +1,63 @@
-// gateCtaRule.ts (shared idea; copy into web/mobile if you don't have shared utils)
+// packages/shared/src/utils/gateCtaRule.ts
 
 export type GateReason =
   | 'quota_exhausted'
   | 'anon_quota_exhausted'
   | 'entitlement_required'
+  | 'login_or_anon_required'
+  | 'login_required'
+  | 'certificate_required'
   | string
   | undefined
   | null;
 
-export function getCertificateCtaFromGate(opts: {
-  gateMode?: 'narration' | 'notes_only' | null;
+export type CertificateCta =
+  | { show: false }
+  | {
+      show: true;
+      /** UI styling intent */
+      kind: 'signup' | 'buy';
+      /** Behavioral intent (kept for older callers) */
+      action: 'login' | 'buy';
+      label: string;
+    };
+
+export function getCertificateCtaFromGate({
+  gateMode,
+  reason,
+  isLoggedIn,
+}: {
+  gateMode?: 'narration' | 'notes_only';
   reason?: GateReason;
   isLoggedIn: boolean;
-}) {
-  const { gateMode, reason, isLoggedIn } = opts;
+}): CertificateCta {
+  const r = String(reason || '').trim();
 
-  // Only show CTA when narration is locked and we have a known purchase-unlock reason.
-  const shouldConsider = gateMode === 'notes_only';
-  if (!shouldConsider) return { show: false as const };
+  // Only show CTA when narration is locked (notes_only)
+  if (gateMode !== 'notes_only') return { show: false };
 
-  const buyReasons = new Set<GateReason>([
-    'quota_exhausted',
-    'anon_quota_exhausted',
-    'entitlement_required',
-  ]);
+  // ANON (or not logged in) should see signup/login nudge for these reasons
+  if (!isLoggedIn) {
+    if (r === 'anon_quota_exhausted' || r === 'login_or_anon_required' || r === 'login_required') {
+      return {
+        show: true,
+        kind: 'signup',
+        action: 'login',
+        label: 'Sign up to continue',
+      };
+    }
+    return { show: false };
+  }
 
-  if (!buyReasons.has(reason)) return { show: false as const };
-
-  // anon quota → must log in before buying
-  if (reason === 'anon_quota_exhausted' || !isLoggedIn) {
+  // Signed users: daily cap exhausted OR entitlement required => buy certificate
+  if (r === 'quota_exhausted' || r === 'entitlement_required' || r === 'certificate_required') {
     return {
-      show: true as const,
-      action: 'login' as const,
-      label: 'Log in to buy',
-      sku: 'certificate',
+      show: true,
+      kind: 'buy',
+      action: 'buy',
+      label: 'Buy certificate (20 tokens)',
     };
   }
 
-  return {
-    show: true as const,
-    action: 'buy_certificate' as const,
-    label: 'Buy Certificate',
-    sku: 'certificate',
-  };
+  return { show: false };
 }

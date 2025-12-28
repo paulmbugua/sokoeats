@@ -1,7 +1,7 @@
 // apps/backend/services/narrationGate.js
 import pool from '../config/db.js';
 import crypto from 'node:crypto';
-import { getEntitlement } from '../controllers/_entitlements.js';
+import { getCertificateEntitlement } from '../controllers/_aiCourseEntitlements.js';
 
 const PLAN_LIMITS_MIN = { pro: 1000, enterprise: 10000 };
 const DAILY_CAP_SECONDS = 10 * 60;
@@ -19,15 +19,11 @@ function isUuid(v) {
 
 // Deterministic UUID from string (anonId -> uuid)
 function anonToUuid(s) {
-  const hex = crypto
-    .createHash('sha1')
-    .update(String(s))
-    .digest('hex')
-    .slice(0, 32);
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(
-    13,
-    16,
-  )}-a${hex.slice(17, 20)}-${hex.slice(20)}`;
+  const hex = crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(
+    17,
+    20,
+  )}-${hex.slice(20)}`;
 }
 
 /**
@@ -41,15 +37,26 @@ function resolveSubjectUuid(namespace, value) {
   return anonToUuid(`${namespace}:${v}`);
 }
 
+/**
+ * ✅ Course access check (purchase/unlock):
+ * Uses ai_course_entitlements via getCertificateEntitlement()
+ */
+async function hasCourseAccess(userId, courseId, db = pool) {
+  if (!userId || !courseId) return false;
+  try {
+    const ent = await getCertificateEntitlement(userId, courseId, db);
+    return !!ent;
+  } catch {
+    return false;
+  }
+}
+
 // Map JWT userId (often int) -> profiles.id (uuid)
 async function resolveProfileId(userId) {
   if (!userId) return null;
   if (isUuid(userId)) return String(userId);
 
-  const q = await pool.query(
-    `SELECT id FROM profiles WHERE user_id = $1 LIMIT 1`,
-    [userId],
-  );
+  const q = await pool.query(`SELECT id FROM profiles WHERE user_id = $1 LIMIT 1`, [userId]);
   return q.rows?.[0]?.id ? String(q.rows[0].id) : null;
 }
 
@@ -241,32 +248,16 @@ async function reserveBuckets({ client, buckets, reserveSeconds }) {
   return { group, reservations };
 }
 
-async function hasCertificateEntitlement(userId, courseId) {
-  if (!userId || !courseId) return false;
-  try {
-    const ent = await getEntitlement(pool, userId, courseId);
-    if (ent && (ent.can_certificate || ent.tier)) return true;
-  } catch {}
-  return false;
-}
-
-const CERTIFICATE_UNLOCKS_NARRATION =
-  String(process.env.CERTIFICATE_UNLOCKS_NARRATION || 'true')
-    .trim()
-    .toLowerCase() === 'true';
-
 export async function narrationPreflight({
   userId,
   anonId,
   orgId,
   courseId,
   estimateText,
-  programTrack,
+  programTrack, // kept for signature parity (not required here)
 }) {
   const reserveMin = estimateMinutesFromText(estimateText);
   const reserveSeconds = reserveMin * 60;
-
-  const track = String(programTrack || 'general').trim().toLowerCase();
 
   // --- ORG PATH ---
   if (orgId) {
@@ -437,12 +428,10 @@ export async function narrationPreflight({
       const dailyRemaining = remainingSeconds(anonBucket, ANON_DAILY_CAP_SECONDS);
       if (dailyRemaining < reserveSeconds) {
         await client.query('ROLLBACK');
-
-        // ✅ After free anon quota, push them toward certificate purchase (requires login)
         return {
           ok: false,
           mode: 'notes_only',
-          reason: 'anon_quota_exhausted', // client should show: "Log in to buy certificate to unlock narration"
+          reason: 'anon_quota_exhausted',
           resetsAt: learnerDay.end,
           remainingMinutes: Math.floor(dailyRemaining / 60),
           usage: [
@@ -484,74 +473,54 @@ export async function narrationPreflight({
     }
   }
 
- 
- // --- SELF-SERVE LOGGED-IN (daily cap; certificate can unlock) ---
-
-// ✅ Always require entitlement for certificate track narration access
-if (track === 'certificate') {
-  const entitled = await hasCertificateEntitlement(userId, courseId);
-  if (!entitled) {
-    return {
-      ok: false,
-      mode: 'notes_only',
-      reason: 'entitlement_required', // client: "Buy certificate to unlock narration"
-      resetsAt: null,
-      remainingMinutes: 0,
-    };
-  }
-}
-
-// ✅ If certificate is purchased, narration quota restriction is removed (self-serve only)
-if (CERTIFICATE_UNLOCKS_NARRATION) {
-  const entitled = await hasCertificateEntitlement(userId, courseId);
-  if (entitled) {
-    return {
-      ok: true,
-      mode: 'narration',
-      reserveMin,
-      resetsAt: null,
-      remainingMinutes: null,
-      usage: [],
-      unlimited: true,
-    };
-  }
-}
-
-
-  // Otherwise: enforce daily cap
-  const profileSubjectId = await resolveProfileSubjectUuid(userId);
+  // --- SELF-SERVE LOGGED-IN (daily cap; purchase unlocks narration) ---
   const learnerDay = todayRange();
+
+  // ✅ APPLY: use hasCourseAccess() here
+  const entitled = await hasCourseAccess(userId, courseId);
+
+  // Not purchased: 10 minutes/day narration cap
+  // Purchased: effectively unlimited per day (lesson generation cap enforced elsewhere)
+  const BASE_LIMIT = DAILY_CAP_SECONDS; // 10 min
+  const ENTITLED_LIMIT = Math.max(24 * 60 * 60, reserveSeconds + 60); // 24h or enough for this request
+
+  const limitSeconds = entitled ? ENTITLED_LIMIT : BASE_LIMIT;
+  const bucketName = entitled ? 'narration_entitled_daily' : 'narration_daily';
+
+  // ✅ Use safe profile subject UUID (never crashes)
+  const profileSubjectId = await resolveProfileSubjectUuid(userId);
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
     await releaseExpiredReservations(client);
 
     const profileBucket = await ensureBucket(client, {
       subjectType: 'profile',
       subjectId: profileSubjectId,
-      bucket: 'narration_daily',
+      bucket: bucketName,
       periodStart: learnerDay.start,
       periodEnd: learnerDay.end,
-      limitSeconds: DAILY_CAP_SECONDS,
+      limitSeconds,
     });
 
-    const dailyRemaining = remainingSeconds(profileBucket, DAILY_CAP_SECONDS);
-    if (dailyRemaining < reserveSeconds) {
-      await client.query('ROLLBACK');
+    const dailyRemaining = remainingSeconds(profileBucket, limitSeconds);
 
-      // ✅ After free daily cap, prompt to pay for certificate to remove narration restriction
+    // If NOT entitled and daily cap is exhausted -> show CTA
+    if (!entitled && dailyRemaining < reserveSeconds) {
+      await client.query('ROLLBACK');
       return {
         ok: false,
         mode: 'notes_only',
-        reason: 'quota_exhausted', // client: "Buy certificate to unlock unlimited narration"
-        resetsAt: learnerDay.end, // still shows when free cap resets
+        reason: 'quota_exhausted',
+        resetsAt: learnerDay.end,
         remainingMinutes: Math.floor(dailyRemaining / 60),
         usage: [
           {
             bucket: 'profile',
             remainingSeconds: dailyRemaining,
-            limitSeconds: DAILY_CAP_SECONDS,
+            limitSeconds: BASE_LIMIT,
             resetsAt: learnerDay.end,
           },
         ],
@@ -561,16 +530,17 @@ if (CERTIFICATE_UNLOCKS_NARRATION) {
     const { group, reservations } = await reserveBuckets({
       client,
       reserveSeconds,
-      buckets: [{ row: profileBucket, limit: DAILY_CAP_SECONDS, label: 'profile' }],
+      buckets: [{ row: profileBucket, limit: limitSeconds, label: 'profile' }],
     });
 
     await client.query('COMMIT');
+
     return {
       ok: true,
       mode: 'narration',
       reserveMin,
       resetsAt: learnerDay.end,
-      remainingMinutes: Math.floor((dailyRemaining - reserveSeconds) / 60),
+      remainingMinutes: Math.floor(Math.max(0, dailyRemaining - reserveSeconds) / 60),
       usage: reservations,
       reservation: {
         reservationGroup: group,
@@ -591,10 +561,7 @@ export async function finalizeNarrationUsage({ reservation, actualSeconds }) {
   if (!group) return null;
 
   const usedSeconds = Math.max(0, Math.round(actualSeconds || 0));
-  const reserveSeconds = Math.max(
-    0,
-    Math.round(reservation.reserveSeconds || usedSeconds),
-  );
+  const reserveSeconds = Math.max(0, Math.round(reservation.reserveSeconds || usedSeconds));
   const billSeconds = Math.min(reserveSeconds, usedSeconds || reserveSeconds);
 
   const client = await pool.connect();

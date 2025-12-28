@@ -57,7 +57,8 @@ import type { OrgTier } from '@mytutorapp/shared/types';
 import { useThemePref } from '../../theme/ThemeContext';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 
-type TabKey = 'branding' | 'assign' | 'analytics' | 'tools';
+type TabKey = 'branding' | 'assign' | 'analytics' | 'examResults' | 'tools';
+
 type Period = 'month' | 'term' | 'year';
 
 const PAY_DEBUG = true; // turn off later
@@ -412,6 +413,11 @@ const OrgElearnPortalNative: React.FC = () => {
   // last resort: dispatch a navigate action (may bubble)
   navigation.dispatch(CommonActions.navigate({ name: routeName as never, params } as never));
 }
+
+const openExamResults = useCallback(() => {
+  const parent = navigation.getParent?.(); // parent Stack above Tab navigator (if any)
+  (parent ?? navigation).navigate('OrgExamResultsPortal', { view: 'admin' });
+}, [navigation]);
 
   const paramsAny = (route.params || {}) as any;
 
@@ -837,9 +843,22 @@ const OrgElearnPortalNative: React.FC = () => {
 
   // hydrate from route params
   useEffect(() => {
-    const p = (route.params || {}) as any;
-    const explicitTab = p.tab as TabKey | undefined;
-    if (explicitTab) setTab(explicitTab);
+    const p: any = route?.params ?? {};
+const explicitTab = p.tab as TabKey | undefined;
+
+if (explicitTab === 'examResults') {
+  if (!isProTier) {
+    Alert.alert('Locked', 'Exam results are available on PRO.');
+    return;
+  }
+  openExamResults();
+  // optional but recommended: clear param so it doesn't re-open on back
+  navigation.setParams?.({ tab: undefined });
+  return;
+}
+
+if (explicitTab) setTab(explicitTab);
+
     const cid = p.courseId;
     if (cid) setCourseId(cid);
     const cls = p.class_label ?? p.class;
@@ -1415,8 +1434,18 @@ const OrgElearnPortalNative: React.FC = () => {
   const nearLimit = seatPct >= 90;
 
   const visibleTabs: TabKey[] = canBrandingRole
-    ? ['branding', 'assign', 'analytics', 'tools']
-    : ['assign', 'analytics', 'tools'];
+  ? ['branding', 'assign', 'analytics', 'examResults', 'tools']
+  : ['assign', 'analytics', 'examResults', 'tools'];
+
+  const TAB_LABEL: Record<TabKey, string> = {
+  branding: 'Branding',
+  assign: 'Assignments',
+  analytics: 'Analytics',
+  examResults: 'Exam results',
+  tools: 'Tools',
+};
+
+
 
   // Learner: legacy-only filter (same as your existing logic)
   const legacyAssignments = useMemo(
@@ -1820,25 +1849,40 @@ const OrgElearnPortalNative: React.FC = () => {
                 </Text>
               </View>
 
-              {/* tabs */}
-              <View style={tw`flex-row mb-3`}>
-                {visibleTabs.map((t) => {
-                  const active = tab === t;
-                  return (
-                    <TouchableOpacity
-                      key={t}
-                      onPress={() => setTab(t)}
-                      style={tw`mr-2 px-3 py-1.5 rounded-xl ${active ? 'bg-indigo-600' : 'bg-[#e7edf4] dark:bg-white/10'}`}
-                    >
-                      <Text
-                        style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-sm capitalize`}
-                      >
-                        {t}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+             {/* tabs */}
+                  <View style={tw`flex-row flex-wrap mb-3`}>
+                    {visibleTabs.map((t) => {
+                      const active = tab === t;
+                      return (
+                        <TouchableOpacity
+                          key={t}
+                          onPress={() => {
+                            // ✅ EXAM RESULTS should navigate immediately (no local tab)
+                            if (t === 'examResults') {
+                              if (!isProTier) {
+                                Alert.alert('Locked', 'Exam results are available on PRO.');
+                                return;
+                              }
+                              openExamResults();
+                              return;
+                            }
+
+                            setTab(t);
+                          }}
+
+                          style={tw`mr-2 mb-2 px-3 py-1.5 rounded-xl ${active ? 'bg-indigo-600' : 'bg-[#e7edf4] dark:bg-white/10'}`}
+                        >
+                          <Text
+                            style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-sm`}
+                            numberOfLines={1}
+                          >
+                            {TAB_LABEL[t] ?? t}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
 
               {/* plan summary */}
               <View
@@ -3006,7 +3050,8 @@ const OrgElearnPortalNative: React.FC = () => {
                   </View>
                 </View>
               )}
-              {/* PRO TOOLS */}
+
+           {/* PRO TOOLS */}
               {/* TOOLS */}
               {tab === 'tools' && (
                 <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4 mb-6`}>

@@ -10,7 +10,10 @@ import {
   Linking,
   useWindowDimensions,
   ActivityIndicator,
+  Pressable,
+  type PressableStateCallbackType,
 } from 'react-native';
+
 import tw from '../../tailwind';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import QuizConfirmModal from './QuizConfirmModal.native';
@@ -43,6 +46,26 @@ const fmtHMS = (totalSeconds: number) => {
 };
 const fmtHMSms = (ms: number) => fmtHMS(Math.floor(Math.max(0, ms) / 1000));
 const CERT_COST_TOKENS = 20;
+const CERT_DEBUG = true;
+
+const certLog = (...args: any[]) => {
+  if (!CERT_DEBUG) return;
+  // eslint-disable-next-line no-console
+  console.log(...args);
+};
+
+const certWarn = (...args: any[]) => {
+  if (!CERT_DEBUG) return;
+  // eslint-disable-next-line no-console
+  console.warn(...args);
+};
+
+const certErr = (...args: any[]) => {
+  if (!CERT_DEBUG) return;
+  // eslint-disable-next-line no-console
+  console.error(...args);
+};
+
 
 // ---- Quiz size helpers (match web) ----
 const MIN_PER_LESSON = 4;
@@ -411,56 +434,64 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
     quizActive: boolean;
     scrollY: number;
   } | null>(null);
+
+  const prePurchaseRef = useRef<typeof prePurchaseState>(null);
+
+// ✅ NEW: if user clicks buy while SKUs are still loading, queue it
+const pendingCertBuyRef = useRef(false);
   const [unlockReady, setUnlockReady] = useState(false);
   const restoreOnceRef = useRef(false);
   const awaitingTopUpRef = useRef(false);
   const debitInFlightRef = useRef(false);
 
   const snapshotPrePurchaseState = useCallback(() => {
-    restoreOnceRef.current = false;
-    const snap = {
-      courseId: course?.id ?? null,
-      lessonIndex: currentIdx ?? 0,
-      maximized: isMaximized,
-      answers: { ...workingAnswers },
-      quizActive,
-      scrollY: 0,
-    };
-    setPrePurchaseState(snap);
-    return snap;
-  }, [course?.id, currentIdx, isMaximized, quizActive, workingAnswers]);
+  restoreOnceRef.current = false;
+
+  const snap = {
+    courseId: course?.id ?? null,
+    lessonIndex: currentIdx ?? 0,
+    maximized: isMaximized,
+    answers: { ...workingAnswers },
+    quizActive,
+    scrollY: 0,
+  };
+
+  prePurchaseRef.current = snap;     // ✅ key line
+  setPrePurchaseState(snap);
+
+  return snap;
+}, [course?.id, currentIdx, isMaximized, quizActive, workingAnswers]);
+
 
   const restorePrePurchaseState = useCallback(async () => {
-    if (!prePurchaseState || restoreOnceRef.current) return;
-    restoreOnceRef.current = true;
+  const snap = prePurchaseRef.current || prePurchaseState;
+  if (!snap || restoreOnceRef.current) return;
 
-    try {
-      const targetLesson = Number.isFinite(prePurchaseState.lessonIndex) ? prePurchaseState.lessonIndex : currentIdx;
-      const delta = targetLesson - currentIdx;
+  restoreOnceRef.current = true;
 
-      if (delta !== 0) {
-        const mover = delta > 0 ? onNext : onPrev;
-        const steps = Math.abs(delta);
-        for (let i = 0; i < steps; i++) {
-          const r = mover?.();
-          if (r instanceof Promise) await r;
-        }
+  try {
+    const targetLesson = Number.isFinite(snap.lessonIndex) ? snap.lessonIndex : currentIdx;
+    const delta = targetLesson - currentIdx;
+
+    if (delta !== 0) {
+      const mover = delta > 0 ? onNext : onPrev;
+      const steps = Math.abs(delta);
+      for (let i = 0; i < steps; i++) {
+        const r = mover?.();
+        if (r instanceof Promise) await r;
       }
-
-      setWorkingAnswers((prev) => ({
-        ...prev,
-        ...prePurchaseState.answers,
-      }));
-
-      if (prePurchaseState.quizActive) markActive();
-
-      if (prePurchaseState.maximized !== isMaximized) {
-        onToggleMaximized();
-      }
-    } catch {
-      /* ignore restore errors */
     }
-  }, [currentIdx, isMaximized, markActive, onNext, onPrev, onToggleMaximized, prePurchaseState]);
+
+    setWorkingAnswers((prev) => ({ ...prev, ...snap.answers }));
+
+    if (snap.quizActive) markActive();
+
+    if (snap.maximized !== isMaximized) onToggleMaximized();
+  } catch {
+    /* ignore */
+  }
+}, [currentIdx, isMaximized, markActive, onNext, onPrev, onToggleMaximized, prePurchaseState]);
+
 
   // certificate persistence (AsyncStorage)
   const lsKey = useMemo(() => (course?.id ? `cert:last:${course.id}` : null), [course?.id]);
@@ -484,6 +515,9 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   () => Array.isArray(skus) && skus.length > 0 && !aiCertLoading && !aiCertError,
   [skus, aiCertLoading, aiCertError]
 );
+
+
+
 
   const normStr = (v: any) => (typeof v === 'string' ? v.trim() : '');
 const lower = (v: any) => normStr(v).toLowerCase();
@@ -549,7 +583,7 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
 };
 
 
-  // CTA banner parity with web (for narration lock)
+   // CTA banner parity with web (for narration lock)
   const isLoggedIn = Boolean(token);
   const certCta = useMemo(
     () =>
@@ -560,6 +594,17 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
       }),
     [gateMode, gateNotice?.reason, isLoggedIn]
   );
+
+  // ✅ TS-safe: CertificateCta type may not include `kind` even when show=true.
+  // We normalize to a "kind-like" value if present.
+  const certCtaKind = useMemo(() => {
+    if (!certCta || !certCta.show) return undefined;
+
+    const anyCta = certCta as any;
+    const raw = anyCta.kind ?? anyCta.variant ?? anyCta.action ?? anyCta.type;
+
+    return typeof raw === 'string' ? raw : undefined;
+  }, [certCta]);
 
   const narrationBlocked = gateMode === 'notes_only';
 
@@ -621,7 +666,12 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
       setExtendedPaid(Boolean(isOrgFlowFlag || hasExtended));
       setPaymentOk(Boolean(hasAnyCert || downUrl));
       if (hasAnyCert) {
-        setPurchaseNotice((prev) => prev || '✅ Purchased — narration unlocked. Pass quiz (≥70%) to generate PDF.');
+        setPurchaseNotice(
+  (prev) =>
+    prev ||
+    '✅ Course unlocked — narration unlocked. You can generate up to 60 lessons. Pass quiz (≥70%) to download your certificate free.'
+);
+
       }
     } catch {
       setCertPaid(Boolean(downUrl));
@@ -630,100 +680,258 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
     }
   }, [api, course?.id, downUrl, isOrgFlowFlag]);
 
-  const debitAndUnlock = useCallback(async () => {
-    if (debitInFlightRef.current) return;
-    debitInFlightRef.current = true;
+const debitAndUnlock = useCallback(async () => {
+  if (debitInFlightRef.current) {
+    certLog('[cert][debitAndUnlock] blocked: already in-flight');
+    return;
+  }
+
+  debitInFlightRef.current = true;
+
+  // ✅ start log
+  certLog('[cert][debitAndUnlock] start', {
+    courseId: course?.id ?? null,
+    skusLen: Array.isArray(skus) ? skus.length : 0,
+    aiCertLoading,
+    aiCertError,
+  });
+
+  try {
+    // ✅ Use SKU claim (deducts tokens + grants entitlement)
+    const sku = pickStandardCertSku(skus);
+    const code = sku ? skuCodeOf(sku) : '';
+
+    // ✅ picked sku log
+    certLog('[cert][debitAndUnlock] picked sku', {
+      sku: sku
+        ? {
+            title: sku?.title,
+            code: skuCodeOf(sku),
+            priceTokens: priceTokensOf(sku),
+          }
+        : null,
+      code,
+    });
+
+    if (!code) {
+      console.warn('[cert unlock] missing sku code', {
+        skusLen: Array.isArray(skus) ? skus.length : 0,
+        sample: Array.isArray(skus) ? skus[0] : null,
+        aiCertLoading,
+        aiCertError,
+      });
+      throw new Error('Certificate SKU not available. Please refresh and try again.');
+    }
+
+    // 1) “Debit” via claim
+    try {
+      certLog('[cert][debitAndUnlock] claim() begin', { code });
+
+      await claim(code);
+
+      certLog('[cert][debitAndUnlock] claim() success', { code });
+    } catch (e: any) {
+      // ✅ claim failed log (requested)
+      certErr('[cert][debitAndUnlock] claim() failed', {
+        status: e?.status,
+        message: e?.message,
+        data: e?.data,
+        code,
+      });
+
+      // keep your existing error log if you want (optional)
+      console.error('[cert claim] FAIL', {
+        status: e?.status,
+        message: e?.message,
+        data: e?.data,
+      });
+
+      if (
+        e?.status === 402 ||
+        e?.status === 409 ||
+        /insufficient|not enough|tokens/i.test(String(e?.message || ''))
+      ) {
+        awaitingTopUpRef.current = true;
+        setPaymentOpen(true);
+        return;
+      }
+
+      throw e;
+    }
+
+    // 2) refresh wallet + entitlement status (best-effort)
+    try {
+      await refreshUserDetails?.();
+    } catch {}
 
     try {
-      // ✅ Use SKU claim (deducts tokens + grants entitlement)
-      const sku = pickStandardCertSku(skus);
-      const code = sku ? skuCodeOf(sku) : '';
+      await checkPaymentStatus();
+    } catch {}
 
-      if (!code) {
-        console.warn('[cert unlock] missing sku code', {
-          skusLen: Array.isArray(skus) ? skus.length : 0,
-          sample: Array.isArray(skus) ? skus[0] : null,
-          aiCertLoading,
-          aiCertError,
-        });
-        throw new Error('Certificate SKU not available. Please refresh and try again.');
-      }
+    // ✅ post-refresh status log (requested)
+    certLog('[cert][debitAndUnlock] post-refresh status', {
+      paymentOkAfter: true,
+    });
 
-      // 1) “Debit” via claim
-      try {
-        await claim(code);
-      } catch (e: any) {
-        console.error('[cert claim] FAIL', {
-          status: e?.status,
-          message: e?.message,
-          data: e?.data,
-        });
+    // 3) mark paid + unlock narration (main effect of pre-purchase)
+    setPaymentOk(true);
+    setCertPaid(true);
+    setPurchaseNotice(
+      '✅ Course unlocked — narration unlocked. You can generate up to 60 lessons. Pass quiz (≥70%) to download certificate free.'
+    );
 
-        if (e?.status === 402 || e?.status === 409 || /insufficient|not enough|tokens/i.test(String(e?.message || ''))) {
-          awaitingTopUpRef.current = true;
-          setPaymentOpen(true);
-          return;
-        }
+    // Close payment + go back to the exact UI state they were in
+    setPaymentOpen(false);
 
-        throw e;
-      }
+    try {
+      await restorePrePurchaseState();
+    } catch {}
 
-      // 2) refresh wallet + entitlement status (best-effort)
-      try {
-        await refreshUserDetails?.();
-      } catch {}
-      try {
-        await checkPaymentStatus();
-      } catch {}
+    Alert.alert(
+      'Course unlocked',
+      'Purchase complete. Narration is unlocked and you can generate up to 60 lessons for this course. Pass the quiz (≥70%) to download your certificate free.'
+    );
+  } catch (e: any) {
+    console.error('[cert unlock] failed', e);
+    Alert.alert('Certificate', e?.message || 'Could not unlock certificate.');
+  } finally {
+    // ✅ finally log (requested)
+    certLog('[cert][debitAndUnlock] finally', {
+      debitInFlight: debitInFlightRef.current,
+      awaitingTopUp: awaitingTopUpRef.current,
+    });
 
-      // 3) mark paid + unlock narration (main effect of pre-purchase)
-      setPaymentOk(true);
-      setCertPaid(true);
-      setPurchaseNotice('✅ Purchased — narration unlocked. Pass quiz (≥70%) to generate PDF.');
+    debitInFlightRef.current = false;
+    awaitingTopUpRef.current = false;
+  }
+}, [
+  course?.id,
+  skus,
+  aiCertLoading,
+  aiCertError,
+  claim,
+  refreshUserDetails,
+  checkPaymentStatus,
+  restorePrePurchaseState,
+  setPaymentOpen,
+  setPaymentOk,
+  setCertPaid,
+  setPurchaseNotice,
+]);
 
-      // Close payment + go back to the exact UI state they were in
-      setPaymentOpen(false);
-      try {
-        await restorePrePurchaseState();
-      } catch {}
-      Alert.alert('Narration unlocked', 'Certificate purchased. Pass the quiz (≥ 70%) to generate your PDF certificate.');
-    } catch (e: any) {
-      console.error('[cert unlock] failed', e);
-      Alert.alert('Certificate', e?.message || 'Could not unlock certificate.');
-    } finally {
-      debitInFlightRef.current = false;
-      awaitingTopUpRef.current = false;
-    }
-    }, [
-      skus,
-      claim,
-      refreshUserDetails,
-      checkPaymentStatus,
-      restorePrePurchaseState,
-      setPaymentOpen,
-      setCertPaid,
-    ]);
 
   const handleBuyCertificate = useCallback(async () => {
-    if (!skusReady) {
-      Alert.alert('Certificate', 'Loading certificate options… please try again in a moment.');
-      return;
-    }
+  const pressId = ++pressSeqRef.current;
 
-    if (!requireAuth('buy_certificate', 'Please sign in to buy your certificate.')) return;
-    if (debitInFlightRef.current) return;
+  certLog('[cert][handleBuyCertificate] PRESS', {
+    pressId,
+    tokenPresent: Boolean(token),
+    debitInFlight: debitInFlightRef.current,
+    tokens: Number(tokens) || 0,
+    cost: CERT_COST_TOKENS,
+    skusReady,
+    skusLen: Array.isArray(skus) ? skus.length : 0,
+    aiCertLoading,
+    aiCertError,
+    paymentOpen,
+  });
 
+  let authed = false;
+  try {
+    authed = requireAuth('buy_certificate', 'Please sign in to buy your certificate.');
+  } catch (e) {
+    certErr('[cert][handleBuyCertificate] requireAuth threw', { pressId, e });
+    throw e;
+  }
+
+  certLog('[cert][handleBuyCertificate] requireAuth ->', { pressId, authed });
+  if (!authed) return;
+
+  if (debitInFlightRef.current) {
+    certWarn('[cert][handleBuyCertificate] blocked: debit already in flight', { pressId });
+    return;
+  }
+
+  // snapshot
+  try {
     const snap = snapshotPrePurchaseState();
+    certLog('[cert][handleBuyCertificate] snapshot', { pressId, snap });
+  } catch (e) {
+    certErr('[cert][handleBuyCertificate] snapshot failed', { pressId, e });
+  }
 
-    if ((Number(tokens) || 0) >= CERT_COST_TOKENS) {
-      await debitAndUnlock();
-      return;
-    }
+  const bal = Number(tokens) || 0;
 
+  // 1) Not enough tokens => open payment (doesn't need SKUs)
+  if (bal < CERT_COST_TOKENS) {
+    certLog('[cert][handleBuyCertificate] insufficient tokens -> open payment', {
+      pressId,
+      bal,
+      need: CERT_COST_TOKENS,
+    });
     awaitingTopUpRef.current = true;
     setPaymentOpen(true);
-    setPrePurchaseState(snap);
-  }, [debitAndUnlock, skusReady, requireAuth, snapshotPrePurchaseState, tokens]);
+    return;
+  }
+
+  // 2) Enough tokens but SKUs not ready => queue it
+  if (!skusReady) {
+    certWarn('[cert][handleBuyCertificate] SKUs not ready -> queue purchase', {
+      pressId,
+      skusLen: Array.isArray(skus) ? skus.length : 0,
+      aiCertLoading,
+      aiCertError,
+    });
+
+    pendingCertBuyRef.current = true;
+
+    // NOTE: This message currently isn't visible in the gate CTA.
+    setPurchaseNotice('Loading certificate options… purchase will continue automatically.');
+
+    // Optional: show an alert so user sees *something* immediately.
+    // Alert.alert('Loading', 'Loading certificate options… please try again in a moment.');
+
+    return;
+  }
+
+  // 3) Enough tokens + SKUs ready => debit now
+  certLog('[cert][handleBuyCertificate] proceeding to debitAndUnlock', { pressId });
+  await debitAndUnlock();
+}, [
+  requireAuth,
+  snapshotPrePurchaseState,
+  tokens,
+  skusReady,
+  skus,
+  aiCertLoading,
+  aiCertError,
+  paymentOpen,
+  debitAndUnlock,
+  setPaymentOpen,
+]);
+
+
+
+useEffect(() => {
+  if (!pendingCertBuyRef.current) return;
+
+  const bal = Number(tokens) || 0;
+  if (bal < CERT_COST_TOKENS) return;      // they still need to top up
+  if (!skusReady) return;                 // still waiting
+  if (debitInFlightRef.current) return;
+
+  pendingCertBuyRef.current = false;
+  debitAndUnlock();
+}, [tokens, skusReady, debitAndUnlock]);
+
+useEffect(() => {
+  if (!certCta.show) return;
+  if (skusReady) return;
+
+  // ✅ call your sku fetcher here
+  // refetchCertSkus?.();
+}, [certCta.show, skusReady]);
+
 
   // Capture state when the gate is shown or the payment drawer opens
   useEffect(() => {
@@ -750,11 +958,12 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
     checkPaymentStatus();
   }, [checkPaymentStatus]);
 
-  useEffect(() => {
-    if (paymentOk && unlockReady) {
-      restorePrePurchaseState();
-    }
-  }, [paymentOk, restorePrePurchaseState, unlockReady]);
+
+useEffect(() => {
+  if (paymentOk) {
+    restorePrePurchaseState();
+  }
+}, [paymentOk, restorePrePurchaseState]);
 
   // Re-check after the payment panel closes
   const prevPaymentOpenRef = useRef(paymentOpen);
@@ -981,6 +1190,8 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
       Alert.alert('Download failed', 'Please try again in a moment.');
     }
   }, [backendUrl, token, requireAuth, persistedCert?.certId, downUrl, certUrl, courseTitle]);
+
+  
 
   // Post-generate handler (auto-download + flags)
   const handleGeneratedCert = useCallback(
@@ -1253,6 +1464,8 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
     overrideLessons,
   ]);
 
+  
+
   // Transcript generation (native)
   const downloadTranscript = useCallback(async () => {
     if (!requireAuth('download_transcript', 'Please sign in to download your transcript.')) return;
@@ -1345,46 +1558,111 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
     return true;
   }, [persistedCert, hideCertPill]);
 
-  
+const isAnonGate = Boolean(certCta?.show && certCtaKind === 'signup' && !isLoggedIn);
+
+
+const pressSeqRef = useRef(0);
+
+useEffect(() => {
+  certLog('[cert][state]', {
+    courseId: course?.id ?? null,
+    isLoggedIn: Boolean(token),
+    tokens: Number(tokens) || 0,
+    skusLen: Array.isArray(skus) ? skus.length : 0,
+    skusReady,
+    aiCertLoading,
+    aiCertError,
+    paymentOpen,
+    paymentOk,
+    certCtaShow: certCta?.show,
+    certCtaKind,
+    debitInFlight: debitInFlightRef.current,
+    awaitingTopUp: awaitingTopUpRef.current,
+    pendingCertBuy: pendingCertBuyRef.current,
+  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [
+  course?.id,
+  token,
+  tokens,
+  skusReady,
+  aiCertLoading,
+  aiCertError,
+  paymentOpen,
+  paymentOk,
+  certCta?.show,
+  certCtaKind,
+]);
 
 
   return (
     <>
       {/* Gate CTA (parity with web) */}
-      {certCta.show && !isOrgFlowFlag && !paymentOk ? (
-        <View
-          style={tw`mb-3 rounded-2xl bg-amber-100 dark:bg-amber-500/10 border border-amber-400 dark:border-amber-500/30 p-3`}
-        >
-          <Text style={tw`text-amber-900 dark:text-amber-200 text-sm`}>
-            Certificate costs 20 tokens (≈ USD 20).
-          </Text>
-          <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
-            Buying now unlocks narration immediately.
-          </Text>
-          <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
-            Generate the certificate after you pass the quiz.
-          </Text>
+     {certCta?.show && !isOrgFlowFlag && !paymentOk ? (
+  <View
+    style={tw`mb-3 rounded-2xl bg-amber-100 dark:bg-amber-500/10 border border-amber-400 dark:border-amber-500/30 p-3`}
+  >
+    {isAnonGate ? (
+      <>
+        <Text style={tw`text-amber-900 dark:text-amber-200 text-sm`}>
+          You’ve reached today’s free limit (3 minutes).
+        </Text>
+        <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
+          Sign up to continue (10 minutes/day free).
+        </Text>
 
-          <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
-            If you don’t have enough tokens, the payment widget opens so you can buy tokens.
-          </Text>
-
-          <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
-            <TouchableOpacity
-              onPress={handleBuyCertificate}
-              disabled={!skusReady || debitInFlightRef.current}
-              style={tw.style(
-                'px-4 py-2 rounded-xl',
-                !skusReady || debitInFlightRef.current ? 'bg-indigo-600/40' : 'bg-indigo-600'
-              )}
-            >
-              <Text style={tw`text-white font-semibold`}>
-                {aiCertLoading ? 'Loading…' : debitInFlightRef.current ? 'Processing…' : 'Buy certificate (20 tokens)'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+        <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
+          <Pressable
+            onPress={() => {
+              // Always pressable — requireAuth will route to login/signup
+              requireAuth('signup_to_continue', 'Sign up to continue learning.');
+            }}
+            hitSlop={10}
+            style={({ pressed }) =>
+              tw.style('px-4 py-2 rounded-xl bg-indigo-600', pressed ? 'opacity-80' : '')
+            }
+          >
+            <Text style={tw`text-white font-semibold`}>Sign up to continue</Text>
+          </Pressable>
         </View>
-      ) : null}
+      </>
+    ) : (
+      <>
+        <Text style={tw`text-amber-900 dark:text-amber-200 text-sm`}>
+          You’ve reached today’s free narration limit (10 minutes).
+        </Text>
+        <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
+          Unlock this course for 20 tokens (≈ USD 20) to generate up to 60 lessons.
+        </Text>
+        <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
+          Certificate download is free after you pass the quiz (≥ 70%).
+        </Text>
+
+        <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
+          <Pressable
+            onPress={() => {
+              // Always pressable; ignore double-taps in-flight
+              if (debitInFlightRef.current) return;
+              handleBuyCertificate();
+            }}
+            hitSlop={10}
+            style={({ pressed }) =>
+              tw.style(
+                'px-4 py-2 rounded-xl bg-indigo-600',
+                pressed ? 'opacity-80' : '',
+                debitInFlightRef.current ? 'opacity-60' : ''
+              )
+            }
+          >
+            <Text style={tw`text-white font-semibold`}>
+              {aiCertLoading ? 'Loading…' : debitInFlightRef.current ? 'Processing…' : 'Buy certificate (20 tokens)'}
+            </Text>
+          </Pressable>
+        </View>
+      </>
+    )}
+  </View>
+) : null}
 
       {/* ✅ Paid but not passed: narration unlocked notice */}
       {!isOrgFlowFlag && paymentOk && !grade?.passed ? (
@@ -1392,7 +1670,9 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
           style={tw`mb-3 rounded-2xl bg-emerald-100 dark:bg-emerald-500/10 border border-emerald-400 dark:border-emerald-500/30 p-3`}
         >
           <Text style={tw`text-emerald-900 dark:text-emerald-200 text-sm`}>
-            {purchaseNotice || '✅ Purchased — narration unlocked. Pass quiz (≥70%) to generate PDF.'}
+            {purchaseNotice ||
+  '✅ Course unlocked — narration unlocked. Generate up to 60 lessons. Pass quiz (≥70%) to download certificate free.'}
+
           </Text>
         </View>
       ) : null}
@@ -1680,29 +1960,31 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
                           const isSelected = current === i;
 
                           return (
-                            <TouchableOpacity
-                              key={`${q.id}:${i}`}
-                              onPress={() => handleAnswer(q.id, i)}
-                              disabled={isLocked || narrationBlocked}
-                              accessibilityRole="button"
-                              accessibilityState={{
-                                disabled: isLocked || narrationBlocked,
-                                selected: isSelected,
-                              }}
-                              style={({ pressed }) =>
-                                tw.style(
-                                  'px-4 py-3 rounded-xl border',
-                                  isSelected ? 'bg-emerald-600/30 border-emerald-500' : 'bg-white/5 border-white/10',
-                                  pressed ? 'opacity-80' : '',
-                                  isLocked || narrationBlocked ? 'opacity-60' : ''
-                                )
-                              }
-                              activeOpacity={0.7}
-                            >
-                              <Text style={tw`text-white`}>
-                                <Markdown inline>{String(c || '')}</Markdown>
-                              </Text>
-                            </TouchableOpacity>
+                                                            <Pressable
+                                  key={`${q.id}:${i}`}
+                                  onPress={() => handleAnswer(q.id, i)}
+                                  disabled={isLocked || narrationBlocked}
+                                  accessibilityRole="button"
+                                  accessibilityState={{
+                                    disabled: isLocked || narrationBlocked,
+                                    selected: isSelected,
+                                  }}
+                                  hitSlop={8}
+                                  style={({ pressed }: PressableStateCallbackType) =>
+                                    tw.style(
+                                      'px-4 py-3 rounded-xl border',
+                                      isSelected ? 'bg-emerald-600/30 border-emerald-500' : 'bg-white/5 border-white/10',
+                                      pressed && !(isLocked || narrationBlocked) ? 'opacity-80' : '',
+                                      isLocked || narrationBlocked ? 'opacity-60' : ''
+                                    )
+                                  }
+                                >
+
+                                <Text style={tw`text-white`}>
+                        <Markdown inline>{String(c || '')}</Markdown>
+                      </Text>
+                    </Pressable>
+
                           );
                         })
                       ) : (
@@ -1801,7 +2083,8 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
                     {paymentOk ? (
                       <View style={tw`mt-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3`}>
                         <Text style={tw`text-emerald-200 text-sm`}>
-                          ✅ Certificate already purchased (20 tokens). You can generate it now.
+                        ✅ Course unlocked (20 tokens). Certificate is free after you pass — you can generate/download it now.
+
                         </Text>
 
                         <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
@@ -1855,16 +2138,14 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
                                   <Text style={tw`text-white font-semibold`}>{price} Tokens</Text>
 
                                   <TouchableOpacity
-                                    disabled={!skusReady || debitInFlightRef.current}
-                                    onPress={async () => {
-                                      await handleBuyCertificate();
-                                      if (isExtended) setExtendedPaid(true);
-                                    }}
-                                    style={tw.style(
-                                      'px-3 py-1.5 rounded',
-                                      !skusReady || debitInFlightRef.current ? 'bg-emerald-600/50' : 'bg-emerald-600'
-                                    )}
-                                  >
+                                            onPress={async () => {
+                                              if (debitInFlightRef.current) return;
+                                              await handleBuyCertificate();
+                                              if (isExtended) setExtendedPaid(true);
+                                            }}
+                                            style={tw.style('px-3 py-1.5 rounded', debitInFlightRef.current ? 'bg-emerald-600/50' : 'bg-emerald-600')}
+                                          >
+
                                     <Text style={tw`text-white text-sm font-semibold`}>
                                       Buy certificate (20 tokens)
                                     </Text>

@@ -458,14 +458,14 @@ if (userId) {
 }
 
 
-const estimateText = Array.isArray(outline)
-  ? outline
-      .map(
-        (s) =>
-          `${s?.title || ''} ${Array.isArray(s?.keyPoints) ? s.keyPoints.join(' ') : ''}`,
-      )
-      .join(' ')
-  : '';
+const outlineSlice = Array.isArray(outline) ? outline.slice(start, start + count) : [];
+
+const estimateText = outlineSlice
+  .map(
+    (s) =>
+      `${s?.title || ''} ${Array.isArray(s?.keyPoints) ? s.keyPoints.join(' ') : ''}`,
+  )
+  .join(' ');
 
       const anonId =
         req.get('x-anon-id') ||

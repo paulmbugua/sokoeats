@@ -118,10 +118,11 @@ export async function upsertAiCertificateEntitlement({
   courseId,
   courseSource = 'catalog',
   maxLessons = 60,
+  db = pool,
 }) {
   if (!userId || !courseId) return null;
 
-  const userUuid = await normalizeUserUuid(pool, userId);
+  const userUuid = await normalizeUserUuid(db, userId);
   if (!userUuid) return null;
 
   // org_id is uuid or null; if provided but not uuid, drop to null (safe)
@@ -139,7 +140,7 @@ export async function upsertAiCertificateEntitlement({
     RETURNING *;
   `;
 
-  const { rows } = await pool.query(sql, [
+  const { rows } = await db.query(sql, [
     userUuid,
     orgUuid,
     courseId,
@@ -155,8 +156,8 @@ export async function upsertAiCertificateEntitlement({
  * Increment lesson usage for a certificate entitlement.
  * IMPORTANT: no casting unless userId is resolvable to UUID.
  */
-export async function incrementLessonUsage({ userId, courseId, amount }) {
-  const userUuid = await normalizeUserUuid(pool, userId);
+export async function incrementLessonUsage({ userId, courseId, amount, db = pool }) {
+  const userUuid = await normalizeUserUuid(db, userId);
   if (!userUuid || !courseId) return null;
 
   const inc = Math.max(1, Number(amount) || 1);
@@ -172,11 +173,11 @@ export async function incrementLessonUsage({ userId, courseId, amount }) {
      RETURNING max_lessons, lessons_used;
   `;
 
-  const { rows } = await pool.query(sql, [userUuid, courseId, inc, CERT_TYPE]);
+  const { rows } = await db.query(sql, [userUuid, courseId, inc, CERT_TYPE]);
   if (rows[0]) return { ...rows[0], reachedCap: false };
 
   // When cap is hit, surface current usage/cap instead of null
-  const fallback = await pool.query(
+  const fallback = await db.query(
     `
     SELECT max_lessons, lessons_used
       FROM ai_course_entitlements
@@ -198,11 +199,11 @@ export async function incrementLessonUsage({ userId, courseId, amount }) {
 /**
  * Fetch a single certificate entitlement for a course.
  */
-export async function getCertificateEntitlement(userId, courseId) {
-  const userUuid = await normalizeUserUuid(pool, userId);
+export async function getCertificateEntitlement(userId, courseId, db = pool) {
+  const userUuid = await normalizeUserUuid(db, userId);
   if (!userUuid || !courseId) return null;
 
-  const { rows } = await pool.query(
+  const { rows } = await db.query(
     `
     SELECT *
       FROM ai_course_entitlements
@@ -219,16 +220,15 @@ export async function getCertificateEntitlement(userId, courseId) {
 
 /**
  * List all entitlements for a user.
- * This is the one your /api/certificates/my-ai-courses route uses.
  * FIX: do not cast numeric "1631" to uuid.
  */
-export async function getEntitlementsForUser(userId) {
-  const userUuid = await normalizeUserUuid(pool, userId);
+export async function getEntitlementsForUser(userId, db = pool) {
+  const userUuid = await normalizeUserUuid(db, userId);
 
   // If caller passed numeric and we couldn't map it, don't 500 — just return empty.
   if (!userUuid) return [];
 
-  const { rows } = await pool.query(
+  const { rows } = await db.query(
     `
     SELECT *
       FROM ai_course_entitlements

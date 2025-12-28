@@ -367,12 +367,13 @@ function OrgProfileScreen() {
 function OrgExamResultsPortalScreen() {
   return (
     <OrgProtectedRoute>
-      <OrgInstructorOnlyGuard>
+      <OrgStaffGuard>
         <OrgExamResultsPortal />
-      </OrgInstructorOnlyGuard>
+      </OrgStaffGuard>
     </OrgProtectedRoute>
   );
 }
+
 function OrgAttendanceScreen() {
   return (
     <OrgProtectedRoute>

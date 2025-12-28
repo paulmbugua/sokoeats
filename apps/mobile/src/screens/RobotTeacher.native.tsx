@@ -391,6 +391,65 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const prevCourseIdRef = useRef<string | null>(null);
 
+   // ─────────────────────────────────────────────────────────
+  // 409 lesson-cap alert (show once, avoid spam)
+  // ─────────────────────────────────────────────────────────
+  const lessonCapToastRef = useRef<{ key: string; at: number } | null>(null);
+
+  const getHttpStatus = (e: any): number | null => {
+    return (
+      e?.status ??
+      e?.response?.status ??
+      e?.response?.data?.status ??
+      e?.data?.status ??
+      e?.data?.statusCode ??
+      e?.statusCode ??
+      null
+    );
+  };
+
+  const getErrText = (e: any): string => {
+    return String(
+      e?.message ??
+        e?.response?.data?.message ??
+        e?.response?.data?.error ??
+        e?.data?.message ??
+        e?.data?.error ??
+        ''
+    );
+  };
+
+  const isLessonCap409 = (e: any): boolean => {
+    const status = getHttpStatus(e);
+    if (status !== 409) return false;
+
+    const msg = getErrText(e).toLowerCase();
+    // match common server messages, but keep it flexible
+    return (
+      (msg.includes('lesson') && msg.includes('60')) ||
+      msg.includes('reached 60') ||
+      msg.includes('max lessons') ||
+      msg.includes('lesson limit') ||
+      msg.includes('lessons limit') ||
+      msg.includes('limit reached')
+    );
+  };
+
+  const showLessonCapOnce = useCallback(
+    (courseKey: string) => {
+      const now = Date.now();
+      const last = lessonCapToastRef.current;
+
+      // throttle: same course -> only once per ~15s (prefetch can retry)
+      if (last && last.key === courseKey && now - last.at < 15000) return;
+
+      lessonCapToastRef.current = { key: courseKey, at: now };
+
+      Alert.alert('Lesson limit reached', "You’ve reached 60 lessons for this course.");
+    },
+    [/* Alert is stable */]
+  );
+
   // overrides helpers
   const defaultQuizForLessons = (n: number) => Math.max(4, n * 2);
 
@@ -758,14 +817,22 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
         if (!exists && canBuildMore()) {
           try {
             await nextLesson({ silent: true });
-          } catch (e) {
+                   } catch (e) {
+            // 🔔 show cap message for HTTP 409 lesson limit
+            if (isLessonCap409(e)) {
+              const courseKey = selectedCourseRef.current?.id || customTitle.trim() || 'free';
+              showLessonCapOnce(courseKey);
+              break;
+            }
+
             console.warn('[prefetchAhead] nextLesson failed', e);
             break;
           }
+
         }
       }
     },
-    [currentIdx, getLessonAt, nextLesson, canBuildMore]
+    [currentIdx, getLessonAt, nextLesson, canBuildMore,customTitle, showLessonCapOnce]
   );
 
   // Start — robust sequencing (parity-ish with web, but keeping your start gate)
@@ -837,12 +904,19 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
       opts.courseId = selectedCourseRef.current.id;
       dlog('onStart → startWithAI', { opts, selectedId: selectedCourseRef.current.id });
       await startWithAI(opts);
-    } catch (e) {
+        } catch (e) {
+      // 🔔 show cap message for HTTP 409 lesson limit
+      if (isLessonCap409(e)) {
+        const courseKey = selectedCourseRef.current?.id || customTitle.trim() || 'free';
+        showLessonCapOnce(courseKey);
+      }
+
       console.error('[onStart] failed', e);
       setActiveRunId(null);
       setUiPreparing(false);
       setPlayerLoading(false);
     } finally {
+
       setStarting(false);
     }
   }, [
