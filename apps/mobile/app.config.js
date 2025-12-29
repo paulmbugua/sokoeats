@@ -42,8 +42,8 @@ export default function expoConfig({ config }) {
     android: {
       ...config.android,
       package: 'com.paulmbugua2.mytutorapp',
-      versionCode: 1,
-
+ 
+      
       permissions: ['INTERNET', 'CAMERA', 'RECORD_AUDIO', 'POST_NOTIFICATIONS', 'VIBRATE'],
 
       googleServicesFile: './google-services.json',
