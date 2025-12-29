@@ -233,6 +233,34 @@ return rows[0] || null;
 
 }
 
+// ─────────────────────────────────────────────────────────────
+// Instructor fee-access table resolver
+// ─────────────────────────────────────────────────────────────
+const INSTRUCTOR_FEE_TABLE_CANDIDATES = ['org_instructor_fee_access'];
+
+let detectedInstructorFeeTable = null;
+
+async function resolveInstructorFeeTable(clientOrPool = pool) {
+  if (detectedInstructorFeeTable !== null) return detectedInstructorFeeTable;
+
+  const { rows } = await clientOrPool.query(
+    `
+    SELECT table_name
+      FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name = ANY($1::text[])
+    `,
+    [INSTRUCTOR_FEE_TABLE_CANDIDATES],
+  );
+
+  const names = rows.map((r) => r.table_name);
+  detectedInstructorFeeTable =
+    INSTRUCTOR_FEE_TABLE_CANDIDATES.find((t) => names.includes(t)) || null;
+
+  return detectedInstructorFeeTable;
+}
+
+
 export async function setInstructorFeeAccess(req, res) {
   const orgId = normalizeOrgId(req);
   const { instructorId } = req.params || {};
@@ -245,15 +273,17 @@ export async function setInstructorFeeAccess(req, res) {
   const actorUserId = req.user?.id || req.user?.userId || req.auth?.userId;
   if (!actorUserId) return res.status(401).json({ message: 'Unauthorized' });
 
-  const s = String(instructorId).trim();
-  let targetUserId = null;
-  if (isUuid(s)) targetUserId = s;
-  else if (/^[0-9]+$/.test(s)) targetUserId = Number(s);
-  else return res.status(400).json({ message: 'Invalid instructorId' });
+ const s = String(instructorId).trim();
+if (!/^[0-9]+$/.test(s)) {
+  return res.status(400).json({ message: 'instructorId must be a numeric user_id' });
+}
+const targetUserId = Number(s);
+
 
   const client = await pool.connect();
   try {
-    const feeTable = await resolveInstructorFeeTable(pool);
+    const feeTable = await resolveInstructorFeeTable(client);
+
     if (!feeTable) {
       return res.status(500).json({ message: 'Fee access table not found (missing migrations).' });
     }

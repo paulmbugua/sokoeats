@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "557799973381-5pmek7rhdmvce59apjbdovshu9mvkcmk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.paulmbugua2.mytutorapp",
+            "certificate_hash": "f9dbec50f9489bc5ea5430a97630881901011a1b"
+          }
+        },
+        {
           "client_id": "557799973381-97lsoficotiiulhl5st6tf6h723uurpg.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
@@ -45,6 +53,13 @@
             {
               "client_id": "557799973381-ksp83t2vo6fdqufhm0iie06lnb4e8j8v.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "557799973381-g0h98g6vg82oeineeb4t9e67hgosdfrg.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.paulmbugua2.mytutorapp"
+              }
             }
           ]
         }

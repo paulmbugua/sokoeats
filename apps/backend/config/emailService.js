@@ -16,18 +16,19 @@ export async function sendOTP(to, otp) {
   // const ctaText = 'Reset your password';
 
   await sendNotification({
-    to,
-    subject,
-    details: {
-      intro,
-      items: {
-        'One-time code': `<div style="font-size:28px;font-weight:700;letter-spacing:3px">${otp}</div>`,
-        Expires: '10 minutes',
-        // 'Requested for': to,
-      },
-      // ctaUrl,
-      // ctaText,
-      plainText: `Your DayBreak verification code is: ${otp}\n\nThis code expires in 10 minutes.`,
+  to,
+  subject,
+  kind: 'password_reset', // ✅ IMPORTANT (makes it transactional)
+
+  // keep your template-based details if you want
+  details: {
+    intro,
+    items: {
+      'One-time code': `<div style="font-size:28px;font-weight:700;letter-spacing:3px">${otp}</div>`,
+      Expires: '10 minutes',
     },
-  });
+    plainText: `Your DayBreak verification code is: ${otp}\n\nThis code expires in 10 minutes.`,
+  },
+});
+
 }

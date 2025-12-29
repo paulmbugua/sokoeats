@@ -111,10 +111,12 @@ export const sendNotification = async ({
   html,        // new: fully formed HTML (skip template)
   text,        // new: plain text
   attachments, // new: nodemailer attachments
+  kind,
 }) => {
   try {
     // require to & subject, and at least one content path
-    if (!to || !subject || (!body && !text && !html && !(details && details.items))) {
+    if (!to || !subject || (!body && !text && !html && !details)) {
+
       throw new Error('❌ Missing required email parameters.');
     }
 
@@ -164,6 +166,7 @@ export const sendNotification = async ({
     const webUnsub = `${publicWebUrl()}/unsubscribe?e=${encodeURIComponent(to)}&t=${token}`;
     const apiOneClick = `${publicApiUrl()}/api/email/unsubscribe/one-click?e=${encodeURIComponent(to)}&t=${token}`;
     const supportEmail = process.env.SUPPORT_EMAIL || 'support@daybreaklearner.com';
+    const isTransactional = kind === 'otp' || kind === 'password_reset';
 
     // Template HTML (used only if caller didn't pass html)
     const templateHtml = `
@@ -207,7 +210,7 @@ export const sendNotification = async ({
           <td style="background:#f4f4f4;padding:20px;text-align:center;font-size:12px;color:#999;">
             © ${new Date().getFullYear()} DayBreak. All rights reserved.<br>
             1830-01000, Thika, Kenya<br>
-            <a href="${webUnsub}" style="color:#999;text-decoration:underline;">Unsubscribe</a>
+            ${!isTransactional ? `<a href="${webUnsub}" style="color:#999;text-decoration:underline;">Unsubscribe</a>` : ''}
           </td>
         </tr>
       </table>
@@ -226,21 +229,27 @@ export const sendNotification = async ({
         ? [subject, ...Object.entries(tpl.items).map(([k, v]) => `${k}: ${v}`)].join('\n\n')
         : String(body || ''));
 
-    const finalText = `${String(baseText || '').trim()}\n\nUnsubscribe: ${webUnsub}\n`;
+    const finalText = !isTransactional
+     ? `${String(baseText || '').trim()}\n\nUnsubscribe: ${webUnsub}\n`
+     : `${String(baseText || '').trim()}\n`;
 
-    const info = await transporter.sendMail({
+    const mail = {
       from: `"DayBreak 📚" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       html: finalHtml,
       text: finalText,
       attachments: Array.isArray(attachments) && attachments.length ? attachments : undefined,
-      headers: {
-        'List-Unsubscribe': `<${apiOneClick}>, <mailto:${supportEmail}>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-      },
-    });
+     };
 
+   if (!isTransactional) {
+     mail.headers = {
+       'List-Unsubscribe': `<${apiOneClick}>, <mailto:${supportEmail}>`,
+       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+     };
+   }
+
+   const info = await transporter.sendMail(mail);
     console.log(`✅ Email sent to ${to}: ${info.messageId}`);
   } catch (err) {
     console.error(`❌ Error sending email to ${to}:`, err.message);
