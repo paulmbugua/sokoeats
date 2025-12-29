@@ -86,7 +86,14 @@ export type MainStackParamList = {
 
   // ✅ ADD these (you used them in App.tsx)
   OrgToolsClubs: undefined;
-  OrgLearnerNewsletters: undefined;
+  OrgLearnerNewsletters:
+  | {
+      tab?: 'newsletters' | 'announcements';
+      id?: string | number;  // optional: open a specific newsletter
+      aid?: string | number; // optional: open a specific announcement
+    }
+  | undefined;
+
   OrgLearnerSportsClubs: { tab?: 'sports' | 'clubs' } | undefined;
 
   OrgExamResultsPortal:

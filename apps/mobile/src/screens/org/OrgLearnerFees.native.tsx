@@ -1,7 +1,17 @@
+// apps/mobile/src/screens/org/OrgLearnerFees.native.tsx
 import React from 'react';
-import { ActivityIndicator, Image, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Platform,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
@@ -9,13 +19,12 @@ import tw from '../../../tailwind';
 
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useShopContext } from '@mytutorapp/shared/context';
-import {
-  apiGetMyFeeStatement,
-  apiGetMyFeeStructure,
-} from '@mytutorapp/shared/api/orgProApi';
+import { apiGetMyFeeStatement, apiGetMyFeeStructure } from '@mytutorapp/shared/api/orgProApi';
 
 import { useFeeTheme, EmptyState } from './OrgFees.ui.native';
 import { moneyFromCents } from './OrgFees.shared.native';
+
+import { useThemePref } from '../../theme/ThemeContext';
 
 /* ─────────────────────────────────────────────
  * Helpers (same logic as web)
@@ -80,7 +89,7 @@ async function downloadAndSharePdf({
   const url = joinUrl(backendUrl, endpoint);
 
   const safeName = sanitizeFilenamePart(filename || 'file') || 'file';
-if (!CACHE_DIR) throw new Error('No file cache directory available on this platform.');
+  if (!CACHE_DIR) throw new Error('No file cache directory available on this platform.');
   const outUri = `${CACHE_DIR}${safeName}.pdf`;
 
   const res = await FileSystem.downloadAsync(url, outUri, {
@@ -95,8 +104,6 @@ if (!CACHE_DIR) throw new Error('No file cache directory available on this platf
       UTI: 'com.adobe.pdf',
     });
   } else {
-    // Fallback: at least return the local path (Sharing not available)
-    // (Most Expo apps have Sharing available on iOS/Android; web differs)
     throw new Error(
       Platform.select({
         ios: `PDF saved to: ${res.uri}`,
@@ -105,6 +112,81 @@ if (!CACHE_DIR) throw new Error('No file cache directory available on this platf
       }) || `PDF saved to: ${res.uri}`,
     );
   }
+}
+
+/* ─────────────────────────────────────────────
+ * Theme resolver (bind fees UI to global app theme)
+ * ───────────────────────────────────────────── */
+
+function resolveIsDark(themePref: any): boolean {
+  // Support different shapes across screens / versions
+  if (!themePref) return false;
+  if (typeof themePref === 'boolean') return themePref;
+
+  const candidates = [
+    themePref.isDark,
+    themePref.dark,
+    themePref.is_dark,
+    themePref?.pref === 'dark',
+    themePref?.mode === 'dark',
+    themePref?.theme === 'dark',
+    themePref?.themePref === 'dark',
+    themePref?.appearance === 'dark',
+  ];
+
+  for (const c of candidates) {
+    if (typeof c === 'boolean') return c;
+    if (typeof c === 'string') return c.toLowerCase() === 'dark';
+  }
+  return false;
+}
+
+function mergeFeeTheme(base: any, isDark: boolean) {
+  const primary =
+    base?.primary ||
+    base?.brand ||
+    (isDark ? '#38bdf8' : '#0284c7'); // sky-ish defaults
+
+  const bg = isDark ? '#020617' : '#f8fafc';
+  const card = isDark ? '#0b1220' : '#ffffff';
+  const text = isDark ? '#e5e7eb' : '#0f172a';
+  const subtext = isDark ? '#94a3b8' : '#475569';
+  const muted = isDark ? '#64748b' : '#64748b';
+
+  const border = isDark ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.12)';
+  const primarySoft = isDark ? 'rgba(56,189,248,0.12)' : 'rgba(2,132,199,0.08)';
+
+  const okBg = isDark ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.10)';
+  const okText = isDark ? '#34d399' : '#047857';
+
+  const warnBg = isDark ? 'rgba(245,158,11,0.14)' : 'rgba(245,158,11,0.10)';
+  const warnBorder = isDark ? 'rgba(245,158,11,0.35)' : 'rgba(245,158,11,0.30)';
+  const warnText = isDark ? '#fbbf24' : '#92400e';
+
+  const badBg = isDark ? 'rgba(239,68,68,0.14)' : 'rgba(239,68,68,0.10)';
+  const badBorder = isDark ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.30)';
+  const badText = isDark ? '#fca5a5' : '#991b1b';
+
+  return {
+    ...(base || {}),
+    dark: isDark,
+    primary,
+    bg,
+    card,
+    text,
+    subtext,
+    muted,
+    border,
+    primarySoft,
+    okBg,
+    okText,
+    warnBg,
+    warnBorder,
+    warnText,
+    badBg,
+    badBorder,
+    badText,
+  };
 }
 
 /* ─────────────────────────────────────────────
@@ -154,12 +236,7 @@ function PillSwitch({
               { backgroundColor: active ? activeBg : 'transparent' },
             ]}
           >
-            <Text
-              style={[
-                tw`text-xs font-semibold`,
-                { color: active ? activeText : theme.text },
-              ]}
-            >
+            <Text style={[tw`text-xs font-semibold`, { color: active ? activeText : theme.text }]}>
               {k === 'statement' ? 'Statement' : 'Fee structure'}
             </Text>
           </TouchableOpacity>
@@ -189,8 +266,7 @@ function GhostBtn({ theme, label, onPress, disabled }: any) {
 }
 
 function SolidBtn({ theme, label, onPress, disabled, tone }: any) {
-  const bg =
-    tone === 'emerald' ? '#059669' : tone === 'sky' ? '#0284c7' : theme.primary;
+  const bg = tone === 'emerald' ? '#059669' : tone === 'sky' ? '#0284c7' : theme.primary;
 
   return (
     <TouchableOpacity
@@ -207,24 +283,10 @@ function SolidBtn({ theme, label, onPress, disabled, tone }: any) {
 }
 
 function Notice({ theme, tone, children }: any) {
-  const bg =
-    tone === 'warn'
-      ? theme.warnBg
-      : tone === 'bad'
-        ? theme.badBg
-        : theme.primarySoft;
+  const bg = tone === 'warn' ? theme.warnBg : tone === 'bad' ? theme.badBg : theme.primarySoft;
   const border =
-    tone === 'warn'
-      ? theme.warnBorder
-      : tone === 'bad'
-        ? theme.badBorder
-        : theme.border;
-  const text =
-    tone === 'warn'
-      ? theme.warnText
-      : tone === 'bad'
-        ? theme.badText
-        : theme.text;
+    tone === 'warn' ? theme.warnBorder : tone === 'bad' ? theme.badBorder : theme.border;
+  const text = tone === 'warn' ? theme.warnText : tone === 'bad' ? theme.badText : theme.text;
 
   return (
     <View style={[tw`rounded-2xl border p-3`, { backgroundColor: bg, borderColor: border }]}>
@@ -235,7 +297,12 @@ function Notice({ theme, tone, children }: any) {
 
 function MiniStat({ theme, label, value }: any) {
   return (
-    <View style={[tw`flex-1 rounded-2xl border p-3`, { borderColor: theme.border, backgroundColor: theme.primarySoft }]}>
+    <View
+      style={[
+        tw`flex-1 rounded-2xl border p-3`,
+        { borderColor: theme.border, backgroundColor: theme.primarySoft },
+      ]}
+    >
       <Text style={[tw`text-xs`, { color: theme.muted }]}>{label}</Text>
       <Text style={[tw`text-lg font-bold mt-1`, { color: theme.text }]}>{value}</Text>
     </View>
@@ -247,7 +314,20 @@ function MiniStat({ theme, label, value }: any) {
  * ───────────────────────────────────────────── */
 
 export default function OrgLearnerFeesNative() {
-  const theme = useFeeTheme();
+  const baseFeeTheme = useFeeTheme();
+  const themePref = useThemePref();
+  const isDark = resolveIsDark(themePref);
+
+  // Ensure fee theme follows global app theme toggle (like ProfileScreen)
+  const theme = React.useMemo(() => mergeFeeTheme(baseFeeTheme, isDark), [baseFeeTheme, isDark]);
+
+  const insets = useSafeAreaInsets();
+
+  // Prevent content being hidden behind the app footer / bottom tab
+  const FOOTER_OVERLAY_PX = 84;
+  const NAV_SPACER_PX = 12;
+  const bottomPad = Math.max(FOOTER_OVERLAY_PX, FOOTER_OVERLAY_PX + (insets.bottom || 0));
+
   const nav = useNavigation<any>();
   const route = useRoute<any>();
 
@@ -269,8 +349,7 @@ export default function OrgLearnerFeesNative() {
   const [view, setView] = React.useState<'statement' | 'structure'>('statement');
 
   // native params (support: route.params?.studentId)
-  const rawStudentIdParam =
-    route?.params?.studentId ?? route?.params?.student_id ?? '';
+  const rawStudentIdParam = route?.params?.studentId ?? route?.params?.student_id ?? '';
 
   // Resolve learner identity (same strategy as web)
   const learnerProfileFromOrg =
@@ -331,15 +410,12 @@ export default function OrgLearnerFeesNative() {
     learner?.guardian_email ||
     '';
 
-  const learnerGrade: string =
-    learner?.class_label || learner?.classLabel || learner?.grade || '';
+  const learnerGrade: string = learner?.class_label || learner?.classLabel || learner?.grade || '';
 
-  const admissionCode: string =
-    learner?.admission_code || learner?.admissionCode || '';
+  const admissionCode: string = learner?.admission_code || learner?.admissionCode || '';
 
   const learnerPhoto: string =
-    (learnerProfileFromOrg &&
-      (learnerProfileFromOrg.photo_url || learnerProfileFromOrg.photoUrl)) ||
+    (learnerProfileFromOrg && (learnerProfileFromOrg.photo_url || learnerProfileFromOrg.photoUrl)) ||
     (learnerProfileFromShop &&
       (learnerProfileFromShop.photo_url || learnerProfileFromShop.photoUrl)) ||
     learner?.photo_url ||
@@ -487,8 +563,20 @@ export default function OrgLearnerFeesNative() {
   }, [backendUrl, orgToken, orgId, org?.name, admissionCode, learnerStudentId]);
 
   return (
-    <View style={[tw`flex-1`, { backgroundColor: theme.bg }]}>
-      <ScrollView contentContainerStyle={tw`px-3 py-6`}>
+    <SafeAreaView style={[tw`flex-1`, { backgroundColor: theme.bg }]}>
+      <ScrollView
+        style={tw`flex-1`}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        indicatorStyle={theme.dark ? 'white' : 'black'}
+        contentContainerStyle={[
+          tw`px-3`,
+          {
+            paddingTop: (insets.top || 0) + NAV_SPACER_PX,
+            paddingBottom: bottomPad,
+          },
+        ]}
+      >
         <View style={tw`max-w-[920px] w-full self-center space-y-4`}>
           {/* Header */}
           <Card theme={theme}>
@@ -528,7 +616,7 @@ export default function OrgLearnerFeesNative() {
                 {learnerPhoto ? (
                   <Image source={{ uri: learnerPhoto }} style={tw`h-full w-full`} resizeMode="cover" />
                 ) : (
-                  <Text style={tw`text-xl font-bold text-white`}>{learnerInitial}</Text>
+                  <Text style={[tw`text-xl font-bold`, { color: theme.text }]}>{learnerInitial}</Text>
                 )}
               </View>
 
@@ -604,7 +692,7 @@ export default function OrgLearnerFeesNative() {
           {!isProTier ? (
             <Card theme={theme}>
               <Notice theme={theme} tone="warn">
-                This institution’s fees module is available on <Text style={tw`font-bold`}>Pro/Enterprise</Text>. If you
+                This institution’s fees module is available on <Text style={[tw`font-bold`, { color: theme.text }]}>Pro/Enterprise</Text>. If you
                 need fee details here, ask your admin.
               </Notice>
             </Card>
@@ -623,7 +711,7 @@ export default function OrgLearnerFeesNative() {
                   <View style={tw`py-2`}>
                     <Text style={[tw`text-sm`, { color: theme.subtext }]}>Loading fee structure…</Text>
                     <View style={tw`mt-3`}>
-                      <ActivityIndicator />
+                      <ActivityIndicator color={theme.text} />
                     </View>
                   </View>
                 </Card>
@@ -712,9 +800,7 @@ export default function OrgLearnerFeesNative() {
                       />
                     </View>
 
-                    <Text style={[tw`text-xs mt-3`, { color: theme.muted }]}>
-                      Optional items may not be required.
-                    </Text>
+                    <Text style={[tw`text-xs mt-3`, { color: theme.muted }]}>Optional items may not be required.</Text>
 
                     <View style={[tw`mt-4 rounded-3xl border overflow-hidden`, { borderColor: theme.border }]}>
                       <View style={[tw`px-3 py-2`, { backgroundColor: theme.primarySoft }]}>
@@ -766,7 +852,7 @@ export default function OrgLearnerFeesNative() {
                   <View style={tw`py-2`}>
                     <Text style={[tw`text-sm`, { color: theme.subtext }]}>Loading your fee statement…</Text>
                     <View style={tw`mt-3`}>
-                      <ActivityIndicator />
+                      <ActivityIndicator color={theme.text} />
                     </View>
                   </View>
                 </Card>
@@ -896,7 +982,10 @@ export default function OrgLearnerFeesNative() {
                           return (
                             <View
                               key={c?.id ?? `${desc}-${idx}`}
-                              style={[tw`px-3 py-3 border-t`, { borderTopColor: idx === 0 ? 'transparent' : theme.border }]}
+                              style={[
+                                tw`px-3 py-3 border-t`,
+                                { borderTopColor: idx === 0 ? 'transparent' : theme.border },
+                              ]}
                             >
                               <View style={tw`flex-row items-start justify-between`}>
                                 <View style={tw`flex-1 pr-3`}>
@@ -928,17 +1017,20 @@ export default function OrgLearnerFeesNative() {
 
                     {payments?.length ? (
                       <View style={[tw`mt-3 rounded-3xl border overflow-hidden`, { borderColor: theme.border }]}>
-                        {payments.slice(0, 12).map((p: any, idx: number) => {
-                          const method = pickString(p?.method, p?.payment_method, p?.channel, '');
+                        {payments.slice(0, 12).map((pmt: any, idx: number) => {
+                          const method = pickString(pmt?.method, pmt?.payment_method, pmt?.channel, '');
                           const title = method ? `Payment (${method})` : 'Payment';
-                          const date = pickString(p?.date, p?.received_at, p?.created_at, '');
-                          const amt = pickNumber(p?.amount_cents, p?.amountCents, p?.amount, 0);
-                          const rowCur = pickString(p?.currency, primaryCurrency);
+                          const date = pickString(pmt?.date, pmt?.received_at, pmt?.created_at, '');
+                          const amt = pickNumber(pmt?.amount_cents, pmt?.amountCents, pmt?.amount, 0);
+                          const rowCur = pickString(pmt?.currency, primaryCurrency);
 
                           return (
                             <View
-                              key={p?.id ?? `${title}-${idx}`}
-                              style={[tw`px-3 py-3 border-t`, { borderTopColor: idx === 0 ? 'transparent' : theme.border }]}
+                              key={pmt?.id ?? `${title}-${idx}`}
+                              style={[
+                                tw`px-3 py-3 border-t`,
+                                { borderTopColor: idx === 0 ? 'transparent' : theme.border },
+                              ]}
                             >
                               <View style={tw`flex-row items-start justify-between`}>
                                 <View style={tw`flex-1 pr-3`}>
@@ -969,6 +1061,6 @@ export default function OrgLearnerFeesNative() {
           )}
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }

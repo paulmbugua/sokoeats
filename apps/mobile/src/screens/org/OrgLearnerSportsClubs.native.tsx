@@ -8,23 +8,22 @@ import {
   SectionList,
   Text,
   TextInput,
-  useColorScheme,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
-import tw from 'twrnc';
+
+import tw from '../../../tailwind';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 
 import type { OrgSportsEvent, OrgClub } from '@mytutorapp/shared/types';
-import {
-  listSportsEvents,
-  getMyClubs as apiGetMyClubs,
-} from '@mytutorapp/shared/api/orgEngagementApi';
+import { listSportsEvents, getMyClubs as apiGetMyClubs } from '@mytutorapp/shared/api/orgEngagementApi';
+
+import { useThemePref } from '../../theme/ThemeContext';
 
 type TabKey = 'sports' | 'clubs';
 type SportsMode = 'upcoming' | 'results';
@@ -73,21 +72,90 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: 'Cancelled',
 };
 
-function Card({ children, style }: { children: React.ReactNode; style?: any }) {
-  const isDark = useColorScheme() === 'dark';
+/* ─────────────────────────────────────────────
+ * Theme resolver (same approach as fees screen)
+ * ───────────────────────────────────────────── */
+
+function resolveIsDark(themePref: any): boolean {
+  if (!themePref) return false;
+  if (typeof themePref === 'boolean') return themePref;
+
+  const candidates = [
+    themePref.isDark,
+    themePref.dark,
+    themePref.is_dark,
+    themePref?.pref === 'dark',
+    themePref?.mode === 'dark',
+    themePref?.theme === 'dark',
+    themePref?.themePref === 'dark',
+    themePref?.appearance === 'dark',
+  ];
+
+  for (const c of candidates) {
+    if (typeof c === 'boolean') return c;
+    if (typeof c === 'string') return c.toLowerCase() === 'dark';
+  }
+  return false;
+}
+
+function buildTheme(isDark: boolean) {
+  const bg = isDark ? '#020617' : '#f8fafc';
+  const card = isDark ? '#0b1220' : '#ffffff';
+  const text = isDark ? 'rgba(255,255,255,0.95)' : 'rgba(15,23,42,0.95)';
+  const subtext = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(71,85,105,0.95)';
+  const muted = isDark ? 'rgba(255,255,255,0.50)' : 'rgba(100,116,139,0.95)';
+
+  const border = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(148,163,184,0.35)';
+  const soft = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)';
+  const inputBg = isDark ? 'rgba(255,255,255,0.05)' : '#ffffff';
+
+  const badBg = isDark ? 'rgba(127,29,29,0.18)' : 'rgba(254,242,242,1)';
+  const badBorder = isDark ? 'rgba(244,63,94,0.25)' : 'rgba(254,202,202,1)';
+  const badText = isDark ? 'rgba(254,205,211,0.95)' : 'rgba(136,19,55,0.95)';
+
+  const warnBg = isDark ? 'rgba(245,158,11,0.14)' : 'rgba(255,251,235,1)';
+  const warnBorder = isDark ? 'rgba(245,158,11,0.22)' : 'rgba(253,230,138,1)';
+  const warnText = isDark ? 'rgba(253,230,138,0.95)' : 'rgba(146,64,14,0.95)';
+
+  return {
+    dark: isDark,
+    bg,
+    card,
+    text,
+    subtext,
+    muted,
+    border,
+    soft,
+    inputBg,
+    badBg,
+    badBorder,
+    badText,
+    warnBg,
+    warnBorder,
+    warnText,
+  };
+}
+
+/* ─────────────────────────────────────────────
+ * UI Atoms
+ * ───────────────────────────────────────────── */
+
+function Card({
+  theme,
+  children,
+  style,
+}: {
+  theme: any;
+  children: React.ReactNode;
+  style?: any;
+}) {
   return (
     <View
       style={[
-        tw`rounded-3xl p-4`,
+        tw`rounded-3xl p-4 border`,
         {
-          backgroundColor: isDark ? '#0b1220' : 'rgba(255,255,255,0.92)',
-          borderWidth: 1,
-          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(148,163,184,0.35)',
-          shadowColor: '#000',
-          shadowOpacity: isDark ? 0.22 : 0.08,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 2,
+          backgroundColor: theme.card,
+          borderColor: theme.border,
         },
         style,
       ]}
@@ -98,50 +166,50 @@ function Card({ children, style }: { children: React.ReactNode; style?: any }) {
 }
 
 function Badge({
+  theme,
   tone,
   children,
 }: {
+  theme: any;
   tone: 'blue' | 'green' | 'amber' | 'slate' | 'rose';
   children: React.ReactNode;
 }) {
-  const isDark = useColorScheme() === 'dark';
-
   const colors =
     tone === 'green'
       ? {
-          bg: isDark ? 'rgba(16,185,129,0.14)' : 'rgba(16,185,129,0.10)',
-          border: isDark ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.28)',
-          text: isDark ? 'rgba(167,243,208,0.95)' : 'rgba(6,95,70,0.95)',
+          bg: theme.dark ? 'rgba(16,185,129,0.14)' : 'rgba(16,185,129,0.10)',
+          border: theme.dark ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.28)',
+          text: theme.dark ? 'rgba(167,243,208,0.95)' : 'rgba(6,95,70,0.95)',
         }
       : tone === 'amber'
         ? {
-            bg: isDark ? 'rgba(245,158,11,0.14)' : 'rgba(245,158,11,0.10)',
-            border: isDark ? 'rgba(245,158,11,0.28)' : 'rgba(245,158,11,0.28)',
-            text: isDark ? 'rgba(253,230,138,0.95)' : 'rgba(146,64,14,0.95)',
+            bg: theme.dark ? 'rgba(245,158,11,0.14)' : 'rgba(245,158,11,0.10)',
+            border: theme.dark ? 'rgba(245,158,11,0.28)' : 'rgba(245,158,11,0.28)',
+            text: theme.dark ? 'rgba(253,230,138,0.95)' : 'rgba(146,64,14,0.95)',
           }
         : tone === 'rose'
           ? {
-              bg: isDark ? 'rgba(244,63,94,0.14)' : 'rgba(244,63,94,0.10)',
-              border: isDark ? 'rgba(244,63,94,0.28)' : 'rgba(244,63,94,0.28)',
-              text: isDark ? 'rgba(254,205,211,0.95)' : 'rgba(136,19,55,0.95)',
+              bg: theme.dark ? 'rgba(244,63,94,0.14)' : 'rgba(244,63,94,0.10)',
+              border: theme.dark ? 'rgba(244,63,94,0.28)' : 'rgba(244,63,94,0.28)',
+              text: theme.dark ? 'rgba(254,205,211,0.95)' : 'rgba(136,19,55,0.95)',
             }
           : tone === 'blue'
             ? {
-                bg: isDark ? 'rgba(56,189,248,0.14)' : 'rgba(56,189,248,0.10)',
-                border: isDark ? 'rgba(56,189,248,0.26)' : 'rgba(56,189,248,0.26)',
-                text: isDark ? 'rgba(186,230,253,0.95)' : 'rgba(12,74,110,0.95)',
+                bg: theme.dark ? 'rgba(56,189,248,0.14)' : 'rgba(56,189,248,0.10)',
+                border: theme.dark ? 'rgba(56,189,248,0.26)' : 'rgba(56,189,248,0.26)',
+                text: theme.dark ? 'rgba(186,230,253,0.95)' : 'rgba(12,74,110,0.95)',
               }
             : {
-                bg: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)',
-                border: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(148,163,184,0.30)',
-                text: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(15,23,42,0.72)',
+                bg: theme.dark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)',
+                border: theme.dark ? 'rgba(255,255,255,0.10)' : 'rgba(148,163,184,0.30)',
+                text: theme.dark ? 'rgba(255,255,255,0.78)' : 'rgba(15,23,42,0.72)',
               };
 
   return (
     <View
       style={[
-        tw`px-2 py-0.5 rounded-full mr-1 mb-1`,
-        { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+        tw`px-2 py-0.5 rounded-full mr-1 mb-1 border`,
+        { backgroundColor: colors.bg, borderColor: colors.border },
       ]}
     >
       <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text }}>{children as any}</Text>
@@ -150,36 +218,24 @@ function Badge({
 }
 
 function ChipButton({
+  theme,
   active,
   label,
   onPress,
 }: {
+  theme: any;
   active?: boolean;
   label: string;
   onPress: () => void;
 }) {
-  const isDark = useColorScheme() === 'dark';
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
-        tw`px-3 py-2 rounded-full mr-2 mb-2`,
+        tw`px-3 py-2 rounded-full mr-2 mb-2 border`,
         {
-          backgroundColor: active
-            ? isDark
-              ? 'rgba(255,255,255,0.95)'
-              : 'rgba(15,23,42,0.95)'
-            : isDark
-              ? 'rgba(255,255,255,0.06)'
-              : 'rgba(255,255,255,0.85)',
-          borderWidth: 1,
-          borderColor: active
-            ? isDark
-              ? 'rgba(255,255,255,0.15)'
-              : 'rgba(15,23,42,0.10)'
-            : isDark
-              ? 'rgba(255,255,255,0.12)'
-              : 'rgba(148,163,184,0.35)',
+          backgroundColor: active ? (theme.dark ? 'rgba(255,255,255,0.95)' : 'rgba(15,23,42,0.95)') : theme.soft,
+          borderColor: active ? (theme.dark ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.10)') : theme.border,
           opacity: pressed ? 0.85 : 1,
         },
       ]}
@@ -188,7 +244,7 @@ function ChipButton({
         style={{
           fontSize: 12,
           fontWeight: '700',
-          color: active ? (isDark ? '#0b1220' : '#ffffff') : isDark ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.85)',
+          color: active ? (theme.dark ? '#0b1220' : '#ffffff') : theme.text,
         }}
       >
         {label}
@@ -198,40 +254,28 @@ function ChipButton({
 }
 
 function TabButton({
+  theme,
   active,
   icon,
   title,
   subtitle,
   onPress,
 }: {
+  theme: any;
   active: boolean;
   icon: string;
   title: string;
   subtitle: string;
   onPress: () => void;
 }) {
-  const isDark = useColorScheme() === 'dark';
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
-        tw`flex-1 rounded-2xl p-4`,
+        tw`flex-1 rounded-2xl p-4 border`,
         {
-          backgroundColor: active
-            ? isDark
-              ? 'rgba(255,255,255,0.08)'
-              : 'rgba(15,23,42,0.95)'
-            : isDark
-              ? 'rgba(255,255,255,0.05)'
-              : '#ffffff',
-          borderWidth: 1,
-          borderColor: active
-            ? isDark
-              ? 'rgba(255,255,255,0.20)'
-              : 'rgba(15,23,42,0.10)'
-            : isDark
-              ? 'rgba(255,255,255,0.10)'
-              : 'rgba(148,163,184,0.35)',
+          backgroundColor: active ? (theme.dark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.95)') : theme.soft,
+          borderColor: active ? (theme.dark ? 'rgba(255,255,255,0.20)' : 'rgba(15,23,42,0.10)') : theme.border,
           opacity: pressed ? 0.88 : 1,
         },
       ]}
@@ -243,7 +287,7 @@ function TabButton({
             style={{
               fontSize: 14,
               fontWeight: '800',
-              color: active ? (isDark ? 'rgba(255,255,255,0.95)' : '#ffffff') : isDark ? 'rgba(255,255,255,0.95)' : 'rgba(15,23,42,0.95)',
+              color: active ? (theme.dark ? 'rgba(255,255,255,0.95)' : '#ffffff') : theme.text,
             }}
           >
             {title}
@@ -252,13 +296,7 @@ function TabButton({
             style={{
               marginTop: 2,
               fontSize: 12,
-              color: active
-                ? isDark
-                  ? 'rgba(255,255,255,0.70)'
-                  : 'rgba(255,255,255,0.80)'
-                : isDark
-                  ? 'rgba(255,255,255,0.65)'
-                  : 'rgba(71,85,105,0.95)',
+              color: active ? (theme.dark ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.80)') : theme.subtext,
             }}
           >
             {subtitle}
@@ -269,15 +307,51 @@ function TabButton({
   );
 }
 
+function GhostButton({
+  theme,
+  label,
+  onPress,
+}: {
+  theme: any;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        tw`px-3 py-2 rounded-full border`,
+        {
+          backgroundColor: theme.soft,
+          borderColor: theme.border,
+          opacity: pressed ? 0.85 : 1,
+        },
+      ]}
+    >
+      <Text style={{ fontSize: 12, fontWeight: '700', color: theme.text }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/* ─────────────────────────────────────────────
+ * Screen
+ * ───────────────────────────────────────────── */
+
 export default function OrgLearnerSportsClubsNative() {
-  const isDark = useColorScheme() === 'dark';
+  const themePref = useThemePref();
+  const isDark = resolveIsDark(themePref);
+  const theme = React.useMemo(() => buildTheme(isDark), [isDark]);
+
+  const insets = useSafeAreaInsets();
+
+  // Ensure content never goes under footer / bottom tabs
+  const FOOTER_OVERLAY_PX = 84;
+  const bottomPad = Math.max(FOOTER_OVERLAY_PX, FOOTER_OVERLAY_PX + (insets.bottom || 0));
+  const topPad = (insets.top || 0) + 12;
+
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const routeParams = (route?.params || {}) as any;
-
-  const shellBg = isDark ? '#020617' : '#f8fafc';
-  const textPrimary = isDark ? 'rgba(255,255,255,0.95)' : 'rgba(15,23,42,0.95)';
-  const textSecondary = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(71,85,105,0.95)';
 
   const { width } = useWindowDimensions();
   const clubCols = width >= 720 ? 2 : 1;
@@ -285,13 +359,10 @@ export default function OrgLearnerSportsClubsNative() {
   const orgState = (useOrg?.() ?? {}) as any;
   const orgFromHook = orgState?.org || orgState?.organization || null;
 
-  const { backendUrl, token: userToken, orgToken, orgId: ctxOrgId } = useShopContext() as any;
+  const { backendUrl, token: userToken, orgToken, orgId: ctxOrgId } = (useShopContext?.() ?? {}) as any;
 
   const resolvedOrgId =
-    (ctxOrgId as string) ||
-    (orgFromHook?.id as string) ||
-    (orgState?.org?.id as string) ||
-    null;
+    (ctxOrgId as string) || (orgFromHook?.id as string) || (orgState?.org?.id as string) || null;
 
   const sportsToken = (orgToken as string) || (userToken as string) || null;
   const clubsToken = (userToken as string) || (orgToken as string) || null;
@@ -392,7 +463,6 @@ export default function OrgLearnerSportsClubsNative() {
   const missingCtx = !resolvedOrgId || !backendUrl || (!sportsToken && !clubsToken);
 
   const goDashboard = () => {
-    // best-effort; adjust the route name to your real learner dashboard screen
     try {
       navigation.navigate('OrgElearnPortal');
     } catch {
@@ -405,457 +475,455 @@ export default function OrgLearnerSportsClubsNative() {
   };
 
   return (
-    <SafeAreaView style={[tw`flex-1`, { backgroundColor: shellBg }]}>
-      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 18 }}>
-        {/* Header */}
-        <Card>
-          <View style={tw`flex-row items-start justify-between`}>
-            <View style={tw`flex-1 pr-3`}>
-              <Text style={[tw`text-[11px] tracking-widest`, { color: textSecondary }]}>
-                LEARNER ACTIVITIES
-              </Text>
-              <Text style={[tw`mt-1 text-xl font-extrabold`, { color: textPrimary }]} numberOfLines={2}>
-                Sports Calendar & Clubs
-              </Text>
-              <Text style={[tw`mt-1 text-xs`, { color: textSecondary }]}>
-                See sports events and your enrolled clubs — in one place.
-              </Text>
-            </View>
-
-            <View style={tw`items-end`}>
-              <Pressable
-                onPress={() => navigation.goBack?.()}
-                style={({ pressed }) => [
-                  tw`px-3 py-2 rounded-full mb-2`,
-                  {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.85)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(148,163,184,0.35)',
-                    opacity: pressed ? 0.85 : 1,
-                  },
-                ]}
-              >
-                <Text style={{ fontSize: 12, color: isDark ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.85)' }}>
-                  ← Back
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={goDashboard}
-                style={({ pressed }) => [
-                  tw`px-3 py-2 rounded-full`,
-                  {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.85)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(148,163,184,0.35)',
-                    opacity: pressed ? 0.85 : 1,
-                  },
-                ]}
-              >
-                <Text style={{ fontSize: 12, color: isDark ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.85)' }}>
-                  Dashboard
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </Card>
-
-        {missingCtx ? (
-          <Card
-            style={[
-              tw`mt-3`,
-              { backgroundColor: isDark ? 'rgba(127,29,29,0.20)' : 'rgba(254,242,242,1)' },
-            ]}
-          >
-            <Text style={{ fontSize: 14, fontWeight: '800', color: isDark ? 'rgba(254,205,211,0.95)' : 'rgba(136,19,55,0.95)' }}>
-              Missing org/session context
-            </Text>
-            <Text style={[tw`mt-1 text-sm`, { color: textSecondary }]}>
-              We need orgId + a token to load sports/clubs.
-            </Text>
-          </Card>
-        ) : null}
-
-        {/* Tabs */}
-        <Card style={tw`mt-3`}>
-          <View style={tw`flex-row`}>
-            <TabButton
-              active={activeTab === 'sports'}
-              onPress={() => setActiveTab('sports')}
-              icon="🏆"
-              title="Sports Calendar"
-              subtitle="Upcoming fixtures, practice, tournaments."
-            />
-            <View style={tw`w-3`} />
-            <TabButton
-              active={activeTab === 'clubs'}
-              onPress={() => setActiveTab('clubs')}
-              icon="🤝"
-              title="Clubs & Societies"
-              subtitle="Clubs you are enrolled in."
-            />
-          </View>
-        </Card>
-
-        {/* SPORTS */}
-        {activeTab === 'sports' ? (
-          <Card style={tw`mt-3`}>
+    <SafeAreaView style={[tw`flex-1`, { backgroundColor: theme.bg }]}>
+      <ScrollView
+        style={tw`flex-1`}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        indicatorStyle={theme.dark ? 'white' : 'black'}
+        contentContainerStyle={[
+          tw`px-3`,
+          {
+            paddingTop: topPad,
+            paddingBottom: bottomPad,
+          },
+        ]}
+      >
+        <View style={tw`max-w-[920px] w-full self-center`}>
+          {/* Header */}
+          <Card theme={theme}>
             <View style={tw`flex-row items-start justify-between`}>
               <View style={tw`flex-1 pr-3`}>
-                <Text style={[tw`text-lg font-extrabold`, { color: textPrimary }]}>Sports calendar</Text>
-                <Text style={[tw`mt-1 text-sm`, { color: textSecondary }]}>
-                  Only events meant for <Text style={{ fontWeight: '800', color: textPrimary }}>learners</Text> (or{' '}
-                  <Text style={{ fontWeight: '800', color: textPrimary }}>everyone</Text>) appear here.
+                <Text style={[tw`text-[11px] tracking-widest font-semibold`, { color: theme.subtext }]}>
+                  LEARNER ACTIVITIES
+                </Text>
+                <Text style={[tw`mt-1 text-xl font-extrabold`, { color: theme.text }]} numberOfLines={2}>
+                  Sports Calendar & Clubs
+                </Text>
+                <Text style={[tw`mt-1 text-xs`, { color: theme.subtext }]}>
+                  See sports events and your enrolled clubs — in one place.
                 </Text>
               </View>
 
-              <Pressable
-                onPress={() => sportsQuery.refetch()}
-                style={({ pressed }) => [
-                  tw`px-3 py-2 rounded-full`,
-                  {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.85)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(148,163,184,0.35)',
-                    opacity: pressed ? 0.85 : 1,
-                  },
-                ]}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.85)' }}>
-                  Refresh
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* mode chips */}
-            <View style={tw`mt-3 flex-row flex-wrap`}>
-              <ChipButton active={sportsMode === 'upcoming'} label="Upcoming" onPress={() => setSportsMode('upcoming')} />
-              <ChipButton active={sportsMode === 'results'} label="Results" onPress={() => setSportsMode('results')} />
-            </View>
-
-            {/* next up */}
-            {sportsMode === 'upcoming' && nextEvent ? (
-              <View
-                style={[
-                  tw`mt-3 rounded-2xl p-4`,
-                  {
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(16,185,129,0.22)' : 'rgba(16,185,129,0.30)',
-                    backgroundColor: isDark ? 'rgba(16,185,129,0.10)' : 'rgba(236,253,245,1)',
-                  },
-                ]}
-              >
-                <Text style={{ fontSize: 11, letterSpacing: 2, fontWeight: '800', color: isDark ? 'rgba(167,243,208,0.9)' : 'rgba(6,95,70,0.85)' }}>
-                  NEXT UP
-                </Text>
-                <Text style={[tw`mt-1 text-base font-extrabold`, { color: textPrimary }]} numberOfLines={2}>
-                  {pickString(nextEvent?.title, 'Untitled event')}
-                </Text>
-                <Text style={[tw`mt-2 text-sm`, { color: isDark ? 'rgba(255,255,255,0.80)' : 'rgba(15,23,42,0.85)' }]}>
-                  <Text style={{ fontWeight: '800' }}>{fmtWhen(nextEvent?.event_at)}</Text>
-                  {nextEvent?.location ? <Text style={{ color: textSecondary }}> • {nextEvent.location}</Text> : null}
-                </Text>
-
-                <View style={tw`mt-2 flex-row flex-wrap`}>
-                  <Badge tone="slate">{KIND_LABEL[String(nextEvent?.kind || 'other')] || String(nextEvent?.kind || 'other')}</Badge>
-                  <Badge tone="blue">{STATUS_LABEL[String(nextEvent?.status || 'scheduled')] || String(nextEvent?.status || 'scheduled')}</Badge>
-                  {nextEvent?.team_label ? <Badge tone="amber">{String(nextEvent.team_label)}</Badge> : null}
+              <View style={tw`items-end`}>
+                <View style={tw`mb-2`}>
+                  <GhostButton theme={theme} label="← Back" onPress={() => navigation.goBack?.()} />
                 </View>
-              </View>
-            ) : null}
+                </View>
+            </View>
+          </Card>
 
-            {/* filters */}
-            <View style={tw`mt-4`}>
-              <TextInput
-                value={sportsQ}
-                onChangeText={setSportsQ}
-                placeholder="Search sports… (team, opponent, title)"
-                placeholderTextColor={isDark ? 'rgba(255,255,255,0.35)' : 'rgba(100,116,139,0.85)'}
-                style={[
-                  tw`rounded-2xl px-4 py-3 text-sm`,
-                  {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#fff',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(148,163,184,0.35)',
-                    color: textPrimary,
-                  },
-                ]}
+          {missingCtx ? (
+            <Card
+              theme={theme}
+              style={[
+                tw`mt-3`,
+                {
+                  backgroundColor: theme.badBg,
+                  borderColor: theme.badBorder,
+                },
+              ]}
+            >
+              <Text style={{ fontSize: 14, fontWeight: '800', color: theme.badText }}>
+                Missing org/session context
+              </Text>
+              <Text style={[tw`mt-1 text-sm`, { color: theme.subtext }]}>
+                We need orgId + a token to load sports/clubs.
+              </Text>
+            </Card>
+          ) : null}
+
+          {/* Tabs */}
+          <Card theme={theme} style={tw`mt-3`}>
+            <View style={tw`flex-row`}>
+              <TabButton
+                theme={theme}
+                active={activeTab === 'sports'}
+                onPress={() => setActiveTab('sports')}
+                icon="🏆"
+                title="Sports Calendar"
+                subtitle="Upcoming fixtures, practice, tournaments."
               />
-
-              <View style={tw`mt-3 flex-row flex-wrap`}>
-                <ChipButton active={!sportsKind} label="All kinds" onPress={() => setSportsKind('')} />
-                <ChipButton active={sportsKind === 'fixture'} label="Fixture" onPress={() => setSportsKind('fixture')} />
-                <ChipButton active={sportsKind === 'practice'} label="Practice" onPress={() => setSportsKind('practice')} />
-                <ChipButton active={sportsKind === 'tournament'} label="Tournament" onPress={() => setSportsKind('tournament')} />
-                <ChipButton active={sportsKind === 'other'} label="Other" onPress={() => setSportsKind('other')} />
-              </View>
+              <View style={tw`w-3`} />
+              <TabButton
+                theme={theme}
+                active={activeTab === 'clubs'}
+                onPress={() => setActiveTab('clubs')}
+                icon="🤝"
+                title="Clubs & Societies"
+                subtitle="Clubs you are enrolled in."
+              />
             </View>
+          </Card>
 
-            {/* list */}
-            <View style={tw`mt-3`}>
-              {sportsQuery.isLoading ? (
-                <View style={tw`py-6`}>
-                  <Text style={[tw`text-sm`, { color: textSecondary }]}>Loading sports…</Text>
-                  <ActivityIndicator style={tw`mt-3`} />
+          {/* SPORTS */}
+          {activeTab === 'sports' ? (
+            <Card theme={theme} style={tw`mt-3`}>
+              <View style={tw`flex-row items-start justify-between`}>
+                <View style={tw`flex-1 pr-3`}>
+                  <Text style={[tw`text-lg font-extrabold`, { color: theme.text }]}>Sports calendar</Text>
+                  <Text style={[tw`mt-1 text-sm`, { color: theme.subtext }]}>
+                    Only events meant for <Text style={{ fontWeight: '800', color: theme.text }}>learners</Text> (or{' '}
+                    <Text style={{ fontWeight: '800', color: theme.text }}>everyone</Text>) appear here.
+                  </Text>
                 </View>
-              ) : sportsQuery.error ? (
+
+                <GhostButton theme={theme} label="Refresh" onPress={() => sportsQuery.refetch()} />
+              </View>
+
+              {/* mode chips */}
+              <View style={tw`mt-3 flex-row flex-wrap`}>
+                <ChipButton
+                  theme={theme}
+                  active={sportsMode === 'upcoming'}
+                  label="Upcoming"
+                  onPress={() => setSportsMode('upcoming')}
+                />
+                <ChipButton
+                  theme={theme}
+                  active={sportsMode === 'results'}
+                  label="Results"
+                  onPress={() => setSportsMode('results')}
+                />
+              </View>
+
+              {/* next up */}
+              {sportsMode === 'upcoming' && nextEvent ? (
                 <View
                   style={[
-                    tw`mt-2 rounded-2xl p-3`,
+                    tw`mt-3 rounded-2xl p-4 border`,
                     {
-                      borderWidth: 1,
-                      borderColor: isDark ? 'rgba(244,63,94,0.25)' : 'rgba(254,202,202,1)',
-                      backgroundColor: isDark ? 'rgba(127,29,29,0.18)' : 'rgba(254,242,242,1)',
+                      borderColor: theme.dark ? 'rgba(16,185,129,0.22)' : 'rgba(16,185,129,0.30)',
+                      backgroundColor: theme.dark ? 'rgba(16,185,129,0.10)' : 'rgba(236,253,245,1)',
                     },
                   ]}
                 >
-                  <Text style={{ fontSize: 14, fontWeight: '800', color: isDark ? 'rgba(254,205,211,0.95)' : 'rgba(136,19,55,0.95)' }}>
-                    Could not load sports.
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      letterSpacing: 2,
+                      fontWeight: '800',
+                      color: theme.dark ? 'rgba(167,243,208,0.9)' : 'rgba(6,95,70,0.85)',
+                    }}
+                  >
+                    NEXT UP
                   </Text>
-                  <Text style={[tw`mt-1 text-sm`, { color: textSecondary }]}>{errMessage(sportsQuery.error)}</Text>
+
+                  <Text style={[tw`mt-1 text-base font-extrabold`, { color: theme.text }]} numberOfLines={2}>
+                    {pickString(nextEvent?.title, 'Untitled event')}
+                  </Text>
+
+                  <Text style={[tw`mt-2 text-sm`, { color: theme.text }]}>
+                    <Text style={{ fontWeight: '800' }}>{fmtWhen(nextEvent?.event_at)}</Text>
+                    {nextEvent?.location ? <Text style={{ color: theme.subtext }}> • {nextEvent.location}</Text> : null}
+                  </Text>
+
+                  <View style={tw`mt-2 flex-row flex-wrap`}>
+                    <Badge theme={theme} tone="slate">
+                      {KIND_LABEL[String(nextEvent?.kind || 'other')] || String(nextEvent?.kind || 'other')}
+                    </Badge>
+                    <Badge theme={theme} tone="blue">
+                      {STATUS_LABEL[String(nextEvent?.status || 'scheduled')] ||
+                        String(nextEvent?.status || 'scheduled')}
+                    </Badge>
+                    {nextEvent?.team_label ? (
+                      <Badge theme={theme} tone="amber">
+                        {String(nextEvent.team_label)}
+                      </Badge>
+                    ) : null}
+                  </View>
                 </View>
-              ) : sportsGrouped.length === 0 ? (
-                <View
+              ) : null}
+
+              {/* filters */}
+              <View style={tw`mt-4`}>
+                <TextInput
+                  value={sportsQ}
+                  onChangeText={setSportsQ}
+                  placeholder="Search sports… (team, opponent, title)"
+                  placeholderTextColor={theme.dark ? 'rgba(255,255,255,0.35)' : 'rgba(100,116,139,0.85)'}
                   style={[
-                    tw`mt-2 rounded-2xl p-4`,
+                    tw`rounded-2xl px-4 py-3 text-sm border`,
                     {
-                      borderWidth: 1,
-                      borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(148,163,184,0.30)',
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(248,250,252,1)',
+                      backgroundColor: theme.inputBg,
+                      borderColor: theme.border,
+                      color: theme.text,
                     },
                   ]}
-                >
-                  <Text style={[tw`text-sm`, { color: textSecondary }]}>
-                    No sports events found yet. If your school has sports, ask a staff member to publish fixtures.
-                  </Text>
+                />
+
+                <View style={tw`mt-3 flex-row flex-wrap`}>
+                  <ChipButton theme={theme} active={!sportsKind} label="All kinds" onPress={() => setSportsKind('')} />
+                  <ChipButton
+                    theme={theme}
+                    active={sportsKind === 'fixture'}
+                    label="Fixture"
+                    onPress={() => setSportsKind('fixture')}
+                  />
+                  <ChipButton
+                    theme={theme}
+                    active={sportsKind === 'practice'}
+                    label="Practice"
+                    onPress={() => setSportsKind('practice')}
+                  />
+                  <ChipButton
+                    theme={theme}
+                    active={sportsKind === 'tournament'}
+                    label="Tournament"
+                    onPress={() => setSportsKind('tournament')}
+                  />
+                  <ChipButton
+                    theme={theme}
+                    active={sportsKind === 'other'}
+                    label="Other"
+                    onPress={() => setSportsKind('other')}
+                  />
                 </View>
-              ) : (
-                <SectionList
-                  sections={sportsGrouped as any}
-                  keyExtractor={(item: any, idx) => String(item?.id ?? idx)}
-                  scrollEnabled={false}
-                  renderSectionHeader={({ section }: any) => (
-                    <Text style={[tw`mt-4 mb-2 text-[11px] tracking-widest`, { color: isDark ? 'rgba(255,255,255,0.50)' : 'rgba(100,116,139,0.95)' }]}>
-                      {String(section.title || '')}
+              </View>
+
+              {/* list */}
+              <View style={tw`mt-3`}>
+                {sportsQuery.isLoading ? (
+                  <View style={tw`py-6`}>
+                    <Text style={[tw`text-sm`, { color: theme.subtext }]}>Loading sports…</Text>
+                    <ActivityIndicator style={tw`mt-3`} color={theme.text} />
+                  </View>
+                ) : sportsQuery.error ? (
+                  <View
+                    style={[
+                      tw`mt-2 rounded-2xl p-3 border`,
+                      { borderColor: theme.badBorder, backgroundColor: theme.badBg },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.badText }}>
+                      Could not load sports.
                     </Text>
-                  )}
-                  renderItem={({ item }: any) => {
-                    const e = item;
-                    const k = String(e?.kind || 'other');
-                    const st = String(e?.status || 'scheduled');
-
-                    const tone = st === 'completed' ? 'green' : st === 'cancelled' ? 'rose' : 'blue';
-
-                    const title = pickString(e?.title, 'Untitled');
-                    const team = pickString(e?.team_label);
-                    const opp = pickString(e?.opponent);
-
-                    const score =
-                      e?.score_home != null || e?.score_away != null
-                        ? `${e?.score_home ?? '—'} : ${e?.score_away ?? '—'}`
-                        : null;
-
-                    return (
-                      <View
+                    <Text style={[tw`mt-1 text-sm`, { color: theme.subtext }]}>{errMessage(sportsQuery.error)}</Text>
+                  </View>
+                ) : sportsGrouped.length === 0 ? (
+                  <View
+                    style={[
+                      tw`mt-2 rounded-2xl p-4 border`,
+                      { borderColor: theme.border, backgroundColor: theme.soft },
+                    ]}
+                  >
+                    <Text style={[tw`text-sm`, { color: theme.subtext }]}>
+                      No sports events found yet. If your school has sports, ask a staff member to publish fixtures.
+                    </Text>
+                  </View>
+                ) : (
+                  <SectionList
+                    sections={sportsGrouped as any}
+                    keyExtractor={(item: any, idx) => String(item?.id ?? idx)}
+                    scrollEnabled={false}
+                    renderSectionHeader={({ section }: any) => (
+                      <Text
                         style={[
-                          tw`rounded-2xl p-4 mb-2`,
-                          {
-                            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#fff',
-                            borderWidth: 1,
-                            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(148,163,184,0.35)',
-                          },
+                          tw`mt-4 mb-2 text-[11px] tracking-widest font-semibold`,
+                          { color: theme.muted },
                         ]}
                       >
-                        <View style={tw`flex-row flex-wrap items-center`}>
-                          <Text style={[tw`text-base font-extrabold mr-2`, { color: textPrimary }]} numberOfLines={2}>
-                            {title}
-                          </Text>
-                          <Badge tone="slate">{KIND_LABEL[k] || k}</Badge>
-                          <Badge tone={tone as any}>{STATUS_LABEL[st] || st}</Badge>
-                          {score ? <Badge tone="amber">Score {score}</Badge> : null}
-                        </View>
+                        {String(section.title || '')}
+                      </Text>
+                    )}
+                    renderItem={({ item }: any) => {
+                      const e = item;
+                      const k = String(e?.kind || 'other');
+                      const st = String(e?.status || 'scheduled');
 
-                        <Text style={[tw`mt-2 text-sm`, { color: isDark ? 'rgba(255,255,255,0.82)' : 'rgba(15,23,42,0.85)' }]}>
-                          <Text style={{ fontWeight: '800' }}>{fmtWhen(e?.event_at)}</Text>
-                          {e?.end_at ? <Text style={{ color: textSecondary }}> → {fmtWhen(e.end_at)}</Text> : null}
-                        </Text>
+                      const tone = st === 'completed' ? 'green' : st === 'cancelled' ? 'rose' : 'blue';
 
-                        <Text style={[tw`mt-1 text-sm`, { color: isDark ? 'rgba(255,255,255,0.70)' : 'rgba(15,23,42,0.70)' }]}>
-                          {team ? (
-                            <Text style={{ fontWeight: '800', color: isDark ? 'rgba(255,255,255,0.86)' : 'rgba(15,23,42,0.86)' }}>
-                              {team}
-                            </Text>
-                          ) : (
-                            <Text style={{ color: textSecondary }}>Team TBC</Text>
-                          )}
-                          {opp ? <Text style={{ color: textSecondary }}> vs {opp}</Text> : null}
-                          {e?.location ? <Text style={{ color: textSecondary }}> • {String(e.location)}</Text> : null}
-                        </Text>
+                      const title = pickString(e?.title, 'Untitled');
+                      const team = pickString(e?.team_label);
+                      const opp = pickString(e?.opponent);
 
-                        {e?.description ? (
-                          <Text style={[tw`mt-2 text-sm`, { color: textSecondary }]}>{String(e.description)}</Text>
-                        ) : null}
-                      </View>
-                    );
-                  }}
-                />
-              )}
-            </View>
-          </Card>
-        ) : null}
+                      const score =
+                        e?.score_home != null || e?.score_away != null
+                          ? `${e?.score_home ?? '—'} : ${e?.score_away ?? '—'}`
+                          : null;
 
-        {/* CLUBS */}
-        {activeTab === 'clubs' ? (
-          <Card style={tw`mt-3`}>
-            <View style={tw`flex-row items-start justify-between`}>
-              <View style={tw`flex-1 pr-3`}>
-                <Text style={[tw`text-lg font-extrabold`, { color: textPrimary }]}>Clubs &amp; societies</Text>
-                <Text style={[tw`mt-1 text-sm`, { color: textSecondary }]}>
-                  These are the clubs you are currently enrolled in.
-                </Text>
-              </View>
-
-              <Pressable
-                onPress={() => clubsQuery.refetch()}
-                style={({ pressed }) => [
-                  tw`px-3 py-2 rounded-full`,
-                  {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.85)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(148,163,184,0.35)',
-                    opacity: pressed ? 0.85 : 1,
-                  },
-                ]}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.85)' }}>
-                  Refresh
-                </Text>
-              </Pressable>
-            </View>
-
-            {showMineHeadsUp ? (
-              <View
-                style={[
-                  tw`mt-3 rounded-2xl px-3 py-2`,
-                  {
-                    backgroundColor: isDark ? 'rgba(245,158,11,0.14)' : 'rgba(255,251,235,1)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(245,158,11,0.22)' : 'rgba(253,230,138,1)',
-                  },
-                ]}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? 'rgba(253,230,138,0.95)' : 'rgba(146,64,14,0.95)' }}>
-                  Heads-up: “My clubs” needs an active session token. If it doesn’t load, sign out and log in again.
-                </Text>
-              </View>
-            ) : null}
-
-            <View style={tw`mt-3`}>
-              {clubsQuery.isLoading ? (
-                <View style={tw`py-6`}>
-                  <Text style={[tw`text-sm`, { color: textSecondary }]}>Loading your clubs…</Text>
-                  <ActivityIndicator style={tw`mt-3`} />
-                </View>
-              ) : clubsQuery.error ? (
-                <View
-                  style={[
-                    tw`mt-2 rounded-2xl p-3`,
-                    {
-                      borderWidth: 1,
-                      borderColor: isDark ? 'rgba(244,63,94,0.25)' : 'rgba(254,202,202,1)',
-                      backgroundColor: isDark ? 'rgba(127,29,29,0.18)' : 'rgba(254,242,242,1)',
-                    },
-                  ]}
-                >
-                  <Text style={{ fontSize: 14, fontWeight: '800', color: isDark ? 'rgba(254,205,211,0.95)' : 'rgba(136,19,55,0.95)' }}>
-                    Could not load your clubs.
-                  </Text>
-                  <Text style={[tw`mt-1 text-sm`, { color: textSecondary }]}>{errMessage(clubsQuery.error)}</Text>
-                </View>
-              ) : myClubs.length === 0 ? (
-                <View
-                  style={[
-                    tw`mt-2 rounded-2xl p-4`,
-                    {
-                      borderWidth: 1,
-                      borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(148,163,184,0.30)',
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(248,250,252,1)',
-                    },
-                  ]}
-                >
-                  <Text style={[tw`text-sm`, { color: textSecondary }]}>
-                    You are not enrolled in any club yet. Ask your teacher/admin to add you to a club.
-                  </Text>
-                </View>
-              ) : (
-                <FlatList
-                  data={myClubs}
-                  key={clubCols} // force relayout when columns change
-                  numColumns={clubCols}
-                  scrollEnabled={false}
-                  keyExtractor={(c: any, idx) => String(c?.id ?? idx)}
-                  columnWrapperStyle={clubCols > 1 ? { gap: 12 } : undefined}
-                  contentContainerStyle={{ paddingTop: 8 }}
-                  renderItem={({ item }: any) => {
-                    const c = item;
-                    const name = pickString(c?.name, 'Club');
-                    const desc = pickString(c?.description);
-                    const schedule = pickString(c?.meeting_schedule, c?.meetingSchedule);
-                    const role = pickString(c?.role, c?.member_role, c?.membership_role);
-                    const active = c?.is_active == null ? true : Boolean(c?.is_active);
-
-                    return (
-                      <View style={{ flex: 1, marginBottom: 12 }}>
+                      return (
                         <View
                           style={[
-                            tw`rounded-2xl p-4`,
+                            tw`rounded-2xl p-4 mb-2 border`,
                             {
-                              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#fff',
-                              borderWidth: 1,
-                              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(148,163,184,0.35)',
+                              backgroundColor: theme.inputBg,
+                              borderColor: theme.border,
                             },
                           ]}
                         >
-                          <View style={tw`flex-row items-start justify-between`}>
-                            <View style={tw`flex-1 pr-3`}>
-                              <Text style={[tw`text-base font-extrabold`, { color: textPrimary }]} numberOfLines={2}>
-                                {name}
-                              </Text>
-                              <Text style={[tw`mt-1 text-xs`, { color: textSecondary }]}>
-                                {schedule ? `📅 ${schedule}` : '📅 Schedule: TBC'}
-                              </Text>
-                            </View>
-                            <View style={tw`items-end`}>
-                              <View style={tw`flex-row flex-wrap justify-end`}>
-                                <Badge tone={active ? 'green' : 'slate'}>{active ? 'Active' : 'Inactive'}</Badge>
-                                {role ? <Badge tone="blue">{role}</Badge> : null}
-                              </View>
-                            </View>
+                          <View style={tw`flex-row flex-wrap items-center`}>
+                            <Text style={[tw`text-base font-extrabold mr-2`, { color: theme.text }]} numberOfLines={2}>
+                              {title}
+                            </Text>
+                            <Badge theme={theme} tone="slate">
+                              {KIND_LABEL[k] || k}
+                            </Badge>
+                            <Badge theme={theme} tone={tone as any}>
+                              {STATUS_LABEL[st] || st}
+                            </Badge>
+                            {score ? (
+                              <Badge theme={theme} tone="amber">
+                                Score {score}
+                              </Badge>
+                            ) : null}
                           </View>
 
-                          {desc ? (
-                            <Text style={[tw`mt-3 text-sm`, { color: textSecondary }]}>{desc}</Text>
-                          ) : (
-                            <Text style={[tw`mt-3 text-sm`, { color: isDark ? 'rgba(255,255,255,0.50)' : 'rgba(100,116,139,0.95)' }]}>
-                              No description yet.
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                    );
-                  }}
-                />
-              )}
-            </View>
-          </Card>
-        ) : null}
+                          <Text style={[tw`mt-2 text-sm`, { color: theme.text }]}>
+                            <Text style={{ fontWeight: '800' }}>{fmtWhen(e?.event_at)}</Text>
+                            {e?.end_at ? <Text style={{ color: theme.subtext }}> → {fmtWhen(e.end_at)}</Text> : null}
+                          </Text>
 
-        {/* Footer tip */}
-        <Card style={tw`mt-3`}>
-          <Text style={[tw`text-xs`, { color: textSecondary }]}>
-            Tip: Sports events are published by staff. Clubs are assigned by staff — if anything is missing, ask your class teacher to update it.
-          </Text>
-        </Card>
+                          <Text style={[tw`mt-1 text-sm`, { color: theme.subtext }]}>
+                            {team ? (
+                              <Text style={{ fontWeight: '800', color: theme.text }}>{team}</Text>
+                            ) : (
+                              <Text style={{ color: theme.subtext }}>Team TBC</Text>
+                            )}
+                            {opp ? <Text style={{ color: theme.subtext }}> vs {opp}</Text> : null}
+                            {e?.location ? <Text style={{ color: theme.subtext }}> • {String(e.location)}</Text> : null}
+                          </Text>
+
+                          {e?.description ? (
+                            <Text style={[tw`mt-2 text-sm`, { color: theme.subtext }]}>{String(e.description)}</Text>
+                          ) : null}
+                        </View>
+                      );
+                    }}
+                  />
+                )}
+              </View>
+            </Card>
+          ) : null}
+
+          {/* CLUBS */}
+          {activeTab === 'clubs' ? (
+            <Card theme={theme} style={tw`mt-3`}>
+              <View style={tw`flex-row items-start justify-between`}>
+                <View style={tw`flex-1 pr-3`}>
+                  <Text style={[tw`text-lg font-extrabold`, { color: theme.text }]}>Clubs &amp; societies</Text>
+                  <Text style={[tw`mt-1 text-sm`, { color: theme.subtext }]}>
+                    These are the clubs you are currently enrolled in.
+                  </Text>
+                </View>
+
+                <GhostButton theme={theme} label="Refresh" onPress={() => clubsQuery.refetch()} />
+              </View>
+
+              {showMineHeadsUp ? (
+                <View
+                  style={[
+                    tw`mt-3 rounded-2xl px-3 py-2 border`,
+                    { backgroundColor: theme.warnBg, borderColor: theme.warnBorder },
+                  ]}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: theme.warnText }}>
+                    Heads-up: “My clubs” needs an active session token. If it doesn’t load, sign out and log in again.
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={tw`mt-3`}>
+                {clubsQuery.isLoading ? (
+                  <View style={tw`py-6`}>
+                    <Text style={[tw`text-sm`, { color: theme.subtext }]}>Loading your clubs…</Text>
+                    <ActivityIndicator style={tw`mt-3`} color={theme.text} />
+                  </View>
+                ) : clubsQuery.error ? (
+                  <View
+                    style={[
+                      tw`mt-2 rounded-2xl p-3 border`,
+                      { backgroundColor: theme.badBg, borderColor: theme.badBorder },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.badText }}>
+                      Could not load your clubs.
+                    </Text>
+                    <Text style={[tw`mt-1 text-sm`, { color: theme.subtext }]}>{errMessage(clubsQuery.error)}</Text>
+                  </View>
+                ) : myClubs.length === 0 ? (
+                  <View
+                    style={[
+                      tw`mt-2 rounded-2xl p-4 border`,
+                      { borderColor: theme.border, backgroundColor: theme.soft },
+                    ]}
+                  >
+                    <Text style={[tw`text-sm`, { color: theme.subtext }]}>
+                      You are not enrolled in any club yet. Ask your teacher/admin to add you to a club.
+                    </Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={myClubs}
+                    key={clubCols}
+                    numColumns={clubCols}
+                    scrollEnabled={false}
+                    keyExtractor={(c: any, idx) => String(c?.id ?? idx)}
+                    columnWrapperStyle={clubCols > 1 ? { gap: 12 } : undefined}
+                    contentContainerStyle={{ paddingTop: 8 }}
+                    renderItem={({ item }: any) => {
+                      const c = item;
+                      const name = pickString(c?.name, 'Club');
+                      const desc = pickString(c?.description);
+                      const schedule = pickString(c?.meeting_schedule, c?.meetingSchedule);
+                      const memberRole = pickString(c?.role, c?.member_role, c?.membership_role);
+                      const active = c?.is_active == null ? true : Boolean(c?.is_active);
+
+                      return (
+                        <View style={{ flex: 1, marginBottom: 12 }}>
+                          <View
+                            style={[
+                              tw`rounded-2xl p-4 border`,
+                              { backgroundColor: theme.inputBg, borderColor: theme.border },
+                            ]}
+                          >
+                            <View style={tw`flex-row items-start justify-between`}>
+                              <View style={tw`flex-1 pr-3`}>
+                                <Text style={[tw`text-base font-extrabold`, { color: theme.text }]} numberOfLines={2}>
+                                  {name}
+                                </Text>
+                                <Text style={[tw`mt-1 text-xs`, { color: theme.subtext }]}>
+                                  {schedule ? `📅 ${schedule}` : '📅 Schedule: TBC'}
+                                </Text>
+                              </View>
+
+                              <View style={tw`items-end`}>
+                                <View style={tw`flex-row flex-wrap justify-end`}>
+                                  <Badge theme={theme} tone={active ? 'green' : 'slate'}>
+                                    {active ? 'Active' : 'Inactive'}
+                                  </Badge>
+                                  {memberRole ? (
+                                    <Badge theme={theme} tone="blue">
+                                      {memberRole}
+                                    </Badge>
+                                  ) : null}
+                                </View>
+                              </View>
+                            </View>
+
+                            {desc ? (
+                              <Text style={[tw`mt-3 text-sm`, { color: theme.subtext }]}>{desc}</Text>
+                            ) : (
+                              <Text style={[tw`mt-3 text-sm`, { color: theme.muted }]}>No description yet.</Text>
+                            )}
+                          </View>
+                        </View>
+                      );
+                    }}
+                  />
+                )}
+              </View>
+            </Card>
+          ) : null}
+
+          {/* Footer tip */}
+          <Card theme={theme} style={tw`mt-3`}>
+            <Text style={[tw`text-xs`, { color: theme.subtext }]}>
+              Tip: Sports events are published by staff. Clubs are assigned by staff — if anything is missing, ask your
+              class teacher to update it.
+            </Text>
+          </Card>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

@@ -5,7 +5,8 @@ import { View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createStackNavigator } from '@react-navigation/stack';
-import { useNavigation, type NavigationProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type NavigationProp, type RouteProp } from '@react-navigation/native';
+
 
 import type { MainStackParamList } from './navigation/types';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -375,11 +376,17 @@ function OrgProfileScreen() {
   );
 }
 function OrgExamResultsPortalScreen() {
+  const route = useRoute<RouteProp<MainStackParamList, 'OrgExamResultsPortal'>>();
+  const view = route.params?.view;
+
+  // learner view should allow learners; staff view stays staff-only
+  const GuardComp = view === 'learner' ? OrgLearnerOnlyGuard : OrgStaffGuard;
+
   return (
     <OrgProtectedRoute>
-      <OrgStaffGuard>
+      <GuardComp>
         <OrgExamResultsPortal />
-      </OrgStaffGuard>
+      </GuardComp>
     </OrgProtectedRoute>
   );
 }

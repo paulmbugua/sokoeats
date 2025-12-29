@@ -561,30 +561,34 @@ const OrgLearnerHomeNative: React.FC = () => {
   };
 
   const navTargets = React.useMemo(
-    () => ({
-      assignments: () => navigation.navigate('OrgElearnPortal', { ...assignNavParams, from: 'learner' }),
-      courses: () => navigation.navigate('Courses', courseNavParams),
-      exams: () => navigation.navigate('OrgExamResultsPortal', examsParams),
-      certificates: () => navigation.navigate('Results', resultsNavParams),
-      sports: () => navigation.navigate('OrgLearnerSportsClubs', { tab: 'sports' }),
-      clubs: () => navigation.navigate('OrgLearnerSportsClubs', { tab: 'clubs' }),
-      newsletters: () => navigation.navigate('OrgLearnerNewsletters'),
-      messages: () => navigation.navigate('Messages', { studentId: learnerStudentId || undefined }),
-      fees: goFees,
-      announcements: () =>
-        navigation.navigate('OrgElearnPortal', { ...activitiesNavParams, tab: 'tools', from: 'learner' }),
-    }),
-    [
-      navigation,
-      assignNavParams,
-      courseNavParams,
-      examsParams,
-      resultsNavParams,
-      activitiesNavParams,
-      learnerStudentId,
-      goFees,
-    ],
-  );
+  () => ({
+    assignments: () => navigation.navigate('OrgElearnPortal', { ...assignNavParams, from: 'learner' }),
+    courses: () => navigation.navigate('Courses', courseNavParams),
+    exams: () => navigation.navigate('OrgExamResultsPortal', examsParams),
+    certificates: () => navigation.navigate('Results', resultsNavParams),
+    sports: () => navigation.navigate('OrgLearnerSportsClubs', { tab: 'sports' }),
+    clubs: () => navigation.navigate('OrgLearnerSportsClubs', { tab: 'clubs' }),
+
+    // ✅ make newsletters explicitly open newsletters tab
+    newsletters: () => navigation.navigate('OrgLearnerNewsletters', { tab: 'newsletters' }),
+
+    messages: () => navigation.navigate('Messages', { studentId: learnerStudentId || undefined }),
+    fees: goFees,
+
+    // ✅ Announcements tile opens the SAME screen, but announcements tab
+    announcements: () => navigation.navigate('OrgLearnerNewsletters', { tab: 'announcements' }),
+  }),
+  [
+    navigation,
+    assignNavParams,
+    courseNavParams,
+    examsParams,
+    resultsNavParams,
+    learnerStudentId,
+    goFees,
+  ],
+);
+
 
   const tileConfig = React.useMemo(
     () =>
@@ -642,7 +646,8 @@ const OrgLearnerHomeNative: React.FC = () => {
           emoji: '📰',
           title: 'Newsletters',
           subtitle: newslettersLoading ? 'Loading…' : learnerNewsletters?.length ? 'New!' : 'Archive',
-          tone: (learnerNewsletters?.length ? 'emerald' : 'slate') as const,
+         tone: learnerNewsletters?.length ? 'emerald' : 'slate',
+
           badge: newslettersLoading ? '' : learnerNewsletters?.length ? 'Latest' : undefined,
           onPress: navTargets.newsletters,
         },
@@ -659,7 +664,8 @@ const OrgLearnerHomeNative: React.FC = () => {
           emoji: '💳',
           title: 'Fees',
           subtitle: isProTier ? 'Statement' : 'Locked',
-          tone: (isProTier ? 'emerald' : 'slate') as const,
+          tone: isProTier ? 'emerald' : 'slate',
+
           disabled: !isProTier,
           badge: !isProTier ? 'Pro required' : undefined,
           onPress: isProTier ? navTargets.fees : undefined,
@@ -669,7 +675,7 @@ const OrgLearnerHomeNative: React.FC = () => {
           emoji: '📣',
           title: 'Announcements',
           subtitle: isProTier ? 'Feed' : 'Locked',
-          tone: (isProTier ? 'sky' : 'slate') as const,
+          tone: isProTier ? 'sky' : 'slate',
           disabled: !isProTier,
           badge: !isProTier ? 'Pro required' : undefined,
           onPress: isProTier ? navTargets.announcements : undefined,
