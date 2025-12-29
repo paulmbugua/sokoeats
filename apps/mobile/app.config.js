@@ -26,7 +26,7 @@ export default function expoConfig({ config }) {
     slug: 'funzasasa',
     version: '1.0.0',
     scheme: 'daybreak',
-    runtimeVersion: { policy: 'sdkVersion' },
+    runtimeVersion: '1.0.1',
     userInterfaceStyle: 'automatic',
 
     // paths relative to apps/mobile/

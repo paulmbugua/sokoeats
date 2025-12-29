@@ -39,6 +39,16 @@ const storageBucket =
   expoBucket ??
   `${projectId}.appspot.com`;
 
+  // ✅ Add it here
+try {
+  console.log(
+    '[firebase] apiKey prefix',
+    apiKey ? `${apiKey.slice(0, 8)}… (len=${apiKey.length})` : 'EMPTY'
+  );
+  console.log('[firebase] projectId', projectId);
+  console.log('[firebase] authDomain', authDomain);
+} catch {}
+
 if (!apiKey) {
   // Don’t hard-crash the whole app; log clearly.
   console.error(
