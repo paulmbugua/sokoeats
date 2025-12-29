@@ -75,6 +75,31 @@ try {
   console.error('[firebase] getAuth failed:', e);
 }
 
+// Web-only: ensure Firebase Auth persists across refreshes in the browser
+export async function ensureBrowserPersistence() {
+  // Not in a browser (SSR / Node / React Native)
+  if (typeof window === 'undefined') return;
+  if (!auth) return;
+
+  try {
+    // Dynamic import so React Native never evaluates browser persistence code
+    const { setPersistence, browserLocalPersistence, inMemoryPersistence } = await import(
+      'firebase/auth'
+    );
+
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch {
+      // If localStorage is blocked (private mode, strict settings), fall back
+      await setPersistence(auth, inMemoryPersistence);
+    }
+  } catch (e) {
+    // best-effort; never crash app for persistence
+    console.warn('[firebase] ensureBrowserPersistence failed:', e);
+  }
+}
+
+
 export { auth };
 export const googleProvider = new GoogleAuthProvider();
 export const provider = googleProvider;
