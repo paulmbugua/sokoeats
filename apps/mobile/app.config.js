@@ -18,7 +18,11 @@ export default function expoConfig({ config }) {
     prod: process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.daybreaklearner.com',
   };
 
-  const DEFAULT_BACKEND = process.env.BACKEND || 'hotspot';
+  // ✅ dev can switch, but EAS/prod should default to prod
+  const DEFAULT_BACKEND = isDev ? (process.env.BACKEND || 'hotspot') : 'prod';
+
+  // ✅ single “baseUrl” the app can use
+  const RESOLVED_BACKEND_URL = BACKENDS[DEFAULT_BACKEND] || BACKENDS.prod;
 
   return {
     ...config,
@@ -26,7 +30,7 @@ export default function expoConfig({ config }) {
     slug: 'funzasasa',
     version: '1.0.0',
     scheme: 'daybreak',
-    runtimeVersion: '1.0.1',
+    runtimeVersion: '1.0.2',
     userInterfaceStyle: 'automatic',
 
     // paths relative to apps/mobile/
@@ -42,8 +46,7 @@ export default function expoConfig({ config }) {
     android: {
       ...config.android,
       package: 'com.paulmbugua2.mytutorapp',
- 
-      
+
       permissions: ['INTERNET', 'CAMERA', 'RECORD_AUDIO', 'POST_NOTIFICATIONS', 'VIBRATE'],
 
       googleServicesFile: './google-services.json',
@@ -159,8 +162,9 @@ export default function expoConfig({ config }) {
     extra: {
       ...config.extra,
 
-      EXPO_PUBLIC_BACKEND_URL: process.env.EXPO_PUBLIC_BACKEND_URL ?? 'http://10.0.2.2:4000',
-      EXPO_PUBLIC_PROD_BACKEND_URL: process.env.EXPO_PUBLIC_PROD_BACKEND_URL,
+      // ✅ in prod, this becomes https://server.daybreaklearner.com
+      EXPO_PUBLIC_BACKEND_URL: RESOLVED_BACKEND_URL,
+      EXPO_PUBLIC_PROD_BACKEND_URL: BACKENDS.prod,
 
       EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
       EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
