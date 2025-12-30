@@ -32,8 +32,12 @@ import {
   setOrgLearnerPhotoByAdmission,
   createOrgLearner as apiCreateOrgLearner,
   uploadOrgLearnersCsv as apiUploadOrgLearnersCsv,
+  updateOrgLearner,
 } from '@mytutorapp/shared/api/orgLearnersApi';
-import { createOrgInstructor as apiCreateOrgInstructor } from '@mytutorapp/shared/api/orgInstructorsApi';
+import {
+  createOrgInstructor as apiCreateOrgInstructor,
+  updateOrgInstructor,
+} from '@mytutorapp/shared/api/orgInstructorsApi';
 
 import ThemeToggle from '../ThemeToggle.native';
 import { useThemePref } from '../../theme/ThemeContext';
@@ -43,7 +47,13 @@ import { MiniUser, resolveAsset, tierTone, Skeleton, PersonRow } from './OrgProf
 import { useOrgInstructorFeeAccess } from '@mytutorapp/shared/hooks/useOrgInstructorFeeAccess';
 
 // Native modals
-import { InviteModal, AddInstructorModal, AddLearnerModal } from './OrgProfileModals.native';
+import {
+  InviteModal,
+  AddInstructorModal,
+  AddLearnerModal,
+  EditInstructorModal,
+  EditLearnerModal,
+} from './OrgProfileModals.native';
 
 /* ---------------- types ---------------- */
 type Org = {
@@ -175,6 +185,22 @@ const confirmAsync = (title: string, message: string) =>
       { text: 'Remove', style: 'destructive', onPress: () => resolve(true) },
     ]);
   });
+
+async function runWithConcurrency<T, R>(items: T[], worker: (item: T) => Promise<R>, limit = 3) {
+  if (!items.length) return [] as R[];
+  let index = 0;
+  const results: R[] = [];
+
+  const runners = Array.from({ length: Math.min(limit, Math.max(1, items.length)) }, async () => {
+    while (index < items.length) {
+      const current = index++;
+      results[current] = await worker(items[current]);
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
+}
 
 /* ---------------- CSV helpers (native parity) ---------------- */
 const csvEscape = (v: unknown) => {
@@ -467,6 +493,13 @@ const OrgProfileNative: React.FC = () => {
   const [learners, setLearners] = useState<MiniUser[]>([]);
   const [feeInstructorId, setFeeInstructorId] = useState<string | number | null>(null);
 
+  const [instructorSelectMode, setInstructorSelectMode] = useState(false);
+  const [learnerSelectMode, setLearnerSelectMode] = useState(false);
+  const [selectedInstructorIds, setSelectedInstructorIds] = useState<Set<string>>(new Set());
+  const [selectedLearnerIds, setSelectedLearnerIds] = useState<Set<string>>(new Set());
+  const [bulkDeletingInstructors, setBulkDeletingInstructors] = useState(false);
+  const [bulkDeletingLearners, setBulkDeletingLearners] = useState(false);
+
   // invite sheet state
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<'instructor' | 'learner'>('learner');
@@ -474,6 +507,10 @@ const OrgProfileNative: React.FC = () => {
   // add-learner / add-instructor modals
   const [addInstructorOpen, setAddInstructorOpen] = useState(false);
   const [addLearnerOpen, setAddLearnerOpen] = useState(false);
+  const [editInstructorOpen, setEditInstructorOpen] = useState(false);
+  const [editLearnerOpen, setEditLearnerOpen] = useState(false);
+  const [editingInstructor, setEditingInstructor] = useState<MiniUser | null>(null);
+  const [editingLearner, setEditingLearner] = useState<MiniUser | null>(null);
 
   // learner photo mapping state
   const [photoAdmCode, setPhotoAdmCode] = useState('');
@@ -609,6 +646,16 @@ const OrgProfileNative: React.FC = () => {
     const start = (learnerPage - 1) * learnerPageSize;
     return learners.slice(start, start + learnerPageSize);
   }, [learners, learnerPage, learnerPageSize]);
+
+  useEffect(() => {
+    setSelectedInstructorIds((prev) =>
+      new Set([...prev].filter((id) => instructors.some((i) => String(i.id) === id)))
+    );
+  }, [instructors]);
+
+  useEffect(() => {
+    setSelectedLearnerIds((prev) => new Set([...prev].filter((id) => learners.some((l) => String(l.id) === id))));
+  }, [learners]);
 
   const exitOrgMode = async () => {
     try {
@@ -781,6 +828,62 @@ const OrgProfileNative: React.FC = () => {
     [backendUrl, org?.id, orgToken, refreshRoster]
   );
 
+  const toggleInstructorSelect = useCallback((id: string | number) => {
+    setSelectedInstructorIds((prev) => {
+      const next = new Set(prev);
+      const key = String(id);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleLearnerSelect = useCallback((id: string | number) => {
+    setSelectedLearnerIds((prev) => {
+      const next = new Set(prev);
+      const key = String(id);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectAllInstructors = useCallback(() => {
+    if (!instructors.length) return;
+    setSelectedInstructorIds(new Set(instructors.map((i) => String(i.id))));
+  }, [instructors]);
+
+  const selectAllLearners = useCallback(() => {
+    if (!learners.length) return;
+    setSelectedLearnerIds(new Set(learners.map((i) => String(i.id))));
+  }, [learners]);
+
+  const clearInstructorSelection = useCallback(() => {
+    setInstructorSelectMode(false);
+    setSelectedInstructorIds(new Set());
+  }, []);
+
+  const clearLearnerSelection = useCallback(() => {
+    setLearnerSelectMode(false);
+    setSelectedLearnerIds(new Set());
+  }, []);
+
+  const selectedInstructorList = useMemo(
+    () => instructors.filter((u) => selectedInstructorIds.has(String(u.id))),
+    [instructors, selectedInstructorIds]
+  );
+
+  const selectedLearnerList = useMemo(
+    () => learners.filter((u) => selectedLearnerIds.has(String(u.id))),
+    [learners, selectedLearnerIds]
+  );
+
   // A–H parity: confirm before remove + keep optimistic updates
   const handleRemoveMember = useCallback(
     async (u: MiniUser) => {
@@ -835,6 +938,119 @@ const OrgProfileNative: React.FC = () => {
       return { tempPassword: (resp as any)?.tempPassword ?? null };
     },
     [backendUrl, org?.id, orgToken, refreshRoster]
+  );
+
+  const handleEditInstructor = useCallback((u: MiniUser) => {
+    setEditingInstructor(u);
+    setEditInstructorOpen(true);
+  }, []);
+
+  const handleEditLearner = useCallback((u: MiniUser) => {
+    setEditingLearner(u);
+    setEditLearnerOpen(true);
+  }, []);
+
+  const handleUpdateInstructor = useCallback(
+    async (payload: {
+      name: string;
+      email?: string;
+      subject?: string;
+      staff_code?: string;
+    }) => {
+      if (!org?.id || !orgToken || !editingInstructor) {
+        throw new Error('Organization or token missing.');
+      }
+      await updateOrgInstructor(backendUrl, orgToken, org.id, editingInstructor.id, payload);
+      await refreshRoster(org.id);
+    },
+    [backendUrl, editingInstructor, org?.id, orgToken, refreshRoster]
+  );
+
+  const handleUpdateLearner = useCallback(
+    async (payload: {
+      name: string;
+      email?: string;
+      admission_code?: string;
+      class_label?: string;
+      guardian_email?: string;
+      house?: string;
+      dormitory?: string;
+      club?: string;
+    }) => {
+      if (!org?.id || !orgToken || !editingLearner) {
+        throw new Error('Organization or token missing.');
+      }
+      await updateOrgLearner(backendUrl, orgToken, org.id, editingLearner.id, payload);
+      await refreshRoster(org.id);
+    },
+    [backendUrl, editingLearner, org?.id, orgToken, refreshRoster]
+  );
+
+  const handleBulkDelete = useCallback(
+    async (role: 'instructor' | 'learner') => {
+      if (!org?.id || !orgToken) return;
+
+      const selection = role === 'instructor' ? selectedInstructorList : selectedLearnerList;
+      const count = selection.length;
+      if (!count) return;
+
+      const noun = role === 'instructor' ? 'instructors' : 'learners';
+      const ok = await confirmAsync('Delete members', `Delete ${count} ${noun}? This cannot be undone.`);
+      if (!ok) return;
+
+      const setDeleting = role === 'instructor' ? setBulkDeletingInstructors : setBulkDeletingLearners;
+      setDeleting(true);
+
+      const failures: { user: MiniUser; msg: string }[] = [];
+      let successCount = 0;
+
+      try {
+        await runWithConcurrency(selection, async (user) => {
+          try {
+            await removeOrgMember(backendUrl, orgToken, org.id, user.id);
+            successCount += 1;
+
+            if (role === 'instructor') {
+              setInstructors((prev) => prev.filter((x) => String(x.id) !== String(user.id)));
+              setSelectedInstructorIds((prev) => {
+                const next = new Set(prev);
+                next.delete(String(user.id));
+                return next;
+              });
+            } else {
+              setLearners((prev) => prev.filter((x) => String(x.id) !== String(user.id)));
+              setSelectedLearnerIds((prev) => {
+                const next = new Set(prev);
+                next.delete(String(user.id));
+                return next;
+              });
+            }
+          } catch (e: any) {
+            const msg = e?.response?.data?.message || e?.message || 'Failed to remove member.';
+            failures.push({ user, msg });
+          }
+        }, 3);
+      } finally {
+        setDeleting(false);
+      }
+
+      if (role === 'learner' && successCount) {
+        setSeatsUsed((s) => Math.max(0, (s || 0) - successCount));
+      }
+
+      const chunks = [] as string[];
+      if (successCount) {
+        chunks.push(`Deleted ${successCount} ${role}${successCount === 1 ? '' : 's'}.`);
+      }
+      if (failures.length) {
+        const names = failures.map((f) => f.user.name || f.user.email || `User #${f.user.id}`);
+        const summary = names.slice(0, 4).join(', ');
+        chunks.push(`Failed for ${failures.length}: ${summary}${names.length > 4 ? '…' : ''}`);
+      }
+
+      Alert.alert('Delete roster', chunks.join('\n\n') || 'No changes.');
+    },
+    [backendUrl, org?.id, orgToken, selectedInstructorList, selectedLearnerList]
   );
 
   // A–H parity: Download login sheet (CSV)
@@ -1300,9 +1516,54 @@ const OrgProfileNative: React.FC = () => {
             entering={FadeInDown.delay(60).duration(380)}
             style={palette.surface(tw`mb-4`)}
           >
-            <View>
-              <View style={tw`flex-row items-center justify-between`}>
-                <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Instructors</Text>
+          <View>
+            <View style={tw`flex-row items-center justify-between`}>
+              <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Instructors</Text>
+              <View style={tw`flex-row items-center gap-2`}>
+                {instructorSelectMode ? (
+                  <>
+                    <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>
+                      {selectedInstructorIds.size} selected
+                    </Text>
+
+                    <TouchableOpacity
+                      onPress={() => handleBulkDelete('instructor')}
+                      disabled={!selectedInstructorIds.size || bulkDeletingInstructors}
+                      style={[
+                        tw`px-3 py-1 rounded-full`,
+                        {
+                          backgroundColor: '#fef2f2',
+                          opacity: !selectedInstructorIds.size || bulkDeletingInstructors ? 0.55 : 1,
+                        },
+                      ]}
+                    >
+                      <Text style={[tw`text-xs font-semibold`, { color: '#b91c1c' }]}>
+                        {bulkDeletingInstructors ? 'Deleting…' : 'Delete'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={clearInstructorSelection}
+                      style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}
+                    >
+                      <Text style={[tw`text-xs font-semibold`, { color: palette.textMuted }]}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={selectAllInstructors}
+                      style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}
+                    >
+                      <Text style={[tw`text-xs font-semibold`, { color: palette.textMuted }]}>Select all</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => setInstructorSelectMode(true)}
+                    style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}
+                  >
+                    <Text style={[tw`text-xs font-semibold`, { color: palette.textMuted }]}>Select</Text>
+                  </TouchableOpacity>
+                )}
 
                 <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}>
                   <Text style={[tw`text-[10px] font-semibold`, { color: palette.textMuted }]}>
@@ -1310,6 +1571,7 @@ const OrgProfileNative: React.FC = () => {
                   </Text>
                 </View>
               </View>
+            </View>
 
               <View style={tw`mt-3 flex-row flex-wrap`}>
                 <ActionPill
@@ -1384,7 +1646,12 @@ const OrgProfileNative: React.FC = () => {
                       <PersonRow
                         key={String(u.id)}
                         u={{ ...u, can_access_fees: hasFees }}
-                        onRemove={() => handleRemoveMember(u)}
+                        onRemove={!instructorSelectMode ? () => handleRemoveMember(u) : undefined}
+                        onEdit={!instructorSelectMode ? () => handleEditInstructor(u) : undefined}
+                        selectMode={instructorSelectMode}
+                        selected={selectedInstructorIds.has(String(u.id))}
+                        onToggleSelect={() => toggleInstructorSelect(u.id)}
+                        hideRemove={instructorSelectMode}
                         badge={hasFees ? 'Fees access' : undefined}
                         extraActions={
                           <TouchableOpacity
@@ -1444,8 +1711,53 @@ const OrgProfileNative: React.FC = () => {
           {/* Learners */}
           <Animated.View entering={FadeInDown.delay(120).duration(380)} style={palette.surface()}>
             <View>
-              <View style={tw`flex-row items-center justify-between`}>
-                <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Learners</Text>
+            <View style={tw`flex-row items-center justify-between`}>
+              <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Learners</Text>
+              <View style={tw`flex-row items-center gap-2`}>
+                {learnerSelectMode ? (
+                  <>
+                    <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}> 
+                      {selectedLearnerIds.size} selected
+                    </Text>
+
+                    <TouchableOpacity
+                      onPress={() => handleBulkDelete('learner')}
+                      disabled={!selectedLearnerIds.size || bulkDeletingLearners}
+                      style={[
+                        tw`px-3 py-1 rounded-full`,
+                        {
+                          backgroundColor: '#fef2f2',
+                          opacity: !selectedLearnerIds.size || bulkDeletingLearners ? 0.55 : 1,
+                        },
+                      ]}
+                    >
+                      <Text style={[tw`text-xs font-semibold`, { color: '#b91c1c' }]}>
+                        {bulkDeletingLearners ? 'Deleting…' : 'Delete'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={clearLearnerSelection}
+                      style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}
+                    >
+                      <Text style={[tw`text-xs font-semibold`, { color: palette.textMuted }]}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={selectAllLearners}
+                      style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}
+                    >
+                      <Text style={[tw`text-xs font-semibold`, { color: palette.textMuted }]}>Select all</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => setLearnerSelectMode(true)}
+                    style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}
+                  >
+                    <Text style={[tw`text-xs font-semibold`, { color: palette.textMuted }]}>Select</Text>
+                  </TouchableOpacity>
+                )}
 
                 <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: palette.divider }]}>
                   <Text style={[tw`text-[10px] font-semibold`, { color: palette.textMuted }]}>
@@ -1453,6 +1765,7 @@ const OrgProfileNative: React.FC = () => {
                   </Text>
                 </View>
               </View>
+            </View>
 
               <View style={tw`mt-3 flex-row flex-wrap`}>
                 <ActionPill
@@ -1522,7 +1835,16 @@ const OrgProfileNative: React.FC = () => {
               <>
                 <View style={tw`mt-3`}>
                   {paginatedLearners.map((u) => (
-                    <PersonRow key={String(u.id)} u={u} onRemove={() => handleRemoveMember(u)} />
+                    <PersonRow
+                      key={String(u.id)}
+                      u={u}
+                      onRemove={!learnerSelectMode ? () => handleRemoveMember(u) : undefined}
+                      onEdit={!learnerSelectMode ? () => handleEditLearner(u) : undefined}
+                      selectMode={learnerSelectMode}
+                      selected={selectedLearnerIds.has(String(u.id))}
+                      onToggleSelect={() => toggleLearnerSelect(u.id)}
+                      hideRemove={learnerSelectMode}
+                    />
                   ))}
                 </View>
 
@@ -2030,6 +2352,26 @@ const OrgProfileNative: React.FC = () => {
         open={addLearnerOpen}
         onClose={() => setAddLearnerOpen(false)}
         onCreate={handleCreateLearner}
+      />
+
+      <EditInstructorModal
+        open={editInstructorOpen && !!editingInstructor}
+        initial={editingInstructor}
+        onClose={() => {
+          setEditInstructorOpen(false);
+          setEditingInstructor(null);
+        }}
+        onSave={handleUpdateInstructor}
+      />
+
+      <EditLearnerModal
+        open={editLearnerOpen && !!editingLearner}
+        initial={editingLearner}
+        onClose={() => {
+          setEditLearnerOpen(false);
+          setEditingLearner(null);
+        }}
+        onSave={handleUpdateLearner}
       />
     </SafeAreaView>
   );

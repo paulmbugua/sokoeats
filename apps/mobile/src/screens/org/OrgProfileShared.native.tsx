@@ -20,6 +20,9 @@ export type MiniUser = {
   admission_code?: string | null;
   class_label?: string | null;
   guardian_email?: string | null;
+  house?: string | null;
+  dormitory?: string | null;
+  club?: string | null;
 
   // last issued temp password (instructor or learner)
   temp_password?: string | null;
@@ -141,7 +144,22 @@ export const PersonRow: React.FC<{
   onRemove?: () => Promise<void> | void;
   badge?: React.ReactNode;
   extraActions?: React.ReactNode;
-}> = ({ u, onRemove, badge, extraActions }) => {
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+  hideRemove?: boolean;
+  onEdit?: () => void;
+}> = ({
+  u,
+  onRemove,
+  badge,
+  extraActions,
+  selectMode,
+  selected,
+  onToggleSelect,
+  hideRemove,
+  onEdit,
+}) => {
   const palette = usePersonPalette();
   const [removing, setRemoving] = useState(false);
 
@@ -171,14 +189,27 @@ export const PersonRow: React.FC<{
   const hasEmail = !!u.email?.trim();
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={selectMode ? onToggleSelect : undefined}
+      disabled={selectMode ? !onToggleSelect : false}
+      style={({ pressed }) => [
         tw`flex-row items-center justify-between px-2 py-2 rounded-2xl`,
-        { backgroundColor: 'transparent' },
+        { backgroundColor: 'transparent', opacity: pressed && selectMode ? 0.9 : 1 },
       ]}
+      accessibilityRole={selectMode ? 'checkbox' : undefined}
+      accessibilityState={selectMode ? { checked: !!selected } : undefined}
     >
       {/* Left: avatar + name */}
       <View style={tw`flex-row items-center gap-3 flex-1 min-w-0`}>
+        {selectMode ? (
+          <Ionicons
+            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={22}
+            color={selected ? '#10b981' : palette.iconMuted}
+            style={tw`mr-0.5`}
+          />
+        ) : null}
+
         <View
           style={[
             tw`h-9 w-9 rounded-full items-center justify-center`,
@@ -211,10 +242,20 @@ export const PersonRow: React.FC<{
       {/* Right: ICON actions only */}
       <View style={tw`flex-row items-center gap-1.5 ml-2`}>
         {extraActions}
+        {onEdit && !selectMode && (
+          <IconBtn
+            label="Edit"
+            onPress={onEdit}
+            bg={palette.chipBg}
+            bgPressed={palette.chipBgPressed}
+          >
+            <Ionicons name="pencil-outline" size={18} color={palette.icon} />
+          </IconBtn>
+        )}
         <IconBtn
           label={hasEmail ? 'Email' : 'No email'}
           onPress={hasEmail ? openEmail : undefined}
-          disabled={!hasEmail}
+          disabled={!hasEmail || !!selectMode}
           bg={palette.chipBg}
           bgPressed={palette.chipBgPressed}
         >
@@ -224,13 +265,14 @@ export const PersonRow: React.FC<{
         <IconBtn
           label="WhatsApp"
           onPress={openWhatsApp}
+          disabled={!!selectMode}
           bg={palette.chipBg}
           bgPressed={palette.chipBgPressed}
         >
           <Ionicons name="logo-whatsapp" size={18} color={palette.icon} />
         </IconBtn>
 
-        {onRemove && (
+        {onRemove && !hideRemove && !selectMode && (
           <IconBtn
             label="Remove from organization"
             onPress={doRemove}
