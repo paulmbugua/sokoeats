@@ -134,6 +134,54 @@ export async function createOrgLearner(
   return res.data;
 }
 
+/* ─────────────────────────── Update learner ─────────────────────────── */
+
+export type UpdateOrgLearnerPayload = {
+  name: string;
+  email?: string;
+  admission_code?: string;
+  admissionCode?: string;
+  class_label?: string;
+  classLabel?: string;
+  guardian_email?: string;
+  guardianEmail?: string;
+  house?: string;
+  dormitory?: string;
+  club?: string;
+};
+
+export async function updateOrgLearner(
+  backendUrl: string,
+  token: string,
+  orgId: string,
+  learnerId: string | number,
+  payload: UpdateOrgLearnerPayload,
+): Promise<OrgLearner> {
+  const base = backendUrl.replace(/\/+$/, '');
+  const body = {
+    name: payload.name,
+    email: payload.email ?? undefined,
+    admissionCode: payload.admissionCode ?? payload.admission_code ?? undefined,
+    classLabel: payload.classLabel ?? payload.class_label ?? undefined,
+    guardianEmail: payload.guardianEmail ?? payload.guardian_email ?? undefined,
+    house: payload.house ?? undefined,
+    dormitory: payload.dormitory ?? undefined,
+    club: payload.club ?? undefined,
+  };
+
+  const res = await axios.patch<{ learner: OrgLearner }>(
+    `${base}/api/orgs/${orgId}/learners/${learnerId}`,
+    body,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  return res.data?.learner || res.data;
+}
+
 /* ────────────────────── CSV bulk upload ────────────────────── */
 
 export async function uploadOrgLearnersCsv(

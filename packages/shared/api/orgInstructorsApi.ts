@@ -72,6 +72,53 @@ export async function createOrgInstructor(
   return resp.json();
 }
 
+/* ───────────────────────────── Update instructor ─────────────────────────── */
+
+export type UpdateOrgInstructorPayload = {
+  name: string;
+  email?: string;
+  subject?: string;
+  staff_code?: string;
+  staffCode?: string;
+};
+
+export async function updateOrgInstructor(
+  backendUrl: string,
+  token: string,
+  orgId: string | number,
+  instructorId: string | number,
+  payload: UpdateOrgInstructorPayload,
+): Promise<OrgInstructorResponse['instructor']> {
+  const base = backendUrl.replace(/\/+$/, '');
+  const resp = await fetch(`${base}/api/orgs/${orgId}/instructors/${instructorId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      name: payload.name,
+      email: payload.email ?? undefined,
+      subject: payload.subject ?? undefined,
+      staff_code: payload.staff_code ?? payload.staffCode ?? undefined,
+    }),
+  });
+
+  if (!resp.ok) {
+    let message = `Failed to update instructor (status ${resp.status})`;
+    try {
+      const data: any = await resp.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  const data = (await resp.json()) as { instructor?: OrgInstructorResponse['instructor'] };
+  return data.instructor || (data as any);
+}
+
 export interface SetInstructorFeeAccessResponse {
   ok: boolean;
   designatedInstructorId?: string | number;

@@ -1,5 +1,6 @@
 // apps/web/src/pages/org/portal/OrgProfileShared.web.tsx
 import React, { useState } from 'react';
+import { CheckSquare, Pencil, Square } from 'lucide-react';
 
 /* ----------------------------- shared types ----------------------------- */
 
@@ -11,11 +12,15 @@ export type MiniUser = {
 
   // optional staff fields (instructors)
   staff_code?: string | null;
+  subject?: string | null;
 
   // optional learner fields
   admission_code?: string | null;
   class_label?: string | null;
   guardian_email?: string | null;
+  house?: string | null;
+  dormitory?: string | null;
+  club?: string | null;
 
   // last issued temp password (instructor or learner)
   temp_password?: string | null;
@@ -138,7 +143,22 @@ export const PersonRow: React.FC<{
   onRemove?: () => Promise<void> | void;
   badge?: React.ReactNode;
   extraActions?: React.ReactNode;
-}> = ({ u, onRemove, badge, extraActions }) => {
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+  hideRemove?: boolean;
+  onEdit?: () => void;
+}> = ({
+  u,
+  onRemove,
+  badge,
+  extraActions,
+  selectMode,
+  selected,
+  onToggleSelect,
+  hideRemove,
+  onEdit,
+}) => {
   const msg = `Hi${u.name ? ` ${u.name}` : ''}, I’d like to get in touch.`;
   const [removing, setRemoving] = useState(false);
 
@@ -155,9 +175,32 @@ export const PersonRow: React.FC<{
 
   const hasEmail = !!u.email?.trim();
 
+  const handleRowClick = () => {
+    if (selectMode && onToggleSelect) {
+      onToggleSelect();
+    }
+  };
+
   return (
-    <li className="flex items-center justify-between gap-3 rounded-xl px-2 py-2 hover:bg-slate-50 dark:hover:bg-[#0b1620]">
+    <li
+      className={`group flex items-center justify-between gap-3 rounded-xl px-2 py-2 hover:bg-slate-50 dark:hover:bg-[#0b1620] ${selectMode ? 'cursor-pointer' : ''}`}
+      onClick={handleRowClick}
+    >
       <div className="flex items-center gap-3 min-w-0 flex-1">
+        {selectMode ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect?.();
+            }}
+            className={`shrink-0 rounded-md border border-transparent p-1 text-slate-500 transition dark:text-slate-300 ${selected ? 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100' : 'hover:bg-slate-100 dark:hover:bg-white/10'}`}
+            aria-checked={selected}
+            role="checkbox"
+          >
+            {selected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+          </button>
+        ) : null}
         <div className="size-9 shrink-0 rounded-full ring-1 ring-black/5 dark:ring-white/10 bg-slate-100 dark:bg-white/10 grid place-items-center text-xs font-semibold">
           {getInitials(u.name, u.email)}
         </div>
@@ -175,8 +218,27 @@ export const PersonRow: React.FC<{
       </div>
 
       {/* Right side actions: ICONS ONLY */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div
+        className="flex items-center gap-1.5 shrink-0"
+        onClick={(e) => {
+          if (selectMode) e.stopPropagation();
+        }}
+      >
         {extraActions}
+        {onEdit && !selectMode ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 opacity-40 transition hover:text-slate-700 hover:opacity-100 dark:text-slate-300 dark:hover:text-white"
+            title="Edit"
+            aria-label="Edit"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        ) : null}
         <IconBtn
           title={hasEmail ? 'Email' : 'No email'}
           href={hasEmail ? `mailto:${u.email}` : undefined}
@@ -193,7 +255,7 @@ export const PersonRow: React.FC<{
           <WhatsAppIcon className="h-4 w-4" />
         </IconBtn>
 
-        {onRemove && (
+        {onRemove && !hideRemove && (
           <IconBtn
             title="Remove from organization"
             onClick={doRemove}

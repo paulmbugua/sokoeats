@@ -485,3 +485,317 @@ export const AddLearnerModal: React.FC<{
     </div>
   );
 };
+
+/* --------------------------- EditLearnerModal --------------------------- */
+
+export const EditLearnerModal: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  learner?: {
+    name?: string | null;
+    email?: string | null;
+    admission_code?: string | null;
+    class_label?: string | null;
+    guardian_email?: string | null;
+    house?: string | null;
+    dormitory?: string | null;
+    club?: string | null;
+  } | null;
+  onSave: (payload: {
+    name: string;
+    email?: string;
+    admission_code?: string;
+    class_label?: string;
+    guardian_email?: string;
+    house?: string;
+    dormitory?: string;
+    club?: string;
+  }) => Promise<void>;
+}> = ({ open, onClose, learner, onSave }) => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [admissionCode, setAdmissionCode] = useState('');
+  const [classLabel, setClassLabel] = useState('');
+  const [guardianEmail, setGuardianEmail] = useState('');
+  const [house, setHouse] = useState('');
+  const [dormitory, setDormitory] = useState('');
+  const [club, setClub] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open && learner) {
+      setName(learner.name || '');
+      setEmail(learner.email || '');
+      setAdmissionCode(learner.admission_code || '');
+      setClassLabel(learner.class_label || '');
+      setGuardianEmail(learner.guardian_email || '');
+      setHouse(learner.house || '');
+      setDormitory(learner.dormitory || '');
+      setClub(learner.club || '');
+      setSaving(false);
+    }
+    if (!open) {
+      setSaving(false);
+    }
+  }, [open, learner]);
+
+  if (!open || !learner) return null;
+
+  const handleSubmit = async () => {
+    if (!name.trim()) {
+      alert('Learner name is required.');
+      return;
+    }
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave({
+        name: name.trim(),
+        email: email.trim() || undefined,
+        admission_code: admissionCode.trim() || undefined,
+        class_label: classLabel.trim() || undefined,
+        guardian_email: guardianEmail.trim() || undefined,
+        house: house.trim() || undefined,
+        dormitory: dormitory.trim() || undefined,
+        club: club.trim() || undefined,
+      });
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || e?.message || 'Failed to update learner.';
+      alert(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[135] flex items-center justify-center bg-black/40 p-3">
+      <div className={`${cardBase} w-full max-w-md p-4`}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold">Edit learner</h3>
+          <button onClick={onClose} className="chip">
+            Close
+          </button>
+        </div>
+
+        <div className="mt-3 space-y-3">
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">Full name *</div>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="Learner name"
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">Email (optional)</div>
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="learner@example.edu"
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">Admission No / Code</div>
+            <input
+              value={admissionCode}
+              onChange={(e) => setAdmissionCode(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="e.g. ADM-2025-001"
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">Class / grade</div>
+            <input
+              value={classLabel}
+              onChange={(e) => setClassLabel(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="e.g. Grade 7 Maple"
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">Guardian email</div>
+            <input
+              value={guardianEmail}
+              onChange={(e) => setGuardianEmail(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="parent@example.com"
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">House (optional)</div>
+            <input
+              value={house}
+              onChange={(e) => setHouse(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="e.g. Maple / Blue"
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">Dormitory (optional)</div>
+            <input
+              value={dormitory}
+              onChange={(e) => setDormitory(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="e.g. Dorm A / Hostel 3"
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">Club / Activity (optional)</div>
+            <input
+              value={club}
+              onChange={(e) => setClub(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="e.g. Debate, Football, Science"
+            />
+          </label>
+
+          <button
+            disabled={saving}
+            onClick={handleSubmit}
+            className="inline-flex h-10 px-4 items-center rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-70"
+          >
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ------------------------- EditInstructorModal ------------------------- */
+
+export const EditInstructorModal: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  instructor?: {
+    name?: string | null;
+    email?: string | null;
+    subject?: string | null;
+    staff_code?: string | null;
+  } | null;
+  onSave: (payload: {
+    name: string;
+    email?: string;
+    subject?: string;
+    staff_code?: string;
+  }) => Promise<void>;
+}> = ({ open, onClose, instructor, onSave }) => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [subject, setSubject] = useState('');
+  const [staffCode, setStaffCode] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open && instructor) {
+      setName(instructor.name || '');
+      setEmail(instructor.email || '');
+      setSubject(instructor.subject || '');
+      setStaffCode(instructor.staff_code || '');
+      setSaving(false);
+    }
+    if (!open) setSaving(false);
+  }, [open, instructor]);
+
+  if (!open || !instructor) return null;
+
+  const handleSubmit = async () => {
+    if (!name.trim()) {
+      alert('Instructor name is required.');
+      return;
+    }
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave({
+        name: name.trim(),
+        email: email.trim() || undefined,
+        subject: subject.trim() || undefined,
+        staff_code: staffCode.trim() || undefined,
+      });
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || e?.message || 'Failed to update instructor.';
+      alert(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[135] flex items-center justify-center bg-black/40 p-3">
+      <div className={`${cardBase} w-full max-w-md p-4`}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold">Edit instructor</h3>
+          <button onClick={onClose} className="chip">
+            Close
+          </button>
+        </div>
+
+        <div className="mt-3 space-y-3">
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">Full name *</div>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="Instructor name"
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">Email (optional)</div>
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="instructor@example.edu"
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">Subject / department</div>
+            <input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="e.g. Mathematics, English"
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-xs text-[#49739c] dark:text-darkTextSecondary mb-1">Staff ID / code</div>
+            <input
+              value={staffCode}
+              onChange={(e) => setStaffCode(e.target.value)}
+              className="w-full rounded-lg ring-1 ring-black/10 dark:ring-white/10 bg-white dark:bg-[#0f1821] px-3 py-2"
+              placeholder="e.g. ST-001"
+            />
+          </label>
+
+          <button
+            disabled={saving}
+            onClick={handleSubmit}
+            className="inline-flex h-10 px-4 items-center rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-70"
+          >
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

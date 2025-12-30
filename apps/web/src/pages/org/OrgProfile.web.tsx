@@ -17,10 +17,14 @@ import {
   createOrgLearner as apiCreateOrgLearner,
   uploadOrgLearnersCsv,
   setOrgLearnerPhotoByAdmission,
+  updateOrgLearner,
 } from '@mytutorapp/shared/api/orgLearnersApi';
 
 // Instructor creation (no CSV)
-import { createOrgInstructor as apiCreateOrgInstructor } from '@mytutorapp/shared/api/orgInstructorsApi';
+import {
+  createOrgInstructor as apiCreateOrgInstructor,
+  updateOrgInstructor,
+} from '@mytutorapp/shared/api/orgInstructorsApi';
 
 // Theme toggle
 import ThemeToggle from '../../components/ThemeToggle.web';
@@ -37,7 +41,13 @@ import {
 import { useOrgInstructorFeeAccess } from '@mytutorapp/shared/hooks/useOrgInstructorFeeAccess';
 
 // Modals
-import { InviteModal, AddInstructorModal, AddLearnerModal } from './portal/OrgProfileModals.web';
+import {
+  InviteModal,
+  AddInstructorModal,
+  AddLearnerModal,
+  EditLearnerModal,
+  EditInstructorModal,
+} from './portal/OrgProfileModals.web';
 
 /* ----------------------------- local types ----------------------------- */
 
@@ -121,6 +131,16 @@ const OrgProfilePage: React.FC = () => {
   const [instructorPageSize, setInstructorPageSize] = useState(10);
   const [learnerPageSize, setLearnerPageSize] = useState(10);
 
+  // selection + bulk delete state
+  const [instructorSelectMode, setInstructorSelectMode] = useState(false);
+  const [learnerSelectMode, setLearnerSelectMode] = useState(false);
+  const [selectedInstructorIds, setSelectedInstructorIds] = useState<Set<string>>(new Set());
+  const [selectedLearnerIds, setSelectedLearnerIds] = useState<Set<string>>(new Set());
+  const [bulkDeletingInstructors, setBulkDeletingInstructors] = useState(false);
+  const [bulkDeletingLearners, setBulkDeletingLearners] = useState(false);
+  const [editingInstructor, setEditingInstructor] = useState<MiniUser | null>(null);
+  const [editingLearner, setEditingLearner] = useState<MiniUser | null>(null);
+
   type InviteResp = { ok: boolean; invite_code: string; invite_url: string };
 
   const handleCreateMembershipInvite = useCallback(
@@ -169,6 +189,16 @@ const OrgProfilePage: React.FC = () => {
         setInstructors((prev) => prev.filter((x) => String(x.id) !== String(u.id)));
         const wasLearner = learners.some((x) => String(x.id) === String(u.id));
         setLearners((prev) => prev.filter((x) => String(x.id) !== String(u.id)));
+        setSelectedInstructorIds((prev) => {
+          const next = new Set(prev);
+          next.delete(String(u.id));
+          return next;
+        });
+        setSelectedLearnerIds((prev) => {
+          const next = new Set(prev);
+          next.delete(String(u.id));
+          return next;
+        });
         if (wasLearner) setSeatsUsed((s) => Math.max(0, (s || 0) - 1));
       } catch (e: any) {
         const msg = e?.response?.data?.message || 'Failed to remove member.';
@@ -176,6 +206,45 @@ const OrgProfilePage: React.FC = () => {
       }
     },
     [backendUrl, org?.id, org?.name, orgToken, learners]
+  );
+
+  const runWithConcurrency = useCallback(
+    async (
+      ids: string[],
+      worker: (id: string) => Promise<void>,
+      limit = 3
+    ): Promise<{ id: string; error: string }[]> => {
+      if (!ids.length) return [];
+
+      const failures: { id: string; error: string }[] = [];
+      let idx = 0;
+      let active = 0;
+
+      return new Promise((resolve) => {
+        const launch = () => {
+          if (idx >= ids.length) {
+            if (active === 0) resolve(failures);
+            return;
+          }
+
+          const id = ids[idx++];
+          active += 1;
+          Promise.resolve(worker(id))
+            .catch((e: any) => {
+              const msg = e?.response?.data?.message || e?.message || 'Failed to delete member.';
+              failures.push({ id, error: msg });
+            })
+            .finally(() => {
+              active -= 1;
+              launch();
+            });
+        };
+
+        const starters = Math.min(limit, ids.length);
+        for (let i = 0; i < starters; i += 1) launch();
+      });
+    },
+    []
   );
 
   const seatCap = useCallback((tier?: string) => {
@@ -296,6 +365,20 @@ const OrgProfilePage: React.FC = () => {
     }
   }, [totalLearnerPages, learnerPage]);
 
+  useEffect(() => {
+    setSelectedInstructorIds((prev) => {
+      const next = new Set([...prev].filter((id) => instructors.some((u) => String(u.id) === id)));
+      return next;
+    });
+  }, [instructors]);
+
+  useEffect(() => {
+    setSelectedLearnerIds((prev) => {
+      const next = new Set([...prev].filter((id) => learners.some((u) => String(u.id) === id)));
+      return next;
+    });
+  }, [learners]);
+
   const instructorRangeText = () => {
     if (!instructors.length) return 'No instructors yet';
     const start = (instructorPage - 1) * instructorPageSize + 1;
@@ -309,6 +392,120 @@ const OrgProfilePage: React.FC = () => {
     const end = Math.min(learnerPage * learnerPageSize, learners.length);
     return `Showing ${start}–${end} of ${learners.length} learners`;
   };
+
+  const toggleInstructorSelect = useCallback((id: string | number) => {
+    setSelectedInstructorIds((prev) => {
+      const next = new Set(prev);
+      const key = String(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const toggleLearnerSelect = useCallback((id: string | number) => {
+    setSelectedLearnerIds((prev) => {
+      const next = new Set(prev);
+      const key = String(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const selectAllInstructors = useCallback(() => {
+    setSelectedInstructorIds(new Set(instructors.map((u) => String(u.id))));
+  }, [instructors]);
+
+  const selectAllLearners = useCallback(() => {
+    setSelectedLearnerIds(new Set(learners.map((u) => String(u.id))));
+  }, [learners]);
+
+  const cancelInstructorSelect = useCallback(() => {
+    setInstructorSelectMode(false);
+    setSelectedInstructorIds(new Set());
+  }, []);
+
+  const cancelLearnerSelect = useCallback(() => {
+    setLearnerSelectMode(false);
+    setSelectedLearnerIds(new Set());
+  }, []);
+
+  const bulkDeleteInstructors = useCallback(async () => {
+    if (!org?.id || !orgToken) return;
+    const ids = Array.from(selectedInstructorIds);
+    if (!ids.length) return;
+
+    const ok = window.confirm(`Delete ${ids.length} instructor${ids.length === 1 ? '' : 's'}? This cannot be undone.`);
+    if (!ok) return;
+
+    setBulkDeletingInstructors(true);
+    let success = 0;
+
+    await runWithConcurrency(ids, async (id) => {
+      await removeOrgMember(backendUrl, orgToken, org.id, id);
+      success += 1;
+      setInstructors((prev) => prev.filter((u) => String(u.id) !== String(id)));
+      setSelectedInstructorIds((prev) => {
+        const next = new Set(prev);
+        next.delete(String(id));
+        return next;
+      });
+    });
+
+    setBulkDeletingInstructors(false);
+
+    const failed = ids.length - success;
+    if (success === ids.length) {
+      setInstructorSelectMode(false);
+    }
+
+    if (failed) {
+      alert(`Deleted ${success} instructor${success === 1 ? '' : 's'}, failed ${failed}.`);
+    } else {
+      alert(`Deleted ${success} instructor${success === 1 ? '' : 's'}.`);
+    }
+  }, [backendUrl, org?.id, orgToken, runWithConcurrency, selectedInstructorIds]);
+
+  const bulkDeleteLearners = useCallback(async () => {
+    if (!org?.id || !orgToken) return;
+    const ids = Array.from(selectedLearnerIds);
+    if (!ids.length) return;
+
+    const ok = window.confirm(`Delete ${ids.length} learner${ids.length === 1 ? '' : 's'}? This cannot be undone.`);
+    if (!ok) return;
+
+    setBulkDeletingLearners(true);
+    let success = 0;
+
+    await runWithConcurrency(ids, async (id) => {
+      await removeOrgMember(backendUrl, orgToken, org.id, id);
+      success += 1;
+      setLearners((prev) => prev.filter((u) => String(u.id) !== String(id)));
+      setSelectedLearnerIds((prev) => {
+        const next = new Set(prev);
+        next.delete(String(id));
+        return next;
+      });
+    });
+
+    if (success) {
+      setSeatsUsed((s) => Math.max(0, (s || 0) - success));
+    }
+
+    setBulkDeletingLearners(false);
+
+    const failed = ids.length - success;
+    if (success === ids.length) {
+      setLearnerSelectMode(false);
+    }
+
+    if (failed) {
+      alert(`Deleted ${success} learner${success === 1 ? '' : 's'}, failed ${failed}.`);
+    } else {
+      alert(`Deleted ${success} learner${success === 1 ? '' : 's'}.`);
+    }
+  }, [backendUrl, org?.id, orgToken, runWithConcurrency, selectedLearnerIds]);
 
   const logoutOrgMode = () => {
     try {
@@ -355,6 +552,19 @@ const OrgProfilePage: React.FC = () => {
       return { tempPassword: resp.tempPassword || null };
     },
     [backendUrl, org?.id, orgToken, refreshRoster]
+  );
+
+  const handleUpdateInstructor = useCallback(
+    async (payload: { name: string; email?: string; subject?: string; staff_code?: string }) => {
+      if (!org?.id || !orgToken || !editingInstructor) {
+        throw new Error('Organization, token, or instructor missing.');
+      }
+      await updateOrgInstructor(backendUrl, orgToken, org.id, editingInstructor.id, payload);
+      await refreshRoster(org.id);
+      setEditingInstructor(null);
+      alert('Instructor updated.');
+    },
+    [backendUrl, editingInstructor, org?.id, orgToken, refreshRoster]
   );
 
   // ---- Shared CSV helpers (used for learners + login sheet) ----
@@ -525,6 +735,28 @@ const OrgProfilePage: React.FC = () => {
       return { tempPassword: resp.tempPassword || null };
     },
     [backendUrl, org?.id, orgToken, refreshRoster]
+  );
+
+  const handleUpdateLearner = useCallback(
+    async (payload: {
+      name: string;
+      email?: string;
+      admission_code?: string;
+      class_label?: string;
+      guardian_email?: string;
+      house?: string;
+      dormitory?: string;
+      club?: string;
+    }) => {
+      if (!org?.id || !orgToken || !editingLearner) {
+        throw new Error('Organization, token, or learner missing.');
+      }
+      await updateOrgLearner(backendUrl, orgToken, org.id, editingLearner.id, payload);
+      await refreshRoster(org.id);
+      setEditingLearner(null);
+      alert('Learner updated.');
+    },
+    [backendUrl, editingLearner, org?.id, orgToken, refreshRoster]
   );
 
   // learner CSV upload handler
@@ -824,6 +1056,44 @@ const OrgProfilePage: React.FC = () => {
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-lg font-bold">Instructors</h2>
               <div className="flex flex-wrap gap-2 items-center">
+                {instructorSelectMode ? (
+                  <>
+                    <span className="text-xs sm:text-sm text-[#49739c] dark:text-darkTextSecondary">
+                      {selectedInstructorIds.size} selected
+                    </span>
+                    <button
+                      type="button"
+                      onClick={bulkDeleteInstructors}
+                      disabled={!selectedInstructorIds.size || bulkDeletingInstructors}
+                      className="text-xs sm:text-sm font-semibold text-rose-600 disabled:opacity-50"
+                    >
+                      {bulkDeletingInstructors ? 'Deleting…' : 'Delete'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelInstructorSelect}
+                      className="text-xs sm:text-sm font-semibold underline underline-offset-4"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={selectAllInstructors}
+                      className="text-xs sm:text-sm font-semibold underline underline-offset-4"
+                    >
+                      Select all
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setInstructorSelectMode(true)}
+                    className="text-xs sm:text-sm font-semibold underline underline-offset-4"
+                  >
+                    Select
+                  </button>
+                )}
+
                 <button
                   onClick={() => setAddInstructorOpen(true)}
                   className="text-sm font-semibold underline underline-offset-4"
@@ -877,6 +1147,11 @@ const OrgProfilePage: React.FC = () => {
                         u={{ ...u, can_access_fees: hasFees }}
                         onRemove={() => handleRemoveMember(u)}
                         badge={hasFees ? 'Fees access' : null}
+                        selectMode={instructorSelectMode}
+                        selected={selectedInstructorIds.has(String(u.id))}
+                        onToggleSelect={() => toggleInstructorSelect(u.id)}
+                        hideRemove={instructorSelectMode}
+                        onEdit={() => setEditingInstructor(u)}
                         extraActions={
                           <button
                             type="button"
@@ -974,6 +1249,44 @@ const OrgProfilePage: React.FC = () => {
               <h2 className="text-lg font-bold">Learners</h2>
 
               <div className="flex flex-wrap gap-2 items-center">
+                {learnerSelectMode ? (
+                  <>
+                    <span className="text-xs sm:text-sm text-[#49739c] dark:text-darkTextSecondary">
+                      {selectedLearnerIds.size} selected
+                    </span>
+                    <button
+                      type="button"
+                      onClick={bulkDeleteLearners}
+                      disabled={!selectedLearnerIds.size || bulkDeletingLearners}
+                      className="text-xs sm:text-sm font-semibold text-rose-600 disabled:opacity-50"
+                    >
+                      {bulkDeletingLearners ? 'Deleting…' : 'Delete'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelLearnerSelect}
+                      className="text-xs sm:text-sm font-semibold underline underline-offset-4"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={selectAllLearners}
+                      className="text-xs sm:text-sm font-semibold underline underline-offset-4"
+                    >
+                      Select all
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setLearnerSelectMode(true)}
+                    className="text-xs sm:text-sm font-semibold underline underline-offset-4"
+                  >
+                    Select
+                  </button>
+                )}
+
                 <label className="text-xs sm:text-sm flex items-center gap-2 cursor-pointer">
                   <span className="underline underline-offset-4">
                     {csvUploading ? 'Uploading CSV…' : 'Import CSV'}
@@ -1045,7 +1358,16 @@ const OrgProfilePage: React.FC = () => {
               <>
                 <ul className="mt-3 divide-y divide-black/5 dark:divide-white/10 rounded-xl">
                   {paginatedLearners.map((u) => (
-                    <PersonRow key={String(u.id)} u={u} onRemove={() => handleRemoveMember(u)} />
+                    <PersonRow
+                      key={String(u.id)}
+                      u={u}
+                      onRemove={() => handleRemoveMember(u)}
+                      selectMode={learnerSelectMode}
+                      selected={selectedLearnerIds.has(String(u.id))}
+                      onToggleSelect={() => toggleLearnerSelect(u.id)}
+                      hideRemove={learnerSelectMode}
+                      onEdit={() => setEditingLearner(u)}
+                    />
                   ))}
                 </ul>
 
@@ -1456,6 +1778,20 @@ const OrgProfilePage: React.FC = () => {
           open={addLearnerOpen}
           onClose={() => setAddLearnerOpen(false)}
           onCreate={handleCreateLearner}
+        />
+
+        <EditInstructorModal
+          open={!!editingInstructor}
+          instructor={editingInstructor}
+          onClose={() => setEditingInstructor(null)}
+          onSave={handleUpdateInstructor}
+        />
+
+        <EditLearnerModal
+          open={!!editingLearner}
+          learner={editingLearner}
+          onClose={() => setEditingLearner(null)}
+          onSave={handleUpdateLearner}
         />
       </div>
 

@@ -690,3 +690,349 @@ export const AddLearnerModal: React.FC<{
     </Modal>
   );
 };
+
+/* --------------------------- EditInstructorModal --------------------------- */
+
+export const EditInstructorModal: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  onSave: (payload: {
+    name: string;
+    email?: string;
+    subject?: string;
+    staff_code?: string;
+  }) => Promise<void>;
+  initial?: {
+    name?: string | null;
+    email?: string | null;
+    subject?: string | null;
+    staff_code?: string | null;
+  } | null;
+}> = ({ open, onClose, onSave, initial }) => {
+  const palette = usePalette();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [subject, setSubject] = useState('');
+  const [staffCode, setStaffCode] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setName(initial?.name || '');
+      setEmail(initial?.email || '');
+      setSubject(initial?.subject || '');
+      setStaffCode(initial?.staff_code || '');
+      setSaving(false);
+    }
+  }, [open, initial]);
+
+  if (!open) return null;
+
+  const handleSubmit = async () => {
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    if (!trimmedName) {
+      Alert.alert('Edit instructor', 'Name is required.');
+      return;
+    }
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      Alert.alert('Edit instructor', 'Enter a valid email.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave({
+        name: trimmedName,
+        email: trimmedEmail || undefined,
+        subject: subject.trim() || undefined,
+        staff_code: staffCode.trim() || undefined,
+      });
+      onClose();
+      Alert.alert('Saved', 'Instructor updated.');
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || e?.message || 'Failed to update instructor.';
+      Alert.alert('Edit instructor', msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={tw`flex-1 items-center justify-center bg-black/40 p-3`}>
+        <View style={[palette.surface(), tw`w-full max-w-xl`]}>
+          <View style={tw`flex-row items-center justify-between`}>
+            <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Edit instructor</Text>
+            <TouchableOpacity onPress={onClose} style={palette.chip()}>
+              <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={tw`mt-3`}>
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Full name *</Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="Instructor name"
+                placeholderTextColor={palette.textSubtle}
+                style={palette.input()}
+              />
+            </View>
+
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Email</Text>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="instructor@example.edu"
+                placeholderTextColor={palette.textSubtle}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={palette.input()}
+              />
+            </View>
+
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Subject / department</Text>
+              <TextInput
+                value={subject}
+                onChangeText={setSubject}
+                placeholder="e.g. Mathematics"
+                placeholderTextColor={palette.textSubtle}
+                style={palette.input()}
+              />
+            </View>
+
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Staff ID / code</Text>
+              <TextInput
+                value={staffCode}
+                onChangeText={setStaffCode}
+                placeholder="e.g. ST-2045"
+                placeholderTextColor={palette.textSubtle}
+                style={palette.input()}
+              />
+            </View>
+
+            <TouchableOpacity
+              disabled={saving}
+              onPress={handleSubmit}
+              style={palette.button('primary')}
+            >
+              <Text style={tw`text-white font-semibold text-sm`}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+/* ----------------------------- EditLearnerModal ----------------------------- */
+
+export const EditLearnerModal: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  onSave: (payload: {
+    name: string;
+    email?: string;
+    admission_code?: string;
+    class_label?: string;
+    guardian_email?: string;
+    house?: string;
+    dormitory?: string;
+    club?: string;
+  }) => Promise<void>;
+  initial?: {
+    name?: string | null;
+    email?: string | null;
+    admission_code?: string | null;
+    class_label?: string | null;
+    guardian_email?: string | null;
+    house?: string | null;
+    dormitory?: string | null;
+    club?: string | null;
+  } | null;
+}> = ({ open, onClose, onSave, initial }) => {
+  const palette = usePalette();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [admissionCode, setAdmissionCode] = useState('');
+  const [classLabel, setClassLabel] = useState('');
+  const [guardianEmail, setGuardianEmail] = useState('');
+  const [house, setHouse] = useState('');
+  const [dormitory, setDormitory] = useState('');
+  const [club, setClub] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setName(initial?.name || '');
+      setEmail(initial?.email || '');
+      setAdmissionCode(initial?.admission_code || '');
+      setClassLabel(initial?.class_label || '');
+      setGuardianEmail(initial?.guardian_email || '');
+      setHouse(initial?.house || '');
+      setDormitory(initial?.dormitory || '');
+      setClub(initial?.club || '');
+      setSaving(false);
+    }
+  }, [open, initial]);
+
+  if (!open) return null;
+
+  const handleSubmit = async () => {
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    if (!trimmedName) {
+      Alert.alert('Edit learner', 'Name is required.');
+      return;
+    }
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      Alert.alert('Edit learner', 'Enter a valid email.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave({
+        name: trimmedName,
+        email: trimmedEmail || undefined,
+        admission_code: admissionCode.trim() || undefined,
+        class_label: classLabel.trim() || undefined,
+        guardian_email: guardianEmail.trim() || undefined,
+        house: house.trim() || undefined,
+        dormitory: dormitory.trim() || undefined,
+        club: club.trim() || undefined,
+      });
+      onClose();
+      Alert.alert('Saved', 'Learner updated.');
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || e?.message || 'Failed to update learner.';
+      Alert.alert('Edit learner', msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={tw`flex-1 items-center justify-center bg-black/40 p-3`}>
+        <View style={[palette.surface(), tw`w-full max-w-xl`]}>
+          <View style={tw`flex-row items-center justify-between`}>
+            <Text style={[tw`text-lg font-bold`, { color: palette.text }]}>Edit learner</Text>
+            <TouchableOpacity onPress={onClose} style={palette.chip()}>
+              <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={tw`mt-3`}>
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Full name *</Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="Learner name"
+                placeholderTextColor={palette.textSubtle}
+                style={palette.input()}
+              />
+            </View>
+
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Email</Text>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="learner@example.edu"
+                placeholderTextColor={palette.textSubtle}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={palette.input()}
+              />
+            </View>
+
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Admission No / Code</Text>
+              <TextInput
+                value={admissionCode}
+                onChangeText={setAdmissionCode}
+                placeholder="e.g. ADM-2025-001"
+                placeholderTextColor={palette.textSubtle}
+                style={palette.input()}
+              />
+            </View>
+
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Class / grade</Text>
+              <TextInput
+                value={classLabel}
+                onChangeText={setClassLabel}
+                placeholder="e.g. Grade 7 Maple"
+                placeholderTextColor={palette.textSubtle}
+                style={palette.input()}
+              />
+            </View>
+
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Guardian email</Text>
+              <TextInput
+                value={guardianEmail}
+                onChangeText={setGuardianEmail}
+                placeholder="parent@example.com"
+                placeholderTextColor={palette.textSubtle}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={palette.input()}
+              />
+            </View>
+
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>House</Text>
+              <TextInput
+                value={house}
+                onChangeText={setHouse}
+                placeholder="e.g. Maple / Blue"
+                placeholderTextColor={palette.textSubtle}
+                style={palette.input()}
+              />
+            </View>
+
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Dormitory</Text>
+              <TextInput
+                value={dormitory}
+                onChangeText={setDormitory}
+                placeholder="e.g. Dorm A"
+                placeholderTextColor={palette.textSubtle}
+                style={palette.input()}
+              />
+            </View>
+
+            <View style={tw`mb-3`}>
+              <Text style={[tw`text-xs mb-1`, { color: palette.textMuted }]}>Club / Activity</Text>
+              <TextInput
+                value={club}
+                onChangeText={setClub}
+                placeholder="e.g. Debate"
+                placeholderTextColor={palette.textSubtle}
+                style={palette.input()}
+              />
+            </View>
+
+            <TouchableOpacity
+              disabled={saving}
+              onPress={handleSubmit}
+              style={palette.button('primary')}
+            >
+              <Text style={tw`text-white font-semibold text-sm`}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
