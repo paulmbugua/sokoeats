@@ -724,3 +724,189 @@ export async function saveOrgLearnerAttendance(req, res, next) {
     return next(err);
   }
 }
+
+/**
+ * PATCH /api/orgs/:orgId/learners/:learnerId
+ * Body: { name?, email?, admissionCode?/admission_code?, classLabel?/class_label?, guardianEmail?/guardian_email?,
+ *         houseLabel?/house_label?, dormLabel?/dorm_label?, clubLabel?/club_label?, photoUrl?/photo_url? }
+ *
+ * NOTE: learnerId is the USER ID (same as roster "id")
+ */
+export async function updateOrgLearner(req, res) {
+  const actorId = req.user?.id;
+  const { orgId, learnerId } = req.params;
+
+  const targetId = Number(learnerId);
+  if (!actorId) return res.status(401).json({ message: 'Unauthorized' });
+  if (!orgId) return res.status(400).json({ message: 'orgId is required' });
+  if (!Number.isFinite(targetId))
+    return res.status(400).json({ message: 'Invalid learnerId' });
+
+  // permission: owner/admin can edit anyone; learner can edit self
+  const actorMem = await pool.query(
+    `SELECT role FROM org_memberships WHERE org_id=$1 AND user_id=$2 LIMIT 1`,
+    [orgId, actorId],
+  );
+  if (!actorMem.rowCount) return res.status(403).json({ message: 'Forbidden' });
+
+  const actorRole = String(actorMem.rows[0].role || '').toLowerCase();
+  const isSelf = Number(actorId) === targetId;
+
+  if (!['owner', 'admin'].includes(actorRole) && !(actorRole === 'learner' && isSelf)) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+
+  // target must be a learner in this org
+  const targetMem = await pool.query(
+    `SELECT role FROM org_memberships WHERE org_id=$1 AND user_id=$2 LIMIT 1`,
+    [orgId, targetId],
+  );
+  if (!targetMem.rowCount)
+    return res.status(404).json({ message: 'Learner not found' });
+
+  const targetRole = String(targetMem.rows[0].role || '').toLowerCase();
+  if (targetRole !== 'learner') {
+    return res.status(404).json({ message: 'Learner not found' });
+  }
+
+  const b = req.body || {};
+
+  const nameRaw = b.name;
+  const emailRaw = b.email;
+
+  const admissionCode = b.admissionCode ?? b.admission_code;
+  const classLabel = b.classLabel ?? b.class_label;
+  const guardianEmail = b.guardianEmail ?? b.guardian_email;
+
+  const houseLabel = b.houseLabel ?? b.house_label;
+  const dormLabel = b.dormLabel ?? b.dorm_label;
+  const clubLabel = b.clubLabel ?? b.club_label;
+  const photoUrl = b.photoUrl ?? b.photo_url;
+
+  const name =
+    typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : undefined;
+
+  let email;
+  if (typeof emailRaw === 'string') {
+    const t = emailRaw.trim().toLowerCase();
+    email = t ? t : undefined;
+  }
+
+  const hasUserUpdates = name !== undefined || email !== undefined;
+  const hasProfileUpdates =
+    admissionCode !== undefined ||
+    classLabel !== undefined ||
+    guardianEmail !== undefined ||
+    houseLabel !== undefined ||
+    dormLabel !== undefined ||
+    clubLabel !== undefined ||
+    photoUrl !== undefined;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    if (hasUserUpdates) {
+      const set = [];
+      const vals = [];
+
+      if (name !== undefined) {
+        vals.push(name);
+        set.push(`name = $${vals.length}`);
+      }
+      if (email !== undefined) {
+        vals.push(email);
+        set.push(`email = $${vals.length}`);
+      }
+
+      if (set.length) {
+        vals.push(targetId);
+        const up = await client.query(
+          `UPDATE users SET ${set.join(', ')} WHERE id = $${vals.length} RETURNING id`,
+          vals,
+        );
+        if (!up.rowCount) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ message: 'User not found' });
+        }
+      }
+    }
+
+    if (hasProfileUpdates) {
+      await client.query(
+        `
+        INSERT INTO org_learner_profiles (
+          org_id, user_id,
+          admission_code, class_label, guardian_email,
+          house_label, dorm_label, club_label, photo_url
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (org_id, user_id) DO UPDATE
+        SET
+          admission_code = COALESCE(EXCLUDED.admission_code, org_learner_profiles.admission_code),
+          class_label    = COALESCE(EXCLUDED.class_label,    org_learner_profiles.class_label),
+          guardian_email = COALESCE(EXCLUDED.guardian_email, org_learner_profiles.guardian_email),
+          house_label    = COALESCE(EXCLUDED.house_label,    org_learner_profiles.house_label),
+          dorm_label     = COALESCE(EXCLUDED.dorm_label,     org_learner_profiles.dorm_label),
+          club_label     = COALESCE(EXCLUDED.club_label,     org_learner_profiles.club_label),
+          photo_url      = COALESCE(EXCLUDED.photo_url,      org_learner_profiles.photo_url),
+          updated_at     = NOW()
+        `,
+        [
+          orgId,
+          targetId,
+          admissionCode === undefined ? null : admissionCode || null,
+          classLabel === undefined ? null : classLabel || null,
+          guardianEmail === undefined ? null : guardianEmail || null,
+          houseLabel === undefined ? null : houseLabel || null,
+          dormLabel === undefined ? null : dormLabel || null,
+          clubLabel === undefined ? null : clubLabel || null,
+          photoUrl === undefined ? null : photoUrl || null,
+        ],
+      );
+    }
+
+    await client.query('COMMIT');
+
+    const snap = await pool.query(
+      `
+      SELECT
+        u.id, u.name, u.email,
+        lp.admission_code, lp.class_label, lp.guardian_email,
+        lp.house_label, lp.dorm_label, lp.club_label, lp.photo_url
+      FROM users u
+      LEFT JOIN org_learner_profiles lp
+        ON lp.org_id = $1 AND lp.user_id = u.id
+      WHERE u.id = $2
+      LIMIT 1
+      `,
+      [orgId, targetId],
+    );
+
+    const r = snap.rows[0];
+    return res.json({
+      ok: true,
+      learner: {
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        admission_code: r.admission_code ?? null,
+        class_label: r.class_label ?? null,
+        guardian_email: r.guardian_email ?? null,
+        house_label: r.house_label ?? null,
+        dorm_label: r.dorm_label ?? null,
+        club_label: r.club_label ?? null,
+        photo_url: r.photo_url ?? null,
+      },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err?.code === '23505') {
+      return res.status(409).json({ message: 'Duplicate value (already exists).' });
+    }
+    console.error('[updateOrgLearner] error', err);
+    return res.status(500).json({ message: 'Failed to update learner' });
+  } finally {
+    client.release();
+  }
+}

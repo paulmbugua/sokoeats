@@ -398,3 +398,157 @@ export async function bulkCreateOrgInstructorsCsv(req, res) {
     client.release();
   }
 }
+
+/**
+ * PATCH /api/orgs/:orgId/instructors/:instructorId
+ * Body: { name?, email?, staffCode?/staff_code?, subject? }
+ *
+ * NOTE: instructorId is the USER ID (same as roster "id")
+ */
+export async function updateOrgInstructor(req, res) {
+  const actorId = req.user?.id;
+  const { orgId, instructorId } = req.params;
+
+  const targetId = Number(instructorId);
+  if (!actorId) return res.status(401).json({ message: 'Unauthorized' });
+  if (!orgId) return res.status(400).json({ message: 'orgId is required' });
+  if (!Number.isFinite(targetId))
+    return res.status(400).json({ message: 'Invalid instructorId' });
+
+  // permission: owner/admin can edit anyone; instructor can edit self
+  const actorMem = await pool.query(
+    `SELECT role FROM org_memberships WHERE org_id=$1 AND user_id=$2 LIMIT 1`,
+    [orgId, actorId],
+  );
+  if (!actorMem.rowCount) return res.status(403).json({ message: 'Forbidden' });
+
+  const actorRole = String(actorMem.rows[0].role || '').toLowerCase();
+  const isSelf = Number(actorId) === targetId;
+
+  if (!['owner', 'admin'].includes(actorRole) && !(actorRole === 'instructor' && isSelf)) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+
+  // target must be a staff member in this org
+  const targetMem = await pool.query(
+    `SELECT role FROM org_memberships WHERE org_id=$1 AND user_id=$2 LIMIT 1`,
+    [orgId, targetId],
+  );
+  if (!targetMem.rowCount)
+    return res.status(404).json({ message: 'Instructor not found' });
+
+  const targetRole = String(targetMem.rows[0].role || '').toLowerCase();
+  if (!['owner', 'admin', 'instructor'].includes(targetRole)) {
+    return res.status(404).json({ message: 'Instructor not found' });
+  }
+
+  const body = req.body || {};
+  const nameRaw = body.name;
+  const emailRaw = body.email;
+
+  const staffCode = body.staffCode ?? body.staff_code;
+  const subject = body.subject;
+
+  const name =
+    typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : undefined;
+
+  let email;
+  if (typeof emailRaw === 'string') {
+    const t = emailRaw.trim().toLowerCase();
+    email = t ? t : undefined; // ignore empty string
+  }
+
+  // nothing to update → return current snapshot
+  const hasUserUpdates = name !== undefined || email !== undefined;
+  const hasProfileUpdates = staffCode !== undefined || subject !== undefined;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    if (hasUserUpdates) {
+      const set = [];
+      const vals = [];
+
+      if (name !== undefined) {
+        vals.push(name);
+        set.push(`name = $${vals.length}`);
+      }
+      if (email !== undefined) {
+        vals.push(email);
+        set.push(`email = $${vals.length}`);
+      }
+
+      // only run update if we actually have set clauses
+      if (set.length) {
+        vals.push(targetId);
+        const up = await client.query(
+          `UPDATE users SET ${set.join(', ')} WHERE id = $${vals.length} RETURNING id`,
+          vals,
+        );
+        if (!up.rowCount) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ message: 'User not found' });
+        }
+      }
+    }
+
+    if (hasProfileUpdates) {
+      await client.query(
+        `
+        INSERT INTO org_instructor_profiles (org_id, user_id, staff_code, subject)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (org_id, user_id) DO UPDATE
+        SET
+          staff_code = COALESCE(EXCLUDED.staff_code, org_instructor_profiles.staff_code),
+          subject    = COALESCE(EXCLUDED.subject,    org_instructor_profiles.subject),
+          updated_at = NOW()
+        `,
+        [
+          orgId,
+          targetId,
+          staffCode === undefined ? null : staffCode || null,
+          subject === undefined ? null : subject || null,
+        ],
+      );
+    }
+
+    await client.query('COMMIT');
+
+    const snap = await pool.query(
+      `
+      SELECT
+        u.id, u.name, u.email,
+        ip.staff_code, ip.subject
+      FROM users u
+      LEFT JOIN org_instructor_profiles ip
+        ON ip.org_id = $1 AND ip.user_id = u.id
+      WHERE u.id = $2
+      LIMIT 1
+      `,
+      [orgId, targetId],
+    );
+
+    const r = snap.rows[0];
+    return res.json({
+      ok: true,
+      instructor: {
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        staff_code: r.staff_code ?? null,
+        subject: r.subject ?? null,
+      },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    // common uniqueness error: duplicate email, duplicate staff_code if you have a unique constraint, etc.
+    if (err?.code === '23505') {
+      return res.status(409).json({ message: 'Duplicate value (already exists).' });
+    }
+    console.error('[updateOrgInstructor] error', err);
+    return res.status(500).json({ message: 'Failed to update instructor' });
+  } finally {
+    client.release();
+  }
+}

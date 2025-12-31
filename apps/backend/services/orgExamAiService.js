@@ -120,6 +120,7 @@ const EXAM_SHEET_TRANSFORM_SCHEMA = {
         properties: {
           student_user_id: { anyOf: [{ type: 'number' }, { type: 'string' }] },
           subject: { type: 'string' },
+           subject_new: { anyOf: [{ type: 'string' }, { type: 'null' }] },
           score: { anyOf: [{ type: 'number' }, { type: 'null' }] },
           max_score: { anyOf: [{ type: 'number' }, { type: 'null' }] },
           cat_score: { anyOf: [{ type: 'number' }, { type: 'null' }] },
@@ -397,10 +398,11 @@ export async function aiComputeExamSheet({
   });
 
   const systemMessage =
-    'You are an assistant that helps teachers compute or fill exam mark-sheet columns. ' +
-    'You must strictly follow the JSON schema and keep student_user_id + subject unchanged. ' +
-    'If a targetColumnKey is provided and it is NOT "Remark" or "Remarks", you primarily fill or update that column inside row.extra[targetColumnKey]. ' +
-    'If the targetColumnKey is "Remark" or "Remarks", you MUST write into the existing "remark" field of each row instead of creating any new extra column.';
+  'You are an assistant that helps teachers compute or fill exam mark-sheet columns. ' +
+  'You must strictly follow the JSON schema. ' +
+  'NEVER change student_user_id. ' +
+  'DO NOT change the "subject" field directly because it is used to match rows. ' +
+  'If you need to correct a subject name (typo/casing), set "subject_new" to the corrected value.';
 
   const userMessage = [
     'You are helping to compute or fill columns for a school exam mark sheet.',
@@ -411,7 +413,8 @@ export async function aiComputeExamSheet({
     '```',
     '',
     'Rules:',
-    '- NEVER change student_user_id or subject values.',
+    '- NEVER change student_user_id.',
+    '- DO NOT change the "subject" field directly. To correct subject spelling/casing, use "subject_new".',
     '- Treat each row as one learner + subject entry.',
     '- If targetColumnKey is provided and is NOT "Remark" or "Remarks", prefer writing into row.extra[targetColumnKey].',
     '- If targetColumnKey IS "Remark" or "Remarks", write your text into the existing "remark" field for that row. DO NOT create extra.Remark or extra.Remarks columns.',

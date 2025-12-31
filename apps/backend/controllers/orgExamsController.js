@@ -587,9 +587,7 @@ export async function saveOrgExamSheet(req, res) {
     const orgId = paramOrgId || (req.org && req.org.id) || req.orgId;
 
     if (!orgId) {
-      return res
-        .status(401)
-        .json({ ok: false, message: 'Missing org context' });
+      return res.status(401).json({ ok: false, message: 'Missing org context' });
     }
 
     await requireOrgTier(orgId, ['pro', 'enterprise']);
@@ -597,51 +595,58 @@ export async function saveOrgExamSheet(req, res) {
     const { sessionId, classLabel, rows } = req.body || {};
 
     if (!sessionId) {
-      return res
-        .status(400)
-        .json({ ok: false, message: 'sessionId is required' });
+      return res.status(400).json({ ok: false, message: 'sessionId is required' });
     }
     if (!Array.isArray(rows)) {
-      return res
-        .status(400)
-        .json({ ok: false, message: 'rows must be an array' });
+      return res.status(400).json({ ok: false, message: 'rows must be an array' });
     }
 
     if (!rows.length) {
       return res.json({ ok: true, message: 'No rows to save' });
     }
+
     const normalized = rows
       .map((r) => {
+        const rowIdRaw = r && r.id;
+        const rowId =
+          rowIdRaw != null && Number.isFinite(Number(rowIdRaw)) ? Number(rowIdRaw) : null;
+
+        const studentIdRaw =
+          r && (r.student_user_id != null ? r.student_user_id : r.studentId != null ? r.studentId : r.student_userId);
+        const studentIdNum = Number(studentIdRaw);
+        const student_user_id = Number.isFinite(studentIdNum) ? studentIdNum : null;
+
         const base = {
-          student_user_id: Number(
-            r.student_user_id || r.studentId || r.student_userId,
-          ),
-          subject: (r.subject || '').trim(),
-          score: r.score == null ? null : Number(r.score),
-          max_score: r.max_score == null ? null : Number(r.max_score),
-          class_label:
-            (classLabel || r.class_label || r.classLabel || '').trim() || null,
+          id: rowId, // ✅ NEW
+          student_user_id,
+          subject: ((r && r.subject) || '').toString().trim(),
+          score: r && r.score == null ? null : r ? Number(r.score) : null,
+          max_score: r && r.max_score == null ? null : r ? Number(r.max_score) : null,
+          class_label: (
+            (classLabel || (r && (r.class_label || r.classLabel)) || '').toString().trim()
+          ) || null,
 
-          cat_score: r.cat_score == null ? null : Number(r.cat_score),
-          exam_score: r.exam_score == null ? null : Number(r.exam_score),
+          cat_score: r && r.cat_score == null ? null : r ? Number(r.cat_score) : null,
+          exam_score: r && r.exam_score == null ? null : r ? Number(r.exam_score) : null,
 
-          remark: (function () {
-            const raw = (r.remark ?? '').toString().trim();
+          remark: (() => {
+            const raw = (r && r.remark != null ? r.remark : '').toString().trim();
             return raw || null;
           })(),
 
-          teacher_initials: (function () {
-            const raw = (r.teacher_initials ?? r.teacherInitials ?? '')
+          teacher_initials: (() => {
+            const raw = (
+              r && (r.teacher_initials != null ? r.teacher_initials : r.teacherInitials != null ? r.teacherInitials : '')
+            )
               .toString()
               .trim();
             return raw || null;
           })(),
         };
 
-        // ✅ NEW: flexible extra columns
-        // Prefer explicit r.extra if present; otherwise collect unknown keys.
+        // ✅ Flexible extra columns
         let extra = {};
-        if (r.extra && typeof r.extra === 'object' && !Array.isArray(r.extra)) {
+        if (r && r.extra && typeof r.extra === 'object' && !Array.isArray(r.extra)) {
           extra = { ...r.extra };
         } else {
           const knownKeys = new Set([
@@ -664,12 +669,11 @@ export async function saveOrgExamSheet(req, res) {
             'remark',
             'teacher_initials',
             'teacherInitials',
+            'extra',
           ]);
 
           Object.entries(r || {}).forEach(([key, value]) => {
-            if (!knownKeys.has(key)) {
-              extra[key] = value;
-            }
+            if (!knownKeys.has(key)) extra[key] = value;
           });
         }
 
@@ -685,9 +689,7 @@ export async function saveOrgExamSheet(req, res) {
       });
     }
 
-    const uniqueStudentIds = [
-      ...new Set(normalized.map((r) => r.student_user_id)),
-    ];
+    const uniqueStudentIds = [...new Set(normalized.map((r) => r.student_user_id))];
     const { rows: existingRows } = await pool.query(
       'SELECT id FROM users WHERE id = ANY($1::int[])',
       [uniqueStudentIds],
@@ -698,9 +700,7 @@ export async function saveOrgExamSheet(req, res) {
     if (missingIds.length) {
       return res.status(400).json({
         ok: false,
-        message: `Some student IDs do not exist in the system: ${missingIds.join(
-          ', ',
-        )}`,
+        message: `Some student IDs do not exist in the system: ${missingIds.join(', ')}`,
         missingStudentIds: missingIds,
       });
     }
@@ -710,66 +710,126 @@ export async function saveOrgExamSheet(req, res) {
       await client.query('BEGIN');
 
       const upsertSql = `
-  INSERT INTO org_exam_results (
-    org_id,
-    session_id,
-    student_user_id,
-    class_label,
-    subject,
-    score,
-    max_score,
-    cat_score,
-    exam_score,
-    grade,
-    remark,
-    teacher_initials,
-    extra                     -- ✅ NEW
-  )
-  SELECT
-    $1::uuid                         AS org_id,
-    $2::uuid                         AS session_id,
-    $3::int                          AS student_user_id,
-    $4::text                         AS class_label,
-    $5::text                         AS subject,
-    $6::numeric                      AS score,
-    $7::numeric                      AS max_score,
-    $8::numeric                      AS cat_score,
-    $9::numeric                      AS exam_score,
-    COALESCE(b.grade, 'N/A')         AS grade,
-    COALESCE(
-      NULLIF($10::text, ''),         -- remark
-      b.remark,
-      ''
-    )                                AS remark,
-    NULLIF($11::text, '')           AS teacher_initials,
-    COALESCE($12::jsonb, '{}'::jsonb) AS extra   -- ✅ NEW
-  FROM (
-    SELECT $6::numeric AS score, $7::numeric AS max_score
-  ) s
-  LEFT JOIN org_exam_grading_bands b
-    ON b.org_id = $1::uuid
-   AND (
-        CASE WHEN $7::numeric > 0
-             THEN ( $6::numeric * 100.0 ) / NULLIF($7::numeric, 0)
-             ELSE 0
-        END
-   ) BETWEEN b.min_percent AND b.max_percent
-  ON CONFLICT (org_id, session_id, student_user_id, subject)
-  DO UPDATE SET
-    class_label      = EXCLUDED.class_label,
-    score            = EXCLUDED.score,
-    max_score        = EXCLUDED.max_score,
-    cat_score        = EXCLUDED.cat_score,
-    exam_score       = EXCLUDED.exam_score,
-    grade            = EXCLUDED.grade,
-    remark           = EXCLUDED.remark,
-    teacher_initials = EXCLUDED.teacher_initials,
-    extra            = EXCLUDED.extra,              -- ✅ NEW
-    updated_at       = NOW()
-  ;
-`;
+        INSERT INTO org_exam_results (
+          org_id,
+          session_id,
+          student_user_id,
+          class_label,
+          subject,
+          score,
+          max_score,
+          cat_score,
+          exam_score,
+          grade,
+          remark,
+          teacher_initials,
+          extra
+        )
+        SELECT
+          $1::uuid                          AS org_id,
+          $2::uuid                          AS session_id,
+          $3::int                           AS student_user_id,
+          $4::text                          AS class_label,
+          $5::text                          AS subject,
+          $6::numeric                       AS score,
+          $7::numeric                       AS max_score,
+          $8::numeric                       AS cat_score,
+          $9::numeric                       AS exam_score,
+          COALESCE(b.grade, 'N/A')          AS grade,
+          COALESCE(
+            NULLIF($10::text, ''),
+            b.remark,
+            ''
+          )                                 AS remark,
+          NULLIF($11::text, '')             AS teacher_initials,
+          COALESCE($12::jsonb, '{}'::jsonb) AS extra
+        FROM (
+          SELECT $6::numeric AS score, $7::numeric AS max_score
+        ) s
+        LEFT JOIN org_exam_grading_bands b
+          ON b.org_id = $1::uuid
+         AND (
+              CASE WHEN $7::numeric > 0
+                   THEN ( $6::numeric * 100.0 ) / NULLIF($7::numeric, 0)
+                   ELSE 0
+              END
+         ) BETWEEN b.min_percent AND b.max_percent
+        ON CONFLICT (org_id, session_id, student_user_id, subject)
+        DO UPDATE SET
+          class_label      = EXCLUDED.class_label,
+          score            = EXCLUDED.score,
+          max_score        = EXCLUDED.max_score,
+          cat_score        = EXCLUDED.cat_score,
+          exam_score       = EXCLUDED.exam_score,
+          grade            = EXCLUDED.grade,
+          remark           = EXCLUDED.remark,
+          teacher_initials = EXCLUDED.teacher_initials,
+          extra            = EXCLUDED.extra,
+          updated_at       = NOW()
+        ;
+      `;
+
+      const updateByIdSql = `
+        WITH pct AS (
+          SELECT
+            CASE
+              WHEN $7::numeric > 0
+              THEN ($6::numeric * 100.0) / NULLIF($7::numeric, 0)
+              ELSE 0
+            END AS p
+        ),
+        band AS (
+          SELECT b.grade, b.remark
+          FROM org_exam_grading_bands b, pct
+          WHERE b.org_id = $1::uuid
+            AND pct.p BETWEEN b.min_percent AND b.max_percent
+          ORDER BY b.min_percent DESC
+          LIMIT 1
+        )
+        UPDATE org_exam_results r
+        SET
+          class_label = $4::text,
+          subject = $5::text,
+          score = $6::numeric,
+          max_score = $7::numeric,
+          cat_score = $8::numeric,
+          exam_score = $9::numeric,
+          grade = COALESCE((SELECT grade FROM band), 'N/A'),
+          remark = COALESCE(NULLIF($10::text, ''), (SELECT remark FROM band), ''),
+          teacher_initials = NULLIF($11::text, ''),
+          extra = COALESCE($12::jsonb, '{}'::jsonb),
+          updated_at = NOW()
+        WHERE r.org_id = $1::uuid
+          AND r.session_id = $2::uuid
+          AND r.student_user_id = $3::int
+          AND r.id = $13
+        RETURNING r.id;
+      `;
 
       for (const r of normalized) {
+        // ✅ If id exists, update that exact row (supports subject renames)
+        if (r.id) {
+          const upd = await client.query(updateByIdSql, [
+            orgId,
+            sessionId,
+            r.student_user_id,
+            r.class_label,
+            r.subject,
+            r.score ?? 0,
+            r.max_score ?? 100,
+            r.cat_score,
+            r.exam_score,
+            r.remark ?? '',
+            r.teacher_initials ?? '',
+            r.extra ?? {},
+            r.id,
+          ]);
+
+          // If update matched, move on
+          if (upd.rowCount > 0) continue;
+        }
+
+        // Fallback: new row (no id) or missing row
         await client.query(upsertSql, [
           orgId,
           sessionId,
@@ -782,11 +842,11 @@ export async function saveOrgExamSheet(req, res) {
           r.exam_score,
           r.remark ?? '',
           r.teacher_initials ?? '',
-          r.extra ?? {}, // ✅ NEW
+          r.extra ?? {},
         ]);
       }
 
-      // Recompute totals + overall grades (no cat/exam needed here)
+      // Recompute totals + overall grades
       await client.query(
         `
         INSERT INTO org_exam_student_overall (
@@ -845,7 +905,6 @@ export async function saveOrgExamSheet(req, res) {
       return res.json({ ok: true });
     } catch (err) {
       await client.query('ROLLBACK');
-
       console.error('[saveOrgExamSheet] error', err);
       throw err;
     } finally {
@@ -855,10 +914,11 @@ export async function saveOrgExamSheet(req, res) {
     console.error('[saveOrgExamSheet] outer error', err);
     return res.status(400).json({
       ok: false,
-      message: err?.message || 'Failed to save exam sheet',
+      message: (err && err.message) || 'Failed to save exam sheet',
     });
   }
 }
+
 
 /** POST /api/orgs/:orgId/exams/student/:studentId/notify */
 export async function sendOrgExamStudentCardEmail(req, res, next) {
@@ -1344,6 +1404,12 @@ export async function generateOrgExamSheetAiCompute(req, res, next) {
       if (!patch) return row;
 
       const next = { ...row };
+      // ✅ Allow AI to rename/fix subject spelling
+      if (patch.subject_new !== undefined) {
+        const sn = patch.subject_new == null ? '' : String(patch.subject_new).trim();
+        if (sn) next.subject = sn;
+      }
+
 
       // Top-level numeric + text fields (only if specified by AI)
       if (patch.score !== undefined) next.score = patch.score;
@@ -1551,6 +1617,12 @@ export const generateOrgExamSheetFromDocs = [
         if (!patch) return row;
 
         const next = { ...row };
+        // ✅ Allow AI to rename/fix subject spelling
+        if (patch.subject_new !== undefined) {
+          const sn = patch.subject_new == null ? '' : String(patch.subject_new).trim();
+          if (sn) next.subject = sn;
+        }
+
 
         // top-level fields
         if (patch.score !== undefined) next.score = patch.score;

@@ -1713,6 +1713,7 @@ export async function getOrgRoster(req, res) {
 
         -- instructor profile
         ip.staff_code,
+        ip.subject,
         ip.temp_password AS instructor_temp_password
       FROM org_memberships m
       JOIN users u
@@ -1754,6 +1755,7 @@ export async function getOrgRoster(req, res) {
         instructors.push({
           ...base,
           staff_code: r.staff_code || null,
+          subject: r.subject || null,
           temp_password: r.instructor_temp_password || null,
 
           // ✅ this is what your UI uses after refresh
