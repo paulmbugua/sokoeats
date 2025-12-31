@@ -4,50 +4,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { CalendarCheck2, Wallet, Mail, Megaphone } from 'lucide-react';
 
 import { useShopContext } from '@mytutorapp/shared/context';
-import {
-  getOrgRoster as apiRoster,
-  createOrgMembershipInvite,
-  removeOrgMember,
-} from '@mytutorapp/shared/api/orgApi';
-
 import { getMyOrgOrBootstrap, getOrgUsage, uploadAsset } from '@mytutorapp/shared/api';
+import { setOrgLearnerPhotoByAdmission } from '@mytutorapp/shared/api/orgLearnersApi';
 
-// Learner creation + CSV upload
-import {
-  createOrgLearner as apiCreateOrgLearner,
-  uploadOrgLearnersCsv,
-  setOrgLearnerPhotoByAdmission,
-  updateOrgLearner,
-} from '@mytutorapp/shared/api/orgLearnersApi';
-
-// Instructor creation (no CSV)
-import {
-  createOrgInstructor as apiCreateOrgInstructor,
-  updateOrgInstructor,
-} from '@mytutorapp/shared/api/orgInstructorsApi';
-
-// Theme toggle
 import ThemeToggle from '../../components/ThemeToggle.web';
 
-// Shared UI + helpers
-import {
-  Skeleton,
-  PersonRow,
-  resolveAsset,
-  tierBadge,
-  cardBase,
-  type MiniUser,
-} from './portal/OrgProfileShared.web';
-import { useOrgInstructorFeeAccess } from '@mytutorapp/shared/hooks/useOrgInstructorFeeAccess';
-
-// Modals
-import {
-  InviteModal,
-  AddInstructorModal,
-  AddLearnerModal,
-  EditLearnerModal,
-  EditInstructorModal,
-} from './portal/OrgProfileModals.web';
+import { Skeleton, resolveAsset, tierBadge, cardBase } from './portal/OrgProfileShared.web';
 
 /* ----------------------------- local types ----------------------------- */
 
@@ -76,28 +38,6 @@ type Org = {
   club_label?: string;
 };
 
-/* ----------------------------- helpers ----------------------------- */
-
-async function tryFetchRoster(backendUrl: string, token: string, orgId: string) {
-  const headers = { Authorization: `Bearer ${token}` };
-  const base = backendUrl.replace(/\/+$/, '');
-  const candidates = [
-    `${base}/api/orgs/${orgId}/roster`,
-    `${base}/api/organizations/${orgId}/roster`,
-    `${base}/api/orgs/${orgId}/members`,
-    `${base}/api/organizations/${orgId}/members`,
-  ];
-  for (const url of candidates) {
-    try {
-      const r = await fetch(url, { headers });
-      if (r.ok) return await r.json(); // { instructors: MiniUser[], learners: MiniUser[] }
-    } catch {
-      // ignore and try next
-    }
-  }
-  return { instructors: [] as MiniUser[], learners: [] as MiniUser[] };
-}
-
 /* ------------------------------- page -------------------------------- */
 
 const OrgProfilePage: React.FC = () => {
@@ -108,144 +48,10 @@ const OrgProfilePage: React.FC = () => {
   const [seatsUsed, setSeatsUsed] = useState<number>(0);
   const [seatsMax, setSeatsMax] = useState<number>(50);
   const [loading, setLoading] = useState(true);
-  const [instructors, setInstructors] = useState<MiniUser[]>([]);
-  const [learners, setLearners] = useState<MiniUser[]>([]);
-  const [feeInstructorId, setFeeInstructorId] = useState<string | number | null>(null);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteRole, setInviteRole] = useState<'instructor' | 'learner'>('learner');
-
-  // add-learner & CSV upload state
-  const [addLearnerOpen, setAddLearnerOpen] = useState(false);
-  const [csvUploading, setCsvUploading] = useState(false);
-
-  // add-instructor (no CSV) state
-  const [addInstructorOpen, setAddInstructorOpen] = useState(false);
 
   // learner photos state
   const [photoAdmCode, setPhotoAdmCode] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
-
-  // pagination state
-  const [instructorPage, setInstructorPage] = useState(1);
-  const [learnerPage, setLearnerPage] = useState(1);
-  const [instructorPageSize, setInstructorPageSize] = useState(10);
-  const [learnerPageSize, setLearnerPageSize] = useState(10);
-
-  // selection + bulk delete state
-  const [instructorSelectMode, setInstructorSelectMode] = useState(false);
-  const [learnerSelectMode, setLearnerSelectMode] = useState(false);
-  const [selectedInstructorIds, setSelectedInstructorIds] = useState<Set<string>>(new Set());
-  const [selectedLearnerIds, setSelectedLearnerIds] = useState<Set<string>>(new Set());
-  const [bulkDeletingInstructors, setBulkDeletingInstructors] = useState(false);
-  const [bulkDeletingLearners, setBulkDeletingLearners] = useState(false);
-  const [editingInstructor, setEditingInstructor] = useState<MiniUser | null>(null);
-  const [editingLearner, setEditingLearner] = useState<MiniUser | null>(null);
-
-  type InviteResp = { ok: boolean; invite_code: string; invite_url: string };
-
-  const handleCreateMembershipInvite = useCallback(
-    async (role: 'instructor' | 'learner', email?: string) => {
-      if (!org?.id) throw new Error('Organization is not loaded yet.');
-      if (!orgToken) throw new Error('You are not authenticated for this organization.');
-
-      const resp = (await createOrgMembershipInvite(backendUrl, orgToken, org.id, {
-        role,
-        email,
-      })) as InviteResp;
-
-      const url = resp.invite_url;
-      if (!url) throw new Error('Invite created but no URL was returned.');
-
-      // best-effort roster refresh
-      try {
-        const roster = await apiRoster(backendUrl, orgToken, org.id);
-        setInstructors(Array.isArray(roster?.instructors) ? roster.instructors : []);
-        setLearners(Array.isArray(roster?.learners) ? roster.learners : []);
-        setInstructorPage(1);
-        setLearnerPage(1);
-      } catch {
-        // ignore
-      }
-
-      return { url };
-    },
-    [backendUrl, org?.id, orgToken]
-  );
-
-  const handleRemoveMember = useCallback(
-    async (u: MiniUser) => {
-      if (!org?.id || !orgToken) return;
-
-      const label = u.name || u.email || `User #${u.id}`;
-      const ok = window.confirm(
-        `Remove ${label} from ${org?.name || 'this organization'}?\n\nThey will lose portal access.`
-      );
-      if (!ok) return;
-
-      try {
-        await removeOrgMember(backendUrl, orgToken, org.id, u.id);
-
-        // Optimistic UI updates
-        setInstructors((prev) => prev.filter((x) => String(x.id) !== String(u.id)));
-        const wasLearner = learners.some((x) => String(x.id) === String(u.id));
-        setLearners((prev) => prev.filter((x) => String(x.id) !== String(u.id)));
-        setSelectedInstructorIds((prev) => {
-          const next = new Set(prev);
-          next.delete(String(u.id));
-          return next;
-        });
-        setSelectedLearnerIds((prev) => {
-          const next = new Set(prev);
-          next.delete(String(u.id));
-          return next;
-        });
-        if (wasLearner) setSeatsUsed((s) => Math.max(0, (s || 0) - 1));
-      } catch (e: any) {
-        const msg = e?.response?.data?.message || 'Failed to remove member.';
-        alert(msg);
-      }
-    },
-    [backendUrl, org?.id, org?.name, orgToken, learners]
-  );
-
-  const runWithConcurrency = useCallback(
-    async (
-      ids: string[],
-      worker: (id: string) => Promise<void>,
-      limit = 3
-    ): Promise<{ id: string; error: string }[]> => {
-      if (!ids.length) return [];
-
-      const failures: { id: string; error: string }[] = [];
-      let idx = 0;
-      let active = 0;
-
-      return new Promise((resolve) => {
-        const launch = () => {
-          if (idx >= ids.length) {
-            if (active === 0) resolve(failures);
-            return;
-          }
-
-          const id = ids[idx++];
-          active += 1;
-          Promise.resolve(worker(id))
-            .catch((e: any) => {
-              const msg = e?.response?.data?.message || e?.message || 'Failed to delete member.';
-              failures.push({ id, error: msg });
-            })
-            .finally(() => {
-              active -= 1;
-              launch();
-            });
-        };
-
-        const starters = Math.min(limit, ids.length);
-        for (let i = 0; i < starters; i += 1) launch();
-      });
-    },
-    []
-  );
 
   const seatCap = useCallback((tier?: string) => {
     switch ((tier || 'starter').toLowerCase()) {
@@ -258,35 +64,6 @@ const OrgProfilePage: React.FC = () => {
     }
   }, []);
 
-  // shared roster refresh helper
-  const refreshRoster = useCallback(
-    async (orgId: string) => {
-      if (!orgToken || !orgId) return;
-      try {
-        const roster = await apiRoster(backendUrl, orgToken, orgId);
-        setInstructors(Array.isArray(roster?.instructors) ? roster.instructors : []);
-        setLearners(Array.isArray(roster?.learners) ? roster.learners : []);
-        const designated = (roster?.instructors || []).find((x: any) => x?.can_access_fees);
-        setFeeInstructorId(designated?.id ?? null);
-        setInstructorPage(1);
-        setLearnerPage(1);
-      } catch {
-        try {
-          const roster = await tryFetchRoster(backendUrl, orgToken, orgId);
-          setInstructors(Array.isArray(roster?.instructors) ? roster.instructors : []);
-          setLearners(Array.isArray(roster?.learners) ? roster.learners : []);
-          const designated = (roster?.instructors || []).find((x: any) => x?.can_access_fees);
-          setFeeInstructorId(designated?.id ?? null);
-          setInstructorPage(1);
-          setLearnerPage(1);
-        } catch {
-          // ignore
-        }
-      }
-    },
-    [backendUrl, orgToken]
-  );
-
   useEffect(() => {
     let stop = false;
     (async () => {
@@ -297,18 +74,15 @@ const OrgProfilePage: React.FC = () => {
       try {
         const o = await getMyOrgOrBootstrap(backendUrl, orgToken);
         if (stop) return;
+
         setOrg(o);
-        const cap = seatCap(o?.tier);
-        setSeatsMax(cap);
+        setSeatsMax(seatCap(o?.tier));
+
         try {
           const u = await getOrgUsage(backendUrl, orgToken, o.id);
           if (!stop) setSeatsUsed(Number(u?.seats_used ?? 0));
         } catch {
           if (!stop) setSeatsUsed(Number(o?.seats_used ?? 0));
-        }
-
-        if (!stop) {
-          await refreshRoster(o.id);
         }
       } finally {
         if (!stop) setLoading(false);
@@ -317,7 +91,7 @@ const OrgProfilePage: React.FC = () => {
     return () => {
       stop = true;
     };
-  }, [backendUrl, orgToken, seatCap, refreshRoster]);
+  }, [backendUrl, orgToken, seatCap]);
 
   const logo = useMemo(
     () => resolveAsset(org?.logo_url, backendUrl, org?.name),
@@ -327,185 +101,6 @@ const OrgProfilePage: React.FC = () => {
   const seatPct = Math.min(100, Math.round(((seatsUsed || 0) / (seatsMax || 1)) * 100));
   const hasGroupingLabels =
     !!org?.house_label?.trim() || !!org?.dorm_label?.trim() || !!org?.club_label?.trim();
-
-  // pagination derived values
-  const totalInstructorPages = useMemo(() => {
-    if (!instructors.length) return 1;
-    return Math.max(1, Math.ceil(instructors.length / instructorPageSize));
-  }, [instructors.length, instructorPageSize]);
-
-  const totalLearnerPages = useMemo(() => {
-    if (!learners.length) return 1;
-    return Math.max(1, Math.ceil(learners.length / learnerPageSize));
-  }, [learners.length, learnerPageSize]);
-
-  const paginatedInstructors = useMemo(() => {
-    if (!instructors.length) return [];
-    const start = (instructorPage - 1) * instructorPageSize;
-    return instructors.slice(start, start + instructorPageSize);
-  }, [instructors, instructorPage, instructorPageSize]);
-
-  const paginatedLearners = useMemo(() => {
-    if (!learners.length) return [];
-    const start = (learnerPage - 1) * learnerPageSize;
-    return learners.slice(start, start + learnerPageSize);
-  }, [learners, learnerPage, learnerPageSize]);
-
-  useEffect(() => {
-    const maxPage = totalInstructorPages;
-    if (instructorPage > maxPage) {
-      setInstructorPage(maxPage);
-    }
-  }, [totalInstructorPages, instructorPage]);
-
-  useEffect(() => {
-    const maxPage = totalLearnerPages;
-    if (learnerPage > maxPage) {
-      setLearnerPage(maxPage);
-    }
-  }, [totalLearnerPages, learnerPage]);
-
-  useEffect(() => {
-    setSelectedInstructorIds((prev) => {
-      const next = new Set([...prev].filter((id) => instructors.some((u) => String(u.id) === id)));
-      return next;
-    });
-  }, [instructors]);
-
-  useEffect(() => {
-    setSelectedLearnerIds((prev) => {
-      const next = new Set([...prev].filter((id) => learners.some((u) => String(u.id) === id)));
-      return next;
-    });
-  }, [learners]);
-
-  const instructorRangeText = () => {
-    if (!instructors.length) return 'No instructors yet';
-    const start = (instructorPage - 1) * instructorPageSize + 1;
-    const end = Math.min(instructorPage * instructorPageSize, instructors.length);
-    return `Showing ${start}–${end} of ${instructors.length} instructors`;
-  };
-
-  const learnerRangeText = () => {
-    if (!learners.length) return 'No learners yet';
-    const start = (learnerPage - 1) * learnerPageSize + 1;
-    const end = Math.min(learnerPage * learnerPageSize, learners.length);
-    return `Showing ${start}–${end} of ${learners.length} learners`;
-  };
-
-  const toggleInstructorSelect = useCallback((id: string | number) => {
-    setSelectedInstructorIds((prev) => {
-      const next = new Set(prev);
-      const key = String(id);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
-
-  const toggleLearnerSelect = useCallback((id: string | number) => {
-    setSelectedLearnerIds((prev) => {
-      const next = new Set(prev);
-      const key = String(id);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
-
-  const selectAllInstructors = useCallback(() => {
-    setSelectedInstructorIds(new Set(instructors.map((u) => String(u.id))));
-  }, [instructors]);
-
-  const selectAllLearners = useCallback(() => {
-    setSelectedLearnerIds(new Set(learners.map((u) => String(u.id))));
-  }, [learners]);
-
-  const cancelInstructorSelect = useCallback(() => {
-    setInstructorSelectMode(false);
-    setSelectedInstructorIds(new Set());
-  }, []);
-
-  const cancelLearnerSelect = useCallback(() => {
-    setLearnerSelectMode(false);
-    setSelectedLearnerIds(new Set());
-  }, []);
-
-  const bulkDeleteInstructors = useCallback(async () => {
-    if (!org?.id || !orgToken) return;
-    const ids = Array.from(selectedInstructorIds);
-    if (!ids.length) return;
-
-    const ok = window.confirm(`Delete ${ids.length} instructor${ids.length === 1 ? '' : 's'}? This cannot be undone.`);
-    if (!ok) return;
-
-    setBulkDeletingInstructors(true);
-    let success = 0;
-
-    await runWithConcurrency(ids, async (id) => {
-      await removeOrgMember(backendUrl, orgToken, org.id, id);
-      success += 1;
-      setInstructors((prev) => prev.filter((u) => String(u.id) !== String(id)));
-      setSelectedInstructorIds((prev) => {
-        const next = new Set(prev);
-        next.delete(String(id));
-        return next;
-      });
-    });
-
-    setBulkDeletingInstructors(false);
-
-    const failed = ids.length - success;
-    if (success === ids.length) {
-      setInstructorSelectMode(false);
-    }
-
-    if (failed) {
-      alert(`Deleted ${success} instructor${success === 1 ? '' : 's'}, failed ${failed}.`);
-    } else {
-      alert(`Deleted ${success} instructor${success === 1 ? '' : 's'}.`);
-    }
-  }, [backendUrl, org?.id, orgToken, runWithConcurrency, selectedInstructorIds]);
-
-  const bulkDeleteLearners = useCallback(async () => {
-    if (!org?.id || !orgToken) return;
-    const ids = Array.from(selectedLearnerIds);
-    if (!ids.length) return;
-
-    const ok = window.confirm(`Delete ${ids.length} learner${ids.length === 1 ? '' : 's'}? This cannot be undone.`);
-    if (!ok) return;
-
-    setBulkDeletingLearners(true);
-    let success = 0;
-
-    await runWithConcurrency(ids, async (id) => {
-      await removeOrgMember(backendUrl, orgToken, org.id, id);
-      success += 1;
-      setLearners((prev) => prev.filter((u) => String(u.id) !== String(id)));
-      setSelectedLearnerIds((prev) => {
-        const next = new Set(prev);
-        next.delete(String(id));
-        return next;
-      });
-    });
-
-    if (success) {
-      setSeatsUsed((s) => Math.max(0, (s || 0) - success));
-    }
-
-    setBulkDeletingLearners(false);
-
-    const failed = ids.length - success;
-    if (success === ids.length) {
-      setLearnerSelectMode(false);
-    }
-
-    if (failed) {
-      alert(`Deleted ${success} learner${success === 1 ? '' : 's'}, failed ${failed}.`);
-    } else {
-      alert(`Deleted ${success} learner${success === 1 ? '' : 's'}.`);
-    }
-  }, [backendUrl, org?.id, orgToken, runWithConcurrency, selectedLearnerIds]);
 
   const logoutOrgMode = () => {
     try {
@@ -539,244 +134,6 @@ const OrgProfilePage: React.FC = () => {
     }
 
     window.location.assign('/org/portal/login?logout=1');
-  };
-
-  // create instructor handler (no CSV)
-  const handleCreateInstructor = useCallback(
-    async (payload: { name: string; email?: string; subject?: string; staff_code?: string }) => {
-      if (!org?.id || !orgToken) {
-        throw new Error('Organization or token missing.');
-      }
-      const resp = await apiCreateOrgInstructor(backendUrl, orgToken, org.id, payload);
-      await refreshRoster(org.id);
-      return { tempPassword: resp.tempPassword || null };
-    },
-    [backendUrl, org?.id, orgToken, refreshRoster]
-  );
-
-  const handleUpdateInstructor = useCallback(
-    async (payload: { name: string; email?: string; subject?: string; staff_code?: string }) => {
-      if (!org?.id || !orgToken || !editingInstructor) {
-        throw new Error('Organization, token, or instructor missing.');
-      }
-      await updateOrgInstructor(backendUrl, orgToken, org.id, editingInstructor.id, payload);
-      await refreshRoster(org.id);
-      setEditingInstructor(null);
-      alert('Instructor updated.');
-    },
-    [backendUrl, editingInstructor, org?.id, orgToken, refreshRoster]
-  );
-
-  // ---- Shared CSV helpers (used for learners + login sheet) ----
-  const csvEscape = (v: unknown) => {
-    const s = v == null ? '' : String(v);
-    if (/[",\n]/.test(s)) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
-  };
-
-  const downloadCsv = (filename: string, rows: (string | null | undefined)[][]) => {
-    const csv = rows.map((r) => r.map(csvEscape).join(',')).join('\r\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-  };
-
-  // Learner sample template CSV
-  const downloadLearnerSampleCsv = () => {
-    const rows: (string | null | undefined)[][] = [
-      [
-        'name',
-        'email',
-        'admission_code',
-        'class_label',
-        'guardian_email',
-        'house',
-        'dormitory',
-        'club',
-      ],
-      [
-        'Aisha Mwangi',
-        'aisha.mwangi@students.your-school.edu',
-        'ADM-2025-001',
-        'Grade 7 Blue',
-        'parent1@example.com',
-        'Taifa',
-        'North Wing',
-        'Science Club',
-      ],
-      [
-        'Omar Ali',
-        'omar.ali@students.your-school.edu',
-        'ADM-2025-002',
-        'Grade 7 Blue',
-        'parent2@example.com',
-        'Nyayo',
-        'South Wing',
-        'Debate Club',
-      ],
-    ];
-    downloadCsv('learners-sample.csv', rows);
-  };
-
-  // Download login sheet as CSV built from current roster
-  const downloadRosterCsv = () => {
-    if (!org) {
-      alert('Organization not loaded yet.');
-      return;
-    }
-
-    if (!instructors.length && !learners.length) {
-      alert('No instructors or learners to export yet.');
-      return;
-    }
-
-    const rows: (string | null | undefined)[][] = [];
-
-    // Header
-    rows.push([
-      'Type',
-      'Name',
-      'Email',
-      'Staff code',
-      'Admission code',
-      'Class / Stream',
-      'Guardian email',
-      'Temp password',
-    ]);
-
-    // Instructors
-    instructors.forEach((u) => {
-      rows.push([
-        'Instructor',
-        u.name,
-        u.email,
-        (u as any).staff_code,
-        null,
-        null,
-        null,
-        (u as any).temp_password,
-      ]);
-    });
-
-    // Learners
-    learners.forEach((u) => {
-      rows.push([
-        'Learner',
-        u.name,
-        u.email,
-        null,
-        (u as any).admission_code,
-        (u as any).class_label,
-        (u as any).guardian_email,
-        (u as any).temp_password,
-      ]);
-    });
-
-    const slug = org.slug || org.name || org.id;
-    downloadCsv(`login-sheet-${slug}.csv`, rows);
-  };
-
-  const { ready: feeReady, saving: feeSaving, updateFeeAccess } = useOrgInstructorFeeAccess({
-    backendUrl,
-    token: orgToken,
-    orgId: org?.id,
-  });
-
-  const handleFeeAccess = useCallback(
-    async (u: MiniUser, enable: boolean) => {
-      if (!org?.id || !feeReady || feeSaving) return;
-      const label = u.name || u.email || `User #${u.id}`;
-      const ok = window.confirm(
-        enable
-          ? `Grant Fees access to ${label}? This will remove access from other instructors.`
-          : `Remove Fees access from ${label}?`,
-      );
-      if (!ok) return;
-      try {
-        await updateFeeAccess(u.id, enable);
-        setInstructors((prev) =>
-          prev.map((p) => ({ ...p, can_access_fees: String(p.id) === String(u.id) ? enable : false })),
-        );
-        setFeeInstructorId(enable ? u.id : null);
-        window.alert(enable ? 'Fee access granted.' : 'Fee access removed.');
-      } catch (e: any) {
-        const msg = e?.response?.data?.message || e?.message || 'Unable to update fee access.';
-        window.alert(msg);
-      }
-    },
-    [feeReady, feeSaving, org?.id, updateFeeAccess],
-  );
-
-  // create learner handler
-  const handleCreateLearner = useCallback(
-    async (payload: {
-      name: string;
-      email?: string;
-      class_label?: string;
-      guardian_email?: string;
-      admission_code?: string;
-      house?: string;
-      dormitory?: string;
-      club?: string;
-    }) => {
-      if (!org?.id || !orgToken) {
-        throw new Error('Organization or token missing.');
-      }
-      const resp = await apiCreateOrgLearner(backendUrl, orgToken, org.id, payload);
-      await refreshRoster(org.id);
-      return { tempPassword: resp.tempPassword || null };
-    },
-    [backendUrl, org?.id, orgToken, refreshRoster]
-  );
-
-  const handleUpdateLearner = useCallback(
-    async (payload: {
-      name: string;
-      email?: string;
-      admission_code?: string;
-      class_label?: string;
-      guardian_email?: string;
-      house?: string;
-      dormitory?: string;
-      club?: string;
-    }) => {
-      if (!org?.id || !orgToken || !editingLearner) {
-        throw new Error('Organization, token, or learner missing.');
-      }
-      await updateOrgLearner(backendUrl, orgToken, org.id, editingLearner.id, payload);
-      await refreshRoster(org.id);
-      setEditingLearner(null);
-      alert('Learner updated.');
-    },
-    [backendUrl, editingLearner, org?.id, orgToken, refreshRoster]
-  );
-
-  // learner CSV upload handler
-  const handleCsvUpload = async (file: File | null) => {
-    if (!file || !org?.id || !orgToken) return;
-    setCsvUploading(true);
-    try {
-      const resp = await uploadOrgLearnersCsv(backendUrl, orgToken, org.id, file);
-      const created = resp?.createdCount ?? 0;
-      const reused = resp?.reusedCount ?? 0;
-      alert(
-        `CSV processed.\nNew learners: ${created}\nExisting reused/updated: ${reused}\n\nNext: click “Download login sheet (CSV)” to get their login details and temporary passwords.`
-      );
-      await refreshRoster(org.id);
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || 'Failed to upload CSV.';
-      alert(msg);
-    } finally {
-      setCsvUploading(false);
-    }
   };
 
   /* --------------------------- unauthenticated --------------------------- */
@@ -854,18 +211,28 @@ const OrgProfilePage: React.FC = () => {
                 <div className="hidden sm:block">
                   <ThemeToggle />
                 </div>
+
                 <Link
                   to="/org/portal"
                   className="inline-flex h-10 px-4 items-center rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
                   Open E-Learning Portal
                 </Link>
+
+                <Link
+                  to="/org/roster"
+                  className="inline-flex h-10 px-4 items-center rounded-xl bg-[#e7edf4] dark:bg-[#172534] font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  Open Roster
+                </Link>
+
                 <button
                   onClick={logoutOrgMode}
                   className="inline-flex h-10 px-4 items-center rounded-xl bg-[#e7edf4] dark:bg-[#172534] font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 >
                   Exit org mode
                 </button>
+
                 <button
                   onClick={logoutInstitution}
                   className="inline-flex h-10 px-4 items-center rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
@@ -947,7 +314,9 @@ const OrgProfilePage: React.FC = () => {
         <section className={`${cardBase} p-4 sm:p-5 mb-4`}>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-wide text-[#49739c] dark:text-darkTextSecondary">Pro &amp; Enterprise</p>
+              <p className="text-xs uppercase tracking-wide text-[#49739c] dark:text-darkTextSecondary">
+                Pro &amp; Enterprise
+              </p>
               <h2 className="text-lg font-bold">Org tools hub</h2>
               <p className="text-sm text-[#49739c] dark:text-darkTextSecondary">
                 Attendance, fees &amp; balances, newsletters, and announcements for your institution.
@@ -961,484 +330,92 @@ const OrgProfilePage: React.FC = () => {
             </Link>
           </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4">
-        {/* Attendance */}
-        <Link
-          to="/org/attendance"
-          className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
-        >
-          <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
-            <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
-                <CalendarCheck2 className="h-5 w-5" />
-              </span>
-              <div>
-                <div className="text-sm font-semibold">Attendance</div>
-                <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
-                  Create sessions and bulk mark learners.
-                </p>
-              </div>
-            </div>
-            <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
-          </div>
-        </Link>
-
-        {/* Fees */}
-        <Link
-          to="/org/fees"
-          className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
-        >
-          <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
-            <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
-                <Wallet className="h-5 w-5" />
-              </span>
-              <div>
-                <div className="text-sm font-semibold">Fees</div>
-                <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
-                  Charges, payments, and statements.
-                </p>
-              </div>
-            </div>
-            <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
-          </div>
-        </Link>
-
-        {/* Newsletters */}
-        <Link
-          to="/org/newsletters"
-          className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
-        >
-          <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
-            <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
-                <Mail className="h-5 w-5" />
-              </span>
-              <div>
-                <div className="text-sm font-semibold">Newsletters</div>
-                <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
-                  Draft, preview, and archive updates.
-                </p>
-              </div>
-            </div>
-            <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
-          </div>
-        </Link>
-
-        {/* Announcements */}
-        <Link
-          to="/org/announcements"
-          className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
-        >
-          <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
-            <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
-                <Megaphone className="h-5 w-5" />
-              </span>
-              <div>
-                <div className="text-sm font-semibold">Announcements</div>
-                <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
-                  Pinned notices for learners and instructors.
-                </p>
-              </div>
-            </div>
-            <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
-          </div>
-        </Link>
-      </div>
-
-        </section>
-
-        {/* People */}
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Instructors */}
-          <section className={`${cardBase} p-4 sm:p-5`}>
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-bold">Instructors</h2>
-              <div className="flex flex-wrap gap-2 items-center">
-                {instructorSelectMode ? (
-                  <>
-                    <span className="text-xs sm:text-sm text-[#49739c] dark:text-darkTextSecondary">
-                      {selectedInstructorIds.size} selected
-                    </span>
-                    <button
-                      type="button"
-                      onClick={bulkDeleteInstructors}
-                      disabled={!selectedInstructorIds.size || bulkDeletingInstructors}
-                      className="text-xs sm:text-sm font-semibold text-rose-600 disabled:opacity-50"
-                    >
-                      {bulkDeletingInstructors ? 'Deleting…' : 'Delete'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cancelInstructorSelect}
-                      className="text-xs sm:text-sm font-semibold underline underline-offset-4"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={selectAllInstructors}
-                      className="text-xs sm:text-sm font-semibold underline underline-offset-4"
-                    >
-                      Select all
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setInstructorSelectMode(true)}
-                    className="text-xs sm:text-sm font-semibold underline underline-offset-4"
-                  >
-                    Select
-                  </button>
-                )}
-
-                <button
-                  onClick={() => setAddInstructorOpen(true)}
-                  className="text-sm font-semibold underline underline-offset-4"
-                >
-                  Add instructor →
-                </button>
-
-                <button
-                  onClick={() => {
-                    setInviteRole('instructor');
-                    setInviteOpen(true);
-                  }}
-                  className="text-sm font-semibold underline underline-offset-4"
-                >
-                  Invite instructor →
-                </button>
-
-                <button
-                  onClick={downloadRosterCsv}
-                  className="text-xs sm:text-sm font-semibold underline underline-offset-4"
-                >
-                  Download login sheet (CSV)
-                </button>
-
-                <Link
-                  to="/org/portal?tab=assign"
-                  className={`text-sm font-semibold underline underline-offset-4 ${
-                    !instructors.length ? 'opacity-50 pointer-events-none' : ''
-                  }`}
-                  title={!instructors.length ? 'Add an instructor first' : 'Assign courses'}
-                >
-                  Assign courses →
-                </Link>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="mt-3 space-y-2">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : instructors.length ? (
-              <>
-                <ul className="mt-3 divide-y divide-black/5 dark:divide-white/10 rounded-xl">
-                  {paginatedInstructors.map((u) => {
-                    const hasFees = u.can_access_fees || String(feeInstructorId) === String(u.id);
-                    return (
-                      <PersonRow
-                        key={String(u.id)}
-                        u={{ ...u, can_access_fees: hasFees }}
-                        onRemove={() => handleRemoveMember(u)}
-                        badge={hasFees ? 'Fees access' : null}
-                        selectMode={instructorSelectMode}
-                        selected={selectedInstructorIds.has(String(u.id))}
-                        onToggleSelect={() => toggleInstructorSelect(u.id)}
-                        hideRemove={instructorSelectMode}
-                        onEdit={() => setEditingInstructor(u)}
-                        extraActions={
-                          <button
-                            type="button"
-                            onClick={() => void handleFeeAccess(u, !hasFees)}
-                            disabled={!feeReady || feeSaving || (!hasFees && !orgToken)}
-                            className={`text-[11px] sm:text-xs font-semibold px-2 py-1 rounded-full border transition ${
-                              hasFees
-                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-100'
-                                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10'
-                            }`}
-                            title={hasFees ? 'Remove fees access' : 'Grant fees access'}
-                          >
-                            {hasFees ? 'Remove' : 'Grant fees'}
-                          </button>
-                        }
-                      />
-                    );
-                  })}
-                </ul>
-
-                {/* Pagination strip */}
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[11px] sm:text-xs text-[#49739c] dark:text-darkTextSecondary">
-                  <span>{instructorRangeText()}</span>
-
-                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                    <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[#e7edf4] dark:bg-[#172534]">
-                      <span className="hidden sm:inline">Rows per page:</span>
-                      <span className="sm:hidden">Rows:</span>
-                      <select
-                        value={instructorPageSize}
-                        onChange={(e) => {
-                          const size = Number(e.target.value) || 10;
-                          setInstructorPageSize(size);
-                          setInstructorPage(1);
-                        }}
-                        className="text-[11px] sm:text-xs rounded-full bg-white/80 dark:bg-[#0f1821] px-2 py-0.5 border border-transparent focus:outline-none"
-                      >
-                        <option value={10}>10</option>
-                        <option value={25}>25</option>
-                        <option value={50}>50</option>
-                      </select>
-                    </div>
-
-                    {totalInstructorPages > 1 && (
-                      <div className="inline-flex items-center gap-1 rounded-full bg-[#e7edf4] dark:bg-[#172534] px-1.5 py-1">
-                        <button
-                          type="button"
-                          onClick={() => setInstructorPage((p) => Math.max(1, p - 1))}
-                          disabled={instructorPage === 1}
-                          className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
-                            instructorPage === 1
-                              ? 'opacity-40 cursor-default'
-                              : 'hover:bg-white/70 dark:hover:bg-white/10'
-                          }`}
-                        >
-                          ‹ Prev
-                        </button>
-                        <span className="px-2 py-1 text-[11px]">
-                          Page {instructorPage} of {totalInstructorPages}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setInstructorPage((p) => Math.min(totalInstructorPages, p + 1))
-                          }
-                          disabled={instructorPage === totalInstructorPages}
-                          className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
-                            instructorPage === totalInstructorPages
-                              ? 'opacity-40 cursor-default'
-                              : 'hover:bg-white/70 dark:hover:bg-white/10'
-                          }`}
-                        >
-                          Next ›
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="mt-4 rounded-xl border border-dashed border-[#cedbe8] dark:border-white/10 p-6 text-center">
-                <div className="text-2xl">👩🏽‍🏫</div>
-                <p className="mt-2 text-sm">No instructors listed yet.</p>
-                <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
-                  Use invites or direct add to enroll instructors. Share their login details by
-                  email or WhatsApp.
-                </p>
-              </div>
-            )}
-          </section>
-
-          {/* Learners */}
-          <section className={`${cardBase} p-4 sm:p-5`}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-bold">Learners</h2>
-
-              <div className="flex flex-wrap gap-2 items-center">
-                {learnerSelectMode ? (
-                  <>
-                    <span className="text-xs sm:text-sm text-[#49739c] dark:text-darkTextSecondary">
-                      {selectedLearnerIds.size} selected
-                    </span>
-                    <button
-                      type="button"
-                      onClick={bulkDeleteLearners}
-                      disabled={!selectedLearnerIds.size || bulkDeletingLearners}
-                      className="text-xs sm:text-sm font-semibold text-rose-600 disabled:opacity-50"
-                    >
-                      {bulkDeletingLearners ? 'Deleting…' : 'Delete'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cancelLearnerSelect}
-                      className="text-xs sm:text-sm font-semibold underline underline-offset-4"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={selectAllLearners}
-                      className="text-xs sm:text-sm font-semibold underline underline-offset-4"
-                    >
-                      Select all
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setLearnerSelectMode(true)}
-                    className="text-xs sm:text-sm font-semibold underline underline-offset-4"
-                  >
-                    Select
-                  </button>
-                )}
-
-                <label className="text-xs sm:text-sm flex items-center gap-2 cursor-pointer">
-                  <span className="underline underline-offset-4">
-                    {csvUploading ? 'Uploading CSV…' : 'Import CSV'}
+          <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {/* Attendance */}
+            <Link
+              to="/org/attendance"
+              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+            >
+              <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
+                <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
+                    <CalendarCheck2 className="h-5 w-5" />
                   </span>
-                  <input
-                    type="file"
-                    accept=".csv"
-                    className="hidden"
-                    disabled={csvUploading}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      void handleCsvUpload(file);
-                      e.target.value = '';
-                    }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={downloadLearnerSampleCsv}
-                  className="text-[11px] sm:text-xs font-semibold underline underline-offset-4"
-                >
-                  Sample CSV
-                </button>
-
-                <button
-                  onClick={() => setAddLearnerOpen(true)}
-                  className="text-sm font-semibold underline underline-offset-4"
-                >
-                  Add learner →
-                </button>
-
-                <button
-                  onClick={() => {
-                    setInviteRole('learner');
-                    setInviteOpen(true);
-                  }}
-                  className="text-sm font-semibold underline underline-offset-4"
-                >
-                  Invite learners →
-                </button>
-
-                {/* Uses Option A (server PDF) instead of legacy learner print code */}
-                <button
-                  onClick={downloadRosterCsv}
-                  className="text-xs sm:text-sm font-semibold underline underline-offset-4"
-                >
-                  Download login sheet (CSV)
-                </button>
-              </div>
-            </div>
-
-            {/* CSV help text */}
-            <p className="mt-2 text-[11px] text-[#49739c] dark:text-darkTextSecondary">
-              CSV columns: <strong>name</strong>, <strong>email</strong>,{' '}
-              <strong>admission_code</strong>, <strong>class_label</strong>,{' '}
-              <strong>guardian_email</strong>, <strong>house</strong>, <strong>dormitory</strong>,{' '}
-              <strong>club</strong>. Existing learners will be matched by{' '}
-              <strong>admission_code</strong> or <strong>email</strong> and updated where possible.
-              Use the <strong>Sample CSV</strong> button above as a ready-made template.
-            </p>
-
-            {loading ? (
-              <div className="mt-3 space-y-2">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : learners.length ? (
-              <>
-                <ul className="mt-3 divide-y divide-black/5 dark:divide-white/10 rounded-xl">
-                  {paginatedLearners.map((u) => (
-                    <PersonRow
-                      key={String(u.id)}
-                      u={u}
-                      onRemove={() => handleRemoveMember(u)}
-                      selectMode={learnerSelectMode}
-                      selected={selectedLearnerIds.has(String(u.id))}
-                      onToggleSelect={() => toggleLearnerSelect(u.id)}
-                      hideRemove={learnerSelectMode}
-                      onEdit={() => setEditingLearner(u)}
-                    />
-                  ))}
-                </ul>
-
-                {/* Pagination strip */}
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[11px] sm:text-xs text-[#49739c] dark:text-darkTextSecondary">
-                  <span>{learnerRangeText()}</span>
-
-                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                    <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[#e7edf4] dark:bg-[#172534]">
-                      <span className="hidden sm:inline">Rows per page:</span>
-                      <span className="sm:hidden">Rows:</span>
-                      <select
-                        value={learnerPageSize}
-                        onChange={(e) => {
-                          const size = Number(e.target.value) || 10;
-                          setLearnerPageSize(size);
-                          setLearnerPage(1);
-                        }}
-                        className="text-[11px] sm:text-xs rounded-full bg-white/80 dark:bg-[#0f1821] px-2 py-0.5 border border-transparent focus:outline-none"
-                      >
-                        <option value={10}>10</option>
-                        <option value={25}>25</option>
-                        <option value={50}>50</option>
-                      </select>
-                    </div>
-
-                    {totalLearnerPages > 1 && (
-                      <div className="inline-flex items-center gap-1 rounded-full bg-[#e7edf4] dark:bg-[#172534] px-1.5 py-1">
-                        <button
-                          type="button"
-                          onClick={() => setLearnerPage((p) => Math.max(1, p - 1))}
-                          disabled={learnerPage === 1}
-                          className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
-                            learnerPage === 1
-                              ? 'opacity-40 cursor-default'
-                              : 'hover:bg-white/70 dark:hover:bg-white/10'
-                          }`}
-                        >
-                          ‹ Prev
-                        </button>
-                        <span className="px-2 py-1 text-[11px]">
-                          Page {learnerPage} of {totalLearnerPages}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setLearnerPage((p) => Math.min(totalLearnerPages, p + 1))}
-                          disabled={learnerPage === totalLearnerPages}
-                          className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
-                            learnerPage === totalLearnerPages
-                              ? 'opacity-40 cursor-default'
-                              : 'hover:bg-white/70 dark:hover:bg-white/10'
-                          }`}
-                        >
-                          Next ›
-                        </button>
-                      </div>
-                    )}
+                  <div>
+                    <div className="text-sm font-semibold">Attendance</div>
+                    <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
+                      Create sessions and bulk mark learners.
+                    </p>
                   </div>
                 </div>
-              </>
-            ) : (
-              <div className="mt-4 rounded-xl border border-dashed border-[#cedbe8] dark:border-white/10 p-6 text-center">
-                <div className="text-2xl">🎓</div>
-                <p className="mt-2 text-sm">No learners yet.</p>
-                <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
-                  Use invites, direct add, or CSV import to enroll learners.
-                </p>
+                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
               </div>
-            )}
-          </section>
-        </div>
+            </Link>
+
+            {/* Fees */}
+            <Link
+              to="/org/fees"
+              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+            >
+              <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
+                <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
+                    <Wallet className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <div className="text-sm font-semibold">Fees</div>
+                    <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
+                      Charges, payments, and statements.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
+              </div>
+            </Link>
+
+            {/* Newsletters */}
+            <Link
+              to="/org/newsletters"
+              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+            >
+              <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
+                <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
+                    <Mail className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <div className="text-sm font-semibold">Newsletters</div>
+                    <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
+                      Draft, preview, and archive updates.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
+              </div>
+            </Link>
+
+            {/* Announcements */}
+            <Link
+              to="/org/announcements"
+              className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
+            >
+              <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
+                <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-2">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7edf4] dark:bg-[#172534]">
+                    <Megaphone className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <div className="text-sm font-semibold">Announcements</div>
+                    <p className="hidden sm:block text-xs text-[#49739c] dark:text-darkTextSecondary">
+                      Pinned notices for learners and instructors.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[11px] font-semibold text-[#3d99f5]">Pro</span>
+              </div>
+            </Link>
+          </div>
+        </section>
 
         {/* Learner photos – bulk + single upload */}
         <section className={`${cardBase} mt-4 p-4 sm:p-5`}>
@@ -1485,14 +462,13 @@ const OrgProfilePage: React.FC = () => {
                             ? res
                             : res?.url || res?.secure_url || res?.data?.url || '';
 
-                        if (!photoUrl) {
-                          throw new Error('Upload completed but no URL was returned.');
-                        }
+                        if (!photoUrl) throw new Error('Upload completed but no URL was returned.');
 
                         await setOrgLearnerPhotoByAdmission(backendUrl, orgToken, org.id, {
                           admission_code: baseName,
                           photo_url: photoUrl,
                         });
+
                         successes.push(baseName);
                       } catch (err: any) {
                         const msg =
@@ -1508,9 +484,9 @@ const OrgProfilePage: React.FC = () => {
                       alertMsg += `Mapped ${successes.length} photo(s):\n${successes.join(', ')}`;
                     }
                     if (failures.length) {
-                      alertMsg += `${
-                        successes.length ? '\n\n' : ''
-                      }Failed for ${failures.length} file(s):\n${failures.join('\n')}`;
+                      alertMsg += `${successes.length ? '\n\n' : ''}Failed for ${
+                        failures.length
+                      } file(s):\n${failures.join('\n')}`;
                     }
                     if (alertMsg) alert(alertMsg);
                   } finally {
@@ -1519,6 +495,7 @@ const OrgProfilePage: React.FC = () => {
                 }}
               />
             </label>
+
             <p className="mt-2 text-[11px] text-[#49739c] dark:text-darkTextSecondary">
               Name each image file exactly as the learner Admission No/Code, for example{' '}
               <code className="px-1 py-0.5 rounded bg-slate-100 dark:bg-black/40 text-[10px]">
@@ -1556,10 +533,12 @@ const OrgProfilePage: React.FC = () => {
                   const file = e.target.files?.[0] || null;
                   e.target.value = '';
                   if (!file || !org?.id || !orgToken) return;
+
                   if (!photoAdmCode.trim()) {
                     alert('Enter the Admission No/Code first.');
                     return;
                   }
+
                   try {
                     setPhotoUploading(true);
                     const res: any = await uploadAsset(backendUrl, orgToken, file, 'image');
@@ -1567,14 +546,16 @@ const OrgProfilePage: React.FC = () => {
                       typeof res === 'string'
                         ? res
                         : res?.url || res?.secure_url || res?.data?.url || '';
-                    if (!photoUrl) {
-                      throw new Error('Upload completed but no URL was returned.');
-                    }
+
+                    if (!photoUrl) throw new Error('Upload completed but no URL was returned.');
+
                     await setOrgLearnerPhotoByAdmission(backendUrl, orgToken, org.id, {
                       admission_code: photoAdmCode.trim(),
                       photo_url: photoUrl,
                     });
+
                     alert('Photo mapped to learner. Future report cards will use it.');
+                    setPhotoAdmCode('');
                   } catch (err: any) {
                     alert(
                       err?.response?.data?.message ||
@@ -1643,9 +624,7 @@ const OrgProfilePage: React.FC = () => {
 
               {/* Email domain */}
               <div className="rounded-xl p-3 ring-1 ring-black/5 dark:ring-white/10 bg-slate-50 dark:bg-[#0b1620]">
-                <div className="text-xs text-[#49739c] dark:text-darkTextSecondary">
-                  Email domain
-                </div>
+                <div className="text-xs text-[#49739c] dark:text-darkTextSecondary">Email domain</div>
                 {loading ? (
                   <Skeleton className="h-6 w-40 mt-2" />
                 ) : (
@@ -1697,9 +676,7 @@ const OrgProfilePage: React.FC = () => {
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-[#49739c] dark:text-darkTextSecondary">
                 {org?.house_label?.trim() && (
                   <div className="rounded-lg px-3 py-2 bg-slate-50 dark:bg-[#0b1620] ring-1 ring-black/5 dark:ring-white/10">
-                    <div className="text-[11px] uppercase tracking-wide opacity-70">
-                      House label
-                    </div>
+                    <div className="text-[11px] uppercase tracking-wide opacity-70">House label</div>
                     <div className="mt-1 text-sm text-[#0d141c] dark:text-darkTextPrimary">
                       {org.house_label}
                     </div>
@@ -1759,40 +736,6 @@ const OrgProfilePage: React.FC = () => {
             </div>
           </div>
         </section>
-
-        {/* Invite & Add modals */}
-        <InviteModal
-          open={inviteOpen}
-          initialRole={inviteRole}
-          onClose={() => setInviteOpen(false)}
-          onCreate={handleCreateMembershipInvite}
-        />
-
-        <AddInstructorModal
-          open={addInstructorOpen}
-          onClose={() => setAddInstructorOpen(false)}
-          onCreate={handleCreateInstructor}
-        />
-
-        <AddLearnerModal
-          open={addLearnerOpen}
-          onClose={() => setAddLearnerOpen(false)}
-          onCreate={handleCreateLearner}
-        />
-
-        <EditInstructorModal
-          open={!!editingInstructor}
-          instructor={editingInstructor}
-          onClose={() => setEditingInstructor(null)}
-          onSave={handleUpdateInstructor}
-        />
-
-        <EditLearnerModal
-          open={!!editingLearner}
-          learner={editingLearner}
-          onClose={() => setEditingLearner(null)}
-          onSave={handleUpdateLearner}
-        />
       </div>
 
       {/* Mobile sticky bar */}
@@ -1805,10 +748,12 @@ const OrgProfilePage: React.FC = () => {
             Manage in Portal
           </Link>
         </div>
+
         <div className="flex items-center justify-between rounded-2xl px-3 py-2 ring-1 ring-black/5 dark:ring-white/10 bg-white/90 dark:bg-[#0f1821]/90 backdrop-blur">
           <span className="text-sm">Dark mode</span>
           <ThemeToggle />
         </div>
+
         <button
           onClick={logoutInstitution}
           className="w-full rounded-2xl py-3 font-semibold bg-rose-600 text-white shadow ring-1 ring-rose-500/40"

@@ -106,6 +106,7 @@ import OrgInstructorHomeNative from './screens/org/OrgInstructorHome.native';
 
 import OrgExamResultsPortal from './screens/org/OrgExamResultsPortal.native';
 import OrgChangePasswordNative from './screens/org/OrgChangePassword.native';
+import OrgRosterScreenNative from './screens/org/OrgRoster.native';
 
 import OrgAttendanceNative from './screens/org/OrgAttendance.native';
 import OrgFeesNative from './screens/org/OrgFees.native';
@@ -375,6 +376,18 @@ function OrgProfileScreen() {
     </OrgProtectedRoute>
   );
 }
+
+function OrgRosterScreen() {
+  return (
+    <OrgProtectedRoute>
+      <OrgAdminOnlyGuard>
+        <OrgRosterScreenNative />
+      </OrgAdminOnlyGuard>
+    </OrgProtectedRoute>
+  );
+}
+
+
 function OrgExamResultsPortalScreen() {
   const route = useRoute<RouteProp<MainStackParamList, 'OrgExamResultsPortal'>>();
   const view = route.params?.view;
@@ -634,6 +647,7 @@ const App: React.FC = () => {
           <Stack.Screen name="OrgInstructorHome" component={OrgInstructorHomeScreen} />
           <Stack.Screen name="OrgElearnPortal" component={OrgElearnPortalScreen} />
           <Stack.Screen name="OrgProfile" component={OrgProfileScreen} />
+          <Stack.Screen name="OrgRoster" component={OrgRosterScreen} />
           <Stack.Screen name="OrgExamResultsPortal" component={OrgExamResultsPortalScreen} />
           <Stack.Screen name="OrgAttendance" component={OrgAttendanceScreen} />
           <Stack.Screen name="OrgFees" component={OrgFeesScreen} />

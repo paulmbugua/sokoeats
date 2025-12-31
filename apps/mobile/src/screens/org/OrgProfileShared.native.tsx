@@ -1,4 +1,4 @@
-/* eslint-disable prettier/prettier */
+
 import React, { useState } from 'react';
 import { View, Text, Pressable, Linking, Platform } from 'react-native';
 import tw from '../../../tailwind';
@@ -283,7 +283,7 @@ export const PersonRow: React.FC<{
             <Ionicons name="trash-outline" size={18} color="#fff" />
           </IconBtn>
         )}
-      </View>
-    </View>
+     </View>
+   </Pressable>
   );
 };

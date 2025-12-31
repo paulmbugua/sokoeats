@@ -76,7 +76,7 @@ export type MainStackParamList = {
     | undefined;
 
   OrgProfile: undefined;
-
+ OrgRoster: undefined;
   OrgAttendance: undefined;
   OrgFees: undefined;
   OrgNewsletters: undefined;

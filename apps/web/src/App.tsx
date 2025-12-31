@@ -70,7 +70,7 @@ import OrgAnnouncementsPage from './pages/org/OrgAnnouncements.web';
 import OrgToolsSportsPage from './pages/org/OrgToolsSports.web';
 import OrgToolsClubsPage from './pages/org/OrgToolsClubs.web';
 import OrgChangePassword from './pages/org/OrgChangePassword.web';
-
+import OrgRosterPage from './pages/org/OrgRoster.web';
 // OER
 import OerReaderFull from './pages/OerReaderFull.web';
 import OerCollectionReader from './pages/OerCollectionReader.web';
@@ -138,28 +138,22 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 
 // Org-only protected route: checks orgToken (not user token) and avoids first-render race
 const OrgProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { orgToken } = useShopContext() as any;
+  const { orgToken, initializing } = useShopContext() as any;
   const location = useLocation();
-  const [ready, setReady] = React.useState(false);
 
-  React.useEffect(() => {
-    const t = setTimeout(() => setReady(true), 0); // micro-tick to let context commit
-    return () => clearTimeout(t);
-  }, []);
-
-  if (!ready) return null;
+  // wait for tokens to hydrate (no blank screen)
+  if (initializing) return <Spinner />;
 
   if (orgToken) return <>{children}</>;
 
   try {
     const next = `${location.pathname}${location.search}${location.hash}`;
     sessionStorage.setItem('auth:returnTo', next);
-  } catch {
-    /* ignore storage errors */
-  }
+  } catch {}
 
   return <Navigate to="/org/login" replace state={{ from: location }} />;
 };
+
 
 /* Enforce first-login redirect inside protected area (general app) */
 const FirstLoginGate: React.FC = () => {
@@ -442,6 +436,15 @@ const App: React.FC = () => {
           <Route path="/org/learner/newsletters" element={<OrgLearnerNewslettersPage />} />
           <Route path="/org/learner/newsletters/:id" element={<OrgLearnerNewslettersPage />} />
           <Route path="/org/learn/activities" element={<OrgLearnerSportsClubsPage />} />
+
+          <Route
+          path="/org/roster"
+          element={
+            <OrgAdminOnlyRoute>
+              <OrgRosterPage />
+            </OrgAdminOnlyRoute>
+          }
+        />
 
 
           {/* Admin-only profile */}
