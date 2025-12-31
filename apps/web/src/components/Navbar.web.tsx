@@ -172,7 +172,7 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
   }, [isOrg, orgToken, isLearnerRole, isInstructorRole]);
 
   return (
-    <header className="sticky top-0 z-50 backdrop-blur bg-white/80 dark:bg-darkBg/80 border-b border-gray-200 dark:border-darkCard">
+   <header className="sticky top-0 z-50 bg-white dark:bg-darkBg border-b border-gray-200 dark:border-darkCard">
       <div className="mx-auto w-full max-w-screen-2xl px-3 sm:px-4 lg:px-8">
         {/* Top bar */}
         <div className="flex h-14 sm:h-16 items-center justify-between gap-2">

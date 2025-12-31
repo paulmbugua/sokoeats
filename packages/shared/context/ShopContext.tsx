@@ -462,9 +462,8 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
     ]
   );
 
-  return (
-    <ShopContext.Provider value={value}>{initializing ? null : children}</ShopContext.Provider>
-  );
+  return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>;
+
 };
 
 export const useShopContext = (): ShopContextValue => {

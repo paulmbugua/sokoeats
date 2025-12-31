@@ -28,6 +28,8 @@ import PaymentWidget from './PaymentWidget.native';
 import ThemeToggle from '../screens/ThemeToggle.native';
 import DeleteAccount from '../screens/DeleteAccount.native';
 import RefundCenter from '../screens/RefundCenter.native';
+import visamasterIcon from '../../assets/visamaster.png';
+import mpesaIcon from '../../assets/mpesa.png';
 
 // ⬇️ Global refresh wrappers
 import { RefreshableScrollView } from '../refresh/Refreshable';
@@ -1161,16 +1163,17 @@ const ProfileScreen: React.FC = () => {
               {/* PaymentWidget MUST be outside the flex-row card */}
               {openPayment && (
                 <PaymentWidget
-                  isOpen={openPayment}
-                  onClose={handlePaymentClose}
-                  title="Top up your tokens"
-                  variant="inline"
-                  showTutorPreview={false}
-                  icons={{
-                    visamaster: require('../../assets/visamaster.png'),
-                    mpesa: require('../../assets/mpesa.png'),
-                  }}
-                />
+                isOpen={openPayment}
+                onClose={handlePaymentClose}
+                title="Top up your tokens"
+                variant="inline"
+                showTutorPreview={false}
+                icons={{
+                  visamaster: visamasterIcon,
+                  mpesa: mpesaIcon,
+                }}
+              />
+
               )}
             </View>
           )}

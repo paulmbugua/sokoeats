@@ -5,6 +5,7 @@ import path from 'path';
 import multer from 'multer';
 import pool from '../config/db.js';
 import { requireOrgTier } from '../utils/orgTierGuard.js';
+import { sanitizeRemark30 } from '../utils/remarkUtils.js';
 import { getStudentExamCard } from '../services/orgExamCardService.js';
 import {
   renderOrgExamStudentCardPdf,
@@ -87,25 +88,6 @@ function asUuid(value) {
   return v;
 }
 
-// Clamp a single subject remark to a short, neat string
-function clampSubjectRemark(rawRemark, maxChars = 80) {
-  const txt = (rawRemark ?? '').toString().trim();
-
-  if (!txt) return '';
-
-  if (txt.length <= maxChars) {
-    return txt;
-  }
-
-  // Soft-clip on a word boundary if possible
-  const clipped = txt.slice(0, maxChars);
-  const lastSpace = clipped.lastIndexOf(' ');
-
-  const trimmed =
-    lastSpace > 20 ? clipped.slice(0, lastSpace).trimEnd() : clipped.trimEnd();
-
-  return `${trimmed}…`;
-}
 
 // Helper: compute grade from bands
 async function pickGrade(orgId, percent) {
@@ -629,10 +611,7 @@ export async function saveOrgExamSheet(req, res) {
           cat_score: r && r.cat_score == null ? null : r ? Number(r.cat_score) : null,
           exam_score: r && r.exam_score == null ? null : r ? Number(r.exam_score) : null,
 
-          remark: (() => {
-            const raw = (r && r.remark != null ? r.remark : '').toString().trim();
-            return raw || null;
-          })(),
+          remark: sanitizeRemark30(r && r.remark != null ? r.remark : null),
 
           teacher_initials: (() => {
             const raw = (
@@ -736,11 +715,7 @@ export async function saveOrgExamSheet(req, res) {
           $8::numeric                       AS cat_score,
           $9::numeric                       AS exam_score,
           COALESCE(b.grade, 'N/A')          AS grade,
-          COALESCE(
-            NULLIF($10::text, ''),
-            b.remark,
-            ''
-          )                                 AS remark,
+          COALESCE(NULLIF($10::text, ''), '') AS remark,
           NULLIF($11::text, '')             AS teacher_initials,
           COALESCE($12::jsonb, '{}'::jsonb) AS extra
         FROM (
@@ -795,7 +770,7 @@ export async function saveOrgExamSheet(req, res) {
           cat_score = $8::numeric,
           exam_score = $9::numeric,
           grade = COALESCE((SELECT grade FROM band), 'N/A'),
-          remark = COALESCE(NULLIF($10::text, ''), (SELECT remark FROM band), ''),
+          remark = COALESCE(NULLIF($10::text, ''), ''),
           teacher_initials = NULLIF($11::text, ''),
           extra = COALESCE($12::jsonb, '{}'::jsonb),
           updated_at = NOW()
@@ -1421,8 +1396,7 @@ export async function generateOrgExamSheetAiCompute(req, res, next) {
 
       // ✅ Allow AI to update per-subject remark, clamp to max 30 characters
       if (patch.remark !== undefined) {
-        next.remark =
-          patch.remark == null ? null : clampSubjectRemark(patch.remark, 30);
+        next.remark = sanitizeRemark30(patch.remark);
       }
 
       // ✅ Allow AI to update teacher_initials
@@ -1634,8 +1608,7 @@ export const generateOrgExamSheetFromDocs = [
 
         /// ✅ Allow AI to update per-subject remark, clamp to max 30 characters
         if (patch.remark !== undefined) {
-          next.remark =
-            patch.remark == null ? null : clampSubjectRemark(patch.remark, 30);
+          next.remark = sanitizeRemark30(patch.remark);
         }
 
         // ✅ Allow AI to update teacher_initials

@@ -1,5 +1,5 @@
 // apps/web/src/pages/org/InstitutionLogin.web.tsx
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useLayoutEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import useInstitutionAuth from '@mytutorapp/shared/hooks/useInstitutionAuth';
 import CustomGoogleLoginButton from '../../components/CustomGoogleLoginButton';
@@ -32,9 +32,9 @@ const InstitutionLogin: React.FC = () => {
       : null;
 
   // ✅ IMPORTANT: If already authenticated, only redirect for normal login (NOT reauth)
-  useEffect(() => {
-    if (orgToken && !reauth) navigate('/org', { replace: true });
-  }, [orgToken, navigate, reauth]);
+  useLayoutEffect(() => {
+  if (orgToken && !reauth) navigate('/org', { replace: true });
+}, [orgToken, navigate, reauth]);
 
   // —— Local state —— //
   const [authMode, setAuthMode] = useState<AuthMode>('Login');

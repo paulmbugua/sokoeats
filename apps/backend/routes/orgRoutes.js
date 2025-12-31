@@ -9,6 +9,9 @@ import {
   confirmOrgSubscription,
 } from '../controllers/orgBillingController.js';
 
+import { downloadOrgLearnerRosterPdf } from '../controllers/orgRosterPdfController.js';
+
+
 import {
   updateOrgBranding,
   createAssignment,
@@ -454,7 +457,7 @@ router.get(
   getInstitutionFeeStatementPdf,
 );
 
-
+router.get('/:orgId/learners/roster.pdf', requireAuth, downloadOrgLearnerRosterPdf);
 
 router.get('/:orgId/announcements/feed', requireAuth, getAnnouncementFeed);
 router.get('/:orgId/announcements/:announcementId/agm.pdf', requireAuth, requireOrgProTier, getAnnouncementAgmPdf);

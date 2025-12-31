@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-
+import { sanitizeRemark30, remarkStringSchema30 } from '../utils/remarkUtils.js';
 /**
  * Simple OpenAI client reusing your existing .env
  * Uses OPENAI_API_KEY and optional OPENAI_EXAMS_MODEL
@@ -10,8 +10,9 @@ const openai = new OpenAI({
 
 const EXAMS_MODEL =
   process.env.OPENAI_EXAMS_MODEL ||
-  process.env.OPENAI_COURSE_MODEL || // if you used this for RobotTeacher
-  'gpt-4.1-mini';
+  process.env.OPENAI_COURSE_MODEL ||
+  'gpt-4o-mini';
+
 
 /**
  * Shape of the JSON we expect from AI for remarks:
@@ -22,24 +23,25 @@ const EXAMS_MODEL =
  */
 const EXAM_INSIGHTS_SCHEMA = {
   type: 'object',
+  additionalProperties: false,
   properties: {
     principalRemark: { type: 'string' },
     subjectRemarks: {
       type: 'array',
       items: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           subject: { type: 'string' },
-          remark: { type: 'string' },
+          remark: remarkStringSchema30(), // ✅ <=30 + no trailing dot/ellipsis
         },
         required: ['subject', 'remark'],
-        additionalProperties: false,
       },
     },
   },
   required: ['principalRemark', 'subjectRemarks'],
-  additionalProperties: true,
 };
+;
 
 const EXAM_CONFIG_TRANSFORM_SCHEMA = {
   type: 'object',
@@ -49,13 +51,14 @@ const EXAM_CONFIG_TRANSFORM_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
+        additionalProperties: true,
         properties: {
           label: { type: 'string' },
           year: { anyOf: [{ type: 'number' }, { type: 'string' }] },
           is_active: { type: 'boolean' },
         },
-        required: ['terms', 'sessions', 'gradingBands'],
-        additionalProperties: true,
+        required: ['label', 'year'],
+        
       },
     },
     sessions: {
@@ -112,36 +115,41 @@ const EXAM_CONFIG_TRANSFORM_SCHEMA = {
  */
 const EXAM_SHEET_TRANSFORM_SCHEMA = {
   type: 'object',
+  additionalProperties: false,
   properties: {
     updatedRows: {
       type: 'array',
       items: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           student_user_id: { anyOf: [{ type: 'number' }, { type: 'string' }] },
           subject: { type: 'string' },
-           subject_new: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          subject_new: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+
           score: { anyOf: [{ type: 'number' }, { type: 'null' }] },
           max_score: { anyOf: [{ type: 'number' }, { type: 'null' }] },
           cat_score: { anyOf: [{ type: 'number' }, { type: 'null' }] },
           exam_score: { anyOf: [{ type: 'number' }, { type: 'null' }] },
           percent: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+
           grade: { type: 'string' },
-          remark: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-          teacher_initials: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-          extra: {
-            type: 'object',
-            additionalProperties: true,
+
+          // ✅ If provided, must be a valid short phrase
+          remark: {
+            anyOf: [remarkStringSchema30(), { type: 'null' }],
           },
+
+          teacher_initials: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          extra: { type: 'object' },
         },
         required: ['student_user_id', 'subject'],
-        additionalProperties: true,
       },
     },
   },
   required: ['updatedRows'],
-  additionalProperties: true,
 };
+
 
 /**
  * Build a compact JSON-friendly snapshot of the card for AI.
@@ -275,16 +283,23 @@ export async function aiGenerateExamInsights({ card, instructions }) {
     JSON.stringify(EXAM_INSIGHTS_SCHEMA, null, 2),
   ].join('\n');
 
-  const completion = await openai.chat.completions.create({
+  const resp = await openai.responses.create({
     model: EXAMS_MODEL,
-    response_format: { type: 'json_object' },
-    messages: [
+    input: [
       { role: 'system', content: systemMessage },
       { role: 'user', content: userMessage },
     ],
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'exam_insights',
+        strict: true,
+        schema: EXAM_INSIGHTS_SCHEMA,
+      },
+    },
   });
 
-  const raw = completion.choices?.[0]?.message?.content || '{}';
+ const raw = resp.output_text || '{}';
 
   let parsed;
   try {
@@ -315,7 +330,7 @@ export async function aiGenerateExamInsights({ card, instructions }) {
         .map((x) => ({
           subject: x.subject.trim(),
           // ✅ ensure AI subject remarks are tiny (≤ 20 chars) for the REMARKS column
-          remark: clampSubjectRemark(x.remark, 30),
+          remark: sanitizeRemark30(x.remark),
         }))
     : [];
 
@@ -433,17 +448,24 @@ export async function aiComputeExamSheet({
     '- Rewrite remark strings to be short, neutral comments.',
   ].join('\n');
 
-  const completion = await openai.chat.completions.create({
+  const resp = await openai.responses.create({
     model: EXAMS_MODEL,
-    response_format: { type: 'json_object' },
-    messages: [
+    input: [
       { role: 'system', content: systemMessage },
-      { role: 'user', content: instructions || '' },
+     { role: 'user', content: instructions || '' },
       { role: 'user', content: userMessage },
     ],
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'exam_sheet_transform',
+        strict: true,
+        schema: EXAM_SHEET_TRANSFORM_SCHEMA,
+      },
+    },
   });
 
-  const raw = completion.choices?.[0]?.message?.content || '{}';
+  const raw = resp.output_text || '{}';
 
   let parsed;
   try {
@@ -453,11 +475,19 @@ export async function aiComputeExamSheet({
   }
 
   const updatedRows = Array.isArray(parsed.updatedRows)
-    ? parsed.updatedRows.filter((row) => {
+    ? parsed.updatedRows
+        .filter((row) => {
         const sid = Number(row.student_user_id);
         const subject = row.subject && row.subject.toString().trim();
         return sid && subject;
-      })
+     })
+        .map((row) => ({
+          ...row,
+          // Ensure runtime enforcement too
+          remark:
+            row.remark === undefined ? undefined : sanitizeRemark30(row.remark),
+        }))
+      
     : [];
 
   return {
