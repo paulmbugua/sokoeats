@@ -1,8 +1,9 @@
-/* eslint-disable prettier/prettier */
+
 /* eslint-disable react-hooks/exhaustive-deps */
 
 // apps/mobile/src/screens/org/OrgInstructorHome.native.tsx
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Children, useCallback, useEffect, useMemo, useState } from 'react';
+
 import {
   View,
   Text,
@@ -11,7 +12,7 @@ import {
   Alert,
   Share,
   TextInput,
-  ScrollView,
+  
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -319,7 +320,7 @@ function ToolsGrid({ children }: { children: React.ReactNode }) {
       onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}
       style={{ flexDirection: 'row', flexWrap: 'wrap' }}
     >
-      {React.Children.toArray(children).map((child, idx) => {
+      {Children.toArray(children).map((child, idx) => {
         const isLastCol = idx % TOOL_COLS === TOOL_COLS - 1;
 
         return (
@@ -657,6 +658,13 @@ const OrgInstructorHomeNative: React.FC = () => {
     if (!classLabel.trim()) return setSigError('Enter a class label.');
     if (!backendUrl || !orgId || !authToken) return setSigError('Missing organization context.');
 
+      const isHttpUrl = /^https?:\/\//i.test(String(previewUrl || ''));
+    if (!isHttpUrl) {
+      return setSigError(
+        'Please upload/save the signature first (so it has a real URL), then apply to class.'
+      );
+    }
+
     try {
       const res = await fetch(
         `${backendUrl}/api/orgs/${orgId}/classes/${encodeURIComponent(classLabel.trim())}/class-teacher-signature`,
@@ -754,18 +762,11 @@ const OrgInstructorHomeNative: React.FC = () => {
                 Manage learning for <Text style={tw`font-semibold`}>{orgName}</Text>. Create assignments, enter marks,
                 and keep classes organized.
               </Text>
-
               <View style={tw`mt-3 flex-row flex-wrap gap-2`}>
-                <Badge tone="emerald" palette={palette}>
-                  Plan: {tierLabel}
-                </Badge>
-                <Badge tone="sky" palette={palette}>
-                  Role: {roleLabel}
-                </Badge>
+                <Badge tone="emerald" palette={palette}>{`Plan: ${tierLabel}`}</Badge>
+                <Badge tone="sky" palette={palette}>{`Role: ${roleLabel}`}</Badge>
                 {!authToken ? (
-                  <Badge tone="rose" palette={palette}>
-                    Session missing
-                  </Badge>
+                  <Badge tone="rose" palette={palette}>{'Session missing'}</Badge>
                 ) : null}
               </View>
 
@@ -916,13 +917,9 @@ const OrgInstructorHomeNative: React.FC = () => {
             </View>
 
             {!isProTier ? (
-              <Badge tone="amber" palette={palette}>
-                Pro required
-              </Badge>
+              <Badge tone="amber" palette={palette}>{'Pro required'}</Badge>
             ) : (
-              <Badge tone="emerald" palette={palette}>
-                Unlocked
-              </Badge>
+              <Badge tone="emerald" palette={palette}>{'Unlocked'}</Badge>
             )}
           </View>
 
@@ -1168,9 +1165,7 @@ const OrgInstructorHomeNative: React.FC = () => {
                   If your setup supports per-class signatures, set the class label and save.
                 </Text>
               </View>
-              <Badge tone="slate" palette={palette}>
-                Optional
-              </Badge>
+              <Badge tone="slate" palette={palette}>{'Optional'}</Badge>
             </View>
 
             <View style={tw`mt-3`}>

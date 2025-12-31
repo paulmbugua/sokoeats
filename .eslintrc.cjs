@@ -97,6 +97,7 @@ module.exports = {
         '@typescript-eslint/no-explicit-any': 'off',
         'react-native/no-inline-styles': 'off',
         'react-native/no-color-literals': 'off',
+        'react-native/no-raw-text': 'off',
 
         // Existing relaxations
         '@typescript-eslint/no-unused-vars': 'off',
@@ -135,7 +136,10 @@ module.exports = {
       },
       env: { node: true },
       rules: {
-        // keep as-is
+        '@typescript-eslint/no-unused-vars': 'off',
+        'import/no-named-as-default': 'off',
+        'import/no-named-as-default-member': 'off',
+
       },
     },
   ],

@@ -37,11 +37,13 @@ import {
   bulkCreateOrgLearnersCsv,
   setOrgLearnerPhotoByAdmission,
   saveOrgLearnerAttendance,
+  updateOrgLearner,
 } from '../controllers/orgLearnersController.js';
 
 import {
   createOrgInstructor,
   bulkCreateOrgInstructorsCsv,
+  updateOrgInstructor, 
 } from '../controllers/orgInstructorsController.js';
 
 import {
@@ -193,6 +195,7 @@ router.post(
   requireAuth,
   saveOrgLearnerAttendance,
 );
+router.patch('/:orgId/learners/:learnerId', requireAuth, updateOrgLearner);
 /* ───────────────────────── NEW: instructor management ────────────────────── */
 
 router.post('/:orgId/instructors', requireAuth, createOrgInstructor);
@@ -209,6 +212,8 @@ router.post(
   requireOrgAdmin,
   setInstructorFeeAccess,
 );
+
+router.patch('/:orgId/instructors/:instructorId', requireAuth, updateOrgInstructor);
 
 // List assignments (learner/admin)
 router.get('/:orgId/assignments', requireAuth, getOrgAssignments);

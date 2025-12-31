@@ -1,3 +1,4 @@
+/* eslint-disable no-useless-escape */
 // apps/backend/controllers/orgFeesController.js
 import pool from '../config/db.js';
 import {
