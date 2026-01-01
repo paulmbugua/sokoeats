@@ -325,7 +325,7 @@ function ThemePanel({
           </div>
 
           <div className="col-span-12">
-            <div className="flex flex-wrap items-center gap-2">
+           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-200">
                 Presets
               </span>
@@ -1175,7 +1175,7 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
 
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 px-4 py-8">
+   <div className="mx-auto max-w-7xl space-y-4 px-3 sm:px-4 py-5 sm:py-8">
 
         <style>{`
       /* used by html2pdf export */
@@ -1208,7 +1208,8 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
     `}</style>
 
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+
         <div>
           <p className="text-sm uppercase tracking-wide text-blue-500">Org tools</p>
           <h1 className="text-2xl font-semibold">End-of-term newsletters</h1>
@@ -1217,7 +1218,8 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 justify-start lg:justify-end">
+
           {flash ? (
             <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800 dark:border-blue-900 dark:bg-blue-900/20 dark:text-blue-200">
               {flash}
@@ -1238,9 +1240,11 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
           </Link>
         </div>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-12">
+       <div className="grid gap-3 lg:gap-4 lg:grid-cols-12">
+
           {/* LEFT: Library */}
-          <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-3">
+          <div className="min-w-0 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-3">
+
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-semibold">Library</div>
@@ -1258,7 +1262,8 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
               </button>
             </div>
 
-            <div className="max-h-[640px] space-y-2 overflow-auto pr-1">
+            <div className="max-h-[38vh] sm:max-h-[45vh] lg:max-h-[calc(100vh-14rem)] space-y-2 overflow-auto pr-1">
+
               {loadingList ? (
                 <div className="text-sm text-slate-500">Loading…</div>
               ) : items.length === 0 ? (
@@ -1308,7 +1313,8 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
           </div>
 
           {/* MIDDLE: Editor + AI */}
-          <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-5">
+          <div className="min-w-0 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-5">
+
             {!selectedId ? (
               <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 dark:border-slate-700">
                 Select a newsletter on the left, or create a new draft.
@@ -1316,7 +1322,8 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
             ) : (
               <>
                 {/* Top actions */}
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+
                   <div className="flex items-center gap-2">
                     <span className={statusPill(selected?.status || 'draft')}>
                       {selected?.status || 'draft'}
@@ -1336,7 +1343,7 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
                       Print / PDF
                     </button>
                     <button
-                    className="rounded border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="w-full sm:w-auto rounded border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                     onClick={downloadPdf}
                   >
                     Download PDF
@@ -1472,7 +1479,8 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
                     <textarea
                       value={aiExtra}
                       onChange={(e) => setAiExtra(e.target.value)}
-                      className="mt-1 h-[80px] w-full resize-none rounded-lg border border-slate-200 bg-white p-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                     className="mt-1 h-[90px] sm:h-[80px] w-full resize-none rounded-lg border border-slate-200 bg-white p-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+
                       placeholder='e.g. Mention PTA meeting, include fee deadline, keep it under 1 page...'
                     />
                   </div>
@@ -1486,8 +1494,8 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
                   <textarea
                     value={stripThemeFromContent(content)}
                     onChange={(e) => setContent(upsertThemeIntoContent(e.target.value, theme))}
-                    className="h-[420px] w-full resize-none rounded-lg border border-slate-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-950"
-                    placeholder="Write your newsletter…"
+                    className="h-[38vh] min-h-[260px] sm:h-[420px] w-full resize-none rounded-lg border border-slate-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-950"
+
                   />
                   <div className="mt-2 text-[11px] text-slate-500">
                     Tip: headings (##) + bullets print beautifully.
@@ -1586,7 +1594,8 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
                       </div>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap sm:items-center">
+
                       <button
                         className="rounded border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-900 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-slate-950 dark:text-emerald-200 dark:hover:bg-emerald-900/20"
                         onClick={previewRecipients}
@@ -1674,7 +1683,8 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
 
           {/* RIGHT: Theme + Live Preview */}
         {/* RIGHT: Theme + Preview (minimal, non-cluttered) */}
-        <div className="space-y-3 lg:col-span-4">
+        <div className="min-w-0 space-y-3 lg:col-span-4">
+
           <ThemePanel
             theme={theme}
             setTheme={setTheme}

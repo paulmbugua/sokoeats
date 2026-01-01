@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { sanitizeRemark30, remarkStringSchema30 } from '../utils/remarkUtils.js';
+
 /**
  * Simple OpenAI client reusing your existing .env
  * Uses OPENAI_API_KEY and optional OPENAI_EXAMS_MODEL
@@ -12,7 +13,6 @@ const EXAMS_MODEL =
   process.env.OPENAI_EXAMS_MODEL ||
   process.env.OPENAI_COURSE_MODEL ||
   'gpt-4o-mini';
-
 
 /**
  * Shape of the JSON we expect from AI for remarks:
@@ -41,7 +41,6 @@ const EXAM_INSIGHTS_SCHEMA = {
   },
   required: ['principalRemark', 'subjectRemarks'],
 };
-;
 
 const EXAM_CONFIG_TRANSFORM_SCHEMA = {
   type: 'object',
@@ -58,7 +57,6 @@ const EXAM_CONFIG_TRANSFORM_SCHEMA = {
           is_active: { type: 'boolean' },
         },
         required: ['label', 'year'],
-        
       },
     },
     sessions: {
@@ -99,19 +97,8 @@ const EXAM_CONFIG_TRANSFORM_SCHEMA = {
 /**
  * NEW: Shape of JSON we expect when AI is transforming the marks sheet.
  *
- * {
- *   updatedRows: Array<{
- *     student_user_id: number | string,
- *     subject: string,
- *     score?: number | null,
- *     max_score?: number | null,
- *     cat_score?: number | null,
- *     exam_score?: number | null,
- *     remark?: string | null,
- *     teacher_initials?: string | null,
- *     extra?: Record<string, any>
- *   }>
- * }
+ * IMPORTANT:
+ * - `extra` is an ARRAY of {key,value} entries so we can keep strict JSON schema.
  */
 const EXAM_SHEET_TRANSFORM_SCHEMA = {
   type: 'object',
@@ -133,23 +120,75 @@ const EXAM_SHEET_TRANSFORM_SCHEMA = {
           exam_score: { anyOf: [{ type: 'number' }, { type: 'null' }] },
           percent: { anyOf: [{ type: 'number' }, { type: 'null' }] },
 
-          grade: { type: 'string' },
+          grade: { anyOf: [{ type: 'string' }, { type: 'null' }] },
 
-          // ✅ If provided, must be a valid short phrase
-          remark: {
-            anyOf: [remarkStringSchema30(), { type: 'null' }],
-          },
+          remark: { anyOf: [remarkStringSchema30(), { type: 'null' }] },
 
           teacher_initials: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-          extra: { type: 'object' },
+
+          // ✅ strict-safe dynamic columns
+          extra: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                key: { type: 'string' },
+                value: {
+                  anyOf: [
+                    { type: 'string' },
+                    { type: 'number' },
+                    { type: 'boolean' },
+                    { type: 'null' },
+                  ],
+                },
+              },
+              required: ['key', 'value'],
+            },
+          },
         },
-        required: ['student_user_id', 'subject'],
+        // ✅ strict: true requires all fields required (use nulls to emulate optional)
+        required: [
+          'student_user_id',
+          'subject',
+          'subject_new',
+          'score',
+          'max_score',
+          'cat_score',
+          'exam_score',
+          'percent',
+          'grade',
+          'remark',
+          'teacher_initials',
+          'extra',
+        ],
       },
     },
   },
   required: ['updatedRows'],
 };
 
+/**
+ * Helpers for strict-safe extra conversions:
+ * - object -> [{key,value}] for AI input
+ * - [{key,value}] -> object for backend merge
+ */
+const extraObjToEntries = (obj) =>
+  Object.entries(obj || {}).map(([key, value]) => ({
+    key: String(key),
+    value:
+      value == null || ['string', 'number', 'boolean'].includes(typeof value)
+        ? value
+        : JSON.stringify(value),
+  }));
+
+const entriesToExtraObj = (entries) => {
+  const out = {};
+  for (const e of Array.isArray(entries) ? entries : []) {
+    if (e && typeof e.key === 'string') out[e.key] = e.value ?? null;
+  }
+  return out;
+};
 
 /**
  * Build a compact JSON-friendly snapshot of the card for AI.
@@ -273,7 +312,6 @@ export async function aiGenerateExamInsights({ card, instructions }) {
     '- Write a short overall PRINCIPAL-style remark (2–4 sentences) under 420 characters.',
     '- Optionally refine/override per-subject comments to be printed in the subject REMARK column.',
     '- Keep each subject remark under 30 characters, as a short but complete phrase with NO trailing dots or ellipsis.',
-
     '',
     instructions
       ? `Extra instructions from the admin/instructor: "${instructions}"`
@@ -299,7 +337,7 @@ export async function aiGenerateExamInsights({ card, instructions }) {
     },
   });
 
- const raw = resp.output_text || '{}';
+  const raw = resp.output_text || '{}';
 
   let parsed;
   try {
@@ -325,11 +363,10 @@ export async function aiGenerateExamInsights({ card, instructions }) {
             typeof x.subject === 'string' &&
             x.subject.trim() &&
             typeof x.remark === 'string' &&
-            x.remark.trim(),
+            x.remark.trim()
         )
         .map((x) => ({
           subject: x.subject.trim(),
-          // ✅ ensure AI subject remarks are tiny (≤ 20 chars) for the REMARKS column
           remark: sanitizeRemark30(x.remark),
         }))
     : [];
@@ -369,29 +406,19 @@ function buildAiSheetSnapshot({ rows, meta = {} }) {
       grade: r.grade ?? null,
       remark: r.remark ?? null,
       teacher_initials: r.teacher_initials ?? r.teacherInitials ?? null,
-      extra:
+
+      // ✅ convert object extras into strict-safe entries for the AI
+      extra: extraObjToEntries(
         r.extra && typeof r.extra === 'object' && !Array.isArray(r.extra)
           ? r.extra
-          : {},
+          : {}
+      ),
     })),
   };
 }
 
 /**
- * NEW:
  * Core AI helper for the SHEET:
- * - Takes an array of rows (the same shape you use in the marks grid)
- * - An optional targetColumnKey (e.g. "Effort", "Homework %")
- * - Free-text instructions from the teacher, like:
- *   "Fill the Effort column from A–E based on percent, where A is >= 80, B is 70–79, ..."
- *
- * It returns:
- * {
- *   updatedRows: [{ student_user_id, subject, ...optionalChanges }]
- * }
- *
- * We then merge these patches back into the sheet on the backend controller
- * before sending rows back to the frontend.
  */
 export async function aiComputeExamSheet({
   rows,
@@ -413,11 +440,12 @@ export async function aiComputeExamSheet({
   });
 
   const systemMessage =
-  'You are an assistant that helps teachers compute or fill exam mark-sheet columns. ' +
-  'You must strictly follow the JSON schema. ' +
-  'NEVER change student_user_id. ' +
-  'DO NOT change the "subject" field directly because it is used to match rows. ' +
-  'If you need to correct a subject name (typo/casing), set "subject_new" to the corrected value.';
+    'You are an assistant that helps teachers compute or fill exam mark-sheet columns. ' +
+    'You must strictly follow the JSON schema. ' +
+    'NEVER change student_user_id. ' +
+    'DO NOT change the "subject" field directly because it is used to match rows. ' +
+    'If you need to correct a subject name (typo/casing), set "subject_new" to the corrected value. ' +
+    'The "extra" field is an ARRAY of {key,value} entries (not an object). If you want to set a value, add/update an entry with that key.';
 
   const userMessage = [
     'You are helping to compute or fill columns for a school exam mark sheet.',
@@ -431,20 +459,20 @@ export async function aiComputeExamSheet({
     '- NEVER change student_user_id.',
     '- DO NOT change the "subject" field directly. To correct subject spelling/casing, use "subject_new".',
     '- Treat each row as one learner + subject entry.',
-    '- If targetColumnKey is provided and is NOT "Remark" or "Remarks", prefer writing into row.extra[targetColumnKey].',
-    '- If targetColumnKey IS "Remark" or "Remarks", write your text into the existing "remark" field for that row. DO NOT create extra.Remark or extra.Remarks columns.',
+    '- extra is an ARRAY of entries: [{ "key": "...", "value": ... }].',
+    '- If targetColumnKey is provided and is NOT "Remark" or "Remarks", prefer adding/updating an entry in row.extra like: { "key": targetColumnKey, "value": "..." }.',
+    '- If targetColumnKey IS "Remark" or "Remarks", write your text into the existing "remark" field for that row. DO NOT create an extra entry with key "Remark" or "Remarks".',
     '- You MAY adjust derived numeric fields (e.g. percent).',
-    '- If you need to add additional per-subject commentary beyond the main remark, put it into row.extra (e.g. extra.ai_comment or extra.NextStep).',
-    '- If you introduce any new derived column other than Remark(s), it MUST live inside row.extra under a key you choose.',
-    '- To DELETE an extra column completely (e.g. "Effort"), set that extra key to "__DELETE__" or null for every affected row.',
-
+    '- If you need to add additional per-subject commentary beyond the main remark, add/update an entry in row.extra (e.g. { "key": "ai_comment", "value": "..." }).',
+    '- If you introduce any new derived column other than Remark(s), it MUST live inside row.extra as an entry with your chosen key.',
+    '- To DELETE an extra column completely (e.g. "Effort"), set an entry { "key": "Effort", "value": "__DELETE__" } (or null) for every affected row.',
     '',
     'Return ONLY JSON with this shape:',
     JSON.stringify(EXAM_SHEET_TRANSFORM_SCHEMA, null, 2),
     '',
     'Examples of what you can do:',
-    '- Fill "Effort" column as A/B/C/D/E based on percent ranges.',
-    '- Compute "Total" column in extra.total as cat_score + exam_score.',
+    '- Fill "Effort" as A/B/C/D/E based on percent ranges (store as extra entry).',
+    '- Compute "Total" in an extra entry key "total" as cat_score + exam_score.',
     '- Rewrite remark strings to be short, neutral comments.',
   ].join('\n');
 
@@ -452,7 +480,7 @@ export async function aiComputeExamSheet({
     model: EXAMS_MODEL,
     input: [
       { role: 'system', content: systemMessage },
-     { role: 'user', content: instructions || '' },
+      { role: 'user', content: instructions || '' },
       { role: 'user', content: userMessage },
     ],
     text: {
@@ -477,17 +505,18 @@ export async function aiComputeExamSheet({
   const updatedRows = Array.isArray(parsed.updatedRows)
     ? parsed.updatedRows
         .filter((row) => {
-        const sid = Number(row.student_user_id);
-        const subject = row.subject && row.subject.toString().trim();
-        return sid && subject;
-     })
+          const sid = Number(row.student_user_id);
+          const subject = row.subject && row.subject.toString().trim();
+          return sid && subject;
+        })
         .map((row) => ({
           ...row,
-          // Ensure runtime enforcement too
           remark:
-            row.remark === undefined ? undefined : sanitizeRemark30(row.remark),
+            row.remark == null ? row.remark : sanitizeRemark30(row.remark),
+
+          // ✅ convert AI entries -> object so the rest of your backend can merge normally
+          extra: entriesToExtraObj(row.extra),
         }))
-      
     : [];
 
   return {

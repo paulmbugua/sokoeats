@@ -19,6 +19,9 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Sharing from 'expo-sharing';
+// Use legacy to avoid the deprecation warnings from expo-file-system in SDK 54+
+import * as FileSystem from 'expo-file-system/legacy';
 
 import tw from '../../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -637,6 +640,8 @@ const OrgRosterScreen: React.FC = () => {
 
   // CSV upload
   const [csvUploading, setCsvUploading] = useState(false);
+  const [classPdfSharing, setClassPdfSharing] = useState(false);
+
 
   const { ready: feeReady, saving: feeSaving, updateFeeAccess } = useOrgInstructorFeeAccess({
     backendUrl,
@@ -1195,34 +1200,97 @@ if (!ids.length) return;
     [feeReady, feeSaving, org?.id, updateFeeAccess]
   );
 
-  const shareCurrentClassRoster = useCallback(async () => {
-    if (!org?.name) {
-      Alert.alert('Wait', 'Organization not loaded.');
-      return;
-    }
-    const cls = String(classFilter || '').trim();
-    if (!cls) {
-      Alert.alert('Select class', 'Choose a class/stream first.');
-      return;
-    }
-    const rows = learners.filter((l) => String((l as any)?.class_label ?? '').trim() === cls);
+const safeFilePart = (v: any) =>
+  String(v || '')
+    .trim()
+    .replace(/[^a-z0-9-_]+/gi, '_')
+    .slice(0, 80);
 
-    const lines = [
-      `${org.name} — Learner Roster`,
-      `Class: ${cls}`,
-      `Total: ${rows.length}`,
-      '',
-      ...rows.map((l, i) => {
-        const adm = String((l as any)?.admission_code ?? '').trim();
-        const email = String(l.email ?? '').trim();
-       const name = String(l.name ?? (email || `User #${l.id}`)).trim();
+const shareCurrentClassRoster = useCallback(async () => {
+  if (!org?.id || !orgToken) return;
 
-        return `${i + 1}. ${adm ? `${adm} — ` : ''}${name}${email ? ` (${email})` : ''}`;
-      }),
+  const cls = String(classFilter || '').trim();
+  if (!cls) {
+    Alert.alert('Select class', 'Choose a class/stream first.');
+    return;
+  }
+
+  const canShare = await Sharing.isAvailableAsync().catch(() => false);
+  if (!canShare) {
+    Alert.alert('Not available', 'PDF sharing is not available on this device/session.');
+    return;
+  }
+
+  const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  if (!dir) {
+    Alert.alert('Not supported', 'PDF storage isn’t available in this session. Try again in the installed app.');
+    return;
+  }
+
+  setClassPdfSharing(true);
+
+  let fileUri = '';
+  try {
+    // Build same query logic as web
+    const qsParts: string[] = [];
+    qsParts.push(`class_label=${encodeURIComponent(cls)}`);
+
+    if (search?.trim()) qsParts.push(`q=${encodeURIComponent(search.trim())}`);
+    if (searchField && searchField !== 'all') qsParts.push(`field=${encodeURIComponent(searchField)}`);
+
+    const qs = qsParts.join('&');
+    const base = backendUrl.replace(/\/+$/, '');
+
+    const slug = safeFilePart(org.slug || org.name || org.id);
+    const clsSlug = safeFilePart(cls || 'all');
+    fileUri = `${dir}roster-${slug}-${clsSlug}.pdf`;
+
+    // Try both route variants (orgs vs organizations) for safety
+    const candidates = [
+      `${base}/api/orgs/${org.id}/learners/roster.pdf?${qs}`,
+      `${base}/api/organizations/${org.id}/learners/roster.pdf?${qs}`,
     ];
 
-    await Share.share({ message: lines.join('\n') });
-  }, [classFilter, learners, org?.name]);
+    let ok = false;
+    let lastStatus = 0;
+
+    for (const url of candidates) {
+      const dl = await FileSystem.downloadAsync(url, fileUri, {
+        headers: { Authorization: `Bearer ${orgToken}` },
+      });
+
+      lastStatus = dl.status ?? 0;
+      if (dl.status >= 200 && dl.status < 300) {
+        ok = true;
+        break;
+      }
+    }
+
+    if (!ok) {
+      throw new Error(`Failed to generate roster PDF. (HTTP ${lastStatus || 'error'})`);
+    }
+
+    await Sharing.shareAsync(fileUri, {
+      mimeType: 'application/pdf',
+      UTI: 'com.adobe.pdf',
+      dialogTitle: `${org.name || 'School'} — ${cls} roster`,
+    });
+  } catch (e: any) {
+    Alert.alert('Failed', e?.message || 'Unable to share roster PDF.');
+  } finally {
+    setClassPdfSharing(false);
+
+    // best-effort cleanup
+    if (fileUri) {
+      try {
+        await FileSystem.deleteAsync(fileUri, { idempotent: true } as any);
+      } catch {
+        // ignore
+      }
+    }
+  }
+}, [backendUrl, org?.id, org?.name, org?.slug, orgToken, classFilter, search, searchField]);
+
 
   const logoutInstitution = useCallback(async () => {
     try {
@@ -1594,14 +1662,17 @@ if (!ids.length) return;
               </Pressable>
 
               <Pressable
-                onPress={shareCurrentClassRoster}
-                disabled={!classFilter}
-                style={tw`px-3 py-2 rounded-xl ${classFilter ? 'bg-indigo-600' : 'bg-indigo-600/50'}`}
-              >
-                <Text style={tw`text-sm font-extrabold text-white`}>
-                  {classFilter ? 'Share class roster' : 'Select class first'}
-                </Text>
-              </Pressable>
+              onPress={() => void shareCurrentClassRoster()}
+              disabled={!classFilter || classPdfSharing}
+              style={tw`px-3 py-2 rounded-xl ${
+                !classFilter || classPdfSharing ? 'bg-indigo-600/50' : 'bg-indigo-600'
+              }`}
+            >
+              <Text style={tw`text-sm font-extrabold text-white`}>
+                {!classFilter ? 'Select class first' : classPdfSharing ? 'Preparing PDF…' : 'Share class roster (PDF)'}
+              </Text>
+            </Pressable>
+
             </>
           )}
         </View>

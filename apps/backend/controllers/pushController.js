@@ -58,3 +58,4 @@ export async function unregisterPushToken(req, res) {
 
   return res.json({ ok: true });
 }
+

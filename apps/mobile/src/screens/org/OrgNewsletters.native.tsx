@@ -81,6 +81,58 @@ const ACCENT_PRESETS = [
   ['Emerald', '#059669'],
 ] as const satisfies ReadonlyArray<readonly [string, string]>;
 
+const FONT_OPTIONS: NewsletterTheme['fontFamily'][] = [
+  'Inter',
+  'Poppins',
+  'Arial',
+  'Georgia',
+  'Times New Roman',
+];
+
+const COLOR_PALETTE = [
+  '#0f172a', '#111827', '#334155', '#64748b', '#94a3b8',
+  '#2563eb', '#1d4ed8', '#0ea5e9', '#059669', '#16a34a',
+  '#f59e0b', '#f97316', '#e11d48', '#a855f7', '#ffffff',
+] as const;
+
+type ThemePresetKey = 'neutral' | 'ocean' | 'emerald';
+
+function applyThemePreset(kind: ThemePresetKey, t: NewsletterTheme): NewsletterTheme {
+  if (kind === 'neutral') {
+    return {
+      ...t,
+      primaryColor: '#0f172a',
+      headingColor: '#0f172a',
+      textColor: '#0f172a',
+      paperBg: '#ffffff',
+      headerBg: '#f8fafc',
+      headerBg2: '#ffffff',
+    };
+  }
+  if (kind === 'emerald') {
+    return {
+      ...t,
+      primaryColor: '#059669',
+      headingColor: '#0f172a',
+      textColor: '#0f172a',
+      paperBg: '#ffffff',
+      headerBg: '#f0fdf4',
+      headerBg2: '#ffffff',
+    };
+  }
+  // ocean default
+  return {
+    ...t,
+    primaryColor: '#2563eb',
+    headingColor: '#0f172a',
+    textColor: '#0f172a',
+    paperBg: '#ffffff',
+    headerBg: '#f8fafc',
+    headerBg2: '#ffffff',
+  };
+}
+
+
 
 const TEMPLATE_TYPES = [
   { key: 'wrapup', label: 'End-of-term wrap-up', hint: 'Warm summary + appreciation + what’s next' },
@@ -202,7 +254,8 @@ function MarkdownPreview({
         key={`p-${nodes.length}`}
         style={[
           tw`text-[14px] leading-6`,
-          { color: theme.textColor, fontSize: theme.baseFontSize },
+          { color: theme.textColor, fontSize: theme.baseFontSize, fontFamily: theme.fontFamily }
+
         ]}
       >
         {txt}
@@ -216,11 +269,18 @@ function MarkdownPreview({
       <View key={`ul-${nodes.length}`} style={tw`mt-1 mb-2`}>
         {items.map((t, idx) => (
           <View key={`li-${nodes.length}-${idx}`} style={tw`flex-row items-start mb-1`}>
-            <Text style={[tw`mr-2`, { color: theme.textColor, fontSize: theme.baseFontSize }]}>•</Text>
+           <Text style={[tw`mr-2`, { color: theme.textColor, fontSize: theme.baseFontSize, fontFamily: theme.fontFamily }]}>•</Text>
+
             <Text
               style={[
                 tw`flex-1`,
-                { color: theme.textColor, fontSize: theme.baseFontSize, lineHeight: theme.baseFontSize * 1.55 },
+                {
+                    color: theme.textColor,
+                    fontSize: theme.baseFontSize,
+                    lineHeight: theme.baseFontSize * 1.55,
+                    fontFamily: theme.fontFamily,
+                  }
+
               ]}
             >
               {t}
@@ -247,7 +307,8 @@ function MarkdownPreview({
           key={`h2-${nodes.length}`}
           style={[
             tw`mt-3 mb-2 font-bold`,
-            { color: theme.headingColor, fontSize: theme.baseFontSize + 3 },
+            { color: theme.headingColor, fontSize: theme.baseFontSize + 3, fontFamily: theme.fontFamily }
+
           ]}
         >
           {line.replace(/^##\s+/, '')}
@@ -590,6 +651,22 @@ function markdownToHtmlSimple(md: string) {
   return html;
 }
 
+function cssFontStack(f: NewsletterTheme['fontFamily']) {
+  if (f === 'Georgia') return 'Georgia, serif';
+  if (f === 'Times New Roman') return '"Times New Roman", Times, serif';
+  if (f === 'Arial') return 'Arial, Helvetica, sans-serif';
+  if (f === 'Poppins') return 'Poppins, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  return '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'; // Inter-ish fallback
+}
+
+function escHtml(s: string) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function buildNewsletterHtml(opts: {
   org: any;
   title: string;
@@ -616,7 +693,78 @@ function buildNewsletterHtml(opts: {
 
   const bodyHtml = markdownToHtmlSimple(contentMd || '');
 
-  // Keep it simple & reliable for printing
+  const rgb = hexToRgb(theme.primaryColor) || { r: 37, g: 99, b: 235 };
+  const fontStack = cssFontStack(theme.fontFamily);
+
+  const logoBlock = logoUrl
+    ? `<img class="logo" src="${escHtml(logoUrl)}" />`
+    : `<div class="logo"></div>`;
+
+  const headerInner = (hideRight?: boolean) => `
+    <div class="row">
+      ${logoBlock}
+      <div class="meta">
+        <p class="orgname">${escHtml(orgName)}</p>
+        ${contactLine ? `<div class="contact">${escHtml(contactLine)}</div>` : ``}
+        ${contactLine2 ? `<div class="contact">${escHtml(contactLine2)}</div>` : ``}
+      </div>
+      ${
+        hideRight
+          ? ``
+          : `<div class="right">
+              <div class="chip">Newsletter</div>
+              <div class="contact">${escHtml(termLabel || 'This term')}</div>
+              <div class="contact">${escHtml(dateStr)}</div>
+            </div>`
+      }
+    </div>
+  `;
+
+  const titleSafe = escHtml(title || 'End-of-term Newsletter');
+
+  const headerHtml =
+    theme.headerStyle === 'band'
+      ? `<div class="header nl-band">${headerInner(false)}<div class="title">${titleSafe}</div></div>`
+      : theme.headerStyle === 'minimal'
+      ? `<div class="header nl-header-bg">${headerInner(false)}<div class="title">${titleSafe}</div></div>`
+      : theme.headerStyle === 'split'
+      ? `<div class="header nl-header-bg">
+           <div class="split">
+             <div class="splitLeft">${headerInner(true)}</div>
+             <div class="splitBox">
+               <div class="splitKicker">NEWSLETTER</div>
+               <div class="splitMeta">${escHtml(termLabel || '')} • ${escHtml(dateStr)}</div>
+               <div class="splitTitle">${titleSafe}</div>
+             </div>
+           </div>
+         </div>`
+      : theme.headerStyle === 'gradient'
+      ? `<div class="header nl-header-gradient">
+           <div class="row">
+             <div class="metaOnly">${headerInner(true)}</div>
+             <div class="chip2">Newsletter • ${escHtml(termLabel || 'This term')}</div>
+           </div>
+           <div class="title">${titleSafe}</div>
+           <div class="contact">${escHtml(dateStr)}</div>
+         </div>`
+      : theme.headerStyle === 'card'
+      ? `<div class="header nl-card-wrap">
+           <div class="cardHdr">
+             ${headerInner(true)}
+             <div class="chip2">Newsletter • ${escHtml(dateStr)}</div>
+             <div class="cardRow">
+               <div class="title">${titleSafe}</div>
+               <div class="contact">${escHtml(termLabel || '')}</div>
+             </div>
+             <div class="accentRule"></div>
+           </div>
+         </div>`
+      : `<div class="header nl-header-bg">
+           ${headerInner(false)}
+           <div class="title">${titleSafe}</div>
+           <div class="accentRule"></div>
+         </div>`;
+
   return `<!doctype html>
 <html>
 <head>
@@ -625,88 +773,112 @@ function buildNewsletterHtml(opts: {
 <style>
   :root{
     --nl-primary: ${theme.primaryColor};
+    --nl-primary-rgb: ${rgb.r},${rgb.g},${rgb.b};
     --nl-heading: ${theme.headingColor};
     --nl-text: ${theme.textColor};
     --nl-paper: ${theme.paperBg || '#ffffff'};
     --nl-header-bg: ${theme.headerBg || '#f8fafc'};
+    --nl-header-bg2: ${theme.headerBg2 || '#ffffff'};
+    --nl-font: ${fontStack};
+    --nl-size: ${clamp(theme.baseFontSize, 12, 18)}px;
   }
   body{
     margin:0;
-    font-family: Arial, sans-serif;
+    font-family: var(--nl-font);
     background: var(--nl-paper);
     color: var(--nl-text);
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .page{
-    padding: 18mm 14mm;
-  }
-  .card{
+  .page{ padding: 18mm 14mm; }
+  .shell{
     border: 1px solid #d9e2ee;
     border-radius: 14px;
     overflow: hidden;
     background: var(--nl-paper);
   }
-  .topbar{
-    height: 10px;
-    background: var(--nl-primary);
+  .topbar{ height: 10px; background: var(--nl-primary); }
+  .header{ padding: 14px 16px; border-bottom: 1px solid rgba(2,6,23,0.08); }
+  .row{ display:flex; align-items:flex-start; gap:12px; justify-content:space-between; }
+  .logo{ width:52px;height:52px;border-radius:10px;object-fit:contain;background:#fff;border:1px solid rgba(2,6,23,0.06); }
+  .meta{ flex:1; min-width:0; }
+  .orgname{ font-weight:800; color: var(--nl-heading); font-size: 16px; margin:0; }
+  .contact{ color:#526379; font-size: 11px; margin-top:4px; }
+  .right{ text-align:right; }
+  .chip{
+    display:inline-flex; align-items:center; justify-content:center;
+    padding: 6px 10px; border-radius:999px;
+    border:1px solid rgba(var(--nl-primary-rgb),0.18);
+    background: rgba(var(--nl-primary-rgb),0.10);
+    font-weight:800; font-size:11px; color: var(--nl-primary);
+    white-space:nowrap;
   }
-  .header{
-    padding: 14px 16px;
+  .chip2{
+    display:inline-flex; align-items:center; justify-content:center;
+    padding: 8px 12px; border-radius:999px;
+    border:1px solid rgba(var(--nl-primary-rgb),0.18);
+    background: rgba(var(--nl-primary-rgb),0.10);
+    font-weight:800; font-size:11px; color: var(--nl-heading);
+    white-space:nowrap;
+  }
+
+  .title{ margin-top: 12px; font-size: 22px; font-weight: 800; color: var(--nl-heading); }
+
+  .nl-band{
+    background:
+      linear-gradient(0deg, rgba(var(--nl-primary-rgb), 0.12), rgba(var(--nl-primary-rgb), 0.12)),
+      var(--nl-header-bg);
+    border-bottom: 1px solid rgba(var(--nl-primary-rgb), 0.25);
+  }
+  .nl-header-bg{
+    background: var(--nl-header-bg);
+  }
+  .nl-header-gradient{
+    background:
+      radial-gradient(900px circle at 0% 0%, rgba(var(--nl-primary-rgb), 0.18), transparent 45%),
+      linear-gradient(135deg, var(--nl-header-bg), var(--nl-header-bg2));
+    border-bottom: 1px solid rgba(var(--nl-primary-rgb), 0.18);
+  }
+  .accentRule{
+    margin-top: 10px;
+    height: 3px;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, var(--nl-primary), rgba(var(--nl-primary-rgb), 0.35));
+  }
+  .split{ display:flex; gap:12px; align-items:stretch; }
+  .splitLeft{ flex:1; min-width:0; }
+  .splitBox{
+    min-width: 160px;
+    border-radius: 14px;
+    padding: 12px;
+    border:1px solid rgba(var(--nl-primary-rgb),0.18);
+    background: rgba(var(--nl-primary-rgb),0.12);
+  }
+  .splitKicker{ font-size:11px; font-weight:900; letter-spacing:2px; color: var(--nl-primary); }
+  .splitMeta{ margin-top:6px; font-size:11px; color:#526379; }
+  .splitTitle{ margin-top:10px; font-size:16px; font-weight:800; color: var(--nl-heading); }
+
+  .nl-card-wrap{
     background: var(--nl-header-bg);
     border-bottom: 1px solid rgba(2,6,23,0.08);
   }
-  .row{
-    display:flex;
-    align-items:flex-start;
-    gap:12px;
+  .cardHdr{
+    margin: 10px;
+    border-radius: 16px;
+    padding: 14px;
+    border:1px solid rgba(100,116,139,0.18);
+    background: rgba(255,255,255,0.92);
   }
-  .logo{
-    width:52px;height:52px;border-radius:10px;object-fit:contain;background:#fff;border:1px solid rgba(2,6,23,0.06);
-  }
-  .meta{
-    flex:1;
-  }
-  .orgname{ font-weight:800; color: var(--nl-heading); font-size: 16px; margin:0; }
-  .contact{ color:#526379; font-size: 11px; margin-top:4px; }
-  .chip{
-    padding: 6px 10px;
-    border-radius: 999px;
-    border:1px solid rgba(37,99,235,0.2);
-    background: rgba(37,99,235,0.08);
-    font-weight:800;
-    font-size: 11px;
-    color: var(--nl-primary);
-    white-space:nowrap;
-  }
-  .title{
-    margin-top: 12px;
-    font-size: 22px;
-    font-weight: 800;
-    color: var(--nl-heading);
-  }
-  .body{
-    padding: 16px;
-    font-size: ${clamp(theme.baseFontSize, 12, 18)}px;
-  }
-  h2{
-    margin: 14px 0 8px;
-    font-size: 1.08em;
-    color: var(--nl-heading);
-  }
-  p{
-    margin: 8px 0;
-    line-height: 1.55;
-  }
+  .cardRow{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
+
+  .body{ padding: 16px; font-size: var(--nl-size); }
+  h2{ margin: 14px 0 8px; font-size: 1.08em; color: var(--nl-heading); }
+  p{ margin: 8px 0; line-height: 1.55; }
   ul{ margin: 6px 0 10px 18px; }
   li{ margin: 4px 0; }
+
   .hr{ border:0;border-top:1px solid rgba(2,6,23,0.12); margin: 12px 0; }
-  .sig{
-    display:flex;
-    justify-content:space-between;
-    align-items:flex-end;
-    gap:16px;
-  }
+  .sig{ display:flex; justify-content:space-between; align-items:flex-end; gap:16px; }
   .sigL .label{ font-weight:800; color: var(--nl-heading); }
   .sigL .sub{ font-size: 11px; color:#526379; margin-top:2px; }
   .sigR{ text-align:right; }
@@ -717,23 +889,9 @@ function buildNewsletterHtml(opts: {
 </head>
 <body>
   <div class="page">
-    <div class="card">
+    <div class="shell">
       <div class="topbar"></div>
-      <div class="header">
-        <div class="row">
-          ${logoUrl ? `<img class="logo" src="${logoUrl}" />` : `<div class="logo"></div>`}
-          <div class="meta">
-            <p class="orgname">${orgName}</p>
-            ${contactLine ? `<div class="contact">${contactLine}</div>` : ``}
-            ${contactLine2 ? `<div class="contact">${contactLine2}</div>` : ``}
-          </div>
-          <div>
-            <div class="chip">Newsletter • ${termLabel || 'This term'}</div>
-            <div class="contact" style="text-align:right;margin-top:6px;">${dateStr}</div>
-          </div>
-        </div>
-        <div class="title">${(title || 'End-of-term Newsletter').replace(/</g, '&lt;')}</div>
-      </div>
+      ${headerHtml}
 
       <div class="body">
         ${bodyHtml}
@@ -741,13 +899,13 @@ function buildNewsletterHtml(opts: {
 
         <div class="sig">
           <div class="sigL">
-            <div class="label">${(signatureLabel || 'Head teacher / Principal').replace(/</g, '&lt;')}</div>
-            <div class="sub">${orgName}</div>
+            <div class="label">${escHtml(signatureLabel || 'Head teacher / Principal')}</div>
+            <div class="sub">${escHtml(orgName)}</div>
           </div>
           <div class="sigR">
             ${
               signatureUrl
-                ? `<img class="sigImg" src="${signatureUrl}" />`
+                ? `<img class="sigImg" src="${escHtml(signatureUrl)}" />`
                 : `<div class="sigLine"></div>`
             }
             <div class="sigHint">Signature</div>
@@ -759,6 +917,7 @@ function buildNewsletterHtml(opts: {
 </body>
 </html>`;
 }
+
 
 async function buildPdfBase64Native(args: {
   html: string;
@@ -795,6 +954,129 @@ async function buildPdfBase64Native(args: {
   return { uri, base64: b64 };
 }
 
+function ColorSwatchField({
+  label,
+  value,
+  onChange,
+  disabled,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (hex: string) => void;
+  disabled?: boolean;
+  hint?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value || '#ffffff');
+
+  useEffect(() => {
+    if (open) setDraft(value || '#ffffff');
+  }, [open, value]);
+
+  const commit = () => {
+    const next = normalizeHex(draft);
+    if (!hexOk(next)) {
+      Alert.alert('Invalid color', 'Use a hex like #2563eb');
+      return;
+    }
+    onChange(next);
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <Pressable
+        disabled={disabled}
+        onPress={() => setOpen(true)}
+        style={tw`flex-row items-center justify-between gap-3 ${disabled ? 'opacity-50' : ''}`}
+      >
+        <View style={tw`flex-1`}>
+          <Text style={tw`text-[11px] font-extrabold text-[#49739c] dark:text-white/70`}>
+            {label}
+          </Text>
+          {hint ? (
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/50 mt-0.5`}>
+              {hint}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={tw`items-end`}>
+          <View
+            style={[
+              tw`h-9 w-12 rounded-xl border border-[#cedbe8] dark:border-white/10`,
+              { backgroundColor: value || '#ffffff' },
+            ]}
+          />
+          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60 mt-1`}>
+            {value || '—'}
+          </Text>
+        </View>
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <View style={tw`flex-1 bg-black/50 items-center justify-center px-4`}>
+          <View style={tw`w-full rounded-3xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-4`}>
+            <Text style={tw`text-[16px] font-extrabold text-[#0d141c] dark:text-white`}>
+              Pick {label}
+            </Text>
+
+            <View style={tw`mt-3 flex-row flex-wrap gap-2`}>
+              {COLOR_PALETTE.map((c) => (
+                <Pressable
+                  key={c}
+                  onPress={() => setDraft(c)}
+                  style={[
+                    tw`h-10 w-10 rounded-2xl border border-[#cedbe8] dark:border-white/10`,
+                    { backgroundColor: c },
+                    draft?.toLowerCase() === c.toLowerCase() ? tw`border-2 border-slate-900 dark:border-white` : null,
+                  ]}
+                />
+              ))}
+            </View>
+
+            <View style={tw`mt-3`}>
+              <Text style={tw`text-[11px] font-extrabold text-[#49739c] dark:text-white/70`}>
+                Hex
+              </Text>
+              <TextInput
+                value={draft}
+                onChangeText={(v) => setDraft(normalizeHex(v))}
+                placeholder="#2563eb"
+                placeholderTextColor={tw.color('slate-400') || '#94a3b8'}
+                autoCapitalize="none"
+                style={tw`mt-2 h-12 rounded-xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#0b1620] px-3 text-[#0d141c] dark:text-white`}
+              />
+            </View>
+
+            <View style={tw`mt-4 flex-row gap-2`}>
+              <Pressable
+                onPress={() => setOpen(false)}
+                style={tw`flex-1 rounded-xl h-11 items-center justify-center bg-[#e7edf4] dark:bg-[#172534]`}
+              >
+                <Text style={tw`text-xs font-extrabold text-[#0d141c] dark:text-white`}>
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={commit}
+                style={tw`flex-1 rounded-xl h-11 items-center justify-center bg-[#3d99f5]`}
+              >
+                <Text style={tw`text-xs font-extrabold text-white`}>
+                  Apply
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+
 
 const OrgNewslettersNativeScreen: React.FC = () => {
   const qc = useQueryClient();
@@ -830,6 +1112,7 @@ const OrgNewslettersNativeScreen: React.FC = () => {
   const [termLabel, setTermLabel] = useState('');
   const [content, setContent] = useState('');
   const [flash, setFlash] = useState<string | null>(null);
+const [themeAdvancedOpen, setThemeAdvancedOpen] = useState(false);
 
   // theme state
   const [theme, setTheme] = useState<NewsletterTheme>(DEFAULT_THEME);
@@ -1474,134 +1757,204 @@ const previewMuted = isDark ? 'rgba(255,255,255,0.7)' : '#49739c';
                 </View>
               </View>
 
-              {/* Theme */}
-              <View style={tw`mt-4 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0b1620] p-4`}>
-                <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
-                  Theme
-                </Text>
-                <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`}>
-                  Minimal controls (mobile-friendly).
-                </Text>
+{/* Theme (web-parity) */}
+<View style={tw`mt-4 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0b1620] p-4`}>
+  <View style={tw`flex-row items-start justify-between gap-3`}>
+    <View style={tw`flex-1 pr-3`}>
+      <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
+        Theme
+      </Text>
+      <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`}>
+        Font + colors + header style. Advanced is optional.
+      </Text>
+    </View>
 
-                {/* Header style */}
-                <Text style={tw`mt-3 text-xs font-extrabold text-[#49739c] dark:text-white/70`}>
-                  Header style
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={tw`flex-row gap-2 mt-2`}>
-                    {HEADER_STYLE_OPTIONS.map((x) => {
-                      const active = x.k === theme.headerStyle;
-                      return (
-                        <Pressable
-                          key={x.k}
-                          onPress={() => setThemeAndSync({ ...theme, headerStyle: x.k })}
-                          style={tw`px-3 py-2 rounded-full border ${
-                            active
-                              ? 'border-slate-900 bg-slate-900 dark:border-white dark:bg-white'
-                              : 'border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821]'
-                          }`}
-                        >
-                          <Text style={tw`text-xs font-extrabold ${
-                            active ? 'text-white dark:text-slate-900' : 'text-[#0d141c] dark:text-white'
-                          }`}>
-                            {x.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
+    <View style={tw`flex-row gap-2`}>
+      <Pressable
+        onPress={() => setThemeAdvancedOpen((v) => !v)}
+        style={tw`rounded-xl h-10 px-3 items-center justify-center bg-[#e7edf4] dark:bg-[#172534]`}
+      >
+        <Text style={tw`text-xs font-extrabold text-[#0d141c] dark:text-white`}>
+          {themeAdvancedOpen ? 'Hide' : 'Advanced'}
+        </Text>
+      </Pressable>
 
-                {/* Size stepper */}
-                <View style={tw`mt-3 flex-row items-center justify-between`}>
-                  <Text style={tw`text-xs font-extrabold text-[#49739c] dark:text-white/70`}>
-                    Base size: {theme.baseFontSize}px
-                  </Text>
-                  <View style={tw`flex-row gap-2`}>
-                    <Pressable
-                      onPress={() =>
-                        setThemeAndSync({
-                          ...theme,
-                          baseFontSize: clamp(theme.baseFontSize - 1, 12, 18),
-                        })
-                      }
-                      style={tw`h-9 w-9 rounded-xl items-center justify-center bg-[#e7edf4] dark:bg-[#172534]`}
-                    >
-                      <Text style={tw`text-lg font-extrabold text-[#0d141c] dark:text-white`}>−</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() =>
-                        setThemeAndSync({
-                          ...theme,
-                          baseFontSize: clamp(theme.baseFontSize + 1, 12, 18),
-                        })
-                      }
-                      style={tw`h-9 w-9 rounded-xl items-center justify-center bg-[#e7edf4] dark:bg-[#172534]`}
-                    >
-                      <Text style={tw`text-lg font-extrabold text-[#0d141c] dark:text-white`}>+</Text>
-                    </Pressable>
-                  </View>
-                </View>
+      <Pressable
+        onPress={() => {
+          setThemeAndSync(DEFAULT_THEME);
+          setPrincipalLabel('Head teacher / Principal');
+        }}
+        style={tw`rounded-xl h-10 px-3 items-center justify-center bg-[#e7edf4] dark:bg-[#172534]`}
+      >
+        <Text style={tw`text-xs font-extrabold text-[#0d141c] dark:text-white`}>
+          Reset
+        </Text>
+      </Pressable>
+    </View>
+  </View>
 
-                {/* Accent presets */}
-                <Text style={tw`mt-3 text-xs font-extrabold text-[#49739c] dark:text-white/70`}>
-                  Accent preset
-                </Text>
-                <View style={tw`flex-row gap-2 mt-2`}>
-                  {ACCENT_PRESETS.map(([label, hex]) => (
+  {/* Header style */}
+  <Text style={tw`mt-4 text-xs font-extrabold text-[#49739c] dark:text-white/70`}>
+    Header style
+  </Text>
+  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <View style={tw`flex-row gap-2 mt-2`}>
+      {HEADER_STYLE_OPTIONS.map((x) => {
+        const active = x.k === theme.headerStyle;
+        return (
+          <Pressable
+            key={x.k}
+            onPress={() => setThemeAndSync({ ...theme, headerStyle: x.k })}
+            style={tw`px-3 py-2 rounded-full border ${
+              active
+                ? 'border-slate-900 bg-slate-900 dark:border-white dark:bg-white'
+                : 'border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821]'
+            }`}
+          >
+            <Text
+              style={tw`text-xs font-extrabold ${
+                active ? 'text-white dark:text-slate-900' : 'text-[#0d141c] dark:text-white'
+              }`}
+            >
+              {x.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  </ScrollView>
 
-                    <Pressable
-                      key={label}
-                      onPress={() => setThemeAndSync({ ...theme, primaryColor: String(hex) })}
-                      style={tw`flex-1 rounded-xl h-10 items-center justify-center border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821]`}
-                    >
-                      <Text style={tw`text-xs font-extrabold text-[#0d141c] dark:text-white`}>
-                        {label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
+  {/* Font */}
+  <Text style={tw`mt-4 text-xs font-extrabold text-[#49739c] dark:text-white/70`}>
+    Font
+  </Text>
+  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <View style={tw`flex-row gap-2 mt-2`}>
+      {FONT_OPTIONS.map((f) => {
+        const active = f === theme.fontFamily;
+        return (
+          <Pressable
+            key={f}
+            onPress={() => setThemeAndSync({ ...theme, fontFamily: f })}
+            style={tw`px-3 py-2 rounded-full border ${
+              active
+                ? 'border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-900/20'
+                : 'border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821]'
+            }`}
+          >
+            <Text style={tw`text-xs font-extrabold ${
+              active ? 'text-blue-800 dark:text-blue-200' : 'text-[#0d141c] dark:text-white'
+            }`}>
+              {f}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  </ScrollView>
 
-                {/* Manual hex inputs (simple + reliable on mobile) */}
-                <View style={tw`mt-3`}>
-                  <Text style={tw`text-xs font-extrabold text-[#49739c] dark:text-white/70`}>
-                    Accent hex (optional)
-                  </Text>
-                  <TextInput
-                    value={theme.primaryColor}
-                    onChangeText={(v) => {
-                      const next = normalizeHex(v);
-                      if (!next || hexOk(next)) setThemeAndSync({ ...theme, primaryColor: next || theme.primaryColor });
-                    }}
-                    placeholder="#2563eb"
-                    placeholderTextColor={tw.color('slate-400') || '#94a3b8'}
-                    style={tw`mt-2 h-12 rounded-xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#0f1821] px-3 text-[#0d141c] dark:text-white`}
-                  />
-                </View>
+  {/* Size (keep your stepper; works reliably) */}
+  <View style={tw`mt-4 flex-row items-center justify-between`}>
+    <Text style={tw`text-xs font-extrabold text-[#49739c] dark:text-white/70`}>
+      Size: {theme.baseFontSize}px
+    </Text>
+    <View style={tw`flex-row gap-2`}>
+      <Pressable
+        onPress={() => setThemeAndSync({ ...theme, baseFontSize: clamp(theme.baseFontSize - 1, 12, 18) })}
+        style={tw`h-9 w-9 rounded-xl items-center justify-center bg-[#e7edf4] dark:bg-[#172534]`}
+      >
+        <Text style={tw`text-lg font-extrabold text-[#0d141c] dark:text-white`}>−</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => setThemeAndSync({ ...theme, baseFontSize: clamp(theme.baseFontSize + 1, 12, 18) })}
+        style={tw`h-9 w-9 rounded-xl items-center justify-center bg-[#e7edf4] dark:bg-[#172534]`}
+      >
+        <Text style={tw`text-lg font-extrabold text-[#0d141c] dark:text-white`}>+</Text>
+      </Pressable>
+    </View>
+  </View>
 
-                <View style={tw`mt-3`}>
-                  <Text style={tw`text-xs font-extrabold text-[#49739c] dark:text-white/70`}>
-                    Signature label
-                  </Text>
-                  <TextInput
-                    value={principalLabel}
-                    onChangeText={setPrincipalLabel}
-                    placeholder="Head teacher / Principal"
-                    placeholderTextColor={tw.color('slate-400') || '#94a3b8'}
-                    style={tw`mt-2 h-12 rounded-xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#0f1821] px-3 text-[#0d141c] dark:text-white`}
-                  />
-                </View>
+  {/* Accent + presets */}
+  <View style={tw`mt-4 gap-3`}>
+    <ColorSwatchField
+      label="Accent"
+      value={theme.primaryColor}
+      hint="Used for highlights and chips."
+      onChange={(hex) => setThemeAndSync({ ...theme, primaryColor: hex })}
+    />
 
-                <Pressable
-                  onPress={() => {
-                    setThemeAndSync(DEFAULT_THEME);
-                    setPrincipalLabel('Head teacher / Principal');
-                  }}
-                  style={tw`mt-3 rounded-xl h-10 items-center justify-center bg-[#e7edf4] dark:bg-[#172534]`}
-                >
-                  <Text style={tw`text-xs font-extrabold text-[#0d141c] dark:text-white`}>Reset theme</Text>
-                </Pressable>
-              </View>
+    <View style={tw`flex-row flex-wrap items-center gap-2`}>
+      <Text style={tw`text-[11px] font-extrabold text-[#49739c] dark:text-white/70`}>
+        Presets
+      </Text>
+
+      {([
+        ['neutral', 'Neutral'],
+        ['ocean', 'Ocean'],
+        ['emerald', 'Emerald'],
+      ] as const).map(([k, label]) => (
+        <Pressable
+          key={k}
+          onPress={() => setThemeAndSync(applyThemePreset(k, theme))}
+          style={tw`px-3 py-2 rounded-full border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821]`}
+        >
+          <Text style={tw`text-xs font-extrabold text-[#0d141c] dark:text-white`}>
+            {label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  </View>
+
+  {/* Advanced drawer */}
+  {themeAdvancedOpen ? (
+    <View style={tw`mt-4 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-3 gap-3`}>
+      <ColorSwatchField
+        label="Heading"
+        value={theme.headingColor}
+        onChange={(hex) => setThemeAndSync({ ...theme, headingColor: hex })}
+      />
+      <ColorSwatchField
+        label="Text"
+        value={theme.textColor}
+        onChange={(hex) => setThemeAndSync({ ...theme, textColor: hex })}
+      />
+      <ColorSwatchField
+        label="Paper"
+        value={theme.paperBg}
+        hint="Affects PDF + preview."
+        onChange={(hex) => setThemeAndSync({ ...theme, paperBg: hex })}
+      />
+      <ColorSwatchField
+        label="Header background"
+        value={theme.headerBg}
+        hint="Used by most header styles."
+        onChange={(hex) => setThemeAndSync({ ...theme, headerBg: hex })}
+      />
+      <ColorSwatchField
+        label="Gradient end"
+        value={theme.headerBg2}
+        disabled={theme.headerStyle !== 'gradient'}
+        hint={theme.headerStyle === 'gradient' ? 'Only used for Gradient style.' : 'Switch to Gradient to edit.'}
+        onChange={(hex) => setThemeAndSync({ ...theme, headerBg2: hex })}
+      />
+
+      <View>
+        <Text style={tw`text-xs font-extrabold text-[#49739c] dark:text-white/70`}>
+          Signature label
+        </Text>
+        <TextInput
+          value={principalLabel}
+          onChangeText={setPrincipalLabel}
+          placeholder="Head teacher / Principal"
+          placeholderTextColor={tw.color('slate-400') || '#94a3b8'}
+          style={tw`mt-2 h-12 rounded-xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#0b1620] px-3 text-[#0d141c] dark:text-white`}
+        />
+      </View>
+    </View>
+  ) : null}
+</View>
+
 
               {/* Editor */}
               <View style={tw`mt-4`}>
@@ -1632,7 +1985,13 @@ const previewMuted = isDark ? 'rgba(255,255,255,0.7)' : '#49739c';
 
                 <View style={tw`mt-3 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0b1620] p-3`}>
                   <NewsletterHeaderNative org={org} title={title} termLabel={termLabel} theme={previewTheme} />
-                  <View style={tw`mt-3 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}>
+                  <View
+                          style={[
+                            tw`mt-3 rounded-2xl border border-[#cedbe8] dark:border-white/10 p-4`,
+                            { backgroundColor: previewTheme.paperBg },
+                          ]}
+                        >
+
                     <MarkdownPreview md={content} theme={previewTheme} />
                     <View style={tw`h-[1px] bg-[#cedbe8] dark:bg-white/10 my-3`} />
                     <View style={tw`flex-row items-end justify-between`}>

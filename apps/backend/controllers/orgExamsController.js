@@ -668,7 +668,34 @@ export async function saveOrgExamSheet(req, res) {
       });
     }
 
-    const uniqueStudentIds = [...new Set(normalized.map((r) => r.student_user_id))];
+    const dedup = new Map();
+for (const r of normalized) {
+  const key = `${r.student_user_id}::${String(r.subject).toLowerCase()}`;
+  const prev = dedup.get(key);
+
+  if (!prev) {
+    dedup.set(key, r);
+    continue;
+  }
+
+  dedup.set(key, {
+    ...prev,
+    ...r,
+    id: r.id || prev.id,
+    class_label: r.class_label ?? prev.class_label,
+    score: r.score ?? prev.score,
+    max_score: r.max_score ?? prev.max_score,
+    cat_score: r.cat_score ?? prev.cat_score,
+    exam_score: r.exam_score ?? prev.exam_score,
+    remark: r.remark ?? prev.remark,
+    teacher_initials: r.teacher_initials ?? prev.teacher_initials,
+    extra: { ...(prev.extra || {}), ...(r.extra || {}) },
+  });
+}
+
+const normalizedRows = [...dedup.values()];
+
+    const uniqueStudentIds = [...new Set(normalizedRows.map((r) => r.student_user_id))];
     const { rows: existingRows } = await pool.query(
       'SELECT id FROM users WHERE id = ANY($1::int[])',
       [uniqueStudentIds],
@@ -781,10 +808,50 @@ export async function saveOrgExamSheet(req, res) {
         RETURNING r.id;
       `;
 
-      for (const r of normalized) {
-        // ✅ If id exists, update that exact row (supports subject renames)
-        if (r.id) {
-          const upd = await client.query(updateByIdSql, [
+      for (const r of normalizedRows) {
+  // ✅ If id exists, try update-by-id (supports renames)
+  if (r.id) {
+    try {
+      const upd = await client.query(updateByIdSql, [
+        orgId,
+        sessionId,
+        r.student_user_id,
+        r.class_label,
+        r.subject,
+        r.score ?? 0,
+        r.max_score ?? 100,
+        r.cat_score,
+        r.exam_score,
+        r.remark ?? '',
+        r.teacher_initials ?? '',
+        r.extra ?? {},
+        r.id,
+      ]);
+
+      if (upd.rowCount > 0) continue;
+      // if row not found, fall through to upsert
+    } catch (e) {
+      // ✅ If rename causes unique collision, merge into the existing row
+      if (e && e.code === '23505') {
+        const dupe = await client.query(
+          `
+          SELECT id
+          FROM org_exam_results
+          WHERE org_id = $1::uuid
+            AND session_id = $2::uuid
+            AND student_user_id = $3::int
+            AND subject = $4::text
+            AND id <> $5
+          LIMIT 1
+          `,
+          [orgId, sessionId, r.student_user_id, r.subject, r.id],
+        );
+
+        const keepId = dupe.rows[0]?.id;
+
+        if (keepId) {
+          // 1) Update the “correct” row
+          await client.query(updateByIdSql, [
             orgId,
             sessionId,
             r.student_user_id,
@@ -797,29 +864,47 @@ export async function saveOrgExamSheet(req, res) {
             r.remark ?? '',
             r.teacher_initials ?? '',
             r.extra ?? {},
-            r.id,
+            keepId,
           ]);
 
-          // If update matched, move on
-          if (upd.rowCount > 0) continue;
-        }
+          // 2) Delete the old misspelled row (the one user edited)
+          await client.query(
+            `
+            DELETE FROM org_exam_results
+            WHERE org_id = $1::uuid
+              AND session_id = $2::uuid
+              AND student_user_id = $3::int
+              AND id = $4
+            `,
+            [orgId, sessionId, r.student_user_id, r.id],
+          );
 
-        // Fallback: new row (no id) or missing row
-        await client.query(upsertSql, [
-          orgId,
-          sessionId,
-          r.student_user_id,
-          r.class_label,
-          r.subject,
-          r.score ?? 0,
-          r.max_score ?? 100,
-          r.cat_score,
-          r.exam_score,
-          r.remark ?? '',
-          r.teacher_initials ?? '',
-          r.extra ?? {},
-        ]);
+          continue;
+        }
       }
+
+      // anything else: rethrow
+      throw e;
+    }
+  }
+
+  // ✅ Fallback: upsert by unique key
+  await client.query(upsertSql, [
+    orgId,
+    sessionId,
+    r.student_user_id,
+    r.class_label,
+    r.subject,
+    r.score ?? 0,
+    r.max_score ?? 100,
+    r.cat_score,
+    r.exam_score,
+    r.remark ?? '',
+    r.teacher_initials ?? '',
+    r.extra ?? {},
+  ]);
+}
+
 
       // Recompute totals + overall grades
       await client.query(

@@ -717,18 +717,30 @@ export async function sendNewsletter(req, res) {
         console.warn('[sendNewsletter] cloud upload failed, fallback to DB bytes:', e?.message);
       }
 
-      // ✅ Persist for learner portal (prefer URL, fallback bytes)
+      
+     // ✅ Persist for learner portal (prefer URL, fallback bytes)
       await client.query(
         `UPDATE org_newsletters
-           SET pdf_url = COALESCE($3, pdf_url),
-               pdf_public_id = COALESCE($4, pdf_public_id),
-               pdf_filename = COALESCE($5, pdf_filename),
-               pdf_uploaded_at = now(),
-               updated_at = now(),
-               pdf_bytes = CASE WHEN $3 IS NOT NULL THEN NULL ELSE $6 END
-         WHERE id = $1 AND org_id = $2`,
-        [id, orgId, pdfUrl, pdfPublicId, pdfFilename, pdfUrl ? null : pdfBytes],
+          SET pdf_url = COALESCE($3, pdf_url),
+              pdf_public_id = COALESCE($4, pdf_public_id),
+              pdf_filename = COALESCE($5, pdf_filename),
+              pdf_uploaded_at = now(),
+              updated_at = now(),
+              pdf_bytes = CASE
+                WHEN $3 IS NOT NULL THEN NULL
+                ELSE decode($6, 'base64')
+              END
+        WHERE id = $1 AND org_id = $2`,
+        [
+          id,
+          orgId,
+          pdfUrl,
+          pdfPublicId,
+          pdfFilename,
+          pdfUrl ? '' : clean, // 👈 IMPORTANT: pass base64 string (no data: prefix)
+        ],
       );
+
     }
 
     // EMAIL: branded HTML + plain fallback
@@ -805,14 +817,25 @@ export async function sendNewsletter(req, res) {
       in_app_recipients: wantsInApp ? learnerTargets.length : 0,
       emailed: wantsEmail ? emails.length : 0,
     });
-  } catch (e) {
-    try {
-      await client.query('ROLLBACK');
-    } catch {}
-    return res
-      .status(e.status || 500)
-      .json({ message: e.message || 'Unable to send newsletter' });
-  } finally {
+ } catch (e) {
+  try { await client.query('ROLLBACK'); } catch {}
+
+  // ✅ PATCH: prevent stuck "sending"
+  try {
+    const orgId = normalizeOrgId(req);
+    const { id } = req.params;
+    await pool.query(
+      `UPDATE org_newsletters
+         SET status = 'failed',
+             updated_at = now()
+       WHERE id = $1 AND org_id = $2`,
+      [id, orgId],
+    );
+  } catch {}
+
+  return res.status(e.status || 500).json({ message: e.message || 'Unable to send newsletter' });
+}
+ finally {
     client.release();
   }
 }

@@ -106,7 +106,7 @@ async function loadOrgMetaForRoster(clientOrPool, orgId) {
     } catch (e) {
       if (e?.code === '42703') {
         const msg = String(e?.message || '');
-        const m = msg.match(/column\s+"?([a-zA-Z0-9_\.]+)"?\s+does not exist/i);
+         const m = msg.match(/column\s+"?([a-zA-Z0-9_.]+)"?\s+does not exist/i);
         const missingRaw = m?.[1] || '';
         const missing = missingRaw.includes('.') ? missingRaw.split('.').pop() : missingRaw;
 

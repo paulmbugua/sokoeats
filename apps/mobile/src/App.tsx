@@ -4,9 +4,17 @@ import type { ReactNode } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createStackNavigator } from '@react-navigation/stack';
-import { useNavigation, useRoute, type NavigationProp, type RouteProp } from '@react-navigation/native';
 
+import TransitionOverlay from './screens/TransitionOverlay.native';
+import { useThemePref } from './theme/ThemeContext';
+
+import { createStackNavigator, TransitionSpecs } from '@react-navigation/stack';
+import {
+  useNavigation,
+  useRoute,
+  type NavigationProp,
+  type RouteProp,
+} from '@react-navigation/native';
 
 import type { MainStackParamList } from './navigation/types';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -138,6 +146,86 @@ type OrgState = {
   loading?: boolean;
   isLoading?: boolean;
 };
+
+/* ─────────────────────────────────────────────────────────
+ * Nav label helpers (SINGLE implementation — no duplicates)
+ * ───────────────────────────────────────────────────────── */
+function humanizeRouteName(name: string): string {
+  return String(name || 'Screen')
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const ROUTE_LABELS: Partial<Record<keyof MainStackParamList, string>> = {
+  Landing: 'Starting…',
+  Home: 'Loading Home…',
+  Login: 'Opening Login…',
+  FindTutor: 'Finding tutors…',
+  RobotTutor: 'Preparing Robot Tutor…',
+  Help: 'Opening Help…',
+  Resources: 'Loading Resources…',
+  Videos: 'Loading Videos…',
+  VideoCollection: 'Loading Videos…',
+
+  ProfileSelf: 'Opening Profile…',
+  Profile: 'Opening Profile…',
+  Account: 'Opening Account…',
+  Messages: 'Opening Messages…',
+  Settings: 'Opening Settings…',
+  SettingsCreate: 'Opening Profile Setup…',
+  SettingsManage: 'Opening Profile Editor…',
+
+  Courses: 'Loading Courses…',
+  CourseDetails: 'Loading Course…',
+  CourseEnrollment: 'Preparing Enrollment…',
+  CourseProgress: 'Loading Progress…',
+  MyEnrollments: 'Loading Enrollments…',
+  CreateCourse: 'Creating Course…',
+  Achievements: 'Loading Achievements…',
+  Results: 'Preparing Results…',
+
+  ClassVaultLibrary: 'Opening ClassVault…',
+  ClassVaultDetail: 'Loading Class…',
+  ClassVaultUpload: 'Preparing Upload…',
+
+  VerifyCertificate: 'Verifying Certificate…',
+  VerifyCertificatePrint: 'Preparing Certificate…',
+
+  PaymentFlow: 'Securing Payment…',
+  PaystackCheckout: 'Opening Checkout…',
+  PaystackCallback: 'Confirming Payment…',
+
+  InstitutionLogin: 'Opening Institution Login…',
+  OrgInviteLanding: 'Opening Invite…',
+  OrgHome: 'Opening Institution…',
+  OrgElearnPortal: 'Opening Institution Portal…',
+  OrgProfile: 'Opening Institution Profile…',
+  OrgRoster: 'Loading Roster…',
+  OrgExamResultsPortal: 'Loading Exam Results…',
+  OrgAttendance: 'Loading Attendance…',
+  OrgFees: 'Loading Fees…',
+  OrgNewsletters: 'Loading Newsletters…',
+  OrgAnnouncements: 'Loading Announcements…',
+  OrgToolsSports: 'Loading Sports…',
+  OrgToolsClubs: 'Loading Clubs…',
+  OrgLearnerHome: 'Opening Learner Home…',
+  OrgLearnerFees: 'Loading Fees…',
+  OrgInstructorHome: 'Opening Instructor Home…',
+  OrgChangePassword: 'Opening Password…',
+  OrgLearnerNewsletters: 'Loading Newsletters…',
+  OrgLearnerSportsClubs: 'Loading Sports & Clubs…',
+};
+
+function labelForRoute(routeName: string): string {
+  const key = routeName as keyof MainStackParamList;
+  const mapped = ROUTE_LABELS[key];
+  if (mapped) return mapped;
+
+  const nice = humanizeRouteName(routeName);
+  return nice ? `Opening ${nice}…` : 'Opening…';
+}
 
 /* ─────────────────────────────────────────────────────────
  * First-login helpers (per identity)
@@ -315,7 +403,6 @@ function OrgStaffGuard({ children }: GuardProps) {
   return null;
 }
 
-
 /* ─────────────────────────────────────────────────────────
  * Screen wrappers (named)
  * ───────────────────────────────────────────────────────── */
@@ -386,7 +473,6 @@ function OrgRosterScreen() {
     </OrgProtectedRoute>
   );
 }
-
 
 function OrgExamResultsPortalScreen() {
   const route = useRoute<RouteProp<MainStackParamList, 'OrgExamResultsPortal'>>();
@@ -568,6 +654,60 @@ const App: React.FC = () => {
   const markSeen = useMarkFirstLoginSeen();
   const { uiFilters, handleSearch, clearFilters } = useHomePage();
 
+  const { resolvedScheme } = useThemePref();
+
+  // ✅ NEW: global transition overlay state (no useNavigationState!)
+  const [navBusy, setNavBusy] = React.useState(false);
+  const [navLabel, setNavLabel] = React.useState<string>('Opening…');
+
+  const navTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const beginNavBusy = React.useCallback((routeName: string) => {
+    // lock label immediately (no flicker)
+    setNavLabel(labelForRoute(routeName));
+
+    if (navTimerRef.current) clearTimeout(navTimerRef.current);
+
+    // delay so super-fast transitions don't flash overlay
+    navTimerRef.current = setTimeout(() => {
+      setNavBusy(true);
+    }, 120);
+  }, []);
+
+  const endNavBusy = React.useCallback(() => {
+    if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    navTimerRef.current = null;
+    setNavBusy(false);
+  }, []);
+
+  // cleanup on unmount
+  React.useEffect(() => {
+    return () => {
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
+      navTimerRef.current = null;
+    };
+  }, []);
+
+  // Navigator-level screen listeners (route is the transitioning screen)
+  const stackScreenListeners = React.useCallback(
+    ({ route }: { route: { name: string } }) => ({
+      transitionStart: (e: unknown) => {
+        // Ignore the closing screen; handle only the opening one
+        const closing = Boolean((e as { data?: { closing?: boolean } })?.data?.closing);
+        if (closing) return;
+
+        beginNavBusy(String(route.name));
+      },
+      transitionEnd: (e: unknown) => {
+        const closing = Boolean((e as { data?: { closing?: boolean } })?.data?.closing);
+        if (closing) return;
+
+        endNavBusy();
+      },
+    }),
+    [beginNavBusy, endNavBusy]
+  );
+
   React.useEffect(() => {
     let mounted = true;
 
@@ -601,8 +741,50 @@ const App: React.FC = () => {
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.flex1}>
       <NavbarNative onSearch={handleSearch} />
 
+      {/* ✅ Global overlay (once) */}
+      <TransitionOverlay visible={navBusy} label={navLabel} />
+
       <View style={styles.flex1}>
-        <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
+        <Stack.Navigator
+          initialRouteName={initialRoute}
+          screenListeners={stackScreenListeners}
+          screenOptions={{
+            headerShown: false,
+            cardOverlayEnabled: true,
+            gestureEnabled: true,
+            cardStyle: {
+              backgroundColor: resolvedScheme === 'dark' ? '#000' : '#fff',
+            },
+            transitionSpec: {
+              open: TransitionSpecs.TransitionIOSSpec,
+              close: TransitionSpecs.TransitionIOSSpec,
+            },
+            cardStyleInterpolator: ({ current }) => {
+              const opacity = current.progress;
+              const scale = current.progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.985, 1],
+              });
+              const translateY = current.progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [10, 0],
+              });
+
+              return {
+                cardStyle: {
+                  opacity,
+                  transform: [{ scale }, { translateY }],
+                },
+                overlayStyle: {
+                  opacity: current.progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 0.1],
+                  }),
+                },
+              };
+            },
+          }}
+        >
           {/* Public */}
           <Stack.Screen name="Landing" component={Landing} />
           <Stack.Screen name="Home" component={HomePageNative} />
@@ -663,9 +845,7 @@ const App: React.FC = () => {
 
           {/* ClassVault */}
           <Stack.Screen name="ClassVaultLibrary">
-            {() => (
-              <ClassVaultLibraryScreen uiFilters={uiFilters} clearFilters={clearFilters} />
-            )}
+            {() => <ClassVaultLibraryScreen uiFilters={uiFilters} clearFilters={clearFilters} />}
           </Stack.Screen>
           <Stack.Screen name="ClassVaultDetail" component={ClassVaultDetailScreen} />
           <Stack.Screen name="ClassVaultUpload" component={ClassVaultUploadProtectedScreen} />

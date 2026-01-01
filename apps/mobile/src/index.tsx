@@ -287,7 +287,6 @@ const RootInner: React.FC = () => {
 };
 
 const Root: React.FC = () => {
-  // Enable twrnc device sizing (vh/vw) + let ThemeProvider control tw.setColorScheme
   useDeviceContext(tw);
 
   return (
@@ -298,17 +297,18 @@ const Root: React.FC = () => {
             <ChatProvider>
               <ThemeProvider tw={tw}>
                 <RootInner />
+
+                {/* ✅ Move host INSIDE ThemeProvider so portal content has theme context */}
+                <PortalHost name="classroom-host" />
               </ThemeProvider>
             </ChatProvider>
           </ShopContextProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
-
-      {/* Full-screen host so portal content can overlay *everything* */}
-      <PortalHost name="classroom-host" />
     </PortalProvider>
   );
 };
+
 
 /* ──────────────────────────────────────────────────────────
    Mount
