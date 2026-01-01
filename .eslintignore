@@ -1,2 +1,12 @@
 # ignore Metro bundle
 apps/mobile/android/app/build/**/*.bundle
+# Expo config files (not part of TS project)
+apps/mobile/app.config.js
+apps/mobile/app.config.*.js
+
+# Common config files
+**/*.config.js
+**/*.config.cjs
+**/*.config.mjs
+metro.config.js
+babel.config.js

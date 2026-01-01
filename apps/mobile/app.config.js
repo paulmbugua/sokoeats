@@ -15,14 +15,18 @@ export default function expoConfig({ config }) {
     iosSim: 'http://localhost:4000',
     hotspot: 'http://10.254.198.47:4000',
     lan1: process.env.EXPO_PUBLIC_BACKEND_URL || 'http://192.168.137.1:4000',
-    prod: process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.daybreaklearner.com',
+    prod:
+      process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.daybreaklearner.com',
   };
 
   // ✅ dev can switch, but EAS/prod should default to prod
-  const DEFAULT_BACKEND = isDev ? (process.env.BACKEND || 'hotspot') : 'prod';
+  const DEFAULT_BACKEND = isDev ? process.env.BACKEND || 'hotspot' : 'prod';
 
   // ✅ single “baseUrl” the app can use
   const RESOLVED_BACKEND_URL = BACKENDS[DEFAULT_BACKEND] || BACKENDS.prod;
+
+  // ✅ only allow cleartext when the resolved backend is http://
+  const allowHttp = String(RESOLVED_BACKEND_URL || '').startsWith('http://');
 
   return {
     ...config,
@@ -32,6 +36,9 @@ export default function expoConfig({ config }) {
     scheme: 'daybreak',
     runtimeVersion: { policy: 'appVersion' },
     userInterfaceStyle: 'automatic',
+
+    // ✅ New Architecture belongs in app config (not expo-build-properties)
+    newArchEnabled: true,
 
     // paths relative to apps/mobile/
     icon: './assets/icon.png',
@@ -47,7 +54,16 @@ export default function expoConfig({ config }) {
       ...config.android,
       package: 'com.paulmbugua2.mytutorapp',
 
-      permissions: ['INTERNET', 'CAMERA', 'RECORD_AUDIO', 'POST_NOTIFICATIONS', 'VIBRATE'],
+      // ✅ Play Store versioning (must increment on each upload)
+      versionCode: 1,
+
+      permissions: [
+        'INTERNET',
+        'CAMERA',
+        'RECORD_AUDIO',
+        'POST_NOTIFICATIONS',
+        'VIBRATE',
+      ],
 
       googleServicesFile: './google-services.json',
 
@@ -82,11 +98,17 @@ export default function expoConfig({ config }) {
     ios: {
       ...config.ios,
       bundleIdentifier: 'com.paulmbugua2.mytutorapp',
-      buildNumber: '1.0.0',
+
+      // ✅ App Store build number (must increment on each upload)
+      buildNumber: '1',
+
       infoPlist: {
         ...(config?.ios?.infoPlist ?? {}),
         UIBackgroundModes: [
-          ...new Set([...(config?.ios?.infoPlist?.UIBackgroundModes ?? []), 'audio']),
+          ...new Set([
+            ...(config?.ios?.infoPlist?.UIBackgroundModes ?? []),
+            'audio',
+          ]),
         ],
       },
     },
@@ -117,7 +139,8 @@ export default function expoConfig({ config }) {
       [
         'expo-location',
         {
-          locationAlwaysAndWhenInUsePermission: 'Allow $(PRODUCT_NAME) to use your location.',
+          locationAlwaysAndWhenInUsePermission:
+            'Allow $(PRODUCT_NAME) to use your location.',
         },
       ],
 
@@ -129,16 +152,15 @@ export default function expoConfig({ config }) {
         'expo-build-properties',
         {
           android: {
-            usesCleartextTraffic: isDev,
+            // ✅ enable cleartext ONLY when you’re actually using http://
+            usesCleartextTraffic: allowHttp,
+
             enableProguardInReleaseBuilds: true,
             enableShrinkResourcesInReleaseBuilds: true,
 
             compileSdkVersion: 35,
             targetSdkVersion: 35,
-            kotlinVersion: '2.0.21',
-           
             javaVersion: 17,
-            newArchEnabled: true,
           },
           ios: {
             deploymentTarget: '15.1',
@@ -168,8 +190,10 @@ export default function expoConfig({ config }) {
 
       EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
       EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-      EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:
+        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID:
+        process.env.EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID,
 
       EXPO_PUBLIC_EAS_PROJECT_ID: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
 
