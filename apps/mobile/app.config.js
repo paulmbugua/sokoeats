@@ -136,7 +136,7 @@ export default function expoConfig({ config }) {
             compileSdkVersion: 35,
             targetSdkVersion: 35,
             kotlinVersion: '2.0.21',
-            gradlePluginVersion: '8.10.2',
+           
             javaVersion: 17,
             newArchEnabled: true,
           },
