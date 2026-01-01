@@ -30,7 +30,7 @@ export default function expoConfig({ config }) {
     slug: 'funzasasa',
     version: '1.0.0',
     scheme: 'daybreak',
-    runtimeVersion: '1.0.2',
+    runtimeVersion: { policy: 'appVersion' },
     userInterfaceStyle: 'automatic',
 
     // paths relative to apps/mobile/
