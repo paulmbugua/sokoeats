@@ -272,10 +272,14 @@ function ProtectedRoute({ children }: GuardProps) {
 }
 
 function OrgProtectedRoute({ children }: GuardProps) {
-  const { orgToken } = useShopContext() as unknown as ShopCtx;
+  const { orgToken, initializing } = useShopContext() as unknown as ShopCtx;
+
+  if (initializing) return <Spinner label="Opening institution…" />;
   if (!orgToken) return <InstitutionLogin />;
+
   return <>{children}</>;
 }
+
 
 function useOrgRole() {
   const org = (useOrg() ?? {}) as unknown as OrgState;

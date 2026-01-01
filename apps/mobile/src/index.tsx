@@ -186,6 +186,7 @@ type ShopCtx = {
   http: HttpClient;
   token?: string | null;
   orgToken?: string | null;
+  initializing?: boolean;
 };
 
 /* ──────────────────────────────────────────────────────────
