@@ -1720,7 +1720,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@expo/code-signing-certificates@npm:^0.0.5":
+"@expo/code-signing-certificates@npm:0.0.5, @expo/code-signing-certificates@npm:^0.0.5":
   version: 0.0.5
   resolution: "@expo/code-signing-certificates@npm:0.0.5"
   dependencies:
@@ -3964,6 +3964,7 @@ __metadata:
     expo-splash-screen: "npm:~31.0.13"
     expo-status-bar: "npm:~3.0.9"
     expo-system-ui: "npm:~6.0.9"
+    expo-updates: "npm:~29.0.15"
     expo-video: "npm:~3.0.15"
     expo-web-browser: "npm:~15.0.10"
     firebase: "npm:12.2.1"
@@ -6932,6 +6933,13 @@ __metadata:
   version: 2.2.0
   resolution: "arch@npm:2.2.0"
   checksum: 10c0/4ceaf8d8207817c216ebc4469742052cb0a097bc45d9b7fcd60b7507220da545a28562ab5bdd4dfe87921bb56371a0805da4e10d704e01f93a15f83240f1284c
+  languageName: node
+  linkType: hard
+
+"arg@npm:4.1.0":
+  version: 4.1.0
+  resolution: "arg@npm:4.1.0"
+  checksum: 10c0/a453e07f25370c7910df9b8a8eecb1a0c71e902a3843339ff9391ea4b4dac6871cd99a1a11e38642cf6d0723c7ab7f15f5824f1ccb862f3317a9c05c56a251c7
   languageName: node
   linkType: hard
 
@@ -10280,6 +10288,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-eas-client@npm:~1.0.8":
+  version: 1.0.8
+  resolution: "expo-eas-client@npm:1.0.8"
+  checksum: 10c0/c291351db616f6163900b5ef6294240068e2d7b916dde1aee5b82353375f63cdfe4523f63ff72903c6ee81e5f1be2a20555f0c024d6fb11b5de1507c7c2d8b09
+  languageName: node
+  linkType: hard
+
 "expo-file-system@npm:~19.0.21":
   version: 19.0.21
   resolution: "expo-file-system@npm:19.0.21"
@@ -10564,6 +10579,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-structured-headers@npm:~5.0.0":
+  version: 5.0.0
+  resolution: "expo-structured-headers@npm:5.0.0"
+  checksum: 10c0/bbe0f9cb91ca5fd8482fd15723bfe279b26f34a37360af2ce9a510434351e50d889e429037915be9ede493893b99eb8e7f0be56bfcebaebb5d9a25443b1fa419
+  languageName: node
+  linkType: hard
+
 "expo-system-ui@npm:~6.0.9":
   version: 6.0.9
   resolution: "expo-system-ui@npm:6.0.9"
@@ -10587,6 +10609,34 @@ __metadata:
   peerDependencies:
     expo: "*"
   checksum: 10c0/d2ccf8325c1c8092fac6cfa521291943dce92f56a633bcc60abe1db54c88da601d6b0174aa1e824db6d3508486ccccafa16e39f05b7014dd70442ba91340b02e
+  languageName: node
+  linkType: hard
+
+"expo-updates@npm:~29.0.15":
+  version: 29.0.15
+  resolution: "expo-updates@npm:29.0.15"
+  dependencies:
+    "@expo/code-signing-certificates": "npm:0.0.5"
+    "@expo/plist": "npm:^0.4.8"
+    "@expo/spawn-async": "npm:^1.7.2"
+    arg: "npm:4.1.0"
+    chalk: "npm:^4.1.2"
+    debug: "npm:^4.3.4"
+    expo-eas-client: "npm:~1.0.8"
+    expo-manifests: "npm:~1.0.10"
+    expo-structured-headers: "npm:~5.0.0"
+    expo-updates-interface: "npm:~2.0.0"
+    getenv: "npm:^2.0.0"
+    glob: "npm:^13.0.0"
+    ignore: "npm:^5.3.1"
+    resolve-from: "npm:^5.0.0"
+  peerDependencies:
+    expo: "*"
+    react: "*"
+    react-native: "*"
+  bin:
+    expo-updates: bin/cli.js
+  checksum: 10c0/3a2752027b75e569444180c41925bf6683288d0b651f745635062de194dda3cd78b21f93369b995a0f57a7e4eda1bb38dcc230bbfa8eb790616d70221b32c989
   languageName: node
   linkType: hard
 
