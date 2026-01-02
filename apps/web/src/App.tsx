@@ -81,6 +81,7 @@ import PaystackCallbackRedirectWeb from '@/pages/PaystackCallbackRedirect.web';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
+import { OrgGate, OrgAuthGate } from './components/org/OrgGates';
 
 /* ───────────────────────────
    Per-user "first login" helpers
@@ -251,9 +252,11 @@ const ProtectedLayout: React.FC = () => (
 );
 
 const OrgProtectedLayout: React.FC = () => (
-  <OrgProtectedRoute>
-    <SiteLayout />
-  </OrgProtectedRoute>
+  <OrgAuthGate>
+    <OrgGate>
+      <SiteLayout />
+    </OrgGate>
+  </OrgAuthGate>
 );
 
 /* Org admin-only guard for /org/profile (and other admin-only tools) */

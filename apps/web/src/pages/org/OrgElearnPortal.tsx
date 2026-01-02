@@ -7,7 +7,6 @@ import {
   getOrgLearnersProgress,
   type OrgLearnerProgressRow,
   getOrgRoster,
-  getMyOrgOrBootstrap,
   getOrgUsage,
   updateOrgBranding,
   createOrgAssignment,
@@ -344,7 +343,7 @@ const resolvedTabForLearner: TabKey =
   const { backendUrl, token: userToken, orgToken } = useShopContext();
   const authToken = orgToken || userToken;
 
-  const { role } = useOrg({ currency: 'USD' }); // role doesn't depend on pricing currency
+  const { role, org: orgFromGate } = useOrg({ currency: 'USD' }); // role doesn't depend on pricing currency
 
   const isInstructor = role === 'instructor';
 
@@ -357,6 +356,7 @@ const resolvedTabForLearner: TabKey =
 
   // org & plan
   const [org, setOrg] = useState<Org | null>(null);
+  const orgHydratedOnceRef = useRef(false);
   const tier: OrgTier = (org?.tier as OrgTier) || 'starter';
   const tierMeta = ORG_TIERS[tier];
   const isProTier = tier === 'pro' || tier === 'enterprise';
@@ -756,21 +756,18 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
   }, [navigate]);
 
   useEffect(() => {
-    (async () => {
-      if (!authToken) return;
-      try {
-        const real = await getMyOrgOrBootstrap(backendUrl, authToken);
-        setOrg(real);
-        setForm((f: any) => ({ ...f, ...real }));
-      } catch (err) {
-        console.warn('[OrgElearnPortal] org load failed', err);
-      }
-    })();
-  }, [backendUrl, authToken]);
+    if (!orgFromGate) return;
 
-  useEffect(() => {
-    if (!authToken) navigate('/org/login', { replace: true });
-  }, [authToken, navigate]);
+    setOrg((prev) => {
+      if (prev && prev.id === orgFromGate.id) return { ...orgFromGate, ...prev } as Org;
+      return orgFromGate as Org;
+    });
+
+    if (!orgHydratedOnceRef.current) {
+      setForm((f: any) => ({ ...f, ...orgFromGate }));
+      orgHydratedOnceRef.current = true;
+    }
+  }, [orgFromGate]);
 
   // Clear M-Pesa paymentId if both modals are closed
   useEffect(() => {
