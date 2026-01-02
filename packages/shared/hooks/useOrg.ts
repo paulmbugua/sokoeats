@@ -1,6 +1,6 @@
 // packages/shared/hooks/useOrg.ts
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { useShopContext } from '@mytutorapp/shared/context';
 import {
@@ -37,7 +37,7 @@ const memoryStorage: KV = (() => {
 })();
 
 export function useOrg(opts?: { currency?: OrgCurrency }) {
-  const { backendUrl, token, orgToken, userId, storage: ctxStorage } = useShopContext() as any;
+  const { backendUrl, orgToken, userId, storage: ctxStorage } = useShopContext() as any;
   const storage: KV = useMemo(() => (ctxStorage as KV) || memoryStorage, [ctxStorage]);
 
   const authToken: string | undefined = orgToken;
@@ -56,6 +56,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
   const [loadingOrg, setLoadingOrg] = useState(false);
   const [orgChecked, setOrgChecked] = useState(false);
   const triedBootstrapRef = useRef(false);
+  const membershipHydratedRef = useRef(false);
 
   const [pricingCurrency, setPricingCurrency] = useState<OrgCurrency>(
     (opts?.currency ?? 'USD') as OrgCurrency
@@ -130,44 +131,87 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
   }, [storage]);
 
   // ─────────────────────────────────────────────────────────
-  // Network fetchers
+  // React Query-backed membership + org fetchers (deduped globally)
   // ─────────────────────────────────────────────────────────
-  const fetchMembership = useCallback(async (): Promise<void> => {
-    if (!authToken) return;
-    setLoadingMembership(true);
-    try {
-      const me: CurrentUser = await fetchCurrentUser(backendUrl, authToken);
+  useEffect(() => {
+    if (!authToken) {
+      setMembership(null);
+      setOrg(null);
+      setCurrentUser(null);
+      setActiveOrgId(undefined); // ✅ clear active org
+      setLocalRole(undefined); // ✅ clear cached role
+      setOrgChecked(false);
+      membershipHydratedRef.current = false;
+      triedBootstrapRef.current = false;
+    }
+  }, [authToken]);
 
-      // Store full current user (for learner identity card, etc.)
-      setCurrentUser(me);
-
-      // Existing behavior: treat me.org as membership payload
-      setMembership((me as any)?.org ?? null);
-    } catch (e) {
-      if (axios.isAxiosError(e)) {
-        console.warn('[useOrg] fetchMembership failed', e.response?.status, e.message);
+  const membershipQuery = useQuery({
+    queryKey: ['orgMembership', backendUrl, authToken],
+    enabled: !!backendUrl && !!authToken,
+    queryFn: () => fetchCurrentUser(backendUrl, authToken),
+    staleTime: 120_000,
+    refetchOnWindowFocus: false,
+    retry: (failure) => {
+      if (axios.isAxiosError(failure)) {
+        const status = failure.response?.status;
+        if (status === 401 || status === 403) return false;
       }
+      return 1;
+    },
+  });
+
+  useEffect(() => {
+    setLoadingMembership(membershipQuery.isFetching);
+
+    if (membershipQuery.data) {
+      membershipHydratedRef.current = true;
+      setCurrentUser(membershipQuery.data as CurrentUser);
+      setMembership((membershipQuery.data as any)?.org ?? null);
+    }
+
+    if (membershipHydratedRef.current && !membershipQuery.isFetching && membershipQuery.isError) {
       setMembership(null);
       setCurrentUser(null);
-    } finally {
-      setLoadingMembership(false);
     }
-  }, [backendUrl, authToken]);
+  }, [membershipQuery.data, membershipQuery.isError, membershipQuery.isFetching]);
 
-  const fetchOrg = useCallback(async (): Promise<void> => {
-    if (!authToken) {
-      setOrg(null);
-      setOrgChecked(true);
-      return;
-    }
+  const orgQuery = useQuery({
+    queryKey: ['orgEntity', backendUrl, authToken],
+    enabled: !!backendUrl && !!authToken,
+    refetchOnWindowFocus: false,
+    staleTime: 120_000,
+    queryFn: async () => {
+      try {
+        return await getMyOrg(backendUrl, authToken);
+      } catch (e) {
+        if (axios.isAxiosError(e)) {
+          const status = e.response?.status;
+          if (status === 404 && !triedBootstrapRef.current) {
+            triedBootstrapRef.current = true;
+            return await getMyOrgOrBootstrap(backendUrl, authToken);
+          }
+        }
+        throw e;
+      }
+    },
+    retry: (failure) => {
+      if (axios.isAxiosError(failure)) {
+        const status = failure.response?.status;
+        if (status === 401 || status === 403 || status === 404) return false;
+      }
+      return 1;
+    },
+  });
 
-    setLoadingOrg(true);
-    try {
-      const o = await getMyOrg(backendUrl, authToken);
+  useEffect(() => {
+    setLoadingOrg(orgQuery.isFetching);
+
+    if (orgQuery.data) {
+      const o = orgQuery.data;
       setOrg(o ?? null);
       setOrgChecked(true);
 
-      // Ensure membership reflects fee-access capability even if /api/user/me omitted it
       setMembership((prev) => {
         if (Array.isArray(prev)) {
           return prev.map((m) =>
@@ -194,60 +238,29 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
         } as any;
       });
 
-      if (o?.id) {
-        setActiveOrgId((prev) => prev ?? o.id);
-        await storage.setItem('org:activeId', o.id);
-      }
-
-      const myRole = ((o as any)?.my_role || (o as any)?.role || '').toString().toLowerCase();
-
-      if (myRole) {
-        setLocalRole(myRole);
-        await storage.setItem('org:role', myRole);
-      } else {
-        setLocalRole(undefined);
-        await storage.removeItem('org:role');
-      }
-    } catch (e) {
-      if (axios.isAxiosError(e)) {
-        const status = e.response?.status;
-        console.warn('[useOrg] fetchOrg failed', status, e.message);
-
-        // ✅ If org not found, try bootstrap ONCE then retry
-        if (status === 404 && !triedBootstrapRef.current) {
-          triedBootstrapRef.current = true;
-          try {
-            const o2 = await getMyOrgOrBootstrap(backendUrl, authToken);
-            setOrg(o2 ?? null);
-          } catch (e2) {
-            console.warn('[useOrg] getMyOrgOrBootstrap failed', (e2 as any)?.message || e2);
-            setOrg(null);
-          } finally {
-            setOrgChecked(true);
-          }
-          return;
+      (async () => {
+        if (o?.id) {
+          setActiveOrgId((prev) => prev ?? o.id);
+          await storage.setItem('org:activeId', o.id);
         }
-      }
 
+        const myRole = ((o as any)?.my_role || (o as any)?.role || '').toString().toLowerCase();
+
+        if (myRole) {
+          setLocalRole(myRole);
+          await storage.setItem('org:role', myRole);
+        } else {
+          setLocalRole(undefined);
+          await storage.removeItem('org:role');
+        }
+      })();
+    }
+
+    if (!orgQuery.isPending && orgQuery.isError) {
       setOrg(null);
       setOrgChecked(true);
-    } finally {
-      setLoadingOrg(false);
     }
-  }, [backendUrl, authToken, storage]);
-
-  useEffect(() => {
-    if (!authToken) {
-      setMembership(null);
-      setOrg(null);
-      setCurrentUser(null);
-      setActiveOrgId(undefined); // ✅ clear active org
-      setLocalRole(undefined); // ✅ clear cached role
-      return;
-    }
-    fetchMembership();
-    fetchOrg();
-  }, [authToken, fetchMembership, fetchOrg]);
+  }, [orgQuery.data, orgQuery.isError, orgQuery.isFetching, orgQuery.isPending, storage]);
 
   // ─────────────────────────────────────────────────────────
   // Derivations
@@ -283,10 +296,10 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
 
   const orgSeats = typeof org?.seats === 'number' ? org.seats : undefined;
 
-  const refresh = fetchMembership;
-  const refreshOrg = fetchOrg;
+  const refresh = () => membershipQuery.refetch();
+  const refreshOrg = () => orgQuery.refetch();
   const refreshAll = async () => {
-    await Promise.allSettled([fetchMembership(), fetchOrg()]);
+    await Promise.allSettled([membershipQuery.refetch(), orgQuery.refetch()]);
   };
 
   return {
