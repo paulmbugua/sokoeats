@@ -4,7 +4,6 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import SiteLayout from './layouts/SiteLayout.web';
 import Spinner from './components/Spinner.web';
-import TransitionOverlay from './components/TransitionOverlay.web';
 import CookieConsentBanner from './components/CookieConsentBanner.web';
 import AuthBusyOverlay from './components/AuthBusyOverlay';
 
@@ -17,10 +16,7 @@ import ResourcesPage from './pages/Resources.web';
 import ProfileDetailPage from './pages/ProfileDetailPage.web';
 import ProfilePage from './pages/Profile.web';
 import LoginPage from './pages/LoginPage.web';
-
-// ✅ rename to avoid import/no-named-as-default
-import OrgLearnerNewsletters from './pages/org/OrgLearnerNewsletters.web';
-
+import OrgLearnerNewslettersPage from './pages/org/OrgLearnerNewsletters.web';
 import RefundsAndCancellations from './pages/RefundsAndCancellations';
 import FulfillmentPolicy from './pages/FulfillmentPolicy';
 import PaymentFlow from './pages/PaymentFlow';
@@ -33,8 +29,7 @@ import ComplaintsFeedback from './pages/ComplaintsFeedback';
 import OrgLearnerFeesPage from './pages/org/OrgLearnerFees.web';
 import Messages from './pages/Messages.web';
 import ResultsPage from './pages/Results.web';
-import OrgLearnerSportsClubsPage from './pages/org/OrgLearnerSportsClubs.web';
-
+import OrgLearnerSportsClubsPage from './pages/org/OrgLearnerSportsClubs.web'
 import MyCourses from './pages/MyCourses.web';
 import CourseDetails from './pages/CourseDetails.web';
 import EditCoursePage from './components/EditCourse.web';
@@ -76,7 +71,6 @@ import OrgToolsSportsPage from './pages/org/OrgToolsSports.web';
 import OrgToolsClubsPage from './pages/org/OrgToolsClubs.web';
 import OrgChangePassword from './pages/org/OrgChangePassword.web';
 import OrgRosterPage from './pages/org/OrgRoster.web';
-
 // OER
 import OerReaderFull from './pages/OerReaderFull.web';
 import OerCollectionReader from './pages/OerCollectionReader.web';
@@ -135,6 +129,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   if (!isAuthed) {
     const fromPath = location.pathname || '';
     const wantsOrg = fromPath.startsWith('/org/');
+
     return <Navigate to={wantsOrg ? '/org/login' : '/login'} replace state={{ from: location }} />;
   }
 
@@ -147,7 +142,7 @@ const OrgProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const location = useLocation();
 
   // wait for tokens to hydrate (no blank screen)
-  if (initializing) return <Spinner label="Opening institution…" />;
+  if (initializing) return <Spinner />;
 
   if (orgToken) return <>{children}</>;
 
@@ -158,6 +153,7 @@ const OrgProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 
   return <Navigate to="/org/login" replace state={{ from: location }} />;
 };
+
 
 /* Enforce first-login redirect inside protected area (general app) */
 const FirstLoginGate: React.FC = () => {
@@ -190,31 +186,6 @@ const FirstLoginGate: React.FC = () => {
   }
 
   return null;
-};
-
-const OrgLoggedOutOnly: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { orgToken, initializing } = useShopContext() as any;
-  const location = useLocation();
-
-  if (initializing) return <Spinner label="Opening…" />;
-
-  const params = new URLSearchParams(location.search);
-  const switching = params.get('switch') === '1' || params.get('force') === '1';
-
-  if (orgToken && !switching) {
-    const returnTo = (() => {
-      try {
-        return sessionStorage.getItem('auth:returnTo') || '';
-      } catch {
-        return '';
-      }
-    })();
-
-    if (returnTo?.startsWith('/org/')) return <Navigate to={returnTo} replace />;
-    return <Navigate to="/org" replace />;
-  }
-
-  return <>{children}</>;
 };
 
 /* Root landing: decide "/" after auth */
@@ -285,17 +256,15 @@ const OrgProtectedLayout: React.FC = () => (
   </OrgProtectedRoute>
 );
 
-/* ───────────────────────────
-   Org guards (FIXED: define busy + return Spinner, not null)
-   ─────────────────────────── */
+/* Org admin-only guard for /org/profile (and other admin-only tools) */
 
 // ✅ Fees-access guard: allows owner/admin OR instructors explicitly granted can_access_fees
 const OrgFeesAccessRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { role, membership, org, loading, isLoading } = (useOrg() ?? {}) as any;
+  const { role, membership, org, loading, isLoading } = (useOrg?.() ?? {}) as any;
   const location = useLocation();
 
   const busy = typeof loading === 'boolean' ? loading : isLoading;
-  if (busy || !role) return <Spinner label="Checking access…" />;
+  if (busy || !role) return null;
 
   const roleLower = String(role || '').toLowerCase();
   const primaryMembership = Array.isArray(membership) ? membership[0] : membership;
@@ -311,19 +280,22 @@ const OrgFeesAccessRoute: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   if (hasFeeAccess) return <>{children}</>;
 
+  // Redirects (keep it simple + predictable)
   const isLearner = roleLower === 'learner' || roleLower === 'student';
   if (isLearner) return <Navigate to="/org/learn" replace state={{ from: location }} />;
 
+  // Staff but no fee access → back to instructor home (or portal tools)
   return <Navigate to="/org/instructor" replace state={{ from: location }} />;
 };
 
+
 /* Staff-only guard (owner/admin/instructor) */
 const OrgStaffOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { role, loading, isLoading } = (useOrg() ?? {}) as any;
+  const { role, loading, isLoading } = (useOrg?.() ?? {}) as any;
   const location = useLocation();
-
   const busy = typeof loading === 'boolean' ? loading : isLoading;
-  if (busy || !role) return <Spinner label="Checking role…" />;
+
+  if (busy || !role) return null;
 
   const normalizedRole = String(role || '').toLowerCase();
   const isOrgAdmin = normalizedRole === 'owner' || normalizedRole === 'admin';
@@ -331,17 +303,18 @@ const OrgStaffOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
   const isLearner = normalizedRole === 'learner' || normalizedRole === 'student';
 
   if (isOrgAdmin || isInstructor) return <>{children}</>;
+
   if (isLearner) return <Navigate to="/org/learn" replace state={{ from: location }} />;
 
   return <Navigate to="/org/login" replace state={{ from: location }} />;
 };
 
 const OrgAdminOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { role, loading, isLoading } = (useOrg() ?? {}) as any;
+  const { role, loading, isLoading } = (useOrg?.() ?? {}) as any;
   const location = useLocation();
-
   const busy = typeof loading === 'boolean' ? loading : isLoading;
-  if (busy || !role) return <Spinner label="Checking admin access…" />;
+
+  if (busy || !role) return null; // wait until role is known
 
   const normalizedRole = String(role || '').toLowerCase();
   const isOrgAdmin = normalizedRole === 'owner' || normalizedRole === 'admin';
@@ -350,19 +323,21 @@ const OrgAdminOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   if (isOrgAdmin) return <>{children}</>;
 
+  // Block cross-access:
   if (isInstructor) return <Navigate to="/org/instructor" replace state={{ from: location }} />;
   if (isLearner) return <Navigate to="/org/learn" replace state={{ from: location }} />;
 
+  // Unknown / weird → safest is org login
   return <Navigate to="/org/login" replace state={{ from: location }} />;
 };
 
 /* Learner-only guard for /org/learn */
 const OrgLearnerOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { role, loading, isLoading } = (useOrg() ?? {}) as any;
+  const { role, loading, isLoading } = (useOrg?.() ?? {}) as any;
   const location = useLocation();
-
   const busy = typeof loading === 'boolean' ? loading : isLoading;
-  if (busy || !role) return <Spinner label="Checking learner access…" />;
+
+  if (busy || !role) return null;
 
   const normalizedRole = String(role || '').toLowerCase();
   const isLearner = normalizedRole === 'learner' || normalizedRole === 'student';
@@ -379,11 +354,11 @@ const OrgLearnerOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 /* Instructor-only guard for /org/instructor */
 const OrgInstructorOnlyRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { role, loading, isLoading } = (useOrg() ?? {}) as any;
+  const { role, loading, isLoading } = (useOrg?.() ?? {}) as any;
   const location = useLocation();
-
   const busy = typeof loading === 'boolean' ? loading : isLoading;
-  if (busy || !role) return <Spinner label="Checking instructor access…" />;
+
+  if (busy || !role) return null;
 
   const normalizedRole = String(role || '').toLowerCase();
   const isInstructor = normalizedRole === 'instructor' || normalizedRole === 'teacher';
@@ -399,67 +374,14 @@ const OrgInstructorOnlyRoute: React.FC<{ children: ReactNode }> = ({ children })
 };
 
 /* ───────────────────────────
-   Route transition overlay (web)
-   ─────────────────────────── */
-function labelForPath(pathname: string) {
-  if (pathname.startsWith('/org/login')) return 'Opening institution login…';
-  if (pathname === '/org') return 'Opening institution…';
-  if (pathname.startsWith('/org/profile')) return 'Opening institution profile…';
-  if (pathname.startsWith('/org/roster')) return 'Loading roster…';
-  if (pathname.startsWith('/org/exams')) return 'Loading exam results…';
-  if (pathname.startsWith('/org/fees')) return 'Loading fees…';
-  if (pathname.startsWith('/org/portal')) return 'Opening portal…';
-  if (pathname.startsWith('/login')) return 'Opening login…';
-  if (pathname.startsWith('/profile/me')) return 'Opening profile…';
-  if (pathname.startsWith('/home')) return 'Opening home…';
-  return 'Opening…';
-}
-
-/* ───────────────────────────
    App
    ─────────────────────────── */
 const App: React.FC = () => {
-  const location = useLocation();
   const { initializing } = useShopContext();
-
-  // Transition overlay (briefly) to mask flickers on fast redirects
-  const [navBusy, setNavBusy] = React.useState(false);
-  const [navLabel, setNavLabel] = React.useState('Opening…');
-
-  const didMountRef = React.useRef(false);
-  const showTimerRef = React.useRef<number | null>(null);
-  const hideTimerRef = React.useRef<number | null>(null);
-
-  React.useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      return;
-    }
-
-    setNavLabel(labelForPath(location.pathname));
-
-    if (showTimerRef.current) window.clearTimeout(showTimerRef.current);
-    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
-
-    // delay so super-fast navigations don’t flash
-    showTimerRef.current = window.setTimeout(() => setNavBusy(true), 120);
-    // hide after a short mask window
-    hideTimerRef.current = window.setTimeout(() => setNavBusy(false), 520);
-
-    return () => {
-      if (showTimerRef.current) window.clearTimeout(showTimerRef.current);
-      if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
-      showTimerRef.current = null;
-      hideTimerRef.current = null;
-    };
-  }, [location.pathname]);
-
-  if (initializing) return <Spinner label="Starting…" />;
+  if (initializing) return <Spinner />;
 
   return (
     <>
-      <TransitionOverlay visible={navBusy} label={navLabel} />
-
       <Routes>
         {/* Public pages with layout */}
         <Route element={<SiteLayout />}>
@@ -473,19 +395,12 @@ const App: React.FC = () => {
           <Route path="/payment-flow" element={<PaymentFlow />} />
           <Route path="/unsubscribe" element={<UnsubscribePage />} />
 
-          {/* Paystack callback */}
+          {/* Paystack callback (fix duplicate path bug) */}
           <Route path="/paystack/callback" element={<PaystackCallbackWeb />} />
           <Route path="/paystack/callback/redirect" element={<PaystackCallbackRedirectWeb />} />
 
           {/* Org public routes */}
-          <Route
-            path="/org/login"
-            element={
-              <OrgLoggedOutOnly>
-                <InstitutionLogin />
-              </OrgLoggedOutOnly>
-            }
-          />
+          <Route path="/org/login" element={<InstitutionLogin />} />
           <Route path="/org/join/:code" element={<OrgInviteLanding />} />
 
           {/* Public content */}
@@ -513,22 +428,26 @@ const App: React.FC = () => {
 
         {/* Org portal (protected; no first-login bounce) */}
         <Route element={<OrgProtectedLayout />}>
+          {/* /org uses OrgHomeRouter */}
           <Route path="/org" element={<OrgHomeRouter />} />
-          <Route path="/org/portal" element={<OrgElearnPortal />} />
 
-          <Route path="/org/learner/newsletters" element={<OrgLearnerNewsletters />} />
-          <Route path="/org/learner/newsletters/:id" element={<OrgLearnerNewsletters />} />
+          {/* keep portal reachable */}
+          <Route path="/org/portal" element={<OrgElearnPortal />} />
+          <Route path="/org/learner/newsletters" element={<OrgLearnerNewslettersPage />} />
+          <Route path="/org/learner/newsletters/:id" element={<OrgLearnerNewslettersPage />} />
           <Route path="/org/learn/activities" element={<OrgLearnerSportsClubsPage />} />
 
           <Route
-            path="/org/roster"
-            element={
-              <OrgAdminOnlyRoute>
-                <OrgRosterPage />
-              </OrgAdminOnlyRoute>
-            }
-          />
+          path="/org/roster"
+          element={
+            <OrgAdminOnlyRoute>
+              <OrgRosterPage />
+            </OrgAdminOnlyRoute>
+          }
+        />
 
+
+          {/* Admin-only profile */}
           <Route
             path="/org/profile"
             element={
@@ -547,6 +466,7 @@ const App: React.FC = () => {
             }
           />
 
+          {/* Learner-only home */}
           <Route
             path="/org/learn"
             element={
@@ -556,6 +476,7 @@ const App: React.FC = () => {
             }
           />
 
+          {/* Instructor-only home */}
           <Route
             path="/org/instructor"
             element={
@@ -576,8 +497,8 @@ const App: React.FC = () => {
             }
           />
 
-          {/* Fees */}
-          <Route
+          {/* Fees (admin tool) */}
+         <Route
             path="/org/fees/*"
             element={
               <OrgFeesAccessRoute>
@@ -585,6 +506,10 @@ const App: React.FC = () => {
               </OrgFeesAccessRoute>
             }
           />
+
+
+
+          {/* Fees actions (wired destinations) */}
           <Route
             path="/org/fees"
             element={
@@ -593,8 +518,7 @@ const App: React.FC = () => {
               </OrgFeesAccessRoute>
             }
           />
-
-          <Route
+         <Route
             path="/org/newsletters"
             element={
               <OrgAdminOnlyRoute>
@@ -602,6 +526,7 @@ const App: React.FC = () => {
               </OrgAdminOnlyRoute>
             }
           />
+
           <Route
             path="/org/announcements"
             element={
@@ -619,13 +544,13 @@ const App: React.FC = () => {
             }
           />
           <Route
-            path="/org/tools/clubs"
-            element={
-              <OrgStaffOnlyRoute>
-                <OrgToolsClubsPage />
-              </OrgStaffOnlyRoute>
-            }
-          />
+          path="/org/tools/clubs"
+          element={
+            <OrgStaffOnlyRoute>
+              <OrgToolsClubsPage />
+            </OrgStaffOnlyRoute>
+          }
+        />
 
           <Route path="/org/change-password" element={<OrgChangePassword />} />
         </Route>

@@ -14,6 +14,11 @@ type AuthResp = InstitutionLoginResp | InstitutionGoogleResp;
 
 type Options = {
   alertFn?: (msg: string) => void;
+  /**
+   * If provided, we SPA-navigate (no hard reload).
+   * IMPORTANT: navigateFn should respect the optional `dest` param.
+   * e.g. navigateFn(dest) => if dest provided, navigate(dest, { replace: true })
+   */
   navigateFn?: (dest?: string) => void;
   onAuthMeta?: (meta: {
     mustChangePassword: boolean;
@@ -65,7 +70,8 @@ const safeRemoveSession = (k: string) => {
   } catch {}
 };
 
-// Prefer hard reload so providers (e.g., useOrg) re-read storage
+// Prefer hard reload so providers (e.g., useOrg) re-read storage.
+// NOTE: Only hardNavigate clears returnTo keys to avoid breaking SPA navigation flows.
 const hardNavigate = (target: string) => {
   if (!hasWindow()) return;
   safeRemoveSession('auth:returnTo');
@@ -74,7 +80,7 @@ const hardNavigate = (target: string) => {
 };
 
 export default function useInstitutionAuth(opts: Options = {}) {
-  const { backendUrl, setOrgToken } = useShopContext();
+  const { backendUrl, setOrgToken, setToken } = useShopContext() as any;
   const alertFn = opts.alertFn ?? ((m: string) => console.log('[inst-auth]', m));
 
   const readReturnTo = (): string =>
@@ -86,7 +92,7 @@ export default function useInstitutionAuth(opts: Options = {}) {
   ) => {
     if (!t) return;
 
-    // 0) Clear stale keys first (web)
+    // 0) Clear stale org keys first (web)
     safeRemoveLocal('org:activeId');
     safeRemoveLocal('org:role');
     safeRemoveLocal('auth:orgId');
@@ -97,34 +103,31 @@ export default function useInstitutionAuth(opts: Options = {}) {
       else safeRemoveSession(MUST_CHANGE_KEY);
     }
 
-    // 1) Put org JWT into context
+    // ✅ 1) Clear user token FIRST (prevents a moment where both sessions appear active)
+    await setToken?.('');
+
+    // ✅ 2) Put org JWT into context
     await setOrgToken?.(t);
 
-    // 2) Flip into org UI mode (web)
+    // 3) Flip into org UI mode (web)
     safeSetLocal('auth:mode', 'org');
 
-    // 3) Ensure org exists AND fetch my_role
-    try {
+    // 4) Ensure org exists AND fetch my_role (non-blocking)
+    void (async () => {
       try {
         await bootstrapOrg(backendUrl, t);
-      } catch (e: unknown) {
-        console.warn('[inst-auth] bootstrapOrg non-fatal:', e);
+        const org = await getMyOrgOrBootstrap(backendUrl, t);
+        if (org?.id) {
+          safeSetLocal('org:activeId', org.id);
+          safeSetLocal('auth:orgId', org.id);
+        }
+        if (org?.my_role) safeSetLocal('org:role', String(org.my_role).toLowerCase());
+      } catch (e) {
+        console.warn('[inst-auth] org bootstrap failed (non-fatal):', e);
       }
+    })();
 
-      const org = await getMyOrgOrBootstrap(backendUrl, t);
-
-      if (org?.id) {
-        safeSetLocal('org:activeId', org.id);
-        safeSetLocal('auth:orgId', org.id);
-      }
-      if (org?.my_role) {
-        safeSetLocal('org:role', String(org.my_role).toLowerCase());
-      }
-    } catch (e: unknown) {
-      console.warn('[inst-auth] getMyOrgOrBootstrap failed:', e);
-    }
-
-    // 4) Choose destination
+    // 5) Choose destination (must-change overrides returnTo)
     const baseTarget = readReturnTo() || '/org/profile';
     const dest = meta?.mustChangePassword ? '/org/change-password' : baseTarget;
 
@@ -138,11 +141,16 @@ export default function useInstitutionAuth(opts: Options = {}) {
       });
     } catch {}
 
-    try {
-      opts.navigateFn?.(dest);
-    } finally {
-      hardNavigate(dest); // no-op on native
+    // ✅ DO NOT clear returnTo keys before SPA navigation,
+    // because navigateAfterAuth() may still need to read them.
+    if (opts.navigateFn) {
+      // navigateFn must respect `dest` if provided.
+      opts.navigateFn(dest);
+      return; // 🚫 do NOT hard reload
     }
+
+    // ✅ Hard reload fallback only (clears returnTo inside hardNavigate)
+    hardNavigate(dest);
   };
 
   return {

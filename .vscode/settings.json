@@ -1,40 +1,28 @@
 {
-  // use your workspace’s TS version
   "typescript.enablePromptUseWorkspaceTsdk": true,
   "typescript.tsdk": "node_modules/typescript/lib",
 
-  // format with Prettier on save
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
 
-  // validate these languages with ESLint
-  "eslint.validate": [
-    "javascript",
-    "javascriptreact",
-    "typescript",
-    "typescriptreact"
-  ],
+  "eslint.run": "onSave",
+  "eslint.workingDirectories": [{ "mode": "auto" }],
+  "eslint.format.enable": false,
 
-  // run *all* fixers on save
   "editor.codeActionsOnSave": {
-    "source.fixAll": "always",
-    "source.fixAll.eslint": "always"
+    "source.fixAll": "explicit",
+    "source.fixAll.eslint": "explicit"
   },
 
-  // ensure Prettier is the formatter per-language
   "[javascript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
   "[javascriptreact]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
   "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
   "[typescriptreact]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
 
-  // force LF line endings
   "files.eol": "\n",
 
-  // —— JSON Schema Settings ——  
-   "json.validate.enable": true,
+  "json.validate.enable": true,
   "json.schemaDownload.enable": true,
-
-  // — Map each package.json to the correct .json schema —
   "json.schemas": [
     {
       "fileMatch": [
@@ -46,4 +34,4 @@
       "url": "https://json.schemastore.org/package.json"
     }
   ]
- }
+}

@@ -4,12 +4,6 @@ const path = require('path');
 module.exports = {
   root: true,
 
-  // NOTE:
-  // You currently ignore ALL native files:
-  // 'apps/mobile/src/**/*.{native,android,ios}.{js,ts,tsx}'
-  // If you want ESLint to actually lint those, remove that ignore pattern.
-  // Keeping it as-is since you asked to only update this file.
-
   ignorePatterns: [
     'node_modules/',
     'apps/mobile/android/**',
@@ -25,22 +19,16 @@ module.exports = {
 
   parser: require.resolve('@typescript-eslint/parser'),
   parserOptions: {
-    project: [
-      './tsconfig.base.json',
-      './apps/mobile/tsconfig.json',
-      './apps/web/tsconfig.json',
-      './packages/shared/tsconfig.json',
-    ],
     tsconfigRootDir: __dirname,
+    // ✅ Single TS program for ESLint (fixes multi-project perf + warnings)
+    project: ['./tsconfig.eslint.json'],
     sourceType: 'module',
     ecmaVersion: 2020,
     ecmaFeatures: { jsx: true },
   },
 
-  // ✅ Global plugins (RN plugin is mobile-only in overrides)
   plugins: ['@typescript-eslint', 'react', 'react-hooks', 'import'],
 
-  // ✅ Global extends
   extends: [
     'eslint:recommended',
     'plugin:@typescript-eslint/recommended',
@@ -56,13 +44,16 @@ module.exports = {
     react: { version: 'detect' },
     'import/parsers': { '@typescript-eslint/parser': ['.ts', '.tsx'] },
     'import/resolver': {
+      // Keep resolver projects for path resolution (doesn't create TS programs like parserOptions.project does)
       typescript: {
         project: [
-          path.resolve(__dirname, 'apps/mobile/tsconfig.json'),
           path.resolve(__dirname, 'tsconfig.base.json'),
+          path.resolve(__dirname, 'apps/mobile/tsconfig.json'),
           path.resolve(__dirname, 'apps/web/tsconfig.json'),
           path.resolve(__dirname, 'packages/shared/tsconfig.json'),
           path.resolve(__dirname, 'apps/backend/tsconfig.json'),
+          // ✅ Add the unified one too
+          path.resolve(__dirname, 'tsconfig.eslint.json'),
         ],
       },
       node: {
@@ -85,10 +76,17 @@ module.exports = {
   },
 
   overrides: [
+    // ✅ IMPORTANT: do NOT type-lint config JS files (fixes app.config.js + speeds up)
+    {
+      files: ['**/*.js', '**/*.cjs', '**/*.mjs', '**/*.config.js', '**/app.config.js'],
+      parserOptions: { project: null },
+    },
+
     {
       // ✅ Mobile-only: React Native lint lives here
       files: ['apps/mobile/**/*.{ts,tsx,js,jsx}'],
-      parserOptions: { project: ['./apps/mobile/tsconfig.json'], tsconfigRootDir: __dirname },
+      // ✅ Keep RN rules, but don't spin up a second TS program
+      parserOptions: { project: null },
       env: { 'react-native/react-native': true },
       plugins: ['react-native'],
       extends: ['plugin:react-native/all'],
@@ -105,9 +103,11 @@ module.exports = {
         'react-native/split-platform-components': 'off',
       },
     },
+
     {
       files: ['apps/web/**/*.{js,jsx,ts,tsx}'],
-      parserOptions: { project: ['./apps/web/tsconfig.json'], tsconfigRootDir: __dirname },
+      // ✅ Don't create another TS program; use the unified one already
+      parserOptions: { project: null },
       env: { browser: true, node: true },
       rules: {
         '@typescript-eslint/no-unused-vars': 'off',
@@ -119,9 +119,11 @@ module.exports = {
         'import/no-named-as-default-member': 'off',
       },
     },
+
     {
       files: ['packages/shared/**/*.{ts,tsx,js,jsx}'],
-      parserOptions: { project: ['./packages/shared/tsconfig.json'], tsconfigRootDir: __dirname },
+      // ✅ Don't create another TS program; use the unified one already
+      parserOptions: { project: null },
       env: { browser: true, node: true },
       rules: {
         '@typescript-eslint/no-explicit-any': 'off',
@@ -129,6 +131,7 @@ module.exports = {
         '@typescript-eslint/no-unused-expressions': 'off',
       },
     },
+
     {
       files: ['apps/backend/**/*.{js,mjs,cjs}'],
       parserOptions: {
@@ -139,7 +142,6 @@ module.exports = {
         '@typescript-eslint/no-unused-vars': 'off',
         'import/no-named-as-default': 'off',
         'import/no-named-as-default-member': 'off',
-
       },
     },
   ],

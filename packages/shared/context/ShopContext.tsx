@@ -345,22 +345,25 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
     setLanguage((prev) => (prev === 'EN' ? 'FR' : 'EN'));
   }, []);
 
-  // ── React Query: fetch /api/profile/me (user profile) ─────────────────────
-  const {
-    data: queryData,
-    isLoading: loadingProfile,
-    refetch,
-  } = useAppQuery<Profile | null, Error>(
-    ['profile', token, adminToken],
-    async () => {
-      const res = await httpRef.current.get<ApiProfileMeResponse>('/api/profile/me');
-      return res.data.profileExists ? res.data.profile : null;
-    },
-    {
-      enabled: Boolean(token) && !adminToken, // skip in admin session
-      retry: false,
-    }
-  );
+ // ── React Query: fetch /api/profile/me (user profile) ─────────────────────
+const isOrgMode = Boolean(orgToken);
+
+const {
+  data: queryData,
+  isLoading: loadingProfile,
+  refetch,
+} = useAppQuery<Profile | null, Error>(
+  ['profile', token, adminToken, orgToken], // optional add orgToken to key
+  async () => {
+    const res = await httpRef.current.get<ApiProfileMeResponse>('/api/profile/me');
+    return res.data.profileExists ? res.data.profile : null;
+  },
+  {
+    enabled: Boolean(token) && !adminToken && !isOrgMode, // ✅ skip user hydrate in org mode
+    retry: false,
+  }
+);
+
 
   const profile: Profile | null = queryData ?? null;
 
@@ -395,9 +398,10 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
   }, [userEmail, tokens, userId, role, storage]);
 
   useEffect(() => {
-    if (!token || adminToken) return; // skip in admin session
-    void fetchUserDetails().catch((e) => console.error(e));
-  }, [token, adminToken, fetchUserDetails]);
+  if (!token || adminToken || isOrgMode) return; // ✅ skip when org logged in
+  void fetchUserDetails().catch((e) => console.error(e));
+}, [token, adminToken, isOrgMode, fetchUserDetails]);
+
 
   const refreshUserDetails = useCallback(async (): Promise<void> => {
     await fetchUserDetails();

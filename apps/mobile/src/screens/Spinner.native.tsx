@@ -1,6 +1,6 @@
 // apps/mobile/src/screens/Spinner.native.tsx
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -18,10 +18,12 @@ type Props = {
 
 export default function Spinner({ label = 'Loading…', inline = false, size = 56 }: Props) {
   const { resolvedScheme } = useThemePref();
+
   const ring = useSharedValue(0);
   const pulse = useSharedValue(0);
 
-  React.useEffect(() => {
+  // ✅ no React.useEffect (fixes import/no-named-as-default-member)
+  useEffect(() => {
     ring.value = withRepeat(
       withTiming(1, { duration: 850, easing: Easing.linear }),
       -1,
@@ -45,36 +47,38 @@ export default function Spinner({ label = 'Loading…', inline = false, size = 5
 
   const pulseStyle = useAnimatedStyle(() => {
     const s = 0.92 + pulse.value * 0.12; // 0.92 → 1.04
-    return { transform: [{ scale: s }], opacity: 0.75 + pulse.value * 0.25 };
+    return { opacity: 0.75 + pulse.value * 0.25, transform: [{ scale: s }] };
   });
 
   const dot = Math.max(8, Math.round(size * 0.16));
   const bw = Math.max(2, Math.round(size * 0.07));
   const radius = Math.round(size / 2);
+  const coreSize = Math.max(10, Math.round(size * 0.22));
 
-  const Content = (
+  const content = (
     <View style={styles.center}>
-      <View style={[styles.ringWrap, { width: size, height: size }]}>
+      <View style={[styles.ringWrap, { height: size, width: size }]}>
         {/* faint ring */}
         <View
           style={{
-            width: size,
-            height: size,
+            borderColor: faint,
             borderRadius: radius,
             borderWidth: bw,
-            borderColor: faint,
+            height: size,
+            width: size,
           }}
         />
 
         {/* orbiting dot */}
-        <Animated.View
-          style={[
-            StyleSheet.absoluteFill,
-            { alignItems: 'center', justifyContent: 'flex-start' },
-            rotateStyle,
-          ]}
-        >
-          <View style={{ width: dot, height: dot, borderRadius: dot / 2, backgroundColor: fg }} />
+        <Animated.View style={[StyleSheet.absoluteFill, styles.orbit, rotateStyle]}>
+          <View
+            style={{
+              backgroundColor: fg,
+              borderRadius: dot / 2,
+              height: dot,
+              width: dot,
+            }}
+          />
         </Animated.View>
 
         {/* pulsing core */}
@@ -83,48 +87,54 @@ export default function Spinner({ label = 'Loading…', inline = false, size = 5
             styles.core,
             pulseStyle,
             {
-              width: Math.max(10, Math.round(size * 0.22)),
-              height: Math.max(10, Math.round(size * 0.22)),
-              borderRadius: Math.max(10, Math.round(size * 0.22)) / 2,
               backgroundColor: fg,
+              borderRadius: coreSize / 2,
+              height: coreSize,
+              width: coreSize,
             },
           ]}
         />
       </View>
 
       {!!label && (
-        <Text style={[styles.label, { color: fg }]} numberOfLines={1}>
+        <Text numberOfLines={1} style={[styles.label, { color: fg }]}>
           {label}
         </Text>
       )}
     </View>
   );
 
-  if (inline) return Content;
-
-  return <View style={styles.full}>{Content}</View>;
+  if (inline) return content;
+  return <View style={styles.full}>{content}</View>;
 }
 
 const styles = StyleSheet.create({
-  full: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // ✅ style keys sorted: center before full
   center: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringWrap: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   core: {
     position: 'absolute',
   },
+  // ✅ alignItems before flex (your lint rule wants that)
+  full: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  // ✅ fontSize before marginTop (your lint rule wants that)
   label: {
-    marginTop: 12,
     fontSize: 14,
     letterSpacing: 0.2,
+    marginTop: 12,
+  },
+  orbit: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  ringWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

@@ -80,45 +80,75 @@ const InstitutionLogin: React.FC = () => {
   }, [canSignUp, authMode]);
 
   // —— Auth hook —— //
-  const navigateAfterAuth = useCallback(() => {
+const navigateAfterAuth = useCallback(
+  (dest?: string) => {
+    const clearReturnTo = () => {
+      try {
+        sessionStorage.removeItem('auth:returnTo');
+        sessionStorage.removeItem('auth:returnTo:org');
+      } catch {}
+    };
+
+    // must-change wins
+    try {
+      if (sessionStorage.getItem('org:mustChangePassword') === '1') {
+        sessionStorage.removeItem('org:mustChangePassword');
+        clearReturnTo(); // ✅ prevent stale redirect after password change
+        navigate('/org/change-password', { replace: true });
+        return;
+      }
+    } catch {}
+
+    // ✅ If hook already decided where to go, honor it AND clear stale keys
+    if (dest) {
+      clearReturnTo();
+      navigate(dest, { replace: true });
+      return;
+    }
+
+    // existing logic...
     const search = new URLSearchParams(location.search);
     const reauthQ = (search.get('reauth') || '').trim();
     const orgIdQ = (search.get('orgId') || search.get('org_id') || '').trim();
     const returnToQ = (search.get('returnTo') || search.get('return_to') || '').trim();
 
-    // ✅ NEW: mark fees unlock window (client-side UX lock)
     if (reauthQ === 'fees' && orgIdQ) {
       try {
         sessionStorage.setItem(`org:feesUnlock:${orgIdQ}`, String(Date.now()));
       } catch {}
     }
 
-    // ✅ NEW: explicit returnTo in URL wins (used by Fees & balances)
     if (returnToQ) {
+      clearReturnTo(); // ✅ cleanup
       navigate(returnToQ, { replace: true });
       return;
     }
 
-    // 1) Prefer an explicit returnTo from storage
     try {
       const saved = sessionStorage.getItem('auth:returnTo');
-      if (saved) {
-        sessionStorage.removeItem('auth:returnTo');
-        navigate(saved, { replace: true });
+      const savedOrg = sessionStorage.getItem('auth:returnTo:org');
+      const finalSaved = saved || savedOrg || '';
+      if (finalSaved) {
+        clearReturnTo(); // ✅ remove both
+        navigate(finalSaved, { replace: true });
         return;
       }
     } catch {}
 
-    // 2) Invite flow
     const inviteCode = search.get('code');
     if (inviteCode) {
+      clearReturnTo();
       navigate(`/org/join/${inviteCode}`, { replace: true });
       return;
     }
 
-    // 3) Default
+    clearReturnTo();
     navigate('/org', { replace: true });
-  }, [navigate, location.search]);
+  },
+  [navigate, location.search]
+);
+
+
 
   const {
     handleGoogleLoginSuccess,
