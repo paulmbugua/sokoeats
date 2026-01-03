@@ -16,6 +16,7 @@ export type PayoutMethod = 'wise' | 'mpesa';
 export type PayoutCurrency = 'USD' | 'KES';
 export type OrgCycle = 'monthly' | 'yearly';
 export type OrgTier = 'starter' | 'pro' | 'enterprise';
+export * from './feeAccess';
 export type {
   AttendanceStatus,
   OrgAttendanceEntry,

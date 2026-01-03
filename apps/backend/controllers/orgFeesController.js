@@ -235,73 +235,110 @@ return rows[0] || null;
 }
 
 // ─────────────────────────────────────────────────────────────
-// Instructor fee-access table resolver
+// Instructor fee-access helpers (org_instructors OR org_instructor_profiles)
 // ─────────────────────────────────────────────────────────────
-const INSTRUCTOR_FEE_TABLE_CANDIDATES = ['org_instructor_fee_access'];
 
-let detectedInstructorFeeTable = null;
-
-async function resolveInstructorFeeTable(clientOrPool = pool) {
-  if (detectedInstructorFeeTable !== null) return detectedInstructorFeeTable;
-
+async function resolveInstructorTable(clientOrPool = pool) {
   const { rows } = await clientOrPool.query(
     `
-    SELECT table_name
-      FROM information_schema.tables
-     WHERE table_schema = 'public'
-       AND table_name = ANY($1::text[])
-    `,
-    [INSTRUCTOR_FEE_TABLE_CANDIDATES],
+    select
+      to_regclass('public.org_instructors') as t_instructors,
+      to_regclass('public.org_instructor_profiles') as t_profiles
+  `,
   );
 
-  const names = rows.map((r) => r.table_name);
-  detectedInstructorFeeTable =
-    INSTRUCTOR_FEE_TABLE_CANDIDATES.find((t) => names.includes(t)) || null;
-
-  return detectedInstructorFeeTable;
+  if (rows?.[0]?.t_instructors) return 'org_instructors';
+  if (rows?.[0]?.t_profiles) return 'org_instructor_profiles';
+  return null;
 }
 
+async function fetchDesignatedInstructor(clientOrPool, tableName, orgId) {
+  const { rows } = await clientOrPool.query(
+    `select user_id, fee_access_updated_at, fee_access_granted_by_user_id
+       from ${tableName}
+      where org_id=$1 and can_access_fees is true
+      limit 1`,
+    [orgId],
+  );
+
+  if (!rows.length) return { userId: null, updatedAt: null, grantedBy: null };
+
+  return {
+    userId: rows[0]?.user_id ?? null,
+    updatedAt: rows[0]?.fee_access_updated_at ?? null,
+    grantedBy: rows[0]?.fee_access_granted_by_user_id ?? null,
+  };
+}
+
+export async function getOrgFeeAccessStatus(req, res) {
+  const orgId = normalizeOrgId(req);
+  const userId = req.user?.id;
+
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+  if (!orgId) return res.status(400).json({ message: 'org_id required' });
+
+  try {
+    const tableName = await resolveInstructorTable(pool);
+
+    // Membership check (role + presence)
+    const membershipRes = await pool.query(
+      `select role from org_memberships where org_id=$1 and user_id=$2 limit 1`,
+      [orgId, userId],
+    );
+    const role = String(membershipRes.rows?.[0]?.role || '').toLowerCase();
+
+    if (!tableName) {
+      return res.json({
+        ok: true,
+        hasAccess: false,
+        designatedInstructorId: null,
+        updatedAt: null,
+        grantedByUserId: null,
+      });
+    }
+
+    const designated = await fetchDesignatedInstructor(pool, tableName, orgId);
+    const hasAccess = role === 'instructor' && designated.userId != null && String(designated.userId) === String(userId);
+
+    return res.json({
+      ok: true,
+      hasAccess,
+      designatedInstructorId: designated.userId ?? null,
+      updatedAt: designated.updatedAt ?? null,
+      grantedByUserId: designated.grantedBy ?? null,
+    });
+  } catch (err) {
+    console.error('[getOrgFeeAccessStatus] failed', err);
+    return res.status(500).json({ message: 'Unable to load fee access status' });
+  }
+}
 
 export async function setInstructorFeeAccess(req, res) {
   const orgId = normalizeOrgId(req);
-  const { instructorId } = req.params || {};
+  const { instructorUserId } = req.params || {};
   const { enabled } = req.body || {};
 
   if (typeof enabled !== 'boolean') return res.status(400).json({ message: 'enabled must be a boolean' });
   if (!orgId) return res.status(400).json({ message: 'org_id required' });
-  if (!instructorId) return res.status(400).json({ message: 'instructorId is required' });
+  if (!instructorUserId) return res.status(400).json({ message: 'instructorUserId is required' });
 
   const actorUserId = req.user?.id || req.user?.userId || req.auth?.userId;
   if (!actorUserId) return res.status(401).json({ message: 'Unauthorized' });
 
- const s = String(instructorId).trim();
-if (!/^[0-9]+$/.test(s)) {
-  return res.status(400).json({ message: 'instructorId must be a numeric user_id' });
-}
-const targetUserId = Number(s);
-
+  const s = String(instructorUserId).trim();
+  if (!/^[0-9]+$/.test(s)) {
+    return res.status(400).json({ message: 'instructorUserId must be a numeric user_id' });
+  }
+  const targetUserId = Number(s);
 
   const client = await pool.connect();
   try {
-    const feeTable = await resolveInstructorFeeTable(client);
-
-    if (!feeTable) {
-      return res.status(500).json({ message: 'Fee access table not found (missing migrations).' });
+    const tableName = await resolveInstructorTable(client);
+    if (!tableName) {
+      return res.status(500).json({ message: 'Instructor table not found (missing migrations).' });
     }
 
-    const hasUpdatedAtRes = await client.query(
-      `select 1
-         from information_schema.columns
-        where table_schema='public'
-          and table_name=$1
-          and column_name='updated_at'
-        limit 1`,
-      [feeTable],
-    );
-    const hasUpdatedAt = hasUpdatedAtRes.rowCount > 0;
-    const updAt = hasUpdatedAt ? `, updated_at=now()` : ``;
-
-    // 1) verify actor is admin-ish
+    // verify actor is admin via org_memberships (requireOrgAdmin already applied, but double-check)
     const adminRes = await client.query(
       `select role
          from org_memberships
@@ -310,11 +347,11 @@ const targetUserId = Number(s);
       [orgId, actorUserId],
     );
     const actorRole = String(adminRes.rows?.[0]?.role || '').toLowerCase();
-    if (!adminRes.rowCount || !['admin', 'owner', 'superadmin'].includes(actorRole)) {
+    if (!adminRes.rowCount || (actorRole !== 'admin' && actorRole !== 'owner' && actorRole !== 'superadmin')) {
       return res.status(403).json({ message: 'Forbidden' });
     }
 
-    // 2) verify target is instructor in org
+    // verify target is instructor
     const memRes = await client.query(
       `select role
          from org_memberships
@@ -329,51 +366,46 @@ const targetUserId = Number(s);
 
     await client.query('BEGIN');
 
-    // 3) enforce ONE instructor max: revoke all first if enabling
+    // revoke everyone first if enabling
     if (enabled) {
       await client.query(
-        `update ${feeTable}
-            set can_access_fees=false${updAt}
+        `update ${tableName}
+            set can_access_fees=false,
+                fee_access_granted_by_user_id=$2,
+                fee_access_updated_at=now()
           where org_id=$1`,
-        [orgId],
+        [orgId, actorUserId],
       );
     }
 
-    // 4) set target instructor fee access (update then upsert)
+    // update target instructor row
     const upd = await client.query(
-      `update ${feeTable}
-          set can_access_fees=$3${updAt}
+      `update ${tableName}
+          set can_access_fees=$3,
+              fee_access_granted_by_user_id=$4,
+              fee_access_updated_at=now()
         where org_id=$1 and user_id=$2`,
-      [orgId, targetUserId, enabled],
+      [orgId, targetUserId, enabled, actorUserId],
     );
 
     if (upd.rowCount === 0) {
-      // insert + upsert safety
       await client.query(
-        `insert into ${feeTable} (org_id, user_id, can_access_fees${hasUpdatedAt ? ', updated_at' : ''})
-         values ($1,$2,$3${hasUpdatedAt ? ', now()' : ''})
+        `insert into ${tableName} (org_id, user_id, can_access_fees, fee_access_granted_by_user_id, fee_access_updated_at)
+         values ($1,$2,$3,$4,now())
          on conflict (org_id, user_id)
-         do update set can_access_fees=excluded.can_access_fees${updAt}`,
-        [orgId, targetUserId, enabled],
+         do update set can_access_fees=excluded.can_access_fees,
+                       fee_access_granted_by_user_id=excluded.fee_access_granted_by_user_id,
+                       fee_access_updated_at=excluded.fee_access_updated_at`,
+        [orgId, targetUserId, enabled, actorUserId],
       );
     }
 
-    // read back (so UI/hook can trust the response)
-    const readBack = await client.query(
-      `select user_id, can_access_fees
-         from ${feeTable}
-        where org_id=$1 and user_id=$2
-        limit 1`,
-      [orgId, targetUserId],
-    );
-
+    const designated = await fetchDesignatedInstructor(client, tableName, orgId);
     await client.query('COMMIT');
 
     return res.json({
       ok: true,
-      designatedInstructorId: enabled ? String(targetUserId) : null,
-      can_access_fees: readBack.rows?.[0]?.can_access_fees === true,
-      feeTable,
+      designatedInstructorId: enabled ? String(targetUserId) : designated.userId ?? null,
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

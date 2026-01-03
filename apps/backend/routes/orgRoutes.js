@@ -112,6 +112,7 @@ import {
   getMyFeeStatement,
   getMyFeeStatementPdf,
   setInstructorFeeAccess,
+  getOrgFeeAccessStatus,
 } from '../controllers/orgFeesController.js';
 import {
   requireOrgAdmin,
@@ -209,8 +210,8 @@ router.post(
   upload.single('file'),
   bulkCreateOrgInstructorsCsv,
 );
-router.post(
-  '/:orgId/instructors/:instructorId/fee-access',
+router.patch(
+  '/:orgId/instructors/:instructorUserId/fee-access',
   requireAuth,
   requireOrgAdmin,
   setInstructorFeeAccess,
@@ -260,6 +261,8 @@ router.post(
   requireAuth,
   confirmOrgSubscription,
 );
+
+router.get('/:orgId/fee-access', requireAuth, getOrgFeeAccessStatus);
 
 // optional stubs
 router.post('/:orgId/upgrade', requireAuth, async (req, res) => {

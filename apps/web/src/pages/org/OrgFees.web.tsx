@@ -34,6 +34,7 @@ import {
   StatementModal,
   UnmatchedPaymentsModal,
 } from './OrgFees.modals';
+import FeeGate from './gates/FeeGate.web';
 
 /* ─────────────────────────────────────────────────────────
  * Small circular checkbox (better UX: tiny click target + clean look)
@@ -1678,4 +1679,10 @@ const handleSaveStructure = async ({ forceActive }: { forceActive?: boolean } = 
   );
 };
 
-export default OrgFeesPage;
+export default function OrgFeesPageWithGate() {
+  return (
+    <FeeGate>
+      <OrgFeesPage />
+    </FeeGate>
+  );
+}

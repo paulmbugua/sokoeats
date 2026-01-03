@@ -133,7 +133,7 @@ export async function setInstructorFeeAccess(
 ): Promise<SetInstructorFeeAccessResponse> {
   const base = backendUrl.replace(/\/+$/, '');
   const resp = await fetch(`${base}/api/orgs/${orgId}/instructors/${instructorId}/fee-access`, {
-    method: 'POST',
+    method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
