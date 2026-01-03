@@ -166,8 +166,7 @@ const OrgInstructorHome: React.FC = () => {
   const primaryMembership = Array.isArray(membership) ? membership[0] : membership;
   const roleLower = (role || '').toLowerCase();
   const hasFeeAccess =
-    isProTier &&
-    (roleLower === 'owner' || roleLower === 'admin' || (primaryMembership as any)?.can_access_fees === true);
+    isProTier && roleLower === 'instructor' && (primaryMembership as any)?.can_access_fees === true;
 
   const portalLabel = role ? `${String(role).toUpperCase()} PORTAL` : 'INSTRUCTOR PORTAL';
 

@@ -92,7 +92,6 @@ const navigateAfterAuth = useCallback(
     // must-change wins
     try {
       if (sessionStorage.getItem('org:mustChangePassword') === '1') {
-        sessionStorage.removeItem('org:mustChangePassword');
         clearReturnTo(); // ✅ prevent stale redirect after password change
         navigate('/org/change-password', { replace: true });
         return;

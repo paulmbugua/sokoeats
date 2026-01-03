@@ -1,6 +1,7 @@
 // apps/backend/middleware/orgAccess.js
 import pool from '../config/db.js';
 import { requireOrgTier as enforceOrgTier } from '../utils/orgTierGuard.js';
+import { resolveInstructorFeeTable } from '../utils/feeAccessTable.js';
 
 function normalizeOrgId(req) {
   return (
@@ -96,40 +97,14 @@ export async function requireOrgFeeAccess(req, res, next) {
   }
 
   try {
-    // Detect which instructor table exists in this DB
-    const t = await pool.query(`
-      select
-        to_regclass('public.org_instructors') as t_instructors,
-        to_regclass('public.org_instructor_profiles') as t_profiles
-    `);
-
-    const instructorTable = t.rows?.[0]?.t_instructors
-      ? 'org_instructors'
-      : t.rows?.[0]?.t_profiles
-      ? 'org_instructor_profiles'
-      : null;
+    const instructorTable = await resolveInstructorFeeTable(pool, orgId);
 
     if (!instructorTable) {
-      // No instructor table in schema; only allow admins
-      const { rows } = await pool.query(
-        `select role
-           from org_memberships
-          where org_id=$1 and user_id=$2
-          limit 1`,
-        [orgId, userId],
-      );
-
-      if (!rows.length) return res.status(403).json({ message: 'Forbidden' });
-
-      const role = String(rows[0].role || '').toLowerCase();
-      const canAccessFees = false;
-
-      if ((ORG_ROLE_ORDER?.[role] ?? 0) >= (ORG_ROLE_ORDER?.admin ?? 0)) {
-        res.locals.orgMembership = { orgId, userId, role, canAccessFees };
-        return next();
-      }
-
-      return res.status(403).json({ message: 'Forbidden' });
+      return res.status(403).json({
+        ok: false,
+        code: 'ORG_FEE_ACCESS_DENIED',
+        message: 'Fees are only accessible to the single designated instructor.',
+      });
     }
 
     const { rows } = await pool.query(
@@ -149,25 +124,26 @@ export async function requireOrgFeeAccess(req, res, next) {
     );
 
     if (!rows.length) {
-      return res.status(403).json({ message: 'Forbidden' });
+      return res.status(403).json({
+        ok: false,
+        code: 'ORG_FEE_ACCESS_DENIED',
+        message: 'Fees are only accessible to the single designated instructor.',
+      });
     }
 
     const role = String(rows[0].role || '').toLowerCase();
     const canAccessFees = rows[0].can_access_fees === true;
 
-    // Admins and above always allowed
-    if ((ORG_ROLE_ORDER?.[role] ?? 0) >= (ORG_ROLE_ORDER?.admin ?? 0)) {
-      res.locals.orgMembership = { orgId, userId, role, canAccessFees };
-      return next();
-    }
-
-    // Exactly one instructor can be granted fee access
     if (role === 'instructor' && canAccessFees) {
       res.locals.orgMembership = { orgId, userId, role, canAccessFees };
       return next();
     }
 
-    return res.status(403).json({ message: 'Forbidden' });
+    return res.status(403).json({
+      ok: false,
+      code: 'ORG_FEE_ACCESS_DENIED',
+      message: 'Fees are only accessible to the single designated instructor.',
+    });
   } catch (err) {
     console.error('[requireOrgFeeAccess] failed', err);
     return res.status(500).json({ message: 'Server error' });

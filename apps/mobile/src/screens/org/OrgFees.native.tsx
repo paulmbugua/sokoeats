@@ -25,6 +25,7 @@ import { useOrgFeeStatement } from '@mytutorapp/shared/hooks/useOrgFeeStatement'
 import { PROD_BASE, moneyFromCents, toCents, emptyItem } from './OrgFees.shared.native';
 import { MoneyStack, Badge, CircleCheckbox } from './OrgFees.ui.native';
 import { UnmatchedPaymentsModal, ResponsiveChargeModal, ResponsivePaymentModal, StatementModal } from './OrgFees.modals.native';
+import FeeGate from './gates/FeeGate.native';
 
 import type { FeeStructure, FeeStructureItem } from '@mytutorapp/shared/types';
 
@@ -226,7 +227,7 @@ function Field({ theme, label, value, onChange, placeholder, multiline, height }
  * Screen
  * ───────────────────────────────────────────────────────── */
 
-export default function OrgFeesNative() {
+function OrgFeesInner() {
   const theme = useTheme();
 
   const [learnerPage, setLearnerPage] = useState(1);
@@ -1411,5 +1412,13 @@ export default function OrgFeesNative() {
         />
       ) : null}
     </View>
+  );
+}
+
+export default function OrgFeesNative() {
+  return (
+    <FeeGate>
+      <OrgFeesInner />
+    </FeeGate>
   );
 }

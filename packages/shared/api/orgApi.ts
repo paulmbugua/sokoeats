@@ -7,6 +7,7 @@ import type {
   OrgTier,
   OrgCycle,
   AcceptInviteResp,
+  FeeAccessStatus,
 } from '@mytutorapp/shared/types';
 
 function baseUrl(u: string) {
@@ -770,4 +771,61 @@ export async function apiListOrgClassLabels(
       with_emails: Number(r.with_emails || 0),
     })),
   };
+}
+
+export async function getOrgFeeAccessStatus(
+  backendUrl: string,
+  token: string,
+  orgId: string | number,
+): Promise<FeeAccessStatus> {
+  const base = baseUrl(backendUrl);
+  const resp = await fetch(`${base}/api/orgs/${orgId}/fee-access`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!resp.ok) {
+    let message = `Failed to load fee access (status ${resp.status})`;
+    try {
+      const data: any = await resp.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  return resp.json();
+}
+
+export async function setOrgInstructorFeeAccess(
+  backendUrl: string,
+  token: string,
+  orgId: string | number,
+  instructorUserId: string | number,
+  enabled: boolean,
+): Promise<{ ok: boolean; designatedInstructorId: string | number | null }> {
+  const base = baseUrl(backendUrl);
+  const resp = await fetch(`${base}/api/orgs/${orgId}/instructors/${instructorUserId}/fee-access`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ enabled }),
+  });
+
+  if (!resp.ok) {
+    let message = `Failed to set fee access (status ${resp.status})`;
+    try {
+      const data: any = await resp.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  return resp.json();
 }

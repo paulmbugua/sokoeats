@@ -4,6 +4,7 @@ export type InstitutionLoginResp = {
   token?: string;
   message?: string;
   mustChangePassword?: boolean;
+  must_change_password?: boolean;
 };
 export type InstitutionGoogleResp = {
   success: boolean;
@@ -12,6 +13,7 @@ export type InstitutionGoogleResp = {
   name?: string;
   message?: string;
   mustChangePassword?: boolean;
+  must_change_password?: boolean;
 };
 
 export interface InstitutionChangePasswordResp {

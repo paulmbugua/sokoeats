@@ -16,6 +16,7 @@ export type PayoutMethod = 'wise' | 'mpesa';
 export type PayoutCurrency = 'USD' | 'KES';
 export type OrgCycle = 'monthly' | 'yearly';
 export type OrgTier = 'starter' | 'pro' | 'enterprise';
+export * from './feeAccess';
 export type {
   AttendanceStatus,
   OrgAttendanceEntry,
@@ -843,6 +844,8 @@ export interface CurrentUser {
   email: string;
   name?: string | null;
   tokens?: number;
+  must_change_password?: boolean;
+  mustChangePassword?: boolean;
   // May be a single membership, an array, or absent:
   org?: OrgMembership | OrgMembership[] | null;
 }

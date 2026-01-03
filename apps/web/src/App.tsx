@@ -261,7 +261,7 @@ const OrgProtectedLayout: React.FC = () => (
 
 /* Org admin-only guard for /org/profile (and other admin-only tools) */
 
-// ✅ Fees-access guard: allows owner/admin OR instructors explicitly granted can_access_fees
+// ✅ Fees-access guard: only the designated instructor with can_access_fees
 const OrgFeesAccessRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { role, membership, org, loading, isLoading } = (useOrg?.() ?? {}) as any;
   const location = useLocation();
@@ -276,10 +276,7 @@ const OrgFeesAccessRoute: React.FC<{ children: ReactNode }> = ({ children }) => 
   const isProTier = tierLower === 'pro' || tierLower === 'enterprise';
 
   const hasFeeAccess =
-    isProTier &&
-    (roleLower === 'owner' ||
-      roleLower === 'admin' ||
-      primaryMembership?.can_access_fees === true);
+    isProTier && roleLower === 'instructor' && primaryMembership?.can_access_fees === true;
 
   if (hasFeeAccess) return <>{children}</>;
 

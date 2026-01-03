@@ -24,7 +24,10 @@ const OrgHomeRouter: React.FC = () => {
   const { org, role, loading, isLoading } = orgState;
 
   const busy = typeof loading === 'boolean' ? loading : isLoading;
-  const mustChangePassword = readMustChangePassword();
+  const mustChangePassword =
+    readMustChangePassword() ||
+    orgState?.currentUser?.must_change_password === true ||
+    orgState?.currentUser?.mustChangePassword === true;
 
   // Not authenticated for org at all → go to org login
   if (!orgToken) {
