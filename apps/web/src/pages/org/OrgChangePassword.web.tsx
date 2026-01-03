@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { institutionChangePassword } from '@mytutorapp/shared/api/institutionAuth';
 
@@ -9,6 +10,7 @@ const OrgChangePassword: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { backendUrl, orgToken } = useShopContext() as any;
+  const queryClient = useQueryClient();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -50,6 +52,10 @@ const OrgChangePassword: React.FC = () => {
       } catch {
         /* ignore */
       }
+
+      // Refresh cached session/org data so gates stop forcing change
+      void queryClient.invalidateQueries({ queryKey: ['orgMembership', backendUrl, orgToken] });
+      void queryClient.invalidateQueries({ queryKey: ['orgEntity', backendUrl, orgToken] });
 
       setSuccess(true);
 

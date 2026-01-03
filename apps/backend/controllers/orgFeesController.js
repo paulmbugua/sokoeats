@@ -18,6 +18,7 @@ import {
   renderFeeStructurePdf,
   renderInstitutionFeeStatementPdf,
 } from '../services/orgFeePdfService.js';
+import { resolveInstructorFeeTable } from '../utils/feeAccessTable.js';
 
 
 function normalizeCurrency(v, fallback = 'USD') {

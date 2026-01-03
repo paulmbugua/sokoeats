@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { ensureOrgForUser } from '../services/orgBootstrap.js';
 import { enqueueWebhook } from '../helpers/webhooks.js';
 import PDFDocument from 'pdfkit';
+import { resolveInstructorFeeTable } from '../utils/feeAccessTable.js';
 // Helpers
 const nowPlusSec = (sec) => new Date(Date.now() + sec * 1000);
 
@@ -57,19 +58,6 @@ function emailMatches(email, domainList) {
     return dom === rule || dom.endsWith('.' + rule);
   });
 }
-
-async function resolveInstructorFeeTable(db) {
-  const { rows } = await db.query(`
-    select
-      to_regclass('public.org_instructor_profiles') as t_profiles,
-      to_regclass('public.org_instructors') as t_instructors
-  `);
-
-  if (rows?.[0]?.t_profiles) return 'org_instructor_profiles';
-  if (rows?.[0]?.t_instructors) return 'org_instructors';
-  return null;
-}
-
 
 // Simple stub: replace with your real grading service
 async function fakeGrade(courseId, answers) {

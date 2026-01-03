@@ -1,6 +1,7 @@
 // apps/backend/middleware/orgAccess.js
 import pool from '../config/db.js';
 import { requireOrgTier as enforceOrgTier } from '../utils/orgTierGuard.js';
+import { resolveInstructorFeeTable } from '../utils/feeAccessTable.js';
 
 function normalizeOrgId(req) {
   return (
@@ -96,18 +97,7 @@ export async function requireOrgFeeAccess(req, res, next) {
   }
 
   try {
-    // Detect which instructor table exists in this DB
-    const t = await pool.query(`
-      select
-        to_regclass('public.org_instructors') as t_instructors,
-        to_regclass('public.org_instructor_profiles') as t_profiles
-    `);
-
-    const instructorTable = t.rows?.[0]?.t_instructors
-      ? 'org_instructors'
-      : t.rows?.[0]?.t_profiles
-      ? 'org_instructor_profiles'
-      : null;
+    const instructorTable = await resolveInstructorFeeTable(pool, orgId);
 
     if (!instructorTable) {
       return res.status(403).json({

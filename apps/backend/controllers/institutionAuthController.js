@@ -49,10 +49,12 @@ export const institutionLogin = async (req, res) => {
     }
 
     // Ensure the user has an org and owner/admin membership (idempotent)
-    try {
-      await ensureOrgForUser(user.id);
-    } catch (e) {
-      console.warn('[institutionLogin] ensureOrgForUser', e?.message);
+    if (process.env.SKIP_ORG_BOOTSTRAP !== '1') {
+      try {
+        await ensureOrgForUser(user.id);
+      } catch (e) {
+        console.warn('[institutionLogin] ensureOrgForUser', e?.message);
+      }
     }
 
     const token = signToken(user.id);
@@ -65,6 +67,7 @@ export const institutionLogin = async (req, res) => {
       token,
       message: 'Login successful',
       mustChangePassword,
+      must_change_password: mustChangePassword,
     });
   } catch (e) {
     console.error('[institutionLogin]', e);
@@ -127,6 +130,7 @@ export const institutionRegister = async (req, res) => {
       token,
       message: 'Sign up successful',
       mustChangePassword,
+      must_change_password: mustChangePassword,
     });
   } catch (e) {
     console.error('[institutionRegister]', e);
@@ -247,13 +251,15 @@ export const institutionGoogleLogin = async (req, res) => {
     const user = rows[0];
 
     // Ensure the user has an org and is at least an owner (idempotent)
-    try {
-      await ensureOrgForUser(user.id);
-    } catch (e) {
-      console.warn(
-        '[institutionGoogleLogin] ensureOrgForUser failed (non-fatal):',
-        e?.message,
-      );
+    if (process.env.SKIP_ORG_BOOTSTRAP !== '1') {
+      try {
+        await ensureOrgForUser(user.id);
+      } catch (e) {
+        console.warn(
+          '[institutionGoogleLogin] ensureOrgForUser failed (non-fatal):',
+          e?.message,
+        );
+      }
     }
 
     const token = signToken(user.id);
@@ -264,6 +270,7 @@ export const institutionGoogleLogin = async (req, res) => {
       userId: user.id,
       name: user.name || '',
       mustChangePassword,
+      must_change_password: mustChangePassword,
     });
   } catch (e) {
     console.error('[institutionGoogleLogin]', e);

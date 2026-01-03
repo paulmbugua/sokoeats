@@ -86,8 +86,11 @@ pool.on('error', (err) => {
 });
 
 /* ───────── Robust startup probe (dev/containers) ───────── */
+const startupTries = Number(process.env.DB_STARTUP_TRIES ?? 12);
+const skipStartupProbe = process.env.SKIP_PG_WAIT === '1' || startupTries <= 0;
+
 async function waitForPg({
-  tries = Number(process.env.DB_STARTUP_TRIES) || 12,
+  tries = startupTries || 12,
   backoffMs = Number(process.env.DB_STARTUP_BACKOFF_MS) || 1000,
 } = {}) {
   for (let i = 0; i < tries; i++) {
@@ -108,10 +111,13 @@ async function waitForPg({
     }
   }
 }
-waitForPg().catch((e) => {
-  console.error('🚨 PG init failed:', e);
-  process.exit(1);
-});
+
+if (!skipStartupProbe) {
+  waitForPg().catch((e) => {
+    console.error('🚨 PG init failed:', e);
+    process.exit(1);
+  });
+}
 
 /* ───────── 3) queryWithRetry helper (use this instead of pool.query) ───────── */
 

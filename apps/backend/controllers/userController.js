@@ -243,6 +243,7 @@ export const getUser = async (req, res) => {
         u.email,
         u.tokens,
         u.role,
+        u.must_change_password,
         COALESCE(p.name, u.name) AS name
       FROM users u
       LEFT JOIN LATERAL (
@@ -286,6 +287,8 @@ export const getUser = async (req, res) => {
       tokens: u.tokens || 0,
       role: u.role,
       name: u.name || '',
+      must_change_password: !!u.must_change_password,
+      mustChangePassword: !!u.must_change_password,
     };
 
     // Expose profile under multiple keys (snake + camel + array),

@@ -844,6 +844,8 @@ export interface CurrentUser {
   email: string;
   name?: string | null;
   tokens?: number;
+  must_change_password?: boolean;
+  mustChangePassword?: boolean;
   // May be a single membership, an array, or absent:
   org?: OrgMembership | OrgMembership[] | null;
 }
