@@ -1,4 +1,4 @@
-/* eslint-disable prettier/prettier */
+
 import React, { useMemo, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import {

@@ -6,14 +6,44 @@ import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 
 const MUST_CHANGE_KEY = 'org:mustChangePassword';
 
-const readMustChangePassword = (): boolean => {
-  if (typeof window === 'undefined') return false;
+/**
+ * We treat sessionStorage as the authority during the "first login / change password"
+ * transition, because useOrg() can be briefly stale right after password update.
+ *
+ * - 'force'   => must change password
+ * - 'allow'   => explicitly cleared; do NOT force even if stale user says true
+ * - 'unknown' => fall back to useOrg() flags
+ */
+type MustChangeState = 'force' | 'allow' | 'unknown';
+
+const readMustChangeState = (): MustChangeState => {
+  if (typeof window === 'undefined') return 'unknown';
   try {
-    return sessionStorage.getItem(MUST_CHANGE_KEY) === '1';
+    const v = sessionStorage.getItem(MUST_CHANGE_KEY);
+
+    // support both historical styles
+    if (v === '1' || v === 'true') return 'force';
+    if (v === '0' || v === 'false') return 'allow';
+
+    return 'unknown';
   } catch {
-    return false;
+    return 'unknown';
   }
 };
+
+const readReturnTo = (): string => {
+  if (typeof window === 'undefined') return '';
+  try {
+    return sessionStorage.getItem('auth:returnTo') || '';
+  } catch {
+    return '';
+  }
+};
+
+const isSafeFrom = (p: unknown): p is string =>
+  typeof p === 'string' &&
+  p.startsWith('/org') &&
+  !p.includes('/org/change-password');
 
 const OrgHomeRouter: React.FC = () => {
   const location = useLocation();
@@ -24,15 +54,15 @@ const OrgHomeRouter: React.FC = () => {
   const { org, role, loading, isLoading } = orgState;
 
   const busy = typeof loading === 'boolean' ? loading : isLoading;
-  const mustChangePassword =
-    readMustChangePassword() ||
-    orgState?.currentUser?.must_change_password === true ||
-    orgState?.currentUser?.mustChangePassword === true;
 
   // Not authenticated for org at all → go to org login
   if (!orgToken) {
     return (
-      <Navigate to="/org/login" replace state={{ from: location.pathname + location.search }} />
+      <Navigate
+        to="/org/login"
+        replace
+        state={{ from: location.pathname + location.search }}
+      />
     );
   }
 
@@ -48,7 +78,11 @@ const OrgHomeRouter: React.FC = () => {
   // Token exists but no org found → send to login to recover
   if (!org) {
     return (
-      <Navigate to="/org/login" replace state={{ from: location.pathname + location.search }} />
+      <Navigate
+        to="/org/login"
+        replace
+        state={{ from: location.pathname + location.search }}
+      />
     );
   }
 
@@ -57,37 +91,39 @@ const OrgHomeRouter: React.FC = () => {
   const isInstructor = normalizedRole === 'instructor' || normalizedRole === 'teacher';
   const isOrgAdmin = normalizedRole === 'owner' || normalizedRole === 'admin';
 
+  // ✅ Must-change password state resolution
+  const mustState = readMustChangeState();
+
+  // If storage explicitly says force/allow, trust it.
+  // Only if unknown do we fall back to useOrg() flags.
+  const mustChangePassword =
+    mustState === 'force'
+      ? true
+      : mustState === 'allow'
+        ? false
+        : orgState?.currentUser?.must_change_password === true ||
+          orgState?.currentUser?.mustChangePassword === true;
+
   // 🔐 Force password change for learners & instructors on first login
   if (mustChangePassword && (isLearner || isInstructor)) {
-    const saved = (() => {
-      try {
-        return sessionStorage.getItem('auth:returnTo') || '';
-      } catch {
-        return '';
-      }
-    })();
+    const saved = readReturnTo();
+    const fallback = location.pathname + location.search;
+
+    // Never set "from" to the change-password page (prevents self-loop)
+    const from = isSafeFrom(saved) ? saved : isSafeFrom(fallback) ? fallback : '/org';
 
     return (
       <Navigate
         to="/org/change-password"
         replace
-        state={{
-          from: saved || location.pathname + location.search,
-        }}
+        state={{ from }}
       />
     );
   }
 
   // 🎓 Learners: respect saved deep-link (assignments), else learner home
   if (isLearner) {
-    const saved = (() => {
-      try {
-        return sessionStorage.getItem('auth:returnTo') || '';
-      } catch {
-        return '';
-      }
-    })();
-
+    const saved = readReturnTo();
     if (saved && (/\/org\/join\//.test(saved) || /assignmentId=/.test(saved))) {
       return <Navigate to={saved} replace />;
     }
@@ -102,13 +138,22 @@ const OrgHomeRouter: React.FC = () => {
   // 👑 Owners / admins only → org profile
   if (isOrgAdmin) {
     return (
-      <Navigate to="/org/profile" replace state={{ from: location.pathname + location.search }} />
+      <Navigate
+        to="/org/profile"
+        replace
+        state={{ from: location.pathname + location.search }}
+      />
     );
   }
 
-  // ❓ Any unknown/unsupported role → never show Org Profile;
-  // send them back to org login to recover safely.
-  return <Navigate to="/org/login" replace state={{ from: location.pathname + location.search }} />;
+  // ❓ Any unknown/unsupported role → safest recovery path
+  return (
+    <Navigate
+      to="/org/login"
+      replace
+      state={{ from: location.pathname + location.search }}
+    />
+  );
 };
 
 export default OrgHomeRouter;

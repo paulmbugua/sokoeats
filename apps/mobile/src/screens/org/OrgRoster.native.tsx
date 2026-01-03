@@ -22,6 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Sharing from 'expo-sharing';
 // Use legacy to avoid the deprecation warnings from expo-file-system in SDK 54+
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Clipboard from 'expo-clipboard';
 
 import tw from '../../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -99,6 +100,16 @@ const csvEscape = (v: unknown) => {
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 };
+
+async function copyToClipboard(text: string) {
+  try {
+    await Clipboard.setStringAsync(String(text || ''));
+    Alert.alert('Copied', 'Temporary password copied to clipboard.');
+  } catch {
+    Alert.alert('Copy failed', 'Could not copy to clipboard on this device.');
+  }
+}
+
 
 const rowsToCsv = (rows: (string | null | undefined)[][]) =>
   rows.map((r) => r.map(csvEscape).join(',')).join('\r\n');
@@ -297,10 +308,22 @@ const AddInstructorModalNative: React.FC<{
       });
       onClose();
       if (resp?.tempPassword) {
-        Alert.alert('Instructor created', `Temporary password: ${resp.tempPassword}`);
-      } else {
-        Alert.alert('Instructor created', 'Done.');
-      }
+  const pw = String(resp.tempPassword);
+
+  Alert.alert(
+    'Instructor created',
+    `Temporary password:\n\n${pw}`,
+    [
+      { text: 'Copy password', onPress: () => void copyToClipboard(pw) },
+      { text: 'Share', onPress: () => void Share.share({ message: `Temporary password: ${pw}` }) },
+      { text: 'OK' },
+    ],
+    { cancelable: true }
+  );
+} else {
+  Alert.alert('Instructor created', 'Done.');
+}
+
     } catch (e: any) {
       Alert.alert('Failed', e?.message || 'Unable to create instructor.');
     } finally {
@@ -393,10 +416,22 @@ const AddLearnerModalNative: React.FC<{
       });
       onClose();
       if (resp?.tempPassword) {
-        Alert.alert('Learner created', `Temporary password: ${resp.tempPassword}`);
-      } else {
-        Alert.alert('Learner created', 'Done.');
-      }
+  const pw = String(resp.tempPassword);
+
+  Alert.alert(
+    'Learner created',
+    `Temporary password:\n\n${pw}`,
+    [
+      { text: 'Copy password', onPress: () => void copyToClipboard(pw) },
+      { text: 'Share', onPress: () => void Share.share({ message: `Temporary password: ${pw}` }) },
+      { text: 'OK' },
+    ],
+    { cancelable: true }
+  );
+} else {
+  Alert.alert('Learner created', 'Done.');
+}
+
     } catch (e: any) {
       Alert.alert('Failed', e?.message || 'Unable to create learner.');
     } finally {

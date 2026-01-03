@@ -16,7 +16,8 @@ import ResourcesPage from './pages/Resources.web';
 import ProfileDetailPage from './pages/ProfileDetailPage.web';
 import ProfilePage from './pages/Profile.web';
 import LoginPage from './pages/LoginPage.web';
-import OrgLearnerNewslettersPage from './pages/org/OrgLearnerNewsletters.web';
+import OrgLearnerNewsletters from './pages/org/OrgLearnerNewsletters.web';
+
 import RefundsAndCancellations from './pages/RefundsAndCancellations';
 import FulfillmentPolicy from './pages/FulfillmentPolicy';
 import PaymentFlow from './pages/PaymentFlow';
@@ -251,6 +252,13 @@ const ProtectedLayout: React.FC = () => (
   </ProtectedRoute>
 );
 
+
+const OrgAuthOnlyLayout: React.FC = () => (
+  <OrgAuthGate>
+    <SiteLayout />
+  </OrgAuthGate>
+);
+
 const OrgProtectedLayout: React.FC = () => (
   <OrgAuthGate>
     <OrgGate>
@@ -426,6 +434,12 @@ const App: React.FC = () => {
           <Route path="/verify/:id/print" element={<VerifyCertificatePrintPage />} />
         </Route>
 
+        {/* Org auth-only routes (no must-change gate wrapping) */}
+        <Route element={<OrgAuthOnlyLayout />}>
+          <Route path="/org/change-password" element={<OrgChangePassword />} />
+        </Route>
+
+
         {/* Org portal (protected; no first-login bounce) */}
         <Route element={<OrgProtectedLayout />}>
           {/* /org uses OrgHomeRouter */}
@@ -433,8 +447,9 @@ const App: React.FC = () => {
 
           {/* keep portal reachable */}
           <Route path="/org/portal" element={<OrgElearnPortal />} />
-          <Route path="/org/learner/newsletters" element={<OrgLearnerNewslettersPage />} />
-          <Route path="/org/learner/newsletters/:id" element={<OrgLearnerNewslettersPage />} />
+         <Route path="/org/learner/newsletters" element={<OrgLearnerNewsletters />} />
+        <Route path="/org/learner/newsletters/:id" element={<OrgLearnerNewsletters />} />
+
           <Route path="/org/learn/activities" element={<OrgLearnerSportsClubsPage />} />
 
           <Route
@@ -552,7 +567,7 @@ const App: React.FC = () => {
           }
         />
 
-          <Route path="/org/change-password" element={<OrgChangePassword />} />
+          
         </Route>
 
         {/* Protected pages with layout (general app) */}

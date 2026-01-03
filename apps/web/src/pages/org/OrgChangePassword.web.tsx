@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -18,6 +18,18 @@ const OrgChangePassword: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Mirror native: decide where to go after success
+  // Also defend against "from" accidentally being change-password itself.
+  const safeFrom = useMemo(() => {
+    const rawFrom = (location.state as any)?.from;
+    const ok =
+      typeof rawFrom === 'string' &&
+      rawFrom.startsWith('/org') &&
+      !rawFrom.includes('/org/change-password');
+
+    return ok ? rawFrom : '/org';
+  }, [location.state]);
 
   if (!orgToken) {
     return <p className="p-6 text-sm text-red-500">Session expired. Please log in again.</p>;
@@ -43,25 +55,55 @@ const OrgChangePassword: React.FC = () => {
     try {
       setBusy(true);
 
-      // 🔐 Call backend to change the password
+      // 1) Change password
       await institutionChangePassword(backendUrl, orgToken, currentPassword, newPassword);
 
-      // ✅ Clear the must-change flag for this session
+      /**
+       * 2) IMPORTANT:
+       * Do NOT "remove" the must-change flag here.
+       * Instead, explicitly set it to "0" so OrgHomeRouter trusts it over stale useOrg().
+       * (OrgHomeRouter treats '0'/'false' as allow, '1'/'true' as force.)
+       */
       try {
-        sessionStorage.removeItem(MUST_CHANGE_KEY);
+        sessionStorage.setItem(MUST_CHANGE_KEY, '0');
+        localStorage.setItem(MUST_CHANGE_KEY, '0');
+
+        // Clear any old deep-link after we've successfully handled the forced flow
+        sessionStorage.removeItem('auth:returnTo');
       } catch {
         /* ignore */
       }
 
-      // Refresh cached session/org data so gates stop forcing change
-      void queryClient.invalidateQueries({ queryKey: ['orgMembership', backendUrl, orgToken] });
-      void queryClient.invalidateQueries({ queryKey: ['orgEntity', backendUrl, orgToken] });
+      // 3) Optimistically flip cached membership so guards stop bouncing you
+      queryClient.setQueryData(['orgMembership', backendUrl, orgToken], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          mustChangePassword: false,
+          must_change_password: false,
+        };
+      });
+
+      // 4) Kick off refetches, but NEVER block navigation on them
+      void Promise.allSettled([
+        queryClient.refetchQueries({
+          queryKey: ['orgMembership', backendUrl, orgToken],
+          exact: true,
+        }),
+        queryClient.refetchQueries({
+          queryKey: ['orgEntity', backendUrl, orgToken],
+          exact: true,
+        }),
+      ]);
 
       setSuccess(true);
 
+      // 5) Mirror native: redirect after a short delay
       setTimeout(() => {
-        const from = (location.state as any)?.from || '/org';
-        navigate(from, { replace: true });
+        navigate(safeFrom, { replace: true });
+
+        // If anything still fights navigation, hard redirect (rare after fixes):
+        // window.location.replace(safeFrom);
       }, 800);
     } catch (err: any) {
       setError(err?.message || 'Failed to change password');
