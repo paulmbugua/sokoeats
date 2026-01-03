@@ -386,7 +386,8 @@ const OrgInstructorHomeNative: React.FC = () => {
   const roleLower = (role || '').toLowerCase();
   const hasFeeAccess =
     isProTier &&
-    (roleLower === 'owner' || roleLower === 'admin' || (primaryMembership as any)?.can_access_fees === true);
+    roleLower === 'instructor' &&
+    (primaryMembership as any)?.can_access_fees === true;
 
   const roleLabel = useMemo(() => {
     if (orgUser?.role) return String(orgUser.role).toUpperCase();

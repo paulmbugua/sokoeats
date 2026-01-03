@@ -288,11 +288,23 @@ const OrgRosterPage: React.FC = () => {
   // learner csv upload
   const [csvUploading, setCsvUploading] = useState(false);
 
-  const { ready: feeReady, saving: feeSaving, updateFeeAccess } = useOrgInstructorFeeAccess({
-    backendUrl,
-    token: orgToken,
-    orgId: org?.id,
-  });
+  const { ready: feeReady, saving: feeSaving, setFeeAccess, designatedInstructorId } =
+    useOrgInstructorFeeAccess({
+      backendUrl,
+      token: orgToken,
+      orgId: org?.id,
+    });
+
+  const feeDesignatedLabel = useMemo(() => {
+    const activeId = designatedInstructorId ?? instructors.find((i) => i.can_access_fees)?.id ?? null;
+    const match = activeId
+      ? instructors.find((i) => String(i.id) === String(activeId)) ?? null
+      : null;
+
+    if (match) return match.name || match.email || `User #${match.id}`;
+    if (activeId) return `User #${activeId}`;
+    return 'None';
+  }, [designatedInstructorId, instructors]);
 
   const downloadRosterPdf = useCallback(async () => {
   if (!org?.id || !orgToken) return;
@@ -810,7 +822,7 @@ const OrgRosterPage: React.FC = () => {
       );
       if (!ok) return;
       try {
-        await updateFeeAccess(u.id, enable);
+        await setFeeAccess({ instructorUserId: u.id, enabled: enable });
         setInstructors((prev) =>
           prev.map((p) => ({
             ...p,
@@ -822,7 +834,7 @@ const OrgRosterPage: React.FC = () => {
         alert(e?.response?.data?.message || e?.message || 'Unable to update fee access.');
       }
     },
-    [feeReady, feeSaving, org?.id, updateFeeAccess]
+    [feeReady, feeSaving, org?.id, setFeeAccess]
   );
 
   const logoutInstitution = async () => {
@@ -938,38 +950,46 @@ const OrgRosterPage: React.FC = () => {
 
           {/* tabs + search */}
           <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setTab('instructors');
-                  setSelectMode(false);
-                }}
-                className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl font-semibold ring-1 transition ${
-                  tab === 'instructors'
-                    ? 'bg-[#0d141c] text-white ring-black/10 dark:bg-white dark:text-black'
-                    : 'bg-white dark:bg-[#0f1821] ring-black/10 dark:ring-white/10 hover:bg-slate-50 dark:hover:bg-white/5'
-                }`}
-              >
-                <Users className="h-4 w-4" />
-                Instructors <span className="opacity-70">({instructors.length})</span>
-              </button>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab('instructors');
+                    setSelectMode(false);
+                  }}
+                  className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl font-semibold ring-1 transition ${
+                    tab === 'instructors'
+                      ? 'bg-[#0d141c] text-white ring-black/10 dark:bg-white dark:text-black'
+                      : 'bg-white dark:bg-[#0f1821] ring-black/10 dark:ring-white/10 hover:bg-slate-50 dark:hover:bg-white/5'
+                  }`}
+                >
+                  <Users className="h-4 w-4" />
+                  Instructors <span className="opacity-70">({instructors.length})</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setTab('learners');
-                  setSelectMode(false);
-                }}
-                className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl font-semibold ring-1 transition ${
-                  tab === 'learners'
-                    ? 'bg-[#0d141c] text-white ring-black/10 dark:bg-white dark:text-black'
-                    : 'bg-white dark:bg-[#0f1821] ring-black/10 dark:ring-white/10 hover:bg-slate-50 dark:hover:bg-white/5'
-                }`}
-              >
-                <GraduationCap className="h-4 w-4" />
-                Learners <span className="opacity-70">({learners.length})</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab('learners');
+                    setSelectMode(false);
+                  }}
+                  className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl font-semibold ring-1 transition ${
+                    tab === 'learners'
+                      ? 'bg-[#0d141c] text-white ring-black/10 dark:bg-white dark:text-black'
+                      : 'bg-white dark:bg-[#0f1821] ring-black/10 dark:ring-white/10 hover:bg-slate-50 dark:hover:bg-white/5'
+                  }`}
+                >
+                  <GraduationCap className="h-4 w-4" />
+                  Learners <span className="opacity-70">({learners.length})</span>
+                </button>
+              </div>
+              {tab === 'instructors' && (
+                <div className="text-sm text-slate-600 dark:text-slate-300">
+                  Fee access:{' '}
+                  <span className="font-semibold text-slate-900 dark:text-white">{feeDesignatedLabel}</span>
+                </div>
+              )}
             </div>
 
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] items-stretch">

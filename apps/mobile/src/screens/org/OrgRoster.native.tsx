@@ -643,11 +643,23 @@ const OrgRosterScreen: React.FC = () => {
   const [classPdfSharing, setClassPdfSharing] = useState(false);
 
 
-  const { ready: feeReady, saving: feeSaving, updateFeeAccess } = useOrgInstructorFeeAccess({
-    backendUrl,
-    token: orgToken,
-    orgId: org?.id,
-  });
+  const { ready: feeReady, saving: feeSaving, setFeeAccess, designatedInstructorId } =
+    useOrgInstructorFeeAccess({
+      backendUrl,
+      token: orgToken,
+      orgId: org?.id,
+    });
+
+  const feeDesignatedLabel = useMemo(() => {
+    const activeId = designatedInstructorId ?? instructors.find((i) => i.can_access_fees)?.id ?? null;
+    const match = activeId
+      ? instructors.find((i) => String(i.id) === String(activeId)) ?? null
+      : null;
+
+    if (match) return match.name || match.email || `User #${match.id}`;
+    if (activeId) return `User #${activeId}`;
+    return 'None';
+  }, [designatedInstructorId, instructors]);
 
   const refreshRoster = useCallback(
     async (orgId: string) => {
@@ -1181,7 +1193,7 @@ if (!ids.length) return;
             style: 'default',
             onPress: async () => {
               try {
-                await updateFeeAccess(u.id, enable);
+                await setFeeAccess({ instructorUserId: u.id, enabled: enable });
                 setInstructors((prev) =>
                   prev.map((p) => ({
                     ...p,
@@ -1197,7 +1209,7 @@ if (!ids.length) return;
         ]
       );
     },
-    [feeReady, feeSaving, org?.id, updateFeeAccess]
+    [feeReady, feeSaving, org?.id, setFeeAccess]
   );
 
 const safeFilePart = (v: any) =>
@@ -1543,6 +1555,13 @@ const shareCurrentClassRoster = useCallback(async () => {
             </Text>
           </Pressable>
         </View>
+
+        {tab === 'instructors' ? (
+          <Text style={tw`mt-2 text-sm ${SUBTLE}`}>
+            Fee access:{' '}
+            <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>{feeDesignatedLabel}</Text>
+          </Text>
+        ) : null}
 
         {/* Search */}
         <View style={tw`mt-3`}>
