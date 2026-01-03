@@ -239,6 +239,20 @@ return rows[0] || null;
 // Instructor fee-access helpers (org_instructors OR org_instructor_profiles)
 // ─────────────────────────────────────────────────────────────
 
+async function resolveInstructorTable(clientOrPool = pool) {
+  const { rows } = await clientOrPool.query(
+    `
+    select
+      to_regclass('public.org_instructors') as t_instructors,
+      to_regclass('public.org_instructor_profiles') as t_profiles
+  `,
+  );
+
+  if (rows?.[0]?.t_instructors) return 'org_instructors';
+  if (rows?.[0]?.t_profiles) return 'org_instructor_profiles';
+  return null;
+}
+
 async function fetchDesignatedInstructor(clientOrPool, tableName, orgId) {
   const { rows } = await clientOrPool.query(
     `select user_id, fee_access_updated_at, fee_access_granted_by_user_id
@@ -265,7 +279,7 @@ export async function getOrgFeeAccessStatus(req, res) {
   if (!orgId) return res.status(400).json({ message: 'org_id required' });
 
   try {
-    const tableName = await resolveInstructorFeeTable(pool, orgId);
+    const tableName = await resolveInstructorTable(pool);
 
     // Membership check (role + presence)
     const membershipRes = await pool.query(
@@ -320,7 +334,7 @@ export async function setInstructorFeeAccess(req, res) {
 
   const client = await pool.connect();
   try {
-    const tableName = await resolveInstructorFeeTable(client, orgId);
+    const tableName = await resolveInstructorTable(client);
     if (!tableName) {
       return res.status(500).json({ message: 'Instructor table not found (missing migrations).' });
     }
