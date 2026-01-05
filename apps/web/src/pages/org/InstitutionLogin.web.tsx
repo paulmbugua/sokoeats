@@ -89,51 +89,48 @@ const navigateAfterAuth = useCallback(
       } catch {}
     };
 
-    // must-change wins
+    // must-change always wins
     try {
       if (sessionStorage.getItem('org:mustChangePassword') === '1') {
-        clearReturnTo(); // ✅ prevent stale redirect after password change
+        clearReturnTo();
         navigate('/org/change-password', { replace: true });
         return;
       }
     } catch {}
 
-    // ✅ If hook already decided where to go, honor it AND clear stale keys
-    if (dest) {
-      clearReturnTo();
-      navigate(dest, { replace: true });
-      return;
-    }
-
-    // existing logic...
+    // ✅ Read query params FIRST (important for reauth flows)
     const search = new URLSearchParams(location.search);
     const reauthQ = (search.get('reauth') || '').trim();
     const orgIdQ = (search.get('orgId') || search.get('org_id') || '').trim();
     const returnToQ = (search.get('returnTo') || search.get('return_to') || '').trim();
 
+    // ✅ If this was a fees reauth, mark the unlock NOW (even if dest exists)
     if (reauthQ === 'fees' && orgIdQ) {
       try {
         sessionStorage.setItem(`org:feesUnlock:${orgIdQ}`, String(Date.now()));
       } catch {}
     }
 
+    // ✅ If caller provided explicit returnTo, ALWAYS honor it first
     if (returnToQ) {
-      clearReturnTo(); // ✅ cleanup
+      clearReturnTo();
       navigate(returnToQ, { replace: true });
       return;
     }
 
+    // ✅ If we have a saved deep link, honor it
     try {
       const saved = sessionStorage.getItem('auth:returnTo');
       const savedOrg = sessionStorage.getItem('auth:returnTo:org');
       const finalSaved = saved || savedOrg || '';
       if (finalSaved) {
-        clearReturnTo(); // ✅ remove both
+        clearReturnTo();
         navigate(finalSaved, { replace: true });
         return;
       }
     } catch {}
 
+    // ✅ Invite code next
     const inviteCode = search.get('code');
     if (inviteCode) {
       clearReturnTo();
@@ -141,12 +138,18 @@ const navigateAfterAuth = useCallback(
       return;
     }
 
+    // ✅ Only now honor dest (normal login flows)
+    if (dest) {
+      clearReturnTo();
+      navigate(dest, { replace: true });
+      return;
+    }
+
     clearReturnTo();
     navigate('/org', { replace: true });
   },
-  [navigate, location.search]
+  [navigate, location.search],
 );
-
 
 
   const {

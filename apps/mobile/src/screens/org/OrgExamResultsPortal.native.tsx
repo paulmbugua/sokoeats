@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Linking } from 'react-native';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { View, Text, TouchableOpacity, TextInput, Alert, Linking } from 'react-native';
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -247,6 +248,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
     resolvedLearnerId,
   });
 
+  const outerScrollRef = useRef<any>(null);
   const [org, setOrg] = useState<Org | null>(null);
   const orgId = org?.id ?? '';
 
@@ -301,6 +303,26 @@ const OrgExamResultsPortalNative: React.FC = () => {
   const [rosterLoading, setRosterLoading] = useState(false);
   const [newStudentId, setNewStudentId] = useState<string>('');
   const [newSubject, setNewSubject] = useState<string>('');
+
+    // Local draft rows for smooth editing & scrolling (no network during interaction)
+  const [draftSheetRows, setDraftSheetRows] = useState<OrgExamResultRow[]>([]);
+  const [draftDirty, setDraftDirty] = useState(false);
+
+  // When server sheet changes (new fetch/session/class), reset draft
+  useEffect(() => {
+    setDraftSheetRows(sheetRows);
+    setDraftDirty(false);
+  }, [sheetRows, selectedSessionId, classLabel]);
+
+  // This replaces "saveSheet" inside the marks table: local update ONLY.
+  const saveSheetDraftOnly = useCallback(
+    (_sessionId: string, _classLabel: string | undefined, rows: OrgExamResultRow[]) => {
+      setDraftSheetRows(rows);
+      setDraftDirty(true);
+    },
+    []
+  );
+
 
   // ─────────────────────
   // Navigation guard: if not logged in, go to InstitutionLogin
@@ -487,7 +509,8 @@ const OrgExamResultsPortalNative: React.FC = () => {
   const handleSaveSheet = async () => {
     if (!ensureSessionSelected()) return;
     try {
-      await saveSheet(selectedSessionId, classLabel || undefined, sheetRows);
+      await saveSheet(selectedSessionId, classLabel || undefined, draftSheetRows);
+      setDraftDirty(false);
       Alert.alert('Saved', 'Marks saved.');
     } catch (e: any) {
       console.error('[OrgExamPortalNative] save marks error', e);
@@ -499,6 +522,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
       Alert.alert('Error', serverMessage);
     }
   };
+
 
   const handleOpenStudentCard = useCallback(
     async (studentId: number) => {
@@ -799,13 +823,12 @@ const OrgExamResultsPortalNative: React.FC = () => {
   };
 
   const filteredSheetRows = useMemo(() => {
-    if (!subjectFilter) return sheetRows;
-    return sheetRows.filter((r) =>
-      String(r.subject || '')
-        .toLowerCase()
-        .includes(subjectFilter.toLowerCase())
-    );
-  }, [sheetRows, subjectFilter]);
+    const base = draftSheetRows;
+    if (!subjectFilter) return base;
+    const q = subjectFilter.toLowerCase();
+    return base.filter((r) => String(r.subject || '').toLowerCase().includes(q));
+  }, [draftSheetRows, subjectFilter]);
+
 
   const learnerById = useMemo(() => {
     const m = new Map<number, OrgRosterLearner>();
@@ -866,8 +889,9 @@ const OrgExamResultsPortalNative: React.FC = () => {
     (newRow as any).student_email = meta?.email || null;
     (newRow as any).admission_code = meta?.admission_code || null;
 
-    const next = [...sheetRows, newRow];
-    void saveSheet(selectedSessionId, classLabel || undefined, next);
+    
+    const next = [...draftSheetRows, newRow];
+    saveSheetDraftOnly(selectedSessionId, classLabel || undefined, next);
 
     setNewStudentId('');
     setNewSubject('');
@@ -903,7 +927,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
     }
 
     const existing = new Set(
-      sheetRows.map((r) => `${r.student_user_id}::${String(r.subject || '').toLowerCase()}`)
+     draftSheetRows.map((r) => `${r.student_user_id}::${String(r.subject || '').toLowerCase()}`)
     );
 
     const additions: OrgExamResultRow[] = [];
@@ -939,8 +963,8 @@ const OrgExamResultsPortalNative: React.FC = () => {
       return;
     }
 
-    const next = [...sheetRows, ...additions];
-    void saveSheet(selectedSessionId, classLabel || undefined, next);
+   const next = [...draftSheetRows, ...additions];
+   saveSheetDraftOnly(selectedSessionId, classLabel || undefined, next);
   };
 
   const selectedSession = cfg.sessions.find((s) => s.id === selectedSessionId) || null;
@@ -1331,12 +1355,15 @@ const OrgExamResultsPortalNative: React.FC = () => {
       style={[tw`flex-1`, { backgroundColor: palette.bg }]}
       edges={['top', 'left', 'right', 'bottom']}
     >
-      <ScrollView
+      <GHScrollView
+        ref={outerScrollRef}
         style={tw`flex-1`}
         contentContainerStyle={[tw`px-3 py-4`, { paddingBottom: bottomPad }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
+
         <View style={tw`w-full self-center`}>
           {/* Header */}
           <View style={tw`mb-4`}>
@@ -1451,7 +1478,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
                   {/* Term chips */}
                   <View>
                     <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>Term</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <GHScrollView horizontal showsHorizontalScrollIndicator={false}>
                       {cfg.terms.map((t) => {
                         const isActive = selectedTermId === t.id;
                         return (
@@ -1484,13 +1511,13 @@ const OrgExamResultsPortalNative: React.FC = () => {
                           No terms yet
                         </Text>
                       )}
-                    </ScrollView>
+                    </GHScrollView>
                   </View>
 
                   {/* Session chips */}
                   <View>
                     <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>Exam</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <GHScrollView horizontal showsHorizontalScrollIndicator={false}>
                       {sessionsForSelectedTerm.map((s) => {
                         const isActive = selectedSessionId === s.id;
                         return (
@@ -1523,7 +1550,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
                           No exams yet
                         </Text>
                       )}
-                    </ScrollView>
+                    </GHScrollView>
                   </View>
                 </View>
               </View>
@@ -1568,7 +1595,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
                   {/* Term chips */}
                   <View>
                     <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>Term</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <GHScrollView horizontal showsHorizontalScrollIndicator={false}>
                       {cfg.terms.map((t) => {
                         const isActive = selectedTermId === t.id;
                         return (
@@ -1601,13 +1628,13 @@ const OrgExamResultsPortalNative: React.FC = () => {
                           No terms yet
                         </Text>
                       )}
-                    </ScrollView>
+                    </GHScrollView>
                   </View>
 
                   {/* Session chips */}
                   <View>
                     <Text style={[tw`text-[11px] mb-1`, { color: palette.textSoft }]}>Exam</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <GHScrollView horizontal showsHorizontalScrollIndicator={false}>
                       {sessionsForSelectedTerm.map((s) => {
                         const isActive = selectedSessionId === s.id;
                         return (
@@ -1640,7 +1667,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
                           No exams yet
                         </Text>
                       )}
-                    </ScrollView>
+                    </GHScrollView>
                   </View>
 
                   {/* Class input */}
@@ -1678,7 +1705,8 @@ const OrgExamResultsPortalNative: React.FC = () => {
             )}
 
             {!isLearnerView && tab === 'marks' && (
-              <OrgExamMarksTab
+             <OrgExamMarksTab
+                parentScrollRef={outerScrollRef} 
                 rosterLearners={rosterLearners}
                 rosterLoading={rosterLoading}
                 visibleLearnerCount={visibleLearnerCount}
@@ -1695,16 +1723,17 @@ const OrgExamResultsPortalNative: React.FC = () => {
                 classLabel={classLabel}
                 sheetLoading={sheetLoading}
                 filteredSheetRows={filteredSheetRows}
-                sheetRows={sheetRows}
+                sheetRows={draftSheetRows}              // ✅ draft rows
                 learnerById={learnerById}
                 savingSheet={savingSheet}
                 onAddRowFromRoster={handleAddRowFromRoster}
                 onBulkAddClassForSubject={handleBulkAddClassForSubject}
-                onSaveSheet={handleSaveSheet}
+                onSaveSheet={handleSaveSheet}           // ✅ real persist button
                 onOpenStudentCard={handleOpenStudentCard}
                 onEmailStudentCard={handleEmailStudentCard}
-                saveSheet={saveSheet}
+                saveSheet={saveSheetDraftOnly}          // ✅ local-only updates
               />
+
             )}
 
             {tab === 'reports' && (
@@ -1741,7 +1770,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
             )}
           </View>
         </View>
-      </ScrollView>
+      </GHScrollView>
     </SafeAreaView>
   );
 };

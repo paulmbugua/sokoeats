@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import tw from '../../../tailwind';
 import type { OrgExamResultRow } from '@mytutorapp/shared/types';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -15,6 +16,7 @@ type OrgRosterLearner = {
 };
 
 type OrgExamMarksTabProps = {
+  parentScrollRef?: any;
   rosterLearners: OrgRosterLearner[];
   rosterLoading: boolean;
   visibleLearnerCount: number | string;
@@ -86,6 +88,7 @@ function usePalette() {
 }
 
 const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
+  parentScrollRef,
   rosterLearners,
   rosterLoading,
   visibleLearnerCount,
@@ -727,311 +730,324 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
         </Text>
       </View>
 
-      {/* Marks table */}
+{/* Marks table */}
+<View
+  style={[
+    tw`mt-3 rounded-xl border-2`,
+    { borderColor: palette.border, backgroundColor: palette.card },
+  ]}
+>
+  <GHScrollView
+    horizontal
+    showsHorizontalScrollIndicator
+    showsVerticalScrollIndicator={false} // ✅ no vertical indicator
+    alwaysBounceVertical={false} // ✅ reduce vertical “bounce”
+    bounces={false}
+    directionalLockEnabled // ✅ helps not “trap” vertical drags
+    keyboardShouldPersistTaps="handled"
+    simultaneousHandlers={parentScrollRef} // ✅ this is the key
+  >
+    <View>
+      {/* Header row */}
       <View
         style={[
-          tw`mt-3 rounded-xl border-2`,
-          { borderColor: palette.border, backgroundColor: palette.card },
+          tw`flex-row border-b`,
+          { backgroundColor: palette.headerBg, borderColor: palette.border },
         ]}
       >
-        <ScrollView horizontal showsHorizontalScrollIndicator>
-          <View>
-            {/* Header row */}
+        <View style={tableHeaderCell}>
+          <Text style={[tw`text-[11px]`, { color: palette.text }]}>Student ID</Text>
+        </View>
+        <View style={tableHeaderCell}>
+          <Text style={[tw`text-[11px]`, { color: palette.text }]}>Adm. code</Text>
+        </View>
+        <View style={[...tableHeaderCell, tw`min-w-[160px]`]}>
+          <Text style={[tw`text-[11px]`, { color: palette.text }]}>Name / Email</Text>
+        </View>
+        <View style={tableHeaderCell}>
+          <Text style={[tw`text-[11px]`, { color: palette.text }]}>Subject</Text>
+        </View>
+        <View style={tableHeaderCell}>
+          <Text style={[tw`text-[11px]`, { color: palette.text }]}>Score</Text>
+        </View>
+        <View style={tableHeaderCell}>
+          <Text style={[tw`text-[11px]`, { color: palette.text }]}>Out of</Text>
+        </View>
+        <View style={[...tableHeaderCell, tw`min-w-[110px]`]}>
+          <Text style={[tw`text-[11px]`, { color: palette.text }]}>% / Grade</Text>
+        </View>
+        <View style={[...tableHeaderCell, tw`min-w-[150px]`]}>
+          <Text style={[tw`text-[11px]`, { color: palette.text }]}>Remarks</Text>
+        </View>
+
+        {/* dynamic extras */}
+        {extraColumnKeys.map((key) => (
+          <View key={key} style={[...tableHeaderCell, tw`min-w-[120px]`]}>
+            <Text style={[tw`text-[11px]`, { color: palette.text }]}>{key}</Text>
+          </View>
+        ))}
+
+        <View style={tableHeaderCell}>
+          <Text style={[tw`text-[11px]`, { color: palette.text }]}>Initials</Text>
+        </View>
+        <View style={[...tableHeaderCell, tw`min-w-[130px]`]}>
+          <Text style={[tw`text-[11px]`, { color: palette.text }]}>Actions</Text>
+        </View>
+      </View>
+
+      {/* Body */}
+      {sheetLoading && (
+        <View style={tw`px-3 py-4`}>
+          <Text style={[tw`text-sm`, { color: palette.textSoft }]}>Loading marks…</Text>
+        </View>
+      )}
+
+      {!sheetLoading &&
+        paginatedSheetRows.map((r, idx) => {
+          const percent =
+            r.score != null && r.max_score
+              ? Math.round((Number(r.score) / Number(r.max_score)) * 100)
+              : null;
+
+          const meta = learnerById.get(Number(r.student_user_id));
+          const admissionCode = (r as any).admission_code ?? meta?.admission_code ?? null;
+
+          const displayName =
+            (r as any).student_name ||
+            meta?.name ||
+            meta?.email ||
+            `User #${r.student_user_id}`;
+
+          const displayEmail = (r as any).student_email ?? meta?.email ?? '';
+
+          let rowIndex = sheetRows.indexOf(r);
+          if (rowIndex === -1) {
+            rowIndex = sheetRows.findIndex(
+              (x) => x.student_user_id === r.student_user_id && x.subject === r.subject
+            );
+          }
+          const safeIndex = rowIndex === -1 ? filteredSheetRows.indexOf(r) : rowIndex;
+
+          const rowBgColor = idx % 2 === 0 ? palette.rowBg : palette.rowAltBg;
+
+          return (
             <View
+              key={`${r.student_user_id}-${r.subject}-${safeIndex}`}
               style={[
-                tw`flex-row border-b`,
-                { backgroundColor: palette.headerBg, borderColor: palette.border },
+                tw`flex-row border-t`,
+                { borderColor: palette.border, backgroundColor: rowBgColor },
               ]}
             >
-              <View style={tableHeaderCell}>
-                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Student ID</Text>
-              </View>
-              <View style={tableHeaderCell}>
-                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Adm. code</Text>
-              </View>
-              <View style={[...tableHeaderCell, tw`min-w-[160px]`]}>
-                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Name / Email</Text>
-              </View>
-              <View style={tableHeaderCell}>
-                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Subject</Text>
-              </View>
-              <View style={tableHeaderCell}>
-                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Score</Text>
-              </View>
-              <View style={tableHeaderCell}>
-                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Out of</Text>
-              </View>
-              <View style={[...tableHeaderCell, tw`min-w-[110px]`]}>
-                <Text style={[tw`text-[11px]`, { color: palette.text }]}>% / Grade</Text>
-              </View>
-              <View style={[...tableHeaderCell, tw`min-w-[150px]`]}>
-                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Remarks</Text>
+              <View style={tableCell}>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>
+                  {r.student_user_id}
+                </Text>
               </View>
 
-              {/* dynamic extras */}
-              {extraColumnKeys.map((key) => (
-                <View key={key} style={[...tableHeaderCell, tw`min-w-[120px]`]}>
-                  <Text style={[tw`text-[11px]`, { color: palette.text }]}>{key}</Text>
-                </View>
-              ))}
-
-              <View style={tableHeaderCell}>
-                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Initials</Text>
-              </View>
-              <View style={[...tableHeaderCell, tw`min-w-[130px]`]}>
-                <Text style={[tw`text-[11px]`, { color: palette.text }]}>Actions</Text>
-              </View>
-            </View>
-
-            {/* Body */}
-            {sheetLoading && (
-              <View style={tw`px-3 py-4`}>
-                <Text style={[tw`text-sm`, { color: palette.textSoft }]}>Loading marks…</Text>
-              </View>
-            )}
-
-            {!sheetLoading &&
-              paginatedSheetRows.map((r, idx) => {
-                const percent =
-                  r.score != null && r.max_score
-                    ? Math.round((Number(r.score) / Number(r.max_score)) * 100)
-                    : null;
-
-                const meta = learnerById.get(Number(r.student_user_id));
-                const admissionCode = (r as any).admission_code ?? meta?.admission_code ?? null;
-
-                const displayName =
-                  (r as any).student_name ||
-                  meta?.name ||
-                  meta?.email ||
-                  `User #${r.student_user_id}`;
-
-                const displayEmail = (r as any).student_email ?? meta?.email ?? '';
-
-                let rowIndex = sheetRows.indexOf(r);
-                if (rowIndex === -1) {
-                  rowIndex = sheetRows.findIndex(
-                    (x) => x.student_user_id === r.student_user_id && x.subject === r.subject
-                  );
-                }
-                const safeIndex = rowIndex === -1 ? filteredSheetRows.indexOf(r) : rowIndex;
-
-                const rowBgColor = idx % 2 === 0 ? palette.rowBg : palette.rowAltBg;
-
-                return (
+              <View style={tableCell}>
+                {admissionCode ? (
                   <View
-                    key={`${r.student_user_id}-${r.subject}-${safeIndex}`}
                     style={[
-                      tw`flex-row border-t`,
-                      { borderColor: palette.border, backgroundColor: rowBgColor },
+                      tw`px-2 py-0.5 rounded-full`,
+                      { backgroundColor: palette.chipBg },
                     ]}
                   >
-                    <View style={tableCell}>
-                      <Text style={[tw`text-[11px]`, { color: palette.text }]}>
-                        {r.student_user_id}
-                      </Text>
-                    </View>
+                    <Text style={[tw`text-[10px] font-semibold`, { color: palette.text }]}>
+                      {admissionCode}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>—</Text>
+                )}
+              </View>
 
-                    <View style={tableCell}>
-                      {admissionCode ? (
-                        <View
-                          style={[
-                            tw`px-2 py-0.5 rounded-full`,
-                            { backgroundColor: palette.chipBg },
-                          ]}
-                        >
-                          <Text style={[tw`text-[10px] font-semibold`, { color: palette.text }]}>
-                            {admissionCode}
-                          </Text>
-                        </View>
-                      ) : (
-                        <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>—</Text>
-                      )}
-                    </View>
+              <View style={[...tableCell, tw`min-w-[160px]`]}>
+                <Text style={[tw`text-xs font-medium`, { color: palette.text }]}>
+                  {displayName}
+                </Text>
+                {displayEmail ? (
+                  <Text style={[tw`text-[11px] mt-0.5`, { color: palette.textSoft }]}>
+                    {displayEmail}
+                  </Text>
+                ) : null}
+              </View>
 
-                    <View style={[...tableCell, tw`min-w-[160px]`]}>
-                      <Text style={[tw`text-xs font-medium`, { color: palette.text }]}>
-                        {displayName}
-                      </Text>
-                      {displayEmail ? (
-                        <Text style={[tw`text-[11px] mt-0.5`, { color: palette.textSoft }]}>
-                          {displayEmail}
-                        </Text>
-                      ) : null}
-                    </View>
+              <View style={tableCell}>
+                <Text style={[tw`text-[11px]`, { color: palette.text }]}>{r.subject}</Text>
+              </View>
 
-                    <View style={tableCell}>
-                      <Text style={[tw`text-[11px]`, { color: palette.text }]}>{r.subject}</Text>
-                    </View>
+              {/* Score */}
+              <View style={tableCell}>
+                <TextInput
+                  keyboardType="numeric"
+                  value={r.score == null ? '' : String(r.score)}
+                  onChangeText={(text) => {
+                    const val = Number(text) || 0;
+                    const copy: OrgExamResultRow[] = [...sheetRows];
+                    if (safeIndex < 0 || safeIndex >= copy.length) return;
 
-                    {/* Score */}
-                    <View style={tableCell}>
-                      <TextInput
-                        keyboardType="numeric"
-                        value={r.score == null ? '' : String(r.score)}
-                        onChangeText={(text) => {
-                          const val = Number(text) || 0;
-                          const copy: OrgExamResultRow[] = [...sheetRows];
-                          if (safeIndex < 0 || safeIndex >= copy.length) return;
+                    const current: OrgExamResultRow = copy[safeIndex] as OrgExamResultRow;
+                    const next: OrgExamResultRow = {
+                      ...current,
+                      score: val,
+                    };
 
-                          const current: OrgExamResultRow = copy[safeIndex] as OrgExamResultRow;
-                          const next: OrgExamResultRow = {
-                            ...current,
-                            score: val,
-                          };
+                    copy[safeIndex] = next;
+                    void saveSheet(selectedSessionId, classLabel || undefined, copy);
+                  }}
+                  style={[...smallInputBase, tw`w-20`]}
+                  placeholderTextColor={palette.textSoft}
+                  scrollEnabled={false} // ✅ optional: helps horizontal swipe over inputs
+                />
+              </View>
 
-                          copy[safeIndex] = next;
-                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
-                        }}
-                        style={[...smallInputBase, tw`w-20`]}
-                        placeholderTextColor={palette.textSoft}
-                      />
-                    </View>
+              {/* Out of */}
+              <View style={tableCell}>
+                <TextInput
+                  keyboardType="numeric"
+                  value={r.max_score == null ? '' : String(r.max_score)}
+                  onChangeText={(text) => {
+                    const val = Number(text) || 0;
+                    const copy: OrgExamResultRow[] = [...sheetRows];
+                    if (safeIndex < 0 || safeIndex >= copy.length) return;
 
-                    {/* Out of */}
-                    <View style={tableCell}>
-                      <TextInput
-                        keyboardType="numeric"
-                        value={r.max_score == null ? '' : String(r.max_score)}
-                        onChangeText={(text) => {
-                          const val = Number(text) || 0;
-                          const copy: OrgExamResultRow[] = [...sheetRows];
-                          if (safeIndex < 0 || safeIndex >= copy.length) return;
+                    const current: OrgExamResultRow = copy[safeIndex] as OrgExamResultRow;
+                    const next: OrgExamResultRow = {
+                      ...current,
+                      max_score: val,
+                    };
 
-                          const current: OrgExamResultRow = copy[safeIndex] as OrgExamResultRow;
-                          const next: OrgExamResultRow = {
-                            ...current,
-                            max_score: val,
-                          };
+                    copy[safeIndex] = next;
+                    void saveSheet(selectedSessionId, classLabel || undefined, copy);
+                  }}
+                  style={[...smallInputBase, tw`w-20`]}
+                  placeholderTextColor={palette.textSoft}
+                  scrollEnabled={false} // ✅ optional
+                />
+              </View>
 
-                          copy[safeIndex] = next;
-                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
-                        }}
-                        style={[...smallInputBase, tw`w-20`]}
-                        placeholderTextColor={palette.textSoft}
-                      />
-                    </View>
+              {/* % / Grade */}
+              <View style={[...tableCell, tw`min-w-[110px]`]}>
+                {percent != null ? (
+                  <Text style={[tw`text-[11px]`, { color: palette.text }]}>
+                    {percent}% {r.grade ? `• ${r.grade}` : ''}
+                  </Text>
+                ) : (
+                  <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>—</Text>
+                )}
+              </View>
 
-                    {/* % / Grade */}
-                    <View style={[...tableCell, tw`min-w-[110px]`]}>
-                      {percent != null ? (
-                        <Text style={[tw`text-[11px]`, { color: palette.text }]}>
-                          {percent}% {r.grade ? `• ${r.grade}` : ''}
-                        </Text>
-                      ) : (
-                        <Text style={[tw`text-[11px]`, { color: palette.textSoft }]}>—</Text>
-                      )}
-                    </View>
+              {/* Per-subject remark */}
+              <View style={[...tableCell, tw`min-w-[150px]`]}>
+                <TextInput
+                  value={(r as any).remark ?? ''}
+                  onChangeText={(val) => {
+                    const copy = [...sheetRows];
+                    if (safeIndex < 0 || safeIndex >= copy.length) return;
+                    (copy[safeIndex] as any) = {
+                      ...copy[safeIndex],
+                      remark: val,
+                    };
+                    void saveSheet(selectedSessionId, classLabel || undefined, copy);
+                  }}
+                  placeholder="Remark"
+                  placeholderTextColor={palette.textSoft}
+                  style={[...smallInputBase, tw`w-40`]}
+                  scrollEnabled={false} // ✅ optional
+                />
+              </View>
 
-                    {/* Per-subject remark */}
-                    <View style={[...tableCell, tw`min-w-[150px]`]}>
-                      <TextInput
-                        value={(r as any).remark ?? ''}
-                        onChangeText={(val) => {
-                          const copy = [...sheetRows];
-                          if (safeIndex < 0 || safeIndex >= copy.length) return;
-                          (copy[safeIndex] as any) = {
-                            ...copy[safeIndex],
-                            remark: val,
-                          };
-                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
-                        }}
-                        placeholder="Remark"
-                        placeholderTextColor={palette.textSoft}
-                        style={[...smallInputBase, tw`w-40`]}
-                      />
-                    </View>
+              {/* Dynamic extra columns */}
+              {extraColumnKeys.map((key) => {
+                const extra =
+                  (r as any).extra && typeof (r as any).extra === 'object'
+                    ? ((r as any).extra as Record<string, any>)
+                    : {};
+                const value = extra[key] ?? '';
 
-                    {/* Dynamic extra columns */}
-                    {extraColumnKeys.map((key) => {
-                      const extra =
-                        (r as any).extra && typeof (r as any).extra === 'object'
-                          ? ((r as any).extra as Record<string, any>)
-                          : {};
-                      const value = extra[key] ?? '';
-
-                      return (
-                        <View key={key} style={[...tableCell, tw`min-w-[120px]`]}>
-                          <TextInput
-                            value={String(value)}
-                            onChangeText={(val) => {
-                              const copy = [...sheetRows];
-                              if (safeIndex < 0 || safeIndex >= copy.length) return;
-                              const current = (copy[safeIndex] as any) || {};
-                              const currentExtra =
-                                current.extra && typeof current.extra === 'object'
-                                  ? current.extra
-                                  : {};
-                              (copy[safeIndex] as any) = {
-                                ...current,
-                                extra: {
-                                  ...currentExtra,
-                                  [key]: val,
-                                },
-                              };
-                              void saveSheet(selectedSessionId, classLabel || undefined, copy);
-                            }}
-                            style={[...smallInputBase, tw`w-28`]}
-                            placeholderTextColor={palette.textSoft}
-                          />
-                        </View>
-                      );
-                    })}
-
-                    {/* Teacher initials */}
-                    <View style={tableCell}>
-                      <TextInput
-                        value={(r as any).teacher_initials ?? (r as any).teacherInitials ?? ''}
-                        onChangeText={(val) => {
-                          const copy = [...sheetRows];
-                          if (safeIndex < 0 || safeIndex >= copy.length) return;
-                          (copy[safeIndex] as any) = {
-                            ...copy[safeIndex],
-                            teacher_initials: val,
-                          };
-                          void saveSheet(selectedSessionId, classLabel || undefined, copy);
-                        }}
-                        placeholder="Init."
-                        placeholderTextColor={palette.textSoft}
-                        style={[...smallInputBase, tw`w-16`]}
-                      />
-                    </View>
-
-                    {/* Actions */}
-                    <View style={[...tableCell, tw`flex-row items-center gap-1 min-w-[130px]`]}>
-                      <TouchableOpacity
-                        style={[
-                          tw`h-8 px-3 rounded-xl items-center justify-center`,
-                          { backgroundColor: palette.chipBg },
-                        ]}
-                        onPress={() => onOpenStudentCard(r.student_user_id)}
-                      >
-                        <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>
-                          Card
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={tw`h-8 px-3 rounded-xl bg-sky-500 items-center justify-center`}
-                        onPress={() => onEmailStudentCard(r.student_user_id)}
-                      >
-                        <Text style={tw`text-[11px] text-white font-semibold`}>Email</Text>
-                      </TouchableOpacity>
-                    </View>
+                return (
+                  <View key={key} style={[...tableCell, tw`min-w-[120px]`]}>
+                    <TextInput
+                      value={String(value)}
+                      onChangeText={(val) => {
+                        const copy = [...sheetRows];
+                        if (safeIndex < 0 || safeIndex >= copy.length) return;
+                        const current = (copy[safeIndex] as any) || {};
+                        const currentExtra =
+                          current.extra && typeof current.extra === 'object' ? current.extra : {};
+                        (copy[safeIndex] as any) = {
+                          ...current,
+                          extra: {
+                            ...currentExtra,
+                            [key]: val,
+                          },
+                        };
+                        void saveSheet(selectedSessionId, classLabel || undefined, copy);
+                      }}
+                      style={[...smallInputBase, tw`w-28`]}
+                      placeholderTextColor={palette.textSoft}
+                      scrollEnabled={false} // ✅ optional
+                    />
                   </View>
                 );
               })}
 
-            {!sheetLoading && !filteredSheetRows.length && (
-              <View style={tw`px-3 py-4`}>
-                <Text style={[tw`text-sm`, { color: palette.textSoft }]}>
-                  No marks yet for this exam/class. Start by adding rows using the learner selector
-                  above.
-                </Text>
+              {/* Teacher initials */}
+              <View style={tableCell}>
+                <TextInput
+                  value={(r as any).teacher_initials ?? (r as any).teacherInitials ?? ''}
+                  onChangeText={(val) => {
+                    const copy = [...sheetRows];
+                    if (safeIndex < 0 || safeIndex >= copy.length) return;
+                    (copy[safeIndex] as any) = {
+                      ...copy[safeIndex],
+                      teacher_initials: val,
+                    };
+                    void saveSheet(selectedSessionId, classLabel || undefined, copy);
+                  }}
+                  placeholder="Init."
+                  placeholderTextColor={palette.textSoft}
+                  style={[...smallInputBase, tw`w-16`]}
+                  scrollEnabled={false} // ✅ optional
+                />
               </View>
-            )}
-          </View>
-        </ScrollView>
-      </View>
+
+              {/* Actions */}
+              <View style={[...tableCell, tw`flex-row items-center gap-1 min-w-[130px]`]}>
+                <TouchableOpacity
+                  style={[
+                    tw`h-8 px-3 rounded-xl items-center justify-center`,
+                    { backgroundColor: palette.chipBg },
+                  ]}
+                  onPress={() => onOpenStudentCard(r.student_user_id)}
+                >
+                  <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>
+                    Card
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={tw`h-8 px-3 rounded-xl bg-sky-500 items-center justify-center`}
+                  onPress={() => onEmailStudentCard(r.student_user_id)}
+                >
+                  <Text style={tw`text-[11px] text-white font-semibold`}>Email</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })}
+
+      {!sheetLoading && !filteredSheetRows.length && (
+        <View style={tw`px-3 py-4`}>
+          <Text style={[tw`text-sm`, { color: palette.textSoft }]}>
+            No marks yet for this exam/class. Start by adding rows using the learner selector
+            above.
+          </Text>
+        </View>
+      )}
+    </View>
+  </GHScrollView>
+</View>
+
 
       {/* 🔢 Pagination strip */}
       {!sheetLoading && filteredSheetRows.length > 0 && (

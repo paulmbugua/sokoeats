@@ -16,7 +16,10 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { CommonActions } from '@react-navigation/native';
+import { CommonActions, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+
+import visamaster from '../../../assets/visamaster.png';
+import mpesa from '../../../assets/mpesa.png';
 
 import * as DocumentPicker from 'expo-document-picker';
 
@@ -49,9 +52,6 @@ import {
   type OrgAssignmentRow,
 } from '@mytutorapp/shared/api/orgApi';
 import PlanPurchaseModalNative from './PlanPurchaseModal.native';
-
-import { useRoute, useNavigation } from '@react-navigation/native';
-import type { RouteProp } from '@react-navigation/native';
 import type { MainStackParamList } from '../../navigation/types';
 import type { OrgTier } from '@mytutorapp/shared/types';
 import { useThemePref } from '../../theme/ThemeContext';
@@ -3314,9 +3314,10 @@ if (explicitTab) setTab(explicitTab);
               tier="pro"
               orgName={(org as any)?.name}
               assets={{
-                visamaster: require('../../../assets/visamaster.png'),
-                mpesa: require('../../../assets/mpesa.png'),
+                visamaster,
+                mpesa,
               }}
+
               onCheckout={(opts) => handlePlanCheckout('pro', proPaymentIdRef, opts)}
             />
 
@@ -3325,10 +3326,11 @@ if (explicitTab) setTab(explicitTab);
               onClose={closeEnterpriseModal}
               tier="enterprise"
               orgName={(org as any)?.name}
-              assets={{
-                visamaster: require('../../../assets/visamaster.png'),
-                mpesa: require('../../../assets/mpesa.png'),
-              }}
+             assets={{
+              visamaster,
+              mpesa,
+            }}
+
               onCheckout={(opts) => handlePlanCheckout('enterprise', entPaymentIdRef, opts)}
             />
           </>

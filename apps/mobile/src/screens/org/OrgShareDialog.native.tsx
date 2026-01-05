@@ -1,4 +1,4 @@
-/* eslint-disable prettier/prettier */
+
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Modal,
@@ -283,10 +283,17 @@ export default function OrgShareDialogNative({
     setDueDate(new Date());
   };
 
-  const handleCancel = () => {
-    resetLocal();
-    onCancel ? onCancel() : onClose();
-  };
+ const handleCancel = () => {
+  resetLocal();
+
+  if (onCancel) {
+    onCancel();
+  } else {
+    onClose();
+  }
+};
+
+
 
   const canCreate = !!courseId || !!(courseTitle && courseTitle.trim());
 

@@ -29,6 +29,14 @@ function fmtWhen(iso?: string | null) {
   return d.toLocaleString();
 }
 
+function pickString(...xs: any[]) {
+  for (const x of xs) {
+    const s = typeof x === 'string' ? x : x == null ? '' : String(x);
+    if (s.trim()) return s.trim();
+  }
+  return '';
+}
+
 function Badge({
   tone,
   children,
@@ -142,11 +150,13 @@ function IconTile({
 }
 
 const OrgInstructorHome: React.FC = () => {
-  const { org, role, membership } = (useOrg?.() ?? {}) as {
+  const { org, role, membership, currentUser } = (useOrg?.() ?? {}) as {
     org?: Org | null;
     role?: string | null;
     membership?: any;
+    currentUser?: any;
   };
+
   const shop = (useShopContext?.() ?? {}) as any;
 
   const backendUrl: string | null = shop?.backendUrl ?? null;
@@ -169,6 +179,92 @@ const OrgInstructorHome: React.FC = () => {
     isProTier && roleLower === 'instructor' && (primaryMembership as any)?.can_access_fees === true;
 
   const portalLabel = role ? `${String(role).toUpperCase()} PORTAL` : 'INSTRUCTOR PORTAL';
+
+  // ─────────────────────────────────────────────────────────
+  // Instructor identity (name/email/staff no) – tolerant + aligned with Learner Home style
+  // ─────────────────────────────────────────────────────────
+  const shopUser = shop?.user ?? shop?.currentUser ?? null;
+  const ctxOrgUser = shop?.orgUser ?? null;
+  const ctxOrgInstructor = shop?.orgInstructor ?? null;
+
+  const instructorProfileFromOrg =
+    (currentUser as any)?.org_instructor_profile ||
+    (currentUser as any)?.orgInstructorProfile ||
+    (currentUser as any)?.org_instructor_profiles?.[0] ||
+    null;
+
+  const instructorProfileFromShop =
+    (shopUser as any)?.org_instructor_profile ||
+    (shopUser as any)?.orgInstructorProfile ||
+    (shopUser as any)?.org_instructor_profiles?.[0] ||
+    null;
+
+  const instructor: any =
+    instructorProfileFromOrg ||
+    instructorProfileFromShop ||
+    ctxOrgInstructor ||
+    ctxOrgUser ||
+    shopUser ||
+    currentUser ||
+    null;
+
+  const instructorUserBase: any = shopUser || currentUser || ctxOrgUser || null;
+
+  const instructorName: string = pickString(
+    instructorUserBase?.name,
+    instructor?.name,
+    instructor?.full_name,
+    instructor?.fullName,
+    instructorUserBase?.email,
+    instructor?.email,
+    'Instructor',
+  );
+
+  const instructorEmail: string = pickString(
+    instructorUserBase?.email,
+    instructor?.email,
+    instructorUserBase?.email_address,
+    instructor?.email_address,
+    '',
+  );
+
+  const staffNo: string = pickString(
+    instructor?.staff_no,
+    instructor?.staffNo,
+    instructor?.staff_number,
+    instructor?.staffNumber,
+    instructor?.employee_no,
+    instructor?.employeeNo,
+    instructor?.employee_number,
+    instructor?.employeeNumber,
+    instructor?.teacher_no,
+    instructor?.teacherNo,
+    (primaryMembership as any)?.staff_no,
+    (primaryMembership as any)?.staffNo,
+    (primaryMembership as any)?.employee_no,
+    (primaryMembership as any)?.employeeNo,
+    (primaryMembership as any)?.staff_number,
+    (primaryMembership as any)?.staffNumber,
+    '',
+  );
+
+  const instructorClassLabel: string = pickString(
+    instructor?.class_label,
+    instructor?.classLabel,
+    (primaryMembership as any)?.class_label,
+    (primaryMembership as any)?.classLabel,
+    '',
+  );
+
+  const instructorPhotoFromProfile: string | null =
+    (instructorProfileFromOrg && (instructorProfileFromOrg.photo_url || instructorProfileFromOrg.photoUrl)) ||
+    (instructorProfileFromShop && (instructorProfileFromShop.photo_url || instructorProfileFromShop.photoUrl)) ||
+    null;
+
+  const instructorPhoto: string | null =
+    instructorPhotoFromProfile || instructor?.photo_url || instructor?.photoUrl || null;
+
+  const instructorInitial = (instructorName || 'I').trim().charAt(0).toUpperCase();
 
   const handleLogout = useCallback(async () => {
     if (orgLogout) await orgLogout();
@@ -234,6 +330,7 @@ const OrgInstructorHome: React.FC = () => {
         typeof res === 'string' ? res : res?.url || res?.secure_url || res?.data?.url || '';
 
       if (!rawUrl) {
+        // eslint-disable-next-line no-console
         console.error('[OrgInstructorHome] uploadAsset response with no url:', res);
         throw new Error('Upload completed but no URL was returned by the server.');
       }
@@ -255,6 +352,7 @@ const OrgInstructorHome: React.FC = () => {
         'Signature updated. New report cards will use this image in the “Class teacher / Instructor” section.',
       );
     } catch (err: any) {
+      // eslint-disable-next-line no-console
       console.error('[OrgInstructorHome] save signature error', err);
       const status = err?.response?.status;
       const msg = err?.response?.data?.message || err?.message;
@@ -308,6 +406,7 @@ const OrgInstructorHome: React.FC = () => {
         setRecentAssignments(withSubs.slice(0, 6));
       })
       .catch((err: any) => {
+        // eslint-disable-next-line no-console
         console.error('[OrgInstructorHome] recent submissions error', {
           message: err?.message,
           status: err?.response?.status,
@@ -338,22 +437,34 @@ const OrgInstructorHome: React.FC = () => {
     <div className={pageShell}>
       <div className="max-w-screen-xl mx-auto space-y-4">
         {/* HERO */}
-        <header className={cn(heroBg, 'p-4 sm:p-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between')}>
+        <header
+          className={cn(
+            heroBg,
+            'p-4 sm:p-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between',
+          )}
+        >
           <div className="relative min-w-0">
             <div className="text-[11px] uppercase tracking-[0.16em] text-slate-600 dark:text-darkTextSecondary">
               {portalLabel}
             </div>
+
             <h1 className="text-2xl sm:text-3xl font-bold leading-tight mt-1">
-              Welcome back, <span className="text-slate-900 dark:text-white/95">instructor</span>
+              Welcome back,{' '}
+              <span className="text-slate-900 dark:text-white/95">
+                {instructorName || 'instructor'}
+              </span>
             </h1>
+
             <p className="text-xs sm:text-sm text-slate-600 dark:text-darkTextSecondary mt-1">
-              Manage learning for <span className="font-semibold text-slate-900 dark:text-darkTextPrimary">{orgName}</span>.
-              Create assignments, enter marks, and keep classes organized.
+              Manage learning for{' '}
+              <span className="font-semibold text-slate-900 dark:text-darkTextPrimary">{orgName}</span>
+              . Create assignments, enter marks, and keep classes organized.
             </p>
 
             <div className="mt-3 flex flex-wrap gap-2">
               <Badge tone="emerald">Plan: {tierLabel}</Badge>
               <Badge tone="sky">Role: {role ? String(role).toUpperCase() : 'INSTRUCTOR'}</Badge>
+              {instructorClassLabel ? <Badge tone="indigo">Class: {instructorClassLabel}</Badge> : null}
               {!authToken ? <Badge tone="rose">Session missing</Badge> : null}
             </div>
           </div>
@@ -365,7 +476,7 @@ const OrgInstructorHome: React.FC = () => {
               className="text-[11px] sm:text-xs px-3 py-2 rounded-2xl border border-slate-200/80 dark:border-white/15 bg-white/80 dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-700 dark:text-white/80 font-semibold transition"
               title="Sign out of this institution"
             >
-              Sign out
+              Not you? <span className="font-semibold">Sign out</span>
             </button>
 
             <Link
@@ -385,6 +496,71 @@ const OrgInstructorHome: React.FC = () => {
             </Link>
           </div>
         </header>
+
+        {/* Instructor identity */}
+        <section className={cn(card, 'relative overflow-hidden')}>
+          <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-emerald-500/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-sky-500/10 blur-3xl" />
+
+          <div className="relative flex items-center gap-3 sm:gap-4">
+            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-gradient-to-br from-emerald-500/60 to-sky-500/60 flex items-center justify-center text-lg sm:text-xl font-bold shadow-inner overflow-hidden ring-1 ring-slate-200/50 dark:ring-white/10">
+              {instructorPhoto ? (
+                <img src={instructorPhoto} alt={instructorName} className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-white">{instructorInitial}</span>
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-600 dark:text-darkTextSecondary">
+                Signed in instructor
+              </p>
+
+              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                <div className="text-base sm:text-lg font-semibold truncate">{instructorName}</div>
+
+                {staffNo ? (
+                  <span
+                    className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800
+                               dark:bg-emerald-500/15 dark:text-emerald-200 dark:border-emerald-400/30"
+                  >
+                    Staff No: {staffNo}
+                  </span>
+                ) : (
+                  <span
+                    className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-700
+                               dark:bg-white/10 dark:text-white/70 dark:border-white/10"
+                    title="Staff number missing on profile"
+                  >
+                    Staff No: — (ask admin to update)
+                  </span>
+                )}
+
+                {instructorClassLabel ? (
+                  <span
+                    className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full border border-sky-200 bg-sky-50 text-sky-800
+                               dark:bg-sky-500/15 dark:text-sky-200 dark:border-sky-400/30"
+                  >
+                    Class: {instructorClassLabel}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="mt-2 space-y-0.5 text-xs text-slate-700 dark:text-white/70">
+                <div className="flex flex-wrap gap-1 items-baseline">
+                  <span className="opacity-80">📧 Email:</span>
+                  <span className="font-mono break-all">
+                    {instructorEmail || 'No email on file yet – ask your admin to update it.'}
+                  </span>
+                </div>
+
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-white/50">
+                  If this isn&apos;t you, sign out and ask your admin to confirm your staff login card.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* WORKSPACE TILES */}
         <section className={cn(card, 'relative overflow-hidden')}>
@@ -502,7 +678,7 @@ const OrgInstructorHome: React.FC = () => {
                   {recentAssignments.map((a: any) => {
                     const count = a.submission_count ?? a.submissions_count ?? a.answers_count ?? 0;
                     const latest = a.latest_submission_at ?? a.submitted_at ?? null;
-                    const classLabel = a.org_class_label || a.class_label || 'All classes';
+                    const cls = a.org_class_label || a.class_label || 'All classes';
                     const subjectKey = a.org_subject_key || a.subject_key || 'Subject';
 
                     return (
@@ -517,7 +693,7 @@ const OrgInstructorHome: React.FC = () => {
                             {a.title || a.course_title || 'Untitled assignment'}
                           </div>
                           <div className="mt-0.5 text-[11px] text-slate-600 dark:text-white/60 truncate">
-                            {classLabel} • {subjectKey}
+                            {cls} • {subjectKey}
                             {latest ? (
                               <span className="text-slate-500 dark:text-white/45"> • {fmtWhen(latest)}</span>
                             ) : null}
@@ -623,7 +799,9 @@ const OrgInstructorHome: React.FC = () => {
                     if (!classLabel.trim()) throw new Error('Enter a class label.');
 
                     const res = await fetch(
-                      `${backendUrl}/api/orgs/${org.id}/classes/${encodeURIComponent(classLabel.trim())}/class-teacher-signature`,
+                      `${backendUrl}/api/orgs/${org.id}/classes/${encodeURIComponent(
+                        classLabel.trim(),
+                      )}/class-teacher-signature`,
                       {
                         method: 'PUT',
                         headers: {
