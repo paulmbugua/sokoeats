@@ -235,12 +235,6 @@ export async function getOrgAssignments(req, res) {
       whereClause += ` AND a.org_subject_key = $${params.length}`;
     }
 
-    // Learner view → only legacy/file-based assignments
-    if (normalizedView === 'learner') {
-      params.push('legacy');
-      whereClause += ` AND a.source_kind = $${params.length}`;
-    }
-
     let sql;
 
     // ───────────────── Learner view (per-learner submissions) ─────────────
@@ -258,6 +252,8 @@ export async function getOrgAssignments(req, res) {
           a.course_id,
           a.title_override,
           a.instructions,
+          a.pass_mark,
+          a.timer_s,
           a.org_class_label,
           a.org_subject_key,
           a.attachment_url,
@@ -289,6 +285,9 @@ export async function getOrgAssignments(req, res) {
         LIMIT 200
       `;
     } else {
+      const viewerUserIdIdx = params.length + 1;
+      params.push(userId || null);
+
       // ───────────── Admin / instructor view – ALL submissions per assignment ────
       sql = `
         SELECT
@@ -297,6 +296,8 @@ export async function getOrgAssignments(req, res) {
           a.course_id,
           a.title_override,
           a.instructions,
+          a.pass_mark,
+          a.timer_s,
           a.org_class_label,
           a.org_subject_key,
           a.attachment_url,
@@ -306,10 +307,15 @@ export async function getOrgAssignments(req, res) {
           a.created_at,
           a.updated_at,
           c.title AS course_title,
+          v.opened_at,
           COALESCE(sub.submission_count, 0) AS submission_count,
           sub.latest_submission_at
         FROM org_course_assignments a
         LEFT JOIN courses c ON c.id = a.course_id
+        LEFT JOIN org_assignment_views v
+          ON v.org_id = a.org_id
+         AND v.assignment_id = a.id
+         AND v.instructor_user_id = $${viewerUserIdIdx}
         LEFT JOIN LATERAL (
           SELECT
             COUNT(*) AS submission_count,
@@ -347,6 +353,8 @@ export async function getOrgAssignments(req, res) {
         title: r.title_override || r.course_title || null,
         title_override: r.title_override,
         instructions: r.instructions,
+        pass_mark: r.pass_mark,
+        timer_s: r.timer_s,
         class_label: r.org_class_label,
         subject_key: r.org_subject_key,
         org_class_label: r.org_class_label,
@@ -357,6 +365,7 @@ export async function getOrgAssignments(req, res) {
         source_kind: r.source_kind || 'robot',
         created_at: r.created_at,
         updated_at: r.updated_at,
+        opened_at: r.opened_at,
 
         // submission metadata
         submission_count: submissionCount,
@@ -512,6 +521,38 @@ export async function submitOrgLegacyAssignment(req, res) {
   }
 }
 
+export async function markOrgAssignmentOpened(req, res) {
+  const userId = req.user?.id;
+  const { orgId, assignmentId } = req.params;
+
+  if (!userId) return res.status(401).json({ ok: false, message: 'Unauthorized' });
+
+  try {
+    const mem = await pool.query(
+      `SELECT 1 FROM org_memberships WHERE org_id = $1 AND user_id = $2 AND role IN ('owner','admin','instructor') LIMIT 1`,
+      [orgId, userId],
+    );
+
+    if (!mem.rowCount) {
+      return res.status(403).json({ ok: false, message: 'Forbidden' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO org_assignment_views (org_id, assignment_id, instructor_user_id, opened_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (org_id, assignment_id, instructor_user_id)
+       DO UPDATE SET opened_at = EXCLUDED.opened_at
+       RETURNING opened_at`,
+      [orgId, assignmentId, userId],
+    );
+
+    return res.json({ ok: true, opened_at: rows[0]?.opened_at || new Date().toISOString() });
+  } catch (err) {
+    console.error('[markOrgAssignmentOpened] error', err);
+    return res.status(500).json({ ok: false, message: 'Failed to mark assignment opened.' });
+  }
+}
+
 export async function getOrgAssignmentSubmissions(req, res) {
   const { orgId, assignmentId } = req.params;
 
@@ -537,7 +578,11 @@ export async function getOrgAssignmentSubmissions(req, res) {
         org_id,
         title_override,
         org_class_label,
-        org_subject_key
+        org_subject_key,
+        course_id,
+        invite_code,
+        source_kind,
+        kind
       FROM org_course_assignments
       WHERE id = $1
       LIMIT 1
@@ -573,26 +618,56 @@ export async function getOrgAssignmentSubmissions(req, res) {
         s.id,
         s.org_id,
         s.assignment_id,
-        s.learner_id,        -- uuid FK → org_learner_profiles.id
-        s.user_id,           -- legacy numeric user_id (if you still use it)
+        s.learner_id             AS submission_learner_id, -- raw submission FK
+        s.user_id                AS submission_user_id,
         s.student_id,
         s.answer_text,
         s.attachment_url,
         s.submitted_at,
 
-        -- from learner profile
-        lp.admission_code    AS learner_admission_code,
-        lp.class_label       AS learner_class_label,
+        -- resolved learner profile (handles legacy rows without learner_id)
+        COALESCE(lp_res.learner_id, s.learner_id) AS learner_id,
+        lp_res.class_label       AS learner_class_label,
+        COALESCE(lp_res.admission_code, s.student_id) AS admission_number,
+        lp_res.admission_code   AS learner_admission_code,
+        lp_res.user_id           AS learner_user_id,
 
-        -- from users table (actual name + email)
-        u.name               AS learner_name,
-        u.email              AS learner_email
+        -- resolved user identity
+        COALESCE(u.name, u_email.name)       AS learner_name,
+        COALESCE(u.email, u_email.email)     AS learner_email,
+        COALESCE(u.name, u_email.name)       AS learner_display_name,
+        split_part(COALESCE(u.name, u_email.name, ''), ' ', 1) AS learner_first_name,
+        NULLIF(split_part(COALESCE(u.name, u_email.name, ''), ' ', 2), '') AS learner_last_name
 
       FROM org_course_assignment_submissions s
-      LEFT JOIN org_learner_profiles lp
-        ON lp.id = s.learner_id
+
+      -- prefer exact learner_id match, then user match, then admission/admission email fallback
+      LEFT JOIN LATERAL (
+        SELECT lp.id AS learner_id, lp.class_label, lp.admission_code, lp.user_id
+        FROM org_learner_profiles lp
+        WHERE lp.org_id = s.org_id
+          AND (
+            lp.id = s.learner_id
+            OR (s.user_id IS NOT NULL AND lp.user_id = s.user_id)
+            OR (
+              s.student_id IS NOT NULL
+              AND lp.admission_code IS NOT NULL
+              AND lower(lp.admission_code) = lower(s.student_id)
+            )
+          )
+        ORDER BY
+          (lp.id = s.learner_id) DESC,
+          (lp.user_id = s.user_id) DESC
+        LIMIT 1
+      ) lp_res ON TRUE
+
       LEFT JOIN users u
-        ON u.id = lp.user_id
+        ON u.id = COALESCE(lp_res.user_id, s.user_id)
+
+      -- Legacy submissions may have stored email in student_id – use this as a last resort
+      LEFT JOIN users u_email
+        ON s.student_id IS NOT NULL
+        AND lower(u_email.email) = lower(s.student_id)
 
       WHERE s.org_id = $1
         AND s.assignment_id = $2
@@ -606,10 +681,72 @@ export async function getOrgAssignmentSubmissions(req, res) {
       sample: rows[0],
     });
 
+    // AI score enrichment (latest submitted attempt per learner for this assignment)
+    const assignment = aRows[0];
+    const isAiAssignment = Boolean(
+      assignment?.invite_code ||
+        (assignment?.source_kind &&
+          String(assignment.source_kind).toLowerCase().includes('robot')) ||
+        (assignment?.kind && String(assignment.kind).toLowerCase().includes('robot')),
+    );
+
+    let rowsWithScores = rows;
+
+    if (isAiAssignment && rows.length) {
+      const userIds = Array.from(
+        new Set(
+          rows
+            .map((r) => r.learner_user_id || r.submission_user_id)
+            .filter(Boolean)
+            .map((u) => u && u.toString()),
+        ),
+      );
+
+      if (userIds.length) {
+        const { rows: statsRows } = await pool.query(
+          `
+          SELECT
+            qa.user_id,
+            COUNT(*)::int AS attempts_count,
+            MAX(qa.submitted_at) AS last_attempt_at,
+            (ARRAY_AGG(qa.score_pct ORDER BY qa.submitted_at DESC))[1] AS latest_score_pct
+          FROM org_quiz_attempts qa
+          WHERE qa.org_id = $1
+            AND qa.assignment_id = $2
+            AND qa.status = 'submitted'
+            AND qa.user_id = ANY($3::uuid[])
+          GROUP BY qa.user_id
+          `,
+          [orgId, assignmentId, userIds],
+        );
+
+        const scoreByUserId = new Map(
+          statsRows.map((r) => [String(r.user_id), r]),
+        );
+
+        rowsWithScores = rows.map((r) => {
+          const userId = r.learner_user_id || r.submission_user_id;
+          const stats = userId ? scoreByUserId.get(String(userId)) : null;
+
+          return {
+            ...r,
+            ai_final_score:
+              stats && stats.latest_score_pct != null
+                ? Number(stats.latest_score_pct)
+                : null,
+            ai_attempts_count: stats?.attempts_count ?? null,
+            ai_last_attempt_at: stats?.last_attempt_at
+              ? new Date(stats.last_attempt_at).toISOString()
+              : null,
+          };
+        });
+      }
+    }
+
     return res.json({
       ok: true,
-      assignment: aRows[0],
-      submissions: rows,
+      assignment,
+      submissions: rowsWithScores,
     });
   } catch (err) {
     console.error('[getOrgAssignmentSubmissions] error', {

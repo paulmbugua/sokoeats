@@ -46,6 +46,7 @@ import {
   // ✅ parity with web
   getOrgRoster,
   getOrgAssignmentSubmissions,
+  apiMarkOrgAssignmentOpened,
   type OrgResp as Org,
   type OrgAnalyticsRow,
   type OrgLearnerProgressRow,
@@ -521,6 +522,25 @@ const openExamResults = useCallback(() => {
   // learner assignment view (legacy)
   const [learnerAssignments, setLearnerAssignments] = useState<OrgAssignmentRow[]>([]);
   const [learnerAssignmentsLoading, setLearnerAssignmentsLoading] = useState(false);
+
+  const isAiAssignmentRow = (row: OrgAssignmentRow) => {
+    const invite = (row as any).invite_code || (row as any).inviteCode || null;
+    if (invite) return true;
+
+    const kind = ((row as any).source_kind || (row as any).kind || '').toString().toLowerCase();
+    return kind.includes('robot') || kind.includes('ai') || kind.includes('teach');
+  };
+
+  const assignmentKey = (row: OrgAssignmentRow) => {
+    const invite = (row as any).invite_code || (row as any).inviteCode || null;
+    const createdAt = (row as any).created_at || (row as any).createdAt || '';
+    const courseId = (row as any).course_id || (row as any).courseId || null;
+
+    if (row.id != null) return String(row.id);
+    if (invite) return String(invite);
+    if (courseId || createdAt) return `${courseId || 'course'}-${createdAt || 'created'}`;
+    return 'assignment-row';
+  };
 
   // learner submit modal
   const [submitOpen, setSubmitOpen] = useState(false);
@@ -1163,6 +1183,10 @@ if (explicitTab) setTab(explicitTab);
         pass_mark: canCustomPassTimers ? passMark || null : null,
         timer_s: canCustomPassTimers ? timer || null : null,
         due_at: dueAt || null,
+        org_class_label: assignClassLabel || null,
+        class_label: assignClassLabel || null,
+        org_subject_key: assignSubjectKey || null,
+        subject_key: assignSubjectKey || null,
       };
 
       const a = await createOrgAssignment(backendUrl, authToken, org.id, payload);
@@ -1181,6 +1205,8 @@ if (explicitTab) setTab(explicitTab);
     passMark,
     timer,
     dueAt,
+    assignClassLabel,
+    assignSubjectKey,
     backendUrl,
     canCustomPassTimers,
   ]);
@@ -1290,13 +1316,18 @@ if (explicitTab) setTab(explicitTab);
     setSubmissionsError(null);
 
     try {
+      apiMarkOrgAssignmentOpened(backendUrl, authToken, org.id, String(assignmentIdFromRoute)).catch((e) =>
+        console.warn('[OrgElearnPortalNative] mark opened failed', e?.message || e),
+      );
+
       const res: any = await getOrgAssignmentSubmissions(
         backendUrl,
         authToken,
         org.id,
         String(assignmentIdFromRoute)
       );
-      setSubmissionsAssignment(res?.assignment ?? null);
+      const openedAt = res?.assignment?.opened_at || new Date().toISOString();
+      setSubmissionsAssignment(res?.assignment ? { ...res.assignment, opened_at: openedAt } : null);
       setSubmissionsRows(Array.isArray(res?.submissions) ? res.submissions : []);
     } catch (e: any) {
       const msg = e?.response?.data?.message || e?.message || 'Failed to load submissions.';
@@ -1447,10 +1478,17 @@ if (explicitTab) setTab(explicitTab);
 
 
 
-  // Learner: legacy-only filter (same as your existing logic)
-  const legacyAssignments = useMemo(
+  const aiAssignments = useMemo(
+    () => learnerAssignments.filter((a: any) => isAiAssignmentRow(a)),
+    [learnerAssignments]
+  );
+
+  // Learner: classic-only filter
+  const classicAssignments = useMemo(
     () =>
       learnerAssignments.filter((a: any) => {
+        if (isAiAssignmentRow(a)) return false;
+
         const kind = String(a.source_kind || '').toLowerCase();
         const isLegacyKind = kind === 'legacy';
 
@@ -1463,7 +1501,7 @@ if (explicitTab) setTab(explicitTab);
           a.resourceUrl ||
           null;
 
-        return isLegacyKind || (!!attachmentUrl && !a.course_id);
+        return isLegacyKind || !!attachmentUrl;
       }),
     [learnerAssignments]
   );
@@ -1472,7 +1510,7 @@ if (explicitTab) setTab(explicitTab);
     const submitted: OrgAssignmentRow[] = [];
     const pending: OrgAssignmentRow[] = [];
 
-    legacyAssignments.forEach((a: any) => {
+    classicAssignments.forEach((a: any) => {
       const submissionCount = a.submission_count ?? a.submissions_count ?? a.answers_count ?? 0;
       const hasFlag = a.has_submission ?? a.hasSubmitted ?? false;
       const submissionTs =
@@ -1488,7 +1526,7 @@ if (explicitTab) setTab(explicitTab);
     });
 
     return { submittedAssignments: submitted, pendingAssignments: pending };
-  }, [legacyAssignments]);
+  }, [classicAssignments]);
 
   const instructorEmails = useMemo(
     () => instructors.map((u) => (u.email || '').trim()).filter(Boolean),
@@ -1559,7 +1597,7 @@ if (explicitTab) setTab(explicitTab);
   }, [inviteLink]);
 
   const renderLearnerAssignmentRow = (a: OrgAssignmentRow, submitted: boolean) => {
-    const key = String((a as any).id ?? (a as any).invite_code ?? Math.random());
+    const key = assignmentKey(a);
     const dueLabel = (a as any).due_at
       ? new Date((a as any).due_at).toLocaleString()
       : 'No due date';
@@ -1619,17 +1657,100 @@ if (explicitTab) setTab(explicitTab);
     );
   };
 
+  const renderAiAssignmentRow = (a: OrgAssignmentRow) => {
+    const inviteCode =
+      (a as any).invite_code || (a as any).inviteCode || (a as any).code || '';
+    const title = (a as any).title || (a as any).title_override || (a as any).course_title || '';
+    const label = title ? `AI assignment • ${title}` : 'AI assignment';
+    const createdLabel = (a as any).created_at
+      ? new Date((a as any).created_at).toLocaleString()
+      : null;
+    const passMark = (a as any).pass_mark ?? null;
+    const timerSeconds = (a as any).timer_s ?? null;
+
+    return (
+      <View
+        key={assignmentKey(a)}
+        style={tw`mt-2 p-3 rounded-xl bg-[#f8fbff] dark:bg-[#111b28] border border-[#cedbe8] dark:border-white/10`}
+      >
+        <View style={tw`flex-row items-center flex-wrap`}>
+          <Text style={tw`text-[#0d141c] dark:text-white font-semibold flex-1`} numberOfLines={2}>
+            {title || 'AI assignment'}
+          </Text>
+          {!!(a as any).course_title && (
+            <Text style={tw`ml-2 text-[11px] text-[#49739c] dark:text-white/70`} numberOfLines={1}>
+              {(a as any).course_title}
+            </Text>
+          )}
+        </View>
+
+        <View style={tw`mt-1 flex-row flex-wrap`}>{/* tags */}
+          {passMark != null && passMark !== '' && (
+            <Text style={tw`mr-2 text-[11px] text-emerald-700 dark:text-emerald-200`}>🎯 Pass mark: {passMark}%</Text>
+          )}
+          {timerSeconds != null && timerSeconds !== '' && (
+            <Text style={tw`mr-2 text-[11px] text-amber-700 dark:text-amber-200`}>⏱️ Timer: {timerSeconds}s</Text>
+          )}
+          {(a as any).due_at ? (
+            <Text style={tw`mr-2 text-[11px] text-[#49739c] dark:text-white/70`}>
+              📅 Due: {new Date((a as any).due_at).toLocaleString()}
+            </Text>
+          ) : null}
+        </View>
+
+        {createdLabel && (
+          <Text style={tw`mt-1 text-[11px] text-[#9CA3AF] dark:text-white/60`}>Assigned: {createdLabel}</Text>
+        )}
+
+        <TouchableOpacity
+          disabled={!inviteCode}
+          onPress={() => inviteCode && navigation.navigate('OrgInviteLanding', { code: inviteCode })}
+          style={tw`mt-3 px-3 py-1.5 rounded-lg ${inviteCode ? 'bg-indigo-600' : 'bg-[#e5e7eb]'}`}
+        >
+          <Text style={tw`${inviteCode ? 'text-white' : 'text-[#6b7280]'} text-xs font-semibold`} numberOfLines={1}>
+            {label}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const isAiSubmissions = submissionsAssignment
+    ? isAiAssignmentRow(submissionsAssignment as any)
+    : false;
+
   // submissions view card
   const renderSubmissionRow = (row: any, idx: number) => {
     const name =
+      row?.learner_display_name ||
+      row?.display_name ||
+      [row?.learner_first_name, row?.learner_last_name].filter(Boolean).join(' ') ||
+      row?.learner_name ||
       row?.name ||
       row?.student_name ||
       row?.email ||
+      row?.learner_email ||
       row?.student_email ||
       `Submission #${idx + 1}`;
+    const admissionNumber =
+      row?.admission_number ||
+      row?.learner_admission_code ||
+      row?.student_id ||
+      row?.learner_id ||
+      row?.user_id ||
+      '';
     const submittedAt = row?.created_at || row?.submitted_at || row?.submittedAt || null;
-    const score = row?.score ?? row?.grade ?? row?.mark ?? null;
-    const pass = row?.passed ?? row?.is_pass ?? row?.isPassed ?? null;
+    const aiScore = row?.ai_final_score;
+    const aiAttempts = row?.ai_attempts_count;
+    const aiLast = row?.ai_last_attempt_at;
+    const scoreLabel = aiScore == null ? '—' : `${Math.round(Number(aiScore))}%`;
+    const attemptsLabel =
+      aiAttempts && aiAttempts > 0
+        ? ` (${aiAttempts} attempt${aiAttempts === 1 ? '' : 's'})`
+        : '';
+    const lastAttemptLabel = aiLast
+      ? ` • ${new Date(aiLast).toLocaleDateString()}`
+      : '';
 
     const answerText = row?.answer_text ?? row?.answerText ?? '';
     const attachmentUrl =
@@ -1643,16 +1764,22 @@ if (explicitTab) setTab(explicitTab);
         <Text style={tw`text-[#0d141c] dark:text-white font-semibold`} numberOfLines={1}>
           {name}
         </Text>
+        <Text style={tw`text-[11px] text-[#6b7280] dark:text-white/70 mt-1`}>
+          Admission No.: {admissionNumber || '—'}
+        </Text>
         {submittedAt ? (
           <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70 mt-1`}>
             Submitted: {new Date(submittedAt).toLocaleString()}
           </Text>
         ) : null}
 
-        <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70 mt-1`}>
-          Score: {score == null ? '—' : `${Math.round(Number(score))}%`}{' '}
-          {pass == null ? '' : pass ? '• PASS' : '• FAIL'}
-        </Text>
+        {isAiSubmissions && (
+          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70 mt-1`}>
+            Score: {scoreLabel}
+            {attemptsLabel}
+            {lastAttemptLabel}
+          </Text>
+        )}
 
         {!!answerText && (
           <Text style={tw`text-[11px] text-[#6b7280] dark:text-white/70 mt-2`} numberOfLines={4}>
@@ -1690,9 +1817,9 @@ if (explicitTab) setTab(explicitTab);
                 </Text>
               </View>
 
-              <View
-                style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
-              >
+                <View
+                  style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
+                >
                 <View style={tw`flex-row items-center justify-between`}>
                   <View style={tw`flex-1 pr-2`}>
                     <Text style={tw`text-[#0d141c] dark:text-white font-semibold`}>
@@ -1761,8 +1888,8 @@ if (explicitTab) setTab(explicitTab);
                   Assignments shared with you
                 </Text>
                 <Text style={tw`text-[#49739c] dark:text-white/70 text-xs mt-1`}>
-                  These file-based assignments were shared by your teachers. Download the
-                  attachment, follow the instructions, and submit your work.
+                  View both AI assignments (Teach with AI) and classic file-based work that your
+                  teachers shared with you.
                 </Text>
 
                 {!!learnerClassFromRoute && (
@@ -1781,15 +1908,43 @@ if (explicitTab) setTab(explicitTab);
               </View>
 
               <View
+                style={tw`mb-3 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
+              >
+                <View style={tw`flex-row justify-between items-center mb-2`}>
+                  <View style={tw`flex-1 pr-2`}>
+                    <Text style={tw`text-[#0d141c] dark:text-white text-base font-semibold`}>
+                      AI assignments (Teach with AI)
+                    </Text>
+                    <Text style={tw`text-[#6b7280] dark:text-white/70 text-[11px] mt-1`}>
+                      Join AI-powered assignments shared with you.
+                    </Text>
+                  </View>
+                  {learnerAssignmentsLoading && (
+                    <Text style={tw`text-[11px] text-[#6b7280] dark:text-white/70`}>Loading…</Text>
+                  )}
+                </View>
+
+                {aiAssignments.length === 0 && !learnerAssignmentsLoading ? (
+                  <Text style={tw`text-[11px] text-[#6b7280] dark:text-white/70`}>
+                    No AI assignments yet. When a teacher shares one with your class, it will appear
+                    here.
+                  </Text>
+                ) : (
+                  aiAssignments.map((a) => renderAiAssignmentRow(a))
+                )}
+              </View>
+
+              <View
                 style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0f1821] p-4`}
               >
                 <View style={tw`flex-row justify-between items-center mb-2`}>
                   <View style={tw`flex-1 pr-2`}>
                     <Text style={tw`text-[#0d141c] dark:text-white text-base font-semibold`}>
-                      Your assignments
+                      Classic assignments
                     </Text>
                     <Text style={tw`text-[#6b7280] dark:text-white/70 text-[11px] mt-1`}>
-                      New work appears here automatically when a teacher targets your class/subject.
+                      Download file-based assignments, follow the instructions, and submit your work
+                      back to the teacher.
                     </Text>
                   </View>
                   {learnerAssignmentsLoading && (
@@ -1804,7 +1959,7 @@ if (explicitTab) setTab(explicitTab);
                   </Text>
                   {submittedAssignments.length === 0 && !learnerAssignmentsLoading ? (
                     <Text style={tw`mt-1 text-[11px] text-[#6b7280] dark:text-white/70`}>
-                      You haven&apos;t submitted any legacy (file-based) assignments yet.
+                      You haven&apos;t submitted any classic assignments yet.
                     </Text>
                   ) : (
                     submittedAssignments.map((a) => renderLearnerAssignmentRow(a, true))
@@ -1818,8 +1973,7 @@ if (explicitTab) setTab(explicitTab);
                   </Text>
                   {pendingAssignments.length === 0 && !learnerAssignmentsLoading ? (
                     <Text style={tw`mt-1 text-[11px] text-[#6b7280] dark:text-white/70`}>
-                      You don&apos;t have any pending legacy (file-based) assignments for this class
-                      or subject yet.
+                      You don&apos;t have any pending classic assignments for this class or subject yet.
                     </Text>
                   ) : (
                     pendingAssignments.map((a) => renderLearnerAssignmentRow(a, false))

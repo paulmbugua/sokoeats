@@ -64,6 +64,7 @@ export type OrgAssignmentRow = {
   title?: string;
   title_override?: string | null;
   course_title?: string | null;
+  courseTitle?: string | null;
 
   // Config (for AI / quiz-style)
   pass_mark?: number | null;
@@ -73,6 +74,8 @@ export type OrgAssignmentRow = {
   // Org-specific metadata / targeting
   org_class_label?: string | null;
   org_subject_key?: string | null;
+  class_label?: string | null;
+  subject_key?: string | null;
 
   // Legacy / file-based extras
   instructions?: string | null;
@@ -83,12 +86,47 @@ export type OrgAssignmentRow = {
   created_at?: string | null;
   submitted_at?: string | null; // learner “my last submission” if backend wants
 
+  // Instructor-open state
+  opened_at?: string | null;
+
   // Sharing / source
   invite_code?: string | null;
   source_kind?: string | null; // 'legacy' | 'robot' | 'exam' | ...
+  kind?: string | null;
 
   // Status (optional – up to backend)
   status?: string | null;
+};
+
+export type OrgAssignmentSubmissionRow = {
+  id: string | number;
+  assignment_id?: string | number | null;
+  org_id?: string | number | null;
+
+  learner_id?: string | number | null;
+  admission_number?: string | null;
+  learner_name?: string | null;
+  learner_display_name?: string | null;
+  learner_first_name?: string | null;
+  learner_last_name?: string | null;
+  learner_admission_code?: string | null;
+  email?: string | null;
+  learner_email?: string | null;
+
+  student_id?: string | null;
+  user_id?: string | number | null;
+  learner_user_id?: string | number | null;
+
+  submitted_at?: string | null;
+  answer_text?: string | null;
+  attachment_url?: string | null;
+
+  // AI quiz metadata (for invite-based assignments)
+  ai_final_score?: number | null;
+  ai_attempts_count?: number | null;
+  ai_last_attempt_at?: string | null;
+
+  [k: string]: any;
 };
 
 // ─────────────────────────────────────────────────────────
@@ -185,6 +223,10 @@ export type CreateAssignmentBody = {
   timer_s?: number | null;
   due_at?: string | null;
   max_attempts?: number | null;
+  org_class_label?: string | null;
+  class_label?: string | null;
+  org_subject_key?: string | null;
+  subject_key?: string | null;
 };
 
 export type OrgLearnerProgressRow = {
@@ -724,7 +766,7 @@ export async function getOrgAssignmentSubmissions(
   token: string,
   orgId: string,
   assignmentId: string | number
-): Promise<{ ok: boolean; assignment: any; submissions: any[] }> {
+): Promise<{ ok: boolean; assignment: any; submissions: OrgAssignmentSubmissionRow[] }> {
   const url = `${baseUrl(
     backendUrl
   )}/api/orgs/${encodeURIComponent(orgId)}/assignments/${encodeURIComponent(
@@ -733,6 +775,20 @@ export async function getOrgAssignmentSubmissions(
 
   const res = await axios.get(url, { headers: authHeaders(token) });
   return res.data;
+}
+
+export async function apiMarkOrgAssignmentOpened(
+  backendUrl: string,
+  token: string,
+  orgId: string,
+  assignmentId: string | number,
+): Promise<{ ok: boolean; opened_at?: string | null }> {
+  const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/assignments/${encodeURIComponent(
+    String(assignmentId),
+  )}/open`;
+
+  const res = await axios.post(url, {}, { headers: authHeaders(token) });
+  return res.data as { ok: boolean; opened_at?: string | null };
 }
 
 /** Public pricing table for portal display (no auth) */

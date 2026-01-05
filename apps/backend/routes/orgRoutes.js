@@ -54,6 +54,7 @@ import {
   getOrgAssignments,
   submitOrgLegacyAssignment,
   getOrgAssignmentSubmissions,
+  markOrgAssignmentOpened,
 } from '../controllers/orgLegacyAssignmentsController.js';
 
 import {
@@ -247,6 +248,12 @@ router.get(
   '/:orgId/assignments/:assignmentId/submissions',
   requireAuth,
   getOrgAssignmentSubmissions,
+);
+
+router.post(
+  '/:orgId/assignments/:assignmentId/open',
+  requireAuth,
+  markOrgAssignmentOpened,
 );
 
 // Public: portal needs this before login sometimes
