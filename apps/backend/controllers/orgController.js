@@ -172,6 +172,12 @@ export async function createAssignment(req, res) {
     timer_s,
     max_attempts = 1,
     due_at,
+    org_class_label,
+    orgClassLabel,
+    class_label,
+    org_subject_key,
+    orgSubjectKey,
+    subject_key,
   } = req.body || {};
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
@@ -185,20 +191,28 @@ export async function createAssignment(req, res) {
   const invite = crypto.randomBytes(10).toString('base64url');
 
   try {
+    const classLabel =
+      org_class_label || orgClassLabel || class_label || req.body?.classLabel || null;
+    const subjectKey =
+      org_subject_key || orgSubjectKey || subject_key || req.body?.subject || null;
+
     const q = await pool.query(
       `
       INSERT INTO org_course_assignments
-        (org_id, course_id, title_override, pass_mark, timer_s, max_attempts, due_at, invite_code, created_by, created_at, updated_at)
+        (org_id, course_id, title_override, pass_mark, timer_s, max_attempts, due_at, invite_code, created_by, created_at, updated_at, org_class_label, org_subject_key, source_kind)
       VALUES
         ($1, $2, $3, $4, $5, $6, $7,
          COALESCE((SELECT invite_code FROM org_course_assignments WHERE org_id=$1 AND course_id=$2), $8),
-         $9, NOW(), NOW())
+         $9, NOW(), NOW(), $10, $11, 'robot')
       ON CONFLICT (org_id, course_id) DO UPDATE
          SET title_override = COALESCE(EXCLUDED.title_override, org_course_assignments.title_override),
              pass_mark      = COALESCE(EXCLUDED.pass_mark,      org_course_assignments.pass_mark),
              timer_s        = COALESCE(EXCLUDED.timer_s,        org_course_assignments.timer_s),
              max_attempts   = COALESCE(EXCLUDED.max_attempts,   org_course_assignments.max_attempts),
              due_at         = COALESCE(EXCLUDED.due_at,         org_course_assignments.due_at),
+             org_class_label= COALESCE(EXCLUDED.org_class_label, org_course_assignments.org_class_label),
+             org_subject_key= COALESCE(EXCLUDED.org_subject_key, org_course_assignments.org_subject_key),
+             source_kind    = COALESCE(EXCLUDED.source_kind,    org_course_assignments.source_kind),
              updated_at     = NOW()
       RETURNING *;
       `,
@@ -212,6 +226,8 @@ export async function createAssignment(req, res) {
         due_at || null,
         invite,
         userId,
+        classLabel || null,
+        subjectKey || null,
       ],
     );
 

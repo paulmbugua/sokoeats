@@ -24,6 +24,7 @@ import {
   getOrgAssignmentsForLearner,
   type OrgAssignmentRow,
   getOrgAssignmentSubmissions,
+  apiMarkOrgAssignmentOpened,
 } from '@mytutorapp/shared/api/orgApi';
 
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
@@ -227,6 +228,26 @@ function Pill({ children }: { children: React.ReactNode }) {
 function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
 }
+
+const isAiAssignmentRow = (row: OrgAssignmentRow) => {
+  const invite = (row as any).invite_code || (row as any).inviteCode || null;
+  if (invite) return true;
+
+  const kind = ((row as any).source_kind || (row as any).kind || '').toString().toLowerCase();
+  return kind.includes('robot') || kind.includes('ai') || kind.includes('teach');
+};
+
+const assignmentKey = (row: OrgAssignmentRow) => {
+  const invite = (row as any).invite_code || (row as any).inviteCode || null;
+  const createdAt = (row as any).created_at || (row as any).createdAt || '';
+  const courseId =
+    (row as any).course_id || (row as any).courseId || (row as any).course_uuid || null;
+
+  if (row.id != null) return String(row.id);
+  if (invite) return String(invite);
+  if (courseId || createdAt) return `${courseId || 'course'}:${createdAt || 'created'}`;
+  return 'assignment-row';
+};
 
 function PortalIconTile({
   title,
@@ -583,6 +604,10 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     setSubmissionsError(null);
 
     try {
+      apiMarkOrgAssignmentOpened(backendUrl, authToken, org.id, assignmentIdFromUrl).catch((e) =>
+        console.warn('[OrgElearnPortal] mark opened failed', e?.message || e),
+      );
+
       const res = await getOrgAssignmentSubmissions(
         backendUrl,
         authToken,
@@ -590,7 +615,8 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
         assignmentIdFromUrl
       );
 
-      setSubmissionsAssignment(res.assignment ?? null);
+      const openedAt = res?.assignment?.opened_at || new Date().toISOString();
+      setSubmissionsAssignment(res.assignment ? { ...res.assignment, opened_at: openedAt } : null);
       setSubmissionsRows(Array.isArray(res.submissions) ? res.submissions : []);
     } catch (e: any) {
       console.error('[OrgElearnPortal] loadAssignmentSubmissions error', {
@@ -971,8 +997,10 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
         // 🔗 NEW: scope by class & subject so learner view filter can pick it up
         org_class_label: assignClassLabel || null,
         orgClassLabel: assignClassLabel || null,
+        class_label: assignClassLabel || null,
         org_subject_key: assignSubjectKey || null,
         orgSubjectKey: assignSubjectKey || null,
+        subject_key: assignSubjectKey || null,
       };
 
       const a = await createOrgAssignment(backendUrl, authToken, org.id, payload);
@@ -1284,11 +1312,18 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     } catch {}
   };
 
-  // Legacy-only slice for learner view
-  const legacyAssignments = React.useMemo(
+  const aiAssignments = React.useMemo(
+    () => learnerAssignments.filter((a) => isAiAssignmentRow(a)),
+    [learnerAssignments]
+  );
+
+  // Classic file-based assignments only
+  const classicAssignments = React.useMemo(
     () =>
       learnerAssignments.filter((a) => {
-        const kind = (a.source_kind || '').toLowerCase();
+        if (isAiAssignmentRow(a)) return false;
+
+        const kind = ((a as any).source_kind || '').toLowerCase();
         const isLegacyKind = kind === 'legacy';
         const attachmentUrl =
           (a as any).attachment_url ||
@@ -1300,7 +1335,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
           null;
 
         // treat "legacy" rows as those explicitly marked or clearly file-based
-        return isLegacyKind || (!!attachmentUrl && !a.course_id);
+        return isLegacyKind || !!attachmentUrl;
       }),
     [learnerAssignments]
   );
@@ -1310,7 +1345,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     const submitted: OrgAssignmentRow[] = [];
     const pending: OrgAssignmentRow[] = [];
 
-    legacyAssignments.forEach((a) => {
+    classicAssignments.forEach((a) => {
       const submissionCount =
         (a as any).submission_count ??
         (a as any).submissions_count ??
@@ -1334,7 +1369,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     });
 
     return { submittedAssignments: submitted, pendingAssignments: pending };
-  }, [legacyAssignments]);
+  }, [classicAssignments]);
 
   return (
 <div
@@ -1355,9 +1390,9 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                   Assignments shared with you
                 </h1>
                 <div className="text-[#49739c] dark:text-white/70 text-xs sm:text-sm">
-                  These file-based assignments (PDFs, docs, images) were shared by your teachers
-                  using the classic / legacy flow. Download the attachment, follow the instructions,
-                  and submit your work back to the teacher.
+                  View both AI assignments (Teach with AI) and classic file-based assignments
+                  shared by your teachers. New work will appear here automatically when it is
+                  targeted to your class or subject.
                   {learnerClassFromUrl && (
                     <>
                       {' '}
@@ -1376,11 +1411,116 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
               <section className="rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10 bg-white dark:bg-[#0f1821] p-3 sm:p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <h2 className="text-sm sm:text-base font-semibold">Your assignments</h2>
+                    <h2 className="text-sm sm:text-base font-semibold">AI assignments (Teach with AI)</h2>
                     <p className="text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
-                      You can only see assignments that your institution has shared with you. New
-                      work will appear here automatically when a teacher targets your class /
-                      subject.
+                      Join AI-powered assignments shared with you. Tap the button to open the invite link.
+                    </p>
+                  </div>
+                  {learnerAssignmentsLoading && (
+                    <span className="text-[11px] text-slate-500 dark:text-white/60">Loading…</span>
+                  )}
+                </div>
+
+                {aiAssignments.length === 0 && !learnerAssignmentsLoading && (
+                  <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
+                    No AI assignments yet. When a teacher creates a Teach with AI assignment for your class, it will appear here.
+                  </div>
+                )}
+
+                {aiAssignments.length > 0 && (
+                  <ul className="space-y-2">
+                    {aiAssignments.map((a) => {
+                      const inviteCode =
+                        (a as any).invite_code || (a as any).inviteCode || (a as any).code || '';
+                      const title = a.title || a.title_override || a.course_title || '';
+                      const label = title ? `AI assignment • ${title}` : 'AI assignment';
+                      const createdLabel = a.created_at
+                        ? new Date(a.created_at).toLocaleString()
+                        : null;
+                      const passMark = (a as any).pass_mark ?? null;
+                      const timerSeconds = (a as any).timer_s ?? null;
+
+                      return (
+                        <li
+                          key={assignmentKey(a)}
+                          className="rounded-xl border border-[#e7edf4] dark:border-white/10 bg-slate-50/80 dark:bg-[#111b28] px-3 py-3 sm:px-4 sm:py-3.5 flex flex-col gap-3"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm sm:text-base font-semibold truncate max-w-full">
+                                  {title || 'AI assignment'}
+                                </span>
+                                {a.course_title && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-100 dark:bg-sky-500/10 dark:text-sky-100 dark:border-sky-500/40">
+                                    <span>📘</span>
+                                    <span>{a.course_title}</span>
+                                  </span>
+                                )}
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-100 dark:border-indigo-500/40">
+                                  <span>🤖</span>
+                                  <span>Teach with AI</span>
+                                </span>
+                              </div>
+
+                              <div className="mt-1 flex flex-wrap gap-2 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
+                                {passMark != null && passMark !== '' && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-100 dark:border-emerald-500/40">
+                                    <span>🎯</span>
+                                    <span>Pass mark: {passMark}%</span>
+                                  </span>
+                                )}
+                                {timerSeconds != null && timerSeconds !== '' && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100 dark:bg-amber-500/10 dark:text-amber-100 dark:border-amber-500/40">
+                                    <span>⏱️</span>
+                                    <span>Timer: {timerSeconds}s</span>
+                                  </span>
+                                )}
+                                {a.due_at && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-white/5 dark:text-white/80 dark:border-white/10">
+                                    <span>📅</span>
+                                    <span>Due: {new Date(a.due_at).toLocaleString()}</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {createdLabel && (
+                                <div className="mt-1 text-[10px] text-slate-400 dark:text-white/50">
+                                  Assigned: {createdLabel}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                              {inviteCode ? (
+                                <Link
+                                  to={`/org/join/${encodeURIComponent(inviteCode)}`}
+                                  className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500"
+                                >
+                                  <span className="text-base">🚀</span>
+                                  <span>{label}</span>
+                                </Link>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs sm:text-sm bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-white/80">
+                                  Invite code unavailable
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+
+              <section className="rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10 bg-white dark:bg-[#0f1821] p-3 sm:p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-sm sm:text-base font-semibold">Classic assignments</h2>
+                    <p className="text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
+                      Download file-based assignments, follow the instructions, and submit your work
+                      back to the teacher.
                     </p>
                   </div>
                   {learnerAssignmentsLoading && (
@@ -1397,15 +1537,15 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
 
                     {submittedAssignments.length === 0 && !learnerAssignmentsLoading && (
                       <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
-                        You haven&apos;t submitted any legacy (file-based) assignments yet. When you
-                        submit work, it will appear here.
+                        You haven&apos;t submitted any classic assignments yet. When you submit work, it
+                        will appear here.
                       </div>
                     )}
 
                     {submittedAssignments.length > 0 && (
                       <ul className="space-y-2">
                         {submittedAssignments.map((a) => {
-                          const key = String(a.id ?? a.invite_code ?? Math.random());
+                          const key = assignmentKey(a);
                           const dueLabel = a.due_at
                             ? new Date(a.due_at).toLocaleString()
                             : 'No due date';
@@ -1534,15 +1674,15 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
 
                     {pendingAssignments.length === 0 && !learnerAssignmentsLoading && (
                       <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
-                        You don&apos;t have any pending legacy (file-based) assignments for this
-                        class or subject yet. New work shared by your teacher will appear here.
+                        You don&apos;t have any pending classic assignments for this class or subject
+                        yet. New work shared by your teacher will appear here.
                       </div>
                     )}
 
                     {pendingAssignments.length > 0 && (
                       <ul className="space-y-2">
                         {pendingAssignments.map((a) => {
-                          const key = String(a.id ?? a.invite_code ?? Math.random());
+                          const key = assignmentKey(a);
                           const dueLabel = a.due_at
                             ? new Date(a.due_at).toLocaleString()
                             : 'No due date';
@@ -1662,7 +1802,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                 </div>
 
                 {learnerStudentId && (
-                  <p className="mt-3 text-[10px] sm:text-[11px] text-slate-500 dark:text:white/55">
+                  <p className="mt-3 text-[10px] sm:text-[11px] text-slate-500 dark:text-white/55">
                     Learner ID in this portal: <span className="font-mono">{learnerStudentId}</span>
                     . If this doesn&apos;t match your login card, ask your teacher to confirm.
                   </p>
@@ -1684,33 +1824,33 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                       <button
                         type="button"
                         onClick={() => setSubmitOpen(false)}
-                        className="text-xs px-2 py-1 rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg:white/20"
+                        className="text-xs px-2 py-1 rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
                       >
                         Close
                       </button>
                     </div>
 
                     <div className="px-4 py-3 space-y-3 max-h-[70vh] overflow-y-auto">
-                      <div className="text-[11px] sm:text-xs text-slate-600 dark:text:white/70">
+                      <div className="text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
                         You can type your answer, attach a file (PDF, DOC, images), or both. Your
                         teacher will see the time you submitted.
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-700 dark:text:white/80 mb-1">
+                        <label className="block text-xs font-medium text-slate-700 dark:text-white/80 mb-1">
                           Your answer (optional)
                         </label>
                         <textarea
                           rows={4}
                           value={submitText}
                           onChange={(e) => setSubmitText(e.target.value)}
-                          className="w-full text-xs sm:text-sm rounded-xl border border-slate-200 dark:border:white/15 bg-slate-50 dark:bg-[#0b1420] text-[#0d141c] dark:text:white px-3 py-2 outline-none focus:ring-2 focus:ring-sky-500/70"
+                          className="w-full text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-[#0b1420] text-[#0d141c] dark:text-white px-3 py-2 outline-none focus:ring-2 focus:ring-sky-500/70"
                           placeholder="Type your working or short answers here…"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-700 dark:text:white/80 mb-1">
+                        <label className="block text-xs font-medium text-slate-700 dark:text-white/80 mb-1">
                           Attach file (optional)
                         </label>
                         <input
@@ -1724,7 +1864,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                             dark:file:bg-slate-200 dark:file:text-slate-900 dark:hover:file:bg-white/90"
                         />
                         {submitFile && (
-                          <div className="mt-1 text-[11px] text-slate-500 dark:text:white/65">
+                          <div className="mt-1 text-[11px] text-slate-500 dark:text-white/65">
                             Selected: <span className="font-mono">{submitFile.name}</span>
                           </div>
                         )}
@@ -1735,7 +1875,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                       <button
                         type="button"
                         onClick={() => setSubmitOpen(false)}
-                        className="px-3 py-1.5 rounded-xl text-xs sm:text-sm bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text:white dark:hover:bg:white/20"
+                        className="px-3 py-1.5 rounded-xl text-xs sm:text-sm bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
                         disabled={submitUploading}
                       >
                         Cancel
@@ -1813,7 +1953,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                     <h1 className="text-[24px] sm:text-[28px] md:text-[32px] font-bold leading-tight">
                       Institution E-Learning
                     </h1>
-                    <div className="text-[#49739c] dark:text:white/70 text-xs sm:text-sm">
+                    <div className="text-[#49739c] dark:text-white/70 text-xs sm:text-sm">
                       {isInstructor
                         ? 'Assignments • Analytics'
                         : 'Branding • Assignments • Analytics'}
@@ -1831,7 +1971,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
           className={`px-3 py-1.5 rounded-xl text-sm ring-1 whitespace-nowrap ${
             tab === t
               ? 'bg-[#3d99f5] text-white ring-[#3d99f5]'
-              : 'bg-white/80 text-[#0d141c] ring-[#3d99f5]/60 hover:bg-[#e7edf4] dark:bg-[#0b1420]/80 dark:text-darkTextPrimary dark:ring-[#3d99f5]/90 dark:hover:bg:white/5'
+              : 'bg-white/80 text-[#0d141c] ring-[#3d99f5]/60 hover:bg-[#e7edf4] dark:bg-[#0b1420]/80 dark:text-darkTextPrimary dark:ring-[#3d99f5]/90 dark:hover:bg-white/5'
           }`}
           onClick={() => setTab(t)}
         >
@@ -1972,7 +2112,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                   </div>
 
                   {isInstructor && (
-                    <div className="mt-2 text-[11px] text-[#49739c] dark:text:white/70">
+                    <div className="mt-2 text-[11px] text-[#49739c] dark:text-white/70">
                       Your institution owner/admin manages branding and subscriptions. As an
                       instructor you can create assignments and view analytics here.
                     </div>
@@ -2069,31 +2209,61 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                         <thead className="text-left text-slate-600 dark:text-white/70">
                           <tr>
                             <th className="py-2 pr-4">Learner</th>
-                            <th className="py-2 pr-4">Identifier</th>
+                            <th className="py-2 pr-4">Admission No.</th>
                             <th className="py-2 pr-4">Submitted at</th>
                             <th className="py-2 pr-4">Answer</th>
                             <th className="py-2 pr-4">Attachment</th>
+                            {submissionsAssignment &&
+                              isAiAssignmentRow(submissionsAssignment as any) && (
+                              <th className="py-2 pr-4">Score</th>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
                           {submissionsRows.map((s) => {
+                            const submittedRaw =
+                              s.submitted_at || s.created_at || s.updated_at || null;
+
                             const key = String(
                               s.id ??
                                 s.submission_id ??
-                                `${s.assignment_id ?? submissionsAssignment?.id ?? 'a'}-${Math.random()}`
+                                `${s.assignment_id ?? submissionsAssignment?.id ?? 'a'}-${submittedRaw || 'submitted'}`
                             );
 
-                            const name = s.learner_name || s.student_name || s.name || null;
+                            const name =
+                              s.learner_display_name ||
+                              s.display_name ||
+                              `${[s.learner_first_name, s.learner_last_name]
+                                .filter(Boolean)
+                                .join(' ')}`.trim() ||
+                              s.learner_name ||
+                              s.student_name ||
+                              s.name ||
+                              s.email ||
+                              s.learner_email ||
+                              'Learner';
 
                             const identifier =
-                              s.student_id || s.learner_id || s.user_id || s.admission_code || null;
+                              s.admission_number ||
+                              s.learner_admission_code ||
+                              s.student_id ||
+                              s.learner_id ||
+                              s.user_id ||
+                              null;
 
-                            const submittedRaw =
-                              s.submitted_at || s.created_at || s.updated_at || null;
+                            const email = s.email || s.learner_email || null;
 
                             const submittedLabel = submittedRaw
                               ? new Date(submittedRaw).toLocaleString()
                               : '—';
+
+                            const aiScore = s.ai_final_score;
+                            const aiAttempts = s.ai_attempts_count;
+                            const aiLast = s.ai_last_attempt_at;
+                            const aiLabel =
+                              aiScore == null
+                                ? '—'
+                                : `${Math.round(Number(aiScore))}%`;
 
                             const answerText = (s.answer_text || s.text || '') as string;
                             const attachmentUrl: string | null =
@@ -2105,10 +2275,10 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                                 className="border-t border-[#e7edf4] dark:border-white/10 align-top"
                               >
                                 <td className="py-2 pr-4">
-                                  <div className="font-medium">{name || 'Unknown learner'}</div>
-                                  {s.email && (
+                                  <div className="font-medium">{name}</div>
+                                  {email && (
                                     <div className="text-[11px] text-slate-500 dark:text-white/60">
-                                      {s.email}
+                                      {email}
                                     </div>
                                   )}
                                 </td>
@@ -2151,6 +2321,14 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                                     </span>
                                   )}
                                 </td>
+                                {submissionsAssignment &&
+                                  isAiAssignmentRow(submissionsAssignment as any) && (
+                                  <td className="py-2 pr-4 text-[11px] sm:text-xs text-slate-600 dark:text-white/70 whitespace-nowrap">
+                                    {aiLabel}
+                                    {aiAttempts ? ` (${aiAttempts} attempt${aiAttempts === 1 ? '' : 's'})` : ''}
+                                    {aiLast ? ` • ${new Date(aiLast).toLocaleDateString()}` : ''}
+                                  </td>
+                                )}
                               </tr>
                             );
                           })}
@@ -2268,7 +2446,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                       </h3>
                       <div className="flex items-center gap-2">
                         {lpLoading && (
-                          <span className="text-xs text-slate-500 dark:text:white/70">
+                          <span className="text-xs text-slate-500 dark:text-white/70">
                             Loading…
                           </span>
                         )}
@@ -2280,7 +2458,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
 
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-xs sm:text-sm">
-                        <thead className="text-left text-slate-600 dark:text:white/70">
+                        <thead className="text-left text-slate-600 dark:text-white/70">
                           <tr>
                             <th className="py-2 pr-4">Learner</th>
                             <th className="py-2 pr-4">Attempts</th>
@@ -2449,14 +2627,14 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
       {/* Congrats modal – only relevant to owners (not learners) */}
       {!isLearnerView && showCongrats && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white text-[#0d141c] dark:bg-[#0f1821] dark:text:white ring-1 ring-[#cedbe8] dark:ring-white/10 p-5">
+          <div className="w-full max-w-md rounded-2xl bg-white text-[#0d141c] dark:bg-[#0f1821] dark:text-white ring-1 ring-[#cedbe8] dark:ring-white/10 p-5">
             <div className="flex items-start gap-3">
               <div className="shrink-0 h-10 w-10 rounded-full bg-emerald-500/15 flex items-center justify-center">
                 <span className="text-xl">🎉</span>
               </div>
               <div className="flex-1">
                 <h3 className="text-lg font-semibold">Brand saved!</h3>
-                <p className="mt-1 text-sm text-slate-600 dark:text:white/80">
+                <p className="mt-1 text-sm text-slate-600 dark:text-white/80">
                   Your institution profile is ready. Want to create your first course with AI now?
                 </p>
               </div>
@@ -2484,7 +2662,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
               </button>
               <button
                 onClick={() => setShowCongrats(false)}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 text-[#0d141c] hover:bg-slate-200 dark:bg-white/10 dark:text:white dark:hover:bg:white/15"
+                className="px-3 py-1.5 rounded-xl bg-slate-100 text-[#0d141c] hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
               >
                 Not now
               </button>

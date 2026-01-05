@@ -680,6 +680,7 @@ const OrgInstructorHome: React.FC = () => {
                     const latest = a.latest_submission_at ?? a.submitted_at ?? null;
                     const cls = a.org_class_label || a.class_label || 'All classes';
                     const subjectKey = a.org_subject_key || a.subject_key || 'Subject';
+                    const isOpened = !!a.opened_at;
 
                     return (
                       <button
@@ -697,6 +698,11 @@ const OrgInstructorHome: React.FC = () => {
                             {latest ? (
                               <span className="text-slate-500 dark:text-white/45"> • {fmtWhen(latest)}</span>
                             ) : null}
+                          </div>
+                          <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500 dark:text-white/50">
+                            <Badge tone={isOpened ? 'emerald' : 'rose'}>
+                              {isOpened ? 'Opened' : 'New'}
+                            </Badge>
                           </div>
                         </div>
 
