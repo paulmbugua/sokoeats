@@ -469,6 +469,9 @@ const OrgToolsSportsNative: React.FC = () => {
   const [fTeam, setFTeam] = useState<string>('');
   const [fAudience, setFAudience] = useState<string>('');
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   const refresh = useCallback(async () => {
     if (!resolvedOrgId || !sportsToken) return;
 
@@ -545,9 +548,27 @@ const OrgToolsSportsNative: React.FC = () => {
     });
   }, [events, q]);
 
+  const totalPages = useMemo(() => {
+    if (!listClientFiltered.length) return 1;
+    return Math.max(1, Math.ceil(listClientFiltered.length / pageSize));
+  }, [listClientFiltered.length, pageSize]);
+
+  const paginatedEvents = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return listClientFiltered.slice(start, start + pageSize);
+  }, [listClientFiltered, page, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [q, mode, fKind, fTeam, fAudience]);
+
   const grouped = useMemo(() => {
     const m = new Map<string, OrgSportsEvent[]>();
-    for (const e of listClientFiltered) {
+    for (const e of paginatedEvents) {
       const key = (e as any).event_at ? new Date((e as any).event_at).toDateString() : 'TBC';
       if (!m.has(key)) m.set(key, []);
       m.get(key)!.push(e);
@@ -1009,13 +1030,42 @@ const OrgToolsSportsNative: React.FC = () => {
             </View>
           </View>
 
+          <View style={tw`mt-3 flex-row items-center justify-between`}>
+            <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+              {loading
+                ? 'Loading…'
+                : `Showing ${listClientFiltered.length ? (page - 1) * pageSize + 1 : 0}-${Math.min(
+                    page * pageSize,
+                    listClientFiltered.length,
+                  )} of ${listClientFiltered.length}`}
+            </Text>
+
+            <View style={tw`flex-row items-center gap-2`}>
+              <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>Rows:</Text>
+              <View style={tw`flex-row gap-2`}>
+                {[10, 25, 50].map((n) => (
+                  <Chip
+                    key={n}
+                    label={String(n)}
+                    active={pageSize === n}
+                    onPress={() => {
+                      setPage(1);
+                      setPageSize(n);
+                    }}
+                    theme={theme}
+                  />
+                ))}
+              </View>
+            </View>
+          </View>
+
           <View style={tw`mt-4`}>
             {loading ? (
               <View style={tw`py-3 flex-row items-center gap-2`}>
                 <ActivityIndicator />
                 <Text style={tw`text-sm text-[#49739c] dark:text-white/70`}>Loading events…</Text>
               </View>
-            ) : (events || []).length === 0 ? (
+            ) : !listClientFiltered.length ? (
               <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#0b1620] p-4`}>
                 <Text style={tw`text-sm text-[#49739c] dark:text-white/70`}>
                   No events yet. Use the form above to create your first fixture or practice.
@@ -1109,6 +1159,30 @@ const OrgToolsSportsNative: React.FC = () => {
                 ))}
               </View>
             )}
+
+            {!loading && listClientFiltered.length ? (
+              <View style={tw`mt-3 flex-row items-center justify-between`}>
+                <Pressable
+                  onPress={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  style={tw`px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] ${page === 1 ? 'opacity-50' : ''}`}
+                >
+                  <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>‹ Prev</Text>
+                </Pressable>
+
+                <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+                  Page {page} of {totalPages}
+                </Text>
+
+                <Pressable
+                  onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  style={tw`px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] ${page === totalPages ? 'opacity-50' : ''}`}
+                >
+                  <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>Next ›</Text>
+                </Pressable>
+              </View>
+            ) : null}
 
             <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60 mt-4`}>
               Tip: Filters + Apply will fetch filtered results from the server.

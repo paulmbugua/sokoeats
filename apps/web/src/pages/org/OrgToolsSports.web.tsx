@@ -220,6 +220,9 @@ const OrgToolsSportsPage: React.FC = () => {
   const [fTeam, setFTeam] = useState<string>('');
   const [fAudience, setFAudience] = useState<string>('');
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   const refresh = useCallback(async () => {
     if (!resolvedOrgId || !sportsToken) return;
 
@@ -298,9 +301,27 @@ const OrgToolsSportsPage: React.FC = () => {
     });
   }, [events, q]);
 
+  const totalPages = useMemo(() => {
+    if (!listClientFiltered.length) return 1;
+    return Math.max(1, Math.ceil(listClientFiltered.length / pageSize));
+  }, [listClientFiltered.length, pageSize]);
+
+  const paginatedEvents = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return listClientFiltered.slice(start, start + pageSize);
+  }, [listClientFiltered, page, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [q, mode, fKind, fTeam, fAudience]);
+
   const grouped = useMemo(() => {
     const m = new Map<string, OrgSportsEvent[]>();
-    for (const e of listClientFiltered) {
+    for (const e of paginatedEvents) {
       const key = e.event_at ? new Date(e.event_at).toDateString() : 'TBC';
       if (!m.has(key)) m.set(key, []);
       m.get(key)!.push(e);
@@ -852,10 +873,37 @@ const OrgToolsSportsPage: React.FC = () => {
               </div>
             </div>
 
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-500 dark:text-slate-300">
+              <div>
+                {loading
+                  ? 'Loading…'
+                  : `Showing ${listClientFiltered.length ? (page - 1) * pageSize + 1 : 0}–${Math.min(
+                      page * pageSize,
+                      listClientFiltered.length,
+                    )} of ${listClientFiltered.length}`}
+              </div>
+
+              <div className="inline-flex items-center gap-2">
+                <span>Rows:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPage(1);
+                    setPageSize(Number(e.target.value) || 10);
+                  }}
+                  className="rounded-full bg-white dark:bg-[#0f1821] px-2 py-1 ring-1 ring-black/10 dark:ring-white/10"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+            </div>
+
             <div className="mt-4">
               {loading ? (
                 <div className="text-sm text-slate-500 dark:text-slate-300">Loading events…</div>
-              ) : (events || []).length === 0 ? (
+              ) : !listClientFiltered.length ? (
                 <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-300">
                   No events yet. Use the form to create your first fixture or practice.
                 </div>
@@ -968,6 +1016,42 @@ const OrgToolsSportsPage: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {!loading && listClientFiltered.length ? (
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[11px] sm:text-xs text-[#49739c] dark:text-darkTextSecondary">
+                <span>
+                  Page {page} of {totalPages}
+                </span>
+
+                {totalPages > 1 ? (
+                  <div className="inline-flex items-center gap-1 rounded-full bg-[#e7edf4] dark:bg-[#172534] px-1.5 py-1">
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
+                        page === 1 ? 'opacity-40 cursor-default' : 'hover:bg-white/70 dark:hover:bg-white/10'
+                      }`}
+                    >
+                      ‹ Prev
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
+                        page === totalPages
+                          ? 'opacity-40 cursor-default'
+                          : 'hover:bg-white/70 dark:hover:bg-white/10'
+                      }`}
+                    >
+                      Next ›
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
               Tip: Use filters above + <b>Apply</b> to fetch filtered results from the server.

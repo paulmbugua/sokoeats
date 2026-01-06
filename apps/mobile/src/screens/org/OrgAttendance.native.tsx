@@ -426,6 +426,28 @@ export default function OrgAttendanceNative() {
   // filters
   const [filters, setFilters] = useState({ start: '', end: '', class_label: '' });
 
+  // pagination (sessions list)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const totalPages = useMemo(() => {
+    if (!sessions?.length) return 1;
+    return Math.max(1, Math.ceil(sessions.length / pageSize));
+  }, [sessions?.length, pageSize]);
+
+  const paginatedSessions = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return (sessions || []).slice(start, start + pageSize);
+  }, [sessions, page, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters.start, filters.end, filters.class_label]);
+
   // selection + editor
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedSession, setSelectedSession] = useState<any | null>(null);
@@ -478,8 +500,6 @@ export default function OrgAttendanceNative() {
       start: filters.start || undefined,
       end: filters.end || undefined,
       class_label: filters.class_label || undefined,
-      limit: 50,
-      offset: 0,
     });
   }, [ready, fetchSessions, filters.start, filters.end, filters.class_label]);
 
@@ -927,6 +947,28 @@ export default function OrgAttendanceNative() {
                 />
               </View>
             </View>
+
+            {!sessionsLoading && sessions?.length ? (
+              <View style={tw`mt-3 flex-row items-center justify-between`}>
+                <Pressable
+                  onPress={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  style={tw`px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] ${page === 1 ? 'opacity-50' : ''}`}
+                >
+                  <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>‹ Prev</Text>
+                </Pressable>
+
+                <Text style={[tw`text-xs`, { color: theme.subtext }]}>Page {page} of {totalPages}</Text>
+
+                <Pressable
+                  onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  style={tw`px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] ${page === totalPages ? 'opacity-50' : ''}`}
+                >
+                  <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>Next ›</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -935,8 +977,27 @@ export default function OrgAttendanceNative() {
           <View style={tw`flex-row items-center justify-between`}>
             <Text style={[tw`text-sm font-bold`, { color: theme.text }]}>Sessions</Text>
             <Text style={[tw`text-xs`, { color: theme.muted }]}>
-              {sessionsLoading ? 'Loading…' : `${Array.isArray(sessions) ? sessions.length : 0} shown`}
+              {sessionsLoading
+                ? 'Loading…'
+                : `Showing ${
+                    Array.isArray(sessions) && sessions.length ? (page - 1) * pageSize + 1 : 0
+                  }-${Math.min(page * pageSize, Array.isArray(sessions) ? sessions.length : 0)} of ${
+                    Array.isArray(sessions) ? sessions.length : 0
+                  }`}
             </Text>
+          </View>
+
+          <View style={tw`mt-2 flex-row items-center justify-between`}>
+            <Text style={[tw`text-xs`, { color: theme.subtext }]}>Page {page} / {totalPages}</Text>
+
+            <View style={tw`flex-row items-center gap-2`}>
+              <Text style={[tw`text-xs`, { color: theme.subtext }]}>Rows:</Text>
+              <View style={tw`flex-row gap-2`}>
+                {[10, 25, 50].map((n) => (
+                  <Chip key={n} label={String(n)} active={pageSize === n} onPress={() => { setPage(1); setPageSize(n); }} theme={theme} />
+                ))}
+              </View>
+            </View>
           </View>
 
           <View style={tw`mt-3`}>
@@ -999,7 +1060,7 @@ export default function OrgAttendanceNative() {
                 <Text style={[tw`py-3`, { color: theme.subtext }]}>No sessions yet.</Text>
               ) : (
                 <View style={tw`mt-1`}>
-                  {sessions.map((s: any) => {
+                  {paginatedSessions.map((s: any) => {
                     const active = selectedId === Number(s?.id);
                     return (
                       <TouchableOpacity

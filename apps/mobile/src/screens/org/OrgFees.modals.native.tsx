@@ -13,7 +13,7 @@ import {
 } from './OrgFees.shared.native';
 import { Badge, CircleCheckbox, EmptyState, Modal, MoneyStack, useFeeTheme } from './OrgFees.ui.native';
 
-const Btn = ({ theme, label, onPress, kind = 'primary', disabled }: any) => {
+const Btn = ({ theme, label, onPress, kind = 'primary', disabled, loading }: any) => {
   const bg =
     kind === 'primary' ? theme.primary : kind === 'dark' ? (theme.dark ? '#334155' : '#0f172a') : 'transparent';
   const borderColor = kind === 'ghost' ? theme.border : 'transparent';
@@ -21,18 +21,22 @@ const Btn = ({ theme, label, onPress, kind = 'primary', disabled }: any) => {
 
   return (
     <TouchableOpacity
-      disabled={disabled}
+      disabled={disabled || loading}
       onPress={onPress}
       style={[
         tw`px-4 py-3 rounded-2xl border`,
         {
-          backgroundColor: disabled ? theme.border : bg,
+          backgroundColor: disabled || loading ? theme.border : bg,
           borderColor,
-          opacity: disabled ? 0.6 : 1,
+          opacity: disabled || loading ? 0.6 : 1,
         },
       ]}
     >
-      <Text style={[tw`text-sm font-semibold text-center`, { color: textColor }]}>{label}</Text>
+      {loading ? (
+        <ActivityIndicator size="small" color={textColor} />
+      ) : (
+        <Text style={[tw`text-sm font-semibold text-center`, { color: textColor }]}>{label}</Text>
+      )}
     </TouchableOpacity>
   );
 };
@@ -847,6 +851,8 @@ export function StatementModal({
   onOpenPayment,
   onPrint,
   onDownload,
+  downloadLoading,
+  printLoading,
   theme: explicitTheme,
 }: {
   title: string;
@@ -859,6 +865,8 @@ export function StatementModal({
   onOpenPayment: () => void;
   onPrint: () => void;
   onDownload: () => void;
+  downloadLoading?: boolean;
+  printLoading?: boolean;
   theme?: any;
 }) {
   const theme = useFeeTheme(explicitTheme);
@@ -907,10 +915,24 @@ export function StatementModal({
               <Btn theme={theme} kind="dark" label="Add payment" onPress={onOpenPayment} />
             </View>
             <View style={tw`mr-2 mb-2`}>
-              <Btn theme={theme} kind="ghost" label="Statement PDF" onPress={onDownload} />
+              <Btn
+                theme={theme}
+                kind="ghost"
+                label={downloadLoading ? 'Generating…' : 'Statement PDF'}
+                onPress={onDownload}
+                loading={downloadLoading}
+                disabled={printLoading}
+              />
             </View>
             <View style={tw`mb-2`}>
-              <Btn theme={theme} kind="ghost" label="Print" onPress={onPrint} />
+              <Btn
+                theme={theme}
+                kind="ghost"
+                label={printLoading ? 'Printing…' : 'Print'}
+                onPress={onPrint}
+                loading={printLoading}
+                disabled={downloadLoading}
+              />
             </View>
           </View>
 

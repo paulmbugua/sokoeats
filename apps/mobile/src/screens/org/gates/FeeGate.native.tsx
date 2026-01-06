@@ -20,7 +20,9 @@ export default function FeeGate({ children }: Props) {
     orgId: activeOrgId || org?.id,
   });
 
-  if (loading || feeAccess.isLoading || !feeAccess.ready) {
+  const checking = loading || (feeAccess.ready && feeAccess.isLoading);
+
+  if (checking) {
     return (
       <View style={tw`flex-1 items-center justify-center bg-white dark:bg-slate-900 p-6`}>
         <View style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 p-6 shadow`}>
@@ -35,13 +37,15 @@ export default function FeeGate({ children }: Props) {
     );
   }
 
-  if (feeAccess.isDenied || !feeAccess.hasAccess) {
+  if (!feeAccess.eligible || feeAccess.isDenied || !feeAccess.hasAccess) {
     return (
       <View style={tw`flex-1 items-center justify-center bg-white dark:bg-slate-900 p-6`}>
         <View style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 p-6 shadow items-center gap-3`}>
-          <Text style={tw`text-xl font-bold text-slate-900 dark:text-slate-100`}>Fees locked</Text>
+          <Text style={tw`text-xl font-bold text-slate-900 dark:text-slate-100`}>
+            {feeAccess.eligible ? 'Fees locked' : 'Not authorized'}
+          </Text>
           <Text style={tw`text-sm text-slate-600 dark:text-slate-300 text-center`}>
-            Fees are only accessible to the single designated instructor.
+            Fees are only accessible to the designated instructor on Pro/Enterprise.
           </Text>
           <TouchableOpacity
             style={tw`mt-2 px-4 py-2 rounded-xl bg-emerald-600`}

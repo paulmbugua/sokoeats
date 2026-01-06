@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
 import tw from '../../../tailwind';
 
 import { useQuery } from '@tanstack/react-query';
@@ -639,6 +640,12 @@ function OrgFeesInner() {
    * Modals
    * ───────────────────────────────────────────────────────── */
   const [mode, setMode] = useState<'none' | 'charge' | 'payment' | 'statement'>('none');
+  const [statementFile, setStatementFile] = useState<{ learnerId: string | null; uri: string | null }>({
+    learnerId: null,
+    uri: null,
+  });
+  const [downloadingStatement, setDownloadingStatement] = useState(false);
+  const [printingStatement, setPrintingStatement] = useState(false);
 
   const ensureSelectedLearner = (candidate?: string) => {
     const next = String(candidate || selectedLearnerId || '').trim();
@@ -670,6 +677,91 @@ function OrgFeesInner() {
       await fetchStatement(id);
     } catch {}
   };
+
+  useEffect(() => {
+    setStatementFile((prev) => (prev.learnerId === selectedLearnerId ? prev : { learnerId: selectedLearnerId || null, uri: null }));
+  }, [selectedLearnerId]);
+
+  const buildStatementFilename = useCallback(() => {
+    const safeName = sanitizeFilenamePart(pickLearnerName(selectedLearner) || selectedLearnerId || 'learner');
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    return `statement-${safeName || 'learner'}-${stamp}.pdf`;
+  }, [selectedLearner, selectedLearnerId]);
+
+  const downloadStatementToFile = useCallback(
+    async ({ share = false, silent = false }: { share?: boolean; silent?: boolean } = {}) => {
+      const learnerId = ensureSelectedLearner();
+      if (!learnerId) return null;
+
+      setDownloadingStatement(true);
+      try {
+        const fileName = buildStatementFilename();
+        const url = await downloadStatementPdf(learnerId, fileName);
+
+        if (!url) throw new Error('Statement link unavailable');
+
+        const headers: Record<string, string> = {};
+        if (orgToken) headers.Authorization = `Bearer ${orgToken}`;
+
+        const target = `${CACHE_DIR}${fileName}`;
+        const { uri, status } = await FileSystem.downloadAsync(
+          url,
+          target,
+          Object.keys(headers).length ? { headers } : undefined,
+        );
+
+        if (status < 200 || status >= 300) {
+          throw new Error(`Download failed (${status})`);
+        }
+
+        setStatementFile({ learnerId, uri });
+
+        if (share) {
+          const available = await Sharing.isAvailableAsync();
+          if (available) {
+            await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Learner Statement' });
+          } else if (!silent) {
+            Alert.alert('Statement downloaded', `Saved to ${uri}`);
+          }
+        } else if (!silent) {
+          Alert.alert('Statement ready', 'Statement PDF downloaded.');
+        }
+
+        return uri;
+      } catch (e: any) {
+        console.error('[fees] statement download failed', e);
+        Alert.alert("Couldn't generate statement", e?.message || 'Try again shortly.');
+        return null;
+      } finally {
+        setDownloadingStatement(false);
+      }
+    },
+    [buildStatementFilename, downloadStatementPdf, ensureSelectedLearner, orgToken],
+  );
+
+  const printStatement = useCallback(async () => {
+    const learnerId = ensureSelectedLearner();
+    if (!learnerId) return;
+
+    setPrintingStatement(true);
+    try {
+      let uri = statementFile.learnerId === learnerId ? statementFile.uri : null;
+      if (!uri) {
+        uri = await downloadStatementToFile({ share: false, silent: true });
+      }
+
+      if (!uri) return;
+
+      await Print.printAsync({ uri });
+      Alert.alert('Print started', 'Check your printer options to finish.');
+    } catch (e: any) {
+      console.error('[fees] print failed', e);
+      Alert.alert("Couldn't print statement", e?.message || 'Try again shortly.');
+    } finally {
+      setPrintingStatement(false);
+    }
+  }, [downloadStatementToFile, ensureSelectedLearner, statementFile]);
 
   useEffect(() => {
     if (unmatchedOpen) fetchUnmatched();
@@ -1388,8 +1480,10 @@ function OrgFeesInner() {
           loading={statementLoading}
           onOpenCharge={() => setMode('charge')}
           onOpenPayment={() => setMode('payment')}
-          onDownload={() => downloadStatementPdf(selectedLearnerId, 'fee-statement.pdf')}
-          onPrint={() => {}}
+          onDownload={() => downloadStatementToFile({ share: true })}
+          onPrint={printStatement}
+          downloadLoading={downloadingStatement}
+          printLoading={printingStatement}
           theme={theme}
         />
       ) : null}

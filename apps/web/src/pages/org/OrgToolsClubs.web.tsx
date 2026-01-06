@@ -170,6 +170,9 @@ const OrgToolsClubsPage: React.FC = () => {
   const [mode, setMode] = useState<'all' | 'mine'>('all');
   const [q, setQ] = useState('');
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   // ✅ My clubs: call endpoint ONLY when user requests the Mine tab AND using userToken
   const [myClubsLocal, setMyClubsLocal] = useState<any[]>([]);
   const [myClubsLoading, setMyClubsLoading] = useState(false);
@@ -266,6 +269,24 @@ const fetchMine = useCallback(async () => {
     if (!needle) return base;
     return base.filter((c) => String(c?.name || '').toLowerCase().includes(needle));
   }, [clubs, mode, q, myClubsLocal]);
+
+  const totalPages = useMemo(() => {
+    if (!list.length) return 1;
+    return Math.max(1, Math.ceil(list.length / pageSize));
+  }, [list.length, pageSize]);
+
+  const paginatedList = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return list.slice(start, start + pageSize);
+  }, [list, page, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [q, mode]);
 
   const instructorHint = useMemo(() => {
     const s = String(error || '').toLowerCase();
@@ -657,13 +678,40 @@ const fetchMine = useCallback(async () => {
               </div>
             ) : null}
 
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-500 dark:text-slate-300">
+              <div>
+                {loading
+                  ? 'Loading…'
+                  : `Showing ${list.length ? (page - 1) * pageSize + 1 : 0}–${Math.min(
+                      page * pageSize,
+                      list.length,
+                    )} of ${list.length}`}
+              </div>
+
+              <div className="inline-flex items-center gap-2">
+                <span>Rows:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPage(1);
+                    setPageSize(Number(e.target.value) || 10);
+                  }}
+                  className="rounded-full bg-white dark:bg-[#0f1821] px-2 py-1 ring-1 ring-black/10 dark:ring-white/10"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+            </div>
+
             <div className="mt-4 divide-y divide-slate-200 dark:divide-slate-800">
               {loading ? <p className="py-3 text-sm text-slate-500">Loading clubs…</p> : null}
 
               {!loading && !list.length ? (
                 <p className="py-3 text-sm text-slate-500">No clubs yet. Create one on the left.</p>
               ) : (
-                list.map((c: any) => (
+                paginatedList.map((c: any) => (
                   <div key={c.id} className="py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -736,6 +784,42 @@ const fetchMine = useCallback(async () => {
                 ))
               )}
             </div>
+
+            {!loading && list.length ? (
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[11px] sm:text-xs text-[#49739c] dark:text-darkTextSecondary">
+                <span>
+                  Page {page} of {totalPages}
+                </span>
+
+                {totalPages > 1 ? (
+                  <div className="inline-flex items-center gap-1 rounded-full bg-[#e7edf4] dark:bg-[#172534] px-1.5 py-1">
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
+                        page === 1 ? 'opacity-40 cursor-default' : 'hover:bg-white/70 dark:hover:bg-white/10'
+                      }`}
+                    >
+                      ‹ Prev
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
+                        page === totalPages
+                          ? 'opacity-40 cursor-default'
+                          : 'hover:bg-white/70 dark:hover:bg-white/10'
+                      }`}
+                    >
+                      Next ›
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mt-4 text-xs text-slate-500 dark:text-slate-400">
               Note: Clubs endpoints require <b>Pro tier</b> + <b>Org Instructor</b>. If you’re not an instructor,

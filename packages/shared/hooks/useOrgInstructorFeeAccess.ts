@@ -17,6 +17,14 @@ export function useOrgInstructorFeeAccess(opts?: UseOrgInstructorFeeAccessOption
   const orgState = (useOrg?.() ?? {}) as any;
   const queryClient = useQueryClient();
 
+  const membership = orgState?.membership ?? null;
+  const primaryMembership = Array.isArray(membership) ? membership[0] : membership;
+  const roleLower = (orgState?.role || '').toLowerCase();
+  const tier = String(orgState?.org?.tier || orgState?.org?.plan || 'starter').toLowerCase();
+  const isProTier = tier === 'pro' || tier === 'enterprise';
+  const designatedFlag = (primaryMembership as any)?.can_access_fees === true;
+  const eligible = roleLower === 'instructor' && isProTier && designatedFlag;
+
   const backendUrl = useMemo(
     () => (opts?.backendUrl ?? shop?.backendUrl ?? '').replace(/\/+$/, ''),
     [opts?.backendUrl, shop?.backendUrl],
@@ -31,7 +39,8 @@ export function useOrgInstructorFeeAccess(opts?: UseOrgInstructorFeeAccessOption
   );
 
   const orgReady = Boolean((orgState?.orgChecked ?? false) && !orgState?.loading);
-  const enabled = Boolean((opts?.enabled ?? true) && backendUrl && token && orgId && orgReady);
+  const ready = Boolean(orgReady && backendUrl && token && orgId);
+  const enabled = Boolean((opts?.enabled ?? true) && ready && eligible);
 
   const feeAccessQuery = useQuery({
     queryKey: ['orgFeeAccess', orgId],
@@ -52,24 +61,25 @@ export function useOrgInstructorFeeAccess(opts?: UseOrgInstructorFeeAccessOption
     },
   });
 
-  const hasAccess = feeAccessQuery.data?.hasAccess === true;
-  const isDenied = feeAccessQuery.isFetched && feeAccessQuery.data?.hasAccess === false;
+  const hasAccess = enabled ? feeAccessQuery.data?.hasAccess === true : false;
+  const isDenied = (!eligible && ready) || (feeAccessQuery.isFetched && feeAccessQuery.data?.hasAccess === false);
 
   return {
     backendUrl,
     orgId,
     token,
-    ready: enabled,
+    eligible,
+    ready,
     status: feeAccessQuery.status,
     hasAccess,
     isDenied,
-    isLoading: feeAccessQuery.isLoading || feeAccessQuery.isFetching,
+    isLoading: enabled && (feeAccessQuery.isLoading || feeAccessQuery.isFetching),
     refetch: feeAccessQuery.refetch,
     setFeeAccess: mutation.mutateAsync,
     saving: mutation.isPending,
-    designatedInstructorId: feeAccessQuery.data?.designatedInstructorId ?? null,
-    updatedAt: feeAccessQuery.data?.updatedAt ?? null,
-    grantedByUserId: feeAccessQuery.data?.grantedByUserId ?? null,
+    designatedInstructorId: enabled ? feeAccessQuery.data?.designatedInstructorId ?? null : null,
+    updatedAt: enabled ? feeAccessQuery.data?.updatedAt ?? null : null,
+    grantedByUserId: enabled ? feeAccessQuery.data?.grantedByUserId ?? null : null,
   };
 }
 
