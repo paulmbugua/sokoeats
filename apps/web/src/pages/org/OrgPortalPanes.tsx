@@ -864,6 +864,40 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
             </div>
           )}
 
+          {/* ✅ Assignment audience (applies to BOTH Classic + Teach with AI) */}
+<section className="rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10 bg-white dark:bg-[#0f1821] p-3 sm:p-4 space-y-2">
+  <div className="text-xs font-semibold tracking-wide uppercase text-[#49739c] dark:text-darkTextSecondary">
+    Assignment audience
+  </div>
+  <div className="text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
+    Required: Learners only see assignments that match their Class/Grade and Subject.
+  </div>
+
+  <div className="grid sm:grid-cols-2 gap-3">
+    <div>
+      <Label>Class / Grade</Label>
+      <input
+        className="input mt-1 w-full"
+        value={assignClassLabel || ''}
+        onChange={(e) => setAssignScope?.({ classLabel: e.target.value || '' })}
+        placeholder="e.g. Grade 7 Blue"
+        disabled={!canAssignments}
+      />
+    </div>
+    <div>
+      <Label>Subject</Label>
+      <input
+        className="input mt-1 w-full"
+        value={assignSubjectKey || ''}
+        onChange={(e) => setAssignScope?.({ subjectKey: e.target.value || '' })}
+        placeholder="e.g. Mathematics, English, Physics"
+        disabled={!canAssignments}
+      />
+    </div>
+  </div>
+</section>
+
+
           {/* ─────────────────────────────────────────────────────
               Classic / file-based assignment card
              ───────────────────────────────────────────────────── */}
@@ -883,29 +917,7 @@ export function BrandingAssignPane(props: BrandingAssignProps) {
               </div>
             </div>
 
-            {/* Class + subject */}
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div>
-                <Label>Class / Grade</Label>
-                <input
-                  className="input mt-1 w-full"
-                  value={assignClassLabel || ''}
-                  onChange={(e) => setAssignScope?.({ classLabel: e.target.value || '' })}
-                  placeholder="e.g. Grade 7 Blue"
-                  disabled={!canAssignments}
-                />
-              </div>
-              <div>
-                <Label>Subject</Label>
-                <input
-                  className="input mt-1 w-full"
-                  value={assignSubjectKey || ''}
-                  onChange={(e) => setAssignScope?.({ subjectKey: e.target.value || '' })}
-                  placeholder="e.g. Mathematics, English, Physics"
-                  disabled={!canAssignments}
-                />
-              </div>
-            </div>
+           
 
             {/* Title + instructions */}
             <div className="grid sm:grid-cols-2 gap-3">

@@ -2,7 +2,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { uploadAsset } from '@mytutorapp/shared/api';
+import { uploadAsset, getMyOrgOrBootstrap } from '@mytutorapp/shared/api';
+
 import {
   getOrgLearnersProgress,
   type OrgLearnerProgressRow,
@@ -229,13 +230,39 @@ function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
 }
 
-const isAiAssignmentRow = (row: OrgAssignmentRow) => {
-  const invite = (row as any).invite_code || (row as any).inviteCode || null;
-  if (invite) return true;
+const getAttachmentUrlFromRow = (a: any): string | null =>
+  a?.attachment_url ||
+  a?.attachmentUrl ||
+  a?.download_url ||
+  a?.downloadUrl ||
+  a?.resource_url ||
+  a?.resourceUrl ||
+  null;
 
-  const kind = ((row as any).source_kind || (row as any).kind || '').toString().toLowerCase();
-  return kind.includes('robot') || kind.includes('ai') || kind.includes('teach');
+type AssignmentType = 'ai' | 'legacy';
+
+const getAssignmentType = (row: any): AssignmentType => {
+  const kindRaw = String(row?.source_kind ?? row?.kind ?? row?.assignment_kind ?? '').toLowerCase();
+
+  // ✅ Legacy wins if it looks like a file/note assignment
+  const attachmentUrl = getAttachmentUrlFromRow(row);
+  if (kindRaw === 'legacy' || kindRaw === 'classic' || Boolean(attachmentUrl)) return 'legacy';
+
+  // ✅ AI if invite exists
+  const invite = row?.invite_code ?? row?.inviteCode ?? row?.code ?? null;
+  if (invite) return 'ai';
+
+  // ✅ AI if course exists
+  const courseId =
+    row?.course_id ?? row?.courseId ?? row?.course_uuid ?? row?.courseUUID ?? null;
+  if (courseId != null) return 'ai';
+
+  // Default safe fallback
+  return 'legacy';
 };
+
+const isAiAssignmentRow = (row: OrgAssignmentRow) => getAssignmentType(row) === 'ai';
+const isLegacyAssignmentRow = (row: OrgAssignmentRow) => getAssignmentType(row) === 'legacy';
 
 const assignmentKey = (row: OrgAssignmentRow) => {
   const invite = (row as any).invite_code || (row as any).inviteCode || null;
@@ -523,6 +550,8 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
       return;
     }
 
+    
+
     const trimmedTitle = legacyTitle.trim();
     const classLabel = (assignClassLabel || '').trim();
     const subjectKey = (assignSubjectKey || '').trim();
@@ -539,13 +568,18 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     setCreatingLegacyAssignment(true);
     try {
       const body = {
-        title: trimmedTitle,
-        instructions: legacyInstructions.trim() || null,
-        class_label: classLabel,
-        subject_key: subjectKey,
-        attachment_url: legacyAttachmentUrl || null,
-        due_at: legacyDueAt || null,
-      };
+          // ✅ add these (safe even if backend ignores one)
+          source_kind: 'legacy',
+          kind: 'legacy',
+
+          title: trimmedTitle,
+          instructions: legacyInstructions.trim() || null,
+          class_label: classLabel,
+          subject_key: subjectKey,
+          attachment_url: legacyAttachmentUrl || null,
+          due_at: legacyDueAt || null,
+        };
+
 
       await createOrgLegacyAssignment(backendUrl, authToken, org.id, body);
       alert('Assignment shared with the selected class.');
@@ -987,21 +1021,32 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
       alert('Pick a course before creating an assignment.');
       return;
     }
+
+     const classLabel = (assignClassLabel || '').trim();
+  const subjectKey = (assignSubjectKey || '').trim();
+  if (!classLabel || !subjectKey) {
+    alert('Please specify both Class/Grade and Subject so the right learners see this AI assignment.');
+    return;
+  }
     try {
-      const payload: any = {
-        courseId,
-        title_override: titleOverride || null,
-        pass_mark: canCustomPassTimers ? passMark || null : null,
-        timer_s: canCustomPassTimers ? timer || null : null,
-        due_at: dueAt || null,
-        // 🔗 NEW: scope by class & subject so learner view filter can pick it up
-        org_class_label: assignClassLabel || null,
-        orgClassLabel: assignClassLabel || null,
-        class_label: assignClassLabel || null,
-        org_subject_key: assignSubjectKey || null,
-        orgSubjectKey: assignSubjectKey || null,
-        subject_key: assignSubjectKey || null,
-      };
+    const payload: any = {
+      courseId,
+      title_override: titleOverride || null,
+      pass_mark: canCustomPassTimers ? passMark || null : null,
+      timer_s: canCustomPassTimers ? timer || null : null,
+      due_at: dueAt || null,
+
+      // 🔗 scope by class & subject
+      org_class_label: classLabel,
+      orgClassLabel: classLabel,
+      class_label: classLabel,
+
+      org_subject_key: subjectKey,
+      orgSubjectKey: subjectKey,
+      subject_key: subjectKey,
+    };
+
+   
 
       const a = await createOrgAssignment(backendUrl, authToken, org.id, payload);
       const link = `${window.location.origin}/org/join/${a.invite_code}`;
@@ -1312,33 +1357,24 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     } catch {}
   };
 
+  // Legacy-only slice for learner view
+ const getAttachmentUrl = (a: any): string | null =>
+  a?.attachment_url ||
+  a?.attachmentUrl ||
+  a?.download_url ||
+  a?.downloadUrl ||
+  a?.resource_url ||
+  a?.resourceUrl ||
+  null;
   const aiAssignments = React.useMemo(
-    () => learnerAssignments.filter((a) => isAiAssignmentRow(a)),
-    [learnerAssignments]
-  );
+  () => learnerAssignments.filter((a) => getAssignmentType(a) === 'ai'),
+  [learnerAssignments]
+);
 
-  // Classic file-based assignments only
-  const classicAssignments = React.useMemo(
-    () =>
-      learnerAssignments.filter((a) => {
-        if (isAiAssignmentRow(a)) return false;
-
-        const kind = ((a as any).source_kind || '').toLowerCase();
-        const isLegacyKind = kind === 'legacy';
-        const attachmentUrl =
-          (a as any).attachment_url ||
-          (a as any).attachmentUrl ||
-          (a as any).download_url ||
-          (a as any).downloadUrl ||
-          (a as any).resource_url ||
-          (a as any).resourceUrl ||
-          null;
-
-        // treat "legacy" rows as those explicitly marked or clearly file-based
-        return isLegacyKind || !!attachmentUrl;
-      }),
-    [learnerAssignments]
-  );
+const classicAssignments = React.useMemo(
+  () => learnerAssignments.filter((a) => getAssignmentType(a) === 'legacy'),
+  [learnerAssignments]
+);
 
   // 🚦 Partition into submitted vs pending
   const { submittedAssignments, pendingAssignments } = React.useMemo(() => {
@@ -1390,9 +1426,9 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                   Assignments shared with you
                 </h1>
                 <div className="text-[#49739c] dark:text-white/70 text-xs sm:text-sm">
-                  View both AI assignments (Teach with AI) and classic file-based assignments
-                  shared by your teachers. New work will appear here automatically when it is
-                  targeted to your class or subject.
+                  These file-based assignments (PDFs, docs, images) were shared by your teachers
+                  using the classic / legacy flow. Download the attachment, follow the instructions,
+                  and submit your work back to the teacher.
                   {learnerClassFromUrl && (
                     <>
                       {' '}
@@ -1528,278 +1564,208 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
                   )}
                 </div>
 
-                <div className="mt-2 space-y-4">
-                  {/* Submitted assignments */}
-                  <div>
-                    <h3 className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-white mb-1.5">
-                      Submitted assignments
-                    </h3>
+<div className="mt-2 space-y-4">
+  {/* Submitted classic (legacy) assignments */}
+  <div>
+    <h3 className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-white mb-1.5">
+      Submitted (Classic)
+    </h3>
 
-                    {submittedAssignments.length === 0 && !learnerAssignmentsLoading && (
-                      <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
-                        You haven&apos;t submitted any classic assignments yet. When you submit work, it
-                        will appear here.
-                      </div>
-                    )}
+    {submittedAssignments.length === 0 && !learnerAssignmentsLoading && (
+      <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
+        You haven&apos;t submitted any classic (file / note) assignments yet.
+      </div>
+    )}
 
-                    {submittedAssignments.length > 0 && (
-                      <ul className="space-y-2">
-                        {submittedAssignments.map((a) => {
-                          const key = assignmentKey(a);
-                          const dueLabel = a.due_at
-                            ? new Date(a.due_at).toLocaleString()
-                            : 'No due date';
-                          const createdLabel = a.created_at
-                            ? new Date(a.created_at).toLocaleString()
-                            : null;
+    {submittedAssignments.length > 0 && (
+      <ul className="space-y-2">
+        {submittedAssignments.map((a) => {
+          const anyA = a as any;
+          const key = assignmentKey(a);
 
-                          const kind = 'Legacy / classic (file-based)';
+          const dueLabel = anyA.due_at ? new Date(anyA.due_at).toLocaleString() : 'No due date';
+          const createdLabel = anyA.created_at ? new Date(anyA.created_at).toLocaleString() : null;
 
-                          const rawCourseId =
-                            (a as any).course_id ??
-                            (a as any).courseId ??
-                            (a as any).course_uuid ??
-                            (a as any).courseUUID ??
-                            null;
-                          const courseIdForRow = rawCourseId ? String(rawCourseId) : '';
+          const attachmentUrl = getAttachmentUrlFromRow(anyA);
+          const instructions = String(anyA.instructions ?? anyA.note ?? '').trim();
 
-                          const attachmentUrl: string | null =
-                            (a as any).attachment_url ||
-                            (a as any).attachmentUrl ||
-                            (a as any).download_url ||
-                            (a as any).downloadUrl ||
-                            (a as any).resource_url ||
-                            (a as any).resourceUrl ||
-                            null;
+          return (
+            <li
+              key={key}
+              className="rounded-xl border border-[#e7edf4] dark:border-white/10 bg-slate-50/80 dark:bg-[#111b28] px-3 py-3 sm:px-4 sm:py-3.5 flex flex-col gap-3"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm sm:text-base font-semibold truncate max-w-full">
+                      {anyA.title || 'Untitled assignment'}
+                    </span>
 
-                          return (
-                            <li
-                              key={key}
-                              className="rounded-xl border border-[#e7edf4] dark:border-white/10 bg-slate-50/80 dark:bg-[#111b28] px-3 py-3 sm:px-4 sm:py-3.5 flex flex-col gap-3"
-                            >
-                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="text-sm sm:text-base font-semibold truncate max-w-full">
-                                      {a.title || 'Untitled assignment'}
-                                    </span>
-                                  </div>
-                                  <div className="mt-1 flex flex-wrap gap-2 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
-                                    {a.course_title && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-100 dark:bg-sky-500/10 dark:text-sky-100 dark:border-sky-500/40">
-                                        <span>📘</span>
-                                        <span>{a.course_title}</span>
-                                      </span>
-                                    )}
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-100 dark:border-emerald-500/40">
-                                      <span>⚙️</span>
-                                      <span>{kind}</span>
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-white/5 dark:text-white/80 dark:border-white/10">
-                                      <span>📅</span>
-                                      <span>Due: {dueLabel}</span>
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600/10 text-emerald-700 border border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-100">
-                                      <span>✅</span>
-                                      <span>Submitted</span>
-                                    </span>
-                                  </div>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-100 dark:border-emerald-500/40">
+                      ✅ Submitted
+                    </span>
 
-                                  {createdLabel && (
-                                    <div className="mt-1 text-[10px] text-slate-400 dark:text-white/50">
-                                      Assigned: {createdLabel}
-                                    </div>
-                                  )}
-
-                                  {attachmentUrl && (
-                                    <div className="mt-2 text-[11px] sm:text-xs text-slate-600 dark:text-white/75">
-                                      <a
-                                        href={attachmentUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="underline underline-offset-2 hover:text-sky-700 dark:hover:text-sky-200"
-                                      >
-                                        ⬇️ Download assignment file
-                                      </a>{' '}
-                                      to review what you submitted.
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                  {courseIdForRow && (
-                                    <Link
-                                      to={`/courses/${encodeURIComponent(courseIdForRow)}/progress`}
-                                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-white text-[#0d141c] ring-1 ring-[#d1e2f4] hover:bg-[#e7edf4] dark:bg-[#0b1420] dark:text-white dark:ring-white/15 dark:hover:bg-white/5"
-                                    >
-                                      <span className="text-base">📚</span>
-                                      <span>Go to course</span>
-                                    </Link>
-                                  )}
-
-                                  {attachmentUrl && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setSubmitAssignment(a as OrgAssignmentRow);
-                                        setSubmitText('');
-                                        setSubmitFile(null);
-                                        setSubmitOpen(true);
-                                      }}
-                                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
-                                    >
-                                      <span className="text-base">✏️</span>
-                                      <span>Submit again</span>
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-white/55">
-                                Your submission stays listed here so you can always see which work
-                                you&apos;ve already sent.
-                              </p>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-white/5 dark:text-white/80 dark:border-white/10">
+                      📎 Classic
+                    </span>
                   </div>
 
-                  {/* Assignments to work on */}
-                  <div>
-                    <h3 className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-white mb-1.5">
-                      Assignments to work on
-                    </h3>
-
-                    {pendingAssignments.length === 0 && !learnerAssignmentsLoading && (
-                      <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
-                        You don&apos;t have any pending classic assignments for this class or subject
-                        yet. New work shared by your teacher will appear here.
-                      </div>
-                    )}
-
-                    {pendingAssignments.length > 0 && (
-                      <ul className="space-y-2">
-                        {pendingAssignments.map((a) => {
-                          const key = assignmentKey(a);
-                          const dueLabel = a.due_at
-                            ? new Date(a.due_at).toLocaleString()
-                            : 'No due date';
-                          const createdLabel = a.created_at
-                            ? new Date(a.created_at).toLocaleString()
-                            : null;
-
-                          const kind = 'Legacy / classic (file-based)';
-
-                          const rawCourseId =
-                            (a as any).course_id ??
-                            (a as any).courseId ??
-                            (a as any).course_uuid ??
-                            (a as any).courseUUID ??
-                            null;
-                          const courseIdForRow = rawCourseId ? String(rawCourseId) : '';
-
-                          const attachmentUrl: string | null =
-                            (a as any).attachment_url ||
-                            (a as any).attachmentUrl ||
-                            (a as any).download_url ||
-                            (a as any).downloadUrl ||
-                            (a as any).resource_url ||
-                            (a as any).resourceUrl ||
-                            null;
-
-                          return (
-                            <li
-                              key={key}
-                              className="rounded-xl border border-[#e7edf4] dark:border-white/10 bg-slate-50/80 dark:bg-[#111b28] px-3 py-3 sm:px-4 sm:py-3.5 flex flex-col gap-3"
-                            >
-                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="text-sm sm:text-base font-semibold truncate max-w-full">
-                                      {a.title || 'Untitled assignment'}
-                                    </span>
-                                  </div>
-                                  <div className="mt-1 flex flex-wrap gap-2 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
-                                    {a.course_title && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-100 dark:bg-sky-500/10 dark:text-sky-100 dark:border-sky-500/40">
-                                        <span>📘</span>
-                                        <span>{a.course_title}</span>
-                                      </span>
-                                    )}
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-100 dark:border-emerald-500/40">
-                                      <span>⚙️</span>
-                                      <span>{kind}</span>
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-white/5 dark:text-white/80 dark:border-white/10">
-                                      <span>📅</span>
-                                      <span>Due: {dueLabel}</span>
-                                    </span>
-                                  </div>
-
-                                  {createdLabel && (
-                                    <div className="mt-1 text-[10px] text-slate-400 dark:text-white/50">
-                                      Assigned: {createdLabel}
-                                    </div>
-                                  )}
-
-                                  {attachmentUrl && (
-                                    <div className="mt-2 text-[11px] sm:text-xs text-slate-600 dark:text-white/75">
-                                      <a
-                                        href={attachmentUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="underline underline-offset-2 hover:text-sky-700 dark:hover:text-sky-200"
-                                      >
-                                        ⬇️ Download assignment file
-                                      </a>{' '}
-                                      and follow your teacher&apos;s instructions before submitting.
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                  {courseIdForRow && (
-                                    <Link
-                                      to={`/courses/${encodeURIComponent(courseIdForRow)}/progress`}
-                                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-white text-[#0d141c] ring-1 ring-[#d1e2f4] hover:bg-[#e7edf4] dark:bg-[#0b1420] dark:text-white dark:ring-white/15 dark:hover:bg-white/5"
-                                    >
-                                      <span className="text-base">📚</span>
-                                      <span>Go to course</span>
-                                    </Link>
-                                  )}
-
-                                  {attachmentUrl && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setSubmitAssignment(a as OrgAssignmentRow);
-                                        setSubmitText('');
-                                        setSubmitFile(null);
-                                        setSubmitOpen(true);
-                                      }}
-                                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
-                                    >
-                                      <span className="text-base">✏️</span>
-                                      <span>Submit work</span>
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-white/55">
-                                After completing the work, your teacher may ask you to upload or
-                                share your answers through the course, quiz, or the Messages area of
-                                your portal.
-                              </p>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
+                  <div className="mt-1 flex flex-wrap gap-2 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-white/5 dark:text-white/80 dark:border-white/10">
+                      📅 Due: {dueLabel}
+                    </span>
                   </div>
+
+                  {createdLabel && (
+                    <div className="mt-1 text-[10px] text-slate-400 dark:text-white/50">
+                      Assigned: {createdLabel}
+                    </div>
+                  )}
+
+                  {(instructions || attachmentUrl) && (
+                    <div className="mt-2 text-[11px] sm:text-xs text-slate-600 dark:text-white/75 space-y-1">
+                      {attachmentUrl && (
+                        <a
+                          href={attachmentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline underline-offset-2 hover:text-sky-700 dark:hover:text-sky-200"
+                        >
+                          ⬇️ Download assignment file
+                        </a>
+                      )}
+                      {instructions && (
+                        <div className="text-[10px] sm:text-[11px] text-slate-500 dark:text-white/60">
+                          {instructions.length > 140 ? `${instructions.slice(0, 140)}…` : instructions}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
+
+                <div className="shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubmitAssignment(a as OrgAssignmentRow);
+                      setSubmitText('');
+                      setSubmitFile(null);
+                      setSubmitOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                  >
+                    ✏️ Submit again
+                  </button>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    )}
+  </div>
+
+  {/* Assignments to work on (classic) */}
+  <div>
+    <h3 className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-white mb-1.5">
+      Assignments to work on (Classic)
+    </h3>
+
+    {pendingAssignments.length === 0 && !learnerAssignmentsLoading && (
+      <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
+        You don&apos;t have any pending classic assignments yet.
+      </div>
+    )}
+
+    {pendingAssignments.length > 0 && (
+      <ul className="space-y-2">
+        {pendingAssignments.map((a) => {
+          const anyA = a as any;
+          const key = assignmentKey(a);
+
+          const dueLabel = anyA.due_at ? new Date(anyA.due_at).toLocaleString() : 'No due date';
+          const createdLabel = anyA.created_at ? new Date(anyA.created_at).toLocaleString() : null;
+
+          const attachmentUrl = getAttachmentUrlFromRow(anyA);
+          const instructions = String(anyA.instructions ?? anyA.note ?? '').trim();
+
+          return (
+            <li
+              key={key}
+              className="rounded-xl border border-[#e7edf4] dark:border-white/10 bg-slate-50/80 dark:bg-[#111b28] px-3 py-3 sm:px-4 sm:py-3.5 flex flex-col gap-3"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm sm:text-base font-semibold truncate max-w-full">
+                      {anyA.title || 'Untitled assignment'}
+                    </span>
+
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-white/5 dark:text-white/80 dark:border-white/10">
+                      📎 Classic
+                    </span>
+                  </div>
+
+                  <div className="mt-1 flex flex-wrap gap-2 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-white/5 dark:text-white/80 dark:border-white/10">
+                      📅 Due: {dueLabel}
+                    </span>
+                  </div>
+
+                  {createdLabel && (
+                    <div className="mt-1 text-[10px] text-slate-400 dark:text-white/50">
+                      Assigned: {createdLabel}
+                    </div>
+                  )}
+
+                  {(instructions || attachmentUrl) && (
+                    <div className="mt-2 text-[11px] sm:text-xs text-slate-600 dark:text-white/75 space-y-1">
+                      {attachmentUrl && (
+                        <a
+                          href={attachmentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline underline-offset-2 hover:text-sky-700 dark:hover:text-sky-200"
+                        >
+                          ⬇️ Download assignment file
+                        </a>
+                      )}
+                      {instructions && (
+                        <div className="text-[10px] sm:text-[11px] text-slate-500 dark:text-white/60">
+                          {instructions.length > 140 ? `${instructions.slice(0, 140)}…` : instructions}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubmitAssignment(a as OrgAssignmentRow);
+                      setSubmitText('');
+                      setSubmitFile(null);
+                      setSubmitOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                  >
+                    ✏️ Submit work
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-white/55">
+                After completing the work, submit here so your teacher can mark it.
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+    )}
+  </div>
+</div>
+
 
                 {learnerStudentId && (
                   <p className="mt-3 text-[10px] sm:text-[11px] text-slate-500 dark:text-white/55">

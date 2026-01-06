@@ -162,9 +162,11 @@ export async function createOrg(req, res) {
 }
 
 // IDP: idempotent create (UPSERT) so (org_id, course_id) won't 23505
+// IDP: idempotent create (UPSERT) so (org_id, course_id) won't 23505
 export async function createAssignment(req, res) {
   const userId = req.user?.id;
   const { orgId } = req.params;
+
   const {
     courseId,
     title_override,
@@ -175,35 +177,165 @@ export async function createAssignment(req, res) {
     org_class_label,
     orgClassLabel,
     class_label,
+    classLabel: classLabelBody,
     org_subject_key,
     orgSubjectKey,
     subject_key,
+    subject: subjectBody,
   } = req.body || {};
-  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  // ── Correlation / logging helpers ─────────────────────────
+  const DEBUG =
+    String(process.env.DEBUG_ORG_ASSIGNMENTS || '') === '1' ||
+    String(process.env.NODE_ENV || '') !== 'production';
+
+  let rid =
+    req.get?.('x-request-id') ||
+    req.headers?.['x-request-id'] ||
+    null;
+
+  if (!rid) {
+    try {
+      // ESM-safe random
+      rid = crypto.randomUUID?.() || crypto.randomBytes(6).toString('hex');
+    } catch {
+      rid = Math.random().toString(36).slice(2, 10);
+    }
+  }
+
+  const tag = (m) => `[org.createAssignment(ai) ${rid}] ${m}`;
+  const log = (...a) => DEBUG && console.log(tag(''), ...a);
+  const warn = (...a) => console.warn(tag('WARN'), ...a);
+  const errlog = (...a) => console.error(tag('ERROR'), ...a);
+
+  log('incoming', {
+    orgId,
+    userId,
+    bodyKeys: Object.keys(req.body || {}),
+    courseId,
+    title_override,
+    pass_mark,
+    timer_s,
+    max_attempts,
+    due_at,
+    org_class_label,
+    orgClassLabel,
+    class_label,
+    classLabelBody,
+    org_subject_key,
+    orgSubjectKey,
+    subject_key,
+    subjectBody,
+  });
+
+  if (!userId) {
+    warn('unauthorized');
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  if (!orgId) {
+    warn('bad request: missing orgId');
+    return res.status(400).json({ message: 'Missing orgId' });
+  }
+
+  if (!courseId) {
+    warn('bad request: missing courseId (AI assignment requires a courseId)');
+    return res.status(400).json({ message: 'Missing courseId' });
+  }
 
   // admin/instructor only
   const mem = await pool.query(
-    `SELECT role FROM org_memberships WHERE org_id=$1 AND user_id=$2 AND role IN ('owner','admin','instructor')`,
+    `SELECT role
+       FROM org_memberships
+      WHERE org_id=$1 AND user_id=$2
+        AND role IN ('owner','admin','instructor')
+      LIMIT 1`,
     [orgId, userId],
   );
-  if (!mem.rowCount) return res.status(403).json({ message: 'Forbidden' });
 
+  log('membership.check', {
+    rowCount: mem.rowCount,
+    role: mem.rows?.[0]?.role || null,
+  });
+
+  if (!mem.rowCount) {
+    warn('forbidden: not owner/admin/instructor', { orgId, userId });
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+
+  const classLabel =
+    (org_class_label ||
+      orgClassLabel ||
+      class_label ||
+      classLabelBody ||
+      null);
+
+  const subjectKey =
+    (org_subject_key ||
+      orgSubjectKey ||
+      subject_key ||
+      subjectBody ||
+      null);
+
+  // normalize (optional but helps debugging mismatches)
+  const classLabelNorm = classLabel ? String(classLabel).trim() : null;
+  const subjectKeyNorm = subjectKey ? String(subjectKey).trim() : null;
+
+  // used for invite links
   const invite = crypto.randomBytes(10).toString('base64url');
 
   try {
-    const classLabel =
-      org_class_label || orgClassLabel || class_label || req.body?.classLabel || null;
-    const subjectKey =
-      org_subject_key || orgSubjectKey || subject_key || req.body?.subject || null;
+    // show what already exists for this (org,course) — helps confirm upsert behavior
+    const pre = await pool.query(
+      `SELECT id, org_id, course_id, org_class_label, org_subject_key, invite_code, source_kind, created_at, updated_at
+         FROM org_course_assignments
+        WHERE org_id=$1 AND course_id=$2
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT 3`,
+      [orgId, courseId],
+    );
+
+    log('pre.existingRows', {
+      count: pre.rowCount,
+      rows: pre.rows?.map((r) => ({
+        id: r.id,
+        org_class_label: r.org_class_label,
+        org_subject_key: r.org_subject_key,
+        invite_code: r.invite_code,
+        source_kind: r.source_kind,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      })),
+    });
 
     const q = await pool.query(
       `
       INSERT INTO org_course_assignments
-        (org_id, course_id, title_override, pass_mark, timer_s, max_attempts, due_at, invite_code, created_by, created_at, updated_at, org_class_label, org_subject_key, source_kind)
+        (
+          org_id,
+          course_id,
+          title_override,
+          pass_mark,
+          timer_s,
+          max_attempts,
+          due_at,
+          invite_code,
+          created_by,
+          created_at,
+          updated_at,
+          org_class_label,
+          org_subject_key,
+          source_kind
+        )
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7,
-         COALESCE((SELECT invite_code FROM org_course_assignments WHERE org_id=$1 AND course_id=$2), $8),
-         $9, NOW(), NOW(), $10, $11, 'robot')
+        (
+          $1, $2, $3, $4, $5, $6, $7,
+          COALESCE(
+            (SELECT invite_code FROM org_course_assignments WHERE org_id=$1 AND course_id=$2),
+            $8
+          ),
+          $9, NOW(), NOW(), $10, $11, 'robot'
+        )
       ON CONFLICT (org_id, course_id) DO UPDATE
          SET title_override = COALESCE(EXCLUDED.title_override, org_course_assignments.title_override),
              pass_mark      = COALESCE(EXCLUDED.pass_mark,      org_course_assignments.pass_mark),
@@ -217,24 +349,50 @@ export async function createAssignment(req, res) {
       RETURNING *;
       `,
       [
-        orgId,
-        courseId,
-        title_override || null,
-        pass_mark || null,
-        timer_s || null,
-        max_attempts,
-        due_at || null,
-        invite,
-        userId,
-        classLabel || null,
-        subjectKey || null,
+        orgId, // $1
+        courseId, // $2
+        title_override || null, // $3
+        pass_mark ?? null, // $4
+        timer_s ?? null, // $5
+        max_attempts ?? 1, // $6
+        due_at || null, // $7
+        invite, // $8
+        userId, // $9
+        classLabelNorm, // $10
+        subjectKeyNorm, // $11
       ],
     );
 
     const row = q.rows[0];
-    return res.json(row); // FE builds /org/join/:invite
+
+    log('createdOrUpdated', {
+      id: row?.id,
+      org_id: row?.org_id,
+      course_id: row?.course_id,
+      source_kind: row?.source_kind,
+      org_class_label: row?.org_class_label,
+      org_subject_key: row?.org_subject_key,
+      invite_code: row?.invite_code,
+      due_at: row?.due_at,
+      created_by: row?.created_by,
+      created_at: row?.created_at,
+      updated_at: row?.updated_at,
+    });
+
+    return res.json(row);
   } catch (e) {
-    console.error('[createAssignment]', e);
+    errlog('failed', {
+      message: e?.message,
+      code: e?.code,
+      detail: e?.detail,
+      constraint: e?.constraint,
+      stack: e?.stack,
+      orgId,
+      courseId,
+      classLabel: classLabelNorm,
+      subjectKey: subjectKeyNorm,
+    });
+
     return res
       .status(500)
       .json({ message: 'Failed to create/update assignment' });
