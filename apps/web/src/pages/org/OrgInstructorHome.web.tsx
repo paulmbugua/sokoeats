@@ -1,5 +1,5 @@
 // apps/web/src/pages/org/OrgInstructorHome.web.tsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -8,7 +8,8 @@ import {
   updateOrgBranding,
   type OrgResp as Org,
   type OrgAssignmentRow,
-  getOrgAssignments as fetchOrgAssignments,
+  type OrgAssignmentSubmissionRow,
+  listOrgInstructorSubmissions,
 } from '@mytutorapp/shared/api/orgApi';
 import { resolveAsset } from './portal/OrgProfileShared.web';
 
@@ -373,49 +374,121 @@ const OrgInstructorHome: React.FC = () => {
   // ─────────────────────────────────────────────────────────
   // Recent submissions state
   // ─────────────────────────────────────────────────────────
-  const [recentAssignments, setRecentAssignments] = useState<OrgAssignmentRow[]>([]);
+  const [recentSubmissions, setRecentSubmissions] = useState<OrgAssignmentSubmissionRow[]>([]);
+  const [recentTotal, setRecentTotal] = useState(0);
   const [recentLoading, setRecentLoading] = useState(false);
   const [recentError, setRecentError] = useState<string | null>(null);
+  const [recentClass, setRecentClass] = useState('');
+  const [recentSearch, setRecentSearch] = useState('');
+  const [recentSearchDebounced, setRecentSearchDebounced] = useState('');
+  const [recentPage, setRecentPage] = useState(1);
+  const [recentPageSize, setRecentPageSize] = useState(10);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setRecentSearchDebounced(recentSearch.trim());
+      setRecentPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [recentSearch]);
 
   useEffect(() => {
     if (!backendUrl || !authToken || !org?.id) return;
 
     const orgId = org.id;
+    const offset = (recentPage - 1) * recentPageSize;
+    const viewerId = Number(shopUser?.id || currentUser?.id || 0);
+
+    let stop = false;
     setRecentLoading(true);
     setRecentError(null);
 
-    fetchOrgAssignments(backendUrl, authToken, orgId, { view: 'instructor' })
+    listOrgInstructorSubmissions(backendUrl, authToken, orgId, {
+      class_label: recentClass || undefined,
+      q: recentSearchDebounced || undefined,
+      limit: recentPageSize,
+      offset,
+    })
       .then((resp) => {
-        const rows = (resp?.data ?? []) as OrgAssignmentRow[];
-
-        const withSubs = rows.filter((row: any) => {
-          const count = row.submission_count ?? row.submissions_count ?? row.answers_count ?? 0;
-          return row.has_submission || row.hasSubmitted || count > 0;
+        const rows = (resp?.rows ?? []) as any[];
+        const safeRows = rows.filter((row) => {
+          if (row.assignment_created_by && viewerId && Number(row.assignment_created_by) !== viewerId) {
+            if (process.env.NODE_ENV !== 'production') {
+              // eslint-disable-next-line no-console
+              console.warn('[OrgInstructorHome] dropped submission not owned by instructor', row);
+            }
+            return false;
+          }
+          return true;
         });
 
-        withSubs.sort((a: any, b: any) => {
-          const aDate = new Date(
-            a.latest_submission_at || a.submitted_at || a.due_at || a.created_at || 0,
-          ).getTime();
-          const bDate = new Date(
-            b.latest_submission_at || b.submitted_at || b.due_at || b.created_at || 0,
-          ).getTime();
-          return bDate - aDate;
-        });
-
-        setRecentAssignments(withSubs.slice(0, 6));
+        if (!stop) {
+          setRecentSubmissions(safeRows);
+          setRecentTotal(Number(resp?.total ?? safeRows.length));
+        }
       })
       .catch((err: any) => {
-        // eslint-disable-next-line no-console
-        console.error('[OrgInstructorHome] recent submissions error', {
-          message: err?.message,
-          status: err?.response?.status,
-          data: err?.response?.data,
-        });
-        setRecentError('Failed to load recent submissions.');
+        if (!stop) {
+          // eslint-disable-next-line no-console
+          console.error('[OrgInstructorHome] recent submissions error', {
+            message: err?.message,
+            status: err?.response?.status,
+            data: err?.response?.data,
+          });
+          setRecentError('Failed to load recent submissions.');
+          setRecentSubmissions([]);
+          setRecentTotal(0);
+        }
       })
-      .finally(() => setRecentLoading(false));
-  }, [backendUrl, authToken, org?.id]);
+      .finally(() => {
+        if (!stop) setRecentLoading(false);
+      });
+
+    return () => {
+      stop = true;
+    };
+  }, [
+    backendUrl,
+    authToken,
+    org?.id,
+    recentClass,
+    recentSearchDebounced,
+    recentPage,
+    recentPageSize,
+    shopUser?.id,
+    currentUser?.id,
+  ]);
+
+  const recentClassOptions = useMemo(() => {
+    const s = new Set<string>();
+    recentSubmissions.forEach((row) => {
+      const cls =
+        pickString(
+          (row as any)?.class_label,
+          (row as any)?.learner_class_label,
+          (row as any)?.assignment_class_label,
+        ) || '';
+      if (cls) s.add(cls);
+    });
+    return Array.from(s);
+  }, [recentSubmissions]);
+
+  const recentPageCount = useMemo(() => {
+    return Math.max(1, Math.ceil((recentTotal || 0) / recentPageSize));
+  }, [recentTotal, recentPageSize]);
+
+  const recentRangeStart = recentTotal ? (recentPage - 1) * recentPageSize + 1 : 0;
+  const recentRangeEnd = recentTotal
+    ? Math.min(recentTotal, (recentPage - 1) * recentPageSize + recentSubmissions.length)
+    : 0;
+
+  useEffect(() => {
+    // Clamp page if total shrinks (e.g., filters applied) to keep offset valid
+    const maxPage = Math.max(1, Math.ceil((recentTotal || 0) / recentPageSize));
+    if (recentPage > maxPage) {
+      setRecentPage(maxPage);
+    }
+  }, [recentTotal, recentPageSize, recentPage]);
 
   const handleOpenSubmissions = useCallback(
     (assignmentId: string | number) => {
@@ -659,7 +732,50 @@ const OrgInstructorHome: React.FC = () => {
             </Link>
           </div>
 
-          <div className="mt-3">
+          <div className="mt-3 space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap gap-2 text-xs text-slate-700 dark:text-darkTextSecondary">
+                <select
+                  value={recentClass}
+                  onChange={(e) => {
+                    setRecentClass(e.target.value);
+                    setRecentPage(1);
+                  }}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-white/80"
+                >
+                  <option value="">All classes</option>
+                  {recentClassOptions.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  value={recentSearch}
+                  onChange={(e) => setRecentSearch(e.target.value)}
+                  placeholder="Search admission no…"
+                  className="w-56 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs shadow-sm outline-none focus:border-indigo-300 dark:border-white/10 dark:bg-white/5 dark:text-white/80 dark:focus:border-indigo-400/50"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-darkTextSecondary">
+                <span>Rows:</span>
+                <select
+                  value={recentPageSize}
+                  onChange={(e) => {
+                    setRecentPageSize(Number(e.target.value) || 10);
+                    setRecentPage(1);
+                  }}
+                  className="rounded-full bg-white dark:bg-[#0f1821] px-2 py-1 ring-1 ring-black/10 dark:ring-white/10"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+            </div>
+
             {recentLoading ? (
               <div className="text-sm text-slate-600 dark:text-darkTextSecondary">
                 Loading recent submissions…
@@ -668,56 +784,100 @@ const OrgInstructorHome: React.FC = () => {
               <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-900/20 dark:text-rose-100">
                 {recentError}
               </div>
-            ) : recentAssignments.length === 0 ? (
+            ) : recentSubmissions.length === 0 ? (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-white/70">
                 No submissions yet. Once learners start turning in work, their latest assignments will show up here.
               </div>
             ) : (
               <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-white/10 dark:bg-white/5">
                 <div className="divide-y divide-slate-200/70 dark:divide-white/10">
-                  {recentAssignments.map((a: any) => {
-                    const count = a.submission_count ?? a.submissions_count ?? a.answers_count ?? 0;
-                    const latest = a.latest_submission_at ?? a.submitted_at ?? null;
-                    const cls = a.org_class_label || a.class_label || 'All classes';
-                    const subjectKey = a.org_subject_key || a.subject_key || 'Subject';
-                    const isOpened = !!a.opened_at;
+                  {recentSubmissions.map((row: any) => {
+                    const admission =
+                      pickString(row.admission_number, row.learner_admission_code, row.student_id) || '—';
+                    const learnerName =
+                      pickString(
+                        row.learner_display_name,
+                        row.learner_name,
+                        row.learner_first_name,
+                        row.learner_email,
+                      ) || 'Learner';
+                    const classLabel =
+                      pickString(row.class_label, row.learner_class_label, row.assignment_class_label) || '—';
+                    const assignmentTitle =
+                      pickString(row.assignment_title, row.title_override, row.course_title) || 'Assignment';
+                    const submittedAt = row.submitted_at || row.ai_last_attempt_at || null;
+                    const statusLabel = row.status || 'Submitted';
+                    const assignmentId = row.assignment_id || row.assignmentId || null;
 
                     return (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() => handleOpenSubmissions(a.id)}
-                        className="w-full text-left px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-white/5 transition flex items-start justify-between gap-3"
+                      <div
+                        key={`${row.id || row.assignment_id || learnerName}-${submittedAt || 'row'}`}
+                        className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-900 dark:text-white/90 truncate">
-                            {a.title || a.course_title || 'Untitled assignment'}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="text-sm font-semibold text-slate-900 dark:text-white/90 truncate">
+                              {assignmentTitle}
+                            </div>
+                            <Badge tone="indigo">{classLabel}</Badge>
                           </div>
-                          <div className="mt-0.5 text-[11px] text-slate-600 dark:text-white/60 truncate">
-                            {cls} • {subjectKey}
-                            {latest ? (
-                              <span className="text-slate-500 dark:text-white/45"> • {fmtWhen(latest)}</span>
-                            ) : null}
+
+                          <div className="text-xs text-slate-600 dark:text-white/60 truncate">
+                            {learnerName} • Adm {admission}
                           </div>
-                          <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500 dark:text-white/50">
-                            <Badge tone={isOpened ? 'emerald' : 'rose'}>
-                              {isOpened ? 'Opened' : 'New'}
-                            </Badge>
+
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-white/50">
+                            <Badge tone="emerald">{statusLabel}</Badge>
+                            <span>{submittedAt ? fmtWhen(submittedAt) : 'Not timestamped'}</span>
                           </div>
                         </div>
 
-                        <div className="shrink-0 text-right">
-                          <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
-                            {count}
+                        <div className="flex items-center gap-2 self-start sm:self-center">
+                          <div className="text-right text-[11px] text-slate-500 dark:text-white/60">
+                            <div className="text-sm font-semibold text-slate-900 dark:text-white/90">{admission}</div>
+                            <div>Admission</div>
                           </div>
-                          <div className="text-[10px] text-slate-500 dark:text-white/50">submissions</div>
+                          <button
+                            type="button"
+                            onClick={() => assignmentId && handleOpenSubmissions(assignmentId)}
+                            className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-sm shadow-indigo-600/25 transition"
+                          >
+                            View
+                          </button>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
               </div>
             )}
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-600 dark:text-darkTextSecondary">
+              <div>
+                Showing {recentRangeStart}-{recentRangeEnd} of {recentTotal}
+              </div>
+              <div className="inline-flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRecentPage((p) => Math.max(1, p - 1))}
+                  disabled={recentPage <= 1}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40 dark:border-white/10 dark:bg-white/5"
+                >
+                  ← Prev
+                </button>
+                <span>
+                  Page {recentPage} / {recentPageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setRecentPage((p) => Math.min(recentPageCount, p + 1))}
+                  disabled={recentPage >= recentPageCount || recentRangeEnd >= recentTotal}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40 dark:border-white/10 dark:bg-white/5"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 

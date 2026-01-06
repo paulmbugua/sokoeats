@@ -765,15 +765,36 @@ export async function getOrgAssignmentSubmissions(
   backendUrl: string,
   token: string,
   orgId: string,
-  assignmentId: string | number
-): Promise<{ ok: boolean; assignment: any; submissions: OrgAssignmentSubmissionRow[] }> {
-  const url = `${baseUrl(
-    backendUrl
-  )}/api/orgs/${encodeURIComponent(orgId)}/assignments/${encodeURIComponent(
-    String(assignmentId)
-  )}/submissions`;
+  assignmentId: string | number,
+  opts?: { class_label?: string; q?: string; limit?: number; offset?: number }
+): Promise<{ ok: boolean; assignment: any; submissions: OrgAssignmentSubmissionRow[]; rows: OrgAssignmentSubmissionRow[]; total: number; limit: number; offset: number }> {
+  const url = new URL(
+    `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/assignments/${encodeURIComponent(
+      String(assignmentId)
+    )}/submissions`,
+  );
+  if (opts?.class_label) url.searchParams.set('class_label', opts.class_label);
+  if (opts?.q) url.searchParams.set('q', opts.q);
+  if (opts?.limit) url.searchParams.set('limit', String(opts.limit));
+  if (opts?.offset) url.searchParams.set('offset', String(opts.offset));
 
-  const res = await axios.get(url, { headers: authHeaders(token) });
+  const res = await axios.get(url.toString(), { headers: authHeaders(token) });
+  return res.data;
+}
+
+export async function listOrgInstructorSubmissions(
+  backendUrl: string,
+  token: string,
+  orgId: string,
+  opts?: { class_label?: string; q?: string; limit?: number; offset?: number }
+): Promise<{ ok: boolean; rows: OrgAssignmentSubmissionRow[]; total: number; limit: number; offset: number }> {
+  const url = new URL(`${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/instructor/submissions`);
+  if (opts?.class_label) url.searchParams.set('class_label', opts.class_label);
+  if (opts?.q) url.searchParams.set('q', opts.q);
+  if (opts?.limit) url.searchParams.set('limit', String(opts.limit));
+  if (opts?.offset) url.searchParams.set('offset', String(opts.offset));
+
+  const res = await axios.get(url.toString(), { headers: authHeaders(token) });
   return res.data;
 }
 
