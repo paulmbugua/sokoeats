@@ -1066,16 +1066,16 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
                 onPress={() => navigation.navigate('OrgAttendance')}
               />
 
-              <IconTileNative
-                palette={palette}
-                emoji="💳"
-                title="Fees"
-                subtitle="Balances"
-                tone="emerald"
-                disabled={!hasFeeAccess}
-                badge={!hasFeeAccess ? 'No access' : undefined}
-                onPress={() => navigation.navigate('OrgFees')}
-              />
+              {hasFeeAccess ? (
+                <IconTileNative
+                  palette={palette}
+                  emoji="💳"
+                  title="Fees"
+                  subtitle="Balances"
+                  tone="emerald"
+                  onPress={() => navigation.navigate('OrgFees')}
+                />
+              ) : null}
 
               <IconTileNative
                 palette={palette}
@@ -1105,7 +1105,7 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
                 title="Clubs"
                 subtitle="Manage"
                 tone="slate"
-                onPress={() => navigation.navigate('OrgElearnPortal', { tab: 'clubs', from: 'instructor' })}
+                onPress={() => navigation.navigate('OrgToolsClubs')}
               />
 
               <IconTileNative
@@ -1114,7 +1114,7 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
                 title="Sports"
                 subtitle="Publish"
                 tone="amber"
-                onPress={() => navigation.navigate('OrgElearnPortal', { tab: 'sports', from: 'instructor' })}
+                onPress={() => navigation.navigate('OrgToolsSports')}
               />
             </ToolsGrid>
           </View>
@@ -1135,6 +1135,107 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
               </Text>
             </View>
           ) : null}
+        </Animated.View>
+
+        {/* RECENT SUBMISSIONS (assignments) */}
+        <Animated.View entering={FadeInDown.delay(160).duration(320)} style={palette.surface(tw`mt-3`)}>
+          <View style={tw`flex-row items-center justify-between gap-2`}>
+            <View style={tw`flex-1`}> 
+              <Text style={[tw`text-base font-semibold`, { color: palette.text }]}>Recent submissions</Text>
+              <Text style={[tw`mt-1 text-xs`, { color: palette.textMuted }]}> 
+                Quickly jump to what learners submitted most recently.
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => navigation.navigate('OrgElearnPortal', { tab: 'assign', from: 'instructor' })}
+              style={[
+                tw`px-3 py-2 rounded-full border`,
+                { borderColor: palette.border, backgroundColor: palette.softCard },
+              ]}
+            >
+              <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>Open portal →</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={tw`mt-3`}>
+            {recentLoading ? (
+              <View style={tw`flex-row items-center`}> 
+                <ActivityIndicator />
+                <Text style={[tw`ml-2 text-xs`, { color: palette.textMuted }]}>Loading recent submissions…</Text>
+              </View>
+            ) : recentError ? (
+              <View
+                style={[
+                  tw`p-3 rounded-2xl border`,
+                  {
+                    borderColor: palette.isDark ? 'rgba(248,113,113,0.35)' : 'rgba(248,113,113,0.30)',
+                    backgroundColor: palette.isDark ? 'rgba(248,113,113,0.10)' : 'rgba(254,226,226,0.6)',
+                  },
+                ]}
+              >
+                <Text style={[tw`text-xs`, { color: palette.text }]}>{recentError}</Text>
+              </View>
+            ) : recentAssignments.length === 0 ? (
+              <View style={palette.softSurface(tw`p-3`)}>
+                <Text style={[tw`text-xs`, { color: palette.textMuted }]}> 
+                  No submissions yet. Once learners start turning in work, their latest assignments will show up here.
+                </Text>
+              </View>
+            ) : (
+              <View style={[tw`rounded-2xl overflow-hidden border`, { borderColor: palette.border }]}> 
+                {recentAssignments.map((a: any, idx: number) => {
+                  const count = a.submission_count ?? a.submissions_count ?? a.answers_count ?? 0;
+                  const latest = a.latest_submission_at ?? a.submitted_at ?? null;
+                  const cls = a.org_class_label || a.class_label || 'All classes';
+                  const subjectKey = a.org_subject_key || a.subject_key || 'Subject';
+                  const isOpened = !!a.opened_at;
+
+                  const divider = idx === recentAssignments.length - 1 ? null : (
+                    <View key={`divider-${a.id || idx}`} style={[tw`h-px`, { backgroundColor: palette.border }]} />
+                  );
+
+                  return (
+                    <View key={a.id || idx}>
+                      <TouchableOpacity
+                        onPress={() => handleOpenSubmissions(a.id)}
+                        style={[
+                          tw`px-3 py-3 flex-row items-start justify-between gap-3`,
+                          { backgroundColor: palette.softCard },
+                        ]}
+                        activeOpacity={0.8}
+                      >
+                        <View style={tw`flex-1 min-w-0`}>
+                          <Text
+                            style={[tw`text-sm font-semibold`, { color: palette.text }]}
+                            numberOfLines={1}
+                          >
+                            {a.title || a.course_title || 'Untitled assignment'}
+                          </Text>
+                          <Text style={[tw`mt-0.5 text-[11px]`, { color: palette.textMuted }]} numberOfLines={1}>
+                            {cls} • {subjectKey}
+                            {latest ? <Text style={{ color: palette.textSubtle }}> • {fmtWhen(latest)}</Text> : null}
+                          </Text>
+
+                          <View style={tw`mt-1 flex-row items-center gap-2`}>
+                            <Badge tone={isOpened ? 'emerald' : 'rose'} palette={palette}>
+                              {isOpened ? 'Opened' : 'New'}
+                            </Badge>
+                          </View>
+                        </View>
+
+                        <View style={tw`items-end`}> 
+                          <Text style={[tw`text-sm font-bold`, { color: '#059669' }]}>{count}</Text>
+                          <Text style={[tw`text-[10px]`, { color: palette.textSubtle }]}>submissions</Text>
+                        </View>
+                      </TouchableOpacity>
+                      {divider}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
         </Animated.View>
 
         {/* RECENT SUBMISSIONS + SIGNATURE + QUICK INVITE blocks remain exactly as you already had */}

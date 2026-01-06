@@ -393,7 +393,7 @@ const OrgElearnPortalNative: React.FC = () => {
   const { backendUrl, token, orgToken } = useShopContext() as any;
   const authToken: string | undefined = orgToken || token;
 
-  const { role } = (useOrg?.() ?? {}) as { org?: Org | null; role?: string | null };
+  const { role, membership } = (useOrg?.() ?? {}) as { org?: Org | null; role?: string | null; membership?: any };
   const isInstructor = role === 'instructor';
 
   const route = useRoute<RouteProp<MainStackParamList, 'OrgElearnPortal'>>();
@@ -439,6 +439,10 @@ const openExamResults = useCallback(() => {
   const tierMeta = ORG_TIERS[tier];
   const isProTier = tier === 'pro' || tier === 'enterprise';
   const seatsMax = tierMeta.seats;
+
+  const primaryMembership = useMemo(() => (Array.isArray(membership) ? membership[0] : membership), [membership]);
+  const hasFeeAccess =
+    isProTier && (role || '').toLowerCase() === 'instructor' && (primaryMembership as any)?.can_access_fees === true;
 
   const [seatsUsed, setSeatsUsed] = useState<number>(0);
   const [showProModal, setShowProModal] = useState(false);
@@ -3225,13 +3229,17 @@ if (explicitTab) setTab(explicitTab);
                       locked: !isProTier,
                       onPress: () => navOrWeb('OrgAttendance'),
                     },
-                    {
-                      emoji: '💳',
-                      title: 'Fees',
-                      subtitle: 'Balances',
-                      locked: !isProTier,
-                      onPress: () => navOrWeb('OrgFees'),
-                    },
+                    ...(hasFeeAccess
+                      ? [
+                          {
+                            emoji: '💳',
+                            title: 'Fees',
+                            subtitle: 'Balances',
+                            locked: false,
+                            onPress: () => navOrWeb('OrgFees'),
+                          },
+                        ]
+                      : []),
                     {
                       emoji: '📣',
                       title: 'Announcements',
@@ -3250,15 +3258,15 @@ if (explicitTab) setTab(explicitTab);
                       emoji: '🤝',
                       title: 'Clubs',
                       subtitle: 'Manage',
-                      locked: !isProTier,
-                      onPress: () => navOrWeb('OrgClubs', undefined, '/org/clubs'),
+                      locked: false,
+                      onPress: () => navOrWeb('OrgToolsClubs', undefined, '/org/tools/clubs'),
                     },
                     {
                       emoji: '🏆',
                       title: 'Sports',
                       subtitle: 'Publish',
-                      locked: !isProTier,
-                      onPress: () => navOrWeb('OrgSports', undefined, '/org/sports'),
+                      locked: false,
+                      onPress: () => navOrWeb('OrgToolsSports', undefined, '/org/tools/sports'),
                     },
                     ...(canBrandingRole
                       ? [

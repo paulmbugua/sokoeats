@@ -287,6 +287,28 @@ const OrgAttendancePage: React.FC = () => {
   // filters (left list)
   const [filters, setFilters] = useState({ start: '', end: '', class_label: '' });
 
+  // pagination (sessions list)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const totalPages = useMemo(() => {
+    if (!sessions?.length) return 1;
+    return Math.max(1, Math.ceil(sessions.length / pageSize));
+  }, [sessions?.length, pageSize]);
+
+  const paginatedSessions = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return (sessions || []).slice(start, start + pageSize);
+  }, [sessions, page, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters.start, filters.end, filters.class_label]);
+
   // selection + editor
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedSession, setSelectedSession] = useState<any | null>(null);
@@ -363,20 +385,18 @@ const OrgAttendancePage: React.FC = () => {
 
   const markedCount = useMemo(() => counts.present + counts.absent + counts.late + counts.excused, [counts]);
 
- const loadList = useCallback(async () => {
-  if (!ready) return;
-  await fetchSessions({
-    start: filters.start || undefined,
-    end: filters.end || undefined,
-    class_label: filters.class_label || undefined,
-    limit: 50,
-    offset: 0,
-  });
-}, [ready, fetchSessions, filters.start, filters.end, filters.class_label]);
+  const loadList = useCallback(async () => {
+    if (!ready) return;
+    await fetchSessions({
+      start: filters.start || undefined,
+      end: filters.end || undefined,
+      class_label: filters.class_label || undefined,
+    });
+  }, [ready, fetchSessions, filters.start, filters.end, filters.class_label]);
 
-useEffect(() => {
-  loadList();
-}, [loadList]);
+  useEffect(() => {
+    loadList();
+  }, [loadList]);
 
   const openSession = async (idRaw: any) => {
     const id = Number(idRaw);
@@ -759,12 +779,36 @@ useEffect(() => {
 
             {/* Filters + sessions list */}
             <div className={card}>
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Sessions</div>
-                <div className="text-xs text-slate-500">
-                  {sessionsLoading ? 'Loading…' : `${sessions.length} shown`}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Sessions</div>
+
+              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-300">
+                <div>
+                  {sessionsLoading
+                    ? 'Loading…'
+                    : `Showing ${sessions.length ? (page - 1) * pageSize + 1 : 0}–${Math.min(
+                        page * pageSize,
+                        sessions.length,
+                      )} of ${sessions.length}`}
+                </div>
+
+                <div className="inline-flex items-center gap-2">
+                  <span>Rows:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPage(1);
+                      setPageSize(Number(e.target.value) || 10);
+                    }}
+                    className="rounded-full bg-white dark:bg-[#0f1821] px-2 py-1 ring-1 ring-black/10 dark:ring-white/10"
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                  </select>
                 </div>
               </div>
+            </div>
 
               <div className="mt-3 grid gap-3 md:grid-cols-3">
                 <Field
@@ -803,7 +847,7 @@ useEffect(() => {
                 {!sessionsLoading && !sessions.length ? (
                   <p className="py-3 text-sm text-slate-500">No sessions yet.</p>
                 ) : (
-                  sessions.map((s: any) => (
+                  paginatedSessions.map((s: any) => (
                     <button
                       type="button"
                       key={String(s.id)}
@@ -828,6 +872,42 @@ useEffect(() => {
                   ))
                 )}
               </div>
+
+              {!sessionsLoading && sessions.length ? (
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[11px] sm:text-xs text-[#49739c] dark:text-darkTextSecondary">
+                  <span>
+                    Page {page} of {totalPages}
+                  </span>
+
+                  {totalPages > 1 ? (
+                    <div className="inline-flex items-center gap-1 rounded-full bg-[#e7edf4] dark:bg-[#172534] px-1.5 py-1">
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
+                          page === 1 ? 'opacity-40 cursor-default' : 'hover:bg-white/70 dark:hover:bg-white/10'
+                        }`}
+                      >
+                        ‹ Prev
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages}
+                        className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
+                          page === totalPages
+                            ? 'opacity-40 cursor-default'
+                            : 'hover:bg-white/70 dark:hover:bg-white/10'
+                        }`}
+                      >
+                        Next ›
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
 

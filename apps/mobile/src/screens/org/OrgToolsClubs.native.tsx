@@ -345,6 +345,9 @@ const OrgToolsClubsNative: React.FC = () => {
   const [mode, setMode] = useState<'all' | 'mine'>('all');
   const [q, setQ] = useState('');
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   // My clubs (load only on Mine tab, using identity token)
   const [myClubsLocal, setMyClubsLocal] = useState<any[]>([]);
   const [myClubsLoading, setMyClubsLoading] = useState(false);
@@ -434,6 +437,24 @@ const OrgToolsClubsNative: React.FC = () => {
     if (!needle) return base;
     return base.filter((c) => String(c?.name || '').toLowerCase().includes(needle));
   }, [clubs, mode, q, myClubsLocal]);
+
+  const totalPages = useMemo(() => {
+    if (!list.length) return 1;
+    return Math.max(1, Math.ceil(list.length / pageSize));
+  }, [list.length, pageSize]);
+
+  const paginatedList = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return list.slice(start, start + pageSize);
+  }, [list, page, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [q, mode]);
 
   const instructorHint = useMemo(() => {
     const s = String(error || '').toLowerCase();
@@ -870,6 +891,35 @@ const OrgToolsClubsNative: React.FC = () => {
             </View>
           ) : null}
 
+          <View style={tw`mt-3 flex-row items-center justify-between`}>
+            <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+              {loading
+                ? 'Loading…'
+                : `Showing ${list.length ? (page - 1) * pageSize + 1 : 0}-${Math.min(
+                    page * pageSize,
+                    list.length,
+                  )} of ${list.length}`}
+            </Text>
+
+            <View style={tw`flex-row items-center gap-2`}>
+              <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>Rows:</Text>
+              <View style={tw`flex-row gap-2`}>
+                {[10, 25, 50].map((n) => (
+                  <Chip
+                    key={n}
+                    label={String(n)}
+                    active={pageSize === n}
+                    onPress={() => {
+                      setPage(1);
+                      setPageSize(n);
+                    }}
+                    theme={theme}
+                  />
+                ))}
+              </View>
+            </View>
+          </View>
+
           <View style={tw`mt-4`}>
             {loading ? (
               <View style={tw`py-3 flex-row items-center gap-2`}>
@@ -882,7 +932,7 @@ const OrgToolsClubsNative: React.FC = () => {
               </Text>
             ) : (
               <View style={tw`gap-3`}>
-                {list.map((c: any) => (
+                {paginatedList.map((c: any) => (
                   <View
                     key={String(c.id)}
                     style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#0b1620] p-3`}
@@ -962,6 +1012,30 @@ const OrgToolsClubsNative: React.FC = () => {
               </View>
             )}
           </View>
+
+          {!loading && list.length ? (
+            <View style={tw`mt-3 flex-row items-center justify-between`}>
+              <Pressable
+                onPress={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                style={tw`px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] ${page === 1 ? 'opacity-50' : ''}`}
+              >
+                <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>‹ Prev</Text>
+              </Pressable>
+
+              <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+                Page {page} of {totalPages}
+              </Text>
+
+              <Pressable
+                onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                style={tw`px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] ${page === totalPages ? 'opacity-50' : ''}`}
+              >
+                <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>Next ›</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60 mt-4`}>
             Note: Clubs endpoints require Pro tier + Org Instructor. If you’re not an instructor, the API returns 403.
