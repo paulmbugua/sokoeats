@@ -11,6 +11,7 @@ import {
   Alert,
   Share,
   TextInput,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -31,8 +32,8 @@ import {
   getMyOrgOrBootstrap,
   getOrgUsage,
   createOrgAssignment,
-  getOrgAssignments,
   updateOrgBranding,
+  listOrgInstructorSubmissions,
 } from '@mytutorapp/shared/api/orgApi';
 import { uploadAsset } from '@mytutorapp/shared/api';
 
@@ -403,9 +404,15 @@ const OrgInstructorHomeNative: React.FC = () => {
   const [classLabel, setClassLabel] = useState('');
 
   // Recent submissions
-  const [recentAssignments, setRecentAssignments] = useState<any[]>([]);
+  const [recentSubmissions, setRecentSubmissions] = useState<any[]>([]);
+  const [recentTotal, setRecentTotal] = useState(0);
   const [recentLoading, setRecentLoading] = useState(false);
   const [recentError, setRecentError] = useState<string | null>(null);
+  const [recentClass, setRecentClass] = useState('');
+  const [recentSearch, setRecentSearch] = useState('');
+  const [recentSearchDebounced, setRecentSearchDebounced] = useState('');
+  const [recentPage, setRecentPage] = useState(1);
+  const [recentPageSize, setRecentPageSize] = useState(10);
 
   const isProTier =
     String(tier || '').toLowerCase() === 'pro' || String(tier || '').toLowerCase() === 'enterprise';
@@ -579,7 +586,15 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
     };
   }, [backendUrl, orgToken]);
 
-  // Recent submissions (same filter/sort logic as web)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setRecentSearchDebounced(recentSearch.trim());
+      setRecentPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [recentSearch]);
+
+  // Recent submissions feed scoped to this instructor
   useEffect(() => {
     if (!backendUrl || !authToken || !orgId) return;
 
@@ -587,30 +602,44 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
     setRecentLoading(true);
     setRecentError(null);
 
+    const offset = (recentPage - 1) * recentPageSize;
+    const viewerId = Number((shopUser || currentUser || orgUser)?.id || 0);
+
     (async () => {
       try {
-        const resp: any = await getOrgAssignments(backendUrl, authToken, orgId, { view: 'instructor' } as any);
-        const rows: any[] = (resp?.data ?? resp ?? []) as any[];
-
-        const withSubs = rows.filter((row: any) => {
-          const count = row.submission_count ?? row.submissions_count ?? row.answers_count ?? 0;
-          return row.has_submission || row.hasSubmitted || count > 0;
+        const resp: any = await listOrgInstructorSubmissions(backendUrl, authToken, orgId, {
+          class_label: recentClass || undefined,
+          q: recentSearchDebounced || undefined,
+          limit: recentPageSize,
+          offset,
         });
 
-        withSubs.sort((a: any, b: any) => {
-          const aDate = new Date(a.latest_submission_at || a.submitted_at || a.due_at || a.created_at || 0).getTime();
-          const bDate = new Date(b.latest_submission_at || b.submitted_at || b.due_at || b.created_at || 0).getTime();
-          return bDate - aDate;
+        const rows: any[] = Array.isArray(resp?.rows) ? resp.rows : [];
+        const safeRows = rows.filter((row) => {
+          if (row.assignment_created_by && viewerId && Number(row.assignment_created_by) !== viewerId) {
+            if (__DEV__) {
+              console.warn('[OrgInstructorHomeNative] dropped submission not owned by instructor', row);
+            }
+            return false;
+          }
+          return true;
         });
 
-        if (!stop) setRecentAssignments(withSubs.slice(0, 6));
+        if (!stop) {
+          setRecentSubmissions(safeRows);
+          setRecentTotal(Number(resp?.total ?? safeRows.length));
+        }
       } catch (err: any) {
-        console.warn('[OrgInstructorHomeNative] recent submissions error', {
-          message: err?.message,
-          status: err?.response?.status,
-          data: err?.response?.data,
-        });
-        if (!stop) setRecentError('Failed to load recent submissions.');
+        if (!stop) {
+          console.warn('[OrgInstructorHomeNative] recent submissions error', {
+            message: err?.message,
+            status: err?.response?.status,
+            data: err?.response?.data,
+          });
+          setRecentError('Failed to load recent submissions.');
+          setRecentSubmissions([]);
+          setRecentTotal(0);
+        }
       } finally {
         if (!stop) setRecentLoading(false);
       }
@@ -619,7 +648,18 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
     return () => {
       stop = true;
     };
-  }, [backendUrl, authToken, orgId]);
+  }, [
+    backendUrl,
+    authToken,
+    orgId,
+    recentClass,
+    recentSearchDebounced,
+    recentPage,
+    recentPageSize,
+    shopUser,
+    currentUser,
+    orgUser,
+  ]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -629,6 +669,36 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
     }
     navigation.replace('InstitutionLogin', { logoutOrg: true });
   }, [orgLogout, navigation]);
+
+  const recentClassOptions = useMemo(() => {
+    const set = new Set<string>();
+    recentSubmissions.forEach((row) => {
+      const cls =
+        pickString(
+          (row as any)?.class_label,
+          (row as any)?.learner_class_label,
+          (row as any)?.assignment_class_label,
+        ) || '';
+      if (cls) set.add(cls);
+    });
+    return Array.from(set);
+  }, [recentSubmissions]);
+
+  const recentPageCount = useMemo(() => {
+    return Math.max(1, Math.ceil((recentTotal || 0) / recentPageSize));
+  }, [recentTotal, recentPageSize]);
+
+  const recentRangeStart = recentTotal ? (recentPage - 1) * recentPageSize + 1 : 0;
+  const recentRangeEnd = recentTotal
+    ? Math.min(recentTotal, (recentPage - 1) * recentPageSize + recentSubmissions.length)
+    : 0;
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil((recentTotal || 0) / recentPageSize));
+    if (recentPage > maxPage) {
+      setRecentPage(maxPage);
+    }
+  }, [recentTotal, recentPageSize, recentPage]);
 
   const onCreateInvite = useCallback(async () => {
     if (!orgId || !orgToken) return;
@@ -1159,15 +1229,75 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
           </View>
 
           <View style={tw`mt-3`}>
+            <TextInput
+              value={recentSearch}
+              onChangeText={(v) => setRecentSearch(v)}
+              placeholder="Search admission no…"
+              placeholderTextColor={palette.textSubtle}
+              style={[palette.input(), tw`text-xs`, { color: palette.text }]}
+            />
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-2`}>
+              <View style={tw`flex-row items-center gap-2`}>
+                {[{ label: 'All classes', value: '' }, ...recentClassOptions.map((c) => ({ label: c, value: c }))].map(
+                  (opt) => {
+                    const active = opt.value === recentClass;
+                    return (
+                      <TouchableOpacity
+                        key={opt.label}
+                        onPress={() => {
+                          setRecentClass(opt.value);
+                          setRecentPage(1);
+                        }}
+                        style={[
+                          tw`px-3 py-1.5 rounded-full border`,
+                          {
+                            borderColor: active ? '#6366f1' : palette.border,
+                            backgroundColor: active ? palette.chipBg('#6366f1') : palette.softCard,
+                          },
+                        ]}
+                      >
+                        <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  },
+                )}
+              </View>
+            </ScrollView>
+
+            <View style={tw`flex-row items-center gap-2 mt-2`}>
+              {[10, 25, 50].map((size) => {
+                const active = size === recentPageSize;
+                return (
+                  <TouchableOpacity
+                    key={size}
+                    onPress={() => {
+                      setRecentPageSize(size);
+                      setRecentPage(1);
+                    }}
+                    style={[
+                      tw`px-2 py-1 rounded-full border`,
+                      {
+                        borderColor: active ? '#6366f1' : palette.border,
+                        backgroundColor: active ? palette.chipBg('#6366f1') : palette.softCard,
+                      },
+                    ]}
+                  >
+                    <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>{size} rows</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             {recentLoading ? (
-              <View style={tw`flex-row items-center`}> 
+              <View style={tw`flex-row items-center mt-2`}>
                 <ActivityIndicator />
                 <Text style={[tw`ml-2 text-xs`, { color: palette.textMuted }]}>Loading recent submissions…</Text>
               </View>
             ) : recentError ? (
               <View
                 style={[
-                  tw`p-3 rounded-2xl border`,
+                  tw`p-3 mt-2 rounded-2xl border`,
                   {
                     borderColor: palette.isDark ? 'rgba(248,113,113,0.35)' : 'rgba(248,113,113,0.30)',
                     backgroundColor: palette.isDark ? 'rgba(248,113,113,0.10)' : 'rgba(254,226,226,0.6)',
@@ -1176,74 +1306,108 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
               >
                 <Text style={[tw`text-xs`, { color: palette.text }]}>{recentError}</Text>
               </View>
-            ) : recentAssignments.length === 0 ? (
-              <View style={palette.softSurface(tw`p-3`)}>
-                <Text style={[tw`text-xs`, { color: palette.textMuted }]}> 
+            ) : recentSubmissions.length === 0 ? (
+              <View style={palette.softSurface(tw`p-3 mt-2`)}>
+                <Text style={[tw`text-xs`, { color: palette.textMuted }]}>
                   No submissions yet. Once learners start turning in work, their latest assignments will show up here.
                 </Text>
               </View>
             ) : (
-              <View style={[tw`rounded-2xl overflow-hidden border`, { borderColor: palette.border }]}> 
-                {recentAssignments.map((a: any, idx: number) => {
-                  const count = a.submission_count ?? a.submissions_count ?? a.answers_count ?? 0;
-                  const latest = a.latest_submission_at ?? a.submitted_at ?? null;
-                  const cls = a.org_class_label || a.class_label || 'All classes';
-                  const subjectKey = a.org_subject_key || a.subject_key || 'Subject';
-                  const isOpened = !!a.opened_at;
+              <View style={[tw`mt-2 rounded-2xl overflow-hidden border`, { borderColor: palette.border }]}>
+                {recentSubmissions.map((row: any, idx: number) => {
+                  const admission =
+                    pickString(row.admission_number, row.learner_admission_code, row.student_id) || '—';
+                  const learnerName =
+                    pickString(row.learner_display_name, row.learner_name, row.learner_first_name, row.learner_email) ||
+                    'Learner';
+                  const classLabel = pickString(row.class_label, row.learner_class_label, row.assignment_class_label) || '—';
+                  const assignmentTitle =
+                    pickString(row.assignment_title, row.title_override, row.course_title) || 'Assignment';
+                  const submittedAt = row.submitted_at || row.ai_last_attempt_at || null;
+                  const statusLabel = row.status || 'Submitted';
+                  const assignmentId = row.assignment_id || row.assignmentId || null;
 
-                  const divider = idx === recentAssignments.length - 1 ? null : (
-                    <View key={`divider-${a.id || idx}`} style={[tw`h-px`, { backgroundColor: palette.border }]} />
+                  const divider = idx === recentSubmissions.length - 1 ? null : (
+                    <View key={`divider-${row.id || idx}`} style={[tw`h-px`, { backgroundColor: palette.border }]} />
                   );
 
                   return (
-                    <View key={a.id || idx}>
-                      <TouchableOpacity
-                        onPress={() => handleOpenSubmissions(a.id)}
+                    <View key={row.id || idx}>
+                      <View
                         style={[
-                          tw`px-3 py-3 flex-row items-start justify-between gap-3`,
+                          tw`px-3 py-3`,
                           { backgroundColor: palette.softCard },
                         ]}
-                        activeOpacity={0.8}
                       >
-                        <View style={tw`flex-1 min-w-0`}>
-                          <Text
-                            style={[tw`text-sm font-semibold`, { color: palette.text }]}
-                            numberOfLines={1}
-                          >
-                            {a.title || a.course_title || 'Untitled assignment'}
-                          </Text>
-                          <Text style={[tw`mt-0.5 text-[11px]`, { color: palette.textMuted }]} numberOfLines={1}>
-                            {cls} • {subjectKey}
-                            {latest ? <Text style={{ color: palette.textSubtle }}> • {fmtWhen(latest)}</Text> : null}
-                          </Text>
+                        <View style={tw`flex-row items-center justify-between gap-2`}>
+                          <View style={tw`flex-1 min-w-0`}>
+                            <Text style={[tw`text-sm font-semibold`, { color: palette.text }]} numberOfLines={1}>
+                              {assignmentTitle}
+                            </Text>
+                            <Text style={[tw`text-xs mt-0.5`, { color: palette.textMuted }]} numberOfLines={1}>
+                              {learnerName} • Adm {admission}
+                            </Text>
 
-                          <View style={tw`mt-1 flex-row items-center gap-2`}>
-                            <Badge tone={isOpened ? 'emerald' : 'rose'} palette={palette}>
-                              {isOpened ? 'Opened' : 'New'}
-                            </Badge>
+                            <View style={tw`flex-row items-center flex-wrap gap-2 mt-2`}>
+                              <Badge tone="indigo" palette={palette}>
+                                {classLabel}
+                              </Badge>
+                              <Badge tone="emerald" palette={palette}>
+                                {statusLabel}
+                              </Badge>
+                              <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
+                                {submittedAt ? fmtWhen(submittedAt) : 'Not timestamped'}
+                              </Text>
+                            </View>
                           </View>
                         </View>
 
-                        <View style={tw`items-end`}> 
-                          <Text style={[tw`text-sm font-bold`, { color: '#059669' }]}>{count}</Text>
-                          <Text style={[tw`text-[10px]`, { color: palette.textSubtle }]}>submissions</Text>
-                        </View>
-                      </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => assignmentId && handleOpenSubmissions(assignmentId)}
+                          style={[tw`mt-3 self-start px-3 py-2 rounded-full`, { backgroundColor: '#6366f1' }]}
+                        >
+                          <Text style={[tw`text-[11px] font-semibold`, { color: 'white' }]}>View submission</Text>
+                        </TouchableOpacity>
+                      </View>
                       {divider}
                     </View>
                   );
                 })}
               </View>
             )}
+
+            <View style={tw`mt-3 flex-row items-center justify-between`}>
+              <Text style={[tw`text-[11px]`, { color: palette.textMuted }]}>
+                Showing {recentRangeStart}-{recentRangeEnd} of {recentTotal}
+              </Text>
+              <View style={tw`flex-row items-center gap-2`}>
+                <TouchableOpacity
+                  onPress={() => setRecentPage((p) => Math.max(1, p - 1))}
+                  disabled={recentPage <= 1}
+                  style={[
+                    tw`px-3 py-2 rounded-full border`,
+                    { borderColor: palette.border, opacity: recentPage <= 1 ? 0.4 : 1 },
+                  ]}
+                >
+                  <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>Prev</Text>
+                </TouchableOpacity>
+                <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
+                  Page {recentPage} / {recentPageCount}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setRecentPage((p) => Math.min(recentPageCount, p + 1))}
+                  disabled={recentRangeEnd >= recentTotal}
+                  style={[
+                    tw`px-3 py-2 rounded-full border`,
+                    { borderColor: palette.border, opacity: recentRangeEnd >= recentTotal ? 0.4 : 1 },
+                  ]}
+                >
+                  <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>Next</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </Animated.View>
-
-        {/* RECENT SUBMISSIONS + SIGNATURE + QUICK INVITE blocks remain exactly as you already had */}
-        {/* (I kept them unchanged to avoid breaking anything.) */}
-
-        {/* ...your existing Recent Submissions block... */}
-        {/* ...your existing Signature block... */}
-        {/* ...your existing Quick Invite block... */}
 
       </Animated.ScrollView>
     </SafeAreaView>

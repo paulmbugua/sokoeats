@@ -55,6 +55,7 @@ import {
   submitOrgLegacyAssignment,
   getOrgAssignmentSubmissions,
   markOrgAssignmentOpened,
+  listOrgInstructorSubmissions,
 } from '../controllers/orgLegacyAssignmentsController.js';
 
 import {
@@ -249,6 +250,8 @@ router.get(
   requireAuth,
   getOrgAssignmentSubmissions,
 );
+
+router.get('/:orgId/instructor/submissions', requireAuth, listOrgInstructorSubmissions);
 
 router.post(
   '/:orgId/assignments/:assignmentId/open',

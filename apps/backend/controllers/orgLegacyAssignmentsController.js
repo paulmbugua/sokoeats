@@ -842,7 +842,18 @@ export async function getOrgAssignmentSubmissions(req, res) {
   const assignmentIdParam = req.params.assignmentId;
   const viewerUserId = req.user?.id;
 
-  console.log('[getOrgAssignmentSubmissions] params', { orgIdParam, assignmentIdParam });
+  const limit = Math.max(1, Math.min(Number(req.query.limit) || 10, 100));
+  const offset = Math.max(0, Number(req.query.offset) || 0);
+  const classLabel = req.query.class_label ? String(req.query.class_label) : null;
+  const q = req.query.q ? String(req.query.q) : null;
+
+  console.log('[getOrgAssignmentSubmissions] params', {
+    orgIdParam,
+    assignmentIdParam,
+    classLabel,
+    limit,
+    offset,
+  });
 
   if (!orgIdParam || !assignmentIdParam) {
     return res.status(400).json({ ok: false, message: 'Missing orgId or assignmentId' });
@@ -855,7 +866,7 @@ export async function getOrgAssignmentSubmissions(req, res) {
     // ✅ security gate
     const mem = await pool.query(
       `
-      SELECT 1
+      SELECT role
       FROM org_memberships
       WHERE org_id = $1::uuid
         AND user_id = $2::bigint
@@ -872,7 +883,7 @@ export async function getOrgAssignmentSubmissions(req, res) {
     const aQ = await pool.query(
       `
       SELECT
-        a.*,
+        a.*, -- keep legacy consumers happy
         c.title AS course_title,
         COALESCE(
           a.source_kind,
@@ -904,6 +915,10 @@ export async function getOrgAssignmentSubmissions(req, res) {
 
     const assignment = aQ.rows[0];
 
+    if (Number(assignment.created_by) !== Number(viewerUserId)) {
+      return res.status(403).json({ ok: false, message: 'Forbidden' });
+    }
+
     const sourceKind = String(assignment.source_kind || assignment.kind || '').toLowerCase();
 
     // ✅ AI requires a course_id (invite_code alone is NOT enough; you already have legacy rows with invite_code)
@@ -915,37 +930,69 @@ export async function getOrgAssignmentSubmissions(req, res) {
 
     // 2) Load submissions depending on AI vs classic
     let submissions = [];
+    let total = 0;
 
     if (!isAi) {
       // Classic / legacy submissions
       const sQ = await pool.query(
         `
-        SELECT
-          s.id,
-          s.user_id,
-          s.student_id,
-          s.answer_text,
-          s.attachment_url,
-          s.submitted_at AS submitted_at,
+        WITH filtered AS (
+          SELECT
+            s.id,
+            s.user_id,
+            s.student_id,
+            s.answer_text,
+            s.attachment_url,
+            s.submitted_at AS submitted_at,
+            s.assignment_id,
+            s.org_id,
 
           COALESCE(u.name, u.email, 'Learner') AS learner_display_name,
           u.email AS learner_email,
           COALESCE(lp.admission_code, s.student_id) AS admission_number,
-          lp.admission_code AS learner_admission_code
+          lp.admission_code AS learner_admission_code,
+          lp.class_label AS learner_class_label,
+          a.org_class_label AS assignment_class_label,
+          COALESCE(a.title_override, c.title) AS assignment_title,
+          a.title_override,
+          a.source_kind,
+          a.created_by AS assignment_created_by
         FROM org_course_assignment_submissions s
+        INNER JOIN org_course_assignments a
+          ON a.id::text = s.assignment_id::text
+         AND a.org_id::text = s.org_id::text
+        LEFT JOIN courses c
+          ON c.id::text = a.course_id::text
         LEFT JOIN users u
           ON u.id = s.user_id
         LEFT JOIN org_learner_profiles lp
           ON lp.org_id::text = s.org_id::text
          AND lp.user_id = s.user_id
-        WHERE s.org_id::text = $1::text
-          AND s.assignment_id::text = $2::text
-        ORDER BY s.submitted_at DESC NULLS LAST
+          WHERE s.org_id::text = $1::text
+            AND s.assignment_id::text = $2::text
+            AND a.created_by = $3::bigint
+            AND (
+              $4::text IS NULL
+              OR lp.class_label = $4::text
+              OR a.org_class_label = $4::text
+            )
+            AND (
+              $5::text IS NULL
+              OR lp.admission_code ILIKE '%' || $5::text || '%'
+              OR COALESCE(u.name, '') ILIKE '%' || $5::text || '%'
+              OR COALESCE(u.email, '') ILIKE '%' || $5::text || '%'
+            )
+        )
+        SELECT *, COUNT(*) OVER() AS total_rows
+        FROM filtered
+        ORDER BY submitted_at DESC NULLS LAST
+        LIMIT $6 OFFSET $7
         `,
-        [orgIdParam, assignmentIdParam],
+        [orgIdParam, assignmentIdParam, viewerUserId, classLabel, q, limit, offset],
       );
 
       submissions = sQ.rows;
+      total = sQ.rows?.[0]?.total_rows ? Number(sQ.rows[0].total_rows) : 0;
     } else {
       // AI submissions (aggregate quiz attempts)
       // ✅ use qa.score_pct (your earlier code already confirmed this column exists)
@@ -957,10 +1004,29 @@ export async function getOrgAssignmentSubmissions(req, res) {
             COUNT(*)::int AS ai_attempts_count,
             MAX(qa.submitted_at) AS ai_last_attempt_at
           FROM org_quiz_attempts qa
+          INNER JOIN org_course_assignments a
+            ON a.id::text = qa.assignment_id::text
+           AND a.org_id::text = qa.org_id::text
           WHERE qa.org_id::text = $1::text
             AND qa.assignment_id::text = $2::text
             AND qa.status = 'submitted'
             AND qa.submitted_at IS NOT NULL
+            AND a.created_by = $3::bigint
+            AND (
+              $5::text IS NULL
+              OR EXISTS (
+                SELECT 1 FROM org_learner_profiles lp
+                WHERE lp.org_id::text = qa.org_id::text
+                  AND lp.user_id = qa.user_id
+                  AND lp.admission_code ILIKE '%' || $5::text || '%'
+              )
+              OR EXISTS (
+                SELECT 1 FROM users u WHERE u.id = qa.user_id AND (
+                  u.name ILIKE '%' || $5::text || '%'
+                  OR u.email ILIKE '%' || $5::text || '%'
+                )
+              )
+            )
           GROUP BY qa.user_id
         ),
         last_attempt AS (
@@ -974,36 +1040,62 @@ export async function getOrgAssignmentSubmissions(req, res) {
             AND qa.status = 'submitted'
             AND qa.submitted_at IS NOT NULL
           ORDER BY qa.user_id, qa.submitted_at DESC
+        ),
+        filtered AS (
+          SELECT
+            agg.user_id,
+            COALESCE(u.name, u.email, 'Learner') AS learner_display_name,
+            u.email AS learner_email,
+            lp.admission_code AS learner_admission_code,
+            lp.admission_code AS admission_number,
+            lp.class_label AS learner_class_label,
+            a.org_class_label AS assignment_class_label,
+            COALESCE(a.title_override, c.title) AS assignment_title,
+            a.title_override,
+            a.source_kind,
+            a.created_by AS assignment_created_by,
+            agg.ai_attempts_count,
+            agg.ai_last_attempt_at,
+            la.ai_final_score
+          FROM agg
+          INNER JOIN org_course_assignments a
+            ON a.id::text = $2::text
+           AND a.org_id::text = $1::text
+          LEFT JOIN courses c
+            ON c.id::text = a.course_id::text
+          LEFT JOIN last_attempt la
+            ON la.user_id = agg.user_id
+          LEFT JOIN users u
+            ON u.id = agg.user_id
+          LEFT JOIN org_learner_profiles lp
+            ON lp.org_id::text = $1::text
+           AND lp.user_id = agg.user_id
+        WHERE (
+          $4::text IS NULL
+          OR lp.class_label = $4::text
+          OR a.org_class_label = $4::text
         )
-        SELECT
-          agg.user_id,
-          COALESCE(u.name, u.email, 'Learner') AS learner_display_name,
-          u.email AS learner_email,
-          lp.admission_code AS learner_admission_code,
-          lp.admission_code AS admission_number,
-          agg.ai_attempts_count,
-          agg.ai_last_attempt_at,
-          la.ai_final_score
-        FROM agg
-        LEFT JOIN last_attempt la
-          ON la.user_id = agg.user_id
-        LEFT JOIN users u
-          ON u.id = agg.user_id
-        LEFT JOIN org_learner_profiles lp
-          ON lp.org_id::text = $1::text
-         AND lp.user_id = agg.user_id
-        ORDER BY agg.ai_last_attempt_at DESC NULLS LAST
+        )
+        SELECT *, COUNT(*) OVER() AS total_rows
+        FROM filtered
+        ORDER BY ai_last_attempt_at DESC NULLS LAST
+        LIMIT $6 OFFSET $7
         `,
-        [orgIdParam, assignmentIdParam],
+        [orgIdParam, assignmentIdParam, viewerUserId, classLabel, q, limit, offset],
       );
 
       submissions = aiQ.rows;
+      total = aiQ.rows?.[0]?.total_rows ? Number(aiQ.rows[0].total_rows) : 0;
     }
 
     return res.json({
       ok: true,
       assignment,
+      rows: submissions,
       submissions,
+      total,
+      limit,
+      offset,
     });
   } catch (e) {
     console.error('[getOrgAssignmentSubmissions] error', {
@@ -1017,3 +1109,124 @@ export async function getOrgAssignmentSubmissions(req, res) {
     return res.status(500).json({ ok: false, message: 'Failed to load submissions.' });
   }
 }
+
+export async function listOrgInstructorSubmissions(req, res) {
+  const orgIdParam = req.params.orgId;
+  const viewerUserId = req.user?.id;
+
+  const limit = Math.max(1, Math.min(Number(req.query.limit) || 10, 100));
+  const offset = Math.max(0, Number(req.query.offset) || 0);
+  const classLabel = req.query.class_label ? String(req.query.class_label) : null;
+  const q = req.query.q ? String(req.query.q) : null;
+
+  if (!orgIdParam) {
+    return res.status(400).json({ ok: false, message: 'Missing orgId' });
+  }
+  if (!viewerUserId) {
+    return res.status(401).json({ ok: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const mem = await pool.query(
+      `
+      SELECT role
+      FROM org_memberships
+      WHERE org_id = $1::uuid
+        AND user_id = $2::bigint
+        AND role IN ('owner','admin','instructor')
+      LIMIT 1
+      `,
+      [orgIdParam, viewerUserId],
+    );
+
+    if (!mem.rowCount) {
+      return res.status(403).json({ ok: false, message: 'Forbidden' });
+    }
+
+    const sQ = await pool.query(
+      `
+      WITH filtered AS (
+        SELECT
+          s.id,
+          s.assignment_id,
+          s.org_id,
+          s.user_id,
+          s.student_id,
+          s.answer_text,
+          s.attachment_url,
+          s.submitted_at,
+
+          a.title_override,
+          COALESCE(a.title_override, c.title) AS assignment_title,
+          a.org_class_label AS assignment_class_label,
+          a.org_subject_key,
+          a.source_kind,
+          a.created_by AS assignment_created_by,
+
+          COALESCE(u.name, u.email, 'Learner') AS learner_display_name,
+          u.email AS learner_email,
+          lp.admission_code AS learner_admission_code,
+          lp.class_label AS learner_class_label,
+
+          COALESCE(lp.class_label, a.org_class_label) AS class_label,
+          COALESCE(lp.admission_code, s.student_id) AS admission_number
+        FROM org_course_assignment_submissions s
+        INNER JOIN org_course_assignments a
+          ON a.id::text = s.assignment_id::text
+         AND a.org_id::text = s.org_id::text
+        LEFT JOIN courses c
+          ON c.id::text = a.course_id::text
+        LEFT JOIN org_learner_profiles lp
+          ON lp.org_id::text = s.org_id::text
+         AND lp.user_id = s.user_id
+        LEFT JOIN users u
+          ON u.id = s.user_id
+        WHERE s.org_id::text = $1::text
+          AND a.created_by = $2::bigint
+          AND (
+            $3::text IS NULL
+            OR lp.class_label = $3::text
+            OR a.org_class_label = $3::text
+          )
+          AND (
+            $4::text IS NULL
+            OR lp.admission_code ILIKE '%' || $4::text || '%'
+            OR COALESCE(u.name, '') ILIKE '%' || $4::text || '%'
+            OR COALESCE(u.email, '') ILIKE '%' || $4::text || '%'
+          )
+      )
+      SELECT *, COUNT(*) OVER() AS total_rows
+      FROM filtered
+      ORDER BY submitted_at DESC NULLS LAST
+      LIMIT $5 OFFSET $6
+      `,
+      [orgIdParam, viewerUserId, classLabel, q, limit, offset],
+    );
+
+    const rows = sQ.rows || [];
+    const total = rows?.[0]?.total_rows ? Number(rows[0].total_rows) : 0;
+
+    return res.json({
+      ok: true,
+      rows,
+      total,
+      limit,
+      offset,
+    });
+  } catch (e) {
+    console.error('[listOrgInstructorSubmissions] error', {
+      message: e?.message,
+      code: e?.code,
+      detail: e?.detail,
+      stack: e?.stack,
+      orgIdParam,
+    });
+    return res.status(500).json({ ok: false, message: 'Failed to load submissions.' });
+  }
+}
+
+// Dev sanity checklist (manual):
+// - Create instructors A and B; ensure each only sees submissions for their own assignments.
+// - Verify class_label and admission filters narrow the result set correctly.
+// - Confirm pagination (limit/offset) returns stable totals when page size changes.
+
