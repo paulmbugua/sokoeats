@@ -642,6 +642,14 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
         console.warn('[OrgElearnPortal] mark opened failed', e?.message || e),
       );
 
+      try {
+        const key = `org:openedAssignments:${String(org.id)}`;
+        const raw = sessionStorage.getItem(key);
+        const map = raw ? JSON.parse(raw) : {};
+        map[String(assignmentIdFromUrl)] = new Date().toISOString();
+        sessionStorage.setItem(key, JSON.stringify(map));
+      } catch {}
+
       const res = await getOrgAssignmentSubmissions(
         backendUrl,
         authToken,
@@ -805,15 +813,31 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
 
 
   
-  const handleBackToAssignments = useCallback(() => {
-    const sp = new URLSearchParams(window.location.search);
-    sp.delete('view');
-    sp.delete('assignmentId');
-    if (!sp.get('tab')) sp.set('tab', 'assign');
+ const handleBackToAssignments = useCallback(() => {
+  // 1) Preferred: go back to the exact instructor-home URL we came from
+  let returnTo: string | null = null;
+  try {
+    returnTo = sessionStorage.getItem('org:returnToAfterSubmissions');
+  } catch {}
 
-    const nextUrl = `${window.location.pathname}?${sp.toString()}${window.location.hash}`;
-    navigate(nextUrl, { replace: true });
-  }, [navigate]);
+  if (returnTo) {
+    try {
+      sessionStorage.removeItem('org:returnToAfterSubmissions');
+    } catch {}
+    navigate(returnTo, { replace: true });
+    return;
+  }
+
+  // 2) Next best: normal browser history back
+  if (window.history.length > 1) {
+    navigate(-1);
+    return;
+  }
+
+  // 3) Hard fallback (CHANGE THIS PATH if your instructor home route differs)
+  navigate('/org/instructor-home#recent-submissions', { replace: true });
+}, [navigate]);
+
 
   useEffect(() => {
     if (!orgFromGate) return;

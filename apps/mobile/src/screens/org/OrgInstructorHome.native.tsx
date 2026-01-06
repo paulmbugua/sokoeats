@@ -46,6 +46,8 @@ import { useThemePref } from '../../theme/ThemeContext';
 const TOOL_GAP = 12; // px
 const TOOL_COLS = 3;
 
+type InstructorSubmissionStatus = 'submitted' | 'opened' | 'marked';
+
 function usePalette() {
   const { resolvedScheme } = useThemePref();
   const isDark = resolvedScheme === 'dark';
@@ -1324,7 +1326,33 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
                   const assignmentTitle =
                     pickString(row.assignment_title, row.title_override, row.course_title) || 'Assignment';
                   const submittedAt = row.submitted_at || row.ai_last_attempt_at || null;
-                  const statusLabel = row.status || 'Submitted';
+                  
+
+                 
+
+                  function deriveInstructorSubmissionStatus(r: any): InstructorSubmissionStatus {
+                    const raw = String(r?.status ?? r?.review_status ?? r?.state ?? '').toLowerCase();
+                    if (/(marked|graded|reviewed)/.test(raw)) return 'marked';
+                    if (/(opened|viewed|seen)/.test(raw)) return 'opened';
+
+                    const markedAt = r?.marked_at || r?.graded_at || r?.reviewed_at;
+                    if (markedAt) return 'marked';
+
+                    const openedAt = r?.opened_at || r?.viewed_at;
+                    if (openedAt) return 'opened';
+
+                    return 'submitted';
+                  }
+
+
+                  const status = deriveInstructorSubmissionStatus(row);
+
+                const statusLabel =
+                  status === 'marked' ? 'Marked' : status === 'opened' ? 'Opened' : 'Submitted';
+
+                const statusTone: 'emerald' | 'sky' | 'amber' =
+                  status === 'marked' ? 'emerald' : status === 'opened' ? 'sky' : 'amber';
+
                   const assignmentId = row.assignment_id || row.assignmentId || null;
 
                   const divider = idx === recentSubmissions.length - 1 ? null : (
@@ -1352,9 +1380,10 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
                               <Badge tone="indigo" palette={palette}>
                                 {classLabel}
                               </Badge>
-                              <Badge tone="emerald" palette={palette}>
+                              <Badge tone={statusTone} palette={palette}>
                                 {statusLabel}
                               </Badge>
+
                               <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
                                 {submittedAt ? fmtWhen(submittedAt) : 'Not timestamped'}
                               </Text>
@@ -1363,7 +1392,8 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
                         </View>
 
                         <TouchableOpacity
-                          onPress={() => assignmentId && handleOpenSubmissions(assignmentId)}
+                         onPress={() => assignmentId ? handleOpenSubmissions(assignmentId) : Alert.alert('Missing', 'No assignment id found.')}
+
                           style={[tw`mt-3 self-start px-3 py-2 rounded-full`, { backgroundColor: '#6366f1' }]}
                         >
                           <Text style={[tw`text-[11px] font-semibold`, { color: 'white' }]}>View submission</Text>

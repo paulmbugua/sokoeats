@@ -3,6 +3,9 @@ import 'dotenv/config';
 import pool from '../config/db.js';
 import { requireOrgTier } from '../utils/orgTierGuard.js';
 import { randomBytes } from 'crypto';
+import crypto from 'crypto';
+
+
 /**
  * POST /api/orgs/:orgId/assignments/legacy
  * Body: { title, instructions?, class_label, subject_key, attachment_url?, due_at? }
@@ -115,55 +118,50 @@ export async function createOrgLegacyAssignment(req, res) {
 
     // ✅ insert legacy assignment with NULL course_id + NULL invite_code
     const { rows } = await pool.query(
-      `
-      INSERT INTO org_course_assignments (
-        org_id,
-        created_by,
-        title,
-        instructions,
-        class_label,
-        subject_key,
-        org_class_label,
-        org_subject_key,
-        attachment_url,
-        due_at,
-        course_id,
-        invite_code,
-        source_kind,
-        created_at,
-        updated_at
-      ) VALUES (
-        $1::uuid,
-        $2::bigint,
-        $3,
-        $4,
-        $5,
-        $6,
-        $7,
-        $8,
-        $9,
-        $10,
-        NULL,        -- ✅ legacy has no course
-        NULL,        -- ✅ legacy has no invite code
-        'legacy',    -- ✅ explicit
-        NOW(),
-        NOW()
-      )
-      RETURNING *
-      `,
-      [
-        orgId,
-        userId,
-        trimmedTitle,
-        instructions ? String(instructions).trim() : null,
-        classLabel,
-        subjectKey,
-        classLabel, // keep both labels aligned
-        subjectKey, // keep both keys aligned
-        attachment_url || null,
-        dueAtValue,
-      ],
-    );
+  `
+  INSERT INTO org_course_assignments (
+    org_id,
+    created_by,
+    title,
+    instructions,
+    org_class_label,
+    org_subject_key,
+    attachment_url,
+    due_at,
+    course_id,
+    invite_code,
+    source_kind,
+    created_at,
+    updated_at
+  ) VALUES (
+    $1::uuid,
+    $2::bigint,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    NULL,        -- legacy has no course
+    NULL,        -- legacy has no invite code
+    'legacy',
+    NOW(),
+    NOW()
+  )
+  RETURNING *
+  `,
+  [
+    orgId,
+    userId,
+    trimmedTitle,
+    instructions ? String(instructions).trim() : null,
+    classLabel,                 // ✅ goes to org_class_label
+    subjectKey,                 // ✅ goes to org_subject_key
+    attachment_url || null,
+    dueAtValue,
+  ],
+);
+
 
     const assignment = rows[0];
 
@@ -1114,19 +1112,29 @@ export async function listOrgInstructorSubmissions(req, res) {
   const orgIdParam = req.params.orgId;
   const viewerUserId = req.user?.id;
 
-  const limit = Math.max(1, Math.min(Number(req.query.limit) || 10, 100));
-  const offset = Math.max(0, Number(req.query.offset) || 0);
+  // Pagination (support both limit/offset and page/page_size)
+  const pageSizeRaw = req.query.page_size ?? req.query.limit;
+  const limit = Math.max(1, Math.min(Number(pageSizeRaw) || 10, 100));
+
+  const pageRaw = req.query.page;
+  const offsetRaw = req.query.offset;
+
+  let offset = 0;
+  if (offsetRaw != null) {
+    offset = Math.max(0, Number(offsetRaw) || 0);
+  } else if (pageRaw != null) {
+    const page = Math.max(1, Number(pageRaw) || 1); // 1-based
+    offset = (page - 1) * limit;
+  }
+
   const classLabel = req.query.class_label ? String(req.query.class_label) : null;
   const q = req.query.q ? String(req.query.q) : null;
 
-  if (!orgIdParam) {
-    return res.status(400).json({ ok: false, message: 'Missing orgId' });
-  }
-  if (!viewerUserId) {
-    return res.status(401).json({ ok: false, message: 'Unauthorized' });
-  }
+  if (!orgIdParam) return res.status(400).json({ ok: false, message: 'Missing orgId' });
+  if (!viewerUserId) return res.status(401).json({ ok: false, message: 'Unauthorized' });
 
   try {
+    // Get role (and confirm membership)
     const mem = await pool.query(
       `
       SELECT role
@@ -1139,8 +1147,18 @@ export async function listOrgInstructorSubmissions(req, res) {
       [orgIdParam, viewerUserId],
     );
 
-    if (!mem.rowCount) {
-      return res.status(403).json({ ok: false, message: 'Forbidden' });
+    if (!mem.rowCount) return res.status(403).json({ ok: false, message: 'Forbidden' });
+
+    const role = mem.rows[0]?.role;
+
+    // Instructors are locked to their own "created_by".
+    // Owner/Admin can see all, but may optionally filter by created_by.
+    let createdByFilter = null;
+    if (role === 'instructor') {
+      createdByFilter = viewerUserId;
+    } else if (req.query.created_by != null && String(req.query.created_by).trim() !== '') {
+      const n = Number(req.query.created_by);
+      createdByFilter = Number.isFinite(n) ? n : null;
     }
 
     const sQ = await pool.query(
@@ -1182,7 +1200,10 @@ export async function listOrgInstructorSubmissions(req, res) {
         LEFT JOIN users u
           ON u.id = s.user_id
         WHERE s.org_id::text = $1::text
-          AND a.created_by = $2::bigint
+          AND (
+            $2::bigint IS NULL
+            OR a.created_by = $2::bigint
+          )
           AND (
             $3::text IS NULL
             OR lp.class_label = $3::text
@@ -1193,6 +1214,7 @@ export async function listOrgInstructorSubmissions(req, res) {
             OR lp.admission_code ILIKE '%' || $4::text || '%'
             OR COALESCE(u.name, '') ILIKE '%' || $4::text || '%'
             OR COALESCE(u.email, '') ILIKE '%' || $4::text || '%'
+            OR COALESCE(a.title_override, c.title, '') ILIKE '%' || $4::text || '%'
           )
       )
       SELECT *, COUNT(*) OVER() AS total_rows
@@ -1200,11 +1222,14 @@ export async function listOrgInstructorSubmissions(req, res) {
       ORDER BY submitted_at DESC NULLS LAST
       LIMIT $5 OFFSET $6
       `,
-      [orgIdParam, viewerUserId, classLabel, q, limit, offset],
+      [orgIdParam, createdByFilter, classLabel, q, limit, offset],
     );
 
-    const rows = sQ.rows || [];
-    const total = rows?.[0]?.total_rows ? Number(rows[0].total_rows) : 0;
+    const rawRows = sQ.rows || [];
+    const total = rawRows?.[0]?.total_rows ? Number(rawRows[0].total_rows) : 0;
+
+    // Strip total_rows so it doesn't repeat in every row
+    const rows = rawRows.map(({ total_rows, ...rest }) => rest);
 
     return res.json({
       ok: true,
@@ -1212,6 +1237,9 @@ export async function listOrgInstructorSubmissions(req, res) {
       total,
       limit,
       offset,
+      // helpful for UI:
+      page: Math.floor(offset / limit) + 1,
+      page_size: limit,
     });
   } catch (e) {
     console.error('[listOrgInstructorSubmissions] error', {
@@ -1220,6 +1248,7 @@ export async function listOrgInstructorSubmissions(req, res) {
       detail: e?.detail,
       stack: e?.stack,
       orgIdParam,
+      viewerUserId,
     });
     return res.status(500).json({ ok: false, message: 'Failed to load submissions.' });
   }

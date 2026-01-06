@@ -546,6 +546,106 @@ const openExamResults = useCallback(() => {
     return 'assignment-row';
   };
 
+  type ClassicWorkStatus = 'pending' | 'submitted' | 'opened' | 'marked';
+
+function pickIso(...xs: any[]): string | null {
+  for (const x of xs) {
+    if (typeof x !== 'string') continue;
+    const d = new Date(x);
+    if (!Number.isNaN(d.getTime())) return x;
+  }
+  return null;
+}
+
+function deriveClassicWorkStatus(a: any): ClassicWorkStatus {
+  // 1) Prefer explicit server status fields (web likely uses these now)
+  const raw = String(
+    a?.my_status ??
+      a?.submission_status ??
+      a?.review_status ??
+      a?.status ??
+      a?.state ??
+      a?.progress_status ??
+      ''
+  )
+    .trim()
+    .toLowerCase();
+
+  if (/(marked|graded|reviewed|checked|done)/i.test(raw)) return 'marked';
+  if (/(opened|viewed|seen)/i.test(raw)) return 'opened';
+  if (/(submitted|turned\s?in)/i.test(raw)) return 'submitted';
+  if (/(pending|todo|assigned)/i.test(raw)) return 'pending';
+
+  // 2) Otherwise infer from timestamps (backend changes often add these)
+  const markedAt = pickIso(
+    a?.my_marked_at,
+    a?.marked_at,
+    a?.graded_at,
+    a?.reviewed_at,
+    a?.latest_marked_at,
+    a?.teacher_marked_at
+  );
+  if (markedAt) return 'marked';
+
+  const openedAt = pickIso(
+    a?.my_opened_at,
+    a?.opened_at,
+    a?.latest_opened_at,
+    a?.viewed_at,
+    a?.teacher_opened_at
+  );
+  if (openedAt) return 'opened';
+
+  const submittedAt = pickIso(
+    a?.my_submission_created_at,
+    a?.latest_submission_at,
+    a?.submitted_at,
+    a?.last_submitted_at
+  );
+
+  const submissionCount = Number(a?.submission_count ?? a?.submissions_count ?? a?.answers_count ?? 0);
+  const hasFlag = Boolean(a?.has_submission ?? a?.hasSubmitted);
+
+  if (submittedAt || submissionCount > 0 || hasFlag) return 'submitted';
+  return 'pending';
+}
+
+const StatusPill = ({ status }: { status: ClassicWorkStatus }) => {
+  const label =
+    status === 'marked'
+      ? 'Marked'
+      : status === 'opened'
+        ? 'Opened'
+        : status === 'submitted'
+          ? 'Submitted'
+          : 'Pending';
+
+  const bg =
+    status === 'marked'
+      ? 'bg-emerald-600/15'
+      : status === 'opened'
+        ? 'bg-sky-600/15'
+        : status === 'submitted'
+          ? 'bg-amber-600/15'
+          : 'bg-slate-600/10';
+
+  const text =
+    status === 'marked'
+      ? 'text-emerald-700 dark:text-emerald-200'
+      : status === 'opened'
+        ? 'text-sky-700 dark:text-sky-200'
+        : status === 'submitted'
+          ? 'text-amber-800 dark:text-amber-200'
+          : 'text-slate-700 dark:text-white/70';
+
+  return (
+    <View style={tw`px-2 py-0.5 rounded-full border border-white/10 ${bg}`}>
+      <Text style={tw`text-[11px] ${text}`}>{label}</Text>
+    </View>
+  );
+};
+
+
   // learner submit modal
   const [submitOpen, setSubmitOpen] = useState(false);
   const [submitAssignment, setSubmitAssignment] = useState<OrgAssignmentRow | null>(null);
@@ -1283,10 +1383,19 @@ if (explicitTab) setTab(explicitTab);
     setLearnerAssignmentsLoading(true);
     try {
       const resp = await getOrgAssignmentsForLearner(backendUrl, authToken, org.id, {
-        studentId: learnerStudentId || undefined,
-        classLabel: learnerClassFromRoute || undefined,
-        subjectKey: learnerSubjectFromRoute || undefined,
-      });
+  studentId: learnerStudentId || undefined,
+  classLabel: learnerClassFromRoute || undefined,
+  subjectKey: learnerSubjectFromRoute || undefined,
+
+  // ✅ harmless if backend ignores; required if backend gates new fields behind query params
+  include_status: true,
+  includeStatus: true,
+  include_opened: true,
+  includeOpened: true,
+  include_marked: true,
+  includeMarked: true,
+} as any);
+
 
       const rows = Array.isArray((resp as any)?.data) ? (resp as any).data : [];
       setLearnerAssignments(rows as OrgAssignmentRow[]);
@@ -1510,27 +1619,22 @@ if (explicitTab) setTab(explicitTab);
     [learnerAssignments]
   );
 
-  const { submittedAssignments, pendingAssignments } = useMemo(() => {
-    const submitted: OrgAssignmentRow[] = [];
-    const pending: OrgAssignmentRow[] = [];
+  const { markedAssignments, submittedAssignments, pendingAssignments } = useMemo(() => {
+  const marked: OrgAssignmentRow[] = [];
+  const submitted: OrgAssignmentRow[] = [];
+  const pending: OrgAssignmentRow[] = [];
 
-    classicAssignments.forEach((a: any) => {
-      const submissionCount = a.submission_count ?? a.submissions_count ?? a.answers_count ?? 0;
-      const hasFlag = a.has_submission ?? a.hasSubmitted ?? false;
-      const submissionTs =
-        a.latest_submission_at ||
-        a.submitted_at ||
-        a.last_submitted_at ||
-        a.my_submission_created_at ||
-        null;
+  classicAssignments.forEach((a: any) => {
+    const st = deriveClassicWorkStatus(a);
 
-      const hasSubmitted = Boolean(hasFlag) || Number(submissionCount) > 0 || Boolean(submissionTs);
-      if (hasSubmitted) submitted.push(a);
-      else pending.push(a);
-    });
+    if (st === 'marked') marked.push(a);
+    else if (st === 'pending') pending.push(a);
+    else submitted.push(a); // includes "submitted" + "opened"
+  });
 
-    return { submittedAssignments: submitted, pendingAssignments: pending };
-  }, [classicAssignments]);
+  return { markedAssignments: marked, submittedAssignments: submitted, pendingAssignments: pending };
+}, [classicAssignments]);
+
 
   const instructorEmails = useMemo(
     () => instructors.map((u) => (u.email || '').trim()).filter(Boolean),
@@ -1600,7 +1704,7 @@ if (explicitTab) setTab(explicitTab);
     } catch {}
   }, [inviteLink]);
 
-  const renderLearnerAssignmentRow = (a: OrgAssignmentRow, submitted: boolean) => {
+  const renderLearnerAssignmentRow = (a: OrgAssignmentRow, status: ClassicWorkStatus) => {
     const key = assignmentKey(a);
     const dueLabel = (a as any).due_at
       ? new Date((a as any).due_at).toLocaleString()
@@ -1627,8 +1731,19 @@ if (explicitTab) setTab(explicitTab);
           {(a as any).title || 'Untitled assignment'}
         </Text>
 
-        <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/80`}>Due: {dueLabel}</Text>
+        <View style={tw`mt-2 flex-row items-center justify-between`}>
+        <StatusPill status={status} />
+        {(a as any).due_at ? (
+          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+            Due: {new Date((a as any).due_at).toLocaleString()}
+          </Text>
+        ) : (
+          <Text style={tw`text-[11px] text-[#9CA3AF] dark:text-white/60`}>No due date</Text>
+        )}
+      </View>
 
+
+       
         {createdLabel && (
           <Text style={tw`mt-1 text-[11px] text-[#9CA3AF] dark:text-white/60`}>
             Assigned: {createdLabel}
@@ -1654,7 +1769,10 @@ if (explicitTab) setTab(explicitTab);
             }}
             style={tw`px-3 py-1.5 rounded-lg bg-indigo-600`}
           >
-            <Text style={tw`text-white text-xs`}>{submitted ? 'Submit again' : 'Submit work'}</Text>
+            <Text style={tw`text-white text-xs`}>
+            {status === 'pending' ? 'Submit work' : 'Submit again'}
+          </Text>
+
           </TouchableOpacity>
         </View>
       </View>
@@ -1956,6 +2074,21 @@ if (explicitTab) setTab(explicitTab);
                   )}
                 </View>
 
+                {/* Marked */}
+              <View style={tw`mt-2`}>
+                <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>
+                  Marked / Reviewed
+                </Text>
+                {markedAssignments.length === 0 && !learnerAssignmentsLoading ? (
+                  <Text style={tw`mt-1 text-[11px] text-[#6b7280] dark:text-white/70`}>
+                    No marked assignments yet.
+                  </Text>
+                ) : (
+                  markedAssignments.map((a) => renderLearnerAssignmentRow(a, 'marked'))
+                )}
+              </View>
+
+
                 {/* Submitted */}
                 <View style={tw`mt-2`}>
                   <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>
@@ -1966,8 +2099,11 @@ if (explicitTab) setTab(explicitTab);
                       You haven&apos;t submitted any classic assignments yet.
                     </Text>
                   ) : (
-                    submittedAssignments.map((a) => renderLearnerAssignmentRow(a, true))
+                    submittedAssignments.map((a: OrgAssignmentRow) =>
+                      renderLearnerAssignmentRow(a, deriveClassicWorkStatus(a as any))
+                    )
                   )}
+
                 </View>
 
                 {/* Pending */}
@@ -1975,13 +2111,14 @@ if (explicitTab) setTab(explicitTab);
                   <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>
                     Assignments to work on
                   </Text>
-                  {pendingAssignments.length === 0 && !learnerAssignmentsLoading ? (
+                 {pendingAssignments.length === 0 && !learnerAssignmentsLoading ? (
                     <Text style={tw`mt-1 text-[11px] text-[#6b7280] dark:text-white/70`}>
                       You don&apos;t have any pending classic assignments for this class or subject yet.
                     </Text>
                   ) : (
-                    pendingAssignments.map((a) => renderLearnerAssignmentRow(a, false))
+                    pendingAssignments.map((a: OrgAssignmentRow) => renderLearnerAssignmentRow(a, 'pending'))
                   )}
+
                 </View>
 
                 {!!learnerStudentId && (

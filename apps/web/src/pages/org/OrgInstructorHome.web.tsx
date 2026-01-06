@@ -1,6 +1,6 @@
 // apps/web/src/pages/org/OrgInstructorHome.web.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { uploadAsset } from '@mytutorapp/shared/api';
@@ -10,6 +10,7 @@ import {
   type OrgAssignmentRow,
   type OrgAssignmentSubmissionRow,
   listOrgInstructorSubmissions,
+  apiMarkOrgAssignmentOpened,
 } from '@mytutorapp/shared/api/orgApi';
 import { resolveAsset } from './portal/OrgProfileShared.web';
 
@@ -29,6 +30,29 @@ function fmtWhen(iso?: string | null) {
   if (Number.isNaN(d.getTime())) return String(iso);
   return d.toLocaleString();
 }
+
+function openedKey(orgId: string | number) {
+  return `org:openedAssignments:${String(orgId)}`;
+}
+
+function readOpenedMap(orgId: string | number): Record<string, string> {
+  try {
+    const raw = sessionStorage.getItem(openedKey(orgId));
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeOpened(orgId: string | number, assignmentId: string | number, iso: string) {
+  try {
+    const map = readOpenedMap(orgId);
+    map[String(assignmentId)] = iso;
+    sessionStorage.setItem(openedKey(orgId), JSON.stringify(map));
+  } catch {}
+}
+
 
 function pickString(...xs: any[]) {
   for (const x of xs) {
@@ -167,6 +191,19 @@ const OrgInstructorHome: React.FC = () => {
 
   const authToken = orgToken || userToken;
   const navigate = useNavigate();
+
+  const location = useLocation();
+
+useEffect(() => {
+  if (location.hash !== '#recent-submissions') return;
+
+  // wait a tick so the section definitely exists
+  requestAnimationFrame(() => {
+    const el = document.getElementById('recent-submissions');
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}, [location.hash]);
+
 
   const orgName: string = org?.name || (org as any)?.org_name || 'Your Institution';
   const tierLabel: string = (org?.tier && String(org.tier).toUpperCase()) || 'STARTER';
@@ -422,9 +459,24 @@ const OrgInstructorHome: React.FC = () => {
           return true;
         });
 
+          const openedMap = orgId ? readOpenedMap(orgId) : {};
+  const patchedRows = safeRows.map((r) => {
+    const aid = r.assignment_id ?? r.assignmentId ?? null;
+    if (!aid) return r;
+    const openedAt =
+      r.opened_at ||
+      r.openedAt ||
+      r.assignment_opened_at ||
+      r.viewer_opened_at ||
+      openedMap[String(aid)] ||
+      null;
+    if (!openedAt) return r;
+    return { ...r, opened_at: openedAt, status: 'Opened' };
+  });
+
         if (!stop) {
-          setRecentSubmissions(safeRows);
-          setRecentTotal(Number(resp?.total ?? safeRows.length));
+           setRecentSubmissions(patchedRows);
+           setRecentTotal(Number(resp?.total ?? patchedRows.length));
         }
       })
       .catch((err: any) => {
@@ -493,10 +545,35 @@ const OrgInstructorHome: React.FC = () => {
   const handleOpenSubmissions = useCallback(
     (assignmentId: string | number) => {
       if (!org?.id) return;
-      const id = encodeURIComponent(String(assignmentId));
-      navigate(`/org/portal?tab=assign&assignmentId=${id}&view=submissions`);
+   const orgId = org.id;
+   const nowIso = new Date().toISOString();
+
+   // 1) Cache + optimistic UI update (instant "Opened")
+   writeOpened(orgId, assignmentId, nowIso);
+   setRecentSubmissions((prev) =>
+     prev.map((r: any) => {
+       const aid = r.assignment_id ?? r.assignmentId ?? null;
+       if (String(aid) !== String(assignmentId)) return r;
+       return { ...r, opened_at: nowIso, status: 'Opened' };
+     }),
+   );
+
+   // 2) Persist on backend (best-effort)
+   if (backendUrl && authToken) {
+     apiMarkOrgAssignmentOpened(backendUrl, authToken, orgId, String(assignmentId)).catch(() => {});
+   }
+
+   const id = encodeURIComponent(String(assignmentId));
+
+   try {
+  sessionStorage.setItem(
+    'org:returnToAfterSubmissions',
+    `${window.location.pathname}${window.location.search}#recent-submissions`
+  );
+} catch {}
+   navigate(`/org/portal?tab=assign&assignmentId=${id}&view=submissions`);
     },
-    [navigate, org?.id],
+   [navigate, org?.id, backendUrl, authToken],
   );
 
   const heroBg =
@@ -714,7 +791,7 @@ const OrgInstructorHome: React.FC = () => {
         </section>
 
         {/* RECENT SUBMISSIONS */}
-        <section className={cn(card, 'relative overflow-hidden')}>
+        <section id="recent-submissions" className={cn(card, 'relative overflow-hidden')}>
           <div className="pointer-events-none absolute -top-10 -right-10 h-36 w-36 rounded-full bg-sky-500/10 blur-3xl" />
 
           <div className="flex items-center justify-between gap-3">
@@ -806,7 +883,15 @@ const OrgInstructorHome: React.FC = () => {
                     const assignmentTitle =
                       pickString(row.assignment_title, row.title_override, row.course_title) || 'Assignment';
                     const submittedAt = row.submitted_at || row.ai_last_attempt_at || null;
-                    const statusLabel = row.status || 'Submitted';
+                    const openedAt =
+                      row.opened_at ||
+                      row.openedAt ||
+                      row.assignment_opened_at ||
+                      row.viewer_opened_at ||
+                      null;
+
+                    const statusLabel = openedAt ? 'Opened' : (row.status || 'Submitted');
+
                     const assignmentId = row.assignment_id || row.assignmentId || null;
 
                     return (
