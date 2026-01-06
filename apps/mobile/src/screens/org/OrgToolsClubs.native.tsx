@@ -904,18 +904,18 @@ const OrgToolsClubsNative: React.FC = () => {
             <View style={tw`flex-row items-center gap-2`}>
               <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>Rows:</Text>
               <View style={tw`flex-row gap-2`}>
-                {[10, 25, 50].map((n) => (
-                  <Chip
-                    key={n}
-                    label={String(n)}
-                    active={pageSize === n}
-                    onPress={() => {
-                      setPage(1);
-                      setPageSize(n);
-                    }}
-                    theme={theme}
-                  />
-                ))}
+               {[10, 25, 50].map((n) => (
+                <Chip
+                  key={n}
+                  label={String(n)}
+                  active={pageSize === n}
+                  onPress={() => {
+                    setPage(1);
+                    setPageSize(n);
+                  }}
+                />
+              ))}
+
               </View>
             </View>
           </View>

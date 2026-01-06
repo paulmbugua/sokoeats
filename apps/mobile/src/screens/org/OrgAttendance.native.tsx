@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   useColorScheme,
   View,
+  Pressable,
 } from 'react-native';
 import tw from '../../../tailwind';
 
