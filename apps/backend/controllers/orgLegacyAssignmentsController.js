@@ -1254,6 +1254,237 @@ export async function listOrgInstructorSubmissions(req, res) {
   }
 }
 
+export async function listOrgInstructorAiSubmissions(req, res) {
+  const orgIdParam = req.params.orgId;
+  const viewerUserId = req.user?.id;
+
+  const pageSizeRaw = req.query.page_size ?? req.query.limit;
+  const limit = Math.max(1, Math.min(Number(pageSizeRaw) || 10, 100));
+
+  const pageRaw = req.query.page;
+  const offsetRaw = req.query.offset;
+
+  let offset = 0;
+  if (offsetRaw != null) {
+    offset = Math.max(0, Number(offsetRaw) || 0);
+  } else if (pageRaw != null) {
+    const page = Math.max(1, Number(pageRaw) || 1);
+    offset = (page - 1) * limit;
+  }
+
+  const classLabel = req.query.class_label ? String(req.query.class_label) : null;
+  const q = req.query.q ? String(req.query.q) : null;
+
+  if (!orgIdParam) return res.status(400).json({ ok: false, message: 'Missing orgId' });
+  if (!viewerUserId) return res.status(401).json({ ok: false, message: 'Unauthorized' });
+
+  try {
+    const mem = await pool.query(
+      `
+      SELECT role
+      FROM org_memberships
+      WHERE org_id = $1::uuid
+        AND user_id = $2::bigint
+        AND role IN ('owner','admin','instructor')
+      LIMIT 1
+      `,
+      [orgIdParam, viewerUserId],
+    );
+
+    if (!mem.rowCount) return res.status(403).json({ ok: false, message: 'Forbidden' });
+
+    const role = mem.rows[0]?.role;
+
+    let createdByFilter = null;
+    if (role === 'instructor') {
+      createdByFilter = viewerUserId;
+    } else if (req.query.created_by != null && String(req.query.created_by).trim() !== '') {
+      const n = Number(req.query.created_by);
+      createdByFilter = Number.isFinite(n) ? n : null;
+    }
+
+    const sQ = await pool.query(
+      `
+      WITH filtered AS (
+        SELECT
+          qa.id AS attempt_id,
+          qa.assignment_id,
+          qa.org_id,
+          qa.user_id,
+          qa.submitted_at,
+          qa.score_pct,
+          qa.attempt_no,
+          qa.status,
+          qa.pass_mark,
+
+          a.course_id,
+          a.title_override,
+          a.org_class_label AS assignment_class_label,
+          a.created_by AS assignment_created_by,
+
+          COALESCE(c.title, a.title_override) AS course_title,
+          COALESCE(a.title_override, c.title) AS assignment_title,
+
+          COALESCE(u.name, u.email, 'Learner') AS learner_display_name,
+          u.email AS learner_email,
+          lp.admission_code AS admission_number,
+          lp.class_label AS learner_class_label
+        FROM org_quiz_attempts qa
+        INNER JOIN org_course_assignments a
+          ON a.id::text = qa.assignment_id::text
+         AND a.org_id::text = qa.org_id::text
+        LEFT JOIN courses c
+          ON c.id::text = a.course_id::text
+        LEFT JOIN users u
+          ON u.id = qa.user_id
+        LEFT JOIN org_learner_profiles lp
+          ON lp.org_id::text = qa.org_id::text
+         AND lp.user_id = qa.user_id
+        WHERE qa.org_id::text = $1::text
+          AND qa.status = 'submitted'
+          AND qa.submitted_at IS NOT NULL
+          AND ($2::bigint IS NULL OR a.created_by = $2::bigint)
+          AND (
+            $3::text IS NULL
+            OR lp.class_label = $3::text
+            OR a.org_class_label = $3::text
+          )
+          AND (
+            $4::text IS NULL
+            OR lp.admission_code ILIKE '%' || $4::text || '%'
+            OR COALESCE(u.name, '') ILIKE '%' || $4::text || '%'
+            OR COALESCE(u.email, '') ILIKE '%' || $4::text || '%'
+            OR COALESCE(a.title_override, c.title, '') ILIKE '%' || $4::text || '%'
+          )
+      )
+      SELECT *, COUNT(*) OVER() AS total_rows
+      FROM filtered
+      ORDER BY submitted_at DESC NULLS LAST
+      LIMIT $5 OFFSET $6
+      `,
+      [orgIdParam, createdByFilter, classLabel, q, limit, offset],
+    );
+
+    const rawRows = sQ.rows || [];
+    const total = rawRows?.[0]?.total_rows ? Number(rawRows[0].total_rows) : 0;
+    const rows = rawRows.map(({ total_rows, ...rest }) => rest);
+
+    return res.json({
+      ok: true,
+      rows,
+      total,
+      limit,
+      offset,
+      page: Math.floor(offset / limit) + 1,
+      page_size: limit,
+    });
+  } catch (e) {
+    console.error('[listOrgInstructorAiSubmissions] error', {
+      message: e?.message,
+      code: e?.code,
+      detail: e?.detail,
+      stack: e?.stack,
+      orgIdParam,
+      viewerUserId,
+    });
+    return res.status(500).json({ ok: false, message: 'Failed to load AI submissions.' });
+  }
+}
+
+export async function getOrgInstructorAiSubmission(req, res) {
+  const orgIdParam = req.params.orgId;
+  const attemptId = req.params.attemptId;
+  const viewerUserId = req.user?.id;
+
+  if (!orgIdParam) return res.status(400).json({ ok: false, message: 'Missing orgId' });
+  if (!attemptId) return res.status(400).json({ ok: false, message: 'Missing attemptId' });
+  if (!viewerUserId) return res.status(401).json({ ok: false, message: 'Unauthorized' });
+
+  try {
+    const mem = await pool.query(
+      `
+      SELECT role
+      FROM org_memberships
+      WHERE org_id = $1::uuid
+        AND user_id = $2::bigint
+        AND role IN ('owner','admin','instructor')
+      LIMIT 1
+      `,
+      [orgIdParam, viewerUserId],
+    );
+
+    if (!mem.rowCount) return res.status(403).json({ ok: false, message: 'Forbidden' });
+
+    const role = mem.rows[0]?.role;
+
+    const attemptQ = await pool.query(
+      `
+      SELECT
+        qa.id AS attempt_id,
+        qa.assignment_id,
+        qa.org_id,
+        qa.user_id,
+        qa.started_at,
+        qa.due_at,
+        qa.submitted_at,
+        qa.status,
+        qa.score_pct,
+        qa.pass_mark,
+        qa.answers,
+        qa.attempt_no,
+
+        a.created_by AS assignment_created_by,
+        a.title_override,
+        a.org_class_label AS assignment_class_label,
+        a.course_id,
+
+        c.title AS course_title,
+
+        COALESCE(u.name, u.email, 'Learner') AS learner_display_name,
+        u.email AS learner_email,
+        lp.admission_code AS admission_number,
+        lp.class_label AS learner_class_label
+      FROM org_quiz_attempts qa
+      INNER JOIN org_course_assignments a
+        ON a.id::text = qa.assignment_id::text
+       AND a.org_id::text = qa.org_id::text
+      LEFT JOIN courses c
+        ON c.id::text = a.course_id::text
+      LEFT JOIN users u
+        ON u.id = qa.user_id
+      LEFT JOIN org_learner_profiles lp
+        ON lp.org_id::text = qa.org_id::text
+       AND lp.user_id = qa.user_id
+      WHERE qa.org_id::text = $1::text
+        AND qa.id::text = $2::text
+        AND qa.status = 'submitted'
+      LIMIT 1
+      `,
+      [orgIdParam, attemptId],
+    );
+
+    const attempt = attemptQ.rows?.[0];
+    if (!attempt) return res.status(404).json({ ok: false, message: 'Submission not found' });
+
+    if (role === 'instructor' && attempt.assignment_created_by && Number(attempt.assignment_created_by) !== Number(viewerUserId)) {
+      return res.status(403).json({ ok: false, message: 'Forbidden' });
+    }
+
+    return res.json({ ok: true, submission: attempt });
+  } catch (e) {
+    console.error('[getOrgInstructorAiSubmission] error', {
+      message: e?.message,
+      code: e?.code,
+      detail: e?.detail,
+      stack: e?.stack,
+      orgIdParam,
+      attemptId,
+      viewerUserId,
+    });
+    return res.status(500).json({ ok: false, message: 'Failed to load submission.' });
+  }
+}
+
 // Dev sanity checklist (manual):
 // - Create instructors A and B; ensure each only sees submissions for their own assignments.
 // - Verify class_label and admission filters narrow the result set correctly.

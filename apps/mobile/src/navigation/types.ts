@@ -57,7 +57,7 @@ export type MainStackParamList = {
       }
     | undefined;
 
-  OrgInstructorHome: undefined;
+  OrgInstructorHome: { scrollTo?: 'recent-submissions' } | undefined;
 
   OrgElearnPortal:
     | {
@@ -72,6 +72,8 @@ export type MainStackParamList = {
           | 'newsletters';
         from?: string;
         courseId?: string;
+        view?: 'submissions' | 'learner';
+        assignmentId?: string | number;
       }
     | undefined;
 

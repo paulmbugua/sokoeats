@@ -1716,6 +1716,12 @@ export async function resolveInvite(req, res) {
         quiz_time_limit_s: r.quiz_time_limit_s ?? null,
       },
     },
+    // ✅ Back-compat for clients that expect flattened course/assignment fields
+    course_id: r.course_id,
+    courseId: r.course_id,
+    assignment_id: r.assignment_id,
+    assignmentId: r.assignment_id,
+
     // ── Back-compat (what the current web reads) ────────────────────────────
     pass_mark: r.pass_mark ?? null,
     quiz_time_limit_s: r.quiz_time_limit_s ?? null,

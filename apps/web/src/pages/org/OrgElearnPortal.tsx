@@ -26,6 +26,8 @@ import {
   type OrgAssignmentRow,
   getOrgAssignmentSubmissions,
   apiMarkOrgAssignmentOpened,
+  getOrgInstructorAiSubmissionDetail,
+  type OrgAiSubmissionRow,
 } from '@mytutorapp/shared/api/orgApi';
 
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
@@ -379,6 +381,8 @@ const resolvedTabForLearner: TabKey =
   // NEW: deep-link into a specific assignment’s submissions
   const assignmentIdFromUrl = searchParams.get('assignmentId') ?? '';
   const isSubmissionsView = !isLearnerView && viewParam === 'submissions';
+  const aiAttemptIdFromUrl = searchParams.get('attemptId') ?? '';
+  const isAiSubmissionView = !isLearnerView && viewParam === 'ai-submission';
 
   // NEW: class + subject hints coming from learner portal
   const learnerClassFromUrl = searchParams.get('class') ?? searchParams.get('class_label') ?? '';
@@ -451,12 +455,20 @@ const resolvedTabForLearner: TabKey =
   // 🔎 Learner-side, read-only assignment list
   const [learnerAssignments, setLearnerAssignments] = useState<OrgAssignmentRow[]>([]);
   const [learnerAssignmentsLoading, setLearnerAssignmentsLoading] = useState(false);
+  const [aiPage, setAiPage] = useState(1);
+  const [aiPageSize, setAiPageSize] = useState(10);
+  const [classicPage, setClassicPage] = useState(1);
+  const [classicPageSize, setClassicPageSize] = useState(10);
 
   // NEW: instructor/org view – detailed submissions for a single assignment
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const [submissionsError, setSubmissionsError] = useState<string | null>(null);
   const [submissionsAssignment, setSubmissionsAssignment] = useState<any | null>(null);
   const [submissionsRows, setSubmissionsRows] = useState<any[]>([]);
+
+  const [aiSubmissionLoading, setAiSubmissionLoading] = useState(false);
+  const [aiSubmissionError, setAiSubmissionError] = useState<string | null>(null);
+  const [aiSubmission, setAiSubmission] = useState<OrgAiSubmissionRow | null>(null);
 
   // analytics
   const [period, setPeriod] = useState<Period>('month');
@@ -678,9 +690,54 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     }
   }, [isSubmissionsView, authToken, org?.id, assignmentIdFromUrl, backendUrl]);
 
+  const loadAiSubmission = useCallback(async () => {
+    if (!isAiSubmissionView) return;
+    if (!authToken || !org?.id) return;
+    if (!aiAttemptIdFromUrl) return;
+
+    setAiSubmissionLoading(true);
+    setAiSubmissionError(null);
+
+    try {
+      const res = await getOrgInstructorAiSubmissionDetail(
+        backendUrl,
+        authToken,
+        org.id,
+        aiAttemptIdFromUrl,
+      );
+
+      const submission = res?.submission as OrgAiSubmissionRow | undefined;
+      setAiSubmission(submission || null);
+
+      if (submission?.assignment_id) {
+        try {
+          const key = `org:openedAssignments:${String(org.id)}`;
+          const raw = sessionStorage.getItem(key);
+          const map = raw ? JSON.parse(raw) : {};
+          map[String(submission.assignment_id)] = new Date().toISOString();
+          sessionStorage.setItem(key, JSON.stringify(map));
+        } catch {}
+      }
+    } catch (e: any) {
+      console.error('[OrgElearnPortal] loadAiSubmission error', {
+        message: e?.message,
+        status: e?.response?.status,
+        data: e?.response?.data,
+      });
+      setAiSubmissionError(e?.response?.data?.message || e?.message || 'Failed to load submission.');
+      setAiSubmission(null);
+    } finally {
+      setAiSubmissionLoading(false);
+    }
+  }, [isAiSubmissionView, authToken, org?.id, aiAttemptIdFromUrl, backendUrl]);
+
   useEffect(() => {
     loadAssignmentSubmissions();
   }, [loadAssignmentSubmissions]);
+
+  useEffect(() => {
+    loadAiSubmission();
+  }, [loadAiSubmission]);
 
   useEffect(() => {
     loadLearnerAssignments();
@@ -1382,30 +1439,65 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
   };
 
   // Legacy-only slice for learner view
- const getAttachmentUrl = (a: any): string | null =>
-  a?.attachment_url ||
-  a?.attachmentUrl ||
-  a?.download_url ||
-  a?.downloadUrl ||
-  a?.resource_url ||
-  a?.resourceUrl ||
-  null;
+  const getAttachmentUrl = (a: any): string | null =>
+    a?.attachment_url ||
+    a?.attachmentUrl ||
+    a?.download_url ||
+    a?.downloadUrl ||
+    a?.resource_url ||
+    a?.resourceUrl ||
+    null;
+
   const aiAssignments = React.useMemo(
-  () => learnerAssignments.filter((a) => getAssignmentType(a) === 'ai'),
-  [learnerAssignments]
-);
+    () => learnerAssignments.filter((a) => getAssignmentType(a) === 'ai'),
+    [learnerAssignments],
+  );
+  const aiTotal = aiAssignments.length;
+  const aiPageCount = React.useMemo(
+    () => Math.max(1, Math.ceil((aiTotal || 0) / aiPageSize)),
+    [aiTotal, aiPageSize],
+  );
+  const aiRangeStart = aiTotal ? (aiPage - 1) * aiPageSize + 1 : 0;
+  const aiPageItems = React.useMemo(() => {
+    const start = (aiPage - 1) * aiPageSize;
+    return aiAssignments.slice(start, start + aiPageSize);
+  }, [aiAssignments, aiPage, aiPageSize]);
+  const aiRangeEnd = aiTotal ? Math.min(aiTotal, aiRangeStart + aiPageItems.length - 1) : 0;
 
-const classicAssignments = React.useMemo(
-  () => learnerAssignments.filter((a) => getAssignmentType(a) === 'legacy'),
-  [learnerAssignments]
-);
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil((aiTotal || 0) / aiPageSize));
+    if (aiPage > maxPage) setAiPage(maxPage);
+  }, [aiTotal, aiPageSize, aiPage]);
 
-  // 🚦 Partition into submitted vs pending
+  const classicAssignments = React.useMemo(
+    () => learnerAssignments.filter((a) => getAssignmentType(a) === 'legacy'),
+    [learnerAssignments],
+  );
+  const classicTotal = classicAssignments.length;
+  const classicPageCount = React.useMemo(
+    () => Math.max(1, Math.ceil((classicTotal || 0) / classicPageSize)),
+    [classicTotal, classicPageSize],
+  );
+  const classicRangeStart = classicTotal ? (classicPage - 1) * classicPageSize + 1 : 0;
+  const classicPageItems = React.useMemo(() => {
+    const start = (classicPage - 1) * classicPageSize;
+    return classicAssignments.slice(start, start + classicPageSize);
+  }, [classicAssignments, classicPage, classicPageSize]);
+  const classicRangeEnd = classicTotal
+    ? Math.min(classicTotal, classicRangeStart + classicPageItems.length - 1)
+    : 0;
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil((classicTotal || 0) / classicPageSize));
+    if (classicPage > maxPage) setClassicPage(maxPage);
+  }, [classicTotal, classicPageSize, classicPage]);
+
+  // 🚦 Partition into submitted vs pending (paged to match instructor recent submissions UX)
   const { submittedAssignments, pendingAssignments } = React.useMemo(() => {
     const submitted: OrgAssignmentRow[] = [];
     const pending: OrgAssignmentRow[] = [];
 
-    classicAssignments.forEach((a) => {
+    classicPageItems.forEach((a) => {
       const submissionCount =
         (a as any).submission_count ??
         (a as any).submissions_count ??
@@ -1429,7 +1521,7 @@ const classicAssignments = React.useMemo(
     });
 
     return { submittedAssignments: submitted, pendingAssignments: pending };
-  }, [classicAssignments]);
+  }, [classicPageItems]);
 
   return (
 <div
@@ -1489,7 +1581,7 @@ const classicAssignments = React.useMemo(
 
                 {aiAssignments.length > 0 && (
                   <ul className="space-y-2">
-                    {aiAssignments.map((a) => {
+                    {aiPageItems.map((a) => {
                       const inviteCode =
                         (a as any).invite_code || (a as any).inviteCode || (a as any).code || '';
                       const title = a.title || a.title_override || a.course_title || '';
@@ -1571,6 +1663,53 @@ const classicAssignments = React.useMemo(
                       );
                     })}
                   </ul>
+                )}
+
+                {aiAssignments.length > 0 && (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-600 dark:text-white/70">
+                    <div className="flex items-center gap-2">
+                      <span>Rows:</span>
+                      <select
+                        value={aiPageSize}
+                        onChange={(e) => {
+                          setAiPageSize(Number(e.target.value) || 10);
+                          setAiPage(1);
+                        }}
+                        className="rounded-full bg-white dark:bg-[#0f1821] px-2 py-1 ring-1 ring-black/10 dark:ring-white/10"
+                      >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>
+                        Showing {aiRangeStart}-{aiRangeEnd} of {aiTotal}
+                      </span>
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAiPage((p) => Math.max(1, p - 1))}
+                          disabled={aiPage <= 1}
+                          className="rounded-full border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40 dark:border-white/10 dark:bg-white/5"
+                        >
+                          ← Prev
+                        </button>
+                        <span>
+                          Page {aiPage} / {aiPageCount}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setAiPage((p) => Math.min(aiPageCount, p + 1))}
+                          disabled={aiPage >= aiPageCount || aiRangeEnd >= aiTotal}
+                          className="rounded-full border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40 dark:border-white/10 dark:bg-white/5"
+                        >
+                          Next →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </section>
 
@@ -1789,6 +1928,54 @@ const classicAssignments = React.useMemo(
     )}
   </div>
 </div>
+
+                {classicAssignments.length > 0 && (
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-600 dark:text-white/70">
+                    <div className="flex items-center gap-2">
+                      <span>Rows:</span>
+                      <select
+                        value={classicPageSize}
+                        onChange={(e) => {
+                          setClassicPageSize(Number(e.target.value) || 10);
+                          setClassicPage(1);
+                        }}
+                        className="rounded-full bg-white dark:bg-[#0f1821] px-2 py-1 ring-1 ring-black/10 dark:ring-white/10"
+                      >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>
+                        Showing {classicRangeStart}-{classicRangeEnd} of {classicTotal}
+                      </span>
+
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setClassicPage((p) => Math.max(1, p - 1))}
+                          disabled={classicPage <= 1}
+                          className="rounded-full border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40 dark:border-white/10 dark:bg-white/5"
+                        >
+                          ← Prev
+                        </button>
+                        <span>
+                          Page {classicPage} / {classicPageCount}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setClassicPage((p) => Math.min(classicPageCount, p + 1))}
+                          disabled={classicPage >= classicPageCount || classicRangeEnd >= classicTotal}
+                          className="rounded-full border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40 dark:border-white/10 dark:bg-white/5"
+                        >
+                          Next →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
 
                 {learnerStudentId && (
@@ -2109,6 +2296,101 @@ const classicAssignments = React.useMemo(
                   )}
                 </div>
               </header>
+
+              {/* AI submission detail (from instructor home recent submissions AI tab) */}
+              {tab === 'assign' && isAiSubmissionView && (
+                <section className="mt-4 rounded-2xl ring-1 ring-[#e7edf4] dark:ring-white/10 bg-white dark:bg-[#0f1821] p-3 sm:p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <h2 className="text-sm sm:text-base font-semibold">AI submission</h2>
+                      <p className="text-[11px] sm:text-xs text-slate-600 dark:text-darkTextSecondary">
+                        You’re viewing a learner’s AI quiz attempt. Scores are read-only for instructors.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      {aiSubmissionLoading && (
+                        <span className="text-[11px] text-slate-500 dark:text-darkTextSecondary">Loading…</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleBackToAssignments}
+                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                      >
+                        ← Back to assignments
+                      </button>
+                    </div>
+                  </div>
+
+                  {aiSubmissionError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] sm:text-xs text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100">
+                      {aiSubmissionError}
+                    </div>
+                  )}
+
+                  {!aiSubmissionLoading && !aiSubmissionError && !aiSubmission && (
+                    <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/15 px-4 py-4 text-[11px] sm:text-xs text-slate-500 dark:text-white/65">
+                      No submission found for this link.
+                    </div>
+                  )}
+
+                  {aiSubmission && (
+                    <div className="rounded-xl border border-[#e7edf4] dark:border-white/10 bg-slate-50/80 dark:bg-[#111b28] px-3 py-3 sm:px-4 sm:py-3.5 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                          <div className="text-sm sm:text-base font-semibold">
+                            {aiSubmission.assignment_title || aiSubmission.course_title || 'AI course'}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] sm:text-xs text-slate-600 dark:text-white/70">
+                            {aiSubmission.course_title && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-100 dark:bg-sky-500/10 dark:text-sky-100 dark:border-sky-500/40">
+                                📘 {aiSubmission.course_title}
+                              </span>
+                            )}
+                            {aiSubmission.assignment_class_label && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-white/5 dark:text-white/80 dark:border-white/10">
+                                🎓 Class: {aiSubmission.assignment_class_label}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-right text-[11px] sm:text-xs text-slate-500 dark:text-white/65 space-y-1">
+                          <div>
+                            Submitted: {aiSubmission.submitted_at ? new Date(aiSubmission.submitted_at).toLocaleString() : 'Not timestamped'}
+                          </div>
+                          <div>
+                            Attempt: #{aiSubmission.attempt_no ?? 1}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 sm:px-4 sm:py-4 dark:border-white/10 dark:bg-[#0b1420] grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-white/50">Learner</div>
+                          <div className="text-sm font-semibold text-slate-900 dark:text-white/90">{aiSubmission.learner_display_name || 'Learner'}</div>
+                          {aiSubmission.learner_email && (
+                            <div className="text-[11px] text-slate-600 dark:text-white/70">{aiSubmission.learner_email}</div>
+                          )}
+                          {aiSubmission.admission_number && (
+                            <div className="text-[11px] text-slate-600 dark:text-white/70">Adm {aiSubmission.admission_number}</div>
+                          )}
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-white/50">Score</div>
+                          <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-200">
+                            {aiSubmission.score_pct == null ? '—' : `${Math.round(Number(aiSubmission.score_pct))}%`}
+                          </div>
+                          {aiSubmission.pass_mark != null && (
+                            <div className="text-[11px] text-slate-600 dark:text-white/70">Pass mark: {aiSubmission.pass_mark}%</div>
+                          )}
+                          <div className="text-[11px] text-slate-500 dark:text-white/60">Read-only instructor view</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
 
               {/* Assignment submissions detail (deep-link from instructor home) */}
               {tab === 'assign' && isSubmissionsView && (

@@ -565,6 +565,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   }, [backendUrl, token, canShareUi, isInstructor, activeOrgId, isOrgFlow]);
 
   // ── Data loading & selection ─────────────────────────────
+  const [sharedCourseMissing, setSharedCourseMissing] = useState(false);
   const courseIdParam = sp.get('courseId');
   useEffect(() => {
     (async () => {
@@ -594,6 +595,16 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   }, [courseIdParam, topCourses, selectedCourse, selectCourse]);
 
   useEffect(() => {
+    if (!courseIdParam) {
+      setSharedCourseMissing(false);
+      return;
+    }
+    if (!Array.isArray(topCourses) || topCourses.length === 0) return;
+    const found = topCourses.some((c) => c.id === courseIdParam);
+    setSharedCourseMissing(!found);
+  }, [courseIdParam, topCourses]);
+
+  useEffect(() => {
     if (isLockedLearner) setShareOpen(false);
   }, [isLockedLearner]);
 
@@ -602,12 +613,13 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
       !selectedCourse &&
       Array.isArray(topCourses) &&
       topCourses.length > 0 &&
-      !customTitle.trim()
+      !customTitle.trim() &&
+      !courseIdParam
     ) {
       dlog('auto-selecting first course', { id: topCourses[0]?.id, title: topCourses[0]?.title });
       selectCourse(topCourses[0]);
     }
-  }, [topCourses, selectedCourse, selectCourse, customTitle]);
+  }, [topCourses, selectedCourse, selectCourse, customTitle, courseIdParam]);
 
   const coursesCursor = (ai as any)?.coursesCursor ?? (ai as any)?.nextCursor ?? null;
   const hasMoreCourses: boolean = Boolean(
@@ -890,6 +902,11 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
               <span className="font-semibold">≥ 70%</span> to unlock your certificate
               {isOrgFlow ? ' — covered by your organization' : ''}.
             </p>
+            {sharedCourseMissing && (
+              <div className="text-sm text-amber-700 dark:text-amber-200 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-3 py-2">
+                Shared course not found. Please ask your instructor to resend the link.
+              </div>
+            )}
           </header>
 
           {/* Org share dialog */}

@@ -9,7 +9,9 @@ import {
   type OrgResp as Org,
   type OrgAssignmentRow,
   type OrgAssignmentSubmissionRow,
+  type OrgAiSubmissionRow,
   listOrgInstructorSubmissions,
+  listOrgInstructorAiSubmissions,
   apiMarkOrgAssignmentOpened,
 } from '@mytutorapp/shared/api/orgApi';
 import { resolveAsset } from './portal/OrgProfileShared.web';
@@ -194,15 +196,15 @@ const OrgInstructorHome: React.FC = () => {
 
   const location = useLocation();
 
-useEffect(() => {
-  if (location.hash !== '#recent-submissions') return;
+  useEffect(() => {
+    if (location.hash !== '#recent-submissions') return;
 
-  // wait a tick so the section definitely exists
-  requestAnimationFrame(() => {
-    const el = document.getElementById('recent-submissions');
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
-}, [location.hash]);
+    // wait a tick so the section definitely exists
+    requestAnimationFrame(() => {
+      const el = document.getElementById('recent-submissions');
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [location.hash]);
 
 
   const orgName: string = org?.name || (org as any)?.org_name || 'Your Institution';
@@ -411,6 +413,7 @@ useEffect(() => {
   // ─────────────────────────────────────────────────────────
   // Recent submissions state
   // ─────────────────────────────────────────────────────────
+  const [recentKind, setRecentKind] = useState<'classic' | 'ai'>('classic');
   const [recentSubmissions, setRecentSubmissions] = useState<OrgAssignmentSubmissionRow[]>([]);
   const [recentTotal, setRecentTotal] = useState(0);
   const [recentLoading, setRecentLoading] = useState(false);
@@ -421,10 +424,18 @@ useEffect(() => {
   const [recentPage, setRecentPage] = useState(1);
   const [recentPageSize, setRecentPageSize] = useState(10);
 
+  const [recentAiSubmissions, setRecentAiSubmissions] = useState<OrgAiSubmissionRow[]>([]);
+  const [recentAiTotal, setRecentAiTotal] = useState(0);
+  const [recentAiLoading, setRecentAiLoading] = useState(false);
+  const [recentAiError, setRecentAiError] = useState<string | null>(null);
+  const [recentAiPage, setRecentAiPage] = useState(1);
+  const [recentAiPageSize, setRecentAiPageSize] = useState(10);
+
   useEffect(() => {
     const t = setTimeout(() => {
       setRecentSearchDebounced(recentSearch.trim());
       setRecentPage(1);
+      setRecentAiPage(1);
     }, 300);
     return () => clearTimeout(t);
   }, [recentSearch]);
@@ -511,9 +522,95 @@ useEffect(() => {
     currentUser?.id,
   ]);
 
+  useEffect(() => {
+    if (!backendUrl || !authToken || !org?.id) return;
+    if (recentKind !== 'ai') return;
+
+    const orgId = org.id;
+    const offset = (recentAiPage - 1) * recentAiPageSize;
+    const viewerId = Number(shopUser?.id || currentUser?.id || 0);
+
+    let stop = false;
+    setRecentAiLoading(true);
+    setRecentAiError(null);
+
+    listOrgInstructorAiSubmissions(backendUrl, authToken, orgId, {
+      class_label: recentClass || undefined,
+      q: recentSearchDebounced || undefined,
+      limit: recentAiPageSize,
+      offset,
+    })
+      .then((resp) => {
+        const rows = (resp?.rows ?? []) as any[];
+        const safeRows = rows.filter((row) => {
+          if (row.assignment_created_by && viewerId && Number(row.assignment_created_by) !== viewerId) {
+            if (process.env.NODE_ENV !== 'production') {
+              // eslint-disable-next-line no-console
+              console.warn('[OrgInstructorHome] dropped AI submission not owned by instructor', row);
+            }
+            return false;
+          }
+          return true;
+        });
+
+        const openedMap = orgId ? readOpenedMap(orgId) : {};
+        const patchedRows = safeRows.map((r) => {
+          const aid = r.assignment_id ?? r.assignmentId ?? null;
+          if (!aid) return r;
+          const openedAt =
+            r.opened_at ||
+            r.openedAt ||
+            r.assignment_opened_at ||
+            r.viewer_opened_at ||
+            openedMap[String(aid)] ||
+            null;
+          if (!openedAt) return r;
+          return { ...r, opened_at: openedAt, status: 'Opened' };
+        });
+
+        if (!stop) {
+          setRecentAiSubmissions(patchedRows as any);
+          setRecentAiTotal(Number(resp?.total ?? patchedRows.length));
+        }
+      })
+      .catch((err: any) => {
+        if (!stop) {
+          if (process.env.NODE_ENV !== 'production') {
+            // eslint-disable-next-line no-console
+            console.warn('[OrgInstructorHome] recent AI submissions error', {
+              message: err?.message,
+              status: err?.response?.status,
+              data: err?.response?.data,
+            });
+          }
+          setRecentAiError('Failed to load AI submissions.');
+          setRecentAiSubmissions([]);
+          setRecentAiTotal(0);
+        }
+      })
+      .finally(() => {
+        if (!stop) setRecentAiLoading(false);
+      });
+
+    return () => {
+      stop = true;
+    };
+  }, [
+    backendUrl,
+    authToken,
+    org?.id,
+    recentKind,
+    recentClass,
+    recentSearchDebounced,
+    recentAiPage,
+    recentAiPageSize,
+    shopUser?.id,
+    currentUser?.id,
+  ]);
+
   const recentClassOptions = useMemo(() => {
     const s = new Set<string>();
-    recentSubmissions.forEach((row) => {
+    [...recentSubmissions, ...recentAiSubmissions].forEach((row) => {
       const cls =
         pickString(
           (row as any)?.class_label,
@@ -523,57 +620,109 @@ useEffect(() => {
       if (cls) s.add(cls);
     });
     return Array.from(s);
-  }, [recentSubmissions]);
+  }, [recentSubmissions, recentAiSubmissions]);
 
   const recentPageCount = useMemo(() => {
     return Math.max(1, Math.ceil((recentTotal || 0) / recentPageSize));
   }, [recentTotal, recentPageSize]);
 
-  const recentRangeStart = recentTotal ? (recentPage - 1) * recentPageSize + 1 : 0;
-  const recentRangeEnd = recentTotal
-    ? Math.min(recentTotal, (recentPage - 1) * recentPageSize + recentSubmissions.length)
+  const recentAiPageCount = useMemo(() => {
+    return Math.max(1, Math.ceil((recentAiTotal || 0) / recentAiPageSize));
+  }, [recentAiTotal, recentAiPageSize]);
+
+  const isAiRecent = recentKind === 'ai';
+  const recentDisplayPage = isAiRecent ? recentAiPage : recentPage;
+  const recentDisplayPageSize = isAiRecent ? recentAiPageSize : recentPageSize;
+  const recentDisplayTotal = isAiRecent ? recentAiTotal : recentTotal;
+  const recentDisplayRows = isAiRecent ? (recentAiSubmissions as any[]) : (recentSubmissions as any[]);
+  const recentPageCountActive = isAiRecent ? recentAiPageCount : recentPageCount;
+
+  const recentRangeStart = recentDisplayTotal ? (recentDisplayPage - 1) * recentDisplayPageSize + 1 : 0;
+  const recentRangeEnd = recentDisplayTotal
+    ? Math.min(recentDisplayTotal, (recentDisplayPage - 1) * recentDisplayPageSize + recentDisplayRows.length)
     : 0;
 
+  const recentDisplayLoading = isAiRecent ? recentAiLoading : recentLoading;
+  const recentDisplayError = isAiRecent ? recentAiError : recentError;
+
   useEffect(() => {
-    // Clamp page if total shrinks (e.g., filters applied) to keep offset valid
     const maxPage = Math.max(1, Math.ceil((recentTotal || 0) / recentPageSize));
     if (recentPage > maxPage) {
       setRecentPage(maxPage);
     }
   }, [recentTotal, recentPageSize, recentPage]);
 
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil((recentAiTotal || 0) / recentAiPageSize));
+    if (recentAiPage > maxPage) {
+      setRecentAiPage(maxPage);
+    }
+  }, [recentAiTotal, recentAiPageSize, recentAiPage]);
+
   const handleOpenSubmissions = useCallback(
     (assignmentId: string | number) => {
       if (!org?.id) return;
-   const orgId = org.id;
-   const nowIso = new Date().toISOString();
+      const orgId = org.id;
+      const nowIso = new Date().toISOString();
 
-   // 1) Cache + optimistic UI update (instant "Opened")
-   writeOpened(orgId, assignmentId, nowIso);
-   setRecentSubmissions((prev) =>
-     prev.map((r: any) => {
-       const aid = r.assignment_id ?? r.assignmentId ?? null;
-       if (String(aid) !== String(assignmentId)) return r;
-       return { ...r, opened_at: nowIso, status: 'Opened' };
-     }),
-   );
+      // 1) Cache + optimistic UI update (instant "Opened")
+      writeOpened(orgId, assignmentId, nowIso);
+      setRecentSubmissions((prev) =>
+        prev.map((r: any) => {
+          const aid = r.assignment_id ?? r.assignmentId ?? null;
+          if (String(aid) !== String(assignmentId)) return r;
+          return { ...r, opened_at: nowIso, status: 'Opened' };
+        })
+      );
 
-   // 2) Persist on backend (best-effort)
-   if (backendUrl && authToken) {
-     apiMarkOrgAssignmentOpened(backendUrl, authToken, orgId, String(assignmentId)).catch(() => {});
-   }
+      // 2) Persist on backend (best-effort)
+      if (backendUrl && authToken) {
+        apiMarkOrgAssignmentOpened(backendUrl, authToken, orgId, String(assignmentId)).catch(() => {});
+      }
 
-   const id = encodeURIComponent(String(assignmentId));
+      const id = encodeURIComponent(String(assignmentId));
 
-   try {
-  sessionStorage.setItem(
-    'org:returnToAfterSubmissions',
-    `${window.location.pathname}${window.location.search}#recent-submissions`
-  );
-} catch {}
-   navigate(`/org/portal?tab=assign&assignmentId=${id}&view=submissions`);
+      try {
+        // remember the home URL + anchor so Back can scroll to recent submissions
+        sessionStorage.setItem(
+          'org:returnToAfterSubmissions',
+          `${window.location.pathname}${window.location.search}#recent-submissions`
+        );
+      } catch {}
+
+      navigate(`/org/portal?tab=assign&assignmentId=${id}&view=submissions`);
     },
-   [navigate, org?.id, backendUrl, authToken],
+    [navigate, org?.id, backendUrl, authToken]
+  );
+
+  const handleOpenAiSubmission = useCallback(
+    (attemptId: string | number, assignmentId?: string | number | null) => {
+      if (!org?.id) return;
+      const orgId = org.id;
+      const nowIso = new Date().toISOString();
+
+      if (assignmentId) {
+        writeOpened(orgId, assignmentId, nowIso);
+        setRecentAiSubmissions((prev) =>
+          prev.map((r: any) => {
+            const aid = r.assignment_id ?? r.assignmentId ?? null;
+            if (String(aid) !== String(assignmentId)) return r;
+            return { ...r, opened_at: nowIso, status: 'Opened' };
+          })
+        );
+      }
+
+      try {
+        sessionStorage.setItem(
+          'org:returnToAfterSubmissions',
+          `${window.location.pathname}${window.location.search}#recent-submissions`
+        );
+      } catch {}
+
+      const aid = encodeURIComponent(String(attemptId));
+      navigate(`/org/portal?tab=assign&view=ai-submission&attemptId=${aid}`);
+    },
+    [navigate, org?.id]
   );
 
   const heroBg =
@@ -801,12 +950,47 @@ useEffect(() => {
                 Quickly jump to what learners submitted most recently.
               </p>
             </div>
-            <Link
-              to="/org/portal?tab=assign"
-              className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold transition dark:border-white/15 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white/80"
-            >
-              Open portal →
-            </Link>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <div className="inline-flex rounded-full border border-slate-200 bg-white text-[11px] sm:text-xs shadow-sm overflow-hidden dark:border-white/10 dark:bg-white/5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecentKind('classic');
+                    setRecentPage(1);
+                  }}
+                  className={cn(
+                    'px-3 py-1.5 font-semibold',
+                    recentKind === 'classic'
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-slate-700 hover:bg-slate-50 dark:text-white/80 dark:hover:bg-white/10'
+                  )}
+                >
+                  Classic
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecentKind('ai');
+                    setRecentAiPage(1);
+                  }}
+                  className={cn(
+                    'px-3 py-1.5 font-semibold',
+                    recentKind === 'ai'
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-slate-700 hover:bg-slate-50 dark:text-white/80 dark:hover:bg-white/10'
+                  )}
+                >
+                  AI
+                </button>
+              </div>
+
+              <Link
+                to="/org/portal?tab=assign"
+                className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold transition dark:border-white/15 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white/80"
+              >
+                Open portal →
+              </Link>
+            </div>
           </div>
 
           <div className="mt-3 space-y-3">
@@ -817,6 +1001,7 @@ useEffect(() => {
                   onChange={(e) => {
                     setRecentClass(e.target.value);
                     setRecentPage(1);
+                    setRecentAiPage(1);
                   }}
                   className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-white/80"
                 >
@@ -839,10 +1024,16 @@ useEffect(() => {
               <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-darkTextSecondary">
                 <span>Rows:</span>
                 <select
-                  value={recentPageSize}
+                  value={recentDisplayPageSize}
                   onChange={(e) => {
-                    setRecentPageSize(Number(e.target.value) || 10);
-                    setRecentPage(1);
+                    const next = Number(e.target.value) || 10;
+                    if (recentKind === 'ai') {
+                      setRecentAiPageSize(next);
+                      setRecentAiPage(1);
+                    } else {
+                      setRecentPageSize(next);
+                      setRecentPage(1);
+                    }
                   }}
                   className="rounded-full bg-white dark:bg-[#0f1821] px-2 py-1 ring-1 ring-black/10 dark:ring-white/10"
                 >
@@ -853,22 +1044,22 @@ useEffect(() => {
               </div>
             </div>
 
-            {recentLoading ? (
+            {recentDisplayLoading ? (
               <div className="text-sm text-slate-600 dark:text-darkTextSecondary">
                 Loading recent submissions…
               </div>
-            ) : recentError ? (
+            ) : recentDisplayError ? (
               <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-900/20 dark:text-rose-100">
-                {recentError}
+                {recentDisplayError}
               </div>
-            ) : recentSubmissions.length === 0 ? (
+            ) : recentDisplayRows.length === 0 ? (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-white/70">
                 No submissions yet. Once learners start turning in work, their latest assignments will show up here.
               </div>
             ) : (
               <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-white/10 dark:bg-white/5">
                 <div className="divide-y divide-slate-200/70 dark:divide-white/10">
-                  {recentSubmissions.map((row: any) => {
+                  {recentDisplayRows.map((row: any) => {
                     const admission =
                       pickString(row.admission_number, row.learner_admission_code, row.student_id) || '—';
                     const learnerName =
@@ -890,13 +1081,15 @@ useEffect(() => {
                       row.viewer_opened_at ||
                       null;
 
-                    const statusLabel = openedAt ? 'Opened' : (row.status || 'Submitted');
-
+                    const statusLabel = openedAt ? 'Opened' : row.status || 'Submitted';
                     const assignmentId = row.assignment_id || row.assignmentId || null;
+                    const attemptId = row.attempt_id || row.id || assignmentId || learnerName;
+                    const aiScore = isAiRecent ? row.score_pct ?? row.ai_final_score ?? null : null;
+                    const aiScoreLabel = aiScore == null ? null : `${Math.round(Number(aiScore))}%`;
 
                     return (
                       <div
-                        key={`${row.id || row.assignment_id || learnerName}-${submittedAt || 'row'}`}
+                        key={`${attemptId}-${submittedAt || 'row'}`}
                         className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="flex-1 min-w-0 space-y-1">
@@ -905,6 +1098,7 @@ useEffect(() => {
                               {assignmentTitle}
                             </div>
                             <Badge tone="indigo">{classLabel}</Badge>
+                            {isAiRecent && aiScoreLabel ? <Badge tone="sky">Score {aiScoreLabel}</Badge> : null}
                           </div>
 
                           <div className="text-xs text-slate-600 dark:text-white/60 truncate">
@@ -924,7 +1118,11 @@ useEffect(() => {
                           </div>
                           <button
                             type="button"
-                            onClick={() => assignmentId && handleOpenSubmissions(assignmentId)}
+                            onClick={() =>
+                              isAiRecent
+                                ? attemptId && handleOpenAiSubmission(attemptId, assignmentId)
+                                : assignmentId && handleOpenSubmissions(assignmentId)
+                            }
                             className="text-[11px] sm:text-xs px-3 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-sm shadow-indigo-600/25 transition"
                           >
                             View
@@ -939,24 +1137,34 @@ useEffect(() => {
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-600 dark:text-darkTextSecondary">
               <div>
-                Showing {recentRangeStart}-{recentRangeEnd} of {recentTotal}
+                Showing {recentRangeStart}-{recentRangeEnd} of {recentDisplayTotal}
               </div>
               <div className="inline-flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setRecentPage((p) => Math.max(1, p - 1))}
-                  disabled={recentPage <= 1}
+                  onClick={() =>
+                    recentKind === 'ai'
+                      ? setRecentAiPage((p) => Math.max(1, p - 1))
+                      : setRecentPage((p) => Math.max(1, p - 1))
+                  }
+                  disabled={recentDisplayPage <= 1}
                   className="rounded-full border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40 dark:border-white/10 dark:bg-white/5"
                 >
                   ← Prev
                 </button>
                 <span>
-                  Page {recentPage} / {recentPageCount}
+                  Page {recentDisplayPage} / {recentPageCountActive}
                 </span>
                 <button
                   type="button"
-                  onClick={() => setRecentPage((p) => Math.min(recentPageCount, p + 1))}
-                  disabled={recentPage >= recentPageCount || recentRangeEnd >= recentTotal}
+                  onClick={() =>
+                    recentKind === 'ai'
+                      ? setRecentAiPage((p) => Math.min(recentAiPageCount, p + 1))
+                      : setRecentPage((p) => Math.min(recentPageCount, p + 1))
+                  }
+                  disabled={
+                    recentDisplayPage >= recentPageCountActive || recentRangeEnd >= recentDisplayTotal
+                  }
                   className="rounded-full border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40 dark:border-white/10 dark:bg-white/5"
                 >
                   Next →
