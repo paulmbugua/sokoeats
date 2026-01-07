@@ -14,6 +14,7 @@ import {
   listOrgInstructorAiSubmissions,
   apiMarkOrgAssignmentOpened,
 } from '@mytutorapp/shared/api/orgApi';
+import { getOrgAiSubmissionsPdf } from '@mytutorapp/shared/api';
 import { resolveAsset } from './portal/OrgProfileShared.web';
 
 function cn(...xs: Array<string | false | null | undefined>) {
@@ -427,6 +428,7 @@ const OrgInstructorHome: React.FC = () => {
   const [recentAiSubmissions, setRecentAiSubmissions] = useState<OrgAiSubmissionRow[]>([]);
   const [recentAiTotal, setRecentAiTotal] = useState(0);
   const [recentAiLoading, setRecentAiLoading] = useState(false);
+  const [downloadingAiPdf, setDownloadingAiPdf] = useState(false);
   const [recentAiError, setRecentAiError] = useState<string | null>(null);
   const [recentAiPage, setRecentAiPage] = useState(1);
   const [recentAiPageSize, setRecentAiPageSize] = useState(10);
@@ -644,6 +646,39 @@ const OrgInstructorHome: React.FC = () => {
 
   const recentDisplayLoading = isAiRecent ? recentAiLoading : recentLoading;
   const recentDisplayError = isAiRecent ? recentAiError : recentError;
+
+  const handleDownloadAiPdf = useCallback(async () => {
+    if (!backendUrl || !authToken || !org?.id) {
+      alert('Missing organization context.');
+      return;
+    }
+
+    setDownloadingAiPdf(true);
+    try {
+      const blob = await getOrgAiSubmissionsPdf(backendUrl, authToken, org.id, {
+        classId: recentClass || undefined,
+      });
+
+      const safeClass = (recentClass || 'all-classes')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-');
+      const stamp = new Date().toISOString().slice(0, 10);
+      const filename = `ai-quiz-results-${safeClass}-${stamp}.pdf`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(e?.message || 'Failed to download PDF.');
+    } finally {
+      setDownloadingAiPdf(false);
+    }
+  }, [backendUrl, authToken, org?.id, recentClass]);
 
   useEffect(() => {
     const maxPage = Math.max(1, Math.ceil((recentTotal || 0) / recentPageSize));
@@ -1012,6 +1047,22 @@ const OrgInstructorHome: React.FC = () => {
                     </option>
                   ))}
                 </select>
+
+                {isAiRecent ? (
+                  <button
+                    type="button"
+                    onClick={handleDownloadAiPdf}
+                    disabled={downloadingAiPdf}
+                    className={cn(
+                      'rounded-full px-3 py-1.5 text-xs font-semibold shadow-sm border',
+                      downloadingAiPdf
+                        ? 'border-slate-200 bg-slate-100 text-slate-400 dark:border-white/10 dark:bg-white/5 dark:text-white/40'
+                        : 'border-indigo-200 bg-indigo-600 text-white hover:bg-indigo-500',
+                    )}
+                  >
+                    {downloadingAiPdf ? 'Preparing PDF…' : 'Download PDF'}
+                  </button>
+                ) : null}
 
                 <input
                   value={recentSearch}

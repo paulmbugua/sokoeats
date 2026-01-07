@@ -13,6 +13,7 @@ import {
   getLearnerNewsletter,
   getLearnerNewsletterPdf,
 } from '../controllers/orgProToolsController.js';
+import { getOrgAiSubmissionsPdf } from '../controllers/orgAiSubmissionsPdfController.js';
 
 import requireAuth from '../middleware/auth.js';
 
@@ -33,6 +34,9 @@ router.post('/:orgId/pro/newsletters/:id/send', sendNewsletter);
 router.get('/:orgId/learner/newsletters',  listLearnerNewsletters);
 router.get('/:orgId/learner/newsletters/:id', getLearnerNewsletter);
 router.get('/:orgId/learner/newsletters/:id/pdf',  getLearnerNewsletterPdf,);
+
+// AI submissions PDF
+router.get('/:orgId/ai-submissions/pdf', getOrgAiSubmissionsPdf);
 
 
 export default router;
