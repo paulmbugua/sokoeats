@@ -36,9 +36,12 @@ import {
   createOrgAssignment,
   updateOrgBranding,
   listOrgInstructorSubmissions,
+  listOrgInstructorAiSubmissions,
   apiMarkOrgAssignmentOpened,
 } from '@mytutorapp/shared/api/orgApi';
+import { getOrgAiSubmissionsPdf } from '@mytutorapp/shared/api';
 import { uploadAsset } from '@mytutorapp/shared/api';
+import * as Sharing from 'expo-sharing';
 
 import ThemeToggle from '../ThemeToggle.native';
 import { useThemePref } from '../../theme/ThemeContext';
@@ -464,14 +467,22 @@ const OrgInstructorHomeNative: React.FC = () => {
 
   // Recent submissions
   const [recentSubmissions, setRecentSubmissions] = useState<any[]>([]);
+  const [recentAiSubmissions, setRecentAiSubmissions] = useState<any[]>([]);
   const [recentTotal, setRecentTotal] = useState(0);
+  const [recentAiTotal, setRecentAiTotal] = useState(0);
   const [recentLoading, setRecentLoading] = useState(false);
+  const [recentAiLoading, setRecentAiLoading] = useState(false);
   const [recentError, setRecentError] = useState<string | null>(null);
+  const [recentAiError, setRecentAiError] = useState<string | null>(null);
+  const [recentKind, setRecentKind] = useState<'classic' | 'ai'>('classic');
   const [recentClass, setRecentClass] = useState('');
   const [recentSearch, setRecentSearch] = useState('');
   const [recentSearchDebounced, setRecentSearchDebounced] = useState('');
   const [recentPage, setRecentPage] = useState(1);
   const [recentPageSize, setRecentPageSize] = useState(10);
+  const [recentAiPage, setRecentAiPage] = useState(1);
+  const [recentAiPageSize, setRecentAiPageSize] = useState(10);
+  const [downloadingAiPdf, setDownloadingAiPdf] = useState(false);
 
   const isProTier =
     String(tier || '').toLowerCase() === 'pro' || String(tier || '').toLowerCase() === 'enterprise';
@@ -649,6 +660,7 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
     const t = setTimeout(() => {
       setRecentSearchDebounced(recentSearch.trim());
       setRecentPage(1);
+      setRecentAiPage(1);
     }, 300);
     return () => clearTimeout(t);
   }, [recentSearch]);
@@ -723,6 +735,75 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
     orgUser,
   ]);
 
+  useEffect(() => {
+    if (!backendUrl || !authToken || !orgId) return;
+
+    let stop = false;
+    setRecentAiLoading(true);
+    setRecentAiError(null);
+
+    const offset = (recentAiPage - 1) * recentAiPageSize;
+    const viewerId = Number((shopUser || currentUser || orgUser)?.id || 0);
+
+    (async () => {
+      try {
+        const resp: any = await listOrgInstructorAiSubmissions(backendUrl, authToken, orgId, {
+          class_label: recentClass || undefined,
+          q: recentSearchDebounced || undefined,
+          limit: recentAiPageSize,
+          offset,
+        });
+
+        const rows: any[] = Array.isArray(resp?.rows) ? resp.rows : [];
+        const safeRows = rows.filter((row) => {
+          if (row.assignment_created_by && viewerId && Number(row.assignment_created_by) !== viewerId) {
+            if (__DEV__) {
+              console.warn('[OrgInstructorHomeNative] dropped AI submission not owned by instructor', row);
+            }
+            return false;
+          }
+          return true;
+        });
+
+        const openedMap = await readOpenedMap(orgId);
+        const patchedRows = patchRecentRowsWithOpened(safeRows, openedMap);
+
+        if (!stop) {
+          setRecentAiSubmissions(patchedRows);
+          setRecentAiTotal(Number(resp?.total ?? patchedRows.length));
+        }
+      } catch (err: any) {
+        if (!stop) {
+          console.warn('[OrgInstructorHomeNative] recent AI submissions error', {
+            message: err?.message,
+            status: err?.response?.status,
+            data: err?.response?.data,
+          });
+          setRecentAiError('Failed to load AI submissions.');
+          setRecentAiSubmissions([]);
+          setRecentAiTotal(0);
+        }
+      } finally {
+        if (!stop) setRecentAiLoading(false);
+      }
+    })();
+
+    return () => {
+      stop = true;
+    };
+  }, [
+    backendUrl,
+    authToken,
+    orgId,
+    recentClass,
+    recentSearchDebounced,
+    recentAiPage,
+    recentAiPageSize,
+    shopUser,
+    currentUser,
+    orgUser,
+  ]);
+
   const handleLogout = useCallback(async () => {
     try {
       if (orgLogout) await orgLogout();
@@ -741,6 +822,7 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
         const openedMap = await readOpenedMap(orgId);
         if (!canceled) {
           setRecentSubmissions((prev) => patchRecentRowsWithOpened(prev, openedMap));
+          setRecentAiSubmissions((prev) => patchRecentRowsWithOpened(prev, openedMap));
         }
       })();
 
@@ -771,7 +853,7 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
 
   const recentClassOptions = useMemo(() => {
     const set = new Set<string>();
-    recentSubmissions.forEach((row) => {
+    [...recentSubmissions, ...recentAiSubmissions].forEach((row) => {
       const cls =
         pickString(
           (row as any)?.class_label,
@@ -781,15 +863,24 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
       if (cls) set.add(cls);
     });
     return Array.from(set);
-  }, [recentSubmissions]);
+  }, [recentSubmissions, recentAiSubmissions]);
 
   const recentPageCount = useMemo(() => {
     return Math.max(1, Math.ceil((recentTotal || 0) / recentPageSize));
   }, [recentTotal, recentPageSize]);
 
+  const recentAiPageCount = useMemo(() => {
+    return Math.max(1, Math.ceil((recentAiTotal || 0) / recentAiPageSize));
+  }, [recentAiTotal, recentAiPageSize]);
+
   const recentRangeStart = recentTotal ? (recentPage - 1) * recentPageSize + 1 : 0;
   const recentRangeEnd = recentTotal
     ? Math.min(recentTotal, (recentPage - 1) * recentPageSize + recentSubmissions.length)
+    : 0;
+
+  const recentAiRangeStart = recentAiTotal ? (recentAiPage - 1) * recentAiPageSize + 1 : 0;
+  const recentAiRangeEnd = recentAiTotal
+    ? Math.min(recentAiTotal, (recentAiPage - 1) * recentAiPageSize + recentAiSubmissions.length)
     : 0;
 
   useEffect(() => {
@@ -798,6 +889,13 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
       setRecentPage(maxPage);
     }
   }, [recentTotal, recentPageSize, recentPage]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil((recentAiTotal || 0) / recentAiPageSize));
+    if (recentAiPage > maxPage) {
+      setRecentAiPage(maxPage);
+    }
+  }, [recentAiTotal, recentAiPageSize, recentAiPage]);
 
   const onCreateInvite = useCallback(async () => {
     if (!orgId || !orgToken) return;
@@ -984,6 +1082,36 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
     },
     [authToken, backendUrl, navigation, orgId]
   );
+
+  const handleDownloadAiPdf = useCallback(async () => {
+    if (!backendUrl || !authToken || !orgId) {
+      Alert.alert('Unavailable', 'Missing organization context.');
+      return;
+    }
+
+    setDownloadingAiPdf(true);
+    try {
+      const uri = await getOrgAiSubmissionsPdf(backendUrl, authToken, orgId, {
+        classId: recentClass || undefined,
+      });
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(uri, {
+          dialogTitle: 'AI Course Quiz Results',
+          mimeType: 'application/pdf',
+          UTI: 'com.adobe.pdf',
+        });
+        Alert.alert('PDF ready', 'AI quiz results PDF is ready to share or save.');
+      } else {
+        Alert.alert('Downloaded', uri);
+      }
+    } catch (e: any) {
+      Alert.alert('PDF failed', e?.message || 'Unable to download PDF.');
+    } finally {
+      setDownloadingAiPdf(false);
+    }
+  }, [backendUrl, authToken, orgId, recentClass]);
 
   const bottomPad = Math.max(24, insets.bottom + 24);
 
@@ -1362,6 +1490,31 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
           </View>
 
           <View style={tw`mt-3`}>
+            <View style={tw`flex-row items-center gap-2 flex-wrap`}>
+              {['classic', 'ai'].map((kind) => {
+                const active = recentKind === kind;
+                return (
+                  <TouchableOpacity
+                    key={kind}
+                    onPress={() => {
+                      setRecentKind(kind as 'classic' | 'ai');
+                      setRecentPage(1);
+                      setRecentAiPage(1);
+                    }}
+                    style={[
+                      tw`px-3 py-1.5 rounded-full border`,
+                      {
+                        borderColor: active ? '#6366f1' : palette.border,
+                        backgroundColor: active ? palette.chipBg('#6366f1') : palette.softCard,
+                      },
+                    ]}
+                  >
+                    <Text style={[tw`text-xs font-semibold`, { color: palette.text }]}> {kind === 'ai' ? 'AI' : 'Classic'} </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             <TextInput
               value={recentSearch}
               onChangeText={(v) => setRecentSearch(v)}
@@ -1369,6 +1522,26 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
               placeholderTextColor={palette.textSubtle}
               style={[palette.input(), tw`text-xs`, { color: palette.text }]}
             />
+
+            <View style={tw`mt-2 flex-row items-center gap-2 flex-wrap`}>
+              {recentKind === 'ai' ? (
+                <TouchableOpacity
+                  onPress={handleDownloadAiPdf}
+                  disabled={downloadingAiPdf}
+                  style={[
+                    tw`px-3 py-2 rounded-full`,
+                    {
+                      backgroundColor: downloadingAiPdf ? '#c7d2fe' : '#4f46e5',
+                      opacity: downloadingAiPdf ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={[tw`text-[11px] font-semibold`, { color: 'white' }]}>
+                    {downloadingAiPdf ? 'Preparing PDF…' : 'Download PDF'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-2`}>
               <View style={tw`flex-row items-center gap-2`}>
@@ -1422,7 +1595,106 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
               })}
             </View>
 
-            {recentLoading ? (
+            {recentKind === 'ai' ? (
+              recentAiLoading ? (
+                <View style={tw`flex-row items-center mt-2`}>
+                  <ActivityIndicator />
+                  <Text style={[tw`ml-2 text-xs`, { color: palette.textMuted }]}>
+                    Loading AI submissions…
+                  </Text>
+                </View>
+              ) : recentAiError ? (
+                <View
+                  style={[
+                    tw`p-3 mt-2 rounded-2xl border`,
+                    {
+                      borderColor: palette.isDark ? 'rgba(248,113,113,0.35)' : 'rgba(248,113,113,0.30)',
+                      backgroundColor: palette.isDark ? 'rgba(248,113,113,0.10)' : 'rgba(254,226,226,0.6)',
+                    },
+                  ]}
+                >
+                  <Text style={[tw`text-xs`, { color: palette.text }]}>{recentAiError}</Text>
+                </View>
+              ) : recentAiSubmissions.length === 0 ? (
+                <View style={palette.softSurface(tw`p-3 mt-2`)}>
+                  <Text style={[tw`text-xs`, { color: palette.textMuted }]}>No AI quiz submissions yet.</Text>
+                </View>
+              ) : (
+                <View style={[tw`mt-2 rounded-2xl overflow-hidden border`, { borderColor: palette.border }]}>
+                  {recentAiSubmissions.map((row: any, idx: number) => {
+                    const admission =
+                      pickString(row.admission_number, row.learner_admission_code, row.student_id) || '—';
+                    const learnerName =
+                      pickString(
+                        row.learner_display_name,
+                        row.learner_name,
+                        row.learner_first_name,
+                        row.learner_email,
+                      ) || 'Learner';
+                    const classLabel =
+                      pickString(row.class_label, row.learner_class_label, row.assignment_class_label) || '—';
+                    const assignmentTitle =
+                      pickString(row.assignment_title, row.title_override, row.course_title) || 'AI course';
+                    const submittedAt = row.submitted_at || row.ai_last_attempt_at || null;
+                    const aiScore = row.score_pct ?? row.ai_final_score ?? null;
+                    const scoreLabel = aiScore == null ? '—' : `${Math.round(Number(aiScore))}%`;
+
+                    const assignmentId = row.assignment_id || row.assignmentId || null;
+                    const attemptId = row.attempt_id || row.id || assignmentId || learnerName;
+
+                    const divider = idx === recentAiSubmissions.length - 1 ? null : (
+                      <View key={`divider-${row.id || idx}`} style={[tw`h-px`, { backgroundColor: palette.border }]} />
+                    );
+
+                    return (
+                      <View key={row.id || idx}>
+                        <View style={[tw`px-3 py-3`, { backgroundColor: palette.softCard }]}
+                        >
+                          <View style={tw`flex-row items-center justify-between gap-2`}>
+                            <View style={tw`flex-1 min-w-0`}>
+                              <Text style={[tw`text-sm font-semibold`, { color: palette.text }]} numberOfLines={1}>
+                                {assignmentTitle}
+                              </Text>
+                              <Text style={[tw`text-xs mt-0.5`, { color: palette.textMuted }]} numberOfLines={1}>
+                                {learnerName} • Adm {admission}
+                              </Text>
+
+                              <View style={tw`flex-row items-center flex-wrap gap-2 mt-2`}>
+                                <Badge tone="indigo" palette={palette}>
+                                  {classLabel}
+                                </Badge>
+                                <Badge tone="sky" palette={palette}>
+                                  Score {scoreLabel}
+                                </Badge>
+                                <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
+                                  {submittedAt ? fmtWhen(submittedAt) : 'Not timestamped'}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+
+                          <TouchableOpacity
+                            onPress={() =>
+                              attemptId
+                                ? navigation.navigate('OrgElearnPortal', {
+                                    tab: 'assign',
+                                    view: 'ai-submission',
+                                    attemptId,
+                                  })
+                                : Alert.alert('Missing', 'No attempt id found.')
+                            }
+                            style={[tw`mt-3 self-start px-3 py-2 rounded-full`, { backgroundColor: '#6366f1' }]}
+                          >
+                            <Text style={[tw`text-[11px] font-semibold`, { color: 'white' }]}>View</Text>
+                          </TouchableOpacity>
+                        </View>
+                        {divider}
+                      </View>
+                    );
+                  })}
+                </View>
+              )
+            ) : recentLoading ? (
               <View style={tw`flex-row items-center mt-2`}>
                 <ActivityIndicator />
                 <Text style={[tw`ml-2 text-xs`, { color: palette.textMuted }]}>Loading recent submissions…</Text>
@@ -1539,28 +1811,58 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
 
             <View style={tw`mt-3 flex-row items-center justify-between`}>
               <Text style={[tw`text-[11px]`, { color: palette.textMuted }]}>
-                Showing {recentRangeStart}-{recentRangeEnd} of {recentTotal}
+                {recentKind === 'ai'
+                  ? `Showing ${recentAiRangeStart}-${recentAiRangeEnd} of ${recentAiTotal}`
+                  : `Showing ${recentRangeStart}-${recentRangeEnd} of ${recentTotal}`}
               </Text>
               <View style={tw`flex-row items-center gap-2`}>
                 <TouchableOpacity
-                  onPress={() => setRecentPage((p) => Math.max(1, p - 1))}
-                  disabled={recentPage <= 1}
+                  onPress={() =>
+                    recentKind === 'ai'
+                      ? setRecentAiPage((p) => Math.max(1, p - 1))
+                      : setRecentPage((p) => Math.max(1, p - 1))
+                  }
+                  disabled={recentKind === 'ai' ? recentAiPage <= 1 : recentPage <= 1}
                   style={[
                     tw`px-3 py-2 rounded-full border`,
-                    { borderColor: palette.border, opacity: recentPage <= 1 ? 0.4 : 1 },
+                    {
+                      borderColor: palette.border,
+                      opacity: recentKind === 'ai'
+                        ? recentAiPage <= 1
+                          ? 0.4
+                          : 1
+                        : recentPage <= 1
+                          ? 0.4
+                          : 1,
+                    },
                   ]}
                 >
                   <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>Prev</Text>
                 </TouchableOpacity>
                 <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
-                  Page {recentPage} / {recentPageCount}
+                  {recentKind === 'ai'
+                    ? `Page ${recentAiPage} / ${recentAiPageCount}`
+                    : `Page ${recentPage} / ${recentPageCount}`}
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setRecentPage((p) => Math.min(recentPageCount, p + 1))}
-                  disabled={recentRangeEnd >= recentTotal}
+                  onPress={() =>
+                    recentKind === 'ai'
+                      ? setRecentAiPage((p) => Math.min(recentAiPageCount, p + 1))
+                      : setRecentPage((p) => Math.min(recentPageCount, p + 1))
+                  }
+                  disabled={recentKind === 'ai' ? recentAiRangeEnd >= recentAiTotal : recentRangeEnd >= recentTotal}
                   style={[
                     tw`px-3 py-2 rounded-full border`,
-                    { borderColor: palette.border, opacity: recentRangeEnd >= recentTotal ? 0.4 : 1 },
+                    {
+                      borderColor: palette.border,
+                      opacity: recentKind === 'ai'
+                        ? recentAiRangeEnd >= recentAiTotal
+                          ? 0.4
+                          : 1
+                        : recentRangeEnd >= recentTotal
+                          ? 0.4
+                          : 1,
+                    },
                   ]}
                 >
                   <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>Next</Text>
