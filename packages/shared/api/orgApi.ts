@@ -129,6 +129,26 @@ export type OrgAssignmentSubmissionRow = {
   [k: string]: any;
 };
 
+export type OrgAiSubmissionRow = {
+  attempt_id: string;
+  assignment_id?: string | number | null;
+  org_id?: string | number | null;
+  course_id?: string | number | null;
+  course_title?: string | null;
+  assignment_title?: string | null;
+  learner_display_name?: string | null;
+  learner_email?: string | null;
+  admission_number?: string | null;
+  learner_class_label?: string | null;
+  assignment_class_label?: string | null;
+  score_pct?: number | null;
+  pass_mark?: number | null;
+  attempt_no?: number | null;
+  submitted_at?: string | null;
+  status?: string | null;
+  [k: string]: any;
+};
+
 // ─────────────────────────────────────────────────────────
 // Org Pricing (portal display)
 // ─────────────────────────────────────────────────────────
@@ -795,6 +815,35 @@ export async function listOrgInstructorSubmissions(
   if (opts?.offset) url.searchParams.set('offset', String(opts.offset));
 
   const res = await axios.get(url.toString(), { headers: authHeaders(token) });
+  return res.data;
+}
+
+export async function listOrgInstructorAiSubmissions(
+  backendUrl: string,
+  token: string,
+  orgId: string,
+  opts?: { class_label?: string; q?: string; limit?: number; offset?: number }
+): Promise<{ ok: boolean; rows: OrgAiSubmissionRow[]; total: number; limit: number; offset: number; page?: number; page_size?: number }> {
+  const url = new URL(`${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/instructor/ai-submissions`);
+  if (opts?.class_label) url.searchParams.set('class_label', opts.class_label);
+  if (opts?.q) url.searchParams.set('q', opts.q);
+  if (opts?.limit) url.searchParams.set('limit', String(opts.limit));
+  if (opts?.offset) url.searchParams.set('offset', String(opts.offset));
+
+  const res = await axios.get(url.toString(), { headers: authHeaders(token) });
+  return res.data;
+}
+
+export async function getOrgInstructorAiSubmissionDetail(
+  backendUrl: string,
+  token: string,
+  orgId: string,
+  attemptId: string | number,
+): Promise<{ ok: boolean; submission: OrgAiSubmissionRow }> {
+  const url = `${baseUrl(backendUrl)}/api/orgs/${encodeURIComponent(orgId)}/instructor/ai-submissions/${encodeURIComponent(
+    String(attemptId),
+  )}`;
+  const res = await axios.get(url, { headers: authHeaders(token) });
   return res.data;
 }
 

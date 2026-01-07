@@ -17,6 +17,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { CommonActions, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import visamaster from '../../../assets/visamaster.png';
 import mpesa from '../../../assets/mpesa.png';
@@ -63,6 +64,7 @@ type TabKey = 'branding' | 'assign' | 'analytics' | 'examResults' | 'tools';
 type Period = 'month' | 'term' | 'year';
 
 const PAY_DEBUG = true; // turn off later
+const RETURN_TO_KEY = 'org:returnToAfterSubmissions';
 
 function redact(obj: any) {
   try {
@@ -79,6 +81,32 @@ function redact(obj: any) {
 function payLog(label: string, data?: any) {
   if (!PAY_DEBUG) return;
   console.log(label, redact(data));
+}
+
+function openedKey(orgId: string | number) {
+  return `org:openedAssignments:${orgId}`;
+}
+
+async function readOpenedMap(orgId: string | number): Promise<Record<string, string>> {
+  try {
+    const raw = await AsyncStorage.getItem(openedKey(orgId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeOpened(orgId: string | number, assignmentId: string | number, iso: string) {
+  try {
+    const key = openedKey(orgId);
+    const current = await readOpenedMap(orgId);
+    const next = { ...current, [assignmentId]: iso };
+    await AsyncStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
 }
 
 const ORG_TIERS: Record<OrgTier, { seats: number; features: string[] }> = {
@@ -398,22 +426,49 @@ const OrgElearnPortalNative: React.FC = () => {
 
   const route = useRoute<RouteProp<MainStackParamList, 'OrgElearnPortal'>>();
   const navigation = useNavigation<any>();
-  function smartNavigate(routeName: string, params?: any) {
-  let nav: any = navigation;
+  const smartNavigate = useCallback(
+    (routeName: string, params?: any) => {
+      let nav: any = navigation;
 
-  // climb up until we find a navigator that actually knows this route
-  while (nav) {
-    const names = nav.getState?.()?.routeNames;
-    if (Array.isArray(names) && names.includes(routeName)) {
-      nav.navigate(routeName, params);
+      // climb up until we find a navigator that actually knows this route
+      while (nav) {
+        const names = nav.getState?.()?.routeNames;
+        if (Array.isArray(names) && names.includes(routeName)) {
+          nav.navigate(routeName, params);
+          return;
+        }
+        nav = nav.getParent?.();
+      }
+
+      // last resort: dispatch a navigate action (may bubble)
+      navigation.dispatch(CommonActions.navigate({ name: routeName as never, params } as never));
+    },
+    [navigation]
+  );
+
+  const handleBackToAssignments = useCallback(async () => {
+    let returnTo: string | null = null;
+    try {
+      returnTo = await AsyncStorage.getItem(RETURN_TO_KEY);
+    } catch {}
+
+    if (returnTo) {
+      try {
+        await AsyncStorage.removeItem(RETURN_TO_KEY);
+      } catch {}
+
+      // return to instructor home and ask it to scroll to recent submissions
+      smartNavigate('OrgInstructorHome', { scrollTo: 'recent-submissions' });
       return;
     }
-    nav = nav.getParent?.();
-  }
 
-  // last resort: dispatch a navigate action (may bubble)
-  navigation.dispatch(CommonActions.navigate({ name: routeName as never, params } as never));
-}
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    smartNavigate('OrgInstructorHome', { scrollTo: 'recent-submissions' });
+  }, [navigation, smartNavigate]);
 
 const openExamResults = useCallback(() => {
   const parent = navigation.getParent?.(); // parent Stack above Tab navigator (if any)
@@ -526,6 +581,10 @@ const openExamResults = useCallback(() => {
   // learner assignment view (legacy)
   const [learnerAssignments, setLearnerAssignments] = useState<OrgAssignmentRow[]>([]);
   const [learnerAssignmentsLoading, setLearnerAssignmentsLoading] = useState(false);
+  const [aiPage, setAiPage] = useState(1);
+  const [aiPageSize, setAiPageSize] = useState(10);
+  const [classicPage, setClassicPage] = useState(1);
+  const [classicPageSize, setClassicPageSize] = useState(10);
 
   const isAiAssignmentRow = (row: OrgAssignmentRow) => {
     const invite = (row as any).invite_code || (row as any).inviteCode || null;
@@ -1429,9 +1488,13 @@ if (explicitTab) setTab(explicitTab);
     setSubmissionsError(null);
 
     try {
+      const nowIso = new Date().toISOString();
+
       apiMarkOrgAssignmentOpened(backendUrl, authToken, org.id, String(assignmentIdFromRoute)).catch((e) =>
         console.warn('[OrgElearnPortalNative] mark opened failed', e?.message || e),
       );
+
+      writeOpened(org.id, assignmentIdFromRoute, nowIso);
 
       const res: any = await getOrgAssignmentSubmissions(
         backendUrl,
@@ -1439,7 +1502,7 @@ if (explicitTab) setTab(explicitTab);
         org.id,
         String(assignmentIdFromRoute)
       );
-      const openedAt = res?.assignment?.opened_at || new Date().toISOString();
+      const openedAt = res?.assignment?.opened_at || nowIso;
       setSubmissionsAssignment(res?.assignment ? { ...res.assignment, opened_at: openedAt } : null);
       setSubmissionsRows(Array.isArray(res?.submissions) ? res.submissions : []);
     } catch (e: any) {
@@ -1593,10 +1656,26 @@ if (explicitTab) setTab(explicitTab);
 
   const aiAssignments = useMemo(
     () => learnerAssignments.filter((a: any) => isAiAssignmentRow(a)),
-    [learnerAssignments]
+    [learnerAssignments],
   );
+  const aiTotal = aiAssignments.length;
+  const aiPageCount = useMemo(
+    () => Math.max(1, Math.ceil((aiTotal || 0) / aiPageSize)),
+    [aiTotal, aiPageSize],
+  );
+  const aiRangeStart = aiTotal ? (aiPage - 1) * aiPageSize + 1 : 0;
+  const aiPageItems = useMemo(() => {
+    const start = (aiPage - 1) * aiPageSize;
+    return aiAssignments.slice(start, start + aiPageSize);
+  }, [aiAssignments, aiPage, aiPageSize]);
+  const aiRangeEnd = aiTotal ? Math.min(aiTotal, aiRangeStart + aiPageItems.length - 1) : 0;
 
-  // Learner: classic-only filter
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil((aiTotal || 0) / aiPageSize));
+    if (aiPage > maxPage) setAiPage(maxPage);
+  }, [aiTotal, aiPageSize, aiPage]);
+
+  // Learner: classic-only filter (paged to mirror instructor recent submissions UX)
   const classicAssignments = useMemo(
     () =>
       learnerAssignments.filter((a: any) => {
@@ -1616,24 +1695,42 @@ if (explicitTab) setTab(explicitTab);
 
         return isLegacyKind || !!attachmentUrl;
       }),
-    [learnerAssignments]
+    [learnerAssignments],
   );
+  const classicTotal = classicAssignments.length;
+  const classicPageCount = useMemo(
+    () => Math.max(1, Math.ceil((classicTotal || 0) / classicPageSize)),
+    [classicTotal, classicPageSize],
+  );
+  const classicRangeStart = classicTotal ? (classicPage - 1) * classicPageSize + 1 : 0;
+  const classicPageItems = useMemo(() => {
+    const start = (classicPage - 1) * classicPageSize;
+    return classicAssignments.slice(start, start + classicPageSize);
+  }, [classicAssignments, classicPage, classicPageSize]);
+  const classicRangeEnd = classicTotal
+    ? Math.min(classicTotal, classicRangeStart + classicPageItems.length - 1)
+    : 0;
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil((classicTotal || 0) / classicPageSize));
+    if (classicPage > maxPage) setClassicPage(maxPage);
+  }, [classicTotal, classicPageSize, classicPage]);
 
   const { markedAssignments, submittedAssignments, pendingAssignments } = useMemo(() => {
-  const marked: OrgAssignmentRow[] = [];
-  const submitted: OrgAssignmentRow[] = [];
-  const pending: OrgAssignmentRow[] = [];
+    const marked: OrgAssignmentRow[] = [];
+    const submitted: OrgAssignmentRow[] = [];
+    const pending: OrgAssignmentRow[] = [];
 
-  classicAssignments.forEach((a: any) => {
-    const st = deriveClassicWorkStatus(a);
+    classicPageItems.forEach((a: any) => {
+      const st = deriveClassicWorkStatus(a);
 
-    if (st === 'marked') marked.push(a);
-    else if (st === 'pending') pending.push(a);
-    else submitted.push(a); // includes "submitted" + "opened"
-  });
+      if (st === 'marked') marked.push(a);
+      else if (st === 'pending') pending.push(a);
+      else submitted.push(a); // includes "submitted" + "opened"
+    });
 
-  return { markedAssignments: marked, submittedAssignments: submitted, pendingAssignments: pending };
-}, [classicAssignments]);
+    return { markedAssignments: marked, submittedAssignments: submitted, pendingAssignments: pending };
+  }, [classicPageItems]);
 
 
   const instructorEmails = useMemo(
@@ -1957,15 +2054,7 @@ if (explicitTab) setTab(explicitTab);
                   </View>
 
                   <TouchableOpacity
-                    onPress={() => {
-                      // back to assignments tab
-                      navigation.setParams?.({
-                        view: undefined,
-                        assignmentId: undefined,
-                        tab: 'assign',
-                      });
-                      setTab('assign');
-                    }}
+                    onPress={handleBackToAssignments}
                     style={tw`px-3 py-1.5 rounded-lg bg-[#e7edf4] dark:bg-white/10`}
                   >
                     <Text style={tw`text-xs text-[#0d141c] dark:text-white`}>Back</Text>
@@ -2052,7 +2141,67 @@ if (explicitTab) setTab(explicitTab);
                     here.
                   </Text>
                 ) : (
-                  aiAssignments.map((a) => renderAiAssignmentRow(a))
+                  aiPageItems.map((a) => renderAiAssignmentRow(a))
+                )}
+
+                {aiAssignments.length > 0 && (
+                  <>
+                    <View style={tw`flex-row items-center gap-2 mt-3`}>
+                      {[10, 25, 50].map((size) => {
+                        const active = size === aiPageSize;
+                        return (
+                          <TouchableOpacity
+                            key={size}
+                            onPress={() => {
+                              setAiPageSize(size);
+                              setAiPage(1);
+                            }}
+                            style={[
+                              tw`px-2 py-1 rounded-full border`,
+                              {
+                                borderColor: active ? '#6366f1' : palette.border,
+                                backgroundColor: active ? palette.chipBg('#6366f1') : palette.softCard,
+                              },
+                            ]}
+                          >
+                            <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>{size} rows</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <View style={tw`mt-2 flex-row items-center justify-between`}>
+                      <Text style={[tw`text-[11px]`, { color: palette.textMuted }]}>
+                        Showing {aiRangeStart}-{aiRangeEnd} of {aiTotal}
+                      </Text>
+
+                      <View style={tw`flex-row items-center gap-2`}>
+                        <TouchableOpacity
+                          onPress={() => setAiPage((p) => Math.max(1, p - 1))}
+                          disabled={aiPage <= 1}
+                          style={[
+                            tw`px-3 py-2 rounded-full border`,
+                            { borderColor: palette.border, opacity: aiPage <= 1 ? 0.4 : 1 },
+                          ]}
+                        >
+                          <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>Prev</Text>
+                        </TouchableOpacity>
+
+                        <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>Page {aiPage} / {aiPageCount}</Text>
+
+                        <TouchableOpacity
+                          onPress={() => setAiPage((p) => Math.min(aiPageCount, p + 1))}
+                          disabled={aiRangeEnd >= aiTotal}
+                          style={[
+                            tw`px-3 py-2 rounded-full border`,
+                            { borderColor: palette.border, opacity: aiRangeEnd >= aiTotal ? 0.4 : 1 },
+                          ]}
+                        >
+                          <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>Next</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </>
                 )}
               </View>
 
@@ -2120,6 +2269,68 @@ if (explicitTab) setTab(explicitTab);
                   )}
 
                 </View>
+
+                {classicAssignments.length > 0 && (
+                  <>
+                    <View style={tw`flex-row items-center gap-2 mt-3`}>
+                      {[10, 25, 50].map((size) => {
+                        const active = size === classicPageSize;
+                        return (
+                          <TouchableOpacity
+                            key={size}
+                            onPress={() => {
+                              setClassicPageSize(size);
+                              setClassicPage(1);
+                            }}
+                            style={[
+                              tw`px-2 py-1 rounded-full border`,
+                              {
+                                borderColor: active ? '#6366f1' : palette.border,
+                                backgroundColor: active ? palette.chipBg('#6366f1') : palette.softCard,
+                              },
+                            ]}
+                          >
+                            <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>{size} rows</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <View style={tw`mt-2 flex-row items-center justify-between`}>
+                      <Text style={[tw`text-[11px]`, { color: palette.textMuted }]}>
+                        Showing {classicRangeStart}-{classicRangeEnd} of {classicTotal}
+                      </Text>
+
+                      <View style={tw`flex-row items-center gap-2`}>
+                        <TouchableOpacity
+                          onPress={() => setClassicPage((p) => Math.max(1, p - 1))}
+                          disabled={classicPage <= 1}
+                          style={[
+                            tw`px-3 py-2 rounded-full border`,
+                            { borderColor: palette.border, opacity: classicPage <= 1 ? 0.4 : 1 },
+                          ]}
+                        >
+                          <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>Prev</Text>
+                        </TouchableOpacity>
+
+                        <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
+                          Page {classicPage} / {classicPageCount}
+                        </Text>
+
+                        <TouchableOpacity
+                          onPress={() => setClassicPage((p) => Math.min(classicPageCount, p + 1))}
+                          disabled={classicRangeEnd >= classicTotal}
+                          style={[
+                            tw`px-3 py-2 rounded-full border`,
+                            { borderColor: palette.border, opacity: classicRangeEnd >= classicTotal ? 0.4 : 1 },
+                          ]}
+                        >
+                          <Text style={[tw`text-[11px] font-semibold`, { color: palette.text }]}>Next</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </>
+                )}
 
                 {!!learnerStudentId && (
                   <Text style={tw`mt-4 text-[11px] text-[#6b7280] dark:text-white/70`}>

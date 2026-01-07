@@ -283,6 +283,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
 
   const [isMaximized, setIsMaximized] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [sharedCourseMissing, setSharedCourseMissing] = useState(false);
   const [overlayState, setOverlayState] = useState<{
     words: any[];
     currentIndex: number;
@@ -647,6 +648,16 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   }, [params.courseId, topCourses, selectedCourse, selectCourse]);
 
   useEffect(() => {
+    if (!params.courseId) {
+      setSharedCourseMissing(false);
+      return;
+    }
+    if (!Array.isArray(topCourses) || topCourses.length === 0) return;
+    const found = topCourses.some((c: TopCourse) => c.id === params.courseId);
+    setSharedCourseMissing(!found);
+  }, [params.courseId, topCourses]);
+
+  useEffect(() => {
     if (activeRunId !== null && hasJoined && playerReady) {
       setActiveRunId(null);
     }
@@ -662,7 +673,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
       !selectedCourse &&
       Array.isArray(topCourses) &&
       topCourses.length > 0 &&
-      !customTitle.trim()
+      !customTitle.trim() &&
+      !params.courseId
     ) {
       dlog('auto-selecting first course', { id: topCourses[0]?.id, title: topCourses[0]?.title });
       setActiveRunId(null);
@@ -672,7 +684,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
       setLockedSsml(null);
       selectCourse(topCourses[0]);
     }
-  }, [topCourses, selectedCourse, selectCourse, customTitle]);
+  }, [topCourses, selectedCourse, selectCourse, customTitle, params.courseId]);
 
   const compat = ai as any;
   const hasMoreCourses: boolean = Boolean(
@@ -1093,6 +1105,15 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
                   unlock your certificate
                   {isOrgFlow ? ' — covered by your organization' : ''}.
                 </Text>
+                {sharedCourseMissing && (
+                  <View
+                    style={tw`mt-2 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-3 py-2`}
+                  >
+                    <Text style={tw`text-amber-800 dark:text-amber-100 text-sm`}>
+                      Shared course not found. Please ask your instructor to resend the link.
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Share dialog near header */}

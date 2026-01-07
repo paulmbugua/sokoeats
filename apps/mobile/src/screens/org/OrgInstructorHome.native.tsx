@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 
 // apps/mobile/src/screens/org/OrgInstructorHome.native.tsx
-import React, { Children, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Children, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   View,
@@ -12,9 +12,10 @@ import {
   Share,
   TextInput,
   ScrollView,
+  LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -24,6 +25,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import tw from '../../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -34,11 +36,13 @@ import {
   createOrgAssignment,
   updateOrgBranding,
   listOrgInstructorSubmissions,
+  apiMarkOrgAssignmentOpened,
 } from '@mytutorapp/shared/api/orgApi';
 import { uploadAsset } from '@mytutorapp/shared/api';
 
 import ThemeToggle from '../ThemeToggle.native';
 import { useThemePref } from '../../theme/ThemeContext';
+import type { MainStackParamList } from '../../navigation/types';
 
 /* ------------------------------------------------------------------ */
 /* Theming                                                            */
@@ -135,6 +139,54 @@ function firstNameFrom(raw?: string | null) {
     .filter(Boolean);
 
   return parts[0] || s;
+}
+
+function openedKey(orgId: string | number) {
+  return `org:openedAssignments:${orgId}`;
+}
+
+const RETURN_TO_KEY = 'org:returnToAfterSubmissions';
+
+async function readOpenedMap(orgId: string | number): Promise<Record<string, string>> {
+  try {
+    const raw = await AsyncStorage.getItem(openedKey(orgId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeOpened(orgId: string | number, assignmentId: string | number, iso: string) {
+  try {
+    const key = openedKey(orgId);
+    const current = await readOpenedMap(orgId);
+    const next = { ...current, [assignmentId]: iso };
+    await AsyncStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+}
+
+function patchRecentRowsWithOpened(rows: any[], openedMap: Record<string, string>) {
+  return rows.map((row) => {
+    const assignmentId = row?.assignment_id ?? row?.assignmentId ?? null;
+    const openedAt =
+      row?.opened_at ||
+      row?.openedAt ||
+      row?.assignment_opened_at ||
+      row?.viewer_opened_at ||
+      (assignmentId ? openedMap?.[assignmentId] : null);
+
+    if (!openedAt || !assignmentId) return row;
+
+    return {
+      ...row,
+      opened_at: openedAt,
+      status: 'Opened',
+    };
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -369,8 +421,13 @@ function ToolsGrid({ children }: { children: React.ReactNode }) {
 
 const OrgInstructorHomeNative: React.FC = () => {
   const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<MainStackParamList, 'OrgInstructorHome'>>();
   const insets = useSafeAreaInsets();
   const palette = usePalette();
+
+  const scrollRef = useRef<Animated.ScrollView | null>(null);
+  const [recentYOffset, setRecentYOffset] = useState<number | null>(null); // anchor for #recent-submissions scroll
+  const [pendingScrollToRecent, setPendingScrollToRecent] = useState(false);
 
   const { org, role, membership, currentUser } = (useOrg?.() ?? {}) as any;
   const {
@@ -627,9 +684,12 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
           return true;
         });
 
+        const openedMap = await readOpenedMap(orgId);
+        const patchedRows = patchRecentRowsWithOpened(safeRows, openedMap);
+
         if (!stop) {
-          setRecentSubmissions(safeRows);
-          setRecentTotal(Number(resp?.total ?? safeRows.length));
+          setRecentSubmissions(patchedRows);
+          setRecentTotal(Number(resp?.total ?? patchedRows.length));
         }
       } catch (err: any) {
         if (!stop) {
@@ -671,6 +731,43 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
     }
     navigation.replace('InstitutionLogin', { logoutOrg: true });
   }, [orgLogout, navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!orgId) return () => {};
+
+      let canceled = false;
+      (async () => {
+        const openedMap = await readOpenedMap(orgId);
+        if (!canceled) {
+          setRecentSubmissions((prev) => patchRecentRowsWithOpened(prev, openedMap));
+        }
+      })();
+
+      return () => {
+        canceled = true;
+      };
+    }, [orgId])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if ((route.params as any)?.scrollTo === 'recent-submissions') {
+        setPendingScrollToRecent(true);
+        navigation.setParams?.({ ...(route.params || {}), scrollTo: undefined } as any);
+      }
+
+      return undefined;
+    }, [navigation, route.params])
+  );
+
+  useEffect(() => {
+    if (!pendingScrollToRecent) return;
+    if (recentYOffset == null) return;
+
+    scrollRef.current?.scrollTo({ y: Math.max(0, recentYOffset - 12), animated: true });
+    setPendingScrollToRecent(false);
+  }, [pendingScrollToRecent, recentYOffset]);
 
   const recentClassOptions = useMemo(() => {
     const set = new Set<string>();
@@ -848,15 +945,44 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
     }
   }, [previewUrl, classLabel, backendUrl, orgId, authToken]);
 
+  const handleRecentLayout = useCallback((e: LayoutChangeEvent) => {
+    setRecentYOffset(e.nativeEvent.layout.y);
+  }, []);
+
   const handleOpenSubmissions = useCallback(
-    (assignmentId: string | number) => {
+    async (assignmentId: string | number) => {
+      const nowIso = new Date().toISOString();
+      const assignmentKey = String(assignmentId);
+
+      if (orgId) {
+        await writeOpened(orgId, assignmentKey, nowIso);
+        setRecentSubmissions((prev) =>
+          prev.map((row) => {
+            const rowAssignmentId = row?.assignment_id ?? row?.assignmentId;
+            if (rowAssignmentId == null) return row;
+            return String(rowAssignmentId) === assignmentKey
+              ? { ...row, opened_at: nowIso, status: 'Opened' }
+              : row;
+          })
+        );
+      }
+
+      if (backendUrl && authToken && orgId) {
+        apiMarkOrgAssignmentOpened(backendUrl, authToken, orgId, assignmentKey).catch(() => {});
+      }
+
+      try {
+        // remember where to return so we can scroll back to recent submissions
+        await AsyncStorage.setItem(RETURN_TO_KEY, 'OrgInstructorHome#recent-submissions');
+      } catch {}
+
       navigation.navigate('OrgElearnPortal', {
         tab: 'assign',
-        assignmentId: String(assignmentId),
+        assignmentId: assignmentKey,
         view: 'submissions',
       });
     },
-    [navigation]
+    [authToken, backendUrl, navigation, orgId]
   );
 
   const bottomPad = Math.max(24, insets.bottom + 24);
@@ -896,6 +1022,7 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
   return (
     <SafeAreaView style={[tw`flex-1`, { backgroundColor: palette.bg }]} edges={['top', 'left', 'right', 'bottom']}>
       <Animated.ScrollView
+        ref={scrollRef}
         entering={FadeIn.duration(220)}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[tw`px-4 pt-3`, { paddingBottom: bottomPad }]}
@@ -1210,9 +1337,13 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
         </Animated.View>
 
         {/* RECENT SUBMISSIONS (assignments) */}
-        <Animated.View entering={FadeInDown.delay(160).duration(320)} style={palette.surface(tw`mt-3`)}>
+        <Animated.View
+          entering={FadeInDown.delay(160).duration(320)}
+          style={palette.surface(tw`mt-3`)}
+          onLayout={handleRecentLayout}
+        >
           <View style={tw`flex-row items-center justify-between gap-2`}>
-            <View style={tw`flex-1`}> 
+            <View style={tw`flex-1`}>
               <Text style={[tw`text-base font-semibold`, { color: palette.text }]}>Recent submissions</Text>
               <Text style={[tw`mt-1 text-xs`, { color: palette.textMuted }]}> 
                 Quickly jump to what learners submitted most recently.

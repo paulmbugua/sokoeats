@@ -866,6 +866,18 @@ export interface OrgInviteInfo {
   created_at: string; // ISO
   signature_url?: string | null;
 
+  // Optional nested assignment payload (back-compat shim)
+  assignment?: {
+    id?: string;
+    course_id?: string;
+    title_override?: string | null;
+    pass_mark?: number | null;
+    timer_s?: number | null;
+    max_attempts?: number;
+    due_at?: string | null;
+    locked_config?: unknown;
+  };
+
   // joined organization fields
   org_name: string;
   logo_url?: string | null;

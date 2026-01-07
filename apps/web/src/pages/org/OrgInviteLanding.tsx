@@ -110,10 +110,18 @@ export default function OrgInviteLanding() {
       const enrollment = resp.enrollment ?? resp.attempt ?? resp;
 
       const assignmentId =
-        enrollment?.assignmentId ?? (meta as OrgInviteInfo | undefined)?.id ?? null;
-      const courseId = enrollment?.courseId ?? (meta as OrgInviteInfo | undefined)?.course_id ?? '';
+        enrollment?.assignmentId ??
+        (meta as OrgInviteInfo | undefined)?.assignment?.id ??
+        (meta as OrgInviteInfo | undefined)?.id ??
+        null;
+      const courseId =
+        enrollment?.courseId ??
+        (meta as OrgInviteInfo | undefined)?.assignment?.course_id ??
+        (meta as OrgInviteInfo | undefined)?.course_id ??
+        '';
 
       if (!assignmentId) throw new Error('Invite accepted, but no assignment found.');
+      if (!courseId) throw new Error('Shared course not found.');
 
       // Pass hints to classroom (assignment still enforced server-side)
       const qt = resolveQuizType(meta as any);
