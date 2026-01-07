@@ -35,7 +35,16 @@ const normalizeQuizType = (v: unknown): QuizType | null => {
 };
 
 const resolveLockedConfig = (meta: any) =>
-  meta?.locked_config ?? meta?.meta?.locked_config ?? meta?.assignment?.locked_config ?? null;
+  meta?.lockedConfig ??
+  meta?.locked_config ??
+  meta?.meta?.lockedConfig ??
+  meta?.meta?.locked_config ??
+  meta?.assignment?.lockedConfig ??
+  meta?.assignment?.locked_config ??
+  meta?.enrollment?.lockedConfig ??
+  meta?.enrollment?.locked_config ??
+  null;
+
 
 const resolveQuizType = (meta: any): QuizType | null => {
   const lc = resolveLockedConfig(meta);
@@ -108,6 +117,11 @@ export default function OrgInviteLanding() {
       if (!resp?.ok) throw new Error(resp?.message || 'Failed to accept invite.');
 
       const enrollment = resp.enrollment ?? resp.attempt ?? resp;
+      const lockedConfig =
+      enrollment?.lockedConfig ??
+      enrollment?.locked_config ??
+      resolveLockedConfig(meta as any);
+
 
       const assignmentId =
         enrollment?.assignmentId ??
@@ -124,8 +138,9 @@ export default function OrgInviteLanding() {
       if (!courseId) throw new Error('Shared course not found.');
 
       // Pass hints to classroom (assignment still enforced server-side)
-      const qt = resolveQuizType(meta as any);
-      const qs = resolveQuizSize(meta as any);
+      const qt = normalizeQuizType(lockedConfig?.quizType);
+      const qs = Number.isFinite(Number(lockedConfig?.quizSize)) ? Number(lockedConfig.quizSize) : null;
+
 
       const params = new URLSearchParams({
         assignmentId: String(assignmentId),

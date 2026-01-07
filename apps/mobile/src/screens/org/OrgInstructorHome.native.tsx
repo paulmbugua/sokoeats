@@ -26,6 +26,7 @@ import Animated, {
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
 
 import tw from '../../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -120,6 +121,46 @@ function fmtWhen(iso?: string | null) {
     return String(iso);
   }
 }
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const res = typeof reader.result === 'string' ? reader.result : '';
+      // data:application/pdf;base64,XXXX
+      const base64 = res.split(',')[1] || '';
+      resolve(base64);
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function ensureLocalPdfUri(input: string | Blob, filename: string): Promise<string> {
+  // Already a local file
+  if (typeof input === 'string' && /^file:\/\//i.test(input)) return input;
+
+  const outUri = `${FileSystem.cacheDirectory}${filename}`;
+
+  // Remote URL -> download to cache
+  if (typeof input === 'string' && /^https?:\/\//i.test(input)) {
+    const dl = await FileSystem.downloadAsync(input, outUri);
+    return dl.uri;
+  }
+
+  // Blob -> write to cache as base64
+  if (typeof input !== 'string') {
+    const base64 = await blobToBase64(input);
+    await FileSystem.writeAsStringAsync(outUri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return outUri;
+  }
+
+  // Fallback: treat as a path-like string
+  return input;
+}
+
 
 function pickString(...xs: any[]) {
   for (const x of xs) {
@@ -1084,34 +1125,37 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
   );
 
   const handleDownloadAiPdf = useCallback(async () => {
-    if (!backendUrl || !authToken || !orgId) {
-      Alert.alert('Unavailable', 'Missing organization context.');
-      return;
-    }
+  if (!backendUrl || !authToken || !orgId) {
+    Alert.alert('Unavailable', 'Missing organization context.');
+    return;
+  }
 
-    setDownloadingAiPdf(true);
-    try {
-      const uri = await getOrgAiSubmissionsPdf(backendUrl, authToken, orgId, {
-        classId: recentClass || undefined,
+  setDownloadingAiPdf(true);
+  try {
+    const result = (await getOrgAiSubmissionsPdf(backendUrl, authToken, orgId, {
+      classId: recentClass || undefined,
+    })) as unknown as string | Blob;
+
+    const fileUri = await ensureLocalPdfUri(result, `ai-quiz-results-${Date.now()}.pdf`);
+
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(fileUri, {
+        dialogTitle: 'AI Course Quiz Results',
+        mimeType: 'application/pdf',
+        UTI: 'com.adobe.pdf',
       });
-
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(uri, {
-          dialogTitle: 'AI Course Quiz Results',
-          mimeType: 'application/pdf',
-          UTI: 'com.adobe.pdf',
-        });
-        Alert.alert('PDF ready', 'AI quiz results PDF is ready to share or save.');
-      } else {
-        Alert.alert('Downloaded', uri);
-      }
-    } catch (e: any) {
-      Alert.alert('PDF failed', e?.message || 'Unable to download PDF.');
-    } finally {
-      setDownloadingAiPdf(false);
+      Alert.alert('PDF ready', 'AI quiz results PDF is ready to share or save.');
+    } else {
+      Alert.alert('Downloaded', fileUri);
     }
-  }, [backendUrl, authToken, orgId, recentClass]);
+  } catch (e: any) {
+    Alert.alert('PDF failed', e?.message || 'Unable to download PDF.');
+  } finally {
+    setDownloadingAiPdf(false);
+  }
+}, [backendUrl, authToken, orgId, recentClass]);
+
 
   const bottomPad = Math.max(24, insets.bottom + 24);
 

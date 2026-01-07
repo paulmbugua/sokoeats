@@ -192,6 +192,11 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
   const sp = React.useMemo(() => new URLSearchParams(location.search), [location.search]);
+  // ── Share/lock query params (shared sandbox course) ─────────
+const locked = sp.get('lock') === '1';
+const qpCourseId = sp.get('courseId') || sp.get('course_id') || '';
+const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
+
 
   const normQt = (v?: string | null): 'mcq' | 'short' | undefined => {
     const s = String(v ?? '')
@@ -566,7 +571,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
 
   // ── Data loading & selection ─────────────────────────────
   const [sharedCourseMissing, setSharedCourseMissing] = useState(false);
-  const courseIdParam = sp.get('courseId');
+  const courseIdParam = qpCourseId || null;
+
   useEffect(() => {
     (async () => {
       const preserveIds = courseIdParam ? [courseIdParam] : [];
@@ -609,17 +615,23 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   }, [isLockedLearner]);
 
   useEffect(() => {
-    if (
-      !selectedCourse &&
-      Array.isArray(topCourses) &&
-      topCourses.length > 0 &&
-      !customTitle.trim() &&
-      !courseIdParam
-    ) {
+  if (
+    !selectedCourse &&
+    Array.isArray(topCourses) &&
+    topCourses.length > 0 &&
+    !customTitle.trim()
+  ) {
+    // ✅ DO NOT override locked selection from share link
+    if (locked && qpCourseId) return;
+
+    // old behavior (only when NOT locked and no explicit courseId)
+    if (!courseIdParam) {
       dlog('auto-selecting first course', { id: topCourses[0]?.id, title: topCourses[0]?.title });
       selectCourse(topCourses[0]);
     }
-  }, [topCourses, selectedCourse, selectCourse, customTitle, courseIdParam]);
+  }
+}, [topCourses, selectedCourse, selectCourse, customTitle, courseIdParam, locked, qpCourseId]);
+
 
   const coursesCursor = (ai as any)?.coursesCursor ?? (ai as any)?.nextCursor ?? null;
   const hasMoreCourses: boolean = Boolean(

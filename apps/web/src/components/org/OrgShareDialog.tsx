@@ -345,6 +345,7 @@ export default function OrgShareDialog({
             timer_s: effectiveTimer,
             max_attempts: effectiveAttempts,
             due_at: dueAtISO,
+             locked_config,
           } as any);
           const link = `${window.location.origin}/org/join/${
             legacy.invite_code || legacy.inviteCode || legacy.code

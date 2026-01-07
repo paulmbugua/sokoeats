@@ -1,46 +1,64 @@
 // apps/mobile/app.config.js
-import 'dotenv/config';
 
 export default function expoConfig({ config }) {
-  const isEAS = process.env.EAS_BUILD === 'true';
-  const isDev = process.env.NODE_ENV !== 'production' && !isEAS;
+  /**
+   * IMPORTANT:
+   * - Do NOT import 'dotenv/config' here.
+   * - For EAS Update + EAS Build consistency, use EAS Environment Variables and run:
+   *     eas update --branch production --environment production ...
+   */
+
+  // App environment (set this in EAS env vars)
+  // development | preview | production
+  const appEnv =
+    process.env.EXPO_PUBLIC_APP_ENV ||
+    (process.env.NODE_ENV === 'production' ? 'production' : 'development');
+
+  const isProduction = appEnv === 'production';
   const isDevClient = process.env.EXPO_DEV_CLIENT === 'true';
-  const enableGooglePlugin = isEAS || isDevClient;
+
+  // Enable native Google Sign-In plugin deterministically:
+  // - ON in production (builds + updates)
+  // - ON in dev-client builds
+  const enableGooglePlugin = isProduction || isDevClient;
 
   // ─────────────────────────────────────────────────────────
-  // Multi-backend catalog
+  // Multi-backend catalog (deterministic via EXPO_PUBLIC vars)
   // ─────────────────────────────────────────────────────────
   const BACKENDS = {
     androidEmu: 'http://10.0.2.2:4000',
     iosSim: 'http://localhost:4000',
     hotspot: 'http://10.254.198.47:4000',
-    lan1: process.env.EXPO_PUBLIC_BACKEND_URL || 'http://192.168.137.1:4000',
-    prod:
-      process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.daybreaklearner.com',
+    lan1: process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://192.168.137.1:4000',
+    prod: process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.daybreaklearner.com',
   };
 
-  // ✅ dev can switch, but EAS/prod should default to prod
-  const DEFAULT_BACKEND = isDev ? process.env.BACKEND || 'hotspot' : 'prod';
+  // In production ALWAYS default to prod.
+  // In dev/preview you can override with EXPO_PUBLIC_DEFAULT_BACKEND (e.g. hotspot, lan1, androidEmu, iosSim, prod)
+  const DEFAULT_BACKEND = isProduction
+    ? 'prod'
+    : process.env.EXPO_PUBLIC_DEFAULT_BACKEND || 'hotspot';
 
-  // ✅ single “baseUrl” the app can use
+  // Single resolved URL the app can use
   const RESOLVED_BACKEND_URL = BACKENDS[DEFAULT_BACKEND] || BACKENDS.prod;
 
-  // ✅ only allow cleartext when the resolved backend is http://
+  // Allow cleartext ONLY when resolved backend is http://
   const allowHttp = String(RESOLVED_BACKEND_URL || '').startsWith('http://');
 
   return {
     ...config,
+
     name: 'DayBreak',
     slug: 'funzasasa',
     version: '1.0.0',
     scheme: 'daybreak',
+
     runtimeVersion: { policy: 'appVersion' },
     userInterfaceStyle: 'automatic',
 
-    // ✅ New Architecture belongs in app config (not expo-build-properties)
+    // Expo New Architecture flag belongs in app config
     newArchEnabled: true,
 
-    // paths relative to apps/mobile/
     icon: './assets/icon.png',
     splash: {
       image: './assets/splash.png',
@@ -54,8 +72,8 @@ export default function expoConfig({ config }) {
       ...config.android,
       package: 'com.paulmbugua2.mytutorapp',
 
-      // ✅ Play Store versioning (must increment on each upload)
-      versionCode: 1,
+      // Let EAS manage versionCode when using eas.json:
+      // cli.appVersionSource = "remote" + production.autoIncrement = true
 
       permissions: [
         'INTERNET',
@@ -63,6 +81,9 @@ export default function expoConfig({ config }) {
         'RECORD_AUDIO',
         'POST_NOTIFICATIONS',
         'VIBRATE',
+        'ACCESS_COARSE_LOCATION',
+        'ACCESS_FINE_LOCATION',
+        'MODIFY_AUDIO_SETTINGS',
       ],
 
       googleServicesFile: './google-services.json',
@@ -99,16 +120,13 @@ export default function expoConfig({ config }) {
       ...config.ios,
       bundleIdentifier: 'com.paulmbugua2.mytutorapp',
 
-      // ✅ App Store build number (must increment on each upload)
-      buildNumber: '1',
+      // Let EAS manage buildNumber when using eas.json:
+      // cli.appVersionSource = "remote" + production.autoIncrement = true
 
       infoPlist: {
         ...(config?.ios?.infoPlist ?? {}),
         UIBackgroundModes: [
-          ...new Set([
-            ...(config?.ios?.infoPlist?.UIBackgroundModes ?? []),
-            'audio',
-          ]),
+          ...new Set([...(config?.ios?.infoPlist?.UIBackgroundModes ?? []), 'audio']),
         ],
       },
     },
@@ -139,8 +157,7 @@ export default function expoConfig({ config }) {
       [
         'expo-location',
         {
-          locationAlwaysAndWhenInUsePermission:
-            'Allow $(PRODUCT_NAME) to use your location.',
+          locationAlwaysAndWhenInUsePermission: 'Allow $(PRODUCT_NAME) to use your location.',
         },
       ],
 
@@ -152,12 +169,9 @@ export default function expoConfig({ config }) {
         'expo-build-properties',
         {
           android: {
-            // ✅ enable cleartext ONLY when you’re actually using http://
             usesCleartextTraffic: allowHttp,
-
             enableProguardInReleaseBuilds: true,
             enableShrinkResourcesInReleaseBuilds: true,
-
             compileSdkVersion: 35,
             targetSdkVersion: 35,
             javaVersion: 17,
@@ -184,18 +198,19 @@ export default function expoConfig({ config }) {
     extra: {
       ...config.extra,
 
-      // ✅ in prod, this becomes https://server.daybreaklearner.com
+      // Environment + resolved backend for the app runtime
+      EXPO_PUBLIC_APP_ENV: appEnv,
       EXPO_PUBLIC_BACKEND_URL: RESOLVED_BACKEND_URL,
       EXPO_PUBLIC_PROD_BACKEND_URL: BACKENDS.prod,
 
       EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
       EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:
-        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-      EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID:
-        process.env.EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID,
 
-      EXPO_PUBLIC_EAS_PROJECT_ID: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
+      // Optional if you use it elsewhere
+      EXPO_PUBLIC_EAS_PROJECT_ID:
+        process.env.EXPO_PUBLIC_EAS_PROJECT_ID || '015ecf54-6bf2-4727-9283-1525689ccade',
 
       eas: { projectId: '015ecf54-6bf2-4727-9283-1525689ccade' },
 

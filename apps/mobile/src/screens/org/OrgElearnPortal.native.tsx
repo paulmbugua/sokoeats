@@ -421,8 +421,12 @@ const OrgElearnPortalNative: React.FC = () => {
   const { backendUrl, token, orgToken } = useShopContext() as any;
   const authToken: string | undefined = orgToken || token;
 
-  const { role, membership } = (useOrg?.() ?? {}) as { org?: Org | null; role?: string | null; membership?: any };
-  const isInstructor = role === 'instructor';
+  const { org: orgCtx, role, membership } = (useOrg() ?? {}) as any;
+
+const roleNorm = String(role || '').trim().toLowerCase();
+// treat tutor == instructor for org screens
+const isInstructor = roleNorm === 'instructor' || roleNorm === 'tutor';
+
 
   const route = useRoute<RouteProp<MainStackParamList, 'OrgElearnPortal'>>();
   const navigation = useNavigation<any>();
@@ -503,6 +507,24 @@ const openExamResults = useCallback(() => {
   const [showProModal, setShowProModal] = useState(false);
   const [showEnterpriseModal, setShowEnterpriseModal] = useState(false);
   const { resolvedScheme } = useThemePref();
+
+  const palette = useMemo(() => {
+  const dark = resolvedScheme === 'dark';
+
+  return {
+    border: dark ? 'rgba(255,255,255,0.10)' : '#cedbe8',
+    text: dark ? 'rgba(255,255,255,0.92)' : '#0d141c',
+    textMuted: dark ? 'rgba(255,255,255,0.70)' : '#49739c',
+    textSubtle: dark ? 'rgba(255,255,255,0.60)' : '#6b7280',
+    softCard: dark ? 'rgba(255,255,255,0.06)' : '#e7edf4',
+    headerBg: dark ? 'rgba(255,255,255,0.04)' : '#f8fbff',
+    card: dark ? '#0f1821' : '#ffffff',
+
+    // you call palette.chipBg('#6366f1') — keep the signature
+    chipBg: (_hex?: string) => (dark ? 'rgba(99,102,241,0.18)' : '#e0e7ff'),
+  };
+}, [resolvedScheme]);
+
 
   const canBrandingRole = !isInstructor && !isLearnerView && !isSubmissionsView;
   const canUpgradePlan = !isInstructor && !isLearnerView && !isSubmissionsView;

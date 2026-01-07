@@ -454,7 +454,8 @@ const userId = req.user?.id || null;
 if (userId) {
   // membership role (learner/instructor/owner) OR fallback to JWT user role (student/tutor/admin)
   const effectiveRole = orgMembershipRole || req.user?.role || 'student';
-  await ensureProfileIdForUser(userId, { role: effectiveRole });
+  await ensureProfileIdForUser(userId, { role: effectiveRole, status: 'New' });
+
 }
 
 

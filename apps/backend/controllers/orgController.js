@@ -1620,6 +1620,7 @@ export async function acceptInvite(req, res) {
       assignment.pass_mark ?? assignment.org_default_pass_mark ?? 70;
     const timerS =
       assignment.timer_s ?? assignment.org_quiz_time_limit_s ?? 900;
+      const lockedConfig = safeParseJSON(assignment.locked_config);
 
     const payload = {
       ok: true,
@@ -1632,6 +1633,8 @@ export async function acceptInvite(req, res) {
         timerS,
         maxAttempts: assignment.max_attempts ?? 1,
         dueAt: assignment.due_at ?? null,
+         lockedConfig,
+         locked_config: lockedConfig,
       },
     };
     log('success', payload.enrollment);
@@ -1685,6 +1688,8 @@ export async function resolveInvite(req, res) {
     return res.status(404).json({ message: 'Invite not found' });
 
   const r = rows[0];
+  const lockedConfig = safeParseJSON(r.locked_config);
+
   const domains = parseDomains(r.email_domain || '');
 
   // Keep a structured shape (new), but include branding and quiz policy (old).
@@ -1694,9 +1699,11 @@ export async function resolveInvite(req, res) {
       id: r.assignment_id,
       course_id: r.course_id,
       title: r.title_override ?? null,
-      locked_config: r.locked_config ?? null,
+      locked_config: lockedConfig,
+      lockedConfig, // ✅ add
       max_attempts: r.max_attempts ?? null,
       due_at: r.due_at ?? null,
+      
     },
     org: {
       id: r.org_id,
@@ -1733,7 +1740,10 @@ export async function resolveInvite(req, res) {
     instructor_signature_url: r.instructor_signature_url ?? null,
     certificate_title: r.certificate_title ?? null,
     org_name: r.org_name ?? null,
-    locked_config: r.locked_config ?? null,
+    locked_config: lockedConfig,
+    lockedConfig,
+
+
   });
 }
 
