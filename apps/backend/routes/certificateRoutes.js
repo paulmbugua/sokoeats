@@ -10,6 +10,7 @@ import {
   ogPreview,
   downloadCertificate, // ⬅️ add this import
   getStatus,
+  unlockNarrationAccess,
   listMyAiCourses,
 } from '../controllers/certificatesController.js';
 
@@ -25,6 +26,7 @@ router.get(`/:id(${UUID_RE})/og`, ogPreview);
 router.get(`/:id(${UUID_RE})/download`, anyAuth, downloadCertificate);
 
 router.get('/status', anyAuth, getStatus);
+router.post('/unlock', anyAuth, unlockNarrationAccess);
 router.get('/my-ai-courses', anyAuth, listMyAiCourses);
 
 router.get('/eligibility/:courseId', anyAuth, checkEligibility);

@@ -55,6 +55,7 @@ type ClassroomThemeShellProps = Record<string, any> & {
     limitSeconds?: number;
     resetsAt?: string | null;
   }>;
+  hideGateBanner?: boolean;
 };
 
 /* --------------------------- storage helpers --------------------------- */
@@ -519,6 +520,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (props) => {
         onRequestStart={props.onRequestStart}
         activeIndex={props.activeIndex}
         onPrev={props.onPrev}
+        hideGateBanner={props.hideGateBanner}
       />
 
       {/* Floating Theme button (compact) */}

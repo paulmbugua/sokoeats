@@ -95,6 +95,7 @@ type Props = {
     limitSeconds?: number;
     resetsAt?: string | null;
   }>;
+  hideGateBanner?: boolean;
 };
 
 // ─────────────────────── Constants ───────────────────────
@@ -1049,7 +1050,7 @@ useEffect(() => {
           gateNotice={props.gateNotice}
         />
 
-        {narrationLocked && (
+        {narrationLocked && !props.hideGateBanner && (
           <View style={tw`bg-amber-500/80 px-3 py-2`}>
             <Text style={tw`text-white font-semibold`}>Narration quota reached / locked.</Text>
             <Text style={tw`text-white`}>

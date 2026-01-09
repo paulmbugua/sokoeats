@@ -12,6 +12,8 @@ import {
   getCertificateEntitlement,
 } from './_aiCourseEntitlements.js';
 
+const NARRATION_UNLOCK_TOKENS = 20;
+
 // ---------- Validators ----------
 const generateSchema = Joi.object({
   courseId: Joi.string().uuid().required(),
@@ -744,51 +746,7 @@ export async function generateCertificate(req, res) {
       } catch {}
     }
 
-    // 2.5) Token-paid issuance gate:
-    // Apply ONLY when NOT org-covered AND NOT purchased/enrolled.
-    if (
-      process.env.REQUIRE_CERT_TOKENS === 'true' &&
-      !orgCovered &&
-      !purchased &&
-      !enrolled
-    ) {
-      console.time('[cert] generate:tokenIssuanceCheck');
-      const issuQ = await pool.query(
-        `SELECT 1
-           FROM ai_certificate_issuances i
-          WHERE i.user_id = $1
-            AND (i.course_id IS NULL OR i.course_id = $2)
-          LIMIT 1`,
-        [studentId, courseId],
-      );
-      console.timeEnd('[cert] generate:tokenIssuanceCheck');
-
-      let legacyOk = false;
-      if (!issuQ.rowCount && process.env.ALLOW_LEGACY_CERT_PAY === 'true') {
-        console.time('[cert] generate:legacyPaymentCheck]');
-        const payQ = await pool.query(
-          `
-            SELECT 1
-              FROM payments
-             WHERE user_id = $1
-               AND status IN ('succeeded','Completed')
-               AND COALESCE(meta->>'purpose','')  = 'certificate'
-               AND COALESCE(meta->>'courseId','') = $2
-             LIMIT 1
-          `,
-          [studentId, courseId],
-        );
-        legacyOk = payQ.rowCount > 0;
-        console.timeEnd('[cert] generate:legacyPaymentCheck]');
-      }
-
-      if (!issuQ.rowCount && !legacyOk) {
-        return res.status(402).json({
-          error: 'CERT_PAYMENT_REQUIRED',
-          message: 'Please use tokens to claim your certificate first.',
-        });
-      }
-    }
+    // 2.5) Certificate generation is free after passing the quiz.
 
     const coursePassMark = await resolveCoursePassMark(courseId);
     const quizResult = await getLatestQuizResult({
@@ -1230,8 +1188,97 @@ export async function downloadCertificate(req, res) {
   }
 }
 
+export async function unlockNarrationAccess(req, res) {
+  const userId = req.user?.id;
+  const courseId = String(req.body?.courseId || '').trim();
+
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  if (!courseId || !isUuid(courseId))
+    return res.status(400).json({ error: 'Invalid courseId' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const [existingEnt, userQ] = await Promise.all([
+      getCertificateEntitlement(userId, courseId, client).catch(() => null),
+      client.query('SELECT tokens FROM users WHERE id = $1 FOR UPDATE', [userId]),
+    ]);
+
+    if (!userQ.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const currentTokens = Number(userQ.rows[0].tokens) || 0;
+
+    if (existingEnt) {
+      await client.query('COMMIT');
+      return res.json({
+        ok: true,
+        unlocked: true,
+        alreadyUnlocked: true,
+        debited: 0,
+        tokens: currentTokens,
+      });
+    }
+
+    if (currentTokens < NARRATION_UNLOCK_TOKENS) {
+      await client.query('ROLLBACK');
+      return res.status(402).json({
+        ok: false,
+        error: 'insufficient_tokens',
+        cost: NARRATION_UNLOCK_TOKENS,
+        tokens: currentTokens,
+      });
+    }
+
+    const debitQ = await client.query(
+      'UPDATE users SET tokens = tokens - $2 WHERE id = $1 RETURNING tokens',
+      [userId, NARRATION_UNLOCK_TOKENS],
+    );
+    const tokensLeft = Number(debitQ.rows[0]?.tokens) || 0;
+
+    const entitlement = await upsertAiCertificateEntitlement({
+      userId,
+      courseId,
+      courseSource: 'catalog',
+      maxLessons: 60,
+      db: client,
+    });
+
+    await client.query(
+      `INSERT INTO transactions
+        (user_id, type, amount, description, date, status, currency, payment_method, created_at, updated_at)
+       VALUES
+        ($1, 'Token Deduction', $2, $3, NOW(), 'Completed', 'TOKENS', 'PlatformBalance', NOW(), NOW())`,
+      [userId, NARRATION_UNLOCK_TOKENS, `AI course unlock ${courseId}`],
+    );
+
+    await client.query('COMMIT');
+    return res.json({
+      ok: true,
+      unlocked: true,
+      alreadyUnlocked: false,
+      debited: NARRATION_UNLOCK_TOKENS,
+      tokens: tokensLeft,
+      entitlement,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[cert] unlockNarrationAccess error', err);
+    return res.status(500).json({ error: 'UNLOCK_FAILED' });
+  } finally {
+    client.release();
+  }
+}
+
 export async function getStatus(req, res) {
   try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const userId = req.user?.id; // numeric users.id
     const authUuid = pickAuthUuidFromReqUser(req.user); // ✅ ADD THIS LINE
 
@@ -1276,6 +1323,7 @@ export async function getStatus(req, res) {
     const orgCovered = orgQ.rowCount > 0;
     const purchased = purQ.rowCount > 0;
     const enrolled = enrQ.rowCount > 0;
+    const narrationUnlocked = Boolean(aiEnt) || orgCovered || purchased || enrolled;
 
     const extendedByIssuance = await hasExtendedByIssuance(userId, courseId);
 
@@ -1342,6 +1390,7 @@ export async function getStatus(req, res) {
       canTranscript: Boolean(extended),
       hasCertificate: Boolean(ent?.can_certificate || certQ.rowCount),
       canCertificate: Boolean(hasAnyCert),
+      narrationUnlocked,
       lessons_used: lessonsUsed,
       lesson_cap: lessonCap,
     });
