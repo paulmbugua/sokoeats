@@ -1,5 +1,5 @@
 // apps/mobile/src/screens/org/OrgLearnerNewsletters.native.tsx
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,15 +14,18 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
-import Markdown from 'react-native-markdown-display';
-import * as FileSystem from 'expo-file-system';
+import MarkdownDisplay from 'react-native-markdown-display';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
 import tw from '../../../tailwind';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
-import { apiGetLearnerNewsletter, apiListLearnerNewsletters } from '@mytutorapp/shared/api/orgProApi';
+import {
+  apiGetLearnerNewsletter,
+  apiListLearnerNewsletters,
+} from '@mytutorapp/shared/api/orgProApi';
 import { getAnnouncementFeed } from '@mytutorapp/shared/api/orgEngagementApi';
 
 import { useThemePref } from '../../theme/ThemeContext';
@@ -97,8 +100,9 @@ function ensureTrailingSlash(p: string) {
 
 /**
  * ✅ expo-file-system compatibility:
- * - Old API: FileSystem.documentDirectory / cacheDirectory (string)
- * - New API: FileSystem.Paths.document / Paths.cache (Directory object with .uri)
+ * - Old API: documentDirectory / cacheDirectory (string)
+ * - New API: Paths.document / Paths.cache (Directory object with .uri)
+ * Even though we import legacy here, keeping this helper makes it robust.
  */
 function pickFsUri(v: any): string | null {
   if (typeof v === 'string' && v.length) return v;
@@ -109,15 +113,12 @@ function pickFsUri(v: any): string | null {
 function getWritableBaseDirUri(): string | null {
   const fs: any = FileSystem as any;
 
-  // New API (expo-file-system v19+): Paths.document / Paths.cache
   const docNew = pickFsUri(fs?.Paths?.document);
   const cacheNew = pickFsUri(fs?.Paths?.cache);
 
-  // Old API: documentDirectory / cacheDirectory
-  const docOld = pickFsUri(fs?.documentDirectory ?? fs?.default?.documentDirectory);
-  const cacheOld = pickFsUri(fs?.cacheDirectory ?? fs?.default?.cacheDirectory);
+  const docOld = pickFsUri(fs?.documentDirectory);
+  const cacheOld = pickFsUri(fs?.cacheDirectory);
 
-  // Some environments expose Paths.documentDirectory (rare); support anyway.
   const docAlt = pickFsUri(fs?.Paths?.documentDirectory);
   const cacheAlt = pickFsUri(fs?.Paths?.cacheDirectory);
 
@@ -213,12 +214,21 @@ function Pill({
       style={({ pressed }) => [
         tw`px-4 py-2 rounded-full`,
         {
-          backgroundColor: active ? (theme.dark ? 'rgba(255,255,255,0.95)' : 'rgba(15,23,42,0.95)') : theme.soft,
+          backgroundColor: active
+            ? theme.dark
+              ? 'rgba(255,255,255,0.95)'
+              : 'rgba(15,23,42,0.95)'
+            : theme.soft,
           opacity: pressed ? 0.85 : 1,
         },
       ]}
     >
-      <Text style={[tw`text-xs font-semibold`, { color: active ? (theme.dark ? '#0b1220' : '#ffffff') : theme.text }]}>
+      <Text
+        style={[
+          tw`text-xs font-semibold`,
+          { color: active ? (theme.dark ? '#0b1220' : '#ffffff') : theme.text },
+        ]}
+      >
         {label}
       </Text>
     </Pressable>
@@ -275,17 +285,21 @@ function Badge({
   if (!onPress) return inner;
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
-      hitSlop={10}
-    >
+    <Pressable onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]} hitSlop={10}>
       {inner}
     </Pressable>
   );
 }
 
-function Card({ theme, children, style }: { theme: any; children: React.ReactNode; style?: any }) {
+function Card({
+  theme,
+  children,
+  style,
+}: {
+  theme: any;
+  children: React.ReactNode;
+  style?: any;
+}) {
   return (
     <View
       style={[
@@ -329,7 +343,7 @@ async function tryDownloadPdf({
 
   for (const url of candidates) {
     try {
-      const r = await (FileSystem as any).downloadAsync(url, destUri, {
+      const r = await FileSystem.downloadAsync(url, destUri, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (r?.status && r.status >= 200 && r.status < 300) return { ok: true, url, uri: r.uri };
@@ -346,7 +360,7 @@ export default function OrgLearnerNewslettersNative() {
   const systemScheme = useColorScheme();
   const themePref = useThemePref();
   const isDark = resolveIsDark(themePref, systemScheme === 'dark');
-  const theme = React.useMemo(() => makeTheme(isDark), [isDark]);
+  const theme = useMemo(() => makeTheme(isDark), [isDark]);
 
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(FOOTER_OVERLAY_PX, FOOTER_OVERLAY_PX + (insets.bottom || 0));
@@ -359,30 +373,33 @@ export default function OrgLearnerNewslettersNative() {
   const { backendUrl, orgToken } = (useShopContext?.() ?? {}) as any;
   const orgId = org?.id ? String(org.id) : '';
 
-  const [tab, setTab] = React.useState<TabKey>((routeParams?.tab as TabKey) || 'newsletters');
-  const [selectedNewsletterId, setSelectedNewsletterId] = React.useState<string | number | null>(
+  const [tab, setTab] = useState<TabKey>((routeParams?.tab as TabKey) || 'newsletters');
+  const [selectedNewsletterId, setSelectedNewsletterId] = useState<string | number | null>(
     routeParams?.id ?? null,
   );
-  const [selectedAnnouncementId, setSelectedAnnouncementId] = React.useState<string | number | null>(
+  const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | number | null>(
     routeParams?.aid ?? null,
   );
 
-  const [mode, setMode] = React.useState<'list' | 'detail'>(
+  const [mode, setMode] = useState<'list' | 'detail'>(
     routeParams?.id || routeParams?.aid ? 'detail' : 'list',
   );
 
-  // ✅ PDF download state (only on user tap)
-  const [downloadingPdfId, setDownloadingPdfId] = React.useState<string | number | null>(null);
-  const [pdfError, setPdfError] = React.useState<string | null>(null);
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | number | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const listNewslettersQ = useQuery<LearnerNewsletterListResponse, Error>({
     queryKey: ['learner-newsletters', orgId],
     enabled: !!backendUrl && !!orgToken && !!orgId,
     queryFn: async () =>
-      (await apiListLearnerNewsletters(backendUrl, String(orgId), orgToken)) as LearnerNewsletterListResponse,
+      (await apiListLearnerNewsletters(
+        backendUrl,
+        String(orgId),
+        orgToken,
+      )) as LearnerNewsletterListResponse,
   });
 
-  const newsletters = React.useMemo(() => listNewslettersQ.data?.items || [], [listNewslettersQ.data]);
+  const newsletters = useMemo(() => listNewslettersQ.data?.items || [], [listNewslettersQ.data]);
 
   const annFeedQ = useQuery<AnnouncementFeedResponse, Error>({
     queryKey: ['learner-announcements-feed', orgId],
@@ -402,23 +419,34 @@ export default function OrgLearnerNewslettersNative() {
     },
   });
 
-  const mappedAnnouncements = React.useMemo(() => (annFeedQ.data?.items || []).map(mapAnnouncement), [annFeedQ.data]);
+  const mappedAnnouncements = useMemo(
+    () => (annFeedQ.data?.items || []).map(mapAnnouncement),
+    [annFeedQ.data],
+  );
 
   const newsletterDetailQ = useQuery<LearnerNewsletter, Error>({
     queryKey: ['learner-newsletter', orgId, selectedNewsletterId],
-    enabled: tab === 'newsletters' && !!backendUrl && !!orgToken && !!orgId && selectedNewsletterId != null,
+    enabled:
+      tab === 'newsletters' && !!backendUrl && !!orgToken && !!orgId && selectedNewsletterId != null,
     queryFn: async () =>
-      (await apiGetLearnerNewsletter(backendUrl, String(orgId), String(selectedNewsletterId), orgToken)) as LearnerNewsletter,
+      (await apiGetLearnerNewsletter(
+        backendUrl,
+        String(orgId),
+        String(selectedNewsletterId),
+        orgToken,
+      )) as LearnerNewsletter,
   });
 
   const selectedNewsletter = newsletterDetailQ.data || null;
 
-  const selectedAnnouncement = React.useMemo(() => {
+  const selectedAnnouncement = useMemo(() => {
     if (selectedAnnouncementId == null) return null;
-    return mappedAnnouncements.find((a: any) => String(a.id) === String(selectedAnnouncementId)) || null;
+    return (
+      mappedAnnouncements.find((a: any) => String(a.id) === String(selectedAnnouncementId)) || null
+    );
   }, [mappedAnnouncements, selectedAnnouncementId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const nextTab = (routeParams?.tab as TabKey) || 'newsletters';
     setTab(nextTab);
 
@@ -472,28 +500,25 @@ export default function OrgLearnerNewslettersNative() {
       const baseDir = getWritableBaseDirUri();
 
       if (!baseDir) {
-        // Helpful debug so you can see the actual FS shape in logs if this ever happens again.
         try {
           console.log('[OrgLearnerNewsletters] No writable base dir', {
             platform: Platform.OS,
             doc: (FileSystem as any)?.documentDirectory,
             cache: (FileSystem as any)?.cacheDirectory,
-            pathsDoc: (FileSystem as any)?.Paths?.document?.uri,
-            pathsCache: (FileSystem as any)?.Paths?.cache?.uri,
             keys: Object.keys(FileSystem as any),
           });
         } catch {}
-
         throw new Error('PDF storage is not available on this device/session.');
       }
 
       const safeId = String(n.id).replace(/[^\w\d-_]+/g, '_');
       const dest = `${baseDir}newsletter_${orgId}_${safeId}.pdf`;
 
-      // reuse if already downloaded
       const existing = await FileSystem.getInfoAsync(dest);
       let localUri =
-        existing.exists && typeof existing.size === 'number' && existing.size > 0 ? existing.uri : null;
+        existing.exists && typeof existing.size === 'number' && existing.size > 0
+          ? existing.uri
+          : null;
 
       if (!localUri) {
         const r = await tryDownloadPdf({
@@ -508,7 +533,6 @@ export default function OrgLearnerNewslettersNative() {
 
       if (!localUri) throw new Error('Failed to save PDF locally.');
 
-      // Android: prefer content:// for better compatibility with other apps
       let shareUri = localUri;
       if (Platform.OS === 'android') {
         try {
@@ -530,7 +554,6 @@ export default function OrgLearnerNewslettersNative() {
         return;
       }
 
-      // fallback
       await Share.share({ message: title, url: shareUri as any });
     } catch (e: any) {
       const msg = e?.message || 'Failed to download PDF';
@@ -550,8 +573,6 @@ export default function OrgLearnerNewslettersNative() {
       return (
         <Pressable
           onPress={() => {
-            // ✅ “User clicks pdf → downloads” is via the PDF badge,
-            // but tapping the card opens detail (where Download PDF is primary).
             setSelectedNewsletterId(n.id);
             setMode('detail');
             setPdfError(null);
@@ -566,7 +587,10 @@ export default function OrgLearnerNewslettersNative() {
           ]}
         >
           <View style={tw`flex-row items-start justify-between`}>
-            <Text style={[tw`text-sm font-semibold flex-1 pr-2`, { color: theme.text }]} numberOfLines={2}>
+            <Text
+              style={[tw`text-sm font-semibold flex-1 pr-2`, { color: theme.text }]}
+              numberOfLines={2}
+            >
               {n.title || 'Untitled'}
             </Text>
 
@@ -594,7 +618,6 @@ export default function OrgLearnerNewslettersNative() {
       );
     }
 
-    // announcements
     const a = item;
     const cat = (a.category || '').toUpperCase();
     const showCat = Boolean(cat && cat !== 'GENERAL');
@@ -618,7 +641,10 @@ export default function OrgLearnerNewslettersNative() {
         ]}
       >
         <View style={tw`flex-row items-start justify-between`}>
-          <Text style={[tw`text-sm font-semibold flex-1 pr-2`, { color: theme.text }]} numberOfLines={2}>
+          <Text
+            style={[tw`text-sm font-semibold flex-1 pr-2`, { color: theme.text }]}
+            numberOfLines={2}
+          >
             {a.title}
           </Text>
 
@@ -638,7 +664,10 @@ export default function OrgLearnerNewslettersNative() {
 
         {preview ? (
           <Text
-            style={[tw`text-xs mt-1`, { color: theme.dark ? 'rgba(255,255,255,0.78)' : 'rgba(15,23,42,0.78)' }]}
+            style={[
+              tw`text-xs mt-1`,
+              { color: theme.dark ? 'rgba(255,255,255,0.78)' : 'rgba(15,23,42,0.78)' },
+            ]}
             numberOfLines={2}
           >
             {preview}
@@ -656,17 +685,21 @@ export default function OrgLearnerNewslettersNative() {
       : pickString(selectedAnnouncement?.title, 'Announcement');
 
   const detailWhen =
-    tab === 'newsletters' ? pickString(selectedNewsletter?.sent_at, '') : pickString(selectedAnnouncement?.whenRaw, '');
+    tab === 'newsletters'
+      ? pickString(selectedNewsletter?.sent_at, '')
+      : pickString(selectedAnnouncement?.whenRaw, '');
 
   const detailMd =
-    tab === 'newsletters' ? pickString(selectedNewsletter?.content_md, '') : pickString(selectedAnnouncement?.bodyMd, '');
+    tab === 'newsletters'
+      ? pickString(selectedNewsletter?.content_md, '')
+      : pickString(selectedAnnouncement?.bodyMd, '');
 
   const detailLoading = tab === 'newsletters' ? newsletterDetailQ.isLoading : annFeedQ.isLoading;
   const detailError = tab === 'newsletters' ? (newsletterDetailQ.error as any) : (annFeedQ.error as any);
 
   const canDownloadPdf = tab === 'newsletters' && Boolean(selectedNewsletter?.has_pdf);
 
-  const mdStyles = React.useMemo(
+  const mdStyles = useMemo(
     () =>
       ({
         body: {
@@ -696,7 +729,6 @@ export default function OrgLearnerNewslettersNative() {
 
   return (
     <SafeAreaView style={[tw`flex-1`, { backgroundColor: theme.bg }]}>
-      {/* Header + Tabs (top) */}
       <View style={[tw`px-3`, { paddingTop: (insets.top || 0) + NAV_SPACER_PX }]}>
         <Card theme={theme}>
           <View style={tw`flex-row items-center justify-between`}>
@@ -730,7 +762,12 @@ export default function OrgLearnerNewslettersNative() {
 
         <Card theme={theme} style={tw`mt-3`}>
           <View style={tw`flex-row items-center justify-between`}>
-            <View style={[tw`flex-row p-1 rounded-full border`, { backgroundColor: theme.soft, borderColor: theme.border }]}>
+            <View
+              style={[
+                tw`flex-row p-1 rounded-full border`,
+                { backgroundColor: theme.soft, borderColor: theme.border },
+              ]}
+            >
               <Pill
                 theme={theme}
                 label="Newsletters"
@@ -777,7 +814,6 @@ export default function OrgLearnerNewslettersNative() {
         </Card>
       </View>
 
-      {/* LIST or DETAIL (body) */}
       {mode === 'list' ? (
         <View style={[tw`flex-1 px-3 pt-3`, { paddingBottom: bottomPad }]}>
           <View style={tw`flex-row items-center justify-between mb-2`}>
@@ -830,7 +866,6 @@ export default function OrgLearnerNewslettersNative() {
               </View>
 
               <View style={tw`items-end`}>
-                {/* ✅ Newsletter: PDF download is the main feature */}
                 {canDownloadPdf ? (
                   <Pressable
                     onPress={() => selectedNewsletter && downloadNewsletterPdf(selectedNewsletter)}
@@ -850,7 +885,6 @@ export default function OrgLearnerNewslettersNative() {
                   </Pressable>
                 ) : null}
 
-                {/* Announcements can still be shared as text */}
                 {tab === 'announcements' ? (
                   <Pressable
                     onPress={() => shareAnnouncementText(detailTitle, detailMd)}
@@ -883,7 +917,10 @@ export default function OrgLearnerNewslettersNative() {
             ) : detailError ? (
               <View style={tw`py-4`}>
                 <Text style={[tw`text-sm`, { color: theme.danger }]}>
-                  Could not load. <Text style={{ color: theme.subtext }}>{String(detailError?.message || detailError)}</Text>
+                  Could not load.{' '}
+                  <Text style={{ color: theme.subtext }}>
+                    {String(detailError?.message || detailError)}
+                  </Text>
                 </Text>
               </View>
             ) : tab === 'newsletters' && !selectedNewsletter ? (
@@ -891,14 +928,15 @@ export default function OrgLearnerNewslettersNative() {
             ) : tab === 'announcements' && !selectedAnnouncement ? (
               <Text style={[tw`text-sm`, { color: theme.subtext }]}>That announcement is no longer available.</Text>
             ) : tab === 'newsletters' && canDownloadPdf ? (
-              // ✅ We do not preview PDF here; we show content if provided, but PDF download is primary.
               stripThemeFromContent(detailMd || '').trim() ? (
                 <FlatList
                   data={[{ key: 'md' }]}
                   keyExtractor={(it) => it.key}
                   renderItem={() => (
                     <View>
-                      <Markdown style={mdStyles}>{stripThemeFromContent(detailMd || '')}</Markdown>
+                      <MarkdownDisplay style={mdStyles}>
+                        {stripThemeFromContent(detailMd || '')}
+                      </MarkdownDisplay>
                     </View>
                   )}
                   showsVerticalScrollIndicator={false}
@@ -907,7 +945,8 @@ export default function OrgLearnerNewslettersNative() {
               ) : (
                 <View style={tw`py-5`}>
                   <Text style={[tw`text-sm`, { color: theme.subtext }]}>
-                    This newsletter is provided as a PDF. Tap <Text style={{ color: theme.text, fontWeight: '800' }}>Download PDF</Text>.
+                    This newsletter is provided as a PDF. Tap{' '}
+                    <Text style={{ color: theme.text, fontWeight: '800' }}>Download PDF</Text>.
                   </Text>
                 </View>
               )
@@ -917,7 +956,9 @@ export default function OrgLearnerNewslettersNative() {
                 keyExtractor={(it) => it.key}
                 renderItem={() => (
                   <View>
-                    <Markdown style={mdStyles}>{stripThemeFromContent(detailMd || '')}</Markdown>
+                    <MarkdownDisplay style={mdStyles}>
+                      {stripThemeFromContent(detailMd || '')}
+                    </MarkdownDisplay>
                   </View>
                 )}
                 showsVerticalScrollIndicator={false}

@@ -846,7 +846,8 @@ export async function ensureShareableAssignment(req, res) {
           invite_code,
           created_by,
           created_at,
-          updated_at
+          updated_at,
+          source_kind
         )
       VALUES
         (
@@ -855,7 +856,8 @@ export async function ensureShareableAssignment(req, res) {
             (SELECT invite_code FROM org_course_assignments WHERE org_id=$1 AND course_id=$2),
             $9
           ),
-          $10, NOW(), NOW()
+          $10, NOW(), NOW(),
+          'robot' 
         )
       ON CONFLICT (org_id, course_id) DO UPDATE
          SET title_override = COALESCE(EXCLUDED.title_override, org_course_assignments.title_override),
@@ -864,6 +866,7 @@ export async function ensureShareableAssignment(req, res) {
              max_attempts   = COALESCE(EXCLUDED.max_attempts,   org_course_assignments.max_attempts),
              due_at         = COALESCE(EXCLUDED.due_at,         org_course_assignments.due_at),
              locked_config  = COALESCE(EXCLUDED.locked_config,  org_course_assignments.locked_config),
+              source_kind    = COALESCE(EXCLUDED.source_kind,    org_course_assignments.source_kind),
              updated_at     = NOW()
       RETURNING *;
     `;
@@ -1655,19 +1658,21 @@ export async function acceptInvite(req, res) {
 export async function resolveInvite(req, res) {
   const { code } = req.params;
 
-  // Pull everything we need in one shot.
   const { rows } = await pool.query(
     `
     SELECT
       a.id                    AS assignment_id,
       a.course_id,
       a.title_override,
-      -- If you have per-assignment overrides, prefer them with COALESCE:
-      COALESCE(a.pass_mark, o.default_pass_mark)   AS pass_mark,
-      COALESCE(a.timer_s,           o.quiz_time_limit_s) AS quiz_time_limit_s,
-  a.max_attempts,
-  a.due_at,
-  a.locked_config,
+
+      -- ✅ course title from courses (works for both toplist + sandbox)
+      COALESCE(NULLIF(BTRIM(a.title_override), ''), NULLIF(BTRIM(c.title), ''), 'Assigned Course') AS course_title,
+
+      COALESCE(a.pass_mark, o.default_pass_mark)              AS pass_mark,
+      COALESCE(a.timer_s, o.quiz_time_limit_s)                AS quiz_time_limit_s,
+      a.max_attempts,
+      a.due_at,
+      a.locked_config,
 
       o.id                    AS org_id,
       o.name                  AS org_name,
@@ -1678,32 +1683,34 @@ export async function resolveInvite(req, res) {
       o.email_domain
     FROM org_course_assignments a
     JOIN organizations o ON o.id = a.org_id
+    LEFT JOIN courses c ON c.id = a.course_id
     WHERE a.invite_code = $1
     LIMIT 1
     `,
     [code],
   );
 
-  if (!rows.length)
-    return res.status(404).json({ message: 'Invite not found' });
+  if (!rows.length) return res.status(404).json({ message: 'Invite not found' });
 
   const r = rows[0];
   const lockedConfig = safeParseJSON(r.locked_config);
-
   const domains = parseDomains(r.email_domain || '');
 
-  // Keep a structured shape (new), but include branding and quiz policy (old).
   return res.json({
     ok: true,
     assignment: {
       id: r.assignment_id,
       course_id: r.course_id,
       title: r.title_override ?? null,
+
+      // ✅ this fixes your OrgInviteLanding fallback snapshot
+      course_title: r.course_title,
+      courseTitle: r.course_title,
+
       locked_config: lockedConfig,
-      lockedConfig, // ✅ add
+      lockedConfig,
       max_attempts: r.max_attempts ?? null,
       due_at: r.due_at ?? null,
-      
     },
     org: {
       id: r.org_id,
@@ -1723,29 +1730,22 @@ export async function resolveInvite(req, res) {
         quiz_time_limit_s: r.quiz_time_limit_s ?? null,
       },
     },
-    // ✅ Back-compat for clients that expect flattened course/assignment fields
+
+    // back-compat fields (what your UI already checks)
     course_id: r.course_id,
     courseId: r.course_id,
-    assignment_id: r.assignment_id,
-    assignmentId: r.assignment_id,
-
-    // ── Back-compat (what the current web reads) ────────────────────────────
+    course_title: r.course_title,
     pass_mark: r.pass_mark ?? null,
     quiz_time_limit_s: r.quiz_time_limit_s ?? null,
-    timer_s: r.quiz_time_limit_s ?? null, // the UI checks either name
+    timer_s: r.quiz_time_limit_s ?? null,
     max_attempts: r.max_attempts ?? null,
     due_at: r.due_at ?? null,
-    logo_url: r.logo_url ?? null,
-    signature_url: r.signature_url ?? null,
-    instructor_signature_url: r.instructor_signature_url ?? null,
-    certificate_title: r.certificate_title ?? null,
     org_name: r.org_name ?? null,
     locked_config: lockedConfig,
     lockedConfig,
-
-
   });
 }
+
 
 export async function getOrgLearnersProgress(req, res) {
   const userId = req.user?.id;

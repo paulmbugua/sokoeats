@@ -23,6 +23,7 @@ import debounce from 'lodash.debounce';
 import tw from '../../tailwind';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
@@ -187,6 +188,32 @@ const PaymentWidget: React.FC<Props> = ({
 }) => {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const { width: screenW, height: screenH } = useWindowDimensions();
+
+  const insets = useSafeAreaInsets();
+
+// Must match your app footer/tab height (the one that covers content)
+const FOOTER_OVERLAY_PX = Math.round(screenH * 0.16);
+
+// Extra breathing room so the last button clears the footer comfortably
+const EXTRA_BREATHING_PX = 16;
+
+const scrollBottomPad = FOOTER_OVERLAY_PX + (insets.bottom || 0) + EXTRA_BREATHING_PX;
+
+const scrollContentStyle = useMemo(
+  () => [tw`px-4 pt-3`, { paddingBottom: scrollBottomPad }],
+  [scrollBottomPad]
+);
+
+const scrollIndicatorInsets = useMemo(
+  () => ({ bottom: scrollBottomPad }),
+  [scrollBottomPad]
+);
+
+const iosContentInset = useMemo(
+  () => (Platform.OS === 'ios' ? ({ bottom: scrollBottomPad } as any) : undefined),
+  [scrollBottomPad]
+);
+
 
   const brandIcons = {
     visamaster: icons?.visamaster ?? defaultIcons.visamaster,
@@ -1025,13 +1052,16 @@ const PaymentWidget: React.FC<Props> = ({
         </View>
 
         <ScrollView
-          nestedScrollEnabled
-          style={{ maxHeight: INLINE_MAX_H }}
-          contentContainerStyle={tw`px-4 pt-3 pb-6`}
-          keyboardShouldPersistTaps="handled"
-        >
-          {renderContent()}
-        </ScrollView>
+            nestedScrollEnabled
+            style={{ maxHeight: INLINE_MAX_H }}
+            contentContainerStyle={scrollContentStyle as any}
+            scrollIndicatorInsets={scrollIndicatorInsets as any}
+            contentInset={iosContentInset}
+            keyboardShouldPersistTaps="handled"
+          >
+            {renderContent()}
+          </ScrollView>
+
       </View>
     );
   }
@@ -1071,17 +1101,21 @@ const PaymentWidget: React.FC<Props> = ({
               onPress={requestClose}
               style={tw`rounded-lg px-3 py-2 bg-[#e7edf4] dark:bg-[#172534]`}
             >
-              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Close</Text>
+              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Close1</Text>
             </Pressable>
           </View>
 
           <ScrollView
-            nestedScrollEnabled
-            contentContainerStyle={tw`px-4 pt-3 pb-6`}
-            keyboardShouldPersistTaps="handled"
-          >
-            {renderContent()}
-          </ScrollView>
+          nestedScrollEnabled
+          style={tw`flex-1`}
+          contentContainerStyle={scrollContentStyle as any}
+          scrollIndicatorInsets={scrollIndicatorInsets as any}
+          contentInset={iosContentInset}
+          keyboardShouldPersistTaps="handled"
+        >
+          {renderContent()}
+        </ScrollView>
+
         </Animated.View>
       </View>
     </Modal>

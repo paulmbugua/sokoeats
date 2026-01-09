@@ -172,9 +172,8 @@ export async function queryWithRetry(text, params = [], opts = {}) {
     dbDownMaxDelayMs = 2000,
   } = opts;
 
-  let attempt = 0;
-
-  while (true) {
+  // attempt = number of failures so far (0 on first failure)
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await pool.query(text, params);
     } catch (rawErr) {
@@ -187,9 +186,9 @@ export async function queryWithRetry(text, params = [], opts = {}) {
         RETRYABLE_NODE_CODES.has(code) ||
         /Connection terminated unexpectedly/i.test(msg);
 
-      if (!retryable || attempt >= retries) {
-        // bubble up with _dbDown/_serverBusy flags set (if applicable)
-        throw err;
+      // If not retryable OR we've exhausted retries, throw.
+      if (!retryable || attempt === retries) {
+        throw err; // includes _dbDown/_serverBusy if applicable
       }
 
       // exponential backoff with a touch more patience when DB is down
@@ -197,14 +196,19 @@ export async function queryWithRetry(text, params = [], opts = {}) {
       const baseMax = err._dbDown ? dbDownMaxDelayMs : maxDelayMs;
       const sleep = Math.min(baseMax, baseMin * 2 ** attempt);
 
-      attempt += 1;
+      const retryNo = attempt + 1; // human-friendly retry count (1..retries)
       console.warn(
-        `[pg:retry] ${code || err.name || 'error'} — retry ${attempt}/${retries} in ${sleep}ms`,
+        `[pg:retry] ${code || err.name || 'error'} — retry ${retryNo}/${retries} in ${sleep}ms`,
       );
+
       await new Promise((r) => setTimeout(r, sleep));
     }
   }
+
+  // Should never reach here, but keeps control-flow analyzers happy.
+  throw new Error('queryWithRetry: unreachable');
 }
+
 
 /* ───────── Optional keep-alive ping ───────── */
 const pingEveryMs = Number(process.env.DB_PING_INTERVAL_MS) || 0;

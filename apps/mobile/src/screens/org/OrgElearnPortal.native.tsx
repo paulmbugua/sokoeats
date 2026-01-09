@@ -413,6 +413,64 @@ const ToolIconTile = ({
 };
 
 
+const ScopeFields = ({
+  classLabel,
+  subjectKey,
+  onChangeClass,
+  onChangeSubject,
+  errors,
+  resolvedScheme,
+}: {
+  classLabel: string;
+  subjectKey: string;
+  onChangeClass: (v: string) => void;
+  onChangeSubject: (v: string) => void;
+  errors: { classLabel?: string; subjectKey?: string };
+  resolvedScheme: 'light' | 'dark';
+}) => {
+  const borderErr = 'border-red-500/70';
+  const borderOk = 'border-[#cedbe8] dark:border-white/10';
+
+  return (
+    <View style={tw`mt-3`}>
+      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+        Class / Grade <Text style={tw`text-red-500`}>*</Text>
+      </Text>
+      <TextInput
+        style={tw`mt-1 px-3 py-2 rounded bg-white dark:bg-[#0f1821] border ${errors.classLabel ? borderErr : borderOk} text-[#0d141c] dark:text-white text-xs`}
+        placeholder="e.g. Grade 7 Blue"
+        placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
+        value={classLabel}
+        onChangeText={onChangeClass}
+      />
+      {!!errors.classLabel && (
+        <Text style={tw`mt-1 text-[11px] text-red-600 dark:text-red-300`}>
+          {errors.classLabel}
+        </Text>
+      )}
+
+      <View style={tw`h-3`} />
+
+      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+        Subject <Text style={tw`text-red-500`}>*</Text>
+      </Text>
+      <TextInput
+        style={tw`mt-1 px-3 py-2 rounded bg-white dark:bg-[#0f1821] border ${errors.subjectKey ? borderErr : borderOk} text-[#0d141c] dark:text-white text-xs`}
+        placeholder="e.g. Mathematics, English, Physics"
+        placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
+        value={subjectKey}
+        onChangeText={onChangeSubject}
+      />
+      {!!errors.subjectKey && (
+        <Text style={tw`mt-1 text-[11px] text-red-600 dark:text-red-300`}>
+          {errors.subjectKey}
+        </Text>
+      )}
+    </View>
+  );
+};
+
+
 /* ──────────────────────────────
    Main screen
 ────────────────────────────── */
@@ -449,6 +507,8 @@ const isInstructor = roleNorm === 'instructor' || roleNorm === 'tutor';
     },
     [navigation]
   );
+
+  
 
   const handleBackToAssignments = useCallback(async () => {
     let returnTo: string | null = null;
@@ -503,6 +563,27 @@ const openExamResults = useCallback(() => {
   const hasFeeAccess =
     isProTier && (role || '').toLowerCase() === 'instructor' && (primaryMembership as any)?.can_access_fees === true;
 
+  const learnerClassLabelResolved = useMemo(() => {
+  const m: any = primaryMembership || {};
+  return pickFirstStr(
+    learnerClassFromRoute,
+    paramsAny?.classLabel,
+    m.class_label,
+    m.classLabel
+  );
+}, [learnerClassFromRoute, paramsAny?.classLabel, primaryMembership]);
+
+const learnerSubjectKeyResolved = useMemo(() => {
+  const m: any = primaryMembership || {};
+  return pickFirstStr(
+    learnerSubjectFromRoute,
+    paramsAny?.subjectKey,
+    m.subject_key,
+    m.subjectKey
+  );
+}, [learnerSubjectFromRoute, paramsAny?.subjectKey, primaryMembership]);
+
+
   const [seatsUsed, setSeatsUsed] = useState<number>(0);
   const [showProModal, setShowProModal] = useState(false);
   const [showEnterpriseModal, setShowEnterpriseModal] = useState(false);
@@ -535,6 +616,7 @@ const openExamResults = useCallback(() => {
     logo_url: '',
     signature_url: '',
     instructor_signature_url: '',
+     bursar_signature_url: '',
     certificate_title: 'Certificate of Completion',
     default_pass_mark: 70,
     quiz_time_limit_s: 900,
@@ -558,6 +640,7 @@ const openExamResults = useCallback(() => {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingSignature, setUploadingSignature] = useState(false);
   const [uploadingInstructorSignature, setUploadingInstructorSignature] = useState(false);
+  const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
 
   // Assign (AI course)
   const [courseId, setCourseId] = useState('');
@@ -608,6 +691,31 @@ const openExamResults = useCallback(() => {
   const [classicPage, setClassicPage] = useState(1);
   const [classicPageSize, setClassicPageSize] = useState(10);
 
+  const [scopeErrors, setScopeErrors] = useState<{ classLabel?: string; subjectKey?: string }>({});
+
+const validateScope = useCallback(() => {
+  const cls = (assignClassLabel || '').trim();
+  const subj = (assignSubjectKey || '').trim();
+
+  const next: { classLabel?: string; subjectKey?: string } = {};
+  if (!cls) next.classLabel = 'Class/Grade is required';
+  if (!subj) next.subjectKey = 'Subject is required';
+
+  setScopeErrors(next);
+  return Object.keys(next).length === 0;
+}, [assignClassLabel, assignSubjectKey]);
+
+const onChangeClassScope = useCallback((v: string) => {
+  setAssignClassLabel(v);
+  setScopeErrors((e) => ({ ...e, classLabel: undefined }));
+}, []);
+
+const onChangeSubjectScope = useCallback((v: string) => {
+  setAssignSubjectKey(v);
+  setScopeErrors((e) => ({ ...e, subjectKey: undefined }));
+}, []);
+
+
   const isAiAssignmentRow = (row: OrgAssignmentRow) => {
     const invite = (row as any).invite_code || (row as any).inviteCode || null;
     if (invite) return true;
@@ -637,6 +745,14 @@ function pickIso(...xs: any[]): string | null {
   }
   return null;
 }
+
+function pickFirstStr(...xs: any[]): string {
+  for (const x of xs) {
+    if (typeof x === 'string' && x.trim()) return x.trim();
+  }
+  return '';
+}
+
 
 function deriveClassicWorkStatus(a: any): ClassicWorkStatus {
   // 1) Prefer explicit server status fields (web likely uses these now)
@@ -1122,7 +1238,7 @@ if (explicitTab) setTab(explicitTab);
 
   /* upload helper (logo/signature/instructor signature) */
   const handleUpload = useCallback(
-    async (target: 'logo_url' | 'signature_url' | 'instructor_signature_url') => {
+    async (target: 'logo_url' | 'signature_url' | 'instructor_signature_url' | 'bursar_signature_url') => {
       if (!authToken) {
         Alert.alert('Sign in required', 'Please sign in before uploading images.');
         return;
@@ -1144,13 +1260,14 @@ if (explicitTab) setTab(explicitTab);
           type: asset.mimeType || 'image/jpeg',
         };
 
-        const setBusy =
+         const setBusy =
           target === 'logo_url'
             ? setUploadingLogo
             : target === 'signature_url'
               ? setUploadingSignature
-              : setUploadingInstructorSignature;
-
+              : target === 'instructor_signature_url'
+                ? setUploadingInstructorSignature
+                : setUploadingBursarSignature;
         setBusy(true);
 
         const res: any = await uploadAsset(backendUrl, authToken, file, 'image');
@@ -1166,7 +1283,9 @@ if (explicitTab) setTab(explicitTab);
             ? 'Logo updated.'
             : target === 'signature_url'
               ? 'Signature updated.'
-              : 'Instructor signature updated.'
+               : target === 'instructor_signature_url'
+                ? 'Instructor signature updated.'
+                : 'Bursar/Finance signature updated.'
         );
       } catch (e: any) {
         if (e?.message?.includes('canceled')) return;
@@ -1175,6 +1294,7 @@ if (explicitTab) setTab(explicitTab);
         setUploadingLogo(false);
         setUploadingSignature(false);
         setUploadingInstructorSignature(false);
+        setUploadingBursarSignature(false);
       }
     },
     [authToken, backendUrl]
@@ -1306,13 +1426,11 @@ if (explicitTab) setTab(explicitTab);
     }
 
     // web requires both; native now matches
-    if (!classLabel || !subjectKey) {
-      Alert.alert(
-        'Scope required',
-        'Please specify both Class/Grade and Subject so the right learners see this.'
-      );
-      return;
-    }
+   if (!validateScope()) {
+  Alert.alert('Scope required', 'Please specify both Class/Grade and Subject so the right learners see this.');
+  return;
+}
+
 
     try {
       setCreatingLegacyAssignment(true);
@@ -1358,43 +1476,69 @@ if (explicitTab) setTab(explicitTab);
   ]);
 
   /* assignment create (AI course-based) */
-  const createAssignment = useCallback(async () => {
-    if (!org?.id || !authToken || !courseId) return;
+ const createAssignment = useCallback(async () => {
+  if (!org?.id || !authToken) return;
 
-    try {
-      const payload = {
-        courseId,
-        title_override: titleOverride || null,
-        pass_mark: canCustomPassTimers ? passMark || null : null,
-        timer_s: canCustomPassTimers ? timer || null : null,
-        due_at: dueAt || null,
-        org_class_label: assignClassLabel || null,
-        class_label: assignClassLabel || null,
-        org_subject_key: assignSubjectKey || null,
-        subject_key: assignSubjectKey || null,
-      };
+  const cid = (courseId || '').trim();
+  if (!cid) {
+    Alert.alert('Course required', 'Please enter/select a Course ID first.');
+    return;
+  }
 
-      const a = await createOrgAssignment(backendUrl, authToken, org.id, payload);
-      const link = `${backendUrl.replace(/\/$/, '')}/org/join/${(a as any).invite_code}`;
-      setInviteLink(link);
+  if (!validateScope()) {
+    Alert.alert('Scope required', 'Please specify both Class/Grade and Subject.');
+    return;
+  }
 
-      Alert.alert('Assignment created', 'Invite link generated.');
-    } catch (e: any) {
-      Alert.alert('Failed', e?.response?.data?.message || 'Failed to create assignment.');
-    }
-  }, [
-    org?.id,
-    authToken,
-    courseId,
-    titleOverride,
-    passMark,
-    timer,
-    dueAt,
-    assignClassLabel,
-    assignSubjectKey,
-    backendUrl,
-    canCustomPassTimers,
-  ]);
+  const classLabel = (assignClassLabel || '').trim();
+  const subjectKey = (assignSubjectKey || '').trim();
+
+  try {
+    const payload: any = {
+      courseId: cid,
+      title_override: titleOverride || null,
+      pass_mark: canCustomPassTimers ? passMark || null : null,
+      timer_s: canCustomPassTimers ? timer || null : null,
+      due_at: dueAt || null,
+
+      // canonical (snake)
+      class_label: classLabel,
+      subject_key: subjectKey,
+
+      // web-style aliases (camel + org_ + assign*)
+      classLabel,
+      subjectKey,
+      org_class_label: classLabel,
+      org_subject_key: subjectKey,
+      orgClassLabel: classLabel,
+      orgSubjectKey: subjectKey,
+      assignClassLabel: classLabel,
+      assignSubjectKey: subjectKey,
+    };
+
+    const a = await createOrgAssignment(backendUrl, authToken, org.id, payload);
+    const link = `${backendUrl.replace(/\/$/, '')}/org/join/${(a as any).invite_code}`;
+    setInviteLink(link);
+
+    Alert.alert('Assignment created', 'Invite link generated.');
+  } catch (e: any) {
+    Alert.alert('Failed', e?.response?.data?.message || 'Failed to create assignment.');
+  }
+}, [
+  org?.id,
+  authToken,
+  backendUrl,
+  courseId,
+  titleOverride,
+  passMark,
+  timer,
+  dueAt,
+  assignClassLabel,
+  assignSubjectKey,
+  canCustomPassTimers,
+  validateScope,
+]);
+
 
   /* analytics */
   const loadAnalytics = useCallback(async () => {
@@ -1463,12 +1607,11 @@ if (explicitTab) setTab(explicitTab);
 
     setLearnerAssignmentsLoading(true);
     try {
-      const resp = await getOrgAssignmentsForLearner(backendUrl, authToken, org.id, {
+   const resp = await getOrgAssignmentsForLearner(backendUrl, authToken, org.id, {
   studentId: learnerStudentId || undefined,
-  classLabel: learnerClassFromRoute || undefined,
-  subjectKey: learnerSubjectFromRoute || undefined,
+  classLabel: learnerClassLabelResolved || undefined,
+  subjectKey: learnerSubjectKeyResolved || undefined,
 
-  // ✅ harmless if backend ignores; required if backend gates new fields behind query params
   include_status: true,
   includeStatus: true,
   include_opened: true,
@@ -1476,6 +1619,7 @@ if (explicitTab) setTab(explicitTab);
   include_marked: true,
   includeMarked: true,
 } as any);
+
 
 
       const rows = Array.isArray((resp as any)?.data) ? (resp as any).data : [];
@@ -2672,6 +2816,50 @@ if (explicitTab) setTab(explicitTab);
                           placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
                           style={tw`mt-1 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 rounded px-3 py-2 text-[#0d141c] dark:text-white text-xs`}
                         />
+
+                        {/* bursar/finance signature */}
+                              <View style={tw`h-3`} />
+                              <Text style={tw`text-[#49739c] dark:text-white/80 text-xs`}>
+                                Bursar / Finance office signature image (optional)
+                              </Text>
+
+                              <View style={tw`flex-row items-center mt-1`}>
+                                <TouchableOpacity
+                                  onPress={() => handleUpload('bursar_signature_url')}
+                                  disabled={uploadingBursarSignature}
+                                  style={tw`px-3 py-2 rounded-xl bg-indigo-600 mr-2 ${uploadingBursarSignature ? 'opacity-60' : ''}`}
+                                >
+                                  {uploadingBursarSignature ? (
+                                    <ActivityIndicator color="#fff" />
+                                  ) : (
+                                    <Text style={tw`text-white text-xs`}>Upload bursar signature</Text>
+                                  )}
+                                </TouchableOpacity>
+
+                                <Text
+                                  numberOfLines={1}
+                                  style={tw`flex-1 text-[11px] ${
+                                    form.bursar_signature_url
+                                      ? 'text-[#49739c] dark:text-white/70'
+                                      : 'text-[#9CA3AF] dark:text-white/50'
+                                  }`}
+                                >
+                                  {form.bursar_signature_url || 'No bursar signature uploaded yet'}
+                                </Text>
+                              </View>
+
+                              <Text style={tw`mt-2 text-[#49739c] dark:text-white/80 text-[11px]`}>
+                                Or paste bursar signature URL
+                              </Text>
+
+                              <TextInput
+                                value={form.bursar_signature_url}
+                                onChangeText={(v) => setForm((f: any) => ({ ...f, bursar_signature_url: v }))}
+                                placeholder="https://…/bursar-signature.png"
+                                placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
+                                style={tw`mt-1 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 rounded px-3 py-2 text-[#0d141c] dark:text-white text-xs`}
+                              />
+
                       </View>
                     )}
                   </View>
@@ -2992,26 +3180,15 @@ if (explicitTab) setTab(explicitTab);
                     </Text>
 
                     <View style={tw`mt-3`}>
-                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-                        Class / Grade
-                      </Text>
-                      <TextInput
-                        style={tw`mt-1 px-3 py-2 rounded bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white text-xs`}
-                        placeholder="e.g. Grade 7 Blue"
-                        placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
-                        value={assignClassLabel}
-                        onChangeText={setAssignClassLabel}
-                      />
+                      <ScopeFields
+                          classLabel={assignClassLabel}
+                          subjectKey={assignSubjectKey}
+                          onChangeClass={onChangeClassScope}
+                          onChangeSubject={onChangeSubjectScope}
+                          errors={scopeErrors}
+                          resolvedScheme={resolvedScheme}
+                        />
 
-                      <View style={tw`h-3`} />
-                      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Subject</Text>
-                      <TextInput
-                        style={tw`mt-1 px-3 py-2 rounded bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white text-xs`}
-                        placeholder="e.g. Mathematics, English, Physics"
-                        placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
-                        value={assignSubjectKey}
-                        onChangeText={setAssignSubjectKey}
-                      />
                     </View>
 
                     <View style={tw`mt-3`}>
@@ -3138,6 +3315,16 @@ if (explicitTab) setTab(explicitTab);
                     </View>
 
                     <View style={tw`mt-3`}>
+
+                      <ScopeFields
+                      classLabel={assignClassLabel}
+                      subjectKey={assignSubjectKey}
+                      onChangeClass={onChangeClassScope}
+                      onChangeSubject={onChangeSubjectScope}
+                      errors={scopeErrors}
+                      resolvedScheme={resolvedScheme}
+                    />
+
                       <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
                         Course ID
                       </Text>

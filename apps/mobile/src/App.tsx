@@ -35,7 +35,7 @@ import Landing from './screens/Landing.native';
 import HomePageNative from './screens/HomePage.native';
 import LoginScreen from './screens/LoginScreen.native';
 import FindTutor from './screens/FindTutor.native';
-import RobotTutorPage from './screens/RobotTutor.native';
+import RobotTeacher from './screens/RobotTeacher.native';
 import HelpPage from './screens/HelpPage.native';
 import ResourcesPage from './screens/Resources.native';
 import VideosScreen from './screens/Videos.native';
@@ -98,6 +98,7 @@ import VerifyCertificatePrintPage from './screens/VerifyCertificatePrintScreen.n
 import PaymentFlow from './screens/PaymentFlow.native';
 import PaystackCallbackNative from './screens/PaystackCallback.native';
 import PaystackCheckoutNative from './screens/PaystackCheckout.native';
+import BuyTokensNative from './screens/BuyTokens.native';
 
 /* ─────────────────────────────────────────────────────────
  * Org
@@ -794,7 +795,7 @@ const App: React.FC = () => {
           <Stack.Screen name="Home" component={HomePageNative} />
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="FindTutor" component={FindTutor} />
-          <Stack.Screen name="RobotTutor" component={RobotTutorPage} />
+         <Stack.Screen name="RobotTutor" component={RobotTeacher} />
           <Stack.Screen name="Help" component={HelpPage} />
           <Stack.Screen name="Resources" component={ResourcesPage} />
           <Stack.Screen name="Videos" component={VideosScreen} />
@@ -812,6 +813,7 @@ const App: React.FC = () => {
 
           {/* Payments */}
           <Stack.Screen name="PaymentFlow" component={PaymentFlow} />
+          <Stack.Screen name="BuyTokens" component={BuyTokensNative} /> 
           <Stack.Screen name="PaystackCheckout" component={PaystackCheckoutNative} />
           <Stack.Screen name="PaystackCallback" component={PaystackCallbackNative} />
 

@@ -74,7 +74,7 @@ export default function PrivacyPolicy() {
         <ul className="list-disc pl-5 space-y-2">
           <li>
             <strong>Processors</strong>: hosting, analytics, email/SMS, payments (e.g.,
-            PayPal/M-Pesa), customer support tools.
+            Paystack/M-Pesa), customer support tools.
           </li>
           <li>
             <strong>Tutors</strong>: when you book/buy, tutors see the details needed to deliver the

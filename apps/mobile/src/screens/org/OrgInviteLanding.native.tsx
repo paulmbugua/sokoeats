@@ -15,18 +15,21 @@ import { useRoute, useNavigation, RouteProp, NavigationProp } from '@react-navig
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrgInvite } from '@mytutorapp/shared/hooks';
 import { acceptOrgInvite, acceptOrgMembershipInvite } from '@mytutorapp/shared/api';
+import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
 import type { OrgInviteInfo } from '@mytutorapp/shared/types';
 
 // Adjust if your app has a typed stack
 type MainStackParamList = {
   OrgInviteLanding: { code: string };
   OrgLogin: { next?: string; reason?: string } | undefined;
-  OrgProfile: undefined; // if present in your stack
-  OrgElearnPortal: undefined; // or this if you prefer
-  RobotTeacher:
+  OrgProfile: undefined;
+  OrgElearnPortal: undefined;
+
+  RobotTutor:
     | {
         assignmentId: string;
         courseId?: string;
+        courseTitle?: string; // ✅ NEW
         lock?: string;
         flow?: string;
         qt?: string;
@@ -81,7 +84,7 @@ const resolveQuizSize = (meta: any): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-const ROBOT_SCREEN: keyof MainStackParamList = 'RobotTeacher';
+const ROBOT_SCREEN = 'RobotTutor' as const;
 
 const OrgInviteLandingNative: React.FC = () => {
   const route = useRoute<ScreenRoute>();
@@ -112,6 +115,27 @@ const OrgInviteLandingNative: React.FC = () => {
 
   // Match web logic: domainRestricted from policy, but we only *show* UI for assignments
   const domainRestricted = !!policy?.domain_restricted && allowedDomains.length > 0;
+
+  // ✅ Robust invite title resolver (assignment-only)
+  const inviteTitleInfo = useMemo(() => {
+    if (!meta || kind !== 'assignment') {
+      return { title: 'Assigned Course', source: 'fallback' as const };
+    }
+    return resolveCourseTitleInfo({ inviteMeta: meta, fallback: 'Assigned Course' });
+  }, [meta, kind]);
+
+  useEffect(() => {
+    if (!meta) return;
+    console.log('[OrgInviteLandingNative] invite meta snapshot', {
+      code,
+      kind,
+      title_override: (meta as any)?.title_override,
+      course_title: (meta as any)?.course_title,
+      assignment_course_title: (meta as any)?.assignment?.course_title,
+      derivedTitle: inviteTitleInfo.title,
+      derivedSource: inviteTitleInfo.source,
+    });
+  }, [meta, kind, code, inviteTitleInfo.title, inviteTitleInfo.source]);
 
   // Labels (assignment-only)
   const passMarkLabel = useMemo(() => {
@@ -166,10 +190,10 @@ const OrgInviteLandingNative: React.FC = () => {
 
   // UI parts
   const orgName = (meta as OrgInviteInfo | undefined)?.org_name ?? 'Organization';
-  const title =
-    kind === 'membership'
-      ? 'Join organization'
-      : (meta as OrgInviteInfo | undefined)?.title_override || 'Assigned Course';
+
+  // ✅ Landing title now uses robust resolver
+  const title = kind === 'membership' ? 'Join organization' : inviteTitleInfo.title;
+
   const subtitle =
     kind === 'membership'
       ? 'You have been invited to join this organization.'
@@ -227,6 +251,7 @@ const OrgInviteLandingNative: React.FC = () => {
         (meta as OrgInviteInfo | undefined)?.assignment?.id ??
         (meta as OrgInviteInfo | undefined)?.id ??
         null;
+
       const courseId =
         enrollment?.courseId ??
         (meta as OrgInviteInfo | undefined)?.assignment?.course_id ??
@@ -243,9 +268,21 @@ const OrgInviteLandingNative: React.FC = () => {
       const qt = resolveQuizType(meta as any);
       const qs = resolveQuizSize(meta as any);
 
+      const courseTitle = inviteTitleInfo.title; // ✅ “Title Passport”
+
+      console.log('[OrgInviteLandingNative] accept → RobotTutor nav', {
+        assignmentId,
+        courseId,
+        courseTitle,
+        qt,
+        qs,
+        enrollmentKeys: enrollment ? Object.keys(enrollment) : [],
+      });
+
       navigation.navigate(ROBOT_SCREEN, {
         assignmentId: String(assignmentId),
         courseId: courseId ? String(courseId) : undefined,
+        courseTitle, // ✅ PASS IT
         lock: '1',
         flow: 'org',
         ...(qt ? { qt } : {}),
@@ -267,7 +304,17 @@ const OrgInviteLandingNative: React.FC = () => {
     } finally {
       setAccepting(false);
     }
-  }, [backendUrl, learnerToken, code, navigation, meta, kind, domainRestricted, allowedDomains]);
+  }, [
+    backendUrl,
+    learnerToken,
+    code,
+    navigation,
+    meta,
+    kind,
+    domainRestricted,
+    allowedDomains,
+    inviteTitleInfo.title,
+  ]);
 
   return (
     <View style={tw`flex-1 bg-[#0b1220] px-3 pt-6 pb-4`}>

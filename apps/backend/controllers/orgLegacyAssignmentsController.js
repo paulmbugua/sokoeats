@@ -2,9 +2,7 @@
 import 'dotenv/config';
 import pool from '../config/db.js';
 import { requireOrgTier } from '../utils/orgTierGuard.js';
-import { randomBytes } from 'crypto';
-import crypto from 'crypto';
-
+import * as crypto from 'crypto';
 
 /**
  * POST /api/orgs/:orgId/assignments/legacy
@@ -33,9 +31,9 @@ export async function createOrgLegacyAssignment(req, res) {
     String(process.env.NODE_ENV || '') !== 'production';
 
   const rid =
-    req.get?.('x-request-id') ||
-    req.headers?.['x-request-id'] ||
-    randomBytes(6).toString('hex');
+  req.get?.('x-request-id') ||
+  req.headers?.['x-request-id'] ||
+  crypto.randomBytes(6).toString('hex');
 
   const tag = (m) => `[org.createAssignment(classic) ${rid}] ${m}`;
   const log = (...a) => DEBUG && console.log(tag(''), ...a);
@@ -198,9 +196,9 @@ export async function getOrgAssignments(req, res) {
     String(process.env.NODE_ENV || '') !== 'production';
 
   const rid =
-    req.get?.('x-request-id') ||
-    req.headers?.['x-request-id'] ||
-    (crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(6).toString('hex'));
+  req.get?.('x-request-id') ||
+  req.headers?.['x-request-id'] ||
+  (crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(6).toString('hex'));
 
   const tag = (m) => `[org.getAssignments ${rid}] ${m}`;
   const log = (...a) => DEBUG && console.log(tag(''), ...a);
@@ -1161,69 +1159,75 @@ export async function listOrgInstructorSubmissions(req, res) {
       createdByFilter = Number.isFinite(n) ? n : null;
     }
 
-    const sQ = await pool.query(
-      `
-      WITH filtered AS (
-        SELECT
-          s.id,
-          s.assignment_id,
-          s.org_id,
-          s.user_id,
-          s.student_id,
-          s.answer_text,
-          s.attachment_url,
-          s.submitted_at,
+   const sQ = await pool.query(
+  `
+  WITH filtered AS (
+    SELECT
+      s.id,
+      s.assignment_id,
+      s.org_id,
+      s.user_id,
+      s.student_id,
+      s.answer_text,
+      s.attachment_url,
+      s.submitted_at,
 
-          a.title_override,
-          COALESCE(a.title_override, c.title) AS assignment_title,
-          a.org_class_label AS assignment_class_label,
-          a.org_subject_key,
-          a.source_kind,
-          a.created_by AS assignment_created_by,
+      a.title_override,
+      COALESCE(a.title_override, c.title) AS assignment_title,
+      a.org_class_label AS assignment_class_label,
+      a.org_subject_key,
+      a.source_kind,
+      a.created_by AS assignment_created_by,
 
-          COALESCE(u.name, u.email, 'Learner') AS learner_display_name,
-          u.email AS learner_email,
-          lp.admission_code AS learner_admission_code,
-          lp.class_label AS learner_class_label,
+      COALESCE(u.name, u.email, 'Learner') AS learner_display_name,
+      u.email AS learner_email,
+      lp.admission_code AS learner_admission_code,
+      lp.class_label AS learner_class_label,
 
-          COALESCE(lp.class_label, a.org_class_label) AS class_label,
-          COALESCE(lp.admission_code, s.student_id) AS admission_number
-        FROM org_course_assignment_submissions s
-        INNER JOIN org_course_assignments a
-          ON a.id::text = s.assignment_id::text
-         AND a.org_id::text = s.org_id::text
-        LEFT JOIN courses c
-          ON c.id::text = a.course_id::text
-        LEFT JOIN org_learner_profiles lp
-          ON lp.org_id::text = s.org_id::text
-         AND lp.user_id = s.user_id
-        LEFT JOIN users u
-          ON u.id = s.user_id
-        WHERE s.org_id::text = $1::text
-          AND (
-            $2::bigint IS NULL
-            OR a.created_by = $2::bigint
-          )
-          AND (
-            $3::text IS NULL
-            OR lp.class_label = $3::text
-            OR a.org_class_label = $3::text
-          )
-          AND (
-            $4::text IS NULL
-            OR lp.admission_code ILIKE '%' || $4::text || '%'
-            OR COALESCE(u.name, '') ILIKE '%' || $4::text || '%'
-            OR COALESCE(u.email, '') ILIKE '%' || $4::text || '%'
-            OR COALESCE(a.title_override, c.title, '') ILIKE '%' || $4::text || '%'
-          )
+      COALESCE(lp.class_label, a.org_class_label) AS class_label,
+      COALESCE(lp.admission_code, s.student_id) AS admission_number,
+
+      v.opened_at AS opened_at
+
+    FROM org_course_assignment_submissions s
+    INNER JOIN org_course_assignments a
+      ON a.id::text = s.assignment_id::text
+     AND a.org_id::text = s.org_id::text
+    LEFT JOIN courses c
+      ON c.id::text = a.course_id::text
+    LEFT JOIN org_learner_profiles lp
+      ON lp.org_id::text = s.org_id::text
+     AND lp.user_id = s.user_id
+    LEFT JOIN users u
+      ON u.id = s.user_id
+
+    LEFT JOIN org_assignment_views v
+      ON v.org_id::text = s.org_id::text
+     AND v.assignment_id::text = s.assignment_id::text
+     AND v.instructor_user_id = $7::bigint
+
+    WHERE s.org_id::text = $1::text
+      AND ($2::bigint IS NULL OR a.created_by = $2::bigint)
+      AND (
+        $3::text IS NULL
+        OR lp.class_label = $3::text
+        OR a.org_class_label = $3::text
       )
-      SELECT *, COUNT(*) OVER() AS total_rows
-      FROM filtered
-      ORDER BY submitted_at DESC NULLS LAST
-      LIMIT $5 OFFSET $6
-      `,
-      [orgIdParam, createdByFilter, classLabel, q, limit, offset],
-    );
+      AND (
+        $4::text IS NULL
+        OR lp.admission_code ILIKE '%' || $4::text || '%'
+        OR COALESCE(u.name, '') ILIKE '%' || $4::text || '%'
+        OR COALESCE(u.email, '') ILIKE '%' || $4::text || '%'
+        OR COALESCE(a.title_override, c.title, '') ILIKE '%' || $4::text || '%'
+      )
+  )
+  SELECT *, COUNT(*) OVER() AS total_rows
+  FROM filtered
+  ORDER BY submitted_at DESC NULLS LAST
+  LIMIT $5 OFFSET $6
+  `,
+  [orgIdParam, createdByFilter, classLabel, q, limit, offset, viewerUserId],
+);
 
     const rawRows = sQ.rows || [];
     const total = rawRows?.[0]?.total_rows ? Number(rawRows[0].total_rows) : 0;
@@ -1303,67 +1307,77 @@ export async function listOrgInstructorAiSubmissions(req, res) {
       createdByFilter = Number.isFinite(n) ? n : null;
     }
 
-    const sQ = await pool.query(
-      `
-      WITH filtered AS (
-        SELECT
-          qa.id AS attempt_id,
-          qa.assignment_id,
-          qa.org_id,
-          qa.user_id,
-          qa.submitted_at,
-          qa.score_pct,
-          qa.attempt_no,
-          qa.status,
-          qa.pass_mark,
+   const sQ = await pool.query(
+  `
+  WITH filtered AS (
+    SELECT
+      qa.id AS attempt_id,
+      qa.assignment_id,
+      qa.org_id,
+      qa.user_id,
+      qa.submitted_at,
+      qa.score_pct,
+      qa.attempt_no,
+      qa.status,
+      qa.pass_mark,
 
-          a.course_id,
-          a.title_override,
-          a.org_class_label AS assignment_class_label,
-          a.created_by AS assignment_created_by,
+      a.course_id,
+      a.title_override,
+      a.org_class_label AS assignment_class_label,
+      a.created_by AS assignment_created_by,
 
-          COALESCE(c.title, a.title_override) AS course_title,
-          COALESCE(a.title_override, c.title) AS assignment_title,
+      COALESCE(c.title, a.title_override) AS course_title,
+      COALESCE(a.title_override, c.title) AS assignment_title,
 
-          COALESCE(u.name, u.email, 'Learner') AS learner_display_name,
-          u.email AS learner_email,
-          lp.admission_code AS admission_number,
-          lp.class_label AS learner_class_label
-        FROM org_quiz_attempts qa
-        INNER JOIN org_course_assignments a
-          ON a.id::text = qa.assignment_id::text
-         AND a.org_id::text = qa.org_id::text
-        LEFT JOIN courses c
-          ON c.id::text = a.course_id::text
-        LEFT JOIN users u
-          ON u.id = qa.user_id
-        LEFT JOIN org_learner_profiles lp
-          ON lp.org_id::text = qa.org_id::text
-         AND lp.user_id = qa.user_id
-        WHERE qa.org_id::text = $1::text
-          AND qa.status = 'submitted'
-          AND qa.submitted_at IS NOT NULL
-          AND ($2::bigint IS NULL OR a.created_by = $2::bigint)
-          AND (
-            $3::text IS NULL
-            OR lp.class_label = $3::text
-            OR a.org_class_label = $3::text
-          )
-          AND (
-            $4::text IS NULL
-            OR lp.admission_code ILIKE '%' || $4::text || '%'
-            OR COALESCE(u.name, '') ILIKE '%' || $4::text || '%'
-            OR COALESCE(u.email, '') ILIKE '%' || $4::text || '%'
-            OR COALESCE(a.title_override, c.title, '') ILIKE '%' || $4::text || '%'
-          )
+      COALESCE(u.name, u.email, 'Learner') AS learner_display_name,
+      u.email AS learner_email,
+      lp.admission_code AS admission_number,
+      lp.class_label AS learner_class_label,
+
+      v.opened_at AS opened_at
+
+    FROM org_quiz_attempts qa
+    INNER JOIN org_course_assignments a
+      ON a.id::text = qa.assignment_id::text
+     AND a.org_id::text = qa.org_id::text
+    LEFT JOIN courses c
+      ON c.id::text = a.course_id::text
+    LEFT JOIN users u
+      ON u.id = qa.user_id
+    LEFT JOIN org_learner_profiles lp
+      ON lp.org_id::text = qa.org_id::text
+     AND lp.user_id = qa.user_id
+
+    LEFT JOIN org_assignment_views v
+      ON v.org_id::text = qa.org_id::text
+     AND v.assignment_id::text = qa.assignment_id::text
+     AND v.instructor_user_id = $7::bigint
+
+    WHERE qa.org_id::text = $1::text
+      AND qa.status = 'submitted'
+      AND qa.submitted_at IS NOT NULL
+      AND ($2::bigint IS NULL OR a.created_by = $2::bigint)
+      AND (
+        $3::text IS NULL
+        OR lp.class_label = $3::text
+        OR a.org_class_label = $3::text
       )
-      SELECT *, COUNT(*) OVER() AS total_rows
-      FROM filtered
-      ORDER BY submitted_at DESC NULLS LAST
-      LIMIT $5 OFFSET $6
-      `,
-      [orgIdParam, createdByFilter, classLabel, q, limit, offset],
-    );
+      AND (
+        $4::text IS NULL
+        OR lp.admission_code ILIKE '%' || $4::text || '%'
+        OR COALESCE(u.name, '') ILIKE '%' || $4::text || '%'
+        OR COALESCE(u.email, '') ILIKE '%' || $4::text || '%'
+        OR COALESCE(a.title_override, c.title, '') ILIKE '%' || $4::text || '%'
+      )
+  )
+  SELECT *, COUNT(*) OVER() AS total_rows
+  FROM filtered
+  ORDER BY submitted_at DESC NULLS LAST
+  LIMIT $5 OFFSET $6
+  `,
+  [orgIdParam, createdByFilter, classLabel, q, limit, offset, viewerUserId],
+);
+
 
     const rawRows = sQ.rows || [];
     const total = rawRows?.[0]?.total_rows ? Number(rawRows[0].total_rows) : 0;

@@ -40,10 +40,8 @@ import {
   listOrgInstructorAiSubmissions,
   apiMarkOrgAssignmentOpened,
 } from '@mytutorapp/shared/api/orgApi';
-import { getOrgAiSubmissionsPdf } from '@mytutorapp/shared/api';
-import { uploadAsset } from '@mytutorapp/shared/api';
+import { getOrgAiSubmissionsPdf,uploadAsset  } from '@mytutorapp/shared/api';
 import * as Sharing from 'expo-sharing';
-
 import ThemeToggle from '../ThemeToggle.native';
 import { useThemePref } from '../../theme/ThemeContext';
 import type { MainStackParamList } from '../../navigation/types';
@@ -213,22 +211,38 @@ async function writeOpened(orgId: string | number, assignmentId: string | number
   }
 }
 
+function deriveInstructorSubmissionStatus(r: any): InstructorSubmissionStatus {
+  // keep "Marked" based on mark timestamp (independent of opened/submitted)
+  const markedAt = r?.marked_at || r?.graded_at || r?.reviewed_at;
+  if (markedAt) return 'marked';
+
+  // "Opened vs Submitted" must depend ONLY on opened timestamp
+  const openedAt =
+    r?.opened_at || r?.assignment_opened_at || r?.viewer_opened_at || r?.viewed_at;
+
+  return openedAt ? 'opened' : 'submitted';
+}
+
+
 function patchRecentRowsWithOpened(rows: any[], openedMap: Record<string, string>) {
   return rows.map((row) => {
     const assignmentId = row?.assignment_id ?? row?.assignmentId ?? null;
+    const key = assignmentId == null ? null : String(assignmentId);
+
     const openedAt =
       row?.opened_at ||
       row?.openedAt ||
       row?.assignment_opened_at ||
       row?.viewer_opened_at ||
-      (assignmentId ? openedMap?.[assignmentId] : null);
+      row?.viewed_at ||
+      (key ? openedMap?.[key] : null);
 
-    if (!openedAt || !assignmentId) return row;
+    if (!openedAt || !key) return row;
 
+    // only patch the timestamp, UI will derive label from opened_at
     return {
       ...row,
       opened_at: openedAt,
-      status: 'Opened',
     };
   });
 }
@@ -1100,7 +1114,7 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
             const rowAssignmentId = row?.assignment_id ?? row?.assignmentId;
             if (rowAssignmentId == null) return row;
             return String(rowAssignmentId) === assignmentKey
-              ? { ...row, opened_at: nowIso, status: 'Opened' }
+              ? { ...row, opened_at: nowIso }
               : row;
           })
         );
@@ -1123,6 +1137,47 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
     },
     [authToken, backendUrl, navigation, orgId]
   );
+
+  const handleOpenAiSubmission = useCallback(
+  async (attemptId: string | number, assignmentId?: string | number | null) => {
+    const nowIso = new Date().toISOString();
+
+    const assignmentKey =
+      assignmentId != null ? String(assignmentId) : null;
+
+    // local “opened” cache + immediate UI update (keyed by assignmentId)
+    if (orgId && assignmentKey) {
+      await writeOpened(orgId, assignmentKey, nowIso);
+      setRecentAiSubmissions((prev) =>
+        prev.map((row) => {
+          const rowAssignmentId = row?.assignment_id ?? row?.assignmentId ?? null;
+          if (rowAssignmentId == null) return row;
+          return String(rowAssignmentId) === assignmentKey
+            ? { ...row, opened_at: nowIso }
+            : row;
+        })
+      );
+    }
+
+    // server-side opened_at
+    if (backendUrl && authToken && orgId && assignmentKey) {
+      apiMarkOrgAssignmentOpened(backendUrl, authToken, orgId, assignmentKey).catch(() => {});
+    }
+
+    // remember return anchor
+    try {
+      await AsyncStorage.setItem(RETURN_TO_KEY, 'OrgInstructorHome#recent-submissions');
+    } catch {}
+
+    navigation.navigate('OrgElearnPortal', {
+      tab: 'assign',
+      view: 'ai-submission',
+      attemptId,
+    });
+  },
+  [authToken, backendUrl, navigation, orgId]
+);
+
 
   const handleDownloadAiPdf = useCallback(async () => {
   if (!backendUrl || !authToken || !orgId) {
@@ -1598,6 +1653,7 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
                         onPress={() => {
                           setRecentClass(opt.value);
                           setRecentPage(1);
+                          setRecentAiPage(1);
                         }}
                         style={[
                           tw`px-3 py-1.5 rounded-full border`,
@@ -1683,6 +1739,15 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
                     const aiScore = row.score_pct ?? row.ai_final_score ?? null;
                     const scoreLabel = aiScore == null ? '—' : `${Math.round(Number(aiScore))}%`;
 
+                    const status = deriveInstructorSubmissionStatus(row);
+
+                    const statusLabel =
+                      status === 'marked' ? 'Marked' : status === 'opened' ? 'Opened' : 'Submitted';
+
+                    const statusTone: 'emerald' | 'sky' | 'amber' =
+                      status === 'marked' ? 'emerald' : status === 'opened' ? 'sky' : 'amber';
+
+
                     const assignmentId = row.assignment_id || row.assignmentId || null;
                     const attemptId = row.attempt_id || row.id || assignmentId || learnerName;
 
@@ -1704,29 +1769,32 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
                               </Text>
 
                               <View style={tw`flex-row items-center flex-wrap gap-2 mt-2`}>
-                                <Badge tone="indigo" palette={palette}>
-                                  {classLabel}
-                                </Badge>
-                                <Badge tone="sky" palette={palette}>
-                                  Score {scoreLabel}
-                                </Badge>
-                                <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
-                                  {submittedAt ? fmtWhen(submittedAt) : 'Not timestamped'}
-                                </Text>
-                              </View>
+                              <Badge tone="indigo" palette={palette}>
+                                {classLabel}
+                              </Badge>
+
+                              <Badge tone="sky" palette={palette}>
+                                Score {scoreLabel}
+                              </Badge>
+
+                              <Badge tone={statusTone} palette={palette}>
+                                {statusLabel}
+                              </Badge>
+
+                              <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
+                                {submittedAt ? fmtWhen(submittedAt) : 'Not timestamped'}
+                              </Text>
+                            </View>
+
                             </View>
                           </View>
 
                           <TouchableOpacity
-                            onPress={() =>
-                              attemptId
-                                ? navigation.navigate('OrgElearnPortal', {
-                                    tab: 'assign',
-                                    view: 'ai-submission',
-                                    attemptId,
-                                  })
-                                : Alert.alert('Missing', 'No attempt id found.')
-                            }
+                           onPress={() => {
+                              if (!attemptId) return Alert.alert('Missing', 'No attempt id found.');
+                              handleOpenAiSubmission(attemptId, assignmentId);
+                            }}
+
                             style={[tw`mt-3 self-start px-3 py-2 rounded-full`, { backgroundColor: '#6366f1' }]}
                           >
                             <Text style={[tw`text-[11px] font-semibold`, { color: 'white' }]}>View</Text>
@@ -1777,21 +1845,7 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
 
                  
 
-                  function deriveInstructorSubmissionStatus(r: any): InstructorSubmissionStatus {
-                    const raw = String(r?.status ?? r?.review_status ?? r?.state ?? '').toLowerCase();
-                    if (/(marked|graded|reviewed)/.test(raw)) return 'marked';
-                    if (/(opened|viewed|seen)/.test(raw)) return 'opened';
-
-                    const markedAt = r?.marked_at || r?.graded_at || r?.reviewed_at;
-                    if (markedAt) return 'marked';
-
-                    const openedAt = r?.opened_at || r?.viewed_at;
-                    if (openedAt) return 'opened';
-
-                    return 'submitted';
-                  }
-
-
+                  
                   const status = deriveInstructorSubmissionStatus(row);
 
                 const statusLabel =
@@ -1823,18 +1877,21 @@ const greetName = firstNameFrom(instructorName) || 'instructor';
                               {learnerName} • Adm {admission}
                             </Text>
 
-                            <View style={tw`flex-row items-center flex-wrap gap-2 mt-2`}>
-                              <Badge tone="indigo" palette={palette}>
-                                {classLabel}
-                              </Badge>
-                              <Badge tone={statusTone} palette={palette}>
-                                {statusLabel}
-                              </Badge>
+                           <View style={tw`flex-row items-center flex-wrap gap-2 mt-2`}>
+                      <Badge tone="indigo" palette={palette}>
+                        {classLabel}
+                      </Badge>
 
-                              <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
-                                {submittedAt ? fmtWhen(submittedAt) : 'Not timestamped'}
-                              </Text>
-                            </View>
+                      <Badge tone={statusTone} palette={palette}>
+                        {statusLabel}
+                      </Badge>
+
+                      <Text style={[tw`text-[11px]`, { color: palette.textSubtle }]}>
+                        {submittedAt ? fmtWhen(submittedAt) : 'Not timestamped'}
+                      </Text>
+                    </View>
+
+
                           </View>
                         </View>
 

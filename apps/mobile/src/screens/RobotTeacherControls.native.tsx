@@ -1,6 +1,7 @@
 // apps/mobile/src/screens/RobotTeacherControls.native.tsx
-import React from 'react';
-import { View, Text, TextInput, Pressable } from 'react-native';
+import React, { memo, useCallback } from 'react';
+import { View, Text, TextInput, Pressable, TouchableOpacity } from 'react-native';
+
 import tw from '../../tailwind';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -16,7 +17,8 @@ import { useRegisterScreenRefresh } from '../refresh/GlobalRefreshProvider';
 import SelectField, { type Option as SelectOption } from './SelectField.native';
 
 /* ───────────────────────── CourseSelect (native) ───────────────────────── */
-const CourseSelect = React.memo(function CourseSelect({
+const CourseSelect = memo(function CourseSelect({
+
   options,
   value,
   onChange,
@@ -51,6 +53,7 @@ interface ControlsPanelProps {
   canShareUi: boolean;
   restrictStarter: boolean;
   knobsDisabled: boolean;
+displayCourseTitle?: string;
 
   topCourses: CourseOption[];
   selectedCourse: CourseOption | null;
@@ -102,7 +105,8 @@ interface ControlsPanelProps {
 }
 
 /* ───────────────────────────── Panel (native) ───────────────────────────── */
-const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
+const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
+
   const {
     showMinimalControls,
     isLockedLearner,
@@ -140,17 +144,19 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
     overrideQuiz,
     setOverrideQuiz,
     onOpenOverlay,
+    displayCourseTitle,
     overlayAvailable, // ✅ FIX: destructure it
   } = props;
 
   // ⬇️ Contribute to the screen’s global pull-to-refresh:
-  useRegisterScreenRefresh(
-    React.useCallback(async () => {
-      if (!isLockedLearner && selectedCourse?.id) {
-        await onRefreshSelectedAI();
-      }
-    }, [isLockedLearner, selectedCourse?.id, onRefreshSelectedAI])
-  );
+ useRegisterScreenRefresh(
+  useCallback(async () => {
+    if (!isLockedLearner && selectedCourse?.id) {
+      await onRefreshSelectedAI();
+    }
+  }, [isLockedLearner, selectedCourse?.id, onRefreshSelectedAI])
+);
+
 
   const canStartMinimal = !busy;
   const canStartMain = !busy;
@@ -173,34 +179,15 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               style={tw`mt-1 h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}
             >
               <Text style={tw`text-[#0d141c] dark:text-white`}>
-                {selectedCourse?.title || 'Assigned course'}
+               {displayCourseTitle || selectedCourse?.title || 'Assigned course'}
+
               </Text>
             </View>
           </View>
 
           <View style={tw`flex-row items-end gap-2`}>
-            <Pressable
-              onPress={() => {
-                if (canStartMinimal) onStart();
-              }}
-              disabled={!canStartMinimal}
-              accessibilityRole="button"
-              accessibilityLabel="Start with AI"
-              style={tw.style(
-                `flex-1 h-10 rounded-xl items-center justify-center border`,
-                canStartMinimal
-                  ? `bg-indigo-600 border-indigo-600`
-                  : `opacity-60 bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
-              )}
-            >
-              <Text
-                style={tw`${
-                  canStartMinimal ? 'text-white' : 'text-[#0d141c] dark:text-white'
-                } text-sm font-semibold`}
-              >
-                {busy ? 'Preparing…' : hasAIContent ? 'Continue lesson' : 'Start with A.I'}
-              </Text>
-            </Pressable>
+            <StartWithAiButton busy={busy} hasAIContent={hasAIContent} onStart={onStart} fullWidth />
+
           </View>
         </View>
       ) : (
@@ -217,7 +204,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   style={tw`h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}
                 >
                   <Text style={tw`text-[#0d141c] dark:text-white`}>
-                    {selectedCourse?.title || 'Assigned course'}
+                   {displayCourseTitle || selectedCourse?.title || 'Assigned course'}
+
                   </Text>
                 </View>
               ) : (
@@ -370,28 +358,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
 
           {/* Start / Refresh / Share */}
           <View style={tw`flex-row items-end gap-2`}>
-            <Pressable
-              onPress={() => {
-                if (canStartMain) onStart();
-              }}
-              disabled={!canStartMain}
-              accessibilityRole="button"
-              accessibilityLabel="Start with AI"
-              style={tw.style(
-                `flex-1 h-10 rounded-xl items-center justify-center border`,
-                canStartMain
-                  ? `bg-indigo-600 border-indigo-600`
-                  : `opacity-60 bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
-              )}
-            >
-              <Text
-                style={tw`${
-                  canStartMain ? 'text-white' : 'text-[#0d141c] dark:text-white'
-                } text-sm font-semibold`}
-              >
-                {busy ? 'Preparing…' : hasAIContent ? 'Continue lesson' : 'Start with A.I'}
-              </Text>
-            </Pressable>
+          <StartWithAiButton busy={busy} hasAIContent={hasAIContent} onStart={onStart} />
+
 
             {selectedCourse && !isLockedLearner ? (
               <Pressable
@@ -561,6 +529,37 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
 
 ControlsPanel.displayName = 'RobotTeacherControls';
 export default ControlsPanel;
+
+function StartWithAiButton({
+  busy,
+  hasAIContent,
+  onStart,
+  fullWidth = false,
+}: {
+  busy: boolean;
+  hasAIContent: boolean;
+  onStart: () => Promise<void> | void;
+  fullWidth?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={() => {
+        if (!busy) onStart();
+      }}
+      disabled={busy}
+      activeOpacity={0.85}
+      style={tw.style(
+        `${fullWidth ? 'w-full' : 'flex-1'} rounded-xl py-3 items-center justify-center border`,
+        busy ? 'bg-indigo-600/60 border-indigo-600/60' : 'bg-indigo-600 border-indigo-600'
+      )}
+    >
+      <Text style={tw`text-white font-semibold`}>
+        {busy ? 'Preparing…' : hasAIContent ? 'Continue lesson' : 'Start with A.I'}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 
 /* ────────────────────────── Small helper input ────────────────────────── */
 function LabeledNumber({

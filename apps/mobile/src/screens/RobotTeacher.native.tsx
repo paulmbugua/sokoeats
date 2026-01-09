@@ -15,6 +15,8 @@ import { useNavigation, useRoute, RouteProp, NavigationProp } from '@react-navig
 import tw from '../../tailwind';
 import { RefreshableScrollView } from '../refresh/Refreshable';
 import LessonOverlayNative, { type LessonOverlayHandle } from './LessonOverlay.native';
+import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
+import * as Linking from 'expo-linking';
 
 import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
 import { useAiCourse, useAICertificates } from '@mytutorapp/shared/hooks';
@@ -96,6 +98,8 @@ const normQt = (v?: string | null): 'mcq' | 'short' | undefined => {
   return s === 'short' ? 'short' : s === 'mcq' ? 'mcq' : undefined;
 };
 
+
+
 // ─────────────────────────────────────────────────────────
 // CourseList (native)
 // ─────────────────────────────────────────────────────────
@@ -162,9 +166,9 @@ function CourseList({
       </View>
 
       {/* Horizontal chips */}
-      <RefreshableScrollView
-        screenId="robot-tutor"
+      <ScrollView
         horizontal
+        nestedScrollEnabled
         showsHorizontalScrollIndicator={false}
         keyboardShouldPersistTaps="always"
         style={tw`md:hidden -mx-1 px-1 pb-2`}
@@ -197,16 +201,16 @@ function CourseList({
         ) : (
           <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>No courses found.</Text>
         )}
-      </RefreshableScrollView>
+      </ScrollView>
 
       {/* Vertical list (tablet/desktop widths) */}
       <View style={tw`hidden md:flex`}>
-        <RefreshableScrollView
-          screenId="robot-tutor"
+       <ScrollView
+          nestedScrollEnabled
           style={tw`max-h-[70vh]`}
           contentContainerStyle={[tw`pr-1`, { paddingBottom: 16 }]}
-          keyboardShouldPersistTaps="always"
-        >
+         keyboardShouldPersistTaps="always"
+       >
           {visible.length ? (
             visible.map((l, i) => {
               const active = l.id === activeId;
@@ -245,7 +249,7 @@ function CourseList({
               No courses found. Try another search.
             </Text>
           )}
-        </RefreshableScrollView>
+        </ScrollView>
       </View>
     </View>
   );
@@ -264,16 +268,53 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<RobotTeacherRoute>();
+  // ✅ Deep-link query params (works for shared links / invites)
+const url = Linking.useURL();
 
-  const params = useMemo(
-    () =>
-      (route.params ?? {}) as {
-        assignmentId?: string | null;
-        courseId?: string | null;
-        qt?: 'mcq' | 'short' | string | null;
-      },
-    [route.params]
-  );
+const qp = useMemo(
+  () => (url ? (Linking.parse(url).queryParams ?? {}) : {}),
+  [url]
+);
+
+const qpLocked = String((qp as any).lock ?? '') === '1';
+
+const qpCourseId = String((qp as any).courseId ?? (qp as any).course_id ?? '').trim();
+const qpAssignmentId = String((qp as any).assignmentId ?? (qp as any).assignment_id ?? '').trim();
+const qpCourseTitle = String((qp as any).courseTitle ?? (qp as any).ct ?? '').trim();
+
+// optional: if you also pass qt/qs in shared links
+const qpQt = String((qp as any).qt ?? '').trim();
+const qpQs = String((qp as any).qs ?? '').trim();
+
+const params = useMemo(
+  () => {
+    const rp = (route.params ?? {}) as any;
+
+    // ✅ prefer deep-link qp over navigation params when present
+    const merged: any = { ...rp };
+
+    if (qpAssignmentId) merged.assignmentId = qpAssignmentId;
+    if (qpCourseId) merged.courseId = qpCourseId;
+    if (qpCourseTitle) merged.courseTitle = qpCourseTitle;
+    if (qpLocked) merged.lock = '1';
+
+    if (qpQt) merged.qt = qpQt;
+    if (qpQs) merged.qs = qpQs;
+
+    return merged as {
+      assignmentId?: string | null;
+      courseId?: string | null;
+      courseTitle?: string | null;
+      lock?: string | null;
+      flow?: string | null;
+      qt?: 'mcq' | 'short' | string | null;
+      qs?: string | null;
+    };
+  },
+  [route.params, qpAssignmentId, qpCourseId, qpCourseTitle, qpLocked, qpQt, qpQs]
+);
+
+
 
   // (Optional) keep a single log ONLY when debugging is explicitly enabled
   useEffect(() => {
@@ -284,6 +325,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const [isMaximized, setIsMaximized] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [sharedCourseMissing, setSharedCourseMissing] = useState(false);
+  const [sharedCourseChecked, setSharedCourseChecked] = useState(false);
+
   const [overlayState, setOverlayState] = useState<{
     words: any[];
     currentIndex: number;
@@ -297,7 +340,9 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   }, []);
 
   const effectiveVoice = voiceName || defaultVoice;
-  const { backendUrl, token, role: globalRole } = useShopContext();
+  const { backendUrl, token, orgToken, role: globalRole } = useShopContext() as any;
+const authToken = token || orgToken;
+
   const isGlobalAdmin = globalRole === 'admin' || globalRole === 'superadmin';
 
   const [internalThemeOpen, setInternalThemeOpen] = useState(false);
@@ -310,10 +355,11 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   };
   const urlQuizTypeHint = useMemo(() => normQt(params?.qt), [params?.qt]);
 
-  const ai = useAiCourse(backendUrl, token || undefined, {
-    urlQuizTypeHint,
-    defaultQuizType: 'mcq',
-  });
+  const ai = useAiCourse(backendUrl, authToken || undefined, {
+  urlQuizTypeHint,
+  defaultQuizType: 'mcq',
+});
+
 
   const {
     topCourses,
@@ -360,11 +406,25 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     message: aiCertMsg,
     claim,
     generate: generateAICert,
-  } = useAICertificates({ backendUrl, token: token || '', courseId: selectedCourse?.id });
+  } = useAICertificates({ backendUrl,  token: authToken || '', courseId: selectedCourse?.id });
 
   const orgAssign = useOrgAssignment();
-  const assignmentId = orgAssign?.assignmentId ?? undefined;
-  const isOrgFlow = Boolean(orgAssign?.assignmentId);
+
+
+  const assignmentId =
+  (orgAssign as any)?.assignmentId ??
+  (params.assignmentId ? String(params.assignmentId) : undefined);
+
+const isOrgFlow = Boolean(assignmentId);
+
+const shareHasAssignment = Boolean(qpAssignmentId);
+
+// ✅ don’t validate against topCourses in orgToken invite flow (or assignment share)
+const validateAgainstTopCourses = Boolean(
+  params.courseId && !shareHasAssignment && !isOrgFlow && !orgToken
+);
+
+
 
   // knobs
   const [classLevel, setClassLevel] = useState<'beginner' | 'intermediate' | 'advanced'>(
@@ -491,9 +551,30 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const isInstructor = roles.has('instructor') || roles.has('teacher');
   const canShareUi = Boolean(activeOrgId && (isAdminOwner || isInstructor || isGlobalAdmin));
 
-  const isLockedLearner = Boolean(orgAssign?.locked ?? (isOrgFlow && !canShareUi));
+  const lockedByParam = params.lock === '1';
+
+const isLockedLearner =
+  lockedByParam ||
+  Boolean((orgAssign as any)?.locked) ||
+  (isOrgFlow && !canShareUi);
+
+
   const showMinimalControls = isLockedLearner;
   const showCourseList = !isLockedLearner;
+
+  const titleInfo = useMemo(() => {
+  return resolveCourseTitleInfo({
+    routeTitle: (params.courseTitle ? String(params.courseTitle) : '').trim(),
+    assignmentMeta: (orgAssign as any)?.meta,
+    selectedCourseTitle: selectedCourse?.title,
+    customTitle,
+    fallback: 'Assigned course',
+  });
+}, [params.courseTitle, orgAssign, selectedCourse?.title, customTitle]);
+
+const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
+
+
 
   const trackLessons = useMemo(() => {
     const t = TRACKS.find((x) => x.key === programTrack) ?? TRACKS[0];
@@ -621,7 +702,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
 
   // Only allow first start when there is no built content yet
   const canStartNow = useMemo(() => {
-    const hasSeed = Boolean(selectedCourse || (customTitle && customTitle.trim()));
+   const hasSeed = Boolean(selectedCourse || (customTitle && customTitle.trim()) || params.courseId);
+
     if (!hasSeed) return false;
     if (activeRunId !== null) return false;
     const noContentYet =
@@ -647,15 +729,27 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     }
   }, [params.courseId, topCourses, selectedCourse, selectCourse]);
 
-  useEffect(() => {
-    if (!params.courseId) {
-      setSharedCourseMissing(false);
-      return;
-    }
-    if (!Array.isArray(topCourses) || topCourses.length === 0) return;
-    const found = topCourses.some((c: TopCourse) => c.id === params.courseId);
-    setSharedCourseMissing(!found);
-  }, [params.courseId, topCourses]);
+ useEffect(() => {
+  if (!params.courseId) {
+    setSharedCourseMissing(false);
+    setSharedCourseChecked(false);
+    return;
+  }
+
+  // ✅ skip local validation (orgToken invite / assignment share)
+  if (!validateAgainstTopCourses) {
+    setSharedCourseMissing(false);
+    setSharedCourseChecked(true);
+    return;
+  }
+
+  if (!Array.isArray(topCourses) || topCourses.length === 0) return;
+
+  const found = topCourses.some((c: TopCourse) => String(c.id) === String(params.courseId));
+  setSharedCourseMissing(!found);
+  setSharedCourseChecked(true);
+}, [params.courseId, topCourses, validateAgainstTopCourses]);
+
 
   useEffect(() => {
     if (activeRunId !== null && hasJoined && playerReady) {
@@ -765,7 +859,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     navigation.navigate('Login' as any, { reason, message } as any);
   };
   const requireAuth = (reason?: string, message?: string) => {
-    if (token) return true;
+    if (authToken) return true;
     goToLoginWithReturn(reason, message);
     return false;
   };
@@ -849,105 +943,171 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
 
   // Start — robust sequencing (parity-ish with web, but keeping your start gate)
   const onStart = useCallback(async () => {
-    if (starting || !canStartNow) {
-      dlog('onStart: ignored (starting=', starting, ', canStartNow=', canStartNow, ')');
-      return;
-    }
-    setStarting(true);
+  if (starting || !canStartNow) {
+    dlog('onStart: ignored (starting=', starting, ', canStartNow=', canStartNow, ')');
+    return;
+  }
+  setStarting(true);
 
-    const courseSize = sizeToCourseSize[sizePreset];
-    const opts: any = {
-      assignmentId,
-      courseSize,
-      level: classLevel,
-      minutes: minutesEffective,
-      programTrack,
-      totalLessons: safeLessons,
-      voiceName: effectiveVoice,
-    };
+  const courseSize = sizeToCourseSize[sizePreset];
+  const opts: any = {
+    assignmentId,
+    courseSize,
+    level: classLevel,
+    minutes: minutesEffective,
+    programTrack,
+    totalLessons: safeLessons,
+    voiceName: effectiveVoice,
+  };
 
-    const id = ++runIdRef.current;
-    setActiveRunId(id);
-    setUiPreparing(true);
-    setPlayerReady(false);
-    setPlayerLoading(true);
-    setLockedSsml(null);
+  const id = ++runIdRef.current;
+  setActiveRunId(id);
+  setUiPreparing(true);
+  setPlayerReady(false);
+  setPlayerLoading(true);
+  setLockedSsml(null);
 
-    try {
-      const custom = customTitle.trim();
+  try {
+    const custom = customTitle.trim();
 
-      if (custom) {
-        await startCustomTopic(custom);
-        await waitForSelection();
-        opts.courseId = selectedCourseRef.current?.id;
-        await startWithAI(opts);
-        return;
+    // ✅ Custom topic flow stays the same
+    if (custom) {
+      await startCustomTopic(custom);
+      await waitForSelection();
+      opts.courseId = selectedCourseRef.current?.id;
+      try {
+      await startWithAI(opts);
+    } catch (e: any) {
+      const status = e?.status ?? e?.response?.status;
+      if (String(status) === '404') {
+        setSharedCourseMissing(true);
+        setSharedCourseChecked(true);
       }
+      throw e;
+    }
+    return;
 
-      let course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
-      if (!course) {
+    }
+
+    let course: any = null;
+
+    // ✅ 1) If a shared courseId was passed, prefer it
+    const sharedId = params.courseId ? String(params.courseId) : '';
+    if (sharedId) {
+
+      // ✅ orgToken invite / assignment share: don’t require local course list
+if (!validateAgainstTopCourses) {
+  opts.courseId = sharedId;
+
+  try {
+    await startWithAI(opts);
+  } catch (e: any) {
+    const status = e?.status ?? e?.response?.status;
+    if (String(status) === '404') {
+      setSharedCourseMissing(true);
+      setSharedCourseChecked(true);
+    }
+    throw e;
+  }
+  return;
+}
+
+      // Ensure courses are loaded
+      if (!topCoursesRef.current.length) {
         try {
           await loadTopCourses?.({
             limit: 200,
-            preserveIds: params.courseId ? [params.courseId] : [],
+            preserveIds: [sharedId],
           } as any);
         } catch {}
         await waitForCourses();
-        course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
       }
 
-      if (course && (!selectedCourseRef.current || selectedCourseRef.current.id !== course.id)) {
-        selectCourse(course);
-        await waitForSelection();
-      }
+      course =
+        selectedCourseRef.current?.id === sharedId
+          ? selectedCourseRef.current
+          : topCoursesRef.current.find((c: any) => String(c?.id) === sharedId) || null;
 
-      if (!selectedCourseRef.current) {
-        dlog('onStart: bail — no course available after waiting');
-        Alert.alert(
-          'Could not start',
-          'No course is selected yet. Please choose a course and try again.'
-        );
+      if (!course) {
+        Alert.alert('Shared course not found', 'Please ask your instructor to resend the link.');
         setActiveRunId(null);
         setUiPreparing(false);
         setPlayerLoading(false);
         return;
       }
+    } else {
+      // ✅ 2) Normal behavior: selected or first
+      course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
 
-      opts.courseId = selectedCourseRef.current.id;
-      dlog('onStart → startWithAI', { opts, selectedId: selectedCourseRef.current.id });
-      await startWithAI(opts);
-        } catch (e) {
-      // 🔔 show cap message for HTTP 409 lesson limit
-      if (isLessonCap409(e)) {
-        const courseKey = selectedCourseRef.current?.id || customTitle.trim() || 'free';
-        showLessonCapOnce(courseKey);
+      if (!course) {
+        try {
+          await loadTopCourses?.({ limit: 200 } as any);
+        } catch {}
+        await waitForCourses();
+        course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
       }
+    }
 
-      console.error('[onStart] failed', e);
+    // Sync selection if needed
+    if (course && (!selectedCourseRef.current || selectedCourseRef.current.id !== course.id)) {
+      selectCourse(course);
+      await waitForSelection();
+    }
+
+    if (!selectedCourseRef.current) {
+      Alert.alert('Could not start', 'No course is selected yet. Please try again.');
       setActiveRunId(null);
       setUiPreparing(false);
       setPlayerLoading(false);
-    } finally {
-
-      setStarting(false);
+      return;
     }
-  }, [
-    starting,
-    canStartNow,
-    assignmentId,
-    sizePreset,
-    classLevel,
-    minutesEffective,
-    programTrack,
-    safeLessons,
-    effectiveVoice,
-    customTitle,
-    startCustomTopic,
-    startWithAI,
-    loadTopCourses,
-    selectCourse,
-    params.courseId,
-  ]);
+
+    opts.courseId = selectedCourseRef.current.id;
+    dlog('onStart → startWithAI', { opts, selectedId: selectedCourseRef.current.id });
+   try {
+  await startWithAI(opts);
+} catch (e: any) {
+  const status = e?.status ?? e?.response?.status;
+  if (String(status) === '404') {
+    setSharedCourseMissing(true);
+    setSharedCourseChecked(true);
+  }
+  throw e;
+}
+return;
+
+    return;
+  } catch (e) {
+    // 🔔 show cap message for HTTP 409 lesson limit
+    if (isLessonCap409(e)) {
+      const courseKey = selectedCourseRef.current?.id || customTitle.trim() || 'free';
+      showLessonCapOnce(courseKey);
+    }
+
+    console.error('[onStart] failed', e);
+    setActiveRunId(null);
+    setUiPreparing(false);
+    setPlayerLoading(false);
+  } finally {
+    setStarting(false);
+  }
+}, [
+  starting,
+  canStartNow,
+  assignmentId,
+  sizePreset,
+  classLevel,
+  minutesEffective,
+  programTrack,
+  safeLessons,
+  effectiveVoice,
+  customTitle,
+  startCustomTopic,
+  startWithAI,
+  loadTopCourses,
+  selectCourse,
+  params.courseId,
+]);
 
   // course change — cancel any active run and spinner
   useEffect(() => {
@@ -1105,7 +1265,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
                   unlock your certificate
                   {isOrgFlow ? ' — covered by your organization' : ''}.
                 </Text>
-                {sharedCourseMissing && (
+                {validateAgainstTopCourses && sharedCourseChecked && sharedCourseMissing ? (
                   <View
                     style={tw`mt-2 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-3 py-2`}
                   >
@@ -1113,7 +1273,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
                       Shared course not found. Please ask your instructor to resend the link.
                     </Text>
                   </View>
-                )}
+                ) : null}
+
               </View>
 
               {/* Share dialog near header */}
@@ -1127,7 +1288,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
                   open={canShareUi && shareOpen}
                   onClose={() => setShareOpen(false)}
                   courseId={selectedCourse?.id || null}
-                  courseTitle={selectedCourse?.title || customTitle || null}
+                  courseTitle={effectiveCourseTitle || null}
                   totalLessons={safeLessons}
                   quizCount={safeQuiz}
                   minutes={capMinutes(minutes)}
@@ -1181,6 +1342,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
                 isLockedLearner={isLockedLearner}
                 canShareUi={canShareUi}
                 onOpenOverlay={openOverlay}
+                 displayCourseTitle={titleInfo.title}
                 overlayAvailable={overlayAvailable}
                 restrictStarter={restrictStarter}
                 knobsDisabled={knobsDisabled}
@@ -1247,12 +1409,13 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
                 onPlayerLoadingChange={handlePlayerLoadingChange}
                 onToggleMaximized={handleToggleMaximized}
                 onNext={goNext}
+                 urlQuizTypeHint={urlQuizTypeHint}
                 onPrev={goPrev}
                 isBuildingNext={isBuildingNext}
                 lessonsArr={lessonsArr}
                 activeIndex={currentIdx ?? 0}
                 voiceName={voiceName || defaultVoice}
-                courseTitle={selectedCourse?.title || customTitle || 'AI Lesson'}
+                courseTitle={effectiveCourseTitle}
                 isMaximized={isMaximized}
                 course={selectedCourse || null}
                 currentIdx={currentIdx ?? 0}
@@ -1303,7 +1466,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
                 gradeNow={async () => {
                   await gradeNow();
                 }}
-                token={token || ''}
+                token={authToken || ''}
                 requireAuth={requireAuth}
                 isOrgFlowFlag={isOrgFlow}
                 skus={skus}

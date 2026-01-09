@@ -84,7 +84,7 @@ export default function RefundsAndCancellations() {
         <ul className="list-disc pl-5 space-y-2">
           <li>Token credits: instant once approved.</li>
           <li>
-            Original method: cards/PayPal ~5–10 business days; M-Pesa ~1–3 business days
+            Original method: cards/Paystack ~5–10 business days; M-Pesa ~1–3 business days
             (processor/bank times vary).
           </li>
         </ul>

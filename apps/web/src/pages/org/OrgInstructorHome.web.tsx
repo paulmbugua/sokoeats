@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { uploadAsset } from '@mytutorapp/shared/api';
+
 import {
   updateOrgBranding,
   type OrgResp as Org,
@@ -14,7 +14,7 @@ import {
   listOrgInstructorAiSubmissions,
   apiMarkOrgAssignmentOpened,
 } from '@mytutorapp/shared/api/orgApi';
-import { getOrgAiSubmissionsPdf } from '@mytutorapp/shared/api';
+import { getOrgAiSubmissionsPdf,uploadAsset  } from '@mytutorapp/shared/api';
 import { resolveAsset } from './portal/OrgProfileShared.web';
 
 function cn(...xs: Array<string | false | null | undefined>) {
@@ -738,6 +738,10 @@ const OrgInstructorHome: React.FC = () => {
 
       if (assignmentId) {
         writeOpened(orgId, assignmentId, nowIso);
+        if (assignmentId && backendUrl && authToken) {
+  apiMarkOrgAssignmentOpened(backendUrl, authToken, orgId, String(assignmentId)).catch(() => {});
+}
+
         setRecentAiSubmissions((prev) =>
           prev.map((r: any) => {
             const aid = r.assignment_id ?? r.assignmentId ?? null;
@@ -1132,7 +1136,8 @@ const OrgInstructorHome: React.FC = () => {
                       row.viewer_opened_at ||
                       null;
 
-                    const statusLabel = openedAt ? 'Opened' : row.status || 'Submitted';
+                   const statusLabel = openedAt ? 'Opened' : 'Submitted';
+
                     const assignmentId = row.assignment_id || row.assignmentId || null;
                     const attemptId = row.attempt_id || row.id || assignmentId || learnerName;
                     const aiScore = isAiRecent ? row.score_pct ?? row.ai_final_score ?? null : null;

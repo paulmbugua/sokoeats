@@ -156,17 +156,19 @@ export async function createAiSandboxCourse(req, res) {
     // 2) Create new minimal, listable shell
     const desc = `Sandbox course for: ${title}`;
     const insert = await pool.query(
-      `
+  `
       INSERT INTO courses (
         id, title, description, course_size, is_ai_generated,
+        source_kind,
         syllabus, total_units, lessons_per_unit, total_lessons, estimated_hours
       )
       VALUES (
         gen_random_uuid(), $1, $2, $3, TRUE,
+        'robot',
         '[]'::jsonb, 1, 1, 1, 0.2
       )
       RETURNING id, title, description
-    `,
+      `,
       [title, desc, course_size],
     );
 

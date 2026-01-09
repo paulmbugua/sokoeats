@@ -1,4 +1,4 @@
-/* eslint-disable prettier/prettier */
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -155,7 +155,7 @@ function hasUsefulPunctuation(arr: Array<{ text?: string }>) {
     if (/^[\p{P}\p{S}]+$/u.test(t)) return true;
 
     // sentence / clause punctuation (IGNORE apostrophes inside words)
-    return /[.!?…,:;(){}\[\]]/.test(t);
+    return /[.!?…,:;(){}[\]]/.test(t);
   });
 }
 

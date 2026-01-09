@@ -608,6 +608,25 @@ const pickStandardCertSku = (skusList: any[] | undefined | null) => {
 
   const narrationBlocked = gateMode === 'notes_only';
 
+// NEW: “when does it reset” label (pull from gateNotice or gateUsage)
+const resetAtLabel = useMemo(() => {
+  const raw =
+    gateNotice?.resetsAt ||
+    (Array.isArray(gateUsage) ? gateUsage.find((u) => u?.resetsAt)?.resetsAt : null);
+
+  if (!raw) return null;
+
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? String(raw) : d.toLocaleString();
+}, [gateNotice?.resetsAt, gateUsage]);
+
+// NEW: banner is driven by gateMode (notes_only), not certCta.show
+const showNarrationExhaustedBanner = useMemo(() => narrationBlocked, [narrationBlocked]);
+
+// NEW: anon vs logged-in messaging (don’t depend on certCtaKind)
+const isAnonGate = useMemo(() => !isLoggedIn, [isLoggedIn]);
+
+
   useEffect(() => {
     restoreOnceRef.current = false;
     awaitingTopUpRef.current = false;
@@ -1558,8 +1577,6 @@ useEffect(() => {
     return true;
   }, [persistedCert, hideCertPill]);
 
-const isAnonGate = Boolean(certCta?.show && certCtaKind === 'signup' && !isLoggedIn);
-
 
 const pressSeqRef = useRef(0);
 
@@ -1597,51 +1614,72 @@ useEffect(() => {
 
   return (
     <>
-      {/* Gate CTA (parity with web) */}
-     {certCta?.show && !isOrgFlowFlag && !paymentOk ? (
+{/* NEW: Narration exhausted banner (driven by gateMode) */}
+{showNarrationExhaustedBanner ? (
   <View
-    style={tw`mb-3 rounded-2xl bg-amber-100 dark:bg-amber-500/10 border border-amber-400 dark:border-amber-500/30 p-3`}
+    style={tw`mb-3 rounded-2xl border border-amber-400/70 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4`}
   >
-    {isAnonGate ? (
+    {/* Header */}
+    <View style={tw`flex-row items-center justify-between`}>
+      <Text style={tw`text-amber-950 dark:text-amber-200 font-semibold`}>🎧 Audio paused for now</Text>
+
+      {resetAtLabel ? (
+        <View style={tw`px-2 py-1 rounded-full bg-amber-200/60 dark:bg-amber-500/20`}>
+          <Text style={tw`text-amber-950 dark:text-amber-200 text-[11px]`}>Resets: {resetAtLabel}</Text>
+        </View>
+      ) : null}
+    </View>
+
+    {/* Body */}
+    {isOrgFlowFlag || paymentOk ? (
       <>
-        <Text style={tw`text-amber-900 dark:text-amber-200 text-sm`}>
-          You’ve reached today’s free limit (3 minutes).
+        <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-2`}>
+          This pause affects audio, notes, and quiz.
+        </Text>
+        <Text style={tw`text-amber-900 dark:text-amber-200 text-[12px] mt-2`}>
+          ⏳ Everything returns on reset
+        </Text>
+      </>
+    ) : isAnonGate ? (
+      <>
+        <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-2`}>
+          DayBreak took a quick break — and notes + quiz are paused too.
         </Text>
         <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
-          Sign up to continue (10 minutes/day free).
+          Join free for 10 min/day (audio + notes + quiz).
         </Text>
 
-        <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
+        <View style={tw`mt-3 flex-row flex-wrap items-center gap-2`}>
           <Pressable
-            onPress={() => {
-              // Always pressable — requireAuth will route to login/signup
-              requireAuth('signup_to_continue', 'Sign up to continue learning.');
-            }}
+            onPress={() => requireAuth('signup_to_continue', 'Create a free account to continue.')}
             hitSlop={10}
-            style={({ pressed }) =>
-              tw.style('px-4 py-2 rounded-xl bg-indigo-600', pressed ? 'opacity-80' : '')
-            }
+            style={({ pressed }) => tw.style('px-4 py-2 rounded-xl bg-indigo-600', pressed ? 'opacity-80' : '')}
           >
-            <Text style={tw`text-white font-semibold`}>Sign up to continue</Text>
+            <Text style={tw`text-white font-semibold`}>Create free account</Text>
           </Pressable>
+
+          <Text style={tw`text-amber-900 dark:text-amber-200 text-[11px]`}>No card needed ✨</Text>
         </View>
       </>
     ) : (
       <>
-        <Text style={tw`text-amber-900 dark:text-amber-200 text-sm`}>
-          You’ve reached today’s free narration limit (10 minutes).
+        <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-2`}>
+          DayBreak took a quick break — and notes + quiz are paused too.
         </Text>
         <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
-          Unlock this course for 20 tokens (≈ USD 20) to generate up to 60 lessons.
-        </Text>
-        <Text style={tw`text-amber-900 dark:text-amber-200 text-sm mt-1`}>
-          Certificate download is free after you pass the quiz (≥ 70%).
+          Unlock (20 tokens): audio + notes + quiz + up to 60 lessons.
         </Text>
 
-        <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
+        <Text style={tw`text-amber-900 dark:text-amber-200 text-[12px] mt-2`}>
+          • 🎧 Full narration for this course{"\n"}
+          • 📝 Notes + 🧩 Quiz unlocked{"\n"}
+          • ⚡ Generate up to <Text style={tw`font-semibold`}>60 lessons</Text>{"\n"}
+          • 🏅 Certificate free after you pass (≥ 70%)
+        </Text>
+
+        <View style={tw`mt-3 flex-row flex-wrap items-center gap-2`}>
           <Pressable
             onPress={() => {
-              // Always pressable; ignore double-taps in-flight
               if (debitInFlightRef.current) return;
               handleBuyCertificate();
             }}
@@ -1655,14 +1693,17 @@ useEffect(() => {
             }
           >
             <Text style={tw`text-white font-semibold`}>
-              {aiCertLoading ? 'Loading…' : debitInFlightRef.current ? 'Processing…' : 'Buy certificate (20 tokens)'}
+              {aiCertLoading ? 'Loading…' : debitInFlightRef.current ? 'Processing…' : 'Unlock full access (20 tokens)'}
             </Text>
           </Pressable>
+
+          <Text style={tw`text-amber-900 dark:text-amber-200 text-[11px]`}>≈ USD 20 • one-time unlock</Text>
         </View>
       </>
     )}
   </View>
 ) : null}
+
 
       {/* ✅ Paid but not passed: narration unlocked notice */}
       {!isOrgFlowFlag && paymentOk && !grade?.passed ? (

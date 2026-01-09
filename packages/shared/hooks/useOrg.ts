@@ -10,7 +10,7 @@ import {
   getMyOrgOrBootstrap,
   type OrgCurrency,
   type OrgPricingTable,
-  OrgResp,
+  type OrgResp,
 } from '@mytutorapp/shared/api/orgApi';
 import type { OrgMembership, CurrentUser, OrgTier } from '@mytutorapp/shared/types';
 
@@ -36,11 +36,53 @@ const memoryStorage: KV = (() => {
   };
 })();
 
-export function useOrg(opts?: { currency?: OrgCurrency }) {
-  const { backendUrl, orgToken, userId, storage: ctxStorage } = useShopContext() as any;
-  const storage: KV = useMemo(() => (ctxStorage as KV) || memoryStorage, [ctxStorage]);
+const normalizeOrgResp = (resp: any): OrgResp | null => {
+  // Support multiple shapes:
+  // - OrgResp directly
+  // - { org: OrgResp }
+  // - { data: { org: OrgResp } }
+  // - { organization: OrgResp }
+  const maybe =
+    resp?.org ??
+    resp?.data?.org ??
+    resp?.organization ??
+    resp?.data?.organization ??
+    resp?.data ??
+    resp;
 
-  const authToken: string | undefined = orgToken;
+  if (!maybe || typeof maybe !== 'object') return null;
+  if (!('id' in maybe)) return null;
+  return maybe as OrgResp;
+};
+
+const shouldRetryAuthSafe = (failureCount: number, error: unknown): boolean => {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    if (status === 401 || status === 403) return false;
+  }
+  // single retry max
+  return failureCount < 1;
+};
+
+const shouldRetryAuthSafeNo404 = (failureCount: number, error: unknown): boolean => {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    if (status === 401 || status === 403 || status === 404) return false;
+  }
+  return failureCount < 1;
+};
+
+export function useOrg(opts?: { currency?: OrgCurrency }) {
+  const ctx = useShopContext() as any;
+
+  // ✅ force stable strings (fixes "string | undefined" arg errors)
+  const backendUrl: string = String(ctx?.backendUrl ?? '').trim();
+  const bearer: string = String(ctx?.orgToken ?? ctx?.token ?? '').trim();
+
+  const userId = ctx?.userId;
+  const ctxStorage = ctx?.storage;
+
+  const storage: KV = useMemo(() => (ctxStorage as KV) || memoryStorage, [ctxStorage]);
 
   // State
   const [membership, setMembership] = useState<OrgMembership | OrgMembership[] | null>(null);
@@ -59,7 +101,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
   const membershipHydratedRef = useRef(false);
 
   const [pricingCurrency, setPricingCurrency] = useState<OrgCurrency>(
-    (opts?.currency ?? 'USD') as OrgCurrency
+    (opts?.currency ?? 'USD') as OrgCurrency,
   );
 
   // Keep in sync if caller passes a different currency later
@@ -70,11 +112,15 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opts?.currency]);
 
+  const authed = Boolean(backendUrl && bearer);
+
   const pricingQuery = useQuery({
-    queryKey: ['orgPricingTable', backendUrl, pricingCurrency, authToken],
-    queryFn: () => fetchOrgPricingTable(backendUrl, pricingCurrency, authToken),
-    enabled: !!backendUrl && !!pricingCurrency && !!authToken, // if protected
+    queryKey: ['orgPricingTable', backendUrl, pricingCurrency, bearer],
+    queryFn: () => fetchOrgPricingTable(backendUrl, pricingCurrency, bearer),
+    enabled: authed && !!pricingCurrency,
     staleTime: 60_000,
+    retry: shouldRetryAuthSafe,
+    refetchOnWindowFocus: false,
   });
 
   const orgPricingTable: OrgPricingTable | null = (pricingQuery.data ?? null) as any;
@@ -111,8 +157,8 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
   // ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+
     const onStorage = async (e: StorageEvent) => {
-      // Only react to our relevant keys when storage area is localStorage (web)
       if (!e.key || (e.key !== 'org:activeId' && e.key !== 'auth:orgId' && e.key !== 'org:role'))
         return;
 
@@ -126,39 +172,37 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
       setActiveOrgId(a);
       setLocalRole(r);
     };
+
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [storage]);
 
   // ─────────────────────────────────────────────────────────
-  // React Query-backed membership + org fetchers (deduped globally)
+  // Reset when logged out
   // ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!authToken) {
+    if (!authed) {
       setMembership(null);
       setOrg(null);
       setCurrentUser(null);
-      setActiveOrgId(undefined); // ✅ clear active org
-      setLocalRole(undefined); // ✅ clear cached role
+      setActiveOrgId(undefined);
+      setLocalRole(undefined);
       setOrgChecked(false);
       membershipHydratedRef.current = false;
       triedBootstrapRef.current = false;
     }
-  }, [authToken]);
+  }, [authed]);
 
-  const membershipQuery = useQuery({
-    queryKey: ['orgMembership', backendUrl, authToken],
-    enabled: !!backendUrl && !!authToken,
-    queryFn: () => fetchCurrentUser(backendUrl, authToken),
+  // ─────────────────────────────────────────────────────────
+  // Membership / current user
+  // ─────────────────────────────────────────────────────────
+  const membershipQuery = useQuery<CurrentUser>({
+    queryKey: ['orgMembership', backendUrl, bearer],
+    enabled: authed,
+    queryFn: () => fetchCurrentUser(backendUrl, bearer),
     staleTime: 120_000,
     refetchOnWindowFocus: false,
-    retry: (failure) => {
-      if (axios.isAxiosError(failure)) {
-        const status = failure.response?.status;
-        if (status === 401 || status === 403) return false;
-      }
-      return 1;
-    },
+    retry: shouldRetryAuthSafe, // ✅ returns boolean, correct signature
   });
 
   useEffect(() => {
@@ -166,7 +210,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
 
     if (membershipQuery.data) {
       membershipHydratedRef.current = true;
-      setCurrentUser(membershipQuery.data as CurrentUser);
+      setCurrentUser(membershipQuery.data);
       setMembership((membershipQuery.data as any)?.org ?? null);
     }
 
@@ -176,40 +220,39 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
     }
   }, [membershipQuery.data, membershipQuery.isError, membershipQuery.isFetching]);
 
-  const orgQuery = useQuery({
-    queryKey: ['orgEntity', backendUrl, authToken],
-    enabled: !!backendUrl && !!authToken,
+  // ─────────────────────────────────────────────────────────
+  // Org entity (with bootstrap fallback)
+  // ─────────────────────────────────────────────────────────
+  const orgQuery = useQuery<OrgResp | null>({
+    queryKey: ['orgEntity', backendUrl, bearer],
+    enabled: authed,
     refetchOnWindowFocus: false,
     staleTime: 120_000,
     queryFn: async () => {
       try {
-        return await getMyOrg(backendUrl, authToken);
+        const resp = await getMyOrg(backendUrl, bearer);
+        return normalizeOrgResp(resp);
       } catch (e) {
         if (axios.isAxiosError(e)) {
           const status = e.response?.status;
           if (status === 404 && !triedBootstrapRef.current) {
             triedBootstrapRef.current = true;
-            return await getMyOrgOrBootstrap(backendUrl, authToken);
+            const boot = await getMyOrgOrBootstrap(backendUrl, bearer);
+            return normalizeOrgResp(boot);
           }
         }
         throw e;
       }
     },
-    retry: (failure) => {
-      if (axios.isAxiosError(failure)) {
-        const status = failure.response?.status;
-        if (status === 401 || status === 403 || status === 404) return false;
-      }
-      return 1;
-    },
+    retry: shouldRetryAuthSafeNo404, // ✅ returns boolean, correct signature
   });
 
   useEffect(() => {
     setLoadingOrg(orgQuery.isFetching);
 
     if (orgQuery.data) {
-      const o = orgQuery.data;
-      setOrg(o ?? null);
+      const o = orgQuery.data; // ✅ typed OrgResp
+      setOrg(o);
       setOrgChecked(true);
 
       setMembership((prev) => {
@@ -228,11 +271,10 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
           return prev;
         }
 
-        if (!o) return prev;
-
+        // If membership missing but org exists, synthesize minimal membership-like shape
         return {
-          orgId: (o as any)?.id ?? '',
-          role: ((o as any)?.my_role || (o as any)?.role || '').toLowerCase(),
+          orgId: o?.id ?? '',
+          role: String((o as any)?.my_role || (o as any)?.role || '').toLowerCase(),
           tier: (o as any)?.tier,
           can_access_fees: Boolean((o as any)?.can_access_fees),
         } as any;
@@ -244,7 +286,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
           await storage.setItem('org:activeId', o.id);
         }
 
-        const myRole = ((o as any)?.my_role || (o as any)?.role || '').toString().toLowerCase();
+        const myRole = String((o as any)?.my_role || (o as any)?.role || '').toLowerCase();
 
         if (myRole) {
           setLocalRole(myRole);
@@ -304,7 +346,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
 
   return {
     userId,
-    currentUser, // 🔥 NEW: full current user from backend
+    currentUser,
     membership,
     refresh,
 
@@ -315,6 +357,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
     isOwnerOrAdmin,
     refreshOrg,
     refreshAll,
+
     loading: loadingMembership || loadingOrg,
     loadingMembership,
     loadingOrg,
@@ -322,16 +365,17 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
     isStarterTier,
     isProTier,
     isEnterpriseTier,
+
     pricingCurrency,
     setPricingCurrency,
     orgPricingTable,
     orgPricingLoading: pricingQuery.isLoading,
     orgPricingError: pricingQuery.error,
     refreshPricing: pricingQuery.refetch,
+
     orgChecked,
     orgNotFound: orgChecked && !org && !loadingOrg,
 
-    // Optional: expose role early for gating
     role: localRole || (primaryMembership?.role ?? undefined),
   };
 }

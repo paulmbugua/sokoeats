@@ -10,6 +10,7 @@ import OrgShareDialog from '@/components/org/OrgShareDialog';
 
 import ControlsPanel from './RobotTeacherControls';
 import LessonAndQuizPane from './RobotTeacherLessonAndQuiz';
+import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
 
 import type { TopCourse } from '@mytutorapp/shared/types';
 
@@ -19,6 +20,8 @@ const dbgEnabled = () => {
   if (qs.has('dbg') || qs.get('debug') === '1') return true;
   return localStorage.getItem('DBG_SHARE') === '1' || localStorage.getItem('DBG_AI') === '1';
 };
+
+const normId = (v: any) => String(v ?? '').trim();
 
 export const dlog = (...args: any[]) => {
   if (dbgEnabled()) console.log('[RobotTeacher]', ...args);
@@ -193,10 +196,10 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const location = useLocation();
   const sp = React.useMemo(() => new URLSearchParams(location.search), [location.search]);
   // ── Share/lock query params (shared sandbox course) ─────────
-const locked = sp.get('lock') === '1';
-const qpCourseId = sp.get('courseId') || sp.get('course_id') || '';
-const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
-
+  const locked = sp.get('lock') === '1';
+  const qpCourseId = sp.get('courseId') || sp.get('course_id') || '';
+  const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
+  const qpCourseTitle = sp.get('courseTitle') || sp.get('ct') || '';
 
   const normQt = (v?: string | null): 'mcq' | 'short' | undefined => {
     const s = String(v ?? '')
@@ -418,6 +421,8 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
   const [overrideLessons, setOverrideLessons] = useState(false);
   const [overrideQuiz, setOverrideQuiz] = useState(false);
 
+  const [coursesLoadDone, setCoursesLoadDone] = useState(false);
+
   const lastRunKeyRef = React.useRef<string | null>(null);
 
   // player readiness (parity with native)
@@ -466,20 +471,78 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
   const safeLessons = lessonsEffective;
   const safeQuiz = quizEffective;
 
+  const titleInfo = useMemo(() => {
+    return resolveCourseTitleInfo({
+      routeTitle: qpCourseTitle,
+      assignmentMeta: (orgAssign as any)?.meta,
+      selectedCourseTitle: selectedCourse?.title,
+      customTitle,
+      fallback: 'Assigned Course',
+    });
+  }, [qpCourseTitle, orgAssign, selectedCourse?.title, customTitle]);
+
+  useEffect(() => {
+    dlog('course title resolve', {
+      qpCourseTitle,
+      assignmentMetaTitleOverride: (orgAssign as any)?.meta?.title_override,
+      assignmentMetaCourseTitle: (orgAssign as any)?.meta?.course_title,
+      selectedCourseTitle: selectedCourse?.title,
+      customTitle: customTitle.trim(),
+      resolvedTitle: titleInfo.title,
+      resolvedSource: titleInfo.source,
+    });
+  }, [
+    qpCourseTitle,
+    orgAssign,
+    selectedCourse?.title,
+    customTitle,
+    titleInfo.title,
+    titleInfo.source,
+  ]);
+
   // ── Busy helpers (must be declared before canStartNow) ──
   const isAiBusy = step === 'outlining' || step === 'narrating' || ttsLoading;
-  const busyUi = (activeRunId !== null && isAiBusy) || preparing;
+  const busyUi = starting || (activeRunId !== null && isAiBusy) || preparing;
 
-  const canStartNow = useMemo(() => {
-    // need either a picked course or a custom topic
-    if (!selectedCourse && !customTitle.trim()) return false;
+ const courseIdParam = qpCourseId || null;
+ const wantedCourseId = courseIdParam ? normId(courseIdParam) : null;
+ const assignedCourseId = orgAssign?.courseId ? normId(orgAssign.courseId) : null;
+ const desiredCourseId = wantedCourseId || assignedCourseId || null;
 
-    // treat AI as “really busy” only when a run is actually active
-    const aiReallyBusy = activeRunId !== null && isAiBusy;
-    if (aiReallyBusy || startMutexRef.current) return false;
+// If a courseId is in the URL (share link), it must win over any stale/default selection.
+const effectiveCourseIdForStart =
+   desiredCourseId || selectedCourseRef.current?.id || selectedCourse?.id || null;
 
-    return true;
-  }, [selectedCourse, customTitle, activeRunId, isAiBusy]);
+const canStartNow = useMemo(() => {
+  // ✅ always block starts while AI is busy / mutex is held
+  const aiReallyBusy = (activeRunId !== null && isAiBusy) || startMutexRef.current;
+  if (aiReallyBusy) return false;
+
+  const custom = customTitle.trim();
+  
+  if (custom) return true;
+
+  // ✅ If URL has courseId, only allow start once we’re actually on that course
+  // (prevents starting course[0] while list/selection is still catching up)
+  if (wantedCourseId) {
+    const selId = normId(selectedCourseRef.current?.id || selectedCourse?.id || '');
+    return selId === wantedCourseId;
+  }
+
+  if (effectiveCourseIdForStart) return true;
+
+   return false;
+}, [
+  customTitle,
+  wantedCourseId,
+  effectiveCourseIdForStart,
+  
+  activeRunId,
+  isAiBusy,
+  selectedCourse?.id,
+]);
+
+
 
   useEffect(() => {
     lastRunKeyRef.current = null;
@@ -530,13 +593,15 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
   }, [activeRunId, step, ttsLoading, hasAIContent, playerLoading, playerReady]);
 
   useEffect(() => {
-    setActiveRunId(null);
-    setPreparing(false);
-    setBlockedUntilStart(true);
-    setLockedSsml(null);
-    setPlayerReady(false);
-    setPlayerLoading(false);
-  }, [selectedCourse?.id]);
+  // ✅ Only reset when user changes course while NOT in a start/run
+  if (activeRunId !== null || preparing || starting) return;
+
+  setBlockedUntilStart(true);
+  setLockedSsml(null);
+  setPlayerReady(false);
+  setPlayerLoading(false);
+}, [selectedCourse?.id, activeRunId, preparing, starting]);
+
 
   useEffect(() => {
     if (!isLockedLearner) return;
@@ -571,26 +636,49 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
 
   // ── Data loading & selection ─────────────────────────────
   const [sharedCourseMissing, setSharedCourseMissing] = useState(false);
-  const courseIdParam = qpCourseId || null;
+  const [sharedCourseChecked, setSharedCourseChecked] = useState(false);
+  
+  
 
   useEffect(() => {
-    (async () => {
-      const preserveIds = courseIdParam ? [courseIdParam] : [];
+  let cancelled = false;
+
+  (async () => {
+    setCoursesLoadDone(false);
+
+    const preserveIds = [desiredCourseId].filter(Boolean) as string[];
+    try {
+      dlog('loadTopCourses:init {limit:200, preserveIds}', { preserveIds });
+      await loadTopCourses?.({ limit: 200, preserveIds } as any);
+    } catch {
       try {
-        dlog('loadTopCourses:init {limit:200, preserveIds}', { preserveIds });
-        await loadTopCourses?.({ limit: 200, preserveIds } as any);
-      } catch {
-        try {
-          await loadTopCourses?.();
-        } catch {}
-      }
-    })();
-  }, [courseIdParam, loadTopCourses]);
+        await loadTopCourses?.();
+      } catch {}
+    } finally {
+      if (!cancelled) setCoursesLoadDone(true);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [wantedCourseId, loadTopCourses]);
+
+  const shareHasAssignment = Boolean(qpAssignmentId); // ✅ only link param
+  const validateAgainstTopCourses = Boolean(wantedCourseId && !shareHasAssignment && !isOrgFlow);
 
   useEffect(() => {
-    if (!courseIdParam || !topCourses?.length) return;
-    if (selectedCourse?.id === courseIdParam) return;
-    const found = topCourses.find((c) => c.id === courseIdParam) || null;
+    if (!wantedCourseId) return;
+   if (!coursesLoadDone) return;
+const list = Array.isArray(topCourses) ? topCourses : [];
+
+
+    const selectedId = selectedCourse ? normId(selectedCourse.id) : null;
+    if (selectedId === wantedCourseId) return;
+
+    const found = list.find((c) => normId(c.id) === wantedCourseId) || null;
+
+
     if (found) {
       setPreparing(false);
       setActiveRunId(null);
@@ -598,40 +686,93 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
       setLockedSsml(null);
       selectCourse(found);
     }
-  }, [courseIdParam, topCourses, selectedCourse, selectCourse]);
+ }, [wantedCourseId, coursesLoadDone, topCourses, selectedCourse?.id, selectCourse]);
 
-  useEffect(() => {
-    if (!courseIdParam) {
-      setSharedCourseMissing(false);
-      return;
-    }
-    if (!Array.isArray(topCourses) || topCourses.length === 0) return;
-    const found = topCourses.some((c) => c.id === courseIdParam);
-    setSharedCourseMissing(!found);
-  }, [courseIdParam, topCourses]);
+ useEffect(() => {
+  if (!assignedCourseId) return;
+  if (!coursesLoadDone) return;
+
+  // don’t wipe progress if already running/ready
+  if (hasAIContent || step !== 'idle') return;
+
+  const selId = normId(selectedCourseRef.current?.id || selectedCourse?.id || '');
+  if (selId === assignedCourseId) return;
+
+  const list = Array.isArray(topCourses) ? topCourses : [];
+  const found = list.find((c) => normId(c.id) === assignedCourseId) || null;
+
+  if (found) {
+    dlog('auto-select assignment course', { assignedCourseId, title: found.title });
+    selectCourse(found);
+  } else {
+    // seed a minimal course so quiz/cert flows don’t get blocked by selectedCourse=null
+    dlog('assignment course missing from list → seed synthetic', { assignedCourseId });
+    selectCourse({
+      id: assignedCourseId,
+      title: titleInfo.title,
+      blurb: '',
+      rating: 0,
+      reviews: 0,
+    } as any);
+  }
+}, [assignedCourseId, coursesLoadDone, topCourses, hasAIContent, step, selectCourse, titleInfo.title]);
+
+useEffect(() => {
+  if (activeRunId === null) return;
+  if (step !== 'error' && !aiError) return;
+
+  dlog('run reset on ai error', { step, aiError });
+  setActiveRunId(null);
+  setPreparing(false);
+  setPlayerLoading(false);
+  setPlayerReady(false);
+}, [activeRunId, step, aiError]);
+
+
+ useEffect(() => {
+  if (!validateAgainstTopCourses) {
+    setSharedCourseMissing(false);
+    setSharedCourseChecked(false);
+    return;
+  }
+
+  if (!coursesLoadDone) return;
+
+  const list = Array.isArray(topCourses) ? topCourses : [];
+  const foundInList = list.some((c) => normId(c.id) === wantedCourseId);
+  const selectedMatches = selectedCourse && normId(selectedCourse.id) === wantedCourseId;
+
+  setSharedCourseMissing(!(foundInList || selectedMatches));
+  setSharedCourseChecked(true);
+}, [
+  validateAgainstTopCourses,
+  coursesLoadDone,
+  topCourses,
+  wantedCourseId,
+  selectedCourse?.id,
+]);
 
   useEffect(() => {
     if (isLockedLearner) setShareOpen(false);
   }, [isLockedLearner]);
 
   useEffect(() => {
-  if (
-    !selectedCourse &&
-    Array.isArray(topCourses) &&
-    topCourses.length > 0 &&
-    !customTitle.trim()
-  ) {
-    // ✅ DO NOT override locked selection from share link
-    if (locked && qpCourseId) return;
+    if (
+      !selectedCourse &&
+      Array.isArray(topCourses) &&
+      topCourses.length > 0 &&
+      !customTitle.trim()
+    ) {
+      // ✅ DO NOT override locked selection from share link
+      if (locked && qpCourseId) return;
 
-    // old behavior (only when NOT locked and no explicit courseId)
-    if (!courseIdParam) {
-      dlog('auto-selecting first course', { id: topCourses[0]?.id, title: topCourses[0]?.title });
-      selectCourse(topCourses[0]);
+      // old behavior (only when NOT locked and no explicit courseId)
+      if (!courseIdParam) {
+        dlog('auto-selecting first course', { id: topCourses[0]?.id, title: topCourses[0]?.title });
+        selectCourse(topCourses[0]);
+      }
     }
-  }
-}, [topCourses, selectedCourse, selectCourse, customTitle, courseIdParam, locked, qpCourseId]);
-
+  }, [topCourses, selectedCourse, selectCourse, customTitle, courseIdParam, locked, qpCourseId]);
 
   const coursesCursor = (ai as any)?.coursesCursor ?? (ai as any)?.nextCursor ?? null;
   const hasMoreCourses: boolean = Boolean(
@@ -640,7 +781,7 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
   const degraded: boolean = Boolean((ai as any)?.degradedNotice?.degraded);
 
   const handleLoadMore = async () => {
-    const preserveIds = courseIdParam ? [courseIdParam] : [];
+    const preserveIds = [desiredCourseId].filter(Boolean) as string[];
     const opts = coursesCursor
       ? { append: true, cursor: coursesCursor, limit: 200, preserveIds }
       : { append: true, page: 'next', limit: 200, preserveIds };
@@ -666,12 +807,11 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
   );
 
   const handlePlayerReady = useCallback(() => {
-  // only mark ready for an active run (prevents stale “ready” from old mounts)
-  if (activeRunId === null) return;
-  setPlayerReady(true);
-  setPlayerLoading(false);
-}, [activeRunId]);
-
+    // only mark ready for an active run (prevents stale “ready” from old mounts)
+    if (activeRunId === null) return;
+    setPlayerReady(true);
+    setPlayerLoading(false);
+  }, [activeRunId]);
 
   const refreshCourseList = useCallback(async () => {
     const preserveIds = courseIdParam ? [courseIdParam] : [];
@@ -757,12 +897,17 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
     }
 
     const custom = customTitle.trim();
-    if (!selectedCourse && !custom) {
+    const cid = effectiveCourseIdForStart;
+
+   if (!custom && !cid) {
       window.alert('Pick a course or type a topic first.');
       return;
     }
+    
+
 
     setStarting(true);
+    setBlockedUntilStart(false);
 
     // ⬇️ ensure we reuse the same knobs for both top list & sandbox
     const courseSize = sizeToCourseSize[sizePreset];
@@ -784,73 +929,37 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
     setPlayerLoading(true);
     setLockedSsml(null);
 
-    try {
-      // -------- custom topic flow (Teach me) ----------
-      if (custom) {
-        // ⬇️ AUTH GUARD ONLY FOR AI SANDBOX
-        const ok = requireAuth('ai_sandbox', 'Please sign in to create a custom AI course.');
-        if (!ok) {
-          // reset run state so UI doesn’t look “stuck”
-          setActiveRunId(null);
-          setPreparing(false);
-          setPlayerLoading(false);
-          return;
-        }
-
-        // ✅ IMPORTANT: pass the same knobs into startCustomTopic,
-        // and DO NOT call startWithAI again here.
-        dlog('onStart → startCustomTopic (sandbox)', { custom, opts });
-        await startCustomTopic(custom, opts);
-        await waitForSelection(); // just to ensure selectedCourseRef is hydrated
-        return;
-      }
-
-      // -------- top courses flow ----------
-      let course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
-
-      if (!course) {
-        const preserveIds = courseIdParam ? [courseIdParam] : [];
-        try {
-          await loadTopCourses?.({ limit: 200, preserveIds } as any);
-        } catch {
-          try {
-            await loadTopCourses?.();
-          } catch {
-            /* ignore */
-          }
-        }
-        await waitForCourses();
-        course = selectedCourseRef.current ?? topCoursesRef.current[0] ?? null;
-      }
-
-      if (course && (!selectedCourseRef.current || selectedCourseRef.current.id !== course.id)) {
-        selectCourse(course);
-        await waitForSelection();
-      }
-
-      if (!selectedCourseRef.current) {
-        dlog('onStart: bail — no course after waiting');
-        window.alert('Could not start. Please choose a course and try again.');
-        setActiveRunId(null);
-        setPreparing(false);
-        setPlayerLoading(false);
-        return;
-      }
-
-      opts.courseId = selectedCourseRef.current.id;
-      dlog('onStart → startWithAI (top course)', {
-        opts,
-        selectedId: selectedCourseRef.current.id,
-      });
-      await startWithAI(opts);
-    } catch (e) {
-      console.error('[RobotTeacher.web:onStart] failed', e);
+   try {
+  // -------- custom topic flow (Teach me) ----------
+  if (custom) {
+    const ok = requireAuth('ai_sandbox', 'Please sign in to create a custom AI course.');
+    if (!ok) {
       setActiveRunId(null);
       setPreparing(false);
       setPlayerLoading(false);
-    } finally {
-      setStarting(false);
+      return;
     }
+    dlog('onStart → startCustomTopic (sandbox)', { custom, opts });
+    await startCustomTopic(custom, opts);
+    await waitForSelection();
+    return;
+  }
+
+  // ✅ REPLACE EVERYTHING BELOW WITH THIS
+  if (cid) opts.courseId = cid;
+
+  dlog('onStart → startWithAI', { opts, cid, wantedCourseId });
+  await startWithAI(opts);
+  return;
+} catch (e) {
+  console.error('[RobotTeacher.web:onStart] failed', e);
+  setActiveRunId(null);
+  setPreparing(false);
+  setPlayerLoading(false);
+} finally {
+  setStarting(false);
+}
+
   }, [
     starting,
     canStartNow,
@@ -909,12 +1018,21 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-darkText dark:text-white">
               AI Tutor Studio
             </h1>
+
+            {/* ADD THIS */}
+            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-white/5 ring-1 ring-white/10">
+              <span className="text-xs text-gray-600 dark:text-white/70">Now learning:</span>
+              <span className="text-sm font-semibold truncate max-w-[60vw]">{titleInfo.title}</span>
+              {dbgEnabled() ? (
+                <span className="text-[10px] opacity-70">({titleInfo.source})</span>
+              ) : null}
+            </div>
             <p className="text-sm sm:text-base text-gray-600 dark:text-white/75">
               Free lesson (audio + captions + slides) and quiz. Score{' '}
               <span className="font-semibold">≥ 70%</span> to unlock your certificate
               {isOrgFlow ? ' — covered by your organization' : ''}.
             </p>
-            {sharedCourseMissing && (
+           {validateAgainstTopCourses && sharedCourseChecked && sharedCourseMissing && (
               <div className="text-sm text-amber-700 dark:text-amber-200 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-3 py-2">
                 Shared course not found. Please ask your instructor to resend the link.
               </div>
@@ -926,7 +1044,7 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
             open={canShareUi && shareOpen}
             onClose={() => setShareOpen(false)}
             courseId={selectedCourse?.id || null}
-            courseTitle={selectedCourse?.title || customTitle || null}
+            courseTitle={titleInfo.title}
             totalLessons={safeLessons}
             quizCount={safeQuiz}
             minutes={capMinutes(minutes)}
@@ -987,6 +1105,7 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
             selectedCourse={
               selectedCourse ? { id: selectedCourse.id, title: selectedCourse.title } : null
             }
+            displayCourseTitle={titleInfo.title}
             onSelectCourse={(id) => {
               setPreparing(false);
               setActiveRunId(null);
@@ -1033,11 +1152,11 @@ const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
             onNext={goNext}
             onPrev={goPrev}
             onPlayerReady={handlePlayerReady}
-             isAdmin={Boolean(isGlobalAdmin || isAdminOwner)}
+            isAdmin={Boolean(isGlobalAdmin || isAdminOwner)}
             isBuildingNext={isBuildingNext}
             lessonsArr={lessonsArr}
             voiceName={voiceName || defaultVoice}
-            courseTitle={selectedCourse?.title || customTitle || 'AI Lesson'}
+            courseTitle={titleInfo.title}
             isMaximized={isMaximized}
             onToggleMaximized={() => setIsMaximized((v) => !v)}
             course={selectedCourse || null}

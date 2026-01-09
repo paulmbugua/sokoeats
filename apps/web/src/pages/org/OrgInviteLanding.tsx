@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrgInvite } from '@mytutorapp/shared/hooks';
 import { acceptOrgInvite, acceptOrgMembershipInvite } from '@mytutorapp/shared/api';
+import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
 import type { OrgInviteInfo } from '@mytutorapp/shared/types';
 
 const ROBOT_ROUTE = '/robot-teach';
@@ -45,7 +46,6 @@ const resolveLockedConfig = (meta: any) =>
   meta?.enrollment?.locked_config ??
   null;
 
-
 const resolveQuizType = (meta: any): QuizType | null => {
   const lc = resolveLockedConfig(meta);
   const raw = lc?.quizType ?? meta?.quiz_type ?? meta?.quizType ?? null;
@@ -80,6 +80,31 @@ export default function OrgInviteLanding() {
     [policy]
   );
   const domainRestricted = !!policy?.domain_restricted && allowedDomains.length > 0;
+
+  // ✅ Robust invite title resolver (assignment-only)
+  const inviteTitleInfo = React.useMemo(() => {
+    if (!meta || kind !== 'assignment') {
+      return { title: 'Assigned Course', source: 'fallback' as const };
+    }
+    return resolveCourseTitleInfo({ inviteMeta: meta, fallback: 'Assigned Course' });
+  }, [meta, kind]);
+
+  // ✅ Landing title now uses robust resolver
+  const title = kind === 'membership' ? 'Join organization' : inviteTitleInfo.title;
+
+  // Debug
+  React.useEffect(() => {
+    if (!meta) return;
+    console.log('[OrgInviteLanding.web] invite meta snapshot', {
+      code,
+      kind,
+      title_override: (meta as any)?.title_override,
+      course_title: (meta as any)?.course_title,
+      assignment_course_title: (meta as any)?.assignment?.course_title,
+      derivedTitle: inviteTitleInfo.title,
+      derivedSource: inviteTitleInfo.source,
+    });
+  }, [meta, kind, code, inviteTitleInfo.title, inviteTitleInfo.source]);
 
   const onAccept = async () => {
     setError('');
@@ -118,16 +143,14 @@ export default function OrgInviteLanding() {
 
       const enrollment = resp.enrollment ?? resp.attempt ?? resp;
       const lockedConfig =
-      enrollment?.lockedConfig ??
-      enrollment?.locked_config ??
-      resolveLockedConfig(meta as any);
-
+        enrollment?.lockedConfig ?? enrollment?.locked_config ?? resolveLockedConfig(meta as any);
 
       const assignmentId =
         enrollment?.assignmentId ??
         (meta as OrgInviteInfo | undefined)?.assignment?.id ??
         (meta as OrgInviteInfo | undefined)?.id ??
         null;
+
       const courseId =
         enrollment?.courseId ??
         (meta as OrgInviteInfo | undefined)?.assignment?.course_id ??
@@ -141,10 +164,31 @@ export default function OrgInviteLanding() {
       const qt = normalizeQuizType(lockedConfig?.quizType);
       const qs = Number.isFinite(Number(lockedConfig?.quizSize)) ? Number(lockedConfig.quizSize) : null;
 
+      // ✅ Do NOT auto-start an attempt here (no timer starts)
+      // Instead, if the learner already has an active attempt, pass it along.
+      let attemptId: string | null = null;
+
+      try {
+        const mine = await fetch(
+          `${backendUrl}/api/orgs/assignments/${encodeURIComponent(String(assignmentId))}/mine`,
+          {
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${learnerToken}`,
+            },
+          }
+        ).then((r) => r.json());
+
+        attemptId = mine?.meta?.attemptId ?? null;
+      } catch {
+        // ignore — user might be first-time, so attemptId stays null
+      }
 
       const params = new URLSearchParams({
         assignmentId: String(assignmentId),
+        ...(attemptId ? { attemptId: String(attemptId) } : {}),
         ...(courseId ? { courseId: String(courseId) } : {}),
+        courseTitle: inviteTitleInfo.title, // ✅ PASSPORT
         lock: '1',
         flow: 'org',
         ...(qt ? { qt } : {}),
@@ -155,6 +199,7 @@ export default function OrgInviteLanding() {
     } catch (e: any) {
       const apiMsg = e?.response?.data?.message || e?.message;
       const apiCode = e?.response?.data?.code;
+
       if (apiCode === 'EMAIL_DOMAIN_BLOCKED' && domainRestricted) {
         setError(
           `You're signed in with an email that isn’t allowed for this organization. Allowed domain(s): ${allowedDomains.join(
@@ -219,11 +264,6 @@ export default function OrgInviteLanding() {
   }, [quizType]);
 
   // UI title/subtitle vary by kind
-  const title =
-    kind === 'membership'
-      ? 'Join organization'
-      : (meta as OrgInviteInfo | undefined)?.title_override || 'Assigned Course';
-
   const subtitle =
     kind === 'membership'
       ? 'You have been invited to join this organization.'

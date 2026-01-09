@@ -13,13 +13,18 @@ type AttemptMeta = {
   attemptId: string;
   assignmentId: string;
   courseId: string;
+
+  // ✅ NEW (backend may already send them; we just surface)
+  title_override?: string | null;
+  course_title?: string | null;
+  assignment_title?: string | null;
+
   locked_config: LockedConfig | null;
   passMark: number;
   timer_s: number;
   due_at: string | null;
   status: 'active' | 'expired' | 'submitted' | string;
   org_id: string;
-  title_override: string | null;
 };
 
 type OrgAssignmentOptions = {
@@ -33,14 +38,11 @@ type OrgAssignmentOptions = {
 
 function getParamFromOptions(
   name: 'assignmentId' | 'attemptId' | 'lock',
-  opts?: OrgAssignmentOptions
+  opts?: OrgAssignmentOptions,
 ): string | null {
   // 1) Highest priority: explicit params
   const pVal = opts?.params?.[name];
-  if (pVal !== undefined && pVal !== null) {
-    // Normalize booleans/numbers for lock flag or ids
-    return String(pVal);
-  }
+  if (pVal !== undefined && pVal !== null) return String(pVal);
 
   // 2) Next: explicit search string
   if (opts?.search) {
@@ -58,9 +60,17 @@ function getParamFromOptions(
     // ignore
   }
 
-  // 4) Nothing found
   return null;
 }
+
+const DBG = (() => {
+  try {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('DBG_SHARE') === '1' || localStorage.getItem('DBG_ORG') === '1';
+  } catch {
+    return false;
+  }
+})();
 
 export function useOrgAssignment(options?: OrgAssignmentOptions) {
   const assignmentIdQ = getParamFromOptions('assignmentId', options) || '';
@@ -68,23 +78,27 @@ export function useOrgAssignment(options?: OrgAssignmentOptions) {
   const lockQ = getParamFromOptions('lock', options);
   const lockFlag = lockQ === '1' || lockQ === 'true';
 
-  const { backendUrl, token } = useShopContext();
+  // ✅ Use orgToken everywhere for org assignment meta fetch
+  const { backendUrl, orgToken } = useShopContext() as any;
 
   const [meta, setMeta] = useState<AttemptMeta | null>(null);
   const [remainingMs, setRemainingMs] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // fetch meta once we have (attemptId OR assignmentId) + token
+  // fetch meta once we have (attemptId OR assignmentId) + orgToken
   useEffect(() => {
     let aborted = false;
+
     (async () => {
-      if (!token) {
+      if (!orgToken) {
         setMeta(null);
+        setRemainingMs(0);
         return;
       }
       if (!attemptIdQ && !assignmentIdQ) {
         setMeta(null);
+        setRemainingMs(0);
         return;
       }
 
@@ -99,19 +113,32 @@ export function useOrgAssignment(options?: OrgAssignmentOptions) {
         const r = await fetch(url, {
           headers: {
             Accept: 'application/json',
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${orgToken}`,
           },
         });
+
         if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
         const data = await r.json();
         if (aborted) return;
 
-        const m: AttemptMeta = data?.meta;
-        setMeta(m || null);
+        const m: AttemptMeta | null = data?.meta || null;
+        setMeta(m);
 
         // seed timer immediately
         const due = m?.due_at ? new Date(m.due_at).getTime() : 0;
         setRemainingMs(due ? Math.max(0, due - Date.now()) : 0);
+
+        if (DBG) {
+          console.log('[useOrgAssignment] meta loaded', {
+            assignmentIdQ,
+            attemptIdQ,
+            courseId: m?.courseId,
+            title_override: (m as any)?.title_override,
+            course_title: (m as any)?.course_title,
+            assignment_title: (m as any)?.assignment_title,
+            metaKeys: m ? Object.keys(m as any) : [],
+          });
+        }
       } catch (e: any) {
         if (!aborted) setError(e?.message || 'Failed to load assignment');
       } finally {
@@ -122,17 +149,17 @@ export function useOrgAssignment(options?: OrgAssignmentOptions) {
     return () => {
       aborted = true;
     };
-  }, [attemptIdQ, assignmentIdQ, backendUrl, token]);
+  }, [attemptIdQ, assignmentIdQ, backendUrl, orgToken]);
 
   // tick remaining time
   useEffect(() => {
     if (!meta?.due_at) return;
     const due = new Date(meta.due_at).getTime();
+
     const tick = () => setRemainingMs(Math.max(0, due - Date.now()));
     tick();
-    const id = globalThis.setInterval
-      ? globalThis.setInterval(tick, 1000)
-      : setInterval(tick, 1000);
+
+    const id = globalThis.setInterval ? globalThis.setInterval(tick, 1000) : setInterval(tick, 1000);
     return () =>
       globalThis.clearInterval ? globalThis.clearInterval(id as any) : clearInterval(id as any);
   }, [meta?.due_at]);
@@ -143,7 +170,14 @@ export function useOrgAssignment(options?: OrgAssignmentOptions) {
     // ids & flags
     assignmentId: meta?.assignmentId || assignmentIdQ || null,
     attemptId: meta?.attemptId || attemptIdQ || null,
-    locked: lockFlag || Boolean(meta || assignmentIdQ || attemptIdQ),
+    courseId: meta?.courseId || null,
+
+    // ✅ surface title fields
+    titleOverride: (meta as any)?.title_override ?? null,
+    courseTitle: (meta as any)?.course_title ?? null,
+    assignmentTitle: (meta as any)?.assignment_title ?? null,
+
+    locked: lockFlag || Boolean(assignmentIdQ || attemptIdQ),
 
     // meta for locking UI + generation
     lockedConfig: (meta?.locked_config || null) as LockedConfig | null,

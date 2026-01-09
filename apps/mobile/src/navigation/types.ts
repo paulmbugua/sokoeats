@@ -104,7 +104,18 @@ export type MainStackParamList = {
 
   /* Discovery & tutor */
   FindTutor: { subject?: string } | undefined;
-  RobotTutor: undefined;
+  RobotTutor:
+  | {
+      assignmentId?: string | number;
+      courseId?: string | number;
+      courseTitle?: string;
+      lock?: string;
+      flow?: string;
+      qt?: 'mcq' | 'short' | string;
+      qs?: string | number;
+    }
+  | undefined;
+
 
   /* Catalog & course details */
   Courses:

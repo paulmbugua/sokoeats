@@ -15,7 +15,7 @@ export default function PaymentFlow() {
         <section className="rounded-xl border p-4 bg-white dark:bg-[#0f1821]">
           <h2 className="text-lg font-semibold">A) Buy Tokens</h2>
           <ol className="list-decimal pl-5 space-y-1 mt-2">
-            <li>Student buys Tokens (PayPal or M-Pesa).</li>
+            <li>Student buys Tokens (Paystack or M-Pesa).</li>
             <li>Tokens credit the student account instantly.</li>
           </ol>
         </section>

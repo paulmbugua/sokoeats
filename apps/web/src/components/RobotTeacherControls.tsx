@@ -106,6 +106,7 @@ interface ControlsPanelProps {
   canShareUi: boolean;
   restrictStarter: boolean;
   knobsDisabled: boolean;
+   displayCourseTitle?: string;
   // data
   topCourses: CourseOption[];
   selectedCourse: CourseOption | null;
@@ -153,6 +154,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
     knobsDisabled,
     topCourses,
     selectedCourse,
+    displayCourseTitle,
     onSelectCourse,
     PRESETS,
     TRACKS,
@@ -193,7 +195,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
           <div>
             <label className="text-xs text-gray-600 dark:text-white/70">Course</label>
             <div className="mt-1 input bg-gray-100 dark:bg-white/10 cursor-not-allowed">
-              {selectedCourse?.title || 'Assigned course'}
+              {selectedCourse?.title || displayCourseTitle || 'Assigned course'}
+
             </div>
           </div>
 
@@ -202,7 +205,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
             <button
               type="button"
               onClick={() => onStart?.()}
-              disabled={busy}
+              disabled={busy || !canStartNow}
+
               className={`w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-semibold transition ring-1 ${
                 busy
                   ? 'opacity-60 cursor-not-allowed bg-indigo-50 text-indigo-700 ring-indigo-300 dark:bg-indigo-600/30 dark:text-white dark:ring-indigo-500'
@@ -224,7 +228,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               <div className="mt-1 relative z-[20]">
                 {isLockedLearner ? (
                   <div className="input bg-gray-100 dark:bg-white/10 cursor-not-allowed">
-                    {selectedCourse?.title || 'Assigned course'}
+                   {selectedCourse?.title || 'Assigned course'}
+
                   </div>
                 ) : (
                   <CourseSelect

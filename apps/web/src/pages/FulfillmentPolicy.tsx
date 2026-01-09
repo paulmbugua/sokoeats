@@ -51,7 +51,7 @@ export default function FulfillmentPolicy() {
           After a live session, you or the tutor mark it complete. If no issue is reported within 24
           hours, it auto-completes. We then capture Tokens, retain the platform fee, and{' '}
           <strong>release tutor payouts</strong> (typically 24–72h) via the tutor’s selected method
-          (e.g., M-Pesa or PayPal).
+          (e.g., M-Pesa or Paystack).
         </p>
 
         <h2 className="text-lg font-semibold">6) Institutional subscriptions</h2>

@@ -244,10 +244,12 @@ export default function OrgShareDialog({
     setCreatedCourseId(null);
   };
 
-  const handleCancelIcon = () => {
-    resetLocal();
-    onCancel ? onCancel() : onClose();
-  };
+      const handleCancelIcon = () => {
+      resetLocal();
+      if (onCancel) onCancel();
+      else onClose();
+    };
+
 
   const handleBackdropClick: React.MouseEventHandler<HTMLDivElement> = (e) => {
     if (dragging) return;
