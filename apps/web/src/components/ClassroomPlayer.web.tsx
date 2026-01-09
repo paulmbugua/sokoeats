@@ -59,6 +59,7 @@ type Props = {
     limitSeconds?: number;
     resetsAt?: string | null;
   }>;
+  hideGateBanner?: boolean;
 };
 
 // --- helpers -----------------------------------------------------------------
@@ -737,7 +738,7 @@ function Container(props: Props) {
       aria-label="Lesson player"
       aria-busy={loading || isAdvancing}
     >
-      {narrationLocked && (
+      {narrationLocked && !props.hideGateBanner && (
         <div className="mb-2 rounded-xl bg-amber-500/80 text-white px-4 py-3 text-sm flex items-center gap-2">
           <span className="font-semibold">Narration quota reached / locked.</span>
           <span>

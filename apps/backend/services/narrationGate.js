@@ -51,6 +51,49 @@ async function hasCourseAccess(userId, courseId, db = pool) {
   }
 }
 
+async function hasNarrationUnlockOverride(userId, courseId, db = pool) {
+  if (!userId || !courseId) return false;
+  try {
+    const studentId = Number(userId);
+    const hasNumericUserId = Number.isFinite(studentId);
+    const [entitlement, purchasedQ, enrolledQ, orgCoveredQ] = await Promise.all([
+      getCertificateEntitlement(userId, courseId, db).catch(() => null),
+      hasNumericUserId
+        ? db.query(
+            `SELECT 1 FROM course_purchases WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
+            [studentId, courseId],
+          )
+        : { rowCount: 0 },
+      hasNumericUserId
+        ? db.query(
+            `SELECT 1 FROM enrollments WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
+            [studentId, courseId],
+          )
+        : { rowCount: 0 },
+      hasNumericUserId
+        ? db.query(
+            `SELECT 1
+               FROM org_quiz_attempts q
+               JOIN org_course_assignments a ON a.id = q.assignment_id
+              WHERE q.user_id = $1 AND a.course_id = $2
+                AND q.submitted_at IS NOT NULL AND q.passed = TRUE
+              LIMIT 1`,
+            [studentId, courseId],
+          )
+        : { rowCount: 0 },
+    ]);
+
+    const hasPersonalEntitlement = Boolean(entitlement && entitlement.org_id == null);
+    const purchased = purchasedQ.rowCount > 0;
+    const enrolled = enrolledQ.rowCount > 0;
+    const orgCovered = orgCoveredQ.rowCount > 0;
+
+    return hasPersonalEntitlement || purchased || enrolled || orgCovered;
+  } catch {
+    return false;
+  }
+}
+
 // Map JWT userId (often int) -> profiles.id (uuid)
 async function resolveProfileId(userId) {
   if (!userId) return null;
@@ -258,6 +301,18 @@ export async function narrationPreflight({
 }) {
   const reserveMin = estimateMinutesFromText(estimateText);
   const reserveSeconds = reserveMin * 60;
+
+  const unlockOverride = await hasNarrationUnlockOverride(userId, courseId);
+  if (unlockOverride) {
+    return {
+      ok: true,
+      mode: 'narration',
+      reserveMin,
+      resetsAt: null,
+      remainingMinutes: null,
+      usage: [],
+    };
+  }
 
   // --- ORG PATH ---
   if (orgId) {

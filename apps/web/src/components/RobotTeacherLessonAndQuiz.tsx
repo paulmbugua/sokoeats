@@ -174,11 +174,6 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   token,
   requireAuth,
   isOrgFlowFlag,
-  skus,
-  aiCertLoading,
-  aiCertError,
-  aiCertMsg,
-  claim,
   tryGenerateCertificate,
   generateAICert,
   paymentOpen,
@@ -196,6 +191,8 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   currentIdx,
 }) => {
 const { tokens = 0, refreshUserDetails } = useShopContext();
+const unlockSuccessNotice =
+  '✅ Course unlocked — narration + notes + quiz unlocked. Generate up to 60 lessons. Pass quiz (≥70%) to download your certificate free.';
 
 /** local retry & working answers (supports number | string) */
 const [retakeMode, setRetakeMode] = useState(false);
@@ -214,6 +211,7 @@ const [prePurchaseState, setPrePurchaseState] = useState<{
 } | null>(null);
 
 const [unlockReady, setUnlockReady] = useState(false);
+const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
 const restoreOnceRef = useRef(false);
 const awaitingTopUpRef = useRef(false);
 const debitInFlightRef = useRef(false);
@@ -239,7 +237,7 @@ const {
   bumpSuspicion,
 } = useAttemptIntegrity(backendUrl, token);
 
-/** Snapshot what user was doing before we prompt for certificate purchase */
+/** Snapshot what user was doing before we prompt for full-access unlock */
 const snapshotPrePurchaseState = useCallback(() => {
   const snap = {
     courseId: course?.id ?? null,
@@ -373,19 +371,6 @@ const restorePrePurchaseState = useCallback(async () => {
     return t === 'short' ? 'short' : 'mcq';
   }, [quiz?.quizType, orgMeta?.quizType, urlQuizTypeHint]);
 
-  const isLoggedIn = Boolean(token); // web: token is passed to LessonAndQuizPane
-
-const certCta = useMemo(
-  () =>
-    getCertificateCtaFromGate({
-      gateMode,
-      reason: gateNotice?.reason,
-      isLoggedIn,
-    }),
-  [gateMode, gateNotice?.reason, isLoggedIn]
-);
-
-
   // What we *ask* the generator to create if we haven't got orgMeta yet
   const desiredQuizType: 'mcq' | 'short' = orgMeta?.quizType ?? urlQuizTypeHint ?? 'mcq';
 
@@ -485,14 +470,25 @@ const certCta = useMemo(
 
   // optional: allow hiding the pill (but keep it restorable on next mount)
   const [hideCertPill, setHideCertPill] = useState(false);
-  const [paymentOk, setPaymentOk] = useState(false);
+const [paymentOk, setPaymentOk] = useState(false);
 
-  const anyAffordable = useMemo(() => {
-    return (skus || []).some((sku) => {
-      const price = Number(sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? 0);
-      return (Number(tokens) || 0) >= price;
-    });
-  }, [skus, tokens]);
+  const isLoggedIn = Boolean(token); // web: token is passed to LessonAndQuizPane
+  const hasUnlockedCourse = isOrgFlowFlag || paymentOk || forceUnlock;
+  const narrationBlocked = gateMode === 'notes_only' && !hasUnlockedCourse;
+
+  const certCta = useMemo(
+    () =>
+      getCertificateCtaFromGate({
+        gateMode: narrationBlocked ? 'notes_only' : 'narration',
+        reason: narrationBlocked ? gateNotice?.reason : undefined,
+        isLoggedIn,
+      }),
+    [narrationBlocked, gateNotice?.reason, isLoggedIn]
+  );
+
+  const effectiveGateMode = hasUnlockedCourse ? 'narration' : gateMode;
+  const effectiveGateNotice = hasUnlockedCourse ? null : gateNotice;
+  const effectiveGateUsage = hasUnlockedCourse ? undefined : gateUsage;
 
   const api = useCallback(
     async function <T = any>(path: string, init?: RequestInit): Promise<T> {
@@ -533,27 +529,32 @@ const certCta = useMemo(
     [onStart]
   );
 
-  // Check if the user has paid for this course's certificate
+  // Check if the user has unlocked full access for this course
   const checkPaymentStatus = useCallback(async () => {
     try {
       const courseId = course?.id;
       if (!courseId) {
         setPaymentOk(false);
+        setPurchaseNotice(null);
         return;
       }
-      const s = await api<{ paid?: boolean }>(
+      const s = await api<{ paid?: boolean; narrationUnlocked?: boolean }>(
         `/api/certificates/status?courseId=${encodeURIComponent(courseId)}`
       ).catch(() => null);
-      if (s && typeof s.paid === 'boolean') {
-        setPaymentOk(s.paid);
+      if (s) {
+        const unlocked = Boolean(s.narrationUnlocked ?? s.paid);
+        setPaymentOk(unlocked);
+        setPurchaseNotice((prev) => (unlocked ? prev || unlockSuccessNotice : null));
         return;
       }
     } catch {
       /* ignore */
     }
-    // Fallback: if we already have a clean download URL, consider it paid
-    setPaymentOk(Boolean(downUrl));
-  }, [api, course?.id, downUrl]);
+    // Fallback: if we already have a clean download URL, consider it unlocked
+    const unlocked = Boolean(downUrl);
+    setPaymentOk(unlocked);
+    setPurchaseNotice((prev) => (unlocked ? prev || unlockSuccessNotice : null));
+  }, [api, course?.id, downUrl, unlockSuccessNotice]);
 
   // Capture pre-purchase state as soon as we show the gate CTA
   useEffect(() => {
@@ -581,23 +582,49 @@ const certCta = useMemo(
   const debitAndUnlock = useCallback(async () => {
     if (debitInFlightRef.current) return;
     debitInFlightRef.current = true;
+    let keepAwaitingTopUp = false;
     try {
-      const res = await fetch(`${backendUrl}/api/payments/debit`, {
+      const courseId = course?.id;
+      if (!courseId) {
+        throw new Error('Missing course id for unlock.');
+      }
+
+      const res = await fetch(`${backendUrl}/api/certificates/unlock`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          amountTokens: CERT_COST_TOKENS,
-          reason: 'ai_certificate_unlock',
+          courseId,
         }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error((data as any)?.error || 'Could not deduct tokens.');
+        if (
+          res.status === 402 ||
+          /insufficient/i.test(String((data as any)?.error || ''))
+        ) {
+          awaitingTopUpRef.current = true;
+          setPaymentOpen(true);
+          keepAwaitingTopUp = true;
+          return;
+        }
+        throw new Error((data as any)?.error || 'Could not unlock full access.');
       }
+
+      const payload = await res.json().catch(() => ({}));
+      console.info('[cert unlock] response', payload);
+
+      const debited = Number(payload?.debited ?? 0) || 0;
+      const balance = Number(payload?.tokens ?? 0);
+      const alreadyUnlocked =
+        payload?.alreadyUnlocked === true || debited === 0;
+      const unlockMsg = alreadyUnlocked
+        ? `✅ Course unlocked — no tokens deducted (already unlocked). Balance: ${balance} tokens.`
+        : `✅ Course unlocked — ${debited || CERT_COST_TOKENS} tokens deducted. Balance: ${balance} tokens.`;
+      setPurchaseNotice(unlockMsg);
 
       try {
         await refreshUserDetails?.();
@@ -623,7 +650,7 @@ const certCta = useMemo(
       alert(msg);
     } finally {
       debitInFlightRef.current = false;
-      awaitingTopUpRef.current = false;
+      awaitingTopUpRef.current = keepAwaitingTopUp;
     }
   }, [
     backendUrl,
@@ -636,7 +663,7 @@ const certCta = useMemo(
 
   const handleBuyCertificate = useCallback(async () => {
     const snap = snapshotPrePurchaseState();
-    if (!requireAuth('buy_certificate', 'Please sign in to buy your certificate.')) return;
+    if (!requireAuth('buy_certificate', 'Please sign in to unlock full access.')) return;
     if (debitInFlightRef.current) return;
 
     if ((Number(tokens) || 0) >= CERT_COST_TOKENS) {
@@ -1030,28 +1057,36 @@ const certCta = useMemo(
   const currentLesson =
     lessonsArr && lessonsArr.length ? (lessonsArr[currentIdx] ?? lessonsArr[0]) : null;
 
-  const hasUnlockedCertificate = paymentOk || forceUnlock;
-
   return (
     <>
-    {certCta.show && !isOrgFlowFlag && !hasUnlockedCertificate && (
+    {purchaseNotice && (
+      <div className="mb-3 rounded-xl bg-emerald-50 ring-1 ring-emerald-200 p-3 dark:bg-emerald-500/10 dark:ring-emerald-500/30">
+        <div className="text-sm text-emerald-900 dark:text-emerald-200">{purchaseNotice}</div>
+      </div>
+    )}
+
+    {certCta.show && !hasUnlockedCourse && (
       <div className="mb-3 rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 dark:bg-amber-500/10 dark:ring-amber-500/30">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="text-sm text-amber-900 dark:text-amber-200">
-            Narration is locked right now. Unlock it with a certificate.
+            Narration is locked right now. Unlock full access for this course.
           </div>
 
           <div className="text-xs text-gray-700 dark:text-amber-100/80">
-            <div>Certificate costs 20 tokens (≈ USD 20).</div>
-            <div>If you have enough tokens, 20 tokens will be deducted immediately when you click Buy.</div>
-            <div>If you don’t have enough tokens, the payment widget opens so you can buy tokens.</div>
+            <ul className="list-disc ml-4 space-y-1">
+              <li>🔊 Narration + 📝 Notes + 🧩 Quiz unlocked</li>
+              <li>📚 Generate up to 60 lessons for this course</li>
+              <li>🎓 Certificate is free after you pass (≥70%)</li>
+            </ul>
+            <div className="mt-2">20 tokens are deducted when you unlock.</div>
+            <div>If you don’t have enough tokens, you can top up first.</div>
           </div>
 
           <button
             className="btn bg-indigo-600 hover:bg-indigo-500"
             onClick={() => {
               if (certCta.action === 'login') {
-                requireAuth('buy_certificate', 'Please sign in to buy your certificate.');
+                requireAuth('buy_certificate', 'Please sign in to unlock full access.');
                 return;
               }
               handleBuyCertificate();
@@ -1090,9 +1125,10 @@ const certCta = useMemo(
             playJoinedIfAvailable={hasJoined}
             onBeforePlay={guardedBeforePlay}
             onEnded={onEnded}
-            gateMode={gateMode}
-            gateNotice={gateNotice}
-            gateUsage={gateUsage}
+            gateMode={effectiveGateMode}
+            gateNotice={effectiveGateNotice}
+            gateUsage={effectiveGateUsage}
+            hideGateBanner
             onNext={onNext}
             onPrev={onPrev}
             isBuildingNext={isBuildingNext}
@@ -1522,14 +1558,6 @@ const certCta = useMemo(
                     <button
                       onClick={async () => {
                         try {
-                          const sku = (skus && skus[0]) || null;
-                          if (sku) {
-                            try {
-                              await claim(sku.code);
-                            } catch {
-                              /* ignore claim error */
-                            }
-                          }
                           const doc =
                             (await tryGenerateCertificate().catch(() => null)) ||
                             (await generateAICert().catch(() => null));
@@ -1600,139 +1628,28 @@ const certCta = useMemo(
                 </>
               ) : (
                 <>
-                  <div className="mt-2 space-y-2">
-                    <div className="text-xs text-gray-600 dark:text-white/70">
-                      Pay in tokens (no processing fees)
-                    </div>
-                    {aiCertLoading && (
-                      <div className="text-xs text-gray-500">Loading certificate options…</div>
-                    )}
-                    {aiCertError && <div className="text-xs text-red-600">{aiCertError}</div>}
-                    {aiCertMsg && (
-                      <div className="text-xs text-emerald-700 dark:text-emerald-300">
-                        {aiCertMsg}
-                      </div>
-                    )}
-
-                    {/* Balance (optional) */}
-                    <div className="text-[11px] text-gray-600 dark:text-white/70">
-                      Your balance: <b>{Number(tokens) || 0}</b> tokens
-                    </div>
-
-                    {/* Only show fiat “payment required” if nothing is affordable in tokens */}
-                    {!paymentOk && !anyAffordable && (
-                      <div className="text-[11px] text-gray-600 dark:text-white/70 mb-2">
-                        Payment required to unlock <b>Claim &amp; Generate</b>.
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      {(skus || []).map((sku) => {
-                        const price = Number(
-                          sku?.price_tokens ?? sku?.priceTokens ?? sku?.price ?? 0
-                        );
-                        const hasEnoughTokens = (Number(tokens) || 0) >= price;
-                        const canClaimNow = Boolean(grade?.passed) && hasEnoughTokens; // ✅ pass + enough tokens
-
-                        return (
-                          <div
-                            key={sku.code}
-                            className="flex items-center justify-between rounded-lg ring-1 ring-gray-200 dark:ring-white/10 p-2 bg-white dark:bg-white/5"
-                          >
-                            <div>
-                              <div className="text-sm font-medium">{sku.title}</div>
-                              <div className="text-[11px] text-gray-600 dark:text-white/60">
-                                {sku.code}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold">{price} Tokens</span>
-
-                              <button
-                                disabled={!canClaimNow}
-                                title={
-                                  !grade?.passed
-                                    ? 'Pass the quiz first'
-                                    : !hasEnoughTokens
-                                      ? 'Not enough tokens'
-                                      : 'Claim & generate'
-                                }
-                                onClick={async () => {
-                                  if (!token || !canClaimNow) return;
-                                  try {
-                                    await claim(sku.code);
-                                    const doc = await generateAICert();
-
-                                    const url = (doc as any)?.download_url || (doc as any)?.url;
-                                    if (url) window.open(url, '_blank', 'noopener,noreferrer');
-
-                                    const c: any = doc || {};
-                                    setCertUrl(c.url ?? null);
-                                    setDownUrl(c.download_url ?? c.downloadUrl ?? c.url ?? null);
-
-                                    // Refresh wallet after token deduction
-                                    try {
-                                      await refreshUserDetails();
-                                    } catch {
-                                      /* ignore */
-                                    }
-
-                                    // Optional: sync any backend “paid” flag
-                                    try {
-                                      await checkPaymentStatus();
-                                    } catch {
-                                      /* ignore */
-                                    }
-                                  } catch (e) {
-                                    console.error('[tokens] claim/generate failed', e);
-                                  }
-                                }}
-                                className={`px-3 py-1.5 rounded text-sm text-white ${
-                                  canClaimNow
-                                    ? 'bg-emerald-600 hover:bg-emerald-500'
-                                    : 'bg-emerald-600/50 cursor-not-allowed'
-                                }`}
-                              >
-                                Claim &amp; Generate
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Top-up nudge if the cheapest SKU isn’t affordable */}
-                    {(skus?.length ?? 0) > 0 &&
-                      (Number(tokens) || 0) <
-                        Number(
-                          skus?.[0]?.price_tokens ?? skus?.[0]?.priceTokens ?? skus?.[0]?.price ?? 0
-                        ) && (
-                        <div className="mt-2">
-                          <div className="text-[11px] text-gray-600 dark:text-white/70">
-                            Not enough tokens? <b>Top up and try again.</b>
-                          </div>
-                          <div className="mt-2 flex gap-2">
-                            <button
-                              onClick={() => setPaymentOpen(true)}
-                              className="btn bg-indigo-600 hover:bg-indigo-500"
-                            >
-                              Buy tokens
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                  <div className="mt-2 text-xs text-gray-600 dark:text-white/70">
+                    Certificate is free after you pass (≥70%). Generate it anytime.
                   </div>
-
-                  <div className="mt-3 text-xs text-gray-500 dark:text-white/60">
-                    Prefer paying with card or PayPal/M-Pesa?
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <button
-                      onClick={() => setPaymentOpen(true)}
-                      className="btn bg-indigo-600 hover:bg-indigo-500"
+                      onClick={async () => {
+                        try {
+                          const doc =
+                            (await tryGenerateCertificate().catch(() => null)) ||
+                            (await generateAICert().catch(() => null));
+                          if (doc) {
+                            const c: any = doc;
+                            setCertUrl(c.url ?? null);
+                            setDownUrl(c.download_url ?? c.downloadUrl ?? c.url ?? null);
+                          }
+                        } catch (e) {
+                          console.error('[cert] generate failed', e);
+                        }
+                      }}
+                      className="btn bg-emerald-600 hover:bg-emerald-500"
                     >
-                      Pay with PayPal / M-Pesa
+                      Generate Certificate
                     </button>
 
                     {certUrl && (
@@ -1783,8 +1700,7 @@ const certCta = useMemo(
 
                   {!certUrl && (
                     <p className="text-[12px] text-gray-600 dark:text-white/70 mt-2">
-                      Once payment completes (tokens or fiat), we’ll generate your certificate
-                      instantly.
+                      Your certificate will be generated at no cost.
                     </p>
                   )}
                 </>

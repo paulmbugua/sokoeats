@@ -67,6 +67,7 @@ type ClassroomThemeShellProps = Record<string, any> & {
     limitSeconds?: number;
     resetsAt?: string | null;
   }>;
+  hideGateBanner?: boolean;
 };
 
 const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (props) => {
@@ -362,6 +363,7 @@ const ClassroomThemeShell: React.FC<ClassroomThemeShellProps> = (props) => {
         onRequestStart={props.onRequestStart}
         activeIndex={props.activeIndex}
         onPrev={props.onPrev} // ⬅️ NEW
+        hideGateBanner={props.hideGateBanner}
       />
 
       {/* Floating Theme button + Panel (portal) */}

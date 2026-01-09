@@ -55,7 +55,7 @@ export function getCertificateCtaFromGate({
       show: true,
       kind: 'buy',
       action: 'buy',
-      label: 'Buy certificate (20 tokens)',
+      label: 'Unlock full access (20 tokens)',
     };
   }
 
