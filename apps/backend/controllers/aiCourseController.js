@@ -790,6 +790,16 @@ export async function generateQuiz(req, res) {
           ? Number(value.numQuestions)
           : undefined);
 
+       if (
+       boolish(req.query.refresh) ||
+       boolish(req.query.refreshCache) ||
+       boolish(req.body?.refresh) ||
+       boolish(req.body?.refreshCache)
+     ) {
+       await cacheDeleteByPattern(`ai:quiz:*:${courseId}:*`);
+     }
+
+
       const { status, data, headers } = await generateQuizService({
         courseId,
         outline,

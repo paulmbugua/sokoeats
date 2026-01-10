@@ -1277,7 +1277,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     }
   }, [analytics, period]);
 
-  /** Checkout handler (M-Pesa / PayPal) */
+  /** Checkout handler (M-Pesa / Paystack) */
   const handleCheckout = useCallback(
     async (
       target: 'pro' | 'enterprise',
@@ -1414,7 +1414,7 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
           return;
         }
 
-        // PAYPAL handled via the PayPal Buttons in the modal
+        // Paystack handled via the Paystack Buttons in the modal
       } catch (err: any) {
         const msg =
           err?.response?.data?.message || err?.message || 'Payment failed — please try again.';

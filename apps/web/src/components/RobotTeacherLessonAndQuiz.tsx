@@ -640,7 +640,9 @@ const [paymentOk, setPaymentOk] = useState(false);
       setPaymentOk(true);
       setForceUnlock(true);
       setUnlockReady(true);
+      if (grade?.passed) {
       await unlockCertificate();
+      }
 
       setPaymentOpen(false);
       await restorePrePurchaseState();
@@ -659,6 +661,7 @@ const [paymentOk, setPaymentOk] = useState(false);
     restorePrePurchaseState,
     token,
     unlockCertificate,
+    grade?.passed,
   ]);
 
   const handleBuyCertificate = useCallback(async () => {

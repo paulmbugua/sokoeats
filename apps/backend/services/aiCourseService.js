@@ -218,37 +218,31 @@ export function makeFallbackQuiz(
       (t) => `From “${t}”, name the concept masked by the blanks:`,
       (t) => `Briefly identify the term referenced in “${t}”:`,
     ];
+const pickMaskable = (text) => {
+  const words =
+    String(text || '').match(/\b[A-Za-z0-9][A-Za-z0-9-]{2,}\b/g) || [];
+  const pref = words.find((w) =>
+    /mole|yield|stoich|balance|equation|ratio|conserv|mass|atom|molar|limiting|excess/i.test(w),
+  );
+  return (pref || words[0] || '').replace(/\.$/, '');
+};
 
-    function pickMaskable(text) {
-      // choose a word ≥ 4 chars (letters/numbers, keep simple)
-      const words =
-        String(text || '').match(/\b[A-Za-z0-9][A-Za-z0-9-]{2,}\b/g) || [];
-      // prefer domain-ish terms (order heuristic)
-      const pref = words.find((w) =>
-        /mole|yield|stoich|balance|equation|ratio|conserv|mass|atom|molar|limiting|excess/i.test(
-          w,
-        ),
-      );
-      return (pref || words[0] || '').replace(/\.$/, '');
-    }
+const makeRegex = (answer) => {
+  const esc = String(answer || '')
+    .replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
+    .replace(/[-–—]/g, '[-–—-]')
+    .replace(/\s+/g, '\\s+');
+  return `^\\s*${esc}\\s*$`;
+};
 
-    function makeRegex(answer) {
-      // case-insensitive exact, allow flexible spacing & hyphen variants
-      const esc = answer
-        .replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
-        .replace(/[-–—]/g, '[-–—-]')
-        .replace(/\s+/g, '\\s+');
-      return `(?i)^\\s*${esc}\\s*$`;
-    }
+const variants = (ans) => {
+  const base = String(ans || '');
+  const low = base.toLowerCase();
+  const noHy = base.replace(/[-–—]/g, ' ').replace(/\s+/g, ' ').trim();
+  const hy = base.replace(/\s+/g, '-');
+  return Array.from(new Set([base, low, noHy, hy])).filter(Boolean);
+};
 
-    function variants(ans) {
-      const base = ans;
-      const low = ans.toLowerCase();
-      const noHy = ans.replace(/[-–—]/g, ' ').replace(/\s+/g, ' ').trim();
-      const hy = ans.replace(/\s+/g, '-');
-      const set = new Set([base, low, noHy, hy]);
-      return Array.from(set).filter(Boolean);
-    }
 
     const qs = [];
     for (let i = 0; i < num; i++) {
@@ -289,24 +283,23 @@ export function makeFallbackQuiz(
     (t) => `About “${t}”, choose the true claim:`,
     (t) => `Which fact accurately applies to “${t}”?`,
   ];
-
-  function shuffle(arr, seed) {
-    // tiny deterministic shuffle using seed string
-    let h = 2166136261 >>> 0;
-    for (let i = 0; i < seed.length; i++) {
-      h ^= seed.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    const a = arr.slice();
-    for (let i = a.length - 1; i > 0; i--) {
-      h ^= h >>> 13;
-      h = Math.imul(h, 0x5bd1e995);
-      h ^= h >>> 15;
-      const j = Math.abs(h) % (i + 1);
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
+const shuffle = (arr, seed) => {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
   }
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    h ^= h >>> 13;
+    h = Math.imul(h, 0x5bd1e995);
+    h ^= h >>> 15;
+    const j = Math.abs(h) % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+
 
   const qs = [];
   for (let i = 0; i < num; i++) {
@@ -995,6 +988,7 @@ export async function generateLessonSSMLService(
     const id = `L${absoluteIdx + 1}`;
     const title = o?.title || `Lesson ${absoluteIdx + 1}`;
     const kp = Array.isArray(o?.keyPoints) ? o.keyPoints.slice(0, 4) : [];
+    
 
     const system = `You are a master teacher. Return ONLY valid Azure SSML for a single narrated lesson (no JSON, no backticks).
 Wrap exactly:
@@ -1118,6 +1112,7 @@ Do not use literal labels like "Hook:" etc. Keep the same prosody rate (${pace.r
           announceAtSentence: 1,
         },
       ],
+      
       charts: [],
     };
     return { lessons: [lesson], joinedSsml: lesson.ssml };
@@ -1318,51 +1313,48 @@ Do not use literal labels like "Hook:" etc. Keep the same prosody rate (${pace.r
       lessons.push(lesson);
     }
 
-    // Ensure markdown contains sections for any formulas/tables if missing
-    function renderGfmTable(t = { columns: [], rows: [] }) {
-      const cols = Array.isArray(t.columns) ? t.columns : [];
-      const rows = Array.isArray(t.rows) ? t.rows : [];
-      if (!cols.length) return '';
-      const head = `| ${cols.join(' | ')} |\n| ${cols.map(() => '-').join(' | ')} |`;
-      const body = rows
-        .map((r) => `| ${r.map((x) => String(x)).join(' | ')} |`)
-        .join('\n');
-      return `\n**${t.title || 'Table'}**${t.caption ? ` — _${t.caption}_` : ''}\n\n${head}\n${body}\n`;
-    }
+    const renderGfmTable = (t = { columns: [], rows: [] }) => {
+  const cols = Array.isArray(t.columns) ? t.columns : [];
+  const rows = Array.isArray(t.rows) ? t.rows : [];
+  if (!cols.length) return '';
+  const head = `| ${cols.join(' | ')} |\n| ${cols.map(() => '-').join(' | ')} |`;
+  const body = rows
+    .map((r) => `| ${r.map((x) => String(x)).join(' | ')} |`)
+    .join('\n');
+  return `\n**${t.title || 'Table'}**${t.caption ? ` — _${t.caption}_` : ''}\n\n${head}\n${body}\n`;
+};
 
-    const svgToDataUrl = (svg) =>
-      `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-    function renderChart(ch) {
-      const alt = (ch.alt || ch.title || ch.kind || 'Chart').replace(
-        /\|/g,
-        '-',
-      );
-      const inlineSvg =
-        typeof ch.svg === 'string' && ch.svg.trim() ? svgToDataUrl(ch.svg) : '';
-      const url =
-        typeof ch.url === 'string' && ch.url.trim() ? ch.url : inlineSvg;
-      if (url) {
-        const title =
-          ch.title ||
-          (ch.kind ? ch.kind[0].toUpperCase() + ch.kind.slice(1) : 'Chart');
-        return `\n**${title}**${ch.caption ? ` — _${ch.caption}_` : ''}\n\n![${alt}](${url})\n`;
-      }
-      return `\n**${ch.title || 'Chart'}**${ch.caption ? ` — _${ch.caption}_` : ''}\n`;
-    }
+const svgToDataUrl = (svg) => `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 
-    function renderImage(im) {
-      const alt = (im.alt || im.title || 'Illustration').replace(/\|/g, '-');
-      if (im.url)
-        return `\n**${im.title || 'Illustration'}**${im.caption ? ` — _${im.caption}_` : ''}\n\n![${alt}](${im.url})\n`;
-      return `\n**${im.title || 'Illustration'}**${im.caption ? ` — _${im.caption}_` : ''}\n`;
-    }
-    function renderSnippet(sn) {
-      const map = { ts: 'typescript', 'c#': 'csharp', 'c++': 'cpp' };
-      const raw = (sn.language || '').toLowerCase();
-      const lang = map[raw] || raw;
-      const header = `\n**${sn.title || 'Code snippet'}**${sn.explanation ? ` — _${sn.explanation}_` : ''}\n\n`;
-      return `${header}\`\`\`${lang}\n${sn.code || ''}\n\`\`\`\n`;
-    }
+const renderChart = (ch) => {
+  const alt = (ch.alt || ch.title || ch.kind || 'Chart').replace(/\|/g, '-');
+  const inlineSvg =
+    typeof ch.svg === 'string' && ch.svg.trim() ? svgToDataUrl(ch.svg) : '';
+  const url = typeof ch.url === 'string' && ch.url.trim() ? ch.url : inlineSvg;
+
+  if (url) {
+    const title =
+      ch.title || (ch.kind ? ch.kind[0].toUpperCase() + ch.kind.slice(1) : 'Chart');
+    return `\n**${title}**${ch.caption ? ` — _${ch.caption}_` : ''}\n\n![${alt}](${url})\n`;
+  }
+  return `\n**${ch.title || 'Chart'}**${ch.caption ? ` — _${ch.caption}_` : ''}\n`;
+};
+
+const renderImage = (im) => {
+  const alt = (im.alt || im.title || 'Illustration').replace(/\|/g, '-');
+  if (im.url)
+    return `\n**${im.title || 'Illustration'}**${im.caption ? ` — _${im.caption}_` : ''}\n\n![${alt}](${im.url})\n`;
+  return `\n**${im.title || 'Illustration'}**${im.caption ? ` — _${im.caption}_` : ''}\n`;
+};
+
+const renderSnippet = (sn) => {
+  const map = { ts: 'typescript', 'c#': 'csharp', 'c++': 'cpp' };
+  const raw = (sn.language || '').toLowerCase();
+  const lang = map[raw] || raw;
+  const header = `\n**${sn.title || 'Code snippet'}**${sn.explanation ? ` — _${sn.explanation}_` : ''}\n\n`;
+  return `${header}\`\`\`${lang}\n${sn.code || ''}\n\`\`\`\n`;
+};
+
 
     const enhanced = lessons.map((L) => {
       let md = String(L.markdown || '').trim();
@@ -1668,10 +1660,7 @@ function normalizeQuizArray(
 
     const t = (q.type || quizType || 'mcq').toLowerCase();
     const id = String(q.id || `q${out.length + 1}`);
-    const rawDisplay = typeof q.display === 'string' ? q.display : undefined;
-    const looksMasked =
-      !!rawDisplay && /_{2,}/.test(rawDisplay.replace(/\s+/g, ''));
-    const display = looksMasked ? undefined : rawDisplay;
+    const display = typeof q.display === 'string' ? q.display : '';
     const prompt = String(q.prompt ?? display ?? '').trim();
     if (!prompt && !display) return;
     const sig = `${t}::${(display || prompt).toLowerCase()}::${(q.topic || '').toLowerCase()}`;
@@ -1694,32 +1683,44 @@ function normalizeQuizArray(
         id,
         type: 'mcq',
         prompt,
-        ...(display ? { display } : {}),
+        display,
         choices,
         answerIndex,
         explanation: q.explanation || '',
       });
     } else {
-      let answer = String(q.answer ?? '').trim();
-      const accept = Array.isArray(q.accept) ? q.accept.map(String) : [];
-      const regex =
-        typeof q.regex === 'string' && q.regex.trim()
-          ? q.regex.trim()
-          : undefined;
-      // If the model gives regex/accept but no canonical answer, fall back to first accept term
-      if (!answer && (accept.length || regex)) answer = accept[0] || '';
-      if (!answer) return;
-      out.push({
-        id,
-        type: 'short',
-        prompt,
-        ...(display ? { display } : {}),
-        answer,
-        accept,
-        regex,
-        explanation: q.explanation || '',
-      });
-    }
+  let answer = String(q.answer ?? '').trim();
+  let accept = Array.isArray(q.accept) ? q.accept.map(String) : [];
+  const regex =
+    typeof q.regex === 'string' && q.regex.trim()
+      ? q.regex.trim()
+      : undefined;
+
+  // If the model gives regex/accept but no canonical answer, fall back to first accept term
+  if (!answer && (accept.length || regex)) answer = accept[0] || '';
+  if (!answer) return;
+
+  // ✅ ensure accept has at least the answer
+  if (!accept.length && answer) {
+    accept.push(answer, answer.toLowerCase());
+  }
+
+  // ✅ APPLY HERE: dedupe accept list
+  accept = Array.from(new Set(accept.map(a => String(a).trim()).filter(Boolean)));
+
+
+  out.push({
+    id,
+    type: 'short',
+    prompt,
+    display,
+    answer,
+    accept,
+    regex: regex || '',
+    explanation: q.explanation || '',
+  });
+}
+
     seen.add(sig);
   };
 
@@ -1787,7 +1788,7 @@ export async function generateQuizService({
       : Math.max(1, desired);
 
   const olHash = sha1(JSON.stringify(outline));
-  const QUIZ_CACHE_REV = 'qrev11'; // bump when prompt/display rules change
+  const QUIZ_CACHE_REV = 'qrev12'; // bump when prompt/display rules change
   const cacheKey = `ai:quiz:${QUIZ_CACHE_REV}:${courseId}:size=${preset.key}:track=${programTrack || ''}:qt=${quizType}:n=${n}:ol=${olHash}`;
   const cached = await cacheGetJSON(cacheKey);
   if (cached?.quiz?.questions?.length) {
@@ -1820,56 +1821,97 @@ export async function generateQuizService({
         (process.env.NODE_ENV === 'production' ? 2 : 3),
     );
 
-    async function genQuizSlice(start, count) {
-      const focus = (outline || []).slice(0, Math.min(6, outline?.length || 0));
+const genQuizSlice = async (start, count) => {
+  const SECTION_RULE =
+    `Section alignment (MANDATORY):\n` +
+    `- Each question MUST be about its assigned section (as given in the plan). Do not drift.\n` +
+    `- Use the matching section title/key points to make the question specific.\n`;
 
-      const system =
-        quizType === 'mcq'
-          ? `Create a multiple-choice quiz as JSON strictly matching the schema.
+     const STYLE_RULE =
+    `Natural question style (MANDATORY):\n` +
+    `- Write like a teacher checking understanding, 1–2 sentences.\n` +
+    `- Avoid meta phrasing like "In this section" / "From the lesson" / quoting the title.\n` +
+    `- Rotate styles across questions: definition-in-context, apply-to-scenario, spot-the-misconception,\n` +
+    `  compare-two-things, small calculation/estimate (if relevant), "what changes if..." counterfactual.\n` +
+    `- If the section is non-quantitative, do NOT force numbers.\n` +
+    `- Keep options (MCQ) parallel in grammar and similar length.\n`;
+
+  // Build Q→Section plan for this slice (works for both mcq + short)
+  const perLessonForPlan = Number(preset?.quizPerLesson || 5);
+  const safeOutline = Array.isArray(outline) ? outline : [];
+  const outlineLen = safeOutline.length || 1;
+
+  const plan = Array.from({ length: count }, (_, j) => {
+    const qIdx = start + j; // 0-based within full quiz
+    const secIdx = Math.min(outlineLen - 1, Math.floor(qIdx / perLessonForPlan));
+    const sec = safeOutline[secIdx] || {};
+    return {
+      qNumber: qIdx + 1, // 1-based question number
+      sectionNumber: secIdx + 1, // 1-based section number
+      title: String(sec.title || ''),
+      keyPoints: Array.isArray(sec.keyPoints) ? sec.keyPoints : [],
+    };
+  });
+
+  const focusText = plan
+    .map(
+      (p) =>
+        `Q${p.qNumber} → Section ${p.sectionNumber}: ${p.title}` +
+        (p.keyPoints.length ? ` — ${p.keyPoints.join('; ')}` : ''),
+    )
+    .join('\n');
+
+  const system =
+    quizType === 'mcq'
+      ? `Create a multiple-choice quiz as JSON strictly matching the schema.
 Always include ALL fields for each question: id, type, prompt, display, choices, answerIndex, explanation (even if some are empty strings).
 Question shape: {"id":"q1","type":"mcq","prompt":"...","display":"(optional)","choices":["A","B","C","D"],"answerIndex":0..3,"explanation":"(optional)"}
 Return {"questions":[...]} (optionally include "quizType":"mcq").
-You MAY also include a top-level "timerSec" integer for the whole quiz by estimating a fair total time (seconds) for the full set, based on difficulty.
+You MUST include a top-level "timerSec" integer for the whole quiz by estimating a fair total time (seconds) for the full set, based on difficulty.
 Rules for prompts (MUST follow):
  - "prompt" MUST be non-empty, specific, and self-contained (no placeholders).
  - Do NOT use generic stems like "Which statement is TRUE..." or "Fill in a key term...".
- - If you put formulas/notation in "display", still provide a clear natural-language "prompt".`
-          : `Create a short-answer quiz as JSON strictly matching the schema.
+ - If you put formulas/notation in "display", still provide a clear natural-language "prompt".
+
+${SECTION_RULE}
+${STYLE_RULE}`
+
+      : `Create a short-answer quiz as JSON strictly matching the schema.
 Always include ALL fields for each question: id, type, prompt, display, answer, accept, regex, explanation (accept can be [], regex can be "").
-Question shape: {"id":"q1","type":"short","prompt":"...","display":"(optional LaTeX or Unicode for chemistry)","answer":"H2O","accept":["water"],"regex":"^(?i)h\\s*2\\s*o$","explanation":"(optional)"}
+Question shape: {"id":"q1","type":"short","prompt":"...","display":"(optional LaTeX or Unicode for chemistry)","answer":"H2O","accept":["water"],"regex":"^\\\\s*h\\\\s*2\\\\s*o\\\\s*$","explanation":"(optional)"}
 Return {"questions":[...]} (optionally include "quizType":"short").
-You MAY also include a top-level "timerSec" integer for the whole quiz by estimating a fair total time (seconds) for the full set, based on difficulty.
+You MUST include a top-level "timerSec" integer for the whole quiz by estimating a fair total time (seconds) for the full set, based on difficulty.
 Rules for prompts (MUST follow):
  - "prompt" MUST be non-empty, specific, and self-contained (no placeholders).
  - Do NOT use generic stems like "Which statement is TRUE..." or "Fill in a key term...".
- - If you put formulas/notation in "display", still provide a clear natural-language "prompt".`;
+ - If you put formulas/notation in "display", still provide a clear natural-language "prompt".
 
-      const user =
-        `Course: ${courseTitle}\n` +
-        (focus.length
-          ? `Focus areas:\n${focus.map((o) => `- ${o.title}: ${(o.keyPoints || []).join(', ')}`).join('\n')}\n`
-          : ``) +
-        `Produce exactly ${count} questions (${quizType.toUpperCase()}). Questions ${start + 1}–${start + count} of ${n}.`;
+${SECTION_RULE}
+${STYLE_RULE}`;
 
-      const json = await withGate('openai:quiz', QUIZ_CONCURRENCY, () =>
-        aiJson({
-          system,
-          user,
-          temperature: 0.18,
-          maxTokens: Math.min(3500, Math.max(800, perQTokens * count + 200)),
-          tries: 2,
-          schema: quizType === 'mcq' ? QUIZ_SCHEMA_MCQ : QUIZ_SCHEMA_SHORT,
-        }),
-      );
 
-      const items = Array.isArray(json?.questions)
-        ? json.questions.slice(0, count)
-        : [];
-      const timerSec = Number.isFinite(Number(json?.timerSec))
-        ? Number(json.timerSec)
-        : null; // <-- capture top-level timer
-      return { items, timerSec };
-    }
+  const user =
+    `Course: ${courseTitle}\n` +
+    `Question-to-section plan (MUST follow):\n${focusText}\n\n` +
+    `Produce exactly ${count} questions (${quizType.toUpperCase()}). Questions ${start + 1}–${start + count} of ${n}.`;
+
+  const json = await withGate('openai:quiz', QUIZ_CONCURRENCY, () =>
+    aiJson({
+      system,
+      user,
+      temperature: quizType === 'mcq' ? 0.28 : 0.35,
+
+      maxTokens: Math.min(3500, Math.max(800, perQTokens * count + 200)),
+      tries: 2,
+      schema: quizType === 'mcq' ? QUIZ_SCHEMA_MCQ : QUIZ_SCHEMA_SHORT,
+    }),
+  );
+
+  const items = Array.isArray(json?.questions) ? json.questions.slice(0, count) : [];
+  const timerSec = Number.isFinite(Number(json?.timerSec)) ? Number(json.timerSec) : null;
+  return { items, timerSec };
+}
+
 
     const all = [];
     let lastAiTimer = null;
@@ -1888,53 +1930,59 @@ Rules for prompts (MUST follow):
       }
     }
 
-    // Normalize/repair and top-up as needed
-    const normalized = normalizeQuizArray(
-      all,
-      n,
-      courseTitle,
-      outline,
-      quizType,
-    );
+    
+// Normalize/repair and top-up as needed (DO THIS FIRST)
+const normalized = normalizeQuizArray(all, n, courseTitle, outline, quizType);
 
-    // Clamp + timer decision
-    const ENV_MIN = Number(process.env.QUIZ_TIMER_MIN_SEC || 120);
-    const ENV_MAX = Number(process.env.QUIZ_TIMER_MAX_SEC || 3600);
-    const forced = Number(process.env.QUIZ_TIMER_FORCE_SEC || 0);
-    const clamp = (v) => Math.max(ENV_MIN, Math.min(ENV_MAX, Math.floor(v)));
+// Metrics AFTER normalize
+const sigOf = (q) =>
+  `${String(q.type || quizType).toLowerCase()}::${String(q.display || q.prompt || '').toLowerCase()}`;
 
-    const aiTimerRaw = Number.isFinite(lastAiTimer) ? lastAiTimer : NaN;
-    let timerSec, timerSource;
-    if (Number.isFinite(forced) && forced > 0) {
-      timerSec = clamp(forced);
-      timerSource = 'force_env';
-    } else if (Number.isFinite(aiTimerRaw) && aiTimerRaw > 0) {
-      timerSec = clamp(aiTimerRaw);
-      timerSource = 'ai_suggested';
-    } else {
-      const computed = fairTimerSec({
-        count: normalized.length,
-        quizType,
-        preset,
-      });
-      timerSec = clamp(computed);
-      timerSource = 'auto_fair';
-    }
+const uniqueAi = new Set(all.map(sigOf)).size;
+const rawCount = all.length;
+const toppedUp = Math.max(0, n - uniqueAi);
+const degraded = all.length === 0 || toppedUp > 0;
 
-    const keptFromAI = Math.min(all.length, normalized.length);
-    const toppedUp = Math.max(0, normalized.length - all.length);
-    const rawCount = all.length;
-    const degraded = rawCount === 0 || normalized.length < rawCount;
+// Clamp + timer decision (NOW normalized exists)
+const ENV_MIN = Number(process.env.QUIZ_TIMER_MIN_SEC || 120);
+const ENV_MAX = Number(process.env.QUIZ_TIMER_MAX_SEC || 3600);
+const forced = Number(process.env.QUIZ_TIMER_FORCE_SEC || 0);
+const clamp = (v) => Math.max(ENV_MIN, Math.min(ENV_MAX, Math.floor(v)));
+
+const aiTimerRaw = Number.isFinite(lastAiTimer) ? lastAiTimer : NaN;
+let timerSec, timerSource;
+
+if (Number.isFinite(forced) && forced > 0) {
+  timerSec = clamp(forced);
+  timerSource = 'force_env';
+} else if (Number.isFinite(aiTimerRaw) && aiTimerRaw > 0) {
+  timerSec = clamp(aiTimerRaw);
+  timerSource = 'ai_suggested';
+} else {
+  const computed = fairTimerSec({
+    count: normalized.length,
+    quizType,
+    preset,
+  });
+  timerSec = clamp(computed);
+  timerSource = 'auto_fair';
+}
+
+const keptFromAI = Math.min(uniqueAi, normalized.length);
+
 
     const quiz = { quizType, questions: normalized, timerSec };
     await cacheSetJSON(cacheKey, { quiz }, REDIS_TTL.quiz);
     dlog('quiz', 'success', {
-      questions: quiz.questions.length,
-      timerSec,
-      keptFromAI,
-      toppedUp,
-      degraded,
-    });
+        questions: quiz.questions.length,
+        timerSec,
+        rawCount,
+        uniqueAi,
+        keptFromAI,
+        toppedUp,
+        degraded,
+      });
+
 
     return {
       status: degraded ? 206 : 200,

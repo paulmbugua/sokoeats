@@ -135,9 +135,11 @@ export async function cacheDeleteByPattern(
         removed += Number(n) || 0;
       } catch {
         const pipe = redis.multi();
-        for (const k of slice) {
-          hasUnlink ? pipe.unlink(k) : pipe.del(k);
-        }
+       for (const k of slice) {
+        if (hasUnlink) pipe.unlink(k);
+        else pipe.del(k);
+      }
+
         const res = await pipe.exec();
         if (Array.isArray(res))
           removed += res.reduce(
@@ -170,8 +172,17 @@ export async function cacheDeleteByPattern(
 
 export async function cacheBustCourse(courseId) {
   const total =
+    // outline keys are still ai:outline:${courseId}...
     (await cacheDeleteByPattern(`ai:outline:${courseId}*`)) +
+
+    // NEW ssml shape: ai:ssml:<rev>:lessons:${courseId}:...
+    (await cacheDeleteByPattern(`ai:ssml:*:lessons:${courseId}:*`)) +
+    // (optional) delete any legacy ssml keys too
     (await cacheDeleteByPattern(`ai:ssml:${courseId}*`)) +
+
+    // NEW quiz shape: ai:quiz:<rev>:${courseId}:...
+    (await cacheDeleteByPattern(`ai:quiz:*:${courseId}:*`)) +
+    // (optional) delete any legacy quiz keys too
     (await cacheDeleteByPattern(`ai:quiz:${courseId}*`));
   dlog('cache', `cacheBustCourse(${courseId}) -> ${total} keys removed`);
   return total;
@@ -669,7 +680,7 @@ export const QUIZ_SCHEMA_MCQ = {
       },
       timerSec: { type: 'integer', minimum: 30 },
     },
-    required: ['quizType', 'questions'],
+     required: ['quizType', 'questions', 'timerSec'],
   },
 };
 
@@ -688,7 +699,7 @@ export const QUIZ_SCHEMA_SHORT = {
       },
       timerSec: { type: 'integer', minimum: 30 },
     },
-    required: ['quizType', 'questions'],
+     required: ['quizType', 'questions', 'timerSec'],
   },
 };
 
