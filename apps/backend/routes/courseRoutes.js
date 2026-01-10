@@ -5,7 +5,7 @@ import { createAiSandboxCourse } from '../controllers/coursesController.js';
 import authUser from '../middleware/authUser.js';
 import anyAuth from '../middleware/anyAuth.js';
 import { normalizeCourseSize } from '../middleware/normalizeCourseSize.js';
-
+import { listMyUnlockedAiCourses } from '../controllers/courseMineController.js';
 // Optional but recommended: protect the AI route specifically
 import { aiLimiterStrict, aiKeyFn } from '../middleware/middleware.js';
 import { inflightLimiter } from '../middleware/inflightLimiter.js';
@@ -27,6 +27,8 @@ router.get('/mine', anyAuth, courseController.getMyCourses);
 
 /** Public tutor-scope by id */
 router.get('/tutor/:id', courseController.getTutorCourses);
+
+router.get('/mine/unlocked-ai', anyAuth, listMyUnlockedAiCourses);
 
 /** Create (protected; normal tutor OR org instructor) */
 router.post('/', anyAuth, courseController.createCourse);

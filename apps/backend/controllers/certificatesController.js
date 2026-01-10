@@ -1247,13 +1247,19 @@ export async function unlockNarrationAccess(req, res) {
       db: client,
     });
 
-    await client.query(
-      `INSERT INTO transactions
-        (user_id, type, amount, description, date, status, currency, payment_method, created_at, updated_at)
-       VALUES
-        ($1, 'Token Deduction', $2, $3, NOW(), 'Completed', 'TOKENS', 'PlatformBalance', NOW(), NOW())`,
-      [userId, NARRATION_UNLOCK_TOKENS, `AI course unlock ${courseId}`],
-    );
+ await client.query(
+  `
+  INSERT INTO enrollments (student_id, course_id, status, started_at, updated_at)
+  VALUES ($1, $2, $3, NOW(), NOW())
+  ON CONFLICT (student_id, course_id)
+  DO UPDATE SET
+    status = EXCLUDED.status,
+    started_at = COALESCE(enrollments.started_at, EXCLUDED.started_at),
+    updated_at = NOW()
+  `,
+  [userId, courseId, 'active']
+);
+
 
     await client.query('COMMIT');
     return res.json({

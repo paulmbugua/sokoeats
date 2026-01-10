@@ -32,6 +32,42 @@ import { getCertificateCtaFromGate } from '@mytutorapp/shared/utils/gateCtaRule'
 // ─────────────────────────────────────────────────────────
 // fmt helpers
 // ─────────────────────────────────────────────────────────
+
+const resolveUnlockCourseId = (course: any): string | null => {
+  const raw =
+    course?.id ??
+    course?.courseId ??
+    course?.course_id ??
+    course?.aiCourseId ??
+    course?.ai_course_id ??
+    null;
+
+  const s = typeof raw === 'string' ? raw.trim() : raw != null ? String(raw).trim() : '';
+  return s ? s : null;
+};
+
+const humanizeUnlockError = (err: any) => {
+  const code =
+    err?.data?.error ||
+    err?.data?.errorCode ||
+    err?.error ||
+    err?.message ||
+    '';
+
+  if (String(code).toUpperCase() === 'UNLOCK_FAILED') {
+    return 'Unlock failed on the server. Please try again. If it keeps happening, sign out/in or contact support.';
+  }
+
+  // If backend sends a nicer message, prefer it
+  return (
+    err?.data?.message ||
+    err?.data?.error ||
+    err?.message ||
+    'Could not unlock full access.'
+  );
+};
+
+
 const fmtDuration = (s: number) => {
   const m = Math.floor(s / 60);
   const sec = s % 60;
@@ -272,10 +308,26 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
 
   // loading overlay (native parity with web)
   const [preparing, setPreparing] = useState(false);
+  const unlockingRef = useRef(false);
+const [unlocking, setUnlocking] = useState(false);
+
+const beginUnlock = () => {
+  if (unlockingRef.current) return false;   // ✅ this is your "if (unlocking) return;"
+  unlockingRef.current = true;
+  setUnlocking(true);
+  return true;
+};
+
+const endUnlock = () => {
+  unlockingRef.current = false;
+  setUnlocking(false);
+};
 
   // player-ready forwarding (once)
   const [innerPlayerReady, setInnerPlayerReady] = useState(false);
   const forwardedReadyRef = useRef(false);
+
+  
 
   const {
     attempt,
@@ -647,59 +699,44 @@ const isAnonGate = useMemo(() => !isLoggedIn, [isLoggedIn]);
   }, [api, course?.id, downUrl, isOrgFlowFlag]);
 
 const debitAndUnlock = useCallback(async () => {
-  if (debitInFlightRef.current) {
-    certLog('[cert][debitAndUnlock] blocked: already in-flight');
-    return;
-  }
 
+  if (unlockingRef.current || debitInFlightRef.current) return;
+  
   debitInFlightRef.current = true;
+  setUnlocking(true);
+
   let keepAwaitingTopUp = false;
 
-  // ✅ start log
+  const courseId = resolveUnlockCourseId(course);
+
   certLog('[cert][debitAndUnlock] start', {
-    courseId: course?.id ?? null,
+    backendUrl,
+    courseId,
+    tokenPresent: Boolean(token),
     tokens: Number(tokens) || 0,
   });
 
   try {
-    const courseId = course?.id;
     if (!courseId) {
       throw new Error('Missing course id for unlock.');
     }
 
-    const res = await fetch(`${backendUrl}/api/certificates/unlock`, {
+    // ✅ Use the same api() helper as status calls (consistent headers + error shape)
+    const payload = await api<any>(`/api/certificates/unlock`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
       body: JSON.stringify({ courseId }),
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      if (
-        res.status === 402 ||
-        /insufficient/i.test(String((data as any)?.error || ''))
-      ) {
-        awaitingTopUpRef.current = true;
-        setPaymentOpen(true);
-        keepAwaitingTopUp = true;
-        return;
-      }
-      const message = (data as any)?.error || 'Could not unlock full access.';
-      throw new Error(message);
-    }
-
-    const payload = await res.json().catch(() => ({}));
-    console.info('[cert unlock] response', payload);
+    certLog('[cert unlock] response', payload);
 
     const debited = Number(payload?.debited ?? 0) || 0;
     const balance = Number(payload?.tokens ?? 0);
     const alreadyUnlocked = payload?.alreadyUnlocked === true || debited === 0;
+
     const unlockMsg = alreadyUnlocked
       ? `✅ Course unlocked — no tokens deducted (already unlocked). Balance: ${balance} tokens.`
       : `✅ Course unlocked — ${debited || CERT_COST_TOKENS} tokens deducted. Balance: ${balance} tokens.`;
+
     setPurchaseNotice(unlockMsg);
 
     // refresh wallet + entitlement status (best-effort)
@@ -711,66 +748,70 @@ const debitAndUnlock = useCallback(async () => {
       await checkPaymentStatus();
     } catch {}
 
-    // ✅ post-refresh status log (requested)
-    certLog('[cert][debitAndUnlock] post-refresh status', {
-      paymentOkAfter: true,
-    });
-
-    // 3) mark paid + unlock narration (main effect of pre-purchase)
+    // mark paid + unlock narration
     setPaymentOk(true);
     setCertPaid(true);
     setForceUnlock(true);
     setUnlockReady(true);
 
-    // Close payment + go back to the exact UI state they were in
+    // close payment
     setPaymentOpen(false);
 
+    // restore exact UI state from snapshot
     try {
       await restorePrePurchaseState();
     } catch {}
 
     Alert.alert('Course unlocked', unlockMsg);
-  } catch (e: any) {
-    console.error('[cert unlock] failed', e);
-    Alert.alert('Unlock failed', e?.message || 'Could not unlock full access.');
-  } finally {
-    // ✅ finally log (requested)
-    certLog('[cert][debitAndUnlock] finally', {
-      debitInFlight: debitInFlightRef.current,
-      awaitingTopUp: awaitingTopUpRef.current,
+  } catch (err: any) {
+    // If api() threw, it should have err.status + err.data
+    const status = err?.status;
+    const data = err?.data;
+
+    certErr('[cert unlock] failed', {
+      status,
+      data,
+      message: err?.message,
     });
 
+    const rawMsg = String(data?.error || err?.message || '');
+
+    if (status === 402 || /insufficient/i.test(rawMsg)) {
+      awaitingTopUpRef.current = true;
+      keepAwaitingTopUp = true;
+      setPaymentOpen(true);
+      return;
+    }
+
+    Alert.alert('Unlock failed', humanizeUnlockError(err));
+  } finally {
     debitInFlightRef.current = false;
     awaitingTopUpRef.current = keepAwaitingTopUp;
+
+    setUnlocking(false);
+
+    certLog('[cert][debitAndUnlock] finally', {
+      awaitingTopUp: awaitingTopUpRef.current,
+      unlocking: false,
+    });
   }
 }, [
-  course?.id,
+  api,
   backendUrl,
   token,
   tokens,
+  course,
   refreshUserDetails,
   checkPaymentStatus,
   restorePrePurchaseState,
   setPaymentOpen,
-  setPaymentOk,
-  setCertPaid,
-  setPurchaseNotice,
-  setForceUnlock,
 ]);
 
 
-  const handleBuyCertificate = useCallback(async () => {
+const handleBuyCertificate = useCallback(async () => {
   const pressId = ++pressSeqRef.current;
 
-  certLog('[cert][handleBuyCertificate] PRESS', {
-    pressId,
-    tokenPresent: Boolean(token),
-    debitInFlight: debitInFlightRef.current,
-    tokens: Number(tokens) || 0,
-    cost: CERT_COST_TOKENS,
-    paymentOpen,
-  });
-
+  // auth first (keep your current logs)
   let authed = false;
   try {
     authed = requireAuth('buy_certificate', 'Please sign in to unlock full access.');
@@ -778,45 +819,34 @@ const debitAndUnlock = useCallback(async () => {
     certErr('[cert][handleBuyCertificate] requireAuth threw', { pressId, e });
     throw e;
   }
-
-  certLog('[cert][handleBuyCertificate] requireAuth ->', { pressId, authed });
   if (!authed) return;
 
-  if (debitInFlightRef.current) {
-    certWarn('[cert][handleBuyCertificate] blocked: debit already in flight', { pressId });
-    return;
-  }
+  // ✅ HARD GUARD (this is where it belongs)
+  if (unlockingRef.current || debitInFlightRef.current) return;
 
-  // snapshot
-  try {
-    const snap = snapshotPrePurchaseState();
-    certLog('[cert][handleBuyCertificate] snapshot', { pressId, snap });
-  } catch (e) {
-    certErr('[cert][handleBuyCertificate] snapshot failed', { pressId, e });
-  }
+  // snapshot stays the same
+  snapshotPrePurchaseState();
 
   const bal = Number(tokens) || 0;
 
-  // 1) Not enough tokens => open payment (doesn't need SKUs)
   if (bal < CERT_COST_TOKENS) {
-    certLog('[cert][handleBuyCertificate] insufficient tokens -> open payment', {
-      pressId,
-      bal,
-      need: CERT_COST_TOKENS,
-    });
     awaitingTopUpRef.current = true;
     setPaymentOpen(true);
     return;
   }
 
-  // 2) Enough tokens => debit now
-  certLog('[cert][handleBuyCertificate] proceeding to debitAndUnlock', { pressId });
-  await debitAndUnlock();
+  // ✅ mark as unlocking BEFORE awaiting anything
+  if (!beginUnlock()) return;
+
+  try {
+    await debitAndUnlock();
+  } finally {
+    endUnlock(); // ✅ always reset UI even if unlock opens payment / errors
+  }
 }, [
   requireAuth,
   snapshotPrePurchaseState,
   tokens,
-  paymentOpen,
   debitAndUnlock,
   setPaymentOpen,
 ]);
@@ -824,11 +854,12 @@ const debitAndUnlock = useCallback(async () => {
 
 
   // Capture state when the gate is shown or the payment drawer opens
-  useEffect(() => {
-    if (certCta.show && !prePurchaseState) {
-      snapshotPrePurchaseState();
-    }
-  }, [certCta.show, prePurchaseState, snapshotPrePurchaseState]);
+ useEffect(() => {
+  if (showNarrationExhaustedBanner && !prePurchaseState) {
+    snapshotPrePurchaseState();
+  }
+}, [showNarrationExhaustedBanner, prePurchaseState, snapshotPrePurchaseState]);
+
 
   useEffect(() => {
     if (paymentOpen && !prePurchaseState) {
@@ -1541,24 +1572,24 @@ useEffect(() => {
         </Text>
 
         <View style={tw`mt-3 flex-row flex-wrap items-center gap-2`}>
-          <Pressable
-            onPress={() => {
-              if (debitInFlightRef.current) return;
-              handleBuyCertificate();
-            }}
-            hitSlop={10}
-            style={({ pressed }) =>
-              tw.style(
-                'px-4 py-2 rounded-xl bg-indigo-600',
-                pressed ? 'opacity-80' : '',
-                debitInFlightRef.current ? 'opacity-60' : ''
-              )
-            }
-          >
-            <Text style={tw`text-white font-semibold`}>
-              {debitInFlightRef.current ? 'Processing…' : 'Unlock full access (20 tokens)'}
-            </Text>
-          </Pressable>
+<Pressable
+  onPress={() => {
+    if (unlockingRef.current || debitInFlightRef.current) return;
+    handleBuyCertificate();
+  }}
+  disabled={unlocking || debitInFlightRef.current}
+  style={({ pressed }) =>
+    tw.style(
+      'px-4 py-2 rounded-xl bg-indigo-600',
+      pressed ? 'opacity-80' : '',
+      (unlocking || debitInFlightRef.current) ? 'opacity-60' : ''
+    )
+  }
+>
+  <Text style={tw`text-white font-semibold`}>
+    {(unlocking || debitInFlightRef.current) ? 'Processing…' : 'Unlock full access (20 tokens)'}
+  </Text>
+</Pressable>
 
           <Text style={tw`text-amber-900 dark:text-amber-200 text-[11px]`}>≈ USD 20 • one-time unlock</Text>
         </View>

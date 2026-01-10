@@ -18,55 +18,58 @@ export async function purchaseAiCourseAccess(req, res) {
   try {
     await client.query('BEGIN');
 
-    // If already purchased, return quickly (idempotent)
-    const existing = await getCertificateEntitlement(userId, courseId);
+    // IMPORTANT: use client here so it’s consistent with the transaction
+    const existing = await getCertificateEntitlement(userId, courseId, client);
     if (existing) {
-      // TODO: also return current token balance if you want
+      // Optional but good: ensure enrollment exists even for already-owned
+      await client.query(
+  `
+  INSERT INTO enrollments (student_id, course_id, status, started_at, updated_at)
+  VALUES ($1, $2, $3, NOW(), NOW())
+  ON CONFLICT (student_id, course_id)
+  DO UPDATE SET
+    status = EXCLUDED.status,
+    started_at = COALESCE(enrollments.started_at, EXCLUDED.started_at),
+    updated_at = NOW()
+  `,
+  [userId, courseId, 'active']
+);
+
+
       await client.query('COMMIT');
       return res.json({ ok: true, alreadyOwned: true, entitlement: existing });
     }
 
-    // ✅ Debit tokens (YOU MUST ADAPT THIS PART to your actual schema)
-    // Option A (common): profiles has tokens column keyed by profile uuid
-    // Option B: separate wallet table
+    // 1) debit tokens here (FOR UPDATE / tokens >= cost)
 
-    // Example pattern (replace with your real table/column):
-    // const debit = await client.query(
-    //   `UPDATE profiles
-    //       SET tokens = tokens - $2
-    //     WHERE id = (SELECT id FROM profiles WHERE user_id = $1 LIMIT 1)
-    //       AND tokens >= $2
-    //     RETURNING tokens;`,
-    //   [userId, COST_TOKENS]
-    // );
-    // if (!debit.rowCount) {
-    //   await client.query('ROLLBACK');
-    //   return res.status(402).json({ error: 'INSUFFICIENT_TOKENS', cost: COST_TOKENS });
-    // }
-    // const tokensLeft = debit.rows[0].tokens;
-
-    // ✅ Upsert entitlement (mark purchased)
-    // NOTE: your helper currently uses pool internally; for strict atomicity,
-    // tweak it to accept `db` (client) — see section below.
+    // 2) create entitlement
     const entitlement = await upsertAiCertificateEntitlement({
       userId,
       courseId,
       maxLessons: MAX_LESSONS,
       courseSource: 'catalog',
-      // db: client,  <-- after you add support
+      db: client,
     });
+
+    // 3) ✅ upsert enrollment HERE
+    await client.query(
+  `
+  INSERT INTO enrollments (student_id, course_id, status, started_at, updated_at)
+  VALUES ($1, $2, $3, NOW(), NOW())
+  ON CONFLICT (student_id, course_id)
+  DO UPDATE SET
+    status = EXCLUDED.status,
+    started_at = COALESCE(enrollments.started_at, EXCLUDED.started_at),
+    updated_at = NOW()
+  `,
+  [userId, courseId, 'active']
+);
+
 
     await client.query('COMMIT');
-
-    return res.json({
-      ok: true,
-      cost_tokens: COST_TOKENS,
-      entitlement,
-      // tokens: tokensLeft,
-    });
+    return res.json({ ok: true, cost_tokens: COST_TOKENS, entitlement });
   } catch (e) {
     await client.query('ROLLBACK');
-    console.error('[purchaseAiCourseAccess] failed', e);
     return res.status(500).json({ error: 'PURCHASE_FAILED' });
   } finally {
     client.release();

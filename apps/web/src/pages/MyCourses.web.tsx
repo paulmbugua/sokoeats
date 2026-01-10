@@ -316,6 +316,131 @@ const MyCourses: React.FC = () => {
   const apiBase = useMemo(() => (backendUrl || '').replace(/\/+$/, ''), [backendUrl]);
   const api = useMemo(() => makeApiUrl(apiBase), [apiBase]);
 
+  const [unlockedAi, setUnlockedAi] = useState<any[]>([]);
+const [unlockedAiLoading, setUnlockedAiLoading] = useState(false);
+const [unlockedAiErr, setUnlockedAiErr] = useState<string | null>(null);
+
+const [unlockedAiDbg, setUnlockedAiDbg] = useState<{
+  ranAt?: string;
+  url?: string;
+  phase?: string;
+  status?: number;
+  preview?: string;
+  error?: string;
+}>({});
+
+useEffect(() => {
+  if (!backendUrl || !token) {
+    setUnlockedAi([]);
+    setUnlockedAiErr(null);
+    setUnlockedAiLoading(false);
+    setUnlockedAiDbg({
+      ranAt: new Date().toISOString(),
+      phase: 'SKIP',
+      error: `backendUrl=${!!backendUrl}, token=${!!token}`,
+    });
+    return;
+  }
+
+  let cancelled = false;
+
+  (async () => {
+    setUnlockedAiLoading(true);
+    setUnlockedAiErr(null);
+
+    const url = api('/courses/mine/unlocked-ai');
+    setUnlockedAiDbg({
+      ranAt: new Date().toISOString(),
+      url,
+      phase: 'REQUEST',
+    });
+
+    try {
+      const r = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const text = await r.clone().text().catch(() => '');
+      setUnlockedAiDbg({
+        ranAt: new Date().toISOString(),
+        url,
+        phase: 'RESPONSE',
+        status: r.status,
+        preview: text.slice(0, 400),
+      });
+
+      if (!r.ok) throw new Error(text || `HTTP ${r.status}`);
+
+      const j = await r.json().catch(() => ({}));
+      const items = Array.isArray((j as any)?.items) ? (j as any).items : toArray<any>(j);
+
+      if (!cancelled) setUnlockedAi(items);
+    } catch (e: any) {
+      const msg = e?.message || String(e) || 'Failed to load';
+      if (!cancelled) setUnlockedAiErr(msg);
+      setUnlockedAiDbg((prev) => ({
+        ...prev,
+        ranAt: new Date().toISOString(),
+        phase: 'ERROR',
+        error: msg,
+      }));
+    } finally {
+      if (!cancelled) setUnlockedAiLoading(false);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [api, token, backendUrl]);
+
+
+
+useEffect(() => {
+  if (!backendUrl || !token) {
+    setUnlockedAi([]);
+    setUnlockedAiErr(null);
+    setUnlockedAiLoading(false);
+    return;
+  }
+
+  let cancelled = false;
+
+  (async () => {
+    setUnlockedAiLoading(true);
+    setUnlockedAiErr(null);
+
+    try {
+      const url = api('/courses/mine/unlocked-ai');
+      // optional but very useful for debugging:
+      // console.log('[unlocked-ai] GET', url);
+
+      const r = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      console.log('[unlocked-ai] status', r.status);
+console.log('[unlocked-ai] text', await r.clone().text());
+
+      if (!r.ok) throw new Error((await r.text().catch(() => '')) || 'Failed to load');
+
+      const j = await r.json().catch(() => ({}));
+      const items = Array.isArray((j as any)?.items) ? (j as any).items : toArray<any>(j);
+
+      if (!cancelled) setUnlockedAi(items);
+    } catch (e: any) {
+      if (!cancelled) setUnlockedAiErr(e?.message || 'Failed to load');
+    } finally {
+      if (!cancelled) setUnlockedAiLoading(false);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [api, token, backendUrl]);
+
+
   const fetchTutorNamesByUserIds = useCallback(
     async (ids: string[]): Promise<Record<string, string>> => {
       if (!ids.length) return {};
@@ -527,6 +652,8 @@ const MyCourses: React.FC = () => {
     [oerCourses]
   );
 
+
+
   /* Fetch OER video collections */
   const [oerVideoCols, setOerVideoCols] = useState<OerCollection[]>([]);
   const [loadingVCols, setLoadingVCols] = useState(false);
@@ -600,6 +727,12 @@ const MyCourses: React.FC = () => {
                   Access your learning library or discover structured courses to level up.
                 </p>
               </div>
+              <div className="mt-2 text-[11px] px-2 py-1 rounded-lg bg-[#e7edf4] dark:bg-[#172534] inline-flex gap-2">
+  <span>backendUrl: <b>{backendUrl ? 'OK' : 'MISSING'}</b></span>
+  <span>token: <b>{token ? 'OK' : 'MISSING'}</b></span>
+  <span>profile.id: <b>{profile?.id ?? '—'}</b></span>
+</div>
+
 
               <div
                 role="tablist"
@@ -774,6 +907,97 @@ const MyCourses: React.FC = () => {
                     </p>
                   </div>
                 </div>
+
+                <div id="unlocked-ai" className="px-3 sm:px-4 mt-3">
+  <div className="flex items-center justify-between gap-2">
+    <h3 className="text-base font-bold">🧪 My AI Sandbox (Unlocked)</h3>
+    <span className="text-xs text-[#49739c] dark:text-darkTextSecondary">
+      {unlockedAiLoading ? 'Loading…' : `${unlockedAi.length} course${unlockedAi.length === 1 ? '' : 's'}`}
+    </span>
+  </div>
+  <div className="mt-2 text-[11px] rounded-xl bg-[#e7edf4] dark:bg-[#172534] p-2">
+  <div className="font-bold">unlocked-ai debug</div>
+  <div>phase: {unlockedAiDbg.phase ?? '—'}</div>
+  <div>ranAt: {unlockedAiDbg.ranAt ?? '—'}</div>
+  <div>url: {unlockedAiDbg.url ?? '—'}</div>
+  <div>status: {String(unlockedAiDbg.status ?? '—')}</div>
+  {unlockedAiDbg.error ? <div className="text-red-700">error: {unlockedAiDbg.error}</div> : null}
+  <div className="mt-1 whitespace-pre-wrap break-words opacity-80">
+    {unlockedAiDbg.preview ?? '—'}
+  </div>
+</div>
+
+
+  {unlockedAiErr && !unlockedAiLoading && (
+    <div className="mt-2 text-sm text-red-600">{unlockedAiErr}</div>
+  )}
+
+  {unlockedAiLoading && (
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden">
+          <div className="aspect-video bg-gray-200/70 dark:bg:white/5 animate-pulse" />
+          <div className="p-3">
+            <div className="h-4 w-2/3 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+            <div className="mt-2 h-3 w-1/2 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+
+  {!unlockedAiLoading && !unlockedAiErr && unlockedAi.length === 0 && (
+    <div className="mt-2 text-xs text-[#49739c] dark:text-darkTextSecondary">
+      Unlock any AI Sandbox course and it will live here forever — ready to continue anytime.
+    </div>
+  )}
+
+  {!unlockedAiLoading && unlockedAi.length > 0 && (
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+      {unlockedAi.map((c: any) => {
+        const cid = String(c.id);
+        return (
+          <div
+            key={cid}
+            className="group rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden flex flex-col"
+          >
+            <CourseHero course={c} backendUrl={backendUrl} />
+
+            <div className="p-3 sm:p-4 flex-1 flex flex-col">
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-semibold leading-snug line-clamp-2">{c.title}</div>
+                <span className="text-[11px] rounded-full px-2 py-0.5 bg-[#e7edf4] dark:bg-[#172534]">
+                  AI
+                </span>
+              </div>
+
+              <div className="mt-1 text-xs text-[#49739c] dark:text-darkTextSecondary">
+                {c.subject ?? '—'} {c.level ? `• ${c.level}` : ''}
+              </div>
+
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => navigate(`/progress/${cid}`)}
+                  className="flex-1 h-9 rounded-xl bg-[#3d99f5] text-white text-xs font-semibold hover:brightness-110"
+                >
+                  Continue
+                </button>
+
+                <button
+                  onClick={() => navigate(`/courses/${cid}`)}
+                  className="h-9 px-3 rounded-xl bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-xs font-semibold"
+                >
+                  Details
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  )}
+</div>
+
 
                 {/* OER Books */}
                 <div className="px-3 sm:px-4 mt-4">

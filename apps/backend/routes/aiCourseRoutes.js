@@ -12,20 +12,18 @@ import {
 } from '../controllers/aiCourseController.js';
 
 import optionalAuth from '../middleware/optionalAuth.js';
-import requireAuth from '../middleware/auth.js'; // your existing requireAuth
-import { purchaseAiCourseAccess } from '../controllers/aiCoursePurchaseController.js';
+import requireAuth from '../middleware/auth.js';
 import requireAuthWhenAssignment from '../middleware/requireAuthWhenAssignment.js';
 import enforceAssignmentKnobs from '../middleware/enforceAssignmentKnobs.js';
 import { enforceAiCourseAccess } from '../middleware/enforceAiCourseAccess.js';
+
+// (optional) alias purchase route to existing unlock handler:
+import { unlockNarrationAccess } from '../controllers/certificatesController.js';
 
 const router = express.Router();
 
 router.get('/courses/top', listTopCourses);
 
-/**
- * Self-serve: optional auth (so req.user exists if token supplied)
- * Assignment flow: still enforces auth + org membership + locked knobs
- */
 router.post(
   '/outline',
   optionalAuth,
@@ -39,6 +37,7 @@ router.post(
   optionalAuth,
   requireAuthWhenAssignment,
   enforceAssignmentKnobs,
+  enforceAiCourseAccess,
   generateLessonSSML,
 );
 
@@ -55,35 +54,20 @@ router.post(
   optionalAuth,
   requireAuthWhenAssignment,
   enforceAssignmentKnobs,
+  enforceAiCourseAccess,
   generateCoursePackage,
 );
 
-
-router.post('/lesson-ssml',
-  optionalAuth,
-  requireAuthWhenAssignment,
-  enforceAssignmentKnobs,
-  enforceAiCourseAccess,
-  generateLessonSSML
-);
-
-router.post('/course-package',
-  optionalAuth,
-  requireAuthWhenAssignment,
-  enforceAssignmentKnobs,
-  enforceAiCourseAccess,
-  generateCoursePackage
-);
-
-/**
- * 🔒 Grade should be auth-required (even for self-serve)
- * (Still allow assignment knobs enforcement when assignmentId is present)
- */
+// 🔒 Grade should remain auth-required
 router.post('/grade', requireAuth, enforceAssignmentKnobs, gradeQuiz);
-router.post('/courses/:courseId/purchase', requireAuth, purchaseAiCourseAccess);
-/**
- * 🔒 Cache clears: recommend locking
- */
+
+// ✅ Optional backwards-compatible alias (no new controller):
+router.post('/courses/:courseId/purchase', requireAuth, (req, res) => {
+  req.body = { ...(req.body || {}), courseId: req.params.courseId };
+  return unlockNarrationAccess(req, res);
+});
+
+// 🔒 Cache clears
 router.post('/cache/clear-course', requireAuth, clearCourseCache);
 router.post('/cache/clear-top-courses', requireAuth, clearTopCoursesCache);
 
