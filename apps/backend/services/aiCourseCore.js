@@ -1115,22 +1115,24 @@ export async function aiJson({
   schema,
 }) {
   let lastErr;
+  let localMax = maxTokens;
+
   for (let i = 0; i < tries; i++) {
     const t0 = Date.now();
+
+    // Track finish/size for logging outside the request
+    let finishReason = '';
+    let charLen = 0;
+
     try {
       dlog(
         'openai',
-        `request try=${i + 1} temp=${temperature} maxTokens=${maxTokens || 'default'} schema=${!!schema}`,
+        `request try=${i + 1} temp=${temperature} maxTokens=${localMax ?? 'default'} schema=${!!schema}`,
       );
 
-      const content = await withTimeout(async (signal) => {
+      const txt = await withTimeout(async (signal) => {
         let responseFormat;
-        if (
-          schema &&
-          typeof schema === 'object' &&
-          schema.name &&
-          schema.schema
-        ) {
+        if (schema && typeof schema === 'object' && schema.name && schema.schema) {
           responseFormat = {
             type: 'json_schema',
             json_schema: {
@@ -1157,24 +1159,40 @@ export async function aiJson({
               { role: 'user', content: user },
             ],
             response_format: responseFormat,
-            ...(maxTokens ? { max_tokens: maxTokens } : {}),
+            ...(localMax ? { max_tokens: localMax } : {}),
           },
           { signal },
         );
 
-        return r.choices?.[0]?.message?.content || '{}';
+        const choice = r.choices?.[0] || {};
+        finishReason = choice.finish_reason || '';
+        const out = choice.message?.content || '{}';
+        charLen = out.length;
+
+        // If truncated, bump output budget for next try
+        if (finishReason === 'length') {
+          localMax = Math.min(Math.floor((localMax || 1200) * 1.6), 6000);
+        }
+
+        return out;
       }, OPENAI_REQUEST_TIMEOUT_MS);
 
       const ms = Date.now() - t0;
-      dlog('openai', `response ok in ${ms}ms`);
+      dlog('openai', `response ok in ${ms}ms finish_reason=${finishReason} chars=${charLen}`);
 
       try {
-        return JSON.parse(content);
+        return JSON.parse(txt);
       } catch (e) {
         console.warn(`[${LOG_NS}:openai] JSON.parse failed`, {
           message: String(e?.message || e),
-          snippet: String(content || '').slice(0, 1000), // careful: truncate
+          finish_reason: finishReason,
+          chars: charLen,
+          snippet: String(txt || '').slice(0, 1000),
         });
+
+        // If parse failed, also bump (often truncation even if finish_reason wasn't "length")
+        localMax = Math.min(Math.floor((localMax || 1200) * 1.4), 6000);
+
         if (i === tries - 1) return {};
       }
     } catch (e) {
@@ -1190,26 +1208,27 @@ export async function aiJson({
         retryAfterSec: c.retryAfterSec,
         msg: e?.message,
       });
+
       if (
         i < tries - 1 &&
-        (c.kind === 'rate_limit' ||
-          c.kind === 'network' ||
-          c.kind === 'timeout')
+        (c.kind === 'rate_limit' || c.kind === 'network' || c.kind === 'timeout')
       ) {
         const backoffMs = Math.min(
           8000,
           Math.max(2000, (c.retryAfterSec || 1) * 1000),
         );
-
         dlog('openai', `retrying after ${backoffMs}ms`);
         await new Promise((r) => setTimeout(r, backoffMs));
         continue;
       }
+
       throw e;
     }
   }
+
   throw lastErr || new Error('OpenAI request failed');
 }
+
 
 /* ─────────────────────────────────────────────────────────
  * Teachability scoring + lesson signals

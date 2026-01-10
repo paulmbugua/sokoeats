@@ -201,343 +201,137 @@ export function makeFallbackOutline(title = 'Your Topic') {
   }));
 }
 
-const STOPWORDS = new Set([
-  'a',
-  'an',
-  'and',
-  'are',
-  'as',
-  'at',
-  'be',
-  'but',
-  'by',
-  'for',
-  'from',
-  'has',
-  'have',
-  'he',
-  'her',
-  'his',
-  'how',
-  'i',
-  'if',
-  'in',
-  'into',
-  'is',
-  'it',
-  'its',
-  'just',
-  'let',
-  'like',
-  'many',
-  'may',
-  'more',
-  'most',
-  'not',
-  'of',
-  'on',
-  'one',
-  'or',
-  'our',
-  'out',
-  'over',
-  'she',
-  'so',
-  'some',
-  'such',
-  'than',
-  'that',
-  'the',
-  'their',
-  'them',
-  'then',
-  'there',
-  'these',
-  'they',
-  'this',
-  'those',
-  'to',
-  'under',
-  'up',
-  'use',
-  'used',
-  'uses',
-  'using',
-  'we',
-  'were',
-  'what',
-  'when',
-  'where',
-  'which',
-  'who',
-  'why',
-  'will',
-  'with',
-  'you',
-  'your',
-]);
-
-function wordsOf(text) {
-  const words =
-    String(text || '')
-      .toLowerCase()
-      .replace(/['’]/g, '')
-      .match(/\b[a-z0-9][a-z0-9-]{2,}\b/g) || [];
-  return words.filter((w) => !STOPWORDS.has(w));
-}
-
-function uniq(items) {
-  return Array.from(new Set(items.filter(Boolean)));
-}
-
-function seededInt(seed, mod = 0) {
-  const h = sha1(String(seed)).slice(0, 12);
-  const n = parseInt(h, 16);
-  if (!mod || !Number.isFinite(mod) || mod <= 0) return n;
-  return n % mod;
-}
-
-function seededPick(items, seed) {
-  if (!Array.isArray(items) || !items.length) return undefined;
-  return items[seededInt(seed, items.length)];
-}
-
-function seededShuffle(items, seed) {
-  const out = Array.isArray(items) ? items.slice() : [];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = seededInt(`${seed}:${i}`, i + 1);
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
-
-function ensurePunct(text) {
-  const t = String(text || '').trim();
-  if (!t) return '';
-  return /[.!?]$/.test(t) ? t : `${t}.`;
-}
-
-function escRegex(text) {
-  return String(text || '').replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-}
-
-function variantsForAnswer(answer) {
-  const base = String(answer || '').trim();
-  if (!base) return [];
-  const lower = base.toLowerCase();
-  const noPunct = lower.replace(/[^a-z0-9\s-]/g, '').trim();
-  const spaced = noPunct.replace(/[-–—]/g, ' ').replace(/\s+/g, ' ').trim();
-  const hyphen = spaced.replace(/\s+/g, '-');
-  return uniq([base, lower, noPunct, spaced, hyphen]).filter(Boolean);
-}
-
-function buildGlobalKeywordPool(outline) {
-  if (!Array.isArray(outline)) return [];
-  const pool = outline.flatMap((section) => sectionKeywords(section));
-  return uniq(pool).slice(0, 80);
-}
-
-function sectionKeywords(section) {
-  if (!section) return [];
-  const words = wordsOf(section.title || '');
-  const points = Array.isArray(section.keyPoints) ? section.keyPoints : [];
-  points.forEach((p) => words.push(...wordsOf(p)));
-  return uniq(words).slice(0, 20);
-}
-
-function pickKeyTermFromSentence(sentence, fallback = 'concept') {
-  const words = wordsOf(sentence);
-  if (!words.length) return fallback;
-  return words.reduce((best, w) => (w.length > best.length ? w : best), words[0]);
-}
-
-function isAccountingish(courseTitle, outline) {
-  const text = `${courseTitle || ''} ${JSON.stringify(outline || '')}`.toLowerCase();
-  return /account|ledger|debit|credit|balance\s*sheet|income\s*statement|gaap|ifrs/.test(
-    text,
-  );
-}
-
-function makeAccountingClassifyMcq(topic, seed) {
-  const entries = [
-    { term: 'Cash', category: 'Asset' },
-    { term: 'Accounts payable', category: 'Liability' },
-    { term: 'Service revenue', category: 'Revenue' },
-    { term: 'Rent expense', category: 'Expense' },
-    { term: 'Owner capital', category: 'Equity' },
-  ];
-  const pick = seededPick(entries, seed) || entries[0];
-  const allCategories = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'];
-  const distractors = seededShuffle(
-    allCategories.filter((c) => c !== pick.category),
-    `${seed}:dist`,
-  ).slice(0, 3);
-  const categories = seededShuffle(
-    [pick.category, ...distractors],
-    `${seed}:cats`,
-  );
-  return {
-    type: 'mcq',
-    prompt: `In ${topic}, how is “${pick.term}” classified?`,
-    display: '',
-    choices: categories,
-    answerIndex: Math.max(0, categories.indexOf(pick.category)),
-    explanation: `“${pick.term}” is typically recorded as ${pick.category.toLowerCase()}.`,
-  };
-}
-
-function makeSectionFallbackQuestions(
-  courseTitle,
-  section,
-  sectionIndex,
-  count,
-  quizType,
-  globalKeywords,
-  opts = {},
-) {
-  const topic = String(section?.title || courseTitle || 'Topic').trim();
-  const keyPoints = Array.isArray(section?.keyPoints) ? section.keyPoints : [];
-  const sectionKws = sectionKeywords(section);
-  const sectionSet = new Set(sectionKws);
-  const pool = Array.isArray(globalKeywords) ? globalKeywords : [];
-  const accounting = isAccountingish(courseTitle, opts?.outline || []);
-  const fallbackQuestions = [];
-
-  for (let i = 0; i < count; i++) {
-    const seed = `${courseTitle}:${sectionIndex}:${quizType}:${i}`;
-    const kp =
-      keyPoints[i % (keyPoints.length || 1)] ||
-      `Key idea in ${topic} is ${sectionKws[0] || 'a core concept'}.`;
-    const keyTerm = pickKeyTermFromSentence(kp, pickKeyTermFromSentence(topic));
-
-    if (quizType === 'mcq') {
-      if (accounting && i === 0) {
-        fallbackQuestions.push(makeAccountingClassifyMcq(topic, seed));
-        continue;
-      }
-
-      const correct = ensurePunct(kp || `A key idea in ${topic} is ${keyTerm}.`);
-      const distractorTerms = seededShuffle(
-        pool.filter((w) => !sectionSet.has(w)),
-        seed,
-      ).slice(0, 3);
-      const distractors = distractorTerms.map((term) =>
-        ensurePunct(`It mainly focuses on ${term} rather than ${topic}`),
-      );
-      while (distractors.length < 3) {
-        distractors.push(
-          ensurePunct(`It emphasizes a different concept than ${topic}`),
-        );
-      }
-
-      const choices = seededShuffle([correct, ...distractors], `${seed}:c`);
-      const answerIndex = Math.max(0, choices.indexOf(correct));
-      fallbackQuestions.push({
-        type: 'mcq',
-        prompt: `Which statement best matches the key idea about ${keyTerm} in ${topic}?`,
-        display: '',
-        choices,
-        answerIndex,
-        explanation: ensurePunct(`This matches the focus of ${topic}.`),
-      });
-      continue;
-    }
-
-    const displaySource = ensurePunct(
-      kp || `A key idea in ${topic} is ${keyTerm}`,
-    );
-    let display = displaySource.replace(
-      new RegExp(`\\b${escRegex(keyTerm)}\\b`, 'i'),
-      '____',
-    );
-    if (display === displaySource) {
-      display = `____ — ${displaySource}`;
-    }
-    const answer = keyTerm;
-    const accept = variantsForAnswer(answer);
-    const regex = `^\\s*${escRegex(answer).replace(/\s+/g, '\\s+')}\\s*$`;
-    fallbackQuestions.push({
-      type: 'short',
-      prompt: `Complete the missing term about ${topic}.`,
-      display,
-      answer,
-      accept,
-      regex,
-      explanation: ensurePunct(`Key term from ${topic}.`),
-    });
-  }
-
-  return fallbackQuestions;
-}
-
 /* UPDATED: makeFallbackQuiz supports mcq/short */
 export function makeFallbackQuiz(
   title = 'Your Topic',
   outline = [],
   num = 6,
   quizType = 'mcq',
-  opts = {},
 ) {
   const base = outline?.length ? outline : makeFallbackOutline(title);
-  const safeOutline = Array.isArray(base) ? base : [];
-  const outlineLen = safeOutline.length || 1;
-  const perLessonForPlanRaw = Number(opts?.preset?.quizPerLesson || 5);
-  const perLessonForPlan =
-    Number.isFinite(perLessonForPlanRaw) && perLessonForPlanRaw > 0
-      ? perLessonForPlanRaw
-      : 5;
-  const desired = Math.max(1, Number(num) || 1);
-  const wantedPerSection = new Array(outlineLen).fill(0);
+  const L = base.length || 1; // avoid div-by-zero
+  const pick = (i) => base[i % L];
 
-  for (let qIdx = 0; qIdx < desired; qIdx++) {
-    const secIdx = Math.min(
-      outlineLen - 1,
-      Math.floor(qIdx / perLessonForPlan),
-    );
-    wantedPerSection[secIdx] += 1;
-  }
+  if (quizType === 'short') {
+    const stems = [
+      (t) => `In “${t}”, what is the missing key term?`,
+      (t) => `From “${t}”, name the concept masked by the blanks:`,
+      (t) => `Briefly identify the term referenced in “${t}”:`,
+    ];
+const pickMaskable = (text) => {
+  const words =
+    String(text || '').match(/\b[A-Za-z0-9][A-Za-z0-9-]{2,}\b/g) || [];
+  const pref = words.find((w) =>
+    /mole|yield|stoich|balance|equation|ratio|conserv|mass|atom|molar|limiting|excess/i.test(w),
+  );
+  return (pref || words[0] || '').replace(/\.$/, '');
+};
 
-  const globalKeywords = buildGlobalKeywordPool(safeOutline);
-  const questions = [];
+const makeRegex = (answer) => {
+  const esc = String(answer || '')
+    .replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
+    .replace(/[-–—]/g, '[-–—-]')
+    .replace(/\s+/g, '\\s+');
+  return `^\\s*${esc}\\s*$`;
+};
 
-  safeOutline.forEach((section, idx) => {
-    const needed = wantedPerSection[idx] || 0;
-    if (needed <= 0) return;
-    questions.push(
-      ...makeSectionFallbackQuestions(
-        title,
-        section,
-        idx,
-        needed,
-        quizType,
-        globalKeywords,
-        { ...opts, outline: safeOutline },
-      ),
-    );
-  });
+const variants = (ans) => {
+  const base = String(ans || '');
+  const low = base.toLowerCase();
+  const noHy = base.replace(/[-–—]/g, ' ').replace(/\s+/g, ' ').trim();
+  const hy = base.replace(/\s+/g, '-');
+  return Array.from(new Set([base, low, noHy, hy])).filter(Boolean);
+};
 
-  if (questions.length < desired) {
-    const extra = desired - questions.length;
-    for (let i = 0; i < extra; i++) {
-      const secIdx = i % outlineLen;
-      questions.push(
-        ...makeSectionFallbackQuestions(
-          title,
-          safeOutline[secIdx],
-          secIdx,
-          1,
-          quizType,
-          globalKeywords,
-          { ...opts, outline: safeOutline },
-        ),
+
+    const qs = [];
+    for (let i = 0; i < num; i++) {
+      const s = pick(i);
+      const topic = s?.title || title;
+      const kp = s?.keyPoints?.[i % (s?.keyPoints?.length || 1)] || topic;
+      const key = pickMaskable(kp) || pickMaskable(topic) || 'concept';
+
+      // build masked display text from first useful keyPoint
+      const baseDisplay = s?.keyPoints?.[0] || kp || topic;
+      const display = baseDisplay.replace(
+        new RegExp(`\\b${key}\\b`, 'i'),
+        '____',
       );
+
+      const answer = key;
+      const accept = variants(answer);
+      const regex = makeRegex(answer);
+
+      qs.push({
+        id: `q${i + 1}`,
+        type: 'short',
+        prompt: stems[i % stems.length](topic),
+        display,
+        answer,
+        accept,
+        regex,
+        explanation: `Key term from “${topic}”.`,
+      });
     }
+    return qs;
   }
 
-  return questions.slice(0, desired).map((q, i) => ({
-    ...q,
-    id: `q${i + 1}`,
-  }));
+  // MCQ fallback
+
+  const mcqStems = [
+    (t) => `In “${t}”, which statement is correct?`,
+    (t) => `About “${t}”, choose the true claim:`,
+    (t) => `Which fact accurately applies to “${t}”?`,
+  ];
+const shuffle = (arr, seed) => {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    h ^= h >>> 13;
+    h = Math.imul(h, 0x5bd1e995);
+    h ^= h >>> 15;
+    const j = Math.abs(h) % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+
+
+  const qs = [];
+  for (let i = 0; i < num; i++) {
+    const s = pick(i);
+    const topic = s?.title || title;
+    const kp0 = (s?.keyPoints?.[0] || '').replace(/\.$/, '');
+    const kp1 = (s?.keyPoints?.[1] || '').replace(/\.$/, '');
+    const correct = kp0 || `This topic explains a core idea in ${title}.`;
+
+    // 3 distractors tailored to the topic
+    const distractors = [
+      `It describes a concept unrelated to ${topic}.`,
+      `It contradicts standard principles used in ${topic}.`,
+      `It applies to a different unit, not “${topic}”.`,
+    ];
+
+    const choices = shuffle([correct, ...distractors], `${topic}#${i}`);
+    const answerIndex = choices.indexOf(correct);
+
+    qs.push({
+      id: `q${i + 1}`,
+      type: 'mcq',
+      prompt: mcqStems[i % mcqStems.length](topic),
+      display: '', // keep for schema
+      choices,
+      answerIndex: Math.max(0, answerIndex),
+      explanation:
+        kp1 ||
+        `Because this directly reflects the learning goal for “${topic}”.`,
+    });
+  }
+  return qs;
 }
 
 export async function generateOutlineService({
@@ -1858,43 +1652,20 @@ function normalizeQuizArray(
   courseTitle,
   outline,
   quizType = 'mcq',
-  opts = {},
 ) {
-  const safeOutline = Array.isArray(outline) ? outline : [];
-  const outlineLen = safeOutline.length || 1;
-  const perLessonForPlanRaw = Number(opts?.preset?.quizPerLesson || 5);
-  const perLessonForPlan =
-    Number.isFinite(perLessonForPlanRaw) && perLessonForPlanRaw > 0
-      ? perLessonForPlanRaw
-      : 5;
-  const targetCount = Math.max(1, Number(desired) || 1);
-  const wantedPerSection = new Array(outlineLen).fill(0);
-
-  for (let qIdx = 0; qIdx < targetCount; qIdx++) {
-    const secIdx = Math.min(
-      outlineLen - 1,
-      Math.floor(qIdx / perLessonForPlan),
-    );
-    wantedPerSection[secIdx] += 1;
-  }
-
-  const sectionKwSets = safeOutline.map(
-    (section) => new Set(sectionKeywords(section)),
-  );
-  const globalKeywords = buildGlobalKeywordPool(safeOutline);
-
+  const out = [];
   const seen = new Set();
-  const normalized = [];
-  const aiQuestions = [];
-  let droppedInvalid = 0;
-  let droppedDuplicate = 0;
+  const push = (q) => {
+    if (!q) return;
 
-  const normalizeQuestion = (q) => {
-    if (!q) return null;
-    const t = String(q.type || quizType || 'mcq').toLowerCase();
+    const t = (q.type || quizType || 'mcq').toLowerCase();
+    const id = String(q.id || `q${out.length + 1}`);
     const display = typeof q.display === 'string' ? q.display : '';
     const prompt = String(q.prompt ?? display ?? '').trim();
-    if (!prompt && !display) return null;
+    if (!prompt && !display) return;
+    const sig = `${t}::${(display || prompt).toLowerCase()}::${(q.topic || '').toLowerCase()}`;
+
+    if (seen.has(sig)) return;
 
     if (t === 'mcq') {
       let choices = Array.isArray(q.choices) ? q.choices.map(String) : [];
@@ -1908,156 +1679,61 @@ function normalizeQuizArray(
         ? Number(q.answerIndex)
         : 0;
       if (answerIndex < 0 || answerIndex > 3) answerIndex = 0;
-      return {
-        id: String(q.id || `q${normalized.length + 1}`),
+      out.push({
+        id,
         type: 'mcq',
         prompt,
         display,
         choices,
         answerIndex,
         explanation: q.explanation || '',
-      };
-    }
+      });
+    } else {
+  let answer = String(q.answer ?? '').trim();
+  let accept = Array.isArray(q.accept) ? q.accept.map(String) : [];
+  const regex =
+    typeof q.regex === 'string' && q.regex.trim()
+      ? q.regex.trim()
+      : undefined;
 
-    let answer = String(q.answer ?? '').trim();
-    let accept = Array.isArray(q.accept) ? q.accept.map(String) : [];
-    const regex =
-      typeof q.regex === 'string' && q.regex.trim()
-        ? q.regex.trim()
-        : '';
+  // If the model gives regex/accept but no canonical answer, fall back to first accept term
+  if (!answer && (accept.length || regex)) answer = accept[0] || '';
+  if (!answer) return;
 
-    if (!answer && (accept.length || regex)) answer = accept[0] || '';
-    if (!answer) return null;
+  // ✅ ensure accept has at least the answer
+  if (!accept.length && answer) {
+    accept.push(answer, answer.toLowerCase());
+  }
 
-    const variants = variantsForAnswer(answer);
-    accept = uniq([...accept, ...variants]).filter(Boolean);
-    const safeRegex =
-      regex ||
-      `^\\s*${escRegex(answer).replace(/\s+/g, '\\s+')}\\s*$`;
+  // ✅ APPLY HERE: dedupe accept list
+  accept = Array.from(new Set(accept.map(a => String(a).trim()).filter(Boolean)));
 
-    return {
-      id: String(q.id || `q${normalized.length + 1}`),
-      type: 'short',
-      prompt,
-      display,
-      answer,
-      accept,
-      regex: safeRegex,
-      explanation: q.explanation || '',
-    };
-  };
 
-  const pushQuestion = (q, source) => {
-    const norm = normalizeQuestion(q);
-    if (!norm) {
-      if (source === 'ai') droppedInvalid += 1;
-      return false;
-    }
-    const sig = `${norm.type}::${String(norm.display || norm.prompt).toLowerCase()}`;
-    if (seen.has(sig)) {
-      if (source === 'ai') droppedDuplicate += 1;
-      return false;
-    }
+  out.push({
+    id,
+    type: 'short',
+    prompt,
+    display,
+    answer,
+    accept,
+    regex: regex || '',
+    explanation: q.explanation || '',
+  });
+}
+
     seen.add(sig);
-    normalized.push(norm);
-    if (source === 'ai') aiQuestions.push(norm);
-    return true;
   };
 
   if (Array.isArray(questions)) {
-    for (const q of questions) pushQuestion(q, 'ai');
+    for (const q of questions) push(q);
   }
 
-  const uniqueAi = aiQuestions.length;
-  if (normalized.length > targetCount) {
-    normalized.length = targetCount;
-    aiQuestions.length = Math.min(aiQuestions.length, targetCount);
+  if (out.length < desired) {
+    const fb = makeFallbackQuiz(courseTitle, outline, desired, quizType);
+    for (let i = 0; i < fb.length && out.length < desired; i++) push(fb[i]);
   }
 
-  const bucketCounts = new Array(outlineLen).fill(0);
-  aiQuestions.forEach((q, idx) => {
-    const qWords = new Set(
-      wordsOf(`${q.prompt || ''} ${q.display || ''}`),
-    );
-    let bestIdx = Math.min(
-      outlineLen - 1,
-      Math.floor(idx / perLessonForPlan),
-    );
-    let bestScore = 0;
-    for (let i = 0; i < outlineLen; i++) {
-      const kws = sectionKwSets[i];
-      if (!kws.size || !qWords.size) continue;
-      let score = 0;
-      qWords.forEach((w) => {
-        if (kws.has(w)) score += 1;
-      });
-      if (score > bestScore) {
-        bestScore = score;
-        bestIdx = i;
-      }
-    }
-    bucketCounts[bestIdx] += 1;
-  });
-
-  let toppedUp = 0;
-  if (normalized.length < targetCount) {
-    let remaining = targetCount - normalized.length;
-    for (let i = 0; i < outlineLen && remaining > 0; i++) {
-      const needed = Math.max(0, wantedPerSection[i] - bucketCounts[i]);
-      if (!needed) continue;
-      const buffer = Math.min(2, needed);
-      const fallback = makeSectionFallbackQuestions(
-        courseTitle,
-        safeOutline[i],
-        i,
-        needed + buffer,
-        quizType,
-        globalKeywords,
-        { ...opts, outline: safeOutline },
-      );
-      for (const q of fallback) {
-        if (remaining <= 0) break;
-        if (pushQuestion(q, 'fallback')) {
-          toppedUp += 1;
-          remaining -= 1;
-        }
-      }
-    }
-
-    let safety = 0;
-    while (remaining > 0 && safety < outlineLen * 3) {
-      const secIdx = safety % outlineLen;
-      const fallback = makeSectionFallbackQuestions(
-        courseTitle,
-        safeOutline[secIdx],
-        secIdx,
-        1,
-        quizType,
-        globalKeywords,
-        { ...opts, outline: safeOutline },
-      );
-      for (const q of fallback) {
-        if (remaining <= 0) break;
-        if (pushQuestion(q, 'fallback')) {
-          toppedUp += 1;
-          remaining -= 1;
-        }
-      }
-      safety += 1;
-    }
-  }
-
-  const out = normalized.slice(0, targetCount).map((q, i) => ({
-    ...q,
-    id: `q${i + 1}`,
-  }));
-  out._meta = {
-    uniqueAi,
-    keptFromAI: Math.min(uniqueAi, out.length),
-    toppedUp,
-    repaired: droppedInvalid > 0 || droppedDuplicate > 0,
-  };
-  return out;
+  return out.slice(0, desired).map((q, i) => ({ ...q, id: `q${i + 1}` }));
 }
 
 export async function generateQuizService({
@@ -2112,7 +1788,7 @@ export async function generateQuizService({
       : Math.max(1, desired);
 
   const olHash = sha1(JSON.stringify(outline));
-  const QUIZ_CACHE_REV = 'qrev12'; // bump when prompt/display rules change
+  const QUIZ_CACHE_REV = 'qrev13'; // bump when prompt/display rules change
   const cacheKey = `ai:quiz:${QUIZ_CACHE_REV}:${courseId}:size=${preset.key}:track=${programTrack || ''}:qt=${quizType}:n=${n}:ol=${olHash}`;
   const cached = await cacheGetJSON(cacheKey);
   if (cached?.quiz?.questions?.length) {
@@ -2138,8 +1814,8 @@ export async function generateQuizService({
   }
 
   try {
-    const perQTokens = quizType === 'mcq' ? 55 : 65;
-    const CHUNK = n > 24 ? 12 : n;
+    const perQTokens = quizType === 'mcq' ? 180 : 240;
+    const CHUNK = Math.min(Number(process.env.QUIZ_CHUNK_MAX || 12), n);
     const QUIZ_CONCURRENCY = Number(
       process.env.QUIZ_CONCURRENCY ||
         (process.env.NODE_ENV === 'production' ? 2 : 3),
@@ -2160,14 +1836,20 @@ const genQuizSlice = async (start, count) => {
     `- If the section is non-quantitative, do NOT force numbers.\n` +
     `- Keep options (MCQ) parallel in grammar and similar length.\n`;
 
-  // Build Q→Section plan for this slice (works for both mcq + short)
-  const perLessonForPlan = Number(preset?.quizPerLesson || 5);
+ 
   const safeOutline = Array.isArray(outline) ? outline : [];
   const outlineLen = safeOutline.length || 1;
 
+  const sectionIndexForQuestion = (qIdx) => {
+    if (outlineLen <= 1) return 0;
+    // Proportional spread across ALL sections
+    const idx = Math.floor((qIdx * outlineLen) / Math.max(1, n));
+    return Math.max(0, Math.min(outlineLen - 1, idx));
+  };
+
   const plan = Array.from({ length: count }, (_, j) => {
     const qIdx = start + j; // 0-based within full quiz
-    const secIdx = Math.min(outlineLen - 1, Math.floor(qIdx / perLessonForPlan));
+    const secIdx = sectionIndexForQuestion(qIdx);
     const sec = safeOutline[secIdx] || {};
     return {
       qNumber: qIdx + 1, // 1-based question number
@@ -2256,63 +1938,56 @@ ${STYLE_RULE}`;
 
     
 // Normalize/repair and top-up as needed (DO THIS FIRST)
-    const normalized = normalizeQuizArray(
-      all,
-      n,
-      courseTitle,
-      outline,
-      quizType,
-      { preset },
-    );
+const normalized = normalizeQuizArray(all, n, courseTitle, outline, quizType);
 
-    // Metrics AFTER normalize
-    const rawCount = all.length;
-    const meta = normalized?._meta || {};
-    const uniqueAi = Number.isFinite(meta.uniqueAi) ? meta.uniqueAi : 0;
-    const keptFromAI = Number.isFinite(meta.keptFromAI)
-      ? meta.keptFromAI
-      : Math.min(uniqueAi, normalized.length);
-    const toppedUp = Number.isFinite(meta.toppedUp) ? meta.toppedUp : 0;
-    const repaired = Boolean(meta.repaired);
-    const degraded = all.length === 0 || toppedUp > 0 || repaired;
+// Metrics AFTER normalize
+const sigOf = (q) =>
+  `${String(q.type || quizType).toLowerCase()}::${String(q.display || q.prompt || '').toLowerCase()}`;
 
-    // Clamp + timer decision (NOW normalized exists)
-    const ENV_MIN = Number(process.env.QUIZ_TIMER_MIN_SEC || 120);
-    const ENV_MAX = Number(process.env.QUIZ_TIMER_MAX_SEC || 3600);
-    const forced = Number(process.env.QUIZ_TIMER_FORCE_SEC || 0);
-    const clamp = (v) => Math.max(ENV_MIN, Math.min(ENV_MAX, Math.floor(v)));
+const uniqueAi = new Set(all.map(sigOf)).size;
+const rawCount = all.length;
+const toppedUp = Math.max(0, n - uniqueAi);
+const degraded = all.length === 0 || toppedUp > 0;
 
-    const aiTimerRaw = Number.isFinite(lastAiTimer) ? lastAiTimer : NaN;
-    let timerSec, timerSource;
+// Clamp + timer decision (NOW normalized exists)
+const ENV_MIN = Number(process.env.QUIZ_TIMER_MIN_SEC || 120);
+const ENV_MAX = Number(process.env.QUIZ_TIMER_MAX_SEC || 3600);
+const forced = Number(process.env.QUIZ_TIMER_FORCE_SEC || 0);
+const clamp = (v) => Math.max(ENV_MIN, Math.min(ENV_MAX, Math.floor(v)));
 
-    if (Number.isFinite(forced) && forced > 0) {
-      timerSec = clamp(forced);
-      timerSource = 'force_env';
-    } else if (Number.isFinite(aiTimerRaw) && aiTimerRaw > 0) {
-      timerSec = clamp(aiTimerRaw);
-      timerSource = 'ai_suggested';
-    } else {
-      const computed = fairTimerSec({
-        count: normalized.length,
-        quizType,
-        preset,
-      });
-      timerSec = clamp(computed);
-      timerSource = 'auto_fair';
-    }
+const aiTimerRaw = Number.isFinite(lastAiTimer) ? lastAiTimer : NaN;
+let timerSec, timerSource;
+
+if (Number.isFinite(forced) && forced > 0) {
+  timerSec = clamp(forced);
+  timerSource = 'force_env';
+} else {
+  const computed = fairTimerSec({ count: normalized.length, quizType, preset });
+  timerSec = clamp(computed);
+  timerSource = 'auto_fair';
+}
+
+const keptFromAI = Math.min(uniqueAi, normalized.length);
+
 
     const quiz = { quizType, questions: normalized, timerSec };
-    await cacheSetJSON(cacheKey, { quiz }, REDIS_TTL.quiz);
+    const fullyFallback = rawCount === 0; // AI contributed nothing
+    if (!fullyFallback) {
+      // If partially degraded, caching is ok.
+      // Optional: use shorter TTL when degraded.
+      const ttl = degraded ? Math.min(REDIS_TTL.quiz, 60 * 5) : REDIS_TTL.quiz;
+      await cacheSetJSON(cacheKey, { quiz }, ttl);
+    }
     dlog('quiz', 'success', {
-      questions: quiz.questions.length,
-      timerSec,
-      timerSource,
-      rawCount,
-      uniqueAi,
-      keptFromAI,
-      toppedUp,
-      degraded,
-    });
+        questions: quiz.questions.length,
+        timerSec,
+        rawCount,
+        uniqueAi,
+        keptFromAI,
+        toppedUp,
+        degraded,
+      });
+
 
     return {
       status: degraded ? 206 : 200,
