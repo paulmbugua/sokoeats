@@ -20,6 +20,7 @@ import {
   type NavigationProp,
 } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import tw from '../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -29,12 +30,14 @@ import { useCourseReviews } from '@mytutorapp/shared/hooks/useCourseReviews';
 import { downloadCertificateFile, downloadTranscriptFile } from '@mytutorapp/shared/api';
 import { useWatchProgress } from '@mytutorapp/shared/hooks/useWatchProgress';
 import { useReadProgress } from '@mytutorapp/shared/hooks/useReadProgress';
+import { getRequiredQuestions, getRequiredWeeks, normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrackRequirements';
 
 import type {
   Course as CourseType,
   CourseProgress as CourseProgressItem,
   UpdateProgressPayload,
   SyllabusItem,
+  ProgramTrack,
 } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
 import SelectField, { type Option } from './SelectField.native';
@@ -273,6 +276,25 @@ const CourseProgressScreen: React.FC = () => {
   const route = useRoute<CourseProgressRoute>();
   const rawCourseId = route.params?.courseId;
   const courseId = rawCourseId ?? '';
+  const sourceParam = route.params?.source;
+  const programTrackParam = route.params?.programTrack;
+  const isSandboxSource = sourceParam === 'sandbox' || Boolean(programTrackParam);
+  const dbgSandbox = route.params?.dbg === '1';
+
+  const [storedTrack, setStoredTrack] = useState<ProgramTrack | null>(null);
+  useEffect(() => {
+    if (!courseId) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(`sandbox_track:${courseId}`);
+        if (mounted && stored) setStoredTrack(normalizeProgramTrack(stored));
+      } catch {}
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [courseId]);
 
   const insets = useSafeAreaInsets();
   const FOOTER_OFFSET = 80; // for global footer
@@ -307,8 +329,42 @@ const CourseProgressScreen: React.FC = () => {
 
   const syllabus: SyllabusItem[] =
     (selectedCourse as CourseType | null | undefined)?.syllabus ?? [];
+  const courseTrackRaw =
+    (selectedCourse as any)?.programTrack ??
+    (selectedCourse as any)?.program_track ??
+    (selectedCourse as any)?.track ??
+    (selectedCourse as any)?.track_key ??
+    (selectedCourse as any)?.program_track_key;
+
+  const effectiveTrack = useMemo<ProgramTrack>(() => {
+    if (programTrackParam) return normalizeProgramTrack(programTrackParam);
+    if (courseTrackRaw) return normalizeProgramTrack(courseTrackRaw);
+    if (storedTrack) return storedTrack;
+    return 'certificate';
+  }, [programTrackParam, courseTrackRaw, storedTrack]);
+
+  const totalWeeks = isSandboxSource ? getRequiredWeeks(effectiveTrack) : syllabus.length || 0;
+  const totalQuestions = isSandboxSource ? getRequiredQuestions(effectiveTrack) : 0;
+  const effectiveSyllabus: SyllabusItem[] = useMemo(() => {
+    if (!isSandboxSource) return syllabus;
+    if (!totalWeeks) return syllabus;
+    const byWeek = new Map<number, SyllabusItem>();
+    syllabus.forEach((item) => {
+      byWeek.set(item.week, item);
+    });
+    return Array.from({ length: totalWeeks }, (_, idx) => {
+      const weekNum = idx + 1;
+      return (
+        byWeek.get(weekNum) ?? {
+          week: weekNum,
+          topic: `Week ${weekNum}`,
+        }
+      );
+    });
+  }, [isSandboxSource, syllabus, totalWeeks]);
 
   const isLoading = coursesLoading || progressLoading;
+  const syllabusList = effectiveSyllabus;
 
   /* ───────── Reviews ───────── */
 
@@ -354,42 +410,50 @@ const CourseProgressScreen: React.FC = () => {
     let notStarted = 0;
     let inProgress = 0;
     let completed = 0;
-    syllabus.forEach((s) => {
+    syllabusList.forEach((s) => {
       const st = (progressByWeek.get(s.week) ?? 'Not Started') as Status;
       if (st === 'Completed') completed++;
       else if (st === 'In Progress') inProgress++;
       else notStarted++;
     });
-    const total = syllabus.length || 0;
+    const total = syllabusList.length || 0;
     const pct = total ? Math.round((completed / total) * 100) : 0;
     return { notStarted, inProgress, completed, total, pct };
-  }, [syllabus, progressByWeek]);
+  }, [syllabusList, progressByWeek]);
+
+  const trackLabel = useMemo(() => {
+    const raw = String(effectiveTrack || '').trim();
+    return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Certificate';
+  }, [effectiveTrack]);
+
+  const quizEligible = isSandboxSource && totalWeeks > 0 && counts.completed >= totalWeeks;
+  const needsOutline = isSandboxSource && totalWeeks > 0 && syllabus.length < totalWeeks;
 
   const suggestedWeek = useMemo(() => {
-    const inProg = syllabus.find(
+    const inProg = syllabusList.find(
       (w) => (progressByWeek.get(w.week) ?? 'Not Started') === 'In Progress'
     );
     if (inProg) return inProg.week;
 
-    const notSt = syllabus.find(
+    const notSt = syllabusList.find(
       (w) => (progressByWeek.get(w.week) ?? 'Not Started') === 'Not Started'
     );
     if (notSt) return notSt.week;
 
-    if (!syllabus.length) return undefined;
+    if (!syllabusList.length) return undefined;
 
-    const last = syllabus[syllabus.length - 1];
+    const last = syllabusList[syllabusList.length - 1];
     if (!last) return undefined;
 
     return last.week;
-  }, [syllabus, progressByWeek]);
+  }, [syllabusList, progressByWeek]);
 
   const [activeWeek, setActiveWeek] = useState<number | null>(null);
 
   /* ───────── Active item / status ───────── */
 
   const activeItem =
-    activeWeek == null ? null : (syllabus.find((w) => w.week === activeWeek) ?? null);
+    activeWeek == null ? null : (syllabusList.find((w) => w.week === activeWeek) ?? null);
 
   const activeStatus: Status =
     activeWeek == null ? 'Not Started' : (progressByWeek.get(activeWeek) ?? 'Not Started');
@@ -403,7 +467,7 @@ const CourseProgressScreen: React.FC = () => {
   const watchedAllForWeek = useCallback(
     (week?: number | null) => {
       if (!week && week !== 0) return true;
-      const item = syllabus.find((s) => s.week === week);
+      const item = syllabusList.find((s) => s.week === week);
       const vids = getWeekVideos(item);
       if (!vids.length) return true;
       const done = new Set(
@@ -411,7 +475,7 @@ const CourseProgressScreen: React.FC = () => {
       );
       return vids.every((v) => done.has(getYoutubeId(v.url)));
     },
-    [syllabus, watchRows]
+    [syllabusList, watchRows]
   );
 
   const watchedAll = useMemo(() => watchedAllForWeek(activeWeek), [watchedAllForWeek, activeWeek]);
@@ -423,7 +487,7 @@ const CourseProgressScreen: React.FC = () => {
   const readAllForWeek = useCallback(
     (week?: number | null) => {
       if (week == null) return true;
-      const item = syllabus.find((s) => s.week === week);
+      const item = syllabusList.find((s) => s.week === week);
       const urls: string[] = [];
       if (Array.isArray((item as any)?.notesUrls)) {
         urls.push(...(((item as any).notesUrls as string[]) || []).filter(Boolean));
@@ -439,27 +503,27 @@ const CourseProgressScreen: React.FC = () => {
       );
       return urls.every((u) => done.has(u));
     },
-    [syllabus, readRows]
+    [syllabusList, readRows]
   );
 
   /* ───────── Course-wide watch completion ───────── */
 
   const courseWatchedAll = useMemo(() => {
-    const requiredIds = syllabus
+    const requiredIds = syllabusList
       .flatMap((s) => getWeekVideos(s).map((v) => getYoutubeId(v.url)))
       .filter(Boolean);
     if (requiredIds.length === 0) return true;
     const done = new Set(watchRows.filter((r: any) => r.completed).map((r: any) => r.video_id));
     return requiredIds.every((id) => done.has(id));
-  }, [syllabus, watchRows]);
+  }, [syllabusList, watchRows]);
 
   const remainingCount = useMemo(() => {
-    const requiredIds = syllabus
+    const requiredIds = syllabusList
       .flatMap((s) => getWeekVideos(s).map((v) => getYoutubeId(v.url)))
       .filter(Boolean);
     const done = new Set(watchRows.filter((r: any) => r.completed).map((r: any) => r.video_id));
     return requiredIds.filter((id) => !done.has(id)).length;
-  }, [syllabus, watchRows]);
+  }, [syllabusList, watchRows]);
 
   /* ───────── Watch dialog state ───────── */
 
@@ -509,7 +573,7 @@ const CourseProgressScreen: React.FC = () => {
     try {
       setDownloadingTranscript(true);
 
-      const lessons = (syllabus || [])
+      const lessons = (syllabusList || [])
         .map((s) => String(s.topic || (s as any)?.title || `Week ${s.week}`).trim())
         .filter(Boolean);
 
@@ -578,7 +642,7 @@ const CourseProgressScreen: React.FC = () => {
     backendUrl,
     token,
     courseId,
-    syllabus,
+    syllabusList,
     selectedCourse?.title,
     courseWatchedAll,
     remainingCount,
@@ -594,7 +658,7 @@ const CourseProgressScreen: React.FC = () => {
         headers: token ? ({ Authorization: `Bearer ${token}` } as any) : undefined,
       });
       const rows: any[] = await r.json().catch(() => []);
-      const reqs = syllabus.flatMap((s) => getWeekVideos(s).map((v) => v.url));
+      const reqs = syllabusList.flatMap((s) => getWeekVideos(s).map((v) => v.url));
       const done = new Set(
         (rows || []).filter((x: any) => x.completed).map((x: any) => x.video_id)
       );
@@ -602,7 +666,7 @@ const CourseProgressScreen: React.FC = () => {
     } catch {
       return false;
     }
-  }, [backendUrl, token, courseId, syllabus]);
+  }, [backendUrl, token, courseId, syllabusList]);
 
   const generateFreeOerCertificate = useCallback(async () => {
     if (!courseId) return;
@@ -681,14 +745,23 @@ const CourseProgressScreen: React.FC = () => {
   };
 
   const startCourse = async () => {
-    if (!syllabus.length) return;
+    if (!syllabusList.length) return;
 
-    const firstItem = syllabus[0];
+    const firstItem = syllabusList[0];
     if (!firstItem) return;
 
     const first = firstItem.week;
     const st = (progressByWeek.get(first) ?? 'Not Started') as Status;
     if (st === 'Not Started') await setStatus(first, 'In Progress');
+    if (isSandboxSource) {
+      navigation.navigate('RobotTutor', {
+        courseId,
+        programTrack: effectiveTrack,
+        startWeek: first,
+        source: 'sandbox',
+      });
+      return;
+    }
     setActiveWeek(first);
   };
 
@@ -696,6 +769,15 @@ const CourseProgressScreen: React.FC = () => {
     if (!suggestedWeek) return;
     const st = (progressByWeek.get(suggestedWeek) ?? 'Not Started') as Status;
     if (st === 'Not Started') await setStatus(suggestedWeek, 'In Progress');
+    if (isSandboxSource) {
+      navigation.navigate('RobotTutor', {
+        courseId,
+        programTrack: effectiveTrack,
+        startWeek: suggestedWeek,
+        source: 'sandbox',
+      });
+      return;
+    }
     setActiveWeek(suggestedWeek);
   };
 
@@ -719,18 +801,18 @@ const CourseProgressScreen: React.FC = () => {
 
   const goPrev = () => {
     if (activeWeek == null) return;
-    const idx = syllabus.findIndex((w) => w.week === activeWeek);
+    const idx = syllabusList.findIndex((w) => w.week === activeWeek);
     if (idx > 0) {
-      const prev = syllabus[idx - 1];
+      const prev = syllabusList[idx - 1];
       if (prev) setActiveWeek(prev.week);
     }
   };
 
   const goNext = () => {
     if (activeWeek == null) return;
-    const idx = syllabus.findIndex((w) => w.week === activeWeek);
-    if (idx < syllabus.length - 1) {
-      const next = syllabus[idx + 1];
+    const idx = syllabusList.findIndex((w) => w.week === activeWeek);
+    if (idx < syllabusList.length - 1) {
+      const next = syllabusList[idx + 1];
       if (next) setActiveWeek(next.week);
     }
   };
@@ -776,7 +858,7 @@ const CourseProgressScreen: React.FC = () => {
     );
   }
 
-  if (!Array.isArray(syllabus) || syllabus.length === 0) {
+  if (!Array.isArray(syllabusList) || syllabusList.length === 0) {
     return (
       <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
         <ScrollView
@@ -873,6 +955,45 @@ const CourseProgressScreen: React.FC = () => {
               </View>
             </View>
 
+            {isSandboxSource && (
+              <Text style={tw`mt-3 text-[11px] text-[#49739c] dark:text-white/70`}>
+                Track: <Text style={tw`font-semibold`}>{trackLabel}</Text> • {totalWeeks} weeks •{' '}
+                {totalQuestions} questions
+              </Text>
+            )}
+
+            {needsOutline && (
+              <View
+                style={tw`mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2`}
+              >
+                <Text style={tw`text-[11px] text-amber-700`}>
+                  This course outline has {syllabus.length} weeks, but the {trackLabel} track
+                  requires {totalWeeks}. Open RobotTeacher to regenerate the outline.
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    navigation.navigate('RobotTutor', {
+                      courseId,
+                      programTrack: effectiveTrack,
+                      source: 'sandbox',
+                    })
+                  }
+                  style={tw`mt-2`}
+                >
+                  <Text style={tw`text-[11px] text-amber-700 underline font-semibold`}>
+                    Open RobotTeacher
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            {dbgSandbox && (
+              <Text style={tw`mt-2 text-[10px] text-[#7a94ad] dark:text-white/60`}>
+                dbg: track={effectiveTrack} • totalWeeks={totalWeeks} • completed={counts.completed}{' '}
+                • quizEligible={String(quizEligible)}
+              </Text>
+            )}
+
             {/* Primary actions */}
             <View style={tw`flex-row flex-wrap gap-2 mt-4`}>
               {counts.completed === 0 && counts.inProgress === 0 ? (
@@ -887,6 +1008,20 @@ const CourseProgressScreen: React.FC = () => {
                   variant="outline"
                   disabled={suggestedWeek == null || !watchedAllForWeek(suggestedWeek)}
                   onPress={completeCurrent}
+                />
+              )}
+
+              {isSandboxSource && quizEligible && (
+                <ChipButton
+                  label="Generate quiz"
+                  onPress={() =>
+                    navigation.navigate('RobotTutor', {
+                      courseId,
+                      programTrack: effectiveTrack,
+                      flow: 'quiz',
+                      source: 'sandbox',
+                    })
+                  }
                 />
               )}
 
@@ -999,7 +1134,7 @@ const CourseProgressScreen: React.FC = () => {
                     <ChipButton
                       label="← Previous week"
                       variant="outline"
-                      disabled={syllabus.findIndex((w) => w.week === activeWeek) === 0}
+                      disabled={syllabusList.findIndex((w) => w.week === activeWeek) === 0}
                       onPress={goPrev}
                     />
                     <ChipButton
@@ -1011,7 +1146,8 @@ const CourseProgressScreen: React.FC = () => {
                       label="Next week →"
                       variant="outline"
                       disabled={
-                        syllabus.findIndex((w) => w.week === activeWeek) === syllabus.length - 1
+                        syllabusList.findIndex((w) => w.week === activeWeek) ===
+                        syllabusList.length - 1
                       }
                       onPress={goNext}
                     />
@@ -1031,13 +1167,22 @@ const CourseProgressScreen: React.FC = () => {
 
           {/* Weeks list */}
           <View style={tw`mb-6`}>
-            {syllabus.map((item) => {
+            {syllabusList.map((item) => {
               const current: Status = (progressByWeek.get(item.week) ?? 'Not Started') as Status;
               const isSuggested = item.week === suggestedWeek;
               const canComplete = watchedAllForWeek(item.week) && readAllForWeek(item.week);
 
               const quickStart = async () => {
                 await setStatus(item.week, 'In Progress');
+                if (isSandboxSource) {
+                  navigation.navigate('RobotTutor', {
+                    courseId,
+                    programTrack: effectiveTrack,
+                    startWeek: item.week,
+                    source: 'sandbox',
+                  });
+                  return;
+                }
                 setActiveWeek(item.week);
               };
 
@@ -1062,7 +1207,18 @@ const CourseProgressScreen: React.FC = () => {
                     <ChipButton
                       label="Open"
                       variant="ghost"
-                      onPress={() => setActiveWeek(item.week)}
+                      onPress={() => {
+                        if (isSandboxSource) {
+                          navigation.navigate('RobotTutor', {
+                            courseId,
+                            programTrack: effectiveTrack,
+                            startWeek: item.week,
+                            source: 'sandbox',
+                          });
+                          return;
+                        }
+                        setActiveWeek(item.week);
+                      }}
                     />
                   </View>
 

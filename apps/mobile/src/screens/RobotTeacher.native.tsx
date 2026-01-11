@@ -16,7 +16,7 @@ import tw from '../../tailwind';
 import { RefreshableScrollView } from '../refresh/Refreshable';
 import LessonOverlayNative, { type LessonOverlayHandle } from './LessonOverlay.native';
 import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
-import { normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrack';
+import { getRequiredWeeks, normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrackRequirements';
 import * as Linking from 'expo-linking';
 
 import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
@@ -24,6 +24,7 @@ import { useAiCourse, useAICertificates } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
 
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
+import { updateCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
 
 import type { TopCourse } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
@@ -69,10 +70,10 @@ const PRESETS = [
 export type SizePresetKey = (typeof PRESETS)[number]['key'];
 
 const TRACKS = [
-  { key: 'module', label: 'Module', lessons: 8 },
-  { key: 'certificate', label: 'Certificate', lessons: 12 },
-  { key: 'diploma', label: 'Diploma', lessons: 18 },
-  { key: 'degree', label: 'Degree', lessons: 24 },
+  { key: 'module', label: 'Module', lessons: getRequiredWeeks('module') },
+  { key: 'certificate', label: 'Certificate', lessons: getRequiredWeeks('certificate') },
+  { key: 'diploma', label: 'Diploma', lessons: getRequiredWeeks('diploma') },
+  { key: 'degree', label: 'Degree', lessons: getRequiredWeeks('degree') },
 ] as const;
 export type TrackKey = (typeof TRACKS)[number]['key'];
 
@@ -286,6 +287,8 @@ const qpProgramTrack = String(
   (qp as any).programTrack ?? (qp as any).program_track ?? (qp as any).track ?? ''
 ).trim();
 const qpLockTrack = String((qp as any).lockTrack ?? (qp as any).trackLock ?? '').trim() === '1';
+const qpStartWeek = String((qp as any).startWeek ?? (qp as any).start_week ?? '').trim();
+const qpSource = String((qp as any).source ?? '').trim();
 
 // optional: if you also pass qt/qs in shared links
 const qpQt = String((qp as any).qt ?? '').trim();
@@ -304,6 +307,8 @@ const params = useMemo(
     if (qpLocked) merged.lock = '1';
     if (qpProgramTrack) merged.programTrack = qpProgramTrack;
     if (qpLockTrack) merged.lockTrack = '1';
+    if (qpStartWeek) merged.startWeek = qpStartWeek;
+    if (qpSource) merged.source = qpSource;
 
     if (qpQt) merged.qt = qpQt;
     if (qpQs) merged.qs = qpQs;
@@ -315,6 +320,8 @@ const params = useMemo(
       programTrack?: string | null;
       lock?: string | null;
       lockTrack?: string | null;
+      startWeek?: string | number | null;
+      source?: string | null;
       flow?: string | null;
       qt?: 'mcq' | 'short' | string | null;
       qs?: string | null;
@@ -328,10 +335,24 @@ const params = useMemo(
     qpLocked,
     qpProgramTrack,
     qpLockTrack,
+    qpStartWeek,
+    qpSource,
     qpQt,
     qpQs,
   ]
 );
+
+  const startWeekValue = useMemo(() => {
+    const parsed = params?.startWeek != null ? Number(params.startWeek) : null;
+    return typeof parsed === 'number' && Number.isFinite(parsed)
+      ? Math.max(1, Math.trunc(parsed))
+      : null;
+  }, [params?.startWeek]);
+  const startIdx =
+    typeof startWeekValue === 'number' && Number.isFinite(startWeekValue)
+      ? Math.max(0, startWeekValue - 1)
+      : null;
+  const isSandboxSource = params?.source === 'sandbox';
 
 
 
@@ -411,6 +432,7 @@ const authToken = token || orgToken;
     onBeforePlay: aiOnBeforePlay,
     onEnded: aiOnEnded,
     currentIdx,
+    setCurrentIdx,
     getLessonAt,
     goNext,
     isBuildingNext,
@@ -584,12 +606,84 @@ const isLockedLearner =
   const showCourseList = !isLockedLearner;
 
   useEffect(() => {
-    const trackFromParam = normalizeProgramTrack(params.programTrack, null);
+    const trackFromParam = params.programTrack ? normalizeProgramTrack(params.programTrack) : null;
     if (trackFromParam) {
       setProgramTrack(trackFromParam as TrackKey);
     }
     setProgramTrackLocked(lockTrackByParam);
   }, [params.programTrack, lockTrackByParam]);
+
+  const startIdxAppliedRef = useRef<{ courseId: string | null; startIdx: number | null }>({
+    courseId: null,
+    startIdx: null,
+  });
+
+  useEffect(() => {
+    if (startIdx == null) return;
+    if (!outline?.length) return;
+    const courseKey = String(selectedCourse?.id || params.courseId || '');
+    if (!courseKey) return;
+    if (
+      startIdxAppliedRef.current.courseId === courseKey &&
+      startIdxAppliedRef.current.startIdx === startIdx
+    ) {
+      return;
+    }
+    const clamped = Math.max(0, Math.min(startIdx, Math.max(0, outline.length - 1)));
+    if (typeof setCurrentIdx === 'function') {
+      setCurrentIdx(clamped);
+    }
+    startIdxAppliedRef.current = { courseId: courseKey, startIdx };
+  }, [startIdx, outline?.length, selectedCourse?.id, params.courseId, setCurrentIdx]);
+
+  const completedWeeksRef = useRef<Set<number>>(new Set());
+  const prevIdxRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isSandboxSource) {
+      prevIdxRef.current = currentIdx ?? null;
+      return;
+    }
+    const prevIdx = prevIdxRef.current;
+    if (prevIdx == null) {
+      prevIdxRef.current = currentIdx ?? null;
+      return;
+    }
+    if ((currentIdx ?? 0) <= prevIdx) {
+      prevIdxRef.current = currentIdx ?? null;
+      return;
+    }
+    const weekToComplete = prevIdx + 1;
+    if (completedWeeksRef.current.has(weekToComplete)) {
+      prevIdxRef.current = currentIdx ?? null;
+      return;
+    }
+    const progressCourseId = String(selectedCourse?.id || params.courseId || '');
+    if (!progressCourseId || !backendUrl || !authToken) {
+      prevIdxRef.current = currentIdx ?? null;
+      return;
+    }
+    completedWeeksRef.current.add(weekToComplete);
+    updateCourseProgress(
+      backendUrl,
+      { courseId: progressCourseId, week: weekToComplete, status: 'Completed' },
+      authToken
+    ).catch((e) => {
+      completedWeeksRef.current.delete(weekToComplete);
+      dlog('auto-complete failed', e);
+    });
+    prevIdxRef.current = currentIdx ?? null;
+  }, [currentIdx, isSandboxSource, backendUrl, authToken, selectedCourse?.id, params.courseId]);
+
+  useEffect(() => {
+    dlog('startWeek', {
+      startWeek: startWeekValue,
+      startIdx,
+      currentIdx,
+      outlineLen: outline?.length ?? 0,
+      source: params?.source ?? '—',
+    });
+  }, [startWeekValue, startIdx, currentIdx, outline?.length, params?.source]);
 
   const titleInfo = useMemo(() => {
   return resolveCourseTitleInfo({

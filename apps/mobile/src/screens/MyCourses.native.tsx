@@ -26,6 +26,7 @@ import {
 } from '@mytutorapp/shared/hooks';
 import useCourseSearch from '@mytutorapp/shared/hooks/useCourseSearch';
 import { downloadCertificateFile } from '@mytutorapp/shared/api';
+import { getRequiredQuestions, getRequiredWeeks } from '@mytutorapp/shared/utils/programTrackRequirements';
 import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -48,19 +49,23 @@ type TrackRequirements = {
   minQuestions: number;
 };
 
-const TRACK_REQUIREMENTS: Record<ProgramTrack, TrackRequirements> = {
-  module: { key: 'module', label: 'Module', minLessons: 12, minQuestions: 24 },
-  certificate: { key: 'certificate', label: 'Certificate', minLessons: 12, minQuestions: 24 },
-  diploma: { key: 'diploma', label: 'Diploma', minLessons: 18, minQuestions: 36 },
-  degree: { key: 'degree', label: 'Degree', minLessons: 24, minQuestions: 48 },
+const getTrackLabel = (track?: ProgramTrack | string | null): string => {
+  const raw = String(track || '').toLowerCase();
+  if (raw === 'diploma') return 'Diploma';
+  if (raw === 'degree') return 'Degree';
+  if (raw === 'certificate') return 'Certificate';
+  return 'Certificate';
 };
 
 const getTrackRequirements = (track?: ProgramTrack | string | null): TrackRequirements => {
   const raw = String(track || '').toLowerCase();
-  if (raw === 'diploma') return TRACK_REQUIREMENTS.diploma;
-  if (raw === 'degree') return TRACK_REQUIREMENTS.degree;
-  if (raw === 'certificate') return TRACK_REQUIREMENTS.certificate;
-  return TRACK_REQUIREMENTS.certificate;
+  const key = raw === 'diploma' || raw === 'degree' || raw === 'certificate' ? (raw as ProgramTrack) : 'certificate';
+  return {
+    key,
+    label: getTrackLabel(key),
+    minLessons: getRequiredWeeks(key),
+    minQuestions: getRequiredQuestions(key),
+  };
 };
 
 /* ----------------------------- Small UI bits ----------------------------- */
@@ -484,6 +489,27 @@ const MyCoursesNative: React.FC = () => {
   const [tab, setTab] = useState<TabKey>('library');
   const [topCoursesPage, setTopCoursesPage] = useState(1);
   const [topCoursesExpanded, setTopCoursesExpanded] = useState(true);
+  const topCoursesPageSize = 6;
+
+  const {
+    items: topCourses,
+    total: topCoursesTotal,
+    hasMore: topCoursesHasMore,
+    loading: topCoursesLoading,
+    error: topCoursesError,
+  } = useTopCourses({
+    backendUrl: backendUrl ?? '',
+    page: topCoursesPage,
+    pageSize: topCoursesPageSize,
+    enabled: tab === 'courses',
+  });
+
+  const topCoursesResolvedTotal =
+    topCoursesTotal ??
+    (topCoursesHasMore
+      ? topCoursesPage * topCoursesPageSize + 1
+      : (topCoursesPage - 1) * topCoursesPageSize + topCourses.length);
+  const topCoursesTotalPages = Math.max(1, Math.ceil(topCoursesResolvedTotal / topCoursesPageSize));
 
   /* ------------------ Web-like: useCourseSearch for Courses tab ------------------ */
   const {
@@ -1406,7 +1432,13 @@ const MyCoursesNative: React.FC = () => {
                   <Text style={tw`text-xs font-semibold text-white`}>Download certificate</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => navigation.navigate('CourseProgress', { courseId: cid })}
+                  onPress={() =>
+                    navigation.navigate('CourseProgress', {
+                      courseId: cid,
+                      programTrack: track,
+                      source: 'sandbox',
+                    })
+                  }
                   style={tw`ml-2 flex-1 h-9 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
                 >
                   <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>
@@ -1418,18 +1450,24 @@ const MyCoursesNative: React.FC = () => {
               <>
                 <Pressable
                   onPress={() =>
-                    navAny.navigate('RobotTutor', {
+                    navigation.navigate('CourseProgress', {
                       courseId: cid,
                       programTrack: track,
-                      flow: 'quiz',
+                      source: 'sandbox',
                     })
                   }
                   style={tw`flex-1 h-9 rounded-lg bg-[#3d99f5] items-center justify-center`}
                 >
-                  <Text style={tw`text-xs font-semibold text-white`}>Take final quiz</Text>
+                  <Text style={tw`text-xs font-semibold text-white`}>Open progress</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => navigation.navigate('CourseProgress', { courseId: cid })}
+                  onPress={() =>
+                    navigation.navigate('CourseProgress', {
+                      courseId: cid,
+                      programTrack: track,
+                      source: 'sandbox',
+                    })
+                  }
                   style={tw`ml-2 flex-1 h-9 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
                 >
                   <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>
@@ -1440,7 +1478,13 @@ const MyCoursesNative: React.FC = () => {
             ) : (
               <>
                 <Pressable
-                  onPress={() => navigation.navigate('CourseProgress', { courseId: cid })}
+                  onPress={() =>
+                    navigation.navigate('CourseProgress', {
+                      courseId: cid,
+                      programTrack: track,
+                      source: 'sandbox',
+                    })
+                  }
                   style={tw`flex-1 h-9 rounded-lg bg-[#3d99f5] items-center justify-center`}
                 >
                   <Text style={tw`text-xs font-semibold text-white`}>
@@ -1449,20 +1493,27 @@ const MyCoursesNative: React.FC = () => {
                 </Pressable>
                 <Pressable
                   onPress={() =>
-                    navAny.navigate('RobotTutor', {
+                    navigation.navigate('CourseProgress', {
                       courseId: cid,
                       programTrack: track,
+                      source: 'sandbox',
                     })
                   }
                   style={tw`ml-2 flex-1 h-9 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
                 >
                   <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>
-                    Start with AI
+                    View progress
                   </Text>
                 </Pressable>
               </>
             )}
           </View>
+
+          {sandboxDbgEnabled ? (
+            <Text style={tw`mt-2 text-[10px] text-[#7a94ad] dark:text-white/60`}>
+              dbg: track={track} • progress=/progress/{cid}?programTrack={track}&source=sandbox
+            </Text>
+          ) : null}
 
           <View style={tw`flex-row justify-between mt-3`}>
             <Text style={tw`text-[11px] text-[#7a94ad] dark:text-white/60`}>
@@ -1471,6 +1522,75 @@ const MyCoursesNative: React.FC = () => {
             <Pressable onPress={() => navigation.navigate('CourseDetails', { courseId: cid })}>
               <Text style={tw`text-[11px] underline text-[#49739c] dark:text-white/70`}>
                 Details
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderTopCourseCard = (item: any) => {
+    const cid = String(item?.id ?? '');
+    const isEnrolled = enrolledCourseIds.has(cid);
+    const rating = typeof item?.rating === 'number' ? item.rating : undefined;
+    const reviews = typeof item?.reviews === 'number' ? item.reviews : 0;
+    const hero =
+      resolveThumbUri(backendUrl, item?.thumbnail_url || item?.cover_url) ||
+      `https://picsum.photos/seed/${encodeURIComponent(cid || 'top')}/800/450`;
+
+    return (
+      <View
+        key={`top-${cid}`}
+        style={tw`rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 overflow-hidden mb-3`}
+      >
+        <Image source={{ uri: hero }} style={tw`w-full h-36 bg-[#e7edf4] dark:bg-[#172534]`} />
+        <View style={tw`p-3`}>
+          <View style={tw`flex-row items-start justify-between`}>
+            <Text
+              style={tw`font-semibold text-sm text-slate-900 dark:text-white flex-1 pr-2`}
+              numberOfLines={2}
+            >
+              {item?.title ?? 'Untitled'}
+            </Text>
+            <View style={tw`px-2 py-0.5 rounded-full bg-[#e7edf4] dark:bg-[#172534]`}>
+              <Text style={tw`text-[10px] text-slate-700 dark:text-white/80`}>TOP</Text>
+            </View>
+          </View>
+
+          <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`} numberOfLines={1}>
+            {item?.subject ?? '—'} {item?.level ? `• ${item.level}` : ''}
+          </Text>
+
+          <View style={tw`flex-row items-center justify-between mt-2`}>
+            <Text style={tw`text-xs text-[#49739c] dark:text-white/70`} numberOfLines={1}>
+              {String(item?.duration ?? '—')}
+            </Text>
+            {rating ? <StarRow avg={rating} count={reviews} /> : null}
+          </View>
+
+          <View style={tw`flex-row mt-3`}>
+            {isEnrolled ? (
+              <Pressable
+                onPress={() => navigation.navigate('CourseProgress', { courseId: cid })}
+                style={tw`flex-1 h-9 rounded-lg bg-[#3d99f5] items-center justify-center`}
+              >
+                <Text style={tw`text-xs font-semibold text-white`}>Continue</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={() => navigation.navigate('CourseDetails', { courseId: cid })}
+                style={tw`flex-1 h-9 rounded-lg bg-[#3d99f5] items-center justify-center`}
+              >
+                <Text style={tw`text-xs font-semibold text-white`}>View</Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => navAny.navigate('RobotTutor', { courseId: cid })}
+              style={tw`ml-2 flex-1 h-9 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
+            >
+              <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>
+                Start with AI
               </Text>
             </Pressable>
           </View>
@@ -1602,6 +1722,89 @@ const MyCoursesNative: React.FC = () => {
             onViewableItemsChanged={onUnlockedViewableItemsChanged}
             viewabilityConfig={{ itemVisiblePercentThreshold: 40 }}
           />
+        )}
+      </View>
+
+      {/* Top Courses */}
+      <View style={tw`mt-4`}>
+        <View style={tw`flex-row items-center justify-between`}>
+          <Text style={tw`text-base font-bold text-slate-900 dark:text-white`}>🔥 Top Courses</Text>
+          <View style={tw`flex-row items-center`}>
+            <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mr-3`}>
+              {topCoursesLoading
+                ? 'Loading…'
+                : `${topCourses.length} course${topCourses.length === 1 ? '' : 's'}`}
+            </Text>
+            <Pressable onPress={() => setTopCoursesExpanded((prev) => !prev)}>
+              <Text style={tw`text-xs underline text-[#49739c] dark:text-white/70`}>
+                {topCoursesExpanded ? 'Show less' : 'Show more'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {!!topCoursesError && !topCoursesLoading && (
+          <View style={tw`mt-2`}>
+            <Text style={tw`text-xs text-red-600 dark:text-red-400`}>{topCoursesError}</Text>
+          </View>
+        )}
+
+        {topCoursesExpanded && (
+          <View style={tw`mt-3`}>
+            {topCoursesLoading ? (
+              <>
+                {Array.from({ length: topCoursesPageSize }).map((_, i) => (
+                  <View
+                    key={`top-skel-${i}`}
+                    style={tw`rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3 overflow-hidden`}
+                  >
+                    <View style={tw`h-36 bg-[#e7edf4] dark:bg-[#172534]`} />
+                    <View style={tw`p-3`}>
+                      <View style={tw`h-3 w-2/3 bg-[#e7edf4] dark:bg-[#172534] rounded`} />
+                      <View style={tw`h-2 w-1/3 bg-[#e7edf4] dark:bg-[#172534] rounded mt-2`} />
+                    </View>
+                  </View>
+                ))}
+              </>
+            ) : topCourses.length === 0 ? (
+              <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+                No top courses available right now.
+              </Text>
+            ) : (
+              <View>
+                {topCourses.map((item) => renderTopCourseCard(item))}
+                {topCoursesTotalPages > 1 && (
+                  <View style={tw`flex-row items-center justify-between mt-2`}>
+                    <Pressable
+                      onPress={() => setTopCoursesPage((prev) => Math.max(1, prev - 1))}
+                      disabled={topCoursesPage <= 1}
+                      style={tw.style(
+                        'h-8 px-3 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center',
+                        topCoursesPage <= 1 && 'opacity-50'
+                      )}
+                    >
+                      <Text style={tw`text-xs text-slate-900 dark:text-white`}>Prev</Text>
+                    </Pressable>
+                    <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+                      Page {topCoursesPage} of {topCoursesTotalPages}
+                    </Text>
+                    <Pressable
+                      onPress={() =>
+                        setTopCoursesPage((prev) => Math.min(topCoursesTotalPages, prev + 1))
+                      }
+                      disabled={topCoursesPage >= topCoursesTotalPages}
+                      style={tw.style(
+                        'h-8 px-3 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center',
+                        topCoursesPage >= topCoursesTotalPages && 'opacity-50'
+                      )}
+                    >
+                      <Text style={tw`text-xs text-slate-900 dark:text-white`}>Next</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
         )}
       </View>
 
