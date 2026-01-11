@@ -1,10 +1,22 @@
 /* eslint-disable no-console */
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import debounce from 'lodash.debounce';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useEnrollments, useOerCourses, useWrapOerBook } from '@mytutorapp/shared/hooks';
-import type { Course } from '@mytutorapp/shared/types';
+import {
+  useEnrollments,
+  useOerCourses,
+  useTopCourses,
+  useWrapOerBook,
+} from '@mytutorapp/shared/hooks';
+import { downloadCertificateFile } from '@mytutorapp/shared/api/certificatesApi';
+import { generateCertificatePdf } from '@mytutorapp/shared/api/aiCertificatesApi';
+import { fetchCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
+import {
+  getProgramTrackRequirements,
+  resolveCourseProgramTrack,
+} from '@mytutorapp/shared/utils/programTrack';
+import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
 import ClassVaultList from '../components/ClassVaultList.web';
 import CourseHero from '../components/CourseHero';
 import useCourseSearch from '@mytutorapp/shared/hooks/useCourseSearch';
@@ -22,6 +34,8 @@ const dlog = (...args: any[]) =>
 const DEBUG_OER = false;
 const olog = (...args: any[]) =>
   DEBUG_OER && console.log('%c[MyCourses][OER]', 'color:#9b59b6;font-weight:bold;', ...args);
+
+type TrackRequirements = ReturnType<typeof getProgramTrackRequirements>;
 
 /* --------------------- OER types --------------------- */
 type OerKind = 'video' | 'doc';
@@ -238,10 +252,27 @@ function StarRow({ avg, count }: { avg?: number; count?: number }) {
 ────────────────────────────────────────────────────────── */
 const MyCourses: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { backendUrl, token, profile } = useShopContext();
   const myId = String(profile?.id ?? '');
 
   const [tab, setTab] = useState<TabKey>('library');
+  const [isNarrow, setIsNarrow] = useState(false);
+  const [topCoursesPage, setTopCoursesPage] = useState(1);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 640px)');
+    const onChange = () => setIsNarrow(media.matches);
+    onChange();
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  const topCoursesPageSize = isNarrow ? 6 : 9;
+  useEffect(() => {
+    setTopCoursesPage(1);
+  }, [topCoursesPageSize]);
 
   /* ✅ NEW: Course search hook (this is where your "fix" goes) */
   const {
@@ -310,6 +341,26 @@ const MyCourses: React.FC = () => {
     return set;
   }, [enrollments]);
 
+  const {
+    items: topCourses,
+    total: topCoursesTotal,
+    hasMore: topCoursesHasMore,
+    loading: topCoursesLoading,
+    error: topCoursesError,
+  } = useTopCourses({
+    backendUrl,
+    page: topCoursesPage,
+    pageSize: topCoursesPageSize,
+    enabled: tab === 'courses',
+  });
+
+  const topCoursesResolvedTotal =
+    topCoursesTotal ??
+    (topCoursesHasMore
+      ? topCoursesPage * topCoursesPageSize + 1
+      : (topCoursesPage - 1) * topCoursesPageSize + topCourses.length);
+  const topCoursesTotalPages = Math.max(1, Math.ceil(topCoursesResolvedTotal / topCoursesPageSize));
+
   /* Tutor names cache */
   const [tutorNameById, setTutorNameById] = useState<Record<string, string>>({});
 
@@ -317,28 +368,71 @@ const MyCourses: React.FC = () => {
   const api = useMemo(() => makeApiUrl(apiBase), [apiBase]);
 
   const [unlockedAi, setUnlockedAi] = useState<any[]>([]);
-const [unlockedAiLoading, setUnlockedAiLoading] = useState(false);
-const [unlockedAiErr, setUnlockedAiErr] = useState<string | null>(null);
+  const [unlockedAiLoading, setUnlockedAiLoading] = useState(false);
+  const [unlockedAiErr, setUnlockedAiErr] = useState<string | null>(null);
 
-const [unlockedAiDbg, setUnlockedAiDbg] = useState<{
-  ranAt?: string;
-  url?: string;
-  phase?: string;
-  status?: number;
-  preview?: string;
-  error?: string;
-}>({});
+  const [unlockedAiDbg, setUnlockedAiDbg] = useState<{
+    ranAt?: string;
+    url?: string;
+    phase?: string;
+    status?: number;
+    preview?: string;
+    error?: string;
+    build?: string | null;
+    debugDb?: { db?: string; addr?: string; port?: number | string } | null;
+    resolved?: { userId?: number | null; authUuid?: string | null } | null;
+    entitlementsCount?: number | null;
+    entitlementsJoinTitles?: string[];
+  }>({});
+
+  const sandboxDbgEnabled = useMemo(() => {
+    try {
+      const sp = new URLSearchParams(location.search);
+      if (sp.get('dbg') === '1') return true;
+      return localStorage.getItem('DBG_SANDBOX_UNLOCK') === '1';
+    } catch {
+      return false;
+    }
+  }, [location.search]);
+
+  const sdbg = useCallback(
+    (...args: any[]) => {
+      if (sandboxDbgEnabled) {
+        console.log('%c[MyCourses][Sandbox]', 'color:#27ae60;font-weight:bold;', ...args);
+      }
+    },
+    [sandboxDbgEnabled]
+  );
+
+  type SandboxStatus = {
+    totalWeeks: number | null;
+    completedWeeks: number | null;
+    quizEligible: boolean;
+    quizPassed: boolean;
+    certificateReady: boolean;
+    loading: boolean;
+    error?: string;
+  };
+
+  const [sandboxStatusById, setSandboxStatusById] = useState<
+    Record<string, SandboxStatus | undefined>
+  >({});
+  const [sandboxTrackById, setSandboxTrackById] = useState<Record<string, ProgramTrack>>({});
+  const sandboxRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const sandboxObserver = useRef<IntersectionObserver | null>(null);
 
 useEffect(() => {
   if (!backendUrl || !token) {
     setUnlockedAi([]);
     setUnlockedAiErr(null);
     setUnlockedAiLoading(false);
-    setUnlockedAiDbg({
-      ranAt: new Date().toISOString(),
-      phase: 'SKIP',
-      error: `backendUrl=${!!backendUrl}, token=${!!token}`,
-    });
+    if (sandboxDbgEnabled) {
+      setUnlockedAiDbg({
+        ranAt: new Date().toISOString(),
+        phase: 'SKIP',
+        error: `backendUrl=${!!backendUrl}, token=${!!token}`,
+      });
+    }
     return;
   }
 
@@ -349,11 +443,13 @@ useEffect(() => {
     setUnlockedAiErr(null);
 
     const url = api('/courses/mine/unlocked-ai');
-    setUnlockedAiDbg({
-      ranAt: new Date().toISOString(),
-      url,
-      phase: 'REQUEST',
-    });
+    if (sandboxDbgEnabled) {
+      setUnlockedAiDbg({
+        ranAt: new Date().toISOString(),
+        url,
+        phase: 'REQUEST',
+      });
+    }
 
     try {
       const r = await fetch(url, {
@@ -361,29 +457,56 @@ useEffect(() => {
       });
 
       const text = await r.clone().text().catch(() => '');
-      setUnlockedAiDbg({
-        ranAt: new Date().toISOString(),
-        url,
-        phase: 'RESPONSE',
-        status: r.status,
-        preview: text.slice(0, 400),
-      });
+      const buildHeader = r.headers.get('x-unlocked-ai-build');
+      if (sandboxDbgEnabled) {
+        setUnlockedAiDbg({
+          ranAt: new Date().toISOString(),
+          url,
+          phase: 'RESPONSE',
+          status: r.status,
+          preview: text.slice(0, 400),
+          build: buildHeader,
+        });
+      }
 
       if (!r.ok) throw new Error(text || `HTTP ${r.status}`);
 
       const j = await r.json().catch(() => ({}));
       const items = Array.isArray((j as any)?.items) ? (j as any).items : toArray<any>(j);
 
+      if (sandboxDbgEnabled) {
+        const debug = (j as any)?.debug;
+        const entSample = Array.isArray(debug?.entitlementsJoinSample)
+          ? debug.entitlementsJoinSample
+          : [];
+        const entTitles = entSample
+          .map((row: any) => row?.title)
+          .filter((title: any) => typeof title === 'string' && title.trim().length > 0);
+        setUnlockedAiDbg((prev) => ({
+          ...prev,
+          build: buildHeader ?? prev.build ?? null,
+          debugDb: debug?.db ?? null,
+          resolved: debug?.resolved
+            ? { userId: debug.resolved.userId, authUuid: debug.resolved.authUuid }
+            : null,
+          entitlementsCount:
+            typeof debug?.entitlementsCount === 'number' ? debug.entitlementsCount : null,
+          entitlementsJoinTitles: entTitles,
+        }));
+      }
+
       if (!cancelled) setUnlockedAi(items);
     } catch (e: any) {
       const msg = e?.message || String(e) || 'Failed to load';
       if (!cancelled) setUnlockedAiErr(msg);
-      setUnlockedAiDbg((prev) => ({
-        ...prev,
-        ranAt: new Date().toISOString(),
-        phase: 'ERROR',
-        error: msg,
-      }));
+      if (sandboxDbgEnabled) {
+        setUnlockedAiDbg((prev) => ({
+          ...prev,
+          ranAt: new Date().toISOString(),
+          phase: 'ERROR',
+          error: msg,
+        }));
+      }
     } finally {
       if (!cancelled) setUnlockedAiLoading(false);
     }
@@ -392,53 +515,188 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [api, token, backendUrl]);
+}, [api, token, backendUrl, sandboxDbgEnabled]);
 
+  const resolveCourseTrack = useCallback(
+    (course: any): ProgramTrack | undefined => resolveCourseProgramTrack(course, null) ?? undefined,
+    []
+  );
 
-
-useEffect(() => {
-  if (!backendUrl || !token) {
-    setUnlockedAi([]);
-    setUnlockedAiErr(null);
-    setUnlockedAiLoading(false);
-    return;
-  }
-
-  let cancelled = false;
-
-  (async () => {
-    setUnlockedAiLoading(true);
-    setUnlockedAiErr(null);
-
+  const getStoredTrack = useCallback((courseId: string): ProgramTrack | null => {
     try {
-      const url = api('/courses/mine/unlocked-ai');
-      // optional but very useful for debugging:
-      // console.log('[unlocked-ai] GET', url);
+      const v = localStorage.getItem(`sandbox_track:${courseId}`);
+      if (v === 'certificate' || v === 'diploma' || v === 'degree') return v;
+    } catch {}
+    return null;
+  }, []);
 
-      const r = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
+  const persistTrack = useCallback((courseId: string, track: ProgramTrack) => {
+    try {
+      localStorage.setItem(`sandbox_track:${courseId}`, track);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!unlockedAi.length) return;
+    setSandboxTrackById((prev) => {
+      const next = { ...prev };
+      unlockedAi.forEach((c: any) => {
+        const cid = String(c.id ?? '');
+        if (!cid || next[cid]) return;
+        const stored = getStoredTrack(cid);
+        const fromCourse = resolveCourseTrack(c);
+        next[cid] = stored ?? fromCourse ?? 'certificate';
       });
+      return next;
+    });
+  }, [unlockedAi, getStoredTrack, resolveCourseTrack]);
 
-      console.log('[unlocked-ai] status', r.status);
-console.log('[unlocked-ai] text', await r.clone().text());
-
-      if (!r.ok) throw new Error((await r.text().catch(() => '')) || 'Failed to load');
-
-      const j = await r.json().catch(() => ({}));
-      const items = Array.isArray((j as any)?.items) ? (j as any).items : toArray<any>(j);
-
-      if (!cancelled) setUnlockedAi(items);
-    } catch (e: any) {
-      if (!cancelled) setUnlockedAiErr(e?.message || 'Failed to load');
-    } finally {
-      if (!cancelled) setUnlockedAiLoading(false);
+  const extractWeeksCount = useCallback((course: any): number | null => {
+    const syllabus = Array.isArray(course?.syllabus) ? course.syllabus.length : null;
+    if (syllabus && syllabus > 0) return syllabus;
+    const outline = Array.isArray(course?.outline) ? course.outline.length : null;
+    if (outline && outline > 0) return outline;
+    const outlineWeeks = Array.isArray(course?.outline_weeks) ? course.outline_weeks.length : null;
+    if (outlineWeeks && outlineWeeks > 0) return outlineWeeks;
+    const count =
+      course?.week_count ??
+      course?.weeks_count ??
+      course?.outlineLen ??
+      course?.outline_len ??
+      course?.lessons_count ??
+      null;
+    const n = Number(count);
+    if (Number.isFinite(n) && n > 0) return Math.trunc(n);
+    if (typeof course?.outline_json === 'string') {
+      try {
+        const parsed = JSON.parse(course.outline_json);
+        if (Array.isArray(parsed)) return parsed.length;
+        if (Array.isArray(parsed?.weeks)) return parsed.weeks.length;
+      } catch {}
     }
-  })();
+    return null;
+  }, []);
 
-  return () => {
-    cancelled = true;
-  };
-}, [api, token, backendUrl]);
+  const ensureSandboxStatus = useCallback(
+    async (course: any, track: ProgramTrack | undefined) => {
+      const cid = String(course?.id ?? '');
+      if (!cid || !backendUrl || !token) return;
+
+      setSandboxStatusById((prev) => ({
+        ...prev,
+        [cid]: {
+          totalWeeks: prev[cid]?.totalWeeks ?? null,
+          completedWeeks: prev[cid]?.completedWeeks ?? null,
+          quizEligible: prev[cid]?.quizEligible ?? false,
+          quizPassed: prev[cid]?.quizPassed ?? false,
+          certificateReady: prev[cid]?.certificateReady ?? false,
+          loading: true,
+          error: undefined,
+        },
+      }));
+
+      try {
+        let totalWeeks = extractWeeksCount(course);
+        if (totalWeeks == null) {
+          const courseRes = await fetch(api(`/courses/${cid}`), {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const courseData = courseRes.ok ? await courseRes.json().catch(() => ({})) : null;
+          totalWeeks = extractWeeksCount(courseData) ?? totalWeeks;
+        }
+
+        const progress = await fetchCourseProgress(backendUrl, cid, token);
+        const completedWeeks = progress.filter((p) => p.status === 'Completed').length;
+        const progressMaxWeek = progress.reduce(
+          (acc, p) => (Number(p.week) > acc ? Number(p.week) : acc),
+          0
+        );
+        if (!totalWeeks && progressMaxWeek > 0) totalWeeks = progressMaxWeek;
+
+        const certRes = await fetch(
+          api(`/certificates/status?courseId=${encodeURIComponent(cid)}`),
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        const certJson = certRes.ok ? await certRes.json().catch(() => ({})) : {};
+        const quizPassed = Boolean(certJson?.canCertificate || certJson?.hasCertificate);
+        const certificateReady = Boolean(certJson?.hasCertificate);
+        const quizEligible =
+          typeof totalWeeks === 'number' && totalWeeks > 0 ? completedWeeks >= totalWeeks : false;
+
+        sdbg('status', {
+          courseId: cid,
+          track,
+          totalWeeks,
+          completedWeeks,
+          quizEligible,
+          quizPassed,
+          certificateReady,
+        });
+
+        setSandboxStatusById((prev) => ({
+          ...prev,
+          [cid]: {
+            totalWeeks: totalWeeks ?? null,
+            completedWeeks,
+            quizEligible,
+            quizPassed,
+            certificateReady,
+            loading: false,
+          },
+        }));
+      } catch (e: any) {
+        setSandboxStatusById((prev) => ({
+          ...prev,
+          [cid]: {
+            totalWeeks: prev[cid]?.totalWeeks ?? null,
+            completedWeeks: prev[cid]?.completedWeeks ?? null,
+            quizEligible: prev[cid]?.quizEligible ?? false,
+            quizPassed: prev[cid]?.quizPassed ?? false,
+            certificateReady: prev[cid]?.certificateReady ?? false,
+            loading: false,
+            error: e?.message || 'Failed to load status',
+          },
+        }));
+      }
+    },
+    [api, backendUrl, token, extractWeeksCount, sdbg]
+  );
+
+  useEffect(() => {
+    if (!unlockedAi.length) return;
+    if (sandboxObserver.current) sandboxObserver.current.disconnect();
+
+    sandboxObserver.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const id = (entry.target as HTMLElement).dataset.courseId;
+          if (!id) return;
+          const course = unlockedAi.find((c: any) => String(c.id) === id);
+          if (!course) return;
+          const track = sandboxTrackById[id];
+          const existing = sandboxStatusById[id];
+          if (existing?.loading) return;
+          if (!existing || existing.error) {
+            void ensureSandboxStatus(course, track);
+          }
+        });
+      },
+      { rootMargin: '200px 0px' }
+    );
+
+    unlockedAi.forEach((c: any) => {
+      const cid = String(c.id ?? '');
+      const el = sandboxRefs.current[cid];
+      if (cid && el) sandboxObserver.current?.observe(el);
+    });
+
+    return () => {
+      sandboxObserver.current?.disconnect();
+    };
+  }, [unlockedAi, sandboxTrackById, sandboxStatusById, ensureSandboxStatus]);
 
 
   const fetchTutorNamesByUserIds = useCallback(
@@ -909,94 +1167,434 @@ console.log('[unlocked-ai] text', await r.clone().text());
                 </div>
 
                 <div id="unlocked-ai" className="px-3 sm:px-4 mt-3">
-  <div className="flex items-center justify-between gap-2">
-    <h3 className="text-base font-bold">🧪 My AI Sandbox (Unlocked)</h3>
-    <span className="text-xs text-[#49739c] dark:text-darkTextSecondary">
-      {unlockedAiLoading ? 'Loading…' : `${unlockedAi.length} course${unlockedAi.length === 1 ? '' : 's'}`}
-    </span>
-  </div>
-  <div className="mt-2 text-[11px] rounded-xl bg-[#e7edf4] dark:bg-[#172534] p-2">
-  <div className="font-bold">unlocked-ai debug</div>
-  <div>phase: {unlockedAiDbg.phase ?? '—'}</div>
-  <div>ranAt: {unlockedAiDbg.ranAt ?? '—'}</div>
-  <div>url: {unlockedAiDbg.url ?? '—'}</div>
-  <div>status: {String(unlockedAiDbg.status ?? '—')}</div>
-  {unlockedAiDbg.error ? <div className="text-red-700">error: {unlockedAiDbg.error}</div> : null}
-  <div className="mt-1 whitespace-pre-wrap break-words opacity-80">
-    {unlockedAiDbg.preview ?? '—'}
-  </div>
-</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-base font-bold">🧪 My AI Sandbox (Unlocked)</h3>
+                    <span className="text-xs text-[#49739c] dark:text-darkTextSecondary">
+                      {unlockedAiLoading
+                        ? 'Loading…'
+                        : `${unlockedAi.length} course${unlockedAi.length === 1 ? '' : 's'}`}
+                    </span>
+                  </div>
 
+                  {sandboxDbgEnabled ? (
+                    <div className="mt-2 text-[11px] rounded-xl bg-[#e7edf4] dark:bg-[#172534] p-2">
+                      <div className="font-bold">unlocked-ai debug</div>
+                      <div>phase: {unlockedAiDbg.phase ?? '—'}</div>
+                      <div>ranAt: {unlockedAiDbg.ranAt ?? '—'}</div>
+                      <div>url: {unlockedAiDbg.url ?? '—'}</div>
+                      <div>status: {String(unlockedAiDbg.status ?? '—')}</div>
+                      <div>build: {unlockedAiDbg.build ?? '—'}</div>
+                      {unlockedAiDbg.error ? (
+                        <div className="text-red-700">error: {unlockedAiDbg.error}</div>
+                      ) : null}
+                      <div className="mt-1 whitespace-pre-wrap break-words opacity-80">
+                        {unlockedAiDbg.preview ?? '—'}
+                      </div>
+                    </div>
+                  ) : null}
 
-  {unlockedAiErr && !unlockedAiLoading && (
-    <div className="mt-2 text-sm text-red-600">{unlockedAiErr}</div>
-  )}
+                  {sandboxDbgEnabled && !unlockedAiLoading && unlockedAi.length === 0 ? (
+                    <div className="mt-2 text-[11px] rounded-xl bg-[#fff7ed] dark:bg-[#2a1e12] p-2 ring-1 ring-[#f5d0a5] dark:ring-[#5c3d1a]">
+                      <div className="font-bold">unlocked-ai empty result debug</div>
+                      <div>status: {String(unlockedAiDbg.status ?? '—')}</div>
+                      <div>build: {unlockedAiDbg.build ?? '—'}</div>
+                      <div>
+                        db:{' '}
+                        {unlockedAiDbg.debugDb
+                          ? `${unlockedAiDbg.debugDb.db ?? '—'} @ ${unlockedAiDbg.debugDb.addr ?? '—'}:${
+                              unlockedAiDbg.debugDb.port ?? '—'
+                            }`
+                          : '—'}
+                      </div>
+                      <div>
+                        resolved: userId={String(unlockedAiDbg.resolved?.userId ?? '—')} · authUuid=
+                        {unlockedAiDbg.resolved?.authUuid ?? '—'}
+                      </div>
+                      <div>
+                        entitlementsCount: {String(unlockedAiDbg.entitlementsCount ?? '—')}
+                      </div>
+                      <div className="mt-1">
+                        entitlementsJoinSample titles:{' '}
+                        {unlockedAiDbg.entitlementsJoinTitles?.length
+                          ? unlockedAiDbg.entitlementsJoinTitles.join(', ')
+                          : '—'}
+                      </div>
+                    </div>
+                  ) : null}
 
-  {unlockedAiLoading && (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden">
-          <div className="aspect-video bg-gray-200/70 dark:bg:white/5 animate-pulse" />
-          <div className="p-3">
-            <div className="h-4 w-2/3 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
-            <div className="mt-2 h-3 w-1/2 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
-          </div>
-        </div>
-      ))}
-    </div>
-  )}
+                  {unlockedAiErr && !unlockedAiLoading && (
+                    <div className="mt-2 text-sm text-red-600">{unlockedAiErr}</div>
+                  )}
 
-  {!unlockedAiLoading && !unlockedAiErr && unlockedAi.length === 0 && (
-    <div className="mt-2 text-xs text-[#49739c] dark:text-darkTextSecondary">
-      Unlock any AI Sandbox course and it will live here forever — ready to continue anytime.
-    </div>
-  )}
+                  {unlockedAiLoading && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden"
+                        >
+                          <div className="aspect-video bg-gray-200/70 dark:bg:white/5 animate-pulse" />
+                          <div className="p-3">
+                            <div className="h-4 w-2/3 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                            <div className="mt-2 h-3 w-1/2 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-  {!unlockedAiLoading && unlockedAi.length > 0 && (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-      {unlockedAi.map((c: any) => {
-        const cid = String(c.id);
-        return (
-          <div
-            key={cid}
-            className="group rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden flex flex-col"
-          >
-            <CourseHero course={c} backendUrl={backendUrl} />
+                  {!unlockedAiLoading && !unlockedAiErr && unlockedAi.length === 0 && (
+                    <div className="mt-2 text-xs text-[#49739c] dark:text-darkTextSecondary">
+                      Unlock any AI Sandbox course and it will live here forever — ready to
+                      continue anytime.
+                    </div>
+                  )}
 
-            <div className="p-3 sm:p-4 flex-1 flex flex-col">
-              <div className="flex items-start justify-between gap-2">
-                <div className="font-semibold leading-snug line-clamp-2">{c.title}</div>
-                <span className="text-[11px] rounded-full px-2 py-0.5 bg-[#e7edf4] dark:bg-[#172534]">
-                  AI
-                </span>
-              </div>
+                  {!unlockedAiLoading && unlockedAi.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+                      {unlockedAi.map((c: any) => {
+                        const cid = String(c.id);
+                        const track = sandboxTrackById[cid] ?? resolveCourseTrack(c) ?? 'certificate';
+                        const reqs = getProgramTrackRequirements(track);
+                        const status = sandboxStatusById[cid];
+                        const isTrackLocked = enrolledCourseIds.has(cid);
+                        const totalWeeks = status?.totalWeeks ?? null;
+                        const completedWeeks = status?.completedWeeks ?? 0;
+                        const quizEligible = status?.quizEligible ?? false;
+                        const certificateReady = status?.certificateReady ?? false;
+                        const weeksPct =
+                          totalWeeks && totalWeeks > 0
+                            ? Math.min(100, Math.round((completedWeeks / totalWeeks) * 100))
+                            : 0;
+                        const lessonsDone = Math.min(completedWeeks, reqs.lessons);
+                        const questionsDone = Math.min(completedWeeks * 2, reqs.questions);
+                        const progressHref = `/progress/${cid}?programTrack=${track}`;
+                        const quizHref = `/robot-teach?courseId=${encodeURIComponent(
+                          cid
+                        )}&tab=quiz&programTrack=${encodeURIComponent(track)}&lockTrack=1`;
 
-              <div className="mt-1 text-xs text-[#49739c] dark:text-darkTextSecondary">
-                {c.subject ?? '—'} {c.level ? `• ${c.level}` : ''}
-              </div>
+                        const onTrackChange = (next: ProgramTrack) => {
+                          if (isTrackLocked) return;
+                          setSandboxTrackById((prev) => ({ ...prev, [cid]: next }));
+                          persistTrack(cid, next);
+                          sdbg('track', { courseId: cid, next });
+                        };
 
-              <div className="mt-3 flex gap-2">
-                <button
-                  onClick={() => navigate(`/progress/${cid}`)}
-                  className="flex-1 h-9 rounded-xl bg-[#3d99f5] text-white text-xs font-semibold hover:brightness-110"
-                >
-                  Continue
-                </button>
+                        const onDownloadCertificate = async () => {
+                          if (!backendUrl || !token) return;
+                          try {
+                            const doc = await generateCertificatePdf(backendUrl, token, {
+                              courseId: cid,
+                            });
+                            const certId = (doc as any)?.id;
+                            if (!certId) throw new Error('Certificate unavailable');
+                            const filename = `${String(c.title || 'certificate')
+                              .toLowerCase()
+                              .replace(/[^a-z0-9]+/g, '-')}-${certId}.pdf`;
+                            await downloadCertificateFile(backendUrl, token, certId, filename);
+                          } catch (e: any) {
+                            alert(e?.message || 'Failed to download certificate');
+                          }
+                        };
 
-                <button
-                  onClick={() => navigate(`/courses/${cid}`)}
-                  className="h-9 px-3 rounded-xl bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-xs font-semibold"
-                >
-                  Details
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  )}
-</div>
+                        return (
+                          <div
+                            key={cid}
+                            data-course-id={cid}
+                            ref={(el) => {
+                              sandboxRefs.current[cid] = el;
+                              if (el) sandboxObserver.current?.observe(el);
+                            }}
+                            className="group rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden flex flex-col"
+                          >
+                            <CourseHero course={c} backendUrl={backendUrl} />
+
+                            <div className="p-3 sm:p-4 flex-1 flex flex-col gap-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="font-semibold leading-snug line-clamp-2">
+                                  {c.title}
+                                </div>
+                                <span className="text-[11px] rounded-full px-2 py-0.5 bg-[#e7edf4] dark:bg-[#172534]">
+                                  AI Sandbox
+                                </span>
+                              </div>
+
+                              <div className="text-xs text-[#49739c] dark:text-darkTextSecondary">
+                                {c.subject ?? '—'} {c.level ? `• ${c.level}` : ''}
+                              </div>
+
+                              <div className="flex flex-wrap gap-2">
+                                {(['certificate', 'diploma', 'degree'] as ProgramTrack[]).map(
+                                  (opt) => (
+                                    <button
+                                      key={opt}
+                                      onClick={() => onTrackChange(opt)}
+                                      disabled={isTrackLocked}
+                                      className={`px-3 h-7 rounded-full text-[11px] font-semibold ring-1 ${
+                                        track === opt
+                                          ? 'bg-[#3d99f5] text-white ring-[#3d99f5]'
+                                          : 'bg-white dark:bg-[#0f1821] ring-[#cedbe8] dark:ring-darkCard'
+                                      } ${isTrackLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
+                                      {getProgramTrackRequirements(opt).label}
+                                    </button>
+                                  )
+                                )}
+                              </div>
+
+                              <div className="rounded-xl bg-[#f6f9fc] dark:bg-[#142030] p-2 text-[11px] text-[#314a64] dark:text-darkTextSecondary">
+                                <div className="flex items-center justify-between">
+                                  <span>Lessons</span>
+                                  <span className="font-semibold">
+                                    {lessonsDone}/{reqs.lessons}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span>Questions</span>
+                                  <span className="font-semibold">
+                                    {questionsDone}/{reqs.questions}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between text-[11px] text-[#49739c] dark:text-darkTextSecondary">
+                                  <span>Weeks completed</span>
+                                  <span className="font-semibold">
+                                    {totalWeeks ? `${completedWeeks}/${totalWeeks}` : '—'}
+                                  </span>
+                                </div>
+                                <div className="mt-1 h-2 rounded-full bg-[#e7edf4] dark:bg-[#172534] overflow-hidden">
+                                  <div
+                                    className="h-2 bg-[#3d99f5]"
+                                    style={{ width: `${weeksPct}%` }}
+                                  />
+                                </div>
+                              </div>
+
+                              {status?.loading ? (
+                                <div className="text-[11px] text-[#49739c] dark:text-darkTextSecondary">
+                                  Loading eligibility…
+                                </div>
+                              ) : status?.error ? (
+                                <div className="text-[11px] text-red-600">{status.error}</div>
+                              ) : certificateReady ? (
+                                <div className="text-[11px] font-semibold text-emerald-600">
+                                  Certificate ready ✅
+                                </div>
+                              ) : quizEligible ? (
+                                <div className="text-[11px] font-semibold text-indigo-600">
+                                  Final quiz available
+                                </div>
+                              ) : (
+                                <div className="text-[11px] text-[#49739c] dark:text-darkTextSecondary">
+                                  Finish all weeks to unlock final quiz
+                                </div>
+                              )}
+
+                              <div className="mt-auto grid grid-cols-2 gap-2">
+                                {certificateReady ? (
+                                  <>
+                                    <button
+                                      onClick={onDownloadCertificate}
+                                      className="h-9 rounded-xl bg-[#3d99f5] text-white text-xs font-semibold hover:brightness-110"
+                                    >
+                                      Download certificate
+                                    </button>
+                                    <button
+                                      onClick={() => navigate(progressHref)}
+                                      className="h-9 rounded-xl bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-xs font-semibold"
+                                    >
+                                      Review weeks
+                                    </button>
+                                  </>
+                                ) : quizEligible ? (
+                                  <>
+                                    <button
+                                      onClick={() => navigate(quizHref)}
+                                      className="h-9 rounded-xl bg-[#3d99f5] text-white text-xs font-semibold hover:brightness-110"
+                                    >
+                                      Take final quiz
+                                    </button>
+                                    <button
+                                      onClick={() => navigate(progressHref)}
+                                      className="h-9 rounded-xl bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-xs font-semibold"
+                                    >
+                                      Review weeks
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => navigate(progressHref)}
+                                      className="h-9 rounded-xl bg-[#3d99f5] text-white text-xs font-semibold hover:brightness-110"
+                                    >
+                                      {completedWeeks > 0 ? 'Continue week' : 'Start week'}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (sandboxDbgEnabled) {
+                                          console.log('[MyCourses][Sandbox] start-with-ai', {
+                                            courseId: cid,
+                                            programTrack: track,
+                                          });
+                                        }
+                                        navigate(
+                                          `/robot-teach?courseId=${encodeURIComponent(
+                                            cid
+                                          )}&programTrack=${encodeURIComponent(track)}&lockTrack=1`
+                                        );
+                                      }}
+                                      className="h-9 rounded-xl bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-xs font-semibold"
+                                    >
+                                      Start with AI
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between text-[11px] text-[#7a94ad] dark:text-darkTextSecondary">
+                                <span>
+                                  Track: <span className="font-semibold">{reqs.label}</span>
+                                </span>
+                                <button
+                                  onClick={() => navigate(`/courses/${cid}`)}
+                                  className="underline underline-offset-2"
+                                >
+                                  Details
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Top Courses */}
+                <div id="top-courses" className="px-3 sm:px-4 mt-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-base font-bold">🔥 Top Courses</h3>
+                    <div className="flex items-center gap-2 text-xs text-[#49739c] dark:text-darkTextSecondary">
+                      <button
+                        type="button"
+                        onClick={() => setTopCoursesPage((p) => Math.max(1, p - 1))}
+                        disabled={topCoursesPage <= 1 || topCoursesLoading}
+                        className="h-7 px-2 rounded-lg bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard disabled:opacity-50"
+                      >
+                        Prev
+                      </button>
+                      <span>
+                        Page {topCoursesPage} of {topCoursesTotalPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setTopCoursesPage((p) =>
+                            Math.min(topCoursesTotalPages, p + 1)
+                          )
+                        }
+                        disabled={
+                          topCoursesLoading ||
+                          (!topCoursesHasMore && topCoursesPage >= topCoursesTotalPages)
+                        }
+                        className="h-7 px-2 rounded-lg bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard disabled:opacity-50"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+
+                  {topCoursesError && !topCoursesLoading && (
+                    <div className="mt-2 text-sm text-red-600">{topCoursesError}</div>
+                  )}
+
+                  {topCoursesLoading && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3 min-h-[240px]">
+                      {Array.from({ length: topCoursesPageSize }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden"
+                        >
+                          <div className="aspect-video bg-gray-200/70 dark:bg:white/5 animate-pulse" />
+                          <div className="p-3">
+                            <div className="h-4 w-2/3 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                            <div className="mt-2 h-3 w-1/2 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {!topCoursesLoading && !topCoursesError && topCourses.length === 0 && (
+                    <div className="mt-2 text-xs text-[#49739c] dark:text-darkTextSecondary">
+                      No top courses available yet.
+                    </div>
+                  )}
+
+                  {!topCoursesLoading && !topCoursesError && topCourses.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3 min-h-[240px]">
+                      {topCourses.map((c: any) => {
+                        const cid = String(c.id ?? '');
+                        const isEnrolled = enrolledCourseIds.has(cid);
+                        const rating = Number(c.rating ?? c.avg_rating ?? 0);
+                        const reviews = Number(c.reviews ?? c.ratings_count ?? 0);
+                        const showRating = rating > 0 || reviews > 0;
+                        return (
+                          <div
+                            key={cid}
+                            className="rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden flex flex-col"
+                          >
+                            <CourseHero course={c} backendUrl={backendUrl} />
+                            <div className="p-3 sm:p-4 flex-1 flex flex-col gap-2">
+                              <div className="font-semibold leading-snug line-clamp-2">
+                                {c.title || 'Untitled course'}
+                              </div>
+                              {c.blurb ? (
+                                <div className="text-xs text-[#49739c] dark:text-darkTextSecondary line-clamp-2">
+                                  {c.blurb}
+                                </div>
+                              ) : null}
+                              {showRating ? (
+                                <div className="text-[11px] text-[#49739c] dark:text-darkTextSecondary">
+                                  <StarRow avg={rating} count={reviews} />
+                                </div>
+                              ) : null}
+                              <div className="mt-auto grid grid-cols-2 gap-2">
+                                {isEnrolled ? (
+                                  <button
+                                    onClick={() => navigate(`/progress/${cid}`)}
+                                    className="h-9 rounded-xl bg-[#3d99f5] text-white text-xs font-semibold hover:brightness-110 col-span-2"
+                                  >
+                                    Continue
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => navigate(`/courses/${cid}`)}
+                                      className="h-9 rounded-xl bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-xs font-semibold"
+                                    >
+                                      View
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        navigate(`/robot-teach?courseId=${encodeURIComponent(cid)}`)
+                                      }
+                                      className="h-9 rounded-xl bg-[#3d99f5] text-white text-xs font-semibold hover:brightness-110"
+                                    >
+                                      Start with AI
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
 
                 {/* OER Books */}

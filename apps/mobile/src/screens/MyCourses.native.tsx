@@ -14,12 +14,23 @@ import {
   Modal,
 } from 'react-native';
 import debounce from 'lodash.debounce';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import tw from '../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useEnrollments, useOerCourses, useWrapOerBook } from '@mytutorapp/shared/hooks';
+import {
+  useEnrollments,
+  useOerCourses,
+  useTopCourses,
+  useWrapOerBook,
+} from '@mytutorapp/shared/hooks';
 import useCourseSearch from '@mytutorapp/shared/hooks/useCourseSearch';
-import type { Course } from '@mytutorapp/shared/types';
+import { downloadCertificateFile } from '@mytutorapp/shared/api';
+import {
+  getProgramTrackRequirements,
+  resolveCourseProgramTrack,
+} from '@mytutorapp/shared/utils/programTrack';
+import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,6 +44,8 @@ import { useThemePref } from '../theme/ThemeContext';
 
 type TabKey = 'library' | 'courses';
 type Nav = StackNavigationProp<MainStackParamList>;
+
+type TrackRequirements = ReturnType<typeof getProgramTrackRequirements>;
 
 /* ----------------------------- Small UI bits ----------------------------- */
 const Chip: React.FC<{ label: string; active?: boolean; onPress: () => void }> = ({
@@ -265,6 +278,16 @@ function toArray<T = any>(val: any): T[] {
   return [];
 }
 
+const extractCertId = (doc: any): string | null => {
+  if (!doc) return null;
+  const direct = doc?.certId || doc?.certificateId || doc?.id;
+  if (typeof direct === 'string' && direct) return direct;
+  const u = String(doc?.download_url || doc?.downloadUrl || doc?.url || '');
+  const m =
+    u.match(/\/certificates\/([^/]+)\/(?:download|view|raw)?/i) || u.match(/[?&]certId=([^&]+)/i);
+  return m?.[1] ?? null;
+};
+
 /* ----------------------------- Small cards ----------------------------- */
 const OerVideoCard: React.FC<{
   col: OerCollection;
@@ -377,6 +400,7 @@ const OerBookCard: React.FC<{
 /* --------------------------------- Screen -------------------------------- */
 const MyCoursesNative: React.FC = () => {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<any>();
   const { backendUrl, token, profile, role: ctxRole } = useShopContext();
 
   const rawRole = (profile as any)?.role ?? ctxRole ?? '';
@@ -395,8 +419,55 @@ const MyCoursesNative: React.FC = () => {
 
   const api = React.useMemo(() => makeApiUrl(backendUrl || ''), [backendUrl]);
 
+  const [sandboxDbgEnabled, setSandboxDbgEnabled] = useState(false);
+  const [sandboxDbgInfo, setSandboxDbgInfo] = useState<{
+    url?: string;
+    status?: number;
+    preview?: string;
+    count?: number;
+  }>({});
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const dbgParam = route?.params?.dbg === '1' || route?.params?.dbg === 1;
+        if (dbgParam) {
+          if (mounted) setSandboxDbgEnabled(true);
+          return;
+        }
+        const stored = await AsyncStorage.getItem('DBG_SANDBOX_UNLOCK');
+        if (mounted) setSandboxDbgEnabled(stored === '1');
+      } catch {
+        if (mounted) setSandboxDbgEnabled(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [route?.params]);
+
+  type SandboxStatus = {
+    totalWeeks: number | null;
+    completedWeeks: number | null;
+    quizEligible: boolean;
+    certificateReady: boolean;
+    loading: boolean;
+    error?: string;
+  };
+
+  const [unlockedAi, setUnlockedAi] = useState<any[]>([]);
+  const [unlockedAiLoading, setUnlockedAiLoading] = useState(false);
+  const [unlockedAiErr, setUnlockedAiErr] = useState<string | null>(null);
+  const [sandboxTrackById, setSandboxTrackById] = useState<Record<string, ProgramTrack>>({});
+  const [sandboxStatusById, setSandboxStatusById] = useState<
+    Record<string, SandboxStatus | undefined>
+  >({});
+
   // Tabs
   const [tab, setTab] = useState<TabKey>('library');
+  const [topCoursesPage, setTopCoursesPage] = useState(1);
+  const [topCoursesExpanded, setTopCoursesExpanded] = useState(true);
 
   /* ------------------ Web-like: useCourseSearch for Courses tab ------------------ */
   const {
@@ -536,6 +607,148 @@ const MyCoursesNative: React.FC = () => {
     }
     return set;
   }, [enrollments]);
+
+  const {
+    items: topCourses,
+    total: topCoursesTotal,
+    hasMore: topCoursesHasMore,
+    loading: topCoursesLoading,
+    error: topCoursesError,
+  } = useTopCourses({
+    backendUrl,
+    page: topCoursesPage,
+    pageSize: 6,
+    enabled: tab === 'courses',
+  });
+
+  const topCoursesResolvedTotal =
+    topCoursesTotal ??
+    (topCoursesHasMore ? topCoursesPage * 6 + 1 : (topCoursesPage - 1) * 6 + topCourses.length);
+  const topCoursesTotalPages = Math.max(1, Math.ceil(topCoursesResolvedTotal / 6));
+
+  const resolveCourseTrack = useCallback(
+    (course: any): ProgramTrack | undefined => resolveCourseProgramTrack(course, null) ?? undefined,
+    []
+  );
+
+  const extractWeeksCount = useCallback((course: any): number | null => {
+    const syllabus = Array.isArray(course?.syllabus) ? course.syllabus.length : null;
+    if (syllabus && syllabus > 0) return syllabus;
+    const outline = Array.isArray(course?.outline) ? course.outline.length : null;
+    if (outline && outline > 0) return outline;
+    const outlineWeeks = Array.isArray(course?.outline_weeks) ? course.outline_weeks.length : null;
+    if (outlineWeeks && outlineWeeks > 0) return outlineWeeks;
+    const count =
+      course?.week_count ??
+      course?.weeks_count ??
+      course?.outlineLen ??
+      course?.outline_len ??
+      course?.lessons_count ??
+      null;
+    const n = Number(count);
+    if (Number.isFinite(n) && n > 0) return Math.trunc(n);
+    if (typeof course?.outline_json === 'string') {
+      try {
+        const parsed = JSON.parse(course.outline_json);
+        if (Array.isArray(parsed)) return parsed.length;
+        if (Array.isArray(parsed?.weeks)) return parsed.weeks.length;
+      } catch {}
+    }
+    return null;
+  }, []);
+
+  const loadStoredTracks = useCallback(async (courses: any[]) => {
+    const keys = courses.map((c) => `sandbox_track:${String(c?.id ?? '')}`);
+    const entries = await AsyncStorage.multiGet(keys);
+    const next: Record<string, ProgramTrack> = {};
+    entries.forEach(([key, val]) => {
+      const cid = key.replace('sandbox_track:', '');
+      if (val === 'certificate' || val === 'diploma' || val === 'degree') {
+        next[cid] = val;
+      }
+    });
+    return next;
+  }, []);
+
+  const persistTrack = useCallback(async (courseId: string, track: ProgramTrack) => {
+    try {
+      await AsyncStorage.setItem(`sandbox_track:${courseId}`, track);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!backendUrl || !token) {
+      setUnlockedAi([]);
+      setUnlockedAiErr(null);
+      setUnlockedAiLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      setUnlockedAiLoading(true);
+      setUnlockedAiErr(null);
+      const url = api('/courses/mine/unlocked-ai');
+
+      try {
+        const r = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const text = await r.clone().text().catch(() => '');
+        if (sandboxDbgEnabled) {
+          setSandboxDbgInfo({
+            url,
+            status: r.status,
+            preview: text.slice(0, 300),
+          });
+        }
+
+        if (!r.ok) throw new Error(text || `HTTP ${r.status}`);
+
+        const j = await r.json().catch(() => ({}));
+        const items = Array.isArray((j as any)?.items) ? (j as any).items : toArray<any>(j);
+
+        if (!cancelled) {
+          setUnlockedAi(items);
+          if (sandboxDbgEnabled) {
+            setSandboxDbgInfo((prev) => ({ ...prev, count: items.length }));
+          }
+        }
+      } catch (e: any) {
+        if (!cancelled) setUnlockedAiErr(e?.message || 'Failed to load');
+      } finally {
+        if (!cancelled) setUnlockedAiLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, backendUrl, token, sandboxDbgEnabled]);
+
+  useEffect(() => {
+    if (!unlockedAi.length) return;
+    let cancelled = false;
+    (async () => {
+      const stored = await loadStoredTracks(unlockedAi);
+      if (cancelled) return;
+      setSandboxTrackById((prev) => {
+        const next = { ...prev };
+        unlockedAi.forEach((c: any) => {
+          const cid = String(c.id ?? '');
+          if (!cid || next[cid]) return;
+          const fromCourse = resolveCourseTrack(c);
+          next[cid] = stored[cid] ?? fromCourse ?? 'certificate';
+        });
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [unlockedAi, loadStoredTracks, resolveCourseTrack]);
 
   /* Tutor name cache */
   const [tutorNameById, setTutorNameById] = useState<Record<string, string>>({});
@@ -692,6 +905,96 @@ const MyCoursesNative: React.FC = () => {
     for (const it of viewableItems) {
       const id = String(it?.item?.id ?? '');
       if (id && !ratings[id]) debouncedFetchCourseRatings.current(id);
+    }
+  }).current;
+
+  const ensureSandboxStatus = useCallback(
+    async (course: any) => {
+      const cid = String(course?.id ?? '');
+      if (!cid || !backendUrl || !token) return;
+
+      setSandboxStatusById((prev) => ({
+        ...prev,
+        [cid]: {
+          totalWeeks: prev[cid]?.totalWeeks ?? null,
+          completedWeeks: prev[cid]?.completedWeeks ?? null,
+          quizEligible: prev[cid]?.quizEligible ?? false,
+          certificateReady: prev[cid]?.certificateReady ?? false,
+          loading: true,
+          error: undefined,
+        },
+      }));
+
+      try {
+        let totalWeeks = extractWeeksCount(course);
+        if (totalWeeks == null) {
+          const courseRes = await fetch(api(`/courses/${cid}`), {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const courseData = courseRes.ok ? await courseRes.json().catch(() => ({})) : null;
+          totalWeeks = extractWeeksCount(courseData) ?? totalWeeks;
+        }
+
+        const progressRes = await fetch(api(`/course-progress/${cid}`), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const progress = progressRes.ok ? await progressRes.json().catch(() => []) : [];
+        const progressArr = Array.isArray(progress) ? progress : [];
+        const completedWeeks = progressArr.filter((p: any) => p?.status === 'Completed').length;
+        const progressMaxWeek = progressArr.reduce(
+          (acc: number, p: any) => (Number(p?.week) > acc ? Number(p.week) : acc),
+          0
+        );
+        if (!totalWeeks && progressMaxWeek > 0) totalWeeks = progressMaxWeek;
+
+        const certRes = await fetch(
+          api(`/certificates/status?courseId=${encodeURIComponent(cid)}`),
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        const certJson = certRes.ok ? await certRes.json().catch(() => ({})) : {};
+        const certificateReady = Boolean(
+          certJson?.certificateReady || certJson?.hasCertificate || certJson?.canCertificate
+        );
+        const quizEligible =
+          typeof totalWeeks === 'number' && totalWeeks > 0 ? completedWeeks >= totalWeeks : false;
+
+        setSandboxStatusById((prev) => ({
+          ...prev,
+          [cid]: {
+            totalWeeks: totalWeeks ?? null,
+            completedWeeks,
+            quizEligible,
+            certificateReady,
+            loading: false,
+          },
+        }));
+      } catch (e: any) {
+        setSandboxStatusById((prev) => ({
+          ...prev,
+          [cid]: {
+            totalWeeks: prev[cid]?.totalWeeks ?? null,
+            completedWeeks: prev[cid]?.completedWeeks ?? null,
+            quizEligible: prev[cid]?.quizEligible ?? false,
+            certificateReady: prev[cid]?.certificateReady ?? false,
+            loading: false,
+            error: e?.message || 'Failed to load status',
+          },
+        }));
+      }
+    },
+    [api, backendUrl, token, extractWeeksCount]
+  );
+
+  const onUnlockedViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    for (const it of viewableItems) {
+      const item = it?.item;
+      const id = String(item?.id ?? '');
+      if (!id) continue;
+      const existing = sandboxStatusById[id];
+      if (existing?.loading || existing?.totalWeeks) continue;
+      void ensureSandboxStatus(item);
     }
   }).current;
 
@@ -950,6 +1253,241 @@ const MyCoursesNative: React.FC = () => {
     );
   };
 
+  const renderUnlockedCard = ({ item }: { item: any }) => {
+    const cid = String(item?.id ?? '');
+    const track = sandboxTrackById[cid] ?? resolveCourseTrack(item) ?? 'certificate';
+    const reqs = getProgramTrackRequirements(track);
+    const status = sandboxStatusById[cid];
+    const isTrackLocked = enrolledCourseIds.has(cid);
+    const totalWeeks = status?.totalWeeks ?? null;
+    const completedWeeks = status?.completedWeeks ?? 0;
+    const quizEligible = status?.quizEligible ?? false;
+    const certificateReady = status?.certificateReady ?? false;
+    const weeksPct =
+      totalWeeks && totalWeeks > 0
+        ? Math.min(100, Math.round((completedWeeks / totalWeeks) * 100))
+        : 0;
+    const lessonsDone = Math.min(completedWeeks, reqs.lessons);
+    const questionsDone = Math.min(completedWeeks * 2, reqs.questions);
+
+    const thumb =
+      resolveThumbUri(backendUrl, item?.thumbnail_url || item?.cover_url || item?.thumbnail) ||
+      `https://picsum.photos/seed/${encodeURIComponent(String(item?.id ?? 'ai'))}/800/450`;
+
+    const onTrackChange = (next: ProgramTrack) => {
+      if (isTrackLocked) return;
+      setSandboxTrackById((prev) => ({ ...prev, [cid]: next }));
+      void persistTrack(cid, next);
+    };
+
+    const onDownloadCertificate = async () => {
+      if (!backendUrl || !token) return;
+      try {
+        const res = await fetch(api('/certificates/generate'), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ courseId: cid }),
+        });
+        if (!res.ok) {
+          const msg = await res.text();
+          throw new Error(msg || 'Certificate unavailable');
+        }
+        const doc = await res.json().catch(() => ({}));
+        const certId = extractCertId(doc);
+        if (!certId) throw new Error('Certificate unavailable');
+        const fileName = `${String(item?.title || 'certificate')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')}-${certId}.pdf`;
+        await downloadCertificateFile(backendUrl, token, certId, fileName);
+      } catch (e: any) {
+        Alert.alert('Certificate', e?.message || 'Failed to download certificate');
+      }
+    };
+
+    return (
+      <View style={tw`rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3 overflow-hidden`}>
+        <Image source={{ uri: thumb }} style={tw`w-full h-36 bg-[#e7edf4] dark:bg-[#172534]`} />
+        <View style={tw`p-3`}>
+          <View style={tw`flex-row items-start justify-between`}>
+            <Text style={tw`font-semibold text-slate-900 dark:text-white flex-1`} numberOfLines={2}>
+              {item?.title || 'Untitled course'}
+            </Text>
+            <View style={tw`ml-2 px-2 py-0.5 rounded-full bg-[#e7edf4] dark:bg-[#172534]`}>
+              <Text style={tw`text-[10px] text-slate-700 dark:text-white/80`}>AI Sandbox</Text>
+            </View>
+          </View>
+
+          <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`}>
+            {item?.subject ?? '—'} {item?.level ? `• ${item.level}` : ''}
+          </Text>
+
+          <View style={tw`flex-row flex-wrap mt-2`}>
+            {(['certificate', 'diploma', 'degree'] as ProgramTrack[]).map((opt) => (
+              <Pressable
+                key={opt}
+                onPress={() => onTrackChange(opt)}
+                disabled={isTrackLocked}
+                style={tw.style(
+                  'px-3 h-7 rounded-full items-center justify-center mr-2 mb-2 border',
+                  track === opt
+                    ? 'bg-[#3d99f5] border-[#3d99f5]'
+                    : 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10',
+                  isTrackLocked && 'opacity-50'
+                )}
+              >
+                <Text
+                  style={tw.style(
+                    'text-[11px] font-semibold',
+                    track === opt ? 'text-white' : 'text-slate-700 dark:text-white/80'
+                  )}
+                >
+                  {getProgramTrackRequirements(opt).label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={tw`rounded-xl bg-[#f6f9fc] dark:bg-[#172534] p-2 mt-1`}>
+            <View style={tw`flex-row justify-between`}>
+              <Text style={tw`text-[11px] text-[#314a64] dark:text-white/70`}>Lessons</Text>
+              <Text style={tw`text-[11px] font-semibold text-[#314a64] dark:text-white`}>
+                {lessonsDone}/{reqs.lessons}
+              </Text>
+            </View>
+            <View style={tw`flex-row justify-between mt-1`}>
+              <Text style={tw`text-[11px] text-[#314a64] dark:text-white/70`}>Questions</Text>
+              <Text style={tw`text-[11px] font-semibold text-[#314a64] dark:text-white`}>
+                {questionsDone}/{reqs.questions}
+              </Text>
+            </View>
+          </View>
+
+          <View style={tw`mt-2`}>
+            <View style={tw`flex-row justify-between`}>
+              <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Weeks completed</Text>
+              <Text style={tw`text-[11px] font-semibold text-[#49739c] dark:text-white/80`}>
+                {totalWeeks ? `${completedWeeks}/${totalWeeks}` : '—'}
+              </Text>
+            </View>
+            <View style={tw`h-2 bg-[#e7edf4] dark:bg-[#172534] rounded-full mt-1 overflow-hidden`}>
+              <View style={tw.style('h-2 bg-[#3d99f5]', { width: `${weeksPct}%` })} />
+            </View>
+          </View>
+
+          {status?.loading ? (
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70 mt-2`}>
+              Loading eligibility…
+            </Text>
+          ) : status?.error ? (
+            <Text style={tw`text-[11px] text-red-600 dark:text-red-400 mt-2`}>
+              {status.error}
+            </Text>
+          ) : certificateReady ? (
+            <Text style={tw`text-[11px] text-emerald-600 mt-2`}>Certificate ready ✅</Text>
+          ) : quizEligible ? (
+            <Text style={tw`text-[11px] text-indigo-600 mt-2`}>Final quiz available</Text>
+          ) : (
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70 mt-2`}>
+              Finish all weeks to unlock final quiz
+            </Text>
+          )}
+
+          <View style={tw`flex-row mt-3`}>
+            {certificateReady ? (
+              <>
+                <Pressable
+                  onPress={onDownloadCertificate}
+                  style={tw`flex-1 h-9 rounded-lg bg-[#3d99f5] items-center justify-center`}
+                >
+                  <Text style={tw`text-xs font-semibold text-white`}>Download certificate</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => navigation.navigate('CourseProgress', { courseId: cid })}
+                  style={tw`ml-2 flex-1 h-9 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
+                >
+                  <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>
+                    Review weeks
+                  </Text>
+                </Pressable>
+              </>
+            ) : quizEligible ? (
+              <>
+                <Pressable
+                  onPress={() =>
+                    navAny.navigate('RobotTutor', {
+                      courseId: cid,
+                      programTrack: track,
+                      lockTrack: '1',
+                      flow: 'quiz',
+                    })
+                  }
+                  style={tw`flex-1 h-9 rounded-lg bg-[#3d99f5] items-center justify-center`}
+                >
+                  <Text style={tw`text-xs font-semibold text-white`}>Take final quiz</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => navigation.navigate('CourseProgress', { courseId: cid })}
+                  style={tw`ml-2 flex-1 h-9 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
+                >
+                  <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>
+                    Review weeks
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Pressable
+                  onPress={() => navigation.navigate('CourseProgress', { courseId: cid })}
+                  style={tw`flex-1 h-9 rounded-lg bg-[#3d99f5] items-center justify-center`}
+                >
+                  <Text style={tw`text-xs font-semibold text-white`}>
+                    {completedWeeks > 0 ? 'Continue' : 'Start week'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    {
+                      if (sandboxDbgEnabled) {
+                        console.log('[MyCourses][Sandbox] start-with-ai', {
+                          courseId: cid,
+                          programTrack: track,
+                        });
+                      }
+                      navAny.navigate('RobotTutor', {
+                        courseId: cid,
+                        programTrack: track,
+                        lockTrack: '1',
+                      });
+                    }
+                  }
+                  style={tw`ml-2 flex-1 h-9 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
+                >
+                  <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>
+                    Start with AI
+                  </Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+
+          <View style={tw`flex-row justify-between mt-3`}>
+            <Text style={tw`text-[11px] text-[#7a94ad] dark:text-white/60`}>
+              Track: <Text style={tw`font-semibold`}>{reqs.label}</Text>
+            </Text>
+            <Pressable onPress={() => navigation.navigate('CourseDetails', { courseId: cid })}>
+              <Text style={tw`text-[11px] underline text-[#49739c] dark:text-white/70`}>
+                Details
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   /* ----------------------------- Tabs header ----------------------------- */
   const headerTabs = (
     <View
@@ -1005,6 +1543,240 @@ const MyCoursesNative: React.FC = () => {
         <Text style={tw`text-[#49739c] dark:text-white/70 text-xs px-0`}>
           Find the perfect course to enhance your skills and knowledge.
         </Text>
+      </View>
+
+      {/* Unlocked AI Sandbox */}
+      <View style={tw`mt-3`}>
+        <View style={tw`flex-row items-center justify-between`}>
+          <Text style={tw`text-base font-bold text-slate-900 dark:text-white`}>
+            🧪 My AI Sandbox (Unlocked)
+          </Text>
+          <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+            {unlockedAiLoading ? 'Loading…' : `${unlockedAi.length} course${unlockedAi.length === 1 ? '' : 's'}`}
+          </Text>
+        </View>
+
+        {sandboxDbgEnabled && !unlockedAiLoading && unlockedAi.length === 0 ? (
+          <View style={tw`mt-2 rounded-xl bg-[#fff7ed] dark:bg-[#2a1e12] p-2 border border-[#f5d0a5] dark:border-[#5c3d1a]`}>
+            <Text style={tw`text-[11px] font-semibold text-[#7a4b12] dark:text-[#f5d0a5]`}>
+              unlocked-ai debug
+            </Text>
+            <Text style={tw`text-[11px] text-[#7a4b12] dark:text-[#f5d0a5]`}>
+              url: {sandboxDbgInfo.url ?? '—'}
+            </Text>
+            <Text style={tw`text-[11px] text-[#7a4b12] dark:text-[#f5d0a5]`}>
+              status: {String(sandboxDbgInfo.status ?? '—')}
+            </Text>
+            <Text style={tw`text-[11px] text-[#7a4b12] dark:text-[#f5d0a5]`}>
+              items: {String(sandboxDbgInfo.count ?? '—')}
+            </Text>
+            <Text style={tw`text-[11px] text-[#7a4b12] dark:text-[#f5d0a5]`}>
+              preview: {sandboxDbgInfo.preview ?? '—'}
+            </Text>
+          </View>
+        ) : null}
+
+        {unlockedAiErr && !unlockedAiLoading ? (
+          <View style={tw`mt-2`}>
+            <Text style={tw`text-xs text-red-600 dark:text-red-400`}>{unlockedAiErr}</Text>
+          </View>
+        ) : null}
+
+        {unlockedAiLoading ? (
+          <View style={tw`mt-3`}>
+            {[0, 1].map((i) => (
+              <View
+                key={`ai-skeleton-${i}`}
+                style={tw`rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3 overflow-hidden`}
+              >
+                <View style={tw`h-36 bg-[#e7edf4] dark:bg-[#172534]`} />
+                <View style={tw`p-3`}>
+                  <View style={tw`h-3 w-2/3 bg-[#e7edf4] dark:bg-[#172534] rounded`} />
+                  <View style={tw`h-2 w-1/3 bg-[#e7edf4] dark:bg-[#172534] rounded mt-2`} />
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : unlockedAi.length === 0 ? (
+          <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>
+            Unlock any AI Sandbox course and it will live here forever — ready to continue anytime.
+          </Text>
+        ) : (
+          <FlatList
+            data={unlockedAi}
+            keyExtractor={(item) => String(item?.id ?? Math.random())}
+            renderItem={renderUnlockedCard as any}
+            scrollEnabled={false}
+            contentContainerStyle={tw`mt-3 pb-1`}
+            onViewableItemsChanged={onUnlockedViewableItemsChanged}
+            viewabilityConfig={{ itemVisiblePercentThreshold: 40 }}
+          />
+        )}
+      </View>
+
+      {/* Top Courses */}
+      <View style={tw`mt-5`}>
+        <View style={tw`flex-row items-center justify-between`}>
+          <Text style={tw`text-base font-bold text-slate-900 dark:text-white`}>🔥 Top Courses</Text>
+          <Pressable
+            onPress={() => setTopCoursesExpanded((v) => !v)}
+            style={tw`px-2 py-1 rounded-full bg-[#e7edf4] dark:bg-[#172534]`}
+          >
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+              {topCoursesExpanded ? 'Show less' : 'Show more'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={tw`flex-row items-center justify-between mt-2`}>
+          <View style={tw`flex-row items-center gap-2`}>
+            <Pressable
+              onPress={() => setTopCoursesPage((p) => Math.max(1, p - 1))}
+              disabled={topCoursesPage <= 1 || topCoursesLoading}
+              style={tw.style(
+                'h-7 px-2 rounded-lg border',
+                topCoursesPage <= 1 || topCoursesLoading
+                  ? 'bg-[#e7edf4] dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-60'
+                  : 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
+              )}
+            >
+              <Text style={tw`text-[11px] text-[#0d141c] dark:text-white`}>Prev</Text>
+            </Pressable>
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
+              Page {topCoursesPage} of {topCoursesTotalPages}
+            </Text>
+            <Pressable
+              onPress={() =>
+                setTopCoursesPage((p) => Math.min(topCoursesTotalPages, p + 1))
+              }
+              disabled={
+                topCoursesLoading ||
+                (!topCoursesHasMore && topCoursesPage >= topCoursesTotalPages)
+              }
+              style={tw.style(
+                'h-7 px-2 rounded-lg border',
+                topCoursesLoading ||
+                  (!topCoursesHasMore && topCoursesPage >= topCoursesTotalPages)
+                  ? 'bg-[#e7edf4] dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-60'
+                  : 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
+              )}
+            >
+              <Text style={tw`text-[11px] text-[#0d141c] dark:text-white`}>Next</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {topCoursesExpanded && (
+          <>
+            {topCoursesError && !topCoursesLoading ? (
+              <View style={tw`mt-2`}>
+                <Text style={tw`text-xs text-red-600 dark:text-red-400`}>{topCoursesError}</Text>
+              </View>
+            ) : null}
+
+            {topCoursesLoading ? (
+              <View style={tw`mt-3`}>
+                {[0, 1].map((i) => (
+                  <View
+                    key={`top-skeleton-${i}`}
+                    style={tw`rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3 overflow-hidden`}
+                  >
+                    <View style={tw`h-36 bg-[#e7edf4] dark:bg-[#172534]`} />
+                    <View style={tw`p-3`}>
+                      <View style={tw`h-3 w-2/3 bg-[#e7edf4] dark:bg-[#172534] rounded`} />
+                      <View style={tw`h-2 w-1/2 bg-[#e7edf4] dark:bg-[#172534] rounded mt-2`} />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : topCourses.length === 0 ? (
+              <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>
+                No top courses available yet.
+              </Text>
+            ) : (
+              <FlatList
+                data={topCourses}
+                keyExtractor={(item) => String(item?.id ?? Math.random())}
+                renderItem={({ item }) => {
+                  const cid = String(item?.id ?? '');
+                  const isEnrolled = enrolledCourseIds.has(cid);
+                  const rating = Number(item?.rating ?? item?.avg_rating ?? 0);
+                  const reviews = Number(item?.reviews ?? item?.ratings_count ?? 0);
+                  const showRating = rating > 0 || reviews > 0;
+                  const thumb =
+                    resolveThumbUri(
+                      backendUrl,
+                      item?.thumbnail_url || item?.cover_url || item?.thumbnail
+                    ) ||
+                    `https://picsum.photos/seed/${encodeURIComponent(
+                      String(item?.id ?? 'top')
+                    )}/800/450`;
+
+                  return (
+                    <View
+                      style={tw`rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3 overflow-hidden`}
+                    >
+                      <Image
+                        source={{ uri: thumb }}
+                        style={tw`w-full h-36 bg-[#e7edf4] dark:bg-[#172534]`}
+                      />
+                      <View style={tw`p-3`}>
+                        <Text
+                          style={tw`font-semibold text-slate-900 dark:text-white`}
+                          numberOfLines={2}
+                        >
+                          {item?.title || 'Untitled course'}
+                        </Text>
+                        {item?.blurb ? (
+                          <Text
+                            style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`}
+                            numberOfLines={2}
+                          >
+                            {item.blurb}
+                          </Text>
+                        ) : null}
+                        {showRating ? (
+                          <View style={tw`mt-1`}>
+                            <StarRow avg={rating} count={reviews} />
+                          </View>
+                        ) : null}
+                        <View style={tw`flex-row mt-3`}>
+                          {isEnrolled ? (
+                            <Pressable
+                              onPress={() => navigation.navigate('CourseProgress', { courseId: cid })}
+                              style={tw`flex-1 h-9 rounded-lg bg-[#3d99f5] items-center justify-center`}
+                            >
+                              <Text style={tw`text-xs font-semibold text-white`}>Continue</Text>
+                            </Pressable>
+                          ) : (
+                            <>
+                              <Pressable
+                                onPress={() => navigation.navigate('CourseDetails', { courseId: cid })}
+                                style={tw`flex-1 h-9 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
+                              >
+                                <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>
+                                  View
+                                </Text>
+                              </Pressable>
+                              <Pressable
+                                onPress={() => navAny.navigate('RobotTutor', { courseId: cid })}
+                                style={tw`ml-2 flex-1 h-9 rounded-lg bg-[#3d99f5] items-center justify-center`}
+                              >
+                                <Text style={tw`text-xs font-semibold text-white`}>Start with AI</Text>
+                              </Pressable>
+                            </>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                  );
+                }}
+                scrollEnabled={false}
+                contentContainerStyle={tw`mt-3 pb-1`}
+              />
+            )}
+          </>
+        )}
       </View>
 
       {/* OER Books */}

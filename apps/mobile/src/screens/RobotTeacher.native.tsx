@@ -16,6 +16,7 @@ import tw from '../../tailwind';
 import { RefreshableScrollView } from '../refresh/Refreshable';
 import LessonOverlayNative, { type LessonOverlayHandle } from './LessonOverlay.native';
 import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
+import { normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrack';
 import * as Linking from 'expo-linking';
 
 import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
@@ -281,6 +282,10 @@ const qpLocked = String((qp as any).lock ?? '') === '1';
 const qpCourseId = String((qp as any).courseId ?? (qp as any).course_id ?? '').trim();
 const qpAssignmentId = String((qp as any).assignmentId ?? (qp as any).assignment_id ?? '').trim();
 const qpCourseTitle = String((qp as any).courseTitle ?? (qp as any).ct ?? '').trim();
+const qpProgramTrack = String(
+  (qp as any).programTrack ?? (qp as any).program_track ?? (qp as any).track ?? ''
+).trim();
+const qpLockTrack = String((qp as any).lockTrack ?? (qp as any).trackLock ?? '').trim() === '1';
 
 // optional: if you also pass qt/qs in shared links
 const qpQt = String((qp as any).qt ?? '').trim();
@@ -297,6 +302,8 @@ const params = useMemo(
     if (qpCourseId) merged.courseId = qpCourseId;
     if (qpCourseTitle) merged.courseTitle = qpCourseTitle;
     if (qpLocked) merged.lock = '1';
+    if (qpProgramTrack) merged.programTrack = qpProgramTrack;
+    if (qpLockTrack) merged.lockTrack = '1';
 
     if (qpQt) merged.qt = qpQt;
     if (qpQs) merged.qs = qpQs;
@@ -305,13 +312,25 @@ const params = useMemo(
       assignmentId?: string | null;
       courseId?: string | null;
       courseTitle?: string | null;
+      programTrack?: string | null;
       lock?: string | null;
+      lockTrack?: string | null;
       flow?: string | null;
       qt?: 'mcq' | 'short' | string | null;
       qs?: string | null;
     };
   },
-  [route.params, qpAssignmentId, qpCourseId, qpCourseTitle, qpLocked, qpQt, qpQs]
+  [
+    route.params,
+    qpAssignmentId,
+    qpCourseId,
+    qpCourseTitle,
+    qpLocked,
+    qpProgramTrack,
+    qpLockTrack,
+    qpQt,
+    qpQs,
+  ]
 );
 
 
@@ -436,6 +455,7 @@ const validateAgainstTopCourses = Boolean(
   const [quizCount, setQuizCount] = useState<number>(16);
   const [programTrack, setProgramTrack] = useState<TrackKey>('module');
   const [customTitle, setCustomTitle] = useState('');
+  const [programTrackLocked, setProgramTrackLocked] = useState(false);
 
   // ✅ booleans expected by ControlsPanel
   const [overrideLessons, setOverrideLessons] = useState(false);
@@ -551,7 +571,8 @@ const validateAgainstTopCourses = Boolean(
   const isInstructor = roles.has('instructor') || roles.has('teacher');
   const canShareUi = Boolean(activeOrgId && (isAdminOwner || isInstructor || isGlobalAdmin));
 
-  const lockedByParam = params.lock === '1';
+const lockedByParam = params.lock === '1';
+const lockTrackByParam = params.lockTrack === '1';
 
 const isLockedLearner =
   lockedByParam ||
@@ -561,6 +582,14 @@ const isLockedLearner =
 
   const showMinimalControls = isLockedLearner;
   const showCourseList = !isLockedLearner;
+
+  useEffect(() => {
+    const trackFromParam = normalizeProgramTrack(params.programTrack, null);
+    if (trackFromParam) {
+      setProgramTrack(trackFromParam as TrackKey);
+    }
+    setProgramTrackLocked(lockTrackByParam);
+  }, [params.programTrack, lockTrackByParam]);
 
   const titleInfo = useMemo(() => {
   return resolveCourseTitleInfo({
@@ -631,6 +660,12 @@ const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
       setQuizCount(defaultQuizForLessons(trackLessons));
     }
   }, [trackLessons, isLockedLearner, overrideLessons, overrideQuiz]);
+
+  useEffect(() => {
+    if (!programTrackLocked) return;
+    setOverrideLessons(false);
+    setOverrideQuiz(false);
+  }, [programTrackLocked]);
 
   // starter tier caps
   useEffect(() => {
@@ -1340,6 +1375,7 @@ return;
               <ControlsPanel
                 showMinimalControls={showMinimalControls}
                 isLockedLearner={isLockedLearner}
+                programTrackLocked={programTrackLocked}
                 canShareUi={canShareUi}
                 onOpenOverlay={openOverlay}
                  displayCourseTitle={titleInfo.title}

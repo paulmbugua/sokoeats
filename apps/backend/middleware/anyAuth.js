@@ -235,6 +235,17 @@ async function hydrateReqUser(req) {
     profile_id: req.user.profile_id,
     auth_uuid: req.user.auth_uuid,
   });
+
+  if (dbg) {
+    // eslint-disable-next-line no-console
+    console.log('[anyAuth][dbg]', {
+      users_id: req.user?.users_id,
+      auth_uuid: req.user?.auth_uuid,
+      email: req.user?.email,
+      sub: req.user?.sub,
+      uid: req.user?.uid,
+    });
+  }
 }
 
 export default async function anyAuth(req, res, next) {

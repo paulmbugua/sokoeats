@@ -103,6 +103,7 @@ interface ControlsPanelProps {
   // modes
   showMinimalControls: boolean;
   isLockedLearner: boolean;
+  programTrackLocked: boolean;
   canShareUi: boolean;
   restrictStarter: boolean;
   knobsDisabled: boolean;
@@ -149,6 +150,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
   const {
     showMinimalControls,
     isLockedLearner,
+    programTrackLocked,
     canShareUi,
     restrictStarter,
     knobsDisabled,
@@ -248,14 +250,15 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               <div className="mt-1 flex flex-wrap gap-1">
                 {TRACKS.map((t) => {
                   const active = programTrack === t.key;
+                  const trackLocked = isLockedLearner || programTrackLocked;
                   return (
                     <button
                       key={t.key}
                       onClick={() => {
-                        if (!isLockedLearner) setProgramTrack(t.key);
+                        if (!trackLocked) setProgramTrack(t.key);
                       }}
-                      disabled={isLockedLearner}
-                      className={`chip ${active ? 'chip-active' : ''} ${isLockedLearner ? 'opacity-50 pointer-events-none' : ''}`}
+                      disabled={trackLocked}
+                      className={`chip ${active ? 'chip-active' : ''} ${trackLocked ? 'opacity-50 pointer-events-none' : ''}`}
                       title={`${t.label}: ~${t.lessons} lessons`}
                     >
                       {t.label} ({t.lessons})
