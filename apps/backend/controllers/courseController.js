@@ -106,12 +106,17 @@ function coerceUserId(u) {
  *   - org auth (requireAuth → e.g. req.orgUser.*)
  */
 function getAuthTutorId(req) {
-  // From standard user auth
+  // From standard user auth (anyAuth hydrates users_id)
   const userCandidate =
-    req?.user?.id ?? req?.user?.user_id ?? req?.user?.userId ?? req?.user?.sub;
+    req?.user?.users_id ??
+    req?.user?.user_id ??
+    req?.user?.userId ??
+    req?.user?.id ??
+    req?.user?.sub;
 
-  // From org auth (depending on how your auth.js populates it)
+  // From org auth (depending on how auth.js populates it)
   const orgCandidate =
+    req?.orgUser?.users_id ??
     req?.orgUser?.user_id ??
     req?.orgUser?.id ??
     req?.orgUser?.userId ??
@@ -119,6 +124,7 @@ function getAuthTutorId(req) {
 
   return coerceUserId(userCandidate) ?? coerceUserId(orgCandidate);
 }
+
 
 // small helpers for recommendation query params
 function toInt(v, fallback) {

@@ -1009,11 +1009,7 @@ useEffect(() => {
                   Access your learning library or discover structured courses to level up.
                 </p>
               </div>
-              <div className="mt-2 text-[11px] px-2 py-1 rounded-lg bg-[#e7edf4] dark:bg-[#172534] inline-flex gap-2">
-  <span>backendUrl: <b>{backendUrl ? 'OK' : 'MISSING'}</b></span>
-  <span>token: <b>{token ? 'OK' : 'MISSING'}</b></span>
-  <span>profile.id: <b>{profile?.id ?? '—'}</b></span>
-</div>
+            
 
 
               <div

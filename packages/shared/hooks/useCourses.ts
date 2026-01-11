@@ -1,4 +1,6 @@
+// packages/shared/hooks/useCourses.ts
 import { useState, useCallback } from 'react';
+import axios from 'axios';
 import {
   createCourse,
   getCourses,
@@ -12,15 +14,21 @@ import {
   getRecommendedCourses,
   getFeaturedVideos,
 } from '@mytutorapp/shared/api';
-import type { Course, CoursePayload, Achievement, RecordedVideo } from '@mytutorapp/shared/types';
-import axios from 'axios';
+import type {
+  Course,
+  CoursePayload,
+  Achievement,
+  RecordedVideo,
+} from '@mytutorapp/shared/types';
 
 interface UseCoursesProps {
   backendUrl: string;
   token?: string;
 }
 
-export function useCourses({ backendUrl, token }: UseCoursesProps) {
+function useCourses(opts: UseCoursesProps) {
+  const { backendUrl, token } = opts;
+
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
@@ -33,6 +41,7 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
   /* ---------------------------
      Lists / Read
   --------------------------- */
+
   const fetchCourses = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -42,7 +51,9 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
       return data;
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err)
-        ? (err.response?.data?.message ?? err.message ?? 'Failed to fetch courses')
+        ? (err.response?.data?.message ??
+            err.message ??
+            'Failed to fetch courses')
         : 'Failed to fetch courses';
       setError(msg);
       if (axios.isAxiosError(err)) {
@@ -69,7 +80,9 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
       return data;
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err)
-        ? (err.response?.data?.message ?? err.message ?? 'Failed to fetch my courses')
+        ? (err.response?.data?.message ??
+            err.message ??
+            'Failed to fetch my courses')
         : 'Failed to fetch my courses';
       setError(msg);
       if (axios.isAxiosError(err)) {
@@ -96,7 +109,9 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
         return data;
       } catch (err: unknown) {
         const msg = axios.isAxiosError(err)
-          ? (err.response?.data?.message ?? err.message ?? 'Failed to fetch tutor courses')
+          ? (err.response?.data?.message ??
+              err.message ??
+              'Failed to fetch tutor courses')
           : 'Failed to fetch tutor courses';
         setError(msg);
         if (axios.isAxiosError(err)) {
@@ -115,8 +130,13 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
     [backendUrl]
   );
 
+  /**
+   * ✅ Updated:
+   * - getCourseById now returns `Course | null` (404/private -> null)
+   * - we should NOT treat that as an error
+   */
   const fetchCourseById = useCallback(
-    async (id: string) => {
+    async (id: string): Promise<Course | null> => {
       setLoading(true);
       setError(null);
       try {
@@ -125,9 +145,12 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
         return data;
       } catch (err: unknown) {
         const msg = axios.isAxiosError(err)
-          ? (err.response?.data?.message ?? err.message ?? 'Failed to fetch course')
+          ? (err.response?.data?.message ??
+              err.message ??
+              'Failed to fetch course')
           : 'Failed to fetch course';
         setError(msg);
+
         if (axios.isAxiosError(err)) {
           console.error('[useCourses] fetchCourseById error', {
             url: `${backendUrl}/api/courses/${id}`,
@@ -153,10 +176,14 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
     if (!axios.isAxiosError(err)) return console.error(prefix, err);
     const status = err.response?.status;
     if (status === 400) {
-      // optional debug:
       console.debug(prefix, { url, status, data: err.response?.data });
     } else {
-      console.error(prefix, { url, status, data: err.response?.data, message: err.message });
+      console.error(prefix, {
+        url,
+        status,
+        data: err.response?.data,
+        message: err.message,
+      });
     }
   }
 
@@ -179,10 +206,15 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
     [backendUrl]
   );
 
+  /**
+   * ✅ Updated:
+   * - pass token so backend can personalize recommendations (anyAuthOptional)
+   * - still do NOT throw; return []
+   */
   const fetchRecommendedCourses = useCallback(
     async (opts?: { limit?: number; minCount?: number }) => {
       try {
-        const data = await getRecommendedCourses(backendUrl, opts);
+        const data = await getRecommendedCourses(backendUrl, opts, token);
         setRecommendedCourses(data);
         return data;
       } catch (err: unknown) {
@@ -195,7 +227,7 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
         return [];
       }
     },
-    [backendUrl]
+    [backendUrl, token]
   );
 
   const fetchFeaturedVideos = useCallback(
@@ -220,6 +252,7 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
   /* ---------------------------
      Create / Update / Delete
   --------------------------- */
+
   const addCourse = useCallback(
     async (payload: CoursePayload) => {
       setLoading(true);
@@ -274,14 +307,18 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
       try {
         if (!token) throw new Error('Unauthorized');
         const updated = await updateCourse(backendUrl, id, patch, token);
-        setCourses((prev) => prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
+        setCourses((prev) =>
+          prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c))
+        );
         setSelectedCourse((prev) =>
           prev && prev.id === updated.id ? { ...prev, ...updated } : prev
         );
         return updated;
       } catch (err: unknown) {
         const msg = axios.isAxiosError(err)
-          ? (err.response?.data?.message ?? err.message ?? 'Failed to update course')
+          ? (err.response?.data?.message ??
+              err.message ??
+              'Failed to update course')
           : 'Failed to update course';
         setError(msg);
         if (axios.isAxiosError(err)) {
@@ -304,19 +341,25 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
     async (id: string) => {
       setLoading(true);
       setError(null);
+
       // optimistic remove
       const prev = courses;
       setCourses((cur) => cur.filter((c) => c.id !== id));
+
       try {
         if (!token) throw new Error('Unauthorized');
         await deleteCourse(backendUrl, id, token);
       } catch (err: unknown) {
         // revert on failure
         setCourses(prev);
+
         const msg = axios.isAxiosError(err)
-          ? (err.response?.data?.message ?? err.message ?? 'Failed to delete course')
+          ? (err.response?.data?.message ??
+              err.message ??
+              'Failed to delete course')
           : 'Failed to delete course';
         setError(msg);
+
         if (axios.isAxiosError(err)) {
           console.error('[useCourses] removeCourse error', {
             url: `${backendUrl}/api/courses/${id}`,
@@ -336,6 +379,7 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
   /* ---------------------------
      Achievements
   --------------------------- */
+
   const fetchAchievements = useCallback(
     async (studentId: number) => {
       setLoading(true);
@@ -347,7 +391,9 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
         return data;
       } catch (err: unknown) {
         const msg = axios.isAxiosError(err)
-          ? (err.response?.data?.message ?? err.message ?? 'Failed to fetch achievements')
+          ? (err.response?.data?.message ??
+              err.message ??
+              'Failed to fetch achievements')
           : 'Failed to fetch achievements';
         setError(msg);
         if (axios.isAxiosError(err)) {
@@ -397,3 +443,6 @@ export function useCourses({ backendUrl, token }: UseCoursesProps) {
     fetchAchievements,
   };
 }
+
+export default useCourses;
+export { useCourses };

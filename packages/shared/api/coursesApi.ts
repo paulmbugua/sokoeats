@@ -12,6 +12,8 @@ const auth = (token?: string) => (token ? { headers: { Authorization: `Bearer ${
 const cleaned = (u: string) => u.replace(/\/+$/, '');
 const dev = typeof process !== 'undefined' ? process.env.NODE_ENV !== 'production' : false;
 
+const stripSlash = (s: string) => (s || '').replace(/\/+$/, '');
+
 /**
  * Safely GET a list resource. Accepts 200/404/500 and returns [] on non-200.
  * Also unwraps either `{data: T[]}` or raw `T[]`.
@@ -22,8 +24,10 @@ async function safeGetList<T>(
 ): Promise<T[]> {
   const res = await axios.get(url, {
     ...opts,
-    validateStatus: (s) => (s >= 200 && s < 300) || s === 404 || s === 500,
+    validateStatus: (s) =>
+      (s >= 200 && s < 300) || s === 401 || s === 403 || s === 404 || s === 500,
   });
+
   if (res.status !== 200) {
     if (dev) console.debug('[safeGetList]', res.status, '→ [] @', url, res.data);
     return [];
@@ -31,6 +35,7 @@ async function safeGetList<T>(
   const payload = (res.data as any)?.data ?? res.data;
   return Array.isArray(payload) ? (payload as T[]) : [];
 }
+
 
 /**
  * Try multiple fallback endpoints and return the first non-empty result.
@@ -73,14 +78,22 @@ export const getCourses = async (backendUrl: string, token?: string): Promise<Co
 };
 
 // Get Single Course
-export const getCourseById = async (
+export async function getCourseById(
   backendUrl: string,
-  id: string,
+  courseId: string,
   token?: string
-): Promise<Course> => {
-  const { data } = await axios.get<Course>(`${cleaned(backendUrl)}/api/courses/${id}`, auth(token));
-  return data;
-};
+): Promise<Course | null> {
+  const base = stripSlash(backendUrl);
+  const url = `${base}/api/courses/${encodeURIComponent(courseId)}`;
+
+  const res = await axios.get(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    validateStatus: (s) => (s >= 200 && s < 300) || s === 404,
+  });
+
+  if (res.status === 404) return null;
+  return res.data as Course;
+}
 
 // Get my courses (requires auth)
 export const getMyCourses = async (backendUrl: string, token: string): Promise<Course[]> => {
@@ -188,12 +201,16 @@ export const getFeaturedVideos = async (
 /** Recommended Courses */
 export const getRecommendedCourses = async (
   backendUrl: string,
-  params?: { limit?: number; minCount?: number }
+  params?: { limit?: number; minCount?: number },
+  token?: string
 ): Promise<Course[]> => {
   const base = cleaned(backendUrl);
   const routes = ['/api/courses/recommendations', '/api/courses/suggested'];
-  return tryRoutes<Course>(base, routes, params);
+
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  return tryRoutes<Course>(base, routes, params, headers);
 };
+
 
 export async function searchCoursesApi(backendUrl: string, params: Record<string, any>) {
   const base = (backendUrl || '').replace(/\/+$/, '');

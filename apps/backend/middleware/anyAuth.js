@@ -182,16 +182,13 @@ async function hydrateReqUser(req) {
 
   let u = null;
 
-  // 1) If middleware already provided users_id or auth_uuid, use them
   const usersId = coerceInt(raw?.users_id);
   if (usersId) u = await fetchUserByUsersId(usersId);
 
   if (!u && raw?.auth_uuid) u = await fetchUserByAuthUuid(raw.auth_uuid);
 
-  // 2) Try email (most reliable if present)
   if (!u && raw?.email) u = await fetchUserByEmail(raw.email);
 
-  // 3) Try interpreting legacy id as users.id first, then profiles.id
   if (!u) {
     const legacyInt = coerceInt(legacyId);
     if (legacyInt) {
@@ -213,15 +210,9 @@ async function hydrateReqUser(req) {
 
   req.user = {
     ...raw,
-
-    // keep old meaning of id (profile id or whatever authUser set)
     id: legacyId ?? raw?.id,
-
-    // add normalized identifiers
-    users_id: u.id, // integer users.id
-    auth_uuid: u.auth_uuid, // uuid used by ai_course_entitlements
-
-    // nice-to-have
+    users_id: u.id,
+    auth_uuid: u.auth_uuid,
     profile_id: raw?.profile_id ?? u.profile_id ?? null,
     email: u.email,
     name: u.name,
@@ -235,21 +226,10 @@ async function hydrateReqUser(req) {
     profile_id: req.user.profile_id,
     auth_uuid: req.user.auth_uuid,
   });
-
-  if (dbg) {
-    // eslint-disable-next-line no-console
-    console.log('[anyAuth][dbg]', {
-      users_id: req.user?.users_id,
-      auth_uuid: req.user?.auth_uuid,
-      email: req.user?.email,
-      sub: req.user?.sub,
-      uid: req.user?.uid,
-    });
-  }
 }
 
-export default async function anyAuth(req, res, next) {
-  // 🔐 If there is no Authorization header, allow ?token=<jwt> to stand in
+async function anyAuth(req, res, next) {
+  // If there is no Authorization header, allow ?token=<jwt> to stand in
   if (!req.headers.authorization && !req.headers.Authorization) {
     const tokenFromQuery = normalizeQueryToken(req.query?.token);
     if (tokenFromQuery) {
@@ -259,12 +239,10 @@ export default async function anyAuth(req, res, next) {
 
   // Try regular user auth first
   if (await runSilently(authUser, req)) {
-    // Keep existing behavior, but normalize identifiers for entitlements
     try {
       await hydrateReqUser(req);
     } catch (e) {
       console.error('[anyAuth] hydrate error', e?.message || e);
-      // do not block — preserve legacy behavior
     }
     return next();
   }
@@ -275,3 +253,6 @@ export default async function anyAuth(req, res, next) {
   // Neither accepted → deny
   return res.status(401).json({ message: 'Unauthorized' });
 }
+
+export default anyAuth;
+export { anyAuth };

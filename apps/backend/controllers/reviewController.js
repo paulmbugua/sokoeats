@@ -6,6 +6,8 @@ import {
 } from '../validators/reviewValidator.js';
 
 /* --------------------- Helpers --------------------- */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function ownsVideo(studentId, videoId) {
   // classvault_purchases schema: { id, student_id, class_id, purchased_at, ... }
@@ -213,33 +215,51 @@ export const postCourseReview = async (req, res) => {
       stripUnknown: true,
     });
 
-    // IDs in your schema are UUIDs — keep them as strings
-    const studentId = String(req.user.id); // UUID string
-    const courseId = String(req.params.courseId); // UUID string
+    // ✅ Your auth user id is an INTEGER in the rest of your app
+    const studentId = Number(req.user?.id);
+    if (!Number.isFinite(studentId)) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const courseId = String(req.params.courseId || '').trim();
+    if (!UUID_RE.test(courseId)) {
+      return res.status(400).json({ message: 'Invalid course id.' });
+    }
+
+    const safeComment =
+      typeof comment === 'string' ? comment.trim().slice(0, 500) : null;
 
     const client = await pool.connect();
-
     try {
       await client.query('BEGIN');
 
-      // 1) Ensure the student is enrolled in this course
-      const { rows: enr } = await client.query(
+      // ✅ Allow review if:
+      // - enrolled OR
+      // - has started the course (any course_progress row)
+      const { rowCount: ok } = await client.query(
         `
         SELECT 1
-          FROM public.enrollments
-         WHERE student_id = $1
-           AND course_id  = $2
-         LIMIT 1
+          FROM public.enrollments e
+         WHERE e.student_id = $1
+           AND e.course_id  = $2
+        UNION
+        SELECT 1
+          FROM public.course_progress p
+         WHERE p.student_id = $1
+           AND p.course_id  = $2
+        LIMIT 1
         `,
         [studentId, courseId],
       );
 
-      if (enr.length === 0) {
+      if (!ok) {
         await client.query('ROLLBACK');
-        return res.status(403).json({ message: 'Not enrolled.' });
+        return res.status(403).json({
+          message: 'You can only review courses you have started.',
+        });
       }
 
-      // 2) Upsert the review (student can edit their own review)
+      // Upsert the review (student can edit their own review)
       await client.query(
         `
         INSERT INTO public.course_reviews (course_id, student_id, rating, comment, created_at)
@@ -250,22 +270,22 @@ export const postCourseReview = async (req, res) => {
           comment    = EXCLUDED.comment,
           created_at = NOW()
         `,
-        [courseId, studentId, rating, comment ?? null],
+        [courseId, studentId, rating, safeComment],
       );
 
-      // 3) Recompute aggregates from source of truth
+      // Recompute aggregates
       const { rows: aggRows } = await client.query(
         `
         WITH agg AS (
           SELECT
             COALESCE(AVG(r.rating), 0)::NUMERIC(3,2) AS avg_rating,
-            COUNT(*)::INT                             AS ratings_count
+            COUNT(*)::INT                             AS total_reviews
           FROM public.course_reviews r
           WHERE r.course_id = $1
         )
         UPDATE public.courses c
            SET avg_rating    = agg.avg_rating,
-               ratings_count = agg.ratings_count
+               ratings_count = agg.total_reviews
           FROM agg
          WHERE c.id = $1
         RETURNING c.avg_rating, c.ratings_count
@@ -280,7 +300,7 @@ export const postCourseReview = async (req, res) => {
       return res.status(201).json({
         message: 'Review saved.',
         avgRating: Number(summary.avg_rating ?? 0),
-        ratingsCount: Number(summary.ratings_count ?? 0),
+        totalReviews: Number(summary.ratings_count ?? 0), // keep naming consistent with GET
       });
     } catch (e) {
       await client.query('ROLLBACK');
