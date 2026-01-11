@@ -11,6 +11,7 @@ import OrgShareDialog from '@/components/org/OrgShareDialog';
 import ControlsPanel from './RobotTeacherControls';
 import LessonAndQuizPane from './RobotTeacherLessonAndQuiz';
 import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
+import { getProgramTrackRequirements, normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrack';
 
 import type { TopCourse } from '@mytutorapp/shared/types';
 
@@ -200,6 +201,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const qpCourseId = sp.get('courseId') || sp.get('course_id') || '';
   const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
   const qpCourseTitle = sp.get('courseTitle') || sp.get('ct') || '';
+  const qpProgramTrack = sp.get('programTrack') || sp.get('program_track') || '';
+  const qpLockTrack = sp.get('lockTrack') === '1' || sp.get('trackLock') === '1';
 
   const normQt = (v?: string | null): 'mcq' | 'short' | undefined => {
     const s = String(v ?? '')
@@ -412,6 +415,10 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const [totalLessons, setTotalLessons] = useState<number>(8);
   const [quizCount, setQuizCount] = useState<number>(16);
   const [programTrack, setProgramTrack] = useState<TrackKey>('module');
+  const [programTrackLocked, setProgramTrackLocked] = useState(false);
+  const [programTrackLockSource, setProgramTrackLockSource] = useState<
+    'param' | 'storage' | 'default' | null
+  >(null);
   const [customTitle, setCustomTitle] = useState('');
   const [preparing, setPreparing] = useState(false);
   const runIdRef = React.useRef(0);
@@ -420,6 +427,52 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const [blockedUntilStart, setBlockedUntilStart] = useState(false);
   const [overrideLessons, setOverrideLessons] = useState(false);
   const [overrideQuiz, setOverrideQuiz] = useState(false);
+
+  useEffect(() => {
+    const trackFromParam = normalizeProgramTrack(qpProgramTrack, null);
+    if (trackFromParam) {
+      setProgramTrack(trackFromParam as TrackKey);
+      if (qpLockTrack) {
+        setProgramTrackLocked(true);
+        setProgramTrackLockSource('param');
+        if (dbgEnabled()) {
+          console.log('[RobotTeacher] locked programTrack (param)', trackFromParam);
+        }
+      } else {
+        setProgramTrackLocked(false);
+      }
+      return;
+    }
+
+    if (qpCourseId) {
+      try {
+        const stored = localStorage.getItem(`sandbox_track:${qpCourseId}`);
+        const trackFromStorage = normalizeProgramTrack(stored, null);
+        if (trackFromStorage) {
+          setProgramTrack(trackFromStorage as TrackKey);
+          if (qpLockTrack) {
+            setProgramTrackLocked(true);
+            setProgramTrackLockSource('storage');
+            if (dbgEnabled()) {
+              console.log('[RobotTeacher] locked programTrack (storage)', trackFromStorage);
+            }
+          } else {
+            setProgramTrackLocked(false);
+          }
+          return;
+        }
+      } catch {}
+    }
+
+    setProgramTrackLockSource('default');
+    if (!qpLockTrack) setProgramTrackLocked(false);
+  }, [qpProgramTrack, qpCourseId, qpLockTrack]);
+
+  useEffect(() => {
+    if (!programTrackLocked) return;
+    setOverrideLessons(false);
+    setOverrideQuiz(false);
+  }, [programTrackLocked, setOverrideLessons, setOverrideQuiz]);
 
   const [coursesLoadDone, setCoursesLoadDone] = useState(false);
 
@@ -1027,6 +1080,19 @@ useEffect(() => {
                 <span className="text-[10px] opacity-70">({titleInfo.source})</span>
               ) : null}
             </div>
+            {programTrackLocked ? (
+              <div className="mt-2 text-[11px] text-gray-600 dark:text-white/70">
+                {(() => {
+                  const reqs = getProgramTrackRequirements(programTrack);
+                  return `${reqs.label} track: ${reqs.lessons} lessons • ${reqs.questions} questions`;
+                })()}
+                {dbgEnabled() ? (
+                  <span className="ml-2 text-[10px] opacity-70">
+                    (locked via {programTrackLockSource || 'default'})
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
             <p className="text-sm sm:text-base text-gray-600 dark:text-white/75">
               Free lesson (audio + captions + slides) and quiz. Score{' '}
               <span className="font-semibold">≥ 70%</span> to unlock your certificate
@@ -1093,6 +1159,7 @@ useEffect(() => {
           <ControlsPanel
             showMinimalControls={isLockedLearner}
             isLockedLearner={isLockedLearner}
+            programTrackLocked={programTrackLocked}
             busy={busyUi}
             canShareUi={canShareUi}
             restrictStarter={restrictStarter}

@@ -18,7 +18,12 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import tw from '../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useEnrollments, useOerCourses, useWrapOerBook } from '@mytutorapp/shared/hooks';
+import {
+  useEnrollments,
+  useOerCourses,
+  useTopCourses,
+  useWrapOerBook,
+} from '@mytutorapp/shared/hooks';
 import useCourseSearch from '@mytutorapp/shared/hooks/useCourseSearch';
 import { downloadCertificateFile } from '@mytutorapp/shared/api';
 import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
@@ -477,6 +482,8 @@ const MyCoursesNative: React.FC = () => {
 
   // Tabs
   const [tab, setTab] = useState<TabKey>('library');
+  const [topCoursesPage, setTopCoursesPage] = useState(1);
+  const [topCoursesExpanded, setTopCoursesExpanded] = useState(true);
 
   /* ------------------ Web-like: useCourseSearch for Courses tab ------------------ */
   const {

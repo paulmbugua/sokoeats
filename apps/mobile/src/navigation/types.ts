@@ -109,7 +109,9 @@ export type MainStackParamList = {
       assignmentId?: string | number;
       courseId?: string | number;
       courseTitle?: string;
+      programTrack?: string;
       lock?: string;
+      lockTrack?: string;
       flow?: string;
       qt?: 'mcq' | 'short' | string;
       qs?: string | number;

@@ -311,6 +311,53 @@ export async function fetchTopCourses(
   );
 }
 
+type TopCoursesMeta = {
+  items: TopCourse[];
+  total: number | null;
+  hasMore: boolean;
+  offset: number;
+  limit: number;
+};
+
+export async function fetchTopCoursesWithMeta(
+  backendUrl: string,
+  arg?: TopCoursesArg
+): Promise<TopCoursesMeta> {
+  const base = normalizeBase(backendUrl);
+  const aiOnly = typeof arg === 'boolean' ? arg : Boolean(arg?.aiOnly);
+  const limit = typeof arg === 'object' && typeof arg.limit === 'number' ? arg.limit : 50;
+  const offset = typeof arg === 'object' && typeof arg.offset === 'number' ? arg.offset : 0;
+
+  const params = new URLSearchParams();
+  if (aiOnly) params.set('aiOnly', '1');
+  if (limit) params.set('limit', String(limit));
+  if (typeof offset === 'number') params.set('offset', String(offset));
+
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const url = `${base}/api/ai/courses/top${qs}`;
+  const res = await fetch(url, { method: 'GET', headers: buildHeaders(undefined, false) });
+  const text = await res.text().catch(() => '');
+  if (!res.ok) {
+    throw new HttpError('Failed to load courses', res.status, { bodyText: text });
+  }
+  let items: TopCourse[] = [];
+  try {
+    items = text ? (JSON.parse(text) as TopCourse[]) : [];
+  } catch {
+    throw new HttpError('Failed to load courses: Invalid JSON', res.status, { bodyText: text });
+  }
+  const totalRaw = res.headers.get('x-total-ranked');
+  const total = totalRaw ? Number(totalRaw) : null;
+  const hasMoreHeader = res.headers.get('x-has-more');
+  const hasMore =
+    hasMoreHeader != null
+      ? hasMoreHeader === 'true'
+      : total != null
+        ? offset + items.length < total
+        : false;
+  return { items, total: Number.isFinite(total as number) ? total : null, hasMore, offset, limit };
+}
+
 /* ────────────────────────────────────────────────────────────
  * POST /api/ai/outline
  * ─────────────────────────────────────────────────────────── */

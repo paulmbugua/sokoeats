@@ -50,6 +50,7 @@ const CourseSelect = memo(function CourseSelect({
 interface ControlsPanelProps {
   showMinimalControls: boolean;
   isLockedLearner: boolean;
+  programTrackLocked: boolean;
   canShareUi: boolean;
   restrictStarter: boolean;
   knobsDisabled: boolean;
@@ -110,6 +111,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
   const {
     showMinimalControls,
     isLockedLearner,
+    programTrackLocked,
     canShareUi,
     restrictStarter, // eslint-disable-line @typescript-eslint/no-unused-vars
     knobsDisabled,
@@ -228,7 +230,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
             <View style={tw`mt-1 flex-row flex-wrap gap-2`}>
               {TRACKS.map((t) => {
                 const active = programTrack === t.key;
-                const disabled = isLockedLearner;
+                const disabled = isLockedLearner || programTrackLocked;
                 return (
                   <Pressable
                     key={t.key}

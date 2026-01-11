@@ -28,6 +28,7 @@ export * from './useWithdrawal';
 export * from './useAiCourseFlow';
 export * from './useAICertificates';
 export * from './useAiCourseEntitlements';
+export * from './useTopCourses';
 export * from './useOrg';
 export * from './useOrgInvite';
 export { default as useInstitutionAuth } from './useInstitutionAuth';

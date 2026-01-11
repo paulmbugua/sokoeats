@@ -268,6 +268,22 @@ const MyCourses: React.FC = () => {
   const myId = String(profile?.id ?? '');
 
   const [tab, setTab] = useState<TabKey>('library');
+  const [isNarrow, setIsNarrow] = useState(false);
+  const [topCoursesPage, setTopCoursesPage] = useState(1);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 640px)');
+    const onChange = () => setIsNarrow(media.matches);
+    onChange();
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  const topCoursesPageSize = isNarrow ? 6 : 9;
+  useEffect(() => {
+    setTopCoursesPage(1);
+  }, [topCoursesPageSize]);
 
   /* ✅ NEW: Course search hook (this is where your "fix" goes) */
   const {
@@ -335,6 +351,26 @@ const MyCourses: React.FC = () => {
     }
     return set;
   }, [enrollments]);
+
+  const {
+    items: topCourses,
+    total: topCoursesTotal,
+    hasMore: topCoursesHasMore,
+    loading: topCoursesLoading,
+    error: topCoursesError,
+  } = useTopCourses({
+    backendUrl,
+    page: topCoursesPage,
+    pageSize: topCoursesPageSize,
+    enabled: tab === 'courses',
+  });
+
+  const topCoursesResolvedTotal =
+    topCoursesTotal ??
+    (topCoursesHasMore
+      ? topCoursesPage * topCoursesPageSize + 1
+      : (topCoursesPage - 1) * topCoursesPageSize + topCourses.length);
+  const topCoursesTotalPages = Math.max(1, Math.ceil(topCoursesResolvedTotal / topCoursesPageSize));
 
   /* Tutor names cache */
   const [tutorNameById, setTutorNameById] = useState<Record<string, string>>({});
