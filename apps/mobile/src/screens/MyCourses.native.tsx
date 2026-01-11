@@ -26,10 +26,6 @@ import {
 } from '@mytutorapp/shared/hooks';
 import useCourseSearch from '@mytutorapp/shared/hooks/useCourseSearch';
 import { downloadCertificateFile } from '@mytutorapp/shared/api';
-import {
-  getProgramTrackRequirements,
-  resolveCourseProgramTrack,
-} from '@mytutorapp/shared/utils/programTrack';
 import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -45,7 +41,27 @@ import { useThemePref } from '../theme/ThemeContext';
 type TabKey = 'library' | 'courses';
 type Nav = StackNavigationProp<MainStackParamList>;
 
-type TrackRequirements = ReturnType<typeof getProgramTrackRequirements>;
+type TrackRequirements = {
+  key: ProgramTrack;
+  label: string;
+  minLessons: number;
+  minQuestions: number;
+};
+
+const TRACK_REQUIREMENTS: Record<ProgramTrack, TrackRequirements> = {
+  module: { key: 'module', label: 'Module', minLessons: 12, minQuestions: 24 },
+  certificate: { key: 'certificate', label: 'Certificate', minLessons: 12, minQuestions: 24 },
+  diploma: { key: 'diploma', label: 'Diploma', minLessons: 18, minQuestions: 36 },
+  degree: { key: 'degree', label: 'Degree', minLessons: 24, minQuestions: 48 },
+};
+
+const getTrackRequirements = (track?: ProgramTrack | string | null): TrackRequirements => {
+  const raw = String(track || '').toLowerCase();
+  if (raw === 'diploma') return TRACK_REQUIREMENTS.diploma;
+  if (raw === 'degree') return TRACK_REQUIREMENTS.degree;
+  if (raw === 'certificate') return TRACK_REQUIREMENTS.certificate;
+  return TRACK_REQUIREMENTS.certificate;
+};
 
 /* ----------------------------- Small UI bits ----------------------------- */
 const Chip: React.FC<{ label: string; active?: boolean; onPress: () => void }> = ({
@@ -608,28 +624,17 @@ const MyCoursesNative: React.FC = () => {
     return set;
   }, [enrollments]);
 
-  const {
-    items: topCourses,
-    total: topCoursesTotal,
-    hasMore: topCoursesHasMore,
-    loading: topCoursesLoading,
-    error: topCoursesError,
-  } = useTopCourses({
-    backendUrl,
-    page: topCoursesPage,
-    pageSize: 6,
-    enabled: tab === 'courses',
-  });
-
-  const topCoursesResolvedTotal =
-    topCoursesTotal ??
-    (topCoursesHasMore ? topCoursesPage * 6 + 1 : (topCoursesPage - 1) * 6 + topCourses.length);
-  const topCoursesTotalPages = Math.max(1, Math.ceil(topCoursesResolvedTotal / 6));
-
-  const resolveCourseTrack = useCallback(
-    (course: any): ProgramTrack | undefined => resolveCourseProgramTrack(course, null) ?? undefined,
-    []
-  );
+  const resolveCourseTrack = useCallback((course: any): ProgramTrack | undefined => {
+    const raw =
+      course?.programTrack ??
+      course?.program_track ??
+      course?.track ??
+      course?.track_key ??
+      course?.program_track_key;
+    const lc = String(raw || '').toLowerCase();
+    if (lc === 'certificate' || lc === 'diploma' || lc === 'degree') return lc as ProgramTrack;
+    return undefined;
+  }, []);
 
   const extractWeeksCount = useCallback((course: any): number | null => {
     const syllabus = Array.isArray(course?.syllabus) ? course.syllabus.length : null;
@@ -1256,9 +1261,8 @@ const MyCoursesNative: React.FC = () => {
   const renderUnlockedCard = ({ item }: { item: any }) => {
     const cid = String(item?.id ?? '');
     const track = sandboxTrackById[cid] ?? resolveCourseTrack(item) ?? 'certificate';
-    const reqs = getProgramTrackRequirements(track);
+    const reqs = getTrackRequirements(track);
     const status = sandboxStatusById[cid];
-    const isTrackLocked = enrolledCourseIds.has(cid);
     const totalWeeks = status?.totalWeeks ?? null;
     const completedWeeks = status?.completedWeeks ?? 0;
     const quizEligible = status?.quizEligible ?? false;
@@ -1267,15 +1271,14 @@ const MyCoursesNative: React.FC = () => {
       totalWeeks && totalWeeks > 0
         ? Math.min(100, Math.round((completedWeeks / totalWeeks) * 100))
         : 0;
-    const lessonsDone = Math.min(completedWeeks, reqs.lessons);
-    const questionsDone = Math.min(completedWeeks * 2, reqs.questions);
+    const lessonsDone = Math.min(completedWeeks, reqs.minLessons);
+    const questionsDone = Math.min(completedWeeks * 2, reqs.minQuestions);
 
     const thumb =
       resolveThumbUri(backendUrl, item?.thumbnail_url || item?.cover_url || item?.thumbnail) ||
       `https://picsum.photos/seed/${encodeURIComponent(String(item?.id ?? 'ai'))}/800/450`;
 
     const onTrackChange = (next: ProgramTrack) => {
-      if (isTrackLocked) return;
       setSandboxTrackById((prev) => ({ ...prev, [cid]: next }));
       void persistTrack(cid, next);
     };
@@ -1329,13 +1332,11 @@ const MyCoursesNative: React.FC = () => {
               <Pressable
                 key={opt}
                 onPress={() => onTrackChange(opt)}
-                disabled={isTrackLocked}
                 style={tw.style(
                   'px-3 h-7 rounded-full items-center justify-center mr-2 mb-2 border',
                   track === opt
                     ? 'bg-[#3d99f5] border-[#3d99f5]'
-                    : 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10',
-                  isTrackLocked && 'opacity-50'
+                    : 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
                 )}
               >
                 <Text
@@ -1344,7 +1345,7 @@ const MyCoursesNative: React.FC = () => {
                     track === opt ? 'text-white' : 'text-slate-700 dark:text-white/80'
                   )}
                 >
-                  {getProgramTrackRequirements(opt).label}
+                  {getTrackRequirements(opt).label}
                 </Text>
               </Pressable>
             ))}
@@ -1354,13 +1355,13 @@ const MyCoursesNative: React.FC = () => {
             <View style={tw`flex-row justify-between`}>
               <Text style={tw`text-[11px] text-[#314a64] dark:text-white/70`}>Lessons</Text>
               <Text style={tw`text-[11px] font-semibold text-[#314a64] dark:text-white`}>
-                {lessonsDone}/{reqs.lessons}
+                {lessonsDone}/{reqs.minLessons}
               </Text>
             </View>
             <View style={tw`flex-row justify-between mt-1`}>
               <Text style={tw`text-[11px] text-[#314a64] dark:text-white/70`}>Questions</Text>
               <Text style={tw`text-[11px] font-semibold text-[#314a64] dark:text-white`}>
-                {questionsDone}/{reqs.questions}
+                {questionsDone}/{reqs.minQuestions}
               </Text>
             </View>
           </View>
@@ -1420,7 +1421,6 @@ const MyCoursesNative: React.FC = () => {
                     navAny.navigate('RobotTutor', {
                       courseId: cid,
                       programTrack: track,
-                      lockTrack: '1',
                       flow: 'quiz',
                     })
                   }
@@ -1449,19 +1449,10 @@ const MyCoursesNative: React.FC = () => {
                 </Pressable>
                 <Pressable
                   onPress={() =>
-                    {
-                      if (sandboxDbgEnabled) {
-                        console.log('[MyCourses][Sandbox] start-with-ai', {
-                          courseId: cid,
-                          programTrack: track,
-                        });
-                      }
-                      navAny.navigate('RobotTutor', {
-                        courseId: cid,
-                        programTrack: track,
-                        lockTrack: '1',
-                      });
-                    }
+                    navAny.navigate('RobotTutor', {
+                      courseId: cid,
+                      programTrack: track,
+                    })
                   }
                   style={tw`ml-2 flex-1 h-9 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
                 >
@@ -1611,171 +1602,6 @@ const MyCoursesNative: React.FC = () => {
             onViewableItemsChanged={onUnlockedViewableItemsChanged}
             viewabilityConfig={{ itemVisiblePercentThreshold: 40 }}
           />
-        )}
-      </View>
-
-      {/* Top Courses */}
-      <View style={tw`mt-5`}>
-        <View style={tw`flex-row items-center justify-between`}>
-          <Text style={tw`text-base font-bold text-slate-900 dark:text-white`}>🔥 Top Courses</Text>
-          <Pressable
-            onPress={() => setTopCoursesExpanded((v) => !v)}
-            style={tw`px-2 py-1 rounded-full bg-[#e7edf4] dark:bg-[#172534]`}
-          >
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-              {topCoursesExpanded ? 'Show less' : 'Show more'}
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={tw`flex-row items-center justify-between mt-2`}>
-          <View style={tw`flex-row items-center gap-2`}>
-            <Pressable
-              onPress={() => setTopCoursesPage((p) => Math.max(1, p - 1))}
-              disabled={topCoursesPage <= 1 || topCoursesLoading}
-              style={tw.style(
-                'h-7 px-2 rounded-lg border',
-                topCoursesPage <= 1 || topCoursesLoading
-                  ? 'bg-[#e7edf4] dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-60'
-                  : 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
-              )}
-            >
-              <Text style={tw`text-[11px] text-[#0d141c] dark:text-white`}>Prev</Text>
-            </Pressable>
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-              Page {topCoursesPage} of {topCoursesTotalPages}
-            </Text>
-            <Pressable
-              onPress={() =>
-                setTopCoursesPage((p) => Math.min(topCoursesTotalPages, p + 1))
-              }
-              disabled={
-                topCoursesLoading ||
-                (!topCoursesHasMore && topCoursesPage >= topCoursesTotalPages)
-              }
-              style={tw.style(
-                'h-7 px-2 rounded-lg border',
-                topCoursesLoading ||
-                  (!topCoursesHasMore && topCoursesPage >= topCoursesTotalPages)
-                  ? 'bg-[#e7edf4] dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-60'
-                  : 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
-              )}
-            >
-              <Text style={tw`text-[11px] text-[#0d141c] dark:text-white`}>Next</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {topCoursesExpanded && (
-          <>
-            {topCoursesError && !topCoursesLoading ? (
-              <View style={tw`mt-2`}>
-                <Text style={tw`text-xs text-red-600 dark:text-red-400`}>{topCoursesError}</Text>
-              </View>
-            ) : null}
-
-            {topCoursesLoading ? (
-              <View style={tw`mt-3`}>
-                {[0, 1].map((i) => (
-                  <View
-                    key={`top-skeleton-${i}`}
-                    style={tw`rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3 overflow-hidden`}
-                  >
-                    <View style={tw`h-36 bg-[#e7edf4] dark:bg-[#172534]`} />
-                    <View style={tw`p-3`}>
-                      <View style={tw`h-3 w-2/3 bg-[#e7edf4] dark:bg-[#172534] rounded`} />
-                      <View style={tw`h-2 w-1/2 bg-[#e7edf4] dark:bg-[#172534] rounded mt-2`} />
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ) : topCourses.length === 0 ? (
-              <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>
-                No top courses available yet.
-              </Text>
-            ) : (
-              <FlatList
-                data={topCourses}
-                keyExtractor={(item) => String(item?.id ?? Math.random())}
-                renderItem={({ item }) => {
-                  const cid = String(item?.id ?? '');
-                  const isEnrolled = enrolledCourseIds.has(cid);
-                  const rating = Number(item?.rating ?? item?.avg_rating ?? 0);
-                  const reviews = Number(item?.reviews ?? item?.ratings_count ?? 0);
-                  const showRating = rating > 0 || reviews > 0;
-                  const thumb =
-                    resolveThumbUri(
-                      backendUrl,
-                      item?.thumbnail_url || item?.cover_url || item?.thumbnail
-                    ) ||
-                    `https://picsum.photos/seed/${encodeURIComponent(
-                      String(item?.id ?? 'top')
-                    )}/800/450`;
-
-                  return (
-                    <View
-                      style={tw`rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 mb-3 overflow-hidden`}
-                    >
-                      <Image
-                        source={{ uri: thumb }}
-                        style={tw`w-full h-36 bg-[#e7edf4] dark:bg-[#172534]`}
-                      />
-                      <View style={tw`p-3`}>
-                        <Text
-                          style={tw`font-semibold text-slate-900 dark:text-white`}
-                          numberOfLines={2}
-                        >
-                          {item?.title || 'Untitled course'}
-                        </Text>
-                        {item?.blurb ? (
-                          <Text
-                            style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1`}
-                            numberOfLines={2}
-                          >
-                            {item.blurb}
-                          </Text>
-                        ) : null}
-                        {showRating ? (
-                          <View style={tw`mt-1`}>
-                            <StarRow avg={rating} count={reviews} />
-                          </View>
-                        ) : null}
-                        <View style={tw`flex-row mt-3`}>
-                          {isEnrolled ? (
-                            <Pressable
-                              onPress={() => navigation.navigate('CourseProgress', { courseId: cid })}
-                              style={tw`flex-1 h-9 rounded-lg bg-[#3d99f5] items-center justify-center`}
-                            >
-                              <Text style={tw`text-xs font-semibold text-white`}>Continue</Text>
-                            </Pressable>
-                          ) : (
-                            <>
-                              <Pressable
-                                onPress={() => navigation.navigate('CourseDetails', { courseId: cid })}
-                                style={tw`flex-1 h-9 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
-                              >
-                                <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>
-                                  View
-                                </Text>
-                              </Pressable>
-                              <Pressable
-                                onPress={() => navAny.navigate('RobotTutor', { courseId: cid })}
-                                style={tw`ml-2 flex-1 h-9 rounded-lg bg-[#3d99f5] items-center justify-center`}
-                              >
-                                <Text style={tw`text-xs font-semibold text-white`}>Start with AI</Text>
-                              </Pressable>
-                            </>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-                  );
-                }}
-                scrollEnabled={false}
-                contentContainerStyle={tw`mt-3 pb-1`}
-              />
-            )}
-          </>
         )}
       </View>
 
