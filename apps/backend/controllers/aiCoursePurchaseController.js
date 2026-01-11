@@ -8,7 +8,7 @@ const COST_TOKENS = 20;
 const MAX_LESSONS = 60;
 
 export async function purchaseAiCourseAccess(req, res) {
-  const userId = req.user?.id;
+  const userId = req.user?.users_id ?? req.user?.id;
   const courseId = String(req.params?.courseId || '').trim();
 
   if (!userId) return res.status(401).json({ error: 'UNAUTHORIZED' });

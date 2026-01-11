@@ -1,6 +1,12 @@
 // apps/backend/controllers/courseMineController.js
 import pool from '../config/db.js';
 
+// eslint-disable-next-line no-console
+console.log('[unlocked-ai][build] module loaded', {
+  file: __filename,
+  build: 'UNLOCKED_AI_BUILD_2026_01_11B',
+});
+
 const DBG_ENV =
   process.env.DBG_UNLOCKED === '1' ||
   process.env.DBG_COURSE_MINE === '1' ||
@@ -180,6 +186,18 @@ export async function listMyUnlockedAiCourses(req, res) {
     String(req.query?.dbg || '') === '1' ||
     String(req.headers['x-dbg'] || '') === '1';
 
+  res.set('x-unlocked-ai-build', 'UNLOCKED_AI_BUILD_2026_01_11B');
+
+  // Always-on entry log to confirm routing + auth normalization
+  // eslint-disable-next-line no-console
+  console.log('[unlocked-ai][controller] entry', {
+    path: req.path,
+    method: req.method,
+    users_id: req.user?.users_id,
+    auth_uuid: req.user?.auth_uuid,
+    email: req.user?.email,
+  });
+
   // helpful note (only for dbg)
   if (!req.headers.authorization && req.query?.token) {
     const t = normalizeQueryToken(req.query.token);
@@ -215,7 +233,38 @@ export async function listMyUnlockedAiCourses(req, res) {
     }
 
     const authResolved = await resolveAuthUuidFromReq(req, userId, dbg);
-    const authUuid = authResolved.authUuid;
+    let authUuid = authResolved.authUuid;
+
+    const usersRowQ = await pool.query(
+      `SELECT id, email, auth_uuid::text AS auth_uuid FROM users WHERE id = $1 LIMIT 1`,
+      [userId],
+    );
+    const usersRow = usersRowQ.rows?.[0] || null;
+
+    const rowAuthUuid = usersRow?.auth_uuid ? String(usersRow.auth_uuid) : null;
+    const authMatch = Boolean(rowAuthUuid && authUuid && rowAuthUuid === authUuid);
+
+    // eslint-disable-next-line no-console
+    console.log('[unlocked-ai][resolve] ids', {
+      reqId,
+      resolvedUsersId: userId,
+      resolvedAuthUuid: authUuid,
+      via: { usersId: resolved.via, authUuid: authResolved.via },
+      usersRow: usersRow
+        ? { id: usersRow.id, email: usersRow.email, auth_uuid: usersRow.auth_uuid }
+        : null,
+      authUuidMatch: authMatch,
+    });
+
+    if (rowAuthUuid && rowAuthUuid !== authUuid) {
+      authUuid = rowAuthUuid;
+      // eslint-disable-next-line no-console
+      console.log('[unlocked-ai][resolve] auth_uuid override', {
+        reqId,
+        resolvedAuthUuid: authResolved.authUuid,
+        usersAuthUuid: rowAuthUuid,
+      });
+    }
 
     log(dbg, 'resolved ids', {
       reqId,
@@ -223,6 +272,35 @@ export async function listMyUnlockedAiCourses(req, res) {
       authUuid,
       via: { usersId: resolved.via, authUuid: authResolved.via },
     });
+
+    let dbgDbIdentity = null;
+    let dbgEntitlementsCount = null;
+    let dbgEntitlementsJoinSample = [];
+    if (dbg && authUuid) {
+      const dbIdentity = await pool.query(
+        `SELECT current_database() AS db, inet_server_addr()::text AS addr, inet_server_port() AS port`,
+      );
+      dbgDbIdentity = dbIdentity.rows?.[0] || null;
+
+      const entCount = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM ai_course_entitlements WHERE user_id=$1::uuid`,
+        [authUuid],
+      );
+      dbgEntitlementsCount = entCount.rows?.[0]?.n ?? 0;
+
+      const entSample = await pool.query(
+        `
+        SELECT t.user_id::text, t.course_id::text, c.title
+          FROM ai_course_entitlements t
+          JOIN courses c ON c.id::text = t.course_id::text
+         WHERE t.user_id = $1::uuid
+         ORDER BY t.created_at DESC
+         LIMIT 8
+        `,
+        [authUuid],
+      );
+      dbgEntitlementsJoinSample = entSample.rows || [];
+    }
 
     const hasEnrollments = await tableExists('enrollments');
     const hasPurchases = await tableExists('course_purchases');
@@ -348,11 +426,11 @@ export async function listMyUnlockedAiCourses(req, res) {
       `);
     }
 
-    if (hasAiCourseEnt && aiEntTimeCol) {
+    if (hasAiCourseEnt) {
       unionParts.push(`
         SELECT
           t.course_id::text AS course_id,
-          t.${aiEntTimeCol} AS unlocked_at,
+          ${aiEntTimeCol ? `t.${aiEntTimeCol}` : 'NULL::timestamptz'} AS unlocked_at,
           'ai_entitlement' AS unlock_source
         FROM ai_course_entitlements t
         WHERE t.course_id IS NOT NULL
@@ -382,7 +460,15 @@ export async function listMyUnlockedAiCourses(req, res) {
         u.unlock_source,
         u.unlocked_at
       FROM unlocked u
-      JOIN courses c ON c.id::text = u.course_id
+      JOIN courses c
+        ON (
+          u.course_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          AND c.id = u.course_id::uuid
+        )
+        OR (
+          u.course_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          AND c.id::text = u.course_id
+        )
       ORDER BY u.course_id, u.unlocked_at DESC NULLS LAST
       LIMIT 48
     `;
@@ -395,15 +481,52 @@ export async function listMyUnlockedAiCourses(req, res) {
       sample: shortRows(rows, ['id', 'title', 'unlock_source', 'unlocked_at']),
     });
 
+    let dbgUnlockedSample = [];
+    if (dbg) {
+      const unlockedSampleQ = await pool.query(
+        `
+        WITH unlocked AS (
+          ${unionParts.join('\nUNION ALL\n')}
+        )
+        SELECT
+          u.course_id,
+          u.unlock_source,
+          u.unlocked_at
+        FROM unlocked u
+        ORDER BY u.unlocked_at DESC NULLS LAST
+        LIMIT 8
+        `,
+        [userId, authUuid, idTexts],
+      );
+      dbgUnlockedSample = unlockedSampleQ.rows || [];
+    }
+
     return res.json({
       items: rows,
       ...(dbg
         ? {
             debug: {
               reqId,
-              resolved: { userId, authUuid, via: { usersId: resolved.via, authUuid: authResolved.via } },
+              resolved: {
+                userId,
+                authUuid,
+                via: { usersId: resolved.via, authUuid: authResolved.via },
+                snapshot: {
+                  id: req.user?.id,
+                  users_id: req.user?.users_id,
+                  profile_id: req.user?.profile_id,
+                  email: req.user?.email,
+                  auth_uuid: req.user?.auth_uuid,
+                  sub: req.user?.sub,
+                  uid: req.user?.uid,
+                },
+              },
               idTexts,
               counts: debugCounts,
+              db: dbgDbIdentity,
+              entitlementsCount: dbgEntitlementsCount,
+              entitlementsJoinSample: dbgEntitlementsJoinSample,
+              unlockedSample: dbgUnlockedSample,
             },
           }
         : {}),
