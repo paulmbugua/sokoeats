@@ -7,6 +7,7 @@ import { useEnrollments, useOerCourses, useWrapOerBook, useTopCourses } from '@m
 import { downloadCertificateFile } from '@mytutorapp/shared/api/certificatesApi';
 import { generateCertificatePdf } from '@mytutorapp/shared/api/aiCertificatesApi';
 import { fetchCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
+import { getRequiredQuestions, getRequiredWeeks } from '@mytutorapp/shared/utils/programTrackRequirements';
 import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
 import ClassVaultList from '../components/ClassVaultList.web';
 import CourseHero from '../components/CourseHero';
@@ -33,19 +34,23 @@ type TrackRequirements = {
   minQuestions: number;
 };
 
-const TRACK_REQUIREMENTS: Record<ProgramTrack, TrackRequirements> = {
-  module: { key: 'module', label: 'Module', minLessons: 12, minQuestions: 24 },
-  certificate: { key: 'certificate', label: 'Certificate', minLessons: 12, minQuestions: 24 },
-  diploma: { key: 'diploma', label: 'Diploma', minLessons: 18, minQuestions: 36 },
-  degree: { key: 'degree', label: 'Degree', minLessons: 24, minQuestions: 48 },
+const getTrackLabel = (track?: ProgramTrack | string | null): string => {
+  const raw = String(track || '').toLowerCase();
+  if (raw === 'diploma') return 'Diploma';
+  if (raw === 'degree') return 'Degree';
+  if (raw === 'certificate') return 'Certificate';
+  return 'Certificate';
 };
 
 const getTrackRequirements = (track?: ProgramTrack | string | null): TrackRequirements => {
   const raw = String(track || '').toLowerCase();
-  if (raw === 'diploma') return TRACK_REQUIREMENTS.diploma;
-  if (raw === 'degree') return TRACK_REQUIREMENTS.degree;
-  if (raw === 'certificate') return TRACK_REQUIREMENTS.certificate;
-  return TRACK_REQUIREMENTS.certificate;
+  const key = raw === 'diploma' || raw === 'degree' || raw === 'certificate' ? (raw as ProgramTrack) : 'certificate';
+  return {
+    key,
+    label: getTrackLabel(key),
+    minLessons: getRequiredWeeks(key),
+    minQuestions: getRequiredQuestions(key),
+  };
 };
 
 /* --------------------- OER types --------------------- */
@@ -270,6 +275,7 @@ const MyCourses: React.FC = () => {
   const [tab, setTab] = useState<TabKey>('library');
   const [isNarrow, setIsNarrow] = useState(false);
   const [topCoursesPage, setTopCoursesPage] = useState(1);
+  const [topCoursesExpanded, setTopCoursesExpanded] = useState(true);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1285,10 +1291,7 @@ useEffect(() => {
                             : 0;
                         const lessonsDone = Math.min(completedWeeks, reqs.minLessons);
                         const questionsDone = Math.min(completedWeeks * 2, reqs.minQuestions);
-                        const progressHref = `/progress/${cid}?programTrack=${track}`;
-                        const quizHref = `/robot-teach?courseId=${encodeURIComponent(
-                          cid
-                        )}&tab=quiz`;
+                        const progressHref = `/progress/${cid}?programTrack=${track}&source=sandbox`;
 
                         const onTrackChange = (next: ProgramTrack) => {
                           setSandboxTrackById((prev) => ({ ...prev, [cid]: next }));
@@ -1426,10 +1429,10 @@ useEffect(() => {
                                 ) : quizEligible ? (
                                   <>
                                     <button
-                                      onClick={() => navigate(quizHref)}
+                                      onClick={() => navigate(progressHref)}
                                       className="h-9 rounded-xl bg-[#3d99f5] text-white text-xs font-semibold hover:brightness-110"
                                     >
-                                      Take final quiz
+                                      Open progress
                                     </button>
                                     <button
                                       onClick={() => navigate(progressHref)}
@@ -1447,20 +1450,20 @@ useEffect(() => {
                                       {completedWeeks > 0 ? 'Continue week' : 'Start week'}
                                     </button>
                                     <button
-                                      onClick={() =>
-                                        navigate(
-                                          `/robot-teach?courseId=${encodeURIComponent(
-                                            cid
-                                          )}&programTrack=${track}`
-                                        )
-                                      }
+                                      onClick={() => navigate(progressHref)}
                                       className="h-9 rounded-xl bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-xs font-semibold"
                                     >
-                                      Start with AI
+                                      View progress
                                     </button>
                                   </>
                                 )}
                               </div>
+
+                              {sandboxDbgEnabled && (
+                                <div className="text-[10px] text-[#7a94ad] dark:text-darkTextSecondary">
+                                  dbg: track={track} • progress={progressHref}
+                                </div>
+                              )}
 
                               <div className="flex items-center justify-between text-[11px] text-[#7a94ad] dark:text-darkTextSecondary">
                                 <span>
@@ -1478,6 +1481,148 @@ useEffect(() => {
                         );
                       })}
                     </div>
+                  )}
+                </div>
+
+                {/* Top Courses */}
+                <div className="px-3 sm:px-4 mt-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-base font-bold">🔥 Top Courses</h3>
+                    <div className="flex items-center gap-3 text-xs text-[#49739c] dark:text-darkTextSecondary">
+                      <span>
+                        {topCoursesLoading
+                          ? 'Loading…'
+                          : `${topCourses.length} course${topCourses.length === 1 ? '' : 's'}`}
+                      </span>
+                      {isNarrow && (
+                        <button
+                          onClick={() => setTopCoursesExpanded((prev) => !prev)}
+                          className="underline underline-offset-2"
+                        >
+                          {topCoursesExpanded ? 'Show less' : 'Show more'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {topCoursesError && !topCoursesLoading && (
+                    <div className="mt-2 text-sm text-red-600">{topCoursesError}</div>
+                  )}
+
+                  {topCoursesExpanded && (
+                    <>
+                      {topCoursesLoading && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+                          {Array.from({ length: topCoursesPageSize }).map((_, i) => (
+                            <div
+                              key={`top-skel-${i}`}
+                              className="rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden"
+                            >
+                              <div className="aspect-video bg-gray-200/70 dark:bg:white/5 animate-pulse" />
+                              <div className="p-3">
+                                <div className="h-4 w-2/3 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                                <div className="mt-2 h-3 w-1/2 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                                <div className="mt-3 h-3 w-1/3 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {!topCoursesLoading && topCourses.length === 0 && !topCoursesError && (
+                        <div className="mt-2 text-xs text-[#49739c] dark:text-darkTextSecondary">
+                          No top courses available right now.
+                        </div>
+                      )}
+
+                      {!topCoursesLoading && topCourses.length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+                          {topCourses.map((c: any) => {
+                            const cid = String(c.id);
+                            const isEnrolled = enrolledCourseIds.has(cid);
+                            const rating = typeof c.rating === 'number' ? c.rating : undefined;
+                            const reviews = typeof c.reviews === 'number' ? c.reviews : undefined;
+
+                            return (
+                              <div
+                                key={cid}
+                                className="rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden flex flex-col"
+                              >
+                                <CourseHero course={c as any} backendUrl={backendUrl} />
+
+                                <div className="p-3 flex flex-col gap-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="font-semibold text-sm line-clamp-2">{c.title}</p>
+                                    <span className="text-[11px] bg-[#e7edf4] dark:bg-[#172534] rounded px-2 py-0.5">
+                                      TOP
+                                    </span>
+                                  </div>
+
+                                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
+                                    {c.subject ?? '—'} {c.level ? `• ${c.level}` : ''}
+                                  </p>
+
+                                  <div className="flex items-center justify-between text-xs text-[#49739c] dark:text-darkTextSecondary">
+                                    <span>{c.duration ?? '—'}</span>
+                                    {rating ? <StarRow avg={rating} count={reviews ?? 0} /> : null}
+                                  </div>
+
+                                  <div className="mt-1 grid grid-cols-2 gap-2">
+                                    {isEnrolled ? (
+                                      <button
+                                        className="h-9 rounded-lg bg-[#3d99f5] text-white text-xs font-semibold hover:brightness-110"
+                                        onClick={() => navigate(`/progress/${cid}`)}
+                                      >
+                                        Continue
+                                      </button>
+                                    ) : (
+                                      <button
+                                        className="h-9 rounded-lg bg-[#3d99f5] text-white text-xs font-semibold hover:brightness-110"
+                                        onClick={() => navigate(`/courses/${cid}`)}
+                                      >
+                                        View
+                                      </button>
+                                    )}
+                                    <button
+                                      className="h-9 rounded-lg bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-xs font-semibold"
+                                      onClick={() =>
+                                        navigate(`/robot-teach?courseId=${encodeURIComponent(cid)}`)
+                                      }
+                                    >
+                                      Start with AI
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {!topCoursesLoading && topCoursesTotalPages > 1 && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[#49739c] dark:text-darkTextSecondary">
+                          <button
+                            className="h-8 px-3 rounded-lg bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard disabled:opacity-50"
+                            onClick={() => setTopCoursesPage((prev) => Math.max(1, prev - 1))}
+                            disabled={topCoursesPage <= 1}
+                          >
+                            Prev
+                          </button>
+                          <span>
+                            Page {topCoursesPage} of {topCoursesTotalPages}
+                          </span>
+                          <button
+                            className="h-8 px-3 rounded-lg bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard disabled:opacity-50"
+                            onClick={() =>
+                              setTopCoursesPage((prev) => Math.min(topCoursesTotalPages, prev + 1))
+                            }
+                            disabled={topCoursesPage >= topCoursesTotalPages}
+                          >
+                            Next
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 

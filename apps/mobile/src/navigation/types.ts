@@ -115,6 +115,8 @@ export type MainStackParamList = {
       flow?: string;
       qt?: 'mcq' | 'short' | string;
       qs?: string | number;
+      startWeek?: string | number;
+      source?: string;
     }
   | undefined;
 
@@ -129,7 +131,7 @@ export type MainStackParamList = {
       }
     | undefined;
   CourseDetails: { courseId: string };
-  CourseProgress: { courseId: string };
+  CourseProgress: { courseId: string; programTrack?: string; source?: string; dbg?: string };
 
   /* Enrollments & lifecycle */
   MyEnrollments: undefined;

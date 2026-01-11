@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
 import { useAiCourse, useAICertificates } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
+import { updateCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
 
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import OrgShareDialog from '@/components/org/OrgShareDialog';
@@ -11,7 +12,8 @@ import OrgShareDialog from '@/components/org/OrgShareDialog';
 import ControlsPanel from './RobotTeacherControls';
 import LessonAndQuizPane from './RobotTeacherLessonAndQuiz';
 import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
-import { getProgramTrackRequirements, normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrack';
+import { getProgramTrackRequirements } from '@mytutorapp/shared/utils/programTrack';
+import { getRequiredWeeks, normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrackRequirements';
 
 import type { TopCourse } from '@mytutorapp/shared/types';
 
@@ -46,10 +48,10 @@ const PRESETS = [
 export type SizePresetKey = (typeof PRESETS)[number]['key'];
 
 const TRACKS = [
-  { key: 'module', label: 'Module', lessons: 8 },
-  { key: 'certificate', label: 'Certificate', lessons: 12 },
-  { key: 'diploma', label: 'Diploma', lessons: 18 },
-  { key: 'degree', label: 'Degree', lessons: 24 },
+  { key: 'module', label: 'Module', lessons: getRequiredWeeks('module') },
+  { key: 'certificate', label: 'Certificate', lessons: getRequiredWeeks('certificate') },
+  { key: 'diploma', label: 'Diploma', lessons: getRequiredWeeks('diploma') },
+  { key: 'degree', label: 'Degree', lessons: getRequiredWeeks('degree') },
 ] as const;
 export type TrackKey = (typeof TRACKS)[number]['key'];
 
@@ -202,7 +204,19 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
   const qpCourseTitle = sp.get('courseTitle') || sp.get('ct') || '';
   const qpProgramTrack = sp.get('programTrack') || sp.get('program_track') || '';
+  const qpStartWeek = sp.get('startWeek') || sp.get('start_week');
+  const qpSource = sp.get('source') || '';
   const qpLockTrack = sp.get('lockTrack') === '1' || sp.get('trackLock') === '1';
+  const startWeekParsed = qpStartWeek ? Number(qpStartWeek) : null;
+  const startWeekValue =
+    typeof startWeekParsed === 'number' && Number.isFinite(startWeekParsed)
+      ? Math.max(1, Math.trunc(startWeekParsed))
+      : null;
+  const startIdx =
+    typeof startWeekValue === 'number' && Number.isFinite(startWeekValue)
+      ? Math.max(0, startWeekValue - 1)
+      : null;
+  const isSandboxSource = qpSource === 'sandbox';
 
   const normQt = (v?: string | null): 'mcq' | 'short' | undefined => {
     const s = String(v ?? '')
@@ -284,6 +298,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     onBeforePlay: aiOnBeforePlay,
     onEnded: aiOnEnded,
     currentIdx,
+    setCurrentIdx,
     getLessonAt,
     goNext,
     goPrev,
@@ -314,6 +329,77 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   useEffect(() => {
     selectedCourseRef.current = selectedCourse;
   }, [selectedCourse]);
+
+  const startIdxAppliedRef = React.useRef<{ courseId: string | null; startIdx: number | null }>({
+    courseId: null,
+    startIdx: null,
+  });
+
+  useEffect(() => {
+    if (startIdx == null) return;
+    if (!outline.length) return;
+    const courseKey = String(selectedCourse?.id || qpCourseId || '');
+    if (!courseKey) return;
+    if (
+      startIdxAppliedRef.current.courseId === courseKey &&
+      startIdxAppliedRef.current.startIdx === startIdx
+    ) {
+      return;
+    }
+    const clamped = Math.max(0, Math.min(startIdx, Math.max(0, outline.length - 1)));
+    setCurrentIdx(clamped);
+    startIdxAppliedRef.current = { courseId: courseKey, startIdx };
+  }, [startIdx, outline.length, selectedCourse?.id, qpCourseId, setCurrentIdx]);
+
+  const completedWeeksRef = React.useRef<Set<number>>(new Set());
+  const prevIdxRef = React.useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isSandboxSource) {
+      prevIdxRef.current = currentIdx;
+      return;
+    }
+    const prevIdx = prevIdxRef.current;
+    if (prevIdx == null) {
+      prevIdxRef.current = currentIdx;
+      return;
+    }
+    if (currentIdx <= prevIdx) {
+      prevIdxRef.current = currentIdx;
+      return;
+    }
+    const weekToComplete = prevIdx + 1;
+    if (completedWeeksRef.current.has(weekToComplete)) {
+      prevIdxRef.current = currentIdx;
+      return;
+    }
+    const progressCourseId = String(selectedCourse?.id || qpCourseId || '');
+    if (!progressCourseId || !backendUrl || !authToken) {
+      prevIdxRef.current = currentIdx;
+      return;
+    }
+    completedWeeksRef.current.add(weekToComplete);
+    updateCourseProgress(
+      backendUrl,
+      { courseId: progressCourseId, week: weekToComplete, status: 'Completed' },
+      authToken
+    ).catch((e) => {
+      completedWeeksRef.current.delete(weekToComplete);
+      if (dbgEnabled()) console.warn('[RobotTeacher] auto-complete failed', e);
+    });
+    prevIdxRef.current = currentIdx;
+  }, [currentIdx, isSandboxSource, backendUrl, authToken, selectedCourse?.id, qpCourseId]);
+
+  useEffect(() => {
+    if (!dbgEnabled()) return;
+    console.log('[RobotTeacher] startWeek', {
+      startWeek: startWeekValue,
+      startIdx,
+      currentIdx,
+      outlineLen: outline.length,
+      source: qpSource || '—',
+    });
+  }, [startWeekValue, startIdx, currentIdx, outline.length, qpSource]);
 
   // tiny helpers – same idea as native
   const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -429,7 +515,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const [overrideQuiz, setOverrideQuiz] = useState(false);
 
   useEffect(() => {
-    const trackFromParam = normalizeProgramTrack(qpProgramTrack, null);
+    const trackFromParam = qpProgramTrack ? normalizeProgramTrack(qpProgramTrack) : null;
     if (trackFromParam) {
       setProgramTrack(trackFromParam as TrackKey);
       if (qpLockTrack) {
@@ -447,7 +533,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     if (qpCourseId) {
       try {
         const stored = localStorage.getItem(`sandbox_track:${qpCourseId}`);
-        const trackFromStorage = normalizeProgramTrack(stored, null);
+        const trackFromStorage = stored ? normalizeProgramTrack(stored) : null;
         if (trackFromStorage) {
           setProgramTrack(trackFromStorage as TrackKey);
           if (qpLockTrack) {
