@@ -84,7 +84,7 @@ export async function listIssuedCertificates(req, res) {
 // Deduct tokens, record issuance, and upsert entitlement
 // ─────────────────────────────────────────────────────────────
 export async function issueCertificate(req, res) {
-  const userId = req.user?.id;
+  const userId = req.user?.users_id ?? req.user?.id;
   const { code, courseId } = req.body || {};
   if (!userId)
     return res.status(401).json({ ok: false, message: 'Unauthorized' });
