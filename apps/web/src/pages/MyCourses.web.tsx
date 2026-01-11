@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import debounce from 'lodash.debounce';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useEnrollments, useOerCourses, useWrapOerBook } from '@mytutorapp/shared/hooks';
+import { useEnrollments, useOerCourses, useWrapOerBook, useTopCourses } from '@mytutorapp/shared/hooks';
 import { downloadCertificateFile } from '@mytutorapp/shared/api/certificatesApi';
 import { generateCertificatePdf } from '@mytutorapp/shared/api/aiCertificatesApi';
 import { fetchCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';

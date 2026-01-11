@@ -1,11 +1,16 @@
 // apps/backend/controllers/courseMineController.js
 import pool from '../config/db.js';
+import { fileURLToPath } from 'node:url';
+
+// ESM-safe replacement for __filename
+const __filename = fileURLToPath(import.meta.url);
 
 // eslint-disable-next-line no-console
 console.log('[unlocked-ai][build] module loaded', {
   file: __filename,
   build: 'UNLOCKED_AI_BUILD_2026_01_11B',
 });
+
 
 const DBG_ENV =
   process.env.DBG_UNLOCKED === '1' ||
