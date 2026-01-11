@@ -1189,7 +1189,7 @@ export async function downloadCertificate(req, res) {
 }
 
 export async function unlockNarrationAccess(req, res) {
-  const userId = req.user?.id;
+  const userId = req.user?.users_id ?? req.user?.id;
   const courseId = String(req.body?.courseId || '').trim();
 
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -1285,7 +1285,7 @@ export async function getStatus(req, res) {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
 
-    const userId = req.user?.id; // numeric users.id
+    const userId = req.user?.users_id ?? req.user?.id; // numeric users.id
     const authUuid = pickAuthUuidFromReqUser(req.user); // ✅ ADD THIS LINE
 
     const courseId = String(req.query.courseId || '');
@@ -1409,7 +1409,7 @@ export async function getStatus(req, res) {
 
 export async function listMyAiCourses(req, res) {
   try {
-    const numericUserId = req.user?.id; // your existing numeric users.id (e.g. 1631)
+    const numericUserId = req.user?.users_id ?? req.user?.id; // your existing numeric users.id (e.g. 1631)
     const authUuidFromToken = pickAuthUuidFromReqUser(req.user);
 
     if (!numericUserId && !authUuidFromToken) {

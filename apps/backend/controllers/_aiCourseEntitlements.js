@@ -39,7 +39,39 @@ async function normalizeUserUuid(db, userId) {
   if (!raw) return null;
 
   if (isUuid(raw)) return raw;
-  if (isNumeric(raw)) return anonToUuid(`user:${raw}`);
+  if (isNumeric(raw)) {
+    const numericId = Number(raw);
+
+    try {
+      const byUserId = await db.query(
+        `SELECT auth_uuid::text AS auth_uuid FROM users WHERE id = $1 LIMIT 1`,
+        [numericId],
+      );
+      const authUuid = byUserId.rows?.[0]?.auth_uuid;
+      if (isUuid(authUuid)) return authUuid;
+    } catch {
+      // fall through
+    }
+
+    try {
+      const byProfileId = await db.query(
+        `
+        SELECT u.auth_uuid::text AS auth_uuid
+          FROM profiles p
+          JOIN users u ON u.id = p.user_id
+         WHERE p.id = $1
+         LIMIT 1
+        `,
+        [numericId],
+      );
+      const authUuid = byProfileId.rows?.[0]?.auth_uuid;
+      if (isUuid(authUuid)) return authUuid;
+    } catch {
+      // fall through
+    }
+
+    return anonToUuid(`user:${raw}`);
+  }
 
   return null;
 }
