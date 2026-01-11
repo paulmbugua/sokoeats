@@ -186,8 +186,6 @@ export async function listMyUnlockedAiCourses(req, res) {
     String(req.query?.dbg || '') === '1' ||
     String(req.headers['x-dbg'] || '') === '1';
 
-  res.set('x-unlocked-ai-build', 'UNLOCKED_AI_BUILD_2026_01_11B');
-
   // Always-on entry log to confirm routing + auth normalization
   // eslint-disable-next-line no-console
   console.log('[unlocked-ai][controller] entry', {
@@ -461,13 +459,10 @@ export async function listMyUnlockedAiCourses(req, res) {
         u.unlocked_at
       FROM unlocked u
       JOIN courses c
-        ON (
+        ON c.id::text = u.course_id
+        OR (
           u.course_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
           AND c.id = u.course_id::uuid
-        )
-        OR (
-          u.course_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-          AND c.id::text = u.course_id
         )
       ORDER BY u.course_id, u.unlocked_at DESC NULLS LAST
       LIMIT 48
