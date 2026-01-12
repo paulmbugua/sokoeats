@@ -258,8 +258,10 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
 
   // ── Contexts & hooks ─────────────────────────────────────
   const effectiveVoice = voiceName || defaultVoice;
-  const { backendUrl, token, orgToken, role: globalRole } = useShopContext() as any;
+  const { backendUrl, token, orgToken, role: globalRole, initializing } = useShopContext() as any;
   const authToken = token || orgToken || undefined;
+  const authReady = !initializing;
+  const needsAuth = authReady && !authToken;
   const isGlobalAdmin = globalRole === 'admin' || globalRole === 'superadmin';
 
   const [internalThemeOpen, setInternalThemeOpen] = useState(false);
@@ -274,6 +276,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const ai = useAiCourse(backendUrl, authToken, {
     urlQuizTypeHint,
     defaultQuizType: 'mcq',
+    clientScreen: 'RobotTeacher',
   });
 
   const {
@@ -703,6 +706,7 @@ const effectiveCourseIdForStart =
    desiredCourseId || selectedCourseRef.current?.id || selectedCourse?.id || null;
 
 const canStartNow = useMemo(() => {
+  if (!authReady || !authToken) return false;
   // ✅ always block starts while AI is busy / mutex is held
   const aiReallyBusy = (activeRunId !== null && isAiBusy) || startMutexRef.current;
   if (aiReallyBusy) return false;
@@ -726,10 +730,12 @@ const canStartNow = useMemo(() => {
 
    return false;
 }, [
+  authReady,
+  authToken,
   customTitle,
   wantedCourseId,
   effectiveCourseIdForStart,
-   isSandboxSource,
+  isSandboxSource,
   activeRunId,
   isAiBusy,
   selectedCourse?.id,
@@ -1161,6 +1167,14 @@ useEffect(() => {
       });
       return;
     }
+    if (!authReady) {
+      dlog('onStart: auth initializing, skipping start');
+      return;
+    }
+    if (!authToken) {
+      dlog('onStart: missing auth, skipping start');
+      return;
+    }
 
     const custom = customTitle.trim();
     const cid = effectiveCourseIdForStart;
@@ -1229,6 +1243,8 @@ useEffect(() => {
   }, [
     starting,
     canStartNow,
+    authReady,
+    authToken,
     customTitle,
     selectedCourse,
     assignmentIdForAi,
@@ -1368,6 +1384,22 @@ useEffect(() => {
               );
             })}
           </div>
+
+          {needsAuth && (
+            <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <span>Please log in to generate lessons.</span>
+                <button
+                  className="chip chip-active !text-xs"
+                  onClick={() =>
+                    goToLoginWithReturn('ai_sandbox', 'Please log in to generate lessons.')
+                  }
+                >
+                  Log in
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Controls */}
           <ControlsPanel

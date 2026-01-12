@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, NavigationProp } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import tw from '../../tailwind';
 import { RefreshableScrollView } from '../refresh/Refreshable';
 import LessonOverlayNative, { type LessonOverlayHandle } from './LessonOverlay.native';
@@ -391,8 +392,10 @@ const wantedCourseId = useMemo(() => {
   }, []);
 
   const effectiveVoice = voiceName || defaultVoice;
-  const { backendUrl, token, orgToken, role: globalRole } = useShopContext() as any;
-const authToken = token || orgToken;
+  const { backendUrl, token, orgToken, role: globalRole, initializing } = useShopContext() as any;
+  const authToken = token || orgToken;
+  const authReady = !initializing;
+  const needsAuth = authReady && !authToken;
 
   const isGlobalAdmin = globalRole === 'admin' || globalRole === 'superadmin';
 
@@ -409,6 +412,7 @@ const authToken = token || orgToken;
   const ai = useAiCourse(backendUrl, authToken || undefined, {
   urlQuizTypeHint,
   defaultQuizType: 'mcq',
+  clientScreen: 'RobotTeacher',
 });
 
 
@@ -917,6 +921,7 @@ const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
 
   // Only allow first start when there is no built content yet
   const canStartNow = useMemo(() => {
+    if (!authReady || !authToken) return false;
    const hasSeed = Boolean(selectedCourse || (customTitle && customTitle.trim()) || params.courseId);
 
     if (!hasSeed) return false;
@@ -927,7 +932,17 @@ const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
       !(Array.isArray(lessons) && lessons.length > 0) &&
       !(Array.isArray(outline) && outline.length > 0);
     return noContentYet;
-  }, [selectedCourse, customTitle, activeRunId, joinedSsml, ssml, lessons.length, outline.length]);
+  }, [
+    authReady,
+    authToken,
+    selectedCourse,
+    customTitle,
+    activeRunId,
+    joinedSsml,
+    ssml,
+    lessons.length,
+    outline.length,
+  ]);
 
   // preselect course from route param — cancel any active run
   useEffect(() => {
@@ -1069,10 +1084,32 @@ const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
   }, [hasAIContent]);
 
   // Auth helpers
-  const goToLoginWithReturn = (reason?: string, message?: string) => {
-    dlog('navigate → Login', { reason, message });
-    navigation.navigate('Login' as any, { reason, message } as any);
-  };
+  const buildOrgReturnTo = useCallback(() => {
+    const qs = new URLSearchParams();
+    if (assignmentId) qs.set('assignmentId', String(assignmentId));
+    if (params.courseId) qs.set('courseId', String(params.courseId));
+    if (params.qt) qs.set('qt', String(params.qt));
+    if (params.qs) qs.set('qs', String(params.qs));
+    const query = qs.toString();
+    return query ? `/org/robot-teacher?${query}` : '/org/robot-teacher';
+  }, [assignmentId, params.courseId, params.qt, params.qs]);
+
+  const goToLoginWithReturn = useCallback(
+    async (reason?: string, message?: string) => {
+      const isOrgLogin = isOrgFlow || Boolean(orgToken);
+      dlog('navigate → Login', { reason, message, isOrgLogin });
+      if (isOrgLogin) {
+        const returnTo = buildOrgReturnTo();
+        try {
+          await AsyncStorage.setItem('auth:returnTo', returnTo);
+        } catch {}
+        navigation.navigate('InstitutionLogin' as any, { returnTo, reason, message } as any);
+        return;
+      }
+      navigation.navigate('Login' as any, { reason, message, returnTo: 'RobotTutor' } as any);
+    },
+    [buildOrgReturnTo, isOrgFlow, navigation, orgToken]
+  );
   const requireAuth = (reason?: string, message?: string) => {
     if (authToken) return true;
     goToLoginWithReturn(reason, message);
@@ -1160,6 +1197,14 @@ const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
   const onStart = useCallback(async () => {
   if (starting || !canStartNow) {
     dlog('onStart: ignored (starting=', starting, ', canStartNow=', canStartNow, ')');
+    return;
+  }
+  if (!authReady) {
+    dlog('onStart: auth initializing, skipping start');
+    return;
+  }
+  if (!authToken) {
+    dlog('onStart: missing auth, skipping start');
     return;
   }
   setStarting(true);
@@ -1309,6 +1354,8 @@ return;
 }, [
   starting,
   canStartNow,
+  authReady,
+  authToken,
   assignmentId,
   sizePreset,
   classLevel,
@@ -1550,6 +1597,26 @@ return;
                   );
                 })}
               </View>
+
+              {needsAuth && (
+                <View
+                  style={tw`mb-3 rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 px-3 py-2`}
+                >
+                  <View style={tw`flex-row items-center justify-between gap-3`}>
+                    <Text style={tw`text-indigo-900 dark:text-indigo-100 text-sm flex-1`}>
+                      Please log in to generate lessons.
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() =>
+                        goToLoginWithReturn('ai_sandbox', 'Please log in to generate lessons.')
+                      }
+                      style={tw`px-3 py-1.5 rounded-full bg-indigo-600`}
+                    >
+                      <Text style={tw`text-white text-xs font-semibold`}>Log in</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
 
               {/* Controls */}
               <ControlsPanel
