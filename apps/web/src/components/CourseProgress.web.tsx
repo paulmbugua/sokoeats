@@ -93,16 +93,39 @@ const CourseProgress: React.FC = () => {
   }, [courseId]);
 
   // Load course
-  const {
-    selectedCourse,
-    loading: coursesLoading,
-    error: coursesError,
-    fetchCourseById,
-  } = useCourses({ backendUrl, token });
+  const { fetchCourseById } = useCourses({ backendUrl, token });
 
-  useEffect(() => {
-    if (courseId) void fetchCourseById(courseId);
-  }, [courseId, fetchCourseById]);
+const [selectedCourse, setSelectedCourse] = useState<CourseType | null>(null);
+const [coursesLoading, setCoursesLoading] = useState(false);
+const [coursesError, setCoursesError] = useState<string | null>(null);
+
+useEffect(() => {
+  if (!courseId) return;
+
+  let alive = true;
+
+  setCoursesLoading(true);
+  setCoursesError(null);
+
+  (async () => {
+    try {
+      const c = await fetchCourseById(courseId);
+      if (!alive) return;
+      setSelectedCourse((c ?? null) as any);
+    } catch (e: any) {
+      if (!alive) return;
+      setCoursesError(e?.message ?? 'Failed to load course.');
+      setSelectedCourse(null);
+    } finally {
+      // ✅ no return in finally
+      if (alive) setCoursesLoading(false);
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}, [courseId, fetchCourseById]);
 
   // Progress
   const {

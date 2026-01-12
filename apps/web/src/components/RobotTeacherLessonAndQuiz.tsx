@@ -500,7 +500,6 @@ const [paymentOk, setPaymentOk] = useState(false);
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
-      
       if (r.status === 204) return null as any;
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {

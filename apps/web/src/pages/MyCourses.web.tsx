@@ -1582,8 +1582,14 @@ useEffect(() => {
                                     <button
                                       className="h-9 rounded-lg bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-xs font-semibold"
                                       onClick={() =>
-                                        navigate(`/robot-teach?courseId=${encodeURIComponent(cid)}`)
-                                      }
+                                      navigate(
+                                      `/robot-teach?courseId=${encodeURIComponent(cid)}&title=${encodeURIComponent(
+                                        String(c.title || '')
+                                      )}&courseTitle=${encodeURIComponent(String(c.title || ''))}`
+                                    )
+
+                                    }
+
                                     >
                                       Start with AI
                                     </button>

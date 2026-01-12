@@ -210,6 +210,7 @@ export async function queryWithRetry(text, params = [], opts = {}) {
 }
 
 
+
 /* ───────── Optional keep-alive ping ───────── */
 const pingEveryMs = Number(process.env.DB_PING_INTERVAL_MS) || 0;
 if (pingEveryMs > 0) {

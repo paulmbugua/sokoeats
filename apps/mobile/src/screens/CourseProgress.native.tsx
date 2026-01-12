@@ -11,6 +11,7 @@ import {
   Modal,
   Alert,
   Linking,
+  type LayoutChangeEvent,
 } from 'react-native';
 import debounce from 'lodash.debounce';
 import {
@@ -30,7 +31,11 @@ import { useCourseReviews } from '@mytutorapp/shared/hooks/useCourseReviews';
 import { downloadCertificateFile, downloadTranscriptFile } from '@mytutorapp/shared/api';
 import { useWatchProgress } from '@mytutorapp/shared/hooks/useWatchProgress';
 import { useReadProgress } from '@mytutorapp/shared/hooks/useReadProgress';
-import { getRequiredQuestions, getRequiredWeeks, normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrackRequirements';
+import {
+  getRequiredQuestions,
+  getRequiredWeeks,
+  normalizeProgramTrack,
+} from '@mytutorapp/shared/utils/programTrackRequirements';
 
 import type {
   Course as CourseType,
@@ -64,7 +69,8 @@ const extractCertId = (doc: any): string | null => {
   if (typeof direct === 'string' && direct) return direct;
   const u = String(doc?.download_url || doc?.downloadUrl || doc?.url || '');
   const m =
-    u.match(/\/certificates\/([^/]+)\/(?:download|view|raw)?/i) || u.match(/[?&]certId=([^&]+)/i);
+    u.match(/\/certificates\/([^/]+)\/(?:download|view|raw)?/i) ||
+    u.match(/[?&]certId=([^&]+)/i);
   return m?.[1] ?? null;
 };
 
@@ -77,12 +83,19 @@ const extractTranscriptId = (doc: any): string | null => {
   return m?.[1] ?? null;
 };
 
-// normalize videos for a week (supports string or array)
 const getWeekVideos = (w?: any): { provider: 'youtube'; url: string }[] => {
   const urls: string[] = [];
   if (Array.isArray(w?.videoUrls)) urls.push(...(w.videoUrls as string[]).filter(Boolean));
   if (typeof w?.videoUrl === 'string' && w.videoUrl) urls.push(w.videoUrl as string);
   return urls.map((u) => ({ provider: 'youtube', url: u }));
+};
+
+const getWeekNotesUrls = (w?: any): string[] => {
+  const urls: string[] = [];
+  if (!w) return urls;
+  if (Array.isArray(w?.notesUrls)) urls.push(...(w.notesUrls as string[]).filter(Boolean));
+  if (typeof w?.notesUrl === 'string' && w.notesUrl) urls.push(w.notesUrl as string);
+  return urls.filter(Boolean);
 };
 
 const getYoutubeId = (input = ''): string => {
@@ -97,6 +110,17 @@ const getYoutubeId = (input = ''): string => {
   return input;
 };
 
+const shortUrlLabel = (u: string, fallback = 'Document') => {
+  try {
+    const url = new URL(u);
+    const last = url.pathname.split('/').filter(Boolean).pop() || '';
+    const name = decodeURIComponent(last).replace(/\.(pdf|docx|doc|pptx|ppt)$/i, '');
+    return name ? name.slice(0, 30) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 /* ───────── Types ───────── */
 
 type CourseProgressRoute = RouteProp<MainStackParamList, 'CourseProgress'>;
@@ -105,6 +129,12 @@ type WatchPayload = {
   watchedSeconds: number;
   durationSeconds: number;
   videoId: string;
+};
+
+type ReadPayload = {
+  sourceUrl: string;
+  readSeconds: number;
+  estimatedSeconds: number;
 };
 
 /* ───────── Tiny internal components ───────── */
@@ -126,9 +156,7 @@ const ChipButton: React.FC<{
     style = 'bg-[#e7edf4] dark:bg-[#172534]';
     text = 'text-slate-900 dark:text-white';
   }
-  if (disabled) {
-    style += ' opacity-60';
-  }
+  if (disabled) style += ' opacity-60';
 
   return (
     <Pressable disabled={disabled} onPress={onPress} style={tw.style(base, style)}>
@@ -158,9 +186,9 @@ const StarRow: React.FC<{
 );
 
 /**
- * Simple watch dialog:
- * - Opens the YouTube link in browser
- * - Lets user manually mark as watched (sends event)
+ * Watch dialog:
+ * - Opens YouTube link externally
+ * - Lets user mark as watched (sends event)
  */
 const WatchDialog: React.FC<{
   open: boolean;
@@ -174,12 +202,7 @@ const WatchDialog: React.FC<{
   const videoId = getYoutubeId(url);
 
   const handleMarkWatched = () => {
-    // We don’t know exact duration, but backend only cares that completed=true
-    onWatched({
-      watchedSeconds: 1,
-      durationSeconds: 1,
-      videoId,
-    });
+    onWatched({ watchedSeconds: 1, durationSeconds: 1, videoId });
   };
 
   return (
@@ -188,9 +211,7 @@ const WatchDialog: React.FC<{
         <View
           style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-slate-700`}
         >
-          <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-1`}>
-            Watch video
-          </Text>
+          <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-1`}>Watch video</Text>
           <Text style={tw`text-xs text-slate-600 dark:text-slate-300 mb-3`}>
             Week {week} • {title || 'Course video'}
           </Text>
@@ -221,51 +242,61 @@ const WatchDialog: React.FC<{
   );
 };
 
-/* ───────── Very simple reading panel ───────── */
-/* (The real read-tracking is handled by useReadProgress + other viewers) */
-const CourseReadingPanelInline: React.FC<{
+/**
+ * Read dialog:
+ * - Opens notes/doc externally
+ * - Lets user mark as read (sends event)
+ */
+const ReadDialog: React.FC<{
+  open: boolean;
+  title?: string;
+  url: string;
   week: number;
-  item: SyllabusItem;
-  status: Status;
-  onSetStatus: (s: Status) => void;
-}> = ({ week, item, status, onSetStatus }) => {
-  const hasAssignment = !!(item.assignment || '').trim();
-  const hasNotes = !!(item as any).notesUrl || Array.isArray((item as any).notesUrls);
+  onClose: () => void;
+  onRead: (payload: ReadPayload) => void;
+}> = ({ open, title, url, week, onClose, onRead }) => {
+  if (!open) return null;
+
+  const handleMarkRead = () => {
+    onRead({ sourceUrl: url, readSeconds: 1, estimatedSeconds: 1 });
+  };
 
   return (
-    <View
-      style={tw`rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0f1821] p-4 mb-3`}
-    >
-      <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>
-        Week {week}: {item.topic || 'TBA'}
-      </Text>
-      {hasAssignment && (
-        <Text style={tw`mt-2 text-xs text-slate-700 dark:text-slate-300`}>{item.assignment}</Text>
-      )}
-      {hasNotes && (
-        <Text style={tw`mt-2 text-xs text-slate-600 dark:text-slate-400`}>
-          This week has reading/notes attached. Make sure you go through them to complete this week.
-        </Text>
-      )}
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={tw`flex-1 bg-black/50 items-center justify-center px-4`}>
+        <View
+          style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-slate-700`}
+        >
+          <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-1`}>
+            Read notes
+          </Text>
+          <Text style={tw`text-xs text-slate-600 dark:text-slate-300 mb-3`}>
+            Week {week} • {title || 'Course notes'}
+          </Text>
 
-      <View style={tw`flex-row flex-wrap gap-2 mt-3`}>
-        <ChipButton
-          label="Not Started"
-          variant={status === 'Not Started' ? 'primary' : 'outline'}
-          onPress={() => onSetStatus('Not Started')}
-        />
-        <ChipButton
-          label="In Progress"
-          variant={status === 'In Progress' ? 'primary' : 'outline'}
-          onPress={() => onSetStatus('In Progress')}
-        />
-        <ChipButton
-          label="Completed"
-          variant={status === 'Completed' ? 'primary' : 'outline'}
-          onPress={() => onSetStatus('Completed')}
-        />
+          <Text style={tw`text-xs text-slate-700 dark:text-slate-200 mb-4`}>
+            We’ll open this document in your browser/app. When you’re done, tap{' '}
+            <Text style={tw`font-semibold`}>“Mark as read”</Text> so we can update your progress.
+          </Text>
+
+          <View style={tw`flex-row flex-wrap gap-2 mt-1`}>
+            <ChipButton
+              label="Open document"
+              variant="primary"
+              onPress={() => {
+                if (!url) return;
+                Linking.openURL(url).catch((e) => {
+                  console.error('[ReadDialog] openURL failed', e);
+                  Alert.alert('Could not open link', 'Please try again or copy the URL.');
+                });
+              }}
+            />
+            <ChipButton label="Mark as read" variant="ghost" onPress={handleMarkRead} />
+            <ChipButton label="Close" variant="outline" onPress={onClose} />
+          </View>
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 };
 
@@ -274,6 +305,7 @@ const CourseReadingPanelInline: React.FC<{
 const CourseProgressScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<CourseProgressRoute>();
+
   const rawCourseId = route.params?.courseId;
   const courseId = rawCourseId ?? '';
   const sourceParam = route.params?.source;
@@ -297,7 +329,7 @@ const CourseProgressScreen: React.FC = () => {
   }, [courseId]);
 
   const insets = useSafeAreaInsets();
-  const FOOTER_OFFSET = 80; // for global footer
+  const FOOTER_OFFSET = 80;
   const bottomPad = Math.max(insets.bottom, 16);
   const topPad = Math.max(insets.top, 12);
 
@@ -314,21 +346,20 @@ const CourseProgressScreen: React.FC = () => {
   } = useCourses({ backendUrl, token });
 
   useEffect(() => {
-    if (courseId) {
-      void fetchCourseById(courseId);
-    }
+    if (courseId) void fetchCourseById(courseId);
   }, [courseId, fetchCourseById]);
 
   /* ───────── Progress ───────── */
 
-  const {
-    progress = [],
-    loading: progressLoading,
-    update,
-  } = useCourseProgress(backendUrl, courseId, token);
+  const { progress = [], loading: progressLoading, update } = useCourseProgress(
+    backendUrl,
+    courseId,
+    token
+  );
 
   const syllabus: SyllabusItem[] =
     (selectedCourse as CourseType | null | undefined)?.syllabus ?? [];
+
   const courseTrackRaw =
     (selectedCourse as any)?.programTrack ??
     (selectedCourse as any)?.program_track ??
@@ -345,13 +376,12 @@ const CourseProgressScreen: React.FC = () => {
 
   const totalWeeks = isSandboxSource ? getRequiredWeeks(effectiveTrack) : syllabus.length || 0;
   const totalQuestions = isSandboxSource ? getRequiredQuestions(effectiveTrack) : 0;
+
   const effectiveSyllabus: SyllabusItem[] = useMemo(() => {
     if (!isSandboxSource) return syllabus;
     if (!totalWeeks) return syllabus;
     const byWeek = new Map<number, SyllabusItem>();
-    syllabus.forEach((item) => {
-      byWeek.set(item.week, item);
-    });
+    syllabus.forEach((item) => byWeek.set(item.week, item));
     return Array.from({ length: totalWeeks }, (_, idx) => {
       const weekNum = idx + 1;
       return (
@@ -390,13 +420,7 @@ const CourseProgressScreen: React.FC = () => {
   }, [hasMyReview]);
 
   const debouncedPrompt = useMemo(() => debounce(promptReview, 200), [promptReview]);
-
-  useEffect(
-    () => () => {
-      debouncedPrompt.cancel();
-    },
-    [debouncedPrompt]
-  );
+  useEffect(() => () => debouncedPrompt.cancel(), [debouncedPrompt]);
 
   /* ───────── Progress by week ───────── */
 
@@ -441,16 +465,11 @@ const CourseProgressScreen: React.FC = () => {
     if (notSt) return notSt.week;
 
     if (!syllabusList.length) return undefined;
-
     const last = syllabusList[syllabusList.length - 1];
-    if (!last) return undefined;
-
-    return last.week;
+    return last?.week;
   }, [syllabusList, progressByWeek]);
 
   const [activeWeek, setActiveWeek] = useState<number | null>(null);
-
-  /* ───────── Active item / status ───────── */
 
   const activeItem =
     activeWeek == null ? null : (syllabusList.find((w) => w.week === activeWeek) ?? null);
@@ -461,8 +480,6 @@ const CourseProgressScreen: React.FC = () => {
   /* ───────── Watch progress ───────── */
 
   const { rows: watchRows, sendEvent, reload: reloadWatch } = useWatchProgress(courseId);
-
-  const weekVideos = useMemo(() => getWeekVideos(activeItem), [activeItem]);
 
   const watchedAllForWeek = useCallback(
     (week?: number | null) => {
@@ -478,35 +495,8 @@ const CourseProgressScreen: React.FC = () => {
     [syllabusList, watchRows]
   );
 
+  const weekVideos = useMemo(() => getWeekVideos(activeItem), [activeItem]);
   const watchedAll = useMemo(() => watchedAllForWeek(activeWeek), [watchedAllForWeek, activeWeek]);
-
-  /* ───────── Read progress ───────── */
-
-  const { rows: readRows } = useReadProgress(courseId);
-
-  const readAllForWeek = useCallback(
-    (week?: number | null) => {
-      if (week == null) return true;
-      const item = syllabusList.find((s) => s.week === week);
-      const urls: string[] = [];
-      if (Array.isArray((item as any)?.notesUrls)) {
-        urls.push(...(((item as any).notesUrls as string[]) || []).filter(Boolean));
-      }
-      if (typeof (item as any)?.notesUrl === 'string' && (item as any).notesUrl) {
-        urls.push((item as any).notesUrl);
-      }
-      if (!urls.length) return true;
-      const done = new Set(
-        readRows
-          .filter((r: any) => r.week === week && (r as any).completed)
-          .map((r: any) => (r as any).source_url)
-      );
-      return urls.every((u) => done.has(u));
-    },
-    [syllabusList, readRows]
-  );
-
-  /* ───────── Course-wide watch completion ───────── */
 
   const courseWatchedAll = useMemo(() => {
     const requiredIds = syllabusList
@@ -525,13 +515,41 @@ const CourseProgressScreen: React.FC = () => {
     return requiredIds.filter((id) => !done.has(id)).length;
   }, [syllabusList, watchRows]);
 
+  /* ───────── Read progress ───────── */
+
+  // NOTE: cast as any so native compiles even if hook typing is rows-only.
+  // If your hook already exposes sendEvent/reload, this just works.
+  const readProg = (useReadProgress(courseId) as any) || {};
+  const readRows: any[] = Array.isArray(readProg?.rows) ? readProg.rows : [];
+  const sendReadEvent: ((p: any) => Promise<void>) =
+    typeof readProg?.sendEvent === 'function' ? readProg.sendEvent : async () => {};
+  const reloadRead: (() => void) =
+    typeof readProg?.reload === 'function' ? readProg.reload : () => {};
+
+  const readAllForWeek = useCallback(
+    (week?: number | null) => {
+      if (week == null) return true;
+      const item = syllabusList.find((s) => s.week === week);
+      const urls = getWeekNotesUrls(item);
+      if (!urls.length) return true;
+
+      const done = new Set(
+        readRows
+          .filter((r: any) => r.week === week && (r as any).completed)
+          .map((r: any) => (r as any).source_url)
+      );
+
+      return urls.every((u) => done.has(u));
+    },
+    [syllabusList, readRows]
+  );
+
+  const weekNotes = useMemo(() => getWeekNotesUrls(activeItem), [activeItem]);
+
   /* ───────── Watch dialog state ───────── */
 
   const [watchOpen, setWatchOpen] = useState(false);
-  const [watchTarget, setWatchTarget] = useState<{
-    title?: string;
-    url: string;
-  } | null>(null);
+  const [watchTarget, setWatchTarget] = useState<{ title?: string; url: string } | null>(null);
 
   const openWatch = (v: { title?: string; url: string }) => {
     setWatchTarget(v);
@@ -551,6 +569,28 @@ const CourseProgressScreen: React.FC = () => {
     setWatchOpen(false);
   };
 
+  /* ───────── Read dialog state ───────── */
+
+  const [readOpen, setReadOpen] = useState(false);
+  const [readTarget, setReadTarget] = useState<{ title?: string; url: string } | null>(null);
+
+  const openRead = (v: { title?: string; url: string }) => {
+    setReadTarget(v);
+    setReadOpen(true);
+  };
+
+  const handleRead = async (payload: ReadPayload) => {
+    if (activeWeek == null) return;
+    await sendReadEvent({
+      week: activeWeek,
+      sourceUrl: payload.sourceUrl,
+      readSeconds: payload.readSeconds,
+      estimatedSeconds: payload.estimatedSeconds,
+    });
+    reloadRead();
+    setReadOpen(false);
+  };
+
   /* ───────── OER meta ───────── */
 
   const oerMeta = useOerMeta(courseId);
@@ -561,6 +601,7 @@ const CourseProgressScreen: React.FC = () => {
 
   const downloadOerTranscript = useCallback(async () => {
     if (!courseId) return;
+
     if (!courseWatchedAll) {
       Alert.alert(
         'Transcript locked',
@@ -570,6 +611,7 @@ const CourseProgressScreen: React.FC = () => {
       );
       return;
     }
+
     try {
       setDownloadingTranscript(true);
 
@@ -597,9 +639,8 @@ const CourseProgressScreen: React.FC = () => {
         const t2 = await rr.json().catch(() => ({}));
         const trId2 = extractTranscriptId(t2);
         const anyUrl2 = t2?.download_url || t2?.url || null;
-        const name2 = `${slug(
-          selectedCourse?.title || 'transcript'
-        )}-${trId2 || 'oer-transcript'}.pdf`;
+        const name2 = `${slug(selectedCourse?.title || 'transcript')}-${trId2 || 'oer-transcript'}.pdf`;
+
         if (trId2) {
           await downloadTranscriptFile(backendUrl, token, trId2, name2);
         } else if (anyUrl2) {
@@ -607,10 +648,7 @@ const CourseProgressScreen: React.FC = () => {
             Alert.alert('Download failed', 'Could not open transcript link.');
           });
         } else {
-          Alert.alert(
-            'No transcript link',
-            'Transcript generated, but no download link was returned.'
-          );
+          Alert.alert('No transcript link', 'Transcript generated, but no download link was returned.');
         }
         return;
       }
@@ -627,10 +665,7 @@ const CourseProgressScreen: React.FC = () => {
           Alert.alert('Download failed', 'Could not open transcript link.');
         });
       } else {
-        Alert.alert(
-          'No transcript link',
-          'Transcript generated, but no download link was returned.'
-        );
+        Alert.alert('No transcript link', 'Transcript generated, but no download link was returned.');
       }
     } catch (e) {
       console.error('[oer transcript] failed', e);
@@ -652,16 +687,14 @@ const CourseProgressScreen: React.FC = () => {
 
   const [issuingCert, setIssuingCert] = useState(false);
 
-  const allWatched = useCallback(async () => {
+  const allWatchedServerTruth = useCallback(async () => {
     try {
       const r = await fetch(`${backendUrl}/api/progress/watch/${courseId}`, {
         headers: token ? ({ Authorization: `Bearer ${token}` } as any) : undefined,
       });
       const rows: any[] = await r.json().catch(() => []);
       const reqs = syllabusList.flatMap((s) => getWeekVideos(s).map((v) => v.url));
-      const done = new Set(
-        (rows || []).filter((x: any) => x.completed).map((x: any) => x.video_id)
-      );
+      const done = new Set((rows || []).filter((x: any) => x.completed).map((x: any) => x.video_id));
       return reqs.every((u: string) => done.has(getYoutubeId(u)));
     } catch {
       return false;
@@ -670,12 +703,22 @@ const CourseProgressScreen: React.FC = () => {
 
   const generateFreeOerCertificate = useCallback(async () => {
     if (!courseId) return;
+
+    // quick client gate + better message
+    if (!courseWatchedAll) {
+      Alert.alert(
+        'Certificate locked',
+        remainingCount
+          ? `Please watch all course videos before generating a certificate. ${remainingCount} remaining.`
+          : 'Please watch all course videos before generating a certificate.'
+      );
+      return;
+    }
+
     try {
-      if (!(await allWatched())) {
-        Alert.alert(
-          'Certificate locked',
-          'Please watch all course videos before generating a certificate.'
-        );
+      // server truth gate (optional but safer)
+      if (!(await allWatchedServerTruth())) {
+        Alert.alert('Certificate locked', 'Please watch all course videos before generating a certificate.');
         return;
       }
 
@@ -708,9 +751,7 @@ const CourseProgressScreen: React.FC = () => {
       const d = await r.json().catch(() => ({}));
       const certId = extractCertId(d);
       const anyUrl = d?.download_url || d?.downloadUrl || d?.url || null;
-      const fileName = `${slug(
-        selectedCourse?.title || 'certificate'
-      )}-${certId || 'certificate'}.pdf`;
+      const fileName = `${slug(selectedCourse?.title || 'certificate')}-${certId || 'certificate'}.pdf`;
 
       if (certId) {
         await downloadCertificateFile(backendUrl, token, certId, fileName);
@@ -719,10 +760,7 @@ const CourseProgressScreen: React.FC = () => {
           Alert.alert('Download failed', 'Could not open certificate link.');
         });
       } else {
-        Alert.alert(
-          'No certificate link',
-          'Certificate generated, but no download link was returned.'
-        );
+        Alert.alert('No certificate link', 'Certificate generated, but no download link was returned.');
       }
     } catch (e) {
       console.error('[oer certificate] failed', e);
@@ -730,7 +768,15 @@ const CourseProgressScreen: React.FC = () => {
     } finally {
       setIssuingCert(false);
     }
-  }, [allWatched, backendUrl, token, courseId, selectedCourse?.title]);
+  }, [
+    allWatchedServerTruth,
+    backendUrl,
+    token,
+    courseId,
+    selectedCourse?.title,
+    courseWatchedAll,
+    remainingCount,
+  ]);
 
   /* ───────── Course-level helpers ───────── */
 
@@ -746,13 +792,13 @@ const CourseProgressScreen: React.FC = () => {
 
   const startCourse = async () => {
     if (!syllabusList.length) return;
-
     const firstItem = syllabusList[0];
     if (!firstItem) return;
 
     const first = firstItem.week;
     const st = (progressByWeek.get(first) ?? 'Not Started') as Status;
     if (st === 'Not Started') await setStatus(first, 'In Progress');
+
     if (isSandboxSource) {
       navigation.navigate('RobotTutor', {
         courseId,
@@ -762,6 +808,7 @@ const CourseProgressScreen: React.FC = () => {
       });
       return;
     }
+
     setActiveWeek(first);
   };
 
@@ -769,6 +816,7 @@ const CourseProgressScreen: React.FC = () => {
     if (!suggestedWeek) return;
     const st = (progressByWeek.get(suggestedWeek) ?? 'Not Started') as Status;
     if (st === 'Not Started') await setStatus(suggestedWeek, 'In Progress');
+
     if (isSandboxSource) {
       navigation.navigate('RobotTutor', {
         courseId,
@@ -778,22 +826,22 @@ const CourseProgressScreen: React.FC = () => {
       });
       return;
     }
+
     setActiveWeek(suggestedWeek);
   };
 
   const completeCurrent = async () => {
     if (suggestedWeek == null) return;
+
     if (!watchedAllForWeek(suggestedWeek)) {
       Alert.alert('Videos not complete', 'Please watch all required videos for this week first.');
       return;
     }
     if (!readAllForWeek(suggestedWeek)) {
-      Alert.alert(
-        'Reading not complete',
-        'Please finish the required reading for this week first.'
-      );
+      Alert.alert('Reading not complete', 'Please finish the required reading for this week first.');
       return;
     }
+
     await setStatus(suggestedWeek, 'Completed');
   };
 
@@ -816,6 +864,27 @@ const CourseProgressScreen: React.FC = () => {
       if (next) setActiveWeek(next.week);
     }
   };
+
+  /* ───────── Auto-scroll to suggested week (web parity) ───────── */
+
+  const scrollRef = useRef<ScrollView>(null);
+  const weekYRef = useRef<Record<number, number>>({});
+  const autoScrolledRef = useRef(false);
+
+  const onWeekLayout = useCallback(
+    (week: number) =>
+      (e: LayoutChangeEvent) => {
+        weekYRef.current[week] = e.nativeEvent.layout.y;
+
+        // once: after layout, scroll to suggested week when not in reading mode
+        if (!autoScrolledRef.current && activeWeek == null && suggestedWeek === week) {
+          autoScrolledRef.current = true;
+          const y = Math.max((weekYRef.current[week] ?? 0) - 12, 0);
+          scrollRef.current?.scrollTo({ y, animated: true });
+        }
+      },
+    [activeWeek, suggestedWeek]
+  );
 
   /* ───────── Early UI states (after hooks) ───────── */
 
@@ -897,15 +966,12 @@ const CourseProgressScreen: React.FC = () => {
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
       {/* Soft background orbs */}
       <View style={tw`absolute inset-0`}>
-        <View
-          style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-sky-500/10 dark:bg-sky-500/20`}
-        />
-        <View
-          style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-indigo-500/10 dark:bg-indigo-500/20`}
-        />
+        <View style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-sky-500/10 dark:bg-sky-500/20`} />
+        <View style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-indigo-500/10 dark:bg-indigo-500/20`} />
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={tw`flex-1`}
         contentContainerStyle={[
           {
@@ -923,6 +989,7 @@ const CourseProgressScreen: React.FC = () => {
             <Text style={tw`text-2xl font-extrabold text-slate-900 dark:text-slate-100`}>
               {selectedCourse.title}
             </Text>
+
             {selectedCourse.description ? (
               <Text style={tw`mt-1 text-sm text-slate-700 dark:text-slate-300`}>
                 {selectedCourse.description}
@@ -937,9 +1004,7 @@ const CourseProgressScreen: React.FC = () => {
                   {counts.pct}% ({counts.completed}/{counts.total})
                 </Text>
               </View>
-              <View
-                style={tw`h-2 w-full rounded-full bg-[#e5eef7] dark:bg-[#192635] overflow-hidden`}
-              >
+              <View style={tw`h-2 w-full rounded-full bg-[#e5eef7] dark:bg-[#192635] overflow-hidden`}>
                 <View style={[tw`h-2 bg-[#3d99f5]`, { width: `${counts.pct}%` }]} />
               </View>
               <View style={tw`flex-row flex-wrap gap-x-2 mt-2`}>
@@ -963,12 +1028,10 @@ const CourseProgressScreen: React.FC = () => {
             )}
 
             {needsOutline && (
-              <View
-                style={tw`mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2`}
-              >
+              <View style={tw`mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2`}>
                 <Text style={tw`text-[11px] text-amber-700`}>
-                  This course outline has {syllabus.length} weeks, but the {trackLabel} track
-                  requires {totalWeeks}. Open RobotTeacher to regenerate the outline.
+                  This course outline has {syllabus.length} weeks, but the {trackLabel} track requires{' '}
+                  {totalWeeks}. Open RobotTeacher to regenerate the outline.
                 </Text>
                 <Pressable
                   onPress={() =>
@@ -1006,7 +1069,11 @@ const CourseProgressScreen: React.FC = () => {
                 <ChipButton
                   label="Mark current week completed"
                   variant="outline"
-                  disabled={suggestedWeek == null || !watchedAllForWeek(suggestedWeek)}
+                  disabled={
+                    suggestedWeek == null ||
+                    !watchedAllForWeek(suggestedWeek) ||
+                    !readAllForWeek(suggestedWeek)
+                  }
                   onPress={completeCurrent}
                 />
               )}
@@ -1040,6 +1107,12 @@ const CourseProgressScreen: React.FC = () => {
                 />
               )}
 
+              {oerMeta && !courseWatchedAll ? (
+                <Text style={tw`w-full mt-1 text-[11px] text-[#49739c] dark:text-white/70`}>
+                  Watch all videos to unlock transcript{remainingCount ? ` (${remainingCount} remaining)` : ''}.
+                </Text>
+              ) : null}
+
               {allCompleted && !hasMyReview && (
                 <ChipButton
                   label="Rate this course"
@@ -1055,66 +1128,112 @@ const CourseProgressScreen: React.FC = () => {
             <View style={tw`mb-5`}>
               {activeItem ? (
                 <>
-                  <CourseReadingPanelInline
-                    week={activeWeek}
-                    item={activeItem}
-                    status={activeStatus}
-                    onSetStatus={(next) => {
-                      if (next === 'Completed' && !watchedAllForWeek(activeWeek)) {
-                        Alert.alert(
-                          'Videos not complete',
-                          'Please watch all required videos for this week first.'
-                        );
-                        return;
-                      }
-                      if (next === 'Completed' && !readAllForWeek(activeWeek)) {
-                        Alert.alert(
-                          'Reading not complete',
-                          'Please finish the required reading for this week first.'
-                        );
-                        return;
-                      }
-                      setStatus(activeWeek, next);
-                    }}
-                  />
+                  {/* Week header card */}
+                  <View style={tw`rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0f1821] p-4 mb-3`}>
+                    <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>
+                      Week {activeWeek}: {activeItem.topic || 'TBA'}
+                    </Text>
+                    <Text style={tw`mt-1 text-xs text-slate-500 dark:text-slate-400`}>
+                      Status: {activeStatus}
+                    </Text>
+
+                    <View style={tw`flex-row flex-wrap gap-2 mt-3`}>
+                      <ChipButton
+                        label="Not Started"
+                        variant={activeStatus === 'Not Started' ? 'primary' : 'outline'}
+                        onPress={() => setStatus(activeWeek, 'Not Started')}
+                      />
+                      <ChipButton
+                        label="In Progress"
+                        variant={activeStatus === 'In Progress' ? 'primary' : 'outline'}
+                        onPress={() => setStatus(activeWeek, 'In Progress')}
+                      />
+                      <ChipButton
+                        label="Completed"
+                        variant={activeStatus === 'Completed' ? 'primary' : 'outline'}
+                        onPress={() => {
+                          if (!watchedAllForWeek(activeWeek)) {
+                            Alert.alert('Videos not complete', 'Please watch all required videos for this week first.');
+                            return;
+                          }
+                          if (!readAllForWeek(activeWeek)) {
+                            Alert.alert('Reading not complete', 'Please finish the required reading for this week first.');
+                            return;
+                          }
+                          setStatus(activeWeek, 'Completed');
+                        }}
+                      />
+                    </View>
+                  </View>
 
                   {/* Required videos */}
                   {weekVideos.length > 0 && (
-                    <View
-                      style={tw`rounded-2xl border border-[#cedbe8] dark:border-slate-700 bg-white dark:bg-[#0f1821] p-3 mb-3`}
-                    >
-                      <Text
-                        style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2`}
-                      >
+                    <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-slate-700 bg-white dark:bg-[#0f1821] p-3 mb-3`}>
+                      <Text style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2`}>
                         Required videos for this week
                       </Text>
+
                       {weekVideos.map((v, i) => {
                         const id = getYoutubeId(v.url);
-                        const row = watchRows.find(
-                          (r: any) => r.week === activeWeek && r.video_id === id
-                        );
+                        const row = watchRows.find((r: any) => r.week === activeWeek && r.video_id === id);
                         const done = !!row?.completed;
+
                         return (
                           <View key={i} style={tw`flex-row items-center justify-between mb-2`}>
                             <Text style={tw`text-xs text-slate-800 dark:text-slate-200`}>
                               Video {i + 1}
                             </Text>
                             <View style={tw`flex-row items-center gap-2`}>
-                              <Text
-                                style={tw.style(
-                                  'text-[11px]',
-                                  done ? 'text-emerald-600' : 'text-[#49739c]'
-                                )}
-                              >
+                              <Text style={tw.style('text-[11px]', done ? 'text-emerald-600' : 'text-[#49739c]')}>
                                 {done ? 'Watched' : 'Not watched'}
                               </Text>
                               <ChipButton
                                 label="Watch now"
                                 variant="outline"
+                                onPress={() => openWatch({ title: `Video ${i + 1}`, url: v.url })}
+                              />
+                            </View>
+                          </View>
+                        );
+                      })}
+
+                      {!watchedAll && (
+                        <Text style={tw`mt-1 text-[11px] text-[#49739c]`}>
+                          You must watch all videos to complete this week.
+                        </Text>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Required reading / notes */}
+                  {weekNotes.length > 0 && (
+                    <View style={tw`rounded-2xl border border-[#cedbe8] dark:border-slate-700 bg-white dark:bg-[#0f1821] p-3 mb-3`}>
+                      <Text style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2`}>
+                        Required reading for this week
+                      </Text>
+
+                      {weekNotes.map((u, idx) => {
+                        const row = readRows.find(
+                          (r: any) => r.week === activeWeek && r.source_url === u
+                        );
+                        const done = !!row?.completed;
+
+                        return (
+                          <View key={`${u}-${idx}`} style={tw`flex-row items-center justify-between mb-2`}>
+                            <Text style={tw`text-xs text-slate-800 dark:text-slate-200`}>
+                              {shortUrlLabel(u, `Notes ${idx + 1}`)}
+                            </Text>
+                            <View style={tw`flex-row items-center gap-2`}>
+                              <Text style={tw.style('text-[11px]', done ? 'text-emerald-600' : 'text-[#49739c]')}>
+                                {done ? 'Read' : 'Not read'}
+                              </Text>
+                              <ChipButton
+                                label="Open"
+                                variant="outline"
                                 onPress={() =>
-                                  openWatch({
-                                    title: `Video ${i + 1}`,
-                                    url: v.url,
+                                  openRead({
+                                    title: `Notes ${idx + 1}`,
+                                    url: u,
                                   })
                                 }
                               />
@@ -1122,9 +1241,10 @@ const CourseProgressScreen: React.FC = () => {
                           </View>
                         );
                       })}
-                      {!watchedAll && (
+
+                      {!readAllForWeek(activeWeek) && (
                         <Text style={tw`mt-1 text-[11px] text-[#49739c]`}>
-                          You must watch all videos to complete this week.
+                          You must complete all reading to finish this week.
                         </Text>
                       )}
                     </View>
@@ -1137,26 +1257,19 @@ const CourseProgressScreen: React.FC = () => {
                       disabled={syllabusList.findIndex((w) => w.week === activeWeek) === 0}
                       onPress={goPrev}
                     />
-                    <ChipButton
-                      label="Exit reading"
-                      variant="ghost"
-                      onPress={() => setActiveWeek(null)}
-                    />
+                    <ChipButton label="Exit reading" variant="ghost" onPress={() => setActiveWeek(null)} />
                     <ChipButton
                       label="Next week →"
                       variant="outline"
                       disabled={
-                        syllabusList.findIndex((w) => w.week === activeWeek) ===
-                        syllabusList.length - 1
+                        syllabusList.findIndex((w) => w.week === activeWeek) === syllabusList.length - 1
                       }
                       onPress={goNext}
                     />
                   </View>
                 </>
               ) : (
-                <View
-                  style={tw`rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0f1821] p-4`}
-                >
+                <View style={tw`rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0f1821] p-4`}>
                   <Text style={tw`text-sm text-slate-700 dark:text-slate-300`}>
                     Week {activeWeek} isn’t available. Choose another week below.
                   </Text>
@@ -1189,6 +1302,7 @@ const CourseProgressScreen: React.FC = () => {
               return (
                 <View
                   key={item.week}
+                  onLayout={onWeekLayout(item.week)}
                   style={tw.style(
                     'mb-3 p-4 rounded-2xl bg-white dark:bg-[#0f1821] border',
                     isSuggested ? 'border-[#3d99f5]' : 'border-[#cedbe8] dark:border-slate-700'
@@ -1204,6 +1318,7 @@ const CourseProgressScreen: React.FC = () => {
                         {isSuggested ? ' • current' : ''}
                       </Text>
                     </View>
+
                     <ChipButton
                       label="Open"
                       variant="ghost"
@@ -1226,6 +1341,7 @@ const CourseProgressScreen: React.FC = () => {
                     {current === 'Not Started' && (
                       <ChipButton label="Start week" variant="ghost" onPress={quickStart} />
                     )}
+
                     {current !== 'Completed' && (
                       <ChipButton
                         label="Complete week"
@@ -1243,7 +1359,7 @@ const CourseProgressScreen: React.FC = () => {
                       />
                     )}
 
-                    {/* Status selector (replaces Picker) */}
+                    {/* Status selector */}
                     <View style={tw`mt-1 w-40`}>
                       <SelectField
                         value={current}
@@ -1274,10 +1390,7 @@ const CourseProgressScreen: React.FC = () => {
             <View style={tw`mb-6 p-4 rounded-2xl bg-[#eef7ff] dark:bg-[#122032]`}>
               <Text style={tw`text-sm text-[#0d141c] dark:text-slate-100`}>
                 🎉 Nice work! You’ve completed every week. Check the{' '}
-                <Text
-                  style={tw`underline font-semibold`}
-                  onPress={() => navigation.navigate('Achievements')}
-                >
+                <Text style={tw`underline font-semibold`} onPress={() => navigation.navigate('Achievements')}>
                   Achievements
                 </Text>{' '}
                 page for badges.
@@ -1314,6 +1427,12 @@ const CourseProgressScreen: React.FC = () => {
                   />
                 )}
               </View>
+
+              {oerMeta && !courseWatchedAll ? (
+                <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/70`}>
+                  Watch all videos to unlock certificate/transcript{remainingCount ? ` (${remainingCount} remaining)` : ''}.
+                </Text>
+              ) : null}
             </View>
           )}
         </View>
@@ -1321,16 +1440,9 @@ const CourseProgressScreen: React.FC = () => {
 
       {/* Review modal */}
       {openReview && (
-        <Modal
-          visible={openReview}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setOpenReview(false)}
-        >
+        <Modal visible={openReview} transparent animationType="fade" onRequestClose={() => setOpenReview(false)}>
           <View style={tw`flex-1 bg-black/40 items-center justify-center px-4`}>
-            <View
-              style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-slate-700`}
-            >
+            <View style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-slate-700`}>
               <Text style={tw`text-lg font-bold text-slate-900 dark:text-white mb-2`}>
                 Rate this course
               </Text>
@@ -1367,6 +1479,16 @@ const CourseProgressScreen: React.FC = () => {
         url={watchTarget?.url || ''}
         week={activeWeek ?? 0}
         onWatched={handleWatched}
+      />
+
+      {/* Read dialog */}
+      <ReadDialog
+        open={readOpen}
+        onClose={() => setReadOpen(false)}
+        title={readTarget?.title}
+        url={readTarget?.url || ''}
+        week={activeWeek ?? 0}
+        onRead={handleRead}
       />
     </SafeAreaView>
   );

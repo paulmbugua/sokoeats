@@ -1,6 +1,14 @@
 // apps/mobile/src/screens/RobotTeacherControls.native.tsx
-import React, { memo, useCallback } from 'react';
-import { View, Text, TextInput, Pressable, TouchableOpacity } from 'react-native';
+import React, { memo, useCallback, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  TouchableOpacity,
+  Modal,
+  ScrollView,
+} from 'react-native';
 
 import tw from '../../tailwind';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -13,38 +21,130 @@ type CourseOption = { id: string; title: string };
 import { RefreshableScrollView } from '../refresh/Refreshable';
 import { useRegisterScreenRefresh } from '../refresh/GlobalRefreshProvider';
 
-// ⬇️ New: SelectField import
-import SelectField, { type Option as SelectOption } from './SelectField.native';
+type SelectOption = { value: string; label: string };
 
-/* ───────────────────────── CourseSelect (native) ───────────────────────── */
+/* ───────────────────────── CourseSelect (native, web-parity) ─────────────────────────
+   - Shows selected course label if in options
+   - If value is NOT in options (e.g. "__custom__"), show fallbackLabel (custom/synthetic title)
+   - Still only allows choosing from real options
+-------------------------------------------------------------------------------------- */
 const CourseSelect = memo(function CourseSelect({
-
   options,
   value,
   onChange,
   placeholder = 'Select a course…',
+  fallbackLabel,
 }: {
   options: SelectOption[];
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  fallbackLabel?: string;
 }) {
-  const hasOptions = options && options.length > 0;
-  const effectivePlaceholder = hasOptions ? placeholder : 'No courses available';
+  const [open, setOpen] = useState(false);
+
+  const selected = useMemo(() => options.find((o) => o.value === value), [options, value]);
+
+  const displayLabel = useMemo(() => {
+    const fb = String(fallbackLabel || '').trim();
+    return selected?.label || (fb ? fb : '');
+  }, [selected?.label, fallbackLabel]);
+
+  const hasOptions = (options || []).length > 0;
 
   return (
-    <SelectField
-      value={value}
-      onChange={(v) => {
-        if (!hasOptions && !v) return;
-        onChange(String(v));
-      }}
-      options={options}
-      placeholder={effectivePlaceholder}
-      modalTitle={effectivePlaceholder}
-    />
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Select course"
+        style={tw.style(
+          `h-11 rounded-xl px-3 pr-10 justify-center border`,
+          `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`,
+          !hasOptions && `opacity-60`
+        )}
+        disabled={!hasOptions}
+      >
+        <Text style={tw.style(`text-sm`, displayLabel ? `text-[#0d141c] dark:text-white` : `text-slate-500 dark:text-white/60`)}>
+          {displayLabel ? displayLabel : placeholder}
+        </Text>
+
+        <View style={tw`absolute right-3 top-1/2 -mt-2`}>
+          <MaterialIcons name="arrow-drop-down" size={20} color="rgba(148,163,184,0.9)" />
+        </View>
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <View style={tw`flex-1 bg-black/40 items-center justify-center px-4`}>
+          {/* backdrop */}
+          <Pressable style={tw`absolute inset-0`} onPress={() => setOpen(false)} />
+
+          {/* panel */}
+          <View
+            style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 overflow-hidden`}
+          >
+            <View style={tw`px-4 py-3 flex-row items-center justify-between border-b border-[#cedbe8] dark:border-white/10`}>
+              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+                {placeholder}
+              </Text>
+              <Pressable
+                onPress={() => setOpen(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                style={tw`h-8 w-8 items-center justify-center rounded-lg bg-slate-100 dark:bg-[#172534]`}
+              >
+                <MaterialIcons name="close" size={18} color="rgba(148,163,184,0.9)" />
+              </Pressable>
+            </View>
+
+            <ScrollView style={tw`max-h-80`} contentContainerStyle={tw`py-1`}>
+              {hasOptions ? (
+                options.map((opt) => {
+                  const active = opt.value === value;
+                  return (
+                    <Pressable
+                      key={opt.value}
+                      onPress={() => {
+                        // ⚠️ do not allow selecting the synthetic "__custom__" (display-only)
+                        if (String(opt.value) === '__custom__') return;
+                        onChange(String(opt.value));
+                        setOpen(false);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      style={tw.style(
+                        `px-4 py-3`,
+                        active
+                          ? `bg-indigo-50 dark:bg-indigo-600/30`
+                          : `bg-white dark:bg-[#0f1821]`
+                      )}
+                    >
+                      <Text
+                        style={tw.style(
+                          `text-sm`,
+                          active
+                            ? `text-indigo-700 dark:text-white font-semibold`
+                            : `text-[#0d141c] dark:text-white`
+                        )}
+                      >
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })
+              ) : (
+                <View style={tw`px-4 py-3`}>
+                  <Text style={tw`text-sm text-slate-500 dark:text-white/60`}>No courses available</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 });
+CourseSelect.displayName = 'CourseSelect';
 
 /* ─────────────────────────── Types for panel ─────────────────────────── */
 interface ControlsPanelProps {
@@ -54,7 +154,8 @@ interface ControlsPanelProps {
   canShareUi: boolean;
   restrictStarter: boolean;
   knobsDisabled: boolean;
-displayCourseTitle?: string;
+
+  displayCourseTitle?: string;
 
   topCourses: CourseOption[];
   selectedCourse: CourseOption | null;
@@ -100,14 +201,16 @@ displayCourseTitle?: string;
   overrideQuiz: boolean;
   setOverrideQuiz: (b: boolean) => void;
 
-  // ✅ only define once
+  // ✅ parity gate from web
+  canStartNow: boolean;
+
+  // overlay
   onOpenOverlay?: () => void;
   overlayAvailable?: boolean;
 }
 
 /* ───────────────────────────── Panel (native) ───────────────────────────── */
 const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
-
   const {
     showMinimalControls,
     isLockedLearner,
@@ -115,55 +218,84 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
     canShareUi,
     restrictStarter, // eslint-disable-line @typescript-eslint/no-unused-vars
     knobsDisabled,
+
     topCourses,
     selectedCourse,
     onSelectCourse,
+
     PRESETS,
     TRACKS,
     trackLessons,
+
     sizePreset,
     setSizePreset,
     minutes,
     setMinutes,
+
     classLevel,
     setClassLevel,
+
     programTrack,
     setProgramTrack,
+
     capMinutes,
+
     customTitle,
     setCustomTitle,
+
     busy,
     hasAIContent,
+
     onStart,
     onRefreshSelectedAI,
     onOpenShare,
+
     totalLessons,
     setTotalLessons,
+
     quizCount,
     setQuizCount,
+
     overrideLessons,
     setOverrideLessons,
+
     overrideQuiz,
     setOverrideQuiz,
-    onOpenOverlay,
+
     displayCourseTitle,
-    overlayAvailable, // ✅ FIX: destructure it
+
+    canStartNow,
+
+    onOpenOverlay,
+    overlayAvailable,
   } = props;
 
   // ⬇️ Contribute to the screen’s global pull-to-refresh:
- useRegisterScreenRefresh(
-  useCallback(async () => {
-    if (!isLockedLearner && selectedCourse?.id) {
-      await onRefreshSelectedAI();
-    }
-  }, [isLockedLearner, selectedCourse?.id, onRefreshSelectedAI])
-);
+  useRegisterScreenRefresh(
+    useCallback(async () => {
+      if (!isLockedLearner && selectedCourse?.id) {
+        await onRefreshSelectedAI();
+      }
+    }, [isLockedLearner, selectedCourse?.id, onRefreshSelectedAI])
+  );
 
-
-  const canStartMinimal = !busy;
-  const canStartMain = !busy;
-  const canTeach = !busy && !!customTitle.trim();
   const defaultPresetKey: SizePresetKey = PRESETS[0]?.key ?? 'standard';
+
+  const canTeach = !busy && canStartNow && !!customTitle.trim();
+
+  const courseOptions: SelectOption[] = useMemo(
+    () => (topCourses || []).map((c) => ({ value: c.id, label: c.title })),
+    [topCourses]
+  );
+
+  // ✅ Web parity: show custom/synthetic title even when not in options
+  const custom = customTitle.trim();
+  const courseSelectValue = selectedCourse?.id || (custom ? '__custom__' : '');
+
+  const fallbackCourseLabel =
+    selectedCourse?.title || custom || displayCourseTitle || '';
+
+  const showCourseOrCustomError = !selectedCourse?.id && !custom;
 
   return (
     <View
@@ -181,22 +313,23 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
               style={tw`mt-1 h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}
             >
               <Text style={tw`text-[#0d141c] dark:text-white`}>
-               {displayCourseTitle || selectedCourse?.title || 'Assigned course'}
-
+                {selectedCourse?.title || displayCourseTitle || 'Assigned course'}
               </Text>
             </View>
           </View>
 
           <View style={tw`flex-row items-end gap-2`}>
-            <StartWithAiButton busy={busy} hasAIContent={hasAIContent} onStart={onStart} fullWidth />
-
+            <StartWithAiButton
+              busy={busy}
+              hasAIContent={hasAIContent}
+              onStart={onStart}
+              canStartNow={canStartNow}
+              fullWidth
+            />
           </View>
         </View>
       ) : (
-        <RefreshableScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={tw`gap-3`}
-        >
+        <RefreshableScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={tw`gap-3`}>
           {/* Course */}
           <View>
             <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Course</Text>
@@ -206,19 +339,16 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
                   style={tw`h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}
                 >
                   <Text style={tw`text-[#0d141c] dark:text-white`}>
-                   {displayCourseTitle || selectedCourse?.title || 'Assigned course'}
-
+                    {selectedCourse?.title || displayCourseTitle || 'Assigned course'}
                   </Text>
                 </View>
               ) : (
                 <CourseSelect
-                  value={selectedCourse?.id || ''}
+                  value={courseSelectValue}
                   onChange={(id) => onSelectCourse(id)}
-                  options={(topCourses || []).map((c) => ({
-                    value: c.id,
-                    label: c.title,
-                  }))}
+                  options={courseOptions}
                   placeholder={(topCourses || []).length ? 'Select a course…' : 'Loading…'}
+                  fallbackLabel={fallbackCourseLabel}
                 />
               )}
             </View>
@@ -360,8 +490,12 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
 
           {/* Start / Refresh / Share */}
           <View style={tw`flex-row items-end gap-2`}>
-          <StartWithAiButton busy={busy} hasAIContent={hasAIContent} onStart={onStart} />
-
+            <StartWithAiButton
+              busy={busy}
+              hasAIContent={hasAIContent}
+              onStart={onStart}
+              canStartNow={canStartNow}
+            />
 
             {selectedCourse && !isLockedLearner ? (
               <Pressable
@@ -458,9 +592,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
           {/* Custom topic */}
           {!isLockedLearner && (
             <View style={tw`mt-1`}>
-              <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>
-                Or type any topic
-              </Text>
+              <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Or type any topic</Text>
               <TextInput
                 value={customTitle}
                 onChangeText={setCustomTitle}
@@ -489,9 +621,16 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
                       canTeach ? 'text-white' : 'text-[#0d141c] dark:text-white'
                     } text-sm font-semibold`}
                   >
-                    Teach me
+                    {busy ? 'Preparing…' : 'Teach me'}
                   </Text>
                 </Pressable>
+
+                {/* ✅ web parity: show warning when neither course nor custom topic */}
+                {showCourseOrCustomError && (
+                  <Text style={tw`mt-1 text-xs text-red-500`}>
+                    Pick a course or enter a custom topic first.
+                  </Text>
+                )}
               </View>
 
               {/* ✅ SINGLE OVERLAY ICON — fixed right after Teach me */}
@@ -536,23 +675,27 @@ function StartWithAiButton({
   busy,
   hasAIContent,
   onStart,
+  canStartNow,
   fullWidth = false,
 }: {
   busy: boolean;
   hasAIContent: boolean;
   onStart: () => Promise<void> | void;
+  canStartNow: boolean;
   fullWidth?: boolean;
 }) {
+  const disabled = busy || !canStartNow;
+
   return (
     <TouchableOpacity
       onPress={() => {
-        if (!busy) onStart();
+        if (!disabled) onStart();
       }}
-      disabled={busy}
+      disabled={disabled}
       activeOpacity={0.85}
       style={tw.style(
         `${fullWidth ? 'w-full' : 'flex-1'} rounded-xl py-3 items-center justify-center border`,
-        busy ? 'bg-indigo-600/60 border-indigo-600/60' : 'bg-indigo-600 border-indigo-600'
+        disabled ? 'bg-indigo-600/60 border-indigo-600/60' : 'bg-indigo-600 border-indigo-600'
       )}
     >
       <Text style={tw`text-white font-semibold`}>
@@ -561,7 +704,6 @@ function StartWithAiButton({
     </TouchableOpacity>
   );
 }
-
 
 /* ────────────────────────── Small helper input ────────────────────────── */
 function LabeledNumber({

@@ -202,7 +202,13 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const locked = sp.get('lock') === '1';
   const qpCourseId = sp.get('courseId') || sp.get('course_id') || '';
   const qpAssignmentId = sp.get('assignmentId') || sp.get('assignment_id') || '';
-  const qpCourseTitle = sp.get('courseTitle') || sp.get('ct') || '';
+  const qpCourseTitle =
+  sp.get('courseTitle') ||
+  sp.get('ct') ||
+  sp.get('title') ||     // ✅ support "title" too (from MyCourses)
+  sp.get('t') ||         // ✅ optional short alias
+  '';
+
   const qpProgramTrack = sp.get('programTrack') || sp.get('program_track') || '';
   const qpStartWeek = sp.get('startWeek') || sp.get('start_week');
   const qpSource = sp.get('source') || '';
@@ -421,11 +427,15 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   };
 
   const orgAssign = useOrgAssignment();
+
+  
   const assignmentId = orgAssign?.assignmentId ?? undefined;
   const isOrgFlow = Boolean(orgAssign?.assignmentId);
   const assignmentIdForAi = authToken ? assignmentId : undefined;
   // ── Timer owned by parent ────────────────────────────────
   const [localRemainingMs, setLocalRemainingMs] = useState<number | null>(null);
+
+  
   useEffect(() => {
     if (localRemainingMs == null || localRemainingMs <= 0) return;
     const id = window.setInterval(() => {
@@ -506,6 +516,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     'param' | 'storage' | 'default' | null
   >(null);
   const [customTitle, setCustomTitle] = useState('');
+  const [fetchedRouteTitle, setFetchedRouteTitle] = useState('');
+
   const [preparing, setPreparing] = useState(false);
   const runIdRef = React.useRef(0);
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
@@ -513,6 +525,42 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const [blockedUntilStart, setBlockedUntilStart] = useState(false);
   const [overrideLessons, setOverrideLessons] = useState(false);
   const [overrideQuiz, setOverrideQuiz] = useState(false);
+
+  const assignmentMetaObj = useMemo(() => {
+  const m = (orgAssign as any)?.meta;
+  if (!m) return undefined;
+  if (typeof m === 'object') return m as any;
+  if (typeof m === 'string') {
+    const s = m.trim();
+    if (!s) return undefined;
+    try {
+      return JSON.parse(s);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}, [orgAssign]);
+
+const displayTitle = useMemo(() => {
+  const clean = (x: any) => {
+    const t = String(x ?? '').trim();
+    if (!t) return '';
+    const lc = t.toLowerCase();
+    if (lc === 'undefined' || lc === 'null') return '';
+    return t;
+  };
+
+  return (
+    clean(customTitle) ||
+    clean((assignmentMetaObj as any)?.title_override) ||
+    clean(selectedCourse?.title) ||
+    clean(qpCourseTitle) ||
+    clean((assignmentMetaObj as any)?.course_title) ||
+    'Assigned Course'
+  );
+}, [customTitle, assignmentMetaObj, selectedCourse?.title, qpCourseTitle]);
+
 
   useEffect(() => {
     const trackFromParam = qpProgramTrack ? normalizeProgramTrack(qpProgramTrack) : null;
@@ -611,14 +659,14 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const safeQuiz = quizEffective;
 
   const titleInfo = useMemo(() => {
-    return resolveCourseTitleInfo({
-      routeTitle: qpCourseTitle,
-      assignmentMeta: (orgAssign as any)?.meta,
-      selectedCourseTitle: selectedCourse?.title,
-      customTitle,
-      fallback: 'Assigned Course',
-    });
-  }, [qpCourseTitle, orgAssign, selectedCourse?.title, customTitle]);
+  return resolveCourseTitleInfo({
+    routeTitle: (qpCourseTitle || fetchedRouteTitle) ?? '',
+    assignmentMeta: (orgAssign as any)?.meta,
+    selectedCourseTitle: selectedCourse?.title || fetchedRouteTitle,
+    customTitle,
+    fallback: 'Assigned Course',
+  });
+}, [qpCourseTitle, fetchedRouteTitle, orgAssign, selectedCourse?.title, customTitle]);
 
   useEffect(() => {
     dlog('course title resolve', {
@@ -638,6 +686,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     titleInfo.title,
     titleInfo.source,
   ]);
+
+  
 
   // ── Busy helpers (must be declared before canStartNow) ──
   const isAiBusy = step === 'outlining' || step === 'narrating' || ttsLoading;
@@ -664,9 +714,13 @@ const canStartNow = useMemo(() => {
   // ✅ If URL has courseId, only allow start once we’re actually on that course
   // (prevents starting course[0] while list/selection is still catching up)
   if (wantedCourseId) {
-    const selId = normId(selectedCourseRef.current?.id || selectedCourse?.id || '');
-    return selId === wantedCourseId;
-  }
+  // ✅ sandbox courseId is valid even if not in topCourses
+  if (isSandboxSource) return true;
+
+  const selId = normId(selectedCourseRef.current?.id || selectedCourse?.id || '');
+  return selId === wantedCourseId;
+}
+
 
   if (effectiveCourseIdForStart) return true;
 
@@ -675,12 +729,26 @@ const canStartNow = useMemo(() => {
   customTitle,
   wantedCourseId,
   effectiveCourseIdForStart,
-  
+   isSandboxSource,
   activeRunId,
   isAiBusy,
   selectedCourse?.id,
 ]);
 
+useEffect(() => {
+  if (!isSandboxSource) return;
+  if (!wantedCourseId) return;
+  const t = fetchedRouteTitle.trim();
+  if (!t) return;
+
+  const selId = normId(selectedCourse?.id || '');
+  if (selId !== wantedCourseId) return;
+
+  const cur = String(selectedCourse?.title || '').trim();
+  if (cur && cur !== 'Assigned Course') return;
+
+  selectCourse({ ...(selectedCourse as any), title: t } as any);
+}, [isSandboxSource, wantedCourseId, fetchedRouteTitle, selectedCourse?.id, selectedCourse?.title, selectCourse]);
 
 
   useEffect(() => {
@@ -801,31 +869,90 @@ const canStartNow = useMemo(() => {
   return () => {
     cancelled = true;
   };
-}, [wantedCourseId, loadTopCourses]);
+}, [desiredCourseId, loadTopCourses]);
 
   const shareHasAssignment = Boolean(qpAssignmentId); // ✅ only link param
-  const validateAgainstTopCourses = Boolean(wantedCourseId && !shareHasAssignment && !isOrgFlow);
+  const validateAgainstTopCourses = Boolean(
+  wantedCourseId && !shareHasAssignment && !isOrgFlow && !isSandboxSource
+);
 
-  useEffect(() => {
+
+
+useEffect(() => {
+  let cancelled = false;
+
+  (async () => {
+    if (!backendUrl) return;
+    if (!authToken) return; // sandbox courses are usually private
+    if (!isSandboxSource) return;
     if (!wantedCourseId) return;
-   if (!coursesLoadDone) return;
-const list = Array.isArray(topCourses) ? topCourses : [];
 
+    // if URL already provides a title, don't fetch
+    if (qpCourseTitle && qpCourseTitle.trim()) return;
 
-    const selectedId = selectedCourse ? normId(selectedCourse.id) : null;
-    if (selectedId === wantedCourseId) return;
+    // if we already have a meaningful title, don't fetch
+    const existing = String(selectedCourse?.title || '').trim();
+    if (existing && existing !== 'Assigned Course') return;
 
-    const found = list.find((c) => normId(c.id) === wantedCourseId) || null;
+    try {
+      const base = backendUrl.replace(/\/+$/, '');
+      const url = `${base}/api/courses/${encodeURIComponent(wantedCourseId)}`;
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${authToken}` } });
+      if (!r.ok) return;
 
+      const j: any = await r.json().catch(() => null);
+      const t = String(j?.title ?? j?.course?.title ?? '').trim();
+      if (!t) return;
 
-    if (found) {
-      setPreparing(false);
-      setActiveRunId(null);
-      setBlockedUntilStart(true);
-      setLockedSsml(null);
-      selectCourse(found);
-    }
- }, [wantedCourseId, coursesLoadDone, topCourses, selectedCourse?.id, selectCourse]);
+      if (!cancelled) setFetchedRouteTitle(t);
+    } catch {}
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [backendUrl, authToken, isSandboxSource, wantedCourseId, qpCourseTitle, selectedCourse?.title]);
+
+ useEffect(() => {
+  if (!wantedCourseId) return;
+  if (!coursesLoadDone) return;
+
+  const list = Array.isArray(topCourses) ? topCourses : [];
+  const selectedId = selectedCourse ? normId(selectedCourse.id) : null;
+  if (selectedId === wantedCourseId) return;
+
+  const found = list.find((c) => normId(c.id) === wantedCourseId) || null;
+
+  if (found) {
+    setPreparing(false);
+    setActiveRunId(null);
+    setBlockedUntilStart(true);
+    setLockedSsml(null);
+    selectCourse(found);
+    return;
+  }
+
+  // ✅ sandbox courses won’t be in topCourses; seed minimal so UI works
+  if (isSandboxSource) {
+    dlog('sandbox shared course not in top list → seed synthetic', { wantedCourseId });
+    selectCourse({
+      id: wantedCourseId,
+     title: displayTitle,
+      blurb: '',
+      rating: 0,
+      reviews: 0,
+    } as any);
+  }
+}, [
+  wantedCourseId,
+  coursesLoadDone,
+  topCourses,
+  selectedCourse?.id,
+  selectCourse,
+  isSandboxSource,
+  titleInfo.title,
+]);
+
 
  useEffect(() => {
   if (!assignedCourseId) return;
@@ -1161,7 +1288,8 @@ useEffect(() => {
             {/* ADD THIS */}
             <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-white/5 ring-1 ring-white/10">
               <span className="text-xs text-gray-600 dark:text-white/70">Now learning:</span>
-              <span className="text-sm font-semibold truncate max-w-[60vw]">{titleInfo.title}</span>
+              <span className="text-sm font-semibold truncate max-w-[60vw]">{displayTitle}</span>
+
               {dbgEnabled() ? (
                 <span className="text-[10px] opacity-70">({titleInfo.source})</span>
               ) : null}
@@ -1196,7 +1324,7 @@ useEffect(() => {
             open={canShareUi && shareOpen}
             onClose={() => setShareOpen(false)}
             courseId={selectedCourse?.id || null}
-            courseTitle={titleInfo.title}
+           courseTitle={displayTitle}
             totalLessons={safeLessons}
             quizCount={safeQuiz}
             minutes={capMinutes(minutes)}
@@ -1258,7 +1386,8 @@ useEffect(() => {
             selectedCourse={
               selectedCourse ? { id: selectedCourse.id, title: selectedCourse.title } : null
             }
-            displayCourseTitle={titleInfo.title}
+           displayCourseTitle={displayTitle}
+
             onSelectCourse={(id) => {
               setPreparing(false);
               setActiveRunId(null);
@@ -1309,7 +1438,7 @@ useEffect(() => {
             isBuildingNext={isBuildingNext}
             lessonsArr={lessonsArr}
             voiceName={voiceName || defaultVoice}
-            courseTitle={titleInfo.title}
+            courseTitle={displayTitle}
             isMaximized={isMaximized}
             onToggleMaximized={() => setIsMaximized((v) => !v)}
             course={selectedCourse || null}

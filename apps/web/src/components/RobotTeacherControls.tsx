@@ -12,7 +12,10 @@ const CourseSelect: React.FC<{
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-}> = React.memo(({ options, value, onChange, placeholder = 'Select a course…' }) => {
+
+  // ✅ ADD THIS
+  fallbackLabel?: string;
+}> = React.memo(({ options, value, onChange, placeholder = 'Select a course…', fallbackLabel }) => {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement | null>(null);
 
@@ -34,6 +37,11 @@ const CourseSelect: React.FC<{
 
   const selected = React.useMemo(() => options.find((o) => o.value === value), [options, value]);
 
+  // ✅ ADD THIS: show custom/synthetic title even if not in options
+  const displayLabel =
+    selected?.label ||
+    (fallbackLabel && String(fallbackLabel).trim() ? String(fallbackLabel).trim() : '');
+
   return (
     <div ref={ref} className="relative z-[30]">
       <button
@@ -48,8 +56,8 @@ const CourseSelect: React.FC<{
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        {selected ? (
-          selected.label
+        {displayLabel ? (
+          displayLabel
         ) : (
           <span className="text-gray-500 dark:text-white/60">{placeholder}</span>
         )}
@@ -225,24 +233,32 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
         <>
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
             {/* Course */}
-            <div className="lg:col-span-2">
-              <label className="text-xs text-gray-600 dark:text-white/70">Course</label>
-              <div className="mt-1 relative z-[20]">
-                {isLockedLearner ? (
-                  <div className="input bg-gray-100 dark:bg-white/10 cursor-not-allowed">
-                   {selectedCourse?.title || 'Assigned course'}
+<div className="lg:col-span-2">
+  <label className="text-xs text-gray-600 dark:text-white/70">Course</label>
+  <div className="mt-1 relative z-[20]">
+    {isLockedLearner ? (
+  <div className="input bg-gray-100 dark:bg-white/10 cursor-not-allowed">
+    {selectedCourse?.title || displayCourseTitle || 'Assigned course'}
+  </div>
+    ) : (
+      (() => {
+        const custom = customTitle.trim();
+        const courseSelectValue = selectedCourse?.id || (custom ? '__custom__' : '');
 
-                  </div>
-                ) : (
-                  <CourseSelect
-                    value={selectedCourse?.id || ''}
-                    onChange={(id) => onSelectCourse(id)}
-                    options={(topCourses || []).map((c) => ({ value: c.id, label: c.title }))}
-                    placeholder={(topCourses || []).length ? 'Select a course…' : 'Loading…'}
-                  />
-                )}
-              </div>
-            </div>
+        return (
+          <CourseSelect
+            value={courseSelectValue}
+            onChange={(id) => onSelectCourse(id)}
+            options={(topCourses || []).map((c) => ({ value: c.id, label: c.title }))}
+            placeholder={(topCourses || []).length ? 'Select a course…' : 'Loading…'}
+            fallbackLabel={selectedCourse?.title || custom || displayCourseTitle || ''}
+          />
+        );
+      })()
+    )}
+  </div>
+</div>
+
 
             {/* Program Track */}
             <div className="lg:col-span-3">

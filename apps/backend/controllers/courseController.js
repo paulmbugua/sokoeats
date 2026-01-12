@@ -334,9 +334,15 @@ export const getCourseById = async (req, res) => {
       return res.status(404).json({ error: 'Not found' });
 
     const row = result.rows[0];
-    if (row.is_ai_generated && !allowAiInResponse(req)) {
-      return res.status(404).json({ error: 'Not found' });
-    }
+
+// ✅ Allow AI course fetch when user is authenticated (token present)
+// Keep AI hidden for anonymous callers.
+if (row.is_ai_generated && !allowAiInResponse(req)) {
+  const viewerId = getAuthTutorId(req); // works with anyAuthOptional hydration
+  if (!viewerId) return res.status(404).json({ error: 'Not found' });
+}
+
+
 
     const { is_ai_generated, ...safe } = row;
     res.json(safe);

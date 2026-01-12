@@ -466,21 +466,26 @@ const CourseDetailsNative: React.FC = () => {
               </Text>
               {Array.isArray(c.syllabus) && c.syllabus.length > 0 ? (
                 <View style={tw`gap-2`}>
-                  {c.syllabus.slice(0, 12).map((w) => (
-                    <View key={w.week} style={tw`mb-1`}>
-                      <Text style={tw`font-medium text-slate-900 dark:text-white`}>
-                        Week {w.week}:{' '}
-                        <Text style={tw`text-slate-800 dark:text-slate-300`}>
-                          {w.topic || 'TBA'}
-                        </Text>
+                  {c.syllabus.slice(0, 12).map((w, idx) => {
+                const key = `${courseId}-${String(w.week ?? 'na')}-${idx}`; // always unique
+                return (
+                  <View key={key} style={tw`mb-1`}>
+                    <Text style={tw`font-medium text-slate-900 dark:text-white`}>
+                      Week {w.week ?? idx + 1}:{' '}
+                      <Text style={tw`text-slate-800 dark:text-slate-300`}>
+                        {w.topic || 'TBA'}
                       </Text>
-                      {!!w.assignment && (
-                        <Text style={tw`mt-0.5 text-xs text-[#49739c] dark:text-darkTextSecondary`}>
-                          Assignment: {w.assignment}
-                        </Text>
-                      )}
-                    </View>
-                  ))}
+                    </Text>
+
+                    {!!w.assignment && (
+                      <Text style={tw`mt-0.5 text-xs text-[#49739c] dark:text-darkTextSecondary`}>
+                        Assignment: {w.assignment}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
+
                 </View>
               ) : (
                 <Text style={tw`text-sm text-[#49739c] dark:text-darkTextSecondary`}>

@@ -282,7 +282,14 @@ const qpLocked = String((qp as any).lock ?? '') === '1';
 
 const qpCourseId = String((qp as any).courseId ?? (qp as any).course_id ?? '').trim();
 const qpAssignmentId = String((qp as any).assignmentId ?? (qp as any).assignment_id ?? '').trim();
-const qpCourseTitle = String((qp as any).courseTitle ?? (qp as any).ct ?? '').trim();
+const qpCourseTitle = String(
+  (qp as any).courseTitle ??
+  (qp as any).ct ??
+  (qp as any).title ??   // ✅ support "title"
+  (qp as any).t ??       // ✅ support "t"
+  ''
+).trim();
+
 const qpProgramTrack = String(
   (qp as any).programTrack ?? (qp as any).program_track ?? (qp as any).track ?? ''
 ).trim();
@@ -353,6 +360,10 @@ const params = useMemo(
       ? Math.max(0, startWeekValue - 1)
       : null;
   const isSandboxSource = params?.source === 'sandbox';
+const wantedCourseId = useMemo(() => {
+  const cid = params?.courseId ? String(params.courseId).trim() : '';
+  return cid || '';
+}, [params?.courseId]);
 
 
 
@@ -477,6 +488,8 @@ const validateAgainstTopCourses = Boolean(
   const [quizCount, setQuizCount] = useState<number>(16);
   const [programTrack, setProgramTrack] = useState<TrackKey>('module');
   const [customTitle, setCustomTitle] = useState('');
+  const [fetchedRouteTitle, setFetchedRouteTitle] = useState('');
+
   const [programTrackLocked, setProgramTrackLocked] = useState(false);
 
   // ✅ booleans expected by ControlsPanel
@@ -537,6 +550,77 @@ const validateAgainstTopCourses = Boolean(
       msg.includes('limit reached')
     );
   };
+
+
+  useEffect(() => {
+  let cancelled = false;
+
+  (async () => {
+    if (!backendUrl) return;
+    if (!authToken) return;
+    if (!isSandboxSource) return;
+    if (!wantedCourseId) return;
+
+    // if route already provides title, don't fetch
+    const routeTitle = String(params?.courseTitle ?? '').trim();
+    if (routeTitle) return;
+
+    // if selectedCourse already has a meaningful title, don't fetch
+    const existing = String(selectedCourse?.title || '').trim();
+    if (existing && existing.toLowerCase() !== 'assigned course') return;
+
+    try {
+      const base = backendUrl.replace(/\/+$/, '');
+      const url = `${base}/api/courses/${encodeURIComponent(wantedCourseId)}`;
+
+      const r = await fetch(url, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!r.ok) return;
+
+      const j: any = await r.json().catch(() => null);
+      const t = String(j?.title ?? j?.course?.title ?? '').trim();
+      if (!t) return;
+
+      if (!cancelled) setFetchedRouteTitle(t);
+    } catch {
+      // ignore
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [backendUrl, authToken, isSandboxSource, wantedCourseId, params?.courseTitle, selectedCourse?.title]);
+
+useEffect(() => {
+  if (!isSandboxSource) return;
+  if (!wantedCourseId) return;
+
+  const t = fetchedRouteTitle.trim();
+  if (!t) return;
+
+  // If selection matches, just upgrade placeholder title.
+  if (selectedCourse?.id === wantedCourseId) {
+    const cur = String(selectedCourse?.title || '').trim();
+    if (!cur || cur.toLowerCase() === 'assigned course') {
+      selectCourse({ ...(selectedCourse as any), title: t } as any);
+    }
+    return;
+  }
+
+  // If no selection yet (common in sandbox shares), seed minimal selection
+  if (!selectedCourse) {
+    selectCourse({
+      id: wantedCourseId,
+      title: t,
+      blurb: '',
+      rating: 0,
+      reviews: 0,
+    } as any);
+  }
+}, [isSandboxSource, wantedCourseId, fetchedRouteTitle, selectedCourse?.id, selectedCourse?.title, selectedCourse, selectCourse]);
+
 
   const showLessonCapOnce = useCallback(
     (courseKey: string) => {
@@ -686,14 +770,16 @@ const isLockedLearner =
   }, [startWeekValue, startIdx, currentIdx, outline?.length, params?.source]);
 
   const titleInfo = useMemo(() => {
+  const routeTitle = String(params?.courseTitle ?? '').trim();
   return resolveCourseTitleInfo({
-    routeTitle: (params.courseTitle ? String(params.courseTitle) : '').trim(),
+    routeTitle: (routeTitle || fetchedRouteTitle).trim(),
     assignmentMeta: (orgAssign as any)?.meta,
-    selectedCourseTitle: selectedCourse?.title,
+    selectedCourseTitle: selectedCourse?.title || fetchedRouteTitle,
     customTitle,
-    fallback: 'Assigned course',
+    fallback: 'Assigned Course', // ✅ match web casing
   });
-}, [params.courseTitle, orgAssign, selectedCourse?.title, customTitle]);
+}, [params?.courseTitle, fetchedRouteTitle, orgAssign, selectedCourse?.title, customTitle]);
+
 
 const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
 
@@ -1472,7 +1558,8 @@ return;
                 programTrackLocked={programTrackLocked}
                 canShareUi={canShareUi}
                 onOpenOverlay={openOverlay}
-                 displayCourseTitle={titleInfo.title}
+                displayCourseTitle={effectiveCourseTitle}
+                canStartNow={canStartNow} 
                 overlayAvailable={overlayAvailable}
                 restrictStarter={restrictStarter}
                 knobsDisabled={knobsDisabled}
