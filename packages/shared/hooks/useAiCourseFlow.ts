@@ -61,6 +61,7 @@ type FlowHints = {
   orgQuizType?: 'mcq' | 'short';
   urlQuizTypeHint?: 'mcq' | 'short';
   defaultQuizType?: 'mcq' | 'short';
+  clientScreen?: string;
 };
 
 // Keep a light “lesson” shape compatible with API responses
@@ -470,7 +471,7 @@ export function useAiCourse(backendUrl: string, authToken?: string, flowHints?: 
                 assignmentId: assignmentIdRef.current ?? undefined,
                 noPrewarm: 1,
               } as any,
-              { token, anonId },
+              { token, anonId, clientScreen: flowHints?.clientScreen },
             );
           } catch (e: unknown) {
             const capMsg = parseLessonCapMessage(e);
