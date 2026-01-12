@@ -12,9 +12,10 @@ import {
 
 import tw from '../../tailwind';
 import { MaterialIcons } from '@expo/vector-icons';
+import type { ProgramTrack } from '@mytutorapp/shared/types';
 
 export type SizePresetKey = 'quick' | 'standard' | 'extended' | 'intensive' | 'marathon';
-export type TrackKey = 'module' | 'certificate' | 'diploma' | 'degree';
+export type TrackKey = ProgramTrack;
 type CourseOption = { id: string; title: string };
 
 // ⬇️ Option A: global pull-to-refresh hooks/components
@@ -22,6 +23,40 @@ import { RefreshableScrollView } from '../refresh/Refreshable';
 import { useRegisterScreenRefresh } from '../refresh/GlobalRefreshProvider';
 
 type SelectOption = { value: string; label: string };
+
+type MIName = React.ComponentProps<typeof MaterialIcons>['name'];
+
+const TRACK_UI: Partial<
+  Record<
+    TrackKey,
+    {
+      icon: MIName;
+      blurb: string;
+      outcome: string;
+    }
+  >
+> = {
+  module: {
+    icon: 'view-module',
+    blurb: 'Focused unit. Great for quick revision or one topic.',
+    outcome: 'Best for: targeted learning & practice.',
+  },
+  certificate: {
+    icon: 'verified',
+    blurb: 'Structured short program with clear outcomes.',
+    outcome: 'Best for: finishing a skill and getting certified.',
+  },
+  diploma: {
+    icon: 'school',
+    blurb: 'Career-oriented pathway covering multiple modules.',
+    outcome: 'Best for: depth + real-world readiness.',
+  },
+  degree: {
+    icon: 'account-balance',
+    blurb: 'Full curriculum-style path with broad coverage.',
+    outcome: 'Best for: comprehensive mastery over time.',
+  },
+};
 
 /* ───────────────────────── CourseSelect (native, web-parity) ─────────────────────────
    - Shows selected course label if in options
@@ -209,8 +244,12 @@ interface ControlsPanelProps {
   overlayAvailable?: boolean;
 }
 
+
+
+
 /* ───────────────────────────── Panel (native) ───────────────────────────── */
 const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
+  const [trackInfoOpen, setTrackInfoOpen] = useState(false);
   const {
     showMinimalControls,
     isLockedLearner,
@@ -354,40 +393,175 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
             </View>
           </View>
 
-          {/* Program track */}
-          <View>
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Program track</Text>
-            <View style={tw`mt-1 flex-row flex-wrap gap-2`}>
-              {TRACKS.map((t) => {
-                const active = programTrack === t.key;
-                const disabled = isLockedLearner || programTrackLocked;
-                return (
-                  <Pressable
-                    key={t.key}
-                    onPress={() => !disabled && setProgramTrack(t.key)}
-                    disabled={disabled}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active, disabled }}
-                    accessibilityLabel={`${t.label} (${t.lessons})`}
-                    style={tw.style(
-                      `px-3 py-1.5 rounded-full border`,
-                      active
-                        ? `bg-indigo-600 border-indigo-600`
-                        : `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`,
-                      disabled && `opacity-50`
-                    )}
-                  >
-                    <Text style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'}`}>
-                      {t.label} ({t.lessons})
-                    </Text>
-                  </Pressable>
-                );
-              })}
+{/* Program track */}
+<View>
+  <View style={tw`flex-row items-center justify-between`}>
+    <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Program track</Text>
+
+    {/* Info button (native parity for web tooltips) */}
+    <Pressable
+      onPress={() => setTrackInfoOpen(true)}
+      accessibilityRole="button"
+      accessibilityLabel="What are program tracks?"
+      style={tw`h-7 w-7 rounded-lg items-center justify-center bg-slate-100 dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10`}
+    >
+      <MaterialIcons name="info-outline" size={16} color="rgba(148,163,184,0.95)" />
+    </Pressable>
+  </View>
+
+  <View style={tw`mt-2 gap-2`}>
+    {TRACKS.map((t) => {
+      const active = programTrack === t.key;
+      const disabled = isLockedLearner || programTrackLocked;
+
+      const meta = TRACK_UI[t.key] ?? {
+        icon: 'school' as MIName,
+        blurb: 'Structured learning track.',
+        outcome: 'Choose what fits your goal.',
+      };
+
+      return (
+        <Pressable
+          key={t.key}
+          onPress={() => {
+            if (!disabled) setProgramTrack(t.key);
+          }}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityState={{ selected: active, disabled }}
+          accessibilityLabel={`${t.label}. Approximately ${t.lessons} lessons.`}
+          style={tw.style(
+            `rounded-2xl border p-3`,
+            active
+              ? `bg-indigo-50 dark:bg-indigo-600/25 border-indigo-300 dark:border-indigo-500/40`
+              : `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`,
+            disabled && `opacity-50`
+          )}
+        >
+          <View style={tw`flex-row items-center justify-between`}>
+            <View style={tw`flex-row items-center gap-2`}>
+              <View
+                style={tw.style(
+                  `h-8 w-8 rounded-xl items-center justify-center`,
+                  active ? `bg-indigo-600` : `bg-slate-100 dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`
+                )}
+              >
+                <MaterialIcons
+                  name={meta.icon}
+                  size={18}
+                  color={active ? '#fff' : 'rgba(73,115,156,0.95)'}
+                />
+              </View>
+
+              <View>
+                <Text
+                  style={tw.style(
+                    `text-sm font-semibold`,
+                    active ? `text-indigo-700 dark:text-white` : `text-[#0d141c] dark:text-white`
+                  )}
+                >
+                  {t.label}
+                </Text>
+                <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
+                  {meta.outcome}
+                </Text>
+              </View>
             </View>
-            <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/60`}>
-              Track controls lesson count. We generate ~{trackLessons} lessons for this course.
-            </Text>
+
+            <View style={tw`px-2 py-1 rounded-full bg-slate-100 dark:bg-white/10 border border-[#cedbe8] dark:border-white/10`}>
+              <Text style={tw`text-[11px] text-[#0d141c] dark:text-white`}>
+                {t.lessons} lessons
+              </Text>
+            </View>
           </View>
+
+          <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/60`}>
+            {meta.blurb}
+          </Text>
+        </Pressable>
+      );
+    })}
+  </View>
+
+  <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/60`}>
+    Track controls lesson count. We generate ~{trackLessons} lessons for this course.
+  </Text>
+
+  {(overrideLessons || overrideQuiz) ? (
+    <Text style={tw`mt-1 text-[11px] text-amber-700 dark:text-amber-200`}>
+      You’re using custom lessons/quiz settings. Tap “Use track defaults” below to sync with this track.
+    </Text>
+  ) : null}
+
+  {/* Info Modal */}
+  <Modal
+    visible={trackInfoOpen}
+    transparent
+    animationType="fade"
+    onRequestClose={() => setTrackInfoOpen(false)}
+  >
+    <View style={tw`flex-1 bg-black/40 items-center justify-center px-4`}>
+      <Pressable style={tw`absolute inset-0`} onPress={() => setTrackInfoOpen(false)} />
+
+      <View style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 overflow-hidden`}>
+        <View style={tw`px-4 py-3 flex-row items-center justify-between border-b border-[#cedbe8] dark:border-white/10`}>
+          <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+            What are program tracks?
+          </Text>
+          <Pressable
+            onPress={() => setTrackInfoOpen(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            style={tw`h-8 w-8 items-center justify-center rounded-lg bg-slate-100 dark:bg-[#172534]`}
+          >
+            <MaterialIcons name="close" size={18} color="rgba(148,163,184,0.9)" />
+          </Pressable>
+        </View>
+
+        <ScrollView style={tw`max-h-96`} contentContainerStyle={tw`p-4 gap-3`}>
+          {TRACKS.map((t) => {
+            const meta = TRACK_UI[t.key] ?? {
+              icon: 'school' as MIName,
+              blurb: 'Structured learning track.',
+              outcome: 'Choose what fits your goal.',
+            };
+
+            return (
+              <View
+                key={t.key}
+                style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#172534] p-3`}
+              >
+                <View style={tw`flex-row items-center justify-between`}>
+                  <View style={tw`flex-row items-center gap-2`}>
+                    <MaterialIcons name={meta.icon} size={18} color="rgba(73,115,156,0.95)" />
+                    <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+                      {t.label}
+                    </Text>
+                  </View>
+                  <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
+                    ~{t.lessons} lessons
+                  </Text>
+                </View>
+
+                <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/60`}>
+                  {meta.outcome}
+                </Text>
+                <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/60`}>
+                  {meta.blurb}
+                </Text>
+              </View>
+            );
+          })}
+
+          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
+            Tip: If you override Lessons/Quiz, you’re no longer using track defaults until you tap “Use track defaults”.
+          </Text>
+        </ScrollView>
+      </View>
+    </View>
+  </Modal>
+</View>
+
 
           {/* Lesson size + minutes */}
           <View>

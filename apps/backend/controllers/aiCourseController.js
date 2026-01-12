@@ -475,14 +475,13 @@ const estimateText = outlineSlice
         null;
 
       const gate = await narrationPreflight({
-        userId: req.user?.id || req.body?.userId || null,
+        userId,
         anonId,
         orgId,
         courseId,
         estimateText,
         programTrack,
       });
-
 
       if (!gate?.ok) {
   const notice = buildGateNotice(gate);

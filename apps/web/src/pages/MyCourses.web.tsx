@@ -34,17 +34,27 @@ type TrackRequirements = {
   minQuestions: number;
 };
 
+const normalizeTrackKey = (track?: ProgramTrack | string | null): ProgramTrack => {
+  const raw = String(track || '').trim().toLowerCase();
+
+  // ✅ allow new public-facing names (if they ever appear in data/URL/localStorage)
+  if (raw === 'professional') return 'diploma';
+  if (raw === 'comprehensive') return 'degree';
+
+  if (raw === 'diploma' || raw === 'degree' || raw === 'certificate') return raw as ProgramTrack;
+  return 'certificate';
+};
+
 const getTrackLabel = (track?: ProgramTrack | string | null): string => {
-  const raw = String(track || '').toLowerCase();
-  if (raw === 'diploma') return 'Diploma';
-  if (raw === 'degree') return 'Degree';
-  if (raw === 'certificate') return 'Certificate';
+  const key = normalizeTrackKey(track);
+
+  if (key === 'diploma') return 'Professional';     // ✅ was Diploma
+  if (key === 'degree') return 'Comprehensive';     // ✅ was Degree
   return 'Certificate';
 };
 
 const getTrackRequirements = (track?: ProgramTrack | string | null): TrackRequirements => {
-  const raw = String(track || '').toLowerCase();
-  const key = raw === 'diploma' || raw === 'degree' || raw === 'certificate' ? (raw as ProgramTrack) : 'certificate';
+  const key = normalizeTrackKey(track);
   return {
     key,
     label: getTrackLabel(key),
@@ -52,6 +62,7 @@ const getTrackRequirements = (track?: ProgramTrack | string | null): TrackRequir
     minQuestions: getRequiredQuestions(key),
   };
 };
+
 
 /* --------------------- OER types --------------------- */
 type OerKind = 'video' | 'doc';
@@ -534,25 +545,32 @@ useEffect(() => {
   };
 }, [api, token, backendUrl, sandboxDbgEnabled]);
 
-  const resolveCourseTrack = useCallback((course: any): ProgramTrack | undefined => {
-    const raw =
-      course?.programTrack ??
-      course?.program_track ??
-      course?.track ??
-      course?.track_key ??
-      course?.program_track_key;
-    const lc = String(raw || '').toLowerCase();
-    if (lc === 'certificate' || lc === 'diploma' || lc === 'degree') return lc as ProgramTrack;
-    return undefined;
-  }, []);
+ const resolveCourseTrack = useCallback((course: any): ProgramTrack | undefined => {
+  const raw =
+    course?.programTrack ??
+    course?.program_track ??
+    course?.track ??
+    course?.track_key ??
+    course?.program_track_key;
 
-  const getStoredTrack = useCallback((courseId: string): ProgramTrack | null => {
-    try {
-      const v = localStorage.getItem(`sandbox_track:${courseId}`);
-      if (v === 'certificate' || v === 'diploma' || v === 'degree') return v;
-    } catch {}
-    return null;
-  }, []);
+  const lc = String(raw || '').trim().toLowerCase();
+  if (['certificate', 'diploma', 'degree', 'professional', 'comprehensive'].includes(lc)) {
+    return normalizeTrackKey(lc);
+  }
+  return undefined;
+}, []);
+
+
+ const getStoredTrack = useCallback((courseId: string): ProgramTrack | null => {
+  try {
+    const v = localStorage.getItem(`sandbox_track:${courseId}`);
+    const lc = String(v || '').trim().toLowerCase();
+    if (['certificate', 'diploma', 'degree', 'professional', 'comprehensive'].includes(lc)) {
+      return normalizeTrackKey(lc);
+    }
+  } catch {}
+  return null;
+}, []);
 
   const persistTrack = useCallback((courseId: string, track: ProgramTrack) => {
     try {

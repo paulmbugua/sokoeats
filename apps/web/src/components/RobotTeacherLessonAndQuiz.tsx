@@ -195,6 +195,8 @@ const unlockSuccessNotice =
   '✅ Course unlocked — narration + notes + quiz unlocked. Generate up to 60 lessons. Pass quiz (≥70%) to download your certificate free.';
 
 /** local retry & working answers (supports number | string) */
+
+const [unlocking, setUnlocking] = useState(false);
 const [retakeMode, setRetakeMode] = useState(false);
 const [workingAnswers, setWorkingAnswers] = useState<Record<string, number | string | undefined>>(
   {}
@@ -476,15 +478,17 @@ const [paymentOk, setPaymentOk] = useState(false);
   const hasUnlockedCourse = isOrgFlowFlag || paymentOk || forceUnlock;
   const narrationBlocked = gateMode === 'notes_only' && !hasUnlockedCourse;
 
-  const certCta = useMemo(
-    () =>
-      getCertificateCtaFromGate({
-        gateMode: narrationBlocked ? 'notes_only' : 'narration',
-        reason: narrationBlocked ? gateNotice?.reason : undefined,
-        isLoggedIn,
-      }),
-    [narrationBlocked, gateNotice?.reason, isLoggedIn]
-  );
+  const resetAtLabel = useMemo(() => {
+    const raw =
+      gateNotice?.resetsAt ||
+      (Array.isArray(gateUsage) ? gateUsage.find((u) => u?.resetsAt)?.resetsAt : null);
+    if (!raw) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? String(raw) : d.toLocaleString();
+  }, [gateNotice?.resetsAt, gateUsage]);
+
+  const showNarrationExhaustedBanner = useMemo(() => narrationBlocked, [narrationBlocked]);
+  const isAnonGate = useMemo(() => !isLoggedIn, [isLoggedIn]);
 
   const effectiveGateMode = hasUnlockedCourse ? 'narration' : gateMode;
   const effectiveGateNotice = hasUnlockedCourse ? null : gateNotice;
@@ -558,11 +562,10 @@ const [paymentOk, setPaymentOk] = useState(false);
 
   // Capture pre-purchase state as soon as we show the gate CTA
   useEffect(() => {
-    if (certCta.show && !prePurchaseState) {
+    if (showNarrationExhaustedBanner && !prePurchaseState) {
       snapshotPrePurchaseState();
     }
-  }, [certCta.show, prePurchaseState, snapshotPrePurchaseState]);
-
+  }, [showNarrationExhaustedBanner, prePurchaseState, snapshotPrePurchaseState]);
   const unlockCertificate = useCallback(async () => {
     try {
       const doc =
@@ -582,6 +585,7 @@ const [paymentOk, setPaymentOk] = useState(false);
   const debitAndUnlock = useCallback(async () => {
     if (debitInFlightRef.current) return;
     debitInFlightRef.current = true;
+    setUnlocking(true);
     let keepAwaitingTopUp = false;
     try {
       const courseId = course?.id;
@@ -653,6 +657,7 @@ const [paymentOk, setPaymentOk] = useState(false);
     } finally {
       debitInFlightRef.current = false;
       awaitingTopUpRef.current = keepAwaitingTopUp;
+       setUnlocking(false);
     }
   }, [
     backendUrl,
@@ -667,7 +672,7 @@ const [paymentOk, setPaymentOk] = useState(false);
   const handleBuyCertificate = useCallback(async () => {
     const snap = snapshotPrePurchaseState();
     if (!requireAuth('buy_certificate', 'Please sign in to unlock full access.')) return;
-    if (debitInFlightRef.current) return;
+    if (unlocking || debitInFlightRef.current) return;
 
     if ((Number(tokens) || 0) >= CERT_COST_TOKENS) {
       await debitAndUnlock();
@@ -828,7 +833,7 @@ const [paymentOk, setPaymentOk] = useState(false);
 
   // Generic answer handler
   const handleAnswer = (qid: string, value: number | string) => {
-    if (isLocked) return;
+   if (isLocked || narrationBlocked) return;
     setWorkingAnswers((prev) => ({ ...prev, [qid]: value }));
     if (onAnswer) onAnswer(qid, value);
   };
@@ -844,7 +849,7 @@ const [paymentOk, setPaymentOk] = useState(false);
     });
   }, [quiz?.questions, workingAnswers, enforcedQuizType]);
 
-  const canSubmit = !isLocked && allAnsweredLocal;
+  const canSubmit = !isLocked && !narrationBlocked && allAnsweredLocal;
 
   // Sub/sup helpers
   const SUBS: Record<string, string> = {
@@ -1068,38 +1073,84 @@ const [paymentOk, setPaymentOk] = useState(false);
       </div>
     )}
 
-    {certCta.show && !hasUnlockedCourse && (
-      <div className="mb-3 rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 dark:bg-amber-500/10 dark:ring-amber-500/30">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div className="text-sm text-amber-900 dark:text-amber-200">
-            Narration is locked right now. Unlock full access for this course.
-          </div>
-
-          <div className="text-xs text-gray-700 dark:text-amber-100/80">
-            <ul className="list-disc ml-4 space-y-1">
-              <li>🔊 Narration + 📝 Notes + 🧩 Quiz unlocked</li>
-              <li>📚 Generate up to 60 lessons for this course</li>
-              <li>🎓 Certificate is free after you pass (≥70%)</li>
-            </ul>
-            <div className="mt-2">20 tokens are deducted when you unlock.</div>
-            <div>If you don’t have enough tokens, you can top up first.</div>
-          </div>
-
-          <button
-            className="btn bg-indigo-600 hover:bg-indigo-500"
-            onClick={() => {
-              if (certCta.action === 'login') {
-                requireAuth('buy_certificate', 'Please sign in to unlock full access.');
-                return;
-              }
-              handleBuyCertificate();
-            }}
-          >
-            {certCta.label}
-          </button>
+  {/* NEW: Narration exhausted banner (match native copy + structure) */}
+    {showNarrationExhaustedBanner ? (
+      <div className="mb-3 rounded-2xl border border-amber-400/70 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-amber-950 dark:text-amber-200 font-semibold">🎧 Audio paused for now</div>
+          {resetAtLabel ? (
+            <div className="px-2 py-1 rounded-full bg-amber-200/60 dark:bg-amber-500/20">
+              <div className="text-amber-950 dark:text-amber-200 text-[11px]">Resets: {resetAtLabel}</div>
+            </div>
+          ) : null}
         </div>
+
+        {/* Body */}
+        {hasUnlockedCourse ? (
+          <>
+            <div className="text-amber-900 dark:text-amber-200 text-sm mt-2">
+              This pause affects audio, notes, and quiz.
+            </div>
+            <div className="text-amber-900 dark:text-amber-200 text-[12px] mt-2">
+              ⏳ Everything returns on reset
+            </div>
+          </>
+        ) : isAnonGate ? (
+          <>
+            <div className="text-amber-900 dark:text-amber-200 text-sm mt-2">
+              DayBreak took a quick break — and notes + quiz are paused too.
+            </div>
+            <div className="text-amber-900 dark:text-amber-200 text-sm mt-1">
+              Join free for 10 min/day (audio + notes + quiz).
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                className="btn bg-indigo-600 hover:bg-indigo-500"
+                onClick={() =>
+                  requireAuth('signup_to_continue', 'Create a free account to continue.')
+                }
+              >
+                Create free account
+              </button>
+              <div className="text-amber-900 dark:text-amber-200 text-[11px]">No card needed ✨</div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-amber-900 dark:text-amber-200 text-sm mt-2">
+              DayBreak took a quick break — and notes + quiz are paused too.
+            </div>
+            <div className="text-amber-900 dark:text-amber-200 text-sm mt-1">
+              Unlock (20 tokens): audio + notes + quiz + up to 60 lessons.
+            </div>
+
+            <div className="text-amber-900 dark:text-amber-200 text-[12px] mt-2 whitespace-pre-line">
+              • 🎧 Full narration for this course{"\n"}
+              • 📝 Notes + 🧩 Quiz unlocked{"\n"}
+              • ⚡ Generate up to <span className="font-semibold">60 lessons</span>{"\n"}
+              • 🏅 Certificate free after you pass (≥ 70%)
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                className={`btn bg-indigo-600 hover:bg-indigo-500 ${(unlocking || debitInFlightRef.current) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                disabled={unlocking || debitInFlightRef.current}
+                onClick={() => {
+                  if (unlocking || debitInFlightRef.current) return;
+                  handleBuyCertificate();
+                }}
+              >
+                {(unlocking || debitInFlightRef.current) ? 'Processing…' : 'Unlock full access (20 tokens)'}
+              </button>
+              <div className="text-amber-900 dark:text-amber-200 text-[11px]">≈ USD 20 • one-time unlock</div>
+            </div>
+          </>
+        )}
       </div>
-    )}
+    ) : null}
+
 
       {/* Classroom */}
       <section
@@ -1432,6 +1483,7 @@ const [paymentOk, setPaymentOk] = useState(false);
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
               onClick={async () => {
+                if (narrationBlocked) return;
                 if (!requireAuth('grade_quiz', 'Please sign in to submit and grade your quiz.'))
                   return;
                 try {
@@ -1932,6 +1984,7 @@ const [paymentOk, setPaymentOk] = useState(false);
           onCancel={() => setConfirmOpen(false)}
           onConfirm={async () => {
             setConfirmOpen(false);
+            if (narrationBlocked) return;
 
             if (isOrgFlow && assignmentId) {
               if (!requireAuth('start_attempt', 'Please sign in to start your attempt.')) return;

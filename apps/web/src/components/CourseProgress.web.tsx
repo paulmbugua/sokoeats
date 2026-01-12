@@ -23,6 +23,17 @@ import CourseReadingPanel from './CourseReadingPanel.web';
 
 type Status = 'Not Started' | 'In Progress' | 'Completed';
 
+const TRACK_LABELS: Record<ProgramTrack, string> = {
+  module: 'Module',
+  certificate: 'Certificate',
+  diploma: 'Professional',     // ✅ display name
+  degree: 'Comprehensive',     // ✅ display name
+};
+
+const getTrackLabel = (t: ProgramTrack | null | undefined) =>
+  (t && TRACK_LABELS[t]) || 'Certificate';
+
+
 // ---------- helpers ----------
 const slug = (s: string) =>
   (s || '')
@@ -218,10 +229,8 @@ useEffect(() => {
     return { notStarted, inProgress, completed, total, pct };
   }, [syllabusList, progressByWeek]);
 
-  const trackLabel = useMemo(() => {
-    const raw = String(effectiveTrack || '').trim();
-    return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Certificate';
-  }, [effectiveTrack]);
+  const trackLabel = useMemo(() => getTrackLabel(effectiveTrack), [effectiveTrack]);
+
 
   const quizEligible = isSandboxSource && totalWeeks > 0 && counts.completed >= totalWeeks;
   const needsOutline = isSandboxSource && totalWeeks > 0 && syllabus.length < totalWeeks;

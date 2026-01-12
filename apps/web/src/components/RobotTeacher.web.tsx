@@ -9,13 +9,13 @@ import { updateCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import OrgShareDialog from '@/components/org/OrgShareDialog';
 
-import ControlsPanel from './RobotTeacherControls';
+import ControlsPanel, { type SizePresetKey, type TrackKey } from './RobotTeacherControls';
 import LessonAndQuizPane from './RobotTeacherLessonAndQuiz';
 import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
 import { getProgramTrackRequirements } from '@mytutorapp/shared/utils/programTrack';
 import { getRequiredWeeks, normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrackRequirements';
 
-import type { TopCourse } from '@mytutorapp/shared/types';
+import type { TopCourse, ProgramTrack } from '@mytutorapp/shared/types';
 
 const dbgEnabled = () => {
   if (typeof window === 'undefined') return false;
@@ -44,16 +44,16 @@ const PRESETS = [
   { key: 'extended', label: 'Extended', min: 30 },
   { key: 'intensive', label: 'Intensive', min: 45 },
   { key: 'marathon', label: 'Marathon', min: 60 },
-] as const;
-export type SizePresetKey = (typeof PRESETS)[number]['key'];
+] as const satisfies readonly { key: SizePresetKey; label: string; min: number }[];
 
 const TRACKS = [
   { key: 'module', label: 'Module', lessons: getRequiredWeeks('module') },
   { key: 'certificate', label: 'Certificate', lessons: getRequiredWeeks('certificate') },
-  { key: 'diploma', label: 'Diploma', lessons: getRequiredWeeks('diploma') },
-  { key: 'degree', label: 'Degree', lessons: getRequiredWeeks('degree') },
-] as const;
-export type TrackKey = (typeof TRACKS)[number]['key'];
+  { key: 'diploma', label: 'Professional', lessons: getRequiredWeeks('diploma') },
+  { key: 'degree', label: 'Comprehensive', lessons: getRequiredWeeks('degree') },
+] as const satisfies readonly { key: TrackKey; label: string; lessons: number }[];
+
+
 
 const sizeToCourseSize: Record<
   SizePresetKey,
@@ -258,10 +258,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
 
   // ── Contexts & hooks ─────────────────────────────────────
   const effectiveVoice = voiceName || defaultVoice;
-  const { backendUrl, token, orgToken, role: globalRole, initializing } = useShopContext() as any;
+  const { backendUrl, token, orgToken, role: globalRole } = useShopContext() as any;
   const authToken = token || orgToken || undefined;
-  const authReady = !initializing;
-  const needsAuth = authReady && !authToken;
   const isGlobalAdmin = globalRole === 'admin' || globalRole === 'superadmin';
 
   const [internalThemeOpen, setInternalThemeOpen] = useState(false);
@@ -276,7 +274,6 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const ai = useAiCourse(backendUrl, authToken, {
     urlQuizTypeHint,
     defaultQuizType: 'mcq',
-    clientScreen: 'RobotTeacher',
   });
 
   const {
@@ -513,7 +510,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const [minutes, setMinutes] = useState<number>(20);
   const [totalLessons, setTotalLessons] = useState<number>(8);
   const [quizCount, setQuizCount] = useState<number>(16);
-  const [programTrack, setProgramTrack] = useState<TrackKey>('module');
+  const [programTrack, setProgramTrack] = useState<ProgramTrack>('module');
+
   const [programTrackLocked, setProgramTrackLocked] = useState(false);
   const [programTrackLockSource, setProgramTrackLockSource] = useState<
     'param' | 'storage' | 'default' | null
@@ -528,6 +526,11 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const [blockedUntilStart, setBlockedUntilStart] = useState(false);
   const [overrideLessons, setOverrideLessons] = useState(false);
   const [overrideQuiz, setOverrideQuiz] = useState(false);
+
+  const setProgramTrackFromUi = useCallback((k: ProgramTrack) => {
+  setProgramTrack(k);
+}, [setProgramTrack]);
+
 
   const assignmentMetaObj = useMemo(() => {
   const m = (orgAssign as any)?.meta;
@@ -706,7 +709,6 @@ const effectiveCourseIdForStart =
    desiredCourseId || selectedCourseRef.current?.id || selectedCourse?.id || null;
 
 const canStartNow = useMemo(() => {
-  if (!authReady || !authToken) return false;
   // ✅ always block starts while AI is busy / mutex is held
   const aiReallyBusy = (activeRunId !== null && isAiBusy) || startMutexRef.current;
   if (aiReallyBusy) return false;
@@ -730,12 +732,10 @@ const canStartNow = useMemo(() => {
 
    return false;
 }, [
-  authReady,
-  authToken,
   customTitle,
   wantedCourseId,
   effectiveCourseIdForStart,
-  isSandboxSource,
+   isSandboxSource,
   activeRunId,
   isAiBusy,
   selectedCourse?.id,
@@ -1167,14 +1167,6 @@ useEffect(() => {
       });
       return;
     }
-    if (!authReady) {
-      dlog('onStart: auth initializing, skipping start');
-      return;
-    }
-    if (!authToken) {
-      dlog('onStart: missing auth, skipping start');
-      return;
-    }
 
     const custom = customTitle.trim();
     const cid = effectiveCourseIdForStart;
@@ -1243,8 +1235,6 @@ useEffect(() => {
   }, [
     starting,
     canStartNow,
-    authReady,
-    authToken,
     customTitle,
     selectedCourse,
     assignmentIdForAi,
@@ -1385,79 +1375,61 @@ useEffect(() => {
             })}
           </div>
 
-          {needsAuth && (
-            <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <span>Please log in to generate lessons.</span>
-                <button
-                  className="chip chip-active !text-xs"
-                  onClick={() =>
-                    goToLoginWithReturn('ai_sandbox', 'Please log in to generate lessons.')
-                  }
-                >
-                  Log in
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Controls */}
           <ControlsPanel
-            showMinimalControls={isLockedLearner}
-            isLockedLearner={isLockedLearner}
-            programTrackLocked={programTrackLocked}
-            busy={busyUi}
-            canShareUi={canShareUi}
-            restrictStarter={restrictStarter}
-            knobsDisabled={knobsDisabled}
-            onOpenShare={() => {
-              setIsMaximized(false);
-              setShareOpen(true);
-            }}
-            topCourses={(topCourses || []).map((c: TopCourse) => ({ id: c.id, title: c.title }))}
-            selectedCourse={
-              selectedCourse ? { id: selectedCourse.id, title: selectedCourse.title } : null
-            }
-           displayCourseTitle={displayTitle}
+  showMinimalControls={isLockedLearner}
+  isLockedLearner={isLockedLearner}
+  programTrackLocked={programTrackLocked}
+  busy={busyUi}
+  canShareUi={canShareUi}
+  restrictStarter={restrictStarter}
+  knobsDisabled={knobsDisabled}
+  onOpenShare={() => {
+    setIsMaximized(false);
+    setShareOpen(true);
+  }}
+  topCourses={(topCourses || []).map((c: TopCourse) => ({ id: c.id, title: c.title }))}
+  selectedCourse={selectedCourse ? { id: selectedCourse.id, title: selectedCourse.title } : null}
+  displayCourseTitle={displayTitle}
+  onSelectCourse={(id) => {
+    setPreparing(false);
+    setActiveRunId(null);
+    setBlockedUntilStart(true);
+    const found = (topCourses || []).find((c) => c.id === id) || null;
+    dlog('CourseSelect.onChange/Select →', { id, foundTitle: found?.title });
+    selectCourse(found);
+  }}
+  PRESETS={PRESETS}
+  TRACKS={TRACKS}
+  trackLessons={trackLessons}
+  sizePreset={sizePreset}
+  setSizePreset={setSizePreset}
+  minutes={minutes}
+  setMinutes={setMinutes}
+  classLevel={classLevel}
+  setClassLevel={setClassLevel}
+  programTrack={programTrack}
+  setProgramTrack={setProgramTrackFromUi}  // ✅ wrapper fixes TS mismatch
+  capMinutes={capMinutes}
+  customTitle={customTitle}
+  setCustomTitle={(s) => {
+    setCustomTitle(s);
+    if (s.trim()) selectCourse(null);
+  }}
+  hasAIContent={hasAIContent}
+  onStart={onStart}
+  onRefreshSelectedAI={refreshSelectedAI}
+  totalLessons={totalLessons}
+  setTotalLessons={setTotalLessons}
+  quizCount={quizCount}
+  setQuizCount={setQuizCount}
+  overrideLessons={overrideLessons}
+  setOverrideLessons={setOverrideLessons}
+  overrideQuiz={overrideQuiz}
+  setOverrideQuiz={setOverrideQuiz}
+  canStartNow={canStartNow}
+/>
 
-            onSelectCourse={(id) => {
-              setPreparing(false);
-              setActiveRunId(null);
-              setBlockedUntilStart(true);
-              const found = (topCourses || []).find((c) => c.id === id) || null;
-              dlog('CourseSelect.onChange/Select →', { id, foundTitle: found?.title });
-              selectCourse(found);
-            }}
-            PRESETS={PRESETS}
-            TRACKS={TRACKS}
-            trackLessons={trackLessons}
-            sizePreset={sizePreset}
-            setSizePreset={setSizePreset}
-            minutes={minutes}
-            setMinutes={setMinutes}
-            classLevel={classLevel}
-            setClassLevel={setClassLevel}
-            programTrack={programTrack}
-            setProgramTrack={setProgramTrack}
-            capMinutes={capMinutes}
-            customTitle={customTitle}
-            setCustomTitle={(s) => {
-              setCustomTitle(s);
-              if (s.trim()) selectCourse(null);
-            }}
-            hasAIContent={hasAIContent}
-            onStart={onStart}
-            onRefreshSelectedAI={refreshSelectedAI}
-            totalLessons={totalLessons}
-            setTotalLessons={setTotalLessons}
-            quizCount={quizCount}
-            setQuizCount={setQuizCount}
-            overrideLessons={overrideLessons}
-            setOverrideLessons={setOverrideLessons}
-            overrideQuiz={overrideQuiz}
-            setOverrideQuiz={setOverrideQuiz}
-            canStartNow={canStartNow}
-          />
 
           {/* Classroom + Outline + Quiz */}
           <LessonAndQuizPane

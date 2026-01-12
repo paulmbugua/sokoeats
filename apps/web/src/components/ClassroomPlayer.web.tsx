@@ -4,7 +4,7 @@
 import ReactDOM from 'react-dom';
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { NotesDrawer, TranscriptDrawer } from './SideDrawers';
+import { TranscriptDrawer } from './SideDrawers';
 import type { HighlightTemplate } from './player/TemplateMenu';
 import { useWordSync } from '@mytutorapp/shared/hooks/useWordSync';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -121,6 +121,7 @@ function Container(props: Props) {
 
   const prefersReduced = usePrefersReducedMotion();
   const { hlRgb, genRgb, activeTextOnHl } = useThemeTokens();
+  
 
   const {
     speak,
@@ -225,40 +226,11 @@ function Container(props: Props) {
   const [voicesLoading, setVoicesLoading] = React.useState(false);
   const [voicesError, setVoicesError] = React.useState<string | null>(null);
 
-  // ✅ FIX: introduce active tab + helpers that were referenced but missing
-  type ActiveTab = 'narration' | 'notes';
   const narrationLocked = props.gateMode === 'notes_only';
-  const playDisabled = narrationLocked;
+const playDisabled = narrationLocked;
 
-  const [activeTab, setActiveTab] = React.useState<ActiveTab>(() =>
-    narrationLocked ? 'notes' : 'narration'
-  );
-
-  const [showTranscript, setShowTranscript] = React.useState(false);
-  const [showNotes, setShowNotes] = React.useState(() => narrationLocked);
-  const [showAudioDebug, setShowAudioDebug] = React.useState(false);
-
-  const switchToNotes = React.useCallback(() => {
-    setActiveTab('notes');
-    setShowNotes(true);
-  }, []);
-
-  // Keep tab in sync with lock state
-  React.useEffect(() => {
-    if (narrationLocked) {
-      setActiveTab('notes');
-      setShowNotes(true);
-    } else {
-      // if unlocked, preserve current preference; default to narration if notes was forced
-      setActiveTab((t) => (t === 'notes' ? 'narration' : t));
-    }
-  }, [narrationLocked]);
-
-  // Keep showNotes synced with activeTab
-  React.useEffect(() => {
-    if (activeTab === 'notes') setShowNotes(true);
-    else if (!narrationLocked) setShowNotes(false);
-  }, [activeTab, narrationLocked]);
+const [showTranscript, setShowTranscript] = React.useState(false);
+const [showAudioDebug, setShowAudioDebug] = React.useState(false);
 
   const gateNotice = props.gateNotice;
   const gateReset = gateNotice?.resetsAt ? new Date(gateNotice.resetsAt).toLocaleString() : null;
@@ -371,9 +343,8 @@ function Container(props: Props) {
     if (now - lastPlayClickRef.current < 400) return;
     lastPlayClickRef.current = now;
 
-    // ✅ FIX: use playDisabled + switchToNotes (both defined)
+   
     if (playDisabled) {
-      switchToNotes();
       return;
     }
 
@@ -393,7 +364,6 @@ function Container(props: Props) {
     } catch {}
   }, [
     playDisabled,
-    switchToNotes,
     resumeAudioContext,
     isPlaying,
     words.length,
@@ -672,9 +642,7 @@ function Container(props: Props) {
 
       if (e.key.toLowerCase() === 't') {
         setShowTranscript((s) => !s);
-      } else if (e.key.toLowerCase() === 'n') {
-        // ✅ FIX: setActiveTab now exists + typed; no implicit any
-        setActiveTab((t) => (t === 'notes' ? (narrationLocked ? 'notes' : 'narration') : 'notes'));
+      
       } else if (e.key.toLowerCase() === 'd') {
         setShowAudioDebug((s) => !s);
       } else if (e.code === 'Space') {
@@ -690,7 +658,7 @@ function Container(props: Props) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [handlePlayClick, narrationLocked]);
+  }, [handlePlayClick]);
 
   // A11y: screen-reader friendly explicit slider for seek (overlay but visually hidden)
   const onA11ySeek = (v: number) => {
@@ -744,7 +712,7 @@ function Container(props: Props) {
           <span>
             {gateReset
               ? `Resets on: ${gateReset}`
-              : 'Narration is temporarily unavailable. Switch to notes.'}
+              : 'Narration is temporarily unavailable.'}
           </span>
         </div>
       )}
@@ -1096,17 +1064,7 @@ function Container(props: Props) {
         />
 
         {/* Notes Drawer */}
-        <NotesDrawer
-          open={showNotes}
-          title={`${titleForUi} — Notes`}
-          markdown={
-            (hasLessons ? lessons[lessonIdx]?.markdown : '') || '_No notes for this lesson yet._'
-          }
-          top={topH}
-          bottom={bottomH}
-          readerScale={readerScale}
-          isMax={isMax}
-        />
+        
       </div>
 
       {/* Dev-only raw audio */}
@@ -1120,19 +1078,55 @@ function Container(props: Props) {
   );
 }
 
+const useIsoLayoutEffect =
+  typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect;
+
 export default function ClassroomPlayer(props: Props) {
+  const slotRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Stable host element: created once, never changes
+  const hostRef = React.useRef<HTMLDivElement | null>(null);
+  if (!hostRef.current && typeof document !== 'undefined') {
+    hostRef.current = document.createElement('div');
+    hostRef.current.style.width = '100%';
+    hostRef.current.style.height = '100%';
+  }
+
   const content = (
     <ThemeProvider>
       <Container {...props} />
     </ThemeProvider>
   );
 
-  if (typeof document !== 'undefined' && props.maximized) {
-    return ReactDOM.createPortal(
-      <div className="fixed inset-0 z-[9999] pointer-events-auto">{content}</div>,
-      document.body
-    );
-  }
+  // Move the host between body (max) and inline slot (min) without remounting React
+  useIsoLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
 
-  return content;
+    const target = props.maximized ? document.body : slotRef.current;
+    if (!target) return;
+
+    target.appendChild(host); // moves node if it already has a parent
+  }, [props.maximized]);
+
+  // Detach only when the whole player unmounts (NOT on maximize/minimize toggle)
+  React.useEffect(() => {
+    const host = hostRef.current;
+    return () => {
+      if (host?.parentNode) host.parentNode.removeChild(host);
+    };
+  }, []);
+
+  // SSR safety
+  if (typeof document === 'undefined' || !hostRef.current) return content;
+
+  return (
+    <>
+      {/* Inline slot used when minimized */}
+      <div ref={slotRef} />
+
+      {/* Always render the same React tree via the same host */}
+      {ReactDOM.createPortal(content, hostRef.current)}
+    </>
+  );
 }

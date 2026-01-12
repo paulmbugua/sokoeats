@@ -49,17 +49,29 @@ type TrackRequirements = {
   minQuestions: number;
 };
 
+// Map any incoming aliases -> canonical ProgramTrack keys
+const normalizeTrack = (track?: ProgramTrack | string | null): ProgramTrack => {
+  const raw = String(track || '').toLowerCase().trim();
+
+  if (raw === 'certificate') return 'certificate';
+  if (raw === 'diploma' || raw === 'professional') return 'diploma';
+  if (raw === 'degree' || raw === 'comprehensive') return 'degree';
+
+  return 'certificate';
+};
+
 const getTrackLabel = (track?: ProgramTrack | string | null): string => {
-  const raw = String(track || '').toLowerCase();
-  if (raw === 'diploma') return 'Diploma';
-  if (raw === 'degree') return 'Degree';
-  if (raw === 'certificate') return 'Certificate';
+  const key = normalizeTrack(track);
+
+  if (key === 'certificate') return 'Certificate';
+  if (key === 'diploma') return 'Professional';
+  if (key === 'degree') return 'Comprehensive';
+
   return 'Certificate';
 };
 
 const getTrackRequirements = (track?: ProgramTrack | string | null): TrackRequirements => {
-  const raw = String(track || '').toLowerCase();
-  const key = raw === 'diploma' || raw === 'degree' || raw === 'certificate' ? (raw as ProgramTrack) : 'certificate';
+  const key = normalizeTrack(track);
   return {
     key,
     label: getTrackLabel(key),
@@ -67,6 +79,7 @@ const getTrackRequirements = (track?: ProgramTrack | string | null): TrackRequir
     minQuestions: getRequiredQuestions(key),
   };
 };
+
 
 /* ----------------------------- Small UI bits ----------------------------- */
 const Chip: React.FC<{ label: string; active?: boolean; onPress: () => void }> = ({
@@ -650,17 +663,18 @@ const MyCoursesNative: React.FC = () => {
     return set;
   }, [enrollments]);
 
-  const resolveCourseTrack = useCallback((course: any): ProgramTrack | undefined => {
-    const raw =
-      course?.programTrack ??
-      course?.program_track ??
-      course?.track ??
-      course?.track_key ??
-      course?.program_track_key;
-    const lc = String(raw || '').toLowerCase();
-    if (lc === 'certificate' || lc === 'diploma' || lc === 'degree') return lc as ProgramTrack;
-    return undefined;
-  }, []);
+ const resolveCourseTrack = useCallback((course: any): ProgramTrack | undefined => {
+  const raw =
+    course?.programTrack ??
+    course?.program_track ??
+    course?.track ??
+    course?.track_key ??
+    course?.program_track_key;
+
+  const key = normalizeTrack(raw);
+  return key;
+}, []);
+
 
   const extractWeeksCount = useCallback((course: any): number | null => {
     const syllabus = Array.isArray(course?.syllabus) ? course.syllabus.length : null;
@@ -694,9 +708,10 @@ const MyCoursesNative: React.FC = () => {
     const next: Record<string, ProgramTrack> = {};
     entries.forEach(([key, val]) => {
       const cid = key.replace('sandbox_track:', '');
-      if (val === 'certificate' || val === 'diploma' || val === 'degree') {
-        next[cid] = val;
-      }
+      if (val === 'certificate' || val === 'diploma' || val === 'degree' || val === 'professional' || val === 'comprehensive') {
+  next[cid] = normalizeTrack(val);
+}
+
     });
     return next;
   }, []);

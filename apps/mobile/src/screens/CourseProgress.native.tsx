@@ -49,6 +49,25 @@ import SelectField, { type Option } from './SelectField.native';
 
 type Status = 'Not Started' | 'In Progress' | 'Completed';
 
+const normalizeTrackKey = (track?: ProgramTrack | string | null): ProgramTrack => {
+  const raw = String(track ?? '').trim().toLowerCase();
+
+  // ✅ accept new public names
+  if (raw === 'professional') return 'diploma';
+  if (raw === 'comprehensive') return 'degree';
+
+  if (raw === 'certificate' || raw === 'diploma' || raw === 'degree') return raw as ProgramTrack;
+  return 'certificate';
+};
+
+const getTrackLabel = (track?: ProgramTrack | string | null): string => {
+  const key = normalizeTrackKey(track);
+  if (key === 'diploma') return 'Professional';
+  if (key === 'degree') return 'Comprehensive';
+  return 'Certificate';
+};
+
+
 const STATUS_OPTIONS: Option[] = [
   { label: 'Not Started', value: 'Not Started' },
   { label: 'In Progress', value: 'In Progress' },
@@ -320,7 +339,8 @@ const CourseProgressScreen: React.FC = () => {
     (async () => {
       try {
         const stored = await AsyncStorage.getItem(`sandbox_track:${courseId}`);
-        if (mounted && stored) setStoredTrack(normalizeProgramTrack(stored));
+       if (mounted && stored) setStoredTrack(normalizeTrackKey(stored));
+
       } catch {}
     })();
     return () => {
@@ -367,12 +387,13 @@ const CourseProgressScreen: React.FC = () => {
     (selectedCourse as any)?.track_key ??
     (selectedCourse as any)?.program_track_key;
 
-  const effectiveTrack = useMemo<ProgramTrack>(() => {
-    if (programTrackParam) return normalizeProgramTrack(programTrackParam);
-    if (courseTrackRaw) return normalizeProgramTrack(courseTrackRaw);
-    if (storedTrack) return storedTrack;
-    return 'certificate';
-  }, [programTrackParam, courseTrackRaw, storedTrack]);
+ const effectiveTrack = useMemo<ProgramTrack>(() => {
+  if (programTrackParam) return normalizeTrackKey(programTrackParam);
+  if (courseTrackRaw) return normalizeTrackKey(courseTrackRaw);
+  if (storedTrack) return storedTrack;
+  return 'certificate';
+}, [programTrackParam, courseTrackRaw, storedTrack]);
+
 
   const totalWeeks = isSandboxSource ? getRequiredWeeks(effectiveTrack) : syllabus.length || 0;
   const totalQuestions = isSandboxSource ? getRequiredQuestions(effectiveTrack) : 0;
@@ -445,10 +466,8 @@ const CourseProgressScreen: React.FC = () => {
     return { notStarted, inProgress, completed, total, pct };
   }, [syllabusList, progressByWeek]);
 
-  const trackLabel = useMemo(() => {
-    const raw = String(effectiveTrack || '').trim();
-    return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Certificate';
-  }, [effectiveTrack]);
+  const trackLabel = useMemo(() => getTrackLabel(effectiveTrack), [effectiveTrack]);
+
 
   const quizEligible = isSandboxSource && totalWeeks > 0 && counts.completed >= totalWeeks;
   const needsOutline = isSandboxSource && totalWeeks > 0 && syllabus.length < totalWeeks;

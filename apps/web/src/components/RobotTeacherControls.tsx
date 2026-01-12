@@ -1,8 +1,9 @@
 // apps/web/src/components/RobotTeacherControls.tsx
 import React from 'react';
+import type { ProgramTrack } from '@mytutorapp/shared/types'; 
 
 export type SizePresetKey = 'quick' | 'standard' | 'extended' | 'intensive' | 'marathon';
-export type TrackKey = 'module' | 'certificate' | 'diploma' | 'degree';
+export type TrackKey = ProgramTrack;
 
 type CourseOption = { id: string; title: string };
 

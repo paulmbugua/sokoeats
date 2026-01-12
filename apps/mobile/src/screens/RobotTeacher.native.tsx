@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, NavigationProp } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import tw from '../../tailwind';
 import { RefreshableScrollView } from '../refresh/Refreshable';
 import LessonOverlayNative, { type LessonOverlayHandle } from './LessonOverlay.native';
@@ -73,10 +72,11 @@ export type SizePresetKey = (typeof PRESETS)[number]['key'];
 const TRACKS = [
   { key: 'module', label: 'Module', lessons: getRequiredWeeks('module') },
   { key: 'certificate', label: 'Certificate', lessons: getRequiredWeeks('certificate') },
-  { key: 'diploma', label: 'Diploma', lessons: getRequiredWeeks('diploma') },
-  { key: 'degree', label: 'Degree', lessons: getRequiredWeeks('degree') },
+  { key: 'diploma', label: 'Professional', lessons: getRequiredWeeks('diploma') },     // ✅
+  { key: 'degree', label: 'Comprehensive', lessons: getRequiredWeeks('degree') },     // ✅
 ] as const;
 export type TrackKey = (typeof TRACKS)[number]['key'];
+
 
 const sizeToCourseSize: Record<
   SizePresetKey,
@@ -392,10 +392,8 @@ const wantedCourseId = useMemo(() => {
   }, []);
 
   const effectiveVoice = voiceName || defaultVoice;
-  const { backendUrl, token, orgToken, role: globalRole, initializing } = useShopContext() as any;
-  const authToken = token || orgToken;
-  const authReady = !initializing;
-  const needsAuth = authReady && !authToken;
+  const { backendUrl, token, orgToken, role: globalRole } = useShopContext() as any;
+const authToken = token || orgToken;
 
   const isGlobalAdmin = globalRole === 'admin' || globalRole === 'superadmin';
 
@@ -412,7 +410,6 @@ const wantedCourseId = useMemo(() => {
   const ai = useAiCourse(backendUrl, authToken || undefined, {
   urlQuizTypeHint,
   defaultQuizType: 'mcq',
-  clientScreen: 'RobotTeacher',
 });
 
 
@@ -787,6 +784,19 @@ const isLockedLearner =
 
 const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
 
+const trackReqs = useMemo(() => {
+  const t = TRACKS.find((x) => x.key === programTrack) ?? TRACKS[0];
+  // Mirrors your default quiz policy: questions ~= lessons * 2
+  const questions = Math.max(4, t.lessons * 2);
+  return { label: t.label, lessons: t.lessons, questions };
+}, [programTrack]);
+
+const trackLockSource = useMemo(() => {
+  if (!programTrackLocked) return null;
+  if (lockTrackByParam) return 'link';
+  return 'policy';
+}, [programTrackLocked, lockTrackByParam]);
+
 
 
   const trackLessons = useMemo(() => {
@@ -921,7 +931,6 @@ const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
 
   // Only allow first start when there is no built content yet
   const canStartNow = useMemo(() => {
-    if (!authReady || !authToken) return false;
    const hasSeed = Boolean(selectedCourse || (customTitle && customTitle.trim()) || params.courseId);
 
     if (!hasSeed) return false;
@@ -932,17 +941,7 @@ const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
       !(Array.isArray(lessons) && lessons.length > 0) &&
       !(Array.isArray(outline) && outline.length > 0);
     return noContentYet;
-  }, [
-    authReady,
-    authToken,
-    selectedCourse,
-    customTitle,
-    activeRunId,
-    joinedSsml,
-    ssml,
-    lessons.length,
-    outline.length,
-  ]);
+  }, [selectedCourse, customTitle, activeRunId, joinedSsml, ssml, lessons.length, outline.length]);
 
   // preselect course from route param — cancel any active run
   useEffect(() => {
@@ -1084,32 +1083,10 @@ const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
   }, [hasAIContent]);
 
   // Auth helpers
-  const buildOrgReturnTo = useCallback(() => {
-    const qs = new URLSearchParams();
-    if (assignmentId) qs.set('assignmentId', String(assignmentId));
-    if (params.courseId) qs.set('courseId', String(params.courseId));
-    if (params.qt) qs.set('qt', String(params.qt));
-    if (params.qs) qs.set('qs', String(params.qs));
-    const query = qs.toString();
-    return query ? `/org/robot-teacher?${query}` : '/org/robot-teacher';
-  }, [assignmentId, params.courseId, params.qt, params.qs]);
-
-  const goToLoginWithReturn = useCallback(
-    async (reason?: string, message?: string) => {
-      const isOrgLogin = isOrgFlow || Boolean(orgToken);
-      dlog('navigate → Login', { reason, message, isOrgLogin });
-      if (isOrgLogin) {
-        const returnTo = buildOrgReturnTo();
-        try {
-          await AsyncStorage.setItem('auth:returnTo', returnTo);
-        } catch {}
-        navigation.navigate('InstitutionLogin' as any, { returnTo, reason, message } as any);
-        return;
-      }
-      navigation.navigate('Login' as any, { reason, message, returnTo: 'RobotTutor' } as any);
-    },
-    [buildOrgReturnTo, isOrgFlow, navigation, orgToken]
-  );
+  const goToLoginWithReturn = (reason?: string, message?: string) => {
+    dlog('navigate → Login', { reason, message });
+    navigation.navigate('Login' as any, { reason, message } as any);
+  };
   const requireAuth = (reason?: string, message?: string) => {
     if (authToken) return true;
     goToLoginWithReturn(reason, message);
@@ -1197,14 +1174,6 @@ const effectiveCourseTitle = titleInfo.title || 'AI Lesson';
   const onStart = useCallback(async () => {
   if (starting || !canStartNow) {
     dlog('onStart: ignored (starting=', starting, ', canStartNow=', canStartNow, ')');
-    return;
-  }
-  if (!authReady) {
-    dlog('onStart: auth initializing, skipping start');
-    return;
-  }
-  if (!authToken) {
-    dlog('onStart: missing auth, skipping start');
     return;
   }
   setStarting(true);
@@ -1354,8 +1323,6 @@ return;
 }, [
   starting,
   canStartNow,
-  authReady,
-  authToken,
   assignmentId,
   sizePreset,
   classLevel,
@@ -1521,6 +1488,41 @@ return;
                 <Text style={tw`text-[#0d141c] dark:text-white font-black text-2xl md:text-3xl`}>
                   AI Tutor Studio
                 </Text>
+
+                {/* ✅ "Now learning" pill (parity with web) */}
+            <View
+              style={tw`mt-2 self-start flex-row items-center gap-2 px-3 py-1 rounded-full
+                        bg-white dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10`}
+            >
+              <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Now learning:</Text>
+
+              <Text
+                numberOfLines={1}
+                style={[tw`text-sm font-semibold text-[#0d141c] dark:text-white`, { maxWidth: 260 }]}
+              >
+                {effectiveCourseTitle}
+              </Text>
+
+              {DBG_ROBOT_TEACHER ? (
+                <Text style={tw`text-[10px] text-[#49739c] dark:text-white/50`}>
+                  ({titleInfo.source})
+                </Text>
+              ) : null}
+            </View>
+
+            {/* ✅ Track requirements line when locked */}
+            {programTrackLocked ? (
+              <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/70`}>
+                {trackReqs.label} track: {trackReqs.lessons} lessons • {trackReqs.questions} questions
+                {DBG_ROBOT_TEACHER && trackLockSource ? (
+                  <Text style={tw`text-[10px] text-[#49739c] dark:text-white/50`}>
+                    {' '}
+                    (locked via {trackLockSource})
+                  </Text>
+                ) : null}
+              </Text>
+            ) : null}
+
                 <Text style={tw`text-[#49739c] dark:text-white/80 mt-1`}>
                   Free lesson (audio + captions + slides) and quiz. Score{' '}
                   <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>≥ 70%</Text> to
@@ -1597,26 +1599,6 @@ return;
                   );
                 })}
               </View>
-
-              {needsAuth && (
-                <View
-                  style={tw`mb-3 rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 px-3 py-2`}
-                >
-                  <View style={tw`flex-row items-center justify-between gap-3`}>
-                    <Text style={tw`text-indigo-900 dark:text-indigo-100 text-sm flex-1`}>
-                      Please log in to generate lessons.
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() =>
-                        goToLoginWithReturn('ai_sandbox', 'Please log in to generate lessons.')
-                      }
-                      style={tw`px-3 py-1.5 rounded-full bg-indigo-600`}
-                    >
-                      <Text style={tw`text-white text-xs font-semibold`}>Log in</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
 
               {/* Controls */}
               <ControlsPanel

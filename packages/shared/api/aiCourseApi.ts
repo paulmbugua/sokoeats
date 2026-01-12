@@ -27,8 +27,7 @@ function buildHeaders(
   token?: string,
   isJson = true,
   programTrack?: string,
-  anonId?: string,
-  clientScreen?: string
+   anonId?: string
 ): Record<string, string> {
   const h: Record<string, string> = { Accept: 'application/json' };
   if (isJson) h['Content-Type'] = 'application/json';
@@ -45,9 +44,6 @@ function buildHeaders(
   // optional: support X-Program-Track if you want header visibility
   if (programTrack && programTrack.trim()) {
     h['X-Program-Track'] = programTrack.trim();
-  }
-  if (clientScreen && clientScreen.trim()) {
-    h['x-client-screen'] = clientScreen.trim();
   }
 
   return h;
@@ -85,7 +81,6 @@ type CommonOpts = {
   programTrack?: string;
   timeoutMs?: number;
   anonId?: string; // ✅ NEW
-  clientScreen?: string;
 };
 
 
@@ -403,13 +398,7 @@ export async function createLessonSSML(
   const base = normalizeBase(backendUrl);
 
   // ✅ PASS anonId into headers
-  const headers = buildHeaders(
-    opts?.token,
-    true,
-    opts?.programTrack,
-    opts?.anonId,
-    opts?.clientScreen
-  );
+  const headers = buildHeaders(opts?.token, true, opts?.programTrack, opts?.anonId);
 
   const { signal, cancel } = withTimeoutSignal(opts?.signal, opts?.timeoutMs);
   try {
@@ -418,7 +407,6 @@ export async function createLessonSSML(
       {
         method: 'POST',
         headers,
-        credentials: 'include',
 
         // ✅ OPTIONAL but recommended: also send anonId in body (backend already accepts it)
         body: JSON.stringify({ ...body, anonId: opts?.anonId }),
