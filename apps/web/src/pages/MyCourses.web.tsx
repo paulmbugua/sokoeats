@@ -1206,7 +1206,7 @@ useEffect(() => {
 
                 <div id="unlocked-ai" className="px-3 sm:px-4 mt-3">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-base font-bold">🧪 My AI Sandbox (Unlocked)</h3>
+                    <h3 className="text-base font-bold">🧪 My AI Courses (Unlocked)</h3>
                     <span className="text-xs text-[#49739c] dark:text-darkTextSecondary">
                       {unlockedAiLoading
                         ? 'Loading…'

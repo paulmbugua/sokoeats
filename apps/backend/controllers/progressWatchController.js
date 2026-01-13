@@ -208,16 +208,61 @@ export async function getAllRequiredVideoIds(courseId) {
 
 /** Ensure *every* required video in the course is completed for this user */
 export async function ensureCourseFullyWatched(req, res, next) {
+  // --- request tracing (helps correlate with /me logs) ---
+  const rid =
+    req.headers['x-request-id'] ||
+    req.headers['x-correlation-id'] ||
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const userId = req.user?.id;
+  const courseId = req.params?.courseId || req.body?.courseId;
+
+  const meta = {
+    rid,
+    uid: userId,
+    uidType: typeof userId,
+    courseId,
+    path: req.originalUrl,
+    method: req.method,
+  };
+
   try {
-    const userId = req.user?.id;
-    const courseId = req.params.courseId || req.body.courseId;
+    console.log('[watchGate] enter', {
+      ...meta,
+      hasAuth: Boolean(userId),
+      hasCourseId: Boolean(courseId),
+      paramCourseId: req.params?.courseId,
+      bodyCourseId: req.body?.courseId,
+    });
+
     if (!userId || !courseId) {
+      console.warn('[watchGate] bad_request', {
+        ...meta,
+        reason: 'courseId/auth required',
+      });
       return res.status(400).json({ error: 'courseId/auth required' });
     }
 
+    const t0 = Date.now();
     const required = await getAllRequiredVideoIds(courseId);
-    if (required.length === 0) return next(); // nothing to enforce
 
+    console.log('[watchGate] required_loaded', {
+      ...meta,
+      requiredCount: Array.isArray(required) ? required.length : 0,
+      ms: Date.now() - t0,
+      // keep sample small to avoid noisy logs
+      requiredSample: Array.isArray(required) ? required.slice(0, 5) : [],
+    });
+
+    if (!required || required.length === 0) {
+      console.log('[watchGate] skip', {
+        ...meta,
+        reason: 'no required videos',
+      });
+      return next();
+    }
+
+    const t1 = Date.now();
     const { rows } = await pool.query(
       `SELECT DISTINCT video_id
          FROM course_video_watch
@@ -226,18 +271,46 @@ export async function ensureCourseFullyWatched(req, res, next) {
       [userId, courseId, required],
     );
 
-    const done = new Set(rows.map((r) => r.video_id));
+    console.log('[watchGate] watch_rows', {
+      ...meta,
+      rowCount: rows?.length || 0,
+      ms: Date.now() - t1,
+      doneSample: Array.isArray(rows) ? rows.slice(0, 5).map((r) => r.video_id) : [],
+    });
+
+    const done = new Set((rows || []).map((r) => r.video_id));
     const missing = required.filter((id) => !done.has(id));
 
     if (missing.length) {
+      console.warn('[watchGate] blocked', {
+        ...meta,
+        requiredCount: required.length,
+        doneCount: done.size,
+        missingCount: missing.length,
+        missingSample: missing.slice(0, 10),
+      });
+
       return res.status(422).json({
         error: 'Please watch all course videos before continuing.',
         missing,
       });
     }
-    next();
+
+    console.log('[watchGate] pass', {
+      ...meta,
+      requiredCount: required.length,
+      doneCount: done.size,
+      msTotal: Date.now() - t0,
+    });
+
+    return next();
   } catch (e) {
-    console.error('[watch] ensureCourseFullyWatched', e);
-    res.status(500).json({ error: 'validation failed' });
+    console.error('[watchGate] error', {
+      ...meta,
+      message: e?.message,
+      code: e?.code,
+      stack: e?.stack,
+    });
+    return res.status(500).json({ error: 'validation failed' });
   }
 }

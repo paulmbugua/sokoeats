@@ -1,8 +1,18 @@
 export type AnswersMap = Record<string, number | string>;
 
-export function buildGradePayload(quiz: any, answersMap: AnswersMap) {
+type BuildGradeExtras = {
+  courseId?: string;
+  passMark?: number;
+  assignmentId?: string;
+};
+
+export function buildGradePayload(quiz: any, answersMap: AnswersMap, extras?: BuildGradeExtras) {
   const qArr = Array.isArray(quiz?.questions) ? quiz.questions : [];
   const isShort = String(quiz?.quizType || qArr[0]?.type || 'mcq').toLowerCase() === 'short';
+
+  // ✅ Resolve courseId from extras first, then quiz (if present)
+  const courseIdRaw = extras?.courseId ?? quiz?.courseId ?? quiz?.course_id ?? quiz?.id;
+  const courseId = typeof courseIdRaw === 'string' && courseIdRaw.trim() ? courseIdRaw.trim() : undefined;
 
   const cleanQuiz = {
     quizType: isShort ? 'short' : 'mcq',
@@ -32,7 +42,7 @@ export function buildGradePayload(quiz: any, answersMap: AnswersMap) {
     if (isShort || q.type === 'short') {
       return {
         questionId: q.id,
-        answerText: String(answersMap[q.id] ?? '').trim(), // text only for short
+        answerText: String(answersMap[q.id] ?? '').trim(),
       };
     }
     const idx = Number(answersMap[q.id]);
@@ -42,6 +52,14 @@ export function buildGradePayload(quiz: any, answersMap: AnswersMap) {
     };
   });
 
-  return { quiz: cleanQuiz, answers };
+  // ✅ Include courseId + optional extras in the final payload
+  return {
+    ...(courseId ? { courseId } : {}),
+    ...(typeof extras?.passMark === 'number' ? { passMark: extras.passMark } : {}),
+    ...(extras?.assignmentId ? { assignmentId: extras.assignmentId } : {}),
+    quiz: cleanQuiz,
+    answers,
+  };
 }
+
 export default buildGradePayload;

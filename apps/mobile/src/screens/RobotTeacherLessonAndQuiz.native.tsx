@@ -32,6 +32,32 @@ import { getCertificateCtaFromGate } from '@mytutorapp/shared/utils/gateCtaRule'
 // ─────────────────────────────────────────────────────────
 // fmt helpers
 // ─────────────────────────────────────────────────────────
+// ---- submit persist + dedupe (native parity with web) ----
+type SavedQuizSubmit = {
+  ts: number;
+  courseId: string | null;
+  assignmentKey: string;
+  attemptId: string | null;
+  quizSig: string;
+  answersHash: string;
+  // keep the exact payload we submitted (for audit/debug)
+  payloadAnswers: Array<{ questionId: string; choiceIndex?: number; answerText?: string }>;
+  // keep local answers too (for restoring UI)
+  answers: Record<string, number | string>;
+  ok: boolean;
+  error?: string | null;
+  grade?: any;
+  gradeTs?: number;
+};
+
+const hashStr = (input: string) => {
+  // fast deterministic hash (not crypto; just for dedupe keys)
+  let h = 5381;
+  for (let i = 0; i < input.length; i++) h = ((h << 5) + h) ^ input.charCodeAt(i);
+  return (h >>> 0).toString(16);
+};
+
+
 
 const resolveUnlockCourseId = (course: any): string | null => {
   const raw =
@@ -442,6 +468,17 @@ const endUnlock = () => {
   const startingAttemptRef = useRef(false);
   const submittingRef = useRef(false);
 
+  const [submittingQuiz, setSubmittingQuiz] = useState(false);
+
+const [submitState, setSubmitState] = useState<{
+  ok: boolean;
+  ts: number;
+  attemptId: string | null;
+  quizSig: string;
+  answersHash: string;
+} | null>(null);
+
+
   const [pendingQuizGen, setPendingQuizGen] = useState(false);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -599,6 +636,8 @@ const endUnlock = () => {
 
     return typeof raw === 'string' ? raw : undefined;
   }, [certCta]);
+
+  
 
 // NEW: “when does it reset” label (pull from gateNotice or gateUsage)
 const resetAtLabel = useMemo(() => {
@@ -944,6 +983,8 @@ useEffect(() => {
     return `free:${String(cid)}`;
   }, [assignmentId, course?.id, course?.slug, courseTitle]);
 
+  
+
   const viewQuestions = useMemo(() => {
     const qt = enforcedQuizType;
     const src = Array.isArray(quiz?.questions) ? quiz!.questions : [];
@@ -999,6 +1040,25 @@ useEffect(() => {
 
   const displayTimerSec = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
 
+
+const quizSig = useMemo(() => {
+  const canonical = (Array.isArray(viewQuestions) ? viewQuestions : []).map((q: any) => ({
+    id: String(q?.id ?? ''),
+    prompt: String(q?.display || q?.prompt || ''),
+    choices: enforcedQuizType === 'mcq' ? (Array.isArray(q?.choices) ? q.choices : []) : [],
+  }));
+  return `${enforcedQuizType}:${hashStr(JSON.stringify(canonical))}`;
+}, [viewQuestions, enforcedQuizType]);
+
+
+const submitLsKey = useMemo(() => {
+  const cid = resolveUnlockCourseId(course) || (course?.id ? String(course.id) : null);
+  // course + assignmentKey + quizSig (+ attemptId for org flow) = no duplicates
+  const att = attemptId ? String(attemptId) : 'na';
+  return `quiz:submit:${cid || 'unknown'}:${assignmentKey}:${quizSig}:${att}`;
+}, [course, assignmentKey, quizSig, attemptId]);
+
+
   const baseMs = useMemo(() => {
     const candidates = [
       Number.isFinite(displayRemainingMs) ? Number(displayRemainingMs) : null,
@@ -1011,6 +1071,60 @@ useEffect(() => {
   }, [displayRemainingMs, localRemainingMs, displayTimerSec]);
 
   const remainingMsTicker = Math.max(0, baseMs - elapsedMs);
+
+
+  useEffect(() => {
+  (async () => {
+    try {
+      if (!submitLsKey) return;
+      const raw = await AsyncStorage.getItem(submitLsKey);
+      if (!raw) {
+        setSubmitState(null);
+        return;
+      }
+      const saved = JSON.parse(raw) as SavedQuizSubmit;
+
+      // restore answers (don’t clobber anything the user already typed)
+      if (saved?.answers && typeof saved.answers === 'object') {
+        setWorkingAnswers((prev) => ({ ...saved.answers, ...prev }));
+      }
+
+      if (saved?.ok) {
+        setSubmitState({
+          ok: true,
+          ts: Number(saved.ts) || Date.now(),
+          attemptId: saved.attemptId ?? null,
+          quizSig: saved.quizSig,
+          answersHash: saved.answersHash,
+        });
+      } else {
+        setSubmitState(null);
+      }
+    } catch {
+      setSubmitState(null);
+    }
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [submitLsKey]);
+
+// When grade arrives/changes, persist it into the saved submit record (best effort)
+useEffect(() => {
+  (async () => {
+    try {
+      if (!grade || !submitState?.ok || !submitLsKey) return;
+      const raw = await AsyncStorage.getItem(submitLsKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as SavedQuizSubmit;
+      await AsyncStorage.setItem(
+        submitLsKey,
+        JSON.stringify({ ...saved, grade, gradeTs: Date.now() })
+      );
+    } catch {
+      /* ignore */
+    }
+  })();
+}, [grade, submitState?.ok, submitLsKey]);
+
 
   useEffect(() => {
     if (remainingMsTicker <= 0 && forceUnlock) setForceUnlock(false);
@@ -1220,7 +1334,29 @@ useEffect(() => {
     });
   }, [quiz?.questions, viewQuestions, workingAnswers, enforcedQuizType]);
 
-  const canSubmit = !isLocked && allAnsweredLocal;
+  const currentAttemptId = attemptId ? String(attemptId) : null;
+
+const answersHashNow = useMemo(() => {
+  const payload = viewQuestions.map((q: any) => {
+    const qid = q?.id;
+    const v = qid ? workingAnswers[qid] : undefined;
+    return enforcedQuizType === 'short'
+      ? `${qid}:${String(v ?? '').trim()}`
+      : `${qid}:${Number.isFinite(Number(v)) ? Number(v) : -1}`;
+  });
+  return hashStr(payload.join('|'));
+}, [viewQuestions, workingAnswers, enforcedQuizType]);
+
+const isDuplicateSubmit = useMemo(() => {
+  if (!submitState?.ok) return false;
+  if (submitState.quizSig !== quizSig) return false;
+  if (submitState.attemptId !== currentAttemptId) return false;
+  // exact same answers already submitted
+  return submitState.answersHash === answersHashNow && !retakeMode;
+}, [submitState, quizSig, currentAttemptId, answersHashNow, retakeMode]);
+
+const canSubmit = !isLocked && allAnsweredLocal && !submittingQuiz && !isDuplicateSubmit;
+
 
   // handlers
   const handleAnswer = (qid: string, value: number | string) => {
@@ -1231,71 +1367,156 @@ useEffect(() => {
     onAnswer?.(qid, next);
   };
 
-  const handleSubmit = useCallback(async () => {
-    if (!requireAuth('grade_quiz', 'Please sign in to submit and grade your quiz.')) return;
-    try {
-      // normalize quiz
-      try {
-        const qt = enforcedQuizType;
-        if (quiz && (quiz as any).quizType !== 'mcq' && (quiz as any).quizType !== 'short') {
-          (quiz as any).quizType = qt;
-        }
-        if (quiz?.questions) {
-          (quiz as any).questions = viewQuestions.map((q: any) => ({
-            ...q,
-            type: qt,
-            choices: qt === 'mcq' ? (Array.isArray(q?.choices) ? q.choices : []) : q?.choices,
-          }));
-        }
-      } catch {}
+const handleSubmit = useCallback(async () => {
+  if (submittingRef.current) return; // ✅ hard guard (double taps)
+  if (!requireAuth('grade_quiz', 'Please sign in to submit and grade your quiz.')) return;
 
-      // push normalized answers up
-      if (onAnswer && quiz?.questions?.length) {
-        for (const q of viewQuestions) {
-          const qid = q?.id;
-          if (!qid) continue;
-          const raw = workingAnswers[qid];
-          if (enforcedQuizType === 'short') {
-            onAnswer(qid, String(raw ?? '').trim());
-          } else {
-            const n = typeof raw === 'number' ? raw : Number(raw);
-            if (Number.isFinite(n)) onAnswer(qid, n);
-          }
+  // If we already submitted the same answers for this attempt, block duplicates
+  if (isDuplicateSubmit) {
+    Alert.alert('Already submitted', 'Your answers have already been submitted for this attempt.');
+    return;
+  }
+
+  submittingRef.current = true;
+  setSubmittingQuiz(true);
+
+  try {
+    // normalize quiz
+    try {
+      const qt = enforcedQuizType;
+      if (quiz && (quiz as any).quizType !== 'mcq' && (quiz as any).quizType !== 'short') {
+        (quiz as any).quizType = qt;
+      }
+      if (quiz?.questions) {
+        (quiz as any).questions = viewQuestions.map((q: any) => ({
+          ...q,
+          type: qt,
+          choices: qt === 'mcq' ? (Array.isArray(q?.choices) ? q.choices : []) : q?.choices,
+        }));
+      }
+    } catch {}
+
+    // push normalized answers up (so gradeNow uses latest)
+    if (onAnswer && quiz?.questions?.length) {
+      for (const q of viewQuestions) {
+        const qid = q?.id;
+        if (!qid) continue;
+        const raw = workingAnswers[qid];
+        if (enforcedQuizType === 'short') {
+          onAnswer(qid, String(raw ?? '').trim());
+        } else {
+          const n = typeof raw === 'number' ? raw : Number(raw);
+          if (Number.isFinite(n)) onAnswer(qid, n);
         }
       }
-
-      const payloadAnswers = viewQuestions.map((q: any) => {
-        const qid = q?.id;
-        const v = qid ? workingAnswers[qid] : undefined;
-
-        if (enforcedQuizType === 'short') {
-          return { questionId: qid, answerText: String(v ?? '').trim() };
-        }
-
-        const choiceIndex = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : -1;
-        return { questionId: qid, choiceIndex: Number.isFinite(choiceIndex) ? choiceIndex : -1 };
-      });
-
-      await submitAttempt(assignmentKey, payloadAnswers);
-      await gradeNow();
-      setRetakeMode(false);
-      markNotActive();
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Submit failed', 'Please try again.');
     }
-  }, [
-    requireAuth,
-    enforcedQuizType,
-    quiz,
-    viewQuestions,
-    onAnswer,
-    workingAnswers,
-    submitAttempt,
-    assignmentKey,
-    gradeNow,
-    markNotActive,
-  ]);
+
+    const payloadAnswers = viewQuestions.map((q: any) => {
+      const qid = q?.id;
+      const v = qid ? workingAnswers[qid] : undefined;
+
+      if (enforcedQuizType === 'short') {
+        return { questionId: qid, answerText: String(v ?? '').trim() };
+      }
+
+      const choiceIndex = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : -1;
+      return { questionId: qid, choiceIndex: Number.isFinite(choiceIndex) ? choiceIndex : -1 };
+    });
+
+    const cid = resolveUnlockCourseId(course) || (course?.id ? String(course.id) : null);
+    const att = attemptId ? String(attemptId) : null;
+
+    const saved: SavedQuizSubmit = {
+      ts: Date.now(),
+      courseId: cid,
+      assignmentKey,
+      attemptId: att,
+      quizSig,
+      answersHash: answersHashNow,
+      payloadAnswers,
+    answers: Object.fromEntries(
+  viewQuestions
+    // force qid to be a string (so TS knows the array element type)
+    .map((q: any): string => (q?.id == null ? '' : String(q.id)))
+    // now qid is inferred as string, but we can still be explicit
+    .filter((qid: string) => qid.length > 0)
+    .map((qid: string) => [qid, workingAnswers[qid]] as const)
+    .filter(([, v]: readonly [string, number | string | undefined]) => v !== undefined)
+) as Record<string, number | string>,
+
+      ok: true,
+      error: null,
+    };
+
+    // ✅ Submit first (server truth)
+    await submitAttempt(assignmentKey, payloadAnswers);
+
+    // ✅ Persist immediately after server submit (prevents re-submits on navigation)
+    try {
+      if (submitLsKey) await AsyncStorage.setItem(submitLsKey, JSON.stringify(saved));
+    } catch {}
+
+    setSubmitState({
+      ok: true,
+      ts: saved.ts,
+      attemptId: att,
+      quizSig,
+      answersHash: saved.answersHash,
+    });
+
+    // ✅ Grade second (best effort)
+    try {
+      await gradeNow();
+    } catch {
+      // still avoid duplicate submits; grading can be retried by refreshing
+    }
+
+    setRetakeMode(false);
+    markNotActive();
+  } catch (err) {
+    console.error(err);
+
+    // Persist failure (so you can inspect/debug; still allows re-submit)
+    try {
+      if (submitLsKey) {
+        const raw = await AsyncStorage.getItem(submitLsKey);
+        const prev = raw ? (JSON.parse(raw) as SavedQuizSubmit) : null;
+        await AsyncStorage.setItem(
+          submitLsKey,
+          JSON.stringify({
+            ...(prev || {}),
+            ts: Date.now(),
+            ok: false,
+            error: 'submit_failed',
+          })
+        );
+      }
+    } catch {}
+
+    Alert.alert('Submit failed', 'Please try again.');
+  } finally {
+    submittingRef.current = false;
+    setSubmittingQuiz(false);
+  }
+}, [
+  requireAuth,
+  isDuplicateSubmit,
+  enforcedQuizType,
+  quiz,
+  viewQuestions,
+  onAnswer,
+  workingAnswers,
+  submitAttempt,
+  assignmentKey,
+  gradeNow,
+  markNotActive,
+  course,
+  attemptId,
+  quizSig,
+  answersHashNow,
+  submitLsKey,
+]);
+
 
   // Non-org: did the user manually set lesson count?
   const manualLessonsSelected = useMemo(
@@ -1938,27 +2159,42 @@ useEffect(() => {
             })}
           </View>
 
-          <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
-            <TouchableOpacity
-              onPress={handleSubmit}
-              disabled={!canSubmit}
-              style={tw.style('px-4 py-2 rounded-xl', canSubmit ? 'bg-emerald-600' : 'bg-slate-700 opacity-60')}
-            >
-              <Text style={tw`text-white font-semibold`}>Submit quiz</Text>
-            </TouchableOpacity>
-
-            {grade ? (
-              <Text style={tw`text-white/80 text-sm`}>
-                Score: <Text style={tw`font-semibold`}>{grade.scorePct}%</Text> (Pass mark {grade.passMark}%)
-              </Text>
-            ) : null}
-
-            {grade && course?.id ? (
-              <TouchableOpacity onPress={() => onViewResults(course.id, courseTitle, grade)} style={tw`px-3 py-2 rounded-full bg-slate-800`}>
-                <Text style={tw`text-white text-sm`}>View Results</Text>
+            <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
+              <TouchableOpacity
+                onPress={handleSubmit}
+                disabled={!canSubmit}
+                style={tw.style(
+                  'px-4 py-2 rounded-xl',
+                  canSubmit ? 'bg-emerald-600' : 'bg-slate-700 opacity-60'
+                )}
+              >
+                <Text style={tw`text-white font-semibold`}>
+                  {submittingQuiz ? 'Submitting…' : isDuplicateSubmit ? 'Submitted' : 'Submit quiz'}
+                </Text>
               </TouchableOpacity>
-            ) : null}
-          </View>
+
+              {isDuplicateSubmit ? (
+                <Text style={tw`text-white/60 text-xs`}>
+                  ✅ Submitted — no need to submit again.
+                </Text>
+              ) : null}
+
+              {grade ? (
+                <Text style={tw`text-white/80 text-sm`}>
+                  Score: <Text style={tw`font-semibold`}>{grade.scorePct}%</Text> (Pass mark {grade.passMark}%)
+                </Text>
+              ) : null}
+
+              {grade && course?.id ? (
+                <TouchableOpacity
+                  onPress={() => onViewResults(course.id, courseTitle, grade)}
+                  style={tw`px-3 py-2 rounded-full bg-slate-800`}
+                >
+                  <Text style={tw`text-white text-sm`}>View Results</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
 
           {grade && grade.passed && !retakeMode ? (
             <View style={tw`mt-3 rounded-xl bg-emerald-600/10 border border-emerald-500 p-3`}>

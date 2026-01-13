@@ -1,4 +1,5 @@
 // apps/backend/controllers/certificatesController.js
+import crypto from 'node:crypto';
 import Joi from 'joi';
 import { v2 as cloudinary } from 'cloudinary';
 import { Readable } from 'stream';
@@ -13,11 +14,180 @@ import {
 } from './_aiCourseEntitlements.js';
 
 const NARRATION_UNLOCK_TOKENS = 20;
+let _quizAttemptsShapeCache = null;
+const QUIZ_TIME_COL_CACHE = new Map(); // tableName -> colName|null
+
+// ─────────────────────────────────────────────────────────────
+// ProgramTrack plumbing (DB → PDF)
+// ─────────────────────────────────────────────────────────────
+const PROGRAM_TRACK_KEYS = ['module', 'certificate', 'diploma', 'degree'];
+const PROGRAM_TRACK_SET = new Set(PROGRAM_TRACK_KEYS);
+
+let _courseTrackColCache = undefined;   // undefined=unknown, null=none, string=col
+let _aiEntTrackColCache = undefined;    // same
+
+function normalizeProgramTrack(v) {
+  const s = String(v || '').trim().toLowerCase();
+  return PROGRAM_TRACK_SET.has(s) ? s : null;
+}
+
+async function detectTrackColumn(db, tableName) {
+  const candidates = ['program_track', 'programtrack', 'program_track_key', 'track'];
+
+  if (tableName === 'courses' && _courseTrackColCache !== undefined) return _courseTrackColCache;
+  if (tableName === 'ai_course_entitlements' && _aiEntTrackColCache !== undefined)
+    return _aiEntTrackColCache;
+
+  const q = await db.query(
+    `
+    SELECT column_name
+      FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name=$1
+       AND column_name = ANY($2::text[])
+    `,
+    [tableName, candidates],
+  );
+
+  const found = candidates.find((c) => q.rows.some((r) => r.column_name === c)) ?? null;
+
+  if (tableName === 'courses') _courseTrackColCache = found;
+  if (tableName === 'ai_course_entitlements') _aiEntTrackColCache = found;
+
+  return found;
+}
+
+async function loadCourseProgramTrack(courseId) {
+  const col = await detectTrackColumn(pool, 'courses');
+  if (!col) return null;
+
+  try {
+    // Safe: col is from a whitelist only
+    const q = await pool.query(
+      `SELECT "${col}" AS track FROM courses WHERE id = $1::uuid LIMIT 1`,
+      [courseId],
+    );
+    return normalizeProgramTrack(q.rows?.[0]?.track);
+  } catch (e) {
+    // If deployments differ, fail soft
+    if (String(e?.code) === '42703') return null; // column missing
+    throw e;
+  }
+}
+
+async function loadEntitlementProgramTrack(authUuid, courseId) {
+  if (!authUuid || !isUuid(authUuid)) return null;
+
+  const col = await detectTrackColumn(pool, 'ai_course_entitlements');
+  if (!col) return null;
+
+  try {
+    const q = await pool.query(
+      `
+      SELECT "${col}" AS track
+        FROM ai_course_entitlements
+       WHERE user_id = $1::uuid
+         AND course_id::text = $2::text
+       ORDER BY created_at DESC NULLS LAST
+       LIMIT 1
+      `,
+      [authUuid, courseId],
+    );
+    return normalizeProgramTrack(q.rows?.[0]?.track);
+  } catch (e) {
+    // Table/column not present in some envs → ignore
+    if (['42P01', '42703', '22P02'].includes(String(e?.code))) return null;
+    throw e;
+  }
+}
+
+async function resolveProgramTrack({ courseId, authUuid, reqTrack }) {
+  const fromCourse = await loadCourseProgramTrack(courseId);
+  if (fromCourse) return fromCourse;
+
+  const fromEnt = await loadEntitlementProgramTrack(authUuid, courseId);
+  if (fromEnt) return fromEnt;
+
+  return normalizeProgramTrack(reqTrack);
+}
+
+
+async function pickTimeColumn(db, tableName) {
+  if (QUIZ_TIME_COL_CACHE.has(tableName)) return QUIZ_TIME_COL_CACHE.get(tableName);
+
+  const candidates = ['submitted_at', 'completed_at', 'graded_at', 'created_at', 'updated_at'];
+  const q = await db.query(
+    `
+    SELECT column_name
+      FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name=$1
+       AND column_name = ANY($2::text[])
+    `,
+    [tableName, candidates]
+  );
+
+  const found = candidates.find((c) => q.rows.some((r) => r.column_name === c)) ?? null;
+  QUIZ_TIME_COL_CACHE.set(tableName, found);
+  return found;
+}
+
 
 // ---------- Validators ----------
 const generateSchema = Joi.object({
   courseId: Joi.string().uuid().required(),
+  programTrack: Joi.string().trim().lowercase().valid(...PROGRAM_TRACK_KEYS).optional(),
 });
+
+
+function anonToUuid(s) {
+  // MUST MATCH _aiCourseEntitlements.js / narrationGate.js
+  const hex = crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(
+    17,
+    20
+  )}-${hex.slice(20)}`;
+}
+
+async function detectQuizAttemptsShape() {
+  if (_quizAttemptsShapeCache) return _quizAttemptsShapeCache;
+  try {
+    const q = await pool.query(
+      `
+      SELECT column_name, data_type
+        FROM information_schema.columns
+       WHERE table_schema='public'
+         AND table_name='quiz_attempts'
+      `
+    );
+
+    const map = new Map(q.rows.map((r) => [r.column_name, r.data_type]));
+
+    const timeCol = await pickTimeColumn(pool, 'quiz_attempts');
+
+
+
+      
+    _quizAttemptsShapeCache = {
+      exists: q.rows.length > 0,
+      userIdType: map.get('user_id') || null,        // 'uuid' | 'integer' | 'bigint' | null
+      studentIdType: map.get('student_id') || null,  // in case it exists in some envs
+      hasUserId: map.has('user_id'),
+      hasStudentId: map.has('student_id'),
+      courseIdType: map.get('course_id') || null,    // 'uuid' | 'text' | ...
+      timeCol,
+      hasScorePct: map.has('score_pct'),
+      hasPassMark: map.has('pass_mark'),
+    };
+
+    console.log('[cert] quiz_attempts shape', _quizAttemptsShapeCache);
+    return _quizAttemptsShapeCache;
+  } catch (e) {
+    console.warn('[cert] detectQuizAttemptsShape failed', e?.message || e);
+    _quizAttemptsShapeCache = { exists: false };
+    return _quizAttemptsShapeCache;
+  }
+}
 
 // ---------- Utils / Helpers ----------
 // Require purchase/enrollment for non-OER flow
@@ -300,6 +470,7 @@ async function resolveCoursePassMark(courseId) {
 async function getLatestQuizResult({ studentId, authUuid, courseId, requiredPassMark }) {
   const fallbackPassMark = Math.max(0, Math.min(100, Number(requiredPassMark) || 70));
 
+  // 1) Org attempts (your current logic)
   try {
     const orgQ = await pool.query(
       `
@@ -312,14 +483,14 @@ async function getLatestQuizResult({ studentId, authUuid, courseId, requiredPass
        ORDER BY qa.submitted_at DESC
        LIMIT 1
       `,
-      [studentId, courseId],
+      [studentId, courseId]
     );
 
     if (orgQ.rowCount) {
       const row = orgQ.rows[0];
       const passMark = Math.max(
         0,
-        Math.min(100, Number(row.pass_mark ?? fallbackPassMark) || fallbackPassMark),
+        Math.min(100, Number(row.pass_mark ?? fallbackPassMark) || fallbackPassMark)
       );
       const scorePct = row.score_pct != null ? Number(row.score_pct) : null;
       const passed = row.passed === true || (scorePct != null && scorePct >= passMark);
@@ -329,67 +500,113 @@ async function getLatestQuizResult({ studentId, authUuid, courseId, requiredPass
     console.warn('[cert] quiz pass check (org) failed', e?.message || e);
   }
 
-  const userUuid =
-    authUuid && isUuid(authUuid)
-      ? authUuid
-      : await resolveAuthUuidForNumericUserId(studentId);
+  // 2) Non-org attempts (quiz_attempts) — dynamically match schema
+  const shape = await detectQuizAttemptsShape();
+if (!shape?.exists) {
+  return { attempted: false, passed: false, scorePct: null, passMark: fallbackPassMark };
+}
 
-  if (userUuid) {
-    try {
-      const quizQ = await pool.query(
-        `
-        SELECT score_pct, pass_mark
-          FROM quiz_attempts
-         WHERE user_id = $1::uuid
-           AND course_id = $2::uuid
-           AND submitted_at IS NOT NULL
-         ORDER BY submitted_at DESC
-         LIMIT 1
-        `,
-        [userUuid, courseId],
-      );
+const timeCol = shape.timeCol; // may be null
+const courseExpr = shape.courseIdType === 'uuid' ? '$2::uuid' : '$2';
+const timeFilter = timeCol ? `AND "${timeCol}" IS NOT NULL` : '';
+const timeOrder = timeCol ? `ORDER BY "${timeCol}" DESC` : `ORDER BY id DESC`;
 
-      if (quizQ.rowCount) {
-        const row = quizQ.rows[0];
-        const passMark = Math.max(
-          0,
-          Math.min(100, Number(row.pass_mark ?? fallbackPassMark) || fallbackPassMark),
-        );
-        const scorePct = row.score_pct != null ? Number(row.score_pct) : null;
-        const passed = scorePct != null && scorePct >= passMark;
-        return { attempted: true, passed, scorePct, passMark };
-      }
-    } catch (e) {
-      console.warn('[cert] quiz pass check (user_id) failed', e?.message || e);
-    }
+
+
+  
+  // Decide which user identifier to query with
+  const numericId = Number(studentId);
+
+  // If quiz_attempts.user_id is UUID, try:
+  // (a) authUuid from token, (b) resolved auth uuid, (c) deterministic anon uuid from numeric id
+  let uuidCandidate = null;
+  if (shape.userIdType === 'uuid') {
+    uuidCandidate =
+      (authUuid && isUuid(authUuid) ? String(authUuid) : null) ||
+      (await resolveAuthUuidForNumericUserId(studentId)) ||
+      (Number.isFinite(numericId) ? anonToUuid(`user:${numericId}`) : null);
   }
 
-  try {
-    const quizQ = await pool.query(
-      `
-      SELECT score_pct, pass_mark
-        FROM quiz_attempts
-       WHERE student_id = $1
-         AND course_id = $2::uuid
-         AND submitted_at IS NOT NULL
-       ORDER BY submitted_at DESC
-       LIMIT 1
-      `,
-      [studentId, courseId],
-    );
+  // Try queries in a safe order
+  const tryQuery = async (sql, params, tag) => {
+    try {
+      const q = await pool.query(sql, params);
+      if (!q.rowCount) return null;
 
-    if (quizQ.rowCount) {
-      const row = quizQ.rows[0];
+      const row = q.rows[0];
       const passMark = Math.max(
         0,
-        Math.min(100, Number(row.pass_mark ?? fallbackPassMark) || fallbackPassMark),
+        Math.min(100, Number(row.pass_mark ?? fallbackPassMark) || fallbackPassMark)
       );
       const scorePct = row.score_pct != null ? Number(row.score_pct) : null;
       const passed = scorePct != null && scorePct >= passMark;
       return { attempted: true, passed, scorePct, passMark };
+    } catch (e) {
+      console.warn(`[cert] quiz pass check (${tag}) failed`, e?.message || e);
+      return null;
     }
-  } catch (e) {
-    console.warn('[cert] quiz pass check (student_id) failed', e?.message || e);
+  };
+
+  // A) user_id UUID
+  if (shape.hasUserId && shape.userIdType === 'uuid' && uuidCandidate) {
+    const r = await tryQuery(
+      `
+      SELECT score_pct, pass_mark
+        FROM quiz_attempts
+       WHERE user_id = $1::uuid
+         AND course_id = ${courseExpr}
+        ${timeFilter}
+       ${timeOrder}
+       LIMIT 1
+      `,
+      [uuidCandidate, courseId],
+      'user_id:uuid'
+    );
+    if (r) return r;
+  }
+
+    // B) user_id numeric
+  if (
+    shape.hasUserId &&
+    (shape.userIdType === 'integer' || shape.userIdType === 'bigint') &&
+    Number.isFinite(numericId)
+  ) {
+    const r = await tryQuery(
+      `
+      SELECT score_pct, pass_mark
+        FROM quiz_attempts
+       WHERE user_id = $1
+         AND course_id = ${courseExpr}
+         ${timeFilter}
+       ${timeOrder}
+       LIMIT 1
+      `,
+      [numericId, courseId],
+      'user_id:numeric'
+    );
+    if (r) return r;
+  }
+
+  // C) student_id numeric (only if the column truly exists)
+  if (
+    shape.hasStudentId &&
+    (shape.studentIdType === 'integer' || shape.studentIdType === 'bigint') &&
+    Number.isFinite(numericId)
+  ) {
+    const r = await tryQuery(
+      `
+      SELECT score_pct, pass_mark
+        FROM quiz_attempts
+       WHERE student_id = $1
+         AND course_id = ${courseExpr}
+         ${timeFilter}
+       ${timeOrder}
+       LIMIT 1
+      `,
+      [numericId, courseId],
+      'student_id:numeric'
+    );
+    if (r) return r;
   }
 
   return { attempted: false, passed: false, scorePct: null, passMark: fallbackPassMark };
@@ -669,6 +886,19 @@ export async function generateCertificate(req, res) {
     console.log('[cert] generateCertificate start', { studentId, courseId });
     const authUuid = pickAuthUuidFromReqUser(req.user);
 
+    const programTrack = await resolveProgramTrack({
+      courseId,
+      authUuid,
+      reqTrack: value.programTrack, // optional (validated)
+    });
+
+    console.log('[cert] resolved programTrack', {
+      courseId,
+      programTrack,
+      hasAuthUuid: Boolean(authUuid),
+    });
+
+
     // 0) Quick Cloudinary config sanity log
     const cldcfg = cloudinary.config() || {};
     console.log('[cert] cloudinary config snapshot', {
@@ -749,20 +979,27 @@ export async function generateCertificate(req, res) {
     // 2.5) Certificate generation is free after passing the quiz.
 
     const coursePassMark = await resolveCoursePassMark(courseId);
-    const quizResult = await getLatestQuizResult({
-      studentId,
-      authUuid,
-      courseId,
-      requiredPassMark: coursePassMark,
-    });
-    if (!quizResult.passed) {
-      return res.status(409).json({
-        error: 'PASS_REQUIRED',
-        message: 'Pass the quiz (≥ 70%) to generate your certificate.',
-        scorePct: quizResult.scorePct,
-        passMark: quizResult.passMark,
-      });
-    }
+const quizResult = await getLatestQuizResult({
+  studentId,
+  authUuid,
+  courseId,
+  requiredPassMark: coursePassMark,
+});
+
+console.log('[cert] quizResult', {
+  coursePassMark,
+  quizResult,
+});
+
+if (!quizResult.passed) {
+  return res.status(409).json({
+    error: 'PASS_REQUIRED',
+    message: `Pass the quiz (≥ ${quizResult.passMark}%) to generate your certificate.`,
+    scorePct: quizResult.scorePct,
+    passMark: quizResult.passMark,
+  });
+}
+
 
     // 3) Names + per-course/tutor signature
     console.time('[cert] generate:lookupUserCourse');
@@ -858,6 +1095,7 @@ export async function generateCertificate(req, res) {
     const buffer = await generateCertificatePdfBuffer({
       studentName,
       courseTitle,
+      programTrack,
       verificationUrl,
       titleText: headerTitle,
       brand, // <-- unified brand payload

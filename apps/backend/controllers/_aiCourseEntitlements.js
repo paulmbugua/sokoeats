@@ -1,6 +1,8 @@
 // apps/backend/controllers/_aiCourseEntitlements.js
 import pool from '../config/db.js';
 import crypto from 'node:crypto';
+import { upsertEntitlement } from './_entitlements.js';
+
 
 const CERT_TYPE = 'certificate';
 
@@ -118,7 +120,16 @@ export async function upsertAiCertificateEntitlement({
     Math.max(1, Number(maxLessons) || 60),
   ]);
 
-  return rows[0] || null;
+  const row = rows[0] || null;
+  if (!row) return null;
+
+  // Legacy auto-heal (best-effort)
+  try {
+    // legacy entitlement table uses the "old" userId (int), not userUuid
+    await upsertEntitlement(db, { userId, courseId, extended: true });
+  } catch {}
+
+  return row;
 }
 
 export async function incrementLessonUsage({ userId, courseId, amount, db = pool }) {

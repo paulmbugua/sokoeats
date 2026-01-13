@@ -1086,28 +1086,48 @@ return L;
   }, [quiz, answers]);
 
   const gradeNow = useCallback(
-    async (passMark?: number) => {
-      if (!token) {
-        setError('Please sign in to submit and grade your quiz.');
-        return;
-      }
-      if (!quiz?.questions?.length) return;
-      setError(null);
-      try {
-        const payload: any = buildGradePayload(quiz, answers);
-        if (typeof passMark === 'number') payload.passMark = passMark;
-        const g = await gradeQuizApi(backendUrl, token, payload);
-        setGrade(g);
-        setStep('graded');
-        return g;
-      } catch (e: unknown) {
-        setError(getMessage(e) || 'Grading failed');
-        setStep('error');
-        throw e;
-      }
-    },
-    [backendUrl, token, quiz, answers]
-  );
+  async (passMark?: number) => {
+    if (!token) {
+      setError('Please sign in to submit and grade your quiz.');
+      return;
+    }
+
+    if (!quiz?.questions?.length) return;
+
+    // ✅ FIX: ensure we have a courseId to send
+    const courseId =
+      (typeof selectedCourse?.id === 'string' && selectedCourse.id.trim()
+        ? selectedCourse.id
+        : undefined) ??
+      (typeof (quiz as any)?.courseId === 'string' && (quiz as any).courseId.trim()
+        ? (quiz as any).courseId
+        : undefined);
+
+    if (!courseId) {
+      setError('Could not resolve courseId for grading. Please re-open the course and try again.');
+      setStep('error');
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const payload = buildGradePayload(quiz, answers, { courseId });
+      if (typeof passMark === 'number') payload.passMark = passMark;
+
+      const g = await gradeQuizApi(backendUrl, token, payload);
+      setGrade(g);
+      setStep('graded');
+      return g;
+    } catch (e: unknown) {
+      setError(getMessage(e) || 'Grading failed');
+      setStep('error');
+      throw e;
+    }
+  },
+  [backendUrl, token, quiz, answers, selectedCourse]
+);
+
 
   const tryGenerateCertificate = useCallback(async () => {
     if (!token) {

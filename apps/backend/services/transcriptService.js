@@ -312,6 +312,100 @@ function drawRegistrarSignature(
 
   return lineY + 28; // bottom y of block
 }
+// ─────────────────────────────────────────────────────────
+// Program Track badge (simple + premium)
+// ─────────────────────────────────────────────────────────
+const TRACK_META = {
+  certificate: {
+    label: 'Certificate Program',
+    short: 'C',
+    tint: '#1D4ED8',
+    bg: '#DBEAFE',
+  },
+  diploma: {
+    label: 'Professional Program',
+    short: 'P',
+    tint: '#047857',
+    bg: '#D1FAE5',
+  },
+  degree: {
+    label: 'Comprehensive Program',
+    short: 'M',
+    tint: '#6D28D9',
+    bg: '#EDE9FE',
+  },
+  module: {
+    label: 'Module Track',
+    short: 'U',
+    tint: '#334155',
+    bg: '#E2E8F0',
+  },
+};
+
+function normalizeTrackKey(v) {
+  const k = String(v || '').trim().toLowerCase();
+  return TRACK_META[k] ? k : null;
+}
+
+function drawProgramTrackPill(doc, programTrack, { x, y, align = 'right', maxWidth = 260 } = {}) {
+  const key = normalizeTrackKey(programTrack);
+  if (!key) return null;
+
+  const meta = TRACK_META[key];
+  const label = meta.label;
+
+  doc.save();
+
+  // Typography
+  doc.font('Helvetica-Bold').fontSize(10);
+
+  const padX = 10;
+  const padY = 6;
+  const circle = 16;
+  const gap = 8;
+
+  // Measure
+  const labelW = doc.widthOfString(label);
+  let pillW = padX + circle + gap + labelW + padX;
+  const pillH = Math.max(22, circle + padY);
+
+  // Clamp width (rare, but safe)
+  let safeLabel = label;
+  if (pillW > maxWidth) {
+    doc.font('Helvetica-Bold').fontSize(9);
+    safeLabel = meta.label.replace(' Program', '');
+    const w2 = doc.widthOfString(safeLabel);
+    pillW = padX + circle + gap + w2 + padX;
+    if (pillW > maxWidth) {
+      safeLabel = meta.short;
+      const w3 = doc.widthOfString(safeLabel);
+      pillW = padX + circle + gap + w3 + padX;
+    }
+  }
+
+  const drawX = align === 'right' ? x - pillW : align === 'center' ? x - pillW / 2 : x;
+
+  // Pill background
+  doc.roundedRect(drawX, y, pillW, pillH, 999).fill(meta.bg);
+
+  // Icon circle
+  const cx = drawX + padX + circle / 2;
+  const cy = y + pillH / 2;
+  doc.circle(cx, cy, circle / 2).fill(meta.tint);
+
+  // Icon letter
+  doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(10);
+  doc.text(meta.short, cx - 3.2, cy - 6.2, { lineBreak: false });
+
+  // Label
+  doc.fillColor(meta.tint).font('Helvetica-Bold').fontSize(10);
+  doc.text(safeLabel, drawX + padX + circle + gap, y + (pillH - 10) / 2 - 1, {
+    lineBreak: false,
+  });
+
+  doc.restore();
+  return { label: meta.label, key };
+}
 
 /* ─────────────────────────────────────────────────────────
  * Main generator (ONE PAGE)
@@ -326,6 +420,7 @@ export async function generateTranscriptPdfBuffer({
   studentId,
   courseTitle,
   courseId,
+  programTrack,
   issuedAt = new Date(),
   overallPct = 0,
   passMark = 70,
@@ -401,6 +496,13 @@ export async function generateTranscriptPdfBuffer({
       .fillColor('#0F172A')
       .fontSize(18)
       .text('Official Transcript', contentLeft() + 4, y, { lineBreak: false });
+
+      drawProgramTrackPill(doc, programTrack, {
+        x: contentRight() - 4,
+        y: y - 2,
+        align: 'right',
+        maxWidth: 280,
+      });
     if (previewNote) {
       doc
         .fontSize(10)
@@ -461,11 +563,16 @@ export async function generateTranscriptPdfBuffer({
       ),
     );
 
+    const trackKey = normalizeTrackKey(programTrack);
+const trackLabel = trackKey ? TRACK_META[trackKey]?.label : null;
+
+
     // --- build meta rows (each lesson on its own row) ---
     const baseMeta = [
       { k: 'Student Name', k2: 'student_name', v: studentName || '—' },
       { k: 'Student ID', k2: 'student_id', v: studentId || '—' },
       { k: 'Course', k2: 'course', v: courseTitle || '—' },
+       ...(trackLabel ? [{ k: 'Program Track', k2: 'program_track', v: trackLabel }] : []),
       { k: 'Course ID', k2: 'course_id', v: courseId || '—' },
     ];
 

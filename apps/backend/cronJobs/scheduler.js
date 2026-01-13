@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import pool from '../config/db.js'; // PostgreSQL database connection
 import { sendNotification } from '../utils/sendNotification.js'; // Email notification service
 
+
 // Schedule job to process expired sessions every hour
 cron.schedule('0 * * * *', async () => {
   try {

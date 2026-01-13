@@ -1520,47 +1520,40 @@ const [paymentOk, setPaymentOk] = useState(false);
                     }
                   }
 
-                  if (isOrgFlow && assignmentId) {
-                    if (submittingRef.current) return;
-                    submittingRef.current = true;
-                    try {
-                      // build payload answers (mcq + short)
-                      const payloadAnswers = (quiz?.questions || []).map((q: any) => {
-                        const v = workingAnswers[q.id];
-                        if (enforcedQuizType === 'short') {
-                          return {
-                            questionId: q.id,
-                            answerText: String(v ?? '').trim(),
-                          };
-                        }
-                        const idx = typeof v === 'number' ? v : Number(v);
-                        return {
-                          questionId: q.id,
-                          choiceIndex: Number.isFinite(idx) ? idx : -1,
-                        };
-                      });
+                 // ✅ single guard for BOTH org + non-org
+                if (submittingRef.current) return;
+                submittingRef.current = true;
 
-                      // Always submit attempt if we started one (org + non-org supported by hook)
-                      try {
-                        const assignmentKey =
-                          assignmentId ||
-                          `free:${course?.id || course?.slug || courseTitle || 'free-course'}`;
-                        await submitAttempt(assignmentKey, payloadAnswers);
-                      } catch (e) {
-                        console.error('submitAttempt failed', e);
-                      }
-
-                      await gradeNow();
-                      markNotActive();
-                      setRetakeMode(false);
-                    } finally {
-                      submittingRef.current = false;
+                try {
+                  // build payload answers (mcq + short) ONCE
+                  const payloadAnswers = (quiz?.questions || []).map((q: any) => {
+                    const v = workingAnswers[q.id];
+                    if (enforcedQuizType === 'short') {
+                      return { questionId: q.id, answerText: String(v ?? '').trim() };
                     }
-                  } else {
-                    await gradeNow();
-                    markNotActive();
-                    setRetakeMode(false);
+                    const idx = typeof v === 'number' ? v : Number(v);
+                    return { questionId: q.id, choiceIndex: Number.isFinite(idx) ? idx : -1 };
+                  });
+
+                  const assignmentKey =
+                    assignmentId || `free:${course?.id || course?.slug || courseTitle || 'free-course'}`;
+
+                  // ✅ submitAttempt for BOTH paths (org + non-org)
+                  try {
+                    await submitAttempt(assignmentKey, payloadAnswers);
+                  } catch (e) {
+                    // org + free both continue to grade, but log differently if you want
+                    if (isOrgFlow && assignmentId) console.error('submitAttempt failed', e);
+                    else console.warn('[free] submitAttempt failed (continuing to grade)', e);
                   }
+
+                  await gradeNow();
+                  markNotActive();
+                  setRetakeMode(false);
+                } finally {
+                  submittingRef.current = false;
+                }
+
                 } catch (err) {
                   console.error(err);
                 }

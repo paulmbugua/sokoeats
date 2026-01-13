@@ -191,8 +191,11 @@ const shortQuestionForGrading = Joi.object({
 }).or('prompt', 'display');
 
 export const gradeSchema = Joi.object({
+  // ✅ ADD THIS (top-level)
+  courseId: Joi.string().uuid().required(),
+
+
   quiz: Joi.object({
-    // optional pack-level type; controller will infer if missing
     quizType: Joi.string().valid('mcq', 'short').optional(),
     questions: Joi.array()
       .items(
@@ -202,30 +205,23 @@ export const gradeSchema = Joi.object({
       .required(),
   }).required(),
 
-  // Either MCQ selection (choiceIndex) or short-answer text (answerText).
-  // Also allow several alias keys seen in your controller.
   answers: Joi.array()
     .items(
       Joi.object({
         questionId: idSchema.required(),
-        choiceIndex: Joi.number().integer().min(0).optional(), // MCQ path
-        answerText: Joi.string().trim().optional(), // Short path
-        // aliases your controller already reads:
+        choiceIndex: Joi.number().integer().min(0).optional(),
+        answerText: Joi.string().trim().optional(),
         text: Joi.string().trim().optional(),
         value: Joi.string().trim().optional(),
         free: Joi.string().trim().optional(),
         written: Joi.string().trim().optional(),
       })
-        // Require at least one of these fields to be present
         .or('choiceIndex', 'answerText', 'text', 'value', 'free', 'written')
-        .unknown(true), // future-proofing
+        .unknown(true),
     )
     .min(1)
     .required(),
 
-  // org flow hints (optional)
   assignmentId: Joi.string().uuid().optional(),
-
-  // If omitted, controller looks up assignment/org defaults; clamp happens there
   passMark: Joi.number().integer().min(0).max(100).optional(),
 });

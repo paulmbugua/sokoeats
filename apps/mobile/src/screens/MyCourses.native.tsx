@@ -451,7 +451,7 @@ const MyCoursesNative: React.FC = () => {
 
   const myId = String(profile?.id ?? '');
 
-  const api = React.useMemo(() => makeApiUrl(backendUrl || ''), [backendUrl]);
+  const api = useMemo(() => makeApiUrl(backendUrl || ''), [backendUrl]);
 
   const [sandboxDbgEnabled, setSandboxDbgEnabled] = useState(false);
   const [sandboxDbgInfo, setSandboxDbgInfo] = useState<{
@@ -1675,7 +1675,7 @@ const MyCoursesNative: React.FC = () => {
       <View style={tw`mt-3`}>
         <View style={tw`flex-row items-center justify-between`}>
           <Text style={tw`text-base font-bold text-slate-900 dark:text-white`}>
-            🧪 My AI Sandbox (Unlocked)
+            🧪 My AI Courses (Unlocked)
           </Text>
           <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
             {unlockedAiLoading ? 'Loading…' : `${unlockedAi.length} course${unlockedAi.length === 1 ? '' : 's'}`}

@@ -34,6 +34,12 @@ import {
 /* ─────────────────────────────────────────────────────────
  * Helpers
  * ───────────────────────────────────────────────────────── */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(v) {
+  return UUID_RE.test(String(v || '').trim());
+}
 
 // Chemistry/text normalization for short answers
 function normalizeChemAnswer(s = '') {
@@ -916,9 +922,10 @@ export async function gradeQuiz(req, res) {
   try {
     const { value, error } = gradeSchema.validate(req.body, {
       abortEarly: false,
-      allowUnknown: true, // let assignmentId flow through even if not in schema
+      allowUnknown: true, // let assignmentId/courseId flow through
       convert: true,
     });
+
     if (error) {
       console.warn(
         '[ai] grade validation failed',
@@ -933,7 +940,13 @@ export async function gradeQuiz(req, res) {
 
     const { quiz, answers } = value;
 
-    // Extract passMark/assignmentId without TS
+    // --- helper: local uuid check (in case isUuid isn't in scope here) ---
+    const isUuidLocal = (s) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        String(s || ''),
+      );
+
+    // Extract assignmentId safely
     const assignmentId =
       typeof value.assignmentId === 'string' && value.assignmentId.trim()
         ? value.assignmentId.trim()
@@ -945,6 +958,38 @@ export async function gradeQuiz(req, res) {
       !Number.isNaN(Number(value.passMark))
         ? Number(value.passMark)
         : undefined;
+
+    // Resolve studentId (your schema uses numeric users.id)
+    const studentId = req.user?.id ?? req.user?.users_id ?? null;
+
+    // ✅ Resolve courseId from multiple possible sources
+    const courseIdFromBody =
+      typeof value.courseId === 'string' && value.courseId.trim()
+        ? value.courseId.trim()
+        : null;
+
+    const courseIdFromQuiz =
+      typeof quiz?.courseId === 'string' && quiz.courseId.trim()
+        ? quiz.courseId.trim()
+        : null;
+
+    const courseId = courseIdFromBody || courseIdFromQuiz || null;
+    const courseIdIsUuid = courseId ? isUuidLocal(courseId) : false;
+
+    // --- start logs ---
+    console.log('[ai] gradeQuiz:start', {
+      studentId,
+      hasUser: !!req.user,
+      assignmentId: assignmentId || null,
+      courseIdFromBody,
+      courseIdFromQuiz,
+      courseId,
+      courseIdIsUuid,
+      quizId: quiz?.id || quiz?.quizId || null,
+      quizType: quiz?.quizType || null,
+      questions: Array.isArray(quiz?.questions) ? quiz.questions.length : 0,
+      answers: Array.isArray(answers) ? answers.length : 0,
+    });
 
     // If passMark missing, look up from assignment → locked_config → org default → 70
     if ((passMark === undefined || Number.isNaN(passMark)) && assignmentId) {
@@ -975,14 +1020,11 @@ export async function gradeQuiz(req, res) {
     if (passMark === undefined || Number.isNaN(passMark)) passMark = 70;
     passMark = Math.max(0, Math.min(100, Math.round(passMark)));
 
-    // ---------- NEW: mixed-type grading (MCQ + short) ----------
+    // ---------- mixed-type grading (MCQ + short) ----------
     const byId = new Map((answers || []).map((a) => [a.questionId, a]));
 
-    // prefer per-question type; else pack-level; else infer from presence of choices
     const normType = (t) => {
-      const s = String(t || '')
-        .trim()
-        .toLowerCase();
+      const s = String(t || '').trim().toLowerCase();
       if (
         [
           'mcq',
@@ -1028,7 +1070,6 @@ export async function gradeQuiz(req, res) {
           : 'short');
 
       if (qType === 'mcq') {
-        // MCQ path: use answerIndex vs provided choiceIndex
         const choiceIndex = Number.isFinite(Number(a.choiceIndex))
           ? Number(a.choiceIndex)
           : -1;
@@ -1037,12 +1078,10 @@ export async function gradeQuiz(req, res) {
           : -1;
         if (choiceIndex >= 0 && choiceIndex === answerIndex) correct += 1;
       } else {
-        // Short-answer path: allow several common payload keys for the typed answer
         const userRaw =
           a?.text ?? a?.answerText ?? a?.value ?? a?.free ?? a?.written ?? '';
         const userStr = String(userRaw ?? '').trim();
 
-        // Edge fallback: if (wrongly) sent choiceIndex for a short item, try to map it
         let candidate = userStr;
         if (
           !candidate &&
@@ -1061,6 +1100,130 @@ export async function gradeQuiz(req, res) {
     const scorePct = total ? Math.round((correct / total) * 100) : 0;
     const passed = scorePct >= passMark;
 
+    console.log('[ai] gradeQuiz:computed', {
+      correct,
+      total,
+      scorePct,
+      passMark,
+      passed,
+      assignmentId: assignmentId || null,
+      courseId,
+      courseIdIsUuid,
+      studentId,
+    });
+
+    // ---------- Persist attempt for NON-org flows ----------
+    // Certificates use quiz_attempts, so this must succeed for catalog/non-org quizzes.
+    let attemptSaved = false;
+    let attemptId = null;
+
+    if (assignmentId) {
+      console.log('[ai] gradeQuiz:persist skip (org flow)', { assignmentId });
+    } else if (!studentId) {
+      console.warn('[ai] gradeQuiz:persist skip (missing studentId)', {
+        reqUserKeys: req.user ? Object.keys(req.user) : null,
+      });
+    } else if (!courseId) {
+      console.warn('[ai] gradeQuiz:persist skip (missing courseId)', {
+        courseIdFromBody,
+        courseIdFromQuiz,
+      });
+    } else if (!courseIdIsUuid) {
+      console.warn('[ai] gradeQuiz:persist skip (courseId not uuid)', { courseId });
+    } else {
+      // ✅ If we don't have a real quiz UUID from `quizzes`, store NULL.
+      // This avoids FK violations and still allows certificate checks by (student_id, course_id).
+      const quizIdToInsert =
+        (typeof quiz?.id === 'string' && isUuidLocal(quiz.id) ? quiz.id : null) ||
+        (typeof quiz?.quizId === 'string' && isUuidLocal(quiz.quizId)
+          ? quiz.quizId
+          : null) ||
+        null;
+
+      const answersJson = {
+        answers: Array.isArray(answers) ? answers : [],
+        quizType: quiz?.quizType || null,
+      };
+
+      // Optional: log whether the table has the columns you expect
+      try {
+        const cols = await pool.query(
+          `
+          SELECT column_name
+            FROM information_schema.columns
+           WHERE table_schema='public'
+             AND table_name='quiz_attempts'
+             AND column_name IN (
+               'id','quiz_id','total','correct','score_pct','passed',
+               'answers_json','created_at','pass_mark','student_id','course_id'
+             )
+          `,
+        );
+        console.log('[ai] gradeQuiz:quiz_attempts columns present', {
+          cols: cols.rows.map((r) => r.column_name),
+        });
+      } catch (e) {
+        console.warn('[ai] gradeQuiz:columns probe failed', e?.message || e);
+      }
+
+      console.log('[ai] gradeQuiz:persist start', {
+        studentId,
+        courseId,
+        quizIdToInsert,
+        total,
+        correct,
+        scorePct,
+        passed,
+        passMark,
+      });
+
+      try {
+        const ins = await pool.query(
+          `
+          INSERT INTO quiz_attempts
+            (id, quiz_id, total, correct, score_pct, passed, answers_json, created_at, pass_mark, student_id, course_id)
+          VALUES
+            (gen_random_uuid(),
+             $1::uuid,                 -- ✅ NULL allowed now
+             $2, $3, $4, $5, $6::jsonb, NOW(), $7, $8, $9::uuid)
+          RETURNING id, created_at
+          `,
+          [
+            quizIdToInsert,             // ✅ can be null
+            total,
+            correct,
+            scorePct,
+            passed,
+            JSON.stringify(answersJson),
+            passMark,
+            Number(studentId),
+            courseId,
+          ],
+        );
+
+        attemptSaved = ins.rowCount > 0;
+        attemptId = ins.rows?.[0]?.id || null;
+
+        console.log('[ai] gradeQuiz:persist ok', {
+          attemptSaved,
+          attemptId,
+          created_at: ins.rows?.[0]?.created_at || null,
+        });
+      } catch (e) {
+        console.warn('[ai] gradeQuiz: failed to persist quiz_attempts', {
+          message: e?.message,
+          code: e?.code,
+          detail: e?.detail,
+          hint: e?.hint,
+          constraint: e?.constraint,
+          table: e?.table,
+          column: e?.column,
+          where: e?.where,
+        });
+        // Don't fail grading just because persistence failed
+      }
+    }
+
     return res.json({
       correct,
       total,
@@ -1068,12 +1231,19 @@ export async function gradeQuiz(req, res) {
       passed,
       passMark,
       assignmentId: assignmentId || null,
+
+      // Debug-only additions
+      attemptSaved,
+      attemptId,
+      courseId: courseId || null,
     });
   } catch (err) {
     console.error('[ai] gradeQuiz error:', err);
     return res.status(500).json({ error: 'Failed to grade quiz' });
   }
 }
+
+
 
 export async function generateCoursePackage(req, res) {
   try {

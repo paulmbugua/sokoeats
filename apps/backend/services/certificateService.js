@@ -351,6 +351,7 @@ function drawBrandNameSingleLine(
 export async function generateCertificatePdfBuffer({
   studentName,
   courseTitle,
+   programTrack,
   issuedAt = new Date(),
   verificationUrl,
   titleText,
@@ -519,11 +520,23 @@ export async function generateCertificatePdfBuffer({
         lineBreak: false,
       });
 
+      // ✅ Program track pill (centered under headline)
+      const pillRes = drawProgramTrackPill(doc, programTrack, {
+        x: 50 + 495 / 2,
+        y: y0 + 40,
+        align: 'center',
+        maxWidth: 320,
+      });
+
+      // If pill exists, push content down a bit so spacing stays perfect
+      const TRACK_PUSH = pillRes ? 22 : 0;
+
+
     doc
       .font('Helvetica')
       .fontSize(14)
       .fillColor('#1F2937')
-      .text('This certifies that', 50, y0 + 40, {
+      .text('This certifies that', 50, y0 + 40 + TRACK_PUSH, {
         width: 495,
         align: 'center',
         lineBreak: false,
@@ -533,7 +546,7 @@ export async function generateCertificatePdfBuffer({
     const STUDENT_X = 50;
     const STUDENT_W = 495;
     const STUDENT_SIZE = 44;
-    const studentY = y0 + 58; // was y0 + 70
+    const studentY = y0 + 58 + TRACK_PUSH; 
 
     const { lineY: studentUnderlineY } = drawCenteredUnderlinedText(
       doc,
