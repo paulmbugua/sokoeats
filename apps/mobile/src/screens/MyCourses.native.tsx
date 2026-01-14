@@ -14,6 +14,8 @@ import {
   Modal,
 } from 'react-native';
 import debounce from 'lodash.debounce';
+import { MaterialIcons } from '@expo/vector-icons';
+
 import { useNavigation, useRoute } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import tw from '../../tailwind';
@@ -2077,15 +2079,142 @@ const MyCoursesNative: React.FC = () => {
     </Modal>
   );
 
+  // ---------------- Certificate verification (mobile) ----------------
+const [verifyOpen, setVerifyOpen] = useState(false);
+const [verifyValue, setVerifyValue] = useState('');
+
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || '').trim()
+  );
+
+const submitVerify = useCallback(
+  (raw?: string) => {
+    const v = String(raw ?? verifyValue ?? '').trim();
+
+    // If empty -> open the verify screen (no request)
+    if (!v) {
+      setVerifyOpen(false);
+      setVerifyValue('');
+      navigation.navigate('VerifyCertificate' as any, {} as any);
+      return;
+    }
+
+    // UUID -> use id
+    if (isUuid(v)) {
+      setVerifyOpen(false);
+      setVerifyValue('');
+      navigation.navigate('VerifyCertificate' as any, { id: v } as any);
+      return;
+    }
+
+    // ✅ Certificate Number -> use certNo
+    const certNo = v.replace(/\s+/g, '').toUpperCase();
+    setVerifyOpen(false);
+    setVerifyValue('');
+    navigation.navigate('VerifyCertificate' as any, { certNo } as any);
+  },
+  [navigation, verifyValue]
+);
+
+
+  const VerifyCertificateModal = (
+    <Modal
+      visible={verifyOpen}
+      animationType="fade"
+      transparent
+      onRequestClose={() => setVerifyOpen(false)}
+    >
+      <View style={tw`flex-1 bg-black/40 items-center justify-center p-4`}>
+        <View
+          style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-white/10`}
+        >
+          <Text style={tw`text-lg font-bold text-slate-900 dark:text-white`}>
+            Verify Certificate
+          </Text>
+
+          <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1 mb-3`}>
+            Enter a Certificate Number (e.g. AB-12345678) or a Certificate ID (UUID).
+          </Text>
+
+          <TextInput
+            value={verifyValue}
+            onChangeText={setVerifyValue}
+            placeholder="Certificate Number or ID"
+            placeholderTextColor={isDark ? '#9fb3d1' : '#7a8aa0'}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            style={tw`w-full text-sm rounded-lg p-3 bg-[#e7edf4] dark:bg-[#172534] text-slate-900 dark:text-white`}
+          />
+
+          <View style={tw`flex-row justify-end gap-2 mt-4`}>
+            <Pressable
+              onPress={() => {
+                setVerifyOpen(false);
+                setVerifyValue('');
+              }}
+              style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
+            >
+              <Text style={tw`text-sm text-slate-900 dark:text-white`}>Cancel</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => submitVerify()}
+              style={tw`h-10 px-4 rounded-xl bg-[#3d99f5] items-center justify-center`}
+            >
+              <Text style={tw`text-sm text-white font-semibold`}>Verify</Text>
+            </Pressable>
+          </View>
+
+          <Pressable
+            onPress={() => submitVerify('')}
+            style={tw`mt-3 self-start`}
+          >
+            <Text style={tw`text-xs text-[#49739c] dark:text-white/70 underline`}>
+              Open verification page instead
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+
+
+
+ 
   /* ----------------------------- Render ----------------------------- */
   return (
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
       <View style={tw`flex-1`}>
         {/* Header */}
-        <View style={tw`px-4 pt-4 pb-2`}>
+                <View style={tw`px-4 pt-4 pb-2`}>
+         <View style={tw`items-start mb-3`}>
+
+  <Pressable
+    onPress={() => setVerifyOpen(true)}
+    style={tw.style(
+      'flex-row items-center justify-center h-10 px-4 rounded-2xl bg-white dark:bg-[#0f1821]',
+      {
+        borderWidth: 1,
+        borderColor: '#3d99f5',
+      }
+    )}
+  >
+    <View style={tw`flex-row items-center`}>
+      <MaterialIcons name="lock" size={14} color="#3d99f5" />
+      <View style={tw`w-2`} />
+      <Text style={tw`text-[12px] font-semibold text-slate-900 dark:text-white`}>
+        Verify Certificate
+      </Text>
+    </View>
+  </Pressable>
+</View>
+
+
           <Text style={tw`text-[28px] font-extrabold text-[#0d141c] dark:text-white`}>
             My Courses
           </Text>
+
           <Text style={tw`text-[#49739c] dark:text-white/70 text-xs mt-1`}>
             Access your learning library or discover structured courses to level up.
           </Text>
@@ -2249,6 +2378,9 @@ const MyCoursesNative: React.FC = () => {
 
         {/* Filters modal */}
         {FiltersModal}
+
+        {/* Verify certificate modal */}
+        {VerifyCertificateModal}
 
         {/* Review modal */}
         {openReview && (

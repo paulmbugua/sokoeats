@@ -6,12 +6,26 @@ import type {
   AiCourseCertificateEntitlement,
 } from '@mytutorapp/shared/types';
 
+
+const baseOf = (backendUrl: string) => backendUrl.replace(/\/+$/, '');
+
 export async function verifyCertificatePublic(
   backendUrl: string,
   certificateId: string
 ): Promise<VerifyCertificateResponse> {
   const res = await axios.get<VerifyCertificateResponse>(
     `${backendUrl}/api/certificates/verify/${certificateId}`
+  );
+  return res.data;
+}
+
+
+export async function verifyCertificateByNumberPublic(
+  backendUrl: string,
+  certNo: string
+): Promise<VerifyCertificateResponse> {
+  const res = await axios.get<VerifyCertificateResponse>(
+    `${baseOf(backendUrl)}/api/certificates/verify/no/${encodeURIComponent(certNo)}`
   );
   return res.data;
 }

@@ -1,15 +1,24 @@
 // apps/mobile/src/pages/Results.native.tsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Image, Pressable, Linking, Alert } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+/* eslint-disable no-console */
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  Image,
+  Pressable,
+  Linking,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { MainStackParamList } from '../navigation/types';
 
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useAICertificates, useAiCourseEntitlements } from '@mytutorapp/shared/hooks';
-
-// Native payment slide-over/panel
 import PaymentWidget from '../screens/PaymentWidget.native';
+import { useAICertificates, useAiCourseEntitlements } from '@mytutorapp/shared/hooks';
+import { downloadCertificateFile, downloadTranscriptFile } from '@mytutorapp/shared/api';
 
 type GradeLike = {
   scorePct: number;
@@ -18,9 +27,35 @@ type GradeLike = {
 };
 
 type Nav = StackNavigationProp<MainStackParamList>;
+type ResultsRoute = RouteProp<MainStackParamList, 'Results'>;
 
-const CERT_COST_TOKENS = 20;
+/* -------------------------- DEBUG HELPERS -------------------------- */
+const DEBUG_RESULTS = true;
 
+function mkRid(prefix = 'results') {
+  return `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+}
+function safeJson(x: any) {
+  try {
+    return JSON.parse(JSON.stringify(x));
+  } catch {
+    return String(x);
+  }
+}
+function logR(tag: string, payload?: any) {
+  if (!DEBUG_RESULTS) return;
+  console.log(tag, payload ?? '');
+}
+function warnR(tag: string, payload?: any) {
+  if (!DEBUG_RESULTS) return;
+  console.warn(tag, payload ?? '');
+}
+function errR(tag: string, payload?: any) {
+  if (!DEBUG_RESULTS) return;
+  console.error(tag, payload ?? '');
+}
+
+/* -------------------------- SKU helpers -------------------------- */
 function normStr(v: any) {
   return typeof v === 'string' ? v.trim() : '';
 }
@@ -54,30 +89,22 @@ function looksExtendedSku(sku: any) {
     tags.includes('transcript')
   );
 }
-function looksCertificateSku(sku: any) {
-  const title = lower(sku?.title);
-  const kind = lower(sku?.kind ?? sku?.type ?? sku?.purpose ?? sku?.meta?.purpose);
-  return kind.includes('certificate') || title.includes('certificate') || title.includes('cert');
-}
-function pickStandardCertSku(skusList: any[] | undefined | null) {
-  const list = Array.isArray(skusList) ? skusList : [];
-  if (!list.length) return null;
-
-  const certs = list.filter(looksCertificateSku);
-  const pool0 = certs.length ? certs : list;
-
-  const standard = pool0.filter((s) => !looksExtendedSku(s));
-  const pool = standard.length ? standard : pool0;
-
-  const withCode = pool.filter((s) => skuCodeOf(s));
-  if (!withCode.length) return null;
-
-  const exact = withCode.filter((s) => priceTokensOf(s) === CERT_COST_TOKENS);
-  const base = exact.length ? exact : withCode;
-
-  return base.sort((a, b) => priceTokensOf(a) - priceTokensOf(b))[0] || null;
+function looksExtendedMeta(meta: any) {
+  const title = lower(meta?.title || meta?.course_title || meta?.name);
+  const code = lower(meta?.code || meta?.sku_code || meta?.tier_code);
+  const tier = lower(meta?.tier || meta?.plan || meta?.level || meta?.kind);
+  const tags = Array.isArray(meta?.tags) ? meta.tags.map(lower) : [];
+  return (
+    tier.includes('extended') ||
+    title.includes('extended') ||
+    title.includes('transcript') ||
+    /\b(ext|extended|xtra|plus)\b/.test(code) ||
+    tags.includes('extended') ||
+    tags.includes('transcript')
+  );
 }
 
+/* -------------------------- Preview card -------------------------- */
 function WatermarkPreview({
   title,
   pdfUrl,
@@ -92,7 +119,7 @@ function WatermarkPreview({
   docType: 'certificates' | 'transcripts';
 }) {
   const previewUrl = useMemo(() => {
-    // Prefer backend OG preview if we have an id
+    // Prefer backend OG preview if we have an id (brand-aware if your backend supports it)
     if (docId && backendUrl) {
       const base = backendUrl.replace(/\/+$/, '');
       return `${base}/api/${docType}/${encodeURIComponent(docId)}/og`;
@@ -135,54 +162,95 @@ function WatermarkPreview({
 
         {/* Watermark overlay */}
         <View pointerEvents="none" className="absolute inset-0 items-center justify-center">
-          <Text className="text-white/15 font-black tracking-widest text-4xl">PREVIEW</Text>
+          <Text
+            className="text-white/15 font-black tracking-widest text-4xl"
+            style={{ transform: [{ rotate: '12deg' }] }}
+          >
+            PREVIEW
+          </Text>
         </View>
       </View>
 
       <View className="px-3 pb-3">
         <Text className="text-white/60 text-xs">
-          Clean downloads unlock after you purchase the course certificate (20 tokens ≈ USD 20).
+          Downloads are clean (no watermark) after certificate payment.
         </Text>
       </View>
     </View>
   );
 }
 
+type DocLite = { id: string; url: string; download_url?: string; meta?: any } | null;
+
 const ResultsPage: React.FC = () => {
   const navigation = useNavigation<Nav>();
-  const route = useRoute<any>();
+  const route = useRoute<ResultsRoute>();
 
-  const { backendUrl, token, tokens, refreshUserDetails } = useShopContext() as any;
+  const { backendUrl, token, refreshUserDetails } = useShopContext() as any;
 
-  // Prior screen should pass these via route.params
+  // Correlation id for this page instance
+  const ridRef = useRef<string>(mkRid());
+  const rid = ridRef.current;
+
+  // Route params (mobile)
   const courseId: string | undefined = route.params?.courseId;
   const courseTitle: string | undefined = route.params?.courseTitle;
   const grade: GradeLike | undefined = route.params?.grade;
 
-  const passed = Boolean(grade?.passed);
+  // ✅ Library view when no courseId
+  const libraryView = !courseId;
 
   const [paymentOpen, setPaymentOpen] = useState(false);
-  const pendingAutoBuyRef = useRef(false);
 
-  const [status, setStatus] = useState<{
-    paid?: boolean;
-    tier?: 'standard' | 'extended' | string | null;
-    extended?: boolean;
-    canCertificate?: boolean;
-    canTranscript?: boolean;
-    hasCertificate?: boolean;
-    message?: string | null;
-  } | null>(null);
+  const [cert, setCert] = useState<DocLite>(null);
+  const [trans, setTrans] = useState<DocLite>(null);
 
-  const [cert, setCert] = useState<{ id: string; url: string; download_url?: string } | null>(null);
-  const [trans, setTrans] = useState<{ id: string; url: string; download_url?: string } | null>(
-    null
-  );
+  // ✅ New: all docs (always fetched when token exists)
+  const [allCerts, setAllCerts] = useState<any[]>([]);
+  const [allTrans, setAllTrans] = useState<any[]>([]);
+
+  // ✅ Debugging fetch status
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [certErr, setCertErr] = useState<any>(null);
+  const [transErr, setTransErr] = useState<any>(null);
+
+  // Transcript generation state (library button)
+  const [genTransState, setGenTransState] = useState<{
+    courseId?: string;
+    loading: boolean;
+    error?: any;
+    last?: any;
+  }>({ loading: false });
+
+  const genOnceRef = useRef<Record<string, boolean>>({});
+
+  // Mount log
+  useEffect(() => {
+    logR('[Results][mount]', {
+      rid,
+      backendUrl,
+      hasToken: Boolean(token),
+      tokenLen: token ? String(token).length : 0,
+      courseId,
+      courseTitle,
+      grade: grade
+        ? { scorePct: grade.scorePct, passMark: grade.passMark, passed: grade.passed }
+        : null,
+      libraryView,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const api = useCallback(
     async function <T = any>(path: string, init?: RequestInit): Promise<T> {
       const base = String(backendUrl || '').replace(/\/+$/, '');
-      const r = await fetch(`${base}${path}`, {
+      const url = `${base}${path}`;
+      const method = init?.method || 'GET';
+      const started = Date.now();
+
+      logR('[Results][api] ->', { rid, method, path, hasToken: Boolean(token) });
+
+      const r = await fetch(url, {
         ...init,
         headers: {
           ...(init?.headers || {}),
@@ -190,8 +258,32 @@ const ResultsPage: React.FC = () => {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
-      if (r.status === 204) return null as any;
-      const data = await r.json().catch(() => ({}));
+
+      const ms = Date.now() - started;
+
+      if (r.status === 204) {
+        logR('[Results][api] <-', { rid, path, status: r.status, ok: r.ok, ms, note: '204 no content' });
+        return null as any;
+      }
+
+      const raw = await r.text();
+      let data: any = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = { __parseError: true, raw: raw?.slice(0, 500) };
+      }
+
+      logR('[Results][api] <-', {
+        rid,
+        path,
+        status: r.status,
+        ok: r.ok,
+        ms,
+        shape: Array.isArray(data) ? `array(len=${data.length})` : typeof data,
+        sample: Array.isArray(data) ? data.slice(0, 1) : data,
+      });
+
       if (!r.ok) {
         const e: any = new Error((data as any)?.error || (data as any)?.message || `Request failed: ${r.status}`);
         e.status = r.status;
@@ -200,156 +292,8 @@ const ResultsPage: React.FC = () => {
       }
       return data as T;
     },
-    [backendUrl, token]
+    [backendUrl, token, rid]
   );
-
-  const reloadStatus = useCallback(async () => {
-    if (!courseId) return;
-    try {
-      const s = await api<any>(`/api/certificates/status?courseId=${encodeURIComponent(courseId)}`);
-      setStatus(s || null);
-    } catch {
-      setStatus(null);
-    }
-  }, [api, courseId]);
-
-  const hasPaid = useMemo(() => {
-    const tier = typeof status?.tier === 'string' ? status?.tier.toLowerCase() : '';
-    const extended =
-      status?.extended === true || status?.canTranscript === true || tier === 'extended';
-    const anyPaid =
-      extended ||
-      status?.paid === true ||
-      status?.hasCertificate === true ||
-      status?.canCertificate === true ||
-      tier === 'standard';
-    return Boolean(anyPaid);
-  }, [status]);
-
-  // Tokens-first hook (SKUs + claim debit + optional generate)
-  const {
-    skus,
-    loading: aiCertLoading,
-    error: aiCertError,
-    message: aiCertMsg,
-    claim,
-    generate,
-  } = useAICertificates({ backendUrl, token: token || '', courseId });
-
-  const skusReady = useMemo(
-    () => Array.isArray(skus) && skus.length > 0 && !aiCertLoading && !aiCertError,
-    [skus, aiCertLoading, aiCertError]
-  );
-
-  const buyStandard = useCallback(async () => {
-    if (!token) {
-      navigation.navigate('Login' as any, {
-        reason: 'buy_certificate',
-        message: 'Please sign in to buy your certificate.',
-      } as any);
-      return;
-    }
-
-    // If wallet is short → open PaymentWidget and auto-debit once topped up
-    const bal = Number(tokens) || 0;
-    if (bal < CERT_COST_TOKENS) {
-      pendingAutoBuyRef.current = true;
-      setPaymentOpen(true);
-      return;
-    }
-
-    if (!skusReady) {
-      Alert.alert('Loading', 'Loading certificate options. Please try again in a moment.');
-      return;
-    }
-
-    const sku = pickStandardCertSku(skus);
-    const code = sku ? skuCodeOf(sku) : '';
-    if (!code) {
-      Alert.alert('Certificate', 'Certificate SKU not available. Please refresh and try again.');
-      return;
-    }
-
-    try {
-      await claim(code); // debits tokens + grants entitlement
-      try {
-        await refreshUserDetails?.();
-      } catch {}
-      await reloadStatus();
-
-      Alert.alert(
-        'Unlocked',
-        '✅ Course unlocked (20 tokens ≈ USD 20). Narration is unlocked. Pass the quiz (≥ 70%) to generate/download your certificate.'
-      );
-    } catch (e: any) {
-      const msg = String(e?.message || '');
-      if (e?.status === 402 || /insufficient|not enough|tokens/i.test(msg)) {
-        pendingAutoBuyRef.current = true;
-        setPaymentOpen(true);
-        return;
-      }
-      Alert.alert('Certificate', msg || 'Could not complete purchase.');
-    }
-  }, [
-    token,
-    tokens,
-    skusReady,
-    skus,
-    claim,
-    refreshUserDetails,
-    reloadStatus,
-    navigation,
-  ]);
-
-  // Auto-debit after top-up (PaymentWidget closed + wallet sufficient)
-  const tryAutoBuyIfNeeded = useCallback(async () => {
-    if (!pendingAutoBuyRef.current) return;
-    const bal = Number(tokens) || 0;
-    if (bal < CERT_COST_TOKENS) return;
-    if (!skusReady) return;
-
-    pendingAutoBuyRef.current = false;
-    await buyStandard();
-  }, [tokens, skusReady, buyStandard]);
-
-  const tryFetchDocs = useCallback(async () => {
-    if (!courseId) return;
-    if (!passed) return;
-
-    // Generate endpoints may return existing docs if already generated.
-    try {
-      const c = await api<any>(`/api/certificates/generate`, {
-        method: 'POST',
-        body: JSON.stringify({ courseId }),
-      }).catch((e) => {
-        // 402 = needs purchase/unlock in some flows
-        // 409/403 PASS_REQUIRED = not passed (shouldn’t happen if passed)
-        if (e?.status === 402 || e?.status === 409 || e?.status === 403) return null;
-        return null;
-      });
-      if (c?.id) setCert(c);
-    } catch {}
-
-    try {
-      const t = await api<any>(`/api/transcripts/generate`, {
-        method: 'POST',
-        body: JSON.stringify({ courseId }),
-      }).catch((e) => {
-        if (e?.status === 402) return null;
-        return null;
-      });
-      if (t?.id) setTrans(t);
-    } catch {}
-  }, [api, courseId, passed]);
-
-  // Initial load: status + (if passed) docs
-  useEffect(() => {
-    (async () => {
-      if (!courseId) return;
-      await reloadStatus();
-      await tryFetchDocs();
-    })();
-  }, [courseId, reloadStatus, tryFetchDocs]);
 
   const openExternal = useCallback((url?: string | null) => {
     if (!url) {
@@ -359,300 +303,837 @@ const ResultsPage: React.FC = () => {
     Linking.openURL(url).catch(() => {});
   }, []);
 
-  // ✅ safer default to avoid crashes if items is undefined
+  const transByCourse = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const t of allTrans || []) m.set(String(t.course_id), t);
+    return m;
+  }, [allTrans]);
+
+  const generateTranscriptForCourse = useCallback(
+    async (cid: string, source: string) => {
+      if (!token) {
+        warnR('[Results][genTrans] no token', { rid, cid, source });
+        Alert.alert('Sign in required', 'Please sign in to generate transcripts.');
+        return;
+      }
+      if (!cid) {
+        warnR('[Results][genTrans] missing courseId', { rid, cid, source });
+        return;
+      }
+
+      const op = mkRid('genTrans');
+      setGenTransState({ courseId: cid, loading: true, error: null, last: null });
+      logR('[Results][genTrans] enter', { rid, op, cid, source });
+
+      try {
+        const resp = await api<any>(`/api/transcripts/generate`, {
+          method: 'POST',
+          body: JSON.stringify({ courseId: cid }),
+        });
+
+        logR('[Results][genTrans] ok', { rid, op, resp: safeJson(resp) });
+
+        // refresh transcript list
+        const ts = await api<any>(`/api/transcripts/me`);
+        const arr = Array.isArray(ts) ? ts : [];
+        setAllTrans(arr);
+
+        // if viewing this course, set the selected transcript
+        if (resp?.id && String(cid) === String(courseId)) {
+          const base = String(backendUrl || '').replace(/\/+$/, '');
+          setTrans({
+            id: String(resp.id),
+            url: resp.url,
+            download_url: resp.download_url || `${base}/api/transcripts/${resp.id}/download`,
+            meta: resp,
+          });
+        }
+
+        setGenTransState({ courseId: cid, loading: false, error: null, last: resp });
+
+        // If server returned direct download_url, open it (native equivalent of web redirect)
+        if (resp?.download_url) {
+          openExternal(resp.download_url);
+        }
+      } catch (e: any) {
+        const payload = { status: e?.status, msg: e?.message, data: safeJson(e?.data) };
+        errR('[Results][genTrans] fail', { rid, op, cid, source, ...payload });
+
+        if (e?.status === 402 && e?.data?.error === 'EXTENDED_REQUIRED') {
+          Alert.alert(
+            'Extended required',
+            e?.data?.message || 'Transcript requires Extended certificate.'
+          );
+        } else if (e?.status === 402) {
+          Alert.alert('Payment required', e?.data?.message || e?.message || 'Payment required.');
+          setPaymentOpen(true);
+        } else {
+          Alert.alert('Transcript', e?.data?.message || e?.message || 'Could not generate transcript.');
+        }
+
+        setGenTransState({ courseId: cid, loading: false, error: payload, last: null });
+      }
+    },
+    [api, rid, token, backendUrl, courseId, openExternal]
+  );
+
+  // ✅ Fetch all certificates + transcripts (always available on this page)
+  useEffect(() => {
+    let abort = false;
+
+    (async () => {
+      if (!token) {
+        warnR('[Results][docs] skip: no token', { rid });
+        setAllCerts([]);
+        setAllTrans([]);
+        return;
+      }
+
+      setDocsLoading(true);
+      setCertErr(null);
+      setTransErr(null);
+      logR('[Results][docs] fetch start', { rid });
+
+      try {
+        const cs = await api<any>(`/api/certificates/me`);
+        const arr = Array.isArray(cs) ? cs : [];
+        if (!abort) setAllCerts(arr);
+        logR('[Results][docs] certs ok', {
+          rid,
+          count: arr.length,
+          ids: arr.slice(0, 5).map((x: any) => x?.id),
+          sample: arr.slice(0, 1),
+        });
+      } catch (e: any) {
+        if (!abort) setAllCerts([]);
+        if (!abort) setCertErr({ status: e?.status, msg: e?.message, data: e?.data });
+        warnR('[Results][docs] certs fail', { rid, status: e?.status, msg: e?.message, data: safeJson(e?.data) });
+      }
+
+      try {
+        const ts = await api<any>(`/api/transcripts/me`);
+        const arr = Array.isArray(ts) ? ts : [];
+        if (!abort) setAllTrans(arr);
+        logR('[Results][docs] transcripts ok', {
+          rid,
+          count: arr.length,
+          ids: arr.slice(0, 5).map((x: any) => x?.id),
+          sample: arr.slice(0, 1),
+        });
+      } catch (e: any) {
+        if (!abort) setAllTrans([]);
+        if (!abort) setTransErr({ status: e?.status, msg: e?.message, data: e?.data });
+        warnR('[Results][docs] transcripts fail', { rid, status: e?.status, msg: e?.message, data: safeJson(e?.data) });
+      }
+
+      if (!abort) {
+        setDocsLoading(false);
+        logR('[Results][docs] fetch done', { rid });
+      }
+    })();
+
+    return () => {
+      abort = true;
+      logR('[Results][docs] abort', { rid });
+    };
+  }, [api, token, rid]);
+
+  // ✅ When courseId changes, pick matching cert/trans from the "all docs" lists
+  useEffect(() => {
+    logR('[Results][pick] start', {
+      rid,
+      courseId,
+      allCertsLen: allCerts.length,
+      allTransLen: allTrans.length,
+    });
+
+    if (!courseId) {
+      setCert(null);
+      setTrans(null);
+      logR('[Results][pick] no courseId -> reset', { rid });
+      return;
+    }
+
+    const base = String(backendUrl || '').replace(/\/+$/, '');
+    const cRaw = (allCerts || []).find((x) => String(x.course_id) === String(courseId));
+    const tRaw = (allTrans || []).find((x) => String(x.course_id) === String(courseId));
+
+    const certDl = cRaw?.id ? `${base}/api/certificates/${cRaw.id}/download` : undefined;
+    const transDl = tRaw?.id ? `${base}/api/transcripts/${tRaw.id}/download` : undefined;
+
+    const nextCert = cRaw
+      ? { id: String(cRaw.id), url: cRaw.url, download_url: cRaw.download_url || certDl, meta: cRaw }
+      : null;
+
+    const nextTrans = tRaw
+      ? { id: String(tRaw.id), url: tRaw.url, download_url: tRaw.download_url || transDl, meta: tRaw }
+      : null;
+
+    setCert(nextCert);
+    setTrans(nextTrans);
+
+    logR('[Results][pick] chosen', {
+      rid,
+      courseId,
+      certFound: Boolean(nextCert?.id),
+      transFound: Boolean(nextTrans?.id),
+      certId: nextCert?.id,
+      transId: nextTrans?.id,
+    });
+  }, [courseId, allCerts, allTrans, backendUrl, rid]);
+
+  // ✅ Auto-attempt transcript generation if cert looks Extended (once per course)
+  useEffect(() => {
+    if (!courseId) return;
+    if (trans?.id) return;
+    if (!cert?.id) {
+      logR('[Results][autoGen] skip: no cert selected', { rid, courseId });
+      return;
+    }
+
+    const likelyExtended = looksExtendedMeta(cert?.meta || cert);
+    logR('[Results][autoGen] check', {
+      rid,
+      courseId,
+      certId: cert.id,
+      likelyExtended,
+    });
+
+    if (!likelyExtended) return;
+    if (genOnceRef.current[String(courseId)]) {
+      logR('[Results][autoGen] already attempted', { rid, courseId });
+      return;
+    }
+
+    genOnceRef.current[String(courseId)] = true;
+    generateTranscriptForCourse(String(courseId), 'auto_course_view');
+  }, [courseId, cert?.id, trans?.id, rid, generateTranscriptForCourse, cert]);
+
+  // ✅ If user already has docs, treat as passed so UI doesn’t lock when opened via library
+  const passed = Boolean(grade?.passed || cert?.id || trans?.id);
+
+  // 🔗 Tokens-first hook
+  const {
+    skus,
+    loading: aiCertLoading,
+    error: aiCertError,
+    message: aiCertMsg,
+    claim,
+    generate,
+  } = useAICertificates({ backendUrl, token: token || '', courseId });
+
   const { items: aiCourses = [] } = useAiCourseEntitlements({
     backendUrl,
     token: token || '',
   });
 
+  // Log exact reason for "No transcripts yet" (library view)
+  useEffect(() => {
+    if (!libraryView) return;
+
+    const reason =
+      !token
+        ? 'no_token'
+        : docsLoading
+        ? 'loading'
+        : transErr
+        ? `error:${transErr?.status || 'unknown'}`
+        : Array.isArray(allTrans) && allTrans.length === 0
+        ? 'empty_array'
+        : 'has_items';
+
+    logR('[Results][library] transcripts_state', {
+      rid,
+      token: Boolean(token),
+      docsLoading,
+      transErr,
+      allTransLen: allTrans?.length,
+      reason,
+      sample: (allTrans || []).slice(0, 1),
+    });
+  }, [libraryView, token, docsLoading, transErr, allTrans, rid]);
+
   return (
     <View className="flex-1 bg-[#0b1220]">
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }} className="px-3 py-4">
         <View className="max-w-[1100px] w-full self-center space-y-4">
-          <View className="flex-row items-start justify-between">
-            <View>
-              <Text className="text-white font-bold text-xl">Results & Documents</Text>
+          {/* Header */}
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1">
+              <Text className="text-white font-bold text-xl">
+                {libraryView ? 'My Documents' : 'Results & Documents'}
+              </Text>
               <Text className="text-white/70 text-sm">
-                {courseTitle ? <Text className="font-medium">{courseTitle}</Text> : 'Course'} • Your
-                quiz results & downloads
+                {libraryView
+                  ? 'Your AI certificates & transcripts'
+                  : `${courseTitle ? courseTitle : 'Course'} • Your quiz results & downloads`}
               </Text>
             </View>
+
             <Pressable
-              onPress={() => navigation.goBack()}
+              onPress={() => {
+                if (libraryView) navigation.goBack();
+                else navigation.navigate('Results' as any, {} as any);
+              }}
               className="rounded-xl px-3 py-2 bg-white/10"
             >
-              <Text className="text-white text-sm">Back</Text>
+              <Text className="text-white text-sm">{libraryView ? 'Back' : 'All documents'}</Text>
             </Pressable>
           </View>
 
-          {/* Score card */}
-          <View
-            className={`rounded-2xl p-4 ${
-              passed ? 'bg-emerald-500/10' : 'bg-red-500/10'
-            } ${passed ? 'ring-emerald-500/40' : 'ring-red-500/40'} ring-1`}
-          >
-            <Text className="text-white/80 text-sm">Score</Text>
-            <Text className="text-2xl font-semibold text-white">
-              {grade ? `${grade.scorePct}%` : '—'}
-              <Text className="text-white/60 text-sm"> (Pass mark {grade?.passMark ?? 70}%)</Text>
-            </Text>
-            <Text className="mt-1 text-white/70">
-              {passed
-                ? 'Nice! You passed. You can generate your certificate now.'
-                : 'You didn’t pass yet. You can still unlock the course (20 tokens) to keep learning, then retry the quiz.'}
-            </Text>
-          </View>
-
-          {/* Purchase / Unlock (tokens-first) */}
-          {!hasPaid ? (
-            <View className="rounded-2xl p-4 border border-amber-500/30 bg-amber-500/10">
-              <Text className="text-amber-100 font-semibold">Unlock course</Text>
-              <Text className="text-white/80 text-sm mt-1">
-                Buy the course certificate for <Text className="font-semibold">20 tokens</Text> (≈
-                USD 20). Tokens are deducted from your balance. If you don’t have enough, you’ll be
-                prompted to buy tokens.
-              </Text>
-
-              <View className="mt-3 flex-row flex-wrap gap-2 items-center">
-                <Pressable
-                  onPress={buyStandard}
-                  className={`h-10 px-4 rounded-lg justify-center ${
-                    aiCertLoading ? 'bg-indigo-600/60' : 'bg-indigo-600'
-                  }`}
-                >
-                  <Text className="text-white text-sm font-semibold">
-                    {aiCertLoading ? 'Loading…' : 'Buy certificate (20 tokens)'}
+          {/* ✅ Library view */}
+          {libraryView ? (
+            <View className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">
+              {!token ? (
+                <View className="rounded-xl bg-black/20 ring-1 ring-white/10 p-3">
+                  <Text className="text-white font-semibold">Sign in required</Text>
+                  <Text className="text-white/70 text-sm mt-1">
+                    Please sign in to view your certificates and transcripts.
                   </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={async () => {
-                    await reloadStatus();
-                    await tryFetchDocs();
-                  }}
-                  className="h-10 px-4 rounded-lg justify-center bg-white/10 ring-1 ring-white/15"
-                >
-                  <Text className="text-white text-sm font-semibold">Refresh</Text>
-                </Pressable>
-              </View>
-
-              {aiCertError ? <Text className="text-red-300 text-xs mt-2">{aiCertError}</Text> : null}
-              {aiCertMsg ? <Text className="text-emerald-300 text-xs mt-1">{aiCertMsg}</Text> : null}
-
-              {/* Optional SKU list (debug-friendly, safe) */}
-              {skusReady ? (
-                <View className="mt-3 gap-2">
-                  {(skus || [])
-                    .filter(looksCertificateSku)
-                    .slice(0, 3)
-                    .map((sku: any) => (
-                      <View
-                        key={skuCodeOf(sku) || sku?.title}
-                        className="flex-row items-center justify-between rounded-lg p-2 bg-white/5 ring-1 ring-white/10"
-                      >
-                        <View className="flex-1 mr-2">
-                          <Text className="text-white font-medium" numberOfLines={1}>
-                            {sku?.title || 'Certificate'}
-                          </Text>
-                          <Text className="text-white/60 text-[11px]" numberOfLines={1}>
-                            {skuCodeOf(sku)}
-                          </Text>
-                        </View>
-                        <Text className="text-white font-semibold text-sm">
-                          {priceTokensOf(sku)} Tokens
-                        </Text>
-                      </View>
-                    ))}
-                </View>
-              ) : null}
-            </View>
-          ) : (
-            <View className="rounded-2xl p-4 border border-emerald-500/30 bg-emerald-500/10">
-              <Text className="text-emerald-100 font-semibold">Unlocked</Text>
-              <Text className="text-white/80 text-sm mt-1">
-                ✅ Course unlocked. {passed ? 'You can generate/download your certificate now.' : 'Go back and continue learning, then retry the quiz.'}
-              </Text>
-
-              <View className="mt-3 flex-row flex-wrap gap-2">
-                <Pressable
-                  onPress={async () => {
-                    await reloadStatus();
-                    await tryFetchDocs();
-                  }}
-                  className="h-10 px-4 rounded-lg justify-center bg-white/10 ring-1 ring-white/15"
-                >
-                  <Text className="text-white text-sm font-semibold">Refresh documents</Text>
-                </Pressable>
-              </View>
-            </View>
-          )}
-
-          {/* Previews */}
-          <View className="gap-4">
-            <WatermarkPreview
-              title="Certificate"
-              pdfUrl={cert?.url || null}
-              docId={cert?.id || null}
-              backendUrl={backendUrl}
-              docType="certificates"
-            />
-            <WatermarkPreview
-              title="Transcript"
-              pdfUrl={trans?.url || null}
-              docId={trans?.id || null}
-              backendUrl={backendUrl}
-              docType="transcripts"
-            />
-          </View>
-
-          {/* Purchased AI courses */}
-          {aiCourses.length > 0 && (
-            <View className="gap-3">
-              <Text className="text-white font-semibold text-lg">Purchased AI courses</Text>
-              {aiCourses.map((item: any) => {
-                const courseIdForNav = item.courseId || item.course_id;
-                const statusText = item.completion?.passed
-                  ? 'Completed'
-                  : item.completion?.attempted
-                  ? 'In progress'
-                  : 'Not started';
-
-                return (
-                  <View
-                    key={String(item.course_id || courseIdForNav)}
-                    className="border border-white/10 bg-white/5 rounded-xl p-3 space-y-2"
-                  >
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-1 mr-2">
-                        <Text className="text-white font-semibold" numberOfLines={1}>
-                          {item.title}
-                        </Text>
-                        <Text className="text-white/60 text-xs">
-                          Lessons used {item.lessons_used}/{item.lesson_cap || item.max_lessons}
-                        </Text>
-                        {item.tier ? (
-                          <Text className="text-white/60 text-[11px]">Tier: {item.tier}</Text>
-                        ) : null}
-                      </View>
-                      <Text className="text-white/70 text-xs">{statusText}</Text>
-                    </View>
-
-                    <View className="flex-row gap-2">
-                      {!item.completion?.passed ? (
-                        <Pressable
-                          onPress={() => navigation.navigate('CourseDetails', { courseId: courseIdForNav } as any)}
-                          className="px-3 py-2 rounded-lg bg-white/10"
-                        >
-                          <Text className="text-white text-sm">Continue course</Text>
-                        </Pressable>
-                      ) : (
-                        <Pressable
-                          onPress={() =>
-                            navigation.navigate('Results', {
-                              courseId: courseIdForNav,
-                              courseTitle: item.title,
-                              grade: item.completion,
-                            } as any)
-                          }
-                          className="px-3 py-2 rounded-lg bg-emerald-500/20"
-                        >
-                          <Text className="text-emerald-100 text-sm">View certificate</Text>
-                        </Pressable>
-                      )}
-                    </View>
+                  <View className="mt-3 flex-row gap-2">
+                    <Pressable
+                      onPress={() => navigation.navigate('Login' as any, { reason: 'docs' } as any)}
+                      className="h-10 px-4 rounded-lg justify-center bg-indigo-600"
+                    >
+                      <Text className="text-white text-sm font-semibold">Sign in</Text>
+                    </Pressable>
                   </View>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Downloads */}
-          <View className="rounded-2xl p-4 border border-white/10 bg-white/5">
-            <Text className="text-white font-semibold mb-2">Downloads</Text>
-            <Text className="text-white/70 text-sm mb-3">
-              {passed ? (
-                <>
-                  Generate your certificate now. If your course is unlocked, downloads are clean (no watermark).
-                </>
+                </View>
               ) : (
                 <>
-                  Pass the quiz (≥ {grade?.passMark ?? 70}%) to generate your certificate. You can still unlock the course
-                  now (20 tokens) to continue learning with narration.
+                  {docsLoading ? (
+                    <View className="flex-row items-center gap-2">
+                      <ActivityIndicator />
+                      <Text className="text-white/70 text-sm">Loading documents…</Text>
+                    </View>
+                  ) : null}
+
+                  {/* Certificates */}
+                  <View className="space-y-2">
+                    <Text className="text-white font-semibold">My Certificates</Text>
+                    {allCerts.length === 0 ? (
+                      <Text className="text-white/60 text-sm">No certificates yet.</Text>
+                    ) : (
+                      <View className="space-y-2">
+                        {(allCerts || []).map((c: any) => {
+                          const hasTranscript = Boolean(transByCourse.get(String(c.course_id)));
+                          const cid = String(c.course_id);
+                          const title = c.course_title || c.title || cid || 'Course';
+
+                          return (
+                            <View
+                              key={String(c.id)}
+                              className="rounded-xl bg-black/20 ring-1 ring-white/10 p-3 space-y-2"
+                            >
+                              <Text className="text-white font-semibold" numberOfLines={1}>
+                                {title}
+                              </Text>
+                              <Text className="text-white/60 text-xs">Certificate</Text>
+
+                              <View className="flex-row flex-wrap gap-2">
+                                <Pressable
+                                  onPress={() =>
+                                    navigation.navigate('Results' as any, {
+                                      courseId: cid,
+                                      courseTitle: title,
+                                    } as any)
+                                  }
+                                  className="px-3 py-2 rounded-lg bg-white/10"
+                                >
+                                  <Text className="text-white text-sm">Open</Text>
+                                </Pressable>
+
+                                <Pressable
+                                  onPress={async () => {
+                                    try {
+                                      await downloadCertificateFile(backendUrl, token || '', String(c.id));
+                                    } catch (e: any) {
+                                      warnR('[Results][lib][download cert] fail', { rid, msg: e?.message });
+                                      setPaymentOpen(true);
+                                    }
+                                  }}
+                                  className="px-3 py-2 rounded-lg bg-white/10"
+                                >
+                                  <Text className="text-white text-sm">Download</Text>
+                                </Pressable>
+
+                                <Pressable
+                                  onPress={() => generateTranscriptForCourse(cid, 'library_button')}
+                                  disabled={hasTranscript || genTransState.loading}
+                                  className={`px-3 py-2 rounded-lg ${
+                                    hasTranscript
+                                      ? 'bg-white/5 ring-1 ring-white/10'
+                                      : 'bg-white/10'
+                                  }`}
+                                >
+                                  <Text className="text-white text-sm">
+                                    {hasTranscript
+                                      ? 'Transcript Ready'
+                                      : genTransState.loading
+                                      ? 'Generating…'
+                                      : 'Generate Transcript'}
+                                  </Text>
+                                </Pressable>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Transcripts */}
+                  <View className="space-y-2">
+                    <Text className="text-white font-semibold">My Transcripts</Text>
+                    {allTrans.length === 0 ? (
+                      <Text className="text-white/60 text-sm">No transcripts yet.</Text>
+                    ) : (
+                      <View className="space-y-2">
+                        {(allTrans || []).map((t: any) => {
+                          const cid = String(t.course_id);
+                          const title = t.course_title || t.title || cid || 'Course';
+                          return (
+                            <View
+                              key={String(t.id)}
+                              className="rounded-xl bg-black/20 ring-1 ring-white/10 p-3 space-y-2"
+                            >
+                              <Text className="text-white font-semibold" numberOfLines={1}>
+                                {title}
+                              </Text>
+                              <Text className="text-white/60 text-xs">Transcript</Text>
+
+                              <View className="flex-row flex-wrap gap-2">
+                                <Pressable
+                                  onPress={() =>
+                                    navigation.navigate('Results' as any, {
+                                      courseId: cid,
+                                      courseTitle: title,
+                                    } as any)
+                                  }
+                                  className="px-3 py-2 rounded-lg bg-white/10"
+                                >
+                                  <Text className="text-white text-sm">Open</Text>
+                                </Pressable>
+
+                                <Pressable
+                                  onPress={async () => {
+                                    try {
+                                      await downloadTranscriptFile(backendUrl, token || '', String(t.id));
+                                    } catch (e: any) {
+                                      warnR('[Results][lib][download trans] fail', { rid, msg: e?.message });
+                                      setPaymentOpen(true);
+                                    }
+                                  }}
+                                  className="px-3 py-2 rounded-lg bg-white/10"
+                                >
+                                  <Text className="text-white text-sm">Download</Text>
+                                </Pressable>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+
+                  {DEBUG_RESULTS ? (
+                    <View className="pt-2 border-t border-white/10">
+                      <Text className="text-[11px] text-white/40">
+                        debug rid={rid} loading={String(docsLoading)} certErr={certErr?.status || '—'} transErr={transErr?.status || '—'}
+                      </Text>
+                    </View>
+                  ) : null}
                 </>
               )}
-            </Text>
-
-            <View className="flex-row flex-wrap gap-2">
-              <Pressable
-                onPress={async () => {
-                  if (!passed) {
-                    Alert.alert('Certificate', 'Pass the quiz (≥ 70%) to generate your certificate.');
-                    return;
-                  }
-                  try {
-                    // If the hook generate uses new routes internally, prefer it.
-                    const doc = await generate?.().catch(() => null);
-                    if (doc?.id) {
-                      setCert({ id: doc.id, url: doc.url, download_url: (doc as any).download_url });
-                      return;
-                    }
-                  } catch {}
-                  // Fallback to server generate
-                  await tryFetchDocs();
-                }}
-                className={`h-10 px-4 rounded-lg justify-center ${
-                  passed ? 'bg-emerald-600' : 'bg-emerald-600/40'
-                }`}
-              >
-                <Text className="text-white text-sm font-semibold">Generate certificate</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => openExternal(cert?.download_url)}
-                className={`h-10 px-4 rounded-lg justify-center ${
-                  cert?.download_url ? 'bg-white/10' : 'bg-white/5'
-                } ring-1 ${cert?.download_url ? 'ring-white/20' : 'ring-white/10'}`}
-              >
-                <Text className="text-white text-sm font-semibold">Download Certificate (PDF)</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => openExternal(trans?.download_url)}
-                className={`h-10 px-4 rounded-lg justify-center ${
-                  trans?.download_url ? 'bg-white/10' : 'bg-white/5'
-                } ring-1 ${trans?.download_url ? 'ring-white/20' : 'ring-white/10'}`}
-              >
-                <Text className="text-white text-sm font-semibold">Download Transcript (PDF)</Text>
-              </Pressable>
             </View>
+          ) : null}
 
-            {!passed ? (
-              <Text className="mt-3 text-[12px] text-white/60">
-                Tip: Revisit the lesson and retry the quiz to reach the pass mark.
-              </Text>
-            ) : null}
-          </View>
+          {/* ✅ Course-specific view */}
+          {!libraryView ? (
+            <>
+              {/* Score card */}
+              <View
+                className={`rounded-2xl p-4 ${
+                  passed ? 'bg-emerald-500/10' : 'bg-red-500/10'
+                } ${passed ? 'ring-emerald-500/40' : 'ring-red-500/40'} ring-1`}
+              >
+                <Text className="text-white/80 text-sm">Score</Text>
+                <Text className="text-2xl font-semibold text-white">
+                  {grade ? `${grade.scorePct}%` : '—'}
+                  <Text className="text-white/60 text-sm"> (Pass mark {grade?.passMark ?? 70}%)</Text>
+                </Text>
+                <Text className="mt-1 text-white/70">
+                  {passed
+                    ? 'You have documents available. You can download them anytime.'
+                    : 'Review the lesson and try again to pass.'}
+                </Text>
+              </View>
+
+              {/* Previews */}
+              <View className="gap-4">
+                <WatermarkPreview
+                  title="Certificate"
+                  pdfUrl={cert?.url || null}
+                  docId={cert?.id || null}
+                  backendUrl={backendUrl}
+                  docType="certificates"
+                />
+                <WatermarkPreview
+                  title="Transcript"
+                  pdfUrl={trans?.url || null}
+                  docId={trans?.id || null}
+                  backendUrl={backendUrl}
+                  docType="transcripts"
+                />
+              </View>
+
+              {/* Purchased AI courses (same idea as web) */}
+              {aiCourses.length > 0 ? (
+                <View className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                  <View>
+                    <Text className="text-white font-semibold">Purchased AI courses</Text>
+                    <Text className="text-white/60 text-sm">
+                      Certificate purchases unlock up to 60 lessons
+                    </Text>
+                  </View>
+
+                  <View className="gap-3">
+                    {aiCourses.map((item: any) => {
+                      const statusText = item.completion?.passed
+                        ? 'Completed'
+                        : item.completion?.attempted
+                        ? 'In progress'
+                        : 'Not started';
+
+                      const cid = String(item.courseId || item.course_id);
+                      return (
+                        <View
+                          key={String(item.course_id || cid)}
+                          className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-2"
+                        >
+                          <View className="flex-row items-center justify-between gap-2">
+                            <View className="flex-1 mr-2">
+                              <Text className="text-white font-semibold" numberOfLines={1}>
+                                {item.title}
+                              </Text>
+                              <Text className="text-white/60 text-xs">
+                                Lessons used {item.lessons_used}/{item.max_lessons || item.lesson_cap}
+                              </Text>
+                            </View>
+                            <View className="px-2 py-1 rounded-full bg-white/10">
+                              <Text className="text-white/80 text-xs">{statusText}</Text>
+                            </View>
+                          </View>
+
+                          <View className="flex-row flex-wrap gap-2">
+                            {!item.completion?.passed ? (
+                              <Pressable
+                                onPress={() =>
+                                  navigation.navigate('CourseDetails' as any, { courseId: cid } as any)
+                                }
+                                className="px-3 py-2 rounded-lg bg-white/10"
+                              >
+                                <Text className="text-white text-sm">Continue course</Text>
+                              </Pressable>
+                            ) : (
+                              <Pressable
+                                onPress={() =>
+                                  navigation.navigate('Results' as any, {
+                                    courseId: cid,
+                                    courseTitle: item.title,
+                                    grade: item.completion,
+                                  } as any)
+                                }
+                                className="px-3 py-2 rounded-lg bg-emerald-500/20"
+                              >
+                                <Text className="text-emerald-100 text-sm">View certificate</Text>
+                              </Pressable>
+                            )}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Actions */}
+              <View className="rounded-2xl p-4 ring-1 ring-white/10 bg-white/5">
+                <Text className="text-white font-semibold mb-2">Downloads</Text>
+                <Text className="text-white/70 text-sm mb-3">
+                  Pay the certificate fee once to download both the{' '}
+                  <Text className="font-medium">Certificate</Text> and{' '}
+                  <Text className="font-medium">Transcript</Text> without watermark.
+                </Text>
+
+                {/* Tokens-first block */}
+                <View className="mb-4 p-3 rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/30">
+                  <Text className="text-white font-medium text-sm">Claim with Tokens</Text>
+                  <Text className="text-white/70 text-xs mb-2">
+                    No processor fees for AI certificates.
+                  </Text>
+
+                  {aiCertLoading ? <Text className="text-xs text-white/60">Loading…</Text> : null}
+                  {aiCertError ? <Text className="text-xs text-red-300">{aiCertError}</Text> : null}
+                  {aiCertMsg ? <Text className="text-xs text-emerald-300">{aiCertMsg}</Text> : null}
+
+                  <View className="gap-2">
+                    {(Array.isArray(skus) ? skus : []).map((sku: any) => {
+                      const code = skuCodeOf(sku);
+                      const price = priceTokensOf(sku);
+                      return (
+                        <View
+                          key={code || sku?.title || String(Math.random())}
+                          className="flex-row items-center justify-between rounded-lg ring-1 ring-white/15 p-2 bg-white/5"
+                        >
+                          <View className="flex-1 mr-2">
+                            <Text className="text-sm font-medium text-white" numberOfLines={1}>
+                              {sku?.title || 'Certificate'}
+                            </Text>
+                            <Text className="text-[11px] text-white/60" numberOfLines={1}>
+                              {code || '—'}
+                            </Text>
+                          </View>
+
+                          <View className="flex-row items-center gap-2">
+                            <Text className="text-sm font-semibold text-white">{price} Tokens</Text>
+
+                            <Pressable
+                              disabled={!passed}
+                              onPress={async () => {
+                                if (!token || !courseId) {
+                                  warnR('[Results][claim] missing token/courseId', {
+                                    rid,
+                                    hasToken: !!token,
+                                    courseId,
+                                  });
+                                  Alert.alert('Sign in required', 'Please sign in to claim certificates.');
+                                  return;
+                                }
+
+                                logR('[Results][claim] click', { rid, courseId, sku: { code, title: sku?.title }, passed });
+
+                                try {
+                                  logR('[Results][claim] claim start', { rid, code, courseId });
+
+                                  // Prefer single-arg claim (hook already has courseId)
+                                  await claim(code);
+
+                                  logR('[Results][claim] claim ok', { rid, code, courseId });
+
+                                  logR('[Results][claim] generate cert start', { rid, courseId });
+                                  const doc: any = await generate();
+                                  logR('[Results][claim] generate cert ok', { rid, doc: safeJson(doc) });
+
+                                  if (doc?.id) {
+                                    const base = String(backendUrl || '').replace(/\/+$/, '');
+                                    const nextCert = {
+                                      id: String(doc.id),
+                                      url: doc.url,
+                                      download_url: doc.download_url || `${base}/api/certificates/${doc.id}/download`,
+                                      meta: doc,
+                                    };
+                                    setCert(nextCert);
+                                    logR('[Results][claim] setCert', { rid, certId: nextCert.id });
+
+                                    // refresh all-certs list so library reflects latest
+                                    try {
+                                      logR('[Results][claim] refresh cert list start', { rid });
+                                      const cs = await api<any>(`/api/certificates/me`);
+                                      const arr = Array.isArray(cs) ? cs : [];
+                                      setAllCerts(arr);
+                                      logR('[Results][claim] refresh cert list ok', { rid, count: arr.length });
+                                    } catch (e: any) {
+                                      warnR('[Results][claim] refresh cert list fail', { rid, status: e?.status, msg: e?.message });
+                                    }
+
+                                    // If extended SKU, also generate transcript and refresh list
+                                    if (looksExtendedSku(sku)) {
+                                      try {
+                                        logR('[Results][transcript.generate] start', { rid, courseId, sku: code });
+
+                                        const t: any = await api(`/api/transcripts/generate`, {
+                                          method: 'POST',
+                                          body: JSON.stringify({ courseId }),
+                                        });
+
+                                        logR('[Results][transcript.generate] ok', { rid, t: safeJson(t) });
+
+                                        if (t?.id) {
+                                          const base = String(backendUrl || '').replace(/\/+$/, '');
+                                          setTrans({
+                                            id: String(t.id),
+                                            url: t.url,
+                                            download_url: t.download_url || `${base}/api/transcripts/${t.id}/download`,
+                                            meta: t,
+                                          });
+                                          logR('[Results][transcript.generate] setTrans', { rid, transId: String(t.id) });
+                                        }
+
+                                        try {
+                                          logR('[Results][transcript.generate] refresh list start', { rid });
+                                          const ts = await api<any>(`/api/transcripts/me`);
+                                          const arr = Array.isArray(ts) ? ts : [];
+                                          setAllTrans(arr);
+                                          logR('[Results][transcript.generate] refresh list ok', { rid, count: arr.length });
+                                        } catch (e: any) {
+                                          warnR('[Results][transcript.generate] refresh list fail', { rid, status: e?.status, msg: e?.message });
+                                        }
+
+                                        if (t?.download_url) {
+                                          logR('[Results][transcript.generate] open download_url', { rid });
+                                          openExternal(t.download_url);
+                                        }
+                                      } catch (e: any) {
+                                        errR('[Results][transcript.generate] fail', {
+                                          rid,
+                                          status: e?.status,
+                                          msg: e?.message,
+                                          data: safeJson(e?.data),
+                                        });
+
+                                        if (e?.status === 402 && e?.data?.error === 'EXTENDED_REQUIRED') {
+                                          Alert.alert(
+                                            'Extended required',
+                                            e?.data?.message || 'Transcript requires Extended certificate.'
+                                          );
+                                        }
+                                      }
+                                    }
+                                  }
+                                } catch (e: any) {
+                                  errR('[Results][claim] token claim/generate failed', {
+                                    rid,
+                                    status: e?.status,
+                                    msg: e?.message,
+                                    data: safeJson(e?.data),
+                                  });
+
+                                  const msg = e?.data?.message || e?.message || 'Could not claim/generate.';
+                                  Alert.alert('Claim failed', msg);
+
+                                  if (e?.status === 402) setPaymentOpen(true);
+                                }
+                              }}
+                              className={`px-3 py-1.5 rounded ${
+                                passed ? 'bg-emerald-600' : 'bg-emerald-600/50'
+                              }`}
+                            >
+                              <Text className="text-white text-sm font-semibold">Claim &amp; Generate</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Buttons */}
+                <View className="flex-row flex-wrap gap-2">
+                  <Pressable
+                    onPress={() => {
+                      logR('[Results][pay] open widget', { rid, passed });
+                      setPaymentOpen(true);
+                    }}
+                    disabled={!passed}
+                    className={`h-10 px-4 rounded-lg justify-center ${
+                      passed ? 'bg-indigo-600' : 'bg-indigo-600/40'
+                    }`}
+                  >
+                    <Text className="text-white text-sm font-semibold">Pay certificate fee</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={async () => {
+                      if (!cert?.id) {
+                        logR('[Results][download cert] missing cert -> open payment', { rid });
+                        setPaymentOpen(true);
+                        return;
+                      }
+                      try {
+                        logR('[Results][download cert] start', { rid, certId: cert.id });
+                        await downloadCertificateFile(backendUrl, token || '', cert.id);
+                        logR('[Results][download cert] ok', { rid, certId: cert.id });
+                      } catch (e: any) {
+                        warnR('[Results][download cert] fail -> open payment', { rid, msg: e?.message });
+                        setPaymentOpen(true);
+                      }
+                    }}
+                    className={`h-10 px-4 rounded-lg justify-center ${
+                      cert?.id ? 'bg-white/10' : 'bg-white/5'
+                    } ring-1 ${cert?.id ? 'ring-white/20' : 'ring-white/10'}`}
+                  >
+                    <Text className="text-white text-sm font-semibold">Download Certificate (PDF)</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={async () => {
+                      if (!trans?.id) {
+                        logR('[Results][download transcript] missing trans -> open payment', { rid });
+                        setPaymentOpen(true);
+                        return;
+                      }
+                      try {
+                        logR('[Results][download transcript] start', { rid, transId: trans.id });
+                        await downloadTranscriptFile(backendUrl, token || '', trans.id);
+                        logR('[Results][download transcript] ok', { rid, transId: trans.id });
+                      } catch (e: any) {
+                        warnR('[Results][download transcript] fail -> open payment', { rid, msg: e?.message });
+                        setPaymentOpen(true);
+                      }
+                    }}
+                    className={`h-10 px-4 rounded-lg justify-center ${
+                      trans?.id ? 'bg-white/10' : 'bg-white/5'
+                    } ring-1 ${trans?.id ? 'ring-white/20' : 'ring-white/10'}`}
+                  >
+                    <Text className="text-white text-sm font-semibold">Download Transcript (PDF)</Text>
+                  </Pressable>
+                </View>
+
+                {!passed ? (
+                  <Text className="mt-3 text-[12px] text-white/60">
+                    Tip: Revisit the lesson and retry the quiz to reach the pass mark.
+                  </Text>
+                ) : null}
+              </View>
+            </>
+          ) : null}
         </View>
       </ScrollView>
 
       {/* Payment slide-over (native) */}
       <PaymentWidget
         isOpen={paymentOpen}
-        title="Buy tokens"
+        title="Unlock Certificate"
         showTutorPreview={false}
         onClose={async () => {
+          logR('[Results][PaymentWidget] onClose', { rid });
           setPaymentOpen(false);
 
-          // refresh wallet + status + documents
+          // refresh wallet (if your widget changes balances) + refresh lists so library stays accurate
           try {
             await refreshUserDetails?.();
           } catch {}
 
-          await reloadStatus();
-          await tryFetchDocs();
+          try {
+            logR('[Results][PaymentWidget] refresh cert list start', { rid });
+            const cs = await api<any>(`/api/certificates/me`);
+            const arr = Array.isArray(cs) ? cs : [];
+            setAllCerts(arr);
+            logR('[Results][PaymentWidget] refresh cert list ok', { rid, count: arr.length });
+          } catch (e: any) {
+            warnR('[Results][PaymentWidget] refresh cert list fail', { rid, status: e?.status, msg: e?.message });
+          }
 
-          // if user came here because they were short and wanted auto-buy, try it now
-          await tryAutoBuyIfNeeded();
+          try {
+            logR('[Results][PaymentWidget] refresh transcript list start', { rid });
+            const ts = await api<any>(`/api/transcripts/me`);
+            const arr = Array.isArray(ts) ? ts : [];
+            setAllTrans(arr);
+            logR('[Results][PaymentWidget] refresh transcript list ok', { rid, count: arr.length });
+          } catch (e: any) {
+            warnR('[Results][PaymentWidget] refresh transcript list fail', { rid, status: e?.status, msg: e?.message });
+          }
         }}
       />
     </View>

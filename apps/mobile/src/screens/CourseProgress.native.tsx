@@ -1,4 +1,4 @@
-/* eslint-disable prettier/prettier */
+
 // apps/mobile/src/screens/CourseProgress.native.tsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
@@ -48,6 +48,21 @@ import type { MainStackParamList } from '../navigation/types';
 import SelectField, { type Option } from './SelectField.native';
 
 type Status = 'Not Started' | 'In Progress' | 'Completed';
+
+type CertStatusPayload = {
+  paid?: boolean;
+  tier?: string | null;
+  extended?: boolean;
+  canTranscript?: boolean;
+  hasCertificate?: boolean;
+  canCertificate?: boolean;
+  narrationUnlocked?: boolean;
+  lessons_used?: number | null;
+  lesson_cap?: number | null;
+  quiz?: any | null;
+  error?: string;
+};
+
 
 const normalizeTrackKey = (track?: ProgramTrack | string | null): ProgramTrack => {
   const raw = String(track ?? '').trim().toLowerCase();
@@ -355,6 +370,104 @@ const CourseProgressScreen: React.FC = () => {
 
   const { backendUrl, token, profile } = useShopContext() as any;
   const myId = String(profile?.id ?? '');
+    // ───────── Certificate / entitlement status (includeQuiz support) ─────────
+  const [certStatus, setCertStatus] = useState<CertStatusPayload | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+
+  const shouldIncludeQuiz = isSandboxSource; // quizzes are relevant for sandbox/track flows
+
+  const loadCertStatus = useCallback(
+    async ({ includeQuiz }: { includeQuiz: boolean }) => {
+      if (!backendUrl || !courseId) return;
+
+      setStatusLoading(true);
+      try {
+        const url =
+          `${backendUrl}/api/certificates/status?courseId=${encodeURIComponent(courseId)}` +
+          (includeQuiz ? `&includeQuiz=1` : '');
+
+        const r = await fetch(url, {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+
+        const d = (await r.json().catch(() => ({}))) as any;
+
+        if (!r.ok) {
+          throw new Error(d?.error || d?.message || `Status ${r.status}`);
+        }
+
+        setCertStatus(d);
+      } catch (e: any) {
+        console.warn('[CourseProgress.native] getStatus failed', e?.message);
+        setCertStatus((prev) => ({
+          ...(prev || {}),
+          paid: prev?.paid ?? false,
+          error: e?.message || 'Status lookup failed',
+        }));
+      } finally {
+        setStatusLoading(false);
+      }
+    },
+    [backendUrl, token, courseId],
+  );
+
+  // Load on mount + whenever coming back to this screen (so purchases/issuances reflect)
+  useEffect(() => {
+    loadCertStatus({ includeQuiz: shouldIncludeQuiz });
+  }, [loadCertStatus, shouldIncludeQuiz]);
+
+  useEffect(() => {
+    const unsub = (navigation as any)?.addListener?.('focus', () => {
+      loadCertStatus({ includeQuiz: shouldIncludeQuiz });
+    });
+    return unsub;
+  }, [navigation, loadCertStatus, shouldIncludeQuiz]);
+
+  const quizSummary = useMemo(() => {
+    const q: any = certStatus?.quiz;
+    if (!q) return null;
+
+    const passedRaw = q?.passed ?? q?.isPassed ?? q?.ok ?? q?.success;
+    const passed =
+      typeof passedRaw === 'boolean'
+        ? passedRaw
+        : typeof passedRaw === 'string'
+          ? ['true', 'passed', 'yes'].includes(passedRaw.toLowerCase())
+          : null;
+
+    const score =
+      q?.score ?? q?.percent ?? q?.percentage ?? q?.mark ?? q?.points ?? q?.correct;
+    const total =
+      q?.total ?? q?.totalQuestions ?? q?.total_questions ?? q?.numQuestions ?? q?.num_questions;
+    const required =
+      q?.requiredPassMark ?? q?.passMark ?? q?.pass_mark ?? q?.required_pass_mark;
+
+    const label = passed === true ? 'Passed ✅' : passed === false ? 'Not passed ❌' : 'Attempted';
+
+    const parts: string[] = [];
+    if (score != null && total != null) parts.push(`Score: ${score}/${total}`);
+    else if (score != null) parts.push(`Score: ${score}`);
+    if (required != null) parts.push(`Pass mark: ${required}`);
+
+    const when =
+      q?.submittedAt ??
+      q?.submitted_at ??
+      q?.createdAt ??
+      q?.created_at ??
+      q?.updatedAt ??
+      q?.updated_at;
+
+    let datePart = '';
+    if (when) {
+      const d = new Date(when);
+      if (!Number.isNaN(d.valueOf())) datePart = ` • ${d.toISOString().slice(0, 10)}`;
+    }
+
+    return { title: `${label}${datePart}`, detail: parts.join(' • ') };
+  }, [certStatus]);
+
 
   /* ───────── Load course ───────── */
 
@@ -1140,6 +1253,64 @@ const CourseProgressScreen: React.FC = () => {
                 />
               )}
             </View>
+                        {/* Access / entitlement + latest quiz (sandbox only) */}
+            {isSandboxSource && (
+              <View
+                style={tw`mt-4 rounded-2xl border border-[#cedbe8] dark:border-slate-700 bg-white dark:bg-[#0f1821] p-3`}
+              >
+                <View style={tw`flex-row items-center justify-between`}>
+                  <Text style={tw`text-sm font-semibold text-slate-900 dark:text-slate-100`}>
+                    Access & Quiz
+                  </Text>
+
+                  <ChipButton
+                    label={statusLoading ? 'Refreshing…' : 'Refresh'}
+                    variant="outline"
+                    disabled={statusLoading}
+                    onPress={() => loadCertStatus({ includeQuiz: true })}
+                  />
+                </View>
+
+                <Text style={tw`mt-1 text-xs text-slate-600 dark:text-slate-300`}>
+                  {certStatus?.paid
+                    ? `Unlocked • tier: ${String(certStatus?.tier || 'standard')}${
+                        certStatus?.extended ? ' • transcript enabled' : ''
+                      }`
+                    : 'Not unlocked yet'}
+                </Text>
+
+                {typeof certStatus?.lessons_used === 'number' &&
+                typeof certStatus?.lesson_cap === 'number' ? (
+                  <Text style={tw`mt-1 text-[11px] text-slate-500 dark:text-slate-400`}>
+                    Lessons used: {certStatus.lessons_used}/{certStatus.lesson_cap}
+                  </Text>
+                ) : null}
+
+                {quizSummary ? (
+                  <View style={tw`mt-2`}>
+                    <Text style={tw`text-xs text-slate-800 dark:text-slate-200`}>
+                      Latest quiz: {quizSummary.title}
+                    </Text>
+                    {quizSummary.detail ? (
+                      <Text style={tw`mt-1 text-[11px] text-slate-500 dark:text-slate-400`}>
+                        {quizSummary.detail}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : (
+                  <Text style={tw`mt-2 text-[11px] text-slate-500 dark:text-slate-400`}>
+                    No quiz attempt found yet.
+                  </Text>
+                )}
+
+                {certStatus?.error ? (
+                  <Text style={tw`mt-2 text-[11px] text-red-600 dark:text-red-400`}>
+                    {certStatus.error}
+                  </Text>
+                ) : null}
+              </View>
+            )}
+
           </View>
 
           {/* Reading mode & current week */}

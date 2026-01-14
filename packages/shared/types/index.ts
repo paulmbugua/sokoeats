@@ -637,6 +637,14 @@ export interface Certificate {
   course_id: string;
   url: string;
   issued_at: string;
+
+  // ✅ NEW (returned by your backend now)
+  certificate_number?: string | null;
+
+  // ✅ Optional but matches your backend updates / DB columns
+  program_track?: ProgramTrack | null;
+  brand_logo_public_id?: string | null;
+
   download_url?: string;
   downloadUrl?: string;
 }
@@ -647,9 +655,19 @@ export interface CertificateRecord {
   course_id: string;
   url: string;
   issued_at: string;
+
+  // ✅ Fixes TS error in VerifyCertificate.web.tsx
+  certificate_number?: string | null;
+
+  // ✅ Optional but aligns with DB/controller
+  program_track?: ProgramTrack | null;
+  brand_logo_public_id?: string | null;
+
+  // joined aliases from verify query
   student_name?: string;
   course_title?: string;
 }
+
 
 export interface VerifyCertificateResponse {
   valid: boolean;

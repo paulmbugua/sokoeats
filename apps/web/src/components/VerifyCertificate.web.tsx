@@ -1,4 +1,3 @@
-// apps/web/src/pages/VerifyCertificate.web.tsx
 import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -6,25 +5,39 @@ import { useVerifyCertificate } from '@mytutorapp/shared/hooks/useVerifyCertific
 import { useShopContext } from '@mytutorapp/shared/context';
 
 const VerifyCertificatePage: React.FC = () => {
-  const { id = '' } = useParams<{ id: string }>();
+  // Works for BOTH routes:
+  // - /verify/:id
+  // - /verify/no/:certNo
+  const params = useParams<{ id?: string; certNo?: string }>();
   const { backendUrl } = useShopContext();
 
-  // Public, no-auth verify call
+  const certificateId = params.id || '';
+  const certNo = params.certNo || '';
+
   const { data, loading, error } = useVerifyCertificate({
     backendUrl,
-    certificateId: id,
+    certificateId: certificateId || undefined,
+    certNo: certNo || undefined,
   });
 
-  // Build OG (server-provided) image — no Cloudinary on client
+  const certIdFromData = data?.valid ? String(data?.certificate?.id || '') : '';
+  const certNoFromData = data?.valid ? String(data?.certificate?.certificate_number || '') : '';
+
+  // OG preview needs a UUID
+  const ogCertId = certIdFromData || certificateId;
+  const ogImage = ogCertId ? `${backendUrl}/api/certificates/${ogCertId}/og` : '';
+
   const ogTitle =
     data?.valid && data.certificate
       ? `Certificate: ${data.certificate.student_name} • ${data.certificate.course_title}`
       : 'Certificate Verification';
+
   const ogDesc =
-    data?.valid && data.certificate
+    data?.valid && data.certificate?.issued_at
       ? `Verified certificate issued on ${new Date(data.certificate.issued_at).toDateString()}`
       : 'Check if a certificate is valid.';
-  const ogImage = `${backendUrl}/api/certificates/${id}/og`; // <-- server generates OG preview
+
+  const printId = certIdFromData || certificateId; // print route expects UUID
 
   return (
     <div className="min-h-screen bg-slate-50 text-[#0d141c]">
@@ -34,9 +47,9 @@ const VerifyCertificatePage: React.FC = () => {
         <meta property="og:type" content="website" />
         <meta property="og:title" content={ogTitle} />
         <meta property="og:description" content={ogDesc} />
-        <meta property="og:image" content={ogImage} />
+        {ogImage ? <meta property="og:image" content={ogImage} /> : null}
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:image" content={ogImage} />
+        {ogImage ? <meta name="twitter:image" content={ogImage} /> : null}
       </Helmet>
 
       <div className="max-w-2xl mx-auto px-4 py-10">
@@ -72,12 +85,17 @@ const VerifyCertificatePage: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 gap-2">
+                <DetailRow label="Certificate Number" value={certNoFromData || (certNo || '-')} />
                 <DetailRow label="Certificate ID" value={data.certificate?.id} />
                 <DetailRow label="Student" value={data.certificate?.student_name} />
                 <DetailRow label="Course" value={data.certificate?.course_title} />
                 <DetailRow
                   label="Issued At"
-                  value={new Date(data.certificate!.issued_at).toLocaleString()}
+                  value={
+                    data.certificate?.issued_at
+                      ? new Date(data.certificate.issued_at).toLocaleString()
+                      : '-'
+                  }
                 />
               </div>
 
@@ -92,12 +110,16 @@ const VerifyCertificatePage: React.FC = () => {
                     View / Download PDF
                   </a>
                 )}
-                <Link
-                  to={`/verify/${id}/print`}
-                  className="inline-flex items-center justify-center rounded-xl h-10 px-4 bg-white ring-1 ring-[#cedbe8] font-semibold"
-                >
-                  Print View
-                </Link>
+
+                {printId ? (
+                  <Link
+                    to={`/verify/${printId}/print`}
+                    className="inline-flex items-center justify-center rounded-xl h-10 px-4 bg-white ring-1 ring-[#cedbe8] font-semibold"
+                  >
+                    Print View
+                  </Link>
+                ) : null}
+
                 <Link
                   to="/"
                   className="inline-flex items-center justify-center rounded-xl h-10 px-4 bg-[#e7edf4] text-[#0d141c] font-semibold"

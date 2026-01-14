@@ -430,6 +430,8 @@ const App: React.FC = () => {
           <Route path="/courses" element={<MyCourses />} />
 
           {/* Public verify routes */}
+          <Route path="/verify" element={<VerifyCertificatePage />} />
+          <Route path="/verify/no/:certNo" element={<VerifyCertificatePage />} />
           <Route path="/verify/:id" element={<VerifyCertificatePage />} />
           <Route path="/verify/:id/print" element={<VerifyCertificatePrintPage />} />
         </Route>

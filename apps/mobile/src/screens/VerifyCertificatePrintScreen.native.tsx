@@ -128,7 +128,7 @@ const PrintableContent: React.FC<{
             <Text style={tw`text-[#0d141c] text-lg font-bold`}>◎</Text>
           </View>
           <View>
-            <Text style={tw`text-xs text-[#64748b]`}>EduConnect</Text>
+            <Text style={tw`text-xs text-[#64748b]`}>Daybreak</Text>
             <Text style={tw`text-lg font-bold`}>Certificate Verification</Text>
           </View>
         </View>
@@ -176,7 +176,7 @@ const PrintableContent: React.FC<{
       {/* Footer */}
       <View style={tw`pt-4 border-t border-[#e5e7eb] items-center`}>
         <Text style={tw`text-xs text-[#94a3b8]`}>
-          © {new Date().getFullYear()} EduConnect • https://yourdomain.example
+          © {new Date().getFullYear()} Daybreak • https://yourdomain.example
         </Text>
       </View>
     </>

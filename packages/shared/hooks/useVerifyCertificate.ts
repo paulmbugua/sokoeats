@@ -1,25 +1,64 @@
-import { useCallback, useEffect, useState } from 'react';
+// packages/shared/hooks/useVerifyCertificate.ts
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { VerifyCertificateResponse } from '@mytutorapp/shared/types';
-import { verifyCertificatePublic } from '@mytutorapp/shared/api';
+import {
+  verifyCertificatePublic,
+  verifyCertificateByNumberPublic,
+} from '@mytutorapp/shared/api/certificatesApi';
 
-export function useVerifyCertificate(opts: { backendUrl: string; certificateId: string }) {
-  const { backendUrl, certificateId } = opts;
+type Opts = {
+  backendUrl: string;
+  certificateId?: string; // uuid
+  certNo?: string; // "AB-12345678"
+};
+
+export function useVerifyCertificate(opts: Opts) {
+  const { backendUrl, certificateId, certNo } = opts;
+
   const [data, setData] = useState<VerifyCertificateResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   const refetch = useCallback(async () => {
+    const hasId = Boolean(certificateId && certificateId.trim());
+    const hasNo = Boolean(certNo && certNo.trim());
+
+    if (!backendUrl || (!hasId && !hasNo)) {
+      if (!mounted.current) return;
+      setData(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    if (!mounted.current) return;
     setLoading(true);
     setError(null);
+
     try {
-      const res = await verifyCertificatePublic(backendUrl, certificateId);
+      const res = hasNo
+        ? await verifyCertificateByNumberPublic(backendUrl, String(certNo))
+        : await verifyCertificatePublic(backendUrl, String(certificateId));
+
+      if (!mounted.current) return;
       setData(res);
     } catch (e: any) {
-      setError(e?.response?.data?.error || e.message || 'Verification failed');
+      if (!mounted.current) return;
+      setData(null);
+      setError(e?.response?.data?.error || e?.message || 'Verification failed');
     } finally {
-      setLoading(false);
+      if (mounted.current) setLoading(false);
     }
-  }, [backendUrl, certificateId]);
+  }, [backendUrl, certificateId, certNo]);
 
   useEffect(() => {
     refetch();

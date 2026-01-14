@@ -448,6 +448,8 @@ const MyCourses: React.FC = () => {
   const [sandboxTrackById, setSandboxTrackById] = useState<Record<string, ProgramTrack>>({});
   const sandboxRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const sandboxObserver = useRef<IntersectionObserver | null>(null);
+  const sandboxInFlight = useRef<Set<string>>(new Set());
+
 
 useEffect(() => {
   if (!backendUrl || !token) {
@@ -560,6 +562,33 @@ useEffect(() => {
   return undefined;
 }, []);
 
+  const openCertificateVerify = useCallback(() => {
+  if (typeof window === 'undefined') return;
+
+  const raw =
+    window.prompt(
+      'Enter Certificate Number (e.g. AB-12345678) or Certificate ID (UUID):'
+    ) || '';
+
+  const value = raw.trim();
+  if (!value) {
+    navigate('/verify');
+    return;
+  }
+
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+  if (isUuid) {
+    navigate(`/verify/${encodeURIComponent(value)}`);
+    return;
+  }
+
+  // Treat anything else as a certificate number
+  const certNo = value.replace(/\s+/g, '').toUpperCase();
+  navigate(`/verify/no/${encodeURIComponent(certNo)}`);
+}, [navigate]);
+
 
  const getStoredTrack = useCallback((courseId: string): ProgramTrack | null => {
   try {
@@ -619,11 +648,83 @@ useEffect(() => {
     return null;
   }, []);
 
-  const ensureSandboxStatus = useCallback(
-    async (course: any, track: ProgramTrack | undefined) => {
-      const cid = String(course?.id ?? '');
-      if (!cid || !backendUrl || !token) return;
+ const ensureSandboxStatus = useCallback(
+  async (course: any, track: ProgramTrack | undefined) => {
+    const cid = String(course?.id ?? '');
+    if (!cid || !backendUrl || !token) return;
 
+    // ✅ prevent re-entrant calls (IntersectionObserver can fire repeatedly)
+    if (sandboxInFlight.current.has(cid)) return;
+    sandboxInFlight.current.add(cid);
+
+    // set loading state immediately
+    setSandboxStatusById((prev) => ({
+      ...prev,
+      [cid]: {
+        totalWeeks: prev[cid]?.totalWeeks ?? null,
+        completedWeeks: prev[cid]?.completedWeeks ?? null,
+        quizEligible: prev[cid]?.quizEligible ?? false,
+        quizPassed: prev[cid]?.quizPassed ?? false,
+        certificateReady: prev[cid]?.certificateReady ?? false,
+        loading: true,
+        error: undefined,
+      },
+    }));
+
+    try {
+      let totalWeeks = extractWeeksCount(course);
+
+      if (totalWeeks == null) {
+        const courseRes = await fetch(api(`/courses/${cid}`), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const courseData = courseRes.ok ? await courseRes.json().catch(() => ({})) : null;
+        totalWeeks = extractWeeksCount(courseData) ?? totalWeeks;
+      }
+
+      const progress = await fetchCourseProgress(backendUrl, cid, token);
+      const completedWeeks = progress.filter((p) => p.status === 'Completed').length;
+
+      const progressMaxWeek = progress.reduce(
+        (acc, p) => (Number(p.week) > acc ? Number(p.week) : acc),
+        0
+      );
+      if (!totalWeeks && progressMaxWeek > 0) totalWeeks = progressMaxWeek;
+
+      const certRes = await fetch(
+        api(`/certificates/status?courseId=${encodeURIComponent(cid)}`),
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const certJson = certRes.ok ? await certRes.json().catch(() => ({})) : {};
+      const quizPassed = Boolean(certJson?.canCertificate || certJson?.hasCertificate);
+      const certificateReady = Boolean(certJson?.hasCertificate);
+
+      const quizEligible =
+        typeof totalWeeks === 'number' && totalWeeks > 0 ? completedWeeks >= totalWeeks : false;
+
+      sdbg('status', {
+        courseId: cid,
+        track,
+        totalWeeks,
+        completedWeeks,
+        quizEligible,
+        quizPassed,
+        certificateReady,
+      });
+
+      setSandboxStatusById((prev) => ({
+        ...prev,
+        [cid]: {
+          totalWeeks: totalWeeks ?? null,
+          completedWeeks,
+          quizEligible,
+          quizPassed,
+          certificateReady,
+          loading: false,
+          error: undefined,
+        },
+      }));
+    } catch (e: any) {
       setSandboxStatusById((prev) => ({
         ...prev,
         [cid]: {
@@ -632,79 +733,17 @@ useEffect(() => {
           quizEligible: prev[cid]?.quizEligible ?? false,
           quizPassed: prev[cid]?.quizPassed ?? false,
           certificateReady: prev[cid]?.certificateReady ?? false,
-          loading: true,
-          error: undefined,
+          loading: false,
+          error: e?.message || 'Failed to load status',
         },
       }));
-
-      try {
-        let totalWeeks = extractWeeksCount(course);
-        if (totalWeeks == null) {
-          const courseRes = await fetch(api(`/courses/${cid}`), {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const courseData = courseRes.ok ? await courseRes.json().catch(() => ({})) : null;
-          totalWeeks = extractWeeksCount(courseData) ?? totalWeeks;
-        }
-
-        const progress = await fetchCourseProgress(backendUrl, cid, token);
-        const completedWeeks = progress.filter((p) => p.status === 'Completed').length;
-        const progressMaxWeek = progress.reduce(
-          (acc, p) => (Number(p.week) > acc ? Number(p.week) : acc),
-          0
-        );
-        if (!totalWeeks && progressMaxWeek > 0) totalWeeks = progressMaxWeek;
-
-        const certRes = await fetch(
-          api(`/certificates/status?courseId=${encodeURIComponent(cid)}`),
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        const certJson = certRes.ok ? await certRes.json().catch(() => ({})) : {};
-        const quizPassed = Boolean(certJson?.canCertificate || certJson?.hasCertificate);
-        const certificateReady = Boolean(certJson?.hasCertificate);
-        const quizEligible =
-          typeof totalWeeks === 'number' && totalWeeks > 0 ? completedWeeks >= totalWeeks : false;
-
-        sdbg('status', {
-          courseId: cid,
-          track,
-          totalWeeks,
-          completedWeeks,
-          quizEligible,
-          quizPassed,
-          certificateReady,
-        });
-
-        setSandboxStatusById((prev) => ({
-          ...prev,
-          [cid]: {
-            totalWeeks: totalWeeks ?? null,
-            completedWeeks,
-            quizEligible,
-            quizPassed,
-            certificateReady,
-            loading: false,
-          },
-        }));
-      } catch (e: any) {
-        setSandboxStatusById((prev) => ({
-          ...prev,
-          [cid]: {
-            totalWeeks: prev[cid]?.totalWeeks ?? null,
-            completedWeeks: prev[cid]?.completedWeeks ?? null,
-            quizEligible: prev[cid]?.quizEligible ?? false,
-            quizPassed: prev[cid]?.quizPassed ?? false,
-            certificateReady: prev[cid]?.certificateReady ?? false,
-            loading: false,
-            error: e?.message || 'Failed to load status',
-          },
-        }));
-      }
-    },
-    [api, backendUrl, token, extractWeeksCount, sdbg]
-  );
+    } finally {
+      // ✅ always release lock
+      sandboxInFlight.current.delete(cid);
+    }
+  },
+  [api, backendUrl, token, extractWeeksCount, sdbg]
+);
 
   useEffect(() => {
     if (!unlockedAi.length) return;
@@ -1018,6 +1057,27 @@ useEffect(() => {
         <div className="flex flex-col w-full max-w-[1200px]">
           {/* Header + tabs */}
           <section className="px-1 sm:px-0">
+             <div className="flex justify-center mb-3">
+              <button
+                onClick={openCertificateVerify}
+                className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-2xl
+                           bg-white/90 dark:bg-[#0b1420]/90
+                           ring-2 ring-[#3d99f5]/70 hover:ring-[#3d99f5]
+                           shadow-lg backdrop-blur
+                           text-sm font-bold tracking-wide
+                           focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#3d99f5]/50
+                           focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-[#0a0f15]"
+                    title="Verify a certificate by number or ID"
+                  aria-label="Verify Certificate (Number or ID)"
+
+              >
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2a5 5 0 0 0-5 5v1H6a2 2 0 0 0-2 2v9a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-9a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 6V7a3 3 0 1 1 6 0v1H9Zm7.3 5.3-4.2 4.2a1 1 0 0 1-1.4 0l-2-2a1 1 0 1 1 1.4-1.4l1.3 1.3 3.5-3.5a1 1 0 0 1 1.4 1.4Z" />
+                </svg>
+                Verify Certificate
+              </button>
+            </div>
+
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div className="flex min-w-60 sm:min-w-72 flex-col gap-1">
                 <h1 className="text-[24px] sm:text-[28px] md:text-[32px] font-bold leading-tight">
@@ -1336,8 +1396,8 @@ useEffect(() => {
                             data-course-id={cid}
                             ref={(el) => {
                               sandboxRefs.current[cid] = el;
-                              if (el) sandboxObserver.current?.observe(el);
                             }}
+
                             className="group rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden flex flex-col"
                           >
                             <CourseHero course={c} backendUrl={backendUrl} />

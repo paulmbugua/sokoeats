@@ -130,7 +130,7 @@ const PrintableContent: React.FC<{
             </svg>
           </span>
           <div>
-            <p className="text-xs text-[#64748b]">EduConnect</p>
+            <p className="text-xs text-[#64748b]">Daybreak</p>
             <h2 className="text-lg font-bold">Certificate Verification</h2>
           </div>
         </div>
@@ -178,7 +178,7 @@ const PrintableContent: React.FC<{
 
       {/* Footer */}
       <div className="pt-6 border-t border-[#e5e7eb] text-center text-xs text-[#94a3b8]">
-        © {new Date().getFullYear()} EduConnect • https://yourdomain.example
+        © {new Date().getFullYear()} Daybreak • https://yourdomain.example
       </div>
     </>
   );

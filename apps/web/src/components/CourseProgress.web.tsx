@@ -490,6 +490,57 @@ useEffect(() => {
     }
   }, [allWatched, backendUrl, token, courseId, selectedCourse?.title]);
 
+
+    // ---------------------- Certificate / Quiz status (Sandbox) ----------------------
+  const [certStatus, setCertStatus] = useState<any>(null);
+  const [certStatusLoading, setCertStatusLoading] = useState(false);
+
+  const refreshCertStatus = useCallback(async () => {
+    if (!backendUrl || !courseId) return;
+    try {
+      setCertStatusLoading(true);
+      const r = await fetch(
+        `${backendUrl}/api/certificates/status?courseId=${encodeURIComponent(courseId)}&includeQuiz=1`,
+        {
+          headers: token ? ({ Authorization: `Bearer ${token}` } as any) : undefined,
+        }
+      );
+      const d = await r.json().catch(() => null);
+      setCertStatus(d);
+    } catch {
+      // fail soft
+    } finally {
+      setCertStatusLoading(false);
+    }
+  }, [backendUrl, token, courseId]);
+
+  useEffect(() => {
+    if (isSandboxSource) refreshCertStatus();
+  }, [isSandboxSource, refreshCertStatus]);
+
+  // When user returns from RobotTeacher/Quiz tab, refresh automatically
+  useEffect(() => {
+    if (!isSandboxSource) return;
+    const onFocus = () => refreshCertStatus();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [isSandboxSource, refreshCertStatus]);
+
+  const quizInfo = certStatus?.quiz || null;
+  const quizPassed = quizInfo?.passed === true;
+  const quizAttempted = quizInfo?.attempted === true;
+  const quizScore =
+    quizInfo?.scorePct != null ? Math.round(Number(quizInfo.scorePct)) : null;
+  const quizPassMark =
+    quizInfo?.passMark != null ? Math.round(Number(quizInfo.passMark)) : null;
+
+  const goToQuiz = useCallback(() => {
+    navigate(
+      `/robot-teach?courseId=${encodeURIComponent(courseId || '')}&programTrack=${effectiveTrack}&tab=quiz&source=sandbox`
+    );
+  }, [navigate, courseId, effectiveTrack]);
+
+
   // ---------------------- EARLY RETURNS (after ALL hooks) ----------------------
   if (!courseId) {
     return (
@@ -691,18 +742,30 @@ useEffect(() => {
             </button>
           )}
 
-          {isSandboxSource && quizEligible && (
+          {isSandboxSource && (
             <button
-              onClick={() =>
-                navigate(
-                  `/robot-teach?courseId=${encodeURIComponent(
-                    courseId || ''
-                  )}&programTrack=${effectiveTrack}&tab=quiz&source=sandbox`
-                )
+              onClick={() => {
+                if (!quizEligible) {
+                  alert(`Complete ${totalWeeks} weeks to unlock the quiz.`);
+                  return;
+                }
+                goToQuiz();
+              }}
+              disabled={!quizEligible}
+              title={
+                quizEligible
+                  ? quizPassed
+                    ? 'Quiz passed — you can retake anytime'
+                    : 'Take the quiz to unlock certificate'
+                  : `Finish ${totalWeeks} weeks to unlock the quiz`
               }
-              className="rounded-xl h-10 px-4 bg-[#3d99f5] text-white text-sm font-semibold hover:brightness-110"
+              className={`rounded-xl h-10 px-4 text-sm font-semibold ${
+                quizEligible
+                  ? 'bg-[#3d99f5] text-white hover:brightness-110'
+                  : 'bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-gray-500 dark:text-gray-400 disabled:opacity-60'
+              }`}
             >
-              Generate quiz
+              {quizPassed ? 'Quiz passed ✓' : quizAttempted ? 'Retake quiz' : 'Generate quiz'}
             </button>
           )}
 
@@ -738,6 +801,90 @@ useEffect(() => {
             </button>
           )}
         </div>
+
+        {isSandboxSource && (
+  <div className="mt-4 rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-3">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          Certificate checklist
+        </p>
+        <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+          Pass the quiz to unlock certificate generation
+          {quizPassMark != null ? ` (pass mark: ${quizPassMark}%)` : ''}.
+          {quizAttempted && !quizPassed && quizScore != null
+            ? ` Last score: ${quizScore}%.`
+            : ''}
+        </p>
+      </div>
+      {certStatusLoading && (
+        <span className="text-xs text-gray-500 dark:text-gray-400">Checking…</span>
+      )}
+    </div>
+
+    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+      <div
+        className={`rounded-xl px-3 py-2 ring-1 ${
+          counts.completed >= totalWeeks
+            ? 'ring-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200'
+            : 'ring-[#cedbe8] dark:ring-darkCard text-gray-700 dark:text-gray-300'
+        }`}
+      >
+        <div className="font-semibold">1) Finish lessons</div>
+        <div className="opacity-80">
+          {counts.completed}/{totalWeeks} weeks completed
+        </div>
+      </div>
+
+      <div
+        className={`rounded-xl px-3 py-2 ring-1 ${
+          quizPassed
+            ? 'ring-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200'
+            : quizEligible
+            ? 'ring-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200'
+            : 'ring-[#cedbe8] dark:ring-darkCard text-gray-500 dark:text-gray-400'
+        }`}
+      >
+        <div className="font-semibold">2) Pass the quiz</div>
+        <div className="opacity-80">
+          {quizPassed
+            ? 'Passed'
+            : quizEligible
+            ? quizAttempted
+              ? `Last score: ${quizScore ?? '—'}%`
+              : 'Ready to take'
+            : 'Locked'}
+        </div>
+      </div>
+
+      <div
+        className={`rounded-xl px-3 py-2 ring-1 ${
+          quizPassed
+            ? 'ring-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200'
+            : 'ring-[#cedbe8] dark:ring-darkCard text-gray-500 dark:text-gray-400'
+        }`}
+      >
+        <div className="font-semibold">3) Generate certificate</div>
+        <div className="opacity-80">{quizPassed ? 'Unlocked' : 'Locked'}</div>
+      </div>
+    </div>
+
+    {quizEligible && !quizPassed && (
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          onClick={goToQuiz}
+          className="rounded-xl h-9 px-3 bg-[#3d99f5] text-white text-xs font-semibold hover:brightness-110"
+        >
+          Take quiz now
+        </button>
+        <span className="text-xs text-gray-600 dark:text-gray-400">
+          Once you pass, “Generate certificate” will appear automatically.
+        </span>
+      </div>
+    )}
+  </div>
+)}
+
       </header>
 
       {/* Reading Mode */}
@@ -967,9 +1114,23 @@ useEffect(() => {
                   {downloadingTranscript ? 'Preparing…' : 'Download Transcript (Free)'}
                 </button>
               </>
-            ) : (
-              <CertificateButton courseId={courseId!} />
-            )}
+              ) : isSandboxSource && !quizPassed ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={goToQuiz}
+                        className="rounded-xl h-10 px-4 bg-[#3d99f5] text-white text-sm font-semibold hover:brightness-110"
+                      >
+                        Generate quiz (required)
+                      </button>
+                      <div className="text-xs text-gray-700 dark:text-gray-300">
+                        Pass the quiz{quizPassMark != null ? ` (≥ ${quizPassMark}%)` : ''} to unlock your certificate.
+                        {quizAttempted && quizScore != null ? ` Last score: ${quizScore}%.` : ''}
+                      </div>
+                    </div>
+                  ) : (
+                    <CertificateButton courseId={courseId!} />
+                  )}
+
           </div>
           {!oerMeta && !hasMyReview && (
             <button

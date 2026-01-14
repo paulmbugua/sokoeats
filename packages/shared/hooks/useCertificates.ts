@@ -37,10 +37,6 @@ export function useCertificate(opts: UseCertificateOpts) {
       const v = localStorage.getItem(lsKey);
       if (v === '1') setEligible(true);
     } catch {}
-    // when token disappears (logout), clear local + state
-    return () => {
-      /* noop */
-    };
   }, [token, courseId, lsKey]);
 
   // If caller flags "just passed", show CTA immediately (optimistic)
@@ -74,6 +70,7 @@ export function useCertificate(opts: UseCertificateOpts) {
     if (!token || !courseId) return;
     setLoading(true);
     setErr(null);
+
     try {
       // Server-validated eligibility
       const e = await getEligibility(backendUrl, token, courseId);
@@ -86,7 +83,10 @@ export function useCertificate(opts: UseCertificateOpts) {
       // Also see if a cert already exists for this course
       const mine = await getMyCertificates(backendUrl, token);
       if (!mounted.current) return;
-      const found = (mine || []).find((c: any) => String(c.course_id) === String(courseId)) || null;
+
+      const found =
+        (mine || []).find((c: any) => String(c.course_id) === String(courseId)) || null;
+
       setCertificate(found);
 
       // Persist mirror after server check
@@ -105,14 +105,18 @@ export function useCertificate(opts: UseCertificateOpts) {
   const generate = useCallback(async () => {
     setLoading(true);
     setErr(null);
+
     try {
       const c = await generateCertificate(backendUrl, token, courseId);
       if (!mounted.current) return null;
+
       setCertificate(c);
       setEligible(true);
+
       try {
         localStorage.setItem(lsKey, '1');
       } catch {}
+
       return c;
     } catch (e: any) {
       if (mounted.current) {

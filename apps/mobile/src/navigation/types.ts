@@ -25,8 +25,10 @@ export type MainStackParamList = {
   OerReaderFull: { id?: string };
 
   /* Verify (public) */
-  VerifyCertificate: { id?: string } | undefined;
-  VerifyCertificatePrint: { id?: string } | undefined;
+  VerifyCertificate: { id?: string; certNo?: string } | undefined;
+
+ VerifyCertificatePrint: { id: string };
+
 
   /* Org (public + protected in-app) */
   InstitutionLogin:

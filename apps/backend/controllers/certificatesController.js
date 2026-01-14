@@ -5,7 +5,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { Readable } from 'stream';
 import axios from 'axios';
 import pool from '../config/db.js'; // PG pool
-import { generateCertificatePdfBuffer } from '../services/certificateService.js';
+import { generateCertificatePdfBuffer, generateCertificateNumber, } from '../services/certificateService.js';
 import { getEntitlement, upsertEntitlement, isUuid } from './_entitlements.js';
 import {
   getEntitlementsForUser,
@@ -16,7 +16,7 @@ import {
 const NARRATION_UNLOCK_TOKENS = 20;
 let _quizAttemptsShapeCache = null;
 const QUIZ_TIME_COL_CACHE = new Map(); // tableName -> colName|null
-
+const CERT_PDF_TEMPLATE_VERSION = 2;
 // ─────────────────────────────────────────────────────────────
 // ProgramTrack plumbing (DB → PDF)
 // ─────────────────────────────────────────────────────────────
@@ -26,10 +26,30 @@ const PROGRAM_TRACK_SET = new Set(PROGRAM_TRACK_KEYS);
 let _courseTrackColCache = undefined;   // undefined=unknown, null=none, string=col
 let _aiEntTrackColCache = undefined;    // same
 
+function normalizeCertNo(v) {
+  return String(v || '').trim().toUpperCase();
+}
+
+// Your format: AA-NNNNNNCC (letters 1–6, dash, 8 digits)
+function isValidCertNo(v) {
+  const s = normalizeCertNo(v);
+  return /^[A-Z]{1,6}-\d{8}$/.test(s);
+}
+
+
 function normalizeProgramTrack(v) {
   const s = String(v || '').trim().toLowerCase();
+  if (!s) return null;
+
+  // accept public labels used by UI/older rows
+  if (s === 'professional') return 'diploma';
+  if (s === 'comprehensive') return 'degree';
+  if (s === 'cert') return 'certificate';
+  if (s === 'mod') return 'module';
+
   return PROGRAM_TRACK_SET.has(s) ? s : null;
 }
+
 
 async function detectTrackColumn(db, tableName) {
   const candidates = ['program_track', 'programtrack', 'program_track_key', 'track'];
@@ -886,11 +906,15 @@ export async function generateCertificate(req, res) {
     console.log('[cert] generateCertificate start', { studentId, courseId });
     const authUuid = pickAuthUuidFromReqUser(req.user);
 
-    const programTrack = await resolveProgramTrack({
-      courseId,
-      authUuid,
-      reqTrack: value.programTrack, // optional (validated)
-    });
+    const resolvedTrack = await resolveProgramTrack({
+  courseId,
+  authUuid,
+  reqTrack: value.programTrack,
+});
+
+// ✅ never allow null (this is why your DB shows blanks)
+const programTrack = resolvedTrack || 'certificate';
+
 
     console.log('[cert] resolved programTrack', {
       courseId,
@@ -909,39 +933,113 @@ export async function generateCertificate(req, res) {
 
     // 1) If a cert already exists, return it
     console.time('[cert] generate:existing');
-    const existing = await pool.query(
-      `SELECT * FROM certificates WHERE student_id = $1 AND course_id = $2`,
-      [studentId, courseId],
-    );
-    console.timeEnd('[cert] generate:existing');
+   const existing = await pool.query(
+  `
+  SELECT *
+    FROM certificates
+   WHERE student_id = $1 AND course_id = $2
+   ORDER BY (url IS NOT NULL AND url <> '') DESC,
+            issued_at DESC NULLS LAST,
+            id DESC
+   LIMIT 1
+  `,
+  [studentId, courseId],
+);
 
-    const existingRow = existing.rows[0];
+const existingRow = existing.rows[0] || null;
 
-    // Compute the org brand we would like to use now (same as later in the handler)
-    let currentOrgBrand = null;
+// Compute the org brand we would like to use now (same as later in the handler)
+let currentOrgBrand = null;
+try {
+  currentOrgBrand = await getOrgBrandForCourse(studentId, courseId);
+} catch {}
+
+const desiredLogoId = publicIdFromPublicIdOrUrl(
+  currentOrgBrand?.logo_url || process.env.CERT_LOGO_PUBLIC_ID || '',
+);
+
+const hasCorrectBrand =
+  existingRow?.brand_logo_public_id &&
+  desiredLogoId &&
+  existingRow.brand_logo_public_id === desiredLogoId;
+
+// ✅ ADD THIS BLOCK (right here)
+const hasTrackCol =
+  existingRow && Object.prototype.hasOwnProperty.call(existingRow, 'program_track');
+
+const existingTrack = hasTrackCol
+  ? normalizeProgramTrack(existingRow.program_track)
+  : null;
+
+const hasPdfVerCol =
+  existingRow && Object.prototype.hasOwnProperty.call(existingRow, 'pdf_template_version');
+
+const existingPdfVer = hasPdfVerCol ? Number(existingRow.pdf_template_version || 0) : null;
+const pdfIsCurrent = !hasPdfVerCol || existingPdfVer >= CERT_PDF_TEMPLATE_VERSION;
+
+// ✅ Only reuse if: has file + correct brand + current template + track matches
+const shouldReuseExisting =
+  !!existingRow &&
+  !!existingRow.url &&
+  hasCorrectBrand &&
+  pdfIsCurrent &&
+  (!hasTrackCol || existingTrack === programTrack);
+
+if (shouldReuseExisting) {
+  const base =
+    process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+
+  const brandNameForNo =
+    (currentOrgBrand?.name && String(currentOrgBrand.name).trim()) ||
+    process.env.CERT_BRAND_NAME ||
+    'DayBreak Academy';
+
+  let certNo = existingRow.certificate_number;
+
+  // Best-effort: ensure certificate_number is present for verify/no endpoint
+  if (!certNo) {
+    const issuedAt = existingRow?.issued_at
+      ? new Date(existingRow.issued_at)
+      : new Date();
+
+    const [uQ, cQ] = await Promise.all([
+      pool.query(`SELECT name FROM users WHERE id = $1`, [studentId]),
+      pool.query(`SELECT title FROM courses WHERE id = $1`, [courseId]),
+    ]);
+
+    const studentNameForNo = uQ.rows?.[0]?.name || 'Student';
+    const courseTitleForNo = cQ.rows?.[0]?.title || 'Course';
+
+    certNo = generateCertificateNumber({
+      brandName: brandNameForNo,
+      studentName: studentNameForNo,
+      courseTitle: courseTitleForNo,
+      issuedAt,
+      certificateId: existingRow.id,
+    });
+
     try {
-      currentOrgBrand = await getOrgBrandForCourse(studentId, courseId);
-    } catch {}
-    const desiredLogoId = publicIdFromPublicIdOrUrl(
-      currentOrgBrand?.logo_url || process.env.CERT_LOGO_PUBLIC_ID || '',
-    );
-    const hasCorrectBrand =
-      existingRow?.brand_logo_public_id &&
-      desiredLogoId &&
-      existingRow.brand_logo_public_id === desiredLogoId;
-
-    if (existing.rowCount > 0 && hasCorrectBrand) {
-      const base =
-        process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
-      console.log(
-        '[cert] generateCertificate -> already exists with matching brand, returning row',
-        { id: existingRow.id },
+      await pool.query(
+        `UPDATE certificates SET certificate_number = $1 WHERE id = $2`,
+        [certNo, existingRow.id],
       );
-      return res.json({
-        ...existingRow,
-        download_url: `${base}/api/certificates/${existingRow.id}/download`,
-      });
+    } catch (e) {
+      if (String(e?.code) !== '42703') throw e;
     }
+  }
+
+  return res.json({
+    ...existingRow,
+    certificate_number: certNo || existingRow.certificate_number || null,
+    download_url: `${base}/api/certificates/${existingRow.id}/download`,
+    ...(certNo
+      ? { verify_url: `${base}/api/certificates/verify/no/${encodeURIComponent(certNo)}` }
+      : {}),
+  });
+}
+
+
+
     // else: fall through to regenerate & overwrite to pick up org branding
 
     // 2) Eligibility
@@ -1064,37 +1162,82 @@ if (!quizResult.passed) {
 
     // 4) Create DB row to get UUID (handle rare duplicate by reselecting)
     console.time('[cert] generate:insertRow');
-    let inserted;
-    try {
-      inserted = await pool.query(
-        `INSERT INTO certificates (id, student_id, course_id, url)
-         VALUES (gen_random_uuid(), $1, $2, '')
-         RETURNING *`,
-        [studentId, courseId],
-      );
-    } catch (e) {
-      console.warn('[cert] insert race? reselecting existing row', e?.message);
-      inserted = await pool.query(
-        `SELECT * FROM certificates WHERE student_id = $1 AND course_id = $2`,
-        [studentId, courseId],
-      );
-      if (inserted.rowCount === 0) throw e; // real error
-    }
-    console.timeEnd('[cert] generate:insertRow');
+    // 4) Use existing row if present (prevents duplicates / empty-url rows)
+let cert = existingRow;
 
-    const cert = inserted.rows[0];
-    console.log('[cert] generateCertificate inserted row', { certId: cert.id });
+if (!cert) {
+  console.time('[cert] generate:insertRow');
+  let inserted;
+  try {
+    inserted = await pool.query(
+      `INSERT INTO certificates (id, student_id, course_id, url)
+       VALUES (gen_random_uuid(), $1, $2, '')
+       RETURNING *`,
+      [studentId, courseId],
+    );
+  } catch (e) {
+    console.warn('[cert] insert race? reselecting existing row', e?.message);
+    inserted = await pool.query(
+      `
+      SELECT *
+        FROM certificates
+       WHERE student_id = $1 AND course_id = $2
+       ORDER BY (url IS NOT NULL AND url <> '') DESC,
+                issued_at DESC NULLS LAST,
+                id DESC
+       LIMIT 1
+      `,
+      [studentId, courseId],
+    );
+    if (inserted.rowCount === 0) throw e;
+  }
+  console.timeEnd('[cert] generate:insertRow');
+  cert = inserted.rows[0];
+}
+
+console.log('[cert] generateCertificate row', { certId: cert.id });
 
     // 5) Build a public verification URL (no auth)
     const base =
-      process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
-    const verificationUrl = `${base}/api/certificates/verify/${cert.id}`;
+  process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+
+// Use DB issued_at if present; else now
+const issuedAt = cert?.issued_at ? new Date(cert.issued_at) : new Date();
+
+// ✅ Generate the Cert No ONCE and persist it
+const certificateNumber = generateCertificateNumber({
+  brandName: brandName,        // or brand.name (same value)
+  studentName,
+  courseTitle,
+  issuedAt,
+  certificateId: cert.id,      // ✅ guarantees uniqueness
+});
+
+// ✅ QR & public verify should use Cert No (short)
+const verificationUrl = `${base}/api/certificates/verify/no/${encodeURIComponent(
+  certificateNumber,
+)}`;
+
+
+
+
+// ✅ Reuse stored certificate_number if your table already has it
+const storedCertNumber =
+  existingRow?.certificate_number ||
+  cert?.certificate_number ||
+  null;
+
+// ✅ Only generate when missing (uses your existing function)
+
+
 
     // 6) Create in-memory PDF (branded for org when present)
     console.time('[cert] generate:renderPdf');
     const buffer = await generateCertificatePdfBuffer({
       studentName,
       courseTitle,
+      certificateNumber,
+      issuedAt,
       programTrack,
       verificationUrl,
       titleText: headerTitle,
@@ -1162,21 +1305,48 @@ if (!quizResult.passed) {
 
     // 8) Save URL + per-certificate brand logo public_id for OG previews
     // Prefer a real public_id derived from what we actually used; fallback to env default.
-    const brandLogoPublicIdForOg =
-      publicIdFromPublicIdOrUrl(brand.logoPublicId) ||
-      process.env.CERT_LOGO_PUBLIC_ID ||
-      'branding/logo';
+   const brandLogoPublicIdForOg =
+  publicIdFromPublicIdOrUrl(brand.logoPublicId) ||
+  process.env.CERT_LOGO_PUBLIC_ID ||
+  'branding/logo';
 
-    console.time('[cert] generate:updateUrl');
-    const updated = await pool.query(
-      `UPDATE certificates
-          SET url = $1,
-              brand_logo_public_id = $2
-        WHERE id = $3
-      RETURNING *`,
+console.time('[cert] generate:updateUrl');
+
+let updated;
+try {
+  updated = await pool.query(
+  `
+  UPDATE certificates
+     SET url = $1,
+         brand_logo_public_id = $2,
+         certificate_number = COALESCE(certificate_number, $3),
+         program_track = COALESCE($4, program_track),
+         pdf_template_version = GREATEST(COALESCE(pdf_template_version, 0), $5)
+   WHERE id = $6
+   RETURNING *
+  `,
+  [url, brandLogoPublicIdForOg, certificateNumber, programTrack, CERT_PDF_TEMPLATE_VERSION, cert.id],
+);
+
+} catch (e) {
+  // If your certificates table doesn't have these columns in some envs, don't break generation.
+  if (String(e?.code) === '42703') {
+    updated = await pool.query(
+      `
+      UPDATE certificates
+         SET url = $1,
+             brand_logo_public_id = $2
+       WHERE id = $3
+       RETURNING *
+      `,
       [url, brandLogoPublicIdForOg, cert.id],
     );
-    console.timeEnd('[cert] generate:updateUrl');
+  } else {
+    throw e;
+  }
+}
+
+console.timeEnd('[cert] generate:updateUrl');
 
     const row = updated.rows[0];
     const download_url = `${base}/api/certificates/${row.id}/download`;
@@ -1524,13 +1694,17 @@ export async function getStatus(req, res) {
     res.setHeader('Expires', '0');
 
     const userId = req.user?.users_id ?? req.user?.id; // numeric users.id
-    const authUuid = pickAuthUuidFromReqUser(req.user); // ✅ ADD THIS LINE
+    const authUuid = pickAuthUuidFromReqUser(req.user);
 
     const courseId = String(req.query.courseId || '');
-    if (!userId)
-      return res.status(401).json({ paid: false, error: 'Unauthorized' });
+    if (!userId) return res.status(401).json({ paid: false, error: 'Unauthorized' });
     if (!courseId || !isUuid(courseId))
       return res.status(400).json({ paid: false, error: 'Invalid courseId' });
+
+    // ✅ includeQuiz flag (optional)
+    const includeQuiz =
+      String(req.query.includeQuiz || '').toLowerCase() === '1' ||
+      String(req.query.includeQuiz || '').toLowerCase() === 'true';
 
     const [certQ, orgQ, issuQ, ent, purQ, enrQ, aiEnt] = await Promise.all([
       pool.query(
@@ -1579,13 +1753,10 @@ export async function getStatus(req, res) {
       certQ.rowCount > 0 ||
       issuQ.rowCount > 0;
 
-    const extended =
-      orgCovered || ent?.can_transcript === true || extendedByIssuance;
+    const extended = orgCovered || ent?.can_transcript === true || extendedByIssuance;
 
-    const lessonsUsed =
-      aiEnt && aiEnt.lessons_used != null ? Number(aiEnt.lessons_used) : null;
-    const lessonCap =
-      aiEnt && aiEnt.max_lessons != null ? Number(aiEnt.max_lessons) : null;
+    const lessonsUsed = aiEnt && aiEnt.lessons_used != null ? Number(aiEnt.lessons_used) : null;
+    const lessonCap = aiEnt && aiEnt.max_lessons != null ? Number(aiEnt.max_lessons) : null;
 
     // Heal entitlement if we learned something new
     if (extended && (!ent || ent.can_transcript !== true)) {
@@ -1598,34 +1769,43 @@ export async function getStatus(req, res) {
       } catch {}
     }
 
-    // ✅ INSERT YOUR BLOCK RIGHT HERE (after hasAnyCert is known)
     // Ensure "Purchased AI courses" reflects certificate pre-purchases (and org cover).
     if (hasAnyCert) {
       const userUuid =
-        authUuid ||
-        (userId ? await resolveAuthUuidForNumericUserId(userId) : null);
+        authUuid || (userId ? await resolveAuthUuidForNumericUserId(userId) : null);
 
       if (userUuid) {
         try {
           await upsertAiCertificateEntitlement({
-            userId: userUuid,           // ✅ UUID, not numeric
-            courseId,                   // validated uuid
+            userId: userUuid, // ✅ UUID, not numeric
+            courseId, // validated uuid
             courseSource: 'catalog',
             maxLessons: 60,
-            // orgId: orgCovered ? someOrgId : null, // optional if you track it
           });
         } catch (e) {
-          console.warn(
-            '[cert] getStatus: upsertAiCertificateEntitlement failed',
-            e?.message,
-          );
+          console.warn('[cert] getStatus: upsertAiCertificateEntitlement failed', e?.message);
         }
       }
     }
 
-    const tier = extended
-      ? 'extended'
-      : ent?.tier || (hasAnyCert ? 'standard' : null);
+    // ✅ Optional quiz status payload
+    let quiz = null;
+    if (includeQuiz) {
+      try {
+        const coursePassMark = await resolveCoursePassMark(courseId);
+        quiz = await getLatestQuizResult({
+          studentId: userId, // numeric users.id
+          authUuid, // uuid from token if present
+          courseId,
+          requiredPassMark: coursePassMark,
+        });
+      } catch (e) {
+        console.warn('[cert] getStatus quiz lookup failed', e?.message);
+        quiz = null;
+      }
+    }
+
+    const tier = extended ? 'extended' : ent?.tier || (hasAnyCert ? 'standard' : null);
 
     return res.json({
       paid: Boolean(hasAnyCert),
@@ -1637,6 +1817,8 @@ export async function getStatus(req, res) {
       narrationUnlocked,
       lessons_used: lessonsUsed,
       lesson_cap: lessonCap,
+
+      ...(includeQuiz ? { quiz } : {}),
     });
   } catch (err) {
     console.error('[cert] getStatus error', err);
@@ -1783,5 +1965,43 @@ export async function listMyAiCourses(req, res) {
   } catch (err) {
     console.error('[cert] listMyAiCourses error', err);
     return res.status(500).json({ error: 'FAILED_TO_LIST' });
+  }
+}
+
+
+// Public verification by Cert No (no auth)
+export async function verifyCertificateByNumber(req, res) {
+  try {
+    const certNo = normalizeCertNo(req.params.certNo);
+
+    if (!isValidCertNo(certNo)) {
+      return res.status(400).json({ valid: false, error: 'Invalid certificate number' });
+    }
+
+    console.log('[cert] verifyCertificateByNumber', { certNo });
+    console.time('[cert] verifyCertificateByNumber:query');
+
+    const { rows } = await pool.query(
+      `
+      SELECT c.*, u.name AS student_name, crs.title AS course_title
+        FROM certificates c
+        JOIN users u      ON u.id   = c.student_id
+        JOIN courses crs  ON crs.id = c.course_id
+       WHERE c.certificate_number = $1
+       LIMIT 1
+      `,
+      [certNo],
+    );
+
+    console.timeEnd('[cert] verifyCertificateByNumber:query');
+
+    if (!rows.length) {
+      return res.status(404).json({ valid: false, error: 'Certificate not found' });
+    }
+
+    return res.json({ valid: true, certificate: rows[0] });
+  } catch (err) {
+    logErr('[cert] verifyCertificateByNumber error', err);
+    return res.status(500).json({ valid: false, error: err.message });
   }
 }

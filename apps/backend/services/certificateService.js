@@ -344,6 +344,116 @@ function drawBrandNameSingleLine(
   });
 }
 
+// ─────────────────────────────────────────────────────────
+// Program Track badge (same as transcriptService)
+// ─────────────────────────────────────────────────────────
+const TRACK_META = {
+  certificate: {
+    label: 'Certificate Program',
+    short: 'C',
+    tint: '#1D4ED8',
+    bg: '#DBEAFE',
+  },
+  diploma: {
+    label: 'Professional Program',
+    short: 'P',
+    tint: '#047857',
+    bg: '#D1FAE5',
+  },
+  degree: {
+    label: 'Comprehensive Program',
+    short: 'M',
+    tint: '#6D28D9',
+    bg: '#EDE9FE',
+  },
+  module: {
+    label: 'Module Track',
+    short: 'U',
+    tint: '#334155',
+    bg: '#E2E8F0',
+  },
+};
+
+function normalizeTrackKey(v) {
+  const k = String(v || '').trim().toLowerCase();
+
+  // accept your public names too (same mapping you use in native/web)
+  if (k === 'professional') return 'diploma';
+  if (k === 'comprehensive') return 'degree';
+
+  return TRACK_META[k] ? k : null;
+}
+
+function drawProgramTrackPill(
+  doc,
+  programTrack,
+  { x, y, align = 'right', maxWidth = 260 } = {},
+) {
+  const key = normalizeTrackKey(programTrack);
+  if (!key) return null;
+
+  const meta = TRACK_META[key];
+  const label = meta.label;
+
+  doc.save();
+
+  // Typography
+  doc.font('Helvetica-Bold').fontSize(10);
+
+  const padX = 10;
+  const padY = 6;
+  const circle = 16;
+  const gap = 8;
+
+  // Measure
+  const labelW = doc.widthOfString(label);
+  let pillW = padX + circle + gap + labelW + padX;
+  const pillH = Math.max(22, circle + padY);
+
+  // Clamp width (rare, but safe)
+  let safeLabel = label;
+  if (pillW > maxWidth) {
+    doc.font('Helvetica-Bold').fontSize(9);
+    safeLabel = meta.label.replace(' Program', '');
+    const w2 = doc.widthOfString(safeLabel);
+    pillW = padX + circle + gap + w2 + padX;
+
+    if (pillW > maxWidth) {
+      safeLabel = meta.short;
+      const w3 = doc.widthOfString(safeLabel);
+      pillW = padX + circle + gap + w3 + padX;
+    }
+  }
+
+  const drawX =
+    align === 'right' ? x - pillW : align === 'center' ? x - pillW / 2 : x;
+
+  // Pill background
+  doc.roundedRect(drawX, y, pillW, pillH, 999).fill(meta.bg);
+
+  // Icon circle
+  const cx = drawX + padX + circle / 2;
+  const cy = y + pillH / 2;
+  doc.circle(cx, cy, circle / 2).fill(meta.tint);
+
+  // Icon letter
+  doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(10);
+  doc.text(meta.short, cx - 3.2, cy - 6.2, { lineBreak: false });
+
+  // Label
+  doc.fillColor(meta.tint).font('Helvetica-Bold').fontSize(10);
+  doc.text(
+    safeLabel,
+    drawX + padX + circle + gap,
+    y + (pillH - 10) / 2 - 1,
+    { lineBreak: false },
+  );
+
+  doc.restore();
+  return { label: meta.label, key, height: pillH };
+}
+
+
 /* ─────────────────────────────────────────────────────────
  * PDF generator (single page)
  * ───────────────────────────────────────────────────────── */
@@ -521,32 +631,35 @@ export async function generateCertificatePdfBuffer({
       });
 
       // ✅ Program track pill (centered under headline)
-      const pillRes = drawProgramTrackPill(doc, programTrack, {
-        x: 50 + 495 / 2,
-        y: y0 + 40,
-        align: 'center',
-        maxWidth: 320,
-      });
+     // ✅ Program track pill (centered under headline)
+const PILL_Y = y0 + 40; // keep pill where it is under the headline
+const pillRes = drawProgramTrackPill(doc, programTrack, {
+  x: 50 + 495 / 2,
+  y: PILL_Y,
+  align: 'center',
+  maxWidth: 320,
+});
 
-      // If pill exists, push content down a bit so spacing stays perfect
-      const TRACK_PUSH = pillRes ? 22 : 0;
+// ✅ Add spacing AFTER the pill before "This certifies that"
+const GAP_AFTER_PILL = 16; // increase to 20–24 if you want more space
+const certifiesY = pillRes
+  ? PILL_Y + pillRes.height + GAP_AFTER_PILL
+  : y0 + 40;
 
+doc
+  .font('Helvetica')
+  .fontSize(14)
+  .fillColor('#1F2937')
+  .text('This certifies that', 50, certifiesY, {
+    width: 495,
+    align: 'center',
+    lineBreak: false,
+  });
 
-    doc
-      .font('Helvetica')
-      .fontSize(14)
-      .fillColor('#1F2937')
-      .text('This certifies that', 50, y0 + 40 + TRACK_PUSH, {
-        width: 495,
-        align: 'center',
-        lineBreak: false,
-      });
+// Student name — keep same spacing from "This certifies that"
+const STUDENT_GAP_AFTER_CERTIFIES = 18;
+const studentY = certifiesY + STUDENT_GAP_AFTER_CERTIFIES;
 
-    // Student name — sits on underline, and closer to the previous line
-    const STUDENT_X = 50;
-    const STUDENT_W = 495;
-    const STUDENT_SIZE = 44;
-    const studentY = y0 + 58 + TRACK_PUSH; 
 
     const { lineY: studentUnderlineY } = drawCenteredUnderlinedText(
       doc,

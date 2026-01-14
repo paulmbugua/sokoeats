@@ -7,22 +7,29 @@ import {
   generateCertificate,
   getCertificate,
   verifyCertificate,
+  verifyCertificateByNumber,
   ogPreview,
-  downloadCertificate, // ⬅️ add this import
+  downloadCertificate,
   getStatus,
   unlockNarrationAccess,
   listMyAiCourses,
 } from '../controllers/certificatesController.js';
 
 const router = express.Router();
+
+// ✅ UUID only (certificate id)
 const UUID_RE =
   '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}';
+
+// ✅ Cert No format: 1–6 letters, dash, 8 digits
+const CERTNO_RE = '[A-Za-z]{1,6}-[0-9]{8}';
+
 // ---- Public (no auth) ----
+router.get(`/verify/no/:certNo(${CERTNO_RE})`, verifyCertificateByNumber);
 router.get(`/verify/:id(${UUID_RE})`, verifyCertificate);
 router.get(`/:id(${UUID_RE})/og`, ogPreview);
 
 // ---- Private (auth) ----
-// IMPORTANT: put this BEFORE '/:id'
 router.get(`/:id(${UUID_RE})/download`, anyAuth, downloadCertificate);
 
 router.get('/status', anyAuth, getStatus);
