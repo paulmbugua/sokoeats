@@ -50,7 +50,7 @@ export default function expoConfig({ config }) {
 
     name: 'DayBreak',
     slug: 'funzasasa',
-    version: '1.0.5',
+    version: '1.0.6',
     scheme: 'daybreak',
 
     runtimeVersion: { policy: 'appVersion' },
