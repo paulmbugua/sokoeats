@@ -132,17 +132,20 @@ module.exports = {
       },
     },
 
-    {
+   {
       files: ['apps/backend/**/*.{js,mjs,cjs}'],
+      env: { node: true, es2022: true },
       parserOptions: {
-        project: null, // ✅ prevents TS project lookup for backend JS
+        project: null,       // ✅ keep this
+        ecmaVersion: 2022,   // ✅ modern syntax + globalThis
+        sourceType: 'module' // ✅ ESM
       },
-      env: { node: true },
       rules: {
         '@typescript-eslint/no-unused-vars': 'off',
         'import/no-named-as-default': 'off',
         'import/no-named-as-default-member': 'off',
       },
     },
+
   ],
 };

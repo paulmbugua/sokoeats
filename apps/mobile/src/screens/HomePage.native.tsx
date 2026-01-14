@@ -923,22 +923,27 @@ const HomePageNative: React.FC = () => {
                 >
                   <CardFadeIn index={idx}>
                     <View
-                      style={tw`rounded-2xl p-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+                      style={tw`relative rounded-2xl p-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                     >
-                      <View style={tw`relative self-center`}>
+                      {t.certified ? (
+                        <View
+                          accessibilityLabel="Verified tutor"
+                          style={tw`absolute top-2 left-2 z-10 rounded-full px-2 py-1 border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/15`}
+                        >
+                          <Text style={tw`text-[10px] font-extrabold text-emerald-800 dark:text-emerald-200`}>
+                            ✓
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      <View style={tw`self-center`}>
                         <Image
                           source={{ uri: t.image }}
                           style={tw`w-16 h-16 rounded-full`}
                           resizeMode="cover"
                         />
-                        {t.certified ? (
-                          <View
-                            style={tw`absolute -top-1 -left-1 bg-emerald-500 rounded-full px-2 py-0.5`}
-                          >
-                            <Text style={tw`text-[9px] font-semibold text-white`}>✓ Certified</Text>
-                          </View>
-                        ) : null}
                       </View>
+
                       <View style={tw`mt-2 items-center`}>
                         <Text
                           numberOfLines={1}
@@ -957,6 +962,7 @@ const HomePageNative: React.FC = () => {
                         </Text>
                       </View>
                     </View>
+
                   </CardFadeIn>
                 </TouchableOpacity>
               ))}

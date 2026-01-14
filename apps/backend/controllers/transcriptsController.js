@@ -309,136 +309,85 @@ async function loadAttemptedLessonTitles(db, userId, courseId) {
 
 // Compute overallPct, passMark, and a breakdown from latest attempts (+ lessons section).
 async function loadTranscriptScores(db, userId, courseId) {
-  const uidText = String(userId);
-  const uidNum = Number(uidText);
+  const uidNum = Number(userId);
 
-  // --- PERSONAL ATTEMPTS (latest per quiz) ---
-  const personalUserSql = `
-    SELECT quiz_id, score_pct, pass_mark, title
-    FROM (
-      SELECT qa.quiz_id,
-             qa.score_pct::float AS score_pct,
-             qa.pass_mark::float AS pass_mark,
-             q.title,
-             row_number() OVER (PARTITION BY qa.quiz_id ORDER BY qa.submitted_at DESC) AS rn
-      FROM quiz_attempts qa
-      JOIN quizzes q ON q.id = qa.quiz_id
-      WHERE qa.user_id = $1::uuid
-        AND qa.course_id = $2::uuid
-        AND qa.submitted_at IS NOT NULL
-    ) t
-    WHERE rn = 1
-  `;
-  const personalStudentSql = `
-    SELECT quiz_id, score_pct, pass_mark, title
-    FROM (
-      SELECT qa.quiz_id,
-             qa.score_pct::float AS score_pct,
-             qa.pass_mark::float AS pass_mark,
-             q.title,
-             row_number() OVER (PARTITION BY qa.quiz_id ORDER BY qa.submitted_at DESC) AS rn
-      FROM quiz_attempts qa
-      JOIN quizzes q ON q.id = qa.quiz_id
-      WHERE qa.student_id = $1::bigint
-        AND qa.course_id  = $2::uuid
-        AND qa.submitted_at IS NOT NULL
-    ) t
-    WHERE rn = 1
-  `;
+  // PERSONAL attempts (quiz_attempts) ✅ uses student_id + created_at
+  const personal = await db
+    .query(
+      `
+      SELECT quiz_id, score_pct, pass_mark, title
+      FROM (
+        SELECT qa.quiz_id,
+               qa.score_pct::float AS score_pct,
+               qa.pass_mark::float AS pass_mark,
+               q.title,
+               row_number() OVER (PARTITION BY qa.quiz_id ORDER BY qa.created_at DESC, qa.id DESC) AS rn
+        FROM quiz_attempts qa
+        JOIN quizzes q ON q.id = qa.quiz_id
+        WHERE qa.student_id = $1::bigint
+          AND qa.course_id  = $2::uuid
+      ) t
+      WHERE rn = 1
+      `,
+      [uidNum, courseId],
+    )
+    .catch(() => ({ rows: [] }));
 
-  let personal = { rows: [] };
-  try {
-    if (/^[0-9a-f-]{36}$/i.test(uidText)) {
-      personal = await db.query(personalUserSql, [uidText, courseId]);
-    } else {
-      throw Object.assign(new Error('not uuid'), { code: '22P02' });
-    }
-  } catch (e) {
-    if (e?.code === '42703' || e?.code === '22P02') {
-      if (Number.isFinite(uidNum)) {
-        personal = await db
-          .query(personalStudentSql, [uidNum, courseId])
-          .catch(() => ({ rows: [] }));
-      }
-    } else {
-      throw e;
-    }
-  }
-
-  // --- ORG ATTEMPTS (latest per quiz) ---
-  const orgSql = `
-    SELECT quiz_id, score_pct, pass_mark, title
-    FROM (
-      SELECT qa.quiz_id,
-             qa.score_pct::float AS score_pct,
-             qa.pass_mark::float AS pass_mark,
-             q.title,
-             row_number() OVER (PARTITION BY qa.quiz_id ORDER BY qa.submitted_at DESC) AS rn
-      FROM org_quiz_attempts qa
-      JOIN quizzes q ON q.id = qa.quiz_id
-      JOIN org_course_assignments a ON a.id = qa.assignment_id
-      WHERE qa.user_id = $1::uuid
-        AND a.course_id = $2::uuid
-        AND qa.submitted_at IS NOT NULL
-    ) t
-    WHERE rn = 1
-  `;
-  let org = { rows: [] };
-  if (/^[0-9a-f-]{36}$/i.test(uidText)) {
-    org = await db
-      .query(orgSql, [uidText, courseId])
-      .catch(() => ({ rows: [] }));
-  }
+  // ORG attempts (org_quiz_attempts) ✅ uses numeric user_id + submitted_at
+  const org = await db
+    .query(
+      `
+      SELECT quiz_id, score_pct, pass_mark, title
+      FROM (
+        SELECT qa.quiz_id,
+               qa.score_pct::float AS score_pct,
+               qa.pass_mark::float AS pass_mark,
+               q.title,
+               row_number() OVER (PARTITION BY qa.quiz_id ORDER BY qa.submitted_at DESC, qa.id DESC) AS rn
+        FROM org_quiz_attempts qa
+        JOIN quizzes q ON q.id = qa.quiz_id
+        JOIN org_course_assignments a ON a.id = qa.assignment_id
+        WHERE qa.user_id = $1::bigint
+          AND a.course_id = $2::uuid
+          AND qa.submitted_at IS NOT NULL
+      ) t
+      WHERE rn = 1
+      `,
+      [uidNum, courseId],
+    )
+    .catch(() => ({ rows: [] }));
 
   const rows = personal.rows.length ? personal.rows : org.rows;
-  // Normalize 0–1 to 0–100
+
+  if (!rows.length) {
+    // Better UX than forced 0%
+    return { overallPct: null, passMark: 70, sections: [] };
+  }
+
   const toPct = (x) => {
     const n = Number(x) || 0;
     return n > 0 && n <= 1 ? n * 100 : n;
   };
 
-  if (!rows.length) {
-    // Even if no quizzes, still try to add "Lessons Attempted"
-    const lessons = await loadAttemptedLessonTitles(db, userId, courseId);
-    const sections = [];
-    if (lessons.length) {
-      sections.push({
-        sectionTitle: 'Lessons Attempted',
-        items: lessons.map((title) => ({ label: title, scorePct: 100 })),
-      });
-    }
-    return { overallPct: 0, passMark: 70, sections };
-  }
-
   const normalized = rows.map((r) => ({
     title: r.title,
-    quiz_id: r.quiz_id,
     score_pct: toPct(r.score_pct),
     pass_mark: toPct(r.pass_mark),
   }));
 
-  const sum = normalized.reduce((s, r) => s + r.score_pct, 0);
-  const overallPct = Math.round((sum / normalized.length) * 100) / 100;
+  const avg = normalized.reduce((s, r) => s + r.score_pct, 0) / normalized.length;
+  const overallPct = Math.round(avg * 100) / 100;
   const passMark = Math.max(...normalized.map((r) => r.pass_mark)) || 70;
 
   const sections = [
     {
       sectionTitle: 'Quiz Scores',
       items: normalized.map((r) => ({
-        label: r.title || `Quiz ${r.quiz_id}`,
+        label: r.title || 'Quiz',
         scorePct: Math.round(r.score_pct * 100) / 100,
       })),
     },
   ];
-
-  // NEW: Always append Lessons Attempted if any
-  const lessons = await loadAttemptedLessonTitles(db, userId, courseId);
-  if (lessons.length) {
-    sections.push({
-      sectionTitle: 'Lessons Attempted',
-      items: lessons.map((title) => ({ label: title, scorePct: 100 })), // 100% = attempted
-    });
-  }
 
   return { overallPct, passMark, sections };
 }

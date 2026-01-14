@@ -235,86 +235,93 @@ const TutorCard = React.memo(function TutorCard({
   const ccode = String((item as any).country ?? (item as any).country_code ?? '').trim();
   const cname = ccode ? countryName?.(ccode) || ccode : '';
 
-  return (
-    <View style={tw`mb-4`}>
-      <View
-        style={tw`flex-row items-stretch justify-between gap-4 rounded-2xl bg-white dark:bg-[#0b1016] p-3 border border-[#e2edf5] dark:border-white/5 shadow-sm`}
-      >
-        <View style={tw`flex-1`}>
-          <Text style={tw`text-xs font-medium text-[#49739c] dark:text-white/70`}>{sub}</Text>
+ return (
+  <View style={tw`mb-4`}>
+    <View
+      style={tw`flex-row items-stretch justify-between gap-4 rounded-2xl bg-white dark:bg-[#0b1016] p-3 border border-[#e2edf5] dark:border-white/5 shadow-sm`}
+    >
+      <View style={tw`flex-1`}>
+        <Text style={tw`text-xs font-medium text-[#49739c] dark:text-white/70`}>{sub}</Text>
 
-          <View style={tw`flex-row items-center gap-2 mt-0.5`}>
-            {status ? <View style={tw.style('w-2 h-2 rounded-full', chipBg)} /> : null}
+        <View style={tw`flex-row items-center gap-2 mt-0.5`}>
+          {status ? <View style={tw.style('w-2 h-2 rounded-full', chipBg)} /> : null}
 
-            <Pressable onPress={() => onPress((item as any).user_id ?? (item as any).id)}>
-              <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
-                {item.name ?? 'Tutor'}
-              </Text>
-            </Pressable>
-          </View>
-
-          <View style={tw`flex-row flex-wrap items-center gap-x-3 gap-y-1 mt-1`}>
-            <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
-              {rating ? `${rating.toFixed(1)}★` : 'No rating'}
+          <Pressable onPress={() => onPress((item as any).user_id ?? (item as any).id)}>
+            <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
+              {item.name ?? 'Tutor'}
             </Text>
+          </Pressable>
+        </View>
 
-            {typeof tokens === 'number' ? (
-              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
-                {tokens} tokens
-              </Text>
-            ) : null}
+        <View style={tw`flex-row flex-wrap items-center gap-x-3 gap-y-1 mt-1`}>
+          <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+            {rating ? `${rating.toFixed(1)}★` : 'No rating'}
+          </Text>
 
-            {langs ? (
-              <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>Languages: {langs}</Text>
-            ) : null}
+          {typeof tokens === 'number' ? (
+            <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+              {tokens} tokens
+            </Text>
+          ) : null}
 
-            {cname ? (
-              <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>{cname}</Text>
-            ) : null}
-          </View>
+          {langs ? (
+            <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>Languages: {langs}</Text>
+          ) : null}
 
-          {desc ? (
-            <Text style={tw`text-sm mt-1 text-[#0d141c] dark:text-white/90`}>{desc}</Text>
+          {cname ? (
+            <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>{cname}</Text>
           ) : null}
         </View>
 
-        {/* Image + overlay chips */}
-        <Pressable
-          onPress={() => onPress((item as any).user_id ?? (item as any).id)}
-          style={tw`w-36 rounded-xl overflow-hidden`}
-        >
-          <View style={tw`relative`}>
-            <Image source={{ uri: img }} style={tw`w-full aspect-video`} resizeMode="cover" />
-
-            {/* subtle overlay for readability */}
-            <View style={tw`absolute inset-0 bg-black/10`} />
-
-            {status || showNew || showCertified ? (
-              <View style={tw`absolute top-2 left-2 flex-row items-center gap-2`}>
-                {showCertified ? (
-                  <View style={tw`px-2.5 py-1 rounded-full bg-emerald-600`}>
-                    <Text style={tw`text-[10px] font-bold text-white`}>✓ Certified</Text>
-                  </View>
-                ) : null}
-
-                {status ? (
-                  <View style={tw.style('px-2.5 py-1 rounded-full', chipBg)}>
-                    <Text style={tw`text-[10px] font-bold text-white`}>{status}</Text>
-                  </View>
-                ) : null}
-
-                {showNew && status !== 'New' ? (
-                  <View style={tw`px-2.5 py-1 rounded-full bg-sky-500`}>
-                    <Text style={tw`text-[10px] font-bold text-white`}>New</Text>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-          </View>
-        </Pressable>
+        {desc ? (
+          <Text style={tw`text-sm mt-1 text-[#0d141c] dark:text-white/90`}>{desc}</Text>
+        ) : null}
       </View>
+
+      {/* Image + overlay chips */}
+      <Pressable
+        onPress={() => onPress((item as any).user_id ?? (item as any).id)}
+        style={tw`w-36 rounded-xl overflow-hidden`}
+      >
+        <View style={tw`relative`}>
+          <Image source={{ uri: img }} style={tw`w-full aspect-video`} resizeMode="cover" />
+
+          {/* subtle overlay for readability */}
+          <View style={tw`absolute inset-0 bg-black/10`} />
+
+          {/* ✅ overlays: checkmark-only (no "Certified" text), status, new */}
+          {showCertified ? (
+            <View
+              accessibilityLabel="Verified tutor"
+              style={tw`absolute top-3 left-3 z-10 rounded-full px-2 py-1 border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/15`}
+            >
+              <Text style={tw`text-[10px] font-extrabold text-emerald-800 dark:text-emerald-200`}>
+                ✓
+              </Text>
+            </View>
+          ) : null}
+
+          {status || showNew ? (
+            <View style={tw`absolute top-3 right-3 z-10 items-end gap-2`}>
+              {status ? (
+                <View style={tw.style('px-2.5 py-1 rounded-full', chipBg)}>
+                  <Text style={tw`text-[10px] font-bold text-white`}>{status}</Text>
+                </View>
+              ) : null}
+
+              {showNew && status !== 'New' ? (
+                <View style={tw`px-2.5 py-1 rounded-full bg-sky-500`}>
+                  <Text style={tw`text-[10px] font-bold text-white`}>New</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
     </View>
-  );
+  </View>
+);
+
 });
 
 /* ───────── Countries normalized for modal ───────── */

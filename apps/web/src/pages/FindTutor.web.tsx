@@ -522,11 +522,12 @@ const FindTutor: React.FC = () => {
                     {(status || showNew || showCertified) && (
                       <div className="absolute top-3 left-3 flex items-center gap-2">
                         {showCertified && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full text-white bg-emerald-600 shadow">
-                            <FontAwesomeIcon icon={faCheckCircle as IconProp} />
-                            Certified
-                          </span>
-                        )}
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full text-white bg-emerald-600 shadow">
+                          <FontAwesomeIcon icon={faCheckCircle as IconProp} />
+                          <span className="hidden lg:inline">Certified</span>
+                        </span>
+                      )}
+
                         {status ? (
                           <span
                             className={`inline-block px-3 py-1 text-xs rounded-full text-white ${chipClass} shadow`}

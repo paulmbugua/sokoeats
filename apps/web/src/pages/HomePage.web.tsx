@@ -152,6 +152,19 @@ function StarRow({ avg }: { avg: number }) {
   );
 }
 
+function VerifiedBadge() {
+  return (
+    <span className="pointer-events-none inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-200">
+      <FontAwesomeIcon
+        icon={faCheckCircle as IconProp}
+        className="text-emerald-600 dark:text-emerald-300"
+      />
+      <span className="hidden lg:inline">Verified</span>
+    </span>
+  );
+}
+
+
 function extractRating(x: any): { avg: number; count: number } {
   const avg = Number(x?.avgRating ?? x?.rating ?? x?.stars ?? x?.avg_rating ?? 0);
   const count = Number(
@@ -750,20 +763,21 @@ const HomePage: React.FC = () => {
                   whileHover={{ y: -3 }}
                 >
                   <Link
-                    to={`/profile/${t.id}`}
-                    className="block rounded-2xl ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition p-3 bg-white dark:bg-[#0f1821]"
-                  >
+                  to={`/profile/${t.id}`}
+                  className="relative block rounded-2xl ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition p-3 bg-white dark:bg-[#0f1821]"
+                >
+                  {t.certified && (
+                    <div className="absolute top-2 left-2 z-10">
+                      <VerifiedBadge />
+                    </div>
+                  )}
+
                     <div className="relative mx-auto w-20 aspect-square">
                       <div
                         className="h-full w-full bg-center bg-cover rounded-full ring-1 ring-gray-200 dark:ring-darkCard"
                         style={{ backgroundImage: `url("${t.image}")` }}
                       />
-                      {t.certified && (
-                        <div className="absolute top-1 left-1 inline-flex items-center gap-1 rounded-full bg-emerald-600/90 text-white text-[10px] px-2 py-0.5 shadow">
-                          <FontAwesomeIcon icon={faCheckCircle as IconProp} />
-                          Certified
-                        </div>
-                      )}
+                     
                     </div>
                     <div className="mt-2 text-center">
                       <p className="font-medium truncate">{t.name}</p>
@@ -796,19 +810,20 @@ const HomePage: React.FC = () => {
                 >
                   <Link
                     to={`/profile/${t.id}`}
-                    className="group rounded-2xl ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition p-4 bg-white dark:bg-[#0f1821] block"
+                    className="relative group rounded-2xl ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition p-4 bg-white dark:bg-[#0f1821] block"
                   >
+                    {t.certified && (
+                      <div className="absolute top-3 left-3 z-10">
+                        <VerifiedBadge />
+                      </div>
+                    )}
+
                     <div className="relative mx-auto w-24 aspect-square">
                       <div
                         className="h-full w-full bg-center bg-cover rounded-full ring-1 ring-gray-200 dark:ring-darkCard group-hover:ring-primary transition"
                         style={{ backgroundImage: `url("${t.image}")` }}
                       />
-                      {t.certified && (
-                        <div className="absolute top-1 left-1 inline-flex items-center gap-1 rounded-full bg-emerald-600/90 text-white text-[10px] px-2 py-0.5 shadow">
-                          <FontAwesomeIcon icon={faCheckCircle as IconProp} />
-                          Certified
-                        </div>
-                      )}
+                     
                     </div>
                     <div className="mt-3 text-center">
                       <p className="font-medium truncate">{t.name}</p>
