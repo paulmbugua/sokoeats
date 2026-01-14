@@ -13,8 +13,11 @@ import crypto from 'node:crypto';
 import crc32 from 'crc-32';
 
 /** Cloud name from env (supports both names) */
-const CLOUDINARY_CLOUD_NAME =
-  process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_NAME || '';
+const CLOUDINARY_CLOUD_NAME = (
+  process.env.CLOUDINARY_CLOUD_NAME ||
+  process.env.CLOUDINARY_NAME ||
+  ''
+).trim();
 
 /* ─────────────────────────────────────────────────────────
  * Helpers
@@ -532,6 +535,12 @@ export async function generateCertificatePdfBuffer({
   const SIG_TUTOR_PT = 170;
   const FETCH_SCALE = 4;
   const SIG_BOLDEN_PT = 0.6;
+  const rawStudent = oneline(studentName);
+  const STUDENT_X = 50;
+  const STUDENT_W = 495;
+  const STUDENT_SIZE_BASE = Number(process.env.CERT_STUDENT_NAME_SIZE || 44);
+  const STUDENT_SIZE =
+    rawStudent.length > 28 ? Math.max(34, STUDENT_SIZE_BASE - 8) : STUDENT_SIZE_BASE;
 
   // Assets
   const [logoPng, brandSignaturePng, tutorSignaturePng] = await Promise.all([
