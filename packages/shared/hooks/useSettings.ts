@@ -12,6 +12,7 @@ export interface MenuItem {
 export interface UseSettingsOptions {
   alertFn?: (title: string, message: string) => void;
   navigateFn?: (destination: string) => void;
+  initialSection?: string;
 }
 
 export interface UseSettingsReturn {
@@ -27,7 +28,7 @@ export default function useSettings(options?: UseSettingsOptions): UseSettingsRe
   const { alertFn, navigateFn } = options || {};
   const { profile, loadingProfile } = useShopContext();
   const [hasProfile, setHasProfile] = useState(false);
-  const [activeSection, setActiveSection] = useState('account');
+  const [activeSection, setActiveSection] = useState(options?.initialSection || 'account');
 
   useEffect(() => {
     if (!loadingProfile && profile) {
@@ -36,6 +37,12 @@ export default function useSettings(options?: UseSettingsOptions): UseSettingsRe
       setHasProfile(false);
     }
   }, [loadingProfile, profile]);
+
+  useEffect(() => {
+    if (options?.initialSection) {
+      setActiveSection(options.initialSection);
+    }
+  }, [options?.initialSection]);
 
   const logout = () => {
     if (alertFn) {

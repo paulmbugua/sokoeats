@@ -50,6 +50,7 @@ import ClassVaultUpload from './components/ClassVaultUpload.web';
 // Public verify views
 import VerifyCertificatePage from './components/VerifyCertificate.web';
 import VerifyCertificatePrintPage from './components/VerifyCertificatePrint.web';
+import CertificationSettings from './components/CertificationSettings.web';
 
 // Profile create/manage forms
 import CreateProfileForm from './components/CreateProfileForm.web';
@@ -602,6 +603,7 @@ const App: React.FC = () => {
           <Route path="/profile/me" element={<ProfilePage />} />
           <Route path="/settings/create" element={<CreateProfileForm />} />
           <Route path="/settings/manage" element={<ManageProfileForm />} />
+          <Route path="/settings/certification" element={<CertificationSettings />} />
         </Route>
 
         {/* Auth route (logged-out only) */}

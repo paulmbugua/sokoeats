@@ -14,6 +14,7 @@ export interface Profile {
   gallery: string[];
   role?: Exclude<UserRole, null>; // profile records should have a concrete role if present
   email?: string;
+  certified?: boolean;
 }
 
 /** Single chat message */

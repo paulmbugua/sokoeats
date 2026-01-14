@@ -49,6 +49,7 @@ import classVaultRoutes from './routes/classVaultRoutes.js';
 import mpesaUrlsRoutes from './routes/mpesaUrlsRoutes.js';
 import reviewRouter from './routes/reviewRoutes.js';
 import certificationRoutes from './routes/certificationRoutes.js';
+import certificationsAdminRoutes from './routes/certificationsAdminRoutes.js';
 import courseRoutes from './routes/courseRoutes.js';
 import enrollmentRoutes from './routes/enrollmentRoutes.js';
 import paypalRoutes from './routes/paypalRoutes.js';
@@ -376,6 +377,7 @@ app.use('/api/mpesa', mpesaUrlsRoutes);
 // Reviews & public content
 app.use('/api/reviews', reviewsLimiter, reviewRouter);
 app.use('/api/profiles', certificationRoutes);
+app.use('/api/certifications', certificationsAdminRoutes);
 app.use('/api/certificates', certificatesLimiter, certificateRoutes);
 
 // ClassVault & media

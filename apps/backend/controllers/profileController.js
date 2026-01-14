@@ -976,7 +976,7 @@ export const getProfile = async (req, res) => {
     const sql = `
       SELECT id, user_id, role, name, age, languages,
              gallery, video, status, category,
-             pricing, description, experience_level, age_group
+             pricing, description, experience_level, age_group, certified
       FROM profiles
       WHERE ${conditions.join(' AND ')}
       ORDER BY id DESC
@@ -1149,7 +1149,7 @@ export const getRandomProfile = async (req, res) => {
     if (!total) return res.status(404).json({ message: 'No tutors.' });
     const offset = Math.floor(Math.random() * total);
     const { rows } = await pool.query(
-      `SELECT id,name,role,gallery,category,description
+      `SELECT id,name,role,gallery,category,description,certified
        FROM profiles
        WHERE role='tutor'
        LIMIT 1 OFFSET $1`,

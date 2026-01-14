@@ -1,6 +1,6 @@
 // apps/web/src/components/ProfileCard.web.tsx
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FaStar, FaStarHalfAlt, FaRegStar, FaCertificate, FaCheck } from 'react-icons/fa';
@@ -15,20 +15,10 @@ interface ProfileCardProps {
 
 const ProfileCard: React.FC<ProfileCardProps> = ({ profile }) => {
   const { backendUrl, token } = useShopContext();
-  const { ratingData, certification } = useProfileCard(profile, backendUrl, token);
+  const { ratingData } = useProfileCard(profile, backendUrl, token);
 
   // Show badge if DB says certified or hook says VERIFIED
-  const showCertBadge =
-    profile.role === 'tutor' &&
-    (profile.certified === true || certification?.status === 'Verified');
-
-  // Debug—remove in prod
-  useEffect(() => {
-    console.log('🕵️ Card clicked for profile:', profile.id);
-    console.log('  • profile.certified flag:', profile.certified);
-    console.log('  • certification.status:', certification?.status);
-    console.log('  • showCertBadge:', showCertBadge);
-  }, [profile, certification, showCertBadge]);
+  const showCertBadge = profile.role === 'tutor' && profile.certified === true;
 
   // Status pill color
   const statusColor =
@@ -63,7 +53,6 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ profile }) => {
     <Link
       to={`/profile/${profile.id}`}
       className="block focus:outline-none"
-      onClick={() => console.log(`Navigating to /profile/${profile.id}`)}
     >
       <motion.div
         whileHover={{ scale: 1.05 }}

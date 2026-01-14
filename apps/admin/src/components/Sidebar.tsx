@@ -8,6 +8,7 @@ import {
   Users,
   BookOpenCheck,
   Video,
+  BadgeCheck,
 } from 'lucide-react';
 
 const navItem =
@@ -71,6 +72,14 @@ export default function Sidebar() {
         <NavLink to="/users" className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}>
           <Users className="w-5 h-5" />
           <p className="hidden md:block">Users</p>
+        </NavLink>
+
+        <NavLink
+          to="/certifications"
+          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
+        >
+          <BadgeCheck className="w-5 h-5" />
+          <p className="hidden md:block">Certifications</p>
         </NavLink>
       </nav>
     </aside>

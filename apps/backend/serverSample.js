@@ -18,6 +18,7 @@ import classVaultRoutes from './routes/classVaultRoutes.js';
 import mpesaUrlsRoutes from './routes/mpesaUrlsRoutes.js';
 import reviewRouter from './routes/reviewRoutes.js';
 import certificationRoutes from './routes/certificationRoutes.js';
+import certificationsAdminRoutes from './routes/certificationsAdminRoutes.js';
 
 import {
   morganMiddleware,
@@ -149,6 +150,7 @@ app.use('/api/tutor-session', tutorSessionRoutes);
 app.use('/api/mpesa', mpesaUrlsRoutes);
 app.use('/api/reviews', reviewRouter);
 app.use('/api/profiles', certificationRoutes);
+app.use('/api/certifications', certificationsAdminRoutes);
 app.use('/api/classvault', classVaultRoutes);
 
 app.get('/', (_req, res) => res.send('API Working'));

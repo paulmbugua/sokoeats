@@ -327,6 +327,8 @@ const ProfileScreen: React.FC = () => {
     navigation.navigate('CourseProgress', { courseId });
   const goResults = () => navigation.navigate('Results' as any);
   const goAccount = () => navigation.navigate('Account', {});
+  const goCertification = () =>
+    navigation.navigate('Settings' as any, { section: 'certification' });
 
   // /api/user/me fallback (email/role)
   const [meEmail, setMeEmail] = useState<string | null>(null);
@@ -820,6 +822,17 @@ const ProfileScreen: React.FC = () => {
                 Certificate print
               </Text>
             </Pressable>
+
+            {isTutor && (
+              <Pressable
+                onPress={goCertification}
+                style={tw`px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] w-full`}
+              >
+                <Text style={tw`text-sm font-medium text-[#0d141c] dark:text-white`}>
+                  Tutor Certification
+                </Text>
+              </Pressable>
+            )}
           </View>
         </View>
 
