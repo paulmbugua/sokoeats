@@ -13,6 +13,7 @@ import {
   faStarHalfAlt as faStarHalf,
   faStar as faStarOutlineAlias,
   faPlayCircle,
+  faCheckCircle,
 } from '@fortawesome/free-solid-svg-icons';
 
 import { motion, useReducedMotion, Variants } from 'framer-motion';
@@ -380,6 +381,7 @@ const HomePage: React.FC = () => {
       category?: string;
       ratingAvg: number;
       ratingCount: number;
+      certified: boolean;
     }[] = tutorProfiles.map((p: any) => {
       const image = resolveTutorImage(p, p?.name || 'Tutor');
       const { avg, count } = extractRating(p);
@@ -392,6 +394,7 @@ const HomePage: React.FC = () => {
         category: p.category,
         ratingAvg: avg,
         ratingCount: count,
+        certified: Boolean(p.certified),
       };
     });
 
@@ -750,10 +753,18 @@ const HomePage: React.FC = () => {
                     to={`/profile/${t.id}`}
                     className="block rounded-2xl ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition p-3 bg-white dark:bg-[#0f1821]"
                   >
-                    <div
-                      className="bg-center bg-cover rounded-full aspect-square w-20 mx-auto ring-1 ring-gray-200 dark:ring-darkCard"
-                      style={{ backgroundImage: `url("${t.image}")` }}
-                    />
+                    <div className="relative mx-auto w-20 aspect-square">
+                      <div
+                        className="h-full w-full bg-center bg-cover rounded-full ring-1 ring-gray-200 dark:ring-darkCard"
+                        style={{ backgroundImage: `url("${t.image}")` }}
+                      />
+                      {t.certified && (
+                        <div className="absolute top-1 left-1 inline-flex items-center gap-1 rounded-full bg-emerald-600/90 text-white text-[10px] px-2 py-0.5 shadow">
+                          <FontAwesomeIcon icon={faCheckCircle as IconProp} />
+                          Certified
+                        </div>
+                      )}
+                    </div>
                     <div className="mt-2 text-center">
                       <p className="font-medium truncate">{t.name}</p>
                       <p className="text-xs text-darkTextSecondary truncate">{t.subject}</p>
@@ -787,10 +798,18 @@ const HomePage: React.FC = () => {
                     to={`/profile/${t.id}`}
                     className="group rounded-2xl ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition p-4 bg-white dark:bg-[#0f1821] block"
                   >
-                    <div
-                      className="bg-center bg-cover rounded-full aspect-square w-24 mx-auto ring-1 ring-gray-200 dark:ring-darkCard group-hover:ring-primary transition"
-                      style={{ backgroundImage: `url("${t.image}")` }}
-                    />
+                    <div className="relative mx-auto w-24 aspect-square">
+                      <div
+                        className="h-full w-full bg-center bg-cover rounded-full ring-1 ring-gray-200 dark:ring-darkCard group-hover:ring-primary transition"
+                        style={{ backgroundImage: `url("${t.image}")` }}
+                      />
+                      {t.certified && (
+                        <div className="absolute top-1 left-1 inline-flex items-center gap-1 rounded-full bg-emerald-600/90 text-white text-[10px] px-2 py-0.5 shadow">
+                          <FontAwesomeIcon icon={faCheckCircle as IconProp} />
+                          Certified
+                        </div>
+                      )}
+                    </div>
                     <div className="mt-3 text-center">
                       <p className="font-medium truncate">{t.name}</p>
                       <p className="text-darkTextSecondary">{t.subject}</p>

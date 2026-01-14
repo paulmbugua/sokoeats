@@ -160,7 +160,7 @@ export type MainStackParamList = {
   Profile: { id?: string } | undefined;
   ProfileSelf: undefined;
   Messages: { studentId?: string } | undefined;
-  Settings: undefined;
+  Settings: { section?: string } | undefined;
   SettingsCreate: undefined;
   SettingsManage: undefined;
   SettingsAccount?: undefined;

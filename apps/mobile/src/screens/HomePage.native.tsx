@@ -606,6 +606,7 @@ const HomePageNative: React.FC = () => {
         category: p.category,
         ratingAvg: avg,
         ratingCount: count,
+        certified: Boolean(p.certified),
       };
     });
 
@@ -924,11 +925,20 @@ const HomePageNative: React.FC = () => {
                     <View
                       style={tw`rounded-2xl p-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                     >
-                      <Image
-                        source={{ uri: t.image }}
-                        style={tw`w-16 h-16 rounded-full self-center`}
-                        resizeMode="cover"
-                      />
+                      <View style={tw`relative self-center`}>
+                        <Image
+                          source={{ uri: t.image }}
+                          style={tw`w-16 h-16 rounded-full`}
+                          resizeMode="cover"
+                        />
+                        {t.certified ? (
+                          <View
+                            style={tw`absolute -top-1 -left-1 bg-emerald-500 rounded-full px-2 py-0.5`}
+                          >
+                            <Text style={tw`text-[9px] font-semibold text-white`}>✓ Certified</Text>
+                          </View>
+                        ) : null}
+                      </View>
                       <View style={tw`mt-2 items-center`}>
                         <Text
                           numberOfLines={1}

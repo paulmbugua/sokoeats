@@ -53,7 +53,7 @@ const getIconName = (id: string): keyof typeof FontAwesome.glyphMap => {
 const SettingsNative: React.FC = () => {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const route = useRoute();
-  const { success } = (route.params || {}) as { success?: string };
+  const { success, section } = (route.params || {}) as { success?: string; section?: string };
   const paymentSuccess = success === 'true';
 
   useEffect(() => {
@@ -65,6 +65,7 @@ const SettingsNative: React.FC = () => {
   const { hasProfile, activeSection, menuItems, handleMenuClick } = useSettings({
     alertFn: (title, message) => showToast(`${title}: ${message}`),
     navigateFn: (dest) => navigation.navigate(dest as keyof RootStackParamList),
+    initialSection: section,
   });
 
   const renderActiveSection = () => {

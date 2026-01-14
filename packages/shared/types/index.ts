@@ -213,6 +213,21 @@ export interface Profile {
   certified?: boolean;
 }
 
+export type CertificationStatus = 'Pending' | 'Verified';
+
+export interface Certification {
+  id: number;
+  profile_id: number;
+  tutor_name: string;
+  documents: string[];
+  status: CertificationStatus;
+  submitted_at?: string;
+  verified_at?: string;
+  profile_certified?: boolean;
+  profile_user_id?: string | number | null;
+  profile_name?: string | null;
+}
+
 /** ⭐ Full backend shape we receive — keep everything we use */
 export type MappedProfile = Profile & {
   // server fields we rely on

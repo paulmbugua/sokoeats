@@ -15,6 +15,19 @@ function isUuid(v) {
   return UUID_RE.test(String(v || '').trim());
 }
 
+function normalizeDocuments(documents) {
+  if (Array.isArray(documents)) return documents;
+  if (typeof documents === 'string') {
+    try {
+      const parsed = JSON.parse(documents);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 /**
  * Upload an array of { buffer, originalname, mimeType } to Cloudinary.
  * Chooses resource_type based on mimeType.
@@ -283,6 +296,126 @@ export const getCertificationStatus = async (req, res) => {
     console.error('Error fetching certification status:', err);
     return res.status(500).json({
       message: 'Error fetching certification status.',
+      error: err.message,
+    });
+  }
+};
+
+// ─── 4. Admin: List Certifications ─────────────────────────────────────────
+export const listCertifications = async (req, res) => {
+  try {
+    const rawStatus = String(req.query.status || '').trim();
+    const status = rawStatus && rawStatus !== 'All' ? rawStatus : null;
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+
+    const conditions = [];
+    const values = [];
+    let idx = 1;
+
+    if (status) {
+      conditions.push(`c.status = $${idx++}`);
+      values.push(status);
+    }
+
+    if (q) {
+      conditions.push(
+        `(c.tutor_name ILIKE $${idx} OR p.name ILIKE $${idx} OR CAST(c.profile_id AS TEXT) ILIKE $${idx})`,
+      );
+      values.push(`%${q}%`);
+      idx += 1;
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT c.id,
+             c.profile_id,
+             c.tutor_name,
+             c.documents,
+             c.status,
+             c.submitted_at,
+             c.verified_at,
+             p.certified AS profile_certified,
+             p.user_id AS profile_user_id,
+             p.name AS profile_name
+        FROM certifications c
+        JOIN profiles p ON p.id = c.profile_id
+        ${where}
+       ORDER BY c.submitted_at DESC
+       LIMIT $${idx++}
+      OFFSET $${idx++};
+    `;
+
+    const countSql = `
+      SELECT COUNT(*)::int AS total
+        FROM certifications c
+        JOIN profiles p ON p.id = c.profile_id
+        ${where};
+    `;
+
+    const [listRes, countRes] = await Promise.all([
+      pool.query(sql, [...values, limit, offset]),
+      pool.query(countSql, values),
+    ]);
+
+    const rows = listRes.rows.map((row) => ({
+      ...row,
+      documents: normalizeDocuments(row.documents),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      rows,
+      total: countRes.rows?.[0]?.total ?? rows.length,
+    });
+  } catch (err) {
+    console.error('Error listing certifications:', err);
+    return res.status(500).json({
+      message: 'Error fetching certifications.',
+      error: err.message,
+    });
+  }
+};
+
+// ─── 5. Admin: Get Certification By ID ─────────────────────────────────────
+export const getCertificationById = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ message: 'Invalid certification id' });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT c.id,
+              c.profile_id,
+              c.tutor_name,
+              c.documents,
+              c.status,
+              c.submitted_at,
+              c.verified_at,
+              p.certified AS profile_certified,
+              p.user_id AS profile_user_id,
+              p.name AS profile_name
+         FROM certifications c
+         JOIN profiles p ON p.id = c.profile_id
+        WHERE c.id = $1
+        LIMIT 1`,
+      [id],
+    );
+
+    if (!rows.length) return res.status(404).json({ message: 'Certification not found.' });
+
+    const row = rows[0];
+    return res.status(200).json({
+      success: true,
+      certification: { ...row, documents: normalizeDocuments(row.documents) },
+    });
+  } catch (err) {
+    console.error('Error fetching certification by id:', err);
+    return res.status(500).json({
+      message: 'Error fetching certification.',
       error: err.message,
     });
   }

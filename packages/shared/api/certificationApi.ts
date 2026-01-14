@@ -1,5 +1,14 @@
+import type { Certification, CertificationStatus } from '@mytutorapp/shared/types';
+
 export interface CertificationData {
-  status: string;
+  status: CertificationStatus;
+  documents?: string[];
+}
+
+export interface AdminCertificationsResponse {
+  success: boolean;
+  rows: Certification[];
+  total?: number;
 }
 
 interface Base64File {
@@ -12,7 +21,7 @@ interface Base64File {
 export const getCertificationStatus = async (
   backendUrl: string,
   token: string,
-  profileId: string
+  profileId: string | number
 ): Promise<CertificationData | null> => {
   try {
     const response = await fetch(`${backendUrl}/api/profiles/${profileId}/certification/status`, {
@@ -32,7 +41,7 @@ export const getCertificationStatus = async (
 export const uploadCertificationDocuments = async (
   backendUrl: string,
   token: string,
-  profileId: string,
+  profileId: string | number,
   files: Base64File[]
 ): Promise<CertificationData> => {
   const endpoint = `${backendUrl}/api/profiles/${profileId}/certification`;
@@ -53,4 +62,55 @@ export const uploadCertificationDocuments = async (
 
   const json = await response.json();
   return json.certification;
+};
+
+export const adminListCertifications = async (
+  backendUrl: string,
+  token: string,
+  params?: {
+    status?: CertificationStatus;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<AdminCertificationsResponse> => {
+  const base = (backendUrl || '').replace(/\/+$/, '');
+  const url = new URL(`${base}/api/certifications`);
+  if (params?.status) url.searchParams.set('status', params.status);
+  if (params?.q) url.searchParams.set('q', params.q);
+  if (typeof params?.limit === 'number') url.searchParams.set('limit', String(params.limit));
+  if (typeof params?.offset === 'number') url.searchParams.set('offset', String(params.offset));
+
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to list certifications (${res.status}): ${text}`);
+  }
+
+  return res.json();
+};
+
+export const adminVerifyCertification = async (
+  backendUrl: string,
+  token: string,
+  profileId: number | string
+) => {
+  const base = (backendUrl || '').replace(/\/+$/, '');
+  const endpoint = `${base}/api/certifications/${profileId}/verify`;
+
+  const res = await fetch(endpoint, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to verify certification (${res.status}): ${text}`);
+  }
+
+  return res.json();
 };

@@ -8,6 +8,7 @@ import {
   faMagnifyingGlass,
   faChevronLeft,
   faChevronRight,
+  faCheckCircle,
 } from '@fortawesome/free-solid-svg-icons';
 
 import { useHomePage } from '@mytutorapp/shared/hooks';
@@ -447,6 +448,7 @@ const FindTutor: React.FC = () => {
               const status = normalizeStatus(t?.status);
               const chipClass = statusColorClass(status);
               const showNew = isNewTutor(t);
+              const showCertified = Boolean(t?.certified);
 
               const bioRaw = getDescriptionText(t);
               const desc = bioRaw ? String(bioRaw).slice(0, 140) : '';
@@ -517,8 +519,14 @@ const FindTutor: React.FC = () => {
                     />
 
                     {/* ✅ Status chip (same feel as ProfileDetailPage) */}
-                    {(status || showNew) && (
+                    {(status || showNew || showCertified) && (
                       <div className="absolute top-3 left-3 flex items-center gap-2">
+                        {showCertified && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full text-white bg-emerald-600 shadow">
+                            <FontAwesomeIcon icon={faCheckCircle as IconProp} />
+                            Certified
+                          </span>
+                        )}
                         {status ? (
                           <span
                             className={`inline-block px-3 py-1 text-xs rounded-full text-white ${chipClass} shadow`}

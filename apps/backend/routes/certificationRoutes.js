@@ -1,5 +1,6 @@
 import express from 'express';
 import upload from '../middleware/multer.js';
+import { adminAuth } from '../middleware/adminAuth.js';
 import {
   submitCertification,
   verifyCertification,
@@ -16,7 +17,7 @@ router.post(
 );
 
 // Route for admin to verify the certification (uses `PUT` instead of `POST` for better RESTful practice)
-router.put('/:profileId/certification/verify', verifyCertification);
+router.put('/:profileId/certification/verify', adminAuth, verifyCertification);
 
 // Route to GET certification status for a tutor
 router.get('/:profileId/certification/status', getCertificationStatus);

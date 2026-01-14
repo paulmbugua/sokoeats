@@ -2,6 +2,7 @@ export { default as useAccountSection } from './useAccountSection';
 export { default as useAuth } from './useAuth';
 export { default as useCertificationSettings } from './useCertificationSettings';
 export { default as useHomePage } from './useHomePage';
+export { default as useAdminCertifications } from './useAdminCertifications';
 export { default as useInfiniteScroll } from './useInfiniteScroll';
 export { default as useManageProfileForm } from './useManageProfileForm';
 export { default as useMessages } from './useMessages';

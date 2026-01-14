@@ -17,6 +17,7 @@ import Receipts from './pages/Receipts';
 import Users from './pages/Users';
 import AdminLogin from './pages/AdminLogin';
 import OpenStaxIngest from './pages/OpenStaxIngest';
+import Certifications from './pages/Certifications';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { ThemeProvider } from '@mytutorapp/shared/hooks';
@@ -172,6 +173,7 @@ const App: React.FC = () => {
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/receipts" element={<Receipts />} />
           <Route path="/users" element={<Users />} />
+          <Route path="/certifications" element={<Certifications />} />
           <Route path="/oer/youtube-ingest" element={<YouTubeIngest />} />
         </Route>
 

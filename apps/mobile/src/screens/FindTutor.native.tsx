@@ -221,6 +221,7 @@ const TutorCard = React.memo(function TutorCard({
   const status = normalizeStatus((item as any).status);
   const showNew = isNewTutor(item);
   const chipBg = STATUS_BG[status] ?? 'bg-gray-500';
+  const showCertified = Boolean((item as any).certified);
 
   const bioRaw = getDescriptionText(item);
   const desc = bioRaw ? String(bioRaw).slice(0, 140) : '';
@@ -288,8 +289,14 @@ const TutorCard = React.memo(function TutorCard({
             {/* subtle overlay for readability */}
             <View style={tw`absolute inset-0 bg-black/10`} />
 
-            {status || showNew ? (
+            {status || showNew || showCertified ? (
               <View style={tw`absolute top-2 left-2 flex-row items-center gap-2`}>
+                {showCertified ? (
+                  <View style={tw`px-2.5 py-1 rounded-full bg-emerald-600`}>
+                    <Text style={tw`text-[10px] font-bold text-white`}>✓ Certified</Text>
+                  </View>
+                ) : null}
+
                 {status ? (
                   <View style={tw.style('px-2.5 py-1 rounded-full', chipBg)}>
                     <Text style={tw`text-[10px] font-bold text-white`}>{status}</Text>

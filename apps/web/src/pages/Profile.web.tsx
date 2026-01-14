@@ -655,6 +655,20 @@ const ProfilePage: React.FC = () => {
                   <span className="lg:ml-2">Certificate print</span>
                 </span>
               </Link>
+              {isTutor && (
+                <Link
+                  to="/settings/certification"
+                  className="px-3 py-2 rounded-xl hover:bg-[#e7edf4] dark:hover:bg-[#172534] text-sm"
+                  title="Upload your tutor certification documents"
+                >
+                  <span className="flex items-center">
+                    <span className="hidden lg:inline-flex w-5 shrink-0 justify-center">
+                      <FontAwesomeIcon icon={faCertificate as IconProp} aria-hidden />
+                    </span>
+                    <span className="lg:ml-2">Tutor Certification</span>
+                  </span>
+                </Link>
+              )}
             </nav>
           </aside>
 
