@@ -587,6 +587,11 @@ const [submitState, setSubmitState] = useState<{
   } | null>(null);
   const [hideCertPill, setHideCertPill] = useState(false);
   const [paymentOk, setPaymentOk] = useState(false);
+  const [quizGateOpen, setQuizGateOpen] = useState(false);
+  const pendingQuizAfterUnlockRef = useRef(false);
+  const [checkingAccess, setCheckingAccess] = useState(false);
+  const activeCourseIdRef = useRef<string | null>(null);
+  const lastCourseIdRef = useRef<string | null>(null);
   const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
 
   // NEW: standard vs extended flags
@@ -663,6 +668,19 @@ const isAnonGate = useMemo(() => !isLoggedIn, [isLoggedIn]);
 
 
   useEffect(() => {
+    activeCourseIdRef.current = course?.id ?? null;
+  }, [course?.id]);
+
+  useEffect(() => {
+    const nextCourseId = course?.id ?? null;
+    if (lastCourseIdRef.current !== nextCourseId) {
+      lastCourseIdRef.current = nextCourseId;
+      setPaymentOk(false);
+      setForceUnlock(false);
+      setQuizGateOpen(false);
+      pendingQuizAfterUnlockRef.current = false;
+    }
+
     restoreOnceRef.current = false;
     awaitingTopUpRef.current = false;
     debitInFlightRef.current = false;
@@ -696,16 +714,20 @@ const isAnonGate = useMemo(() => !isLoggedIn, [isLoggedIn]);
   );
 
   // Check if the user has unlocked full access for this course
-  const checkPaymentStatus = useCallback(async () => {
+  const checkPaymentStatus = useCallback(async (): Promise<boolean> => {
+    setCheckingAccess(true);
+    const courseId = course?.id;
     try {
-      const courseId = course?.id;
       if (!courseId) {
         setPaymentOk(false);
         setCertPaid(false);
         setExtendedPaid(false);
-        return;
+        return false;
       }
       const s = await api<any>(`/api/certificates/status?courseId=${encodeURIComponent(courseId)}`).catch(() => null);
+      if (activeCourseIdRef.current !== courseId) {
+        return false;
+      }
 
       const tier = typeof s?.tier === 'string' ? s.tier.toLowerCase() : null;
       const hasExtended = s?.extended === true || s?.canTranscript === true || tier === 'extended';
@@ -729,11 +751,18 @@ const isAnonGate = useMemo(() => !isLoggedIn, [isLoggedIn]);
       } else {
         setPurchaseNotice(null);
       }
+      return Boolean(unlocked || downUrl);
     } catch {
+      if (activeCourseIdRef.current !== courseId) {
+        return false;
+      }
       setCertPaid(Boolean(downUrl));
       setExtendedPaid((prev) => Boolean(prev || isOrgFlowFlag));
       setPaymentOk(Boolean(downUrl));
       setPurchaseNotice(null);
+      return Boolean(downUrl);
+    } finally {
+      setCheckingAccess(false);
     }
   }, [api, course?.id, downUrl, isOrgFlowFlag]);
 
@@ -746,7 +775,7 @@ const debitAndUnlock = useCallback(async () => {
 
   let keepAwaitingTopUp = false;
 
-  const courseId = resolveUnlockCourseId(course);
+  const courseId = activeCourseIdRef.current ?? resolveUnlockCourseId(course);
 
   certLog('[cert][debitAndUnlock] start', {
     backendUrl,
@@ -1039,6 +1068,65 @@ useEffect(() => {
   const displayQuestions = applyMinPerLesson(requestedQForDisplay, displayLessons, minOptsForDisplay);
 
   const displayTimerSec = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
+  const buildConfirmInfo = useCallback(() => {
+    const timeLabel = displayTimerSec > 0 ? fmtHMS(displayTimerSec) : 'No time limit';
+    const info = {
+      lessons: displayLessons,
+      questions: displayQuestions,
+      timeLabel,
+    };
+    setConfirmInfo(info);
+    return info;
+  }, [displayLessons, displayQuestions, displayTimerSec]);
+
+  const openQuizGate = useCallback((pendingQuiz: boolean) => {
+    pendingQuizAfterUnlockRef.current = pendingQuiz;
+    setQuizGateOpen(true);
+  }, []);
+
+  const handleGenerateQuizPress = useCallback(async () => {
+    if (narrationBlocked) return;
+    buildConfirmInfo();
+
+    if (isOrgFlowFlag) {
+      setConfirmOpen(true);
+      return;
+    }
+
+    if (checkingAccess) {
+      openQuizGate(true);
+      return;
+    }
+
+    let unlocked = hasUnlockedCourse;
+    if (!unlocked) {
+      unlocked = await checkPaymentStatus();
+    }
+
+    if (!unlocked) {
+      openQuizGate(true);
+      return;
+    }
+
+    setConfirmOpen(true);
+  }, [
+    narrationBlocked,
+    buildConfirmInfo,
+    isOrgFlowFlag,
+    checkingAccess,
+    hasUnlockedCourse,
+    checkPaymentStatus,
+    openQuizGate,
+  ]);
+
+  useEffect(() => {
+    if (!pendingQuizAfterUnlockRef.current) return;
+    if (!hasUnlockedCourse || checkingAccess) return;
+    pendingQuizAfterUnlockRef.current = false;
+    setQuizGateOpen(false);
+    buildConfirmInfo();
+    setConfirmOpen(true);
+  }, [hasUnlockedCourse, checkingAccess, buildConfirmInfo]);
 
 
 const quizSig = useMemo(() => {
@@ -1370,6 +1458,17 @@ const canSubmit = !isLocked && allAnsweredLocal && !submittingQuiz && !isDuplica
 const handleSubmit = useCallback(async () => {
   if (submittingRef.current) return; // ✅ hard guard (double taps)
   if (!requireAuth('grade_quiz', 'Please sign in to submit and grade your quiz.')) return;
+  if (!isOrgFlowFlag) {
+    if (checkingAccess) {
+      openQuizGate(false);
+      return;
+    }
+    const unlocked = hasUnlockedCourse || (await checkPaymentStatus());
+    if (!unlocked) {
+      openQuizGate(false);
+      return;
+    }
+  }
 
   // If we already submitted the same answers for this attempt, block duplicates
   if (isDuplicateSubmit) {
@@ -1510,6 +1609,11 @@ const handleSubmit = useCallback(async () => {
   assignmentKey,
   gradeNow,
   markNotActive,
+  isOrgFlowFlag,
+  checkingAccess,
+  openQuizGate,
+  hasUnlockedCourse,
+  checkPaymentStatus,
   course,
   attemptId,
   quizSig,
@@ -1528,6 +1632,17 @@ const handleSubmit = useCallback(async () => {
     if (!confirmInfo) return;
     try {
       setConfirmOpen(false);
+      if (!isOrgFlowFlag) {
+        if (checkingAccess) {
+          openQuizGate(true);
+          return;
+        }
+        const unlocked = hasUnlockedCourse || (await checkPaymentStatus());
+        if (!unlocked) {
+          openQuizGate(true);
+          return;
+        }
+      }
 
       if (isOrgFlow && typeof assignmentId === 'string' && assignmentId.length > 0) {
         if (!requireAuth('start_attempt', 'Please sign in to start your attempt.')) return;
@@ -1587,6 +1702,11 @@ const handleSubmit = useCallback(async () => {
     requireAuth,
     isOrgFlow,
     assignmentId,
+    isOrgFlowFlag,
+    checkingAccess,
+    openQuizGate,
+    hasUnlockedCourse,
+    checkPaymentStatus,
     orgMeta?.quizSize,
     orgMeta?.timer_s,
     timerSec,
@@ -1819,6 +1939,63 @@ useEffect(() => {
   </View>
 ) : null}
 
+      <Modal
+        visible={quizGateOpen && !isOrgFlowFlag}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          pendingQuizAfterUnlockRef.current = false;
+          setQuizGateOpen(false);
+        }}
+      >
+        <View style={tw`flex-1 items-center justify-center bg-black/50 px-4`}>
+          <View style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 p-5`}>
+            <Text style={tw`text-lg font-semibold text-slate-900 dark:text-white`}>🧩 Quiz locked for now</Text>
+            <Text style={tw`mt-2 text-sm text-slate-700 dark:text-white/80`}>
+              You&apos;ve hit today&apos;s free limit — notes + quiz pause too.{'\n'}
+              Unlock this course once (20 tokens) to access narration + notes + quiz and generate up to 60 lessons.{'\n'}
+              Certificate is free after you pass (≥70%).
+            </Text>
+            <View style={tw`mt-4 flex-row flex-wrap items-center gap-2`}>
+              <Pressable
+                onPress={() => {
+                  if (unlockingRef.current || debitInFlightRef.current) return;
+                  handleBuyCertificate();
+                }}
+                disabled={unlocking || debitInFlightRef.current}
+                style={({ pressed }) =>
+                  tw.style(
+                    'px-4 py-2 rounded-xl bg-indigo-600',
+                    pressed ? 'opacity-80' : '',
+                    unlocking || debitInFlightRef.current ? 'opacity-60' : ''
+                  )
+                }
+              >
+                <Text style={tw`text-white font-semibold`}>
+                  {unlocking || debitInFlightRef.current ? 'Processing…' : 'Unlock full access (20 tokens)'}
+                </Text>
+              </Pressable>
+              <Text style={tw`text-[11px] text-slate-600 dark:text-white/60`}>
+                One-time unlock for this course
+              </Text>
+            </View>
+            <View style={tw`mt-3`}>
+              <Pressable
+                onPress={() => {
+                  pendingQuizAfterUnlockRef.current = false;
+                  setQuizGateOpen(false);
+                }}
+                style={({ pressed }) =>
+                  tw.style('px-3 py-2 rounded-full bg-slate-200 dark:bg-slate-800', pressed ? 'opacity-80' : '')
+                }
+              >
+                <Text style={tw`text-slate-900 dark:text-white text-sm`}>Not now</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
 
       {/* ✅ Paid but not passed: narration unlocked notice */}
       {!isOrgFlowFlag && paymentOk && !grade?.passed ? (
@@ -1958,20 +2135,15 @@ useEffect(() => {
 
           <View style={tw`mt-3 flex-row items-center gap-2`}>
             <TouchableOpacity
-              onPress={() => {
-                if (narrationBlocked) return;
-                const timeLabel = displayTimerSec > 0 ? fmtHMS(displayTimerSec) : 'No time limit';
-                setConfirmInfo({ lessons: displayLessons, questions: displayQuestions, timeLabel });
-                setConfirmOpen(true);
-              }}
-              disabled={narrationBlocked}
+              onPress={handleGenerateQuizPress}
+              disabled={narrationBlocked || checkingAccess}
               style={tw.style(
                 'px-3 py-2 rounded-full',
-                narrationBlocked ? 'bg-indigo-400/50' : 'bg-indigo-600'
+                narrationBlocked || checkingAccess ? 'bg-indigo-400/50' : 'bg-indigo-600'
               )}
             >
               <Text style={tw`text-white font-semibold text-sm`}>
-                {narrationBlocked ? 'Quiz locked' : 'Generate quiz'}
+                {checkingAccess ? 'Checking access…' : narrationBlocked ? 'Quiz locked' : 'Generate quiz'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -2247,32 +2419,38 @@ useEffect(() => {
                 </>
               ) : (
                 <>
-                  <View style={tw`mt-2`}>
-                    <Text style={tw`text-white/70 text-xs`}>
-                      Certificate is free after you pass (≥70%). Generate it anytime.
-                    </Text>
+                  {hasUnlockedCourse ? (
+                    <View style={tw`mt-2`}>
+                      <Text style={tw`text-white/70 text-xs`}>
+                        Certificate is free after you pass (≥70%). Generate it anytime.
+                      </Text>
 
-                    <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
-                      <TouchableOpacity
-                        onPress={() => generateCertificateNow(false)}
-                        style={tw`px-4 py-2 rounded-xl bg-emerald-600`}
-                      >
-                        <Text style={tw`text-white font-semibold`}>Generate Certificate</Text>
-                      </TouchableOpacity>
+                      <View style={tw`mt-2 flex-row flex-wrap items-center gap-2`}>
+                        <TouchableOpacity
+                          onPress={() => generateCertificateNow(false)}
+                          style={tw`px-4 py-2 rounded-xl bg-emerald-600`}
+                        >
+                          <Text style={tw`text-white font-semibold`}>Generate Certificate</Text>
+                        </TouchableOpacity>
 
-                      <TouchableOpacity onPress={handleDownloadCertificate} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
-                        <Text style={tw`text-white font-semibold`}>Download PDF</Text>
-                      </TouchableOpacity>
+                        <TouchableOpacity onPress={handleDownloadCertificate} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
+                          <Text style={tw`text-white font-semibold`}>Download PDF</Text>
+                        </TouchableOpacity>
 
-                      <TouchableOpacity
-                        onPress={downloadTranscript}
-                        disabled={!hasTranscriptAccess}
-                        style={tw.style('px-4 py-2 rounded-xl', hasTranscriptAccess ? 'bg-indigo-600' : 'bg-indigo-600/40')}
-                      >
-                        <Text style={tw`text-white font-semibold`}>Download Transcript</Text>
-                      </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={downloadTranscript}
+                          disabled={!hasTranscriptAccess}
+                          style={tw.style('px-4 py-2 rounded-xl', hasTranscriptAccess ? 'bg-indigo-600' : 'bg-indigo-600/40')}
+                        >
+                          <Text style={tw`text-white font-semibold`}>Download Transcript</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                  </View>
+                  ) : (
+                    <Text style={tw`mt-2 text-amber-300 text-xs`}>
+                      Unlock full access to generate your certificate.
+                    </Text>
+                  )}
                 </>
               )}
             </View>
