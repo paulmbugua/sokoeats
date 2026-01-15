@@ -52,6 +52,245 @@ const genSchema = Joi.object({
 // ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────
+// Quiz attempt shape detection (match cert-style robustness)
+// ─────────────────────────────────────────────────────────────
+let _quizAttemptsShapeCache = null;
+const QUIZ_TIME_COL_CACHE = new Map();
+
+async function pickTimeColumn(db, tableName) {
+  if (QUIZ_TIME_COL_CACHE.has(tableName)) return QUIZ_TIME_COL_CACHE.get(tableName);
+
+  const candidates = ['submitted_at', 'completed_at', 'graded_at', 'created_at', 'updated_at'];
+  const q = await db.query(
+    `
+    SELECT column_name
+      FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name=$1
+       AND column_name = ANY($2::text[])
+    `,
+    [tableName, candidates],
+  );
+
+  const found = candidates.find((c) => q.rows.some((r) => r.column_name === c)) ?? null;
+  QUIZ_TIME_COL_CACHE.set(tableName, found);
+  return found;
+}
+
+async function detectQuizAttemptsShape(db) {
+  if (_quizAttemptsShapeCache) return _quizAttemptsShapeCache;
+
+  try {
+    const q = await db.query(
+      `
+      SELECT column_name, data_type
+        FROM information_schema.columns
+       WHERE table_schema='public'
+         AND table_name='quiz_attempts'
+      `,
+    );
+
+    const map = new Map(q.rows.map((r) => [r.column_name, r.data_type]));
+    const timeCol = await pickTimeColumn(db, 'quiz_attempts');
+
+    _quizAttemptsShapeCache = {
+      exists: q.rows.length > 0,
+
+      // user identity
+      hasUserId: map.has('user_id'),
+      userIdType: map.get('user_id') || null, // uuid|integer|bigint|...
+      hasStudentId: map.has('student_id'),
+      studentIdType: map.get('student_id') || null,
+
+      // course + quiz
+      hasCourseId: map.has('course_id'),
+      courseIdType: map.get('course_id') || null, // uuid|text|varchar...
+      hasQuizId: map.has('quiz_id'),
+      hasTitle: map.has('title'),
+
+      // score
+      hasScorePct: map.has('score_pct'),
+      hasPassMark: map.has('pass_mark'),
+
+      timeCol,
+    };
+
+    return _quizAttemptsShapeCache;
+  } catch (e) {
+    _quizAttemptsShapeCache = { exists: false };
+    return _quizAttemptsShapeCache;
+  }
+}
+
+// deterministic uuid (same as your cert + entitlements)
+import crypto from 'node:crypto';
+function anonToUuid(s) {
+  const hex = crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(
+    17,
+    20,
+  )}-${hex.slice(20)}`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Resolve auth UUID for numeric users.id (best-effort, cached)
+// ─────────────────────────────────────────────────────────────
+let _authUuidShapeCache = null;
+
+async function detectAuthUuidShape(db) {
+  if (_authUuidShapeCache) return _authUuidShapeCache;
+
+  const candCols = ['auth_uuid', 'auth_user_id', 'user_uuid', 'authUserId'];
+
+  const usersCols = await db.query(
+    `
+    SELECT column_name, data_type
+      FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name='users'
+       AND column_name = ANY($1::text[])
+    `,
+    [candCols],
+  );
+
+  const profCols = await db.query(
+    `
+    SELECT column_name, data_type
+      FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name='profiles'
+       AND column_name = ANY($1::text[])
+    `,
+    [candCols],
+  );
+
+  const uMap = new Map(usersCols.rows.map((r) => [r.column_name, r.data_type]));
+  const pMap = new Map(profCols.rows.map((r) => [r.column_name, r.data_type]));
+
+  const usersAuthUuidCol = candCols.find((c) => uMap.get(c) === 'uuid') || null;
+  const profilesAuthUuidCol = candCols.find((c) => pMap.get(c) === 'uuid') || null;
+
+  const profilesUserIdIsNumeric =
+    pMap.get('user_id') === 'integer' || pMap.get('user_id') === 'bigint';
+
+  _authUuidShapeCache = { usersAuthUuidCol, profilesAuthUuidCol, profilesUserIdIsNumeric };
+  return _authUuidShapeCache;
+}
+
+async function resolveAuthUuidForNumericUserId(db, userIdNum) {
+  const n = Number(userIdNum);
+  if (!Number.isFinite(n)) return null;
+
+  try {
+    const shape = await detectAuthUuidShape(db);
+
+    // 1) users table
+    if (shape.usersAuthUuidCol) {
+      try {
+        const q = await db.query(
+          `SELECT ${shape.usersAuthUuidCol}::text AS uid FROM users WHERE id = $1 LIMIT 1`,
+          [n],
+        );
+        const uid = q.rows?.[0]?.uid ? String(q.rows[0].uid) : null;
+        if (uid && isUuid(uid)) return uid;
+      } catch {}
+    }
+
+    // 2) profiles table
+    if (shape.profilesAuthUuidCol) {
+      if (shape.profilesUserIdIsNumeric) {
+        const q = await db.query(
+          `SELECT ${shape.profilesAuthUuidCol}::text AS uid FROM profiles WHERE user_id = $1 LIMIT 1`,
+          [n],
+        );
+        const uid = q.rows?.[0]?.uid ? String(q.rows[0].uid) : null;
+        if (uid && isUuid(uid)) return uid;
+      }
+
+      const q2 = await db.query(
+        `SELECT ${shape.profilesAuthUuidCol}::text AS uid FROM profiles WHERE id = $1 LIMIT 1`,
+        [n],
+      );
+      const uid2 = q2.rows?.[0]?.uid ? String(q2.rows[0].uid) : null;
+      if (uid2 && isUuid(uid2)) return uid2;
+    }
+  } catch {}
+
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Course outline → titles (for Lessons Learnt)
+// ─────────────────────────────────────────────────────────────
+function extractTitlesFromAnyOutline(obj) {
+  const out = [];
+
+  const push = (s) => {
+    const t = String(s || '').trim();
+    if (t) out.push(t);
+  };
+
+  const walk = (x) => {
+    if (!x) return;
+    if (typeof x === 'string') return push(x);
+    if (Array.isArray(x)) return x.forEach(walk);
+    if (typeof x === 'object') {
+      // common keys
+      push(x.title || x.label || x.name || x.topic);
+
+      // syllabus-ish nesting
+      if (Array.isArray(x.sections)) x.sections.forEach(walk);
+      if (Array.isArray(x.lessons)) x.lessons.forEach(walk);
+      if (Array.isArray(x.items)) x.items.forEach(walk);
+      if (Array.isArray(x.weeks)) x.weeks.forEach(walk);
+    }
+  };
+
+  walk(obj);
+
+  // de-dup, cap
+  return Array.from(new Set(out)).slice(0, 30);
+}
+
+async function loadCourseOutlineTitles(db, courseId) {
+  // Prefer syllabus (your app already uses it for completion checks)
+  try {
+    const q = await db.query(`SELECT syllabus FROM courses WHERE id = $1::uuid LIMIT 1`, [courseId]);
+    if (q.rowCount) {
+      const titles = extractTitlesFromAnyOutline(q.rows[0]?.syllabus);
+      if (titles.length) return titles;
+    }
+  } catch {}
+
+  // Fallback candidates (if you have them in some env)
+  const candCols = ['outline', 'course_outline', 'sections', 'course_sections'];
+  try {
+    const colsQ = await db.query(
+      `
+      SELECT column_name
+        FROM information_schema.columns
+       WHERE table_schema='public'
+         AND table_name='courses'
+         AND column_name = ANY($1::text[])
+      `,
+      [candCols],
+    );
+
+    const found = candCols.find((c) => colsQ.rows.some((r) => r.column_name === c));
+    if (!found) return [];
+
+    const q2 = await db.query(`SELECT "${found}" AS v FROM courses WHERE id = $1::uuid LIMIT 1`, [
+      courseId,
+    ]);
+    if (!q2.rowCount) return [];
+    return extractTitlesFromAnyOutline(q2.rows[0]?.v);
+  } catch {
+    return [];
+  }
+}
+
 // near the top of apps/backend/controllers/transcriptsController.js
 
 
@@ -308,82 +547,239 @@ async function loadAttemptedLessonTitles(db, userId, courseId) {
 }
 
 // Compute overallPct, passMark, and a breakdown from latest attempts (+ lessons section).
-async function loadTranscriptScores(db, userId, courseId) {
+async function loadTranscriptScores(db, { userId, authUuid, courseId, rid }) {
   const uidNum = Number(userId);
+  const fallbackPassMark = 70;
 
-  // PERSONAL attempts (quiz_attempts) ✅ uses student_id + created_at
-  const personal = await db
+  const shape = await detectQuizAttemptsShape(db);
+  logT('[transcripts.scores] quiz_attempts_shape', { rid, shape });
+
+  // 1) ORG attempts (most reliable in your org flow)
+  const orgRows = await db
     .query(
       `
-      SELECT quiz_id, score_pct, pass_mark, title
-      FROM (
-        SELECT qa.quiz_id,
-               qa.score_pct::float AS score_pct,
-               qa.pass_mark::float AS pass_mark,
-               q.title,
-               row_number() OVER (PARTITION BY qa.quiz_id ORDER BY qa.created_at DESC, qa.id DESC) AS rn
-        FROM quiz_attempts qa
-        JOIN quizzes q ON q.id = qa.quiz_id
-        WHERE qa.student_id = $1::bigint
-          AND qa.course_id  = $2::uuid
-      ) t
-      WHERE rn = 1
+      SELECT
+        qa.score_pct::float AS score_pct,
+        qa.pass_mark::float AS pass_mark,
+        'Org Assignment'::text AS title
+      FROM org_quiz_attempts qa
+      JOIN org_course_assignments a ON a.id = qa.assignment_id
+      WHERE qa.user_id = $1::bigint
+        AND a.course_id = $2::uuid
+        AND qa.submitted_at IS NOT NULL
+      ORDER BY qa.submitted_at DESC NULLS LAST, qa.id DESC
+      LIMIT 20
       `,
       [uidNum, courseId],
     )
-    .catch(() => ({ rows: [] }));
+    .then((r) => r.rows || [])
+    .catch((e) => {
+      logT('[transcripts.scores] org_attempts_failed', { rid, msg: e?.message, code: e?.code });
+      return [];
+    });
 
-  // ORG attempts (org_quiz_attempts) ✅ uses numeric user_id + submitted_at
-  const org = await db
-    .query(
-      `
-      SELECT quiz_id, score_pct, pass_mark, title
-      FROM (
-        SELECT qa.quiz_id,
-               qa.score_pct::float AS score_pct,
-               qa.pass_mark::float AS pass_mark,
-               q.title,
-               row_number() OVER (PARTITION BY qa.quiz_id ORDER BY qa.submitted_at DESC, qa.id DESC) AS rn
-        FROM org_quiz_attempts qa
-        JOIN quizzes q ON q.id = qa.quiz_id
-        JOIN org_course_assignments a ON a.id = qa.assignment_id
-        WHERE qa.user_id = $1::bigint
-          AND a.course_id = $2::uuid
-          AND qa.submitted_at IS NOT NULL
-      ) t
-      WHERE rn = 1
-      `,
-      [uidNum, courseId],
-    )
-    .catch(() => ({ rows: [] }));
+  // 2) PERSONAL attempts (schema-adaptive)
+  let personalRows = [];
+  if (shape?.exists && shape.hasScorePct && shape.hasCourseId) {
+    const timeCol = shape.timeCol;
+    const timeFilter = timeCol ? `AND qa."${timeCol}" IS NOT NULL` : '';
+    const orderExpr = timeCol ? `qa."${timeCol}" DESC NULLS LAST, qa.id DESC` : `qa.id DESC`;
 
-  const rows = personal.rows.length ? personal.rows : org.rows;
+    // compute uuid candidate (only when we need it)
+    const authUuidResolved =
+      (authUuid && isUuid(authUuid) ? String(authUuid) : null) ||
+      (Number.isFinite(uidNum) ? await resolveAuthUuidForNumericUserId(db, uidNum) : null) ||
+      (Number.isFinite(uidNum) ? anonToUuid(`user:${uidNum}`) : null);
 
-  if (!rows.length) {
-    // Better UX than forced 0%
-    return { overallPct: null, passMark: 70, sections: [] };
+    const courseWhere = `qa.course_id::text = $2::text`;
+
+    const tryQuery = async (sql, params, tag) => {
+      try {
+        const r = await db.query(sql, params);
+        logT('[transcripts.scores] personal_query_ok', {
+          rid,
+          tag,
+          rows: r.rowCount,
+          timeCol,
+          userKey: tag,
+        });
+        return r.rows || [];
+      } catch (e) {
+        logT('[transcripts.scores] personal_query_fail', {
+          rid,
+          tag,
+          msg: e?.message,
+          code: e?.code,
+        });
+        return [];
+      }
+    };
+
+    // A) student_id numeric
+    if (
+      shape.hasStudentId &&
+      (shape.studentIdType === 'integer' || shape.studentIdType === 'bigint') &&
+      Number.isFinite(uidNum)
+    ) {
+      const hasQuizId = shape.hasQuizId;
+
+      const sql = hasQuizId
+        ? `
+          SELECT title, score_pct, pass_mark
+          FROM (
+            SELECT
+              COALESCE(q.title, qa.title, 'Quiz') AS title,
+              qa.score_pct::float AS score_pct,
+              qa.pass_mark::float AS pass_mark,
+              row_number() OVER (PARTITION BY qa.quiz_id ORDER BY ${orderExpr}) AS rn
+            FROM quiz_attempts qa
+            LEFT JOIN quizzes q ON q.id = qa.quiz_id
+            WHERE qa.student_id = $1::bigint
+              AND ${courseWhere}
+              ${timeFilter}
+          ) t
+          WHERE rn = 1
+        `
+        : `
+          SELECT
+            COALESCE(qa.title, 'Quiz') AS title,
+            qa.score_pct::float AS score_pct,
+            qa.pass_mark::float AS pass_mark
+          FROM quiz_attempts qa
+          WHERE qa.student_id = $1::bigint
+            AND ${courseWhere}
+            ${timeFilter}
+          ORDER BY ${orderExpr}
+          LIMIT 1
+        `;
+
+      personalRows = await tryQuery(sql, [uidNum, courseId], 'student_id:numeric');
+    }
+
+    // B) user_id uuid
+    if (!personalRows.length && shape.hasUserId && shape.userIdType === 'uuid' && authUuidResolved) {
+      const hasQuizId = shape.hasQuizId;
+
+      const sql = hasQuizId
+        ? `
+          SELECT title, score_pct, pass_mark
+          FROM (
+            SELECT
+              COALESCE(q.title, qa.title, 'Quiz') AS title,
+              qa.score_pct::float AS score_pct,
+              qa.pass_mark::float AS pass_mark,
+              row_number() OVER (PARTITION BY qa.quiz_id ORDER BY ${orderExpr}) AS rn
+            FROM quiz_attempts qa
+            LEFT JOIN quizzes q ON q.id = qa.quiz_id
+            WHERE qa.user_id = $1::uuid
+              AND ${courseWhere}
+              ${timeFilter}
+          ) t
+          WHERE rn = 1
+        `
+        : `
+          SELECT
+            COALESCE(qa.title, 'Quiz') AS title,
+            qa.score_pct::float AS score_pct,
+            qa.pass_mark::float AS pass_mark
+          FROM quiz_attempts qa
+          WHERE qa.user_id = $1::uuid
+            AND ${courseWhere}
+            ${timeFilter}
+          ORDER BY ${orderExpr}
+          LIMIT 1
+        `;
+
+      personalRows = await tryQuery(sql, [authUuidResolved, courseId], 'user_id:uuid');
+    }
+
+    // C) user_id numeric
+    if (
+      !personalRows.length &&
+      shape.hasUserId &&
+      (shape.userIdType === 'integer' || shape.userIdType === 'bigint') &&
+      Number.isFinite(uidNum)
+    ) {
+      const hasQuizId = shape.hasQuizId;
+
+      const sql = hasQuizId
+        ? `
+          SELECT title, score_pct, pass_mark
+          FROM (
+            SELECT
+              COALESCE(q.title, qa.title, 'Quiz') AS title,
+              qa.score_pct::float AS score_pct,
+              qa.pass_mark::float AS pass_mark,
+              row_number() OVER (PARTITION BY qa.quiz_id ORDER BY ${orderExpr}) AS rn
+            FROM quiz_attempts qa
+            LEFT JOIN quizzes q ON q.id = qa.quiz_id
+            WHERE qa.user_id = $1::bigint
+              AND ${courseWhere}
+              ${timeFilter}
+          ) t
+          WHERE rn = 1
+        `
+        : `
+          SELECT
+            COALESCE(qa.title, 'Quiz') AS title,
+            qa.score_pct::float AS score_pct,
+            qa.pass_mark::float AS pass_mark
+          FROM quiz_attempts qa
+          WHERE qa.user_id = $1::bigint
+            AND ${courseWhere}
+            ${timeFilter}
+          ORDER BY ${orderExpr}
+          LIMIT 1
+        `;
+
+      personalRows = await tryQuery(sql, [uidNum, courseId], 'user_id:numeric');
+    }
+  } else {
+    logT('[transcripts.scores] quiz_attempts_unusable', {
+      rid,
+      exists: shape?.exists,
+      hasScorePct: shape?.hasScorePct,
+      hasCourseId: shape?.hasCourseId,
+    });
   }
 
+  // Choose best source
+  const picked = personalRows.length ? { source: 'personal', rows: personalRows } : { source: 'org', rows: orgRows };
+
+  logT('[transcripts.scores] picked_source', {
+    rid,
+    source: picked.source,
+    rows: picked.rows.length,
+    sample: picked.rows.slice(0, 3),
+  });
+
+  if (!picked.rows.length) return { overallPct: null, passMark: fallbackPassMark, sections: [] };
+
   const toPct = (x) => {
-    const n = Number(x) || 0;
+    const n = Number(x);
+    if (!Number.isFinite(n)) return null;
     return n > 0 && n <= 1 ? n * 100 : n;
   };
 
-  const normalized = rows.map((r) => ({
-    title: r.title,
-    score_pct: toPct(r.score_pct),
-    pass_mark: toPct(r.pass_mark),
-  }));
+  const normalized = picked.rows
+    .map((r) => ({
+      title: r.title || 'Quiz',
+      score_pct: toPct(r.score_pct),
+      pass_mark: toPct(r.pass_mark) ?? fallbackPassMark,
+    }))
+    .filter((r) => r.score_pct != null);
+
+  if (!normalized.length) return { overallPct: null, passMark: fallbackPassMark, sections: [] };
 
   const avg = normalized.reduce((s, r) => s + r.score_pct, 0) / normalized.length;
   const overallPct = Math.round(avg * 100) / 100;
-  const passMark = Math.max(...normalized.map((r) => r.pass_mark)) || 70;
+  const passMark = Math.max(...normalized.map((r) => r.pass_mark || fallbackPassMark)) || fallbackPassMark;
 
   const sections = [
     {
       sectionTitle: 'Quiz Scores',
       items: normalized.map((r) => ({
-        label: r.title || 'Quiz',
+        label: r.title,
         scorePct: Math.round(r.score_pct * 100) / 100,
       })),
     },
@@ -749,8 +1145,22 @@ export async function generateTranscript(req, res) {
     }
 
     // 6) Compute stats (client overrides win), and ALWAYS add Lessons Attempted
-    const serverStats = await loadTranscriptScores(pool, userId, courseId);
-    const lessonTitles = await loadAttemptedLessonTitles(pool, userId, courseId);
+    const serverStats = await loadTranscriptScores(pool, {
+  userId,
+  authUuid,
+  courseId,
+  rid,
+});
+
+const lessonTitles = await loadAttemptedLessonTitles(pool, userId, courseId);
+const outlineTitles = await loadCourseOutlineTitles(pool, courseId);
+
+logT('[transcripts.generate] lessons_sources', {
+  rid,
+  attemptedCount: Array.isArray(lessonTitles) ? lessonTitles.length : 0,
+  outlineCount: Array.isArray(outlineTitles) ? outlineTitles.length : 0,
+  outlineSample: (outlineTitles || []).slice(0, 8),
+});
 
     const overallPct = clientOverallPct ?? serverStats.overallPct;
     const passMark = clientPassMark ?? serverStats.passMark;
@@ -766,12 +1176,13 @@ export async function generateTranscript(req, res) {
             .map((s) => String(s).trim())
             .filter(Boolean)
         : [];
+const clientLessonsLearnt = provided('lessonsLearnt') ? value.lessonsLearnt : undefined;
 
-    const clientLessonsLearnt = provided('lessonsLearnt') ? value.lessonsLearnt : undefined;
-
-    const lessonsLearnt = toLabels(clientLessonsLearnt).length
-      ? toLabels(clientLessonsLearnt)
-      : lessonTitles;
+const lessonsLearnt = toLabels(clientLessonsLearnt).length
+  ? toLabels(clientLessonsLearnt)
+  : outlineTitles?.length
+    ? outlineTitles
+    : lessonTitles;
 
     logT('[transcripts.generate] stats_resolved', {
       rid,

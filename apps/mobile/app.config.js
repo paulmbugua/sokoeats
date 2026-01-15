@@ -44,6 +44,7 @@ export default function expoConfig({ config }) {
 
   // Allow cleartext ONLY when resolved backend is http://
   const allowHttp = String(RESOLVED_BACKEND_URL || '').startsWith('http://');
+  const usesCleartextTraffic = !isProduction && allowHttp;
 
   return {
     ...config,
@@ -169,7 +170,7 @@ export default function expoConfig({ config }) {
         'expo-build-properties',
         {
           android: {
-            usesCleartextTraffic: allowHttp,
+            usesCleartextTraffic,
             enableProguardInReleaseBuilds: true,
             enableShrinkResourcesInReleaseBuilds: true,
             compileSdkVersion: 35,

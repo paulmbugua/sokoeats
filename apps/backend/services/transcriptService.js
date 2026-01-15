@@ -152,7 +152,7 @@ function fitOneLine(doc, text, maxWidth, fontSize = 10) {
 }
 
 /** Tight footer that never wraps or causes a new page */
-function drawTightFooter(doc, brandName, { margin = 28 } = {}) {
+function drawTightFooter(doc, brandName, { margin = 28, dryRun = false } = {}) {
   const site = 'daybreaklearner.com';
   let text = `${brandName || 'DayBreak Academy'} • ${site}`;
 
@@ -180,7 +180,7 @@ function drawTightFooter(doc, brandName, { margin = 28 } = {}) {
   const lineH = doc.currentLineHeight();
   const x = Math.max(margin, (doc.page.width - w) / 2);
   const y = doc.page.height - margin - lineH - 2;
-  doc.fillColor('#6B7280').text(text, x, y, { lineBreak: false });
+  if (!dryRun) doc.fillColor('#6B7280').text(text, x, y, { lineBreak: false });
   return { height: lineH, y, textWidth: w, fontSize: size };
 }
 
@@ -552,16 +552,14 @@ export async function generateTranscriptPdfBuffer({
     })();
 
     // De-dup titles, cap to avoid runaway rows
-    const lessonsLearntLabels = Array.from(
-      new Set(
-        (fromExplicit.length
-          ? fromExplicit
-          : fromOutline.length
-            ? fromOutline
-            : fromSections
-        ).slice(0, 200), // generous cap now that each title gets its own row
-      ),
-    );
+    const MAX = 14;
+const raw = Array.from(new Set((fromExplicit.length ? fromExplicit : fromOutline.length ? fromOutline : fromSections)));
+const head = raw.slice(0, MAX);
+const remaining = raw.length - head.length;
+
+const lessonsLearntLabels = remaining > 0
+  ? [...head, `…and ${remaining} more`]
+  : head;
 
     const trackKey = normalizeTrackKey(programTrack);
 const trackLabel = trackKey ? TRACK_META[trackKey]?.label : null;
@@ -605,6 +603,12 @@ const trackLabel = trackKey ? TRACK_META[trackKey]?.label : null;
     y = tableBottom + 18;
 
     // ── Summary box ─────────────────────────────────────────────────────────
+    const overallN = Number.isFinite(Number(overallPct)) ? Number(overallPct) : null;
+const passN = Number.isFinite(Number(passMark)) ? Number(passMark) : null;
+
+const scoreText = overallN == null ? '—' : `${Math.round(overallN * 100) / 100}%`;
+const passText = passN == null ? '—' : `${Math.round(passN * 100) / 100}%`;
+
     const boxY = y;
     const boxW = contentWidth() - 8;
     const boxH = 56;
@@ -621,31 +625,27 @@ const trackLabel = trackKey ? TRACK_META[trackKey]?.label : null;
     doc
       .fontSize(24)
       .fillColor('#064E3B')
-      .text(`${overallPct}%`, contentLeft() + 18, boxY + 28, {
-        lineBreak: false,
-      });
+     .text(scoreText, contentLeft() + 18, boxY + 28, {
+  lineBreak: false,
+});
 
-    doc
-      .fillColor('#6B7280')
-      .fontSize(10)
-      .text('Pass Mark', contentLeft() + 210, boxY + 12, { lineBreak: false });
-    doc
-      .fontSize(18)
-      .fillColor('#111827')
-      .text(`${passMark}%`, contentLeft() + 210, boxY + 28, {
-        lineBreak: false,
-      });
+doc.fontSize(18).fillColor('#111827').text(passText, contentLeft() + 210, boxY + 28, {
+  lineBreak: false,
+});
 
-    const letter = ((pct) =>
-      pct >= 90
-        ? 'A'
-        : pct >= 80
-          ? 'B'
-          : pct >= 70
-            ? 'C'
-            : pct >= 60
-              ? 'D'
-              : 'F')(overallPct);
+const letter =
+  overallN == null
+    ? '—'
+    : overallN >= 90
+      ? 'A'
+      : overallN >= 80
+        ? 'B'
+        : overallN >= 70
+          ? 'C'
+          : overallN >= 60
+            ? 'D'
+            : 'F';
+
     doc
       .fillColor('#6B7280')
       .fontSize(10)
@@ -671,11 +671,10 @@ const trackLabel = trackKey ? TRACK_META[trackKey]?.label : null;
     y = registrarBottom + 10;
 
     // ---- PRE-COMPUTE BOTTOM BLOCK SIZES (footer + QR)
-    doc.save();
-    const { height: footerH } = drawTightFooter(doc, brand.name, {
-      margin: MARGIN,
-    });
-    doc.restore();
+     const { height: footerH } = drawTightFooter(doc, brand.name, {
+       margin: MARGIN,
+       dryRun: true,
+     });
 
     const qrSize = qrBuffer ? 82 : 0;
     doc.font('Helvetica').fontSize(9);
