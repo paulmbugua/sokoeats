@@ -473,6 +473,11 @@ const restorePrePurchaseState = useCallback(async () => {
   // optional: allow hiding the pill (but keep it restorable on next mount)
   const [hideCertPill, setHideCertPill] = useState(false);
 const [paymentOk, setPaymentOk] = useState(false);
+const [quizGateOpen, setQuizGateOpen] = useState(false);
+const pendingQuizAfterUnlockRef = useRef(false);
+const [checkingAccess, setCheckingAccess] = useState(false);
+const activeCourseIdRef = useRef<string | null>(null);
+const lastCourseIdRef = useRef<string | null>(null);
 
   const isLoggedIn = Boolean(token); // web: token is passed to LessonAndQuizPane
   const hasUnlockedCourse = isOrgFlowFlag || paymentOk || forceUnlock;
@@ -534,30 +539,40 @@ const [paymentOk, setPaymentOk] = useState(false);
   );
 
   // Check if the user has unlocked full access for this course
-  const checkPaymentStatus = useCallback(async () => {
+  const checkPaymentStatus = useCallback(async (): Promise<boolean> => {
+    setCheckingAccess(true);
+    const courseId = course?.id;
     try {
-      const courseId = course?.id;
       if (!courseId) {
         setPaymentOk(false);
         setPurchaseNotice(null);
-        return;
+        return false;
       }
       const s = await api<{ paid?: boolean; narrationUnlocked?: boolean }>(
         `/api/certificates/status?courseId=${encodeURIComponent(courseId)}`
       ).catch(() => null);
+      if (activeCourseIdRef.current !== courseId) {
+        return false;
+      }
       if (s) {
         const unlocked = Boolean(s.narrationUnlocked ?? s.paid);
         setPaymentOk(unlocked);
         setPurchaseNotice((prev) => (unlocked ? prev || unlockSuccessNotice : null));
-        return;
+        return unlocked;
       }
     } catch {
       /* ignore */
+    } finally {
+      setCheckingAccess(false);
     }
     // Fallback: if we already have a clean download URL, consider it unlocked
+    if (activeCourseIdRef.current !== courseId) {
+      return false;
+    }
     const unlocked = Boolean(downUrl);
     setPaymentOk(unlocked);
     setPurchaseNotice((prev) => (unlocked ? prev || unlockSuccessNotice : null));
+    return unlocked;
   }, [api, course?.id, downUrl, unlockSuccessNotice]);
 
   // Capture pre-purchase state as soon as we show the gate CTA
@@ -588,7 +603,7 @@ const [paymentOk, setPaymentOk] = useState(false);
     setUnlocking(true);
     let keepAwaitingTopUp = false;
     try {
-      const courseId = course?.id;
+      const courseId = activeCourseIdRef.current ?? course?.id;
       if (!courseId) {
         throw new Error('Missing course id for unlock.');
       }
@@ -650,6 +665,18 @@ const [paymentOk, setPaymentOk] = useState(false);
 
       setPaymentOpen(false);
       await restorePrePurchaseState();
+      if (pendingQuizAfterUnlockRef.current) {
+        pendingQuizAfterUnlockRef.current = false;
+        setQuizGateOpen(false);
+        setConfirmInfo((prev) => prev ?? {
+          lessons: displayLessons,
+          questions: displayQuestions,
+          timeLabel: displayTimerSec > 0 ? fmtHMS(displayTimerSec) : 'No time limit',
+          timerSec: displayTimerSec,
+          elapsedMs,
+        });
+        setConfirmOpen(true);
+      }
     } catch (e: any) {
       const msg = e?.message || 'Could not deduct tokens.';
       console.error('[cert debit] failed', e);
@@ -667,6 +694,10 @@ const [paymentOk, setPaymentOk] = useState(false);
     token,
     unlockCertificate,
     grade?.passed,
+    displayLessons,
+    displayQuestions,
+    displayTimerSec,
+    elapsedMs,
   ]);
 
   const handleBuyCertificate = useCallback(async () => {
@@ -696,6 +727,22 @@ const [paymentOk, setPaymentOk] = useState(false);
   }, [debitAndUnlock, prePurchaseState, tokens]);
 
   // Initial + course-change checks
+  useEffect(() => {
+    activeCourseIdRef.current = course?.id ?? null;
+  }, [course?.id]);
+
+  useEffect(() => {
+    const nextCourseId = course?.id ?? null;
+    if (lastCourseIdRef.current !== nextCourseId) {
+      lastCourseIdRef.current = nextCourseId;
+      setPaymentOk(false);
+      setForceUnlock(false);
+      setPurchaseNotice(null);
+      setQuizGateOpen(false);
+      pendingQuizAfterUnlockRef.current = false;
+    }
+  }, [course?.id]);
+
   useEffect(() => {
     checkPaymentStatus();
   }, [checkPaymentStatus]);
@@ -772,6 +819,58 @@ const [paymentOk, setPaymentOk] = useState(false);
   const displayQuestions = orgMeta?.quizSize ?? safeQuiz ?? 0;
   const displayTimerSec = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
   const hasTimer = displayTimerSec > 0;
+  const buildConfirmInfo = useCallback(() => {
+    const timeLabel = displayTimerSec > 0 ? fmtHMS(displayTimerSec) : 'No time limit';
+    const info = {
+      lessons: displayLessons,
+      questions: displayQuestions,
+      timeLabel,
+      timerSec: displayTimerSec,
+      elapsedMs,
+    };
+    setConfirmInfo(info);
+    return info;
+  }, [displayLessons, displayQuestions, displayTimerSec, elapsedMs]);
+
+  const openQuizGate = useCallback((pendingQuiz: boolean) => {
+    pendingQuizAfterUnlockRef.current = pendingQuiz;
+    setQuizGateOpen(true);
+  }, []);
+
+  const handleGenerateQuizPress = useCallback(async () => {
+    if (narrationBlocked) return;
+    buildConfirmInfo();
+
+    if (isOrgFlowFlag) {
+      setConfirmOpen(true);
+      return;
+    }
+
+    if (checkingAccess) {
+      openQuizGate(true);
+      return;
+    }
+
+    let unlocked = hasUnlockedCourse;
+    if (!unlocked) {
+      unlocked = await checkPaymentStatus();
+    }
+
+    if (!unlocked) {
+      openQuizGate(true);
+      return;
+    }
+
+    setConfirmOpen(true);
+  }, [
+    narrationBlocked,
+    buildConfirmInfo,
+    isOrgFlowFlag,
+    checkingAccess,
+    hasUnlockedCourse,
+    checkPaymentStatus,
+    openQuizGate,
+  ]);
 
   const effectiveTimerSecForArming = useMemo(() => {
   // If confirmInfo exists, it’s what the user just confirmed.
@@ -1151,6 +1250,57 @@ const [paymentOk, setPaymentOk] = useState(false);
       </div>
     ) : null}
 
+    {quizGateOpen && !isOrgFlowFlag ? (
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quiz-gate-title"
+      >
+        <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl dark:bg-slate-900">
+          <div className="text-lg font-semibold text-darkText dark:text-white" id="quiz-gate-title">
+            🧩 Quiz locked for now
+          </div>
+          <p className="mt-2 text-sm text-gray-700 dark:text-white/80 whitespace-pre-line">
+            You&apos;ve hit today&apos;s free limit — notes + quiz pause too.{'\n'}
+            Unlock this course once (20 tokens) to access narration + notes + quiz and generate up
+            to 60 lessons.{'\n'}
+            Certificate is free after you pass (≥70%).
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              className={`btn bg-indigo-600 hover:bg-indigo-500 ${
+                unlocking || debitInFlightRef.current ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
+              disabled={unlocking || debitInFlightRef.current}
+              onClick={() => {
+                if (unlocking || debitInFlightRef.current) return;
+                handleBuyCertificate();
+              }}
+            >
+              {unlocking || debitInFlightRef.current
+                ? 'Processing…'
+                : 'Unlock full access (20 tokens)'}
+            </button>
+            <div className="text-xs text-gray-600 dark:text-white/60">
+              One-time unlock for this course
+            </div>
+          </div>
+          <div className="mt-3">
+            <button
+              className="chip"
+              onClick={() => {
+                pendingQuizAfterUnlockRef.current = false;
+                setQuizGateOpen(false);
+              }}
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null}
+
 
       {/* Classroom */}
       <section
@@ -1247,20 +1397,11 @@ const [paymentOk, setPaymentOk] = useState(false);
           </ol>
           <div className="mt-3 flex items-center gap-2">
             <button
-              onClick={async () => {
-                const timeLabel = displayTimerSec > 0 ? fmtHMS(displayTimerSec) : 'No time limit';
-                setConfirmInfo({
-                  lessons: displayLessons,
-                  questions: displayQuestions,
-                  timeLabel,
-                  timerSec: displayTimerSec,
-                  elapsedMs,
-                });
-                setConfirmOpen(true);
-              }}
-              className="chip chip-active"
+              onClick={handleGenerateQuizPress}
+              disabled={checkingAccess}
+              className={`chip chip-active ${checkingAccess ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
-              Generate quiz
+              {checkingAccess ? 'Checking access…' : 'Generate quiz'}
             </button>
           </div>
         </section>
@@ -1285,6 +1426,17 @@ const [paymentOk, setPaymentOk] = useState(false);
             // fire-and-forget; errors are caught in the submit handler
             (async () => {
               try {
+                if (!isOrgFlowFlag) {
+                  if (checkingAccess) {
+                    openQuizGate(false);
+                    return;
+                  }
+                  const unlocked = hasUnlockedCourse || (await checkPaymentStatus());
+                  if (!unlocked) {
+                    openQuizGate(false);
+                    return;
+                  }
+                }
                 // reuse your submit code path (or factor it into a function)
                 const payloadAnswers = (quiz?.questions || []).map((q: any) => {
                   const v = workingAnswers[q.id];
@@ -1486,6 +1638,17 @@ const [paymentOk, setPaymentOk] = useState(false);
                 if (narrationBlocked) return;
                 if (!requireAuth('grade_quiz', 'Please sign in to submit and grade your quiz.'))
                   return;
+                if (!isOrgFlowFlag) {
+                  if (checkingAccess) {
+                    openQuizGate(false);
+                    return;
+                  }
+                  const unlocked = hasUnlockedCourse || (await checkPaymentStatus());
+                  if (!unlocked) {
+                    openQuizGate(false);
+                    return;
+                  }
+                }
                 try {
                   // normalize quiz object
                   try {
@@ -1676,80 +1839,88 @@ const [paymentOk, setPaymentOk] = useState(false);
                 </>
               ) : (
                 <>
-                  <div className="mt-2 text-xs text-gray-600 dark:text-white/70">
-                    Certificate is free after you pass (≥70%). Generate it anytime.
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={async () => {
-                        try {
-                          const doc =
-                            (await tryGenerateCertificate().catch(() => null)) ||
-                            (await generateAICert().catch(() => null));
-                          if (doc) {
-                            const c: any = doc;
-                            setCertUrl(c.url ?? null);
-                            setDownUrl(c.download_url ?? c.downloadUrl ?? c.url ?? null);
-                          }
-                        } catch (e) {
-                          console.error('[cert] generate failed', e);
-                        }
-                      }}
-                      className="btn bg-emerald-600 hover:bg-emerald-500"
-                    >
-                      Generate Certificate
-                    </button>
-
-                    {certUrl && (
-                      <>
-                        <a href={certUrl} target="_blank" rel="noreferrer" className="chip">
-                          View certificate
-                        </a>
-
-                        {downUrl && (
-                          <button
-                            className="btn bg-indigo-600 hover:bg-indigo-500"
-                            onClick={async () => {
-                              if (
-                                !requireAuth(
-                                  'download_certificate',
-                                  'Please sign in to download your certificate.'
-                                )
-                              )
-                                return;
-                              const m = downUrl?.match(/\/certificates\/([^/]+)\/download/);
-                              const certId = m?.[1];
-                              if (certId) {
-                                try {
-                                  await downloadCertificateFile(
-                                    backendUrl,
-                                    token,
-                                    certId,
-                                    `${courseTitle
-                                      .replace(/\s+/g, '-')
-                                      .toLowerCase()}-${certId}.pdf`
-                                  );
-                                } catch (e) {
-                                  console.error('Download failed', e);
-                                  if (certUrl)
-                                    window.open(certUrl, '_blank', 'noopener,noreferrer');
-                                }
-                              } else if (certUrl) {
-                                window.open(certUrl, '_blank', 'noopener,noreferrer');
+                  {hasUnlockedCourse ? (
+                    <>
+                      <div className="mt-2 text-xs text-gray-600 dark:text-white/70">
+                        Certificate is free after you pass (≥70%). Generate it anytime.
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const doc =
+                                (await tryGenerateCertificate().catch(() => null)) ||
+                                (await generateAICert().catch(() => null));
+                              if (doc) {
+                                const c: any = doc;
+                                setCertUrl(c.url ?? null);
+                                setDownUrl(c.download_url ?? c.downloadUrl ?? c.url ?? null);
                               }
-                            }}
-                          >
-                            Download PDF
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
+                            } catch (e) {
+                              console.error('[cert] generate failed', e);
+                            }
+                          }}
+                          className="btn bg-emerald-600 hover:bg-emerald-500"
+                        >
+                          Generate Certificate
+                        </button>
 
-                  {!certUrl && (
-                    <p className="text-[12px] text-gray-600 dark:text-white/70 mt-2">
-                      Your certificate will be generated at no cost.
-                    </p>
+                        {certUrl && (
+                          <>
+                            <a href={certUrl} target="_blank" rel="noreferrer" className="chip">
+                              View certificate
+                            </a>
+
+                            {downUrl && (
+                              <button
+                                className="btn bg-indigo-600 hover:bg-indigo-500"
+                                onClick={async () => {
+                                  if (
+                                    !requireAuth(
+                                      'download_certificate',
+                                      'Please sign in to download your certificate.'
+                                    )
+                                  )
+                                    return;
+                                  const m = downUrl?.match(/\/certificates\/([^/]+)\/download/);
+                                  const certId = m?.[1];
+                                  if (certId) {
+                                    try {
+                                      await downloadCertificateFile(
+                                        backendUrl,
+                                        token,
+                                        certId,
+                                        `${courseTitle
+                                          .replace(/\s+/g, '-')
+                                          .toLowerCase()}-${certId}.pdf`
+                                      );
+                                    } catch (e) {
+                                      console.error('Download failed', e);
+                                      if (certUrl)
+                                        window.open(certUrl, '_blank', 'noopener,noreferrer');
+                                    }
+                                  } else if (certUrl) {
+                                    window.open(certUrl, '_blank', 'noopener,noreferrer');
+                                  }
+                                }}
+                              >
+                                Download PDF
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      {!certUrl && (
+                        <p className="text-[12px] text-gray-600 dark:text-white/70 mt-2">
+                          Your certificate will be generated at no cost.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                      Unlock full access to generate your certificate.
+                    </div>
                   )}
                 </>
               )}
@@ -1978,6 +2149,13 @@ const [paymentOk, setPaymentOk] = useState(false);
           onConfirm={async () => {
             setConfirmOpen(false);
             if (narrationBlocked) return;
+            if (!isOrgFlowFlag) {
+              const unlocked = hasUnlockedCourse || (await checkPaymentStatus());
+              if (!unlocked) {
+                openQuizGate(true);
+                return;
+              }
+            }
 
             if (isOrgFlow && assignmentId) {
               if (!requireAuth('start_attempt', 'Please sign in to start your attempt.')) return;
