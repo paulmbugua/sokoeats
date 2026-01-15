@@ -45,6 +45,17 @@ export default function expoConfig({ config }) {
   // Allow cleartext ONLY when resolved backend is http://
   const allowHttp = String(RESOLVED_BACKEND_URL || '').startsWith('http://');
   const usesCleartextTraffic = !isProduction && allowHttp;
+    const GOOGLE_WEB_CLIENT_ID =
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+    '557799973381-ksp83t2vo6fdqufhm0iie06lnb4e8j8v.apps.googleusercontent.com';
+
+  const GOOGLE_IOS_CLIENT_ID =
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+    '557799973381-g0h98g6vg82oeineeb4t9e67hgosdfrg.apps.googleusercontent.com';
+
+  const GOOGLE_REVERSED_CLIENT_ID =
+    process.env.EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID ||
+    'com.googleusercontent.apps.557799973381-g0h98g6vg82oeineeb4t9e67hgosdfrg';
 
   return {
     ...config,
@@ -187,11 +198,11 @@ export default function expoConfig({ config }) {
         '@react-native-google-signin/google-signin',
         {
           scopes: ['email', 'profile'],
-          webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+          webClientId: GOOGLE_WEB_CLIENT_ID,
           offlineAccess: true,
           forceCodeForRefreshToken: true,
-          iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-          iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID,
+          iosClientId: GOOGLE_IOS_CLIENT_ID,
+          iosUrlScheme: GOOGLE_REVERSED_CLIENT_ID,
         },
       ],
     ].filter(Boolean),

@@ -224,48 +224,124 @@ async function resolveAuthUuidForNumericUserId(db, userIdNum) {
 // ─────────────────────────────────────────────────────────────
 // Course outline → titles (for Lessons Learnt)
 // ─────────────────────────────────────────────────────────────
-function extractTitlesFromAnyOutline(obj) {
+function extractTitlesFromAnyOutline(obj, { max = 200 } = {}) {
   const out = [];
+  const seen = new Set(); // case-insensitive de-dup
+  const seenObj = new WeakSet();
 
   const push = (s) => {
-    const t = String(s || '').trim();
-    if (t) out.push(t);
+    if (out.length >= max) return;
+    const t = String(s ?? '').replace(/\s+/g, ' ').trim();
+    if (!t) return;
+    // ignore giant blobs (e.g., JSON stringified dumps)
+    if (t.length > 160) return;
+    const k = t.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(t);
   };
 
-  const walk = (x) => {
-    if (!x) return;
-    if (typeof x === 'string') return push(x);
-    if (Array.isArray(x)) return x.forEach(walk);
-    if (typeof x === 'object') {
-      // common keys
-      push(x.title || x.label || x.name || x.topic);
+  const valueKeys = [
+    'title','label','name','topic','heading',
+    'weekTitle','week_title','unitTitle','unit_title',
+    'moduleTitle','module_title','lessonTitle','lesson_title',
+    'objective','objectives'
+  ];
 
-      // syllabus-ish nesting
-      if (Array.isArray(x.sections)) x.sections.forEach(walk);
-      if (Array.isArray(x.lessons)) x.lessons.forEach(walk);
-      if (Array.isArray(x.items)) x.items.forEach(walk);
-      if (Array.isArray(x.weeks)) x.weeks.forEach(walk);
+  const nestKeys = [
+    'syllabus','outline','weeks','sections','lessons','items',
+    'topics','subtopics','units','modules','chapters','parts',
+    'activities','exercises','content'
+  ];
+
+  const walk = (x, depth = 0) => {
+    if (!x || out.length >= max || depth > 14) return;
+    if (typeof x === 'string') return push(x);
+    if (Array.isArray(x)) {
+      for (const it of x) walk(it, depth + 1);
+      return;
+    }
+    if (typeof x === 'object') {
+      if (seenObj.has(x)) return;
+      seenObj.add(x);
+
+      for (const k of valueKeys) {
+        const v = x[k];
+        if (typeof v === 'string') push(v);
+        else if (Array.isArray(v)) v.forEach((s) => push(s));
+      }
+
+      for (const k of nestKeys) {
+        const v = x[k];
+        if (v) walk(v, depth + 1);
+      }
     }
   };
 
-  walk(obj);
+  walk(obj, 0);
+  return out;
+}
 
-  // de-dup, cap
-  return Array.from(new Set(out)).slice(0, 30);
+
+function tryParseJson(v) {
+  if (typeof v !== 'string') return v;
+  const s = v.trim();
+  if (!s) return v;
+  if (!(s.startsWith('{') || s.startsWith('['))) return v;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return v;
+  }
+}
+
+function extractOutlineTitlesSmart(v, { max = 200 } = {}) {
+  const x = tryParseJson(v);
+
+  // common AI outline shape: Array<{title,...}>
+  if (Array.isArray(x)) {
+    const titles = x
+      .map((it) => it?.title || it?.weekTitle || it?.lessonTitle || it?.name || it?.label)
+      .map((s) => String(s || '').trim())
+      .filter(Boolean);
+    if (titles.length) return titles.slice(0, max);
+  }
+
+  // common course package shape: { outline: [...] }
+  if (x && typeof x === 'object') {
+    const arr =
+      (Array.isArray(x.outline) && x.outline) ||
+      (Array.isArray(x.weeks) && x.weeks) ||
+      (Array.isArray(x.sections) && x.sections) ||
+      null;
+
+    if (arr) {
+      const titles = arr
+        .map((it) => it?.title || it?.weekTitle || it?.lessonTitle || it?.name || it?.label)
+        .map((s) => String(s || '').trim())
+        .filter(Boolean);
+      if (titles.length) return titles.slice(0, max);
+    }
+  }
+
+  // fallback to your deep walker (but after parsing JSON strings)
+  return extractTitlesFromAnyOutline(x, { max });
 }
 
 async function loadCourseOutlineTitles(db, courseId) {
-  // Prefer syllabus (your app already uses it for completion checks)
+  // 1) Pull syllabus first (fast path)
   try {
-    const q = await db.query(`SELECT syllabus FROM courses WHERE id = $1::uuid LIMIT 1`, [courseId]);
+    const q = await db.query(
+      `SELECT syllabus FROM courses WHERE id = $1::uuid LIMIT 1`,
+      [courseId],
+    );
     if (q.rowCount) {
-      const titles = extractTitlesFromAnyOutline(q.rows[0]?.syllabus);
+      const titles = extractOutlineTitlesSmart(q.rows[0]?.syllabus);
       if (titles.length) return titles;
     }
   } catch {}
 
-  // Fallback candidates (if you have them in some env)
-  const candCols = ['outline', 'course_outline', 'sections', 'course_sections'];
+  // 2) Scan *all* likely outline columns and pick the one with most titles
   try {
     const colsQ = await db.query(
       `
@@ -273,23 +349,52 @@ async function loadCourseOutlineTitles(db, courseId) {
         FROM information_schema.columns
        WHERE table_schema='public'
          AND table_name='courses'
-         AND column_name = ANY($1::text[])
+         AND (
+              column_name ILIKE '%outline%'
+           OR column_name ILIKE '%syllabus%'
+           OR column_name ILIKE '%section%'
+         )
       `,
-      [candCols],
     );
 
-    const found = candCols.find((c) => colsQ.rows.some((r) => r.column_name === c));
-    if (!found) return [];
+    const cols = (colsQ.rows || []).map((r) => r.column_name).slice(0, 20);
+    if (!cols.length) return [];
 
-    const q2 = await db.query(`SELECT "${found}" AS v FROM courses WHERE id = $1::uuid LIMIT 1`, [
-      courseId,
-    ]);
-    if (!q2.rowCount) return [];
-    return extractTitlesFromAnyOutline(q2.rows[0]?.v);
+    let best = [];
+    let bestCol = null;
+
+    for (const col of cols) {
+      try {
+        const r = await db.query(
+          `SELECT "${col}" AS v FROM courses WHERE id = $1::uuid LIMIT 1`,
+          [courseId],
+        );
+        const v = r.rows?.[0]?.v;
+        const titles = extractOutlineTitlesSmart(v);
+        if (titles.length > best.length) {
+          best = titles;
+          bestCol = col;
+        }
+      } catch {}
+    }
+
+    if (best.length) {
+      // helpful always-on log
+      console.log('[transcripts.outline] picked', {
+        courseId,
+        col: bestCol,
+        count: best.length,
+        sample: best.slice(0, 6),
+      });
+      return best;
+    }
+
+    return [];
   } catch {
     return [];
   }
 }
+
 
 // near the top of apps/backend/controllers/transcriptsController.js
 
@@ -824,6 +929,32 @@ function publicIdFromTranscriptUrl(u) {
   return null;
 }
 
+function computeOverallPctFromSections(sections) {
+  const secs = Array.isArray(sections) ? sections : [];
+
+  // Prefer quiz scores only (avoid "Lessons Attempted" = 100 skew)
+  const quizSecs = secs.filter((s) =>
+    /quiz/i.test(String(s?.sectionTitle || '')),
+  );
+  const use = quizSecs.length ? quizSecs : secs.filter((s) => !/lesson/i.test(String(s?.sectionTitle || '')));
+
+  const items = use.flatMap((s) => (Array.isArray(s?.items) ? s.items : []));
+  const nums = items
+    .map((it) => Number(it?.scorePct))
+    .filter((n) => Number.isFinite(n));
+
+  if (!nums.length) return null;
+  const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+  return Math.round(avg * 100) / 100;
+}
+
+function clampPct(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(100, n));
+}
+
+
 // Ensure “Lessons Attempted” section is present (append or replace)
 function ensureLessonsSection(existingSections, lessonTitles) {
   const sections = Array.isArray(existingSections) ? [...existingSections] : [];
@@ -912,7 +1043,16 @@ export async function generateTranscript(req, res) {
 
     // Only treat client fields as overrides if actually provided in the payload.
     const provided = (k) => Object.prototype.hasOwnProperty.call(value, k);
-    const clientOverallPct = provided('overallPct') ? value.overallPct : undefined;
+   const clientSectionsProvided =
+  provided('sections') && Array.isArray(value.sections) && value.sections.length > 0;
+
+    const clientOverallPctRaw = provided('overallPct') ? value.overallPct : undefined;
+
+    // ✅ If client sends default 0 but didn't send any sections, ignore it.
+    // (real 0% would still come from serverStats.sections / quiz_attempts)
+    const clientOverallPct =
+      clientOverallPctRaw === 0 && !clientSectionsProvided ? undefined : clientOverallPctRaw;
+
     const clientPassMark = provided('passMark') ? value.passMark : undefined;
     const clientSections = provided('sections') ? value.sections : undefined;
     const force = value.force === true;
@@ -1155,6 +1295,13 @@ export async function generateTranscript(req, res) {
 const lessonTitles = await loadAttemptedLessonTitles(pool, userId, courseId);
 const outlineTitles = await loadCourseOutlineTitles(pool, courseId);
 
+console.log('[transcripts.generate] outline resolved', {
+  courseId,
+  outlineCount: Array.isArray(outlineTitles) ? outlineTitles.length : 0,
+  outlineSample: (outlineTitles || []).slice(0, 10),
+});
+
+
 logT('[transcripts.generate] lessons_sources', {
   rid,
   attemptedCount: Array.isArray(lessonTitles) ? lessonTitles.length : 0,
@@ -1162,11 +1309,50 @@ logT('[transcripts.generate] lessons_sources', {
   outlineSample: (outlineTitles || []).slice(0, 8),
 });
 
-    const overallPct = clientOverallPct ?? serverStats.overallPct;
-    const passMark = clientPassMark ?? serverStats.passMark;
+    let passMark = clientPassMark ?? serverStats.passMark ?? 70;
 
-    let sections = clientSections ?? serverStats.sections;
-    sections = ensureLessonsSection(sections, lessonTitles);
+let sections = clientSections ?? serverStats.sections;
+sections = ensureLessonsSection(sections, lessonTitles);
+
+// 1) Start with explicit overallPct if client sent it, else server
+let overallPct = clientOverallPct ?? serverStats.overallPct;
+
+// 2) If missing, compute from sections (prefer Quiz Scores; exclude lessons)
+if (overallPct == null) {
+  overallPct = computeOverallPctFromSections(sections);
+}
+
+// 3) If still missing, fallback to enrollments.progress (0–100)
+if (overallPct == null) {
+  const r = await pool.query(
+    `SELECT progress
+       FROM enrollments
+      WHERE student_id = $1
+        AND course_id = $2::uuid
+      LIMIT 1`,
+    [userId, courseId],
+  );
+  overallPct = clampPct(r.rows?.[0]?.progress);
+
+  if (
+  overallPct === 0 &&
+  (!Array.isArray(sections) || sections.length === 0) &&
+  (!Array.isArray(serverStats?.sections) || serverStats.sections.length === 0)
+) {
+  overallPct = null;
+}
+}
+
+// temp debug (optional)
+logT('[transcripts.generate] score inputs', {
+  rid,
+  courseId,
+  userId,
+  overallPct,
+  passMark,
+  sectionsCount: Array.isArray(sections) ? sections.length : 0,
+});
+
 
     // TITLES ONLY for "Lessons Learnt"
     const toLabels = (arr) =>
@@ -1205,6 +1391,15 @@ const lessonsLearnt = toLabels(clientLessonsLearnt).length
     });
 
     const verificationUrl = `${base}/verify/transcript/${tr.id}`;
+
+    console.log('[transcripts.generate] FINAL before PDF', {
+    courseId,
+    overallPct,
+    passMark,
+    sectionsCount: Array.isArray(sections) ? sections.length : 0,
+    sectionTitles: (sections || []).map(s => s.sectionTitle),
+  });
+
 
     // 7) Render in-memory PDF
     const buffer = await generateTranscriptPdfBuffer({

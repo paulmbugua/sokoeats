@@ -499,6 +499,20 @@ const lastCourseIdRef = useRef<string | null>(null);
   const effectiveGateNotice = hasUnlockedCourse ? null : gateNotice;
   const effectiveGateUsage = hasUnlockedCourse ? undefined : gateUsage;
 
+  const displayLessons = useMemo(() => {
+  return orgMeta?.totalLessons ?? safeLessons ?? outline?.length ?? 0;
+}, [orgMeta?.totalLessons, safeLessons, outline?.length]);
+
+const displayQuestions = useMemo(() => {
+  return orgMeta?.quizSize ?? safeQuiz ?? 0;
+}, [orgMeta?.quizSize, safeQuiz]);
+
+const displayTimerSec = useMemo(() => {
+  return Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
+}, [quiz?.timerSec, orgMeta?.timer_s, timerSec]);
+
+const hasTimer = displayTimerSec > 0;
+
   const api = useCallback(
     async function <T = any>(path: string, init?: RequestInit): Promise<T> {
       const r = await fetch(`${backendUrl}${path}`, {
@@ -815,10 +829,7 @@ const lastCourseIdRef = useRef<string | null>(null);
   }, [quiz?.timerSec, markActive, quizActive, setLocalRemainingMs]);
 
   // Modal display values (prefer org-locked)
-  const displayLessons = orgMeta?.totalLessons ?? safeLessons ?? outline?.length ?? 0;
-  const displayQuestions = orgMeta?.quizSize ?? safeQuiz ?? 0;
-  const displayTimerSec = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
-  const hasTimer = displayTimerSec > 0;
+ 
   const buildConfirmInfo = useCallback(() => {
     const timeLabel = displayTimerSec > 0 ? fmtHMS(displayTimerSec) : 'No time limit';
     const info = {

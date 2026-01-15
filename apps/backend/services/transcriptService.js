@@ -149,7 +149,138 @@ function fitOneLine(doc, text, maxWidth, fontSize = 10) {
     t = t.slice(0, -1);
   }
   return t + ellipsis;
+  
 }
+
+  
+function toFiniteNumberOrNull(v) {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'string' && v.trim() === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeOutlineTitle(s) {
+  let t = String(s ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  // mild cleanup to pack more per row
+  t = t.replace(/^(week|module|unit|lesson)\s*\d+\s*[:\-–]\s*/i, '');
+  t = t.replace(/^\d+\s*[:\-–]\s*/, '');
+  return t.trim();
+}
+
+/**
+ * Compact outline block:
+ * - packs multiple outline titles per row
+ * - tries smaller font sizes until it fits <= maxRows
+ * - never renders more than maxRows lines
+ */
+function drawCompactOutlineBlock(
+  doc,
+  titles,
+  { x, y, width, maxRows = 10, radius = 10 } = {},
+) {
+  const list = (Array.isArray(titles) ? titles : [])
+    .map(normalizeOutlineTitle)
+    .filter(Boolean);
+
+  if (!list.length) return y;
+
+  const padX = 10;
+  const padY = 8;
+  const headerH = 22;
+  const maxTextW = width - padX * 2;
+
+  const packLines = (fontSize) => {
+    doc.font('Helvetica').fontSize(fontSize);
+    const sep = '   '; // spaces pack better than bullets for width
+    const lines = [];
+    let line = '';
+
+    for (let i = 0; i < list.length; i++) {
+      const tokenRaw = `• ${list[i]}`;
+      const token =
+        doc.widthOfString(tokenRaw) > maxTextW
+          ? fitOneLine(doc, tokenRaw, maxTextW, fontSize)
+          : tokenRaw;
+
+      if (!line) {
+        line = token;
+        continue;
+      }
+
+      const candidate = `${line}${sep}${token}`;
+      if (doc.widthOfString(candidate) <= maxTextW) {
+        line = candidate;
+      } else {
+        lines.push(line);
+        line = token;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
+
+  // Try to fit all titles within maxRows by shrinking font
+  let fontSize = 9;
+  let lines = packLines(fontSize);
+  while (lines.length > maxRows && fontSize > 6) {
+    fontSize -= 0.5;
+    lines = packLines(fontSize);
+  }
+
+  // If still too many lines, clamp to maxRows and add a final overflow hint
+  let shown = lines;
+  let overflow = 0;
+  if (lines.length > maxRows) {
+    shown = lines.slice(0, maxRows);
+    overflow = lines.length - maxRows;
+    // Replace last line with an explicit hint (keeps <= maxRows)
+    doc.font('Helvetica').fontSize(fontSize);
+    shown[maxRows - 1] = fitOneLine(
+      doc,
+      `… +${overflow} more (scan QR for full details)`,
+      maxTextW,
+      fontSize,
+    );
+  }
+
+  const rowH = Math.max(10, fontSize + 4);
+  const boxH = headerH + padY + shown.length * rowH + padY;
+
+  doc.save();
+  doc
+    .roundedRect(x, y, width, boxH, radius)
+    .fillOpacity(0.06)
+    .fill('#60A5FA')
+    .fillOpacity(1);
+
+  doc.roundedRect(x, y, width, headerH, radius).fill('#E5F3FF');
+  doc
+    .fillColor('#0F172A')
+    .font('Helvetica-Bold')
+    .fontSize(11)
+    .text('Course Outline', x + padX, y + 5, { lineBreak: false });
+
+  // count on the right
+  doc
+    .fillColor('#64748B')
+    .font('Helvetica')
+    .fontSize(10)
+    .text(`${list.length} items`, x, y + 6, { width: width - padX, align: 'right' });
+
+  // lines
+  doc.font('Helvetica').fontSize(fontSize).fillColor('#0B1220');
+  let ty = y + headerH + padY;
+  for (const ln of shown) {
+    doc.text(ln, x + padX, ty, { width: maxTextW, lineBreak: false });
+    ty += rowH;
+  }
+  doc.restore();
+
+  return y + boxH;
+}
+
 
 /** Tight footer that never wraps or causes a new page */
 function drawTightFooter(doc, brandName, { margin = 28, dryRun = false } = {}) {
@@ -407,6 +538,8 @@ function drawProgramTrackPill(doc, programTrack, { x, y, align = 'right', maxWid
   return { label: meta.label, key };
 }
 
+
+
 /* ─────────────────────────────────────────────────────────
  * Main generator (ONE PAGE)
  * ───────────────────────────────────────────────────────── */
@@ -422,7 +555,7 @@ export async function generateTranscriptPdfBuffer({
   courseId,
   programTrack,
   issuedAt = new Date(),
-  overallPct = 0,
+  overallPct = null,
   passMark = 70,
   sections = [],
   verificationUrl,
@@ -551,21 +684,26 @@ export async function generateTranscriptPdfBuffer({
       return coerceLabels(sec?.items);
     })();
 
-    // De-dup titles, cap to avoid runaway rows
-    const MAX = 14;
-const raw = Array.from(new Set((fromExplicit.length ? fromExplicit : fromOutline.length ? fromOutline : fromSections)));
-const head = raw.slice(0, MAX);
-const remaining = raw.length - head.length;
-
-const lessonsLearntLabels = remaining > 0
-  ? [...head, `…and ${remaining} more`]
-  : head;
+    
+   // De-dup titles (preserve order), DO NOT cap here — we will compact-render below.
+    const rawAll = (fromExplicit.length ? fromExplicit : fromOutline.length ? fromOutline : fromSections)
+      .map((s) => String(s || '').trim())
+      .filter(Boolean);
+    const seen = new Set();
+    const outlineTitles = [];
+    for (const t of rawAll) {
+      const key = t.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        outlineTitles.push(t);
+      }
+    }
 
     const trackKey = normalizeTrackKey(programTrack);
 const trackLabel = trackKey ? TRACK_META[trackKey]?.label : null;
 
 
-    // --- build meta rows (each lesson on its own row) ---
+      // --- build meta rows (keep table compact) ---
     const baseMeta = [
       { k: 'Student Name', k2: 'student_name', v: studentName || '—' },
       { k: 'Student ID', k2: 'student_id', v: studentId || '—' },
@@ -574,21 +712,7 @@ const trackLabel = trackKey ? TRACK_META[trackKey]?.label : null;
       { k: 'Course ID', k2: 'course_id', v: courseId || '—' },
     ];
 
-    // If we have lesson titles, show each as its own row; otherwise an em dash.
-    const lessonRows = lessonsLearntLabels.length
-      ? lessonsLearntLabels.map((t, idx) => ({
-          k: idx === 0 ? 'Lessons Learnt' : '',
-          k2: 'lessons_learnt',
-          v: t,
-        }))
-      : [{ k: 'Lessons Learnt', k2: 'lessons_learnt', v: '—' }];
-
-    // Keep Issued On last
-    const metaRows = [
-      ...baseMeta,
-      ...lessonRows,
-      { k: 'Issued On', k2: 'issued_on', v: issuedText },
-    ];
+    const metaRows = [...baseMeta, { k: 'Issued On', k2: 'issued_on', v: issuedText }];
 
     const tableBottom = drawMetaTable(doc, metaRows, {
       x: contentLeft() + 4,
@@ -599,12 +723,21 @@ const trackLabel = trackKey ? TRACK_META[trackKey]?.label : null;
       headerH: 22,
     });
 
-    // Add extra spacing after table
-    y = tableBottom + 18;
+      // Add compact outline block (<=10 rows, multiple per row)
+    y = tableBottom + 12;
+    y = drawCompactOutlineBlock(doc, outlineTitles, {
+      x: contentLeft() + 4,
+      y,
+      width: contentWidth() - 8,
+      maxRows: 10,
+      radius: 10,
+    }) + 16;
+
+    
 
     // ── Summary box ─────────────────────────────────────────────────────────
-    const overallN = Number.isFinite(Number(overallPct)) ? Number(overallPct) : null;
-const passN = Number.isFinite(Number(passMark)) ? Number(passMark) : null;
+    const overallN = toFiniteNumberOrNull(overallPct);
+    const passN = toFiniteNumberOrNull(passMark);
 
 const scoreText = overallN == null ? '—' : `${Math.round(overallN * 100) / 100}%`;
 const passText = passN == null ? '—' : `${Math.round(passN * 100) / 100}%`;
@@ -633,18 +766,18 @@ doc.fontSize(18).fillColor('#111827').text(passText, contentLeft() + 210, boxY +
   lineBreak: false,
 });
 
-const letter =
-  overallN == null
-    ? '—'
-    : overallN >= 90
-      ? 'A'
-      : overallN >= 80
-        ? 'B'
-        : overallN >= 70
-          ? 'C'
-          : overallN >= 60
-            ? 'D'
-            : 'F';
+ const letter =
+      overallN == null
+        ? '—'
+        : overallN >= 90
+          ? 'A'
+          : overallN >= 80
+            ? 'B'
+            : overallN >= 70
+              ? 'C'
+              : overallN >= 60
+                ? 'D'
+                : 'F';
 
     doc
       .fillColor('#6B7280')
