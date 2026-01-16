@@ -79,6 +79,13 @@ const TRACKS = [
 ] as const;
 export type TrackKey = (typeof TRACKS)[number]['key'];
 
+const LANGUAGE_CARDS = [
+  { language: 'German', emoji: '🇩🇪', subtitle: 'Start a lesson' },
+  { language: 'French', emoji: '🇫🇷', subtitle: 'Build confidence' },
+  { language: 'Spanish', emoji: '🇪🇸', subtitle: 'Quick practice' },
+  { language: 'Arabic', emoji: '🇸🇦', subtitle: 'New phrases' },
+] as const;
+
 
 const sizeToCourseSize: Record<
   SizePresetKey,
@@ -491,6 +498,7 @@ const validateAgainstTopCourses = Boolean(
   const [quizCount, setQuizCount] = useState<number>(16);
   const [programTrack, setProgramTrack] = useState<TrackKey>('module');
   const [customTitle, setCustomTitle] = useState('');
+  const [pendingLanguagePrompt, setPendingLanguagePrompt] = useState<string | null>(null);
   const [fetchedRouteTitle, setFetchedRouteTitle] = useState('');
 
   const [programTrackLocked, setProgramTrackLocked] = useState(false);
@@ -1382,6 +1390,24 @@ return;
   params.courseId,
 ]);
 
+  const startLanguageFromCard = useCallback(
+    (language: string) => {
+      const ok = requireAuth('ai_sandbox', 'Please sign in to start language learning.');
+      if (!ok) return;
+      const prompt = `Teach me ${language}`;
+      setCustomTitle(prompt);
+      setPendingLanguagePrompt(prompt);
+    },
+    [requireAuth]
+  );
+
+  useEffect(() => {
+    if (!pendingLanguagePrompt) return;
+    if (customTitle.trim() !== pendingLanguagePrompt) return;
+    setPendingLanguagePrompt(null);
+    onStart();
+  }, [pendingLanguagePrompt, customTitle, onStart]);
+
   // course change — cancel any active run and spinner
   useEffect(() => {
     const cid = selectedCourse?.id || null;
@@ -1529,6 +1555,32 @@ return;
             {/* LEFT (main) */}
             <View style={tw`${showCourseList ? 'md:w-2/3' : 'md:w-full'} w-full`}>
               <View style={tw`mb-4`}>
+                <View style={tw`mb-3`}>
+                  <Text style={tw`text-[10px] uppercase tracking-[0.3em] text-[#6b7280] dark:text-white/60 mb-2`}>
+                    Choose a language
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`gap-3`}>
+                    {LANGUAGE_CARDS.map((card) => (
+                      <TouchableOpacity
+                        key={card.language}
+                        onPress={() => startLanguageFromCard(card.language)}
+                        activeOpacity={0.9}
+                        style={tw`w-40 rounded-2xl border border-white/40 dark:border-white/10 bg-white dark:bg-[#141b24] px-4 py-3`}
+                      >
+                        <View style={tw`flex-row items-center justify-between`}>
+                          <Text style={tw`text-lg`}>{card.emoji}</Text>
+                          <Text style={tw`text-[10px] font-semibold text-emerald-500`}>NEW</Text>
+                        </View>
+                        <Text style={tw`mt-2 text-sm font-semibold text-[#0d141c] dark:text-white`}>
+                          {card.language}
+                        </Text>
+                        <Text style={tw`text-xs text-[#6b7280] dark:text-white/60`}>
+                          {card.subtitle}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
                 <Text style={tw`text-[#0d141c] dark:text-white font-black text-2xl md:text-3xl`}>
                   AI Tutor Studio
                 </Text>

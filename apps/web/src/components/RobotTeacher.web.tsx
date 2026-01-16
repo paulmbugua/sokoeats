@@ -55,6 +55,13 @@ const TRACKS = [
   { key: 'degree', label: 'Comprehensive', lessons: getRequiredWeeks('degree') },
 ] as const satisfies readonly { key: TrackKey; label: string; lessons: number }[];
 
+const LANGUAGE_CARDS = [
+  { language: 'German', emoji: '🇩🇪', subtitle: 'Start a lesson' },
+  { language: 'French', emoji: '🇫🇷', subtitle: 'Build confidence' },
+  { language: 'Spanish', emoji: '🇪🇸', subtitle: 'Quick practice' },
+  { language: 'Arabic', emoji: '🇸🇦', subtitle: 'New phrases' },
+] as const;
+
 
 
 const sizeToCourseSize: Record<
@@ -519,6 +526,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     'param' | 'storage' | 'default' | null
   >(null);
   const [customTitle, setCustomTitle] = useState('');
+  const [pendingLanguagePrompt, setPendingLanguagePrompt] = useState<string | null>(null);
   const [fetchedRouteTitle, setFetchedRouteTitle] = useState('');
 
   const [preparing, setPreparing] = useState(false);
@@ -1288,6 +1296,24 @@ useEffect(() => {
     requireAuth,
   ]);
 
+  const startLanguageFromCard = useCallback(
+    (language: string) => {
+      const ok = requireAuth('ai_sandbox', 'Please sign in to start language learning.');
+      if (!ok) return;
+      const prompt = `Teach me ${language}`;
+      setCustomTitle(prompt);
+      setPendingLanguagePrompt(prompt);
+    },
+    [requireAuth]
+  );
+
+  useEffect(() => {
+    if (!pendingLanguagePrompt) return;
+    if (customTitle.trim() !== pendingLanguagePrompt) return;
+    setPendingLanguagePrompt(null);
+    onStart();
+  }, [pendingLanguagePrompt, customTitle, onStart]);
+
   const onRequestStartGuarded = useCallback(() => {
     // Player may ask to "start" — ignore if we already have content or we're busy
     if (blockedUntilStart) return;
@@ -1323,6 +1349,35 @@ useEffect(() => {
           className={`order-1 space-y-4 sm:space-y-6 ${!isLockedLearner ? 'md:col-span-8' : 'md:col-span-12'}`}
         >
           <header className="space-y-1">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500 dark:text-white/60 uppercase tracking-[0.2em]">
+                  Choose a language
+                </span>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {LANGUAGE_CARDS.map((card) => (
+                  <button
+                    key={card.language}
+                    onClick={() => startLanguageFromCard(card.language)}
+                    className="min-w-[160px] rounded-2xl border border-white/70 dark:border-white/10 bg-gradient-to-br from-white via-white to-emerald-50/70 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-900/40 px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-lg">{card.emoji}</span>
+                      <span className="text-[10px] font-semibold text-emerald-500">
+                        NEW
+                      </span>
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+                      {card.language}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-white/60">
+                      {card.subtitle}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-darkText dark:text-white">
               AI Tutor Studio
             </h1>

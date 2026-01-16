@@ -63,6 +63,9 @@ type Props = {
   hideGateBanner?: boolean;
   playback?: PlaybackPayload | null;
   mode?: 'lesson' | 'language';
+  voiceId?: string;
+  rate?: number;
+  pitch?: number;
 };
 
 // --- helpers -----------------------------------------------------------------
@@ -115,9 +118,11 @@ function buildSegmentsFromQueue(items: PlaybackQueueItem[]) {
 function LanguageQueuePlayer({
   playback,
   title,
+  rate = 1,
 }: {
   playback?: PlaybackPayload | null;
   title?: string;
+  rate?: number;
 }) {
   const items = playback?.items || [];
   const segments = React.useMemo(() => buildSegmentsFromQueue(items), [items]);
@@ -157,6 +162,7 @@ function LanguageQueuePlayer({
       return;
     }
     audioRef.current.src = currentItem.audioUrl;
+    audioRef.current.playbackRate = rate;
     if (autoPlayNext || playing) {
       const delay = currentItem.kind === 'en' ? 350 : 250;
       timerRef.current = window.setTimeout(() => {
@@ -164,7 +170,7 @@ function LanguageQueuePlayer({
         setAutoPlayNext(false);
       }, delay);
     }
-  }, [currentItem, autoPlayNext, playing, playCurrent]);
+  }, [currentItem, autoPlayNext, playing, playCurrent, rate]);
 
   React.useEffect(() => {
     setCurrentIndex(0);
@@ -262,7 +268,7 @@ function Container(props: Props) {
 
   const isLanguageMode = mode === 'language' || playback?.mode === 'queue';
   if (isLanguageMode) {
-    return <LanguageQueuePlayer playback={playback} title={title} />;
+    return <LanguageQueuePlayer playback={playback} title={title} rate={props.rate} />;
   }
 
   const prefersReduced = usePrefersReducedMotion();
