@@ -5,7 +5,7 @@ const { Queue, Worker, QueueScheduler } = pkg;
 
 import Stripe from 'stripe';
 import express from 'express';
-import pool from '../config/db.js';
+import pool, { rollbackQuiet } from '../config/db.js';
 import { createRedis } from './redisConnection.js';
 
 // ────────────────────────────────────────────────────────────────
@@ -136,9 +136,10 @@ async function payWithWise({ payoutId }) {
 /** Job processor */
 // ────────────────────────────────────────────────────────────────
 async function processor(job) {
-  const client = await pool.connect();
+  let client;
   try {
     const { payoutId } = job.data;
+    client = await pool.connect();
     await client.query('BEGIN');
 
     const { rows } = await client.query(
@@ -149,7 +150,7 @@ async function processor(job) {
 
     const p = rows[0];
     if (p.status !== 'queued') {
-      await client.query('ROLLBACK');
+      await rollbackQuiet(client);
       return;
     }
 
@@ -158,6 +159,15 @@ async function processor(job) {
     const currency = String(p.currency || '').toUpperCase();
     const amount = Number(p.amount || 0);
     if (!amount || amount <= 0) throw new Error('Invalid payout amount.');
+
+    await client.query(
+      `UPDATE payouts SET status='processing', updated_at=NOW() WHERE id=$1`,
+      [payoutId],
+    );
+
+    await client.query('COMMIT');
+    client.release();
+    client = null;
 
     let providerRef = null;
     if (method === 'stripe') {
@@ -185,10 +195,13 @@ async function processor(job) {
       throw new Error(`Unsupported payout method: ${method}`);
     }
 
+    client = await pool.connect();
+    await client.query('BEGIN');
+
     await client.query(
       `UPDATE payouts
          SET status='paid', provider_ref=$2, paid_at=NOW(), updated_at=NOW()
-       WHERE id=$1`,
+       WHERE id=$1 AND status='processing'`,
       [payoutId, providerRef],
     );
 
@@ -209,9 +222,9 @@ async function processor(job) {
 
     await client.query('COMMIT');
   } catch (err) {
-    try {
-      await client.query('ROLLBACK');
-    } catch {}
+    if (client) {
+      await rollbackQuiet(client);
+    }
     try {
       const { payoutId } = job.data;
       const { rows: pRows } = await pool.query(
@@ -219,7 +232,7 @@ async function processor(job) {
         [payoutId],
       );
       const p = pRows[0];
-      if (p && p.status === 'queued') {
+      if (p && (p.status === 'queued' || p.status === 'processing')) {
         await pool.query(
           `UPDATE payouts SET status='failed', error=$2, updated_at=NOW() WHERE id=$1`,
           [payoutId, String(err.message).slice(0, 500)],
@@ -253,7 +266,7 @@ async function processor(job) {
     }
     throw err; // let BullMQ retry
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 
