@@ -20,6 +20,7 @@ import { Audio } from 'expo-av';
 import { useFocusEffect } from '@react-navigation/native';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useWordSync } from '@mytutorapp/shared/hooks/useWordSync';
+import type { PlaybackPayload, PlaybackQueueItem } from '@mytutorapp/shared/types';
 
 import { listTtsVoices, type TtsVoiceInfo } from '@mytutorapp/shared/api/ttsAvatarApi';
 
@@ -96,6 +97,8 @@ type Props = {
     resetsAt?: string | null;
   }>;
   hideGateBanner?: boolean;
+  playback?: PlaybackPayload | null;
+  mode?: 'lesson' | 'language';
 };
 
 // ─────────────────────── Constants ───────────────────────
@@ -147,6 +150,158 @@ function indexForTime(ws: Array<{ start: number; end: number }>, t: number): num
   return Math.max(0, Math.min(ans, ws.length - 1));
 }
 
+function buildSegmentsFromQueue(items: PlaybackQueueItem[]) {
+  const map = new Map<number, { en?: string; tr?: string }>();
+  for (const item of items) {
+    const entry = map.get(item.segmentIdx) || {};
+    if (item.kind === 'en') entry.en = item.text;
+    if (item.kind === 'tr') entry.tr = item.text;
+    map.set(item.segmentIdx, entry);
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([idx, seg]) => ({
+      segmentIdx: idx,
+      en: seg.en || '',
+      tr: seg.tr || '',
+    }));
+}
+
+const LanguageQueuePlayerNative: React.FC<{
+  playback?: PlaybackPayload | null;
+  title?: string;
+}> = ({ playback, title }) => {
+  const items = playback?.items || [];
+  const segments = useMemo(() => buildSegmentsFromQueue(items), [items]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [autoPlayNext, setAutoPlayNext] = useState(false);
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const currentItem = items[currentIndex];
+  const currentSegmentIdx = currentItem?.segmentIdx ?? 0;
+  const currentSegment =
+    segments.find((seg) => seg.segmentIdx === currentSegmentIdx) || segments[0];
+
+  const clearTimer = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const unloadSound = useCallback(async () => {
+    if (soundRef.current) {
+      try {
+        await soundRef.current.unloadAsync();
+      } catch {}
+      soundRef.current = null;
+    }
+  }, []);
+
+  const loadCurrent = useCallback(async () => {
+    clearTimer();
+    await unloadSound();
+    if (!currentItem?.audioUrl) return;
+    const sound = new Audio.Sound();
+    soundRef.current = sound;
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (!status.isLoaded) return;
+      if (status.didJustFinish) {
+        if (currentIndex + 1 < items.length) {
+          setAutoPlayNext(true);
+          setCurrentIndex((i) => i + 1);
+        } else {
+          setPlaying(false);
+        }
+      }
+    });
+    await sound.loadAsync({ uri: currentItem.audioUrl }, { shouldPlay: false });
+    if (autoPlayNext || playing) {
+      const delay = currentItem.kind === 'en' ? 350 : 250;
+      timerRef.current = setTimeout(async () => {
+        try {
+          await sound.playAsync();
+          setPlaying(true);
+        } catch {
+          setPlaying(false);
+        } finally {
+          setAutoPlayNext(false);
+        }
+      }, delay);
+    }
+  }, [autoPlayNext, currentIndex, currentItem, items.length, playing, unloadSound]);
+
+  useEffect(() => {
+    loadCurrent();
+    return () => {
+      clearTimer();
+    };
+  }, [loadCurrent]);
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    setPlaying(false);
+    setAutoPlayNext(false);
+    unloadSound();
+  }, [playback?.items, unloadSound]);
+
+  useEffect(() => {
+    return () => {
+      unloadSound();
+    };
+  }, [unloadSound]);
+
+  const handlePlayPause = useCallback(async () => {
+    if (!soundRef.current) {
+      setPlaying(false);
+      return;
+    }
+    const status = await soundRef.current.getStatusAsync();
+    if (!status.isLoaded) return;
+    if (status.isPlaying) {
+      await soundRef.current.pauseAsync();
+      setPlaying(false);
+    } else {
+      await soundRef.current.playAsync();
+      setPlaying(true);
+    }
+  }, []);
+
+  const handleReplaySegment = useCallback(() => {
+    const idx = items.findIndex(
+      (item) => item.segmentIdx === currentSegmentIdx && item.kind === 'en'
+    );
+    if (idx >= 0) {
+      setCurrentIndex(idx);
+      setAutoPlayNext(true);
+      setPlaying(true);
+    }
+  }, [items, currentSegmentIdx]);
+
+  return (
+    <View style={tw`rounded-2xl bg-slate-900/90 p-4`}>
+      <Text style={tw`text-sm text-white font-semibold mb-3`}>{title || 'Language Learning'}</Text>
+      <View style={tw`rounded-xl bg-white/10 p-3`}>
+        <Text style={tw`text-base text-white`}>{currentSegment?.en || '—'}</Text>
+        <Text style={tw`text-xs text-white/60`}>{currentSegment?.tr || '—'}</Text>
+      </View>
+      <View style={tw`flex-row items-center gap-2 mt-3`}>
+        <Pressable onPress={handlePlayPause} style={tw`rounded-full bg-white/10 px-4 py-1`}>
+          <Text style={tw`text-sm text-white`}>{playing ? 'Pause' : 'Play'}</Text>
+        </Pressable>
+        <Pressable onPress={handleReplaySegment} style={tw`rounded-full bg-white/5 px-3 py-1`}>
+          <Text style={tw`text-xs text-white`}>Replay segment</Text>
+        </Pressable>
+        <Text style={tw`text-xs text-white/60`}>
+          {currentIndex + 1} / {items.length || 0}
+        </Text>
+      </View>
+    </View>
+  );
+};
+
 function hasUsefulPunctuation(arr: Array<{ text?: string }>) {
   return (arr || []).some((w) => {
     const t = (w?.text || '').trim();
@@ -187,7 +342,14 @@ const InnerPlayer: React.FC<Props> = (props) => {
     backdropOverride,
     onToggleThemePanel,
     onLoadingChange,
+    playback,
+    mode,
   } = props;
+
+  const isLanguageMode = mode === 'language' || playback?.mode === 'queue';
+  if (isLanguageMode) {
+    return <LanguageQueuePlayerNative playback={playback} title={title} />;
+  }
 
   const loadingCb = onPlayerLoadingChange ?? onLoadingChange;
 

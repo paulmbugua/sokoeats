@@ -5,6 +5,7 @@ import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
 import { useAiCourse, useAICertificates } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { updateCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
+import { startLanguageCourse } from '@mytutorapp/shared/api';
 
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import OrgShareDialog from '@/components/org/OrgShareDialog';
@@ -14,6 +15,7 @@ import LessonAndQuizPane from './RobotTeacherLessonAndQuiz';
 import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
 import { getProgramTrackRequirements } from '@mytutorapp/shared/utils/programTrack';
 import { getRequiredWeeks, normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrackRequirements';
+import { detectLanguageIntent, isLanguageIntentText } from '@mytutorapp/shared/utils/languageDetection';
 
 import type { TopCourse, ProgramTrack } from '@mytutorapp/shared/types';
 
@@ -1210,6 +1212,40 @@ useEffect(() => {
       setPreparing(false);
       setPlayerLoading(false);
       return;
+    }
+    const intent = detectLanguageIntent(custom);
+    if (!intent && isLanguageIntentText(custom)) {
+      let msg =
+        'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
+      try {
+        await startLanguageCourse(backendUrl, authToken as string, custom);
+      } catch (err: any) {
+        msg = err?.response?.data?.message || msg;
+      }
+      window.alert(msg);
+      setActiveRunId(null);
+      setPreparing(false);
+      setPlayerLoading(false);
+      return;
+    }
+    if (intent) {
+      try {
+        const res = await startLanguageCourse(backendUrl, authToken as string, custom);
+        navigate(`/language/${encodeURIComponent(res.courseId)}`, {
+          state: { languageStart: res },
+        });
+        return;
+      } catch (err: any) {
+        const msg =
+          err?.response?.data?.message ||
+          err?.message ||
+          'Unable to start language learning.';
+        window.alert(msg);
+        setActiveRunId(null);
+        setPreparing(false);
+        setPlayerLoading(false);
+        return;
+      }
     }
     dlog('onStart → startCustomTopic (sandbox)', { custom, opts });
     await startCustomTopic(custom, opts);

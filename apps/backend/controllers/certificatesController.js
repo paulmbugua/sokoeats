@@ -455,6 +455,25 @@ async function hasCompletedAllWeeks(studentId, courseId) {
 
 async function isEligibleForCertificate(studentId, courseId) {
   console.group('[cert] isEligibleForCertificate');
+  try {
+    const courseQ = await pool.query(
+      `SELECT metadata FROM courses WHERE id = $1 LIMIT 1`,
+      [courseId],
+    );
+    const metadata = courseQ.rows?.[0]?.metadata || {};
+    if (metadata?.mode === 'language') {
+      const entQ = await pool.query(
+        `SELECT quiz_passed FROM ai_language_entitlements WHERE course_id = $1 AND user_id = $2 LIMIT 1`,
+        [courseId, studentId],
+      );
+      const passed = entQ.rows?.[0]?.quiz_passed === true;
+      console.log('[cert] language eligibility ->', passed);
+      console.groupEnd();
+      return passed;
+    }
+  } catch (err) {
+    console.warn('[cert] language eligibility check failed', err?.message || err);
+  }
   const a = await hasCourseCompleteAchievement(studentId, courseId);
   console.log('[cert] hasCourseCompleteAchievement ->', a);
   const b = await hasCompletedAllWeeks(studentId, courseId);

@@ -19,6 +19,7 @@ export * from './enrollmentsApi';
 export * from './payoutApi';
 export * from './aiCertificatesApi';
 export * from './aiCourseApi';
+export * from './languageLearningApi';
 export * from './orgApi';
 export * from './orgProApi';
 export * from './institutionAuth';

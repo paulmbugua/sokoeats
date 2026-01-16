@@ -9,6 +9,7 @@ import type { HighlightTemplate } from './player/TemplateMenu';
 import { useWordSync } from '@mytutorapp/shared/hooks/useWordSync';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { listTtsVoices, type TtsVoiceInfo } from '@mytutorapp/shared/api/ttsAvatarApi';
+import type { PlaybackPayload, PlaybackQueueItem } from '@mytutorapp/shared/types';
 
 import ClassroomBackdrop from './ClassroomBackdrop.web';
 import LessonOverlay from './LessonOverlay';
@@ -60,6 +61,8 @@ type Props = {
     resetsAt?: string | null;
   }>;
   hideGateBanner?: boolean;
+  playback?: PlaybackPayload | null;
+  mode?: 'lesson' | 'language';
 };
 
 // --- helpers -----------------------------------------------------------------
@@ -92,6 +95,142 @@ function formatTime(sec: number): string {
   return `${m}:${r.toString().padStart(2, '0')}`;
 }
 
+function buildSegmentsFromQueue(items: PlaybackQueueItem[]) {
+  const map = new Map<number, { en?: string; tr?: string }>();
+  for (const item of items) {
+    const entry = map.get(item.segmentIdx) || {};
+    if (item.kind === 'en') entry.en = item.text;
+    if (item.kind === 'tr') entry.tr = item.text;
+    map.set(item.segmentIdx, entry);
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([idx, seg]) => ({
+      segmentIdx: idx,
+      en: seg.en || '',
+      tr: seg.tr || '',
+    }));
+}
+
+function LanguageQueuePlayer({
+  playback,
+  title,
+}: {
+  playback?: PlaybackPayload | null;
+  title?: string;
+}) {
+  const items = playback?.items || [];
+  const segments = React.useMemo(() => buildSegmentsFromQueue(items), [items]);
+  const [currentIndex, setCurrentIndex] = React.useState(0);
+  const [playing, setPlaying] = React.useState(false);
+  const [autoPlayNext, setAutoPlayNext] = React.useState(false);
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const timerRef = React.useRef<number | null>(null);
+
+  const currentItem = items[currentIndex];
+  const currentSegmentIdx = currentItem?.segmentIdx ?? 0;
+  const currentSegment =
+    segments.find((seg) => seg.segmentIdx === currentSegmentIdx) || segments[0];
+
+  const clearTimer = () => {
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const playCurrent = React.useCallback(async () => {
+    if (!audioRef.current) return;
+    try {
+      await audioRef.current.play();
+      setPlaying(true);
+    } catch {
+      setPlaying(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    clearTimer();
+    if (!audioRef.current) return;
+    if (!currentItem?.audioUrl) {
+      setPlaying(false);
+      return;
+    }
+    audioRef.current.src = currentItem.audioUrl;
+    if (autoPlayNext || playing) {
+      const delay = currentItem.kind === 'en' ? 350 : 250;
+      timerRef.current = window.setTimeout(() => {
+        playCurrent();
+        setAutoPlayNext(false);
+      }, delay);
+    }
+  }, [currentItem, autoPlayNext, playing, playCurrent]);
+
+  React.useEffect(() => {
+    setCurrentIndex(0);
+    setPlaying(false);
+    setAutoPlayNext(false);
+  }, [playback?.items]);
+
+  const handleEnded = () => {
+    if (currentIndex + 1 < items.length) {
+      setAutoPlayNext(true);
+      setCurrentIndex((i) => i + 1);
+      return;
+    }
+    setPlaying(false);
+  };
+
+  const handlePlayPause = () => {
+    if (!audioRef.current) return;
+    if (playing) {
+      audioRef.current.pause();
+      setPlaying(false);
+      return;
+    }
+    playCurrent();
+  };
+
+  const handleReplaySegment = () => {
+    const idx = items.findIndex(
+      (item) => item.segmentIdx === currentSegmentIdx && item.kind === 'en',
+    );
+    if (idx >= 0) {
+      setCurrentIndex(idx);
+      setAutoPlayNext(true);
+      setPlaying(true);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-slate-900/90 text-white p-4 space-y-3">
+      <div className="text-sm font-semibold">{title || 'Language Learning'}</div>
+      <div className="rounded-xl bg-white/5 p-3">
+        <div className="text-base">{currentSegment?.en || '—'}</div>
+        <div className="text-sm text-white/60">{currentSegment?.tr || '—'}</div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handlePlayPause}
+          className="rounded-full bg-white/10 px-4 py-1 text-sm"
+        >
+          {playing ? 'Pause' : 'Play'}
+        </button>
+        <button
+          onClick={handleReplaySegment}
+          className="rounded-full bg-white/5 px-3 py-1 text-xs"
+        >
+          Replay segment
+        </button>
+        <span className="text-xs text-white/50">
+          {currentIndex + 1} / {items.length || 0}
+        </span>
+      </div>
+      <audio ref={audioRef} onEnded={handleEnded} />
+    </div>
+  );
+}
+
 // -----------------------------------------------------------------------------
 
 function Container(props: Props) {
@@ -117,7 +256,14 @@ function Container(props: Props) {
     playJoinedIfAvailable = false,
     disableInternalBackdrop = true,
     backdropOverride,
+    playback,
+    mode,
   } = props;
+
+  const isLanguageMode = mode === 'language' || playback?.mode === 'queue';
+  if (isLanguageMode) {
+    return <LanguageQueuePlayer playback={playback} title={title} />;
+  }
 
   const prefersReduced = usePrefersReducedMotion();
   const { hlRgb, genRgb, activeTextOnHl } = useThemeTokens();
