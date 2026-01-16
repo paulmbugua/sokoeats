@@ -11,6 +11,8 @@ import {
 } from './aiCourseCore.js';
 import { listGoogleVoices, synthesizeTtsLocalFirst } from './googleTtsService.js';
 
+
+
 const TOKEN_COST = 20;
 const PROMPTS_PER_BUNDLE = 300;
 const PROMPT_HISTORY_LIMIT = 12;
@@ -21,7 +23,15 @@ const LANGUAGE_CONFIG = {
   fr: { label: 'French', locale: 'fr-FR', native: 'Français' },
   es: { label: 'Spanish', locale: 'es-ES', native: 'Español' },
   ar: { label: 'Arabic', locale: 'ar-XA', native: 'العربية' },
+  
 };
+
+const asIntId = (v) => {
+  if (v === undefined || v === null) return null;
+  const n = typeof v === 'number' ? v : Number(String(v).trim());
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+};
+
 
 export function detectTargetLanguage(prompt) {
   const raw = String(prompt || '').trim();
@@ -113,35 +123,43 @@ async function ensureLanguageCourse({
     SELECT e.*, c.metadata
       FROM ai_language_entitlements e
       JOIN courses c ON c.id = e.course_id
-     WHERE e.profile_id = $1::uuid
-       AND e.target_language = $2
+   WHERE e.target_language = $3
+  AND (
+    ($1::int IS NOT NULL AND e.profile_id = $1::int)
+    OR
+    ($2::int IS NOT NULL AND e.user_id = $2::int)
+  )
+
      ORDER BY e.updated_at DESC
      LIMIT 1
     `,
-    [profileId, targetLanguage],
+    [profileId ?? null, userId ?? null, targetLanguage]
+
   );
 
   if (existing.rowCount) return existing.rows[0];
 
-  const voices = await chooseVoicePair(targetLanguage);
   const metadata = {
-    mode: 'language',
-    targetLanguage,
-    titleSeed: prompt,
-    voices,
-  };
+  mode: 'language',
+  targetLanguage,
+  titleSeed: prompt,
+  // voices added later by resolveVoices()
+};
+
+
 
   const title = buildCourseTitle(targetLanguage);
   const description = `Chat-based language learning course for ${languageLabel(targetLanguage)}.`;
 
-  const courseQ = await client.query(
-    `
-    INSERT INTO courses (id, title, description, course_size, is_ai_generated, source_kind, metadata)
-    VALUES (gen_random_uuid(), $1, $2, $3, TRUE, $4, $5::jsonb)
-    RETURNING id
-    `,
-    [title, description, 'mini', 'language', JSON.stringify(metadata)],
-  );
+const courseQ = await client.query(
+  `
+  INSERT INTO courses (id, title, description, course_size, is_ai_generated, metadata)
+  VALUES (gen_random_uuid(), $1, $2, $3, TRUE, $4::jsonb)
+  RETURNING id
+  `,
+  [title, description, 'mini', JSON.stringify(metadata)],
+);
+
 
   const courseId = courseQ.rows[0]?.id;
 
@@ -149,7 +167,8 @@ async function ensureLanguageCourse({
     `
     INSERT INTO ai_language_entitlements
       (course_id, profile_id, user_id, target_language, prompt_bundles, prompts_used, prompts_per_bundle)
-    VALUES ($1::uuid, $2::uuid, $3, $4, 1, 0, $5)
+    VALUES ($1::uuid, $2::int, $3::int, $4, 1, 0, $5)
+
     `,
     [courseId, profileId, userId, targetLanguage, PROMPTS_PER_BUNDLE],
   );
@@ -278,6 +297,7 @@ Include 3-6 segments, short vocab list, and 2-3 mini practice prompts.`;
         },
         vocab: {
           type: 'array',
+           default: [],
           items: {
             type: 'object',
             additionalProperties: false,
@@ -290,8 +310,10 @@ Include 3-6 segments, short vocab list, and 2-3 mini practice prompts.`;
             required: ['term', 'meaning', 'exampleEn', 'exampleTr'],
           },
         },
+        
         miniPractice: {
           type: 'array',
+           default: [], 
           items: {
             type: 'object',
             additionalProperties: false,
@@ -304,7 +326,8 @@ Include 3-6 segments, short vocab list, and 2-3 mini practice prompts.`;
           },
         },
       },
-      required: ['segments'],
+      required: ['segments', 'vocab', 'miniPractice'],
+
     },
   };
 
@@ -355,6 +378,8 @@ async function resolveVoices(client, courseId, targetLanguage, metadata) {
 }
 
 export async function startLanguageCourse({ userId, profileId, prompt }) {
+  userId = asIntId(userId);
+  profileId = asIntId(profileId);
   const targetLanguage = detectTargetLanguage(prompt);
   if (!targetLanguage) {
     return {
@@ -445,7 +470,8 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
       `
       INSERT INTO ai_language_messages
         (course_id, profile_id, user_id, role, content_text)
-      VALUES ($1::uuid, $2::uuid, $3, 'user', $4)
+      VALUES ($1::uuid, $2::int, $3::int, 'user', $4)
+
       `,
       [courseId, profileId, userId, prompt],
     );
@@ -490,7 +516,8 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
       `
       INSERT INTO ai_language_messages
         (course_id, profile_id, user_id, role, content_text, segments_json)
-      VALUES ($1::uuid, $2::uuid, $3, 'assistant', $4, $5::jsonb)
+     VALUES ($1::uuid, $2::int, $3::int, 'assistant', $4, $5::jsonb)
+
       `,
       [courseId, profileId, userId, contentText, JSON.stringify(segments)],
     );
@@ -530,6 +557,10 @@ export async function sendLanguagePrompt({
   courseId,
   prompt,
 }) {
+
+  userId = asIntId(userId);
+  profileId = asIntId(profileId);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -576,7 +607,8 @@ export async function sendLanguagePrompt({
       `
       INSERT INTO ai_language_messages
         (course_id, profile_id, user_id, role, content_text)
-      VALUES ($1::uuid, $2::uuid, $3, 'user', $4)
+      VALUES ($1::uuid, $2::int, $3::int, 'user', $4)
+
       `,
       [courseId, profileId, userId, prompt],
     );
@@ -627,7 +659,8 @@ export async function sendLanguagePrompt({
       `
       INSERT INTO ai_language_messages
         (course_id, profile_id, user_id, role, content_text, segments_json)
-      VALUES ($1::uuid, $2::uuid, $3, 'assistant', $4, $5::jsonb)
+      VALUES ($1::uuid, $2::int, $3::int, 'assistant', $4, $5::jsonb)
+
       `,
       [courseId, profileId, userId, contentText, JSON.stringify(segments)],
     );
@@ -812,7 +845,8 @@ export async function markLanguageQuizPassed({ courseId, userId }) {
          SET quiz_passed = TRUE,
              updated_at = now()
        WHERE course_id = $1::uuid
-         AND (user_id = $2 OR $2 IS NULL)
+         AND ($2::int IS NULL OR user_id = $2::int)
+
       `,
       [courseId, userId ?? null],
     );

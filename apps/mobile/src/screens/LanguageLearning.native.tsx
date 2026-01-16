@@ -28,8 +28,9 @@ const extractInitMessages = (
 ) => {
   if (!preview.length) return [];
   const mapped = preview.map((msg) => ({ ...msg }));
-  if (playback && mapped[mapped.length - 1]?.role === 'assistant') {
-    mapped[mapped.length - 1].playback = playback;
+    const last = mapped[mapped.length - 1];
+  if (playback && last && last.role === 'assistant') {
+    last.playback = playback;
   }
   return mapped;
 };

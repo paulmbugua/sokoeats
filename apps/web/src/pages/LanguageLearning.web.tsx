@@ -255,7 +255,14 @@ const LanguageLearningPage: React.FC = () => {
                     </div>
                     <div className="space-y-1">
                       {q.choices.map((choice: string, cIdx: number) => (
-                        <label key={choice} className="flex items-center gap-2 text-sm">
+                       <label
+                          key={choice}
+                          className={`flex items-center gap-2 text-sm cursor-pointer rounded-xl border px-3 py-2 transition-colors ${
+                            answers[q.id] === cIdx
+                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                              : 'border-slate-200/70 dark:border-slate-700/70 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                          }`}
+                        >
                           <input
                             type="radio"
                             name={q.id}
