@@ -7,14 +7,17 @@ import {
   Pressable,
   ActivityIndicator,
   Modal,
+  findNodeHandle,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Slider from '@react-native-community/slider';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import tw from '../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useLanguageLearning } from '@mytutorapp/shared/hooks';
+import { useThemePref } from '../theme/ThemeContext';
 import { buildGradePayload } from '@mytutorapp/shared/utils/buildGradePayload';
 import {
   downloadCertificateFile,
@@ -30,6 +33,7 @@ import type {
   PlaybackQueueItem,
 } from '@mytutorapp/shared/types';
 
+// Modified for Language Learning UX upgrade (safe area, active line, themed voice sheet).
 const extractInitMessages = (
   preview: LanguageLearningMessage[] = [],
   playback?: PlaybackPayload | null
@@ -193,6 +197,9 @@ const LanguageLearningScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { backendUrl, token } = useShopContext();
+  const insets = useSafeAreaInsets();
+  const themePref = useThemePref();
+  const isDark = themePref.resolvedScheme === 'dark';
 
   const courseId = route.params?.courseId as string;
   const languageStart = route.params?.languageStart;
@@ -242,14 +249,56 @@ const LanguageLearningScreen: React.FC = () => {
   const [inlineIndex, setInlineIndex] = useState(0);
   const [inlinePlaying, setInlinePlaying] = useState(false);
   const [inlineAutoPlayNext, setInlineAutoPlayNext] = useState(false);
+  const [activeLineKey, setActiveLineKey] = useState<string | null>(null);
+  const [activeLineIsTarget, setActiveLineIsTarget] = useState(false);
+  const [footerHeight, setFooterHeight] = useState(0);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const lineRefs = useRef(new Map<string, View>());
+  const lastUserScrollRef = useRef(0);
   const soundRef = useRef<Audio.Sound | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevVoiceIdRef = useRef(voiceSettings.voiceId);
 
   const inlineItems = inlinePlayback?.items || [];
   const inlineSegments = useMemo(() => buildSegmentsFromQueue(inlineItems), [inlineItems]);
   const inlineCurrentItem = inlineItems[inlineIndex];
   const inlineSegmentIdx = inlineCurrentItem?.segmentIdx ?? 0;
   const inlineSegment = inlineSegments.find((seg) => seg.segmentIdx === inlineSegmentIdx);
+
+  useEffect(() => {
+    if (!inlinePlaying || !activeMessageKey || !inlineCurrentItem) {
+      setActiveLineKey(null);
+      setActiveLineIsTarget(false);
+      return;
+    }
+    // Active-line logic lives here: map the narrated segment to a UI line.
+    setActiveLineKey(`${activeMessageKey}-${inlineCurrentItem.segmentIdx}`);
+    setActiveLineIsTarget(inlineCurrentItem.kind === 'tr');
+  }, [activeMessageKey, inlineCurrentItem, inlinePlaying]);
+
+  useEffect(() => {
+    const prevVoiceId = prevVoiceIdRef.current;
+    if (prevVoiceId === voiceSettings.voiceId) return;
+    prevVoiceIdRef.current = voiceSettings.voiceId;
+    if (!inlinePlaying) return;
+    // Voice identity change: reload current line with new voice while keeping index.
+    void loadInlineCurrent();
+  }, [inlinePlaying, loadInlineCurrent, voiceSettings.voiceId]);
+
+  useEffect(() => {
+    if (!activeLineKey) return;
+    if (Date.now() - lastUserScrollRef.current < 1200) return;
+    const lineNode = lineRefs.current.get(activeLineKey);
+    const scrollNode = scrollRef.current ? findNodeHandle(scrollRef.current) : null;
+    if (!lineNode || !scrollNode) return;
+    lineNode.measureLayout(
+      scrollNode,
+      (_x, y) => {
+        scrollRef.current?.scrollTo({ y: Math.max(0, y - 160), animated: true });
+      },
+      () => {}
+    );
+  }, [activeLineKey]);
 
   useEffect(() => {
     if (!token) {
@@ -320,42 +369,43 @@ const LanguageLearningScreen: React.FC = () => {
 
   const loadInlineCurrent = useCallback(async () => {
     clearInlineTimer();
-await unloadSound();
+    await unloadSound();
 
-const item = inlineCurrentItem;
-if (!item?.audioUrl) return;
+    const item = inlineCurrentItem;
+    if (!item?.audioUrl) return;
 
-const sound = new Audio.Sound();
-soundRef.current = sound;
+    const sound = new Audio.Sound();
+    soundRef.current = sound;
 
-sound.setOnPlaybackStatusUpdate((status) => {
-  if (!status.isLoaded) return;
-  if (status.didJustFinish) {
-    if (inlineIndex + 1 < inlineItems.length) {
-      setInlineAutoPlayNext(true);
-      setInlineIndex((idx) => idx + 1);
-    } else {
-      setInlinePlaying(false);
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (!status.isLoaded) return;
+      if (status.didJustFinish) {
+        // Play-loop logic lives here: advance automatically until paused.
+        if (inlineIndex + 1 < inlineItems.length) {
+          setInlineAutoPlayNext(true);
+          setInlineIndex((idx) => idx + 1);
+        } else {
+          setInlinePlaying(false);
+        }
+      }
+    });
+
+    await sound.loadAsync({ uri: item.audioUrl }, { shouldPlay: false });
+    await sound.setRateAsync(voiceSettings.rate, true);
+
+    if (inlineAutoPlayNext || inlinePlaying) {
+      const delay = item.kind === 'en' ? 300 : 220;
+      timerRef.current = setTimeout(async () => {
+        try {
+          await sound.playAsync();
+          setInlinePlaying(true);
+        } catch {
+          setInlinePlaying(false);
+        } finally {
+          setInlineAutoPlayNext(false);
+        }
+      }, delay);
     }
-  }
-});
-
-await sound.loadAsync({ uri: item.audioUrl }, { shouldPlay: false });
-await sound.setRateAsync(voiceSettings.rate, true);
-
-if (inlineAutoPlayNext || inlinePlaying) {
-  const delay = item.kind === 'en' ? 300 : 220;
-  timerRef.current = setTimeout(async () => {
-    try {
-      await sound.playAsync();
-      setInlinePlaying(true);
-    } catch {
-      setInlinePlaying(false);
-    } finally {
-      setInlineAutoPlayNext(false);
-    }
-  }, delay);
-}
 
   }, [
     clearInlineTimer,
@@ -410,11 +460,17 @@ if (inlineAutoPlayNext || inlinePlaying) {
         await soundRef.current.pauseAsync();
         setInlinePlaying(false);
       } else {
+        if (inlineIndex >= inlineItems.length - 1) {
+          setInlineIndex(0);
+          setInlineAutoPlayNext(true);
+          setInlinePlaying(true);
+          return;
+        }
         await soundRef.current.playAsync();
         setInlinePlaying(true);
       }
     },
-    [activeMessageKey, setPlaybackQueue]
+    [activeMessageKey, inlineIndex, inlineItems.length, setPlaybackQueue]
   );
 
   const handleInlineReplay = useCallback(
@@ -536,9 +592,32 @@ if (inlineAutoPlayNext || inlinePlaying) {
 }, [applyPrompt]);
 
 
+  const footerPadding = insets.bottom + 12;
+  const bottomPadding = footerHeight + footerPadding + 24;
+  const voiceSheetTheme = useMemo(
+    () => ({
+      bg: isDark ? '#0f172a' : '#ffffff',
+      border: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)',
+      text: isDark ? '#f8fafc' : '#0f172a',
+      subtext: isDark ? 'rgba(248,250,252,0.65)' : 'rgba(15,23,42,0.6)',
+      pillBg: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
+      sliderTrack: isDark ? '#1f2937' : '#e2e8f0',
+    }),
+    [isDark]
+  );
+
   return (
-    <View style={tw`flex-1 bg-slate-950`}>
-      <ScrollView contentContainerStyle={tw`p-4 pb-40 gap-4`}>
+    <SafeAreaView style={tw`flex-1 bg-slate-950`}>
+      <ScrollView
+        ref={scrollRef}
+        onScrollBeginDrag={() => {
+          lastUserScrollRef.current = Date.now();
+        }}
+        onMomentumScrollBegin={() => {
+          lastUserScrollRef.current = Date.now();
+        }}
+        contentContainerStyle={[tw`p-4 gap-4`, { paddingBottom: bottomPadding }]}
+      >
         <View style={tw`bg-slate-900/80 rounded-3xl p-5 gap-3 border border-white/5`}>
           <Text style={tw`text-2xl font-bold text-white`}>{title}</Text>
           <Text style={tw`text-xs text-white/70`}>Prompts used {promptsUsed} / {promptsLimit}</Text>
@@ -564,12 +643,27 @@ if (inlineAutoPlayNext || inlinePlaying) {
                 >
                   {isAssistant && msg.segments ? (
                     <View style={tw`gap-3`}>
-                      {msg.segments.map((seg, segIdx) => (
-                        <View key={`${seg.en}-${segIdx}`}>
-                          <Text style={tw`text-sm text-white`}>{seg.en}</Text>
-                          <Text style={tw`text-xs text-white/60`}>{seg.tr}</Text>
-                        </View>
-                      ))}
+                      {msg.segments.map((seg, segIdx) => {
+                        const lineKey = `${messageKey}-${segIdx}`;
+                        const isActiveLine = isActive && activeLineKey === lineKey;
+                        return (
+                          <View
+                            key={`${seg.en}-${segIdx}`}
+                            ref={(node) => {
+                              if (node) lineRefs.current.set(lineKey, node);
+                              else lineRefs.current.delete(lineKey);
+                            }}
+                            style={tw`rounded-2xl px-2 py-1 ${isActiveLine ? 'bg-emerald-500/10' : ''}`}
+                          >
+                            <Text style={tw`text-sm text-white`}>{seg.en}</Text>
+                            <Text
+                              style={tw`text-xs text-white/60 ${isActiveLine && activeLineIsTarget ? 'text-base text-white font-semibold' : ''}`}
+                            >
+                              {seg.tr}
+                            </Text>
+                          </View>
+                        );
+                      })}
                       {msg.playback && (
                         <View style={tw`gap-2`}>
                           <View style={tw`flex-row items-center gap-2`}> 
@@ -715,7 +809,12 @@ if (inlineAutoPlayNext || inlinePlaying) {
         )}
       </ScrollView>
 
-      <View style={tw`border-t border-white/10 bg-slate-950/95 px-4 py-3`}>
+      <View
+        onLayout={(e) =>
+          setFooterHeight(Math.max(0, e.nativeEvent.layout.height - footerPadding))
+        }
+        style={[tw`border-t border-white/10 bg-slate-950/95 px-4 py-3`, { paddingBottom: footerPadding }]}
+      >
         {selectedTopic && (
           <View style={tw`mb-2`}>
             <Text style={tw`text-xs text-white/60`}>
@@ -833,25 +932,30 @@ if (inlineAutoPlayNext || inlinePlaying) {
 
       <Modal transparent animationType="slide" visible={showVoiceSheet} onRequestClose={() => setShowVoiceSheet(false)}>
         <Pressable style={tw`flex-1 bg-black/40`} onPress={() => setShowVoiceSheet(false)} />
-        <View style={tw`bg-slate-900 rounded-t-3xl p-4 gap-4 border border-white/10`}>
+        <View style={[tw`rounded-t-3xl p-4 gap-4 border`, { backgroundColor: voiceSheetTheme.bg, borderColor: voiceSheetTheme.border }]}>
           <View style={tw`gap-2`}>
-            <Text style={tw`text-xs text-white/60 font-semibold`}>Voice style</Text>
+            <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>Voice style</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`gap-2`}>
               {VOICES.map((voice) => (
                 <Pressable
                   key={voice.id}
                   onPress={() => setVoiceSettings((prev) => ({ ...prev, voiceId: voice.id }))}
-                  style={tw`rounded-full px-3 py-2 ${
-                    voiceSettings.voiceId === voice.id ? 'bg-blue-500' : 'bg-white/10'
-                  }`}
+                  style={[
+                    tw`rounded-full px-3 py-2`,
+                    { backgroundColor: voiceSettings.voiceId === voice.id ? '#2563eb' : voiceSheetTheme.pillBg },
+                  ]}
                 >
-                  <Text style={tw`text-xs text-white`}>{voice.label}</Text>
+                  <Text style={[tw`text-xs`, { color: voiceSettings.voiceId === voice.id ? '#ffffff' : voiceSheetTheme.text }]}>
+                    {voice.label}
+                  </Text>
                 </Pressable>
               ))}
             </ScrollView>
           </View>
           <View style={tw`gap-2`}>
-            <Text style={tw`text-xs text-white/60 font-semibold`}>Speed ({voiceSettings.rate.toFixed(2)}x)</Text>
+            <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>
+              Speed ({voiceSettings.rate.toFixed(2)}x)
+            </Text>
             <Slider
               minimumValue={0.6}
               maximumValue={1.2}
@@ -859,11 +963,13 @@ if (inlineAutoPlayNext || inlinePlaying) {
               value={voiceSettings.rate}
               onValueChange={(value) => setVoiceSettings((prev) => ({ ...prev, rate: value }))}
               minimumTrackTintColor="#34d399"
-              maximumTrackTintColor="#1f2937"
+              maximumTrackTintColor={voiceSheetTheme.sliderTrack}
             />
           </View>
           <View style={tw`gap-2`}>
-            <Text style={tw`text-xs text-white/60 font-semibold`}>Pitch ({voiceSettings.pitch.toFixed(2)}x)</Text>
+            <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>
+              Pitch ({voiceSettings.pitch.toFixed(2)}x)
+            </Text>
             <Slider
               minimumValue={0.8}
               maximumValue={1.2}
@@ -871,21 +977,23 @@ if (inlineAutoPlayNext || inlinePlaying) {
               value={voiceSettings.pitch}
               onValueChange={(value) => setVoiceSettings((prev) => ({ ...prev, pitch: value }))}
               minimumTrackTintColor="#38bdf8"
-              maximumTrackTintColor="#1f2937"
+              maximumTrackTintColor={voiceSheetTheme.sliderTrack}
             />
-            <Text style={tw`text-[11px] text-white/50`}>
+            <Text style={[tw`text-[11px]`, { color: voiceSheetTheme.subtext }]}>
               Pitch may vary by device. Voice controls affect playback; regeneration coming soon.
             </Text>
           </View>
           <View style={tw`flex-row items-center justify-between`}>
             <Pressable onPress={() => setVoiceSettings(DEFAULT_VOICE)}>
-              <Text style={tw`text-xs text-white/60 font-semibold`}>Reset</Text>
+              <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>Reset</Text>
             </Pressable>
-            <Text style={tw`text-xs text-white/40`}>Saved for {headerLabel || targetLanguage}</Text>
+            <Text style={[tw`text-xs`, { color: voiceSheetTheme.subtext }]}>
+              Saved for {headerLabel || targetLanguage}
+            </Text>
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 };
 
