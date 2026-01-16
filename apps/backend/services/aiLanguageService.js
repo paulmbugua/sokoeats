@@ -34,6 +34,38 @@ const asIntId = (v) => {
   return Number.isFinite(n) ? Math.trunc(n) : null;
 };
 
+// ─────────────────────────────────────────────────────────
+// Output sizing helpers (prevents JSON truncation)
+// ─────────────────────────────────────────────────────────
+const QUIZ_MAX_TOKENS_CAP = 4500;
+
+/** MCQ JSON is verbose; size output tokens based on question count. */
+function estimateMcqMaxTokens(questionCount) {
+  const n = Math.max(4, Number(questionCount || 0) || 0);
+  // Heuristic: baseline + per-question budget
+  return Math.min(QUIZ_MAX_TOKENS_CAP, Math.max(1200, 650 + n * 230));
+}
+
+/** Keep quiz size predictable by course size */
+function quizQuestionCountForCourseSize(courseSize) {
+  const s = String(courseSize || '').toLowerCase();
+  if (s === 'mini') return 8;
+  if (s === 'standard') return 10;
+  if (s === 'extended') return 12;
+  if (s === 'deep_dive') return 14;
+  if (s === 'bootcamp') return 16;
+  return 8;
+}
+
+/** Prevent huge context from bloating generation */
+function truncateToChars(text, maxChars) {
+  const s = String(text || '');
+  if (!s) return '';
+  if (s.length <= maxChars) return s;
+  return s.slice(0, maxChars - 20) + '\n\n[truncated]';
+}
+
+
 
 export function detectTargetLanguage(prompt) {
   const raw = String(prompt || '').trim();
@@ -333,7 +365,7 @@ Include 3-6 segments, short vocab list, and 2-3 mini practice prompts.`;
     },
   };
 
-  return aiJson({ system, user, temperature: 0.4, schema, maxTokens: 900 });
+  return aiJson({ system, user, temperature: 0.4, schema, maxTokens: 1400 });
 }
 
 async function buildPlaybackQueue({ segments, voices }) {
@@ -738,7 +770,7 @@ export async function completeLanguageCourse({ userId, courseId }) {
 
     const entQ = await client.query(
       `SELECT * FROM ai_language_entitlements WHERE course_id = $1::uuid FOR UPDATE`,
-      [courseId],
+      [courseId]
     );
     if (!entQ.rowCount) {
       await client.query('ROLLBACK');
@@ -754,8 +786,16 @@ export async function completeLanguageCourse({ userId, courseId }) {
        ORDER BY created_at DESC
        LIMIT 8
       `,
-      [courseId],
+      [courseId]
     );
+
+    const targetLanguage = entQ.rows[0].target_language;
+
+    // ✅ fetch course_size so quiz size + maxTokens are deterministic
+    const courseQ = await client.query(`SELECT course_size FROM courses WHERE id = $1::uuid`, [
+      courseId,
+    ]);
+    const courseSize = courseQ.rows?.[0]?.course_size || 'mini';
 
     const source = messagesQ.rows || [];
     const snippets = source
@@ -770,19 +810,41 @@ export async function completeLanguageCourse({ userId, courseId }) {
       .filter(Boolean)
       .join('\n\n');
 
-    const langLabel = languageLabel(entQ.rows[0].target_language);
-    const system = `You are a bilingual quiz writer. Create a concise quiz to test English→${langLabel} learning.`;
-    const user = `Use the following learning snippets to build the quiz. Focus on translations and meaning.\n\n${snippets}\n\nReturn JSON in the schema.`;
+    // ✅ cap context so the model doesn't ramble
+    const snippetsCapped = truncateToChars(snippets, 6000);
+
+    const langLabel = languageLabel(targetLanguage);
+
+    // ✅ deterministic quiz size
+    const questionCount = quizQuestionCountForCourseSize(courseSize);
+    const maxTokens = estimateMcqMaxTokens(questionCount);
+
+    const system = `You are a bilingual quiz writer. Create a concise MCQ quiz to test English→${langLabel} learning. Return JSON only.`;
+    const user = `Use the following learning snippets to build the quiz. Focus on translations and meaning.
+
+${snippetsCapped || 'No snippets available. Create a general beginner quiz.'}
+
+Requirements:
+- quizType must be "mcq"
+- Create EXACTLY ${questionCount} questions
+- Keep each question short
+- Keep explanations 1 sentence maximum
+- Do NOT include any text outside JSON
+
+Return JSON in the schema.`;
 
     const quiz = await aiJson({
       system,
       user,
       temperature: 0.2,
       schema: QUIZ_SCHEMA_MCQ,
-      maxTokens: 900,
+      maxTokens,
     });
 
-    const timerSec = fairTimerSec({ count: quiz.questions?.length || 5, quizType: 'mcq' });
+    const timerSec = fairTimerSec({
+      count: quiz.questions?.length || questionCount,
+      quizType: 'mcq',
+    });
 
     await client.query(
       `
@@ -791,7 +853,7 @@ export async function completeLanguageCourse({ userId, courseId }) {
              updated_at = now()
        WHERE course_id = $1::uuid
       `,
-      [courseId],
+      [courseId]
     );
 
     await client.query('COMMIT');
