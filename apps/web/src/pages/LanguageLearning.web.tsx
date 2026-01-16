@@ -17,6 +17,7 @@ import type {
   PlaybackQueueItem,
 } from '@mytutorapp/shared/types';
 
+// Modified for Language Learning UX upgrade (active line, autoplay, themed voice panel).
 const extractInitMessages = (
   preview: LanguageLearningMessage[] = [],
   playback?: PlaybackPayload | null
@@ -227,14 +228,37 @@ const LanguageLearningPage: React.FC = () => {
   const [inlineIndex, setInlineIndex] = useState(0);
   const [inlinePlaying, setInlinePlaying] = useState(false);
   const [inlineAutoPlayNext, setInlineAutoPlayNext] = useState(false);
+  const [activeLineKey, setActiveLineKey] = useState<string | null>(null);
+  const [activeLineIsTarget, setActiveLineIsTarget] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
+  const lineRefs = useRef(new Map<string, HTMLDivElement>());
+  const lastUserScrollRef = useRef(0);
+  const inlinePlayingRef = useRef(inlinePlaying);
+  const prevVoiceIdRef = useRef(voiceSettings.voiceId);
 
   const inlineItems = inlinePlayback?.items || [];
   const inlineSegments = useMemo(() => buildSegmentsFromQueue(inlineItems), [inlineItems]);
   const inlineCurrentItem = inlineItems[inlineIndex];
   const inlineSegmentIdx = inlineCurrentItem?.segmentIdx ?? 0;
   const inlineSegment = inlineSegments.find((seg) => seg.segmentIdx === inlineSegmentIdx);
+
+  useEffect(() => {
+    inlinePlayingRef.current = inlinePlaying;
+  }, [inlinePlaying]);
+
+  useEffect(() => {
+    const prevVoiceId = prevVoiceIdRef.current;
+    if (prevVoiceId === voiceSettings.voiceId) return;
+    prevVoiceIdRef.current = voiceSettings.voiceId;
+    if (!inlinePlaying || !audioRef.current || !inlineCurrentItem?.audioUrl) return;
+    // Voice identity change: restart current line with new voice while preserving index.
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    audioRef.current.src = inlineCurrentItem.audioUrl;
+    audioRef.current.playbackRate = voiceSettings.rate;
+    void playInlineCurrent();
+  }, [inlineCurrentItem, inlinePlaying, playInlineCurrent, voiceSettings.rate, voiceSettings.voiceId]);
 
   useEffect(() => {
     if (!token) {
@@ -275,6 +299,14 @@ const LanguageLearningPage: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(voiceStorageKey, JSON.stringify(voiceSettings));
   }, [voiceSettings, voiceStorageKey]);
+
+  useEffect(() => {
+    const onScroll = () => {
+      lastUserScrollRef.current = Date.now();
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const clearInlineTimer = useCallback(() => {
     if (timerRef.current) {
@@ -324,8 +356,27 @@ const LanguageLearningPage: React.FC = () => {
     setInlineAutoPlayNext(false);
   }, [inlinePlayback?.items]);
 
+  useEffect(() => {
+    if (!inlinePlaying || !activeMessageKey || !inlineCurrentItem) {
+      setActiveLineKey(null);
+      setActiveLineIsTarget(false);
+      return;
+    }
+    // Active-line logic lives here: map the narrated segment to a UI line.
+    setActiveLineKey(`${activeMessageKey}-${inlineCurrentItem.segmentIdx}`);
+    setActiveLineIsTarget(inlineCurrentItem.kind === 'tr');
+  }, [activeMessageKey, inlineCurrentItem, inlinePlaying]);
+
+  useEffect(() => {
+    if (!activeLineKey) return;
+    if (Date.now() - lastUserScrollRef.current < 1200) return;
+    const node = lineRefs.current.get(activeLineKey);
+    node?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [activeLineKey]);
+
   const handleInlineEnded = useCallback(() => {
-    if (inlineIndex + 1 < inlineItems.length) {
+    // Play-loop logic lives here: advance automatically until paused.
+    if (inlinePlayingRef.current && inlineIndex + 1 < inlineItems.length) {
       setInlineAutoPlayNext(true);
       setInlineIndex((idx) => idx + 1);
       return;
@@ -354,10 +405,16 @@ const LanguageLearningPage: React.FC = () => {
         audioRef.current.pause();
         setInlinePlaying(false);
       } else {
+        if (inlineIndex >= inlineItems.length - 1) {
+          setInlineIndex(0);
+          setInlineAutoPlayNext(true);
+          setInlinePlaying(true);
+          return;
+        }
         await playInlineCurrent();
       }
     },
-    [activeMessageKey, inlinePlaying, playInlineCurrent, setPlaybackQueue]
+    [activeMessageKey, inlineIndex, inlineItems.length, inlinePlaying, playInlineCurrent, setPlaybackQueue]
   );
 
   const handleInlineReplay = useCallback(
@@ -537,14 +594,35 @@ const LanguageLearningPage: React.FC = () => {
                     >
                       {isAssistant && msg.segments ? (
                         <div className="space-y-3">
-                          {msg.segments.map((seg, segIdx) => (
-                            <div key={`${seg.en}-${segIdx}`}>
-                              <div>{seg.en}</div>
-                              <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {seg.tr}
+                          {msg.segments.map((seg, segIdx) => {
+                            const lineKey = `${messageKey}-${segIdx}`;
+                            const isActiveLine = isActive && activeLineKey === lineKey;
+                            return (
+                              <div
+                                key={`${seg.en}-${segIdx}`}
+                                ref={(node) => {
+                                  if (node) lineRefs.current.set(lineKey, node);
+                                  else lineRefs.current.delete(lineKey);
+                                }}
+                                className={`rounded-2xl px-2 py-1 transition-all duration-300 ${
+                                  isActiveLine ? 'bg-emerald-500/10' : ''
+                                }`}
+                              >
+                                <div className="text-sm text-slate-800 dark:text-slate-100">
+                                  {seg.en}
+                                </div>
+                                <div
+                                  className={`mt-0.5 text-xs text-slate-500 dark:text-slate-400 transition-all duration-300 ${
+                                    isActiveLine && activeLineIsTarget
+                                      ? 'text-base sm:text-lg font-semibold text-slate-900 dark:text-white'
+                                      : ''
+                                  }`}
+                                >
+                                  {seg.tr}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                           {msg.playback && (
                             <div className="space-y-2">
                               <div className="flex items-center gap-2">
@@ -760,7 +838,7 @@ const LanguageLearningPage: React.FC = () => {
           {error && <div className="text-xs text-rose-500">{error}</div>}
 
           {showTopicPanel && (
-            <div className="rounded-3xl border border-slate-200/70 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 p-4 shadow-xl space-y-4">
+            <div className="rounded-3xl border border-slate-200/70 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 p-4 shadow-xl space-y-4 ll-panel-animate">
               <div className="flex items-center gap-2">
                 <input
                   value={topicFilter}
@@ -812,7 +890,7 @@ const LanguageLearningPage: React.FC = () => {
           )}
 
           {showVoicePanel && (
-            <div className="rounded-3xl border border-slate-200/70 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 p-4 shadow-xl space-y-4">
+            <div className="rounded-3xl border border-slate-200/70 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 p-4 shadow-xl space-y-4 ll-panel-animate">
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                   Voice style
@@ -822,7 +900,7 @@ const LanguageLearningPage: React.FC = () => {
                   onChange={(e) =>
                     setVoiceSettings((prev) => ({ ...prev, voiceId: e.target.value }))
                   }
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent px-3 py-2 text-sm"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm text-slate-800 dark:text-slate-100 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:focus:ring-emerald-500/40"
                 >
                   {VOICES.map((voice) => (
                     <option key={voice.id} value={voice.id}>

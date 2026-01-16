@@ -123,6 +123,22 @@ section[id] {
   scrollbar-width: none;
 }
 
+/* Modified for Language Learning UX upgrade: minimal panel animation. */
+@keyframes llFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ll-panel-animate {
+  animation: llFadeUp 180ms ease-out;
+}
+
 /* ---------------------------
    Components / Utilities
    --------------------------- */
