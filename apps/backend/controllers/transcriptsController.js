@@ -329,7 +329,10 @@ function extractOutlineTitlesSmart(v, { max = 200 } = {}) {
 }
 
 async function loadCourseOutlineTitles(db, courseId) {
-  // 1) Pull syllabus first (fast path)
+  let best = [];
+  let bestCol = null;
+
+  // 1) Try syllabus but DO NOT early return
   try {
     const q = await db.query(
       `SELECT syllabus FROM courses WHERE id = $1::uuid LIMIT 1`,
@@ -337,11 +340,14 @@ async function loadCourseOutlineTitles(db, courseId) {
     );
     if (q.rowCount) {
       const titles = extractOutlineTitlesSmart(q.rows[0]?.syllabus);
-      if (titles.length) return titles;
+      if (titles.length > best.length) {
+        best = titles;
+        bestCol = 'syllabus';
+      }
     }
   } catch {}
 
-  // 2) Scan *all* likely outline columns and pick the one with most titles
+  // 2) Scan other likely columns and choose the biggest
   try {
     const colsQ = await db.query(
       `
@@ -353,15 +359,16 @@ async function loadCourseOutlineTitles(db, courseId) {
               column_name ILIKE '%outline%'
            OR column_name ILIKE '%syllabus%'
            OR column_name ILIKE '%section%'
+           OR column_name ILIKE '%week%'
+           OR column_name ILIKE '%lesson%'
          )
       `,
     );
 
-    const cols = (colsQ.rows || []).map((r) => r.column_name).slice(0, 20);
-    if (!cols.length) return [];
-
-    let best = [];
-    let bestCol = null;
+    const cols = (colsQ.rows || [])
+      .map((r) => r.column_name)
+      .filter((c) => c !== 'syllabus') // we already sampled it
+      .slice(0, 25);
 
     for (const col of cols) {
       try {
@@ -369,8 +376,7 @@ async function loadCourseOutlineTitles(db, courseId) {
           `SELECT "${col}" AS v FROM courses WHERE id = $1::uuid LIMIT 1`,
           [courseId],
         );
-        const v = r.rows?.[0]?.v;
-        const titles = extractOutlineTitlesSmart(v);
+        const titles = extractOutlineTitlesSmart(r.rows?.[0]?.v);
         if (titles.length > best.length) {
           best = titles;
           bestCol = col;
@@ -378,20 +384,16 @@ async function loadCourseOutlineTitles(db, courseId) {
       } catch {}
     }
 
-    if (best.length) {
-      // helpful always-on log
-      console.log('[transcripts.outline] picked', {
-        courseId,
-        col: bestCol,
-        count: best.length,
-        sample: best.slice(0, 6),
-      });
-      return best;
-    }
+    console.log('[transcripts.outline] picked', {
+      courseId,
+      col: bestCol,
+      count: best.length,
+      sample: best.slice(0, 8),
+    });
 
-    return [];
+    return best;
   } catch {
-    return [];
+    return best;
   }
 }
 
@@ -690,6 +692,14 @@ async function loadTranscriptScores(db, { userId, authUuid, courseId, rid }) {
     const timeFilter = timeCol ? `AND qa."${timeCol}" IS NOT NULL` : '';
     const orderExpr = timeCol ? `qa."${timeCol}" DESC NULLS LAST, qa.id DESC` : `qa.id DESC`;
 
+    // Title from quizzes.json (since quizzes has no title column)
+const titleExpr =
+  "COALESCE(NULLIF(q.json->>'title',''), NULLIF(q.json->>'name',''), 'Quiz')";
+
+// IMPORTANT: quiz_attempts.quiz_id can be NULL → don't collapse NULLs into one group
+const partitionKey = 'COALESCE(qa.quiz_id, qa.id)';
+
+
     // compute uuid candidate (only when we need it)
     const authUuidResolved =
       (authUuid && isUuid(authUuid) ? String(authUuid) : null) ||
@@ -728,74 +738,48 @@ async function loadTranscriptScores(db, { userId, authUuid, courseId, rid }) {
     ) {
       const hasQuizId = shape.hasQuizId;
 
-      const sql = hasQuizId
-        ? `
-          SELECT title, score_pct, pass_mark
-          FROM (
-            SELECT
-              COALESCE(q.title, qa.title, 'Quiz') AS title,
-              qa.score_pct::float AS score_pct,
-              qa.pass_mark::float AS pass_mark,
-              row_number() OVER (PARTITION BY qa.quiz_id ORDER BY ${orderExpr}) AS rn
-            FROM quiz_attempts qa
-            LEFT JOIN quizzes q ON q.id = qa.quiz_id
-            WHERE qa.student_id = $1::bigint
-              AND ${courseWhere}
-              ${timeFilter}
-          ) t
-          WHERE rn = 1
-        `
-        : `
-          SELECT
-            COALESCE(qa.title, 'Quiz') AS title,
-            qa.score_pct::float AS score_pct,
-            qa.pass_mark::float AS pass_mark
-          FROM quiz_attempts qa
-          WHERE qa.student_id = $1::bigint
-            AND ${courseWhere}
-            ${timeFilter}
-          ORDER BY ${orderExpr}
-          LIMIT 1
-        `;
+     const sql = `
+  SELECT title, score_pct, pass_mark
+  FROM (
+    SELECT
+      ${titleExpr} AS title,
+      qa.score_pct::float AS score_pct,
+      qa.pass_mark::float AS pass_mark,
+      row_number() OVER (PARTITION BY ${partitionKey} ORDER BY ${orderExpr}) AS rn
+    FROM quiz_attempts qa
+    LEFT JOIN quizzes q ON q.id = qa.quiz_id
+    WHERE qa.student_id = $1::bigint
+      AND qa.course_id::text = $2::text
+      ${timeFilter}
+  ) t
+  WHERE rn = 1
+`;
+personalRows = await tryQuery(sql, [uidNum, courseId], 'student_id:numeric');
 
-      personalRows = await tryQuery(sql, [uidNum, courseId], 'student_id:numeric');
     }
 
     // B) user_id uuid
     if (!personalRows.length && shape.hasUserId && shape.userIdType === 'uuid' && authUuidResolved) {
       const hasQuizId = shape.hasQuizId;
 
-      const sql = hasQuizId
-        ? `
-          SELECT title, score_pct, pass_mark
-          FROM (
-            SELECT
-              COALESCE(q.title, qa.title, 'Quiz') AS title,
-              qa.score_pct::float AS score_pct,
-              qa.pass_mark::float AS pass_mark,
-              row_number() OVER (PARTITION BY qa.quiz_id ORDER BY ${orderExpr}) AS rn
-            FROM quiz_attempts qa
-            LEFT JOIN quizzes q ON q.id = qa.quiz_id
-            WHERE qa.user_id = $1::uuid
-              AND ${courseWhere}
-              ${timeFilter}
-          ) t
-          WHERE rn = 1
-        `
-        : `
-          SELECT
-            COALESCE(qa.title, 'Quiz') AS title,
-            qa.score_pct::float AS score_pct,
-            qa.pass_mark::float AS pass_mark
-          FROM quiz_attempts qa
-          WHERE qa.user_id = $1::uuid
-            AND ${courseWhere}
-            ${timeFilter}
-          ORDER BY ${orderExpr}
-          LIMIT 1
-        `;
+     const sql = `
+  SELECT title, score_pct, pass_mark
+  FROM (
+    SELECT
+      ${titleExpr} AS title,
+      qa.score_pct::float AS score_pct,
+      qa.pass_mark::float AS pass_mark,
+      row_number() OVER (PARTITION BY ${partitionKey} ORDER BY ${orderExpr}) AS rn
+    FROM quiz_attempts qa
+    LEFT JOIN quizzes q ON q.id = qa.quiz_id
+    WHERE qa.user_id = $1::uuid
+      AND qa.course_id::text = $2::text
+      ${timeFilter}
+  ) t
+  WHERE rn = 1
+`;
+personalRows = await tryQuery(sql, [authUuidResolved, courseId], 'user_id:uuid');
 
-      personalRows = await tryQuery(sql, [authUuidResolved, courseId], 'user_id:uuid');
     }
 
     // C) user_id numeric
@@ -807,37 +791,25 @@ async function loadTranscriptScores(db, { userId, authUuid, courseId, rid }) {
     ) {
       const hasQuizId = shape.hasQuizId;
 
-      const sql = hasQuizId
-        ? `
-          SELECT title, score_pct, pass_mark
-          FROM (
-            SELECT
-              COALESCE(q.title, qa.title, 'Quiz') AS title,
-              qa.score_pct::float AS score_pct,
-              qa.pass_mark::float AS pass_mark,
-              row_number() OVER (PARTITION BY qa.quiz_id ORDER BY ${orderExpr}) AS rn
-            FROM quiz_attempts qa
-            LEFT JOIN quizzes q ON q.id = qa.quiz_id
-            WHERE qa.user_id = $1::bigint
-              AND ${courseWhere}
-              ${timeFilter}
-          ) t
-          WHERE rn = 1
-        `
-        : `
-          SELECT
-            COALESCE(qa.title, 'Quiz') AS title,
-            qa.score_pct::float AS score_pct,
-            qa.pass_mark::float AS pass_mark
-          FROM quiz_attempts qa
-          WHERE qa.user_id = $1::bigint
-            AND ${courseWhere}
-            ${timeFilter}
-          ORDER BY ${orderExpr}
-          LIMIT 1
-        `;
+     const sql = `
+  SELECT title, score_pct, pass_mark
+  FROM (
+    SELECT
+      ${titleExpr} AS title,
+      qa.score_pct::float AS score_pct,
+      qa.pass_mark::float AS pass_mark,
+      row_number() OVER (PARTITION BY ${partitionKey} ORDER BY ${orderExpr}) AS rn
+    FROM quiz_attempts qa
+    LEFT JOIN quizzes q ON q.id = qa.quiz_id
+    WHERE qa.user_id = $1::bigint
+      AND qa.course_id::text = $2::text
+      ${timeFilter}
+  ) t
+  WHERE rn = 1
+`;
+personalRows = await tryQuery(sql, [uidNum, courseId], 'user_id:numeric');
 
-      personalRows = await tryQuery(sql, [uidNum, courseId], 'user_id:numeric');
+
     }
   } else {
     logT('[transcripts.scores] quiz_attempts_unusable', {
@@ -876,9 +848,14 @@ async function loadTranscriptScores(db, { userId, authUuid, courseId, rid }) {
 
   if (!normalized.length) return { overallPct: null, passMark: fallbackPassMark, sections: [] };
 
-  const avg = normalized.reduce((s, r) => s + r.score_pct, 0) / normalized.length;
-  const overallPct = Math.round(avg * 100) / 100;
-  const passMark = Math.max(...normalized.map((r) => r.pass_mark || fallbackPassMark)) || fallbackPassMark;
+  // ✅ Final score = highest score (best attempt) instead of average
+    const best = normalized.reduce((b, r) => (r.score_pct > b.score_pct ? r : b), normalized[0]);
+
+    const overallPct = Math.round(best.score_pct * 100) / 100;
+
+    // passMark: use the passMark that belongs to the best score (fallback safe)
+    const passMark = Math.round(((best.pass_mark ?? fallbackPassMark) * 100)) / 100;
+
 
   const sections = [
     {
@@ -944,8 +921,9 @@ function computeOverallPctFromSections(sections) {
     .filter((n) => Number.isFinite(n));
 
   if (!nums.length) return null;
-  const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
-  return Math.round(avg * 100) / 100;
+  const best = Math.max(...nums);
+  return Math.round(best * 100) / 100;
+
 }
 
 function clampPct(v) {

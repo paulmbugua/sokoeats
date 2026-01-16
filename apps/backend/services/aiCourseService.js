@@ -407,12 +407,34 @@ export async function generateOutlineService({
   });
 
   const cacheKey = `ai:outline:${courseId || 't:' + sha1(courseTitle)}:size=${preset.key}:lvl=${level}:lessons=${totalLessons}:min=${target}:track=${programTrack || ''}`;
-  const cached = await cacheGetJSON(cacheKey);
+   const cached = await cacheGetJSON(cacheKey);
   if (cached?.outline?.length) {
-    dlog('outline', 'cache HIT', { len: cached.outline.length });
+    const outline = cached.outline.slice(0, totalLessons);
+
+    // ✅ Persist syllabus for clients/certificates/transcripts that require week numbers
+    if (courseId) {
+      try {
+        await pool.query(
+          `UPDATE courses SET syllabus = $2::jsonb WHERE id = $1::uuid`,
+          [
+            courseId,
+            JSON.stringify(
+              outline.map((s, i) => ({
+                week: i + 1,
+                topic: s?.title || s?.topic || `Week ${i + 1}`,
+                title: s?.title || s?.topic || `Week ${i + 1}`,
+              })),
+            ),
+          ],
+        );
+      } catch (e) {
+        console.warn('[outline] syllabus persist failed (cache hit)', e?.message);
+      }
+    }
+
     return {
       status: 200,
-      data: { outline: cached.outline.slice(0, totalLessons) },
+      data: { outline },
       headers: {
         'X-Cache': 'HIT',
         'X-Size-Key': preset.key,
@@ -421,6 +443,7 @@ export async function generateOutlineService({
       },
     };
   }
+
 
   if (breakerActive()) {
     console.warn(`[${LOG_NS}:outline] breaker active; serving fallback`);
@@ -553,10 +576,32 @@ export async function generateOutlineService({
       budgetRemaining = Math.max(0, budgetRemaining - capForThisSlice);
     }
 
-    outline = outline.slice(0, totalLessons);
+      outline = outline.slice(0, totalLessons);
+
+    // ✅ Persist syllabus into DB (so week-based logic works everywhere)
+    if (courseId) {
+      try {
+        await pool.query(
+          `UPDATE courses SET syllabus = $2::jsonb WHERE id = $1::uuid`,
+          [
+            courseId,
+            JSON.stringify(
+              outline.map((s, i) => ({
+                week: i + 1,
+                topic: s?.title || s?.topic || `Week ${i + 1}`,
+                title: s?.title || s?.topic || `Week ${i + 1}`,
+              })),
+            ),
+          ],
+        );
+      } catch (e) {
+        console.warn('[outline] syllabus persist failed (miss)', e?.message);
+      }
+    }
 
     await cacheSetJSON(cacheKey, { outline }, REDIS_TTL.outline);
     dlog('outline', 'success', { len: outline.length });
+
     if (process.env.PREWARM_QUIZ === '1') {
       try {
         setImmediate(() => {

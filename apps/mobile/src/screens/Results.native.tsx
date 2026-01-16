@@ -10,15 +10,27 @@ import {
   Linking,
   Alert,
   ActivityIndicator,
+  TextInput,
+  RefreshControl,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import type { MainStackParamList } from '../navigation/types';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemePref } from '../theme/ThemeContext';
 
+
+import type { MainStackParamList } from '../navigation/types';
 import { useShopContext } from '@mytutorapp/shared/context';
 import PaymentWidget from '../screens/PaymentWidget.native';
 import { useAICertificates, useAiCourseEntitlements } from '@mytutorapp/shared/hooks';
-import { downloadCertificateFile, downloadTranscriptFile } from '@mytutorapp/shared/api';
+// ⛔️ keep shared api imports if you want elsewhere, but we won’t use them for native downloads
+// import { downloadCertificateFile, downloadTranscriptFile } from '@mytutorapp/shared/api';
+
+import tw from '../../tailwind';
 
 type GradeLike = {
   scorePct: number;
@@ -104,117 +116,292 @@ function looksExtendedMeta(meta: any) {
   );
 }
 
-/* -------------------------- Preview card -------------------------- */
+type DocLite =
+  | { id: string; url: string; download_url?: string; meta?: any }
+  | null;
+
+type LibraryTab = 'certs' | 'transcripts' | 'all';
+
+/* -------------------------- Preview helpers -------------------------- */
+function buildDocPreviewUrl({
+  docType,
+  docId,
+  pdfUrl,
+  backendUrl,
+}: {
+  docType: 'certificates' | 'transcripts';
+  docId?: string | null;
+  pdfUrl?: string | null;
+  backendUrl?: string | null;
+}) {
+  if (docId && backendUrl) {
+    const base = backendUrl.replace(/\/+$/, '');
+    return `${base}/api/${docType}/${encodeURIComponent(docId)}/og`;
+  }
+
+  if (!pdfUrl) return null;
+  try {
+    const u = new URL(pdfUrl);
+    const parts = u.pathname.split('/upload/');
+    if (parts.length < 2) return null;
+    const left = parts[0];
+    const right = parts.slice(1).join('/upload/');
+    return `${u.origin}${left}/upload/pg_1/${right.replace(/\.pdf$/i, '.jpg')}`;
+  } catch {
+    return null;
+  }
+}
+
+/* -------------------------- UI blocks (ProfileCard-like) -------------------------- */
+function makePalette(isDark: boolean) {
+  return {
+    pageBg: isDark ? '#0b1220' : '#f3f4f6',
+    cardBg: isDark ? '#0f1821' : '#ffffff',
+    cardSoft: isDark ? '#0b1620' : '#f6f9fc',
+    border: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)',
+    text: isDark ? '#ffffff' : '#0d141c',
+    sub: isDark ? 'rgba(255,255,255,0.75)' : '#49739c',
+    muted: isDark ? 'rgba(255,255,255,0.55)' : '#7a93ad',
+    accent: '#3d99f5',
+    good: '#10b981',
+    warn: '#f59e0b',
+    danger: '#ef4444',
+  };
+}
+
+const Card: React.FC<{
+  children: React.ReactNode;
+  palette: ReturnType<typeof makePalette>;
+  soft?: boolean;
+  style?: any;
+}> = ({ children, palette, soft, style }) => {
+  return (
+    <View
+      style={[
+        tw`rounded-2xl overflow-hidden`,
+        {
+          backgroundColor: soft ? palette.cardSoft : palette.cardBg,
+          borderColor: palette.border,
+          borderWidth: 1,
+        },
+        tw`shadow-lg`,
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+};
+
+const Btn: React.FC<{
+  label: string;
+  onPress?: () => void;
+  disabled?: boolean;
+  palette: ReturnType<typeof makePalette>;
+  variant?: 'primary' | 'soft' | 'ghost';
+  style?: any;
+}> = ({ label, onPress, disabled, palette, variant = 'soft', style }) => {
+  const bg =
+    variant === 'primary'
+      ? palette.accent
+      : variant === 'ghost'
+      ? 'transparent'
+      : palette.cardSoft;
+
+  const borderW = variant === 'ghost' ? 1 : 0;
+  const textColor = variant === 'primary' ? '#fff' : palette.text;
+
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
+      style={({ pressed }) => [
+        tw`h-10 px-4 rounded-xl items-center justify-center`,
+        {
+          backgroundColor: bg,
+          borderWidth: borderW,
+          borderColor: palette.border,
+          opacity: disabled ? 0.55 : 1,
+        },
+        pressed && !disabled ? { transform: [{ scale: 0.98 }] } : null,
+        style,
+      ]}
+    >
+      <Text style={[tw`text-sm font-semibold`, { color: textColor }]}>{label}</Text>
+    </Pressable>
+  );
+};
+
+const Pill: React.FC<{
+  label: string;
+  palette: ReturnType<typeof makePalette>;
+  tone?: 'neutral' | 'good' | 'warn';
+}> = ({ label, palette, tone = 'neutral' }) => {
+  let bg = palette.cardSoft;
+  let br = palette.border;
+  let tx = palette.text;
+
+  if (tone === 'good') {
+    bg = 'rgba(16,185,129,0.12)';
+    br = 'rgba(16,185,129,0.30)';
+    tx = palette.text;
+  } else if (tone === 'warn') {
+    bg = 'rgba(245,158,11,0.14)';
+    br = 'rgba(245,158,11,0.35)';
+    tx = palette.text;
+  }
+
+  return (
+    <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: bg, borderColor: br, borderWidth: 1 }]}>
+      <Text style={[tw`text-[11px] font-semibold`, { color: tx }]}>{label}</Text>
+    </View>
+  );
+};
+
 function WatermarkPreview({
   title,
   pdfUrl,
   docId,
   backendUrl,
   docType,
+  palette,
 }: {
   title: string;
   pdfUrl?: string | null;
   docId?: string | null;
   backendUrl?: string;
   docType: 'certificates' | 'transcripts';
+  palette: ReturnType<typeof makePalette>;
 }) {
-  const previewUrl = useMemo(() => {
-    // Prefer backend OG preview if we have an id (brand-aware if your backend supports it)
-    if (docId && backendUrl) {
-      const base = backendUrl.replace(/\/+$/, '');
-      return `${base}/api/${docType}/${encodeURIComponent(docId)}/og`;
-    }
-
-    // Fallback: if PDF is Cloudinary, convert page 1 to JPG
-    if (!pdfUrl) return null;
-    try {
-      const u = new URL(pdfUrl);
-      const parts = u.pathname.split('/upload/');
-      if (parts.length < 2) return null;
-      const left = parts[0];
-      const right = parts.slice(1).join('/upload/');
-      return `${u.origin}${left}/upload/pg_1/${right.replace(/\.pdf$/i, '.jpg')}`;
-    } catch {
-      return null;
-    }
-  }, [docId, backendUrl, docType, pdfUrl]);
+  const previewUrl = useMemo(
+    () =>
+      buildDocPreviewUrl({
+        docType,
+        docId: docId || null,
+        pdfUrl: pdfUrl || null,
+        backendUrl: backendUrl || null,
+      }),
+    [docId, backendUrl, docType, pdfUrl]
+  );
 
   return (
-    <View className="relative rounded-2xl overflow-hidden bg-white/5 border border-white/10">
-      <View className="px-3 pt-3">
-        <Text className="text-white font-semibold">{title}</Text>
-        <Text className="text-white/60 text-xs mb-2">Preview (watermarked)</Text>
+    <Card palette={palette} style={tw`mb-3`}>
+      <View style={tw`px-4 pt-4`}>
+        <Text style={[tw`text-lg font-semibold`, { color: palette.text }]}>{title}</Text>
+        <Text style={[tw`text-xs mt-1`, { color: palette.sub }]}>Preview (watermarked)</Text>
       </View>
 
-      <View className="relative">
-        <View className="aspect-[4/3] bg-black/30 items-center justify-center">
+      <View style={tw`mt-3 relative`}>
+        <View
+          style={[
+            tw`aspect-[4/3] items-center justify-center`,
+            { backgroundColor: palette.cardSoft, borderTopWidth: 1, borderColor: palette.border },
+          ]}
+        >
           {previewUrl ? (
             <Image
               source={{ uri: previewUrl }}
               accessibilityLabel={`${title} preview`}
-              className="w-full h-full"
+              style={tw`w-full h-full`}
               resizeMode="contain"
             />
           ) : (
-            <Text className="text-white/60 text-sm">No preview available</Text>
+            <Text style={[tw`text-sm`, { color: palette.sub }]}>No preview available</Text>
           )}
         </View>
 
-        {/* Watermark overlay */}
-        <View pointerEvents="none" className="absolute inset-0 items-center justify-center">
+        <View pointerEvents="none" style={tw`absolute inset-0 items-center justify-center`}>
           <Text
-            className="text-white/15 font-black tracking-widest text-4xl"
-            style={{ transform: [{ rotate: '12deg' }] }}
+            style={[
+              tw`text-4xl font-black tracking-widest`,
+              { color: palette.text, opacity: 0.12, transform: [{ rotate: '12deg' }] },
+            ]}
           >
             PREVIEW
           </Text>
         </View>
       </View>
 
-      <View className="px-3 pb-3">
-        <Text className="text-white/60 text-xs">
+      <View style={tw`px-4 py-3`}>
+        <Text style={[tw`text-xs`, { color: palette.sub }]}>
           Downloads are clean (no watermark) after certificate payment.
         </Text>
       </View>
-    </View>
+    </Card>
   );
 }
 
-type DocLite = { id: string; url: string; download_url?: string; meta?: any } | null;
+/* -------------------------- Native download helpers -------------------------- */
+const DOCS_DIR = `${FileSystem.documentDirectory || ''}daybreak-docs/`;
+
+function sanitizeFileName(name: string) {
+  const base = String(name || 'document')
+    .trim()
+    .toLowerCase()
+    .replace(/['"]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/(^-|-$)/g, '');
+  return base || 'document';
+}
+
+async function ensureDocsDir() {
+  if (!FileSystem.documentDirectory) return null;
+  try {
+    const info = await FileSystem.getInfoAsync(DOCS_DIR);
+    if (!info.exists) {
+      await FileSystem.makeDirectoryAsync(DOCS_DIR, { intermediates: true });
+    }
+    return DOCS_DIR;
+  } catch {
+    return null;
+  }
+}
 
 const ResultsPage: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const route = useRoute<ResultsRoute>();
+    const insets = useSafeAreaInsets();
+  const { resolvedScheme } = useThemePref();
+
+  const isDark = resolvedScheme === 'dark';
+  const palette = useMemo(() => makePalette(isDark), [isDark]);
+
+  // Match HomePage behavior so content never hides behind footer/tab bar
+  const FOOTER_OVERLAY_PX = 84;
+  const bottomPad = Math.max(FOOTER_OVERLAY_PX, FOOTER_OVERLAY_PX + insets.bottom);
+
 
   const { backendUrl, token, refreshUserDetails } = useShopContext() as any;
 
-  // Correlation id for this page instance
   const ridRef = useRef<string>(mkRid());
   const rid = ridRef.current;
 
-  // Route params (mobile)
   const courseId: string | undefined = route.params?.courseId;
   const courseTitle: string | undefined = route.params?.courseTitle;
   const grade: GradeLike | undefined = route.params?.grade;
 
-  // ✅ Library view when no courseId
   const libraryView = !courseId;
 
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentOk, setPaymentOk] = useState(false);
 
   const [cert, setCert] = useState<DocLite>(null);
   const [trans, setTrans] = useState<DocLite>(null);
 
-  // ✅ New: all docs (always fetched when token exists)
   const [allCerts, setAllCerts] = useState<any[]>([]);
   const [allTrans, setAllTrans] = useState<any[]>([]);
 
-  // ✅ Debugging fetch status
   const [docsLoading, setDocsLoading] = useState(false);
   const [certErr, setCertErr] = useState<any>(null);
   const [transErr, setTransErr] = useState<any>(null);
 
-  // Transcript generation state (library button)
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number>(0);
+
+  const [tab, setTab] = useState<LibraryTab>('certs');
+  const [q, setQ] = useState('');
+
   const [genTransState, setGenTransState] = useState<{
     courseId?: string;
     loading: boolean;
@@ -224,19 +411,139 @@ const ResultsPage: React.FC = () => {
 
   const genOnceRef = useRef<Record<string, boolean>>({});
 
-  // Mount log
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+
+const slugify = (s: string) =>
+  String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 60);
+
+async function ensureDirAsync(dirUri: string) {
+  if (!dirUri) return;
+  const info = await FileSystem.getInfoAsync(dirUri);
+  if (!info.exists) {
+    await FileSystem.makeDirectoryAsync(dirUri, { intermediates: true });
+  }
+}
+
+const downloadAndSharePdf = useCallback(
+  async ({
+    kind,
+    id,
+    courseTitle,
+    openPaymentOn402,
+  }: {
+    kind: 'cert' | 'trans';
+    id: string;
+    courseTitle?: string;
+    openPaymentOn402: boolean;
+  }) => {
+    if (!backendUrl || !token) {
+      Alert.alert('Sign in required', 'Please sign in again to download.');
+      return;
+    }
+    if (!id) return;
+
+    const base = String(backendUrl).replace(/\/+$/, '');
+    const url =
+      kind === 'cert'
+        ? `${base}/api/certificates/${encodeURIComponent(id)}/download`
+        : `${base}/api/transcripts/${encodeURIComponent(id)}/download`;
+
+   const baseDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+if (!baseDir) {
+  Alert.alert('Storage unavailable', 'Could not access device storage.');
+  return;
+}
+const dir = `${baseDir}daybreak-docs/`;
+
+    await ensureDirAsync(dir);
+
+    const niceTitle = slugify(courseTitle || (kind === 'cert' ? 'certificate' : 'transcript'));
+    const fileUri = `${dir}${niceTitle}-${id.slice(0, 8)}.pdf`;
+
+    const key = `${kind}:${id}`;
+    setDownloadingKey(key);
+
+    try {
+      const res = await FileSystem.downloadAsync(url, fileUri, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      // downloadAsync can still write a file for non-2xx; check status
+      if (res.status < 200 || res.status >= 300) {
+        let serverMsg = '';
+        try {
+          // error responses are usually small json/text; safe to read here
+          const text = await FileSystem.readAsStringAsync(res.uri);
+          try {
+            const j = JSON.parse(text);
+            serverMsg = j?.message || j?.error || '';
+          } catch {
+            serverMsg = text?.slice(0, 180) || '';
+          }
+        } catch {}
+
+        // Clean up the bad file
+        try {
+          await FileSystem.deleteAsync(res.uri, { idempotent: true });
+        } catch {}
+
+        // ✅ Only open payment for CERTIFICATE when it's truly locked
+        if (res.status === 402 && openPaymentOn402) {
+          setPaymentOpen(true);
+          return;
+        }
+
+        // Transcript is “free” in your UX → never force payment UI here
+        Alert.alert(
+          'Download unavailable',
+          serverMsg || `Could not download (${res.status}).`
+        );
+        return;
+      }
+
+      // ✅ Share sheet = smooth UX on both iOS/Android
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(res.uri, {
+          mimeType: 'application/pdf',
+          UTI: 'com.adobe.pdf',
+          dialogTitle: kind === 'cert' ? 'Share Certificate' : 'Share Transcript',
+        });
+      } else {
+        // fallback: try open locally
+        Linking.openURL(res.uri).catch(() => {});
+      }
+    } catch (e: any) {
+      Alert.alert('Download failed', e?.message || 'Please try again.');
+    } finally {
+      setDownloadingKey((k) => (k === key ? null : k));
+    }
+  },
+  [backendUrl, token]
+);
+
+
+  // downloads
+  const [dl, setDl] = useState<{ kind: 'cert' | 'trans'; id: string } | null>(null);
+  const isDownloading = useCallback(
+    (kind: 'cert' | 'trans', id: string) => Boolean(dl && dl.kind === kind && dl.id === id),
+    [dl]
+  );
+
   useEffect(() => {
     logR('[Results][mount]', {
       rid,
       backendUrl,
       hasToken: Boolean(token),
-      tokenLen: token ? String(token).length : 0,
       courseId,
       courseTitle,
-      grade: grade
-        ? { scorePct: grade.scorePct, passMark: grade.passMark, passed: grade.passed }
-        : null,
+      grade: grade ? { scorePct: grade.scorePct, passMark: grade.passMark, passed: grade.passed } : null,
       libraryView,
+      isDark,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -296,12 +603,94 @@ const ResultsPage: React.FC = () => {
   );
 
   const openExternal = useCallback((url?: string | null) => {
-    if (!url) {
-      setPaymentOpen(true);
-      return;
-    }
+    if (!url) return;
     Linking.openURL(url).catch(() => {});
   }, []);
+
+  // ✅ Native: download + share (no auto-payment popup)
+  const downloadPdfNative = useCallback(
+    async ({
+      kind,
+      id,
+      title,
+      explicitUrl,
+      onFailOfferUnlock,
+    }: {
+      kind: 'cert' | 'trans';
+      id: string;
+      title?: string;
+      explicitUrl?: string | null;
+      onFailOfferUnlock?: () => void;
+    }) => {
+      if (!backendUrl) {
+        Alert.alert('Missing backend', 'Backend URL is not set.');
+        return;
+      }
+      if (!token) {
+        Alert.alert('Sign in required', 'Please sign in to download documents.');
+        return;
+      }
+      if (!id) return;
+
+      const base = String(backendUrl || '').replace(/\/+$/, '');
+      const url =
+        explicitUrl ||
+        `${base}/api/${kind === 'cert' ? 'certificates' : 'transcripts'}/${encodeURIComponent(id)}/download`;
+
+      const dir = await ensureDocsDir();
+      const safeTitle = sanitizeFileName(title || (kind === 'cert' ? 'certificate' : 'transcript'));
+      const fileName = `${safeTitle}-${id.slice(0, 8)}.pdf`;
+      const fileUri = `${dir || FileSystem.cacheDirectory || FileSystem.documentDirectory}${fileName}`;
+
+      setDl({ kind, id });
+
+      try {
+        logR('[Results][download] start', { rid, kind, id, url, fileUri });
+
+        // Download into app storage with auth header (works with protected endpoints)
+        const res = await FileSystem.downloadAsync(url, fileUri, {
+          headers: token ? { Authorization: `Bearer ${token}`, Accept: 'application/pdf' } : undefined,
+        });
+
+        logR('[Results][download] ok', { rid, kind, id, status: (res as any)?.status, uri: res.uri });
+
+        // Share sheet / open
+        const canShare = await Sharing.isAvailableAsync().catch(() => false);
+        if (canShare) {
+          await Sharing.shareAsync(res.uri, {
+            mimeType: 'application/pdf',
+            dialogTitle: kind === 'cert' ? 'Share Certificate' : 'Share Transcript',
+          });
+        } else {
+          // fallback: open file uri (some Android builds won’t open file:// reliably)
+          if (Platform.OS === 'android') {
+            Alert.alert(
+              'Saved',
+              `Saved to app storage as "${fileName}". Sharing is not available on this device.`,
+            );
+          } else {
+            await Linking.openURL(res.uri).catch(() => {});
+          }
+        }
+      } catch (e: any) {
+        warnR('[Results][download] fail', { rid, kind, id, msg: e?.message, e: safeJson(e) });
+
+        Alert.alert(
+          'Download failed',
+          'We could not download this PDF right now. If you have not unlocked downloads yet, use the “Pay certificate fee” button.',
+          onFailOfferUnlock
+            ? [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Unlock', onPress: onFailOfferUnlock },
+              ]
+            : [{ text: 'OK' }]
+        );
+      } finally {
+        setDl(null);
+      }
+    },
+    [backendUrl, token, rid]
+  );
 
   const transByCourse = useMemo(() => {
     const m = new Map<string, any>();
@@ -309,17 +698,61 @@ const ResultsPage: React.FC = () => {
     return m;
   }, [allTrans]);
 
+  const fetchDocs = useCallback(
+    async (source: string) => {
+      if (!token) {
+        warnR('[Results][docs] skip: no token', { rid, source });
+        setAllCerts([]);
+        setAllTrans([]);
+        return;
+      }
+
+      setCertErr(null);
+      setTransErr(null);
+
+      logR('[Results][docs] fetch start', { rid, source });
+      const t0 = Date.now();
+
+      try {
+        const cs = await api<any>(`/api/certificates/me`);
+        const arr = Array.isArray(cs) ? cs : [];
+        setAllCerts(arr);
+      } catch (e: any) {
+        setAllCerts([]);
+        setCertErr({ status: e?.status, msg: e?.message, data: e?.data });
+      }
+
+      try {
+        const ts = await api<any>(`/api/transcripts/me`);
+        const arr = Array.isArray(ts) ? ts : [];
+        setAllTrans(arr);
+      } catch (e: any) {
+        setAllTrans([]);
+        setTransErr({ status: e?.status, msg: e?.message, data: e?.data });
+      }
+
+      setLastUpdatedAt(t0);
+      logR('[Results][docs] fetch done', { rid, source, ms: Date.now() - t0 });
+    },
+    [api, rid, token]
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchDocs('pull_to_refresh');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchDocs]);
+
   const generateTranscriptForCourse = useCallback(
     async (cid: string, source: string) => {
       if (!token) {
-        warnR('[Results][genTrans] no token', { rid, cid, source });
         Alert.alert('Sign in required', 'Please sign in to generate transcripts.');
         return;
       }
-      if (!cid) {
-        warnR('[Results][genTrans] missing courseId', { rid, cid, source });
-        return;
-      }
+      if (!cid) return;
 
       const op = mkRid('genTrans');
       setGenTransState({ courseId: cid, loading: true, error: null, last: null });
@@ -331,14 +764,8 @@ const ResultsPage: React.FC = () => {
           body: JSON.stringify({ courseId: cid }),
         });
 
-        logR('[Results][genTrans] ok', { rid, op, resp: safeJson(resp) });
+        await fetchDocs('gen_transcript_refresh');
 
-        // refresh transcript list
-        const ts = await api<any>(`/api/transcripts/me`);
-        const arr = Array.isArray(ts) ? ts : [];
-        setAllTrans(arr);
-
-        // if viewing this course, set the selected transcript
         if (resp?.id && String(cid) === String(courseId)) {
           const base = String(backendUrl || '').replace(/\/+$/, '');
           setTrans({
@@ -351,21 +778,17 @@ const ResultsPage: React.FC = () => {
 
         setGenTransState({ courseId: cid, loading: false, error: null, last: resp });
 
-        // If server returned direct download_url, open it (native equivalent of web redirect)
-        if (resp?.download_url) {
-          openExternal(resp.download_url);
-        }
+        // ✅ don’t force-open payment or browser; user can click Download and get a nice file flow
+        // if (resp?.download_url) openExternal(resp.download_url);
       } catch (e: any) {
         const payload = { status: e?.status, msg: e?.message, data: safeJson(e?.data) };
         errR('[Results][genTrans] fail', { rid, op, cid, source, ...payload });
 
         if (e?.status === 402 && e?.data?.error === 'EXTENDED_REQUIRED') {
-          Alert.alert(
-            'Extended required',
-            e?.data?.message || 'Transcript requires Extended certificate.'
-          );
+          Alert.alert('Extended required', e?.data?.message || 'Transcript requires Extended certificate.');
         } else if (e?.status === 402) {
           Alert.alert('Payment required', e?.data?.message || e?.message || 'Payment required.');
+          // keep this: generation can legitimately require unlock
           setPaymentOpen(true);
         } else {
           Alert.alert('Transcript', e?.data?.message || e?.message || 'Could not generate transcript.');
@@ -374,83 +797,31 @@ const ResultsPage: React.FC = () => {
         setGenTransState({ courseId: cid, loading: false, error: payload, last: null });
       }
     },
-    [api, rid, token, backendUrl, courseId, openExternal]
+    [api, rid, token, backendUrl, courseId, fetchDocs]
   );
 
-  // ✅ Fetch all certificates + transcripts (always available on this page)
+  // Fetch docs on mount when signed in
   useEffect(() => {
-    let abort = false;
-
+    let alive = true;
     (async () => {
-      if (!token) {
-        warnR('[Results][docs] skip: no token', { rid });
-        setAllCerts([]);
-        setAllTrans([]);
-        return;
-      }
-
+      if (!token) return;
       setDocsLoading(true);
-      setCertErr(null);
-      setTransErr(null);
-      logR('[Results][docs] fetch start', { rid });
-
       try {
-        const cs = await api<any>(`/api/certificates/me`);
-        const arr = Array.isArray(cs) ? cs : [];
-        if (!abort) setAllCerts(arr);
-        logR('[Results][docs] certs ok', {
-          rid,
-          count: arr.length,
-          ids: arr.slice(0, 5).map((x: any) => x?.id),
-          sample: arr.slice(0, 1),
-        });
-      } catch (e: any) {
-        if (!abort) setAllCerts([]);
-        if (!abort) setCertErr({ status: e?.status, msg: e?.message, data: e?.data });
-        warnR('[Results][docs] certs fail', { rid, status: e?.status, msg: e?.message, data: safeJson(e?.data) });
-      }
-
-      try {
-        const ts = await api<any>(`/api/transcripts/me`);
-        const arr = Array.isArray(ts) ? ts : [];
-        if (!abort) setAllTrans(arr);
-        logR('[Results][docs] transcripts ok', {
-          rid,
-          count: arr.length,
-          ids: arr.slice(0, 5).map((x: any) => x?.id),
-          sample: arr.slice(0, 1),
-        });
-      } catch (e: any) {
-        if (!abort) setAllTrans([]);
-        if (!abort) setTransErr({ status: e?.status, msg: e?.message, data: e?.data });
-        warnR('[Results][docs] transcripts fail', { rid, status: e?.status, msg: e?.message, data: safeJson(e?.data) });
-      }
-
-      if (!abort) {
-        setDocsLoading(false);
-        logR('[Results][docs] fetch done', { rid });
+        await fetchDocs('mount');
+      } finally {
+        if (alive) setDocsLoading(false);
       }
     })();
-
     return () => {
-      abort = true;
-      logR('[Results][docs] abort', { rid });
+      alive = false;
     };
-  }, [api, token, rid]);
+  }, [fetchDocs, token]);
 
-  // ✅ When courseId changes, pick matching cert/trans from the "all docs" lists
+  // Pick selected course docs from lists
   useEffect(() => {
-    logR('[Results][pick] start', {
-      rid,
-      courseId,
-      allCertsLen: allCerts.length,
-      allTransLen: allTrans.length,
-    });
-
     if (!courseId) {
       setCert(null);
       setTrans(null);
-      logR('[Results][pick] no courseId -> reset', { rid });
       return;
     }
 
@@ -461,322 +832,489 @@ const ResultsPage: React.FC = () => {
     const certDl = cRaw?.id ? `${base}/api/certificates/${cRaw.id}/download` : undefined;
     const transDl = tRaw?.id ? `${base}/api/transcripts/${tRaw.id}/download` : undefined;
 
-    const nextCert = cRaw
-      ? { id: String(cRaw.id), url: cRaw.url, download_url: cRaw.download_url || certDl, meta: cRaw }
-      : null;
+    setCert(cRaw ? { id: String(cRaw.id), url: cRaw.url, download_url: cRaw.download_url || certDl, meta: cRaw } : null);
+    setTrans(tRaw ? { id: String(tRaw.id), url: tRaw.url, download_url: tRaw.download_url || transDl, meta: tRaw } : null);
+  }, [courseId, allCerts, allTrans, backendUrl]);
 
-    const nextTrans = tRaw
-      ? { id: String(tRaw.id), url: tRaw.url, download_url: tRaw.download_url || transDl, meta: tRaw }
-      : null;
-
-    setCert(nextCert);
-    setTrans(nextTrans);
-
-    logR('[Results][pick] chosen', {
-      rid,
-      courseId,
-      certFound: Boolean(nextCert?.id),
-      transFound: Boolean(nextTrans?.id),
-      certId: nextCert?.id,
-      transId: nextTrans?.id,
-    });
-  }, [courseId, allCerts, allTrans, backendUrl, rid]);
-
-  // ✅ Auto-attempt transcript generation if cert looks Extended (once per course)
+  // Auto-generate transcript if cert looks extended
   useEffect(() => {
     if (!courseId) return;
     if (trans?.id) return;
-    if (!cert?.id) {
-      logR('[Results][autoGen] skip: no cert selected', { rid, courseId });
-      return;
-    }
+    if (!cert?.id) return;
 
     const likelyExtended = looksExtendedMeta(cert?.meta || cert);
-    logR('[Results][autoGen] check', {
-      rid,
-      courseId,
-      certId: cert.id,
-      likelyExtended,
-    });
-
     if (!likelyExtended) return;
-    if (genOnceRef.current[String(courseId)]) {
-      logR('[Results][autoGen] already attempted', { rid, courseId });
+
+    if (genOnceRef.current[String(courseId)]) return;
+    genOnceRef.current[String(courseId)] = true;
+
+    generateTranscriptForCourse(String(courseId), 'auto_course_view');
+  }, [courseId, cert?.id, trans?.id, generateTranscriptForCourse, cert]);
+
+  const passed = Boolean(grade?.passed || cert?.id || trans?.id);
+
+  // ✅ Payment status check (prevents “I already paid” confusion)
+  const checkPaymentStatus = useCallback(async () => {
+    if (!token || !backendUrl) {
+      setPaymentOk(false);
       return;
     }
 
-    genOnceRef.current[String(courseId)] = true;
-    generateTranscriptForCourse(String(courseId), 'auto_course_view');
-  }, [courseId, cert?.id, trans?.id, rid, generateTranscriptForCourse, cert]);
+    if (!courseId) {
+      // in library view, we don’t need to force “paid” globally
+      setPaymentOk(false);
+      return;
+    }
 
-  // ✅ If user already has docs, treat as passed so UI doesn’t lock when opened via library
-  const passed = Boolean(grade?.passed || cert?.id || trans?.id);
+    try {
+      const s = await api<any>(`/api/certificates/status?courseId=${encodeURIComponent(courseId)}`).catch(() => null);
+      if (s && typeof s.paid === 'boolean') {
+        setPaymentOk(Boolean(s.paid));
+        return;
+      }
+    } catch {}
 
-  // 🔗 Tokens-first hook
-  const {
-    skus,
-    loading: aiCertLoading,
-    error: aiCertError,
-    message: aiCertMsg,
-    claim,
-    generate,
-  } = useAICertificates({ backendUrl, token: token || '', courseId });
+    // fallback heuristic: if we have a download_url on selected docs, assume unlocked
+    setPaymentOk(Boolean(cert?.download_url || trans?.download_url));
+  }, [api, token, backendUrl, courseId, cert?.download_url, trans?.download_url]);
 
-  const { items: aiCourses = [] } = useAiCourseEntitlements({
-    backendUrl,
-    token: token || '',
-  });
-
-  // Log exact reason for "No transcripts yet" (library view)
   useEffect(() => {
-    if (!libraryView) return;
+    checkPaymentStatus();
+  }, [checkPaymentStatus]);
 
-    const reason =
-      !token
-        ? 'no_token'
-        : docsLoading
-        ? 'loading'
-        : transErr
-        ? `error:${transErr?.status || 'unknown'}`
-        : Array.isArray(allTrans) && allTrans.length === 0
-        ? 'empty_array'
-        : 'has_items';
+  const { skus, loading: aiCertLoading, error: aiCertError, message: aiCertMsg, claim, generate } =
+    useAICertificates({ backendUrl, token: token || '', courseId });
 
-    logR('[Results][library] transcripts_state', {
-      rid,
-      token: Boolean(token),
-      docsLoading,
-      transErr,
-      allTransLen: allTrans?.length,
-      reason,
-      sample: (allTrans || []).slice(0, 1),
+  const { items: aiCourses = [] } = useAiCourseEntitlements({ backendUrl, token: token || '' });
+
+  const query = q.trim().toLowerCase();
+  const filteredCerts = useMemo(() => {
+    const arr = Array.isArray(allCerts) ? allCerts : [];
+    if (!query) return arr;
+    return arr.filter((c) => {
+      const t = String(c?.course_title || c?.title || '').toLowerCase();
+      const id = String(c?.course_id || '').toLowerCase();
+      return t.includes(query) || id.includes(query);
     });
-  }, [libraryView, token, docsLoading, transErr, allTrans, rid]);
+  }, [allCerts, query]);
+
+  const filteredTrans = useMemo(() => {
+    const arr = Array.isArray(allTrans) ? allTrans : [];
+    if (!query) return arr;
+    return arr.filter((t) => {
+      const title = String(t?.course_title || t?.title || '').toLowerCase();
+      const id = String(t?.course_id || '').toLowerCase();
+      return title.includes(query) || id.includes(query);
+    });
+  }, [allTrans, query]);
+
+  const fmtUpdated = useMemo(() => {
+    if (!lastUpdatedAt) return '—';
+    const d = new Date(lastUpdatedAt);
+    return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
+  }, [lastUpdatedAt]);
 
   return (
-    <View className="flex-1 bg-[#0b1220]">
-      <ScrollView contentContainerStyle={{ paddingBottom: 24 }} className="px-3 py-4">
-        <View className="max-w-[1100px] w-full self-center space-y-4">
-          {/* Header */}
-          <View className="flex-row items-start justify-between gap-3">
-            <View className="flex-1">
-              <Text className="text-white font-bold text-xl">
-                {libraryView ? 'My Documents' : 'Results & Documents'}
-              </Text>
-              <Text className="text-white/70 text-sm">
-                {libraryView
-                  ? 'Your AI certificates & transcripts'
-                  : `${courseTitle ? courseTitle : 'Course'} • Your quiz results & downloads`}
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={() => {
-                if (libraryView) navigation.goBack();
-                else navigation.navigate('Results' as any, {} as any);
-              }}
-              className="rounded-xl px-3 py-2 bg-white/10"
+     <SafeAreaView
+    edges={['top', 'left', 'right']}
+    style={[tw`flex-1`, { backgroundColor: palette.pageBg }]}
+  >
+    <ScrollView
+      style={tw`flex-1 px-3 py-4`}
+      contentContainerStyle={{ paddingBottom: bottomPad }}
+      contentInsetAdjustmentBehavior="automatic"
+      keyboardShouldPersistTaps="handled"
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={isDark ? '#ffffff' : '#0d141c'} // iOS
+          colors={[isDark ? '#ffffff' : '#0d141c']}   // Android
+        />
+      }
+    >
+        <View style={[tw`w-full self-center`, { maxWidth: 1100 }]}>
+          {/* Header (ProfileCard-like gradient bar) */}
+          <Card palette={palette} style={tw`mb-4`}>
+            <LinearGradient
+              colors={isDark ? ['rgba(0,0,0,0.55)', 'transparent'] : ['rgba(0,0,0,0.10)', 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={tw`px-4 py-4`}
             >
-              <Text className="text-white text-sm">{libraryView ? 'Back' : 'All documents'}</Text>
-            </Pressable>
-          </View>
+              <View style={tw`flex-row items-start justify-between`}>
+                <View style={tw`flex-1 pr-2`}>
+                  <Text style={[tw`text-xl font-semibold`, { color: palette.text }]}>
+                    {libraryView ? 'My Documents' : 'Results & Documents'}
+                  </Text>
+                  <Text style={[tw`text-sm mt-1`, { color: palette.sub }]}>
+                    {libraryView
+                      ? 'Your AI certificates & transcripts'
+                      : `${courseTitle ? courseTitle : 'Course'} • Your quiz results & downloads`}
+                  </Text>
+                </View>
 
-          {/* ✅ Library view */}
+                <Btn
+                  palette={palette}
+                  variant="ghost"
+                  label={libraryView ? 'Back' : 'All docs'}
+                  onPress={() => {
+                    if (libraryView) navigation.goBack();
+                    else navigation.navigate('Results' as any, {} as any);
+                  }}
+                  style={tw`px-3`}
+                />
+              </View>
+            </LinearGradient>
+          </Card>
+
+          {/* ---------------------- LIBRARY VIEW ---------------------- */}
           {libraryView ? (
-            <View className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">
+            <>
               {!token ? (
-                <View className="rounded-xl bg-black/20 ring-1 ring-white/10 p-3">
-                  <Text className="text-white font-semibold">Sign in required</Text>
-                  <Text className="text-white/70 text-sm mt-1">
+                <Card palette={palette} style={tw`p-4`}>
+                  <Text style={[tw`text-base font-semibold`, { color: palette.text }]}>Sign in required</Text>
+                  <Text style={[tw`text-sm mt-1`, { color: palette.sub }]}>
                     Please sign in to view your certificates and transcripts.
                   </Text>
-                  <View className="mt-3 flex-row gap-2">
-                    <Pressable
-                      onPress={() => navigation.navigate('Login' as any, { reason: 'docs' } as any)}
-                      className="h-10 px-4 rounded-lg justify-center bg-indigo-600"
-                    >
-                      <Text className="text-white text-sm font-semibold">Sign in</Text>
-                    </Pressable>
-                  </View>
-                </View>
+                  <Btn
+                    palette={palette}
+                    variant="primary"
+                    label="Sign in"
+                    onPress={() => navigation.navigate('Login' as any, { reason: 'docs' } as any)}
+                    style={tw`mt-3`}
+                  />
+                </Card>
               ) : (
                 <>
-                  {docsLoading ? (
-                    <View className="flex-row items-center gap-2">
-                      <ActivityIndicator />
-                      <Text className="text-white/70 text-sm">Loading documents…</Text>
+                  {/* Overview */}
+                  <Card palette={palette} soft style={tw`p-4`}>
+                    <View style={tw`flex-row items-center justify-between`}>
+                      <View style={tw`flex-1 pr-2`}>
+                        <Text style={[tw`text-base font-semibold`, { color: palette.text }]}>Documents overview</Text>
+                        <Text style={[tw`text-xs mt-1`, { color: palette.muted }]}>Updated: {fmtUpdated}</Text>
+                      </View>
+
+                      <Btn
+                        palette={palette}
+                        variant="soft"
+                        label="Refresh"
+                        onPress={async () => {
+                          setDocsLoading(true);
+                          try {
+                            await fetchDocs('refresh_button');
+                          } finally {
+                            setDocsLoading(false);
+                          }
+                        }}
+                        style={tw`px-3`}
+                      />
                     </View>
-                  ) : null}
+
+                    <View style={tw`flex-row flex-wrap mt-3`}>
+                      <View style={tw`mr-2 mb-2`}>
+                        <Pill palette={palette} label={`Certificates: ${allCerts.length}`} />
+                      </View>
+                      <View style={tw`mr-2 mb-2`}>
+                        <Pill palette={palette} label={`Transcripts: ${allTrans.length}`} />
+                      </View>
+                      {docsLoading ? (
+                        <View style={tw`mr-2 mb-2`}>
+                          <Pill palette={palette} label="Loading…" />
+                        </View>
+                      ) : null}
+                      {certErr ? (
+                        <View style={tw`mr-2 mb-2`}>
+                          <Pill palette={palette} label={`Cert error ${certErr?.status || ''}`} tone="warn" />
+                        </View>
+                      ) : null}
+                      {transErr ? (
+                        <View style={tw`mr-2 mb-2`}>
+                          <Pill palette={palette} label={`Trans error ${transErr?.status || ''}`} tone="warn" />
+                        </View>
+                      ) : null}
+                    </View>
+
+                    {/* Search */}
+                    <View style={tw`mt-2`}>
+                      <TextInput
+                        value={q}
+                        onChangeText={setQ}
+                        placeholder="Search by course title…"
+                        placeholderTextColor={palette.muted}
+                        style={[
+                          tw`h-12 rounded-xl px-3`,
+                          { color: palette.text, backgroundColor: palette.cardBg, borderColor: palette.border, borderWidth: 1 },
+                        ]}
+                      />
+                      <Text style={[tw`text-[11px] mt-1`, { color: palette.muted }]}>Tip: Search also matches courseId.</Text>
+                    </View>
+
+                    {/* Tabs */}
+                    <View style={tw`flex-row mt-3`}>
+                      {(['certs', 'transcripts', 'all'] as LibraryTab[]).map((t) => {
+                        const active = tab === t;
+                        const label = t === 'certs' ? 'Certificates' : t === 'transcripts' ? 'Transcripts' : 'All';
+                        return (
+                          <Pressable
+                            key={t}
+                            onPress={() => setTab(t)}
+                            style={[
+                              tw`flex-1 h-10 rounded-xl items-center justify-center mr-2`,
+                              {
+                                backgroundColor: active ? palette.cardBg : 'transparent',
+                                borderColor: palette.border,
+                                borderWidth: 1,
+                              },
+                              t === 'all' ? tw`mr-0` : null,
+                            ]}
+                          >
+                            <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>{label}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </Card>
 
                   {/* Certificates */}
-                  <View className="space-y-2">
-                    <Text className="text-white font-semibold">My Certificates</Text>
-                    {allCerts.length === 0 ? (
-                      <Text className="text-white/60 text-sm">No certificates yet.</Text>
-                    ) : (
-                      <View className="space-y-2">
-                        {(allCerts || []).map((c: any) => {
-                          const hasTranscript = Boolean(transByCourse.get(String(c.course_id)));
-                          const cid = String(c.course_id);
-                          const title = c.course_title || c.title || cid || 'Course';
+                  {(tab === 'certs' || tab === 'all') && (
+                    <View style={tw`mt-4`}>
+                      <Text style={[tw`text-lg font-semibold`, { color: palette.text }]}>My Certificates</Text>
 
-                          return (
-                            <View
-                              key={String(c.id)}
-                              className="rounded-xl bg-black/20 ring-1 ring-white/10 p-3 space-y-2"
-                            >
-                              <Text className="text-white font-semibold" numberOfLines={1}>
-                                {title}
-                              </Text>
-                              <Text className="text-white/60 text-xs">Certificate</Text>
+                      {filteredCerts.length === 0 ? (
+                        <Card palette={palette} style={tw`p-4 mt-2`}>
+                          <Text style={[tw`text-sm`, { color: palette.sub }]}>No certificates yet.</Text>
+                        </Card>
+                      ) : (
+                        <View style={tw`mt-2`}>
+                          {filteredCerts.map((c: any) => {
+                            const cid = String(c.course_id);
+                            const title = c.course_title || c.title || cid || 'Course';
 
-                              <View className="flex-row flex-wrap gap-2">
-                                <Pressable
-                                  onPress={() =>
-                                    navigation.navigate('Results' as any, {
-                                      courseId: cid,
-                                      courseTitle: title,
-                                    } as any)
-                                  }
-                                  className="px-3 py-2 rounded-lg bg-white/10"
-                                >
-                                  <Text className="text-white text-sm">Open</Text>
-                                </Pressable>
+                            const tRow = transByCourse.get(String(c.course_id));
+                            const transcriptReady = Boolean(tRow && String(tRow.url || '').trim().length > 0);
+                            const extended = looksExtendedMeta(c);
 
-                                <Pressable
-                                  onPress={async () => {
-                                    try {
-                                      await downloadCertificateFile(backendUrl, token || '', String(c.id));
-                                    } catch (e: any) {
-                                      warnR('[Results][lib][download cert] fail', { rid, msg: e?.message });
-                                      setPaymentOpen(true);
+                            const previewUrl = buildDocPreviewUrl({
+                              docType: 'certificates',
+                              docId: c?.id ? String(c.id) : null,
+                              pdfUrl: c?.url ? String(c.url) : null,
+                              backendUrl: backendUrl || null,
+                            });
+
+                            const busy = genTransState.loading && String(genTransState.courseId) === cid;
+                            const downloading = downloadingKey === `cert:${String(c.id)}`;
+
+                            const transcriptLabel = transcriptReady
+                              ? 'Download Transcript'
+                              : busy
+                              ? 'Generating…'
+                              : 'Generate Transcript';
+
+                            return (
+                              <Card key={String(c.id)} palette={palette} style={tw`p-3 mt-3`}>
+                                <View style={tw`flex-row`}>
+                                  <View
+                                    style={[
+                                      tw`w-16 h-16 rounded-xl overflow-hidden items-center justify-center mr-3`,
+                                      { backgroundColor: palette.cardSoft, borderColor: palette.border, borderWidth: 1 },
+                                    ]}
+                                  >
+                                    {previewUrl ? (
+                                      <Image source={{ uri: previewUrl }} style={tw`w-full h-full`} resizeMode="cover" />
+                                    ) : (
+                                      <Text style={[tw`text-[10px]`, { color: palette.muted }]}>Preview</Text>
+                                    )}
+                                  </View>
+
+                                  <View style={tw`flex-1`}>
+                                    <Text numberOfLines={1} style={[tw`font-semibold`, { color: palette.text }]}>
+                                      {title}
+                                    </Text>
+
+                                    <View style={tw`flex-row flex-wrap mt-2`}>
+                                      <View style={tw`mr-2 mb-2`}>
+                                        <Pill palette={palette} label="Certificate" />
+                                      </View>
+                                      {extended ? (
+                                        <View style={tw`mr-2 mb-2`}>
+                                          <Pill palette={palette} label="Extended" tone="warn" />
+                                        </View>
+                                      ) : null}
+                                      {transcriptReady ? (
+                                        <View style={tw`mr-2 mb-2`}>
+                                          <Pill palette={palette} label="Transcript ready" tone="good" />
+                                        </View>
+                                      ) : null}
+                                    </View>
+                                  </View>
+                                </View>
+
+                                <View style={tw`flex-row flex-wrap mt-3`}>
+                                  <Btn
+                                    palette={palette}
+                                    variant="soft"
+                                    label="Open"
+                                    onPress={() =>
+                                      navigation.navigate('Results' as any, { courseId: cid, courseTitle: title } as any)
                                     }
-                                  }}
-                                  className="px-3 py-2 rounded-lg bg-white/10"
-                                >
-                                  <Text className="text-white text-sm">Download</Text>
-                                </Pressable>
+                                    style={tw`mr-2 mb-2`}
+                                  />
 
-                                <Pressable
-                                  onPress={() => generateTranscriptForCourse(cid, 'library_button')}
-                                  disabled={hasTranscript || genTransState.loading}
-                                  className={`px-3 py-2 rounded-lg ${
-                                    hasTranscript
-                                      ? 'bg-white/5 ring-1 ring-white/10'
-                                      : 'bg-white/10'
-                                  }`}
-                                >
-                                  <Text className="text-white text-sm">
-                                    {hasTranscript
-                                      ? 'Transcript Ready'
-                                      : genTransState.loading
-                                      ? 'Generating…'
-                                      : 'Generate Transcript'}
-                                  </Text>
-                                </Pressable>
-                              </View>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
+                                  <Btn
+                                    palette={palette}
+                                    variant="soft"
+                                    disabled={downloading}
+                                    label={downloading ? 'Downloading…' : 'Download'}
+                                    onPress={() =>
+                                    downloadAndSharePdf({
+                                      kind: 'cert',
+                                      id: String(c.id),
+                                      courseTitle: title,
+                                      openPaymentOn402: false, // ✅ better UX: don’t pop payment here
+                                    })
+                                  }
+                                                                      style={tw`mr-2 mb-2`}
+                                  />
+
+                                  <Btn
+                                    palette={palette}
+                                    variant={transcriptReady ? 'primary' : 'soft'}
+                                    disabled={busy}
+                                    label={transcriptLabel}
+                                    onPress={async () => {
+                                      if (transcriptReady && tRow?.id) {
+                                        await downloadPdfNative({
+                                          kind: 'trans',
+                                          id: String(tRow.id),
+                                          title: `${title}-transcript`,
+                                          explicitUrl: tRow?.download_url || null,
+                                          onFailOfferUnlock: () =>
+                                            navigation.navigate('Results' as any, {
+                                              courseId: cid,
+                                              courseTitle: title,
+                                            } as any),
+                                        });
+                                        return;
+                                      }
+                                      await generateTranscriptForCourse(cid, 'library_button');
+                                    }}
+                                    style={tw`mb-2`}
+                                  />
+                                </View>
+                              </Card>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  )}
 
                   {/* Transcripts */}
-                  <View className="space-y-2">
-                    <Text className="text-white font-semibold">My Transcripts</Text>
-                    {allTrans.length === 0 ? (
-                      <Text className="text-white/60 text-sm">No transcripts yet.</Text>
-                    ) : (
-                      <View className="space-y-2">
-                        {(allTrans || []).map((t: any) => {
-                          const cid = String(t.course_id);
-                          const title = t.course_title || t.title || cid || 'Course';
-                          return (
-                            <View
-                              key={String(t.id)}
-                              className="rounded-xl bg-black/20 ring-1 ring-white/10 p-3 space-y-2"
-                            >
-                              <Text className="text-white font-semibold" numberOfLines={1}>
-                                {title}
-                              </Text>
-                              <Text className="text-white/60 text-xs">Transcript</Text>
+                  {(tab === 'transcripts' || tab === 'all') && (
+                    <View style={tw`mt-5`}>
+                      <Text style={[tw`text-lg font-semibold`, { color: palette.text }]}>My Transcripts</Text>
 
-                              <View className="flex-row flex-wrap gap-2">
-                                <Pressable
-                                  onPress={() =>
-                                    navigation.navigate('Results' as any, {
-                                      courseId: cid,
-                                      courseTitle: title,
-                                    } as any)
-                                  }
-                                  className="px-3 py-2 rounded-lg bg-white/10"
-                                >
-                                  <Text className="text-white text-sm">Open</Text>
-                                </Pressable>
+                      {filteredTrans.length === 0 ? (
+                        <Card palette={palette} style={tw`p-4 mt-2`}>
+                          <Text style={[tw`text-sm`, { color: palette.sub }]}>No transcripts yet.</Text>
+                        </Card>
+                      ) : (
+                        <View style={tw`mt-2`}>
+                          {filteredTrans.map((t: any) => {
+                            const cid = String(t.course_id);
+                            const title = t.course_title || t.title || cid || 'Course';
+                            const downloading = downloadingKey === `trans:${String(t.id)}`;
 
-                                <Pressable
-                                  onPress={async () => {
-                                    try {
-                                      await downloadTranscriptFile(backendUrl, token || '', String(t.id));
-                                    } catch (e: any) {
-                                      warnR('[Results][lib][download trans] fail', { rid, msg: e?.message });
-                                      setPaymentOpen(true);
+                            return (
+                              <Card key={String(t.id)} palette={palette} style={tw`p-3 mt-3`}>
+                                <Text numberOfLines={1} style={[tw`font-semibold`, { color: palette.text }]}>
+                                  {title}
+                                </Text>
+                                <Text style={[tw`text-xs mt-1`, { color: palette.sub }]}>Transcript</Text>
+
+                                <View style={tw`flex-row flex-wrap mt-3`}>
+                                  <Btn
+                                    palette={palette}
+                                    variant="soft"
+                                    label="Open"
+                                    onPress={() =>
+                                      navigation.navigate('Results' as any, { courseId: cid, courseTitle: title } as any)
                                     }
-                                  }}
-                                  className="px-3 py-2 rounded-lg bg-white/10"
-                                >
-                                  <Text className="text-white text-sm">Download</Text>
-                                </Pressable>
-                              </View>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
-
-                  {DEBUG_RESULTS ? (
-                    <View className="pt-2 border-t border-white/10">
-                      <Text className="text-[11px] text-white/40">
-                        debug rid={rid} loading={String(docsLoading)} certErr={certErr?.status || '—'} transErr={transErr?.status || '—'}
-                      </Text>
+                                    style={tw`mr-2 mb-2`}
+                                  />
+                                  <Btn
+                                    palette={palette}
+                                    variant="primary"
+                                    disabled={downloading}
+                                    label={downloading ? 'Downloading…' : 'Download'}
+                                    onPress={() =>
+                                    downloadAndSharePdf({
+                                      kind: 'trans',
+                                      id: String(t.id),
+                                      courseTitle: title,
+                                      openPaymentOn402: false,
+                                    })
+                                  }
+                                    style={tw`mb-2`}
+                                  />
+                                </View>
+                              </Card>
+                            );
+                          })}
+                        </View>
+                      )}
                     </View>
-                  ) : null}
+                  )}
+
+                 
                 </>
               )}
-            </View>
+            </>
           ) : null}
 
-          {/* ✅ Course-specific view */}
+          {/* ---------------------- COURSE VIEW ---------------------- */}
           {!libraryView ? (
             <>
-              {/* Score card */}
-              <View
-                className={`rounded-2xl p-4 ${
-                  passed ? 'bg-emerald-500/10' : 'bg-red-500/10'
-                } ${passed ? 'ring-emerald-500/40' : 'ring-red-500/40'} ring-1`}
-              >
-                <Text className="text-white/80 text-sm">Score</Text>
-                <Text className="text-2xl font-semibold text-white">
-                  {grade ? `${grade.scorePct}%` : '—'}
-                  <Text className="text-white/60 text-sm"> (Pass mark {grade?.passMark ?? 70}%)</Text>
-                </Text>
-                <Text className="mt-1 text-white/70">
+              {/* Score */}
+              <Card palette={palette} style={tw`p-4`}>
+                <Text style={[tw`text-sm`, { color: palette.sub }]}>Score</Text>
+
+                <View style={tw`mt-2`}>
+                  <Text style={[tw`text-3xl font-semibold`, { color: palette.text }]}>
+                    {grade ? `${grade.scorePct}%` : '—'}
+                  </Text>
+
+                  <View style={tw`mt-1 flex-row items-center`}>
+                    <View style={tw`mr-2`}>
+                      <Pill palette={palette} label="Pass Mark" />
+                    </View>
+                    <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>
+                      {grade?.passMark ?? 70}%
+                    </Text>
+
+                    <View style={tw`ml-auto`}>
+                      <Pill palette={palette} label={paymentOk ? 'Unlocked' : 'Locked'} tone={paymentOk ? 'good' : 'neutral'} />
+                    </View>
+                  </View>
+                </View>
+
+                <Text style={[tw`mt-3`, { color: palette.sub }]}>
                   {passed
                     ? 'You have documents available. You can download them anytime.'
                     : 'Review the lesson and try again to pass.'}
                 </Text>
-              </View>
+              </Card>
 
               {/* Previews */}
-              <View className="gap-4">
+              <View style={tw`mt-4`}>
                 <WatermarkPreview
                   title="Certificate"
                   pdfUrl={cert?.url || null}
                   docId={cert?.id || null}
                   backendUrl={backendUrl}
                   docType="certificates"
+                  palette={palette}
                 />
                 <WatermarkPreview
                   title="Transcript"
@@ -784,20 +1322,19 @@ const ResultsPage: React.FC = () => {
                   docId={trans?.id || null}
                   backendUrl={backendUrl}
                   docType="transcripts"
+                  palette={palette}
                 />
               </View>
 
-              {/* Purchased AI courses (same idea as web) */}
+              {/* Purchased AI courses */}
               {aiCourses.length > 0 ? (
-                <View className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
-                  <View>
-                    <Text className="text-white font-semibold">Purchased AI courses</Text>
-                    <Text className="text-white/60 text-sm">
-                      Certificate purchases unlock up to 60 lessons
-                    </Text>
-                  </View>
+                <Card palette={palette} style={tw`p-4`}>
+                  <Text style={[tw`text-lg font-semibold`, { color: palette.text }]}>Purchased AI courses</Text>
+                  <Text style={[tw`text-sm mt-1`, { color: palette.sub }]}>
+                    Certificate purchases unlock up to 60 lessons
+                  </Text>
 
-                  <View className="gap-3">
+                  <View style={tw`mt-3`}>
                     {aiCourses.map((item: any) => {
                       const statusText = item.completion?.passed
                         ? 'Completed'
@@ -806,37 +1343,35 @@ const ResultsPage: React.FC = () => {
                         : 'Not started';
 
                       const cid = String(item.courseId || item.course_id);
+
                       return (
-                        <View
-                          key={String(item.course_id || cid)}
-                          className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-2"
-                        >
-                          <View className="flex-row items-center justify-between gap-2">
-                            <View className="flex-1 mr-2">
-                              <Text className="text-white font-semibold" numberOfLines={1}>
+                        <Card key={String(item.course_id || cid)} palette={palette} soft style={tw`p-3 mt-3`}>
+                          <View style={tw`flex-row items-center justify-between`}>
+                            <View style={tw`flex-1 pr-2`}>
+                              <Text numberOfLines={1} style={[tw`font-semibold`, { color: palette.text }]}>
                                 {item.title}
                               </Text>
-                              <Text className="text-white/60 text-xs">
+                              <Text style={[tw`text-xs mt-1`, { color: palette.sub }]}>
                                 Lessons used {item.lessons_used}/{item.max_lessons || item.lesson_cap}
                               </Text>
                             </View>
-                            <View className="px-2 py-1 rounded-full bg-white/10">
-                              <Text className="text-white/80 text-xs">{statusText}</Text>
-                            </View>
+                            <Pill palette={palette} label={statusText} />
                           </View>
 
-                          <View className="flex-row flex-wrap gap-2">
+                          <View style={tw`flex-row flex-wrap mt-3`}>
                             {!item.completion?.passed ? (
-                              <Pressable
-                                onPress={() =>
-                                  navigation.navigate('CourseDetails' as any, { courseId: cid } as any)
-                                }
-                                className="px-3 py-2 rounded-lg bg-white/10"
-                              >
-                                <Text className="text-white text-sm">Continue course</Text>
-                              </Pressable>
+                              <Btn
+                                palette={palette}
+                                variant="soft"
+                                label="Continue course"
+                                onPress={() => navigation.navigate('CourseDetails' as any, { courseId: cid } as any)}
+                                style={tw`mb-2`}
+                              />
                             ) : (
-                              <Pressable
+                              <Btn
+                                palette={palette}
+                                variant="primary"
+                                label="View certificate"
                                 onPress={() =>
                                   navigation.navigate('Results' as any, {
                                     courseId: cid,
@@ -844,299 +1379,202 @@ const ResultsPage: React.FC = () => {
                                     grade: item.completion,
                                   } as any)
                                 }
-                                className="px-3 py-2 rounded-lg bg-emerald-500/20"
-                              >
-                                <Text className="text-emerald-100 text-sm">View certificate</Text>
-                              </Pressable>
+                                style={tw`mb-2`}
+                              />
                             )}
                           </View>
-                        </View>
+                        </Card>
                       );
                     })}
                   </View>
-                </View>
+                </Card>
               ) : null}
 
-              {/* Actions */}
-              <View className="rounded-2xl p-4 ring-1 ring-white/10 bg-white/5">
-                <Text className="text-white font-semibold mb-2">Downloads</Text>
-                <Text className="text-white/70 text-sm mb-3">
-                  Pay the certificate fee once to download both the{' '}
-                  <Text className="font-medium">Certificate</Text> and{' '}
-                  <Text className="font-medium">Transcript</Text> without watermark.
+              {/* Downloads */}
+              <Card palette={palette} style={tw`p-4 mt-4`}>
+                <Text style={[tw`text-lg font-semibold`, { color: palette.text }]}>Downloads</Text>
+                <Text style={[tw`text-sm mt-1`, { color: palette.sub }]}>
+                  Pay the certificate fee once to download both the Certificate and Transcript without watermark.
                 </Text>
 
-                {/* Tokens-first block */}
-                <View className="mb-4 p-3 rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/30">
-                  <Text className="text-white font-medium text-sm">Claim with Tokens</Text>
-                  <Text className="text-white/70 text-xs mb-2">
-                    No processor fees for AI certificates.
-                  </Text>
+                {/* Tokens-first */}
+                <Card palette={palette} soft style={tw`p-3 mt-4`}>
+                  <Text style={[tw`text-sm font-semibold`, { color: palette.text }]}>Claim with Tokens</Text>
+                  <Text style={[tw`text-xs mt-1`, { color: palette.sub }]}>No processor fees for AI certificates.</Text>
 
-                  {aiCertLoading ? <Text className="text-xs text-white/60">Loading…</Text> : null}
-                  {aiCertError ? <Text className="text-xs text-red-300">{aiCertError}</Text> : null}
-                  {aiCertMsg ? <Text className="text-xs text-emerald-300">{aiCertMsg}</Text> : null}
+                  {aiCertLoading ? <Text style={[tw`text-xs mt-2`, { color: palette.sub }]}>Loading…</Text> : null}
+                  {aiCertError ? <Text style={[tw`text-xs mt-2`, { color: palette.danger }]}>{aiCertError}</Text> : null}
+                  {aiCertMsg ? <Text style={[tw`text-xs mt-2`, { color: palette.good }]}>{aiCertMsg}</Text> : null}
 
-                  <View className="gap-2">
+                  <View style={tw`mt-3`}>
                     {(Array.isArray(skus) ? skus : []).map((sku: any) => {
                       const code = skuCodeOf(sku);
                       const price = priceTokensOf(sku);
+
                       return (
-                        <View
-                          key={code || sku?.title || String(Math.random())}
-                          className="flex-row items-center justify-between rounded-lg ring-1 ring-white/15 p-2 bg-white/5"
-                        >
-                          <View className="flex-1 mr-2">
-                            <Text className="text-sm font-medium text-white" numberOfLines={1}>
-                              {sku?.title || 'Certificate'}
-                            </Text>
-                            <Text className="text-[11px] text-white/60" numberOfLines={1}>
-                              {code || '—'}
-                            </Text>
-                          </View>
+                        <Card key={code || sku?.title || String(Math.random())} palette={palette} soft style={tw`p-2 mt-2`}>
+                          <View style={tw`flex-row items-center justify-between`}>
+                            <View style={tw`flex-1 pr-2`}>
+                              <Text numberOfLines={1} style={[tw`text-sm font-semibold`, { color: palette.text }]}>
+                                {sku?.title || 'Certificate'}
+                              </Text>
+                              <Text numberOfLines={1} style={[tw`text-[11px] mt-0.5`, { color: palette.muted }]}>
+                                {code || '—'}
+                              </Text>
+                            </View>
 
-                          <View className="flex-row items-center gap-2">
-                            <Text className="text-sm font-semibold text-white">{price} Tokens</Text>
+                            <View style={tw`flex-row items-center`}>
+                              <View style={tw`mr-2`}>
+                                <Pill palette={palette} label={`${price} Tokens`} />
+                              </View>
+                              <Btn
+                                palette={palette}
+                                variant="primary"
+                                disabled={!passed}
+                                label="Claim & Generate"
+                                onPress={async () => {
+                                  if (!token || !courseId) {
+                                    Alert.alert('Sign in required', 'Please sign in to claim certificates.');
+                                    return;
+                                  }
 
-                            <Pressable
-                              disabled={!passed}
-                              onPress={async () => {
-                                if (!token || !courseId) {
-                                  warnR('[Results][claim] missing token/courseId', {
-                                    rid,
-                                    hasToken: !!token,
-                                    courseId,
-                                  });
-                                  Alert.alert('Sign in required', 'Please sign in to claim certificates.');
-                                  return;
-                                }
+                                  try {
+                                    await claim(code);
+                                    const doc: any = await generate();
 
-                                logR('[Results][claim] click', { rid, courseId, sku: { code, title: sku?.title }, passed });
+                                    if (doc?.id) {
+                                      const base = String(backendUrl || '').replace(/\/+$/, '');
+                                      setCert({
+                                        id: String(doc.id),
+                                        url: doc.url,
+                                        download_url: doc.download_url || `${base}/api/certificates/${doc.id}/download`,
+                                        meta: doc,
+                                      });
 
-                                try {
-                                  logR('[Results][claim] claim start', { rid, code, courseId });
+                                      await fetchDocs('post_claim_refresh');
+                                      await checkPaymentStatus();
 
-                                  // Prefer single-arg claim (hook already has courseId)
-                                  await claim(code);
-
-                                  logR('[Results][claim] claim ok', { rid, code, courseId });
-
-                                  logR('[Results][claim] generate cert start', { rid, courseId });
-                                  const doc: any = await generate();
-                                  logR('[Results][claim] generate cert ok', { rid, doc: safeJson(doc) });
-
-                                  if (doc?.id) {
-                                    const base = String(backendUrl || '').replace(/\/+$/, '');
-                                    const nextCert = {
-                                      id: String(doc.id),
-                                      url: doc.url,
-                                      download_url: doc.download_url || `${base}/api/certificates/${doc.id}/download`,
-                                      meta: doc,
-                                    };
-                                    setCert(nextCert);
-                                    logR('[Results][claim] setCert', { rid, certId: nextCert.id });
-
-                                    // refresh all-certs list so library reflects latest
-                                    try {
-                                      logR('[Results][claim] refresh cert list start', { rid });
-                                      const cs = await api<any>(`/api/certificates/me`);
-                                      const arr = Array.isArray(cs) ? cs : [];
-                                      setAllCerts(arr);
-                                      logR('[Results][claim] refresh cert list ok', { rid, count: arr.length });
-                                    } catch (e: any) {
-                                      warnR('[Results][claim] refresh cert list fail', { rid, status: e?.status, msg: e?.message });
-                                    }
-
-                                    // If extended SKU, also generate transcript and refresh list
-                                    if (looksExtendedSku(sku)) {
-                                      try {
-                                        logR('[Results][transcript.generate] start', { rid, courseId, sku: code });
-
-                                        const t: any = await api(`/api/transcripts/generate`, {
-                                          method: 'POST',
-                                          body: JSON.stringify({ courseId }),
-                                        });
-
-                                        logR('[Results][transcript.generate] ok', { rid, t: safeJson(t) });
-
-                                        if (t?.id) {
-                                          const base = String(backendUrl || '').replace(/\/+$/, '');
-                                          setTrans({
-                                            id: String(t.id),
-                                            url: t.url,
-                                            download_url: t.download_url || `${base}/api/transcripts/${t.id}/download`,
-                                            meta: t,
-                                          });
-                                          logR('[Results][transcript.generate] setTrans', { rid, transId: String(t.id) });
-                                        }
-
+                                      if (looksExtendedSku(sku)) {
                                         try {
-                                          logR('[Results][transcript.generate] refresh list start', { rid });
-                                          const ts = await api<any>(`/api/transcripts/me`);
-                                          const arr = Array.isArray(ts) ? ts : [];
-                                          setAllTrans(arr);
-                                          logR('[Results][transcript.generate] refresh list ok', { rid, count: arr.length });
+                                          const t: any = await api(`/api/transcripts/generate`, {
+                                            method: 'POST',
+                                            body: JSON.stringify({ courseId }),
+                                          });
+
+                                          if (t?.id) {
+                                            setTrans({
+                                              id: String(t.id),
+                                              url: t.url,
+                                              download_url: t.download_url || `${base}/api/transcripts/${t.id}/download`,
+                                              meta: t,
+                                            });
+                                          }
+
+                                          await fetchDocs('post_extended_trans_refresh');
                                         } catch (e: any) {
-                                          warnR('[Results][transcript.generate] refresh list fail', { rid, status: e?.status, msg: e?.message });
-                                        }
-
-                                        if (t?.download_url) {
-                                          logR('[Results][transcript.generate] open download_url', { rid });
-                                          openExternal(t.download_url);
-                                        }
-                                      } catch (e: any) {
-                                        errR('[Results][transcript.generate] fail', {
-                                          rid,
-                                          status: e?.status,
-                                          msg: e?.message,
-                                          data: safeJson(e?.data),
-                                        });
-
-                                        if (e?.status === 402 && e?.data?.error === 'EXTENDED_REQUIRED') {
-                                          Alert.alert(
-                                            'Extended required',
-                                            e?.data?.message || 'Transcript requires Extended certificate.'
-                                          );
+                                          if (e?.status === 402 && e?.data?.error === 'EXTENDED_REQUIRED') {
+                                            Alert.alert(
+                                              'Extended required',
+                                              e?.data?.message || 'Transcript requires Extended certificate.'
+                                            );
+                                          }
                                         }
                                       }
                                     }
+                                  } catch (e: any) {
+                                    const msg = e?.data?.message || e?.message || 'Could not claim/generate.';
+                                    Alert.alert('Claim failed', msg);
+                                    if (e?.status === 402) setPaymentOpen(true);
                                   }
-                                } catch (e: any) {
-                                  errR('[Results][claim] token claim/generate failed', {
-                                    rid,
-                                    status: e?.status,
-                                    msg: e?.message,
-                                    data: safeJson(e?.data),
-                                  });
-
-                                  const msg = e?.data?.message || e?.message || 'Could not claim/generate.';
-                                  Alert.alert('Claim failed', msg);
-
-                                  if (e?.status === 402) setPaymentOpen(true);
-                                }
-                              }}
-                              className={`px-3 py-1.5 rounded ${
-                                passed ? 'bg-emerald-600' : 'bg-emerald-600/50'
-                              }`}
-                            >
-                              <Text className="text-white text-sm font-semibold">Claim &amp; Generate</Text>
-                            </Pressable>
+                                }}
+                              />
+                            </View>
                           </View>
-                        </View>
+                        </Card>
                       );
                     })}
                   </View>
-                </View>
+                </Card>
 
-                {/* Buttons */}
-                <View className="flex-row flex-wrap gap-2">
-                  <Pressable
-                    onPress={() => {
-                      logR('[Results][pay] open widget', { rid, passed });
-                      setPaymentOpen(true);
-                    }}
+                <View style={tw`mt-4`}>
+                  <Btn
+                    palette={palette}
+                    variant="primary"
                     disabled={!passed}
-                    className={`h-10 px-4 rounded-lg justify-center ${
-                      passed ? 'bg-indigo-600' : 'bg-indigo-600/40'
-                    }`}
-                  >
-                    <Text className="text-white text-sm font-semibold">Pay certificate fee</Text>
-                  </Pressable>
+                    label={paymentOk ? 'Certificate unlocked' : 'Pay certificate fee'}
+                    onPress={() => setPaymentOpen(true)}
+                    style={tw`mb-2`}
+                  />
 
-                  <Pressable
-                    onPress={async () => {
-                      if (!cert?.id) {
-                        logR('[Results][download cert] missing cert -> open payment', { rid });
-                        setPaymentOpen(true);
-                        return;
-                      }
-                      try {
-                        logR('[Results][download cert] start', { rid, certId: cert.id });
-                        await downloadCertificateFile(backendUrl, token || '', cert.id);
-                        logR('[Results][download cert] ok', { rid, certId: cert.id });
-                      } catch (e: any) {
-                        warnR('[Results][download cert] fail -> open payment', { rid, msg: e?.message });
-                        setPaymentOpen(true);
-                      }
-                    }}
-                    className={`h-10 px-4 rounded-lg justify-center ${
-                      cert?.id ? 'bg-white/10' : 'bg-white/5'
-                    } ring-1 ${cert?.id ? 'ring-white/20' : 'ring-white/10'}`}
-                  >
-                    <Text className="text-white text-sm font-semibold">Download Certificate (PDF)</Text>
-                  </Pressable>
+                                <Btn
+                palette={palette}
+                variant="soft"
+                disabled={!cert?.id || downloadingKey === `cert:${cert?.id}`}
+                label={downloadingKey === `cert:${cert?.id}` ? 'Downloading…' : 'Download Certificate (PDF)'}
+                onPress={() => {
+                  if (!cert?.id) return;
+                  downloadAndSharePdf({
+                    kind: 'cert',
+                    id: cert.id,
+                    courseTitle: courseTitle,
+                    openPaymentOn402: true, // ✅ only here
+                  });
+                }}
+                style={tw`mb-2`}
+              />
 
-                  <Pressable
-                    onPress={async () => {
-                      if (!trans?.id) {
-                        logR('[Results][download transcript] missing trans -> open payment', { rid });
-                        setPaymentOpen(true);
-                        return;
-                      }
-                      try {
-                        logR('[Results][download transcript] start', { rid, transId: trans.id });
-                        await downloadTranscriptFile(backendUrl, token || '', trans.id);
-                        logR('[Results][download transcript] ok', { rid, transId: trans.id });
-                      } catch (e: any) {
-                        warnR('[Results][download transcript] fail -> open payment', { rid, msg: e?.message });
-                        setPaymentOpen(true);
-                      }
-                    }}
-                    className={`h-10 px-4 rounded-lg justify-center ${
-                      trans?.id ? 'bg-white/10' : 'bg-white/5'
-                    } ring-1 ${trans?.id ? 'ring-white/20' : 'ring-white/10'}`}
-                  >
-                    <Text className="text-white text-sm font-semibold">Download Transcript (PDF)</Text>
-                  </Pressable>
+              <Btn
+                palette={palette}
+                variant="soft"
+                disabled={!trans?.id || downloadingKey === `trans:${trans?.id}`}
+                label={downloadingKey === `trans:${trans?.id}` ? 'Downloading…' : 'Download Transcript (PDF)'}
+                onPress={() => {
+                  if (!trans?.id) {
+                    Alert.alert('Transcript not ready', 'Generate it first (if available).');
+                    return;
+                  }
+                  downloadAndSharePdf({
+                    kind: 'trans',
+                    id: trans.id,
+                    courseTitle: courseTitle,
+                    openPaymentOn402: false, // ✅ NEVER open payment for transcript download
+                  });
+                }}
+              />
+                  {!passed ? (
+                    <Text style={[tw`text-[12px] mt-2`, { color: palette.sub }]}>
+                      Tip: Revisit the lesson and retry the quiz to reach the pass mark.
+                    </Text>
+                  ) : null}
                 </View>
-
-                {!passed ? (
-                  <Text className="mt-3 text-[12px] text-white/60">
-                    Tip: Revisit the lesson and retry the quiz to reach the pass mark.
-                  </Text>
-                ) : null}
-              </View>
+              </Card>
             </>
           ) : null}
         </View>
       </ScrollView>
 
-      {/* Payment slide-over (native) */}
       <PaymentWidget
         isOpen={paymentOpen}
         title="Unlock Certificate"
         showTutorPreview={false}
         onClose={async () => {
-          logR('[Results][PaymentWidget] onClose', { rid });
           setPaymentOpen(false);
 
-          // refresh wallet (if your widget changes balances) + refresh lists so library stays accurate
           try {
             await refreshUserDetails?.();
           } catch {}
 
           try {
-            logR('[Results][PaymentWidget] refresh cert list start', { rid });
-            const cs = await api<any>(`/api/certificates/me`);
-            const arr = Array.isArray(cs) ? cs : [];
-            setAllCerts(arr);
-            logR('[Results][PaymentWidget] refresh cert list ok', { rid, count: arr.length });
-          } catch (e: any) {
-            warnR('[Results][PaymentWidget] refresh cert list fail', { rid, status: e?.status, msg: e?.message });
+            setDocsLoading(true);
+            await fetchDocs('payment_close');
+          } finally {
+            setDocsLoading(false);
           }
 
-          try {
-            logR('[Results][PaymentWidget] refresh transcript list start', { rid });
-            const ts = await api<any>(`/api/transcripts/me`);
-            const arr = Array.isArray(ts) ? ts : [];
-            setAllTrans(arr);
-            logR('[Results][PaymentWidget] refresh transcript list ok', { rid, count: arr.length });
-          } catch (e: any) {
-            warnR('[Results][PaymentWidget] refresh transcript list fail', { rid, status: e?.status, msg: e?.message });
-          }
+          await checkPaymentStatus();
         }}
       />
-    </View>
+      </SafeAreaView>
   );
 };
 

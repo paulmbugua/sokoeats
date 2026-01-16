@@ -538,6 +538,196 @@ function drawProgramTrackPill(doc, programTrack, { x, y, align = 'right', maxWid
   return { label: meta.label, key };
 }
 
+function drawAttemptsBreakdownCard(
+  doc,
+  sections,
+  {
+    x,
+    y,
+    width,
+    maxY,
+    passMark = 70,
+    radius = 10,
+  } = {},
+) {
+  const secs = Array.isArray(sections) ? sections : [];
+
+  // Prefer quiz-like sections only (this is where "attempts" live)
+  const quizSecs = secs.filter((s) => /quiz|attempt|score/i.test(String(s?.sectionTitle || '')));
+  const srcSecs = quizSecs.length ? quizSecs : secs;
+
+  // Flatten items as "attempts"
+  const attempts = srcSecs
+    .flatMap((s) => (Array.isArray(s?.items) ? s.items : []))
+    .filter((it) => it && (it.scorePct !== undefined || it.score_pct !== undefined));
+
+  if (!attempts.length) return y;
+
+  const safeMaxY = Number.isFinite(maxY) ? maxY : y + 9999;
+
+  const headerH = 22;
+  const colH = 16;
+  const padX = 10;
+  const padY = 8;
+  const rowH = 18;
+
+  // How many rows can we fit?
+  const available = safeMaxY - (y + headerH + colH + padY * 2);
+  const maxRows = Math.max(1, Math.floor(available / rowH));
+  const rowsToDraw = Math.min(attempts.length, maxRows);
+
+  const hasOverflow = attempts.length > rowsToDraw;
+
+  const cardH =
+    headerH + colH + padY * 2 + rowsToDraw * rowH + (hasOverflow ? rowH : 0);
+
+  // If we can't even fit a small card, just return y (avoid overflow)
+  if (y + cardH > safeMaxY) return y;
+
+  // Card background
+  doc.save();
+  doc
+    .roundedRect(x, y, width, cardH, radius)
+    .fillOpacity(0.06)
+    .fill('#93C5FD')
+    .fillOpacity(1);
+
+  // Header bar
+  doc.roundedRect(x, y, width, headerH, radius).fill('#E5F3FF');
+
+  // Title (left) + Attempts count (right)
+  doc
+    .fillColor('#0F172A')
+    .font('Helvetica-Bold')
+    .fontSize(11)
+    .text('Breakdown', x + padX, y + 5, { lineBreak: false });
+
+  doc
+    .fillColor('#64748B')
+    .font('Helvetica')
+    .fontSize(10)
+    .text(`Attempts: ${attempts.length}`, x, y + 6, {
+      width: width - padX,
+      align: 'right',
+      lineBreak: false,
+    });
+
+  // Column headers
+  const tx = x + padX;
+  const ty = y + headerH + 4;
+
+  const attemptColW = 100;
+  const scoreColW = 70;
+  const resultColW = 70;
+  const gap = 10;
+  const detailsColW = Math.max(
+    0,
+    width - padX * 2 - attemptColW - scoreColW - resultColW - gap * 2,
+  );
+
+  doc.strokeColor('#D0E3F8').lineWidth(0.6);
+  doc.moveTo(x, y + headerH).lineTo(x + width, y + headerH).stroke();
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(9)
+    .fillColor('#475569')
+    .text('Attempt', tx, ty, { width: attemptColW, lineBreak: false });
+
+  if (detailsColW >= 60) {
+    doc.text('Details', tx + attemptColW + gap, ty, {
+      width: detailsColW,
+      lineBreak: false,
+    });
+  }
+
+  doc.text('Score', tx + attemptColW + gap + detailsColW + gap, ty, {
+    width: scoreColW,
+    align: 'right',
+    lineBreak: false,
+  });
+
+  doc.text('Result', tx + attemptColW + gap + detailsColW + gap + scoreColW + gap, ty, {
+    width: resultColW,
+    align: 'right',
+    lineBreak: false,
+  });
+
+  // Rows
+  let ry = y + headerH + colH + padY;
+
+  for (let i = 0; i < rowsToDraw; i++) {
+    const it = attempts[i];
+
+    const score = toFiniteNumberOrNull(it.scorePct ?? it.score_pct);
+    const scoreText = score == null ? '—' : `${Math.round(score * 100) / 100}%`;
+
+    const pm = toFiniteNumberOrNull(passMark) ?? 70;
+    const passed = score != null ? score >= pm : false;
+
+    // zebra
+    if (i % 2 === 1) {
+      doc
+        .rect(x + 1, ry - 2, width - 2, rowH)
+        .fillOpacity(0.04)
+        .fill('#60A5FA')
+        .fillOpacity(1);
+    }
+
+    const attemptLabel = i === 0 ? 'Attempt 1' : `Attempt ${i + 1}`;
+    const detailRaw = String(it.label || '').trim();
+    const detail = detailRaw && detailRaw.toLowerCase() !== 'quiz' ? detailRaw : '';
+
+    doc
+      .font('Helvetica')
+      .fontSize(10)
+      .fillColor('#0B1220')
+      .text(attemptLabel, tx, ry, { width: attemptColW, lineBreak: false });
+
+    if (detailsColW >= 60) {
+      const d = detail ? fitOneLine(doc, detail, detailsColW, 10) : '—';
+      doc
+        .fillColor('#334155')
+        .text(d, tx + attemptColW + gap, ry, {
+          width: detailsColW,
+          lineBreak: false,
+        });
+    }
+
+    doc
+      .fillColor('#111827')
+      .text(scoreText, tx + attemptColW + gap + detailsColW + gap, ry, {
+        width: scoreColW,
+        align: 'right',
+        lineBreak: false,
+      });
+
+    doc
+      .font('Helvetica-Bold')
+      .fillColor(passed ? '#16A34A' : '#DC2626')
+      .text(passed ? 'PASS' : 'FAIL', tx + attemptColW + gap + detailsColW + gap + scoreColW + gap, ry, {
+        width: resultColW,
+        align: 'right',
+        lineBreak: false,
+      });
+
+    ry += rowH;
+  }
+
+  if (hasOverflow) {
+    doc
+      .font('Helvetica')
+      .fontSize(10)
+      .fillColor('#6B7280')
+      .text(`… +${attempts.length - rowsToDraw} more attempts (scan QR to verify online)`, tx, ry, {
+        width: width - padX * 2,
+        lineBreak: false,
+      });
+  }
+
+  doc.restore();
+  return y + cardH;
+}
 
 
 /* ─────────────────────────────────────────────────────────
@@ -729,7 +919,7 @@ const trackLabel = trackKey ? TRACK_META[trackKey]?.label : null;
       x: contentLeft() + 4,
       y,
       width: contentWidth() - 8,
-      maxRows: 10,
+      maxRows: 50,
       radius: 10,
     }) + 16;
 
@@ -762,9 +952,16 @@ const passText = passN == null ? '—' : `${Math.round(passN * 100) / 100}%`;
   lineBreak: false,
 });
 
-doc.fontSize(18).fillColor('#111827').text(passText, contentLeft() + 210, boxY + 28, {
-  lineBreak: false,
-});
+doc
+  .fillColor('#065F46')
+  .fontSize(11)
+  .text('Pass Mark', contentLeft() + 210, boxY + 12, { lineBreak: false });
+
+doc
+  .fontSize(18)
+  .fillColor('#111827')
+  .text(passText, contentLeft() + 210, boxY + 28, { lineBreak: false });
+
 
  const letter =
       overallN == null
@@ -792,6 +989,36 @@ doc.fontSize(18).fillColor('#111827').text(passText, contentLeft() + 210, boxY +
 
     y = boxY + boxH + 24;
 
+    // ---- PRE-COMPUTE BOTTOM BLOCK SIZES (footer + QR)
+const { height: footerH } = drawTightFooter(doc, brand.name, {
+  margin: MARGIN,
+  dryRun: true,
+});
+
+const qrSize = qrBuffer ? 82 : 0;
+doc.font('Helvetica').fontSize(9);
+const labelH = doc.currentLineHeight();
+const reservedBottomH =
+  (qrSize ? qrSize + 2 + labelH : 0) + 4 + footerH + 6;
+const maxContentY = pageBottom() - reservedBottomH;
+
+// Reserve space for signature block (~80px) so breakdown never pushes it into the QR/footer.
+const SIG_H = 84;
+const maxBreakdownY = maxContentY - SIG_H - 8;
+
+// ── Breakdown (Attempts + Scores) BEFORE signature ─────────────────────────
+const breakdownBottom = drawAttemptsBreakdownCard(doc, sections, {
+  x: contentLeft() + 4,
+  y,
+  width: contentWidth() - 8,
+  maxY: maxBreakdownY,
+  passMark: passN ?? 70,
+  radius: 10,
+});
+
+y = breakdownBottom ? breakdownBottom + 14 : y;
+
+
     // ── Registrar Signature ─────────────────────────────────────────────────
     const registrarBottom = drawRegistrarSignature(doc, {
       x: contentLeft() + 40,
@@ -803,120 +1030,8 @@ doc.fontSize(18).fillColor('#111827').text(passText, contentLeft() + 210, boxY +
     });
     y = registrarBottom + 10;
 
-    // ---- PRE-COMPUTE BOTTOM BLOCK SIZES (footer + QR)
-     const { height: footerH } = drawTightFooter(doc, brand.name, {
-       margin: MARGIN,
-       dryRun: true,
-     });
-
-    const qrSize = qrBuffer ? 82 : 0;
-    doc.font('Helvetica').fontSize(9);
-    const labelH = doc.currentLineHeight();
-    const reservedBottomH =
-      (qrSize ? qrSize + 2 + labelH : 0) + 4 + footerH + 6;
-    const maxContentY = pageBottom() - reservedBottomH;
-
-    // ── (REMOVED) Lessons Learnt bullet list below signature
-    // We no longer render a separate bullet list here to avoid duplication.
-    // The titles are shown in the meta table above (one row per lesson).
-
-    // ── Detailed Breakdown (two-column grid) ────────────────────────────────
-    if (Array.isArray(sections) && sections.length) {
-      if (y + 16 > maxContentY) y = maxContentY - 16; // ensure header fits
-      doc
-        .fontSize(12)
-        .fillColor('#0F172A')
-        .text('Detailed Breakdown', contentLeft() + 4, y, { lineBreak: false });
-      y += 12;
-
-      let overflowed = false;
-      for (const sec of sections) {
-        if (y > maxContentY) {
-          overflowed = true;
-          break;
-        }
-
-        doc
-          .fontSize(11)
-          .fillColor('#1F2937')
-          .text(sec.sectionTitle || 'Section', contentLeft() + 4, y, {
-            lineBreak: false,
-          });
-        y += 10;
-
-        const items = Array.isArray(sec.items) ? sec.items : [];
-        const leftX = contentLeft() + 12;
-        const rightX = contentLeft() + 272;
-        const labelW = 230;
-        const rowH = 12;
-
-        for (let i = 0; i < items.length; i += 2) {
-          const rowY = y + (i / 2) * rowH;
-          if (rowY > maxContentY) {
-            overflowed = true;
-            break;
-          }
-
-          const L = items[i];
-          if (L) {
-            const ltxt = fitOneLine(doc, `• ${L.label}`, labelW, 10);
-            doc
-              .fontSize(10)
-              .fillColor('#374151')
-              .text(ltxt, leftX, rowY, { width: labelW, lineBreak: false });
-            doc
-              .fontSize(10)
-              .fillColor('#111827')
-              .text(`${L.scorePct}%`, leftX + labelW, rowY, {
-                width: 40,
-                align: 'right',
-                lineBreak: false,
-              });
-          }
-
-          const R = items[i + 1];
-          if (R) {
-            const rtxt = fitOneLine(doc, `• ${R.label}`, labelW, 10);
-            doc
-              .fontSize(10)
-              .fillColor('#374151')
-              .text(rtxt, rightX, rowY, { width: labelW, lineBreak: false });
-            doc
-              .fontSize(10)
-              .fillColor('#111827')
-              .text(`${R.scorePct}%`, rightX + labelW, rowY, {
-                width: 40,
-                align: 'right',
-                lineBreak: false,
-              });
-          }
-        }
-
-        const rows = Math.ceil(items.length / 2);
-        y += rows * rowH + 6;
-
-        if (overflowed) break;
-      }
-
-      if (overflowed) {
-        doc
-          .fontSize(10)
-          .fillColor('#6B7280')
-          .text(
-            '… See full breakdown online via the QR code.',
-            contentLeft() + 4,
-            maxContentY,
-            {
-              width: contentWidth() - 8,
-              align: 'left',
-              lineBreak: false,
-            },
-          );
-        y = maxContentY + 12;
-      }
-    }
-
-    // ---- Bottom: QR (left) + Footer (center) ──────────────────────────────
+    
+       // ---- Bottom: QR (left) + Footer (center) ──────────────────────────────
     if (qrBuffer) {
       const qrY = pageBottom() - (footerH + 6) - 4 - labelH - 2 - qrSize;
       doc.image(qrBuffer, contentLeft() + 4, qrY, {

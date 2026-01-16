@@ -1,26 +1,14 @@
 // apps/mobile/app.config.js
 
 export default function expoConfig({ config }) {
-  /**
-   * IMPORTANT:
-   * - Do NOT import 'dotenv/config' here.
-   * - For EAS Update + EAS Build consistency, use EAS Environment Variables and run:
-   *     eas update --branch production --environment production ...
-   */
-
-  // App environment (set this in EAS env vars)
-  // development | preview | production
+  
   const appEnv =
     process.env.EXPO_PUBLIC_APP_ENV ||
     (process.env.NODE_ENV === 'production' ? 'production' : 'development');
 
   const isProduction = appEnv === 'production';
   const isDevClient = process.env.EXPO_DEV_CLIENT === 'true';
-
-  // Enable native Google Sign-In plugin deterministically:
-  // - ON in production (builds + updates)
-  // - ON in dev-client builds
-  const enableGooglePlugin = isProduction || isDevClient;
+ const enableGooglePlugin = isProduction || isDevClient;
 
   // ─────────────────────────────────────────────────────────
   // Multi-backend catalog (deterministic via EXPO_PUBLIC vars)
@@ -45,7 +33,8 @@ export default function expoConfig({ config }) {
   // Allow cleartext ONLY when resolved backend is http://
   const allowHttp = String(RESOLVED_BACKEND_URL || '').startsWith('http://');
   const usesCleartextTraffic = !isProduction && allowHttp;
-    const GOOGLE_WEB_CLIENT_ID =
+
+  const GOOGLE_WEB_CLIENT_ID =
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
     '557799973381-ksp83t2vo6fdqufhm0iie06lnb4e8j8v.apps.googleusercontent.com';
 
@@ -84,18 +73,21 @@ export default function expoConfig({ config }) {
       ...config.android,
       package: 'com.paulmbugua2.mytutorapp',
 
-      // Let EAS manage versionCode when using eas.json:
-      // cli.appVersionSource = "remote" + production.autoIncrement = true
+      // ✅ Remove foreground-service media playback permission (injected by some deps)
+      blockedPermissions: Array.from(
+        new Set([
+          ...(config.android?.blockedPermissions ?? []),
+          'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
+          'android.permission.ACCESS_COARSE_LOCATION',
+         'android.permission.ACCESS_FINE_LOCATION',
+        ]),
+      ),
 
+      // ✅ Keep only what you need
       permissions: [
         'INTERNET',
-        'CAMERA',
-        'RECORD_AUDIO',
         'POST_NOTIFICATIONS',
-        'VIBRATE',
-        'ACCESS_COARSE_LOCATION',
-        'ACCESS_FINE_LOCATION',
-        'MODIFY_AUDIO_SETTINGS',
+        
       ],
 
       googleServicesFile: './google-services.json',
@@ -132,14 +124,12 @@ export default function expoConfig({ config }) {
       ...config.ios,
       bundleIdentifier: 'com.paulmbugua2.mytutorapp',
 
-      // Let EAS manage buildNumber when using eas.json:
-      // cli.appVersionSource = "remote" + production.autoIncrement = true
-
+      // ✅ Ensure we do NOT declare background audio playback
       infoPlist: {
         ...(config?.ios?.infoPlist ?? {}),
-        UIBackgroundModes: [
-          ...new Set([...(config?.ios?.infoPlist?.UIBackgroundModes ?? []), 'audio']),
-        ],
+        UIBackgroundModes: (config?.ios?.infoPlist?.UIBackgroundModes ?? []).filter(
+          (m) => m !== 'audio',
+        ),
       },
     },
 
@@ -154,6 +144,7 @@ export default function expoConfig({ config }) {
       'expo-router',
 
       ['expo-system-ui', { lightBackgroundColor: '#FFFFFF', darkBackgroundColor: '#000000' }],
+
       [
         'expo-splash-screen',
         {
@@ -165,17 +156,10 @@ export default function expoConfig({ config }) {
 
       'expo-notifications',
       'expo-web-browser',
-
-      [
-        'expo-location',
-        {
-          locationAlwaysAndWhenInUsePermission: 'Allow $(PRODUCT_NAME) to use your location.',
-        },
-      ],
-
+      
       'expo-asset',
       'expo-audio',
-      'expo-video',
+      ['expo-video', { supportsBackgroundPlayback: false, supportsPictureInPicture: false }],
 
       [
         'expo-build-properties',
