@@ -224,6 +224,15 @@ export async function queryWithRetry(text, params = [], opts = {}) {
   throw new Error('queryWithRetry: unreachable');
 }
 
+export async function rollbackQuiet(client) {
+  if (!client) return;
+  try {
+    await client.query('ROLLBACK');
+  } catch {
+    // Swallow rollback failures (connection may already be closed).
+  }
+}
+
 
 
 /* ───────── Optional keep-alive ping ───────── */

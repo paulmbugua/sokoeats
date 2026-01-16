@@ -1,5 +1,5 @@
 // apps/backend/services/aiLanguageService.js
-import pool from '../config/db.js';
+import pool, { queryWithRetry, rollbackQuiet } from '../config/db.js';
 import {
   aiJson,
   QUIZ_SCHEMA_MCQ,
@@ -19,6 +19,7 @@ const PAID_PROMPTS_LIMIT = 300;
 const PROMPTS_PER_BUNDLE = FREE_PROMPTS_LIMIT;
 const PROMPT_HISTORY_LIMIT = 12;
 const LANGUAGE_CACHE_TTL_SEC = 60 * 60 * 24 * 14;
+const TX_WARN_MS = Number(process.env.DB_TX_WARN_MS) || 2500;
 
 const LANGUAGE_CONFIG = {
   de: { label: 'German', locale: 'de-DE', native: 'Deutsch' },
@@ -65,10 +66,21 @@ function truncateToChars(text, maxChars) {
   return s.slice(0, maxChars - 20) + '\n\n[truncated]';
 }
 
-async function rollbackQuiet(client) {
-  try {
-    await client.query('ROLLBACK');
-  } catch {}
+function startTxTimer(label) {
+  const start = Date.now();
+  return (status = 'done') => {
+    const durationMs = Date.now() - start;
+    if (durationMs >= TX_WARN_MS) {
+      console.warn(`[pg:tx] ${label} ${status} in ${durationMs}ms`);
+    }
+  };
+}
+
+async function runQuery(queryable, text, params, { useRetry = false } = {}) {
+  if (useRetry) {
+    return queryWithRetry(text, params);
+  }
+  return queryable.query(text, params);
 }
 
 
@@ -139,14 +151,16 @@ async function chooseVoicePair(targetLanguage) {
   return { teacher, translator };
 }
 
-async function upsertCourseMetadata(client, courseId, metadata) {
-  await client.query(
+async function upsertCourseMetadata(queryable, courseId, metadata, opts = {}) {
+  await runQuery(
+    queryable,
     `
     UPDATE courses
        SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
      WHERE id = $1::uuid
     `,
     [courseId, JSON.stringify(metadata)],
+    opts,
   );
 }
 
@@ -260,8 +274,9 @@ function formatEntitlement(row) {
   };
 }
 
-async function loadRecentMessages(client, courseId, limit = PROMPT_HISTORY_LIMIT) {
-  const q = await client.query(
+async function loadRecentMessages(queryable, courseId, limit = PROMPT_HISTORY_LIMIT, opts = {}) {
+  const q = await runQuery(
+    queryable,
     `
     SELECT role, content_text, segments_json, created_at
       FROM ai_language_messages
@@ -270,6 +285,7 @@ async function loadRecentMessages(client, courseId, limit = PROMPT_HISTORY_LIMIT
      LIMIT $2
     `,
     [courseId, limit],
+    opts,
   );
 
   return (q.rows || []).reverse();
@@ -408,11 +424,11 @@ async function buildPlaybackQueue({ segments, voices }) {
   return { mode: 'queue', items };
 }
 
-async function resolveVoices(client, courseId, targetLanguage, metadata) {
+async function resolveVoices(queryable, courseId, targetLanguage, metadata, opts = {}) {
   if (metadata?.voices?.teacher && metadata?.voices?.translator) return metadata.voices;
 
   const voices = await chooseVoicePair(targetLanguage);
-  await upsertCourseMetadata(client, courseId, { voices });
+  await upsertCourseMetadata(queryable, courseId, { voices }, opts);
   return voices;
 }
 
@@ -436,6 +452,7 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
   let entitlement;
   let metadata = {};
   let promptsLimit = 0;
+  const endTxTimer = startTxTimer('aiLanguage:start');
 
   try {
     client = await pool.connect();
@@ -449,7 +466,7 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
       targetLanguage,
     });
 
-     courseId = entitlementRow.course_id;
+    courseId = entitlementRow.course_id;
     metadata = entitlementRow.metadata || {};
 
     const entitlementQ = await client.query(
@@ -458,12 +475,13 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
     );
     entitlement = entitlementQ.rows[0];
 
-    const promptsLimit =
+    promptsLimit =
       Number(entitlement.prompt_bundles || 1) *
       Number(entitlement.prompts_per_bundle || PROMPTS_PER_BUNDLE);
 
     if (Number(entitlement.prompts_used || 0) >= promptsLimit) {
       await rollbackQuiet(client);
+      endTxTimer('rollback');
       return {
         status: 409,
         data: {
@@ -497,11 +515,14 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
     );
 
     await client.query('COMMIT');
+    endTxTimer('commit');
     client.release();
     client = null;
 
     // Resolve voices OUTSIDE tx (may call Google)
-    const voices = await resolveVoices(pool, courseId, targetLanguage, metadata);
+    const voices = await resolveVoices(pool, courseId, targetLanguage, metadata, {
+      useRetry: true,
+    });
     const cacheKey = buildLanguageCacheKey({
       courseId,
       prompt,
@@ -510,7 +531,9 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
     });
     const cached = await cacheGetJSON(cacheKey);
 
-    const recentMessages = await loadRecentMessages(pool, courseId);
+    const recentMessages = await loadRecentMessages(pool, courseId, PROMPT_HISTORY_LIMIT, {
+      useRetry: true,
+    });
     let assistant = cached;
     if (!assistant) {
       assistant = await generateLanguageResponse({
@@ -532,7 +555,7 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
       .map((seg) => `${seg.en} / ${seg.tr}`)
       .join('\n');
 
-    await pool.query(
+    await queryWithRetry(
       `
       INSERT INTO ai_language_messages
         (course_id, profile_id, user_id, role, content_text, segments_json)
@@ -544,7 +567,9 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
 
     const playback = await buildPlaybackQueue({ segments, voices });
 
-     const previewMessages = await loadRecentMessages(pool, courseId);
+    const previewMessages = await loadRecentMessages(pool, courseId, PROMPT_HISTORY_LIMIT, {
+      useRetry: true,
+    });
 
     return {
       status: 200,
@@ -561,11 +586,14 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
       },
     };
   } catch (err) {
-     if (client) await rollbackQuiet(client);
+    if (client) {
+      await rollbackQuiet(client);
+      endTxTimer('rollback');
+    }
     console.error('[aiLanguage] start failed', err);
     return { status: 500, data: { error: 'LANGUAGE_START_FAILED' } };
   } finally {
-     if (client) client.release();
+    if (client) client.release();
   }
 }
 
@@ -575,12 +603,18 @@ export async function sendLanguagePrompt({
   courseId,
   prompt,
 }) {
-
   userId = asIntId(userId);
   profileId = asIntId(profileId);
 
-  const client = await pool.connect();
+  let client;
+  let entitlement;
+  let metadata = {};
+  let targetLanguage;
+  let updatedEnt;
+  const endTxTimer = startTxTimer('aiLanguage:prompt');
+
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     const entQ = await client.query(
@@ -588,17 +622,19 @@ export async function sendLanguagePrompt({
       [courseId],
     );
     if (!entQ.rowCount) {
-      await client.query('ROLLBACK');
+      await rollbackQuiet(client);
+      endTxTimer('rollback');
       return { status: 404, data: { error: 'LANGUAGE_COURSE_NOT_FOUND' } };
     }
 
-    const entitlement = entQ.rows[0];
+    entitlement = entQ.rows[0];
     const promptsLimit =
       Number(entitlement.prompt_bundles || 1) *
       Number(entitlement.prompts_per_bundle || PROMPTS_PER_BUNDLE);
 
     if (Number(entitlement.prompts_used || 0) >= promptsLimit) {
-      await client.query('ROLLBACK');
+      await rollbackQuiet(client);
+      endTxTimer('rollback');
       return {
         status: 409,
         data: {
@@ -635,23 +671,42 @@ export async function sendLanguagePrompt({
       'SELECT metadata FROM courses WHERE id = $1::uuid',
       [courseId],
     );
-    const metadata = courseQ.rows?.[0]?.metadata || {};
-    const voices = await resolveVoices(
-      client,
-      courseId,
-      entitlement.target_language,
-      metadata,
-    );
+    metadata = courseQ.rows?.[0]?.metadata || {};
+    targetLanguage = entitlement.target_language;
+    updatedEnt = {
+      ...entitlement,
+      prompts_used: Number(entitlement.prompts_used || 0) + 1,
+    };
+
+    await client.query('COMMIT');
+    endTxTimer('commit');
+
+  } catch (err) {
+    if (client) {
+      await rollbackQuiet(client);
+      endTxTimer('rollback');
+    }
+    console.error('[aiLanguage] prompt failed', err);
+    return { status: 500, data: { error: 'LANGUAGE_PROMPT_FAILED' } };
+  } finally {
+    if (client) client.release();
+  }
+
+  try {
+    const voices = await resolveVoices(pool, courseId, targetLanguage, metadata, {
+      useRetry: true,
+    });
     const cacheKey = buildLanguageCacheKey({
       courseId,
       prompt,
-      targetLanguage: entitlement.target_language,
+      targetLanguage,
       voices,
     });
     const cached = await cacheGetJSON(cacheKey);
 
-    const messages = await loadRecentMessages(client, courseId);
-    const targetLanguage = entitlement.target_language;
+    const messages = await loadRecentMessages(pool, courseId, PROMPT_HISTORY_LIMIT, {
+      useRetry: true,
+    });
     let assistant = cached;
     if (!assistant) {
       assistant = await generateLanguageResponse({
@@ -673,7 +728,7 @@ export async function sendLanguagePrompt({
       .map((seg) => `${seg.en} / ${seg.tr}`)
       .join('\n');
 
-    await client.query(
+    await queryWithRetry(
       `
       INSERT INTO ai_language_messages
         (course_id, profile_id, user_id, role, content_text, segments_json)
@@ -685,13 +740,6 @@ export async function sendLanguagePrompt({
 
     const playback = await buildPlaybackQueue({ segments, voices });
 
-    const updatedEnt = {
-      ...entitlement,
-      prompts_used: Number(entitlement.prompts_used || 0) + 1,
-    };
-
-    await client.query('COMMIT');
-
     return {
       status: 200,
       data: {
@@ -701,15 +749,13 @@ export async function sendLanguagePrompt({
       },
     };
   } catch (err) {
-    await client.query('ROLLBACK');
     console.error('[aiLanguage] prompt failed', err);
     return { status: 500, data: { error: 'LANGUAGE_PROMPT_FAILED' } };
-  } finally {
-    client.release();
   }
 }
 
 export async function purchaseLanguageBundle({ userId, courseId }) {
+  const endTxTimer = startTxTimer('aiLanguage:purchase');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -719,7 +765,8 @@ export async function purchaseLanguageBundle({ userId, courseId }) {
       [courseId],
     );
     if (!entQ.rowCount) {
-      await client.query('ROLLBACK');
+      await rollbackQuiet(client);
+      endTxTimer('rollback');
       return { status: 404, data: { error: 'LANGUAGE_COURSE_NOT_FOUND' } };
     }
 
@@ -728,7 +775,8 @@ export async function purchaseLanguageBundle({ userId, courseId }) {
     ]);
     const currentTokens = Number(userQ.rows?.[0]?.tokens || 0);
     if (currentTokens < TOKEN_COST) {
-      await client.query('ROLLBACK');
+      await rollbackQuiet(client);
+      endTxTimer('rollback');
       return {
         status: 402,
         data: {
@@ -758,13 +806,15 @@ export async function purchaseLanguageBundle({ userId, courseId }) {
     );
 
     await client.query('COMMIT');
+    endTxTimer('commit');
 
     return {
       status: 200,
       data: { entitlement: formatEntitlement(updatedQ.rows[0]) },
     };
   } catch (err) {
-    await client.query('ROLLBACK');
+    await rollbackQuiet(client);
+    endTxTimer('rollback');
     console.error('[aiLanguage] purchase bundle failed', err);
     return { status: 500, data: { error: 'LANGUAGE_BUNDLE_FAILED' } };
   } finally {
@@ -773,8 +823,13 @@ export async function purchaseLanguageBundle({ userId, courseId }) {
 }
 
 export async function completeLanguageCourse({ userId, courseId }) {
-  const client = await pool.connect();
+  let client;
+  let targetLanguage;
+  let courseSize = 'mini';
+  let snippetsCapped = '';
+  const endTxTimer = startTxTimer('aiLanguage:complete');
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     const entQ = await client.query(
@@ -782,7 +837,8 @@ export async function completeLanguageCourse({ userId, courseId }) {
       [courseId]
     );
     if (!entQ.rowCount) {
-      await client.query('ROLLBACK');
+      await rollbackQuiet(client);
+      endTxTimer('rollback');
       return { status: 404, data: { error: 'LANGUAGE_COURSE_NOT_FOUND' } };
     }
 
@@ -798,13 +854,13 @@ export async function completeLanguageCourse({ userId, courseId }) {
       [courseId]
     );
 
-    const targetLanguage = entQ.rows[0].target_language;
+    targetLanguage = entQ.rows[0].target_language;
 
     // ✅ fetch course_size so quiz size + maxTokens are deterministic
     const courseQ = await client.query(`SELECT course_size FROM courses WHERE id = $1::uuid`, [
       courseId,
     ]);
-    const courseSize = courseQ.rows?.[0]?.course_size || 'mini';
+    courseSize = courseQ.rows?.[0]?.course_size || 'mini';
 
     const source = messagesQ.rows || [];
     const snippets = source
@@ -820,8 +876,22 @@ export async function completeLanguageCourse({ userId, courseId }) {
       .join('\n\n');
 
     // ✅ cap context so the model doesn't ramble
-    const snippetsCapped = truncateToChars(snippets, 6000);
+    snippetsCapped = truncateToChars(snippets, 6000);
 
+    await client.query('COMMIT');
+    endTxTimer('commit');
+  } catch (err) {
+    if (client) {
+      await rollbackQuiet(client);
+      endTxTimer('rollback');
+    }
+    console.error('[aiLanguage] complete failed', err);
+    return { status: 500, data: { error: 'LANGUAGE_COMPLETE_FAILED' } };
+  } finally {
+    if (client) client.release();
+  }
+
+  try {
     const langLabel = languageLabel(targetLanguage);
 
     // ✅ deterministic quiz size
@@ -855,7 +925,7 @@ Return JSON in the schema.`;
       quizType: 'mcq',
     });
 
-    await client.query(
+    await queryWithRetry(
       `
       UPDATE ai_language_entitlements
          SET completed_at = COALESCE(completed_at, now()),
@@ -864,8 +934,6 @@ Return JSON in the schema.`;
       `,
       [courseId]
     );
-
-    await client.query('COMMIT');
 
     return {
       status: 200,
@@ -878,17 +946,14 @@ Return JSON in the schema.`;
       },
     };
   } catch (err) {
-    await client.query('ROLLBACK');
     console.error('[aiLanguage] complete failed', err);
     return { status: 500, data: { error: 'LANGUAGE_COMPLETE_FAILED' } };
-  } finally {
-    client.release();
   }
 }
 
 export async function markLanguageQuizPassed({ courseId, userId }) {
   try {
-    await pool.query(
+    await queryWithRetry(
       `
       UPDATE ai_language_entitlements
          SET quiz_passed = TRUE,
