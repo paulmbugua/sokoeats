@@ -29,6 +29,7 @@ export * from './useWithdrawal';
 export * from './useAiCourseFlow';
 export * from './useAICertificates';
 export * from './useAiCourseEntitlements';
+export * from './useLanguageLearning';
 export * from './useTopCourses';
 export * from './useOrg';
 export * from './useOrgInvite';

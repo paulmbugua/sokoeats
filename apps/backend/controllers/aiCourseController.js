@@ -29,6 +29,7 @@ import {
   incrementLessonUsage,
   getCertificateEntitlement,
 } from './_aiCourseEntitlements.js';
+import { markLanguageQuizPassed } from '../services/aiLanguageService.js';
 
 
 /* ─────────────────────────────────────────────────────────
@@ -1222,6 +1223,10 @@ export async function gradeQuiz(req, res) {
         });
         // Don't fail grading just because persistence failed
       }
+    }
+
+    if (passed && courseIdIsUuid) {
+      await markLanguageQuizPassed({ courseId, userId: studentId }).catch(() => null);
     }
 
     return res.json({

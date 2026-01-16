@@ -122,6 +122,13 @@ export type MainStackParamList = {
     }
   | undefined;
 
+  LanguageLearning:
+    | {
+        courseId: string;
+        languageStart?: any;
+      }
+    | undefined;
+
 
   /* Catalog & course details */
   Courses:

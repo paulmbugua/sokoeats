@@ -225,3 +225,21 @@ export const gradeSchema = Joi.object({
   assignmentId: Joi.string().uuid().optional(),
   passMark: Joi.number().integer().min(0).max(100).optional(),
 });
+
+/** ========= LANGUAGE LEARNING ========= */
+export const languageStartSchema = Joi.object({
+  prompt: Joi.string().trim().min(2).max(600).required(),
+});
+
+export const languagePromptSchema = Joi.object({
+  courseId: Joi.string().uuid().required(),
+  prompt: Joi.string().trim().min(1).max(600).required(),
+});
+
+export const languagePurchaseSchema = Joi.object({
+  courseId: Joi.string().uuid().required(),
+});
+
+export const languageCompleteSchema = Joi.object({
+  courseId: Joi.string().uuid().required(),
+});

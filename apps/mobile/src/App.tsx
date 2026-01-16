@@ -36,6 +36,7 @@ import HomePageNative from './screens/HomePage.native';
 import LoginScreen from './screens/LoginScreen.native';
 import FindTutor from './screens/FindTutor.native';
 import RobotTeacher from './screens/RobotTeacher.native';
+import LanguageLearningScreen from './screens/LanguageLearning.native';
 import HelpPage from './screens/HelpPage.native';
 import ResourcesPage from './screens/Resources.native';
 import VideosScreen from './screens/Videos.native';
@@ -796,6 +797,7 @@ const App: React.FC = () => {
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="FindTutor" component={FindTutor} />
          <Stack.Screen name="RobotTutor" component={RobotTeacher} />
+          <Stack.Screen name="LanguageLearning" component={LanguageLearningScreen} />
           <Stack.Screen name="Help" component={HelpPage} />
           <Stack.Screen name="Resources" component={ResourcesPage} />
           <Stack.Screen name="Videos" component={VideosScreen} />

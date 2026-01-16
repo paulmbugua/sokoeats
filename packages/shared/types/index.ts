@@ -737,6 +737,62 @@ export interface WithdrawalResponse {
 // -------------------------------------------------------------
 // 🔹 AI Course Types
 // -------------------------------------------------------------
+export type TargetLanguage = 'de' | 'fr' | 'es' | 'ar';
+
+export type LanguageLearningSegment = {
+  en: string;
+  tr: string;
+};
+
+export type LanguageLearningMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  segments?: LanguageLearningSegment[] | null;
+  playback?: PlaybackPayload | null;
+  createdAt?: string;
+};
+
+export type LanguageLearningEntitlement = {
+  courseId: string;
+  profileId?: string | null;
+  userId?: number | null;
+  targetLanguage: TargetLanguage;
+  promptBundles: number;
+  promptsUsed: number;
+  promptsPerBundle: number;
+  promptsLimit: number;
+  unlockedAt?: string | null;
+  completedAt?: string | null;
+  quizPassed?: boolean;
+};
+
+export type LanguageLearningAssistant = {
+  segments: LanguageLearningSegment[];
+  vocab?: Array<{
+    term: string;
+    meaning: string;
+    exampleEn: string;
+    exampleTr: string;
+  }>;
+  miniPractice?: Array<{
+    promptEn: string;
+    promptTr: string;
+    answerHint: string;
+  }>;
+};
+
+export type PlaybackQueueItem = {
+  segmentIdx: number;
+  kind: 'en' | 'tr';
+  text: string;
+  audioUrl?: string;
+};
+
+export type PlaybackPayload = {
+  mode: 'queue';
+  items: PlaybackQueueItem[];
+};
+
 export type TopCourse = {
   id: string;
   title: string;

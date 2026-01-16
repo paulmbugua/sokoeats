@@ -25,6 +25,8 @@ import { useShopContext } from '@mytutorapp/shared/context';
 
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { updateCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
+import { startLanguageCourse } from '@mytutorapp/shared/api';
+import { detectLanguageIntent, isLanguageIntentText } from '@mytutorapp/shared/utils/languageDetection';
 
 import type { TopCourse } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
@@ -1201,6 +1203,48 @@ const trackLockSource = useMemo(() => {
 
     // ✅ Custom topic flow stays the same
     if (custom) {
+      const ok = requireAuth('ai_sandbox', 'Please sign in to create a custom AI course.');
+      if (!ok) {
+        setActiveRunId(null);
+        setUiPreparing(false);
+        setPlayerLoading(false);
+        return;
+      }
+      const intent = detectLanguageIntent(custom);
+      if (!intent && isLanguageIntentText(custom)) {
+        let msg =
+          'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
+        try {
+          await startLanguageCourse(backendUrl, authToken as string, custom);
+        } catch (err: any) {
+          msg = err?.response?.data?.message || msg;
+        }
+        Alert.alert('Language Learning', msg);
+        setActiveRunId(null);
+        setUiPreparing(false);
+        setPlayerLoading(false);
+        return;
+      }
+      if (intent) {
+        try {
+          const res = await startLanguageCourse(backendUrl, authToken as string, custom);
+          navigation.navigate('LanguageLearning' as any, {
+            courseId: res.courseId,
+            languageStart: res,
+          } as any);
+          return;
+        } catch (err: any) {
+          const msg =
+            err?.response?.data?.message ||
+            err?.message ||
+            'Unable to start language learning.';
+          Alert.alert('Language Learning', msg);
+          setActiveRunId(null);
+          setUiPreparing(false);
+          setPlayerLoading(false);
+          return;
+        }
+      }
       await startCustomTopic(custom);
       await waitForSelection();
       opts.courseId = selectedCourseRef.current?.id;

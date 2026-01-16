@@ -39,6 +39,7 @@ import CreateCourse from './components/CreateCourse.web';
 import CourseEnrollment from './components/CourseEnrollment.web';
 import CourseProgress from './components/CourseProgress.web';
 import AchievementsList from './components/AchievementsList.web';
+import LanguageLearningPage from './pages/LanguageLearning.web';
 
 import AccountSection from './components/AccountSection.web';
 
@@ -604,6 +605,7 @@ const App: React.FC = () => {
           <Route path="/settings/create" element={<CreateProfileForm />} />
           <Route path="/settings/manage" element={<ManageProfileForm />} />
           <Route path="/settings/certification" element={<CertificationSettings />} />
+          <Route path="/language/:courseId" element={<LanguageLearningPage />} />
         </Route>
 
         {/* Auth route (logged-out only) */}

@@ -53,6 +53,28 @@ const genSchema = Joi.object({
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
+async function hasLanguageTranscriptEligibility(userId, courseId) {
+  try {
+    const courseQ = await pool.query(
+      `SELECT metadata FROM courses WHERE id = $1 LIMIT 1`,
+      [courseId],
+    );
+    const metadata = courseQ.rows?.[0]?.metadata || {};
+    if (metadata?.mode !== 'language') return false;
+
+    const entQ = await pool.query(
+      `SELECT quiz_passed FROM ai_language_entitlements WHERE course_id = $1 AND user_id = $2 LIMIT 1`,
+      [courseId, userId],
+    );
+    return entQ.rows?.[0]?.quiz_passed === true;
+  } catch (err) {
+    logT('[transcripts.generate] language eligibility check failed', {
+      msg: err?.message || err,
+    });
+    return false;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // Quiz attempt shape detection (match cert-style robustness)
 // ─────────────────────────────────────────────────────────────
@@ -1056,7 +1078,7 @@ export async function generateTranscript(req, res) {
     // - completion certificate row (certificates table)
     // - AI cert entitlement (ai_course_entitlements purchase_type='certificate')
     // ─────────────────────────────────────────────────────────────
-    const [orgCovered, ent, aiCertEnt, certRowQ] = await Promise.all([
+    const [orgCovered, ent, aiCertEnt, certRowQ, languageEligible] = await Promise.all([
       hasOrgCoverForCourse(userId, courseId).catch((e) => {
         logT('[transcripts.generate] orgCovered error', { rid, msg: e?.message });
         return false;
@@ -1097,6 +1119,7 @@ export async function generateTranscript(req, res) {
           });
           return { rowCount: 0, rows: [] };
         }),
+      hasLanguageTranscriptEligibility(userId, courseId),
     ]);
 
     const hasCompletionCert = certRowQ?.rowCount > 0;
@@ -1106,7 +1129,8 @@ export async function generateTranscript(req, res) {
       Boolean(orgCovered) ||
       ent?.can_transcript === true ||
       hasCompletionCert ||
-      hasAiCertPurchase;
+      hasAiCertPurchase ||
+      languageEligible;
 
     logT('[transcripts.generate] gate_check', {
       rid,
@@ -1116,6 +1140,7 @@ export async function generateTranscript(req, res) {
       ent_can_transcript: ent?.can_transcript,
       hasCompletionCert,
       hasAiCertPurchase,
+      languageEligible,
       canTranscript_initial: canTranscript,
     });
 
@@ -1176,6 +1201,7 @@ export async function generateTranscript(req, res) {
         ent_can_transcript: ent?.can_transcript,
         hasCompletionCert,
         hasAiCertPurchase,
+        languageEligible,
         viaIssuance,
       });
 

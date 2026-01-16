@@ -61,6 +61,19 @@ export async function generateCertificate(
   return res.data;
 }
 
+export async function generateTranscript(
+  backendUrl: string,
+  token: string,
+  courseId: string
+): Promise<{ id: string; download_url?: string }> {
+  const res = await axios.post(
+    `${backendUrl}/api/transcripts/generate`,
+    { courseId },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return res.data;
+}
+
 export async function getMyCertificates(backendUrl: string, token: string): Promise<Certificate[]> {
   const res = await axios.get(`${backendUrl}/api/certificates/me`, {
     headers: { Authorization: `Bearer ${token}` },

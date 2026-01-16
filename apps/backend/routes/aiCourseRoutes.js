@@ -10,6 +10,12 @@ import {
   clearCourseCache,
   clearTopCoursesCache,
 } from '../controllers/aiCourseController.js';
+import {
+  startLanguage,
+  promptLanguage,
+  purchaseLanguage,
+  completeLanguage,
+} from '../controllers/aiLanguageController.js';
 
 import optionalAuth from '../middleware/optionalAuth.js';
 import requireAuth from '../middleware/auth.js';
@@ -66,6 +72,12 @@ router.post('/courses/:courseId/purchase', requireAuth, (req, res) => {
   req.body = { ...(req.body || {}), courseId: req.params.courseId };
   return unlockNarrationAccess(req, res);
 });
+
+// 🌐 Language learning
+router.post('/courses/language/start', requireAuth, startLanguage);
+router.post('/courses/language/prompt', requireAuth, promptLanguage);
+router.post('/courses/language/purchase-bundle', requireAuth, purchaseLanguage);
+router.post('/courses/language/complete', requireAuth, completeLanguage);
 
 // 🔒 Cache clears
 router.post('/cache/clear-course', requireAuth, clearCourseCache);
