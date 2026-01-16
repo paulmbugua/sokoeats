@@ -387,6 +387,7 @@ const wantedCourseId = useMemo(() => {
   const [shareOpen, setShareOpen] = useState(false);
   const [sharedCourseMissing, setSharedCourseMissing] = useState(false);
   const [sharedCourseChecked, setSharedCourseChecked] = useState(false);
+  const [disableRefresh, setDisableRefresh] = useState(false);
 
   const [overlayState, setOverlayState] = useState<{
     words: any[];
@@ -1541,16 +1542,19 @@ return;
   return (
     <SafeAreaView edges={['bottom']} style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
       <View style={tw`flex-1`}>
-        <RefreshableScrollView
-          screenId="robot-tutor"
-          contentContainerStyle={scrollContentContainerStyle}
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="on-drag"
-          nestedScrollEnabled
-          removeClippedSubviews={false}
-          contentInsetAdjustmentBehavior="automatic"
-          contentInset={scrollContentInset}
-        >
+       <RefreshableScrollView
+        screenId="robot-tutor"
+        refreshEnabled={!disableRefresh}
+        scrollEnabled={!disableRefresh}
+        contentContainerStyle={scrollContentContainerStyle}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="on-drag"
+        nestedScrollEnabled
+        removeClippedSubviews={false}
+        contentInsetAdjustmentBehavior="automatic"
+        contentInset={scrollContentInset}
+      >
+
           <View style={tw`flex-col md:flex-row gap-4`}>
             {/* LEFT (main) */}
             <View style={tw`${showCourseList ? 'md:w-2/3' : 'md:w-full'} w-full`}>
@@ -1559,7 +1563,21 @@ return;
                   <Text style={tw`text-[10px] uppercase tracking-[0.3em] text-[#6b7280] dark:text-white/60 mb-2`}>
                     Choose a language
                   </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`gap-3`}>
+                 <ScrollView
+                  horizontal
+                  nestedScrollEnabled
+                  directionalLockEnabled
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={tw`gap-3`}
+                  onTouchStart={() => setDisableRefresh(true)}
+                  onTouchMove={() => setDisableRefresh(true)}
+                  onTouchEnd={() => setDisableRefresh(false)}
+                  onTouchCancel={() => setDisableRefresh(false)}
+                  onResponderTerminate={() => setDisableRefresh(false)}
+                  onScrollBeginDrag={() => setDisableRefresh(true)}
+                  onScrollEndDrag={() => setDisableRefresh(false)}
+                  onMomentumScrollEnd={() => setDisableRefresh(false)}
+                >
                     {LANGUAGE_CARDS.map((card) => (
                       <TouchableOpacity
                         key={card.language}

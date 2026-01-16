@@ -166,10 +166,11 @@ const TOPICS = [
 ];
 
 const DEFAULT_VOICE = {
-  voiceId: VOICES[0].id,
+  voiceId: VOICES.at(0)?.id ?? 'calm',
   rate: 1,
   pitch: 1,
 };
+
 
 const buildSegmentsFromQueue = (items: PlaybackQueueItem[]) => {
   const map = new Map<number, { en?: string; tr?: string }>();
@@ -319,36 +320,43 @@ const LanguageLearningScreen: React.FC = () => {
 
   const loadInlineCurrent = useCallback(async () => {
     clearInlineTimer();
-    await unloadSound();
-    if (!inlineCurrentItem?.audioUrl) return;
-    const sound = new Audio.Sound();
-    soundRef.current = sound;
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (!status.isLoaded) return;
-      if (status.didJustFinish) {
-        if (inlineIndex + 1 < inlineItems.length) {
-          setInlineAutoPlayNext(true);
-          setInlineIndex((idx) => idx + 1);
-        } else {
-          setInlinePlaying(false);
-        }
-      }
-    });
-    await sound.loadAsync({ uri: inlineCurrentItem.audioUrl }, { shouldPlay: false });
-    await sound.setRateAsync(voiceSettings.rate, true);
-    if (inlineAutoPlayNext || inlinePlaying) {
-      const delay = inlineCurrentItem.kind === 'en' ? 300 : 220;
-      timerRef.current = setTimeout(async () => {
-        try {
-          await sound.playAsync();
-          setInlinePlaying(true);
-        } catch {
-          setInlinePlaying(false);
-        } finally {
-          setInlineAutoPlayNext(false);
-        }
-      }, delay);
+await unloadSound();
+
+const item = inlineCurrentItem;
+if (!item?.audioUrl) return;
+
+const sound = new Audio.Sound();
+soundRef.current = sound;
+
+sound.setOnPlaybackStatusUpdate((status) => {
+  if (!status.isLoaded) return;
+  if (status.didJustFinish) {
+    if (inlineIndex + 1 < inlineItems.length) {
+      setInlineAutoPlayNext(true);
+      setInlineIndex((idx) => idx + 1);
+    } else {
+      setInlinePlaying(false);
     }
+  }
+});
+
+await sound.loadAsync({ uri: item.audioUrl }, { shouldPlay: false });
+await sound.setRateAsync(voiceSettings.rate, true);
+
+if (inlineAutoPlayNext || inlinePlaying) {
+  const delay = item.kind === 'en' ? 300 : 220;
+  timerRef.current = setTimeout(async () => {
+    try {
+      await sound.playAsync();
+      setInlinePlaying(true);
+    } catch {
+      setInlinePlaying(false);
+    } finally {
+      setInlineAutoPlayNext(false);
+    }
+  }, delay);
+}
+
   }, [
     clearInlineTimer,
     inlineAutoPlayNext,
@@ -502,26 +510,31 @@ const LanguageLearningScreen: React.FC = () => {
     return TOPICS.filter((topic) => topic.label.toLowerCase().includes(term));
   }, [topicFilter]);
 
-  const applyPrompt = useCallback(
-    (prompt: string) => {
-      setInput(prompt.replace('{language}', headerLabel || targetLanguage));
-    },
-    [headerLabel, targetLanguage]
-  );
+ const applyPrompt = useCallback(
+  (prompt?: string) => {
+    const p = String(prompt ?? '').trim();
+    if (!p) return;
+    setInput(p.replace('{language}', headerLabel || targetLanguage));
+  },
+  [headerLabel, targetLanguage]
+);
 
-  const handleTopicSelect = useCallback(
-    (topic: (typeof TOPICS)[number]) => {
-      setSelectedTopic(topic);
-      applyPrompt(topic.prompts[0]);
-    },
-    [applyPrompt]
-  );
+ const handleTopicSelect = useCallback(
+  (topic: (typeof TOPICS)[number]) => {
+    setSelectedTopic(topic);
+    applyPrompt(topic.prompts?.[0]);
+  },
+  [applyPrompt]
+);
 
-  const handleSurprise = useCallback(() => {
-    const random = TOPICS[Math.floor(Math.random() * TOPICS.length)];
-    setSelectedTopic(random);
-    applyPrompt(random.prompts[0]);
-  }, [applyPrompt]);
+
+ const handleSurprise = useCallback(() => {
+  const random = TOPICS.at(Math.floor(Math.random() * TOPICS.length));
+  if (!random) return; // satisfies TS when array access can be undefined
+  setSelectedTopic(random);
+  applyPrompt(random.prompts?.[0]);
+}, [applyPrompt]);
+
 
   return (
     <View style={tw`flex-1 bg-slate-950`}>
@@ -708,7 +721,8 @@ const LanguageLearningScreen: React.FC = () => {
             <Text style={tw`text-xs text-white/60`}>
               Suggested: <Text style={tw`text-emerald-300 font-semibold`}>{selectedTopic.label}</Text>
             </Text>
-            <Pressable onPress={() => applyPrompt(selectedTopic.prompts[0])}>
+            <Pressable onPress={() => applyPrompt(selectedTopic.prompts?.[0])}>
+
               <Text style={tw`text-xs text-emerald-300 mt-1`}>Use prompt</Text>
             </Pressable>
           </View>
