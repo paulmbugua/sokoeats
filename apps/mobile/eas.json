@@ -19,10 +19,15 @@
       "environment": "production",
       "autoIncrement": true,
       "channel": "production",
+      "distribution": "store",
+      "android": { "buildType": "app-bundle" },
       "env": {
-        "EXPO_PUBLIC_APP_ENV": "production"
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_DEFAULT_BACKEND": "prod",
+        "EXPO_NO_DOTENV": "1"
       }
     }
+
 
   },
   "submit": {

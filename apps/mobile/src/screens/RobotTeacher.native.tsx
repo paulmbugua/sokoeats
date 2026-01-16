@@ -499,7 +499,7 @@ const validateAgainstTopCourses = Boolean(
   const [quizCount, setQuizCount] = useState<number>(16);
   const [programTrack, setProgramTrack] = useState<TrackKey>('module');
   const [customTitle, setCustomTitle] = useState('');
-  const [pendingLanguagePrompt, setPendingLanguagePrompt] = useState<string | null>(null);
+  
   const [fetchedRouteTitle, setFetchedRouteTitle] = useState('');
 
   const [programTrackLocked, setProgramTrackLocked] = useState(false);
@@ -1392,22 +1392,37 @@ return;
 ]);
 
   const startLanguageFromCard = useCallback(
-    (language: string) => {
-      const ok = requireAuth('ai_sandbox', 'Please sign in to start language learning.');
-      if (!ok) return;
-      const prompt = `Teach me ${language}`;
-      setCustomTitle(prompt);
-      setPendingLanguagePrompt(prompt);
-    },
-    [requireAuth]
-  );
+  async (language: string) => {
+    const ok = requireAuth('ai_sandbox', 'Please sign in to start language learning.');
+    if (!ok) return;
 
-  useEffect(() => {
-    if (!pendingLanguagePrompt) return;
-    if (customTitle.trim() !== pendingLanguagePrompt) return;
-    setPendingLanguagePrompt(null);
-    onStart();
-  }, [pendingLanguagePrompt, customTitle, onStart]);
+    const prompt = `Teach me ${language}`;
+
+    try {
+      // optional UI polish
+      setStarting(true);
+      setDisableRefresh(true);
+
+      const res = await startLanguageCourse(backendUrl, authToken as string, prompt);
+
+      navigation.navigate('LanguageLearning' as any, {
+        courseId: res.courseId,
+        languageStart: res,
+      } as any);
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message || err?.message || 'Unable to start language learning.';
+      Alert.alert('Language Learning', msg);
+    } finally {
+      setStarting(false);
+      setDisableRefresh(false);
+    }
+  },
+  [requireAuth, backendUrl, authToken, navigation]
+);
+
+
+  
 
   // course change — cancel any active run and spinner
   useEffect(() => {
@@ -1538,6 +1553,9 @@ return;
   );
 
   const scrollContentInset = useMemo(() => ({ bottom: bottomPad }), [bottomPad]);
+  const lockRefreshOff = useCallback(() => setDisableRefresh(true), []);
+  const unlockRefresh = useCallback(() => setDisableRefresh(false), []);
+  
 
   return (
     <SafeAreaView edges={['bottom']} style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
@@ -1545,7 +1563,7 @@ return;
        <RefreshableScrollView
         screenId="robot-tutor"
         refreshEnabled={!disableRefresh}
-        scrollEnabled={!disableRefresh}
+        scrollEnabled
         contentContainerStyle={scrollContentContainerStyle}
         keyboardShouldPersistTaps="always"
         keyboardDismissMode="on-drag"
@@ -1563,24 +1581,24 @@ return;
                   <Text style={tw`text-[10px] uppercase tracking-[0.3em] text-[#6b7280] dark:text-white/60 mb-2`}>
                     Choose a language
                   </Text>
-                 <ScrollView
+                <ScrollView
                   horizontal
                   nestedScrollEnabled
-                  directionalLockEnabled
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={tw`gap-3`}
-                  onTouchStart={() => setDisableRefresh(true)}
-                  onTouchMove={() => setDisableRefresh(true)}
-                  onTouchEnd={() => setDisableRefresh(false)}
-                  onTouchCancel={() => setDisableRefresh(false)}
-                  onResponderTerminate={() => setDisableRefresh(false)}
-                  onScrollBeginDrag={() => setDisableRefresh(true)}
-                  onScrollEndDrag={() => setDisableRefresh(false)}
-                  onMomentumScrollEnd={() => setDisableRefresh(false)}
+                  // 🔒 disable refresh immediately when finger touches the strip
+                  onTouchStart={lockRefreshOff}
+                  // ✅ re-enable in every possible end path
+                  onTouchEnd={unlockRefresh}
+                  onTouchCancel={unlockRefresh}
+                  onScrollEndDrag={unlockRefresh}
+                  onMomentumScrollEnd={unlockRefresh}
                 >
                     {LANGUAGE_CARDS.map((card) => (
                       <TouchableOpacity
                         key={card.language}
+                        onPressIn={lockRefreshOff}
+                        onPressOut={unlockRefresh}
                         onPress={() => startLanguageFromCard(card.language)}
                         activeOpacity={0.9}
                         style={tw`w-40 rounded-2xl border border-white/40 dark:border-white/10 bg-white dark:bg-[#141b24] px-4 py-3`}

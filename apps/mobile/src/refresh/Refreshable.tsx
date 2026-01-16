@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useMemo } from 'react';
 import {
   RefreshControl,
   ScrollView,
@@ -26,32 +26,41 @@ export const RefreshableScrollView = forwardRef<ScrollView, RefreshableScrollVie
       screenId: _screenId,
       refreshEnabled = true,
       contentContainerStyle,
-      refreshControl: _ignoredRefreshControl, // ✅ don't allow overriding; we own it
+      refreshControl: refreshControlProp, // ✅ allow override if needed, but keep enabled behavior
       ...restProps
     } = props;
+
+    const refreshControl = useMemo(() => {
+      // ✅ If disabled: DO NOT mount RefreshControl at all (fixes horizontal-scroll conflict)
+      if (!refreshEnabled) return undefined;
+
+      // ✅ If caller passed a refreshControl, keep it, but only if refresh is enabled
+      if (refreshControlProp) return refreshControlProp;
+
+      return (
+        <RefreshControl
+          refreshing={Boolean(refreshing)}
+          onRefresh={refresh}
+          enabled={refreshEnabled} // ✅ critical on Android
+          // visual tweaks (dark app)
+          tintColor="#fff" // iOS spinner
+          colors={['#0ea5e9']} // Android spinner colors
+          progressBackgroundColor="#0f172a"
+          progressViewOffset={Platform.select({ android: 56, ios: 0 })}
+        />
+      );
+    }, [refreshEnabled, refreshControlProp, refreshing, refresh]);
 
     return (
       <ScrollView
         ref={ref}
         // Make sure the pull can engage even if content is short:
         contentContainerStyle={[{ flexGrow: 1, minHeight: '120%' }, contentContainerStyle]}
-        // On iOS/Android make overscroll possible
-        alwaysBounceVertical
-        overScrollMode="always"
-        // ✅ Pull-to-refresh wired to global refresh (disable when requested)
-        refreshControl={
-          refreshEnabled ? (
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={refresh}
-              // visual tweaks (dark app)
-              tintColor="#fff" // iOS spinner
-              colors={['#0ea5e9']} // Android spinner colors
-              progressBackgroundColor="#0f172a"
-              progressViewOffset={Platform.select({ android: 56, ios: 0 })}
-            />
-          ) : undefined
-        }
+        // ✅ When refresh is disabled, reduce parent overscroll eagerness
+        alwaysBounceVertical={refreshEnabled}
+        overScrollMode={refreshEnabled ? 'always' : 'auto'}
+        // ✅ Pull-to-refresh wired to global refresh (or none when disabled)
+        refreshControl={refreshControl}
         {...restProps}
       />
     );
@@ -75,7 +84,7 @@ export function RefreshableFlatList<ItemT>(props: RefreshableFlatListProps<ItemT
     refreshEnabled = true,
     contentContainerStyle,
     refreshing: _ignoredRefreshing, // ✅ we own refreshing
-    onRefresh: _ignoredOnRefresh,   // ✅ we own onRefresh
+    onRefresh: _ignoredOnRefresh, // ✅ we own onRefresh
     ...restProps
   } = props;
 
@@ -83,8 +92,8 @@ export function RefreshableFlatList<ItemT>(props: RefreshableFlatListProps<ItemT
     <FlatList
       // Same idea: allow pull even with few items
       contentContainerStyle={[{ paddingBottom: 16, minHeight: '120%' }, contentContainerStyle]}
-      // ✅ Gate pull-to-refresh
-      refreshing={refreshEnabled ? refreshing : false}
+      // ✅ Gate pull-to-refresh (FlatList uses these props directly)
+      refreshing={refreshEnabled ? Boolean(refreshing) : false}
       onRefresh={refreshEnabled ? refresh : undefined}
       {...restProps}
     />

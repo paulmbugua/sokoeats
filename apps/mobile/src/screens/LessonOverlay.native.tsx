@@ -1,7 +1,9 @@
-/* eslint-disable prettier/prettier */
+
 // apps/mobile/src/screens/LessonOverlay.native.tsx
 
 import React, {
+  forwardRef,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -9,6 +11,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+
 import {
   View,
   Text,
@@ -154,8 +157,8 @@ function buildOverlayMarkdown(lesson?: LessonLike | null) {
 }
 
 /* ── Component ───────────────────────────── */
-const LessonOverlayNative = React.memo(
-  React.forwardRef<LessonOverlayHandle, LessonOverlayProps>(function LessonOverlayNative(
+const LessonOverlayNative = memo(
+  forwardRef<LessonOverlayHandle, LessonOverlayProps>(function LessonOverlayNative(
     { lesson, rememberKey, zIndex = 999999 },
     ref
   ) {

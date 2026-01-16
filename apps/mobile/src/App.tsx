@@ -1,7 +1,7 @@
 // apps/mobile/src/App.tsx
 import * as React from 'react';
 import type { ReactNode } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet,Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -796,7 +796,13 @@ const App: React.FC = () => {
           <Stack.Screen name="Home" component={HomePageNative} />
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="FindTutor" component={FindTutor} />
-         <Stack.Screen name="RobotTutor" component={RobotTeacher} />
+         <Stack.Screen
+            name="RobotTutor"
+            component={RobotTeacher}
+            options={{
+              gestureEnabled: false,
+                }}
+          />
           <Stack.Screen name="LanguageLearning" component={LanguageLearningScreen} />
           <Stack.Screen name="Help" component={HelpPage} />
           <Stack.Screen name="Resources" component={ResourcesPage} />

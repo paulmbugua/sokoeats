@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext,  useEffect, useMemo, useRef, useState } from 'react';
 import type { PropsWithChildren } from 'react';
 import { RefreshControl, ScrollView, FlatList } from 'react-native';
 import { queryClient } from '@mytutorapp/shared/utils/queryClient';
@@ -78,8 +78,9 @@ export function useListRefreshProps() {
 /** Allow a screen to add extra refresh work (e.g., refetch local state) */
 export function useRegisterScreenRefresh(fn: RefreshFn | null | undefined) {
   const { register } = useGlobalRefresh();
-  React.useEffect(() => {
+  useEffect(() => {          // ✅ use named import
     if (!fn) return;
     return register(fn);
   }, [fn, register]);
+
 }
