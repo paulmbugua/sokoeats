@@ -38,7 +38,7 @@ export function useLanguageLearning(
   const [bundleBlocked, setBundleBlocked] = useState(false);
 
   const promptsUsed = entitlement?.promptsUsed ?? 0;
-  const promptsLimit = entitlement?.promptsLimit ?? 300;
+  const promptsLimit = entitlement?.promptsLimit ?? 5;
 
   const appendAssistant = useCallback(
     (assistant: LanguageLearningAssistant, playback: PlaybackPayload) => {
@@ -58,6 +58,11 @@ export function useLanguageLearning(
 
   const sendPrompt = useCallback(
     async (prompt: string) => {
+      if (promptsLimit && promptsUsed >= promptsLimit) {
+        setBundleBlocked(true);
+        setError('You have reached the free prompt limit.');
+        return;
+      }
       setLoading(true);
       setError(null);
       setBundleBlocked(false);
@@ -70,9 +75,13 @@ export function useLanguageLearning(
       } catch (err) {
         if (axios.isAxiosError(err)) {
           const data = err.response?.data as any;
-          if (data?.error === 'PROMPT_BUNDLE_EXHAUSTED') {
+          if (
+            data?.error === 'PROMPT_BUNDLE_EXHAUSTED' ||
+            data?.error === 'PROMPT_LIMIT_REACHED' ||
+            data?.error === 'BUNDLE_BLOCKED'
+          ) {
             setBundleBlocked(true);
-            setError(data?.message || 'Prompt bundle exhausted.');
+            setError(data?.message || 'You have reached the free prompt limit.');
             setEntitlement((prev) =>
               prev
                 ? {
@@ -92,7 +101,7 @@ export function useLanguageLearning(
         setLoading(false);
       }
     },
-    [appendAssistant, backendUrl, token, courseId]
+    [appendAssistant, backendUrl, token, courseId, promptsLimit, promptsUsed]
   );
 
   const purchaseBundle = useCallback(async () => {
@@ -146,6 +155,12 @@ export function useLanguageLearning(
       setTargetLanguage(entitlement.targetLanguage);
     }
   }, [targetLanguage, entitlement]);
+
+  useEffect(() => {
+    if (entitlement) {
+      setBundleBlocked((entitlement.promptsUsed ?? 0) >= (entitlement.promptsLimit ?? 5));
+    }
+  }, [entitlement]);
 
   const headerLabel = useMemo(() => {
     if (!targetLanguage) return null;

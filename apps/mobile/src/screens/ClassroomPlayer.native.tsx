@@ -99,6 +99,9 @@ type Props = {
   hideGateBanner?: boolean;
   playback?: PlaybackPayload | null;
   mode?: 'lesson' | 'language';
+  voiceId?: string;
+  rate?: number;
+  pitch?: number;
 };
 
 // ─────────────────────── Constants ───────────────────────
@@ -170,7 +173,8 @@ function buildSegmentsFromQueue(items: PlaybackQueueItem[]) {
 const LanguageQueuePlayerNative: React.FC<{
   playback?: PlaybackPayload | null;
   title?: string;
-}> = ({ playback, title }) => {
+  rate?: number;
+}> = ({ playback, title, rate = 1 }) => {
   const items = playback?.items || [];
   const segments = useMemo(() => buildSegmentsFromQueue(items), [items]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -218,6 +222,7 @@ const LanguageQueuePlayerNative: React.FC<{
       }
     });
     await sound.loadAsync({ uri: currentItem.audioUrl }, { shouldPlay: false });
+    await sound.setRateAsync(rate, true);
     if (autoPlayNext || playing) {
       const delay = currentItem.kind === 'en' ? 350 : 250;
       timerRef.current = setTimeout(async () => {
@@ -231,7 +236,12 @@ const LanguageQueuePlayerNative: React.FC<{
         }
       }, delay);
     }
-  }, [autoPlayNext, currentIndex, currentItem, items.length, playing, unloadSound]);
+  }, [autoPlayNext, currentIndex, currentItem, items.length, playing, rate, unloadSound]);
+
+  useEffect(() => {
+    if (!soundRef.current) return;
+    soundRef.current.setRateAsync(rate, true).catch(() => {});
+  }, [rate]);
 
   useEffect(() => {
     loadCurrent();
@@ -348,7 +358,7 @@ const InnerPlayer: React.FC<Props> = (props) => {
 
   const isLanguageMode = mode === 'language' || playback?.mode === 'queue';
   if (isLanguageMode) {
-    return <LanguageQueuePlayerNative playback={playback} title={title} />;
+    return <LanguageQueuePlayerNative playback={playback} title={title} rate={props.rate} />;
   }
 
   const loadingCb = onPlayerLoadingChange ?? onLoadingChange;

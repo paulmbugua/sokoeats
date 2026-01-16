@@ -14,7 +14,9 @@ import { listGoogleVoices, synthesizeTtsLocalFirst } from './googleTtsService.js
 
 
 const TOKEN_COST = 20;
-const PROMPTS_PER_BUNDLE = 300;
+const FREE_PROMPTS_LIMIT = 5;
+const PAID_PROMPTS_LIMIT = 300;
+const PROMPTS_PER_BUNDLE = FREE_PROMPTS_LIMIT;
 const PROMPT_HISTORY_LIMIT = 12;
 const LANGUAGE_CACHE_TTL_SEC = 60 * 60 * 24 * 14;
 
@@ -170,7 +172,7 @@ const courseQ = await client.query(
     VALUES ($1::uuid, $2::int, $3::int, $4, 1, 0, $5)
 
     `,
-    [courseId, profileId, userId, targetLanguage, PROMPTS_PER_BUNDLE],
+    [courseId, profileId, userId, targetLanguage, FREE_PROMPTS_LIMIT],
   );
 
   await client.query(
@@ -193,7 +195,7 @@ const courseQ = await client.query(
     target_language: targetLanguage,
     prompt_bundles: 1,
     prompts_used: 0,
-    prompts_per_bundle: PROMPTS_PER_BUNDLE,
+    prompts_per_bundle: FREE_PROMPTS_LIMIT,
     unlocked_at: new Date().toISOString(),
     completed_at: null,
     quiz_passed: false,
@@ -420,40 +422,15 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
     if (Number(entitlement.prompts_used || 0) >= promptsLimit) {
       await client.query('ROLLBACK');
       return {
-        status: 402,
+        status: 409,
         data: {
-          error: 'PROMPT_BUNDLE_EXHAUSTED',
-          message: 'You have reached the prompt limit for this bundle.',
+          error: 'PROMPT_LIMIT_REACHED',
+          message: 'You have reached the free prompt limit for this course.',
           needTokens: TOKEN_COST,
           promptsUsed: Number(entitlement.prompts_used || 0),
           promptsLimit,
         },
       };
-    }
-
-    if (Number(entitlement.prompts_used || 0) === 0) {
-      const userQ = await client.query(
-        'SELECT tokens FROM users WHERE id = $1 FOR UPDATE',
-        [userId],
-      );
-      const currentTokens = Number(userQ.rows?.[0]?.tokens || 0);
-      if (currentTokens < TOKEN_COST) {
-        await client.query('ROLLBACK');
-        return {
-          status: 402,
-          data: {
-            error: 'INSUFFICIENT_TOKENS',
-            message: 'You need more tokens to start this language course.',
-            needTokens: TOKEN_COST,
-            tokens: currentTokens,
-          },
-        };
-      }
-
-      await client.query('UPDATE users SET tokens = tokens - $2 WHERE id = $1', [
-        userId,
-        TOKEN_COST,
-      ]);
     }
 
     await client.query(
@@ -582,10 +559,10 @@ export async function sendLanguagePrompt({
     if (Number(entitlement.prompts_used || 0) >= promptsLimit) {
       await client.query('ROLLBACK');
       return {
-        status: 402,
+        status: 409,
         data: {
-          error: 'PROMPT_BUNDLE_EXHAUSTED',
-          message: 'You have reached the prompt limit for this bundle.',
+          error: 'PROMPT_LIMIT_REACHED',
+          message: 'You have reached the free prompt limit for this course.',
           needTokens: TOKEN_COST,
           promptsUsed: Number(entitlement.prompts_used || 0),
           promptsLimit,
@@ -730,12 +707,13 @@ export async function purchaseLanguageBundle({ userId, courseId }) {
     const updatedQ = await client.query(
       `
       UPDATE ai_language_entitlements
-         SET prompt_bundles = prompt_bundles + 1,
+         SET prompt_bundles = 1,
+             prompts_per_bundle = $2,
              updated_at = now()
        WHERE course_id = $1::uuid
        RETURNING *
       `,
-      [courseId],
+      [courseId, PAID_PROMPTS_LIMIT],
     );
 
     await client.query('COMMIT');
