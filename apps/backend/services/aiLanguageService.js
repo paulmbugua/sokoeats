@@ -65,6 +65,11 @@ function truncateToChars(text, maxChars) {
   return s.slice(0, maxChars - 20) + '\n\n[truncated]';
 }
 
+async function rollbackQuiet(client) {
+  try {
+    await client.query('ROLLBACK');
+  } catch {}
+}
 
 
 export function detectTargetLanguage(prompt) {
@@ -426,8 +431,14 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
     };
   }
 
-  const client = await pool.connect();
+  let client;
+  let courseId;
+  let entitlement;
+  let metadata = {};
+  let promptsLimit = 0;
+
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     const entitlementRow = await ensureLanguageCourse({
@@ -438,21 +449,21 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
       targetLanguage,
     });
 
-    const courseId = entitlementRow.course_id;
-    const metadata = entitlementRow.metadata || {};
+     courseId = entitlementRow.course_id;
+    metadata = entitlementRow.metadata || {};
 
     const entitlementQ = await client.query(
       `SELECT * FROM ai_language_entitlements WHERE course_id = $1::uuid FOR UPDATE`,
       [courseId],
     );
-    const entitlement = entitlementQ.rows[0];
+    entitlement = entitlementQ.rows[0];
 
     const promptsLimit =
       Number(entitlement.prompt_bundles || 1) *
       Number(entitlement.prompts_per_bundle || PROMPTS_PER_BUNDLE);
 
     if (Number(entitlement.prompts_used || 0) >= promptsLimit) {
-      await client.query('ROLLBACK');
+      await rollbackQuiet(client);
       return {
         status: 409,
         data: {
@@ -485,12 +496,12 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
       [courseId, profileId, userId, prompt],
     );
 
-    const voices = await resolveVoices(
-      client,
-      courseId,
-      targetLanguage,
-      metadata,
-    );
+    await client.query('COMMIT');
+    client.release();
+    client = null;
+
+    // Resolve voices OUTSIDE tx (may call Google)
+    const voices = await resolveVoices(pool, courseId, targetLanguage, metadata);
     const cacheKey = buildLanguageCacheKey({
       courseId,
       prompt,
@@ -499,7 +510,7 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
     });
     const cached = await cacheGetJSON(cacheKey);
 
-    const recentMessages = await loadRecentMessages(client, courseId);
+    const recentMessages = await loadRecentMessages(pool, courseId);
     let assistant = cached;
     if (!assistant) {
       assistant = await generateLanguageResponse({
@@ -521,7 +532,7 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
       .map((seg) => `${seg.en} / ${seg.tr}`)
       .join('\n');
 
-    await client.query(
+    await pool.query(
       `
       INSERT INTO ai_language_messages
         (course_id, profile_id, user_id, role, content_text, segments_json)
@@ -533,9 +544,7 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
 
     const playback = await buildPlaybackQueue({ segments, voices });
 
-    const previewMessages = await loadRecentMessages(client, courseId);
-
-    await client.query('COMMIT');
+     const previewMessages = await loadRecentMessages(pool, courseId);
 
     return {
       status: 200,
@@ -552,11 +561,11 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
       },
     };
   } catch (err) {
-    await client.query('ROLLBACK');
+     if (client) await rollbackQuiet(client);
     console.error('[aiLanguage] start failed', err);
     return { status: 500, data: { error: 'LANGUAGE_START_FAILED' } };
   } finally {
-    client.release();
+     if (client) client.release();
   }
 }
 

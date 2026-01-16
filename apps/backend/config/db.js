@@ -66,8 +66,21 @@ function shouldLogOnce(key, windowMs = 5000) {
   return true;
 }
 
-pool.on('connect', () => {
+pool.on('connect', (client) => {
   console.log('✅ PostgreSQL client connected');
+
+  // IMPORTANT: avoid Node crashing when a *checked-out* client drops connection.
+  client.on('error', (err) => {
+    const key = `active:${err.code || err.name}:${(err.message || '').slice(0, 80)}`;
+    if (shouldLogOnce(key)) {
+      console.warn(
+        '⚠️ PG active client error:',
+        err.code || err.name,
+        '-',
+        err.message,
+      );
+    }
+  });
 });
 
 pool.on('remove', () => {

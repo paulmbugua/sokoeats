@@ -247,6 +247,17 @@ const LanguageLearningPage: React.FC = () => {
     inlinePlayingRef.current = inlinePlaying;
   }, [inlinePlaying]);
 
+  const playInlineCurrent = useCallback(async () => {
+    if (!audioRef.current) return;
+    try {
+      await audioRef.current.play();
+      setInlinePlaying(true);
+    } catch {
+      setInlinePlaying(false);
+    }
+  }, []);
+  
+
   useEffect(() => {
     const prevVoiceId = prevVoiceIdRef.current;
     if (prevVoiceId === voiceSettings.voiceId) return;
@@ -314,16 +325,7 @@ const LanguageLearningPage: React.FC = () => {
       timerRef.current = null;
     }
   }, []);
-
-  const playInlineCurrent = useCallback(async () => {
-    if (!audioRef.current) return;
-    try {
-      await audioRef.current.play();
-      setInlinePlaying(true);
-    } catch {
-      setInlinePlaying(false);
-    }
-  }, []);
+ 
 
   useEffect(() => {
     clearInlineTimer();
