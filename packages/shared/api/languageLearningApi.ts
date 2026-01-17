@@ -38,6 +38,17 @@ export async function startLanguageCourse(
     return res.data as LanguageStartResponse;
   } catch (err: any) {
     const data = err?.response?.data ?? {};
+    if (!data.courseId) {
+      data.courseId =
+        data?.course_id ||
+        data?.entitlement?.courseId ||
+        data?.entitlement?.course_id ||
+        data?.languageStart?.courseId ||
+        data?.languageStart?.course_id ||
+        data?.data?.courseId ||
+        data?.data?.course_id ||
+        null;
+    }
     const e: any = new Error(
       data?.message || data?.error || err?.message || 'Unable to start language learning.'
     );

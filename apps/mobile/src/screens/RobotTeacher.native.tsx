@@ -2089,13 +2089,16 @@ const startLanguageFromCard = useCallback(
 
           // capture ctx locally (because we will clear state)
           const ctx = llUnlockCtx;
+          dlog('LL unlock press', { courseId: ctx.courseId, languageLabel: ctx.languageLabel });
 
           setLlUnlockBusy(true);
           setLlUnlockErr(null);
 
           // 1) Purchase first (keep modal open + spinner for this part)
           try {
+           dlog('LL unlock purchase start', { courseId: ctx.courseId });
            await purchaseLanguageBundle(backendUrl, languageToken as string, ctx.courseId);
+           dlog('LL unlock purchase success', { courseId: ctx.courseId });
           } catch (e: any) {
             setLlUnlockErr(
               String(
@@ -2113,6 +2116,7 @@ const startLanguageFromCard = useCallback(
           setLlUnlockOpen(false);
           setLlUnlockCtx(null);
           setLlUnlockErr(null);
+          dlog('LL unlock modal close', { courseId: ctx.courseId });
 
           // allow state to paint before we start the next call/navigation
           await new Promise<void>((r) => setTimeout(() => r(), 0));
@@ -2120,6 +2124,7 @@ const startLanguageFromCard = useCallback(
           // 3) Kick off the exact same flow as clicking a language card
           setLanguageActive(ctx.languageLabel);
           setLanguageLaunching(true);
+          dlog('LL unlock start flow', { courseId: ctx.courseId, languageLabel: ctx.languageLabel });
 
           try {
             await startLanguageFlow(ctx.prompt, ctx.languageLabel);

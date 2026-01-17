@@ -194,6 +194,16 @@ const normalizeLangKey = (s?: string | null) => {
 
 const llCourseIdStorageKey = (langKey: string) => `ll_course_id_v1_${langKey}`;
 
+const FONT_SIZE_KEY = 'll_font_size_v1';
+const MUTE_EN_KEY = 'll_mute_en_v1';
+const MUTE_TR_KEY = 'll_mute_tr_v1';
+
+const DBG_LL_AUDIO = __DEV__ && Boolean((globalThis as any)?.__DBG_LL_AUDIO__);
+const llAudioLog = (...args: any[]) => {
+  if (!DBG_LL_AUDIO) return;
+  // eslint-disable-next-line no-console
+  console.log('[LLAudio]', ...args);
+};
 
 const buildSegmentsFromQueue = (items: PlaybackQueueItem[]) => {
   const map = new Map<number, { en?: string; tr?: string }>();
@@ -219,6 +229,24 @@ const LanguageLearningScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const themePref = useThemePref();
   const isDark = themePref.resolvedScheme === 'dark';
+  const theme = useMemo(
+    () => ({
+      bg: isDark ? '#0b1220' : '#f8fafc',
+      card: isDark ? 'rgba(15,23,42,0.85)' : '#ffffff',
+      cardSoft: isDark ? 'rgba(30,41,59,0.6)' : '#f1f5f9',
+      border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
+      text: isDark ? '#f8fafc' : '#0f172a',
+      subtext: isDark ? 'rgba(248,250,252,0.7)' : 'rgba(15,23,42,0.6)',
+      muted: isDark ? 'rgba(248,250,252,0.45)' : 'rgba(15,23,42,0.45)',
+      pill: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
+      accent: '#34d399',
+      accentSoft: isDark ? 'rgba(52,211,153,0.2)' : 'rgba(16,185,129,0.12)',
+      userBubble: isDark ? '#3b82f6' : '#2563eb',
+      userBorder: isDark ? '#60a5fa' : '#1d4ed8',
+      assistantBubble: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.05)',
+    }),
+    [isDark]
+  );
 
   const courseId = route.params?.courseId as string;
   const languageStart = route.params?.languageStart;
@@ -236,6 +264,7 @@ const LanguageLearningScreen: React.FC = () => {
     playbackQueue,
     promptsUsed,
     promptsLimit,
+    resetAt,
     loading,
     error,
     bundleBlocked,
@@ -262,6 +291,9 @@ const LanguageLearningScreen: React.FC = () => {
   const [topicFilter, setTopicFilter] = useState('');
   const [selectedTopic, setSelectedTopic] = useState<(typeof TOPICS)[number] | null>(null);
   const [voiceSettings, setVoiceSettings] = useState(DEFAULT_VOICE);
+  const [fontSize, setFontSize] = useState(16);
+  const [muteEn, setMuteEn] = useState(false);
+  const [muteTr, setMuteTr] = useState(false);
 
   const [activeMessageKey, setActiveMessageKey] = useState<string | null>(null);
   const [inlinePlayback, setInlinePlayback] = useState<PlaybackPayload | null>(null);
@@ -279,6 +311,10 @@ const inputRef = useRef<TextInput>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const prevVoiceIdRef = useRef(voiceSettings.voiceId);
+  const playSessionRef = useRef(0);
+  const playOpRef = useRef<Promise<void>>(Promise.resolve());
+  const inlineIndexRef = useRef(0);
+  const inlineItemsRef = useRef<PlaybackQueueItem[]>([]);
 type RepeatSheetState = {
   messageKey: string;
   msg: any;
@@ -294,6 +330,7 @@ const [repeatSheet, setRepeatSheet] = useState<RepeatSheetState | null>(null);
 
 const [inputFocused, setInputFocused] = useState(false);
 const [keyboardOpen, setKeyboardOpen] = useState(false);
+const [nowTs, setNowTs] = useState(() => Date.now());
 
 useEffect(() => {
   const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -307,6 +344,12 @@ useEffect(() => {
     subHide.remove();
   };
 }, []);
+
+useEffect(() => {
+  if (!resetAt) return;
+  const timer = setInterval(() => setNowTs(Date.now()), 1000);
+  return () => clearInterval(timer);
+}, [resetAt]);
 
 const [keyboardHeight, setKeyboardHeight] = useState(0);
 const kbAnim = useRef(new Animated.Value(0)).current;
@@ -352,6 +395,14 @@ const activeMsgMetaRef = useRef<{ messageKey: string; idx: number; msgId: any } 
   const inlineSegmentIdx = inlineCurrentItem?.segmentIdx ?? 0;
   const inlineSegment = inlineSegments.find((seg) => seg.segmentIdx === inlineSegmentIdx);
 const composerCollapsed = inputFocused || keyboardOpen;
+
+  useEffect(() => {
+    inlineIndexRef.current = inlineIndex;
+  }, [inlineIndex]);
+
+  useEffect(() => {
+    inlineItemsRef.current = inlineItems;
+  }, [inlineItems]);
 
   const measureLineYInScroll = useCallback((lineNode: any, onY: (y: number) => void) => {
   const scrollNode = scrollRef.current as any;
@@ -461,6 +512,38 @@ const composerCollapsed = inputFocused || keyboardOpen;
     AsyncStorage.setItem(voiceStorageKey, JSON.stringify(voiceSettings)).catch(() => {});
   }, [voiceSettings, voiceStorageKey]);
 
+  useEffect(() => {
+    AsyncStorage.multiGet([FONT_SIZE_KEY, MUTE_EN_KEY, MUTE_TR_KEY])
+      .then((entries) => {
+        const storedFont = entries.find(([key]) => key === FONT_SIZE_KEY)?.[1];
+        const storedMuteEn = entries.find(([key]) => key === MUTE_EN_KEY)?.[1];
+        const storedMuteTr = entries.find(([key]) => key === MUTE_TR_KEY)?.[1];
+        const parsedFont = Number(storedFont);
+        if (!Number.isNaN(parsedFont)) {
+          setFontSize(Math.min(22, Math.max(12, parsedFont)));
+        }
+        if (storedMuteEn != null) setMuteEn(storedMuteEn === 'true');
+        if (storedMuteTr != null) setMuteTr(storedMuteTr === 'true');
+      })
+      .catch(() => {
+        AsyncStorage.removeItem(FONT_SIZE_KEY).catch(() => {});
+        AsyncStorage.removeItem(MUTE_EN_KEY).catch(() => {});
+        AsyncStorage.removeItem(MUTE_TR_KEY).catch(() => {});
+      });
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem(FONT_SIZE_KEY, String(fontSize)).catch(() => {});
+  }, [fontSize]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(MUTE_EN_KEY, String(muteEn)).catch(() => {});
+  }, [muteEn]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(MUTE_TR_KEY, String(muteTr)).catch(() => {});
+  }, [muteTr]);
+
   const unloadSound = useCallback(async () => {
     if (soundRef.current) {
       try {
@@ -477,55 +560,116 @@ const composerCollapsed = inputFocused || keyboardOpen;
     }
   }, []);
 
-  const loadInlineCurrent = useCallback(async () => {
-    clearInlineTimer();
-    await unloadSound();
+  const isItemMuted = useCallback(
+    (item?: PlaybackQueueItem | null) => {
+      if (!item) return false;
+      if (item.kind === 'en') return muteEn;
+      if (item.kind === 'tr') return muteTr;
+      return false;
+    },
+    [muteEn, muteTr]
+  );
 
-
-
-    const item = inlineCurrentItem;
-    if (!item?.audioUrl) return;
-
-    const sound = new Audio.Sound();
-    soundRef.current = sound;
-
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (!status.isLoaded) return;
-      if (status.didJustFinish) {
-        // Play-loop logic lives here: advance automatically until paused.
-        if (inlineIndex + 1 < inlineItems.length) {
-          setInlineAutoPlayNext(true);
-          setInlineIndex((idx) => idx + 1);
-        } else {
-          setInlinePlaying(false);
-        }
+  const findNextPlayableIndex = useCallback(
+    (startIdx: number, items?: PlaybackQueueItem[]) => {
+      const list = items ?? inlineItemsRef.current;
+      for (let i = startIdx; i < list.length; i += 1) {
+        const item = list[i];
+        if (!isItemMuted(item)) return i;
       }
-    });
+      return null;
+    },
+    [isItemMuted]
+  );
 
-    await sound.loadAsync({ uri: item.audioUrl }, { shouldPlay: false });
-    await sound.setRateAsync(voiceSettings.rate, true);
+  const loadInlineCurrent = useCallback(async () => {
+    const sessionId = ++playSessionRef.current;
+    const item = inlineCurrentItem;
+    const itemKey = item?.audioUrl ? `${inlineIndex}:${item.audioUrl}` : 'none';
+    llAudioLog('load start', { sessionId, itemKey });
 
-    if (inlineAutoPlayNext || inlinePlaying) {
-      const delay = item.kind === 'en' ? 300 : 220;
-      timerRef.current = setTimeout(async () => {
-        try {
-          await sound.playAsync();
-          setInlinePlaying(true);
-        } catch {
+    await (playOpRef.current = playOpRef.current.then(async () => {
+      if (sessionId !== playSessionRef.current) {
+        llAudioLog('load ignored (stale session)', { sessionId });
+        return;
+      }
+      clearInlineTimer();
+      await unloadSound();
+
+      if (!item?.audioUrl) {
+        setInlinePlaying(false);
+        return;
+      }
+
+      if (isItemMuted(item)) {
+        const nextIdx = findNextPlayableIndex(inlineIndex + 1, inlineItemsRef.current);
+        if (nextIdx === null) {
           setInlinePlaying(false);
-        } finally {
           setInlineAutoPlayNext(false);
+        } else {
+          setInlineAutoPlayNext(true);
+          setInlineIndex(nextIdx);
+          setInlinePlaying(true);
         }
-      }, delay);
-    }
+        return;
+      }
 
+      const sound = new Audio.Sound();
+      soundRef.current = sound;
+
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (sessionId !== playSessionRef.current) {
+          if (status.isLoaded && status.didJustFinish) {
+            llAudioLog('ended ignored (stale session)', { sessionId });
+          }
+          return;
+        }
+        if (!status.isLoaded) return;
+        if (status.didJustFinish) {
+          llAudioLog('ended', { sessionId });
+          setInlineIndex((idx) => {
+            const nextIdx = findNextPlayableIndex(idx + 1);
+            if (nextIdx === null) {
+              setInlinePlaying(false);
+              setInlineAutoPlayNext(false);
+              return idx;
+            }
+            setInlineAutoPlayNext(true);
+            return nextIdx;
+          });
+        }
+      });
+
+      await sound.loadAsync({ uri: item.audioUrl }, { shouldPlay: false });
+      await sound.setRateAsync(voiceSettings.rate, true);
+
+      if (inlineAutoPlayNext || inlinePlaying) {
+        const delay = item.kind === 'en' ? 300 : 220;
+        timerRef.current = setTimeout(async () => {
+          if (sessionId !== playSessionRef.current) {
+            llAudioLog('play ignored (stale session)', { sessionId });
+            return;
+          }
+          try {
+            llAudioLog('play start', { sessionId, itemKey });
+            await sound.playAsync();
+            setInlinePlaying(true);
+          } catch {
+            setInlinePlaying(false);
+          } finally {
+            setInlineAutoPlayNext(false);
+          }
+        }, delay);
+      }
+    }));
   }, [
     clearInlineTimer,
     inlineAutoPlayNext,
     inlineCurrentItem,
     inlineIndex,
-    inlineItems.length,
     inlinePlaying,
+    findNextPlayableIndex,
+    isItemMuted,
     unloadSound,
     voiceSettings.rate,
   ]);
@@ -561,6 +705,7 @@ const composerCollapsed = inputFocused || keyboardOpen;
   const handleInlinePlayPause = useCallback(
     async (messageKey: string, playback: PlaybackPayload | null | undefined) => {
       if (!playback?.items?.length) return;
+      llAudioLog('play requested', { messageKey, activeMessageKey, inlineIndex });
       if (activeMessageKey !== messageKey) {
         setActiveMessageKey(messageKey);
         setInlinePlayback(playback);
@@ -610,19 +755,26 @@ const composerCollapsed = inputFocused || keyboardOpen;
         (item) => item.segmentIdx === inlineSegmentIdx && item.kind === 'en'
       );
       if (idx >= 0) {
-        setInlineIndex(idx);
+        const playableIdx = isItemMuted(inlineItems[idx])
+          ? findNextPlayableIndex(idx, inlineItems)
+          : idx;
+        if (playableIdx === null) {
+          setInlinePlaying(false);
+          return;
+        }
+        setInlineIndex(playableIdx);
         setInlineAutoPlayNext(true);
         setInlinePlaying(true);
       }
     },
-    [activeMessageKey, inlineItems, inlineSegmentIdx, setPlaybackQueue]
+    [activeMessageKey, findNextPlayableIndex, inlineItems, inlineSegmentIdx, isItemMuted, setPlaybackQueue]
   );
 
   const handleSend = useCallback(async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || promptLocked || loading) return;
     await sendPrompt(input.trim());
     setInput('');
-  }, [input, sendPrompt]);
+  }, [input, promptLocked, loading, sendPrompt]);
 
   const handleComplete = useCallback(async () => {
     const q = await completeCourse();
@@ -704,15 +856,20 @@ const startPlaybackAt = useCallback(
     const startIdx = pb.items.findIndex(
       (it) => it.segmentIdx === segmentIdx && it.kind === kind
     );
+    const desiredIdx = startIdx >= 0 ? startIdx : 0;
+    if (isItemMuted(pb.items[desiredIdx])) {
+      setInlinePlaying(false);
+      return;
+    }
 
     setActiveMessageKey(messageKey);
     setInlinePlayback(pb);
     setPlaybackQueue(pb);
-    setInlineIndex(startIdx >= 0 ? startIdx : 0);
+    setInlineIndex(desiredIdx);
     setInlineAutoPlayNext(true);
     setInlinePlaying(true);
   },
-  [ensurePlaybackFor, setPlaybackQueue]
+  [ensurePlaybackFor, isItemMuted, setPlaybackQueue]
 );
 
   const handleCertificate = useCallback(async () => {
@@ -745,6 +902,32 @@ const startPlaybackAt = useCallback(
   }, [backendUrl, token, courseId]);
 
   const title = headerLabel ? `Language Learning: English → ${headerLabel}` : 'Language Learning';
+  const promptLocked = bundleBlocked || (promptsLimit && promptsUsed >= promptsLimit);
+
+  const formatCountdown = useCallback((ms: number) => {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  }, []);
+
+  const resetLabel = useMemo(() => {
+    if (!resetAt) return null;
+    const ts = new Date(resetAt).getTime();
+    if (Number.isNaN(ts)) return null;
+    const remaining = ts - nowTs;
+    if (remaining <= 0) {
+      return `Resets at ${new Date(ts).toLocaleString()}`;
+    }
+    return `Resets in ${formatCountdown(remaining)}`;
+  }, [resetAt, nowTs, formatCountdown]);
+
+  const baseFontSize = Math.min(22, Math.max(12, fontSize));
+  const targetFontSize = Math.max(12, baseFontSize - 2);
+  const targetActiveFontSize = Math.min(26, baseFontSize + 2);
 
   const progressPct = useMemo(() => {
     if (!promptsLimit) return 0;
@@ -834,7 +1017,7 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
   );
 
   return (
-  <SafeAreaView style={tw`flex-1 bg-slate-950`}>
+  <SafeAreaView style={[tw`flex-1`, { backgroundColor: theme.bg }]}>
     {/* Main content */}
     <View style={tw`flex-1`}>
       <ScrollView
@@ -849,27 +1032,37 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
           lastUserScrollRef.current = Date.now();
         }}
         scrollIndicatorInsets={{ bottom: bottomPadding }}
-        contentContainerStyle={[tw`p-4 gap-4`, { paddingBottom: bottomPadding }]}
+        contentContainerStyle={[
+          tw`gap-4`,
+          {
+            paddingHorizontal: 16,
+            paddingTop: 16,
+            paddingBottom: bottomPadding,
+            width: '100%',
+            maxWidth: 760,
+            alignSelf: 'center',
+          },
+        ]}
       >
         {/* ─────────────────────────────────────────────
             Header card
         ───────────────────────────────────────────── */}
-        <View style={tw`bg-slate-900/80 rounded-3xl p-5 gap-3 border border-white/5`}>
-          <Text style={tw`text-2xl font-bold text-white`}>{title}</Text>
-          <Text style={tw`text-xs text-white/70`}>
+        <View style={[tw`rounded-3xl p-5 gap-3 border`, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[tw`text-2xl font-bold`, { color: theme.text }]}>{title}</Text>
+          <Text style={[tw`text-xs`, { color: theme.subtext }]}>
             Prompts used {promptsUsed} / {promptsLimit}
           </Text>
-          <View style={tw`h-2 bg-white/10 rounded-full mt-1 overflow-hidden`}>
-            <View style={[tw`h-2 bg-emerald-400 rounded-full`, { width: `${progressPct}%` }]} />
+          <View style={[tw`h-2 rounded-full mt-1 overflow-hidden`, { backgroundColor: theme.pill }]}>
+            <View style={[tw`h-2 rounded-full`, { width: `${progressPct}%`, backgroundColor: theme.accent }]} />
           </View>
         </View>
 
         {/* ─────────────────────────────────────────────
             Messages
         ───────────────────────────────────────────── */}
-        <View style={tw`bg-slate-900/80 rounded-3xl p-4 gap-4 border border-white/5`}>
+        <View style={[tw`rounded-3xl p-4 gap-4 border`, { backgroundColor: theme.card, borderColor: theme.border }]}>
           {messages.length === 0 && (
-            <Text style={tw`text-sm text-white/60`}>Start chatting to build your course.</Text>
+            <Text style={[tw`text-sm`, { color: theme.subtext }]}>Start chatting to build your course.</Text>
           )}
 
           {messages.map((msg, idx) => {
@@ -880,12 +1073,16 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
             return (
               <View key={messageKey} style={tw`${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 <View
-                  style={tw`max-w-[86%] rounded-3xl px-4 py-3 border ${
-                    msg.role === 'user' ? 'bg-blue-500 border-blue-400' : 'bg-white/10 border-white/10'
-                  } ${isActive ? 'border-emerald-300' : ''}`}
+                  style={[
+                    tw`max-w-[86%] rounded-3xl px-4 py-3 border`,
+                    {
+                      backgroundColor: msg.role === 'user' ? theme.userBubble : theme.assistantBubble,
+                      borderColor: isActive ? theme.accent : msg.role === 'user' ? theme.userBorder : theme.border,
+                    },
+                  ]}
                 >
                   {isAssistant && msg.segments ? (
-                    <View style={tw`gap-3`}>
+                    <View style={tw`gap-2`}>
                       {msg.segments.map((seg: any, segIdx: number) => {
                         const lineKey = `${messageKey}-${segIdx}`;
                         const isActiveLine = isActive && activeLineKey === lineKey;
@@ -897,13 +1094,26 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
                               if (node) lineRefs.current.set(lineKey, node);
                               else lineRefs.current.delete(lineKey);
                             }}
-                            style={tw`rounded-2xl px-2 py-1 ${isActiveLine ? 'bg-emerald-500/10' : ''}`}
+                            style={[
+                              tw`rounded-2xl px-3 py-2`,
+                              { backgroundColor: isActiveLine ? theme.accentSoft : 'transparent' },
+                            ]}
                           >
-                            <Text style={tw`text-sm text-white`}>{seg.en}</Text>
                             <Text
-                              style={tw`text-xs text-white/60 ${
-                                isActiveLine && activeLineIsTarget ? 'text-base text-white font-semibold' : ''
-                              }`}
+                              style={[tw`text-sm`, { color: theme.text, fontSize: baseFontSize, flexShrink: 1 }]}
+                            >
+                              {seg.en}
+                            </Text>
+                            <Text
+                              style={[
+                                tw`text-xs`,
+                                {
+                                  color: isActiveLine && activeLineIsTarget ? theme.text : theme.subtext,
+                                  fontSize: isActiveLine && activeLineIsTarget ? targetActiveFontSize : targetFontSize,
+                                  fontWeight: isActiveLine && activeLineIsTarget ? '600' : '400',
+                                  flexShrink: 1,
+                                },
+                              ]}
                             >
                               {seg.tr}
                             </Text>
@@ -930,14 +1140,16 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
                                     activeMsgMetaRef.current = { messageKey, idx, msgId: getMsgId(msg) };
                                     await handleInlinePlayPause(messageKey, ensured);
                                   }}
-                                  style={tw`rounded-full px-3 py-1 ${
-                                    hasPb ? 'bg-emerald-500/20' : 'bg-white/10'
-                                  }`}
+                                  style={[
+                                    tw`rounded-full px-3 py-1`,
+                                    { backgroundColor: hasPb ? theme.accentSoft : theme.pill },
+                                  ]}
                                 >
                                   <Text
-                                    style={tw`text-xs font-semibold ${
-                                      hasPb ? 'text-emerald-200' : 'text-white'
-                                    }`}
+                                    style={[
+                                      tw`text-xs font-semibold`,
+                                      { color: hasPb ? theme.accent : theme.text },
+                                    ]}
                                   >
                                     {isPbLoading
                                       ? 'Loading…'
@@ -958,32 +1170,40 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
                                     activeMsgMetaRef.current = { messageKey, idx, msgId: getMsgId(msg) };
                                     handleInlineReplay(messageKey, ensured);
                                   }}
-                                  style={tw`rounded-full bg-white/10 px-3 py-1 ${
-                                    !hasPb || isPbLoading ? 'opacity-50' : ''
-                                  }`}
+                                  style={[
+                                    tw`rounded-full px-3 py-1`,
+                                    { backgroundColor: theme.pill },
+                                    !hasPb || isPbLoading ? tw`opacity-50` : null,
+                                  ]}
                                 >
-                                  <Text style={tw`text-xs text-white`}>Replay</Text>
+                                  <Text style={[tw`text-xs`, { color: theme.text }]}>Replay</Text>
                                 </Pressable>
 
                                 <Pressable
                                   onPress={() => setRepeatSheet({ messageKey, msg, idx })}
-                                  style={tw`rounded-full bg-white/10 px-3 py-1`}
+                                  style={[tw`rounded-full px-3 py-1`, { backgroundColor: theme.pill }]}
                                 >
-                                  <Text style={tw`text-xs text-white`}>Repeat section</Text>
+                                  <Text style={[tw`text-xs`, { color: theme.text }]}>Repeat section</Text>
                                 </Pressable>
 
                                 {isActive && (
-                                  <Text style={tw`text-[11px] text-white/60`}>
+                                  <Text style={[tw`text-[11px]`, { color: theme.subtext }]}>
                                     {inlineIndex + 1} / {inlineItems.length || 0}
                                   </Text>
                                 )}
                               </View>
 
                               {isActive && inlineSegment && (
-                                <View style={tw`rounded-2xl bg-emerald-500/10 px-3 py-2`}>
-                                  <Text style={tw`text-xs text-emerald-200 font-semibold`}>Now playing</Text>
-                                  <Text style={tw`text-xs text-white`}>{inlineSegment.en}</Text>
-                                  <Text style={tw`text-[11px] text-white/60`}>{inlineSegment.tr}</Text>
+                                <View
+                                  style={[tw`rounded-2xl px-3 py-2`, { backgroundColor: theme.accentSoft }]}
+                                >
+                                  <Text style={[tw`text-xs font-semibold`, { color: theme.accent }]}>
+                                    Now playing
+                                  </Text>
+                                  <Text style={[tw`text-xs`, { color: theme.text }]}>{inlineSegment.en}</Text>
+                                  <Text style={[tw`text-[11px]`, { color: theme.subtext }]}>
+                                    {inlineSegment.tr}
+                                  </Text>
                                 </View>
                               )}
                             </>
@@ -992,7 +1212,7 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
                       </View>
                     </View>
                   ) : (
-                    <Text style={tw`text-sm text-white`}>{msg.content}</Text>
+                    <Text style={[tw`text-sm`, { color: theme.text }]}>{msg.content}</Text>
                   )}
                 </View>
               </View>
@@ -1001,21 +1221,21 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
 
           {loading && (
             <View style={tw`flex-row items-center gap-2`}>
-              <ActivityIndicator color="#34d399" />
-              <Text style={tw`text-xs text-white/60`}>Tutor is typing…</Text>
+              <ActivityIndicator color={theme.accent} />
+              <Text style={[tw`text-xs`, { color: theme.subtext }]}>Tutor is typing…</Text>
             </View>
           )}
         </View>
 
         {/* Complete */}
-        <View style={tw`bg-slate-900/80 rounded-3xl p-4 border border-white/5`}>
+        <View style={[tw`rounded-3xl p-4 border`, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Pressable onPress={handleComplete} style={tw`rounded-xl bg-emerald-600 px-4 py-2`}>
             <Text style={tw`text-sm text-white font-semibold text-center`}>Course Complete</Text>
           </Pressable>
         </View>
 
         {/* Player */}
-        <View style={tw`bg-slate-900/80 rounded-3xl p-3 border border-white/5`}>
+        <View style={[tw`rounded-3xl p-3 border`, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <ClassroomPlayer
             mode="language"
             playback={playbackQueue || undefined}
@@ -1028,12 +1248,12 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
 
         {/* Quiz */}
         {quiz && (
-          <View style={tw`bg-slate-900/80 rounded-3xl p-4 gap-4 border border-white/5`}>
-            <Text style={tw`text-lg font-semibold text-white`}>Final Quiz</Text>
+          <View style={[tw`rounded-3xl p-4 gap-4 border`, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[tw`text-lg font-semibold`, { color: theme.text }]}>Final Quiz</Text>
 
             {quiz.questions.map((q: any, qIdx: number) => (
               <View key={q.id} style={tw`gap-2`}>
-                <Text style={tw`text-sm font-semibold text-white`}>
+                <Text style={[tw`text-sm font-semibold`, { color: theme.text }]}>
                   {qIdx + 1}. {q.prompt}
                 </Text>
 
@@ -1044,18 +1264,26 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
                       <Pressable
                         key={choice}
                         onPress={() => setAnswers((prev) => ({ ...prev, [q.id]: cIdx }))}
-                        style={tw`flex-row items-center gap-2 rounded-2xl border px-3 py-2 ${
-                          selected ? 'border-blue-400 bg-blue-500/20' : 'border-white/10'
-                        }`}
+                        style={[
+                          tw`flex-row items-center gap-2 rounded-2xl border px-3 py-2`,
+                          {
+                            borderColor: selected ? '#60a5fa' : theme.border,
+                            backgroundColor: selected ? 'rgba(59,130,246,0.2)' : 'transparent',
+                          },
+                        ]}
                       >
                         <View
-                          style={tw`h-4 w-4 rounded-full border border-white/50 items-center justify-center ${
-                            selected ? 'bg-blue-400 border-blue-300' : 'bg-transparent'
-                          }`}
+                          style={[
+                            tw`h-4 w-4 rounded-full border items-center justify-center`,
+                            {
+                              borderColor: selected ? '#93c5fd' : theme.subtext,
+                              backgroundColor: selected ? '#60a5fa' : 'transparent',
+                            },
+                          ]}
                         >
                           {selected && <View style={tw`h-2 w-2 rounded-full bg-white`} />}
                         </View>
-                        <Text style={tw`text-sm text-white`}>{choice}</Text>
+                        <Text style={[tw`text-sm`, { color: theme.text }]}>{choice}</Text>
                       </Pressable>
                     );
                   })}
@@ -1071,7 +1299,11 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
               <Text style={tw`text-sm text-white font-semibold text-center`}>Submit Quiz</Text>
             </Pressable>
 
-            {grade && <Text style={tw`text-sm text-white/70`}>Score: {grade.scorePct}%</Text>}
+            {grade && (
+              <Text style={[tw`text-sm`, { color: theme.subtext }]}>
+                Score: {grade.scorePct}%
+              </Text>
+            )}
 
             {grade?.scorePct >= 70 && (
               <View style={tw`gap-2`}>
@@ -1080,7 +1312,7 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
                   disabled={downloading}
                   style={tw`rounded-xl border border-emerald-400 px-3 py-2 flex-row items-center justify-center gap-2`}
                 >
-                  {downloading && <ActivityIndicator color="#34d399" />}
+                  {downloading && <ActivityIndicator color={theme.accent} />}
                   <Text style={tw`text-sm text-emerald-300 font-semibold text-center`}>
                     {certId ? 'Download Certificate' : 'Generate Certificate'}
                   </Text>
@@ -1091,7 +1323,7 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
                   disabled={downloading}
                   style={tw`rounded-xl border border-emerald-400 px-3 py-2 flex-row items-center justify-center gap-2`}
                 >
-                  {downloading && <ActivityIndicator color="#34d399" />}
+                  {downloading && <ActivityIndicator color={theme.accent} />}
                   <Text style={tw`text-sm text-emerald-300 font-semibold text-center`}>
                     {transcriptId ? 'Download Transcript' : 'Generate Transcript'}
                   </Text>
@@ -1108,7 +1340,7 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
       <Animated.View
         onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
         style={[
-          tw`border-t border-white/10 bg-slate-950/95 px-4 py-2`,
+          tw`border-t px-4 py-2`,
           {
             position: 'absolute',
             left: 0,
@@ -1116,13 +1348,15 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
             bottom: kbAnim,
             paddingBottom: footerSafePad,
             zIndex: 50,
+            backgroundColor: theme.bg,
+            borderColor: theme.border,
           },
         ]}
       >
         {/* Suggested */}
         {selectedTopic && (
           <View style={tw`mb-2`}>
-            <Text style={tw`text-xs text-white/60`}>
+            <Text style={[tw`text-xs`, { color: theme.subtext }]}>
               Suggested: <Text style={tw`text-emerald-300 font-semibold`}>{selectedTopic.label}</Text>
             </Text>
             <Pressable onPress={() => applyPrompt(selectedTopic.prompts?.[0])}>
@@ -1139,11 +1373,16 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
               setShowTopicSheet(true);
               setShowVoiceSheet(false);
             }}
-            style={tw`flex-1 rounded-full border border-white/10 bg-white/5 px-3 ${
-              compact ? 'py-1.5' : 'py-2'
-            }`}
+            style={[
+              tw`flex-1 rounded-full border px-3`,
+              {
+                borderColor: theme.border,
+                backgroundColor: theme.pill,
+                paddingVertical: compact ? 6 : 8,
+              },
+            ]}
           >
-            <Text style={tw`${compact ? 'text-[11px]' : 'text-xs'} text-white font-semibold`}>
+            <Text style={[tw`${compact ? 'text-[11px]' : 'text-xs'} font-semibold`, { color: theme.text }]}>
               ✨ Topics{selectedTopic ? `: ${selectedTopic.label}` : ''}
             </Text>
           </Pressable>
@@ -1154,11 +1393,16 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
               setShowVoiceSheet(true);
               setShowTopicSheet(false);
             }}
-            style={tw`flex-1 rounded-full border border-white/10 bg-white/5 px-3 ${
-              compact ? 'py-1.5' : 'py-2'
-            }`}
+            style={[
+              tw`flex-1 rounded-full border px-3`,
+              {
+                borderColor: theme.border,
+                backgroundColor: theme.pill,
+                paddingVertical: compact ? 6 : 8,
+              },
+            ]}
           >
-            <Text style={tw`${compact ? 'text-[11px]' : 'text-xs'} text-white font-semibold`}>
+            <Text style={[tw`${compact ? 'text-[11px]' : 'text-xs'} font-semibold`, { color: theme.text }]}>
               🎙 Voice: {activeVoiceLabel}
             </Text>
           </Pressable>
@@ -1172,31 +1416,44 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
             onChangeText={setInput}
             onFocus={() => setInputFocused(true)}
             onBlur={() => setInputFocused(false)}
-            placeholder={bundleBlocked ? 'Unlock more prompts to continue.' : 'Ask your tutor...'}
-            placeholderTextColor="#94a3b8"
-            editable={!bundleBlocked && !loading}
-            style={tw`flex-1 rounded-2xl border border-white/10 px-4 py-3 text-sm text-white bg-slate-900/80`}
+            placeholder={promptLocked ? 'Unlock more prompts to continue.' : 'Ask your tutor...'}
+            placeholderTextColor={isDark ? '#94a3b8' : '#64748b'}
+            editable={!promptLocked && !loading}
+            style={[
+              tw`flex-1 rounded-2xl border px-4 py-3 text-sm`,
+              { borderColor: theme.border, color: theme.text, backgroundColor: theme.cardSoft },
+            ]}
             returnKeyType="send"
             onSubmitEditing={handleSend}
           />
 
           <Pressable
             onPress={handleSend}
-            disabled={bundleBlocked || loading || !input.trim()}
+            disabled={promptLocked || loading || !input.trim()}
             style={tw`rounded-2xl bg-emerald-500 px-4 py-3 ${
-              bundleBlocked || loading || !input.trim() ? 'opacity-50' : ''
+              promptLocked || loading || !input.trim() ? 'opacity-50' : ''
             }`}
           >
             <Text style={tw`text-sm text-white font-semibold`}>Send</Text>
           </Pressable>
         </View>
 
-        {bundleBlocked && (
-          <View style={tw`mt-3 rounded-2xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 gap-2`}>
+        {promptLocked && (
+          <View
+            style={[
+              tw`mt-3 rounded-2xl border px-4 py-3 gap-2`,
+              { borderColor: 'rgba(16,185,129,0.4)', backgroundColor: theme.accentSoft },
+            ]}
+          >
             <View style={tw`flex-row items-center gap-2`}>
               <Text style={tw`text-base`}>🔒</Text>
-              <Text style={tw`text-sm text-emerald-200 font-semibold`}>You’ve used your 5 free prompts.</Text>
+              <Text style={tw`text-sm text-emerald-200 font-semibold`}>
+                You’ve hit your free prompt limit.
+              </Text>
             </View>
+            {resetLabel ? (
+              <Text style={tw`text-xs text-emerald-200`}>{resetLabel}</Text>
+            ) : null}
             <Pressable onPress={purchaseBundle} style={tw`rounded-2xl bg-emerald-500 px-3 py-2`}>
               <Text style={tw`text-sm text-white font-semibold text-center`}>Unlock 300 prompts (20 tokens)</Text>
             </Pressable>
@@ -1214,8 +1471,9 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
       <Pressable style={tw`flex-1 bg-black/40`} onPress={() => setShowTopicSheet(false)} />
       <View
         style={[
-          tw`bg-slate-900 rounded-t-3xl p-4 gap-4 border border-white/10`,
+          tw`rounded-t-3xl p-4 gap-4 border`,
           { paddingBottom: insets.bottom + 16, marginBottom: sheetBottomGap },
+          { backgroundColor: theme.card, borderColor: theme.border },
         ]}
       >
         <View style={tw`flex-row items-center gap-2`}>
@@ -1223,8 +1481,11 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
             value={topicFilter}
             onChangeText={setTopicFilter}
             placeholder="Search topics"
-            placeholderTextColor="#94a3b8"
-            style={tw`flex-1 rounded-xl border border-white/10 px-3 py-2 text-sm text-white`}
+            placeholderTextColor={isDark ? '#94a3b8' : '#64748b'}
+            style={[
+              tw`flex-1 rounded-xl border px-3 py-2 text-sm`,
+              { color: theme.text, borderColor: theme.border },
+            ]}
           />
           <Pressable onPress={handleSurprise} style={tw`rounded-full bg-amber-500/20 px-3 py-2`}>
             <Text style={tw`text-xs text-amber-200 font-semibold`}>Surprise me</Text>
@@ -1236,25 +1497,26 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
             <Pressable
               key={topic.id}
               onPress={() => handleTopicSelect(topic)}
-              style={tw`rounded-full px-3 py-2 ${
-                selectedTopic?.id === topic.id ? 'bg-emerald-500' : 'bg-white/10'
-              }`}
+              style={[
+                tw`rounded-full px-3 py-2`,
+                { backgroundColor: selectedTopic?.id === topic.id ? theme.accent : theme.pill },
+              ]}
             >
-              <Text style={tw`text-xs text-white`}>{topic.label}</Text>
+              <Text style={[tw`text-xs`, { color: theme.text }]}>{topic.label}</Text>
             </Pressable>
           ))}
         </ScrollView>
 
         {selectedTopic && (
           <View style={tw`gap-2`}>
-            <Text style={tw`text-xs text-white/60 font-semibold`}>Suggested prompts</Text>
+            <Text style={[tw`text-xs font-semibold`, { color: theme.subtext }]}>Suggested prompts</Text>
             {selectedTopic.prompts.map((prompt) => (
               <Pressable
                 key={prompt}
                 onPress={() => applyPrompt(prompt)}
-                style={tw`rounded-2xl border border-white/10 px-3 py-2`}
+                style={[tw`rounded-2xl border px-3 py-2`, { borderColor: theme.border }]}
               >
-                <Text style={tw`text-xs text-white/80`}>
+                <Text style={[tw`text-xs`, { color: theme.subtext }]}>
                   {prompt.replace('{language}', headerLabel || targetLanguage)}
                 </Text>
               </Pressable>
@@ -1268,20 +1530,24 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
       <Pressable style={tw`flex-1 bg-black/40`} onPress={() => setRepeatSheet(null)} />
       <View
         style={[
-          tw`bg-slate-900 rounded-t-3xl p-4 gap-3 border border-white/10`,
+          tw`rounded-t-3xl p-4 gap-3 border`,
           { paddingBottom: insets.bottom + 16, marginBottom: sheetBottomGap },
+          { backgroundColor: theme.card, borderColor: theme.border },
         ]}
       >
         <View style={tw`flex-row items-center justify-between`}>
-          <Text style={tw`text-white font-semibold`}>Repeat a section</Text>
-          <Text style={tw`text-xs text-white/60`}>{headerLabel || targetLanguage}</Text>
+          <Text style={[tw`font-semibold`, { color: theme.text }]}>Repeat a section</Text>
+          <Text style={[tw`text-xs`, { color: theme.subtext }]}>{headerLabel || targetLanguage}</Text>
         </View>
 
         <ScrollView style={tw`max-h-[420px]`} contentContainerStyle={tw`gap-2`}>
           {(repeatSheet?.msg?.segments || []).map((seg: any, segIdx: number) => (
             <View
               key={`${seg.en}-${segIdx}`}
-              style={tw`rounded-2xl border border-white/10 bg-white/5 p-3`}
+              style={[
+                tw`rounded-2xl border p-3`,
+                { borderColor: theme.border, backgroundColor: theme.pill },
+              ]}
             >
               <Pressable
                 onPress={() => {
@@ -1291,7 +1557,7 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
                 }}
                 style={tw`flex-row items-center justify-between`}
               >
-                <Text style={tw`text-xs text-white flex-1 pr-3`}>{seg.en}</Text>
+                <Text style={[tw`text-xs flex-1 pr-3`, { color: theme.text }]}>{seg.en}</Text>
                 <Text style={tw`text-xs text-emerald-300 font-semibold`}>Play EN</Text>
               </Pressable>
 
@@ -1303,14 +1569,16 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
                 }}
                 style={tw`mt-2 flex-row items-center justify-between`}
               >
-                <Text style={tw`text-[11px] text-white/70 flex-1 pr-3`}>{seg.tr}</Text>
+                <Text style={[tw`text-[11px] flex-1 pr-3`, { color: theme.subtext }]}>{seg.tr}</Text>
                 <Text style={tw`text-xs text-emerald-300 font-semibold`}>Play TR</Text>
               </Pressable>
             </View>
           ))}
         </ScrollView>
 
-        <Text style={tw`text-[11px] text-white/50`}>Tip: Tap any line to replay from exactly there.</Text>
+        <Text style={[tw`text-[11px]`, { color: theme.muted }]}>
+          Tip: Tap any line to replay from exactly there.
+        </Text>
       </View>
     </Modal>
 
@@ -1383,6 +1651,51 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
           <Text style={[tw`text-[11px]`, { color: voiceSheetTheme.subtext }]}>
             Pitch may vary by device. Voice controls affect playback; regeneration coming soon.
           </Text>
+        </View>
+
+        <View style={tw`gap-2`}>
+          <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>
+            Text size ({baseFontSize}px)
+          </Text>
+          <Slider
+            minimumValue={12}
+            maximumValue={22}
+            step={1}
+            value={baseFontSize}
+            onValueChange={(value) => setFontSize(value)}
+            minimumTrackTintColor="#34d399"
+            maximumTrackTintColor={voiceSheetTheme.sliderTrack}
+          />
+        </View>
+
+        <View style={tw`gap-2`}>
+          <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>
+            Mute voices
+          </Text>
+          <View style={tw`flex-row flex-wrap gap-2`}>
+            <Pressable
+              onPress={() => setMuteEn((prev) => !prev)}
+              style={[
+                tw`rounded-full px-3 py-2`,
+                { backgroundColor: muteEn ? '#ef4444' : voiceSheetTheme.pillBg },
+              ]}
+            >
+              <Text style={[tw`text-xs`, { color: muteEn ? '#ffffff' : voiceSheetTheme.text }]}>
+                Mute English voice
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setMuteTr((prev) => !prev)}
+              style={[
+                tw`rounded-full px-3 py-2`,
+                { backgroundColor: muteTr ? '#ef4444' : voiceSheetTheme.pillBg },
+              ]}
+            >
+              <Text style={[tw`text-xs`, { color: muteTr ? '#ffffff' : voiceSheetTheme.text }]}>
+                Mute Target voice
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={tw`flex-row items-center justify-between`}>
