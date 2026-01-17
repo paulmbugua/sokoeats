@@ -23,7 +23,7 @@ import Slider from '@react-native-community/slider';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import tw from '../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useLanguageLearning } from '@mytutorapp/shared/hooks';
+import { useLanguageLearning, useOrg } from '@mytutorapp/shared/hooks';
 import { useThemePref } from '../theme/ThemeContext';
 import { buildGradePayload } from '@mytutorapp/shared/utils/buildGradePayload';
 import {
@@ -258,6 +258,8 @@ const LanguageLearningScreen: React.FC = () => {
     [languageStart]
   );
 
+  const { activeOrgId } = useOrg();
+
   const {
     messages,
     headerLabel,
@@ -277,6 +279,7 @@ const LanguageLearningScreen: React.FC = () => {
     messages: initMessages,
     entitlement: languageStart?.entitlement,
     targetLanguage: languageStart?.targetLanguage,
+    orgId: activeOrgId ?? null,
   });
 
   const [input, setInput] = useState('');

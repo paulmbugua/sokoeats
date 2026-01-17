@@ -10,12 +10,14 @@ import {
   sha1,
 } from './aiCourseCore.js';
 import { listGoogleVoices, synthesizeTtsLocalFirst } from './googleTtsService.js';
+import { todayRange } from './narrationGate.js';
 
 
 
 const TOKEN_COST = 20;
 const FREE_PROMPTS_LIMIT = 5;
 const PAID_PROMPTS_LIMIT = 300;
+const ORG_PROMPT_LIMITS = { pro: 10, enterprise: 20 };
 const PROMPTS_PER_BUNDLE = FREE_PROMPTS_LIMIT;
 const PROMPT_HISTORY_LIMIT = 12;
 const LANGUAGE_CACHE_TTL_SEC = 60 * 60 * 24 * 14;
@@ -34,6 +36,83 @@ const asIntId = (v) => {
   const n = typeof v === 'number' ? v : Number(String(v).trim());
   return Number.isFinite(n) ? Math.trunc(n) : null;
 };
+
+async function resolveOrgPromptLimit({ orgId, userId, db = pool }) {
+  const safeOrgId = String(orgId || '').trim();
+  if (!safeOrgId || !userId) return null;
+
+  const memberQ = await db.query(
+    `SELECT 1 FROM org_memberships WHERE org_id = $1 AND user_id = $2 LIMIT 1`,
+    [safeOrgId, userId],
+  );
+  if (!memberQ.rowCount) return null;
+
+  const subQ = await db.query(
+    `SELECT tier, active
+       FROM org_subscriptions
+      WHERE org_id = $1
+      ORDER BY started_at DESC
+      LIMIT 1`,
+    [safeOrgId],
+  );
+  if (!subQ.rowCount || !subQ.rows[0].active) return null;
+
+  const tier = String(subQ.rows[0].tier || '').toLowerCase();
+  const limit = ORG_PROMPT_LIMITS[tier];
+  if (!limit) return null;
+
+  return { limit, resetsAt: todayRange().end };
+}
+
+function isPaidBundle(entitlementRow) {
+  const perBundle = Number(entitlementRow?.prompts_per_bundle || 0);
+  return perBundle >= PAID_PROMPTS_LIMIT;
+}
+
+function buildPromptLimit({ entitlementRow, orgLimit }) {
+  const promptsPerBundle = Number(entitlementRow.prompts_per_bundle || PROMPTS_PER_BUNDLE);
+  const bundles = Number(entitlementRow.prompt_bundles || 1);
+  const paid = isPaidBundle(entitlementRow);
+  if (paid) {
+    return {
+      promptsLimit: bundles * promptsPerBundle,
+      resetsAt: null,
+      paid,
+    };
+  }
+  if (orgLimit?.limit) {
+    return {
+      promptsLimit: Number(orgLimit.limit),
+      resetsAt: orgLimit.resetsAt || todayRange().end,
+      paid: false,
+    };
+  }
+  return {
+    promptsLimit: FREE_PROMPTS_LIMIT,
+    resetsAt: todayRange().end,
+    paid: false,
+  };
+}
+
+async function resetDailyPromptsIfNeeded(client, entitlementRow, { paid }) {
+  if (paid) return entitlementRow;
+  const updatedAt = entitlementRow?.updated_at ? new Date(entitlementRow.updated_at) : null;
+  const day = todayRange();
+  const dayStart = new Date(`${day.start}T00:00:00.000Z`);
+  if (!updatedAt || updatedAt.getTime() >= dayStart.getTime()) return entitlementRow;
+
+  const updated = await client.query(
+    `
+    UPDATE ai_language_entitlements
+       SET prompts_used = 0,
+           updated_at = now()
+     WHERE course_id = $1::uuid
+     RETURNING *
+    `,
+    [entitlementRow.course_id],
+  );
+  return updated.rows[0] || entitlementRow;
+}
 
 // ─────────────────────────────────────────────────────────
 // Output sizing helpers (prevents JSON truncation)
@@ -401,11 +480,15 @@ const courseQ = await client.query(
   };
 }
 
-function formatEntitlement(row) {
+function formatEntitlement(row, { promptsLimit, resetsAt } = {}) {
   if (!row) return null;
   const promptsPerBundle = Number(row.prompts_per_bundle || PROMPTS_PER_BUNDLE);
   const bundles = Number(row.prompt_bundles || 1);
   const used = Number(row.prompts_used || 0);
+  const effectiveLimit =
+    typeof promptsLimit === 'number' && Number.isFinite(promptsLimit)
+      ? promptsLimit
+      : bundles * promptsPerBundle;
   return {
     courseId: row.course_id,
     profileId: row.profile_id,
@@ -414,8 +497,10 @@ function formatEntitlement(row) {
     promptBundles: bundles,
     promptsUsed: used,
     promptsPerBundle,
-    promptsLimit: bundles * promptsPerBundle,
+    promptsLimit: effectiveLimit,
+    bundleBlocked: Boolean(effectiveLimit > 0 && used >= effectiveLimit),
     unlockedAt: row.unlocked_at,
+    resetsAt: resetsAt ?? null,
     completedAt: row.completed_at,
     quizPassed: row.quiz_passed,
   };
@@ -579,7 +664,7 @@ async function resolveVoices(queryable, courseId, targetLanguage, metadata, opts
   return voices;
 }
 
-export async function startLanguageCourse({ userId, profileId, prompt }) {
+export async function startLanguageCourse({ userId, profileId, prompt, orgId }) {
   userId = asIntId(userId);
   profileId = asIntId(profileId);
   const targetLanguage = detectTargetLanguage(prompt);
@@ -599,6 +684,8 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
   let entitlement;
   let metadata = {};
   let promptsLimit = 0;
+  let resetsAt = null;
+  let orgLimit = null;
   const endTxTimer = startTxTimer('aiLanguage:start');
 
   try {
@@ -621,10 +708,14 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
       [courseId],
     );
     entitlement = entitlementQ.rows[0];
+    orgLimit = await resolveOrgPromptLimit({ orgId, userId, db: client });
+    const promptLimitMeta = buildPromptLimit({ entitlementRow: entitlement, orgLimit });
+    promptsLimit = promptLimitMeta.promptsLimit;
+    resetsAt = promptLimitMeta.resetsAt;
 
-    promptsLimit =
-      Number(entitlement.prompt_bundles || 1) *
-      Number(entitlement.prompts_per_bundle || PROMPTS_PER_BUNDLE);
+    entitlement = await resetDailyPromptsIfNeeded(client, entitlement, {
+      paid: promptLimitMeta.paid,
+    });
 
     if (Number(entitlement.prompts_used || 0) >= promptsLimit) {
       await rollbackQuiet(client);
@@ -637,6 +728,8 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
           needTokens: TOKEN_COST,
           promptsUsed: Number(entitlement.prompts_used || 0),
           promptsLimit,
+          resetsAt,
+          bundleBlocked: true,
         },
       };
     }
@@ -723,10 +816,13 @@ export async function startLanguageCourse({ userId, profileId, prompt }) {
       data: {
         courseId,
         targetLanguage,
-        entitlement: formatEntitlement({
-          ...entitlement,
-          prompts_used: Number(entitlement.prompts_used || 0) + 1,
-        }),
+        entitlement: formatEntitlement(
+          {
+            ...entitlement,
+            prompts_used: Number(entitlement.prompts_used || 0) + 1,
+          },
+          { promptsLimit, resetsAt },
+        ),
         messagesPreview: formatMessagesPreview(previewMessages),
         assistant: { ...assistant, segments },
         playback,
@@ -749,6 +845,7 @@ export async function sendLanguagePrompt({
   profileId,
   courseId,
   prompt,
+  orgId,
 }) {
   userId = asIntId(userId);
   profileId = asIntId(profileId);
@@ -758,6 +855,9 @@ export async function sendLanguagePrompt({
   let metadata = {};
   let targetLanguage;
   let updatedEnt;
+  let promptsLimit = 0;
+  let resetsAt = null;
+  let orgLimit = null;
   const endTxTimer = startTxTimer('aiLanguage:prompt');
 
   try {
@@ -775,9 +875,14 @@ export async function sendLanguagePrompt({
     }
 
     entitlement = entQ.rows[0];
-    const promptsLimit =
-      Number(entitlement.prompt_bundles || 1) *
-      Number(entitlement.prompts_per_bundle || PROMPTS_PER_BUNDLE);
+    orgLimit = await resolveOrgPromptLimit({ orgId, userId, db: client });
+    const promptLimitMeta = buildPromptLimit({ entitlementRow: entitlement, orgLimit });
+    promptsLimit = promptLimitMeta.promptsLimit;
+    resetsAt = promptLimitMeta.resetsAt;
+
+    entitlement = await resetDailyPromptsIfNeeded(client, entitlement, {
+      paid: promptLimitMeta.paid,
+    });
 
     if (Number(entitlement.prompts_used || 0) >= promptsLimit) {
       await rollbackQuiet(client);
@@ -790,6 +895,8 @@ export async function sendLanguagePrompt({
           needTokens: TOKEN_COST,
           promptsUsed: Number(entitlement.prompts_used || 0),
           promptsLimit,
+          resetsAt,
+          bundleBlocked: true,
         },
       };
     }
@@ -892,7 +999,7 @@ export async function sendLanguagePrompt({
       data: {
         assistant: { ...assistant, segments },
         playback,
-        entitlement: formatEntitlement(updatedEnt),
+        entitlement: formatEntitlement(updatedEnt, { promptsLimit, resetsAt }),
       },
     };
   } catch (err) {

@@ -761,6 +761,7 @@ export type LanguageLearningEntitlement = {
   promptsUsed: number;
   promptsPerBundle: number;
   promptsLimit: number;
+  bundleBlocked?: boolean;
   unlockedAt?: string | null;
   resetsAt?: string | null;
   completedAt?: string | null;

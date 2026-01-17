@@ -17,6 +17,7 @@ export type LanguageLearningInit = {
   messages?: LanguageLearningMessage[];
   entitlement?: LanguageLearningEntitlement | null;
   targetLanguage?: TargetLanguage | null;
+  orgId?: string | null;
 };
 
 export function useLanguageLearning(
@@ -33,6 +34,7 @@ export function useLanguageLearning(
   const [targetLanguage, setTargetLanguage] = useState<TargetLanguage | null>(
     init?.targetLanguage ?? null
   );
+  const orgId = init?.orgId ?? null;
   const [playbackQueue, setPlaybackQueue] = useState<PlaybackPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +77,7 @@ export function useLanguageLearning(
       setMessages((prev) => [...prev, { role: 'user', content: prompt }]);
 
       try {
-        const res = await sendLanguagePrompt(backendUrl, token, courseId, prompt);
+        const res = await sendLanguagePrompt(backendUrl, token, courseId, prompt, { orgId });
         if (res?.entitlement) setEntitlement(res.entitlement);
         if (res?.entitlement?.resetsAt) setResetAt(res.entitlement.resetsAt);
         appendAssistant(res.assistant, res.playback);
@@ -117,7 +119,16 @@ export function useLanguageLearning(
         setLoading(false);
       }
     },
-    [appendAssistant, backendUrl, token, courseId, promptsLimit, promptsUsed, fallbackResetAt]
+    [
+      appendAssistant,
+      backendUrl,
+      token,
+      courseId,
+      orgId,
+      promptsLimit,
+      promptsUsed,
+      fallbackResetAt,
+    ]
   );
 
   const purchaseBundle = useCallback(async () => {

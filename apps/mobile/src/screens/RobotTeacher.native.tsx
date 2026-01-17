@@ -5,6 +5,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ScrollView,
   Alert,
   ActivityIndicator,
@@ -563,10 +564,17 @@ const [languageActive, setLanguageActive] = useState<string | null>(null);
 const [llUnlockOpen, setLlUnlockOpen] = useState(false);
 const [llUnlockBusy, setLlUnlockBusy] = useState(false);
 const [llUnlockErr, setLlUnlockErr] = useState<string | null>(null);
+const unlockedLanguageCoursesRef = useRef<Set<string>>(new Set());
+const pendingLanguageStartRef = useRef<{
+  prompt: string;
+  languageLabel: string;
+  source: 'banner' | 'teachMe';
+} | null>(null);
 const [llUnlockCtx, setLlUnlockCtx] = useState<{
   courseId: string;
   prompt: string;
   languageLabel: string;
+  resetAt?: string | null;
 } | null>(null);
 
 
@@ -1255,6 +1263,14 @@ const parseLanguageGate = useCallback((res: any) => {
       0
   );
 
+  const resetsAt =
+    res?.resetsAt ??
+    res?.resetAt ??
+    res?.nextResetAt ??
+    ent?.resetsAt ??
+    ent?.resetAt ??
+    null;
+
   const effectiveLimit = promptsLimit || LANGUAGE_FREE_LIMIT;
 
   const bundleBlocked = Boolean(
@@ -1265,8 +1281,38 @@ const parseLanguageGate = useCallback((res: any) => {
       (effectiveLimit > 0 && promptsUsed >= effectiveLimit)
   );
 
-  return { bundleBlocked, promptsUsed, promptsLimit: effectiveLimit };
+  return { bundleBlocked, promptsUsed, promptsLimit: effectiveLimit, resetsAt };
 }, []);
+
+const [llUnlockNowTs, setLlUnlockNowTs] = useState(() => Date.now());
+
+const formatCountdown = useCallback((ms: number) => {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}, []);
+
+useEffect(() => {
+  if (!llUnlockOpen || !llUnlockCtx?.resetAt) return;
+  const id = setInterval(() => setLlUnlockNowTs(Date.now()), 1000);
+  return () => clearInterval(id);
+}, [llUnlockOpen, llUnlockCtx?.resetAt]);
+
+const llUnlockResetLabel = useMemo(() => {
+  const resetAt = llUnlockCtx?.resetAt;
+  if (!resetAt) return null;
+  const ts = new Date(resetAt).getTime();
+  if (Number.isNaN(ts)) return null;
+  const remaining = ts - llUnlockNowTs;
+  if (remaining <= 0) {
+    return `Resets at ${new Date(ts).toLocaleString()}`;
+  }
+  return `Resets in ${formatCountdown(remaining)}`;
+}, [llUnlockCtx?.resetAt, llUnlockNowTs, formatCountdown]);
 
 const extractLanguageCourseId = useCallback((x: any): string => {
   const candidates = [
@@ -1302,21 +1348,31 @@ const extractLanguageCourseId = useCallback((x: any): string => {
 
 
 const startLanguageFlow = useCallback(
-  async (prompt: string, languageLabel: string) => {
+  async (prompt: string, languageLabel: string, source: 'banner' | 'teachMe') => {
     const ok = requireLanguageAuth('language-learning', 'Please sign in to start language learning.');
-    if (!ok) return;
+    if (!ok) {
+      pendingLanguageStartRef.current = null;
+      return 'error';
+    }
 
-    if (!backendUrl || !languageToken) return;
+    if (!backendUrl || !languageToken) {
+      pendingLanguageStartRef.current = null;
+      return 'error';
+    }
 
     try {
-      const res: any = await startLanguageCourse(backendUrl, languageToken as string, prompt);
+      const res: any = await startLanguageCourse(backendUrl, languageToken as string, prompt, {
+        orgId: activeOrgId ?? null,
+      });
 
       const gate = parseLanguageGate(res);
 
       const courseId = extractLanguageCourseId(res);
+      const isManuallyUnlocked =
+        Boolean(courseId) && unlockedLanguageCoursesRef.current.has(courseId);
       await cacheLanguageCourseId(languageLabel, courseId, res?.targetLanguage);
 
-     if (gate.bundleBlocked) {
+     if (gate.bundleBlocked && !isManuallyUnlocked) {
   resetRunUi();
   setLlUnlockErr(null);
 
@@ -1334,9 +1390,11 @@ const startLanguageFlow = useCallback(
     limit: gate.promptsLimit,
   });
 
-  setLlUnlockCtx({ courseId: cid, prompt, languageLabel });
+  setLlUnlockCtx({ courseId: cid, prompt, languageLabel, resetAt: gate.resetsAt });
   setLlUnlockOpen(true);
-  return;
+  // pending action queued until unlock succeeds
+  pendingLanguageStartRef.current = { prompt, languageLabel, source };
+  return 'locked';
 }
 
 
@@ -1345,6 +1403,8 @@ const startLanguageFlow = useCallback(
         courseId,
         languageStart: res,
       } as any);
+      pendingLanguageStartRef.current = null;
+      return 'started';
     } catch (err: any) {
       const data = err?.data ?? err?.response?.data ?? null;
       const msgText = String(data?.message || data?.error || err?.message || '');
@@ -1365,7 +1425,7 @@ const startLanguageFlow = useCallback(
           /free prompt limit|prompt limit|unlock/i.test(msgText)
       );
 
-      if (blocked) {
+      if (blocked && !unlockedLanguageCoursesRef.current.has(courseId)) {
         const label =
           String(languageLabel || '').trim() || inferLanguageLabelFromPrompt(prompt) || 'Language';
 
@@ -1376,19 +1436,34 @@ const startLanguageFlow = useCallback(
 
         resetRunUi();
         setLlUnlockErr(null);
-        setLlUnlockCtx({ courseId: cid, prompt, languageLabel: label });
+        setLlUnlockCtx({
+          courseId: cid,
+          prompt,
+          languageLabel: label,
+          resetAt:
+            data?.resetsAt ||
+            data?.resetAt ||
+            data?.nextResetAt ||
+            data?.entitlement?.resetsAt ||
+            null,
+        });
         setLlUnlockOpen(true);
-        return;
+        // pending action queued until unlock succeeds
+        pendingLanguageStartRef.current = { prompt, languageLabel: label, source };
+        return 'locked';
       }
 
       resetRunUi();
       Alert.alert('Language Learning', msgText || 'Unable to start language learning.');
+      pendingLanguageStartRef.current = null;
+      return 'error';
     }
   },
  [
   requireLanguageAuth,
   backendUrl,
   languageToken,
+  activeOrgId,
   navigation,
   parseLanguageGate,
   extractLanguageCourseId,
@@ -1398,6 +1473,29 @@ const startLanguageFlow = useCallback(
 ]
 
 );
+
+  const attemptLanguageStart = useCallback(
+    async (prompt: string, languageLabel: string, source: 'banner' | 'teachMe') => {
+      pendingLanguageStartRef.current = { prompt, languageLabel, source };
+      await startLanguageFlow(prompt, languageLabel, source);
+    },
+    [startLanguageFlow]
+  );
+
+  const resumePendingLanguageStart = useCallback(async () => {
+    const pending = pendingLanguageStartRef.current;
+    if (!pending) return;
+    // resume the queued action after unlock success
+    await startLanguageFlow(pending.prompt, pending.languageLabel, pending.source);
+  }, [startLanguageFlow]);
+
+  const closeLanguageUnlockModal = useCallback(() => {
+    if (llUnlockBusy) return;
+    setLlUnlockOpen(false);
+    setLlUnlockCtx(null);
+    setLlUnlockErr(null);
+    pendingLanguageStartRef.current = null;
+  }, [llUnlockBusy]);
 
   // Quiz answer helper
   const disableQuiz = Boolean(
@@ -1519,7 +1617,9 @@ const startLanguageFlow = useCallback(
         let msg =
           'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
         try {
-          await startLanguageCourse(backendUrl, authToken as string, custom);
+          await startLanguageCourse(backendUrl, authToken as string, custom, {
+            orgId: activeOrgId ?? null,
+          });
         } catch (err: any) {
           msg = err?.response?.data?.message || msg;
         }
@@ -1541,7 +1641,7 @@ const startLanguageFlow = useCallback(
           setLanguageLaunching(true);
 
           try {
-            await startLanguageFlow(custom, String(langLabel));
+            await attemptLanguageStart(custom, String(langLabel), 'teachMe');
           } finally {
             setLanguageLaunching(false);
             setLanguageActive(null);
@@ -1674,7 +1774,7 @@ return;
  languageLaunching,
  llUnlockBusy,
   canStartNow,
-  startLanguageFlow,
+  attemptLanguageStart,
   assignmentId,
   sizePreset,
   classLevel,
@@ -1710,14 +1810,14 @@ const startLanguageFromCard = useCallback(
 
     try {
       resetRunUi();
-      await startLanguageFlow(prompt, language);
+      await attemptLanguageStart(prompt, language, 'banner');
     } finally {
       setLanguageLaunching(false);
       setLanguageActive(null);
       setDisableRefresh(false);
     }
   },
-  [languageLaunching, llUnlockBusy, requireAuth, startLanguageFlow, resetRunUi, selectCourse]
+  [languageLaunching, llUnlockBusy, requireAuth, attemptLanguageStart, resetRunUi, selectCourse]
 );
 
 
@@ -1898,14 +1998,19 @@ const startLanguageFromCard = useCallback(
                   onMomentumScrollEnd={unlockRefresh}
                 >
                     {LANGUAGE_CARDS.map((card) => (
-                      <TouchableOpacity
+                      <Pressable
                         key={card.language}
                         disabled={languageLaunching || llUnlockBusy || starting}
                         onPressIn={lockRefreshOff}
                         onPressOut={unlockRefresh}
                         onPress={() => startLanguageFromCard(card.language)}
-                        activeOpacity={0.9}
-                        style={tw`w-40 rounded-2xl border border-white/40 dark:border-white/10 bg-white dark:bg-[#141b24] px-4 py-3`}
+                        hitSlop={6}
+                        style={({ pressed }) => [
+                          tw`w-40 rounded-2xl border border-white/40 dark:border-white/10 bg-white dark:bg-[#141b24] px-4 py-3`,
+                          pressed && !languageLaunching && !llUnlockBusy && !starting
+                            ? tw`opacity-80`
+                            : null,
+                        ]}
                       >
                         <View style={tw`flex-row items-center justify-between`}>
                         <Text style={tw`text-lg`} accessibilityLabel={`${card.language} flag`}>
@@ -1934,7 +2039,7 @@ const startLanguageFromCard = useCallback(
                         <Text style={tw`text-xs text-[#6b7280] dark:text-white/60`}>
                           {card.subtitle}
                         </Text>
-                      </TouchableOpacity>
+                      </Pressable>
                     ))}
                   </ScrollView>
                 </View>
@@ -2017,7 +2122,7 @@ const startLanguageFromCard = useCallback(
   transparent
   animationType="fade"
   onRequestClose={() => {
-    if (!llUnlockBusy) setLlUnlockOpen(false);
+    closeLanguageUnlockModal();
   }}
 >
   <View style={tw`flex-1 items-center justify-center px-4`}>
@@ -2025,7 +2130,7 @@ const startLanguageFromCard = useCallback(
     <TouchableOpacity
       activeOpacity={1}
       onPress={() => {
-        if (!llUnlockBusy) setLlUnlockOpen(false);
+        closeLanguageUnlockModal();
       }}
       style={tw`absolute inset-0 bg-black/50`}
     />
@@ -2056,6 +2161,11 @@ const startLanguageFromCard = useCallback(
             </Text>{' '}
             and start instantly.
           </Text>
+          {llUnlockResetLabel ? (
+            <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>
+              {llUnlockResetLabel}
+            </Text>
+          ) : null}
         </View>
       </View>
 
@@ -2071,9 +2181,7 @@ const startLanguageFromCard = useCallback(
         <TouchableOpacity
           disabled={llUnlockBusy}
           onPress={() => {
-          setLlUnlockOpen(false);
-          setLlUnlockCtx(null);
-          setLlUnlockErr(null);
+          closeLanguageUnlockModal();
         }}
         style={tw`flex-1 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-[#eef3f8] dark:bg-white/5 px-4 py-3 items-center`}
         >
@@ -2099,6 +2207,7 @@ const startLanguageFromCard = useCallback(
            dlog('LL unlock purchase start', { courseId: ctx.courseId });
            await purchaseLanguageBundle(backendUrl, languageToken as string, ctx.courseId);
            dlog('LL unlock purchase success', { courseId: ctx.courseId });
+           unlockedLanguageCoursesRef.current.add(ctx.courseId);
           } catch (e: any) {
             setLlUnlockErr(
               String(
@@ -2127,7 +2236,7 @@ const startLanguageFromCard = useCallback(
           dlog('LL unlock start flow', { courseId: ctx.courseId, languageLabel: ctx.languageLabel });
 
           try {
-            await startLanguageFlow(ctx.prompt, ctx.languageLabel);
+            await resumePendingLanguageStart();
           } finally {
             setLanguageLaunching(false);
             setLanguageActive(null);

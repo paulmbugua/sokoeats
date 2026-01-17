@@ -229,11 +229,13 @@ export const gradeSchema = Joi.object({
 /** ========= LANGUAGE LEARNING ========= */
 export const languageStartSchema = Joi.object({
   prompt: Joi.string().trim().min(2).max(600).required(),
+  orgId: Joi.string().uuid().optional(),
 });
 
 export const languagePromptSchema = Joi.object({
   courseId: Joi.string().uuid().required(),
   prompt: Joi.string().trim().min(1).max(600).required(),
+  orgId: Joi.string().uuid().optional(),
 });
 
 export const languagePurchaseSchema = Joi.object({
@@ -253,4 +255,3 @@ export const languagePlaybackSchema = Joi.object({
   // Voice style id from the app: calm/bright/deep/storyteller/teacher/kid/sunny/focus
   voiceId: Joi.string().trim().min(1).max(40).required(),
 }).or('messageId', 'messageIndex');
-

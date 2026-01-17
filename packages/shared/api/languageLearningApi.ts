@@ -27,12 +27,13 @@ export type LanguagePromptResponse = {
 export async function startLanguageCourse(
   backendUrl: string,
   token: string,
-  prompt: string
+  prompt: string,
+  opts?: { orgId?: string | null }
 ): Promise<LanguageStartResponse> {
   try {
     const res = await axios.post(
       `${baseOf(backendUrl)}/api/ai/courses/language/start`,
-      { prompt },
+      { prompt, orgId: opts?.orgId ?? undefined },
       { headers: { Authorization: `Bearer ${token}` } }
     );
     return res.data as LanguageStartResponse;
@@ -62,12 +63,13 @@ export async function sendLanguagePrompt(
   backendUrl: string,
   token: string,
   courseId: string,
-  prompt: string
+  prompt: string,
+  opts?: { orgId?: string | null }
 ): Promise<LanguagePromptResponse> {
   try {
     const res = await axios.post(
       `${baseOf(backendUrl)}/api/ai/courses/language/prompt`,
-      { courseId, prompt },
+      { courseId, prompt, orgId: opts?.orgId ?? undefined },
       { headers: { Authorization: `Bearer ${token}` } }
     );
     return res.data as LanguagePromptResponse;
