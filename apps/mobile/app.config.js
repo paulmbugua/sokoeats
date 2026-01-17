@@ -1,14 +1,13 @@
 // apps/mobile/app.config.js
 
 export default function expoConfig({ config }) {
-  
   const appEnv =
     process.env.EXPO_PUBLIC_APP_ENV ||
     (process.env.NODE_ENV === 'production' ? 'production' : 'development');
 
   const isProduction = appEnv === 'production';
   const isDevClient = process.env.EXPO_DEV_CLIENT === 'true';
- const enableGooglePlugin = isProduction || isDevClient;
+  const enableGooglePlugin = isProduction || isDevClient;
 
   // ─────────────────────────────────────────────────────────
   // Multi-backend catalog (deterministic via EXPO_PUBLIC vars)
@@ -21,11 +20,9 @@ export default function expoConfig({ config }) {
     prod: process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.daybreaklearner.com',
   };
 
-  // In production ALWAYS default to prod.
-  // In dev/preview you can override with EXPO_PUBLIC_DEFAULT_BACKEND (e.g. hotspot, lan1, androidEmu, iosSim, prod)
-  const DEFAULT_BACKEND = isProduction
-    ? 'prod'
-    : process.env.EXPO_PUBLIC_DEFAULT_BACKEND || 'hotspot';
+  // ✅ Always respect EXPO_PUBLIC_DEFAULT_BACKEND if provided
+  const DEFAULT_BACKEND =
+    process.env.EXPO_PUBLIC_DEFAULT_BACKEND || (isProduction ? 'prod' : 'hotspot');
 
   // Single resolved URL the app can use
   const RESOLVED_BACKEND_URL = BACKENDS[DEFAULT_BACKEND] || BACKENDS.prod;
@@ -34,6 +31,9 @@ export default function expoConfig({ config }) {
   const allowHttp = String(RESOLVED_BACKEND_URL || '').startsWith('http://');
   const usesCleartextTraffic = !isProduction && allowHttp;
 
+  // ─────────────────────────────────────────────────────────
+  // Google Sign-In IDs (deterministic defaults)
+  // ─────────────────────────────────────────────────────────
   const GOOGLE_WEB_CLIENT_ID =
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
     '557799973381-ksp83t2vo6fdqufhm0iie06lnb4e8j8v.apps.googleusercontent.com';
@@ -45,6 +45,10 @@ export default function expoConfig({ config }) {
   const GOOGLE_REVERSED_CLIENT_ID =
     process.env.EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID ||
     'com.googleusercontent.apps.557799973381-g0h98g6vg82oeineeb4t9e67hgosdfrg';
+
+  const GOOGLE_ANDROID_CLIENT_ID =
+    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
+    '557799973381-97lsoficotiiulhl5st6tf6h723uurpg.apps.googleusercontent.com';
 
   return {
     ...config,
@@ -79,16 +83,12 @@ export default function expoConfig({ config }) {
           ...(config.android?.blockedPermissions ?? []),
           'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
           'android.permission.ACCESS_COARSE_LOCATION',
-         'android.permission.ACCESS_FINE_LOCATION',
+          'android.permission.ACCESS_FINE_LOCATION',
         ]),
       ),
 
-      // ✅ Keep only what you need
-      permissions: [
-        'INTERNET',
-        'POST_NOTIFICATIONS',
-        
-      ],
+      // ✅ Keep only what you need (deps may still add others automatically)
+      permissions: ['INTERNET', 'POST_NOTIFICATIONS'],
 
       googleServicesFile: './google-services.json',
 
@@ -156,7 +156,7 @@ export default function expoConfig({ config }) {
 
       'expo-notifications',
       'expo-web-browser',
-      
+
       'expo-asset',
       'expo-audio',
       ['expo-video', { supportsBackgroundPlayback: false, supportsPictureInPicture: false }],
@@ -199,10 +199,11 @@ export default function expoConfig({ config }) {
       EXPO_PUBLIC_BACKEND_URL: RESOLVED_BACKEND_URL,
       EXPO_PUBLIC_PROD_BACKEND_URL: BACKENDS.prod,
 
-      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-      EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID,
+      // ✅ Deterministic Google envs (prevents fingerprint drift)
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: GOOGLE_WEB_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: GOOGLE_IOS_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID: GOOGLE_REVERSED_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: GOOGLE_ANDROID_CLIENT_ID,
 
       // Optional if you use it elsewhere
       EXPO_PUBLIC_EAS_PROJECT_ID:

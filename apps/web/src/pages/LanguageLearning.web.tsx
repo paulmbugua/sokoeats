@@ -686,6 +686,9 @@ const startPlaybackAt = useCallback(
   },
   [ensurePlaybackFor, isItemMuted, setPlaybackQueue]
 );
+ 
+const promptLocked =
+    bundleBlocked || (typeof promptsLimit === 'number' && promptsUsed >= promptsLimit);
 
 
 
@@ -746,7 +749,7 @@ const startPlaybackAt = useCallback(
   }, [backendUrl, token, courseId]);
 
   const title = headerLabel ? `Language Learning: English → ${headerLabel}` : 'Language Learning';
-  const promptLocked = bundleBlocked || (promptsLimit && promptsUsed >= promptsLimit);
+ 
 
   const formatCountdown = useCallback((ms: number) => {
     const total = Math.max(0, Math.floor(ms / 1000));
