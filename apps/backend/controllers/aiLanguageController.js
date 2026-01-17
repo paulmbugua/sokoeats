@@ -41,6 +41,7 @@ export async function startLanguage(req, res) {
     userId,
     profileId,
     prompt: value.prompt,
+    orgId: value.orgId,
   });
 
   return res.status(result.status).json(result.data);
@@ -69,6 +70,7 @@ export async function promptLanguage(req, res) {
     profileId,
     courseId: value.courseId,
     prompt: value.prompt,
+    orgId: value.orgId,
   });
 
   return res.status(result.status).json(result.data);

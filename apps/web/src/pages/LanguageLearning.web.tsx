@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import ClassroomPlayer from '@/components/ClassroomPlayer.web';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useLanguageLearning } from '@mytutorapp/shared/hooks';
+import { useLanguageLearning, useOrg } from '@mytutorapp/shared/hooks';
 import { buildGradePayload } from '@mytutorapp/shared/utils/buildGradePayload';
 import {
   downloadCertificateFile,
@@ -194,6 +194,8 @@ const LanguageLearningPage: React.FC = () => {
     [languageStart]
   );
 
+  const { activeOrgId } = useOrg();
+
   const {
     messages,
     headerLabel,
@@ -213,6 +215,7 @@ const LanguageLearningPage: React.FC = () => {
     messages: initMessages,
     entitlement: languageStart?.entitlement,
     targetLanguage: languageStart?.targetLanguage,
+    orgId: activeOrgId ?? null,
   });
 
   const [input, setInput] = useState('');
@@ -783,9 +786,19 @@ const promptLocked =
 
   const statusChip = useMemo(() => {
     if (promptLocked) {
-      return { label: 'Prompt limit reached', tone: 'bg-rose-500/20 text-rose-200' };
+      return {
+        label: 'Prompt limit reached',
+        tone:
+          'bg-rose-50 text-rose-700 border border-rose-200 ' +
+          'dark:bg-rose-500/10 dark:text-rose-200 dark:border-rose-500/30',
+      };
     }
-    return { label: 'Unlocked', tone: 'bg-emerald-500/20 text-emerald-200' };
+    return {
+      label: 'Unlocked',
+      tone:
+        'bg-emerald-50 text-emerald-700 border border-emerald-200 ' +
+        'dark:bg-emerald-500/10 dark:text-emerald-200 dark:border-emerald-500/30',
+    };
   }, [promptLocked]);
 
   const filteredTopics = useMemo(() => {
@@ -1213,7 +1226,7 @@ const promptLocked =
                   className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent px-3 py-2 text-sm"
                 />
                 <button
-                  className="rounded-full bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-600"
+                  className="rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 transition hover:bg-slate-200/70 dark:hover:bg-slate-700/60 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:focus:ring-emerald-500/40"
                   onClick={handleSurprise}
                 >
                   Surprise me

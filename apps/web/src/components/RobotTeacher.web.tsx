@@ -1,5 +1,5 @@
 /* apps/web/src/components/RobotTeacher.web.tsx */
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
 import { useAiCourse, useAICertificates } from '@mytutorapp/shared/hooks';
@@ -515,10 +515,17 @@ const [languageActive, setLanguageActive] = useState<string | null>(null);
 const [llUnlockOpen, setLlUnlockOpen] = useState(false);
 const [llUnlockBusy, setLlUnlockBusy] = useState(false);
 const [llUnlockErr, setLlUnlockErr] = useState<string | null>(null);
+const unlockedLanguageCoursesRef = useRef<Set<string>>(new Set());
+const pendingLanguageStartRef = useRef<{
+  prompt: string;
+  languageLabel: string;
+  source: 'banner' | 'teachMe';
+} | null>(null);
 const [llUnlockCtx, setLlUnlockCtx] = useState<{
   courseId: string;
   prompt: string;
   languageLabel: string;
+  resetAt?: string | null;
 } | null>(null);
 
 const resetRunUi = useCallback(() => {
@@ -544,6 +551,14 @@ const promptsLimit = Number(
   res?.promptsLimit ?? res?.prompts_limit ?? ent?.promptsLimit ?? ent?.prompts_limit ?? 0
 );
 
+const resetsAt =
+  res?.resetsAt ??
+  res?.resetAt ??
+  res?.nextResetAt ??
+  ent?.resetsAt ??
+  ent?.resetAt ??
+  null;
+
 const bundleBlocked = Boolean(
   res?.bundleBlocked ??
     res?.bundle_blocked ??
@@ -556,22 +571,63 @@ const bundleBlocked = Boolean(
     bundleBlocked,
     promptsUsed,
     promptsLimit: promptsLimit || LANGUAGE_FREE_LIMIT,
+    resetsAt,
   };
 };
 
+const [llUnlockNowTs, setLlUnlockNowTs] = useState(() => Date.now());
+
+const formatCountdown = useCallback((ms: number) => {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}, []);
+
+useEffect(() => {
+  if (!llUnlockOpen || !llUnlockCtx?.resetAt) return;
+  const id = window.setInterval(() => setLlUnlockNowTs(Date.now()), 1000);
+  return () => window.clearInterval(id);
+}, [llUnlockOpen, llUnlockCtx?.resetAt]);
+
+const llUnlockResetLabel = useMemo(() => {
+  const resetAt = llUnlockCtx?.resetAt;
+  if (!resetAt) return null;
+  const ts = new Date(resetAt).getTime();
+  if (Number.isNaN(ts)) return null;
+  const remaining = ts - llUnlockNowTs;
+  if (remaining <= 0) {
+    return `Resets at ${new Date(ts).toLocaleString()}`;
+  }
+  return `Resets in ${formatCountdown(remaining)}`;
+}, [llUnlockCtx?.resetAt, llUnlockNowTs, formatCountdown]);
+
 
 const startLanguageFlow = useCallback(
-  async (prompt: string, languageLabel: string) => {
+  async (prompt: string, languageLabel: string, source: 'banner' | 'teachMe') => {
     const ok = requireAuth('ai_sandbox', 'Please sign in to start language learning.');
-    if (!ok) return;
+    if (!ok) {
+      pendingLanguageStartRef.current = null;
+      return 'error';
+    }
 
-    if (!backendUrl || !authToken) return;
+    if (!backendUrl || !authToken) {
+      pendingLanguageStartRef.current = null;
+      return 'error';
+    }
 
     try {
-      const res: any = await startLanguageCourse(backendUrl, authToken as string, prompt);
+      const res: any = await startLanguageCourse(backendUrl, authToken as string, prompt, {
+        orgId: activeOrgId ?? null,
+      });
 
       const gate = parseLanguageGate(res);
       const courseId = String(res?.courseId || res?.course_id || res?.id || '').trim();
+      const isManuallyUnlocked =
+        Boolean(courseId) && unlockedLanguageCoursesRef.current.has(courseId);
 
       // ✅ Cache courseId per language (so we can still unlock if backend blocks via error later)
       try {
@@ -580,22 +636,27 @@ const startLanguageFlow = useCallback(
       } catch {}
 
 
-      if (gate.bundleBlocked) {
+      if (gate.bundleBlocked && !isManuallyUnlocked) {
         resetRunUi();
         setLlUnlockErr(null);
         setLlUnlockCtx({
           courseId,
           prompt,
           languageLabel,
+          resetAt: gate.resetsAt,
         });
         setLlUnlockOpen(true);
-        return;
+        // pending action queued until unlock succeeds
+        pendingLanguageStartRef.current = { prompt, languageLabel, source };
+        return 'locked';
       }
 
       resetRunUi();
       navigate(`/language/${encodeURIComponent(res.courseId)}`, {
         state: { languageStart: res },
       });
+      pendingLanguageStartRef.current = null;
+      return 'started';
     } catch (err: any) {
       // If your backend blocks via an error response instead of a normal payload,
       // try to open the unlock modal from the error body.
@@ -634,32 +695,70 @@ if (!courseId) {
 );
 
 
-      if (blocked) {
+      if (blocked && !unlockedLanguageCoursesRef.current.has(courseId)) {
   if (!courseId) {
     resetRunUi();
     window.alert(
       msgText ||
         'Prompt limit reached. Please open your language course page to unlock prompts.'
     );
-    return;
+    pendingLanguageStartRef.current = null;
+    return 'error';
   }
 
   resetRunUi();
   setLlUnlockErr(null);
-  setLlUnlockCtx({ courseId, prompt, languageLabel });
+  setLlUnlockCtx({
+    courseId,
+    prompt,
+    languageLabel,
+    resetAt:
+      data?.resetsAt ||
+      data?.resetAt ||
+      data?.nextResetAt ||
+      data?.entitlement?.resetsAt ||
+      null,
+  });
   setLlUnlockOpen(true);
-  return;
+  // pending action queued until unlock succeeds
+  pendingLanguageStartRef.current = { prompt, languageLabel, source };
+  return 'locked';
 }
 
 
     resetRunUi();
     window.alert(msgText || 'Unable to start language learning.');
+    pendingLanguageStartRef.current = null;
+    return 'error';
 
 
     }
   },
-  [backendUrl, authToken, navigate, requireAuth, resetRunUi]
+  [backendUrl, authToken, activeOrgId, navigate, requireAuth, resetRunUi]
 );
+
+  const attemptLanguageStart = useCallback(
+    async (prompt: string, languageLabel: string, source: 'banner' | 'teachMe') => {
+      pendingLanguageStartRef.current = { prompt, languageLabel, source };
+      await startLanguageFlow(prompt, languageLabel, source);
+    },
+    [startLanguageFlow]
+  );
+
+  const resumePendingLanguageStart = useCallback(async () => {
+    const pending = pendingLanguageStartRef.current;
+    if (!pending) return;
+    // resume the queued action after unlock success
+    await startLanguageFlow(pending.prompt, pending.languageLabel, pending.source);
+  }, [startLanguageFlow]);
+
+  const closeLanguageUnlockModal = useCallback(() => {
+    if (llUnlockBusy) return;
+    setLlUnlockOpen(false);
+    setLlUnlockCtx(null);
+    setLlUnlockErr(null);
+    pendingLanguageStartRef.current = null;
+  }, [llUnlockBusy]);
 
 
   // ── SSML locking (no mutation while playing) ─────────────
@@ -1387,8 +1486,10 @@ useEffect(() => {
           'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
         try {
           // keep this call if you want backend to return a nicer message
-          await startLanguageCourse(backendUrl, authToken as string, custom);
-       } catch (err: any) {
+          await startLanguageCourse(backendUrl, authToken as string, custom, {
+            orgId: activeOrgId ?? null,
+          });
+        } catch (err: any) {
           msg = err?.data?.message || err?.message || msg;
         }
 
@@ -1408,7 +1509,7 @@ useEffect(() => {
           (intent as any)?.label ||
           'Language';
 
-        await startLanguageFlow(custom, langLabel);
+        await attemptLanguageStart(custom, langLabel, 'teachMe');
         return;
       }
 
@@ -1452,7 +1553,7 @@ useEffect(() => {
   startWithAI,
   waitForSelection,
   requireAuth,
-  startLanguageFlow, // ✅ ADD THIS
+  attemptLanguageStart, // ✅ ADD THIS
 ]);
 
   const startLanguageFromCard = useCallback(
@@ -1466,13 +1567,13 @@ useEffect(() => {
     setLanguageLaunching(true);
 
     try {
-      await startLanguageFlow(prompt, language);
+      await attemptLanguageStart(prompt, language, 'banner');
     } finally {
       setLanguageLaunching(false);
       setLanguageActive(null);
     }
   },
-  [languageLaunching, startLanguageFlow]
+  [languageLaunching, attemptLanguageStart]
 );
 
 
@@ -1842,9 +1943,7 @@ useEffect(() => {
     {/* Backdrop */}
     <div
       className="absolute inset-0 bg-black/50"
-      onClick={() => {
-        if (!llUnlockBusy) setLlUnlockOpen(false);
-      }}
+      onClick={closeLanguageUnlockModal}
     />
 
     {/* Modal */}
@@ -1873,6 +1972,11 @@ useEffect(() => {
             </span>{' '}
             and start instantly.
           </div>
+          {llUnlockResetLabel ? (
+            <div className="mt-2 text-xs text-gray-600 dark:text-white/70">
+              {llUnlockResetLabel}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1885,7 +1989,7 @@ useEffect(() => {
       <div className="mt-4 flex gap-2">
         <button
           disabled={llUnlockBusy}
-          onClick={() => setLlUnlockOpen(false)}
+          onClick={closeLanguageUnlockModal}
           className="flex-1 rounded-2xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 px-4 py-2 text-sm font-semibold text-gray-800 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/10 disabled:opacity-50"
         >
           Not now
@@ -1905,20 +2009,14 @@ useEffect(() => {
                 llUnlockCtx.courseId
               );
 
-              // After successful purchase, start as normal (auto-nav + preload)
-              const res: any = await startLanguageCourse(
-                backendUrl,
-                authToken as string,
-                llUnlockCtx.prompt
-              );
+              unlockedLanguageCoursesRef.current.add(llUnlockCtx.courseId);
 
+              // Close modal immediately after purchase, then resume queued action.
               setLlUnlockOpen(false);
               setLlUnlockCtx(null);
+              setLlUnlockErr(null);
 
-              const courseId = String(res?.courseId || res?.course_id || res?.id || '').trim();
-              navigate(`/language/${encodeURIComponent(courseId)}`, {
-                state: { languageStart: res },
-              });
+              await resumePendingLanguageStart();
             } catch (e: any) {
               setLlUnlockErr(
                 String(e?.data?.message || e?.message || 'Unable to unlock prompts.')

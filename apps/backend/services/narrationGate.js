@@ -114,7 +114,7 @@ async function resolveProfileSubjectUuid(userId) {
   return anonToUuid(`user:${String(userId)}`);
 }
 
-function todayRange() {
+export function todayRange() {
   const now = new Date();
   const start = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0),
@@ -124,7 +124,7 @@ function todayRange() {
   return { start: toDate(start), end: toDate(end) };
 }
 
-function billingRange(sub = {}) {
+export function billingRange(sub = {}) {
   const started = sub.started_at ? new Date(sub.started_at) : new Date();
   const expires = sub.expires_at
     ? new Date(sub.expires_at)
