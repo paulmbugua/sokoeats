@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Modal,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 
 import tw from '../../tailwind';
@@ -776,28 +777,35 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
               />
 
               <View style={tw`mt-2 items-start`}>
-                <Pressable
-                  disabled={!canTeach}
+               <Pressable
+                  disabled={busy || !canStartNow || !customTitle.trim()}
                   onPress={() => {
-                    if (canTeach) onStart();
+                    if (!busy && canStartNow && customTitle.trim()) onStart();
                   }}
                   accessibilityRole="button"
                   accessibilityLabel="Teach me"
                   style={tw.style(
-                    `h-10 px-4 rounded-xl items-center justify-center border`,
-                    canTeach
+                    `h-10 px-4 rounded-xl items-center justify-center border flex-row gap-2`,
+                    busy
+                      ? `bg-indigo-600/60 border-indigo-600/60`
+                      : customTitle.trim() && canStartNow
                       ? `bg-indigo-600 border-indigo-600`
                       : `opacity-60 bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
                   )}
                 >
+                  {busy ? <ActivityIndicator size={12} color="#fff" /> : null}
+
                   <Text
                     style={tw`${
-                      canTeach ? 'text-white' : 'text-[#0d141c] dark:text-white'
+                      busy || (customTitle.trim() && canStartNow)
+                        ? 'text-white'
+                        : 'text-[#0d141c] dark:text-white'
                     } text-sm font-semibold`}
                   >
                     {busy ? 'Preparing…' : 'Teach me'}
                   </Text>
                 </Pressable>
+
 
                 {/* ✅ web parity: show warning when neither course nor custom topic */}
                 {showCourseOrCustomError && (
@@ -868,16 +876,19 @@ function StartWithAiButton({
       disabled={disabled}
       activeOpacity={0.85}
       style={tw.style(
-        `${fullWidth ? 'w-full' : 'flex-1'} rounded-xl py-3 items-center justify-center border`,
+        `${fullWidth ? 'w-full' : 'flex-1'} rounded-xl py-3 items-center justify-center border flex-row gap-2`,
         disabled ? 'bg-indigo-600/60 border-indigo-600/60' : 'bg-indigo-600 border-indigo-600'
       )}
     >
+      {busy ? <ActivityIndicator size={12} color="#fff" /> : null}
+
       <Text style={tw`text-white font-semibold`}>
         {busy ? 'Preparing…' : hasAIContent ? 'Continue lesson' : 'Start with A.I'}
       </Text>
     </TouchableOpacity>
   );
 }
+
 
 /* ────────────────────────── Small helper input ────────────────────────── */
 function LabeledNumber({

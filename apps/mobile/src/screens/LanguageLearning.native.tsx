@@ -8,7 +8,14 @@ import {
   ActivityIndicator,
   Modal,
   findNodeHandle,
+  UIManager,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
+  Animated
 } from 'react-native';
+
+
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -175,6 +182,18 @@ const DEFAULT_VOICE = {
   pitch: 1,
 };
 
+const normalizeLangKey = (s?: string | null) => {
+  const t = String(s ?? '').trim().toLowerCase();
+  if (!t) return '';
+  if (t.includes('deutsch') || t.includes('german')) return 'german';
+  if (t.includes('français') || t.includes('francais') || t.includes('french')) return 'french';
+  if (t.includes('español') || t.includes('espanol') || t.includes('spanish')) return 'spanish';
+  if (t.includes('arabic') || t.includes('arab') || t.includes('عربي')) return 'arabic';
+  return t;
+};
+
+const llCourseIdStorageKey = (langKey: string) => `ll_course_id_v1_${langKey}`;
+
 
 const buildSegmentsFromQueue = (items: PlaybackQueueItem[]) => {
   const map = new Map<number, { en?: string; tr?: string }>();
@@ -253,17 +272,118 @@ const LanguageLearningScreen: React.FC = () => {
   const [activeLineIsTarget, setActiveLineIsTarget] = useState(false);
   const [footerHeight, setFooterHeight] = useState(0);
   const scrollRef = useRef<ScrollView | null>(null);
-  const lineRefs = useRef(new Map<string, View>());
+  const lineRefs = useRef(new Map<string, any>());
+const inputRef = useRef<TextInput>(null);
+
   const lastUserScrollRef = useRef(0);
   const soundRef = useRef<Audio.Sound | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const prevVoiceIdRef = useRef(voiceSettings.voiceId);
+type RepeatSheetState = {
+  messageKey: string;
+  msg: any;
+  idx: number;
+};
+
+const getMsgId = (msg: any) => msg?.id ?? msg?.messageId ?? null;
+const cacheKeyFor = (messageKey: string, voiceId: string) => `${messageKey}::${voiceId}`;
+
+const [playbackByKey, setPlaybackByKey] = useState<Record<string, PlaybackPayload>>({});
+const [playbackLoadingKey, setPlaybackLoadingKey] = useState<string | null>(null);
+const [repeatSheet, setRepeatSheet] = useState<RepeatSheetState | null>(null);
+
+const [inputFocused, setInputFocused] = useState(false);
+const [keyboardOpen, setKeyboardOpen] = useState(false);
+
+useEffect(() => {
+  const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+  const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+  const subShow = Keyboard.addListener(showEvt, () => setKeyboardOpen(true));
+  const subHide = Keyboard.addListener(hideEvt, () => setKeyboardOpen(false));
+
+  return () => {
+    subShow.remove();
+    subHide.remove();
+  };
+}, []);
+
+const [keyboardHeight, setKeyboardHeight] = useState(0);
+const kbAnim = useRef(new Animated.Value(0)).current;
+
+useEffect(() => {
+  const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+  const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+  const subShow = Keyboard.addListener(showEvt, (e: any) => {
+    const h = e?.endCoordinates?.height ?? 0;
+    setKeyboardOpen(true);
+    setKeyboardHeight(h);
+    Animated.timing(kbAnim, {
+      toValue: h,
+      duration: Platform.OS === 'ios' ? 250 : 140,
+      useNativeDriver: false,
+    }).start();
+  });
+
+  const subHide = Keyboard.addListener(hideEvt, () => {
+    setKeyboardOpen(false);
+    setKeyboardHeight(0);
+    Animated.timing(kbAnim, {
+      toValue: 0,
+      duration: Platform.OS === 'ios' ? 250 : 140,
+      useNativeDriver: false,
+    }).start();
+  });
+
+  return () => {
+    subShow.remove();
+    subHide.remove();
+  };
+}, [kbAnim]);
+
+
+// keep track of which message is “active” so switching voice can refetch the right audio
+const activeMsgMetaRef = useRef<{ messageKey: string; idx: number; msgId: any } | null>(null);
 
   const inlineItems = inlinePlayback?.items || [];
   const inlineSegments = useMemo(() => buildSegmentsFromQueue(inlineItems), [inlineItems]);
   const inlineCurrentItem = inlineItems[inlineIndex];
   const inlineSegmentIdx = inlineCurrentItem?.segmentIdx ?? 0;
   const inlineSegment = inlineSegments.find((seg) => seg.segmentIdx === inlineSegmentIdx);
+const composerCollapsed = inputFocused || keyboardOpen;
+
+  const measureLineYInScroll = useCallback((lineNode: any, onY: (y: number) => void) => {
+  const scrollNode = scrollRef.current as any;
+  if (!lineNode || !scrollNode) return;
+
+  // ✅ Fabric-safe: pass the *native ref* (not a tag)
+  try {
+    if (typeof lineNode.measureLayout === 'function') {
+      lineNode.measureLayout(
+        scrollNode,
+        (_x: number, y: number) => onY(y),
+        () => {}
+      );
+      return;
+    }
+  } catch {
+    // fallthrough
+  }
+
+  // ✅ Fallback: UIManager with node handles
+  const lineHandle = findNodeHandle(lineNode);
+  const scrollHandle = findNodeHandle(scrollNode);
+  if (!lineHandle || !scrollHandle) return;
+
+  UIManager.measureLayout(
+    lineHandle,
+    scrollHandle,
+    () => {},
+    (_x: number, y: number) => onY(y)
+  );
+}, []);
+
 
   useEffect(() => {
     if (!inlinePlaying || !activeMessageKey || !inlineCurrentItem) {
@@ -276,29 +396,19 @@ const LanguageLearningScreen: React.FC = () => {
     setActiveLineIsTarget(inlineCurrentItem.kind === 'tr');
   }, [activeMessageKey, inlineCurrentItem, inlinePlaying]);
 
-  useEffect(() => {
-    const prevVoiceId = prevVoiceIdRef.current;
-    if (prevVoiceId === voiceSettings.voiceId) return;
-    prevVoiceIdRef.current = voiceSettings.voiceId;
-    if (!inlinePlaying) return;
-    // Voice identity change: reload current line with new voice while keeping index.
-    void loadInlineCurrent();
-  }, [inlinePlaying, loadInlineCurrent, voiceSettings.voiceId]);
 
   useEffect(() => {
-    if (!activeLineKey) return;
-    if (Date.now() - lastUserScrollRef.current < 1200) return;
-    const lineNode = lineRefs.current.get(activeLineKey);
-    const scrollNode = scrollRef.current ? findNodeHandle(scrollRef.current) : null;
-    if (!lineNode || !scrollNode) return;
-    lineNode.measureLayout(
-      scrollNode,
-      (_x, y) => {
-        scrollRef.current?.scrollTo({ y: Math.max(0, y - 160), animated: true });
-      },
-      () => {}
-    );
-  }, [activeLineKey]);
+  if (!activeLineKey) return;
+  if (Date.now() - lastUserScrollRef.current < 1200) return;
+
+  const lineNode = lineRefs.current.get(activeLineKey);
+  if (!lineNode) return;
+
+  measureLineYInScroll(lineNode, (y) => {
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 160), animated: true });
+  });
+}, [activeLineKey, measureLineYInScroll]);
+
 
   useEffect(() => {
     if (!token) {
@@ -371,6 +481,8 @@ const LanguageLearningScreen: React.FC = () => {
     clearInlineTimer();
     await unloadSound();
 
+
+
     const item = inlineCurrentItem;
     if (!item?.audioUrl) return;
 
@@ -417,6 +529,15 @@ const LanguageLearningScreen: React.FC = () => {
     unloadSound,
     voiceSettings.rate,
   ]);
+
+
+  useEffect(() => {
+  const prevVoiceId = prevVoiceIdRef.current;
+  if (prevVoiceId === voiceSettings.voiceId) return;
+  prevVoiceIdRef.current = voiceSettings.voiceId;
+  if (!inlinePlaying) return;
+  void loadInlineCurrent();
+}, [inlinePlaying, loadInlineCurrent, voiceSettings.voiceId]);
 
   useEffect(() => {
     loadInlineCurrent();
@@ -522,7 +643,77 @@ const LanguageLearningScreen: React.FC = () => {
   const allAnswered = useMemo(() => {
     if (!quiz?.questions?.length) return false;
     return quiz.questions.every((q: any) => answers[q.id] !== undefined);
+    
   }, [quiz, answers]);
+
+
+  const fetchPlaybackForMessage = useCallback(
+  async (msg: any, idx: number) => {
+    const res = await fetch(`${backendUrl}/courses/language/playback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token || ''}`,
+      },
+      body: JSON.stringify({
+        courseId,
+        messageId: getMsgId(msg),
+        messageIndex: idx,
+        voiceId: voiceSettings.voiceId,
+      }),
+    });
+
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(json?.error || 'PLAYBACK_FETCH_FAILED');
+    return json as PlaybackPayload;
+  },
+  [backendUrl, token, courseId, voiceSettings.voiceId]
+);
+
+const ensurePlaybackFor = useCallback(
+  async (messageKey: string, msg: any, idx: number) => {
+    const ck = cacheKeyFor(messageKey, voiceSettings.voiceId);
+
+    // already present on the message OR cached locally
+    const direct = (msg?.playback as PlaybackPayload) || playbackByKey[ck];
+    if (direct?.items?.length) return direct;
+
+    // fetch/generate on demand
+    setPlaybackLoadingKey(ck);
+    try {
+      const pb = await fetchPlaybackForMessage(msg, idx);
+      if (pb?.items?.length) {
+        setPlaybackByKey((prev) => ({ ...prev, [ck]: pb }));
+        return pb;
+      }
+      return null;
+    } finally {
+      setPlaybackLoadingKey((cur) => (cur === ck ? null : cur));
+    }
+  },
+  [voiceSettings.voiceId, playbackByKey, fetchPlaybackForMessage]
+);
+
+const startPlaybackAt = useCallback(
+  async (messageKey: string, msg: any, idx: number, segmentIdx: number, kind: 'en' | 'tr') => {
+    const pb = await ensurePlaybackFor(messageKey, msg, idx);
+    if (!pb?.items?.length) return;
+
+    activeMsgMetaRef.current = { messageKey, idx, msgId: getMsgId(msg) };
+
+    const startIdx = pb.items.findIndex(
+      (it) => it.segmentIdx === segmentIdx && it.kind === kind
+    );
+
+    setActiveMessageKey(messageKey);
+    setInlinePlayback(pb);
+    setPlaybackQueue(pb);
+    setInlineIndex(startIdx >= 0 ? startIdx : 0);
+    setInlineAutoPlayNext(true);
+    setInlinePlaying(true);
+  },
+  [ensurePlaybackFor, setPlaybackQueue]
+);
 
   const handleCertificate = useCallback(async () => {
     if (!courseId || !token) return;
@@ -566,14 +757,41 @@ const LanguageLearningScreen: React.FC = () => {
     return TOPICS.filter((topic) => topic.label.toLowerCase().includes(term));
   }, [topicFilter]);
 
- const applyPrompt = useCallback(
+const applyPrompt = useCallback(
   (prompt?: string) => {
     const p = String(prompt ?? '').trim();
     if (!p) return;
+
     setInput(p.replace('{language}', headerLabel || targetLanguage));
+
+    // ✅ close sheets so user sees the composer immediately
+    setShowTopicSheet(false);
+    setShowVoiceSheet(false);
+
+    // ✅ keep UX smooth
+    requestAnimationFrame(() => inputRef.current?.focus());
   },
   [headerLabel, targetLanguage]
 );
+
+
+useEffect(() => {
+  const cid = String(courseId || '').trim();
+  if (!cid) return;
+
+  const keys = new Set<string>();
+  const k1 = normalizeLangKey(targetLanguage);
+  const k2 = normalizeLangKey(headerLabel);
+
+  if (k1) keys.add(k1);
+  if (k2) keys.add(k2);
+
+  for (const k of keys) {
+    AsyncStorage.setItem(llCourseIdStorageKey(k), cid).catch(() => {});
+  }
+}, [courseId, targetLanguage, headerLabel]);
+
+
 
  const handleTopicSelect = useCallback(
   (topic: (typeof TOPICS)[number]) => {
@@ -591,9 +809,18 @@ const LanguageLearningScreen: React.FC = () => {
   applyPrompt(random.prompts?.[0]);
 }, [applyPrompt]);
 
+const activeVoiceLabel =
+  VOICES.find((v) => v.id === voiceSettings.voiceId)?.label ?? voiceSettings.voiceId;
 
   const footerPadding = insets.bottom + 12;
-  const bottomPadding = footerHeight + footerPadding + 24;
+  
+ const footerLift = keyboardOpen ? 0 : 14;
+const compact = keyboardOpen || inputFocused;
+const sheetBottomGap = footerHeight + keyboardHeight;
+
+const footerSafePad = footerPadding + footerLift;
+
+const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
   const voiceSheetTheme = useMemo(
     () => ({
       bg: isDark ? '#0f172a' : '#ffffff',
@@ -607,33 +834,49 @@ const LanguageLearningScreen: React.FC = () => {
   );
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-slate-950`}>
+  <SafeAreaView style={tw`flex-1 bg-slate-950`}>
+    {/* Main content */}
+    <View style={tw`flex-1`}>
       <ScrollView
         ref={scrollRef}
+        style={tw`flex-1`}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
         onScrollBeginDrag={() => {
           lastUserScrollRef.current = Date.now();
         }}
         onMomentumScrollBegin={() => {
           lastUserScrollRef.current = Date.now();
         }}
+        scrollIndicatorInsets={{ bottom: bottomPadding }}
         contentContainerStyle={[tw`p-4 gap-4`, { paddingBottom: bottomPadding }]}
       >
+        {/* ─────────────────────────────────────────────
+            Header card
+        ───────────────────────────────────────────── */}
         <View style={tw`bg-slate-900/80 rounded-3xl p-5 gap-3 border border-white/5`}>
           <Text style={tw`text-2xl font-bold text-white`}>{title}</Text>
-          <Text style={tw`text-xs text-white/70`}>Prompts used {promptsUsed} / {promptsLimit}</Text>
+          <Text style={tw`text-xs text-white/70`}>
+            Prompts used {promptsUsed} / {promptsLimit}
+          </Text>
           <View style={tw`h-2 bg-white/10 rounded-full mt-1 overflow-hidden`}>
             <View style={[tw`h-2 bg-emerald-400 rounded-full`, { width: `${progressPct}%` }]} />
           </View>
         </View>
 
+        {/* ─────────────────────────────────────────────
+            Messages
+        ───────────────────────────────────────────── */}
         <View style={tw`bg-slate-900/80 rounded-3xl p-4 gap-4 border border-white/5`}>
           {messages.length === 0 && (
             <Text style={tw`text-sm text-white/60`}>Start chatting to build your course.</Text>
           )}
+
           {messages.map((msg, idx) => {
             const messageKey = `${msg.role}-${idx}`;
             const isAssistant = msg.role === 'assistant';
             const isActive = activeMessageKey === messageKey;
+
             return (
               <View key={messageKey} style={tw`${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 <View
@@ -643,9 +886,10 @@ const LanguageLearningScreen: React.FC = () => {
                 >
                   {isAssistant && msg.segments ? (
                     <View style={tw`gap-3`}>
-                      {msg.segments.map((seg, segIdx) => {
+                      {msg.segments.map((seg: any, segIdx: number) => {
                         const lineKey = `${messageKey}-${segIdx}`;
                         const isActiveLine = isActive && activeLineKey === lineKey;
+
                         return (
                           <View
                             key={`${seg.en}-${segIdx}`}
@@ -657,51 +901,95 @@ const LanguageLearningScreen: React.FC = () => {
                           >
                             <Text style={tw`text-sm text-white`}>{seg.en}</Text>
                             <Text
-                              style={tw`text-xs text-white/60 ${isActiveLine && activeLineIsTarget ? 'text-base text-white font-semibold' : ''}`}
+                              style={tw`text-xs text-white/60 ${
+                                isActiveLine && activeLineIsTarget ? 'text-base text-white font-semibold' : ''
+                              }`}
                             >
                               {seg.tr}
                             </Text>
                           </View>
                         );
                       })}
-                      {msg.playback && (
-                        <View style={tw`gap-2`}>
-                          <View style={tw`flex-row items-center gap-2`}> 
-                            <Pressable
-                              onPress={() =>
-                                handleInlinePlayPause(messageKey, msg.playback as PlaybackPayload)
-                              }
-                              style={tw`rounded-full bg-emerald-500/20 px-3 py-1`}
-                            >
-                              <Text style={tw`text-xs text-emerald-200 font-semibold`}>
-                                {isActive && inlinePlaying ? 'Pause' : 'Play'} narration
-                              </Text>
-                            </Pressable>
-                            <Pressable
-                              onPress={() =>
-                                handleInlineReplay(messageKey, msg.playback as PlaybackPayload)
-                              }
-                              style={tw`rounded-full bg-white/10 px-3 py-1`}
-                            >
-                              <Text style={tw`text-xs text-white`}>Replay</Text>
-                            </Pressable>
-                            {isActive && (
-                              <Text style={tw`text-[11px] text-white/60`}>
-                                {inlineIndex + 1} / {inlineItems.length || 0}
-                              </Text>
-                            )}
-                          </View>
-                          {isActive && inlineSegment && (
-                            <View style={tw`rounded-2xl bg-emerald-500/10 px-3 py-2`}>
-                              <Text style={tw`text-xs text-emerald-200 font-semibold`}>
-                                Now playing
-                              </Text>
-                              <Text style={tw`text-xs text-white`}>{inlineSegment.en}</Text>
-                              <Text style={tw`text-[11px] text-white/60`}>{inlineSegment.tr}</Text>
-                            </View>
-                          )}
-                        </View>
-                      )}
+
+                      {/* Narration controls */}
+                      <View style={tw`gap-2`}>
+                        {(() => {
+                          const ck = cacheKeyFor(messageKey, voiceSettings.voiceId);
+                          const pb = (msg.playback as PlaybackPayload) || playbackByKey[ck] || null;
+                          const hasPb = !!pb?.items?.length;
+                          const isPbLoading = playbackLoadingKey === ck;
+
+                          return (
+                            <>
+                              <View style={tw`flex-row items-center gap-2`}>
+                                <Pressable
+                                  onPress={async () => {
+                                    const ensured = await ensurePlaybackFor(messageKey, msg, idx);
+                                    if (!ensured) return;
+
+                                    activeMsgMetaRef.current = { messageKey, idx, msgId: getMsgId(msg) };
+                                    await handleInlinePlayPause(messageKey, ensured);
+                                  }}
+                                  style={tw`rounded-full px-3 py-1 ${
+                                    hasPb ? 'bg-emerald-500/20' : 'bg-white/10'
+                                  }`}
+                                >
+                                  <Text
+                                    style={tw`text-xs font-semibold ${
+                                      hasPb ? 'text-emerald-200' : 'text-white'
+                                    }`}
+                                  >
+                                    {isPbLoading
+                                      ? 'Loading…'
+                                      : hasPb
+                                        ? isActive && inlinePlaying
+                                          ? 'Pause'
+                                          : 'Play'
+                                        : 'Load narration'}
+                                  </Text>
+                                </Pressable>
+
+                                <Pressable
+                                  disabled={!hasPb || isPbLoading}
+                                  onPress={async () => {
+                                    const ensured = await ensurePlaybackFor(messageKey, msg, idx);
+                                    if (!ensured) return;
+
+                                    activeMsgMetaRef.current = { messageKey, idx, msgId: getMsgId(msg) };
+                                    handleInlineReplay(messageKey, ensured);
+                                  }}
+                                  style={tw`rounded-full bg-white/10 px-3 py-1 ${
+                                    !hasPb || isPbLoading ? 'opacity-50' : ''
+                                  }`}
+                                >
+                                  <Text style={tw`text-xs text-white`}>Replay</Text>
+                                </Pressable>
+
+                                <Pressable
+                                  onPress={() => setRepeatSheet({ messageKey, msg, idx })}
+                                  style={tw`rounded-full bg-white/10 px-3 py-1`}
+                                >
+                                  <Text style={tw`text-xs text-white`}>Repeat section</Text>
+                                </Pressable>
+
+                                {isActive && (
+                                  <Text style={tw`text-[11px] text-white/60`}>
+                                    {inlineIndex + 1} / {inlineItems.length || 0}
+                                  </Text>
+                                )}
+                              </View>
+
+                              {isActive && inlineSegment && (
+                                <View style={tw`rounded-2xl bg-emerald-500/10 px-3 py-2`}>
+                                  <Text style={tw`text-xs text-emerald-200 font-semibold`}>Now playing</Text>
+                                  <Text style={tw`text-xs text-white`}>{inlineSegment.en}</Text>
+                                  <Text style={tw`text-[11px] text-white/60`}>{inlineSegment.tr}</Text>
+                                </View>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </View>
                     </View>
                   ) : (
                     <Text style={tw`text-sm text-white`}>{msg.content}</Text>
@@ -710,20 +998,23 @@ const LanguageLearningScreen: React.FC = () => {
               </View>
             );
           })}
+
           {loading && (
-            <View style={tw`flex-row items-center gap-2`}> 
+            <View style={tw`flex-row items-center gap-2`}>
               <ActivityIndicator color="#34d399" />
               <Text style={tw`text-xs text-white/60`}>Tutor is typing…</Text>
             </View>
           )}
         </View>
 
+        {/* Complete */}
         <View style={tw`bg-slate-900/80 rounded-3xl p-4 border border-white/5`}>
           <Pressable onPress={handleComplete} style={tw`rounded-xl bg-emerald-600 px-4 py-2`}>
             <Text style={tw`text-sm text-white font-semibold text-center`}>Course Complete</Text>
           </Pressable>
         </View>
 
+        {/* Player */}
         <View style={tw`bg-slate-900/80 rounded-3xl p-3 border border-white/5`}>
           <ClassroomPlayer
             mode="language"
@@ -735,14 +1026,17 @@ const LanguageLearningScreen: React.FC = () => {
           />
         </View>
 
+        {/* Quiz */}
         {quiz && (
           <View style={tw`bg-slate-900/80 rounded-3xl p-4 gap-4 border border-white/5`}>
             <Text style={tw`text-lg font-semibold text-white`}>Final Quiz</Text>
-            {quiz.questions.map((q: any, idx: number) => (
+
+            {quiz.questions.map((q: any, qIdx: number) => (
               <View key={q.id} style={tw`gap-2`}>
                 <Text style={tw`text-sm font-semibold text-white`}>
-                  {idx + 1}. {q.prompt}
+                  {qIdx + 1}. {q.prompt}
                 </Text>
+
                 <View style={tw`gap-2`}>
                   {q.choices.map((choice: string, cIdx: number) => {
                     const selected = answers[q.id] === cIdx;
@@ -777,9 +1071,7 @@ const LanguageLearningScreen: React.FC = () => {
               <Text style={tw`text-sm text-white font-semibold text-center`}>Submit Quiz</Text>
             </Pressable>
 
-            {grade && (
-              <Text style={tw`text-sm text-white/70`}>Score: {grade.scorePct}%</Text>
-            )}
+            {grade && <Text style={tw`text-sm text-white/70`}>Score: {grade.scorePct}%</Text>}
 
             {grade?.scorePct >= 70 && (
               <View style={tw`gap-2`}>
@@ -793,6 +1085,7 @@ const LanguageLearningScreen: React.FC = () => {
                     {certId ? 'Download Certificate' : 'Generate Certificate'}
                   </Text>
                 </Pressable>
+
                 <Pressable
                   onPress={handleTranscript}
                   disabled={downloading}
@@ -809,52 +1102,84 @@ const LanguageLearningScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      <View
-        onLayout={(e) =>
-          setFooterHeight(Math.max(0, e.nativeEvent.layout.height - footerPadding))
-        }
-        style={[tw`border-t border-white/10 bg-slate-950/95 px-4 py-3`, { paddingBottom: footerPadding }]}
+      {/* ─────────────────────────────────────────────
+          FLOATING FOOTER DOCK (always visible)
+      ───────────────────────────────────────────── */}
+      <Animated.View
+        onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
+        style={[
+          tw`border-t border-white/10 bg-slate-950/95 px-4 py-2`,
+          {
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: kbAnim,
+            paddingBottom: footerSafePad,
+            zIndex: 50,
+          },
+        ]}
       >
+        {/* Suggested */}
         {selectedTopic && (
           <View style={tw`mb-2`}>
             <Text style={tw`text-xs text-white/60`}>
               Suggested: <Text style={tw`text-emerald-300 font-semibold`}>{selectedTopic.label}</Text>
             </Text>
             <Pressable onPress={() => applyPrompt(selectedTopic.prompts?.[0])}>
-
               <Text style={tw`text-xs text-emerald-300 mt-1`}>Use prompt</Text>
             </Pressable>
           </View>
         )}
-        <View style={tw`flex-row items-center gap-2 mb-3`}>
+
+        {/* Topics + Voice (always visible; compact when typing) */}
+        <View style={tw`flex-row items-center gap-2 mb-2`}>
           <Pressable
             onPress={() => {
+              Keyboard.dismiss();
               setShowTopicSheet(true);
               setShowVoiceSheet(false);
             }}
-            style={tw`rounded-full border border-white/10 px-3 py-1`}
+            style={tw`flex-1 rounded-full border border-white/10 bg-white/5 px-3 ${
+              compact ? 'py-1.5' : 'py-2'
+            }`}
           >
-            <Text style={tw`text-xs text-white`}>✨ Topics</Text>
+            <Text style={tw`${compact ? 'text-[11px]' : 'text-xs'} text-white font-semibold`}>
+              ✨ Topics{selectedTopic ? `: ${selectedTopic.label}` : ''}
+            </Text>
           </Pressable>
+
           <Pressable
             onPress={() => {
+              Keyboard.dismiss();
               setShowVoiceSheet(true);
               setShowTopicSheet(false);
             }}
-            style={tw`rounded-full border border-white/10 px-3 py-1`}
+            style={tw`flex-1 rounded-full border border-white/10 bg-white/5 px-3 ${
+              compact ? 'py-1.5' : 'py-2'
+            }`}
           >
-            <Text style={tw`text-xs text-white`}>🎙 Voice</Text>
+            <Text style={tw`${compact ? 'text-[11px]' : 'text-xs'} text-white font-semibold`}>
+              🎙 Voice: {activeVoiceLabel}
+            </Text>
           </Pressable>
         </View>
+
+        {/* Composer */}
         <View style={tw`flex-row items-center gap-2`}>
           <TextInput
+            ref={inputRef}
             value={input}
             onChangeText={setInput}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
             placeholder={bundleBlocked ? 'Unlock more prompts to continue.' : 'Ask your tutor...'}
             placeholderTextColor="#94a3b8"
             editable={!bundleBlocked && !loading}
             style={tw`flex-1 rounded-2xl border border-white/10 px-4 py-3 text-sm text-white bg-slate-900/80`}
+            returnKeyType="send"
+            onSubmitEditing={handleSend}
           />
+
           <Pressable
             onPress={handleSend}
             disabled={bundleBlocked || loading || !input.trim()}
@@ -873,128 +1198,204 @@ const LanguageLearningScreen: React.FC = () => {
               <Text style={tw`text-sm text-emerald-200 font-semibold`}>You’ve used your 5 free prompts.</Text>
             </View>
             <Pressable onPress={purchaseBundle} style={tw`rounded-2xl bg-emerald-500 px-3 py-2`}>
-              <Text style={tw`text-sm text-white font-semibold text-center`}>
-                Unlock 300 prompts (20 tokens)
-              </Text>
+              <Text style={tw`text-sm text-white font-semibold text-center`}>Unlock 300 prompts (20 tokens)</Text>
             </Pressable>
           </View>
         )}
 
         {error && <Text style={tw`text-xs text-red-400 mt-2`}>{error}</Text>}
-      </View>
+      </Animated.View>
+    </View>
 
-      <Modal transparent animationType="slide" visible={showTopicSheet} onRequestClose={() => setShowTopicSheet(false)}>
-        <Pressable style={tw`flex-1 bg-black/40`} onPress={() => setShowTopicSheet(false)} />
-        <View style={tw`bg-slate-900 rounded-t-3xl p-4 gap-4 border border-white/10`}>
-          <View style={tw`flex-row items-center gap-2`}>
-            <TextInput
-              value={topicFilter}
-              onChangeText={setTopicFilter}
-              placeholder="Search topics"
-              placeholderTextColor="#94a3b8"
-              style={tw`flex-1 rounded-xl border border-white/10 px-3 py-2 text-sm text-white`}
-            />
-            <Pressable onPress={handleSurprise} style={tw`rounded-full bg-amber-500/20 px-3 py-2`}>
-              <Text style={tw`text-xs text-amber-200 font-semibold`}>Surprise me</Text>
+    {/* ─────────────────────────────────────────────
+        MODALS (stop above footer using sheetBottomGap)
+    ───────────────────────────────────────────── */}
+    <Modal transparent animationType="slide" visible={showTopicSheet} onRequestClose={() => setShowTopicSheet(false)}>
+      <Pressable style={tw`flex-1 bg-black/40`} onPress={() => setShowTopicSheet(false)} />
+      <View
+        style={[
+          tw`bg-slate-900 rounded-t-3xl p-4 gap-4 border border-white/10`,
+          { paddingBottom: insets.bottom + 16, marginBottom: sheetBottomGap },
+        ]}
+      >
+        <View style={tw`flex-row items-center gap-2`}>
+          <TextInput
+            value={topicFilter}
+            onChangeText={setTopicFilter}
+            placeholder="Search topics"
+            placeholderTextColor="#94a3b8"
+            style={tw`flex-1 rounded-xl border border-white/10 px-3 py-2 text-sm text-white`}
+          />
+          <Pressable onPress={handleSurprise} style={tw`rounded-full bg-amber-500/20 px-3 py-2`}>
+            <Text style={tw`text-xs text-amber-200 font-semibold`}>Surprise me</Text>
+          </Pressable>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`gap-2`}>
+          {filteredTopics.map((topic) => (
+            <Pressable
+              key={topic.id}
+              onPress={() => handleTopicSelect(topic)}
+              style={tw`rounded-full px-3 py-2 ${
+                selectedTopic?.id === topic.id ? 'bg-emerald-500' : 'bg-white/10'
+              }`}
+            >
+              <Text style={tw`text-xs text-white`}>{topic.label}</Text>
             </Pressable>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`gap-2`}>
-            {filteredTopics.map((topic) => (
+          ))}
+        </ScrollView>
+
+        {selectedTopic && (
+          <View style={tw`gap-2`}>
+            <Text style={tw`text-xs text-white/60 font-semibold`}>Suggested prompts</Text>
+            {selectedTopic.prompts.map((prompt) => (
               <Pressable
-                key={topic.id}
-                onPress={() => handleTopicSelect(topic)}
-                style={tw`rounded-full px-3 py-2 ${
-                  selectedTopic?.id === topic.id ? 'bg-emerald-500' : 'bg-white/10'
-                }`}
+                key={prompt}
+                onPress={() => applyPrompt(prompt)}
+                style={tw`rounded-2xl border border-white/10 px-3 py-2`}
               >
-                <Text style={tw`text-xs text-white`}>{topic.label}</Text>
+                <Text style={tw`text-xs text-white/80`}>
+                  {prompt.replace('{language}', headerLabel || targetLanguage)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </View>
+    </Modal>
+
+    <Modal transparent animationType="slide" visible={!!repeatSheet} onRequestClose={() => setRepeatSheet(null)}>
+      <Pressable style={tw`flex-1 bg-black/40`} onPress={() => setRepeatSheet(null)} />
+      <View
+        style={[
+          tw`bg-slate-900 rounded-t-3xl p-4 gap-3 border border-white/10`,
+          { paddingBottom: insets.bottom + 16, marginBottom: sheetBottomGap },
+        ]}
+      >
+        <View style={tw`flex-row items-center justify-between`}>
+          <Text style={tw`text-white font-semibold`}>Repeat a section</Text>
+          <Text style={tw`text-xs text-white/60`}>{headerLabel || targetLanguage}</Text>
+        </View>
+
+        <ScrollView style={tw`max-h-[420px]`} contentContainerStyle={tw`gap-2`}>
+          {(repeatSheet?.msg?.segments || []).map((seg: any, segIdx: number) => (
+            <View
+              key={`${seg.en}-${segIdx}`}
+              style={tw`rounded-2xl border border-white/10 bg-white/5 p-3`}
+            >
+              <Pressable
+                onPress={() => {
+                  if (!repeatSheet) return;
+                  setRepeatSheet(null);
+                  startPlaybackAt(repeatSheet.messageKey, repeatSheet.msg, repeatSheet.idx, segIdx, 'en');
+                }}
+                style={tw`flex-row items-center justify-between`}
+              >
+                <Text style={tw`text-xs text-white flex-1 pr-3`}>{seg.en}</Text>
+                <Text style={tw`text-xs text-emerald-300 font-semibold`}>Play EN</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  if (!repeatSheet) return;
+                  setRepeatSheet(null);
+                  startPlaybackAt(repeatSheet.messageKey, repeatSheet.msg, repeatSheet.idx, segIdx, 'tr');
+                }}
+                style={tw`mt-2 flex-row items-center justify-between`}
+              >
+                <Text style={tw`text-[11px] text-white/70 flex-1 pr-3`}>{seg.tr}</Text>
+                <Text style={tw`text-xs text-emerald-300 font-semibold`}>Play TR</Text>
+              </Pressable>
+            </View>
+          ))}
+        </ScrollView>
+
+        <Text style={tw`text-[11px] text-white/50`}>Tip: Tap any line to replay from exactly there.</Text>
+      </View>
+    </Modal>
+
+    <Modal transparent animationType="slide" visible={showVoiceSheet} onRequestClose={() => setShowVoiceSheet(false)}>
+      <Pressable style={tw`flex-1 bg-black/40`} onPress={() => setShowVoiceSheet(false)} />
+      <View
+        style={[
+          tw`rounded-t-3xl p-4 gap-4 border`,
+          {
+            backgroundColor: voiceSheetTheme.bg,
+            borderColor: voiceSheetTheme.border,
+            paddingBottom: insets.bottom + 16,
+            marginBottom: sheetBottomGap,
+          },
+        ]}
+      >
+        <View style={tw`gap-2`}>
+          <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>Voice style</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`gap-2`}>
+            {VOICES.map((voice) => (
+              <Pressable
+                key={voice.id}
+                onPress={() => setVoiceSettings((prev) => ({ ...prev, voiceId: voice.id }))}
+                style={[
+                  tw`rounded-full px-3 py-2`,
+                  { backgroundColor: voiceSettings.voiceId === voice.id ? '#2563eb' : voiceSheetTheme.pillBg },
+                ]}
+              >
+                <Text
+                  style={[
+                    tw`text-xs`,
+                    { color: voiceSettings.voiceId === voice.id ? '#ffffff' : voiceSheetTheme.text },
+                  ]}
+                >
+                  {voice.label}
+                </Text>
               </Pressable>
             ))}
           </ScrollView>
-          {selectedTopic && (
-            <View style={tw`gap-2`}>
-              <Text style={tw`text-xs text-white/60 font-semibold`}>Suggested prompts</Text>
-              {selectedTopic.prompts.map((prompt) => (
-                <Pressable
-                  key={prompt}
-                  onPress={() => applyPrompt(prompt)}
-                  style={tw`rounded-2xl border border-white/10 px-3 py-2`}
-                >
-                  <Text style={tw`text-xs text-white/80`}>
-                    {prompt.replace('{language}', headerLabel || targetLanguage)}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
         </View>
-      </Modal>
 
-      <Modal transparent animationType="slide" visible={showVoiceSheet} onRequestClose={() => setShowVoiceSheet(false)}>
-        <Pressable style={tw`flex-1 bg-black/40`} onPress={() => setShowVoiceSheet(false)} />
-        <View style={[tw`rounded-t-3xl p-4 gap-4 border`, { backgroundColor: voiceSheetTheme.bg, borderColor: voiceSheetTheme.border }]}>
-          <View style={tw`gap-2`}>
-            <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>Voice style</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`gap-2`}>
-              {VOICES.map((voice) => (
-                <Pressable
-                  key={voice.id}
-                  onPress={() => setVoiceSettings((prev) => ({ ...prev, voiceId: voice.id }))}
-                  style={[
-                    tw`rounded-full px-3 py-2`,
-                    { backgroundColor: voiceSettings.voiceId === voice.id ? '#2563eb' : voiceSheetTheme.pillBg },
-                  ]}
-                >
-                  <Text style={[tw`text-xs`, { color: voiceSettings.voiceId === voice.id ? '#ffffff' : voiceSheetTheme.text }]}>
-                    {voice.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-          <View style={tw`gap-2`}>
-            <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>
-              Speed ({voiceSettings.rate.toFixed(2)}x)
-            </Text>
-            <Slider
-              minimumValue={0.6}
-              maximumValue={1.2}
-              step={0.05}
-              value={voiceSettings.rate}
-              onValueChange={(value) => setVoiceSettings((prev) => ({ ...prev, rate: value }))}
-              minimumTrackTintColor="#34d399"
-              maximumTrackTintColor={voiceSheetTheme.sliderTrack}
-            />
-          </View>
-          <View style={tw`gap-2`}>
-            <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>
-              Pitch ({voiceSettings.pitch.toFixed(2)}x)
-            </Text>
-            <Slider
-              minimumValue={0.8}
-              maximumValue={1.2}
-              step={0.05}
-              value={voiceSettings.pitch}
-              onValueChange={(value) => setVoiceSettings((prev) => ({ ...prev, pitch: value }))}
-              minimumTrackTintColor="#38bdf8"
-              maximumTrackTintColor={voiceSheetTheme.sliderTrack}
-            />
-            <Text style={[tw`text-[11px]`, { color: voiceSheetTheme.subtext }]}>
-              Pitch may vary by device. Voice controls affect playback; regeneration coming soon.
-            </Text>
-          </View>
-          <View style={tw`flex-row items-center justify-between`}>
-            <Pressable onPress={() => setVoiceSettings(DEFAULT_VOICE)}>
-              <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>Reset</Text>
-            </Pressable>
-            <Text style={[tw`text-xs`, { color: voiceSheetTheme.subtext }]}>
-              Saved for {headerLabel || targetLanguage}
-            </Text>
-          </View>
+        <View style={tw`gap-2`}>
+          <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>
+            Speed ({voiceSettings.rate.toFixed(2)}x)
+          </Text>
+          <Slider
+            minimumValue={0.6}
+            maximumValue={1.2}
+            step={0.05}
+            value={voiceSettings.rate}
+            onValueChange={(value) => setVoiceSettings((prev) => ({ ...prev, rate: value }))}
+            minimumTrackTintColor="#34d399"
+            maximumTrackTintColor={voiceSheetTheme.sliderTrack}
+          />
         </View>
-      </Modal>
-    </SafeAreaView>
-  );
+
+        <View style={tw`gap-2`}>
+          <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>
+            Pitch ({voiceSettings.pitch.toFixed(2)}x)
+          </Text>
+          <Slider
+            minimumValue={0.8}
+            maximumValue={1.2}
+            step={0.05}
+            value={voiceSettings.pitch}
+            onValueChange={(value) => setVoiceSettings((prev) => ({ ...prev, pitch: value }))}
+            minimumTrackTintColor="#38bdf8"
+            maximumTrackTintColor={voiceSheetTheme.sliderTrack}
+          />
+          <Text style={[tw`text-[11px]`, { color: voiceSheetTheme.subtext }]}>
+            Pitch may vary by device. Voice controls affect playback; regeneration coming soon.
+          </Text>
+        </View>
+
+        <View style={tw`flex-row items-center justify-between`}>
+          <Pressable onPress={() => setVoiceSettings(DEFAULT_VOICE)}>
+            <Text style={[tw`text-xs font-semibold`, { color: voiceSheetTheme.subtext }]}>Reset</Text>
+          </Pressable>
+          <Text style={[tw`text-xs`, { color: voiceSheetTheme.subtext }]}>Saved for {headerLabel || targetLanguage}</Text>
+        </View>
+      </View>
+    </Modal>
+  </SafeAreaView>
+);
+
 };
 
 export default LanguageLearningScreen;

@@ -15,6 +15,7 @@ import {
   promptLanguage,
   purchaseLanguage,
   completeLanguage,
+   playbackLanguage,
 } from '../controllers/aiLanguageController.js';
 
 import optionalAuth from '../middleware/optionalAuth.js';
@@ -78,6 +79,8 @@ router.post('/courses/language/start', requireAuth, startLanguage);
 router.post('/courses/language/prompt', requireAuth, promptLanguage);
 router.post('/courses/language/purchase-bundle', requireAuth, purchaseLanguage);
 router.post('/courses/language/complete', requireAuth, completeLanguage);
+router.post('/courses/language/playback', requireAuth, playbackLanguage);
+
 
 // 🔒 Cache clears
 router.post('/cache/clear-course', requireAuth, clearCourseCache);

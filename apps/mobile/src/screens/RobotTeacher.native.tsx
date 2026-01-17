@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
   Modal,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, RouteProp, NavigationProp } from '@react-navigation/native';
 import tw from '../../tailwind';
 import { RefreshableScrollView } from '../refresh/Refreshable';
@@ -25,7 +27,7 @@ import { useShopContext } from '@mytutorapp/shared/context';
 
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { updateCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
-import { startLanguageCourse } from '@mytutorapp/shared/api';
+import { startLanguageCourse, purchaseLanguageBundle } from '@mytutorapp/shared/api';
 import { detectLanguageIntent, isLanguageIntentText } from '@mytutorapp/shared/utils/languageDetection';
 
 import type { TopCourse } from '@mytutorapp/shared/types';
@@ -85,6 +87,7 @@ const LANGUAGE_CARDS = [
   { language: 'Spanish', emoji: '🇪🇸', subtitle: 'Quick practice' },
   { language: 'Arabic', emoji: '🇸🇦', subtitle: 'New phrases' },
 ] as const;
+
 
 
 const sizeToCourseSize: Record<
@@ -402,8 +405,41 @@ const wantedCourseId = useMemo(() => {
   }, []);
 
   const effectiveVoice = voiceName || defaultVoice;
-  const { backendUrl, token, orgToken, role: globalRole } = useShopContext() as any;
+ const { backendUrl, token, orgToken, role: globalRole } = useShopContext() as any;
 const authToken = token || orgToken;
+
+// ✅ Language learning must use the user's token (wallet tokens live on user)
+const languageToken = token;
+
+// ─────────────────────────────────────────────────────────
+// Auth helpers (must be declared BEFORE requireLanguageAuth)
+// ─────────────────────────────────────────────────────────
+const goToLoginWithReturn = useCallback(
+  (reason?: string, message?: string) => {
+    dlog('navigate → Login', { reason, message });
+    navigation.navigate('Login' as any, { reason, message } as any);
+  },
+  [navigation]
+);
+
+const requireAuth = useCallback(
+  (reason?: string, message?: string) => {
+    if (authToken) return true;
+    goToLoginWithReturn(reason, message);
+    return false;
+  },
+  [authToken, goToLoginWithReturn]
+);
+
+const requireLanguageAuth = useCallback(
+  (reason?: string, message?: string) => {
+    if (languageToken) return true;
+    goToLoginWithReturn(reason ?? 'language-learning', message ?? 'Please sign in to continue.');
+    return false;
+  },
+  [languageToken, goToLoginWithReturn]
+);
+
 
   const isGlobalAdmin = globalRole === 'admin' || globalRole === 'superadmin';
 
@@ -513,6 +549,100 @@ const validateAgainstTopCourses = Boolean(
   const [playerReady, setPlayerReady] = useState(false);
   const [playerLoading, setPlayerLoading] = useState<boolean>(false);
   const [starting, setStarting] = useState<boolean>(false);
+
+  // ─────────────────────────────────────────────────────────
+// Language prompt bundle (web parity)
+// ─────────────────────────────────────────────────────────
+const LANGUAGE_FREE_LIMIT = 5;
+const LANGUAGE_BUNDLE_PROMPTS = 300;
+const LANGUAGE_BUNDLE_TOKENS = 20;
+
+const [languageLaunching, setLanguageLaunching] = useState(false);
+const [languageActive, setLanguageActive] = useState<string | null>(null);
+
+const [llUnlockOpen, setLlUnlockOpen] = useState(false);
+const [llUnlockBusy, setLlUnlockBusy] = useState(false);
+const [llUnlockErr, setLlUnlockErr] = useState<string | null>(null);
+const [llUnlockCtx, setLlUnlockCtx] = useState<{
+  courseId: string;
+  prompt: string;
+  languageLabel: string;
+} | null>(null);
+
+
+useEffect(() => {
+  if (!llUnlockOpen) return;
+
+  console.log('[LL] unlock modal open', {
+    hasBackendUrl: !!backendUrl,
+    hasLanguageToken: !!languageToken,
+    busy: llUnlockBusy,
+    ctx: llUnlockCtx,
+    ctxCourseIdLen: llUnlockCtx?.courseId ? String(llUnlockCtx.courseId).length : 0,
+  });
+}, [llUnlockOpen, llUnlockBusy, llUnlockCtx, backendUrl, languageToken]);
+
+// lightweight in-memory cache (web uses localStorage; native keeps this per app session)
+const llCourseIdCacheRef = useRef<Map<string, string>>(new Map());
+
+const normalizeLangKey = (s?: string | null) => {
+  const t = String(s ?? '').trim().toLowerCase();
+  if (!t) return '';
+  if (t.includes('deutsch') || t.includes('german')) return 'german';
+  if (t.includes('français') || t.includes('francais') || t.includes('french')) return 'french';
+  if (t.includes('español') || t.includes('espanol') || t.includes('spanish')) return 'spanish';
+  if (t.includes('arabic') || t.includes('arab') || t.includes('عربي')) return 'arabic';
+  return t;
+};
+
+const llCourseIdStorageKey = (langKey: string) => `ll_course_id_v1_${langKey}`;
+
+const cacheLanguageCourseId = useCallback(
+  async (languageLabel: string, courseId: string, targetLanguage?: string) => {
+    const cid = String(courseId || '').trim();
+    if (!cid) return;
+
+    const keys = new Set<string>();
+    const k1 = normalizeLangKey(languageLabel);
+    const k2 = normalizeLangKey(targetLanguage);
+
+    if (k1) keys.add(k1);
+    if (k2) keys.add(k2);
+
+    for (const k of keys) {
+      llCourseIdCacheRef.current.set(k, cid);
+      AsyncStorage.setItem(llCourseIdStorageKey(k), cid).catch(() => {});
+    }
+  },
+  []
+);
+
+const getCachedLanguageCourseId = useCallback(async (languageLabel: string) => {
+  const k = normalizeLangKey(languageLabel);
+  if (!k) return '';
+
+  const mem = llCourseIdCacheRef.current.get(k);
+  if (mem) return mem;
+
+  try {
+    const stored = await AsyncStorage.getItem(llCourseIdStorageKey(k));
+    const cid = String(stored || '').trim();
+    if (cid) llCourseIdCacheRef.current.set(k, cid);
+    return cid;
+  } catch {
+    return '';
+  }
+}, []);
+
+const inferLanguageLabelFromPrompt = (prompt: string) => {
+  const p = String(prompt || '').toLowerCase();
+  if (p.includes('german') || p.includes('deutsch')) return 'German';
+  if (p.includes('french') || p.includes('français') || p.includes('francais')) return 'French';
+  if (p.includes('spanish') || p.includes('español') || p.includes('espanol')) return 'Spanish';
+  if (p.includes('arabic') || p.includes('arab') || p.includes('عربي')) return 'Arabic';
+  return '';
+};
+
 
   // run gate to avoid stale toggles
   const runIdRef = useRef(0);
@@ -1093,16 +1223,181 @@ const trackLockSource = useMemo(() => {
     if (hasAIContent) setIsMaximized(true);
   }, [hasAIContent]);
 
-  // Auth helpers
-  const goToLoginWithReturn = (reason?: string, message?: string) => {
-    dlog('navigate → Login', { reason, message });
-    navigation.navigate('Login' as any, { reason, message } as any);
-  };
-  const requireAuth = (reason?: string, message?: string) => {
-    if (authToken) return true;
-    goToLoginWithReturn(reason, message);
-    return false;
-  };
+
+  const resetRunUi = useCallback(() => {
+  setActiveRunId(null);
+  setUiPreparing(false);
+  setPlayerLoading(false);
+  setPlayerReady(false);
+  setLockedSsml(null);
+}, []);
+
+const parseLanguageGate = useCallback((res: any) => {
+  const ent =
+    res?.entitlement ??
+    res?.languageStart?.entitlement ??
+    res?.data?.entitlement ??
+    null;
+
+  const promptsUsed = Number(
+    res?.promptsUsed ??
+      res?.prompts_used ??
+      ent?.promptsUsed ??
+      ent?.prompts_used ??
+      0
+  );
+
+  const promptsLimit = Number(
+    res?.promptsLimit ??
+      res?.prompts_limit ??
+      ent?.promptsLimit ??
+      ent?.prompts_limit ??
+      0
+  );
+
+  const effectiveLimit = promptsLimit || LANGUAGE_FREE_LIMIT;
+
+  const bundleBlocked = Boolean(
+    res?.bundleBlocked ??
+      res?.bundle_blocked ??
+      ent?.bundleBlocked ??
+      ent?.bundle_blocked ??
+      (effectiveLimit > 0 && promptsUsed >= effectiveLimit)
+  );
+
+  return { bundleBlocked, promptsUsed, promptsLimit: effectiveLimit };
+}, []);
+
+const extractLanguageCourseId = useCallback((x: any): string => {
+  const candidates = [
+    x?.courseId,
+    x?.course_id,
+    x?.id,
+
+    // entitlement shapes (you already parse entitlement in parseLanguageGate)
+    x?.entitlement?.courseId,
+    x?.entitlement?.course_id,
+
+    // common nested shapes
+    x?.languageStart?.courseId,
+    x?.languageStart?.course_id,
+    x?.languageStart?.id,
+    x?.languageStart?.entitlement?.courseId,
+    x?.languageStart?.entitlement?.course_id,
+
+    // API wrappers
+    x?.data?.courseId,
+    x?.data?.course_id,
+    x?.data?.id,
+    x?.data?.entitlement?.courseId,
+    x?.data?.entitlement?.course_id,
+  ];
+
+  for (const c of candidates) {
+    const s = String(c ?? '').trim();
+    if (s) return s;
+  }
+  return '';
+}, []);
+
+
+const startLanguageFlow = useCallback(
+  async (prompt: string, languageLabel: string) => {
+    const ok = requireLanguageAuth('language-learning', 'Please sign in to start language learning.');
+    if (!ok) return;
+
+    if (!backendUrl || !languageToken) return;
+
+    try {
+      const res: any = await startLanguageCourse(backendUrl, languageToken as string, prompt);
+
+      const gate = parseLanguageGate(res);
+
+      const courseId = extractLanguageCourseId(res);
+      await cacheLanguageCourseId(languageLabel, courseId, res?.targetLanguage);
+
+     if (gate.bundleBlocked) {
+  resetRunUi();
+  setLlUnlockErr(null);
+
+  const cid =
+    courseId ||
+    (await getCachedLanguageCourseId(languageLabel)) ||
+    (await getCachedLanguageCourseId(inferLanguageLabelFromPrompt(prompt) || languageLabel));
+
+  dlog('LL gate → open unlock modal', {
+    languageLabel,
+    prompt,
+    extractedCourseId: courseId,
+    resolvedCourseId: cid,
+    promptsUsed: gate.promptsUsed,
+    limit: gate.promptsLimit,
+  });
+
+  setLlUnlockCtx({ courseId: cid, prompt, languageLabel });
+  setLlUnlockOpen(true);
+  return;
+}
+
+
+      resetRunUi();
+      navigation.navigate('LanguageLearning' as any, {
+        courseId,
+        languageStart: res,
+      } as any);
+    } catch (err: any) {
+      const data = err?.data ?? err?.response?.data ?? null;
+      const msgText = String(data?.message || data?.error || err?.message || '');
+
+      let courseId = extractLanguageCourseId(data) || extractLanguageCourseId(err);
+
+      if (!courseId) {
+        const cached = llCourseIdCacheRef.current.get(String(languageLabel || '').toLowerCase());
+        if (cached) courseId = String(cached).trim();
+      }
+
+      const blocked = Boolean(
+        data?.bundleBlocked ||
+          data?.bundle_blocked ||
+          data?.code === 'PROMPT_LIMIT_REACHED' ||
+          data?.error === 'PROMPT_LIMIT_REACHED' ||
+          data?.code === 'LANGUAGE_BUNDLE_BLOCKED' ||
+          /free prompt limit|prompt limit|unlock/i.test(msgText)
+      );
+
+      if (blocked) {
+        const label =
+          String(languageLabel || '').trim() || inferLanguageLabelFromPrompt(prompt) || 'Language';
+
+        const cid =
+          courseId ||
+          (await getCachedLanguageCourseId(label)) ||
+          (await getCachedLanguageCourseId(inferLanguageLabelFromPrompt(prompt) || label));
+
+        resetRunUi();
+        setLlUnlockErr(null);
+        setLlUnlockCtx({ courseId: cid, prompt, languageLabel: label });
+        setLlUnlockOpen(true);
+        return;
+      }
+
+      resetRunUi();
+      Alert.alert('Language Learning', msgText || 'Unable to start language learning.');
+    }
+  },
+ [
+  requireLanguageAuth,
+  backendUrl,
+  languageToken,
+  navigation,
+  parseLanguageGate,
+  extractLanguageCourseId,
+  resetRunUi,
+  cacheLanguageCourseId,
+  getCachedLanguageCourseId,
+]
+
+);
 
   // Quiz answer helper
   const disableQuiz = Boolean(
@@ -1183,7 +1478,7 @@ const trackLockSource = useMemo(() => {
 
   // Start — robust sequencing (parity-ish with web, but keeping your start gate)
   const onStart = useCallback(async () => {
-  if (starting || !canStartNow) {
+  if (starting || languageLaunching || llUnlockBusy || !canStartNow) {
     dlog('onStart: ignored (starting=', starting, ', canStartNow=', canStartNow, ')');
     return;
   }
@@ -1234,26 +1529,27 @@ const trackLockSource = useMemo(() => {
         setPlayerLoading(false);
         return;
       }
-      if (intent) {
-        try {
-          const res = await startLanguageCourse(backendUrl, authToken as string, custom);
-          navigation.navigate('LanguageLearning' as any, {
-            courseId: res.courseId,
-            languageStart: res,
-          } as any);
-          return;
-        } catch (err: any) {
-          const msg =
-            err?.response?.data?.message ||
-            err?.message ||
-            'Unable to start language learning.';
-          Alert.alert('Language Learning', msg);
-          setActiveRunId(null);
-          setUiPreparing(false);
-          setPlayerLoading(false);
+        if (intent) {
+          const langLabel =
+            (intent as any)?.language ||
+            (intent as any)?.targetLanguage ||
+            (intent as any)?.label ||
+            'Language';
+
+          // show web-style "preparing" for the Teach me CTA
+          setLanguageActive(String(langLabel));
+          setLanguageLaunching(true);
+
+          try {
+            await startLanguageFlow(custom, String(langLabel));
+          } finally {
+            setLanguageLaunching(false);
+            setLanguageActive(null);
+          }
+
           return;
         }
-      }
+
       await startCustomTopic(custom);
       await waitForSelection();
       opts.courseId = selectedCourseRef.current?.id;
@@ -1375,7 +1671,10 @@ return;
   }
 }, [
   starting,
+ languageLaunching,
+ llUnlockBusy,
   canStartNow,
+  startLanguageFlow,
   assignmentId,
   sizePreset,
   classLevel,
@@ -1391,34 +1690,34 @@ return;
   params.courseId,
 ]);
 
-  const startLanguageFromCard = useCallback(
+const startLanguageFromCard = useCallback(
   async (language: string) => {
+    if (languageLaunching || llUnlockBusy) return;
+
     const ok = requireAuth('ai_sandbox', 'Please sign in to start language learning.');
     if (!ok) return;
 
+    // optional parity: reflect choice in Teach-me input
     const prompt = `Teach me ${language}`;
+    setCustomTitle(prompt);
+    if (prompt.trim()) selectCourse(null);
+
+    setLanguageActive(language);
+    setLanguageLaunching(true);
+
+    // polish: avoid refresh conflicts while swiping cards
+    setDisableRefresh(true);
 
     try {
-      // optional UI polish
-      setStarting(true);
-      setDisableRefresh(true);
-
-      const res = await startLanguageCourse(backendUrl, authToken as string, prompt);
-
-      navigation.navigate('LanguageLearning' as any, {
-        courseId: res.courseId,
-        languageStart: res,
-      } as any);
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.message || err?.message || 'Unable to start language learning.';
-      Alert.alert('Language Learning', msg);
+      resetRunUi();
+      await startLanguageFlow(prompt, language);
     } finally {
-      setStarting(false);
+      setLanguageLaunching(false);
+      setLanguageActive(null);
       setDisableRefresh(false);
     }
   },
-  [requireAuth, backendUrl, authToken, navigation]
+  [languageLaunching, llUnlockBusy, requireAuth, startLanguageFlow, resetRunUi, selectCourse]
 );
 
 
@@ -1511,10 +1810,14 @@ return;
       playerLoading ||
       !playerReady);
 
+      const ctaBusy = preparingNow || starting || languageLaunching || llUnlockBusy;
+
+
   // Payment & certificate state (parity with web)
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [certUrl, setCertUrl] = useState<string | null>(null);
   const [downUrl, setDownUrl] = useState<string | null>(null);
+
 
   // ─────────────────────────────────────────────────────────
   // onBeforePlay / onEnded wrappers (SSML lock + prefetch)
@@ -1597,6 +1900,7 @@ return;
                     {LANGUAGE_CARDS.map((card) => (
                       <TouchableOpacity
                         key={card.language}
+                        disabled={languageLaunching || llUnlockBusy || starting}
                         onPressIn={lockRefreshOff}
                         onPressOut={unlockRefresh}
                         onPress={() => startLanguageFromCard(card.language)}
@@ -1604,9 +1908,26 @@ return;
                         style={tw`w-40 rounded-2xl border border-white/40 dark:border-white/10 bg-white dark:bg-[#141b24] px-4 py-3`}
                       >
                         <View style={tw`flex-row items-center justify-between`}>
-                          <Text style={tw`text-lg`}>{card.emoji}</Text>
+                        <Text style={tw`text-lg`} accessibilityLabel={`${card.language} flag`}>
+                        {card.emoji}
+                      </Text>
+
+
+                        {languageLaunching && languageActive === card.language ? (
+                          <View
+                            style={tw`flex-row items-center gap-1 rounded-full px-2 py-1 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-400/20`}
+                          >
+                            <ActivityIndicator size={12} color="#10b981" />
+                            <Text style={tw`text-[10px] font-semibold text-emerald-700 dark:text-emerald-200`}>
+                              running
+                            </Text>
+                          </View>
+                        ) : (
                           <Text style={tw`text-[10px] font-semibold text-emerald-500`}>NEW</Text>
-                        </View>
+                        )}
+                      </View>
+
+
                         <Text style={tw`mt-2 text-sm font-semibold text-[#0d141c] dark:text-white`}>
                           {card.language}
                         </Text>
@@ -1691,6 +2012,143 @@ return;
                 />
               </Modal>
 
+              <Modal
+  visible={Boolean(llUnlockOpen && llUnlockCtx)}
+  transparent
+  animationType="fade"
+  onRequestClose={() => {
+    if (!llUnlockBusy) setLlUnlockOpen(false);
+  }}
+>
+  <View style={tw`flex-1 items-center justify-center px-4`}>
+    {/* backdrop */}
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={() => {
+        if (!llUnlockBusy) setLlUnlockOpen(false);
+      }}
+      style={tw`absolute inset-0 bg-black/50`}
+    />
+
+    {/* card */}
+    <View style={tw`w-full max-w-md rounded-3xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 p-5`}>
+      <View style={tw`flex-row items-start gap-3`}>
+        <View style={tw`h-11 w-11 rounded-2xl bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-600/20 dark:border-emerald-400/20 items-center justify-center`}>
+          <Text style={tw`text-xl`}>🔒</Text>
+        </View>
+
+        <View style={tw`flex-1`}>
+          <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+            Unlock more prompts
+          </Text>
+          <Text style={tw`mt-1 text-xs text-[#49739c] dark:text-white/70`}>
+            You’ve used your free prompts for{' '}
+            <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+              {llUnlockCtx?.languageLabel}
+            </Text>
+            . Unlock{' '}
+            <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+              {LANGUAGE_BUNDLE_PROMPTS}
+            </Text>{' '}
+            prompts for{' '}
+            <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+              {LANGUAGE_BUNDLE_TOKENS} tokens
+            </Text>{' '}
+            and start instantly.
+          </Text>
+        </View>
+      </View>
+
+      {llUnlockErr ? (
+        <View style={tw`mt-3 rounded-2xl border border-rose-300/60 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 px-3 py-2`}>
+          <Text style={tw`text-xs text-rose-700 dark:text-rose-200`}>
+            {llUnlockErr}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={tw`mt-4 flex-row gap-2`}>
+        <TouchableOpacity
+          disabled={llUnlockBusy}
+          onPress={() => {
+          setLlUnlockOpen(false);
+          setLlUnlockCtx(null);
+          setLlUnlockErr(null);
+        }}
+        style={tw`flex-1 rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-[#eef3f8] dark:bg-white/5 px-4 py-3 items-center`}
+        >
+          <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white/80`}>
+            Not now
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          disabled={llUnlockBusy || !llUnlockCtx?.courseId}
+        onPress={async () => {
+         if (!backendUrl || !languageToken || !llUnlockCtx?.courseId) return;
+
+          // capture ctx locally (because we will clear state)
+          const ctx = llUnlockCtx;
+
+          setLlUnlockBusy(true);
+          setLlUnlockErr(null);
+
+          // 1) Purchase first (keep modal open + spinner for this part)
+          try {
+           await purchaseLanguageBundle(backendUrl, languageToken as string, ctx.courseId);
+          } catch (e: any) {
+            setLlUnlockErr(
+              String(
+                e?.data?.message ||
+                  e?.response?.data?.message ||
+                  e?.message ||
+                  'Unable to unlock prompts.'
+              )
+            );
+            setLlUnlockBusy(false);
+            return;
+          }
+
+          // 2) Close modal immediately after purchase (so it doesn't linger)
+          setLlUnlockOpen(false);
+          setLlUnlockCtx(null);
+          setLlUnlockErr(null);
+
+          // allow state to paint before we start the next call/navigation
+          await new Promise<void>((r) => setTimeout(() => r(), 0));
+
+          // 3) Kick off the exact same flow as clicking a language card
+          setLanguageActive(ctx.languageLabel);
+          setLanguageLaunching(true);
+
+          try {
+            await startLanguageFlow(ctx.prompt, ctx.languageLabel);
+          } finally {
+            setLanguageLaunching(false);
+            setLanguageActive(null);
+            setLlUnlockBusy(false);
+          }
+        }}
+
+          style={tw`flex-1 rounded-2xl bg-emerald-500 px-4 py-3 items-center`}
+        >
+          <View style={tw`flex-row items-center gap-2`}>
+            {llUnlockBusy ? <ActivityIndicator size={12} color="#fff" /> : null}
+            <Text style={tw`text-sm font-semibold text-white`}>
+              {llUnlockBusy ? 'Unlocking…' : 'Unlock & Start'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/50`}>
+        Smooth flow: pay once, continue learning without interruptions.
+      </Text>
+    </View>
+  </View>
+</Modal>
+
+
               {degraded && (
                 <View style={tw`rounded-xl p-3 bg-yellow-50 border border-yellow-300 mb-3`}>
                   <Text style={tw`text-yellow-700 dark:text-yellow-200 text-sm`}>
@@ -1743,12 +2201,12 @@ return;
                 canStartNow={canStartNow} 
                 overlayAvailable={overlayAvailable}
                 restrictStarter={restrictStarter}
-                knobsDisabled={knobsDisabled}
+                knobsDisabled={knobsDisabled || ctaBusy}
                 onOpenShare={() => {
                   setIsMaximized(false);
                   setShareOpen(true);
                 }}
-                busy={preparingNow || starting}
+               busy={ctaBusy}
                 topCourses={(topCourses || []).map((c: TopCourse) => ({
                   id: c.id,
                   title: c.title,

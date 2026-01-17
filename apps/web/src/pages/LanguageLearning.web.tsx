@@ -237,6 +237,26 @@ const LanguageLearningPage: React.FC = () => {
   const inlinePlayingRef = useRef(inlinePlaying);
   const prevVoiceIdRef = useRef(voiceSettings.voiceId);
 
+  type RepeatPanelState = {
+  messageKey: string;
+  msg: any;
+  idx: number;
+};
+
+const getMsgId = (msg: any) => msg?.id ?? msg?.messageId ?? null;
+const cacheKeyFor = (messageKey: string, voiceId: string) => `${messageKey}::${voiceId}`;
+
+const [playbackByKey, setPlaybackByKey] = useState<Record<string, PlaybackPayload>>({});
+const [playbackLoadingKey, setPlaybackLoadingKey] = useState<string | null>(null);
+const [repeatPanel, setRepeatPanel] = useState<RepeatPanelState | null>(null);
+
+// Track which message is “active” so switching voice can refetch playback correctly
+const activeMsgMetaRef = useRef<{ messageKey: string; idx: number; msg: any } | null>(null);
+
+// Avoid dependency loops: store current playing item in a ref
+const inlineCurrentRef = useRef<PlaybackQueueItem | null>(null);
+
+
   const inlineItems = inlinePlayback?.items || [];
   const inlineSegments = useMemo(() => buildSegmentsFromQueue(inlineItems), [inlineItems]);
   const inlineCurrentItem = inlineItems[inlineIndex];
@@ -256,21 +276,9 @@ const LanguageLearningPage: React.FC = () => {
       setInlinePlaying(false);
     }
   }, []);
-  
 
-  useEffect(() => {
-    const prevVoiceId = prevVoiceIdRef.current;
-    if (prevVoiceId === voiceSettings.voiceId) return;
-    prevVoiceIdRef.current = voiceSettings.voiceId;
-    if (!inlinePlaying || !audioRef.current || !inlineCurrentItem?.audioUrl) return;
-    // Voice identity change: restart current line with new voice while preserving index.
-    audioRef.current.pause();
-    audioRef.current.currentTime = 0;
-    audioRef.current.src = inlineCurrentItem.audioUrl;
-    audioRef.current.playbackRate = voiceSettings.rate;
-    void playInlineCurrent();
-  }, [inlineCurrentItem, inlinePlaying, playInlineCurrent, voiceSettings.rate, voiceSettings.voiceId]);
 
+ 
   useEffect(() => {
     if (!token) {
       navigate('/login', { replace: true });
@@ -289,6 +297,11 @@ const LanguageLearningPage: React.FC = () => {
       }
     }
   }, [languageStart, initMessages, setInitialState, setPlaybackQueue]);
+
+  useEffect(() => {
+  inlineCurrentRef.current = inlineCurrentItem || null;
+}, [inlineCurrentItem]);
+
 
   useEffect(() => {
     const stored = localStorage.getItem(voiceStorageKey);
@@ -327,30 +340,39 @@ const LanguageLearningPage: React.FC = () => {
   }, []);
  
 
-  useEffect(() => {
-    clearInlineTimer();
-    if (!audioRef.current) return;
-    if (!inlineCurrentItem?.audioUrl) {
-      setInlinePlaying(false);
-      return;
-    }
-    audioRef.current.src = inlineCurrentItem.audioUrl;
-    audioRef.current.playbackRate = voiceSettings.rate;
-    if (inlineAutoPlayNext || inlinePlaying) {
-      const delay = inlineCurrentItem.kind === 'en' ? 300 : 220;
-      timerRef.current = window.setTimeout(() => {
-        playInlineCurrent();
-        setInlineAutoPlayNext(false);
-      }, delay);
-    }
-  }, [
-    clearInlineTimer,
-    inlineAutoPlayNext,
-    inlineCurrentItem,
-    inlinePlaying,
-    playInlineCurrent,
-    voiceSettings.rate,
-  ]);
+ useEffect(() => {
+  clearInlineTimer();
+  const audio = audioRef.current;
+  if (!audio) return;
+
+  const url = inlineCurrentItem?.audioUrl;
+  if (!url) {
+    setInlinePlaying(false);
+    return;
+  }
+
+  // Only swap src if different (prevents restart glitches)
+  if (audio.src !== url) {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.src = url;
+  }
+
+  audio.playbackRate = voiceSettings.rate;
+
+  // ✅ Only autoplay when explicitly requested (first play / replay / next index set)
+  if (inlineAutoPlayNext) {
+    void playInlineCurrent();
+    setInlineAutoPlayNext(false);
+  }
+}, [
+  clearInlineTimer,
+  inlineAutoPlayNext,
+  inlineCurrentItem?.audioUrl,
+  playInlineCurrent,
+  voiceSettings.rate,
+]);
+
 
   useEffect(() => {
     setInlineIndex(0);
@@ -369,6 +391,8 @@ const LanguageLearningPage: React.FC = () => {
     setActiveLineIsTarget(inlineCurrentItem.kind === 'tr');
   }, [activeMessageKey, inlineCurrentItem, inlinePlaying]);
 
+  
+
   useEffect(() => {
     if (!activeLineKey) return;
     if (Date.now() - lastUserScrollRef.current < 1200) return;
@@ -377,14 +401,46 @@ const LanguageLearningPage: React.FC = () => {
   }, [activeLineKey]);
 
   const handleInlineEnded = useCallback(() => {
-    // Play-loop logic lives here: advance automatically until paused.
-    if (inlinePlayingRef.current && inlineIndex + 1 < inlineItems.length) {
-      setInlineAutoPlayNext(true);
-      setInlineIndex((idx) => idx + 1);
-      return;
-    }
+  // ✅ If user paused, don't continue
+  if (!inlinePlayingRef.current) {
     setInlinePlaying(false);
-  }, [inlineIndex, inlineItems.length]);
+    return;
+  }
+
+  const nextIndex = inlineIndex + 1;
+
+  // ✅ Reached the end
+  if (nextIndex >= inlineItems.length) {
+    setInlinePlaying(false);
+    return;
+  }
+
+  const nextItem = inlineItems[nextIndex];
+
+  // Update UI progress immediately
+  setInlineIndex(nextIndex);
+
+  const audio = audioRef.current;
+  if (!audio || !nextItem?.audioUrl) {
+    // Fallback: let the effect try
+    setInlineAutoPlayNext(true);
+    return;
+  }
+
+  // ✅ KEY: play next segment *inside onEnded* (browser-friendly autoplay chain)
+  audio.pause();
+  audio.currentTime = 0;
+  audio.src = nextItem.audioUrl;
+  audio.playbackRate = voiceSettings.rate;
+
+  const p = audio.play();
+  if (p && typeof (p as any).catch === 'function') {
+    (p as Promise<void>).catch(() => setInlinePlaying(false));
+  }
+
+  setInlinePlaying(true);
+}, [inlineIndex, inlineItems, voiceSettings.rate]);
+
 
   const handleInlinePlayPause = useCallback(
     async (messageKey: string, playback: PlaybackPayload | null | undefined) => {
@@ -447,6 +503,81 @@ const LanguageLearningPage: React.FC = () => {
       setPlaybackQueue,
     ]
   );
+
+  const fetchPlaybackForMessage = useCallback(
+  async (msg: any, idx: number) => {
+    const res = await fetch(`${backendUrl}/courses/language/playback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token || ''}`,
+      },
+      body: JSON.stringify({
+        courseId,
+        messageId: getMsgId(msg),
+        messageIndex: idx,
+        voiceId: voiceSettings.voiceId,
+      }),
+    });
+
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(json?.error || 'PLAYBACK_FETCH_FAILED');
+    return json as PlaybackPayload;
+  },
+  [backendUrl, token, courseId, voiceSettings.voiceId]
+);
+
+const ensurePlaybackFor = useCallback(
+  async (messageKey: string, msg: any, idx: number) => {
+    const ck = cacheKeyFor(messageKey, voiceSettings.voiceId);
+
+    // already present on message OR cached locally
+    const direct = (msg?.playback as PlaybackPayload) || playbackByKey[ck];
+    if (direct?.items?.length) return direct;
+
+    setPlaybackLoadingKey(ck);
+    try {
+      const pb = await fetchPlaybackForMessage(msg, idx);
+      if (pb?.items?.length) {
+        setPlaybackByKey((prev) => ({ ...prev, [ck]: pb }));
+        return pb;
+      }
+      return null;
+    } finally {
+      setPlaybackLoadingKey((cur) => (cur === ck ? null : cur));
+    }
+  },
+  [voiceSettings.voiceId, playbackByKey, fetchPlaybackForMessage]
+);
+
+const startPlaybackAt = useCallback(
+  async (
+    messageKey: string,
+    msg: any,
+    idx: number,
+    segmentIdx: number,
+    kind: 'en' | 'tr'
+  ) => {
+    const pb = await ensurePlaybackFor(messageKey, msg, idx);
+    if (!pb?.items?.length) return;
+
+    activeMsgMetaRef.current = { messageKey, idx, msg };
+
+    const startIdx = pb.items.findIndex(
+      (it) => it.segmentIdx === segmentIdx && it.kind === kind
+    );
+
+    setActiveMessageKey(messageKey);
+    setInlinePlayback(pb);
+    setPlaybackQueue(pb);
+    setInlineIndex(startIdx >= 0 ? startIdx : 0);
+    setInlineAutoPlayNext(true);
+    setInlinePlaying(true);
+  },
+  [ensurePlaybackFor, setPlaybackQueue]
+);
+
+
 
   const handleSend = useCallback(async () => {
     if (!input.trim()) return;
@@ -545,6 +676,40 @@ const LanguageLearningPage: React.FC = () => {
     applyPrompt(random.prompts[0]);
   }, [applyPrompt]);
 
+
+  useEffect(() => {
+  const prev = prevVoiceIdRef.current;
+  if (prev === voiceSettings.voiceId) return;
+  prevVoiceIdRef.current = voiceSettings.voiceId;
+
+  const meta = activeMsgMetaRef.current;
+  if (!meta) return;
+
+  (async () => {
+    try {
+      const pb = await ensurePlaybackFor(meta.messageKey, meta.msg, meta.idx);
+      if (!pb?.items?.length) return;
+
+      const cur = inlineCurrentRef.current;
+      const wantedIdx = cur
+        ? pb.items.findIndex((it) => it.segmentIdx === cur.segmentIdx && it.kind === cur.kind)
+        : 0;
+
+      setInlinePlayback(pb);
+      setPlaybackQueue(pb);
+      setInlineIndex(wantedIdx >= 0 ? wantedIdx : 0);
+
+      // If user was listening, restart current line in the new voice
+      if (inlinePlayingRef.current) {
+        setInlineAutoPlayNext(true);
+        setInlinePlaying(true);
+      }
+    } catch {
+      // ignore
+    }
+  })();
+}, [voiceSettings.voiceId, ensurePlaybackFor, setPlaybackQueue]);
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
       <div className="max-w-6xl mx-auto px-4 py-8 pb-28">
@@ -625,44 +790,82 @@ const LanguageLearningPage: React.FC = () => {
                               </div>
                             );
                           })}
-                          {msg.playback && (
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <button
-                                  className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-200 transition hover:bg-emerald-500/20"
-                                  onClick={() =>
-                                    handleInlinePlayPause(messageKey, msg.playback as PlaybackPayload)
-                                  }
-                                >
-                                  {isActive && inlinePlaying ? 'Pause' : 'Play'} narration
-                                </button>
-                                <button
-                                  className="rounded-full bg-slate-100/70 dark:bg-slate-700/60 px-3 py-1 text-xs font-semibold text-slate-600 dark:text-slate-200 transition hover:bg-slate-200/80"
-                                  onClick={() =>
-                                    handleInlineReplay(messageKey, msg.playback as PlaybackPayload)
-                                  }
-                                >
-                                  Replay
-                                </button>
-                                {isActive && (
-                                  <span className="text-[11px] text-slate-400">
-                                    {inlineIndex + 1} / {inlineItems.length || 0}
-                                  </span>
-                                )}
-                              </div>
-                              {isActive && inlineSegment && (
-                                <div className="rounded-2xl bg-emerald-500/10 px-3 py-2 text-xs text-slate-600 dark:text-slate-200">
-                                  <div className="font-semibold text-emerald-600 dark:text-emerald-200">
-                                    Now playing
-                                  </div>
-                                  <div>{inlineSegment.en}</div>
-                                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                                    {inlineSegment.tr}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
+<div className="space-y-2">
+  {(() => {
+    const ck = cacheKeyFor(messageKey, voiceSettings.voiceId);
+    const pb = (msg.playback as PlaybackPayload) || playbackByKey[ck] || null;
+    const hasPb = !!pb?.items?.length;
+    const isPbLoading = playbackLoadingKey === ck;
+
+    return (
+      <>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+              hasPb
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-200 hover:bg-emerald-500/20'
+                : 'bg-slate-100/70 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-slate-200/80'
+            }`}
+            onClick={async () => {
+              const ensured = await ensurePlaybackFor(messageKey, msg, idx);
+              if (!ensured) return;
+
+              activeMsgMetaRef.current = { messageKey, idx, msg };
+              await handleInlinePlayPause(messageKey, ensured);
+            }}
+          >
+            {isPbLoading
+              ? 'Loading…'
+              : hasPb
+                ? isActive && inlinePlaying
+                  ? 'Pause'
+                  : 'Play'
+                : 'Load narration'}
+          </button>
+
+          <button
+            className={`rounded-full bg-slate-100/70 dark:bg-slate-700/60 px-3 py-1 text-xs font-semibold text-slate-600 dark:text-slate-200 transition hover:bg-slate-200/80 ${
+              !hasPb || isPbLoading ? 'opacity-50 pointer-events-none' : ''
+            }`}
+            onClick={async () => {
+              const ensured = await ensurePlaybackFor(messageKey, msg, idx);
+              if (!ensured) return;
+
+              activeMsgMetaRef.current = { messageKey, idx, msg };
+              handleInlineReplay(messageKey, ensured);
+            }}
+          >
+            Replay
+          </button>
+
+          <button
+            className="rounded-full bg-slate-100/70 dark:bg-slate-700/60 px-3 py-1 text-xs font-semibold text-slate-600 dark:text-slate-200 transition hover:bg-slate-200/80"
+            onClick={() => setRepeatPanel({ messageKey, msg, idx })}
+          >
+            Repeat section
+          </button>
+
+          {isActive && (
+            <span className="text-[11px] text-slate-400">
+              {inlineIndex + 1} / {inlineItems.length || 0}
+            </span>
+          )}
+        </div>
+
+        {isActive && inlineSegment && (
+          <div className="rounded-2xl bg-emerald-500/10 px-3 py-2 text-xs text-slate-600 dark:text-slate-200">
+            <div className="font-semibold text-emerald-600 dark:text-emerald-200">Now playing</div>
+            <div>{inlineSegment.en}</div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+              {inlineSegment.tr}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  })()}
+</div>
+
                         </div>
                       ) : (
                         <div>{msg.content}</div>
@@ -960,7 +1163,8 @@ const LanguageLearningPage: React.FC = () => {
         </div>
       </div>
 
-      <audio ref={audioRef} onEnded={handleInlineEnded} />
+     <audio ref={audioRef} onEnded={handleInlineEnded} preload="auto" />
+
     </div>
   );
 };

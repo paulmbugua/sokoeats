@@ -243,3 +243,14 @@ export const languagePurchaseSchema = Joi.object({
 export const languageCompleteSchema = Joi.object({
   courseId: Joi.string().uuid().required(),
 });
+
+export const languagePlaybackSchema = Joi.object({
+  courseId: Joi.string().uuid().required(),
+  // Prefer messageId when available (if you add it to preview later)
+  messageId: Joi.alternatives().try(Joi.number().integer(), Joi.string().uuid()).optional(),
+  // Fallback: index from the UI list (messages array, chronological)
+  messageIndex: Joi.number().integer().min(0).optional(),
+  // Voice style id from the app: calm/bright/deep/storyteller/teacher/kid/sunny/focus
+  voiceId: Joi.string().trim().min(1).max(40).required(),
+}).or('messageId', 'messageIndex');
+

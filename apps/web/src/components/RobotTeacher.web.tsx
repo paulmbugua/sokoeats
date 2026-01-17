@@ -5,7 +5,8 @@ import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
 import { useAiCourse, useAICertificates } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { updateCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
-import { startLanguageCourse } from '@mytutorapp/shared/api';
+import { startLanguageCourse, purchaseLanguageBundle } from '@mytutorapp/shared/api';
+
 
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import OrgShareDialog from '@/components/org/OrgShareDialog';
@@ -441,6 +442,39 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const assignmentId = orgAssign?.assignmentId ?? undefined;
   const isOrgFlow = Boolean(orgAssign?.assignmentId);
   const assignmentIdForAi = authToken ? assignmentId : undefined;
+
+  const goToLoginWithReturn = useCallback(
+  (reason?: string, message?: string) => {
+    const next = `${location.pathname}${location.search}${location.hash}`;
+    try {
+      sessionStorage.setItem('auth:returnTo', next);
+    } catch {}
+
+    const dest = isOrgFlow || orgToken ? '/org/login' : '/login';
+
+    dlog('navigate → login', {
+      dest,
+      reason,
+      message,
+      next,
+      isOrgFlow,
+      hasToken: !!token,
+      hasOrgToken: !!orgToken,
+    });
+
+    navigate(dest, { state: { next, reason, message }, replace: true });
+  },
+  [navigate, location.pathname, location.search, location.hash, isOrgFlow, orgToken, token]
+);
+
+const requireAuth = useCallback(
+  (reason?: string, message?: string) => {
+    if (authToken) return true;
+    goToLoginWithReturn(reason, message);
+    return false;
+  },
+  [authToken, goToLoginWithReturn]
+);
   // ── Timer owned by parent ────────────────────────────────
   const [localRemainingMs, setLocalRemainingMs] = useState<number | null>(null);
 
@@ -471,6 +505,162 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [certUrl, setCertUrl] = useState<string | null>(null);
   const [downUrl, setDownUrl] = useState<string | null>(null);
+  // ── Language prompt bundle (same as LanguageLearningPage) ─────────
+const LANGUAGE_FREE_LIMIT = 5;
+const LANGUAGE_BUNDLE_PROMPTS = 300;
+const LANGUAGE_BUNDLE_TOKENS = 20;
+
+const [languageLaunching, setLanguageLaunching] = useState(false);
+const [languageActive, setLanguageActive] = useState<string | null>(null);
+const [llUnlockOpen, setLlUnlockOpen] = useState(false);
+const [llUnlockBusy, setLlUnlockBusy] = useState(false);
+const [llUnlockErr, setLlUnlockErr] = useState<string | null>(null);
+const [llUnlockCtx, setLlUnlockCtx] = useState<{
+  courseId: string;
+  prompt: string;
+  languageLabel: string;
+} | null>(null);
+
+const resetRunUi = useCallback(() => {
+  setActiveRunId(null);
+  setPreparing(false);
+  setPlayerLoading(false);
+  setPlayerReady(false);
+  setLockedSsml(null);
+}, []);
+
+const parseLanguageGate = (res: any) => {
+  const ent =
+    res?.entitlement ??
+    res?.languageStart?.entitlement ??
+    res?.data?.entitlement ??
+    null;
+
+ const promptsUsed = Number(
+  res?.promptsUsed ?? res?.prompts_used ?? ent?.promptsUsed ?? ent?.prompts_used ?? 0
+);
+
+const promptsLimit = Number(
+  res?.promptsLimit ?? res?.prompts_limit ?? ent?.promptsLimit ?? ent?.prompts_limit ?? 0
+);
+
+const bundleBlocked = Boolean(
+  res?.bundleBlocked ??
+    res?.bundle_blocked ??
+    ent?.bundleBlocked ??
+    ent?.bundle_blocked ??
+    (promptsLimit > 0 && promptsUsed >= promptsLimit)
+);
+
+  return {
+    bundleBlocked,
+    promptsUsed,
+    promptsLimit: promptsLimit || LANGUAGE_FREE_LIMIT,
+  };
+};
+
+
+const startLanguageFlow = useCallback(
+  async (prompt: string, languageLabel: string) => {
+    const ok = requireAuth('ai_sandbox', 'Please sign in to start language learning.');
+    if (!ok) return;
+
+    if (!backendUrl || !authToken) return;
+
+    try {
+      const res: any = await startLanguageCourse(backendUrl, authToken as string, prompt);
+
+      const gate = parseLanguageGate(res);
+      const courseId = String(res?.courseId || res?.course_id || res?.id || '').trim();
+
+      // ✅ Cache courseId per language (so we can still unlock if backend blocks via error later)
+      try {
+        const k = `ll:courseId:${String(languageLabel || '').toLowerCase()}`;
+        if (courseId) localStorage.setItem(k, courseId);
+      } catch {}
+
+
+      if (gate.bundleBlocked) {
+        resetRunUi();
+        setLlUnlockErr(null);
+        setLlUnlockCtx({
+          courseId,
+          prompt,
+          languageLabel,
+        });
+        setLlUnlockOpen(true);
+        return;
+      }
+
+      resetRunUi();
+      navigate(`/language/${encodeURIComponent(res.courseId)}`, {
+        state: { languageStart: res },
+      });
+    } catch (err: any) {
+      // If your backend blocks via an error response instead of a normal payload,
+      // try to open the unlock modal from the error body.
+     const data = err?.data ?? err?.response?.data ?? null;
+
+   let courseId = String(
+  data?.courseId ||
+  data?.course_id ||
+  data?.id ||
+  data?.entitlement?.courseId ||
+  data?.entitlement?.course_id ||
+  ''
+).trim();
+
+// ✅ fallback: cached courseId (same advantage LanguageLearningPage has via URL param)
+if (!courseId) {
+  try {
+    const k = `ll:courseId:${String(languageLabel || '').toLowerCase()}`;
+    const cached = localStorage.getItem(k);
+    if (cached) courseId = String(cached).trim();
+  } catch {}
+}
+
+
+    const msgText = String(data?.message || data?.error || err?.message || '');
+
+
+     const blocked = Boolean(
+  data?.bundleBlocked ||
+    data?.bundle_blocked ||
+    data?.code === 'PROMPT_LIMIT_REACHED' ||
+    data?.error === 'PROMPT_LIMIT_REACHED' ||
+    data?.code === 'LANGUAGE_BUNDLE_BLOCKED' ||
+    /free prompt limit/i.test(msgText)
+
+);
+
+
+      if (blocked) {
+  if (!courseId) {
+    resetRunUi();
+    window.alert(
+      msgText ||
+        'Prompt limit reached. Please open your language course page to unlock prompts.'
+    );
+    return;
+  }
+
+  resetRunUi();
+  setLlUnlockErr(null);
+  setLlUnlockCtx({ courseId, prompt, languageLabel });
+  setLlUnlockOpen(true);
+  return;
+}
+
+
+    resetRunUi();
+    window.alert(msgText || 'Unable to start language learning.');
+
+
+    }
+  },
+  [backendUrl, authToken, navigate, requireAuth, resetRunUi]
+);
+
 
   // ── SSML locking (no mutation while playing) ─────────────
   const hasAIContent = useMemo(
@@ -526,7 +716,7 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     'param' | 'storage' | 'default' | null
   >(null);
   const [customTitle, setCustomTitle] = useState('');
-  const [pendingLanguagePrompt, setPendingLanguagePrompt] = useState<string | null>(null);
+ 
   const [fetchedRouteTitle, setFetchedRouteTitle] = useState('');
 
   const [preparing, setPreparing] = useState(false);
@@ -1123,37 +1313,7 @@ useEffect(() => {
     }
   }, [hasAIContent]);
 
-  // ── Auth helpers ─────────────────────────────────────────
-  const goToLoginWithReturn = (reason?: string, message?: string) => {
-    const next = `${location.pathname}${location.search}${location.hash}`;
-    try {
-      sessionStorage.setItem('auth:returnTo', next);
-    } catch {}
-
-    // If we're in an org/assignment flow, prefer the institution login page
-    const dest = isOrgFlow || orgToken ? '/org/login' : '/login';
-
-    dlog('navigate → login', {
-      dest,
-      reason,
-      message,
-      next,
-      isOrgFlow,
-      hasToken: !!token,
-      hasOrgToken: !!orgToken,
-    });
-
-    navigate(dest, { state: { next, reason, message }, replace: true });
-  };
-
-  const requireAuth = (reason?: string, message?: string) => {
-    // ✅ Accept either normal user token or org token
-    if (authToken) return true;
-    goToLoginWithReturn(reason, message);
-    return false;
-  };
-
-  // ── Quiz helpers ─────────────────────────────────────────
+    // ── Quiz helpers ─────────────────────────────────────────
   const disableQuiz = Boolean(
     (isOrgFlow && (orgAssign?.expired || (localRemainingMs !== null && localRemainingMs <= 0))) ||
       grade
@@ -1168,151 +1328,156 @@ useEffect(() => {
 
   // ── Start course (uses deriveds above) ───────────────────
   const onStart = useCallback(async () => {
-    if (starting || !canStartNow) {
-      dlog('onStart: ignored', {
-        starting,
-        canStartNow,
-        activeRunId,
-        startMutex: startMutexRef.current,
-      });
-      return;
-    }
+  if (starting || !canStartNow) {
+    dlog('onStart: ignored', {
+      starting,
+      canStartNow,
+      activeRunId,
+      startMutex: startMutexRef.current,
+    });
+    return;
+  }
 
-    const custom = customTitle.trim();
-    const cid = effectiveCourseIdForStart;
+  const custom = customTitle.trim();
+  const cid = effectiveCourseIdForStart;
 
-   if (!custom && !cid) {
-      window.alert('Pick a course or type a topic first.');
-      return;
-    }
-    
+  if (!custom && !cid) {
+    window.alert('Pick a course or type a topic first.');
+    return;
+  }
 
+  setStarting(true);
+  setBlockedUntilStart(false);
 
-    setStarting(true);
-    setBlockedUntilStart(false);
+  const courseSize = sizeToCourseSize[sizePreset];
+  const opts: any = {
+    assignmentId: assignmentIdForAi,
+    courseSize,
+    level: classLevel,
+    minutes: minutesEffective,
+    programTrack,
+    totalLessons: safeLessons,
+    voiceName: effectiveVoice,
+  };
 
-    // ⬇️ ensure we reuse the same knobs for both top list & sandbox
-    const courseSize = sizeToCourseSize[sizePreset];
-    const opts: any = {
-      assignmentId: assignmentIdForAi,
-      courseSize,
-      level: classLevel,
-      minutes: minutesEffective,
-      programTrack,
-      totalLessons: safeLessons,
-      voiceName: effectiveVoice,
-    };
+  // mark run + spinner + reset player
+  const id = ++runIdRef.current;
+  setActiveRunId(id);
+  setPreparing(true);
+  setPlayerReady(false);
+  setPlayerLoading(true);
+  setLockedSsml(null);
 
-    // mark run + spinner + reset player
-    const id = ++runIdRef.current;
-    setActiveRunId(id);
-    setPreparing(true);
-    setPlayerReady(false);
-    setPlayerLoading(true);
-    setLockedSsml(null);
-
-   try {
-  // -------- custom topic flow (Teach me) ----------
-  if (custom) {
-    const ok = requireAuth('ai_sandbox', 'Please sign in to create a custom AI course.');
-    if (!ok) {
-      setActiveRunId(null);
-      setPreparing(false);
-      setPlayerLoading(false);
-      return;
-    }
-    const intent = detectLanguageIntent(custom);
-    if (!intent && isLanguageIntentText(custom)) {
-      let msg =
-        'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
-      try {
-        await startLanguageCourse(backendUrl, authToken as string, custom);
-      } catch (err: any) {
-        msg = err?.response?.data?.message || msg;
-      }
-      window.alert(msg);
-      setActiveRunId(null);
-      setPreparing(false);
-      setPlayerLoading(false);
-      return;
-    }
-    if (intent) {
-      try {
-        const res = await startLanguageCourse(backendUrl, authToken as string, custom);
-        navigate(`/language/${encodeURIComponent(res.courseId)}`, {
-          state: { languageStart: res },
-        });
-        return;
-      } catch (err: any) {
-        const msg =
-          err?.response?.data?.message ||
-          err?.message ||
-          'Unable to start language learning.';
-        window.alert(msg);
+  try {
+    // -------- custom topic flow (Teach me) ----------
+    if (custom) {
+      const ok = requireAuth('ai_sandbox', 'Please sign in to create a custom AI course.');
+      if (!ok) {
         setActiveRunId(null);
         setPreparing(false);
         setPlayerLoading(false);
         return;
       }
+
+      const intent = detectLanguageIntent(custom);
+
+      // User typed "Teach me Italian" etc. -> friendly prompt (no start)
+      if (!intent && isLanguageIntentText(custom)) {
+        let msg =
+          'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
+        try {
+          // keep this call if you want backend to return a nicer message
+          await startLanguageCourse(backendUrl, authToken as string, custom);
+       } catch (err: any) {
+          msg = err?.data?.message || err?.message || msg;
+        }
+
+        window.alert(msg);
+
+        setActiveRunId(null);
+        setPreparing(false);
+        setPlayerLoading(false);
+        return;
+      }
+
+      // ✅ UPDATED: language intent → use the gated language flow (free limit → pay → auto-start)
+      if (intent) {
+        const langLabel =
+          (intent as any)?.language ||
+          (intent as any)?.targetLanguage ||
+          (intent as any)?.label ||
+          'Language';
+
+        await startLanguageFlow(custom, langLabel);
+        return;
+      }
+
+      // Normal sandbox custom topic
+      dlog('onStart → startCustomTopic (sandbox)', { custom, opts });
+      await startCustomTopic(custom, opts);
+      await waitForSelection();
+      return;
     }
-    dlog('onStart → startCustomTopic (sandbox)', { custom, opts });
-    await startCustomTopic(custom, opts);
-    await waitForSelection();
+
+    // -------- course-based start (top courses / shared / org) ----------
+    if (cid) opts.courseId = cid;
+
+    dlog('onStart → startWithAI', { opts, cid, wantedCourseId });
+    await startWithAI(opts);
     return;
+  } catch (e) {
+    console.error('[RobotTeacher.web:onStart] failed', e);
+    setActiveRunId(null);
+    setPreparing(false);
+    setPlayerLoading(false);
+  } finally {
+    setStarting(false);
   }
-
-  // ✅ REPLACE EVERYTHING BELOW WITH THIS
-  if (cid) opts.courseId = cid;
-
-  dlog('onStart → startWithAI', { opts, cid, wantedCourseId });
-  await startWithAI(opts);
-  return;
-} catch (e) {
-  console.error('[RobotTeacher.web:onStart] failed', e);
-  setActiveRunId(null);
-  setPreparing(false);
-  setPlayerLoading(false);
-} finally {
-  setStarting(false);
-}
-
-  }, [
-    starting,
-    canStartNow,
-    customTitle,
-    selectedCourse,
-    assignmentIdForAi,
-    sizePreset,
-    classLevel,
-    minutesEffective,
-    programTrack,
-    safeLessons,
-    effectiveVoice,
-    courseIdParam,
-    startCustomTopic,
-    startWithAI,
-    loadTopCourses,
-    selectCourse,
-    requireAuth,
-  ]);
+}, [
+  starting,
+  canStartNow,
+  customTitle,
+  effectiveCourseIdForStart,
+  assignmentIdForAi,
+  sizePreset,
+  classLevel,
+  minutesEffective,
+  programTrack,
+  safeLessons,
+  effectiveVoice,
+  backendUrl,
+  authToken,
+  wantedCourseId,
+  startCustomTopic,
+  startWithAI,
+  waitForSelection,
+  requireAuth,
+  startLanguageFlow, // ✅ ADD THIS
+]);
 
   const startLanguageFromCard = useCallback(
-    (language: string) => {
-      const ok = requireAuth('ai_sandbox', 'Please sign in to start language learning.');
-      if (!ok) return;
-      const prompt = `Teach me ${language}`;
-      setCustomTitle(prompt);
-      setPendingLanguagePrompt(prompt);
-    },
-    [requireAuth]
-  );
+  async (language: string) => {
+    if (languageLaunching) return;
 
-  useEffect(() => {
-    if (!pendingLanguagePrompt) return;
-    if (customTitle.trim() !== pendingLanguagePrompt) return;
-    setPendingLanguagePrompt(null);
-    onStart();
-  }, [pendingLanguagePrompt, customTitle, onStart]);
+    const prompt = `Teach me ${language}`;
+    setCustomTitle(prompt); // optional: keeps UI aligned with what they chose
+
+    setLanguageActive(language);
+    setLanguageLaunching(true);
+
+    try {
+      await startLanguageFlow(prompt, language);
+    } finally {
+      setLanguageLaunching(false);
+      setLanguageActive(null);
+    }
+  },
+  [languageLaunching, startLanguageFlow]
+);
+
+
+  const ctaBusy = busyUi || languageLaunching || llUnlockBusy;
+
 
   const onRequestStartGuarded = useCallback(() => {
     // Player may ask to "start" — ignore if we already have content or we're busy
@@ -1356,26 +1521,44 @@ useEffect(() => {
                 </span>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-2">
-                {LANGUAGE_CARDS.map((card) => (
-                  <button
-                    key={card.language}
-                    onClick={() => startLanguageFromCard(card.language)}
-                    className="min-w-[160px] rounded-2xl border border-white/70 dark:border-white/10 bg-gradient-to-br from-white via-white to-emerald-50/70 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-900/40 px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg">{card.emoji}</span>
-                      <span className="text-[10px] font-semibold text-emerald-500">
-                        NEW
-                      </span>
-                    </div>
-                    <div className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
-                      {card.language}
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-white/60">
-                      {card.subtitle}
-                    </div>
-                  </button>
-                ))}
+               {LANGUAGE_CARDS.map((card) => (
+                    <button
+                      key={card.language}
+                      disabled={languageLaunching}
+                      onClick={() => startLanguageFromCard(card.language)}
+                      className={`min-w-[160px] rounded-2xl border border-white/70 dark:border-white/10
+                        bg-gradient-to-br from-white via-white to-emerald-50/70 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-900/40
+                        px-4 py-3 text-left shadow-sm transition
+                        ${languageLaunching ? 'opacity-60 cursor-not-allowed' : 'hover:-translate-y-0.5 hover:shadow-md'}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-lg">{card.emoji}</span>
+
+                        {languageLaunching && languageActive === card.language ? (
+                          <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold
+                                          bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200
+                                          dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-400/20">
+                            <span className="relative h-3 w-3">
+                              <span className="absolute inset-0 rounded-full border-2 border-emerald-400/25" />
+                              <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-emerald-500 animate-spin" />
+                            </span>
+                            running
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold text-emerald-500">NEW</span>
+                        )}
+                      </div>
+
+
+                      <div className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+                        {card.language}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-white/60">
+                        {card.subtitle}
+                      </div>
+                    </button>
+                  ))}
+
               </div>
             </div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-darkText dark:text-white">
@@ -1466,15 +1649,19 @@ useEffect(() => {
             })}
           </div>
 
+          
+
           {/* Controls */}
           <ControlsPanel
   showMinimalControls={isLockedLearner}
   isLockedLearner={isLockedLearner}
   programTrackLocked={programTrackLocked}
-  busy={busyUi}
+  
   canShareUi={canShareUi}
   restrictStarter={restrictStarter}
-  knobsDisabled={knobsDisabled}
+ busy={ctaBusy}
+ knobsDisabled={knobsDisabled || ctaBusy}
+
   onOpenShare={() => {
     setIsMaximized(false);
     setShareOpen(true);
@@ -1649,6 +1836,111 @@ useEffect(() => {
           </aside>
         )}
       </div>
+  
+ {llUnlockOpen && llUnlockCtx ? (
+  <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+    {/* Backdrop */}
+    <div
+      className="absolute inset-0 bg-black/50"
+      onClick={() => {
+        if (!llUnlockBusy) setLlUnlockOpen(false);
+      }}
+    />
+
+    {/* Modal */}
+    <div className="relative w-full max-w-md rounded-3xl bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/10 p-5 shadow-2xl">
+      <div className="flex items-start gap-3">
+        <div className="h-11 w-11 rounded-2xl bg-emerald-500/10 dark:bg-emerald-500/15 ring-1 ring-emerald-600/20 dark:ring-emerald-400/20 flex items-center justify-center text-xl">
+          🔒
+        </div>
+
+        <div className="flex-1">
+          <div className="text-sm font-semibold text-gray-900 dark:text-white">
+            Unlock more prompts
+          </div>
+          <div className="mt-1 text-xs text-gray-600 dark:text-white/70">
+            You’ve used your free prompts for{' '}
+            <span className="font-semibold text-gray-900 dark:text-white">
+              {llUnlockCtx.languageLabel}
+            </span>
+            . Unlock{' '}
+            <span className="font-semibold text-gray-900 dark:text-white">
+              {LANGUAGE_BUNDLE_PROMPTS}
+            </span>{' '}
+            prompts for{' '}
+            <span className="font-semibold text-gray-900 dark:text-white">
+              {LANGUAGE_BUNDLE_TOKENS} tokens
+            </span>{' '}
+            and start instantly.
+          </div>
+        </div>
+      </div>
+
+      {llUnlockErr ? (
+        <div className="mt-3 rounded-2xl border border-rose-300/60 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-200">
+          {llUnlockErr}
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex gap-2">
+        <button
+          disabled={llUnlockBusy}
+          onClick={() => setLlUnlockOpen(false)}
+          className="flex-1 rounded-2xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 px-4 py-2 text-sm font-semibold text-gray-800 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/10 disabled:opacity-50"
+        >
+          Not now
+        </button>
+
+        <button
+          disabled={llUnlockBusy}
+          onClick={async () => {
+            if (!llUnlockCtx?.courseId) return;
+            setLlUnlockBusy(true);
+            setLlUnlockErr(null);
+
+            try {
+              await purchaseLanguageBundle(
+                backendUrl,
+                authToken as string,
+                llUnlockCtx.courseId
+              );
+
+              // After successful purchase, start as normal (auto-nav + preload)
+              const res: any = await startLanguageCourse(
+                backendUrl,
+                authToken as string,
+                llUnlockCtx.prompt
+              );
+
+              setLlUnlockOpen(false);
+              setLlUnlockCtx(null);
+
+              const courseId = String(res?.courseId || res?.course_id || res?.id || '').trim();
+              navigate(`/language/${encodeURIComponent(courseId)}`, {
+                state: { languageStart: res },
+              });
+            } catch (e: any) {
+              setLlUnlockErr(
+                String(e?.data?.message || e?.message || 'Unable to unlock prompts.')
+              );
+            } finally {
+              setLlUnlockBusy(false);
+            }
+          }}
+          className="flex-1 rounded-2xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-400 disabled:opacity-50"
+        >
+          {llUnlockBusy ? 'Unlocking…' : 'Unlock & Start'}
+        </button>
+      </div>
+
+      <div className="mt-2 text-[11px] text-gray-500 dark:text-white/50">
+        Smooth flow: pay once, continue learning without interruptions.
+      </div>
+    </div>
+  </div>
+) : null}
+
+
     </div>
   );
 };

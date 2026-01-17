@@ -29,12 +29,22 @@ export async function startLanguageCourse(
   token: string,
   prompt: string
 ): Promise<LanguageStartResponse> {
-  const res = await axios.post(
-    `${baseOf(backendUrl)}/api/ai/courses/language/start`,
-    { prompt },
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  return res.data as LanguageStartResponse;
+  try {
+    const res = await axios.post(
+      `${baseOf(backendUrl)}/api/ai/courses/language/start`,
+      { prompt },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return res.data as LanguageStartResponse;
+  } catch (err: any) {
+    const data = err?.response?.data ?? {};
+    const e: any = new Error(
+      data?.message || data?.error || err?.message || 'Unable to start language learning.'
+    );
+    e.status = err?.response?.status;
+    e.data = data; // ✅ IMPORTANT: makes UI gating consistent
+    throw e;
+  }
 }
 
 export async function sendLanguagePrompt(
@@ -43,12 +53,20 @@ export async function sendLanguagePrompt(
   courseId: string,
   prompt: string
 ): Promise<LanguagePromptResponse> {
-  const res = await axios.post(
-    `${baseOf(backendUrl)}/api/ai/courses/language/prompt`,
-    { courseId, prompt },
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  return res.data as LanguagePromptResponse;
+  try {
+    const res = await axios.post(
+      `${baseOf(backendUrl)}/api/ai/courses/language/prompt`,
+      { courseId, prompt },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return res.data as LanguagePromptResponse;
+  } catch (err: any) {
+    const data = err?.response?.data ?? {};
+    const e: any = new Error(data?.message || data?.error || err?.message || 'Prompt failed.');
+    e.status = err?.response?.status;
+    e.data = data;
+    throw e;
+  }
 }
 
 export async function purchaseLanguageBundle(
@@ -56,13 +74,24 @@ export async function purchaseLanguageBundle(
   token: string,
   courseId: string
 ): Promise<{ entitlement: LanguageLearningEntitlement }> {
-  const res = await axios.post(
-    `${baseOf(backendUrl)}/api/ai/courses/language/purchase-bundle`,
-    { courseId },
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  return res.data as { entitlement: LanguageLearningEntitlement };
+  try {
+    const res = await axios.post(
+      `${baseOf(backendUrl)}/api/ai/courses/language/purchase-bundle`,
+      { courseId },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return res.data as { entitlement: LanguageLearningEntitlement };
+  } catch (err: any) {
+    const data = err?.response?.data ?? {};
+    const e: any = new Error(
+      data?.message || data?.error || err?.message || 'Unable to purchase bundle.'
+    );
+    e.status = err?.response?.status;
+    e.data = data;
+    throw e;
+  }
 }
+
 
 export async function completeLanguageCourse(
   backendUrl: string,

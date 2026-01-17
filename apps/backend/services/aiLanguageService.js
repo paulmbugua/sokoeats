@@ -151,6 +151,153 @@ async function chooseVoicePair(targetLanguage) {
   return { teacher, translator };
 }
 
+const VOICE_STYLE_PRESETS = {
+  calm: { enGender: 'FEMALE', trGender: 'FEMALE' },
+  bright: { enGender: 'FEMALE', trGender: 'FEMALE' },
+  deep: { enGender: 'MALE', trGender: 'MALE' },
+  storyteller: { enGender: 'FEMALE', trGender: 'FEMALE' },
+  teacher: { enGender: 'MALE', trGender: 'FEMALE' },
+  kid: { enGender: 'FEMALE', trGender: 'FEMALE' },
+  sunny: { enGender: 'FEMALE', trGender: 'FEMALE' },
+  focus: { enGender: 'MALE', trGender: 'MALE' },
+};
+
+function hashToIndex(hex, len) {
+  if (!len) return 0;
+  const n = parseInt(String(hex || '').slice(0, 8), 16);
+  if (!Number.isFinite(n)) return 0;
+  return n % len;
+}
+
+function pickDeterministicVoice(voices, preferredGender, salt) {
+  const normGender = String(preferredGender || '').toUpperCase();
+  const genderPool = normGender
+    ? (voices || []).filter((v) => String(v.ssmlGender || '').toUpperCase() === normGender)
+    : [];
+
+  const pool = genderPool.length ? genderPool : (voices || []);
+  if (!pool.length) return null;
+
+  const idx = hashToIndex(sha1(String(salt || '')), pool.length);
+  return pool[idx]?.name || pool[0]?.name || null;
+}
+
+async function chooseVoicePairForStyle(targetLanguage, voiceId) {
+  const style = String(voiceId || '').trim().toLowerCase();
+  if (!style) return chooseVoicePair(targetLanguage);
+
+  const preset = VOICE_STYLE_PRESETS[style] || null;
+
+  const [enVoices, targetVoices] = await Promise.all([
+    listGoogleVoices({ languageCode: 'en-US', onlyWavenet: true }).catch(() => []),
+    listGoogleVoices({
+      languageCode: languageLocale(targetLanguage),
+      onlyWavenet: true,
+    }).catch(() => []),
+  ]);
+
+  const teacher =
+    pickDeterministicVoice(enVoices, preset?.enGender, `${style}|en`) ||
+    pickVoiceByGender(enVoices, 'MALE') ||
+    pickVoiceByGender(enVoices, 'FEMALE') ||
+    'en-US-Wavenet-C';
+
+  const translator =
+    pickDeterministicVoice(targetVoices, preset?.trGender, `${style}|tr|${targetLanguage}`) ||
+    pickVoiceByGender(targetVoices, 'FEMALE') ||
+    pickVoiceByGender(targetVoices, 'MALE') ||
+    targetVoices[0]?.name ||
+    'en-US-Wavenet-C';
+
+  return { teacher, translator };
+}
+
+async function loadAssistantMessageForPlayback(queryable, courseId, { messageId, messageIndex }, opts = {}) {
+  // 1) Try messageId (if your table has id)
+  if (messageId != null) {
+    try {
+      const byId = await runQuery(
+        queryable,
+        `
+        SELECT id, role, segments_json, content_text, created_at
+          FROM ai_language_messages
+         WHERE course_id = $1::uuid
+           AND id = $2
+         LIMIT 1
+        `,
+        [courseId, messageId],
+        opts,
+      );
+      if (byId.rowCount) {
+        const row = byId.rows[0];
+        if (row.role === 'assistant') return row;
+        // If a user msg id was sent by mistake, fall through to index logic.
+      }
+    } catch (e) {
+      // If "id" column doesn't exist or other query issue, fall back to index logic.
+    }
+  }
+
+  // 2) Index fallback: treat messageIndex as "messages list index" (chronological, both roles)
+  const idx = Number.isFinite(messageIndex) ? Number(messageIndex) : null;
+  if (idx == null) return null;
+
+  const baseQ = await runQuery(
+    queryable,
+    `
+    SELECT role, segments_json, content_text, created_at
+      FROM ai_language_messages
+     WHERE course_id = $1::uuid
+     ORDER BY created_at ASC
+     OFFSET $2
+     LIMIT 1
+    `,
+    [courseId, idx],
+    opts,
+  );
+
+  if (!baseQ.rowCount) return null;
+
+  const baseRow = baseQ.rows[0];
+  if (baseRow.role === 'assistant') return baseRow;
+
+  // If user clicked around oddly, pick nearest assistant after this point, else before.
+  const nextQ = await runQuery(
+    queryable,
+    `
+    SELECT role, segments_json, content_text, created_at
+      FROM ai_language_messages
+     WHERE course_id = $1::uuid
+       AND role = 'assistant'
+       AND created_at >= $2
+     ORDER BY created_at ASC
+     LIMIT 1
+    `,
+    [courseId, baseRow.created_at],
+    opts,
+  );
+  if (nextQ.rowCount) return nextQ.rows[0];
+
+  const prevQ = await runQuery(
+    queryable,
+    `
+    SELECT role, segments_json, content_text, created_at
+      FROM ai_language_messages
+     WHERE course_id = $1::uuid
+       AND role = 'assistant'
+       AND created_at <= $2
+     ORDER BY created_at DESC
+     LIMIT 1
+    `,
+    [courseId, baseRow.created_at],
+    opts,
+  );
+  if (prevQ.rowCount) return prevQ.rows[0];
+
+  return null;
+}
+
+
 async function upsertCourseMetadata(queryable, courseId, metadata, opts = {}) {
   await runQuery(
     queryable,
@@ -966,5 +1113,103 @@ export async function markLanguageQuizPassed({ courseId, userId }) {
     );
   } catch (err) {
     dlog('aiLanguage', 'mark quiz passed failed', err?.message || err);
+  }
+}
+
+export async function getLanguagePlayback({
+  userId,
+  profileId,
+  courseId,
+  messageId,
+  messageIndex,
+  voiceId,
+}) {
+  userId = asIntId(userId);
+  profileId = asIntId(profileId);
+
+  if (!courseId) return { status: 400, data: { error: 'COURSE_ID_REQUIRED' } };
+  if (!voiceId) return { status: 400, data: { error: 'VOICE_ID_REQUIRED' } };
+
+  try {
+    // ✅ ownership check (no prompt consumption)
+    const entQ = await runQuery(
+      pool,
+      `
+      SELECT e.target_language, c.metadata
+        FROM ai_language_entitlements e
+        JOIN courses c ON c.id = e.course_id
+       WHERE e.course_id = $1::uuid
+         AND (
+           ($2::int IS NOT NULL AND e.profile_id = $2::int)
+           OR
+           ($3::int IS NOT NULL AND e.user_id = $3::int)
+         )
+       LIMIT 1
+      `,
+      [courseId, profileId ?? null, userId ?? null],
+      { useRetry: true },
+    );
+
+    if (!entQ.rowCount) {
+      return { status: 403, data: { error: 'FORBIDDEN' } };
+    }
+
+    const targetLanguage = entQ.rows[0].target_language;
+    const metadata = entQ.rows[0].metadata || {};
+
+    // ✅ load the requested assistant message
+    const msgRow = await loadAssistantMessageForPlayback(
+      pool,
+      courseId,
+      { messageId, messageIndex },
+      { useRetry: true },
+    );
+
+    if (!msgRow) {
+      return { status: 404, data: { error: 'MESSAGE_NOT_FOUND' } };
+    }
+
+    let segments = msgRow.segments_json;
+    if (typeof segments === 'string') {
+      try {
+        segments = JSON.parse(segments);
+      } catch {
+        segments = null;
+      }
+    }
+
+    if (!Array.isArray(segments) || !segments.length) {
+      return { status: 404, data: { error: 'MESSAGE_HAS_NO_SEGMENTS' } };
+    }
+
+    // ✅ voices: use style-based pair for playback (so voiceId actually matters)
+    // If you want "default" voices when voiceId is unknown, chooseVoicePairForStyle handles that.
+    const voices = await chooseVoicePairForStyle(targetLanguage, voiceId);
+
+    // ✅ Redis cache key (stable per message+segments+voice)
+    const segHash = sha1(JSON.stringify(segments));
+    const msgKey =
+      messageId != null
+        ? `id:${String(messageId)}`
+        : `idx:${String(messageIndex ?? 0)}:${new Date(msgRow.created_at).toISOString()}`;
+
+    const cacheKey = `ai:lang:playback:${courseId}:${msgKey}:seg=${segHash}:style=${String(
+      voiceId,
+    ).toLowerCase()}:v=${voices.teacher}|${voices.translator}`;
+
+    const cached = await cacheGetJSON(cacheKey);
+    if (cached?.items?.length) {
+      return { status: 200, data: cached };
+    }
+
+    // ✅ build playback (TTS layer should already cache per voice+text)
+    const playback = await buildPlaybackQueue({ segments, voices });
+
+    await cacheSetJSON(cacheKey, playback, LANGUAGE_CACHE_TTL_SEC);
+
+    return { status: 200, data: playback };
+  } catch (err) {
+    console.error('[aiLanguage] playback failed', err);
+    return { status: 500, data: { error: 'LANGUAGE_PLAYBACK_FAILED' } };
   }
 }

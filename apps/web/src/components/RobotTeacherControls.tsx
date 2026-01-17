@@ -313,6 +313,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
   } = props;
 
   const [trackInfoOpen, setTrackInfoOpen] = useState(false);
+    const startBtnLabel = busy ? 'Preparing…' : hasAIContent ? 'Continue lesson' : 'Start with A.I';
+  const teachBtnLabel = busy ? 'Preparing…' : 'Teach me';
+
 
   return (
     <section className="panel p-3 sm:p-4 relative z-10 overflow-visible">
@@ -344,7 +347,14 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
               }`}
               title="AI will generate outline + narration"
             >
-              {busy ? 'Preparing…' : hasAIContent ? 'Continue lesson' : 'Start with A.I'}
+             <span className="inline-flex items-center justify-center gap-2">
+            {busy ? (
+              <span className="h-4 w-4 rounded-full border-2 border-indigo-400/30 border-t-indigo-600 animate-spin dark:border-white/30 dark:border-t-white" />
+            ) : null}
+            {startBtnLabel}
+          </span>
+
+
             </button>
           </div>
         </div>
@@ -674,7 +684,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                 }`}
                 title="AI will generate outline + narration"
               >
-                {busy ? 'Preparing…' : hasAIContent ? 'Continue lesson' : 'Start with A.I'}
+                <span className="inline-flex items-center justify-center gap-2">
+                  {busy ? (
+                    <span className="h-4 w-4 rounded-full border-2 border-indigo-400/30 border-t-indigo-600 animate-spin dark:border-white/30 dark:border-t-white" />
+                  ) : null}
+                  {startBtnLabel}
+
+                </span>
               </button>
 
               {/* Hide these when locked */}
@@ -823,7 +839,15 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   disabled={!customTitle.trim() || busy || !canStartNow}
                   title="Spin up an AI sandbox course for this topic"
                 >
-                  {busy ? 'Preparing…' : 'Teach me'}
+                 <span className="inline-flex items-center justify-center gap-2">
+                  {busy ? (
+                    <span className="h-4 w-4 rounded-full border-2 border-indigo-400/30 border-t-indigo-600 animate-spin dark:border-white/30 dark:border-t-white" />
+                  ) : (
+                    <span className="text-base">✨</span>
+                  )}
+                  {teachBtnLabel}
+                </span>
+
                 </button>
 
                 {!selectedCourse && !customTitle.trim() && (
