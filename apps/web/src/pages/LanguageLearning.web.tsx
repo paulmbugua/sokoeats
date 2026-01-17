@@ -158,6 +158,10 @@ const DEFAULT_VOICE = {
   pitch: 1,
 };
 
+const FONT_SIZE_KEY = 'll_font_size_v1';
+const MUTE_EN_KEY = 'll_mute_en_v1';
+const MUTE_TR_KEY = 'll_mute_tr_v1';
+
 const buildSegmentsFromQueue = (items: PlaybackQueueItem[]) => {
   const map = new Map<number, { en?: string; tr?: string }>();
   for (const item of items) {
@@ -196,6 +200,7 @@ const LanguageLearningPage: React.FC = () => {
     playbackQueue,
     promptsUsed,
     promptsLimit,
+    resetAt,
     loading,
     error,
     bundleBlocked,
@@ -222,6 +227,10 @@ const LanguageLearningPage: React.FC = () => {
   const [topicFilter, setTopicFilter] = useState('');
   const [selectedTopic, setSelectedTopic] = useState<(typeof TOPICS)[number] | null>(null);
   const [voiceSettings, setVoiceSettings] = useState(DEFAULT_VOICE);
+  const [fontSize, setFontSize] = useState(16);
+  const [muteEn, setMuteEn] = useState(false);
+  const [muteTr, setMuteTr] = useState(false);
+  const [nowTs, setNowTs] = useState(() => Date.now());
 
   const [activeMessageKey, setActiveMessageKey] = useState<string | null>(null);
   const [inlinePlayback, setInlinePlayback] = useState<PlaybackPayload | null>(null);
@@ -236,6 +245,9 @@ const LanguageLearningPage: React.FC = () => {
   const lastUserScrollRef = useRef(0);
   const inlinePlayingRef = useRef(inlinePlaying);
   const prevVoiceIdRef = useRef(voiceSettings.voiceId);
+  const inlineIndexRef = useRef(0);
+  const inlineItemsRef = useRef<PlaybackQueueItem[]>([]);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   type RepeatPanelState = {
   messageKey: string;
@@ -266,6 +278,14 @@ const inlineCurrentRef = useRef<PlaybackQueueItem | null>(null);
   useEffect(() => {
     inlinePlayingRef.current = inlinePlaying;
   }, [inlinePlaying]);
+
+  useEffect(() => {
+    inlineIndexRef.current = inlineIndex;
+  }, [inlineIndex]);
+
+  useEffect(() => {
+    inlineItemsRef.current = inlineItems;
+  }, [inlineItems]);
 
   const playInlineCurrent = useCallback(async () => {
     if (!audioRef.current) return;
@@ -325,6 +345,36 @@ const inlineCurrentRef = useRef<PlaybackQueueItem | null>(null);
   }, [voiceSettings, voiceStorageKey]);
 
   useEffect(() => {
+    const storedFont = localStorage.getItem(FONT_SIZE_KEY);
+    const storedMuteEn = localStorage.getItem(MUTE_EN_KEY);
+    const storedMuteTr = localStorage.getItem(MUTE_TR_KEY);
+    const parsedFont = Number(storedFont);
+    if (!Number.isNaN(parsedFont)) {
+      setFontSize(Math.min(22, Math.max(12, parsedFont)));
+    }
+    if (storedMuteEn != null) setMuteEn(storedMuteEn === 'true');
+    if (storedMuteTr != null) setMuteTr(storedMuteTr === 'true');
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(FONT_SIZE_KEY, String(fontSize));
+  }, [fontSize]);
+
+  useEffect(() => {
+    localStorage.setItem(MUTE_EN_KEY, String(muteEn));
+  }, [muteEn]);
+
+  useEffect(() => {
+    localStorage.setItem(MUTE_TR_KEY, String(muteTr));
+  }, [muteTr]);
+
+  useEffect(() => {
+    if (!resetAt) return;
+    const timer = window.setInterval(() => setNowTs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [resetAt]);
+
+  useEffect(() => {
     const onScroll = () => {
       lastUserScrollRef.current = Date.now();
     };
@@ -338,6 +388,28 @@ const inlineCurrentRef = useRef<PlaybackQueueItem | null>(null);
       timerRef.current = null;
     }
   }, []);
+
+  const isItemMuted = useCallback(
+    (item?: PlaybackQueueItem | null) => {
+      if (!item) return false;
+      if (item.kind === 'en') return muteEn;
+      if (item.kind === 'tr') return muteTr;
+      return false;
+    },
+    [muteEn, muteTr]
+  );
+
+  const findNextPlayableIndex = useCallback(
+    (startIdx: number, items?: PlaybackQueueItem[]) => {
+      const list = items ?? inlineItemsRef.current;
+      for (let i = startIdx; i < list.length; i += 1) {
+        const item = list[i];
+        if (!isItemMuted(item)) return i;
+      }
+      return null;
+    },
+    [isItemMuted]
+  );
  
 
  useEffect(() => {
@@ -348,6 +420,19 @@ const inlineCurrentRef = useRef<PlaybackQueueItem | null>(null);
   const url = inlineCurrentItem?.audioUrl;
   if (!url) {
     setInlinePlaying(false);
+    return;
+  }
+
+  if (isItemMuted(inlineCurrentItem)) {
+    const nextIdx = findNextPlayableIndex(inlineIndex + 1, inlineItems);
+    if (nextIdx === null) {
+      setInlinePlaying(false);
+      setInlineAutoPlayNext(false);
+    } else {
+      setInlineAutoPlayNext(true);
+      setInlineIndex(nextIdx);
+      setInlinePlaying(true);
+    }
     return;
   }
 
@@ -369,6 +454,11 @@ const inlineCurrentRef = useRef<PlaybackQueueItem | null>(null);
   clearInlineTimer,
   inlineAutoPlayNext,
   inlineCurrentItem?.audioUrl,
+  inlineCurrentItem,
+  inlineIndex,
+  inlineItems,
+  findNextPlayableIndex,
+  isItemMuted,
   playInlineCurrent,
   voiceSettings.rate,
 ]);
@@ -415,10 +505,16 @@ const inlineCurrentRef = useRef<PlaybackQueueItem | null>(null);
     return;
   }
 
-  const nextItem = inlineItems[nextIndex];
+  const nextPlayable = findNextPlayableIndex(nextIndex, inlineItems);
+  if (nextPlayable === null) {
+    setInlinePlaying(false);
+    return;
+  }
+
+  const nextItem = inlineItems[nextPlayable];
 
   // Update UI progress immediately
-  setInlineIndex(nextIndex);
+  setInlineIndex(nextPlayable);
 
   const audio = audioRef.current;
   if (!audio || !nextItem?.audioUrl) {
@@ -439,7 +535,7 @@ const inlineCurrentRef = useRef<PlaybackQueueItem | null>(null);
   }
 
   setInlinePlaying(true);
-}, [inlineIndex, inlineItems, voiceSettings.rate]);
+}, [findNextPlayableIndex, inlineIndex, inlineItems, voiceSettings.rate]);
 
 
   const handleInlinePlayPause = useCallback(
@@ -491,15 +587,24 @@ const inlineCurrentRef = useRef<PlaybackQueueItem | null>(null);
         (item) => item.segmentIdx === inlineSegmentIdx && item.kind === 'en'
       );
       if (idx >= 0) {
-        setInlineIndex(idx);
+        const playableIdx = isItemMuted(inlineItems[idx])
+          ? findNextPlayableIndex(idx, inlineItems)
+          : idx;
+        if (playableIdx === null) {
+          setInlinePlaying(false);
+          return;
+        }
+        setInlineIndex(playableIdx);
         setInlineAutoPlayNext(true);
         setInlinePlaying(true);
       }
     },
     [
       activeMessageKey,
+      findNextPlayableIndex,
       inlineItems,
       inlineSegmentIdx,
+      isItemMuted,
       setPlaybackQueue,
     ]
   );
@@ -566,24 +671,29 @@ const startPlaybackAt = useCallback(
     const startIdx = pb.items.findIndex(
       (it) => it.segmentIdx === segmentIdx && it.kind === kind
     );
+    const desiredIdx = startIdx >= 0 ? startIdx : 0;
+    if (isItemMuted(pb.items[desiredIdx])) {
+      setInlinePlaying(false);
+      return;
+    }
 
     setActiveMessageKey(messageKey);
     setInlinePlayback(pb);
     setPlaybackQueue(pb);
-    setInlineIndex(startIdx >= 0 ? startIdx : 0);
+    setInlineIndex(desiredIdx);
     setInlineAutoPlayNext(true);
     setInlinePlaying(true);
   },
-  [ensurePlaybackFor, setPlaybackQueue]
+  [ensurePlaybackFor, isItemMuted, setPlaybackQueue]
 );
 
 
 
   const handleSend = useCallback(async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || promptLocked || loading) return;
     await sendPrompt(input.trim());
     setInput('');
-  }, [input, sendPrompt]);
+  }, [input, loading, promptLocked, sendPrompt]);
 
   const handleComplete = useCallback(async () => {
     const q = await completeCourse();
@@ -636,6 +746,32 @@ const startPlaybackAt = useCallback(
   }, [backendUrl, token, courseId]);
 
   const title = headerLabel ? `Language Learning: English → ${headerLabel}` : 'Language Learning';
+  const promptLocked = bundleBlocked || (promptsLimit && promptsUsed >= promptsLimit);
+
+  const formatCountdown = useCallback((ms: number) => {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  }, []);
+
+  const resetLabel = useMemo(() => {
+    if (!resetAt) return null;
+    const ts = new Date(resetAt).getTime();
+    if (Number.isNaN(ts)) return null;
+    const remaining = ts - nowTs;
+    if (remaining <= 0) {
+      return `Resets at ${new Date(ts).toLocaleString()}`;
+    }
+    return `Resets in ${formatCountdown(remaining)}`;
+  }, [resetAt, nowTs, formatCountdown]);
+
+  const baseFontSize = Math.min(22, Math.max(12, fontSize));
+  const targetFontSize = Math.max(12, baseFontSize - 2);
+  const targetActiveFontSize = Math.min(26, baseFontSize + 2);
 
   const progressPct = useMemo(() => {
     if (!promptsLimit) return 0;
@@ -643,11 +779,11 @@ const startPlaybackAt = useCallback(
   }, [promptsLimit, promptsUsed]);
 
   const statusChip = useMemo(() => {
-    if (bundleBlocked || (promptsLimit && promptsUsed >= promptsLimit)) {
+    if (promptLocked) {
       return { label: 'Prompt limit reached', tone: 'bg-rose-500/20 text-rose-200' };
     }
     return { label: 'Unlocked', tone: 'bg-emerald-500/20 text-emerald-200' };
-  }, [bundleBlocked, promptsLimit, promptsUsed]);
+  }, [promptLocked]);
 
   const filteredTopics = useMemo(() => {
     const term = topicFilter.trim().toLowerCase();
@@ -658,6 +794,9 @@ const startPlaybackAt = useCallback(
   const applyPrompt = useCallback(
     (prompt: string) => {
       setInput(prompt.replace('{language}', headerLabel || targetLanguage));
+      setShowTopicPanel(false);
+      setShowVoicePanel(false);
+      requestAnimationFrame(() => composerRef.current?.focus());
     },
     [headerLabel, targetLanguage]
   );
@@ -760,7 +899,7 @@ const startPlaybackAt = useCallback(
                       } ${isActive ? 'ring-2 ring-emerald-300/60' : ''}`}
                     >
                       {isAssistant && msg.segments ? (
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                           {msg.segments.map((seg, segIdx) => {
                             const lineKey = `${messageKey}-${segIdx}`;
                             const isActiveLine = isActive && activeLineKey === lineKey;
@@ -771,19 +910,27 @@ const startPlaybackAt = useCallback(
                                   if (node) lineRefs.current.set(lineKey, node);
                                   else lineRefs.current.delete(lineKey);
                                 }}
-                                className={`rounded-2xl px-2 py-1 transition-all duration-300 ${
+                                className={`rounded-2xl px-2 py-1 break-words transition-all duration-300 ${
                                   isActiveLine ? 'bg-emerald-500/10' : ''
                                 }`}
                               >
-                                <div className="text-sm text-slate-800 dark:text-slate-100">
+                                <div
+                                  className="text-slate-800 dark:text-slate-100"
+                                  style={{ fontSize: baseFontSize }}
+                                >
                                   {seg.en}
                                 </div>
                                 <div
-                                  className={`mt-0.5 text-xs text-slate-500 dark:text-slate-400 transition-all duration-300 ${
+                                  className={`mt-0.5 text-slate-500 dark:text-slate-400 transition-all duration-300 ${
                                     isActiveLine && activeLineIsTarget
-                                      ? 'text-base sm:text-lg font-semibold text-slate-900 dark:text-white'
+                                      ? 'font-semibold text-slate-900 dark:text-white'
                                       : ''
                                   }`}
+                                  style={{
+                                    fontSize: isActiveLine && activeLineIsTarget
+                                      ? targetActiveFontSize
+                                      : targetFontSize,
+                                  }}
                                 >
                                   {seg.tr}
                                 </div>
@@ -1008,16 +1155,26 @@ const startPlaybackAt = useCallback(
               </button>
             </div>
             <div className="flex-1 flex items-center gap-2">
-              <input
+              <textarea
+                ref={composerRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={bundleBlocked ? 'Unlock more prompts to continue.' : 'Ask your tutor...'}
-                disabled={bundleBlocked || loading}
-                className="flex-1 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900 px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!promptLocked && !loading && input.trim()) {
+                      void handleSend();
+                    }
+                  }
+                }}
+                placeholder={promptLocked ? 'Unlock more prompts to continue.' : 'Ask your tutor...'}
+                disabled={promptLocked || loading}
+                rows={1}
+                className="flex-1 resize-none rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900 px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
               />
               <button
                 onClick={handleSend}
-                disabled={bundleBlocked || loading || !input.trim()}
+                disabled={promptLocked || loading || !input.trim()}
                 className="rounded-2xl bg-emerald-500 text-white px-5 py-3 text-sm font-semibold shadow-sm transition hover:bg-emerald-400 disabled:opacity-50"
               >
                 Send
@@ -1025,12 +1182,13 @@ const startPlaybackAt = useCallback(
             </div>
           </div>
 
-          {bundleBlocked && (
+          {promptLocked && (
             <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200/70 dark:border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-500/10 px-4 py-3 text-sm">
               <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-200">
                 <span className="text-lg">🔒</span>
-                <span className="font-semibold">You’ve used your 5 free prompts.</span>
+                <span className="font-semibold">You’ve hit your free prompt limit.</span>
               </div>
+              {resetLabel && <div className="text-xs text-emerald-700 dark:text-emerald-200">{resetLabel}</div>}
               <button
                 onClick={purchaseBundle}
                 className="w-full rounded-2xl bg-emerald-500 text-white px-3 py-2 text-sm font-semibold shadow-sm transition hover:bg-emerald-400"
@@ -1148,6 +1306,47 @@ const startPlaybackAt = useCallback(
                 <p className="text-[11px] text-slate-400">
                   Pitch may vary by device. Voice controls affect playback; regeneration coming soon.
                 </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Text size ({baseFontSize}px)
+                </label>
+                <input
+                  type="range"
+                  min={12}
+                  max={22}
+                  step={1}
+                  value={baseFontSize}
+                  onChange={(e) => setFontSize(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Mute voices
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
+                      muteEn
+                        ? 'bg-rose-500 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-200'
+                    }`}
+                    onClick={() => setMuteEn((prev) => !prev)}
+                  >
+                    Mute English voice
+                  </button>
+                  <button
+                    className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
+                      muteTr
+                        ? 'bg-rose-500 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-200'
+                    }`}
+                    onClick={() => setMuteTr((prev) => !prev)}
+                  >
+                    Mute Target voice
+                  </button>
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <button

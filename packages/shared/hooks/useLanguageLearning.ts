@@ -29,6 +29,7 @@ export function useLanguageLearning(
   const [entitlement, setEntitlement] = useState<LanguageLearningEntitlement | null>(
     init?.entitlement ?? null
   );
+  const [resetAt, setResetAt] = useState<string | null>(init?.entitlement?.resetsAt ?? null);
   const [targetLanguage, setTargetLanguage] = useState<TargetLanguage | null>(
     init?.targetLanguage ?? null
   );
@@ -39,6 +40,10 @@ export function useLanguageLearning(
 
   const promptsUsed = entitlement?.promptsUsed ?? 0;
   const promptsLimit = entitlement?.promptsLimit ?? 5;
+  const fallbackResetAt = useCallback(
+    () => new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    []
+  );
 
   const appendAssistant = useCallback(
     (assistant: LanguageLearningAssistant, playback: PlaybackPayload) => {
@@ -61,6 +66,7 @@ export function useLanguageLearning(
       if (promptsLimit && promptsUsed >= promptsLimit) {
         setBundleBlocked(true);
         setError('You have reached the free prompt limit.');
+        setResetAt((prev) => prev ?? fallbackResetAt());
         return;
       }
       setLoading(true);
@@ -71,6 +77,7 @@ export function useLanguageLearning(
       try {
         const res = await sendLanguagePrompt(backendUrl, token, courseId, prompt);
         if (res?.entitlement) setEntitlement(res.entitlement);
+        if (res?.entitlement?.resetsAt) setResetAt(res.entitlement.resetsAt);
         appendAssistant(res.assistant, res.playback);
       } catch (err) {
         if (axios.isAxiosError(err)) {
@@ -82,6 +89,15 @@ export function useLanguageLearning(
           ) {
             setBundleBlocked(true);
             setError(data?.message || 'You have reached the free prompt limit.');
+            setResetAt((prev) => {
+              const next =
+                data?.resetsAt ||
+                data?.resetAt ||
+                data?.nextResetAt ||
+                data?.entitlement?.resetsAt ||
+                null;
+              return next ?? prev ?? fallbackResetAt();
+            });
             setEntitlement((prev) =>
               prev
                 ? {
@@ -101,7 +117,7 @@ export function useLanguageLearning(
         setLoading(false);
       }
     },
-    [appendAssistant, backendUrl, token, courseId, promptsLimit, promptsUsed]
+    [appendAssistant, backendUrl, token, courseId, promptsLimit, promptsUsed, fallbackResetAt]
   );
 
   const purchaseBundle = useCallback(async () => {
@@ -110,6 +126,7 @@ export function useLanguageLearning(
     try {
       const res = await purchaseLanguageBundle(backendUrl, token, courseId);
       if (res?.entitlement) setEntitlement(res.entitlement);
+      if (res?.entitlement?.resetsAt) setResetAt(res.entitlement.resetsAt);
       setBundleBlocked(false);
       return res.entitlement;
     } catch (err) {
@@ -162,6 +179,12 @@ export function useLanguageLearning(
     }
   }, [entitlement]);
 
+  useEffect(() => {
+    if (entitlement?.resetsAt) {
+      setResetAt(entitlement.resetsAt);
+    }
+  }, [entitlement?.resetsAt]);
+
   const headerLabel = useMemo(() => {
     if (!targetLanguage) return null;
     const map: Record<string, string> = {
@@ -181,6 +204,7 @@ export function useLanguageLearning(
     playbackQueue,
     promptsUsed,
     promptsLimit,
+    resetAt,
     loading,
     error,
     bundleBlocked,
