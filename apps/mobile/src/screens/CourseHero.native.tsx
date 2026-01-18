@@ -1,4 +1,4 @@
-/* eslint-disable prettier/prettier */
+
 import React from 'react';
 import { ImageBackground, View } from 'react-native';
 import tw from '../../tailwind';

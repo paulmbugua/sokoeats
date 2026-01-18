@@ -1758,6 +1758,7 @@ useEffect(() => {
                                   Reader
                                 </Link>
 
+                                {/* TODO: Re-enable "Learn with Robot Teacher" once the Robot Teacher OER-book flow is finalized.
                                 <button
                                   className="h-9 px-3 rounded-lg bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-xs font-semibold"
                                   onClick={async () => {
@@ -1770,8 +1771,10 @@ useEffect(() => {
                                   }}
                                   title="Start guided course"
                                 >
-                                  Learn with RobotTeacher
+                                  Learn with Robot Teacher
                                 </button>
+                                */}
+
                               </div>
                             </div>
                           </div>

@@ -416,17 +416,21 @@ const OerBookCard: React.FC<{
           >
             <Text style={tw`text-white text-xs font-semibold`}>Reader</Text>
           </Pressable>
+{/*
+  TODO: Re-enable "Learn with RobotTeacher" for OER books once the mobile OER->AI wrap flow is finalized.
+  (Keept here for quick re-enable.)
+  {!!onRobot && (
+    <Pressable
+      style={tw`h-10 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center mt-2`}
+      onPress={onRobot}
+    >
+      <Text style={tw`text-[#0d141c] dark:text-white text-xs font-semibold`}>
+        Learn with RobotTeacher
+      </Text>
+    </Pressable>
+  )}
+*/}
 
-          {!!onRobot && (
-            <Pressable
-              style={tw`h-10 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center mt-2`}
-              onPress={onRobot}
-            >
-              <Text style={tw`text-[#0d141c] dark:text-white text-xs font-semibold`}>
-                Learn with RobotTeacher
-              </Text>
-            </Pressable>
-          )}
         </View>
       </View>
     </View>

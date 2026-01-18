@@ -851,7 +851,7 @@ const HomePage: React.FC = () => {
           >
             <motion.div className="flex items-center justify-between px-1" variants={fadeUp}>
               <h3 className="text-[22px] font-bold tracking-tight">Featured Videos</h3>
-              <Link to="/videos" className="text-primary hover:underline">
+              <Link to="/courses" className="text-primary hover:underline">
                 See All
               </Link>
             </motion.div>
@@ -1457,7 +1457,7 @@ const HomePage: React.FC = () => {
           >
             <motion.div className="flex items-center justify-between px-1" variants={fadeUp}>
               <h3 className="text-[22px] font-bold tracking-tight">Free Videos</h3>
-              <Link to="/videos" className="text-primary hover:underline">
+              <Link to="/courses" className="text-primary hover:underline">
                 See All
               </Link>
             </motion.div>
