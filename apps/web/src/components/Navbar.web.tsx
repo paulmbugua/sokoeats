@@ -18,16 +18,22 @@ import {
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useTheme } from '@mytutorapp/shared/hooks';
+import {
+  extractScopeHint,
+  normalizeCountryLabel,
+  parseSmartSearchIntent,
+  resolveSearchTarget,
+  type SearchTarget,
+} from '@mytutorapp/shared/utils/smartSearchIntent';
 
 type Props = {
-  onSearch?: (query: string) => void;
   avatarUrl?: string;
 };
 
 const FALLBACK_AVATAR = (name = 'You') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=223649&color=ffffff`;
 
-const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
+const Navbar: React.FC<Props> = ({ avatarUrl }) => {
   const { token, orgToken, backendUrl, profile, orgLogout } = useShopContext() as any;
 
   const { role } = useOrg() ?? {};
@@ -37,6 +43,8 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const mobileSearchRef = useRef<HTMLInputElement | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTarget, setSearchTarget] = useState<SearchTarget>('auto');
 
   const { theme, setTheme } = useTheme() as any;
 
@@ -113,6 +121,42 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
 
  
   const myCoursesHref = '/courses';
+
+  const handleSearchSubmit = (raw?: string) => {
+    const query = String(raw ?? searchQuery ?? '').trim();
+    if (!query) return;
+
+    const intent = parseSmartSearchIntent(query);
+    const target = resolveSearchTarget(query, searchTarget);
+    const country = intent.country ?? normalizeCountryLabel(query);
+
+    const params = new URLSearchParams();
+    params.set('q', query);
+
+    if (intent.subject) params.set('subject', intent.subject);
+    if (intent.gradeBand) params.set('gradeBand', intent.gradeBand);
+    if (intent.level) params.set('level', intent.level);
+    if (intent.minRating) params.set('minRating', String(intent.minRating));
+    if (intent.maxPrice) params.set('maxPrice', String(intent.maxPrice));
+
+    if (target === 'tutors') {
+      if (country?.code) params.set('country', country.code);
+      navigate(`/find-tutor?${params.toString()}`);
+      return;
+    }
+
+    if (country?.name) params.set('country', country.name);
+
+    if (target === 'library') {
+      params.set('tab', 'library');
+      const scope = extractScopeHint(query);
+      if (scope !== 'all') params.set('scope', scope);
+    } else {
+      params.set('tab', 'courses');
+    }
+
+    navigate(`/courses?${params.toString()}`);
+  };
 
   const handleThemeToggle = () => {
     const current = (theme || 'light').toString().toLowerCase();
@@ -243,8 +287,40 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
                 <input
                   placeholder="Search"
                   className="w-full min-w-0 bg-transparent h-full px-3 outline-none placeholder:text-gray-500 dark:placeholder:text-darkTextSecondary"
-                  onChange={(e) => onSearch?.(e.target.value)}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSearchSubmit(searchQuery);
+                  }}
                 />
+                {searchQuery.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="text-xs px-2 text-gray-500 dark:text-darkTextSecondary"
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+                <select
+                  value={searchTarget}
+                  onChange={(e) => setSearchTarget(e.target.value as SearchTarget)}
+                  className="h-full bg-transparent text-xs px-2 text-gray-600 dark:text-darkTextSecondary border-l border-gray-200 dark:border-darkCard"
+                  aria-label="Search target"
+                >
+                  <option value="auto">Auto</option>
+                  <option value="courses">Courses</option>
+                  <option value="library">Videos/Notes</option>
+                  <option value="tutors">Tutors</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => handleSearchSubmit(searchQuery)}
+                  className="h-full px-3 text-xs font-semibold text-white bg-[#3d99f5] rounded-r-xl"
+                >
+                  Go
+                </button>
               </div>
             </label>
 
@@ -313,7 +389,7 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
 
         {/* Mobile search reveal */}
         {mobileSearchOpen && (
-          <div className="md:hidden pb-3">
+          <div className="md:hidden pb-3 space-y-2">
             <label className="flex h-10">
               <div className="flex w-full items-stretch rounded-xl ring-1 ring-gray-200 dark:ring-darkCard bg-gray-100 dark:bg-[#172534] focus-within:ring-primary transition">
                 <div className="text-gray-500 dark:text-darkTextSecondary flex items-center justify-center pl-4">
@@ -323,10 +399,44 @@ const Navbar: React.FC<Props> = ({ onSearch, avatarUrl }) => {
                   ref={mobileSearchRef}
                   placeholder="Search courses, tutors…"
                   className="w-full bg-transparent h-full px-3 outline-none placeholder:text-gray-500 dark:placeholder:text-darkTextSecondary"
-                  onChange={(e) => onSearch?.(e.target.value)}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSearchSubmit(searchQuery);
+                  }}
                 />
+                {searchQuery.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="text-xs px-2 text-gray-500 dark:text-darkTextSecondary"
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             </label>
+            <div className="flex items-center gap-2">
+              <select
+                value={searchTarget}
+                onChange={(e) => setSearchTarget(e.target.value as SearchTarget)}
+                className="h-10 flex-1 rounded-xl bg-gray-100 dark:bg-[#172534] px-3 text-xs ring-1 ring-gray-200 dark:ring-darkCard"
+                aria-label="Search target"
+              >
+                <option value="auto">Auto</option>
+                <option value="courses">Courses</option>
+                <option value="library">Videos/Notes</option>
+                <option value="tutors">Tutors</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => handleSearchSubmit(searchQuery)}
+                className="h-10 px-4 rounded-xl bg-[#3d99f5] text-white text-xs font-semibold"
+              >
+                Go
+              </button>
+            </div>
           </div>
         )}
       </div>

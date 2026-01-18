@@ -658,7 +658,7 @@ const App: React.FC = () => {
   const { token, initializing } = (useShopContext() as unknown as ShopCtx) ?? {};
   const isFirstLogin = useIsFirstLogin();
   const markSeen = useMarkFirstLoginSeen();
-  const { uiFilters, handleSearch, clearFilters } = useHomePage();
+  const { uiFilters, clearFilters } = useHomePage();
 
   const { resolvedScheme } = useThemePref();
 
@@ -745,7 +745,7 @@ const App: React.FC = () => {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.flex1}>
-      <NavbarNative onSearch={handleSearch} />
+      <NavbarNative />
 
       {/* ✅ Global overlay (once) */}
       <TransitionOverlay visible={navBusy} label={navLabel} />

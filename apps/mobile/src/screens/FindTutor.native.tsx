@@ -15,13 +15,14 @@ import {
   Switch,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { useNavigation, useRoute, NavigationProp } from '@react-navigation/native';
 import type { MainStackParamList } from '../navigation/types';
 import tw from '../../tailwind';
 
 import { useHomePage } from '@mytutorapp/shared/hooks';
 import type { Profile } from '@mytutorapp/shared/types';
 import { COUNTRIES, countryName } from '@mytutorapp/shared/utils/countries';
+import { normalizeCountryLabel } from '@mytutorapp/shared/utils/smartSearchIntent';
 
 /* ───────── Constants ───────── */
 const FALLBACK_AVATAR = (name = 'Tutor') =>
@@ -342,6 +343,7 @@ const COUNTRY_LIST: CountryOpt[] = Array.isArray(COUNTRIES)
 /* ───────── Screen ───────── */
 const FindTutorScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
+  const route = useRoute<any>();
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, 16);
   const topPad = Math.max(insets.top, 12);
@@ -377,6 +379,27 @@ const FindTutorScreen: React.FC = () => {
   const [language, setLanguage] = useState<string>(''); // local-only
   const [page, setPage] = useState(1);
   const [live, setLive] = useState(false);
+
+  useEffect(() => {
+    const q = String(route?.params?.q ?? '').trim();
+    const subject = String(route?.params?.subject ?? '').trim();
+    const countryParam = String(route?.params?.country ?? '').trim();
+    const minRatingParam = route?.params?.minRating;
+
+    if (q) {
+      setQuery(q);
+      handleSearch?.(q);
+    }
+    if (subject) setSubjectFilter?.(subject);
+    if (countryParam) {
+      const normalized = normalizeCountryLabel(countryParam);
+      if (normalized?.code) setCountryFilter?.(normalized.code);
+    }
+    if (minRatingParam != null) {
+      const val = Number(minRatingParam);
+      if (Number.isFinite(val)) setMinRatingFilter?.(val);
+    }
+  }, [route?.params, handleSearch, setCountryFilter, setMinRatingFilter, setSubjectFilter]);
 
   // Country modal (server filter writes ISO2 to setCountryFilter)
   const [countryModal, setCountryModal] = useState(false);
