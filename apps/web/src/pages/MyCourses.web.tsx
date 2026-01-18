@@ -8,10 +8,16 @@ import { downloadCertificateFile } from '@mytutorapp/shared/api/certificatesApi'
 import { generateCertificatePdf } from '@mytutorapp/shared/api/aiCertificatesApi';
 import { fetchCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
 import { getRequiredQuestions, getRequiredWeeks } from '@mytutorapp/shared/utils/programTrackRequirements';
+import {
+  normalizeCountryLabel,
+  parseSmartSearchIntent,
+  rankMatch,
+} from '@mytutorapp/shared/utils/smartSearchIntent';
 import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
 import ClassVaultList from '../components/ClassVaultList.web';
 import CourseHero from '../components/CourseHero';
 import useCourseSearch from '@mytutorapp/shared/hooks/useCourseSearch';
+import ExploreSearchFiltersBar from '../components/search/ExploreSearchFiltersBar.web';
 
 /* ─────────────────────────────────────────────────────────
   Tabs
@@ -252,18 +258,6 @@ function toArray<T = any>(val: any): T[] {
 }
 
 /* --------------------- Small UI bits --------------------- */
-const CaretDown = ({ size = 20 }: { size?: number }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={size}
-    height={size}
-    fill="currentColor"
-    viewBox="0 0 256 256"
-  >
-    <path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" />
-  </svg>
-);
-
 function StarRow({ avg, count }: { avg?: number; count?: number }) {
   const a = Math.round((avg ?? 0) * 2) / 2;
   const stars = [1, 2, 3, 4, 5].map((i) => (a >= i ? '★' : a + 0.5 === i ? '☆' : '☆')).join('');
@@ -331,7 +325,7 @@ const MyCourses: React.FC = () => {
   }, [token]);
 
   /* Search box (debounced) */
-  const [searchText, setSearchText] = useState('');
+  const [courseQuery, setCourseQuery] = useState('');
   const debouncedSearch = useRef(
     debounce((q: string) => {
       try {
@@ -354,11 +348,195 @@ const MyCourses: React.FC = () => {
   }, [backendUrl]);
 
   useEffect(() => {
-    debouncedSearch.current(searchText);
-  }, [searchText]);
+    debouncedSearch.current(courseQuery);
+  }, [courseQuery]);
 
   /* Extra local-only filter (your hook doesn’t expose duration) */
   const [duration, setDuration] = useState('');
+  const [courseCountry, setCourseCountry] = useState('');
+
+  const courseIntent = useMemo(() => parseSmartSearchIntent(courseQuery), [courseQuery]);
+
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [librarySubject, setLibrarySubject] = useState('');
+  const [libraryGrade, setLibraryGrade] = useState('');
+  const [libraryCountry, setLibraryCountry] = useState('');
+  const [libraryProvider, setLibraryProvider] = useState('');
+  const [libraryScope, setLibraryScope] = useState<'all' | 'purchased' | 'free'>('all');
+
+  const libraryIntent = useMemo(() => parseSmartSearchIntent(libraryQuery), [libraryQuery]);
+
+  useEffect(() => {
+    if (libraryIntent.subject && !librarySubject) setLibrarySubject(libraryIntent.subject);
+    if (libraryIntent.gradeBand && !libraryGrade) setLibraryGrade(libraryIntent.gradeBand);
+    if (libraryIntent.country?.name && !libraryCountry)
+      setLibraryCountry(libraryIntent.country.name);
+  }, [libraryIntent, librarySubject, libraryGrade, libraryCountry]);
+
+  const handleCourseFiltersChange = useCallback(
+    (next: {
+      subject?: string;
+      grade?: string;
+      level?: string;
+      country?: string;
+      minRating?: number;
+      maxPrice?: number;
+      duration?: string;
+    }) => {
+      if (next.subject != null) setCourseSubject(next.subject);
+      if (next.grade != null) setCourseGradeBand(next.grade);
+      if (next.level != null) setCourseLevel(next.level);
+      if (next.country != null) setCourseCountry(next.country);
+      if (next.minRating != null) setCourseMinRating(next.minRating);
+      if (next.maxPrice != null) setCourseMaxPrice(next.maxPrice);
+      if (next.duration != null) setDuration(next.duration);
+    },
+    [
+      setCourseSubject,
+      setCourseGradeBand,
+      setCourseLevel,
+      setCourseMinRating,
+      setCourseMaxPrice,
+    ]
+  );
+
+  const handleLibraryFiltersChange = useCallback(
+    (next: {
+      subject?: string;
+      grade?: string;
+      country?: string;
+      provider?: string;
+      scope?: 'all' | 'purchased' | 'free';
+    }) => {
+      if (next.subject != null) setLibrarySubject(next.subject);
+      if (next.grade != null) setLibraryGrade(next.grade);
+      if (next.country != null) setLibraryCountry(next.country);
+      if (next.provider != null) setLibraryProvider(next.provider);
+      if (next.scope != null) setLibraryScope(next.scope);
+    },
+    []
+  );
+
+  const courseFiltersState = useMemo(
+    () => ({
+      subject: courseFilters?.subject ?? '',
+      grade: courseFilters?.gradeBand ?? '',
+      level: courseFilters?.level ?? '',
+      country: courseCountry,
+      minRating: courseFilters?.minRating ?? 0,
+      maxPrice: courseFilters?.maxPrice ?? 0,
+      duration,
+    }),
+    [courseFilters, courseCountry, duration]
+  );
+
+  const libraryFiltersState = useMemo(
+    () => ({
+      subject: librarySubject,
+      grade: libraryGrade,
+      country: libraryCountry,
+      provider: libraryProvider,
+      scope: libraryScope,
+    }),
+    [librarySubject, libraryGrade, libraryCountry, libraryProvider, libraryScope]
+  );
+
+  const showPurchasedLibrary = libraryScope !== 'free';
+  const showFreeLibrary = libraryScope !== 'purchased';
+
+  const clearAllCourses = useCallback(() => {
+    clearCourseFilters();
+    setCourseCountry('');
+    setDuration('');
+    setCourseQuery('');
+    try {
+      setCourseIsOer(false);
+      handleCourseSearch('');
+    } catch {}
+  }, [clearCourseFilters, handleCourseSearch, setCourseIsOer]);
+
+  const clearAllLibrary = useCallback(() => {
+    setLibraryQuery('');
+    setLibrarySubject('');
+    setLibraryGrade('');
+    setLibraryCountry('');
+    setLibraryProvider('');
+    setLibraryScope('all');
+  }, []);
+
+  useEffect(() => {
+    if (courseIntent.subject && !courseFilters?.subject) setCourseSubject(courseIntent.subject);
+    if (courseIntent.gradeBand && !courseFilters?.gradeBand)
+      setCourseGradeBand(courseIntent.gradeBand);
+    if (courseIntent.level && !courseFilters?.level) setCourseLevel(courseIntent.level);
+    if (courseIntent.minRating && (courseFilters?.minRating ?? 0) === 0)
+      setCourseMinRating(courseIntent.minRating);
+    if (courseIntent.maxPrice && (courseFilters?.maxPrice ?? 0) === 0)
+      setCourseMaxPrice(courseIntent.maxPrice);
+    if (courseIntent.country?.name && !courseCountry) setCourseCountry(courseIntent.country.name);
+  }, [
+    courseIntent,
+    courseFilters,
+    courseCountry,
+    setCourseSubject,
+    setCourseGradeBand,
+    setCourseLevel,
+    setCourseMinRating,
+    setCourseMaxPrice,
+  ]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const tabParam = sp.get('tab');
+    if (tabParam === 'library' || tabParam === 'courses') {
+      setTab(tabParam);
+    }
+
+    const q = sp.get('q');
+    if (q != null) {
+      setCourseQuery(q);
+      setLibraryQuery(q);
+    }
+
+    const subject = sp.get('subject');
+    const gradeBand = sp.get('gradeBand');
+    const level = sp.get('level');
+    const country = sp.get('country');
+    const minRating = sp.get('minRating');
+    const maxPrice = sp.get('maxPrice');
+    const durationParam = sp.get('duration');
+    const scope = sp.get('scope');
+    const provider = sp.get('provider');
+
+    if (subject != null) setCourseSubject(subject);
+    if (gradeBand != null) setCourseGradeBand(gradeBand);
+    if (level != null) setCourseLevel(level);
+    if (country != null) {
+      const normalized = normalizeCountryLabel(country);
+      setCourseCountry(normalized?.name || country);
+    }
+    if (minRating != null) setCourseMinRating(Number(minRating || 0));
+    if (maxPrice != null) setCourseMaxPrice(Number(maxPrice || 0));
+    if (durationParam != null) setDuration(durationParam);
+
+    if (subject != null) setLibrarySubject(subject);
+    if (gradeBand != null) setLibraryGrade(gradeBand);
+    if (country != null) {
+      const normalized = normalizeCountryLabel(country);
+      setLibraryCountry(normalized?.name || country);
+    }
+    if (provider != null) setLibraryProvider(provider);
+    if (scope === 'all' || scope === 'free' || scope === 'purchased') {
+      setLibraryScope(scope);
+    }
+  }, [
+    location.search,
+    setCourseSubject,
+    setCourseGradeBand,
+    setCourseLevel,
+    setCourseMinRating,
+    setCourseMaxPrice,
+  ]);
 
   const enrolledCourseIds = useMemo(() => {
     const set = new Set<string>();
@@ -848,16 +1026,56 @@ useEffect(() => {
 
   /* ✅ Catalog list now comes from searchedCourses (NOT useCourses) */
   const filteredRows = useMemo(() => {
-    const rows = (searchedCourses ?? []) as any[];
+    const rows = (activeCourses ?? []) as any[];
+    const normalizedCountry =
+      normalizeCountryLabel(courseCountry)?.name?.toLowerCase() || courseCountry.toLowerCase();
 
-    return rows
+    const filtered = rows
       .filter((c) => !isOerCourse(c) && wasUploadedByTutor(c)) // safety
       .filter((c) => {
         const cDuration = String(c.duration ?? '').toLowerCase();
         const okDuration = duration ? cDuration.includes(duration.toLowerCase()) : true;
         return okDuration;
+      })
+      .filter((c) => {
+        if (!normalizedCountry) return true;
+        const hay = [
+          c.country,
+          c.country_code,
+          c.location,
+          c.region,
+          c.metadata,
+          c.description,
+        ]
+          .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || {})))
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(normalizedCountry);
       });
-  }, [searchedCourses, duration]);
+
+    if (!courseIntent.query) return filtered;
+
+    const scored = filtered.map((c, idx) => {
+      const tutor = resolveTutorName(c) ?? '';
+      const hay = [
+        c.title,
+        c.description,
+        c.subject,
+        c.gradeBand,
+        c.grade_band,
+        c.level,
+        c.tags,
+        tutor,
+        c.country,
+      ]
+        .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || [])))
+        .join(' ');
+      return { c, idx, score: rankMatch(hay, courseIntent) };
+    });
+
+    scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
+    return scored.map((s) => s.c);
+  }, [activeCourses, duration, courseCountry, courseIntent, resolveTutorName]);
 
   const tutorUserIdsInCourses = useMemo(() => {
     const set = new Set<string>();
@@ -1035,6 +1253,61 @@ useEffect(() => {
     };
   }, [api, apiBase, apiBase]);
 
+  const filteredOerVideos = useMemo(() => {
+    const normalizedCountry =
+      normalizeCountryLabel(libraryCountry)?.name?.toLowerCase() || libraryCountry.toLowerCase();
+    const query = libraryIntent.query.toLowerCase();
+
+    const filtered = oerVideoCols.filter((c) => {
+      if (librarySubject) {
+        const subj = String(c.subject ?? '').toLowerCase();
+        if (!subj.includes(librarySubject.toLowerCase())) return false;
+      }
+      if (libraryGrade) {
+        const grade = String(c.grade ?? c.grade_band ?? c.gradeBand ?? '').toLowerCase();
+        if (!grade.includes(libraryGrade.toLowerCase())) return false;
+      }
+      if (libraryProvider) {
+        const provider = String(c.provider ?? c.source ?? '').toLowerCase();
+        if (!provider.includes(libraryProvider.toLowerCase())) return false;
+      }
+      if (normalizedCountry) {
+        const hay = [
+          c.country,
+          c.country_code,
+          c.location,
+          c.metadata,
+          c.description,
+          c.tags,
+        ]
+          .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || {})))
+          .join(' ')
+          .toLowerCase();
+        if (!hay.includes(normalizedCountry)) return false;
+      }
+      return true;
+    });
+
+    if (!query) return filtered;
+
+    const scored = filtered.map((c, idx) => {
+      const hay = [c.title, c.description, c.subject, c.tags, c.provider, c.country]
+        .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || [])))
+        .join(' ');
+      return { c, idx, score: rankMatch(hay, libraryIntent) };
+    });
+
+    scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
+    return scored.map((s) => s.c);
+  }, [
+    oerVideoCols,
+    librarySubject,
+    libraryGrade,
+    libraryCountry,
+    libraryProvider,
+    libraryIntent,
+  ]);
+
   /* UI consts */
   const TAB_BTN_BASE =
     'group relative inline-flex items-center justify-center h-11 sm:h-12 px-4 sm:px-6 rounded-xl ' +
@@ -1047,6 +1320,12 @@ useEffect(() => {
     (courseSearchMeta as any)?.err ||
     (courseSearchMeta as any)?.message ||
     null;
+
+  const [stableCourses, setStableCourses] = useState<Course[]>([]);
+  useEffect(() => {
+    if (!courseSearchLoading) setStableCourses((searchedCourses ?? []) as Course[]);
+  }, [courseSearchLoading, searchedCourses]);
+  const activeCourses = courseSearchLoading ? stableCourses : searchedCourses;
 
   return (
     <div
@@ -1135,109 +1414,108 @@ useEffect(() => {
           <section className="mt-4 sm:mt-6">
             {tab === 'library' ? (
               <div className="rounded-2xl ring-1 ring-[#e7edf4] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden">
-                {/* Purchased / Saved videos */}
-                <div className="p-3 sm:p-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-[18px] sm:text-[20px] font-bold tracking-tight">
-                      My Purchased & Saved Videos
-                    </h2>
-                  </div>
-                  <div className="mt-3">
-                    <ClassVaultList />
-                  </div>
-                </div>
+                <div className="p-3 sm:p-4 space-y-4">
+                  <ExploreSearchFiltersBar
+                    query={libraryQuery}
+                    onQueryChange={setLibraryQuery}
+                    filters={libraryFiltersState}
+                    onFiltersChange={handleLibraryFiltersChange}
+                    onClearAll={clearAllLibrary}
+                    variant="library"
+                    placeholder="Search videos, notes, subjects, countries…"
+                  />
 
-                {/* Free OER Video Collections */}
-                <div className="px-3 sm:px-4 pb-4">
-                  <div className="mt-4 flex items-center justify-between">
-                    <h3 className="text-[16px] sm:text-[18px] font-bold">
-                      Free OER Video Collections
-                    </h3>
-                    {DEBUG_OER && (
-                      <span className="text-[11px] text-[#49739c] dark:text-darkTextSecondary">
-                        loading={String(loadingVCols)} · error={errVCols || '—'} · total=
-                        {oerVideoCols.length}
-                      </span>
-                    )}
-                  </div>
-
-                  {loadingVCols && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-                      {Array.from({ length: 6 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="rounded-xl ring-1 ring-[#cedbe8] dark:ring-darkCard overflow-hidden"
-                        >
-                          <div className="aspect-video bg-gray-200/70 dark:bg:white/5 animate-pulse" />
-                          <div className="p-3">
-                            <div className="h-4 w-2/3 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
-                            <div className="mt-2 h-3 w-1/2 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
-                          </div>
-                        </div>
-                      ))}
+                  {showPurchasedLibrary && (
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-[18px] sm:text-[20px] font-bold tracking-tight">
+                          My Purchased & Saved Videos
+                        </h2>
+                      </div>
+                      <div className="mt-3">
+                        <ClassVaultList
+                          embedded
+                          filters={{
+                            query: libraryQuery,
+                            subject: librarySubject,
+                            grade: libraryGrade,
+                            country: libraryCountry,
+                          }}
+                        />
+                      </div>
                     </div>
                   )}
+                </div>
 
-                  {!loadingVCols && errVCols && (
-                    <div className="py-3 text-sm text-red-600">{errVCols}</div>
-                  )}
+                {showFreeLibrary && (
+                  <div className="px-3 sm:px-4 pb-4">
+                    <div className="mt-4 flex items-center justify-between">
+                      <h3 className="text-[16px] sm:text-[18px] font-bold">
+                        Free OER Video Collections
+                      </h3>
+                      {DEBUG_OER && (
+                        <span className="text-[11px] text-[#49739c] dark:text-darkTextSecondary">
+                          loading={String(loadingVCols)} · error={errVCols || '—'} · total=
+                          {filteredOerVideos.length}
+                        </span>
+                      )}
+                    </div>
 
-                  {!loadingVCols && !errVCols && (
-                    <>
-                      {oerVideoCols.length === 0 ? (
-                        <div className="py-3 text-sm text-[#49739c] dark:text-darkTextSecondary">
+                    {loadingVCols && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <div
+                            key={i}
+                            className="rounded-xl ring-1 ring-[#cedbe8] dark:ring-darkCard overflow-hidden"
+                          >
+                            <div className="aspect-video bg-gray-200/70 dark:bg:white/5 animate-pulse" />
+                            <div className="p-3">
+                              <div className="h-4 w-2/3 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                              <div className="mt-2 h-3 w-1/2 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {errVCols && !loadingVCols && (
+                      <p className="text-xs text-red-500 dark:text-red-400 mt-3">{errVCols}</p>
+                    )}
+
+                    {!loadingVCols &&
+                      !errVCols &&
+                      (filteredOerVideos.length === 0 ? (
+                        <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-3">
                           No free OER video collections yet.
-                        </div>
+                        </p>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-                          {oerVideoCols.map((col) => {
-                            const to = getOerReaderPath(col);
-                            const thumb =
-                              col.cover_url ||
-                              col.thumbnail_url ||
-                              `https://picsum.photos/seed/${encodeURIComponent(
-                                String(col.slug ?? col.id ?? col.title ?? 'oer')
-                              )}/800/450`;
-
+                          {filteredOerVideos.map((col) => {
+                            const idOrSlug = String(col.slug ?? col.id);
                             return (
                               <div
-                                key={String(col.id ?? col.slug)}
-                                className="group rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden flex flex-col"
+                                key={idOrSlug}
+                                className="rounded-xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden"
                               >
-                                <Link
-                                  to={to}
-                                  className="block aspect-video bg-slate-100 dark:bg-white/5 overflow-hidden"
-                                  aria-label={`Open ${col.title}`}
-                                >
-                                  <img
-                                    src={thumb}
-                                    alt={col.title || 'OER Collection'}
-                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                                    loading="lazy"
-                                    decoding="async"
+                                <Link to={getOerReaderPath(col)}>
+                                  <div
+                                    className="aspect-video bg-cover bg-center"
+                                    style={{
+                                      backgroundImage: `url(${col.thumbnail_url || col.cover_url || ''})`,
+                                    }}
                                   />
                                 </Link>
-
-                                <div className="p-3 sm:p-4 flex-1 flex flex-col">
-                                  <Link
-                                    to={to}
-                                    className="font-semibold leading-snug line-clamp-2 hover:underline"
-                                    title={col.title}
-                                  >
-                                    {col.title}
-                                  </Link>
-
-                                  <div className="mt-1 text-xs text-[#49739c] dark:text-darkTextSecondary">
-                                    {col.subject ?? '—'} • {col.items_count ?? 0} item
-                                    {(col.items_count ?? 0) === 1 ? '' : 's'}
-                                  </div>
-
-                                  <div className="mt-3">
+                                <div className="p-3">
+                                  <p className="text-sm font-semibold line-clamp-2">{col.title}</p>
+                                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-1">
+                                    {col.subject ?? '—'}
+                                  </p>
+                                  <div className="mt-2">
                                     <Link
-                                      to={to}
-                                      className="inline-flex items-center justify-center h-9 px-3 rounded-xl text-sm font-semibold bg-[#3d99f5] text-white hover:brightness-110"
+                                      to={getOerReaderPath(col)}
+                                      className="text-xs font-semibold text-[#3d99f5]"
                                     >
-                                      View Collection
+                                      Open collection
                                     </Link>
                                   </div>
                                 </div>
@@ -1245,10 +1523,9 @@ useEffect(() => {
                             );
                           })}
                         </div>
-                      )}
-                    </>
-                  )}
-                </div>
+                      ))}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex flex-col">
@@ -1790,140 +2067,21 @@ useEffect(() => {
                   )}
                 </div>
 
-                {/* ✅ Search + Filters (wired to useCourseSearch) */}
-                <div className="px-3 sm:px-4 mt-5">
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                    <input
-                      value={searchText}
-                      onChange={(e) => setSearchText(e.target.value)}
-                      placeholder="Search courses…"
-                      className="flex-1 h-11 rounded-xl px-3 bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-sm outline-none focus:ring-4 focus:ring-[#3d99f5]/30"
-                    />
+                <ExploreSearchFiltersBar
+                  query={courseQuery}
+                  onQueryChange={setCourseQuery}
+                  filters={courseFiltersState}
+                  onFiltersChange={handleCourseFiltersChange}
+                  onClearAll={clearAllCourses}
+                  variant="courses"
+                  placeholder="Search courses by subject, grade, country…"
+                />
 
-                    <button
-                      className="h-11 px-4 rounded-xl bg-[#3d99f5] text-white text-sm font-semibold hover:brightness-110"
-                      onClick={() => handleCourseSearch(searchText)}
-                      title="Search now"
-                    >
-                      Search
-                    </button>
-                  </div>
+                {courseSearchError && (
+                  <div className="mt-3 text-sm text-red-600">Failed to load courses.</div>
+                )}
 
-                  <div className="flex gap-2 sm:gap-3 mt-3 flex-wrap">
-                    <button
-                      className="flex h-9 items-center justify-center gap-x-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] pl-3 pr-2 text-xs sm:text-sm"
-                      onClick={() =>
-                        setCourseSubject(prompt('Subject (e.g., Math, English):') || '')
-                      }
-                      title="Subject"
-                    >
-                      <span className="font-medium">Subject</span>
-                      <span className="text-current">
-                        <CaretDown size={16} />
-                      </span>
-                    </button>
-
-                    <button
-                      className="flex h-9 items-center justify-center gap-x-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] pl-3 pr-2 text-xs sm:text-sm"
-                      onClick={() =>
-                        setCourseGradeBand(prompt('Grade band (e.g., K-5, 6-8, 9-12):') || '')
-                      }
-                      title="Grade band"
-                    >
-                      <span className="font-medium">Grade</span>
-                      <span className="text-current">
-                        <CaretDown size={16} />
-                      </span>
-                    </button>
-
-                    <button
-                      className="flex h-9 items-center justify-center gap-x-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] pl-3 pr-2 text-xs sm:text-sm"
-                      onClick={() =>
-                        setCourseLevel(
-                          prompt('Level (Beginner, Intermediate, Advanced, All Levels):') || ''
-                        )
-                      }
-                      title="Level"
-                    >
-                      <span className="font-medium">Level</span>
-                      <span className="text-current">
-                        <CaretDown size={16} />
-                      </span>
-                    </button>
-
-                    <button
-                      className="flex h-9 items-center justify-center gap-x-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] pl-3 pr-2 text-xs sm:text-sm"
-                      onClick={() => {
-                        const v = prompt('Min rating (1-5):') || '';
-                        const n = Number(v);
-                        setCourseMinRating(Number.isFinite(n) ? n : 0);
-                      }}
-                      title="Minimum rating"
-                    >
-                      <span className="font-medium">Min Rating</span>
-                      <span className="text-current">
-                        <CaretDown size={16} />
-                      </span>
-                    </button>
-
-                    <button
-                      className="flex h-9 items-center justify-center gap-x-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] pl-3 pr-2 text-xs sm:text-sm"
-                      onClick={() => {
-                        const v = prompt('Max price (number only, e.g., 50):') || '';
-                        const n = Number(v);
-                        setCourseMaxPrice(Number.isFinite(n) ? n : 0);
-                      }}
-                      title="Max price"
-                    >
-                      <span className="font-medium">Max Price</span>
-                      <span className="text-current">
-                        <CaretDown size={16} />
-                      </span>
-                    </button>
-
-                    <button
-                      className="flex h-9 items-center justify-center gap-x-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534] pl-3 pr-2 text-xs sm:text-sm"
-                      onClick={() =>
-                        setDuration(prompt('Duration contains (e.g., "10 weeks"):') || '')
-                      }
-                      title="Duration (local)"
-                    >
-                      <span className="font-medium">Duration</span>
-                      <span className="text-current">
-                        <CaretDown size={16} />
-                      </span>
-                    </button>
-
-                    {(courseFilters?.subject ||
-                      courseFilters?.gradeBand ||
-                      courseFilters?.level ||
-                      (courseFilters?.minRating ?? 0) > 0 ||
-                      (courseFilters?.maxPrice ?? 0) > 0 ||
-                      duration) && (
-                      <button
-                        className="h-9 px-3 rounded-xl bg:white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-xs sm:text-sm font-medium hover:bg-slate-50 dark:hover:bg-[#0f1821]"
-                        onClick={() => {
-                          clearCourseFilters();
-                          setDuration('');
-                          setSearchText('');
-                          try {
-                            setCourseIsOer(false);
-                            handleCourseSearch('');
-                          } catch {}
-                        }}
-                        title="Clear all"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-
-                  {courseSearchError && (
-                    <div className="mt-3 text-sm text-red-600">Failed to load courses.</div>
-                  )}
-                </div>
-
-                {/* Mobile Cards */}
+                                {/* Mobile Cards */}
                 <div className="md:hidden space-y-3 px-3 mt-4">
                   {courseSearchLoading && <div className="text-sm py-4">Loading courses…</div>}
 

@@ -1,7 +1,7 @@
 // FindTutor.web.tsx
 
-import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { IconProp } from '@fortawesome/fontawesome-svg-core';
 import {
@@ -14,6 +14,7 @@ import {
 import { useHomePage } from '@mytutorapp/shared/hooks';
 import type { Profile } from '@mytutorapp/shared/types';
 import { COUNTRIES, countryName } from '@mytutorapp/shared/utils/countries';
+import { normalizeCountryLabel } from '@mytutorapp/shared/utils/smartSearchIntent';
 
 const FALLBACK_AVATAR = (name = 'Tutor') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e7edf4&color=0d141c`;
@@ -166,6 +167,7 @@ const resolveImage = (p: any, backendUrl?: string, fallbackName?: string) => {
 };
 
 const FindTutor: React.FC = () => {
+  const location = useLocation();
   const {
     filteredProfiles, // ✅ already server-filtered by q/subject/country/minRating/maxPrice
     loading,
@@ -187,6 +189,30 @@ const FindTutor: React.FC = () => {
   const [language, setLanguage] = useState<string>(''); // local-only
   const [page, setPage] = useState(1);
   const [live, setLive] = useState(false);
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const q = sp.get('q') ?? '';
+    const subject = sp.get('subject') ?? '';
+    const countryParam = sp.get('country') ?? '';
+    const minRatingParam = sp.get('minRating') ?? '';
+
+    if (q) {
+      setQuery(q);
+      handleSearch?.(q);
+    }
+    if (subject) setSubjectFilter(subject);
+
+    if (countryParam) {
+      const normalized = normalizeCountryLabel(countryParam);
+      if (normalized?.code) setCountryFilter(normalized.code);
+    }
+
+    if (minRatingParam) {
+      const val = Number(minRatingParam);
+      if (Number.isFinite(val)) setMinRatingFilter(val);
+    }
+  }, [location.search, handleSearch, setCountryFilter, setMinRatingFilter, setSubjectFilter]);
 
   // Tutors already filtered by server
   const tutors = useMemo(

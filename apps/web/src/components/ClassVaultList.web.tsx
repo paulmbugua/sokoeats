@@ -42,11 +42,18 @@ const tabs: { key: TabKey; label: string }[] = [
 const VISIBLE_LIMIT = 8;
 const DEBOUNCE_MS = 300;
 
-interface Filters {
-  videoCategory?: string[];
-  videoAgeGroup?: string[];
-  [key: string]: string[] | undefined;
-}
+type ExternalFilters = {
+  query?: string;
+  subject?: string;
+  grade?: string;
+  country?: string;
+  priceKey?: PriceKey;
+};
+
+type ClassVaultListProps = {
+  embedded?: boolean;
+  filters?: ExternalFilters;
+};
 
 /* ───────── Helpers (country normalization & extraction) ───────── */
 const norm = (s?: string) => (s || '').toLowerCase().trim();
@@ -140,21 +147,28 @@ function StarRow({ avg }: { avg: number }) {
 }
 
 /* ───────── Component ───────── */
-export default function ClassVaultList() {
+export default function ClassVaultList({ embedded, filters: externalFilters }: ClassVaultListProps) {
   const navigate = useNavigate();
   const { role, backendUrl, userId } = useShopContext();
 
   // Global search (?q=)
   const [searchParams] = useSearchParams();
-  const searchTerm = useMemo(
-    () => searchParams.get('q')?.trim().toLowerCase() ?? '',
-    [searchParams]
-  );
+  const searchTerm = useMemo(() => {
+    const external = externalFilters?.query?.trim().toLowerCase();
+    if (external) return external;
+    return searchParams.get('q')?.trim().toLowerCase() ?? '';
+  }, [externalFilters?.query, searchParams]);
 
-  // Hook-driven base filters (kept for parity)
-  const [filters, setFilters] = useState<Filters>({});
-  const chosenSubject = filters.videoCategory?.[0] ?? '';
-  const chosenGrade = filters.videoAgeGroup?.[0] ?? '';
+  const usingExternal = Boolean(externalFilters);
+
+  // Local UI filters (country-only + subject/grade/price)
+  const [countryLocal, setCountryLocal] = useState<string>('');
+  const [subjectLocal, setSubjectLocal] = useState<string>('');
+  const [gradeLocal, setGradeLocal] = useState<string>('');
+  const [priceKeyLocal, setPriceKeyLocal] = useState<PriceKey>('any');
+
+  const effectiveSubject = usingExternal ? externalFilters?.subject ?? '' : subjectLocal;
+  const effectiveGrade = usingExternal ? externalFilters?.grade ?? '' : gradeLocal;
 
   const {
     filteredVideos,
@@ -165,17 +179,16 @@ export default function ClassVaultList() {
     refresh,
     purchase,
     remove,
-  } = useClassVault(chosenSubject, chosenGrade);
+  } = useClassVault(effectiveSubject, effectiveGrade);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  // Local UI filters (country-only + subject/grade/price)
-  const [country, setCountry] = useState<string>('');
-  const [subject, setSubject] = useState<string>('');
-  const [grade, setGrade] = useState<string>('');
-  const [priceKey, setPriceKey] = useState<PriceKey>('any');
+  const country = usingExternal ? externalFilters?.country ?? '' : countryLocal;
+  const subject = usingExternal ? externalFilters?.subject ?? '' : subjectLocal;
+  const grade = usingExternal ? externalFilters?.grade ?? '' : gradeLocal;
+  const priceKey = usingExternal ? externalFilters?.priceKey ?? 'any' : priceKeyLocal;
 
   // -------- OER Collections grid (HomePage-like cards) --------
   const [oerCollections, setOerCollections] = useState<any[]>([]);
@@ -188,11 +201,10 @@ export default function ClassVaultList() {
   }, [backendUrl]);
 
   const clearFilters = useCallback(() => {
-    setFilters({});
-    setCountry('');
-    setSubject('');
-    setGrade('');
-    setPriceKey('any');
+    setCountryLocal('');
+    setSubjectLocal('');
+    setGradeLocal('');
+    setPriceKeyLocal('any');
     navigate(searchTerm ? `/search?q=${encodeURIComponent(searchTerm)}` : '/');
   }, [navigate, searchTerm]);
 
@@ -428,78 +440,86 @@ export default function ClassVaultList() {
   const notesEmpty = fullyFilteredPdfRows.flat().length === 0;
 
   return (
-    <div className="max-w-6xl mx-auto p-4 space-y-6 text-[#0d141c] dark:text-darkTextPrimary">
-      <h1 className="text-2xl font-bold text-center">
-        {role === 'tutor' ? 'Your Uploaded Classes' : 'Available Classes'}
-      </h1>
+    <div
+      className={[
+        embedded ? '' : 'max-w-6xl mx-auto',
+        embedded ? 'space-y-4' : 'p-4 space-y-6',
+        'text-[#0d141c] dark:text-darkTextPrimary',
+      ].join(' ')}
+    >
+      {!embedded && (
+        <h1 className="text-2xl font-bold text-center">
+          {role === 'tutor' ? 'Your Uploaded Classes' : 'Available Classes'}
+        </h1>
+      )}
 
-      {/* Filter row (no Region—country only) */}
-      <div className="flex flex-wrap gap-2 items-center justify-center">
-        {/* Country */}
-        <select
-          className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-          value={country}
-          onChange={(e) => setCountry(e.target.value)}
-        >
-          <option value="">Country</option>
-          {countriesInContent.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+      {!embedded && (
+        <div className="flex flex-wrap gap-2 items-center justify-center">
+          {/* Country */}
+          <select
+            className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
+            value={country}
+            onChange={(e) => setCountryLocal(e.target.value)}
+          >
+            <option value="">Country</option>
+            {countriesInContent.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
 
-        {/* Subject */}
-        <select
-          className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-        >
-          <option value="">Subject</option>
-          {subjectsList.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+          {/* Subject */}
+          <select
+            className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
+            value={subject}
+            onChange={(e) => setSubjectLocal(e.target.value)}
+          >
+            <option value="">Subject</option>
+            {subjectsList.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
 
-        {/* Grade */}
-        <select
-          className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-          value={grade}
-          onChange={(e) => setGrade(e.target.value)}
-        >
-          <option value="">Grade level</option>
-          {gradesList.map((g) => (
-            <option key={g} value={g}>
-              {g}
-            </option>
-          ))}
-        </select>
+          {/* Grade */}
+          <select
+            className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
+            value={grade}
+            onChange={(e) => setGradeLocal(e.target.value)}
+          >
+            <option value="">Grade level</option>
+            {gradesList.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
 
-        {/* Price (tokens) */}
-        <select
-          className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-          value={priceKey}
-          onChange={(e) => setPriceKey(e.target.value as PriceKey)}
-        >
-          <option value="any">Price (tokens)</option>
-          <option value="1-5">1–5</option>
-          <option value="6-10">6–10</option>
-          <option value="11-20">11–20</option>
-          <option value="21-50">21–50</option>
-          <option value="51+">51+</option>
-        </select>
+          {/* Price (tokens) */}
+          <select
+            className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
+            value={priceKey}
+            onChange={(e) => setPriceKeyLocal(e.target.value as PriceKey)}
+          >
+            <option value="any">Price (tokens)</option>
+            <option value="1-5">1–5</option>
+            <option value="6-10">6–10</option>
+            <option value="11-20">11–20</option>
+            <option value="21-50">21–50</option>
+            <option value="51+">51+</option>
+          </select>
 
-        <button
-          onClick={clearFilters}
-          className="rounded-xl h-9 px-4 bg-[#e7edf4] dark:bg-[#172534] text-sm"
-        >
-          Clear filters
-        </button>
-      </div>
+          <button
+            onClick={clearFilters}
+            className="rounded-xl h-9 px-4 bg-[#e7edf4] dark:bg-[#172534] text-sm"
+          >
+            Clear filters
+          </button>
+        </div>
+      )}
 
-      {/* Tabs */}
       <div className="flex justify-center mb-6">
         <div className="flex items-center space-x-2 rounded-full p-1 bg-[#e7edf4] dark:bg-[#172534] ring-1 ring-[#cedbe8] dark:ring-darkCard">
           {tabs.map((tab) => {

@@ -45,22 +45,23 @@ type PdfItem = {
 export interface ClassVaultFilters {
   category?: string[]; // subject
   ageGroup?: string[]; // grade
-  country?: string; // currently applied in parent; no local UI filtering here
+  country?: string; // applied in local filter
 }
 
 interface ClassVaultListScreenProps {
   filters: ClassVaultFilters;
   clearFilters?: () => void; // kept for future, but not used here
   searchTerm?: string;
+  embedded?: boolean;
+  showTitle?: boolean;
 }
-
-/* ---------- Helpers ---------- */
-const norm = (s?: string) => (s || '').toLowerCase().trim();
 
 export default function ClassVaultListScreen({
   filters,
   clearFilters, // not used now (filtering handled in parent)
   searchTerm,
+  embedded,
+  showTitle = true,
 }: ClassVaultListScreenProps) {
   const navigation = useNavigation<StackNavigationProp<MainStackParamList, 'ClassVaultLibrary'>>();
   const { role, userId, backendUrl } = useShopContext();
@@ -142,32 +143,55 @@ export default function ClassVaultListScreen({
   const q = (searchTerm ?? '').trim().toLowerCase();
 
   const displayVideos = useMemo(() => {
-    if (!q) return scopedVideos;
-    return scopedVideos.filter((v) => {
-      const titleMatch = v.title.toLowerCase().includes(q);
-      const subjectMatch = (v.subject ?? '').toLowerCase().includes(q);
-      const gradeMatch =
-        v.grade_level != null ? String(v.grade_level).toLowerCase().includes(q) : false;
-      const descMatch = (v.description ?? '').toLowerCase().includes(q);
-      return titleMatch || subjectMatch || gradeMatch || descMatch;
+    const country = (filters.country ?? '').trim().toLowerCase();
+    const base = q
+      ? scopedVideos.filter((v) => {
+          const titleMatch = v.title.toLowerCase().includes(q);
+          const subjectMatch = (v.subject ?? '').toLowerCase().includes(q);
+          const gradeMatch =
+            v.grade_level != null ? String(v.grade_level).toLowerCase().includes(q) : false;
+          const descMatch = (v.description ?? '').toLowerCase().includes(q);
+          return titleMatch || subjectMatch || gradeMatch || descMatch;
+        })
+      : scopedVideos;
+
+    if (!country) return base;
+    return base.filter((v) => {
+      const direct = String(v.country ?? '').toLowerCase();
+      const meta = typeof v.metadata === 'string' ? v.metadata : JSON.stringify(v.metadata || {});
+      return direct.includes(country) || meta.toLowerCase().includes(country);
     });
-  }, [scopedVideos, q]);
+  }, [scopedVideos, q, filters.country]);
 
   const displayPdfRows = useMemo(() => {
-    if (!q) return scopedPdfRows;
-    return scopedPdfRows
+    const country = (filters.country ?? '').trim().toLowerCase();
+    const base = q
+      ? scopedPdfRows
+          .map((row) =>
+            row.filter((pdf) => {
+              const titleMatch = pdf.title.toLowerCase().includes(q);
+              const subjectMatch = (pdf.subject ?? '').toLowerCase().includes(q);
+              const gradeMatch =
+                pdf.grade_level != null ? String(pdf.grade_level).toLowerCase().includes(q) : false;
+              const descMatch = (pdf.description ?? '').toLowerCase().includes(q);
+              return titleMatch || subjectMatch || gradeMatch || descMatch;
+            })
+          )
+          .filter((row) => row.length > 0)
+      : scopedPdfRows;
+
+    if (!country) return base;
+
+    return base
       .map((row) =>
         row.filter((pdf) => {
-          const titleMatch = pdf.title.toLowerCase().includes(q);
-          const subjectMatch = (pdf.subject ?? '').toLowerCase().includes(q);
-          const gradeMatch =
-            pdf.grade_level != null ? String(pdf.grade_level).toLowerCase().includes(q) : false;
-          const descMatch = (pdf.description ?? '').toLowerCase().includes(q);
-          return titleMatch || subjectMatch || gradeMatch || descMatch;
+          const direct = String(pdf.country ?? '').toLowerCase();
+          const meta = typeof pdf.metadata === 'string' ? pdf.metadata : JSON.stringify(pdf.metadata || {});
+          return direct.includes(country) || meta.toLowerCase().includes(country);
         })
       )
       .filter((row) => row.length > 0);
-  }, [scopedPdfRows, q]);
+  }, [scopedPdfRows, q, filters.country]);
 
   /* ---------- Ratings prefetch (match web behavior) ---------- */
   const [ratings, setRatings] = useState<Record<number, { avg: number; count: number }>>({});
@@ -228,17 +252,23 @@ export default function ClassVaultListScreen({
   const videosEmpty = displayVideos.length === 0;
   const notesEmpty = displayPdfRows.flat().length === 0;
 
+  const Container: React.ElementType = embedded ? View : ScrollView;
+  const containerProps = embedded
+    ? { style: tw`flex-1 bg-slate-50 dark:bg-[#0b1016]` }
+    : { contentContainerStyle: tw`px-4 py-4` };
+
   return (
     <View style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
-      <ScrollView contentContainerStyle={tw`px-4 py-4`}>
-        {/* Title */}
-        <View style={tw`flex-row items-end justify-between mb-2`}>
-          <View style={tw`flex-1 pr-3`}>
-            <Text style={tw`text-[20px] font-extrabold text-[#0d141c] dark:text-white`}>
-              {role === 'tutor' ? 'Your Uploaded Classes' : 'Available Classes'}
-            </Text>
+      <Container {...(containerProps as any)}>
+        {showTitle && (
+          <View style={tw`flex-row items-end justify-between mb-2`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`text-[20px] font-extrabold text-[#0d141c] dark:text-white`}>
+                {role === 'tutor' ? 'Your Uploaded Classes' : 'Available Classes'}
+              </Text>
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Tabs */}
         <View
@@ -530,7 +560,7 @@ export default function ClassVaultListScreen({
             </TouchableOpacity>
           </View>
         )}
-      </ScrollView>
+      </Container>
     </View>
   );
 

@@ -29,6 +29,11 @@ import {
 import useCourseSearch from '@mytutorapp/shared/hooks/useCourseSearch';
 import { downloadCertificateFile } from '@mytutorapp/shared/api';
 import { getRequiredQuestions, getRequiredWeeks } from '@mytutorapp/shared/utils/programTrackRequirements';
+import {
+  normalizeCountryLabel,
+  parseSmartSearchIntent,
+  rankMatch,
+} from '@mytutorapp/shared/utils/smartSearchIntent';
 import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -38,6 +43,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import ClassVaultListScreen, {
   type ClassVaultFilters,
 } from '../screens/ClassVaultListScreen.native';
+import ExploreSearchFiltersBar from '../components/search/ExploreSearchFiltersBar.native';
 
 import { useThemePref } from '../theme/ThemeContext';
 
@@ -84,28 +90,6 @@ const getTrackRequirements = (track?: ProgramTrack | string | null): TrackRequir
 
 
 /* ----------------------------- Small UI bits ----------------------------- */
-const Chip: React.FC<{ label: string; active?: boolean; onPress: () => void }> = ({
-  label,
-  active,
-  onPress,
-}) => (
-  <Pressable
-    onPress={onPress}
-    style={tw.style(
-      'px-3 h-9 rounded-full items-center justify-center mr-2 mb-2',
-      active ? 'bg-[#3d99f5]' : 'bg-[#e7edf4] dark:bg-[#172534]'
-    )}
-  >
-    <Text
-      style={tw.style(
-        'text-sm',
-        active ? 'text-white font-semibold' : 'text-[#0d141c] dark:text-white/90'
-      )}
-    >
-      {label}
-    </Text>
-  </Pressable>
-);
 
 // Compact star text
 function StarRow({ avg, count }: { avg?: number; count?: number }) {
@@ -552,8 +536,14 @@ const MyCoursesNative: React.FC = () => {
     (courseSearchMeta as any)?.message ||
     null;
 
+  const [stableCourses, setStableCourses] = useState<Course[]>([]);
+  useEffect(() => {
+    if (!courseSearchLoading) setStableCourses((searchedCourses ?? []) as Course[]);
+  }, [courseSearchLoading, searchedCourses]);
+  const activeCourses = courseSearchLoading ? stableCourses : searchedCourses;
+
   // Search box (debounced)
-  const [searchText, setSearchText] = useState('');
+  const [courseQuery, setCourseQuery] = useState('');
   const debouncedSearch = useRef(
     debounce((q: string) => {
       try {
@@ -574,80 +564,161 @@ const MyCoursesNative: React.FC = () => {
   }, [backendUrl]);
 
   useEffect(() => {
-    debouncedSearch.current(searchText);
-  }, [searchText]);
+    debouncedSearch.current(courseQuery);
+  }, [courseQuery]);
 
   // Extra local-only duration filter (string contains)
   const [duration, setDuration] = useState('');
 
-  // Filters modal
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [draftSubject, setDraftSubject] = useState('');
-  const [draftGradeBand, setDraftGradeBand] = useState('');
-  const [draftLevel, setDraftLevel] = useState('');
-  const [draftMinRating, setDraftMinRating] = useState(''); // string input
-  const [draftMaxPrice, setDraftMaxPrice] = useState('');
-  const [draftDuration, setDraftDuration] = useState('');
+  const [courseCountry, setCourseCountry] = useState('');
 
-  const openFilters = useCallback(() => {
-    setDraftSubject(String(courseFilters?.subject ?? ''));
-    setDraftGradeBand(String(courseFilters?.gradeBand ?? ''));
-    setDraftLevel(String(courseFilters?.level ?? ''));
-    setDraftMinRating(
-      (courseFilters?.minRating ?? 0) > 0 ? String(courseFilters?.minRating ?? 0) : ''
-    );
-    setDraftMaxPrice(
-      (courseFilters?.maxPrice ?? 0) > 0 ? String(courseFilters?.maxPrice ?? 0) : ''
-    );
-    setDraftDuration(duration);
-    setFiltersOpen(true);
-  }, [courseFilters, duration]);
+  const courseIntent = useMemo(() => parseSmartSearchIntent(courseQuery), [courseQuery]);
 
-  const applyFilters = useCallback(() => {
-    const minR = Number(draftMinRating || 0);
-    const maxP = Number(draftMaxPrice || 0);
-
-    setCourseSubject(draftSubject.trim());
-    setCourseGradeBand(draftGradeBand.trim());
-    setCourseLevel(draftLevel.trim());
-    setCourseMinRating(Number.isFinite(minR) ? minR : 0);
-    setCourseMaxPrice(Number.isFinite(maxP) ? maxP : 0);
-
-    setDuration(draftDuration.trim());
-
-    // Re-run search with current query text
-    try {
-      setCourseIsOer(false);
-      handleCourseSearch(searchText);
-    } catch {}
-
-    setFiltersOpen(false);
+  useEffect(() => {
+    if (courseIntent.subject && !courseFilters?.subject) setCourseSubject(courseIntent.subject);
+    if (courseIntent.gradeBand && !courseFilters?.gradeBand)
+      setCourseGradeBand(courseIntent.gradeBand);
+    if (courseIntent.level && !courseFilters?.level) setCourseLevel(courseIntent.level);
+    if (courseIntent.minRating && (courseFilters?.minRating ?? 0) === 0)
+      setCourseMinRating(courseIntent.minRating);
+    if (courseIntent.maxPrice && (courseFilters?.maxPrice ?? 0) === 0)
+      setCourseMaxPrice(courseIntent.maxPrice);
+    if (courseIntent.country?.name && !courseCountry) setCourseCountry(courseIntent.country.name);
   }, [
-    draftSubject,
-    draftGradeBand,
-    draftLevel,
-    draftMinRating,
-    draftMaxPrice,
-    draftDuration,
+    courseIntent,
+    courseFilters,
+    courseCountry,
     setCourseSubject,
     setCourseGradeBand,
     setCourseLevel,
     setCourseMinRating,
     setCourseMaxPrice,
-    setCourseIsOer,
-    handleCourseSearch,
-    searchText,
   ]);
 
-  const clearAll = useCallback(() => {
+  const clearAllCourses = useCallback(() => {
     clearCourseFilters();
     setDuration('');
-    setSearchText('');
+    setCourseCountry('');
+    setCourseQuery('');
     try {
       setCourseIsOer(false);
       handleCourseSearch('');
     } catch {}
   }, [clearCourseFilters, handleCourseSearch, setCourseIsOer]);
+
+  const handleCourseFiltersChange = useCallback(
+    (next: {
+      subject?: string;
+      grade?: string;
+      level?: string;
+      country?: string;
+      minRating?: number;
+      maxPrice?: number;
+      duration?: string;
+    }) => {
+      if (next.subject != null) setCourseSubject(next.subject);
+      if (next.grade != null) setCourseGradeBand(next.grade);
+      if (next.level != null) setCourseLevel(next.level);
+      if (next.country != null) setCourseCountry(next.country);
+      if (next.minRating != null) setCourseMinRating(next.minRating);
+      if (next.maxPrice != null) setCourseMaxPrice(next.maxPrice);
+      if (next.duration != null) setDuration(next.duration);
+    },
+    [
+      setCourseSubject,
+      setCourseGradeBand,
+      setCourseLevel,
+      setCourseMinRating,
+      setCourseMaxPrice,
+    ]
+  );
+
+  const handleLibraryFiltersChange = useCallback(
+    (next: {
+      subject?: string;
+      grade?: string;
+      country?: string;
+      provider?: string;
+      scope?: 'all' | 'purchased' | 'free';
+    }) => {
+      if (next.subject != null) setLibrarySubject(next.subject);
+      if (next.grade != null) setLibraryGrade(next.grade);
+      if (next.country != null) setLibraryCountry(next.country);
+      if (next.provider != null) setLibraryProvider(next.provider);
+      if (next.scope != null) setLibraryScope(next.scope);
+    },
+    []
+  );
+
+  const courseFiltersState = useMemo(
+    () => ({
+      subject: courseFilters?.subject ?? '',
+      grade: courseFilters?.gradeBand ?? '',
+      level: courseFilters?.level ?? '',
+      country: courseCountry,
+      minRating: courseFilters?.minRating ?? 0,
+      maxPrice: courseFilters?.maxPrice ?? 0,
+      duration,
+    }),
+    [courseFilters, courseCountry, duration]
+  );
+
+  const libraryFiltersState = useMemo(
+    () => ({
+      subject: librarySubject,
+      grade: libraryGrade,
+      country: libraryCountry,
+      provider: libraryProvider,
+      scope: libraryScope,
+    }),
+    [librarySubject, libraryGrade, libraryCountry, libraryProvider, libraryScope]
+  );
+
+  const showPurchasedLibrary = libraryScope !== 'free';
+  const showFreeLibrary = libraryScope !== 'purchased';
+
+  useEffect(() => {
+    const params = route?.params ?? {};
+    const tabParam = params.tab;
+    if (tabParam === 'library' || tabParam === 'courses') setTab(tabParam);
+
+    const q = String(params.q ?? '').trim();
+    if (q) {
+      setCourseQuery(q);
+      setLibraryQuery(q);
+    }
+
+    const subject = params.subject != null ? String(params.subject) : undefined;
+    const gradeBand = params.gradeBand != null ? String(params.gradeBand) : undefined;
+    const level = params.level != null ? String(params.level) : undefined;
+    const country = params.country != null ? String(params.country) : undefined;
+    const minRating = params.minRating != null ? Number(params.minRating) : undefined;
+    const maxPrice = params.maxPrice != null ? Number(params.maxPrice) : undefined;
+    const durationParam = params.duration != null ? String(params.duration) : undefined;
+    const scope = params.scope;
+    const provider = params.provider != null ? String(params.provider) : undefined;
+
+    if (subject != null) {
+      setCourseSubject(subject);
+      setLibrarySubject(subject);
+    }
+    if (gradeBand != null) {
+      setCourseGradeBand(gradeBand);
+      setLibraryGrade(gradeBand);
+    }
+    if (level != null) setCourseLevel(level);
+    if (country != null) {
+      const normalized = normalizeCountryLabel(country);
+      const label = normalized?.name || country;
+      setCourseCountry(label);
+      setLibraryCountry(label);
+    }
+    if (minRating != null && Number.isFinite(minRating)) setCourseMinRating(minRating);
+    if (maxPrice != null && Number.isFinite(maxPrice)) setCourseMaxPrice(maxPrice);
+    if (durationParam != null) setDuration(durationParam);
+    if (provider != null) setLibraryProvider(provider);
+    if (scope === 'all' || scope === 'free' || scope === 'purchased') setLibraryScope(scope);
+  }, [route?.params]);
 
   /* Enrollments */
   const { enrollments, fetchMine } = useEnrollments({
@@ -902,15 +973,56 @@ const MyCoursesNative: React.FC = () => {
 
   // ✅ Course list like web: searchedCourses -> safety filter -> duration contains -> require tutor name
   const filteredRows = useMemo(() => {
-    const rows = (searchedCourses ?? []) as any[];
-    return rows
+    const rows = (activeCourses ?? []) as any[];
+    const normalizedCountry =
+      normalizeCountryLabel(courseCountry)?.name?.toLowerCase() || courseCountry.toLowerCase();
+
+    const filtered = rows
       .filter((c) => !isOerCourse(c) && wasUploadedByTutor(c))
       .filter((c) => {
         if (!duration) return true;
         const d = String(c?.duration ?? '').toLowerCase();
         return d.includes(duration.toLowerCase());
+      })
+      .filter((c) => {
+        if (!normalizedCountry) return true;
+        const hay = [
+          c.country,
+          c.country_code,
+          c.location,
+          c.region,
+          c.metadata,
+          c.description,
+        ]
+          .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || {})))
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(normalizedCountry);
       });
-  }, [searchedCourses, duration]);
+
+    if (!courseIntent.query) return filtered;
+
+    const scored = filtered.map((c, idx) => {
+      const tutor = resolveTutorName(c) ?? '';
+      const hay = [
+        c.title,
+        c.description,
+        c.subject,
+        c.gradeBand,
+        c.grade_band,
+        c.level,
+        c.tags,
+        tutor,
+        c.country,
+      ]
+        .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || [])))
+        .join(' ');
+      return { c, idx, score: rankMatch(hay, courseIntent) };
+    });
+
+    scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
+    return scored.map((s) => s.c);
+  }, [activeCourses, duration, courseCountry, courseIntent, resolveTutorName]);
 
   const displayRows = useMemo(
     () => filteredRows.filter((c) => !!resolveTutorName(c)),
@@ -1060,46 +1172,41 @@ const MyCoursesNative: React.FC = () => {
   );
 
   /* ------------------------------- Library tab (Vault + OER videos) ------------------------------- */
-  const CLASS_SUBJECTS = [
-    'Math',
-    'Science',
-    'Programming',
-    'Art',
-    'Wellness',
-    'Languages',
-  ] as const;
-  const CLASS_GRADES = ['Any', 'Primary', 'Middle', 'High', 'College'] as const;
-  const TOP_COUNTRIES = [
-    'United States',
-    'United Kingdom',
-    'Canada',
-    'India',
-    'Kenya',
-    'France',
-    'South Africa',
-    'Nigeria',
-    'Qatar',
-  ] as const;
 
-  const [classSubject, setClassSubject] = useState<string>(''); // '' == Any subject
-  const [classGrade, setClassGrade] = useState<string>(''); // '' == Any grade
-  const [classCountry, setClassCountry] = useState<string>(''); // '' == Any country
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [librarySubject, setLibrarySubject] = useState<string>(''); // '' == Any subject
+  const [libraryGrade, setLibraryGrade] = useState<string>(''); // '' == Any grade
+  const [libraryCountry, setLibraryCountry] = useState<string>(''); // '' == Any country
+  const [libraryProvider, setLibraryProvider] = useState<string>('');
+  const [libraryScope, setLibraryScope] = useState<'all' | 'purchased' | 'free'>('all');
+
+  const libraryIntent = useMemo(() => parseSmartSearchIntent(libraryQuery), [libraryQuery]);
+
+  useEffect(() => {
+    if (libraryIntent.subject && !librarySubject) setLibrarySubject(libraryIntent.subject);
+    if (libraryIntent.gradeBand && !libraryGrade) setLibraryGrade(libraryIntent.gradeBand);
+    if (libraryIntent.country?.name && !libraryCountry)
+      setLibraryCountry(libraryIntent.country.name);
+  }, [libraryIntent, librarySubject, libraryGrade, libraryCountry]);
 
   const [vaultFilters, setVaultFilters] = useState<ClassVaultFilters>({});
   const clearVaultFilters = useCallback(() => {
-    setClassSubject('');
-    setClassGrade('');
-    setClassCountry('');
+    setLibrarySubject('');
+    setLibraryGrade('');
+    setLibraryCountry('');
+    setLibraryProvider('');
+    setLibraryScope('all');
+    setLibraryQuery('');
     setVaultFilters({});
   }, []);
 
   useEffect(() => {
     setVaultFilters({
-      category: classSubject ? [classSubject] : undefined,
-      ageGroup: classGrade ? [classGrade] : undefined,
-      country: classCountry || undefined,
+      category: librarySubject ? [librarySubject] : undefined,
+      ageGroup: libraryGrade ? [libraryGrade] : undefined,
+      country: libraryCountry || undefined,
     });
-  }, [classSubject, classGrade, classCountry]);
+  }, [librarySubject, libraryGrade, libraryCountry]);
 
   const hasRoute = (name: string): boolean => {
     try {
@@ -1191,10 +1298,59 @@ const MyCoursesNative: React.FC = () => {
   }, [backendUrl, api]);
 
   const filteredOerVideos = useMemo(() => {
-    if (!classSubject) return oerVideoCols;
-    const key = classSubject.toLowerCase();
-    return oerVideoCols.filter((c) => (c.subject ?? '').toString().toLowerCase().includes(key));
-  }, [oerVideoCols, classSubject]);
+    const normalizedCountry =
+      normalizeCountryLabel(libraryCountry)?.name?.toLowerCase() || libraryCountry.toLowerCase();
+    const query = libraryIntent.query.toLowerCase();
+
+    const filtered = oerVideoCols.filter((c) => {
+      if (librarySubject) {
+        const subj = String(c.subject ?? '').toLowerCase();
+        if (!subj.includes(librarySubject.toLowerCase())) return false;
+      }
+      if (libraryGrade) {
+        const grade = String(c.grade ?? c.grade_band ?? c.gradeBand ?? '').toLowerCase();
+        if (!grade.includes(libraryGrade.toLowerCase())) return false;
+      }
+      if (libraryProvider) {
+        const provider = String(c.provider ?? c.source ?? '').toLowerCase();
+        if (!provider.includes(libraryProvider.toLowerCase())) return false;
+      }
+      if (normalizedCountry) {
+        const hay = [
+          c.country,
+          c.country_code,
+          c.location,
+          c.metadata,
+          c.description,
+          c.tags,
+        ]
+          .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || {})))
+          .join(' ')
+          .toLowerCase();
+        if (!hay.includes(normalizedCountry)) return false;
+      }
+      return true;
+    });
+
+    if (!query) return filtered;
+
+    const scored = filtered.map((c, idx) => {
+      const hay = [c.title, c.description, c.subject, c.tags, c.provider, c.country]
+        .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || [])))
+        .join(' ');
+      return { c, idx, score: rankMatch(hay, libraryIntent) };
+    });
+
+    scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
+    return scored.map((s) => s.c);
+  }, [
+    oerVideoCols,
+    librarySubject,
+    libraryGrade,
+    libraryCountry,
+    libraryProvider,
+    libraryIntent,
+  ]);
 
   const renderOerVideoItem = ({ item }: { item: OerCollection }) => {
     const idOrSlug = String(item.slug ?? item.id);
@@ -1884,203 +2040,25 @@ const MyCoursesNative: React.FC = () => {
         )}
       </View>
 
-      {/* Search + Filters row */}
-      <View style={tw`mt-3`}>
-        <View style={tw`flex-row items-center`}>
-          <View style={tw`flex-1 rounded-xl overflow-hidden`}>
-            <View
-              style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] h-11 px-3 rounded-xl`}
-            >
-              <Text style={tw`text-base mr-2 text-[#0d141c] dark:text-white`}>🔎</Text>
-              <TextInput
-                value={searchText}
-                onChangeText={setSearchText}
-                placeholder="Search courses…"
-                placeholderTextColor={isDark ? '#9fb3d1' : '#49739c'}
-                style={tw`flex-1 text-[#0d141c] dark:text-white`}
-                autoCapitalize="none"
-              />
-            </View>
-          </View>
+      <ExploreSearchFiltersBar
+        query={courseQuery}
+        onQueryChange={setCourseQuery}
+        filters={courseFiltersState}
+        onFiltersChange={handleCourseFiltersChange}
+        onClearAll={clearAllCourses}
+        variant="courses"
+        placeholder="Search courses by subject, grade, country…"
+        isDark={isDark}
+      />
 
-          <Pressable
-            onPress={() => {
-              try {
-                handleCourseSearch(searchText);
-              } catch {}
-            }}
-            style={tw`ml-2 h-11 px-4 rounded-xl bg-[#3d99f5] items-center justify-center`}
-          >
-            <Text style={tw`text-white text-xs font-semibold`}>Search</Text>
-          </Pressable>
+      {!!courseSearchError && (
+        <View style={tw`mt-2`}>
+          <Text style={tw`text-sm text-red-600 dark:text-red-400`}>Failed to load courses.</Text>
         </View>
-
-        <View style={tw`flex-row items-center mt-2`}>
-          <Pressable
-            onPress={openFilters}
-            style={tw`h-10 px-4 rounded-xl bg-[#e7edf4] dark:bg-[#172534] items-center justify-center`}
-          >
-            <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>Filters</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={clearAll}
-            style={tw`ml-2 h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
-          >
-            <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>Clear</Text>
-          </Pressable>
-        </View>
-
-        {/* Active filter chips */}
-        <View style={tw`mt-3 flex-row flex-wrap`}>
-          {!!courseFilters?.subject && (
-            <Chip
-              label={`Subject: ${courseFilters.subject}`}
-              active
-              onPress={() => setCourseSubject('')}
-            />
-          )}
-          {!!courseFilters?.gradeBand && (
-            <Chip
-              label={`Grade: ${courseFilters.gradeBand}`}
-              active
-              onPress={() => setCourseGradeBand('')}
-            />
-          )}
-          {!!courseFilters?.level && (
-            <Chip
-              label={`Level: ${courseFilters.level}`}
-              active
-              onPress={() => setCourseLevel('')}
-            />
-          )}
-          {(courseFilters?.minRating ?? 0) > 0 && (
-            <Chip
-              label={`Min★: ${courseFilters?.minRating}`}
-              active
-              onPress={() => setCourseMinRating(0)}
-            />
-          )}
-          {(courseFilters?.maxPrice ?? 0) > 0 && (
-            <Chip
-              label={`Max$: ${courseFilters?.maxPrice}`}
-              active
-              onPress={() => setCourseMaxPrice(0)}
-            />
-          )}
-          {!!duration && (
-            <Chip label={`Duration: ${duration}`} active onPress={() => setDuration('')} />
-          )}
-        </View>
-
-        {!!courseSearchError && (
-          <View style={tw`mt-2`}>
-            <Text style={tw`text-sm text-red-600 dark:text-red-400`}>Failed to load courses.</Text>
-          </View>
-        )}
-      </View>
+      )}
 
       <View style={tw`h-[1px] bg-[#cedbe8] dark:bg-white/10 my-4`} />
     </View>
-  );
-
-  /* ----------------------------- Filters Modal ----------------------------- */
-  const FiltersModal = (
-    <Modal
-      visible={filtersOpen}
-      animationType="fade"
-      transparent
-      onRequestClose={() => setFiltersOpen(false)}
-    >
-      <View style={tw`flex-1 bg-black/40 items-center justify-center p-4`}>
-        <View
-          style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-4 border border-[#cedbe8] dark:border-white/10`}
-        >
-          <Text style={tw`text-lg font-bold text-slate-900 dark:text-white`}>Filters</Text>
-          <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-1 mb-3`}>
-            Matches the web page: subject / grade band / level / min rating / max price / duration.
-          </Text>
-
-          {[
-            {
-              label: 'Subject',
-              value: draftSubject,
-              set: setDraftSubject,
-              ph: 'e.g., Math, English',
-            },
-            {
-              label: 'Grade band',
-              value: draftGradeBand,
-              set: setDraftGradeBand,
-              ph: 'e.g., K-5, 6-8, 9-12',
-            },
-            {
-              label: 'Level',
-              value: draftLevel,
-              set: setDraftLevel,
-              ph: 'Beginner / Intermediate / Advanced',
-            },
-            {
-              label: 'Min rating (1-5)',
-              value: draftMinRating,
-              set: setDraftMinRating,
-              ph: 'e.g., 4',
-            },
-            { label: 'Max price', value: draftMaxPrice, set: setDraftMaxPrice, ph: 'e.g., 50' },
-            {
-              label: 'Duration contains',
-              value: draftDuration,
-              set: setDraftDuration,
-              ph: 'e.g., 10 weeks',
-            },
-          ].map((f) => (
-            <View key={f.label} style={tw`mb-3`}>
-              <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white mb-1`}>
-                {f.label}
-              </Text>
-              <TextInput
-                value={f.value}
-                onChangeText={f.set}
-                placeholder={f.ph}
-                placeholderTextColor={isDark ? '#9fb3d1' : '#7a8aa0'}
-                style={tw`w-full text-sm rounded-lg p-2 bg-[#e7edf4] dark:bg-[#172534] text-slate-900 dark:text-white`}
-              />
-            </View>
-          ))}
-
-          <View style={tw`flex-row justify-end gap-2 mt-2`}>
-            <Pressable
-              onPress={() => setFiltersOpen(false)}
-              style={tw`h-10 px-4 rounded-xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center`}
-            >
-              <Text style={tw`text-sm text-slate-900 dark:text-white`}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={applyFilters}
-              style={tw`h-10 px-4 rounded-xl bg-[#3d99f5] items-center justify-center`}
-            >
-              <Text style={tw`text-sm text-white font-semibold`}>Apply</Text>
-            </Pressable>
-          </View>
-
-          <Pressable
-            onPress={() => {
-              setDraftSubject('');
-              setDraftGradeBand('');
-              setDraftLevel('');
-              setDraftMinRating('');
-              setDraftMaxPrice('');
-              setDraftDuration('');
-            }}
-            style={tw`mt-3 self-start`}
-          >
-            <Text style={tw`text-xs text-[#49739c] dark:text-white/70 underline`}>
-              Reset fields
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
   );
 
   // ---------------- Certificate verification (mobile) ----------------
@@ -2231,112 +2209,72 @@ const submitVerify = useCallback(
             contentContainerStyle={[tw`px-4 pb-6`, { paddingBottom: (insets.bottom || 12) + 24 }]}
             showsVerticalScrollIndicator={false}
           >
-            {/* Purchased / Saved videos (Vault) */}
-            <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-2`}>
-              My Purchased &amp; Saved Videos
-            </Text>
+            <ExploreSearchFiltersBar
+              query={libraryQuery}
+              onQueryChange={setLibraryQuery}
+              filters={libraryFiltersState}
+              onFiltersChange={handleLibraryFiltersChange}
+              onClearAll={clearVaultFilters}
+              variant="library"
+              placeholder="Search videos, notes, subjects, countries…"
+              isDark={isDark}
+            />
 
-            {/* Unified filters control BOTH ClassVault and OER video collections */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`pb-2`}
-            >
-              <Chip
-                label={classSubject ? `Subject: ${classSubject}` : 'Any subject'}
-                active={!!classSubject}
-                onPress={() => setClassSubject('')}
-              />
-              {CLASS_SUBJECTS.map((subj) => (
-                <Chip
-                  key={subj}
-                  label={subj}
-                  active={classSubject === subj}
-                  onPress={() => setClassSubject(subj)}
-                />
-              ))}
-            </ScrollView>
+            {showPurchasedLibrary && (
+              <>
+                <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-2 mt-3`}>
+                  My Purchased &amp; Saved Videos
+                </Text>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`pb-2`}
-            >
-              <Chip
-                label={classGrade ? `Grade: ${classGrade}` : 'Any grade'}
-                active={!!classGrade}
-                onPress={() => setClassGrade('')}
-              />
-              {CLASS_GRADES.filter((g) => g !== 'Any').map((g) => (
-                <Chip
-                  key={g}
-                  label={g}
-                  active={classGrade === g}
-                  onPress={() => setClassGrade(g)}
-                />
-              ))}
-            </ScrollView>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`pb-2`}
-            >
-              <Chip
-                label={classCountry ? `Country: ${classCountry}` : 'Any country'}
-                active={!!classCountry}
-                onPress={() => setClassCountry('')}
-              />
-              {TOP_COUNTRIES.map((c) => (
-                <Chip
-                  key={c}
-                  label={c}
-                  active={classCountry === c}
-                  onPress={() => setClassCountry(c)}
-                />
-              ))}
-            </ScrollView>
-
-            <View style={tw`rounded-xl overflow-hidden mt-1`}>
-              <ClassVaultListScreen filters={vaultFilters} clearFilters={clearVaultFilters} />
-            </View>
-
-            {/* Free OER Video Collections */}
-            <View style={tw`mt-5`}>
-              <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-2`}>
-                Free OER Video Collections
-              </Text>
-
-              {loadingVCols && (
-                <View style={tw`py-4 items-center`}>
-                  <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
-                  <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>
-                    Loading collections…
-                  </Text>
-                </View>
-              )}
-
-              {errVCols && !loadingVCols && (
-                <Text style={tw`py-2 text-xs text-red-500 dark:text-red-400`}>{errVCols}</Text>
-              )}
-
-              {!loadingVCols &&
-                !errVCols &&
-                (filteredOerVideos.length === 0 ? (
-                  <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
-                    No free OER video collections yet.
-                  </Text>
-                ) : (
-                  <FlatList
-                    data={filteredOerVideos}
-                    keyExtractor={(item) => String(item.slug ?? item.id)}
-                    renderItem={renderOerVideoItem}
-                    showsVerticalScrollIndicator={false}
-                    scrollEnabled={false}
-                    contentContainerStyle={tw`pb-4`}
+                <View style={tw`rounded-xl overflow-hidden mt-1`}>
+                  <ClassVaultListScreen
+                    filters={vaultFilters}
+                    clearFilters={clearVaultFilters}
+                    searchTerm={libraryQuery}
+                    embedded
+                    showTitle={false}
                   />
-                ))}
-            </View>
+                </View>
+              </>
+            )}
+
+            {showFreeLibrary && (
+              <View style={tw`mt-5`}>
+                <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-2`}>
+                  Free OER Video Collections
+                </Text>
+
+                {loadingVCols && (
+                  <View style={tw`py-4 items-center`}>
+                    <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
+                    <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>
+                      Loading collections…
+                    </Text>
+                  </View>
+                )}
+
+                {errVCols && !loadingVCols && (
+                  <Text style={tw`py-2 text-xs text-red-500 dark:text-red-400`}>{errVCols}</Text>
+                )}
+
+                {!loadingVCols &&
+                  !errVCols &&
+                  (filteredOerVideos.length === 0 ? (
+                    <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+                      No free OER video collections yet.
+                    </Text>
+                  ) : (
+                    <FlatList
+                      data={filteredOerVideos}
+                      keyExtractor={(item) => String(item.slug ?? item.id)}
+                      renderItem={renderOerVideoItem}
+                      showsVerticalScrollIndicator={false}
+                      scrollEnabled={false}
+                      contentContainerStyle={tw`pb-4`}
+                    />
+                  ))}
+              </View>
+            )}
           </ScrollView>
         ) : (
           <View style={tw`flex-1`}>
@@ -2379,9 +2317,6 @@ const submitVerify = useCallback(
             )}
           </View>
         )}
-
-        {/* Filters modal */}
-        {FiltersModal}
 
         {/* Verify certificate modal */}
         {VerifyCertificateModal}
