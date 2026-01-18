@@ -773,6 +773,17 @@ const composerCollapsed = inputFocused || keyboardOpen;
     [activeMessageKey, findNextPlayableIndex, inlineItems, inlineSegmentIdx, isItemMuted, setPlaybackQueue]
   );
 
+    const title = headerLabel
+    ? `Language Learning: English → ${headerLabel}`
+    : 'Language Learning';
+
+  const promptLocked = useMemo(() => {
+    if (bundleBlocked) return true;
+    if (typeof promptsLimit !== 'number' || promptsLimit <= 0) return false;
+    return promptsUsed >= promptsLimit;
+  }, [bundleBlocked, promptsLimit, promptsUsed]);
+
+
   const handleSend = useCallback(async () => {
     if (!input.trim() || promptLocked || loading) return;
     await sendPrompt(input.trim());
@@ -904,8 +915,6 @@ const startPlaybackAt = useCallback(
     }
   }, [backendUrl, token, courseId]);
 
-  const title = headerLabel ? `Language Learning: English → ${headerLabel}` : 'Language Learning';
-  const promptLocked = bundleBlocked || (promptsLimit && promptsUsed >= promptsLimit);
 
   const formatCountdown = useCallback((ms: number) => {
     const total = Math.max(0, Math.floor(ms / 1000));

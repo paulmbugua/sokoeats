@@ -64,6 +64,21 @@ const LANGUAGE_CARDS = [
 ] as const;
 
 
+function inferSupportedLanguageLabel(text: string): string | null {
+  const raw = String(text || '').trim().toLowerCase();
+  // If user typed "Teach me X", take the first word after it
+  const m = raw.match(/^teach\s+me\s+(.+)$/i);
+  const core = (m ? m[1] : raw).trim();
+  const firstWord = core.split(/\s+/)[0] || '';
+  const tok = firstWord.toLowerCase().replace(/[^a-z]/g, '');
+
+  // keep aligned with LANGUAGE_CARDS
+  if (tok === 'german' || tok === 'deutsch') return 'German';
+  if (tok === 'french' || tok === 'francais') return 'French';
+  if (tok === 'spanish' || tok === 'espanol') return 'Spanish';
+  if (tok === 'arabic') return 'Arabic';
+  return null;
+}
 
 const sizeToCourseSize: Record<
   SizePresetKey,
@@ -605,6 +620,20 @@ const llUnlockResetLabel = useMemo(() => {
   return `Resets in ${formatCountdown(remaining)}`;
 }, [llUnlockCtx?.resetAt, llUnlockNowTs, formatCountdown]);
 
+// ── Org & role gating (compute BEFORE deriveds use them) ─
+  const { activeOrgId, org: orgCtx, isStarterTier } = useOrg();
+  const rolesRaw = [
+    ...(Array.isArray(orgCtx?.roles) ? orgCtx.roles : []),
+    orgCtx?.my_role,
+    orgCtx?.role,
+  ]
+    .filter(Boolean)
+    .map((r) => String(r).toLowerCase());
+  const roles = new Set(rolesRaw);
+  const isAdminOwner = roles.has('owner') || roles.has('admin');
+  const isInstructor = roles.has('instructor') || roles.has('teacher');
+  const canShareUi = Boolean(activeOrgId && (isAdminOwner || isInstructor || isGlobalAdmin));
+
 
 const startLanguageFlow = useCallback(
   async (prompt: string, languageLabel: string, source: 'banner' | 'teachMe') => {
@@ -786,20 +815,7 @@ if (!courseId) {
   const displaySsml = lockedSsml ?? rawDisplaySsml;
   const hasJoined = Boolean(joinedSsml && String(joinedSsml).trim());
 
-  // ── Org & role gating (compute BEFORE deriveds use them) ─
-  const { activeOrgId, org: orgCtx, isStarterTier } = useOrg();
-  const rolesRaw = [
-    ...(Array.isArray(orgCtx?.roles) ? orgCtx.roles : []),
-    orgCtx?.my_role,
-    orgCtx?.role,
-  ]
-    .filter(Boolean)
-    .map((r) => String(r).toLowerCase());
-  const roles = new Set(rolesRaw);
-  const isAdminOwner = roles.has('owner') || roles.has('admin');
-  const isInstructor = roles.has('instructor') || roles.has('teacher');
-  const canShareUi = Boolean(activeOrgId && (isAdminOwner || isInstructor || isGlobalAdmin));
-
+  
   // ── Controls state (declare BEFORE deriveds that use them) ─
   const [classLevel, setClassLevel] = useState<'beginner' | 'intermediate' | 'advanced'>(
     'beginner'
@@ -1445,43 +1461,16 @@ useEffect(() => {
     return;
   }
 
-  setStarting(true);
-  setBlockedUntilStart(false);
-
-  const courseSize = sizeToCourseSize[sizePreset];
-  const opts: any = {
-    assignmentId: assignmentIdForAi,
-    courseSize,
-    level: classLevel,
-    minutes: minutesEffective,
-    programTrack,
-    totalLessons: safeLessons,
-    voiceName: effectiveVoice,
-  };
-
-  // mark run + spinner + reset player
-  const id = ++runIdRef.current;
-  setActiveRunId(id);
-  setPreparing(true);
-  setPlayerReady(false);
-  setPlayerLoading(true);
-  setLockedSsml(null);
-
+  
   try {
     // -------- custom topic flow (Teach me) ----------
     if (custom) {
-      const ok = requireAuth('ai_sandbox', 'Please sign in to create a custom AI course.');
-      if (!ok) {
-        setActiveRunId(null);
-        setPreparing(false);
-        setPlayerLoading(false);
-        return;
-      }
-
+      
       const intent = detectLanguageIntent(custom);
+      const inferred = inferSupportedLanguageLabel(custom);
 
       // User typed "Teach me Italian" etc. -> friendly prompt (no start)
-      if (!intent && isLanguageIntentText(custom)) {
+      if (!intent && !inferred && isLanguageIntentText(custom)) {
         let msg =
           'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
         try {
@@ -1495,24 +1484,64 @@ useEffect(() => {
 
         window.alert(msg);
 
-        setActiveRunId(null);
-        setPreparing(false);
-        setPlayerLoading(false);
+        
         return;
       }
 
-      // ✅ UPDATED: language intent → use the gated language flow (free limit → pay → auto-start)
-      if (intent) {
-        const langLabel =
-          (intent as any)?.language ||
-          (intent as any)?.targetLanguage ||
-          (intent as any)?.label ||
-          'Language';
+      // ✅ Teach me should behave like the top language cards:
+// If language intent (or user typed just "German"), go through attemptLanguageStart ONLY.
 
-        await attemptLanguageStart(custom, langLabel, 'teachMe');
-        return;
-      }
+if (intent || inferred) {
+  const langLabel =
+    (intent as any)?.language ||
+    (intent as any)?.targetLanguage ||
+    (intent as any)?.label ||
+    inferred ||
+    'Language';
 
+const prompt = `Teach me ${langLabel}`;
+
+
+  // optional: align the input field text with what we're starting
+  if (prompt !== custom) setCustomTitle(prompt);
+
+  setStarting(true);
+  try {
+    await attemptLanguageStart(prompt, langLabel, 'teachMe');
+  } finally {
+    setStarting(false);
+  }
+  return;
+}
+
+// ✅ From here down: normal sandbox start (non-language topic)
+const ok = requireAuth('ai_sandbox', 'Please sign in to create a custom AI course.');
+if (!ok) return;
+
+setStarting(true);
+setBlockedUntilStart(false);
+
+const courseSize = sizeToCourseSize[sizePreset];
+const opts: any = {
+  assignmentId: assignmentIdForAi,
+  courseSize,
+  level: classLevel,
+  minutes: minutesEffective,
+  programTrack,
+  totalLessons: safeLessons,
+  voiceName: effectiveVoice,
+};
+
+// mark run + spinner + reset player
+const id = ++runIdRef.current;
+setActiveRunId(id);
+setPreparing(true);
+setPlayerReady(false);
+setPlayerLoading(true);
+setLockedSsml(null);
+
+
+     
       // Normal sandbox custom topic
       dlog('onStart → startCustomTopic (sandbox)', { custom, opts });
       await startCustomTopic(custom, opts);
@@ -1521,7 +1550,30 @@ useEffect(() => {
     }
 
     // -------- course-based start (top courses / shared / org) ----------
+setStarting(true);
+setBlockedUntilStart(false);
+
+const courseSize = sizeToCourseSize[sizePreset];
+const opts: any = {
+  assignmentId: assignmentIdForAi,
+  courseSize,
+  level: classLevel,
+  minutes: minutesEffective,
+  programTrack,
+  totalLessons: safeLessons,
+  voiceName: effectiveVoice,
+};
+
+
+    // -------- course-based start (top courses / shared / org) ----------
     if (cid) opts.courseId = cid;
+
+     const id = ++runIdRef.current;
+    setActiveRunId(id);
+    setPreparing(true);
+    setPlayerReady(false);
+    setPlayerLoading(true);
+    setLockedSsml(null);
 
     dlog('onStart → startWithAI', { opts, cid, wantedCourseId });
     await startWithAI(opts);
@@ -1553,6 +1605,7 @@ useEffect(() => {
   startWithAI,
   waitForSelection,
   requireAuth,
+  activeOrgId,
   attemptLanguageStart, // ✅ ADD THIS
 ]);
 

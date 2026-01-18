@@ -1605,7 +1605,11 @@ const startLanguageFlow = useCallback(
 
     // ✅ Custom topic flow stays the same
     if (custom) {
-      const ok = requireAuth('ai_sandbox', 'Please sign in to create a custom AI course.');
+      const ok = requireLanguageAuth(
+  'language-learning',
+  'Please sign in with your user account to start language learning.'
+);
+
       if (!ok) {
         setActiveRunId(null);
         setUiPreparing(false);
@@ -1806,7 +1810,7 @@ const startLanguageFromCard = useCallback(
     setLanguageLaunching(true);
 
     // polish: avoid refresh conflicts while swiping cards
-    setDisableRefresh(true);
+   
 
     try {
       resetRunUi();
@@ -1814,7 +1818,7 @@ const startLanguageFromCard = useCallback(
     } finally {
       setLanguageLaunching(false);
       setLanguageActive(null);
-      setDisableRefresh(false);
+ 
     }
   },
   [languageLaunching, llUnlockBusy, requireAuth, attemptLanguageStart, resetRunUi, selectCourse]
@@ -1984,34 +1988,30 @@ const startLanguageFromCard = useCallback(
                   <Text style={tw`text-[10px] uppercase tracking-[0.3em] text-[#6b7280] dark:text-white/60 mb-2`}>
                     Choose a language
                   </Text>
-                <ScrollView
-                  horizontal
-                  nestedScrollEnabled
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={tw`gap-3`}
-                  // 🔒 disable refresh immediately when finger touches the strip
-                  onTouchStart={lockRefreshOff}
-                  // ✅ re-enable in every possible end path
-                  onTouchEnd={unlockRefresh}
-                  onTouchCancel={unlockRefresh}
-                  onScrollEndDrag={unlockRefresh}
-                  onMomentumScrollEnd={unlockRefresh}
-                >
-                    {LANGUAGE_CARDS.map((card) => (
-                      <Pressable
-                        key={card.language}
-                        disabled={languageLaunching || llUnlockBusy || starting}
-                        onPressIn={lockRefreshOff}
-                        onPressOut={unlockRefresh}
-                        onPress={() => startLanguageFromCard(card.language)}
-                        hitSlop={6}
-                        style={({ pressed }) => [
-                          tw`w-40 rounded-2xl border border-white/40 dark:border-white/10 bg-white dark:bg-[#141b24] px-4 py-3`,
-                          pressed && !languageLaunching && !llUnlockBusy && !starting
-                            ? tw`opacity-80`
-                            : null,
-                        ]}
-                      >
+<ScrollView
+  horizontal
+  nestedScrollEnabled
+  showsHorizontalScrollIndicator={false}
+  keyboardShouldPersistTaps="handled"
+  contentContainerStyle={tw`gap-3 pl-1 pr-6`} // ✅ right padding so last card is fully tappable
+  // ✅ only disable refresh while user is actually dragging/flinging this horizontal list
+  onScrollBeginDrag={lockRefreshOff}
+  onMomentumScrollBegin={lockRefreshOff}
+  onScrollEndDrag={unlockRefresh}
+  onMomentumScrollEnd={unlockRefresh}
+>
+  {LANGUAGE_CARDS.map((card) => (
+    <Pressable
+      key={card.language}
+      disabled={languageLaunching || llUnlockBusy || starting}
+      // ❌ remove onPressIn/onPressOut (these were canceling taps)
+      onPress={() => startLanguageFromCard(card.language)}
+      hitSlop={6}
+      style={({ pressed }) => [
+        tw`w-40 rounded-2xl border border-white/40 dark:border-white/10 bg-white dark:bg-[#141b24] px-4 py-3`,
+        pressed && !languageLaunching && !llUnlockBusy && !starting ? tw`opacity-80` : null,
+      ]}
+    >
                         <View style={tw`flex-row items-center justify-between`}>
                         <Text style={tw`text-lg`} accessibilityLabel={`${card.language} flag`}>
                         {card.emoji}

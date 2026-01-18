@@ -162,6 +162,8 @@ const FONT_SIZE_KEY = 'll_font_size_v1';
 const MUTE_EN_KEY = 'll_mute_en_v1';
 const MUTE_TR_KEY = 'll_mute_tr_v1';
 
+
+
 const buildSegmentsFromQueue = (items: PlaybackQueueItem[]) => {
   const map = new Map<number, { en?: string; tr?: string }>();
   for (const item of items) {
@@ -342,6 +344,26 @@ const inlineCurrentRef = useRef<PlaybackQueueItem | null>(null);
       localStorage.removeItem(voiceStorageKey);
     }
   }, [voiceStorageKey]);
+
+  useEffect(() => {
+  if (!repeatPanel) return;
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') setRepeatPanel(null);
+  };
+
+  window.addEventListener('keydown', onKeyDown);
+
+  // Optional: lock background scroll while sheet open
+  const prevOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+
+  return () => {
+    window.removeEventListener('keydown', onKeyDown);
+    document.body.style.overflow = prevOverflow;
+  };
+}, [repeatPanel]);
+
 
   useEffect(() => {
     localStorage.setItem(voiceStorageKey, JSON.stringify(voiceSettings));
@@ -1377,6 +1399,93 @@ const promptLocked =
           )}
         </div>
       </div>
+      {repeatPanel && (
+  <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center">
+    {/* Backdrop */}
+    <button
+      aria-label="Close repeat section"
+      className="absolute inset-0 bg-black/40"
+      onClick={() => setRepeatPanel(null)}
+    />
+
+    {/* Sheet */}
+    <div className="relative w-full sm:max-w-xl max-h-[78vh] overflow-hidden rounded-t-3xl sm:rounded-3xl border border-slate-200/70 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 shadow-2xl ll-panel-animate">
+      <div className="p-4 border-b border-slate-200/70 dark:border-slate-800">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-white">
+              Repeat a section
+            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              {headerLabel || targetLanguage}
+            </div>
+          </div>
+
+          <button
+            className="rounded-full border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900 px-3 py-1 text-xs font-semibold text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+            onClick={() => setRepeatPanel(null)}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4 overflow-y-auto max-h-[62vh] space-y-2">
+        {(repeatPanel.msg?.segments?.length ? repeatPanel.msg.segments : []).map(
+          (seg: any, segIdx: number) => (
+            <div
+              key={`${seg.en}-${segIdx}`}
+              className="rounded-2xl border border-slate-200/70 dark:border-slate-700/70 bg-slate-50/70 dark:bg-slate-800/60 p-3"
+            >
+              <button
+                className="w-full flex items-center justify-between gap-3 text-left"
+                onClick={() => {
+                  const panel = repeatPanel;
+                  setRepeatPanel(null);
+                  startPlaybackAt(panel.messageKey, panel.msg, panel.idx, segIdx, 'en');
+                }}
+              >
+                <div className="text-xs sm:text-sm text-slate-900 dark:text-slate-100 flex-1">
+                  {seg.en}
+                </div>
+                <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-300 whitespace-nowrap">
+                  Play EN
+                </div>
+              </button>
+
+              <button
+                className="mt-2 w-full flex items-center justify-between gap-3 text-left"
+                onClick={() => {
+                  const panel = repeatPanel;
+                  setRepeatPanel(null);
+                  startPlaybackAt(panel.messageKey, panel.msg, panel.idx, segIdx, 'tr');
+                }}
+              >
+                <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 flex-1">
+                  {seg.tr}
+                </div>
+                <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-300 whitespace-nowrap">
+                  Play TR
+                </div>
+              </button>
+            </div>
+          )
+        )}
+
+        {!repeatPanel.msg?.segments?.length && (
+          <div className="text-sm text-slate-500 dark:text-slate-400">
+            No segments available for this message.
+          </div>
+        )}
+
+        <div className="pt-2 text-[11px] text-slate-400">
+          Tip: Tap any line to replay from exactly there.
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
 
      <audio ref={audioRef} onEnded={handleInlineEnded} preload="auto" />
 
