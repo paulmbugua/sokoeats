@@ -634,36 +634,68 @@ const inlineCurrentRef = useRef<PlaybackQueueItem | null>(null);
     ]
   );
 
-  const fetchPlaybackForMessage = useCallback(
+const fetchPlaybackForMessage = useCallback(
   async (msg: any, idx: number) => {
-    const res = await fetch(`${backendUrl}/courses/language/playback`, {
+    const base = backendUrl.replace(/\/$/, '');
+    const url = `${base}/api/ai/courses/language/playback`;
+
+    const messageId = getMsgId(msg);
+    const payload: any = {
+      courseId,
+      voiceId: voiceSettings.voiceId,
+    };
+
+    // Only send one valid locator (prefer id, fallback to index)
+    if (messageId !== null && messageId !== undefined && messageId !== '') {
+      payload.messageId = messageId;
+    } else {
+      payload.messageIndex = idx;
+    }
+
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token || ''}`,
       },
-      body: JSON.stringify({
-        courseId,
-        messageId: getMsgId(msg),
-        messageIndex: idx,
-        voiceId: voiceSettings.voiceId,
-      }),
+      body: JSON.stringify(payload),
     });
 
+    if (res.status === 404) {
+      console.error('[LL playback] 404 endpoint not found', { url });
+      throw new Error(`PLAYBACK_ENDPOINT_404: ${url}`);
+    }
+
     const json = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(json?.error || 'PLAYBACK_FETCH_FAILED');
+
+    if (!res.ok) {
+      console.error('[LL playback] request failed', {
+        status: res.status,
+        url,
+        payload,
+        response: json,
+      });
+      throw new Error(json?.error || json?.message || 'PLAYBACK_FETCH_FAILED');
+    }
+
     return json as PlaybackPayload;
   },
   [backendUrl, token, courseId, voiceSettings.voiceId]
 );
 
+
+
+
 const ensurePlaybackFor = useCallback(
   async (messageKey: string, msg: any, idx: number) => {
     const ck = cacheKeyFor(messageKey, voiceSettings.voiceId);
 
-    // already present on message OR cached locally
-    const direct = (msg?.playback as PlaybackPayload) || playbackByKey[ck];
-    if (direct?.items?.length) return direct;
+   const perVoice = playbackByKey[ck];
+if (perVoice?.items?.length) return perVoice;
+
+// only use embedded playback when it matches the current voice (or as last fallback)
+const embedded = msg?.playback as PlaybackPayload | undefined;
+if (embedded?.items?.length) return embedded;
 
     setPlaybackLoadingKey(ck);
     try {
@@ -672,6 +704,11 @@ const ensurePlaybackFor = useCallback(
         setPlaybackByKey((prev) => ({ ...prev, [ck]: pb }));
         return pb;
       }
+      return null;
+    } catch (e: any) {
+      console.error(e);
+      // show something meaningful
+      // You can also surface server details if present (see next section)
       return null;
     } finally {
       setPlaybackLoadingKey((cur) => (cur === ck ? null : cur));
@@ -853,6 +890,15 @@ const promptLocked =
     applyPrompt(random.prompts[0]);
   }, [applyPrompt]);
 
+  useEffect(() => {
+  if (languageStart?.playback) {
+    const mk = `assistant-${initMessages.length - 1}`; // or whichever message it belongs to
+    const ck = cacheKeyFor(mk, DEFAULT_VOICE.voiceId);
+    setPlaybackByKey((p) => ({ ...p, [ck]: languageStart.playback }));
+  }
+}, [languageStart, initMessages.length]);
+
+
 
   useEffect(() => {
   const prev = prevVoiceIdRef.current;
@@ -985,28 +1031,32 @@ const promptLocked =
     return (
       <>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-              hasPb
-                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-200 hover:bg-emerald-500/20'
-                : 'bg-slate-100/70 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-slate-200/80'
-            }`}
-            onClick={async () => {
-              const ensured = await ensurePlaybackFor(messageKey, msg, idx);
-              if (!ensured) return;
+         <button
+  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+    hasPb
+      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-200 hover:bg-emerald-500/20'
+      : 'bg-slate-100/70 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-slate-200/80'
+  }`}
+  onClick={async () => {
+    try {
+      const ensured = await ensurePlaybackFor(messageKey, msg, idx);
+      if (!ensured) return;
 
-              activeMsgMetaRef.current = { messageKey, idx, msg };
-              await handleInlinePlayPause(messageKey, ensured);
-            }}
-          >
-            {isPbLoading
-              ? 'Loading…'
-              : hasPb
-                ? isActive && inlinePlaying
-                  ? 'Pause'
-                  : 'Play'
-                : 'Load narration'}
-          </button>
+      activeMsgMetaRef.current = { messageKey, idx, msg };
+      await handleInlinePlayPause(messageKey, ensured);
+    } catch (e) {
+      console.error(e);
+    }
+  }}
+>
+  {isPbLoading
+    ? 'Loading…'
+    : hasPb
+      ? isActive && inlinePlaying
+        ? 'Pause'
+        : 'Play'
+      : 'Load narration'}
+</button>
 
           <button
             className={`rounded-full bg-slate-100/70 dark:bg-slate-700/60 px-3 py-1 text-xs font-semibold text-slate-600 dark:text-slate-200 transition hover:bg-slate-200/80 ${

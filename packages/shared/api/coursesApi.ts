@@ -212,8 +212,16 @@ export const getRecommendedCourses = async (
 };
 
 
-export async function searchCoursesApi(backendUrl: string, params: Record<string, any>) {
+export async function searchCoursesApi(
+  backendUrl: string,
+  params: Record<string, any>,
+  token?: string
+) {
   const base = (backendUrl || '').replace(/\/+$/, '');
-  const { data } = await axios.get(`${base}/api/courses/search`, { params });
+  const { data } = await axios.get(`${base}/api/courses/search`, {
+    params,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
   return data;
 }
+

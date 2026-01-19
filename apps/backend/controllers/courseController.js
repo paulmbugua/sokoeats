@@ -46,9 +46,78 @@ const courseUpdateSchema = courseSchema
     syllabus: Joi.array().items(syllabusItemSchema).optional(),
   });
 
+  // ─────────────────────────────────────────────────────────────
+// Course search AI cache (in-memory, per Node process)
+// ─────────────────────────────────────────────────────────────
+const AI_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
+const aiCache = globalThis.__courseSearchAiCache || new Map();
+globalThis.__courseSearchAiCache = aiCache;
+
+function getCachedAi(q) {
+  const hit = aiCache.get(q);
+  if (!hit) return null;
+  if (Date.now() - hit.t > AI_CACHE_TTL_MS) {
+    aiCache.delete(q);
+    return null;
+  }
+  return hit.v;
+}
+function setCachedAi(q, v) {
+  aiCache.set(q, { t: Date.now(), v });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Courses column detection (prevents SQL from referencing missing cols)
+// Cached per-process; refresh occasionally if needed.
+// ─────────────────────────────────────────────────────────────
+const COURSES_COLS_TTL_MS = 30 * 60 * 1000; // 30 min
+const coursesColsCache = globalThis.__coursesColsCache || { t: 0, set: null };
+globalThis.__coursesColsCache = coursesColsCache;
+
+async function getCoursesCols() {
+  if (coursesColsCache.set && Date.now() - coursesColsCache.t < COURSES_COLS_TTL_MS) {
+    return coursesColsCache.set;
+  }
+  const r = await pool.query(`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'courses'
+  `);
+  coursesColsCache.set = new Set((r.rows || []).map((x) => x.column_name));
+  coursesColsCache.t = Date.now();
+  return coursesColsCache.set;
+}
+
+
 /* ===========================
    Helpers
 =========================== */
+
+// --- query helpers (needed by searchCourses) ---
+const toStr = (v) => (v == null ? '' : String(v)).trim();
+
+
+/**
+ * Express req.query can be:
+ * - undefined
+ * - string: "khan,openstax"
+ * - array: ["khan","openstax"]
+ * - repeated qs: providers=khan&providers=openstax => ["khan","openstax"]
+ */
+const toArr = (v) => {
+  if (v == null) return [];
+  if (Array.isArray(v)) return v.map((x) => toStr(x)).filter(Boolean);
+
+  const s = toStr(v);
+  if (!s) return [];
+
+  // allow CSV and also tolerate extra spaces
+  return s
+    .split(',')
+    .map((x) => toStr(x))
+    .filter(Boolean);
+};
+
 
 // ── Auth / flags ─────────────────────────────────────────────
 function isAdminReq(req) {
@@ -57,17 +126,28 @@ function isAdminReq(req) {
 function allowAiInResponse(req) {
   return isAdminReq(req) && String(req.query?.include_ai || '') === '1';
 }
-function aiExclusionClause(alias = 'c', req) {
-  return allowAiInResponse(req)
+function allowAuthedAi(req) {
+  return Boolean(getAuthTutorId(req)); // same rule you used in getCourseById
+}
+
+function aiExclusionClause(alias = 'c', req, opts = {}) {
+  const allowAuthed = Boolean(opts.allowAuthed);
+  return allowAiInResponse(req) || (allowAuthed && allowAuthedAi(req))
     ? 'TRUE'
     : `NOT COALESCE(${alias}.is_ai_generated, FALSE)`;
 }
+
 function aiOff(alias, req) {
   return aiExclusionClause(alias, req);
 }
 function hasTutor(alias = 'c') {
   return `EXISTS (SELECT 1 FROM users u WHERE u.id = ${alias}.tutor_id)`;
 }
+
+function isOerCourse(alias = 'c') {
+  return `COALESCE(${alias}.source_kind,'') IN ('oer','wrapped_oer')`;
+}
+
 
 const isUuid = (s) =>
   typeof s === 'string' &&
@@ -158,6 +238,60 @@ async function getFxRate(base, quote) {
 ────────────────────────────────────────────────────────────── */
 
 const PM_CONSTRAINT_NAME = 'transactions_payment_method_check';
+
+async function searchOerVideos({ kw, subject, providers = [], limit = 12, offset = 0 }) {
+  const args = [];
+  let i = 0;
+
+  // keyword pattern
+  const like = kw ? `%${kw.toLowerCase()}%` : '';
+  args.push(like); const pLike = `$${++i}`;
+
+  // subject
+  args.push(subject || ''); const pSubj = `$${++i}`;
+
+  // providers
+  args.push(providers); const pProv = `$${++i}`;
+
+  args.push(limit);  const pLimit = `$${++i}`;
+  args.push(offset); const pOffset = `$${++i}`;
+
+  const sql = `
+    SELECT
+      tpc.slug                     AS id,
+      tpc.title,
+      COALESCE(tpc.subject,'')     AS subject,
+      tpc.provider,
+      tpc.grade_level,
+      tpc.thumbnail_url,
+      tpc.source_url,
+      tpc.embed_url,
+      tpc.created_at,
+      'oer_video'::text            AS kind
+    FROM third_party_catalog tpc
+    WHERE LOWER(COALESCE(tpc.type,'')) = 'video'
+      AND (
+        ${pLike} = '' OR
+        LOWER(COALESCE(tpc.title,''))   LIKE ${pLike} OR
+        LOWER(COALESCE(tpc.subject,'')) LIKE ${pLike}
+      )
+      AND (
+        ${pSubj} = '' OR LOWER(COALESCE(tpc.subject,'')) = LOWER(${pSubj})
+      )
+      AND (
+        COALESCE(array_length(${pProv}::text[], 1), 0) = 0
+        OR LOWER(COALESCE(tpc.provider,'')) = ANY(
+          ARRAY(SELECT LOWER(x) FROM unnest(${pProv}::text[]) x)
+        )
+      )
+    ORDER BY tpc.created_at DESC NULLS LAST, tpc.title ASC
+    LIMIT ${pLimit} OFFSET ${pOffset};
+  `;
+
+  const { rows } = await pool.query(sql, args);
+  return rows;
+}
+
 
 async function getAllowedPaymentMethods(client) {
   // Try to read constraint definition and extract quoted literals
@@ -952,8 +1086,6 @@ export const purchaseCourse = async (req, res) => {
   }
 };
 
-// apps/backend/controllers/courseController.js
-
 export const searchCourses = async (req, res) => {
   const rid = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const t0 = Date.now();
@@ -965,61 +1097,70 @@ export const searchCourses = async (req, res) => {
     const {
       q = '',
       subject,
-      gradeBand, // free-form
-      level, // Beginner/Intermediate/Advanced/All Levels
+      gradeBand,
+      level,
       minRating,
       maxPrice,
       isOer,
+      country,
+      countryIso2,     // ✅ add
+      duration,
+      tutor,
+      sort,
+      scope,           // ✅ add
+      providers,       // ✅ add
+      contentKinds,    // ✅ add
+      sourceKind,      // ✅ add
       limit: limitStr,
       offset: offsetStr,
     } = req.query;
 
     const limitN = Math.min(50, Math.max(1, Number(limitStr) || 12));
     const offsetN = Math.max(0, Number(offsetStr) || 0);
-
     const rawQ = String(q || '').trim();
 
-    // same idea: only use AI for longer multi-word queries
-    const shouldUseAi =
-      rawQ.length >= 6 && /[a-zA-Z]/.test(rawQ) && /\s/.test(rawQ);
+    // Use AI for natural-ish multi-signal queries
+    const looksNatural =
+      rawQ.length >= 6 &&
+      /[a-zA-Z]/.test(rawQ) &&
+      (/\s/.test(rawQ) ||
+        /[\d$]|under|less|cheap|top|rating|grade|beginner|intermediate|advanced/i.test(rawQ));
 
-    log(`\n[searchCourses:${rid}] incoming`, {
-      rawQ,
-      shouldUseAi,
-      ui: {
-        subject,
-        gradeBand,
-        level,
-        minRating,
-        maxPrice,
-        isOer,
-        limitN,
-        offsetN,
-      },
-    });
+    log(`[searchCourses:${rid}] incoming`, { rawQ, looksNatural });
 
-    // ── AI parse (optional)
+    // ── AI parse (cached)
     let ai = null;
     let aiMs = 0;
 
-    if (shouldUseAi) {
-      const tAi = Date.now();
-      ai = await aiParseCourseSearch(rawQ);
-      aiMs = Date.now() - tAi;
-      log(`[searchCourses:${rid}] ai parsed (${aiMs}ms)`, ai);
+    if (looksNatural) {
+      const cached = getCachedAi(rawQ);
+      if (cached) {
+        ai = cached;
+      } else {
+        const tAi = Date.now();
+        ai = await aiParseCourseSearch(rawQ);
+        aiMs = Date.now() - tAi;
+        setCachedAi(rawQ, ai);
+      }
     }
 
-    // effective keywords: if ai used → ai.keywords, else rawQ
-    const aiKeywords = (ai?.keywords || '').toString().trim();
-    const effectiveKeywords = shouldUseAi && ai ? aiKeywords : rawQ;
+    // effective keywords: AI keywords if present, else rawQ
+    const aiKeywords = String(ai?.keywords || '').trim();
+    const effectiveKeywords = ai ? aiKeywords : rawQ;
 
     // merge (explicit query params win)
     const merged = {
-      keywords: effectiveKeywords,
+      keywords: String(effectiveKeywords || '').trim(),
 
-      subject: (subject || ai?.subject || '').toString().trim(),
-      gradeBand: (gradeBand || ai?.gradeBand || '').toString().trim(),
-      level: (level || ai?.level || '').toString().trim(),
+      subject: toStr(subject || ai?.subject || ''),
+      gradeBand: toStr(gradeBand || ai?.gradeBand || ''),
+      level: toStr(level || ai?.level || ''),
+
+      country: toStr(country || ai?.country || ''),
+      countryIso2: toStr(countryIso2 || ai?.countryIso2 || ''),
+
+      duration: toStr(duration || ai?.duration || ''),
+      tutor: toStr(tutor || ai?.tutor || ''),
 
       minRating: Number(minRating ?? ai?.minRating ?? 0) || 0,
       maxPrice: Number(maxPrice ?? ai?.maxPrice ?? 0) || 0,
@@ -1027,27 +1168,47 @@ export const searchCourses = async (req, res) => {
       isOer: String(isOer ?? '').length
         ? String(isOer) === 'true' || String(isOer) === '1'
         : Boolean(ai?.isOer),
+
+      sort: toStr(sort || ai?.sort || '').toLowerCase(),
+
+      scope: toStr(scope || ai?.scope || ''),
+      providers: toArr(providers).length ? toArr(providers) : (ai?.providers || []),
+      contentKinds: toArr(contentKinds).length ? toArr(contentKinds) : (ai?.contentKinds || []),
+      sourceKind: toStr(sourceKind || ai?.sourceKind || ''),
     };
+
+    const wantsOerVideos =
+  merged.isOer ||
+  merged.sourceKind === 'oer' ||
+  (Array.isArray(merged.contentKinds) && merged.contentKinds.includes('video')) ||
+  (Array.isArray(merged.providers) && merged.providers.length);
+
+let oerVideos = [];
+if (wantsOerVideos) {
+  oerVideos = await searchOerVideos({
+    kw,
+    subject: merged.subject,
+    providers: merged.providers,
+    limit: Math.min(limitN, 24),
+    offset: offsetN,
+  });
+}
+
 
     if (merged.minRating < 0) merged.minRating = 0;
     if (merged.maxPrice < 0) merged.maxPrice = 0;
+    if (merged.isOer) merged.maxPrice = 0;
 
-    // if OER selected, force price to 0 (your DB may store 0 or NULL; we handle both)
+    if (merged.scope === 'free') merged.isOer = true;
+    if (merged.sourceKind === 'oer') merged.isOer = true;
+    if (merged.sourceKind === 'tutor') merged.isOer = false;
+    if (merged.providers.length) merged.isOer = true; // provider implies OER
     if (merged.isOer) merged.maxPrice = 0;
 
     // ────────────────────────────────────────────────────────────────
-    // KW decision (prevents gradeBand from killing results)
+    // KW decision (prevents gradeBand-only queries killing results)
     // ────────────────────────────────────────────────────────────────
     let kw = String(merged.keywords || '').trim();
-
-    const aiUsed = Boolean(ai);
-    const hasStructured =
-      Boolean(merged.subject) ||
-      Boolean(merged.gradeBand) ||
-      Boolean(merged.level) ||
-      merged.minRating > 0 ||
-      merged.maxPrice > 0 ||
-      Boolean(merged.isOer);
 
     const norm = (s) =>
       String(s || '')
@@ -1055,46 +1216,88 @@ export const searchCourses = async (req, res) => {
         .replace(/\s+/g, ' ')
         .trim();
 
-    if (aiUsed && hasStructured && merged.gradeBand) {
+    const hasStructured =
+      Boolean(merged.subject) ||
+      Boolean(merged.gradeBand) ||
+      Boolean(merged.level) ||
+      Boolean(merged.country) ||
+      Boolean(merged.duration) ||
+      Boolean(merged.tutor) ||
+      merged.minRating > 0 ||
+      merged.maxPrice > 0 ||
+      Boolean(merged.isOer) ||
+      Boolean(merged.sort) ||
+      Boolean(merged.scope) ||
+      Boolean(merged.sourceKind) ||
+      (Array.isArray(merged.providers) && merged.providers.length) ||
+      (Array.isArray(merged.contentKinds) && merged.contentKinds.length);
+
+    if (ai && hasStructured && merged.gradeBand) {
       const raw = norm(rawQ);
       const k = norm(kw);
       const gb = norm(merged.gradeBand);
       if (k === raw || k === gb) kw = '';
     }
 
+    
+
     log(`[searchCourses:${rid}] merged`, merged);
-    log(`[searchCourses:${rid}] kw decision`, {
-      rawQ,
-      aiUsed,
-      gradeBand: merged.gradeBand,
-      kwUsed: kw,
-    });
+    log(`[searchCourses:${rid}] kwUsed`, kw);
 
     // ────────────────────────────────────────────────────────────────
-    // Build SQL
+    // Build SQL (parameterized + safe column references)
     // ────────────────────────────────────────────────────────────────
+    const cols = await getCoursesCols();
+
+    // ✅ Robust OER clause (supports: is_oer OR source_kind OR provider)
+    const oerClause = (alias = 'c') => {
+      const parts = [];
+
+      if (cols.has('is_oer')) parts.push(`COALESCE(${alias}.is_oer, FALSE) = TRUE`);
+      if (cols.has('source_kind'))
+        parts.push(`COALESCE(${alias}.source_kind,'') IN ('oer','wrapped_oer')`);
+      if (cols.has('provider'))
+        parts.push(`NULLIF(COALESCE(${alias}.provider,''), '') IS NOT NULL`);
+
+      // fallback if schema is older
+      if (!parts.length) return `COALESCE(${alias}.source_kind,'') IN ('oer','wrapped_oer')`;
+
+      return `(${parts.join(' OR ')})`;
+    };
+
     const conditions = [];
     const values = [];
     let idx = 1;
 
-    // keep your “AI exclusion” rule
-    conditions.push(aiExclusionClause('c', req));
+    // Keep your “AI exclusion” rule
+    const allowAuthedAiHere = merged.sourceKind === 'sandbox';
+    conditions.push(aiExclusionClause('c', req, { allowAuthed: allowAuthedAiHere }));
 
-    // IMPORTANT: course search should allow:
-    // - OER courses (often have no tutor)
-    // - tutor-uploaded courses (should have tutor)
-    // so we gate it like:
-    //   if isOer filter is ON → only OER
-    //   else → allow either tutor courses OR OER (so mixed results are possible)
+    // ✅ OER/tutor allowance (patched)
     if (merged.isOer) {
-      conditions.push(`COALESCE(c.is_oer, FALSE) = TRUE`);
+      conditions.push(oerClause('c'));
     } else {
-      conditions.push(`(${hasTutor('c')} OR COALESCE(c.is_oer, FALSE) = TRUE)`);
+      conditions.push(`(${hasTutor('c')} OR ${oerClause('c')})`);
+    }
+
+    // ✅ contentKinds filter (patched)
+    if (Array.isArray(merged.contentKinds) && merged.contentKinds.length && cols.has('content_kind')) {
+      const kinds = merged.contentKinds.map((k) => String(k).toLowerCase());
+      conditions.push(`LOWER(COALESCE(c.content_kind,'')) = ANY($${idx++}::text[])`);
+      values.push(kinds);
+    }
+
+    // ✅ providers filter (patched)
+    if (Array.isArray(merged.providers) && merged.providers.length && cols.has('provider')) {
+      const provs = merged.providers.map((p) => String(p).toLowerCase());
+      conditions.push(`LOWER(COALESCE(c.provider,'')) = ANY($${idx++}::text[])`);
+      values.push(provs);
     }
 
     if (merged.subject) {
       conditions.push(`(
         LOWER(COALESCE(c.subject,'')) = LOWER($${idx})
+        OR LOWER(COALESCE(c.category,'')) = LOWER($${idx})
         OR LOWER(COALESCE(c.title,'')) LIKE LOWER($${idx + 1})
         OR LOWER(COALESCE(c.description,'')) LIKE LOWER($${idx + 1})
       )`);
@@ -1103,46 +1306,95 @@ export const searchCourses = async (req, res) => {
       idx += 2;
     }
 
-    // difficulty level (Beginner/Intermediate/Advanced/All Levels) — optional
     if (merged.level) {
       conditions.push(`LOWER(COALESCE(c.level,'')) = LOWER($${idx++})`);
       values.push(merged.level);
     }
 
-    // gradeBand (free-form): we match across common text fields + size_meta
-    // (this lets you support “Grade 3”, “Primary”, “Academy”, etc even without a dedicated column)
+    // gradeBand: match across text fields + size_meta (safe)
     if (merged.gradeBand) {
       conditions.push(`(
         LOWER(COALESCE(c.title,'')) LIKE LOWER($${idx})
         OR LOWER(COALESCE(c.description,'')) LIKE LOWER($${idx})
-        OR LOWER(COALESCE(c.level,'')) LIKE LOWER($${idx}) -- some of your rows have blank level; safe
-        OR LOWER(COALESCE(c.size_meta::text,'')) LIKE LOWER($${idx})
+        OR LOWER(COALESCE(c.level,'')) LIKE LOWER($${idx})
+        ${cols.has('size_meta') ? `OR LOWER(COALESCE(c.size_meta::text,'')) LIKE LOWER($${idx})` : ''}
       )`);
       values.push(`%${merged.gradeBand}%`);
       idx += 1;
     }
 
-    // price (tokens) — only when user asked for a cap AND not OER
+    // duration
+    if (merged.duration) {
+      conditions.push(`LOWER(COALESCE(c.duration,'')) LIKE LOWER($${idx++})`);
+      values.push(`%${merged.duration}%`);
+    }
+
+    // price cap only when not OER
     if (!merged.isOer && merged.maxPrice > 0) {
       conditions.push(`COALESCE(c.price, 0) <= $${idx++}`);
       values.push(merged.maxPrice);
     }
 
-    // rating
     if (merged.minRating > 0) {
       conditions.push(`COALESCE(c.avg_rating, 0) >= $${idx++}`);
       values.push(merged.minRating);
     }
 
+    if (merged.countryIso2 && cols.has('country_code')) {
+      conditions.push(`c.country_code = $${idx++}`);
+      values.push(String(merged.countryIso2).toUpperCase());
+    }
+
+    // country (safe)
+    if (merged.country) {
+      const parts = [];
+
+      if (cols.has('country')) parts.push(`LOWER(COALESCE(c.country,'')) LIKE LOWER($${idx})`);
+      if (cols.has('country_code')) parts.push(`LOWER(COALESCE(c.country_code,'')) LIKE LOWER($${idx})`);
+      if (cols.has('location')) parts.push(`LOWER(COALESCE(c.location,'')) LIKE LOWER($${idx})`);
+      if (cols.has('size_meta')) parts.push(`LOWER(COALESCE(c.size_meta::text,'')) LIKE LOWER($${idx})`);
+
+      // always include title/description fallback
+      parts.push(`LOWER(COALESCE(c.title,'')) LIKE LOWER($${idx})`);
+      parts.push(`LOWER(COALESCE(c.description,'')) LIKE LOWER($${idx})`);
+
+      conditions.push(`(${parts.join(' OR ')})`);
+      values.push(`%${merged.country}%`);
+      idx += 1;
+    }
+
+    // tutor name filter
+    if (merged.tutor) {
+      conditions.push(`LOWER(COALESCE(p.name, u.name, '')) LIKE LOWER($${idx++})`);
+      values.push(`%${merged.tutor}%`);
+    }
+
     // keyword search
     if (kw) {
-      conditions.push(`(
-        LOWER(COALESCE(c.title,'')) LIKE $${idx}
-        OR LOWER(COALESCE(c.description,'')) LIKE $${idx}
-        OR LOWER(COALESCE(c.subject,'')) LIKE $${idx}
-      )`);
-      values.push(`%${kw.toLowerCase()}%`);
+      const parts = [
+        `LOWER(COALESCE(c.title,'')) LIKE LOWER($${idx})`,
+        `LOWER(COALESCE(c.description,'')) LIKE LOWER($${idx})`,
+        `LOWER(COALESCE(c.subject,'')) LIKE LOWER($${idx})`,
+        `LOWER(COALESCE(c.category,'')) LIKE LOWER($${idx})`,
+        `LOWER(COALESCE(p.name, u.name, '')) LIKE LOWER($${idx})`,
+      ];
+      if (cols.has('tags')) parts.push(`LOWER(COALESCE(c.tags::text,'')) LIKE LOWER($${idx})`);
+      if (cols.has('size_meta')) parts.push(`LOWER(COALESCE(c.size_meta::text,'')) LIKE LOWER($${idx})`);
+
+      conditions.push(`(${parts.join(' OR ')})`);
+      values.push(`%${kw}%`);
       idx += 1;
+    }
+
+    // Sorting
+    let orderBy = `COALESCE(c.avg_rating, 0) DESC, COALESCE(c.ratings_count, 0) DESC, c.created_at DESC`;
+    const srt = merged.sort || '';
+    if (srt.includes('top') || srt.includes('rating') || srt.includes('best')) {
+      orderBy = `COALESCE(c.avg_rating,0) DESC, COALESCE(c.ratings_count,0) DESC, c.created_at DESC`;
+    } else if (srt.includes('cheap') || srt.includes('price')) {
+      orderBy = `COALESCE(c.price,0) ASC, c.created_at DESC`;
+    } else if (srt.includes('new') || srt.includes('latest')) {
+      orderBy = `c.created_at DESC`;
     }
 
     const sql = `
@@ -1152,16 +1404,20 @@ export const searchCourses = async (req, res) => {
         c.created_at, c.updated_at,
         COALESCE(c.avg_rating, 0)::float AS avg_rating,
         COALESCE(c.ratings_count, 0)     AS ratings_count,
-        COALESCE(c.is_oer, FALSE)        AS is_oer,
-        c.subject, c.price_label, c.thumbnail_url,
-        c.provider, c.source_kind, c.content_kind,
-        c.size_meta
+        ${cols.has('is_oer') ? 'COALESCE(c.is_oer, FALSE) AS is_oer,' : 'FALSE AS is_oer,'}
+        COALESCE(c.subject, '')          AS subject,
+        ${cols.has('thumbnail_url') ? 'c.thumbnail_url,' : 'NULL::text AS thumbnail_url,'}
+        ${cols.has('price_label') ? 'c.price_label,' : 'NULL::text AS price_label,'}
+        ${cols.has('provider') ? 'c.provider,' : 'NULL::text AS provider,'}
+        ${cols.has('source_kind') ? 'c.source_kind,' : 'NULL::text AS source_kind,'}
+        ${cols.has('content_kind') ? 'c.content_kind,' : 'NULL::text AS content_kind,'}
+        ${cols.has('size_meta') ? 'c.size_meta,' : 'NULL::jsonb AS size_meta,'}
+        COALESCE(p.name, u.name, '') AS "tutorName"
       FROM courses c
+      LEFT JOIN users u ON u.id = c.tutor_id
+      LEFT JOIN profiles p ON p.user_id = c.tutor_id AND p.role = 'tutor'
       WHERE ${conditions.join(' AND ')}
-      ORDER BY
-        COALESCE(c.avg_rating, 0) DESC,
-        COALESCE(c.ratings_count, 0) DESC,
-        c.created_at DESC
+      ORDER BY ${orderBy}
       LIMIT $${idx++}
       OFFSET $${idx++};
     `;
@@ -1171,10 +1427,7 @@ export const searchCourses = async (req, res) => {
     log(`[searchCourses:${rid}] sql`, {
       whereCount: conditions.length,
       paramsCount: values.length,
-      limitN,
-      offsetN,
-      kw,
-      sqlPreview: sql.replace(/\s+/g, ' ').trim().slice(0, 260) + '...',
+      orderBy,
       valuesPreview: values.map((v) =>
         typeof v === 'string' ? (v.length > 80 ? v.slice(0, 80) + '…' : v) : v,
       ),
@@ -1184,29 +1437,22 @@ export const searchCourses = async (req, res) => {
     const { rows } = await pool.query(sql, values);
     const dbMs = Date.now() - tDb;
 
-    log(`[searchCourses:${rid}] done`, {
-      aiUsed,
-      aiMs,
-      dbMs,
-      rows: rows.length,
-      totalMs: Date.now() - t0,
-    });
+    const totalMs = Date.now() - t0;
 
     return res.json({
-      success: true,
-      parsed: ai ? merged : null,
-      courses: rows,
-      limit: limitN,
-      offset: offsetN,
-      meta: dev ? { rid, aiMs, dbMs, aiUsed } : undefined,
-    });
+  success: true,
+  parsed: ai ? merged : null,
+  results: {
+    courses: courseRows,     // existing
+    oerVideos,               // ✅ new
+  },
+  limit: limitN,
+  offset: offsetN,
+  meta: { aiUsed: Boolean(ai), aiMs, /* dbMs etc */ },
+});
+
   } catch (err) {
-    console.error(`[searchCourses:${rid}] error`, {
-      message: err?.message,
-      code: err?.code,
-      stack: err?.stack,
-      tookMs: Date.now() - t0,
-    });
-    return res.status(500).json({ message: 'Failed to search courses.', rid });
+    console.error(`[searchCourses] error`, err);
+    return res.status(500).json({ error: err?.message || 'Internal server error' });
   }
 };

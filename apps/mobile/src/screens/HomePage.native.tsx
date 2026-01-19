@@ -1,4 +1,4 @@
-/* eslint-disable prettier/prettier */
+
 // apps/mobile/src/screens/HomePage.native.tsx
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';

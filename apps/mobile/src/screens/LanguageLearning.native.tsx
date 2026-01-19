@@ -484,6 +484,24 @@ const composerCollapsed = inputFocused || keyboardOpen;
   }, [languageStart, initMessages, setInitialState, setPlaybackQueue]);
 
   useEffect(() => {
+  if (!languageStart?.playback) return;
+
+  // Find the last assistant message in initMessages (matches extractInitMessages behavior)
+  const lastAssistantIdx = [...initMessages]
+    .map((m, i) => ({ m, i }))
+    .reverse()
+    .find((x) => x.m?.role === 'assistant')?.i;
+
+  if (lastAssistantIdx == null) return;
+
+  const mk = `assistant-${lastAssistantIdx}`;
+  const ck = cacheKeyFor(mk, DEFAULT_VOICE.voiceId);
+
+  setPlaybackByKey((prev) => ({ ...prev, [ck]: languageStart.playback }));
+}, [languageStart?.playback, initMessages]);
+
+
+  useEffect(() => {
     Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,
       allowsRecordingIOS: false,
@@ -813,38 +831,69 @@ const composerCollapsed = inputFocused || keyboardOpen;
   }, [quiz, answers]);
 
 
-  const fetchPlaybackForMessage = useCallback(
+const fetchPlaybackForMessage = useCallback(
   async (msg: any, idx: number) => {
-    const res = await fetch(`${backendUrl}/courses/language/playback`, {
+    const base = String(backendUrl || '').replace(/\/$/, '');
+    const url = `${base}/api/ai/courses/language/playback`;
+
+    const messageId = getMsgId(msg);
+
+    const payload: any = {
+      courseId,
+      voiceId: voiceSettings.voiceId,
+    };
+
+    // ✅ only send valid locator
+    if (messageId !== null && messageId !== undefined && messageId !== '') {
+      payload.messageId = messageId;
+    } else {
+      payload.messageIndex = idx;
+    }
+
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token || ''}`,
       },
-      body: JSON.stringify({
-        courseId,
-        messageId: getMsgId(msg),
-        messageIndex: idx,
-        voiceId: voiceSettings.voiceId,
-      }),
+      body: JSON.stringify(payload),
     });
 
+    if (res.status === 404) {
+      console.error('[LL playback] 404 endpoint not found', { url });
+      throw new Error(`PLAYBACK_ENDPOINT_404: ${url}`);
+    }
+
     const json = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(json?.error || 'PLAYBACK_FETCH_FAILED');
+
+    if (!res.ok) {
+      console.error('[LL playback] request failed', {
+        status: res.status,
+        url,
+        payload,
+        response: json,
+      });
+      throw new Error(json?.error || json?.message || 'PLAYBACK_FETCH_FAILED');
+    }
+
     return json as PlaybackPayload;
   },
   [backendUrl, token, courseId, voiceSettings.voiceId]
 );
 
+
 const ensurePlaybackFor = useCallback(
   async (messageKey: string, msg: any, idx: number) => {
     const ck = cacheKeyFor(messageKey, voiceSettings.voiceId);
 
-    // already present on the message OR cached locally
-    const direct = (msg?.playback as PlaybackPayload) || playbackByKey[ck];
-    if (direct?.items?.length) return direct;
+    // ✅ Prefer per-voice cache FIRST (so voice switching works)
+    const perVoice = playbackByKey[ck];
+    if (perVoice?.items?.length) return perVoice;
 
-    // fetch/generate on demand
+    // ✅ Embedded playback only as fallback (usually default voice from start)
+    const embedded = msg?.playback as PlaybackPayload | undefined;
+    if (embedded?.items?.length) return embedded;
+
     setPlaybackLoadingKey(ck);
     try {
       const pb = await fetchPlaybackForMessage(msg, idx);
@@ -853,12 +902,16 @@ const ensurePlaybackFor = useCallback(
         return pb;
       }
       return null;
+    } catch (e) {
+      console.error(e);
+      return null;
     } finally {
       setPlaybackLoadingKey((cur) => (cur === ck ? null : cur));
     }
   },
   [voiceSettings.voiceId, playbackByKey, fetchPlaybackForMessage]
 );
+
 
 const startPlaybackAt = useCallback(
   async (messageKey: string, msg: any, idx: number, segmentIdx: number, kind: 'en' | 'tr') => {
@@ -1137,7 +1190,8 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
                       <View style={tw`gap-2`}>
                         {(() => {
                           const ck = cacheKeyFor(messageKey, voiceSettings.voiceId);
-                          const pb = (msg.playback as PlaybackPayload) || playbackByKey[ck] || null;
+                          const pb = playbackByKey[ck] || (msg.playback as PlaybackPayload) || null;
+
                           const hasPb = !!pb?.items?.length;
                           const isPbLoading = playbackLoadingKey === ck;
 
@@ -1146,11 +1200,15 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
                               <View style={tw`flex-row items-center gap-2`}>
                                 <Pressable
                                   onPress={async () => {
-                                    const ensured = await ensurePlaybackFor(messageKey, msg, idx);
-                                    if (!ensured) return;
+                                    try {
+                                      const ensured = await ensurePlaybackFor(messageKey, msg, idx);
+                                      if (!ensured) return;
 
-                                    activeMsgMetaRef.current = { messageKey, idx, msgId: getMsgId(msg) };
-                                    await handleInlinePlayPause(messageKey, ensured);
+                                      activeMsgMetaRef.current = { messageKey, idx, msgId: getMsgId(msg) };
+                                      await handleInlinePlayPause(messageKey, ensured);
+                                    } catch (e) {
+                                      console.error(e);
+                                    }
                                   }}
                                   style={[
                                     tw`rounded-full px-3 py-1`,

@@ -1,4 +1,4 @@
-// apps/web/src/components/ClassVaultList.tsx
+// apps/web/src/components/ClassVaultList.web.tsx
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import debounce from 'lodash.debounce';
@@ -53,7 +53,9 @@ type ExternalFilters = {
 type ClassVaultListProps = {
   embedded?: boolean;
   filters?: ExternalFilters;
+  hideOerCollections?: boolean; // ✅ add
 };
+
 
 /* ───────── Helpers (country normalization & extraction) ───────── */
 const norm = (s?: string) => (s || '').toLowerCase().trim();
@@ -147,7 +149,12 @@ function StarRow({ avg }: { avg: number }) {
 }
 
 /* ───────── Component ───────── */
-export default function ClassVaultList({ embedded, filters: externalFilters }: ClassVaultListProps) {
+export default function ClassVaultList({
+  embedded,
+  filters: externalFilters,
+  hideOerCollections,
+}: ClassVaultListProps) {
+
   const navigate = useNavigate();
   const { role, backendUrl, userId } = useShopContext();
 
@@ -192,13 +199,16 @@ export default function ClassVaultList({ embedded, filters: externalFilters }: C
 
   // -------- OER Collections grid (HomePage-like cards) --------
   const [oerCollections, setOerCollections] = useState<any[]>([]);
-  useEffect(() => {
-    if (!backendUrl) return;
-    fetch(`${backendUrl}/api/oer/collections?limit=12`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Failed to load collections'))))
-      .then(setOerCollections)
-      .catch(() => setOerCollections([]));
-  }, [backendUrl]);
+
+useEffect(() => {
+  if (!backendUrl) return;
+  if (embedded || hideOerCollections) return; // ✅ don’t fetch
+  fetch(`${backendUrl}/api/oer/collections?limit=12`)
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Failed to load collections'))))
+    .then(setOerCollections)
+    .catch(() => setOerCollections([]));
+}, [backendUrl, embedded, hideOerCollections]);
+
 
   const clearFilters = useCallback(() => {
     setCountryLocal('');
@@ -690,7 +700,7 @@ export default function ClassVaultList({ embedded, filters: externalFilters }: C
             </div>
 
             {/* —— Free Video Collections (HomePage-like cards) —— */}
-            {oerCollections.length > 0 && (
+            {!embedded && !hideOerCollections && oerCollections.length > 0 && (
               <>
                 <h2 className="mt-8 text-xl font-bold">Free Video Collections</h2>
                 <p className="text-sm text-[#49739c] dark:text-darkTextSecondary mb-2">

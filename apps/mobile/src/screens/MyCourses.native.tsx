@@ -26,14 +26,10 @@ import {
   useTopCourses,
   useWrapOerBook,
 } from '@mytutorapp/shared/hooks';
-import useCourseSearch from '@mytutorapp/shared/hooks/useCourseSearch';
+import useCourseSearch, { normalizeCourseSearchMeta } from '@mytutorapp/shared/hooks/useCourseSearch';
+
 import { downloadCertificateFile } from '@mytutorapp/shared/api';
 import { getRequiredQuestions, getRequiredWeeks } from '@mytutorapp/shared/utils/programTrackRequirements';
-import {
-  normalizeCountryLabel,
-  parseSmartSearchIntent,
-  rankMatch,
-} from '@mytutorapp/shared/utils/smartSearchIntent';
 import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -87,7 +83,6 @@ const getTrackRequirements = (track?: ProgramTrack | string | null): TrackRequir
     minQuestions: getRequiredQuestions(key),
   };
 };
-
 
 /* ----------------------------- Small UI bits ----------------------------- */
 
@@ -400,21 +395,20 @@ const OerBookCard: React.FC<{
           >
             <Text style={tw`text-white text-xs font-semibold`}>Reader</Text>
           </Pressable>
-{/*
-  TODO: Re-enable "Learn with RobotTeacher" for OER books once the mobile OER->AI wrap flow is finalized.
-  (Keept here for quick re-enable.)
-  {!!onRobot && (
-    <Pressable
-      style={tw`h-10 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center mt-2`}
-      onPress={onRobot}
-    >
-      <Text style={tw`text-[#0d141c] dark:text-white text-xs font-semibold`}>
-        Learn with RobotTeacher
-      </Text>
-    </Pressable>
-  )}
-*/}
-
+          {/*
+            TODO: Re-enable "Learn with RobotTeacher" for OER books once the mobile OER->AI wrap flow is finalized.
+            (Kept here for quick re-enable.)
+            {!!onRobot && (
+              <Pressable
+                style={tw`h-10 rounded-lg bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 items-center justify-center mt-2`}
+                onPress={onRobot}
+              >
+                <Text style={tw`text-[#0d141c] dark:text-white text-xs font-semibold`}>
+                  Learn with RobotTeacher
+                </Text>
+              </Pressable>
+            )}
+          */}
         </View>
       </View>
     </View>
@@ -514,124 +508,110 @@ const MyCoursesNative: React.FC = () => {
       : (topCoursesPage - 1) * topCoursesPageSize + topCourses.length);
   const topCoursesTotalPages = Math.max(1, Math.ceil(topCoursesResolvedTotal / topCoursesPageSize));
 
-  /* ------------------ Web-like: useCourseSearch for Courses tab ------------------ */
+  /* ------------------ ✅ Server-driven: useCourseSearch for Courses tab ------------------ */
   const {
     courses: searchedCourses,
     loading: courseSearchLoading,
     handleSearch: handleCourseSearch,
-    uiFilters: courseFilters,
-    setSubjectFilter: setCourseSubject,
-    setGradeBandFilter: setCourseGradeBand,
-    setLevelFilter: setCourseLevel,
-    setMinRatingFilter: setCourseMinRating,
-    setMaxPriceFilter: setCourseMaxPrice,
-    setIsOerFilter: setCourseIsOer,
+    filters,
+    patchFilters,
     clearFilters: clearCourseFilters,
     searchMeta: courseSearchMeta,
   } = useCourseSearch({ backendUrl: backendUrl ?? '' });
 
-  const courseSearchError =
-    (courseSearchMeta as any)?.error ||
-    (courseSearchMeta as any)?.err ||
-    (courseSearchMeta as any)?.message ||
-    null;
+  const courseMeta = useMemo(() => normalizeCourseSearchMeta(courseSearchMeta), [courseSearchMeta]);
+  const courseSearchError = courseMeta.error;
 
-  const [stableCourses, setStableCourses] = useState<Course[]>([]);
-  useEffect(() => {
-    if (!courseSearchLoading) setStableCourses((searchedCourses ?? []) as Course[]);
-  }, [courseSearchLoading, searchedCourses]);
-  const activeCourses = courseSearchLoading ? stableCourses : searchedCourses;
-
-  // Search box (debounced)
+  // Search box
   const [courseQuery, setCourseQuery] = useState('');
-  const debouncedSearch = useRef(
-    debounce((q: string) => {
-      try {
-        handleCourseSearch(q);
-      } catch {}
-    }, 250)
-  );
 
-  useEffect(() => () => debouncedSearch.current.cancel(), []);
-
+  // Drive server search from query (hook already debounces internally)
   useEffect(() => {
-    // Initial load for courses tab (and safe to preload)
     try {
-      setCourseIsOer(false);
+      handleCourseSearch(courseQuery);
+    } catch {}
+  }, [courseQuery, handleCourseSearch]);
+
+  // Ensure default “tutor-first” behavior on mount / backendUrl change
+  useEffect(() => {
+    try {
+      patchFilters({ isOer: false, sourceKind: 'tutor' });
       handleCourseSearch('');
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendUrl]);
 
+  const [stableCourses, setStableCourses] = useState<Course[]>([]);
   useEffect(() => {
-    debouncedSearch.current(courseQuery);
-  }, [courseQuery]);
+    if (!courseSearchLoading) setStableCourses((searchedCourses ?? []) as Course[]);
+  }, [courseSearchLoading, searchedCourses]);
 
-  // Extra local-only duration filter (string contains)
-  const [duration, setDuration] = useState('');
+  const activeCourses = courseSearchLoading ? stableCourses : searchedCourses;
 
-  const [courseCountry, setCourseCountry] = useState('');
 
-  const courseIntent = useMemo(() => parseSmartSearchIntent(courseQuery), [courseQuery]);
+  const courseFiltersState = useMemo(
+    () => ({
+      subject: filters.subject ?? '',
+      grade: filters.gradeBand ?? '',
+      level: filters.level ?? '',
+      country: filters.country ?? '',
+      minRating: filters.minRating ?? 0,
+      maxPrice: filters.maxPrice ?? 0,
+      duration: (filters as any).duration ?? '',
+    }),
+    [filters]
+  );
 
-  useEffect(() => {
-    if (courseIntent.subject && !courseFilters?.subject) setCourseSubject(courseIntent.subject);
-    if (courseIntent.gradeBand && !courseFilters?.gradeBand)
-      setCourseGradeBand(courseIntent.gradeBand);
-    if (courseIntent.level && !courseFilters?.level) setCourseLevel(courseIntent.level);
-    if (courseIntent.minRating && (courseFilters?.minRating ?? 0) === 0)
-      setCourseMinRating(courseIntent.minRating);
-    if (courseIntent.maxPrice && (courseFilters?.maxPrice ?? 0) === 0)
-      setCourseMaxPrice(courseIntent.maxPrice);
-    if (courseIntent.country?.name && !courseCountry) setCourseCountry(courseIntent.country.name);
-  }, [
-    courseIntent,
-    courseFilters,
-    courseCountry,
-    setCourseSubject,
-    setCourseGradeBand,
-    setCourseLevel,
-    setCourseMinRating,
-    setCourseMaxPrice,
-  ]);
+  const handleCourseFiltersChange = useCallback(
+    (next: any) => {
+      patchFilters({
+        subject: next.subject,
+        gradeBand: next.grade,
+        level: next.level,
+        country: next.country,
+        duration: next.duration,
+        minRating: next.minRating,
+        maxPrice: next.maxPrice,
+      });
+    },
+    [patchFilters]
+  );
 
   const clearAllCourses = useCallback(() => {
     clearCourseFilters();
-    setDuration('');
-    setCourseCountry('');
     setCourseQuery('');
     try {
-      setCourseIsOer(false);
       handleCourseSearch('');
     } catch {}
-  }, [clearCourseFilters, handleCourseSearch, setCourseIsOer]);
+  }, [clearCourseFilters, handleCourseSearch]);
 
-  const handleCourseFiltersChange = useCallback(
-    (next: {
-      subject?: string;
-      grade?: string;
-      level?: string;
-      country?: string;
-      minRating?: number;
-      maxPrice?: number;
-      duration?: string;
-    }) => {
-      if (next.subject != null) setCourseSubject(next.subject);
-      if (next.grade != null) setCourseGradeBand(next.grade);
-      if (next.level != null) setCourseLevel(next.level);
-      if (next.country != null) setCourseCountry(next.country);
-      if (next.minRating != null) setCourseMinRating(next.minRating);
-      if (next.maxPrice != null) setCourseMaxPrice(next.maxPrice);
-      if (next.duration != null) setDuration(next.duration);
-    },
-    [
-      setCourseSubject,
-      setCourseGradeBand,
-      setCourseLevel,
-      setCourseMinRating,
-      setCourseMaxPrice,
-    ]
-  );
+  /* ------------------------------- Library tab (Vault + OER videos) ------------------------------- */
+
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [librarySubject, setLibrarySubject] = useState<string>('');
+  const [libraryGrade, setLibraryGrade] = useState<string>('');
+  const [libraryCountry, setLibraryCountry] = useState<string>('');
+  const [libraryProvider, setLibraryProvider] = useState<string>('');
+  const [libraryScope, setLibraryScope] = useState<'all' | 'purchased' | 'free'>('all');
+
+  const [vaultFilters, setVaultFilters] = useState<ClassVaultFilters>({});
+  const clearVaultFilters = useCallback(() => {
+    setLibrarySubject('');
+    setLibraryGrade('');
+    setLibraryCountry('');
+    setLibraryProvider('');
+    setLibraryScope('all');
+    setLibraryQuery('');
+    setVaultFilters({});
+  }, []);
+
+  useEffect(() => {
+    setVaultFilters({
+      category: librarySubject ? [librarySubject] : undefined,
+      ageGroup: libraryGrade ? [libraryGrade] : undefined,
+      country: libraryCountry || undefined,
+    });
+  }, [librarySubject, libraryGrade, libraryCountry]);
 
   const handleLibraryFiltersChange = useCallback(
     (next: {
@@ -647,20 +627,7 @@ const MyCoursesNative: React.FC = () => {
       if (next.provider != null) setLibraryProvider(next.provider);
       if (next.scope != null) setLibraryScope(next.scope);
     },
-    []
-  );
-
-  const courseFiltersState = useMemo(
-    () => ({
-      subject: courseFilters?.subject ?? '',
-      grade: courseFilters?.gradeBand ?? '',
-      level: courseFilters?.level ?? '',
-      country: courseCountry,
-      minRating: courseFilters?.minRating ?? 0,
-      maxPrice: courseFilters?.maxPrice ?? 0,
-      duration,
-    }),
-    [courseFilters, courseCountry, duration]
+    [setLibrarySubject, setLibraryGrade, setLibraryCountry, setLibraryProvider, setLibraryScope]
   );
 
   const libraryFiltersState = useMemo(
@@ -699,26 +666,26 @@ const MyCoursesNative: React.FC = () => {
     const provider = params.provider != null ? String(params.provider) : undefined;
 
     if (subject != null) {
-      setCourseSubject(subject);
+      patchFilters({ subject });
       setLibrarySubject(subject);
     }
     if (gradeBand != null) {
-      setCourseGradeBand(gradeBand);
+      patchFilters({ gradeBand });
       setLibraryGrade(gradeBand);
     }
-    if (level != null) setCourseLevel(level);
+    if (level != null) patchFilters({ level });
+
     if (country != null) {
-      const normalized = normalizeCountryLabel(country);
-      const label = normalized?.name || country;
-      setCourseCountry(label);
-      setLibraryCountry(label);
+      patchFilters({ country });
+      setLibraryCountry(country);
     }
-    if (minRating != null && Number.isFinite(minRating)) setCourseMinRating(minRating);
-    if (maxPrice != null && Number.isFinite(maxPrice)) setCourseMaxPrice(maxPrice);
-    if (durationParam != null) setDuration(durationParam);
+    if (minRating != null && Number.isFinite(minRating)) patchFilters({ minRating });
+    if (maxPrice != null && Number.isFinite(maxPrice)) patchFilters({ maxPrice });
+    if (durationParam != null) patchFilters({ duration: durationParam } as any);
+
     if (provider != null) setLibraryProvider(provider);
     if (scope === 'all' || scope === 'free' || scope === 'purchased') setLibraryScope(scope);
-  }, [route?.params]);
+  }, [route?.params, patchFilters]);
 
   /* Enrollments */
   const { enrollments, fetchMine } = useEnrollments({
@@ -740,18 +707,17 @@ const MyCoursesNative: React.FC = () => {
     return set;
   }, [enrollments]);
 
- const resolveCourseTrack = useCallback((course: any): ProgramTrack | undefined => {
-  const raw =
-    course?.programTrack ??
-    course?.program_track ??
-    course?.track ??
-    course?.track_key ??
-    course?.program_track_key;
+  const resolveCourseTrack = useCallback((course: any): ProgramTrack | undefined => {
+    const raw =
+      course?.programTrack ??
+      course?.program_track ??
+      course?.track ??
+      course?.track_key ??
+      course?.program_track_key;
 
-  const key = normalizeTrack(raw);
-  return key;
-}, []);
-
+    const key = normalizeTrack(raw);
+    return key;
+  }, []);
 
   const extractWeeksCount = useCallback((course: any): number | null => {
     const syllabus = Array.isArray(course?.syllabus) ? course.syllabus.length : null;
@@ -785,10 +751,15 @@ const MyCoursesNative: React.FC = () => {
     const next: Record<string, ProgramTrack> = {};
     entries.forEach(([key, val]) => {
       const cid = key.replace('sandbox_track:', '');
-      if (val === 'certificate' || val === 'diploma' || val === 'degree' || val === 'professional' || val === 'comprehensive') {
-  next[cid] = normalizeTrack(val);
-}
-
+      if (
+        val === 'certificate' ||
+        val === 'diploma' ||
+        val === 'degree' ||
+        val === 'professional' ||
+        val === 'comprehensive'
+      ) {
+        next[cid] = normalizeTrack(val);
+      }
     });
     return next;
   }, []);
@@ -971,63 +942,11 @@ const MyCoursesNative: React.FC = () => {
     [tutorNameById]
   );
 
-  // ✅ Course list like web: searchedCourses -> safety filter -> duration contains -> require tutor name
-  const filteredRows = useMemo(() => {
-    const rows = (activeCourses ?? []) as any[];
-    const normalizedCountry =
-      normalizeCountryLabel(courseCountry)?.name?.toLowerCase() || courseCountry.toLowerCase();
-
-    const filtered = rows
-      .filter((c) => !isOerCourse(c) && wasUploadedByTutor(c))
-      .filter((c) => {
-        if (!duration) return true;
-        const d = String(c?.duration ?? '').toLowerCase();
-        return d.includes(duration.toLowerCase());
-      })
-      .filter((c) => {
-        if (!normalizedCountry) return true;
-        const hay = [
-          c.country,
-          c.country_code,
-          c.location,
-          c.region,
-          c.metadata,
-          c.description,
-        ]
-          .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || {})))
-          .join(' ')
-          .toLowerCase();
-        return hay.includes(normalizedCountry);
-      });
-
-    if (!courseIntent.query) return filtered;
-
-    const scored = filtered.map((c, idx) => {
-      const tutor = resolveTutorName(c) ?? '';
-      const hay = [
-        c.title,
-        c.description,
-        c.subject,
-        c.gradeBand,
-        c.grade_band,
-        c.level,
-        c.tags,
-        tutor,
-        c.country,
-      ]
-        .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || [])))
-        .join(' ');
-      return { c, idx, score: rankMatch(hay, courseIntent) };
-    });
-
-    scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
-    return scored.map((s) => s.c);
-  }, [activeCourses, duration, courseCountry, courseIntent, resolveTutorName]);
-
   const displayRows = useMemo(
-    () => filteredRows.filter((c) => !!resolveTutorName(c)),
-    [filteredRows, resolveTutorName]
-  );
+  () => (activeCourses ?? []).filter((c: any) => !!resolveTutorName(c)),
+  [activeCourses, resolveTutorName]
+);
+
 
   /* ----------------------- Ratings prefetch (courses) ----------------------- */
   const [ratings, setRatings] = useState<
@@ -1171,43 +1090,6 @@ const MyCoursesNative: React.FC = () => {
     [oerCourses]
   );
 
-  /* ------------------------------- Library tab (Vault + OER videos) ------------------------------- */
-
-  const [libraryQuery, setLibraryQuery] = useState('');
-  const [librarySubject, setLibrarySubject] = useState<string>(''); // '' == Any subject
-  const [libraryGrade, setLibraryGrade] = useState<string>(''); // '' == Any grade
-  const [libraryCountry, setLibraryCountry] = useState<string>(''); // '' == Any country
-  const [libraryProvider, setLibraryProvider] = useState<string>('');
-  const [libraryScope, setLibraryScope] = useState<'all' | 'purchased' | 'free'>('all');
-
-  const libraryIntent = useMemo(() => parseSmartSearchIntent(libraryQuery), [libraryQuery]);
-
-  useEffect(() => {
-    if (libraryIntent.subject && !librarySubject) setLibrarySubject(libraryIntent.subject);
-    if (libraryIntent.gradeBand && !libraryGrade) setLibraryGrade(libraryIntent.gradeBand);
-    if (libraryIntent.country?.name && !libraryCountry)
-      setLibraryCountry(libraryIntent.country.name);
-  }, [libraryIntent, librarySubject, libraryGrade, libraryCountry]);
-
-  const [vaultFilters, setVaultFilters] = useState<ClassVaultFilters>({});
-  const clearVaultFilters = useCallback(() => {
-    setLibrarySubject('');
-    setLibraryGrade('');
-    setLibraryCountry('');
-    setLibraryProvider('');
-    setLibraryScope('all');
-    setLibraryQuery('');
-    setVaultFilters({});
-  }, []);
-
-  useEffect(() => {
-    setVaultFilters({
-      category: librarySubject ? [librarySubject] : undefined,
-      ageGroup: libraryGrade ? [libraryGrade] : undefined,
-      country: libraryCountry || undefined,
-    });
-  }, [librarySubject, libraryGrade, libraryCountry]);
-
   const hasRoute = (name: string): boolean => {
     try {
       const state = navigation.getState?.();
@@ -1298,11 +1180,10 @@ const MyCoursesNative: React.FC = () => {
   }, [backendUrl, api]);
 
   const filteredOerVideos = useMemo(() => {
-    const normalizedCountry =
-      normalizeCountryLabel(libraryCountry)?.name?.toLowerCase() || libraryCountry.toLowerCase();
-    const query = libraryIntent.query.toLowerCase();
+    const normalizedCountry = String(libraryCountry || '').trim().toLowerCase();
+    const q = String(libraryQuery || '').trim().toLowerCase();
 
-    const filtered = oerVideoCols.filter((c) => {
+    return oerVideoCols.filter((c) => {
       if (librarySubject) {
         const subj = String(c.subject ?? '').toLowerCase();
         if (!subj.includes(librarySubject.toLowerCase())) return false;
@@ -1329,28 +1210,16 @@ const MyCoursesNative: React.FC = () => {
           .toLowerCase();
         if (!hay.includes(normalizedCountry)) return false;
       }
+      if (q) {
+        const hay = [c.title, c.description, c.subject, c.tags, c.provider, c.country]
+          .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || [])))
+          .join(' ')
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       return true;
     });
-
-    if (!query) return filtered;
-
-    const scored = filtered.map((c, idx) => {
-      const hay = [c.title, c.description, c.subject, c.tags, c.provider, c.country]
-        .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || [])))
-        .join(' ');
-      return { c, idx, score: rankMatch(hay, libraryIntent) };
-    });
-
-    scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
-    return scored.map((s) => s.c);
-  }, [
-    oerVideoCols,
-    librarySubject,
-    libraryGrade,
-    libraryCountry,
-    libraryProvider,
-    libraryIntent,
-  ]);
+  }, [oerVideoCols, librarySubject, libraryGrade, libraryCountry, libraryProvider, libraryQuery]);
 
   const renderOerVideoItem = ({ item }: { item: OerCollection }) => {
     const idOrSlug = String(item.slug ?? item.id);
@@ -1840,12 +1709,16 @@ const MyCoursesNative: React.FC = () => {
             🧪 My AI Courses (Unlocked)
           </Text>
           <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
-            {unlockedAiLoading ? 'Loading…' : `${unlockedAi.length} course${unlockedAi.length === 1 ? '' : 's'}`}
+            {unlockedAiLoading
+              ? 'Loading…'
+              : `${unlockedAi.length} course${unlockedAi.length === 1 ? '' : 's'}`}
           </Text>
         </View>
 
         {sandboxDbgEnabled && !unlockedAiLoading && unlockedAi.length === 0 ? (
-          <View style={tw`mt-2 rounded-xl bg-[#fff7ed] dark:bg-[#2a1e12] p-2 border border-[#f5d0a5] dark:border-[#5c3d1a]`}>
+          <View
+            style={tw`mt-2 rounded-xl bg-[#fff7ed] dark:bg-[#2a1e12] p-2 border border-[#f5d0a5] dark:border-[#5c3d1a]`}
+          >
             <Text style={tw`text-[11px] font-semibold text-[#7a4b12] dark:text-[#f5d0a5]`}>
               unlocked-ai debug
             </Text>
@@ -2040,6 +1913,37 @@ const MyCoursesNative: React.FC = () => {
         )}
       </View>
 
+      {/* AI chips (server parsed) */}
+      {courseMeta.aiUsed && courseMeta.parsed ? (
+        <View style={tw`mt-2 flex-row flex-wrap`}>
+          {(() => {
+            const p: any = courseMeta.parsed;
+            const chips = [
+              p.subject ? `Subject: ${p.subject}` : null,
+              p.gradeBand ? `Grade: ${p.gradeBand}` : null,
+              p.level ? `Level: ${p.level}` : null,
+              p.country ? `Country: ${p.country}` : null,
+              p.duration ? `Duration: ${p.duration}` : null,
+              p.tutor ? `Tutor: ${p.tutor}` : null,
+              p.minRating ? `Rating: ${p.minRating}+` : null,
+              p.isOer ? `Free/OER` : null,
+              p.maxPrice > 0 ? `Under: $${p.maxPrice}` : null,
+              p.sort ? `Sort: ${p.sort}` : null,
+            ].filter(Boolean);
+
+            return chips.map((c) => (
+              <View
+                key={String(c)}
+                style={tw`mr-2 mb-2 px-3 py-1 rounded-full bg-[#e7edf4] dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10`}
+              >
+                <Text style={tw`text-[11px] text-slate-700 dark:text-white/80`}>{String(c)}</Text>
+              </View>
+            ));
+          })()}
+        </View>
+      ) : null}
+
+      {/* ✅ Always visible when user opens Explore Courses tab */}
       <ExploreSearchFiltersBar
         query={courseQuery}
         onQueryChange={setCourseQuery}
@@ -2062,43 +1966,42 @@ const MyCoursesNative: React.FC = () => {
   );
 
   // ---------------- Certificate verification (mobile) ----------------
-const [verifyOpen, setVerifyOpen] = useState(false);
-const [verifyValue, setVerifyValue] = useState('');
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [verifyValue, setVerifyValue] = useState('');
 
-const isUuid = (value: string) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    String(value || '').trim()
+  const isUuid = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || '').trim()
+    );
+
+  const submitVerify = useCallback(
+    (raw?: string) => {
+      const v = String(raw ?? verifyValue ?? '').trim();
+
+      // If empty -> open the verify screen (no request)
+      if (!v) {
+        setVerifyOpen(false);
+        setVerifyValue('');
+        navigation.navigate('VerifyCertificate' as any, {} as any);
+        return;
+      }
+
+      // UUID -> use id
+      if (isUuid(v)) {
+        setVerifyOpen(false);
+        setVerifyValue('');
+        navigation.navigate('VerifyCertificate' as any, { id: v } as any);
+        return;
+      }
+
+      // ✅ Certificate Number -> use certNo
+      const certNo = v.replace(/\s+/g, '').toUpperCase();
+      setVerifyOpen(false);
+      setVerifyValue('');
+      navigation.navigate('VerifyCertificate' as any, { certNo } as any);
+    },
+    [navigation, verifyValue]
   );
-
-const submitVerify = useCallback(
-  (raw?: string) => {
-    const v = String(raw ?? verifyValue ?? '').trim();
-
-    // If empty -> open the verify screen (no request)
-    if (!v) {
-      setVerifyOpen(false);
-      setVerifyValue('');
-      navigation.navigate('VerifyCertificate' as any, {} as any);
-      return;
-    }
-
-    // UUID -> use id
-    if (isUuid(v)) {
-      setVerifyOpen(false);
-      setVerifyValue('');
-      navigation.navigate('VerifyCertificate' as any, { id: v } as any);
-      return;
-    }
-
-    // ✅ Certificate Number -> use certNo
-    const certNo = v.replace(/\s+/g, '').toUpperCase();
-    setVerifyOpen(false);
-    setVerifyValue('');
-    navigation.navigate('VerifyCertificate' as any, { certNo } as any);
-  },
-  [navigation, verifyValue]
-);
-
 
   const VerifyCertificateModal = (
     <Modal
@@ -2148,10 +2051,7 @@ const submitVerify = useCallback(
             </Pressable>
           </View>
 
-          <Pressable
-            onPress={() => submitVerify('')}
-            style={tw`mt-3 self-start`}
-          >
+          <Pressable onPress={() => submitVerify('')} style={tw`mt-3 self-start`}>
             <Text style={tw`text-xs text-[#49739c] dark:text-white/70 underline`}>
               Open verification page instead
             </Text>
@@ -2161,37 +2061,32 @@ const submitVerify = useCallback(
     </Modal>
   );
 
-
-
- 
   /* ----------------------------- Render ----------------------------- */
   return (
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
       <View style={tw`flex-1`}>
         {/* Header */}
-                <View style={tw`px-4 pt-4 pb-2`}>
-         <View style={tw`items-start mb-3`}>
-
-  <Pressable
-    onPress={() => setVerifyOpen(true)}
-    style={tw.style(
-      'flex-row items-center justify-center h-10 px-4 rounded-2xl bg-white dark:bg-[#0f1821]',
-      {
-        borderWidth: 1,
-        borderColor: '#3d99f5',
-      }
-    )}
-  >
-    <View style={tw`flex-row items-center`}>
-      <MaterialIcons name="lock" size={14} color="#3d99f5" />
-      <View style={tw`w-2`} />
-      <Text style={tw`text-[12px] font-semibold text-slate-900 dark:text-white`}>
-        Verify Certificate
-      </Text>
-    </View>
-  </Pressable>
-</View>
-
+        <View style={tw`px-4 pt-4 pb-2`}>
+          <View style={tw`items-start mb-3`}>
+            <Pressable
+              onPress={() => setVerifyOpen(true)}
+              style={tw.style(
+                'flex-row items-center justify-center h-10 px-4 rounded-2xl bg-white dark:bg-[#0f1821]',
+                {
+                  borderWidth: 1,
+                  borderColor: '#3d99f5',
+                }
+              )}
+            >
+              <View style={tw`flex-row items-center`}>
+                <MaterialIcons name="lock" size={14} color="#3d99f5" />
+                <View style={tw`w-2`} />
+                <Text style={tw`text-[12px] font-semibold text-slate-900 dark:text-white`}>
+                  Verify Certificate
+                </Text>
+              </View>
+            </Pressable>
+          </View>
 
           <Text style={tw`text-[28px] font-extrabold text-[#0d141c] dark:text-white`}>
             My Courses
@@ -2279,12 +2174,23 @@ const submitVerify = useCallback(
         ) : (
           <View style={tw`flex-1`}>
             {courseSearchLoading ? (
-              <View style={tw`py-6 items-center`}>
-                <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
-                <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>
-                  Loading courses…
-                </Text>
-              </View>
+              <FlatList
+                data={[]}
+                ListHeaderComponent={
+                  <View style={tw`px-4`}>
+                    {CoursesListHeader}
+                    <View style={tw`py-2 items-center`}>
+                      <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
+                      <Text style={tw`mt-2 text-sm text-[#49739c] dark:text-white/70`}>
+                        Loading courses…
+                      </Text>
+                    </View>
+                  </View>
+                }
+                renderItem={null as any}
+                keyExtractor={() => 'x'}
+                contentContainerStyle={[tw`pb-6`, { paddingBottom: (insets.bottom || 12) + 24 }]}
+              />
             ) : displayRows.length === 0 ? (
               <FlatList
                 data={[]}
@@ -2374,17 +2280,14 @@ const submitVerify = useCallback(
                     if (!openReview || reviewRating < 1) return;
                     setPosting(true);
                     try {
-                      const res = await fetch(
-                        `${backendUrl}/api/reviews/courses/${openReview.id}`,
-                        {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                          },
-                          body: JSON.stringify({ rating: reviewRating, comment: reviewComment }),
-                        }
-                      );
+                      const res = await fetch(`${backendUrl}/api/reviews/courses/${openReview.id}`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                        },
+                        body: JSON.stringify({ rating: reviewRating, comment: reviewComment }),
+                      });
                       if (!res.ok)
                         throw new Error(
                           (await res.text().catch(() => '')) || 'Failed to submit review'

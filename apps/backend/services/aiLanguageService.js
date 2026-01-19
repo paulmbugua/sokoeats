@@ -510,7 +510,7 @@ async function loadRecentMessages(queryable, courseId, limit = PROMPT_HISTORY_LI
   const q = await runQuery(
     queryable,
     `
-    SELECT role, content_text, segments_json, created_at
+    SELECT id, role, content_text, segments_json, created_at
       FROM ai_language_messages
      WHERE course_id = $1::uuid
      ORDER BY created_at DESC
@@ -525,11 +525,13 @@ async function loadRecentMessages(queryable, courseId, limit = PROMPT_HISTORY_LI
 
 function formatMessagesPreview(rows) {
   return (rows || []).map((row) => ({
-    role: row.role,
-    content: row.content_text,
-    segments: row.segments_json || null,
-    createdAt: row.created_at,
-  }));
+  id: row.id,
+  role: row.role,
+  content: row.content_text,
+  segments: row.segments_json || null,
+  createdAt: row.created_at,
+}));
+
 }
 
 function buildConversationContext(messages) {

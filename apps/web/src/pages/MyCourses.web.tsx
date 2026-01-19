@@ -8,15 +8,12 @@ import { downloadCertificateFile } from '@mytutorapp/shared/api/certificatesApi'
 import { generateCertificatePdf } from '@mytutorapp/shared/api/aiCertificatesApi';
 import { fetchCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
 import { getRequiredQuestions, getRequiredWeeks } from '@mytutorapp/shared/utils/programTrackRequirements';
-import {
-  normalizeCountryLabel,
-  parseSmartSearchIntent,
-  rankMatch,
-} from '@mytutorapp/shared/utils/smartSearchIntent';
+
 import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
 import ClassVaultList from '../components/ClassVaultList.web';
 import CourseHero from '../components/CourseHero';
-import useCourseSearch from '@mytutorapp/shared/hooks/useCourseSearch';
+import useCourseSearch, { normalizeCourseSearchMeta } from '@mytutorapp/shared/hooks/useCourseSearch';
+
 import ExploreSearchFiltersBar from '../components/search/ExploreSearchFiltersBar.web';
 
 /* ─────────────────────────────────────────────────────────
@@ -102,6 +99,11 @@ const sanitizeId = (routeId?: string): string => {
 const OER_READER_ROUTE_BASE = '/oer/collections';
 const getOerReaderPath = (c: { id?: string | number; slug?: string }) =>
   `${OER_READER_ROUTE_BASE}/${encodeURIComponent(String(c.slug ?? c.id))}`;
+
+const getVideoCollectionPath = (c: { id?: string | number; slug?: string }) =>
+  `/videos/${encodeURIComponent(String(c.id ?? c.slug))}`;
+
+
 
 /* --------------------- HTTP helpers --------------------- */
 const makeApiUrl = (base: string) => (path: string) => {
@@ -297,20 +299,85 @@ const MyCourses: React.FC = () => {
   }, [topCoursesPageSize]);
 
   /* ✅ NEW: Course search hook (this is where your "fix" goes) */
-  const {
+   const {
     courses: searchedCourses,
     loading: courseSearchLoading,
     handleSearch: handleCourseSearch,
-    uiFilters: courseFilters,
-    setSubjectFilter: setCourseSubject,
-    setGradeBandFilter: setCourseGradeBand,
-    setLevelFilter: setCourseLevel,
-    setMinRatingFilter: setCourseMinRating,
-    setMaxPriceFilter: setCourseMaxPrice,
-    setIsOerFilter: setCourseIsOer,
+
+    filters: courseFilters,
+    patchFilters: patchCourseFilters,
     clearFilters: clearCourseFilters,
+
     searchMeta: courseSearchMeta,
+    refetch: refetchCourseSearch,
   } = useCourseSearch({ backendUrl });
+
+  /* ✅ NEW: Library search hook (server-driven, no local filtering) */
+const {
+  courses: libraryCoursesRaw,
+  loading: librarySearchLoading,
+  handleSearch: handleLibrarySearch,
+
+  filters: libraryFilters,
+  patchFilters: patchLibraryFilters,
+  clearFilters: clearLibraryFilters,
+
+  searchMeta: librarySearchMeta,
+  refetch: refetchLibrarySearch,
+} = useCourseSearch({
+  backendUrl,
+  initialFilters: { isOer: true, contentKinds: ['video'], sourceKind: '' },
+});
+
+
+/** Keep list stable during loading (prevents UI jump) */
+const [stableLibraryCourses, setStableLibraryCourses] = useState<Course[]>([]);
+useEffect(() => {
+  if (!librarySearchLoading) setStableLibraryCourses((libraryCoursesRaw ?? []) as Course[]);
+}, [librarySearchLoading, libraryCoursesRaw]);
+
+const activeLibraryCourses = librarySearchLoading
+  ? stableLibraryCourses
+  : ((libraryCoursesRaw ?? []) as Course[]);
+
+  const loadingVCols = librarySearchLoading;
+const errVCols = normalizeCourseSearchMeta(librarySearchMeta).error;
+const filteredOerVideos = useMemo(
+  () => (activeLibraryCourses ?? []) as any[],
+  [activeLibraryCourses]
+);
+
+
+
+useEffect(() => {
+  if (!backendUrl) return;
+  if (tab !== 'library') return;
+  try {
+    patchLibraryFilters({
+      isOer: true,
+      sourceKind: '',
+      contentKinds: ['video'],
+      providers: [],
+    });
+    handleLibrarySearch('');
+  } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [backendUrl, tab]);
+
+
+
+  // ✅ Keep a stable list while loading to avoid UI jumping AND avoid TDZ
+const [stableCourses, setStableCourses] = useState<Course[]>([]);
+
+useEffect(() => {
+  if (!courseSearchLoading) setStableCourses((searchedCourses ?? []) as Course[]);
+}, [courseSearchLoading, searchedCourses]);
+
+const activeCourses = courseSearchLoading
+  ? stableCourses
+  : ((searchedCourses ?? []) as Course[]);
+
+
 
   /* Enrollments */
   const { enrollments, fetchMine } = useEnrollments({
@@ -339,39 +406,39 @@ const MyCourses: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // initial load for Courses tab (also safe to pre-load even if user starts in Library)
-    try {
-      setCourseIsOer(false); // we want tutor-made courses in this page’s catalog
-      handleCourseSearch('');
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendUrl]);
+  if (!backendUrl) return;
+  if (tab !== 'courses') return;
+  try {
+    patchCourseFilters({ isOer: false, sourceKind: 'tutor' });
+    handleCourseSearch('');
+  } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [backendUrl, tab]);
+
 
   useEffect(() => {
     debouncedSearch.current(courseQuery);
   }, [courseQuery]);
 
-  /* Extra local-only filter (your hook doesn’t expose duration) */
-  const [duration, setDuration] = useState('');
-  const [courseCountry, setCourseCountry] = useState('');
-
-  const courseIntent = useMemo(() => parseSmartSearchIntent(courseQuery), [courseQuery]);
+ 
 
   const [libraryQuery, setLibraryQuery] = useState('');
-  const [librarySubject, setLibrarySubject] = useState('');
-  const [libraryGrade, setLibraryGrade] = useState('');
-  const [libraryCountry, setLibraryCountry] = useState('');
-  const [libraryProvider, setLibraryProvider] = useState('');
+ 
   const [libraryScope, setLibraryScope] = useState<'all' | 'purchased' | 'free'>('all');
 
-  const libraryIntent = useMemo(() => parseSmartSearchIntent(libraryQuery), [libraryQuery]);
+  const debouncedLibrarySearch = useRef(
+  debounce((q: string) => {
+    try {
+      handleLibrarySearch(q);
+    } catch {}
+  }, 250)
+);
 
-  useEffect(() => {
-    if (libraryIntent.subject && !librarySubject) setLibrarySubject(libraryIntent.subject);
-    if (libraryIntent.gradeBand && !libraryGrade) setLibraryGrade(libraryIntent.gradeBand);
-    if (libraryIntent.country?.name && !libraryCountry)
-      setLibraryCountry(libraryIntent.country.name);
-  }, [libraryIntent, librarySubject, libraryGrade, libraryCountry]);
+useEffect(() => () => debouncedLibrarySearch.current.cancel(), []);
+
+useEffect(() => {
+  debouncedLibrarySearch.current(libraryQuery);
+}, [libraryQuery]);
 
   const handleCourseFiltersChange = useCallback(
     (next: {
@@ -382,170 +449,264 @@ const MyCourses: React.FC = () => {
       minRating?: number;
       maxPrice?: number;
       duration?: string;
+      sort?: string;
+      scope?: string;
+      sourceKind?: string;
     }) => {
-      if (next.subject != null) setCourseSubject(next.subject);
-      if (next.grade != null) setCourseGradeBand(next.grade);
-      if (next.level != null) setCourseLevel(next.level);
-      if (next.country != null) setCourseCountry(next.country);
-      if (next.minRating != null) setCourseMinRating(next.minRating);
-      if (next.maxPrice != null) setCourseMaxPrice(next.maxPrice);
-      if (next.duration != null) setDuration(next.duration);
+      const patch: any = {};
+
+      if (next.subject != null) patch.subject = String(next.subject || '').trim();
+      if (next.grade != null) patch.gradeBand = String(next.grade || '').trim();
+      if (next.level != null) patch.level = String(next.level || '').trim();
+      if (next.duration != null) patch.duration = String(next.duration || '').trim();
+
+      if (next.minRating != null) patch.minRating = Number(next.minRating || 0);
+      if (next.maxPrice != null) patch.maxPrice = Number(next.maxPrice || 0);
+
+      if (next.sort != null) patch.sort = String(next.sort || '').trim();
+      if (next.scope != null) patch.scope = String(next.scope || '').trim();
+      if (next.sourceKind != null) patch.sourceKind = String(next.sourceKind || '').trim();
+
+      if (next.country != null) {
+        const raw = String(next.country || '').trim();
+        if (!raw) {
+          patch.country = '';
+          patch.countryIso2 = '';
+        } else {
+         patch.country = raw;
+      patch.countryIso2 = '';
+        }
+      }
+
+      patchCourseFilters(patch);
     },
-    [
-      setCourseSubject,
-      setCourseGradeBand,
-      setCourseLevel,
-      setCourseMinRating,
-      setCourseMaxPrice,
-    ]
+    [patchCourseFilters]
   );
 
-  const handleLibraryFiltersChange = useCallback(
-    (next: {
-      subject?: string;
-      grade?: string;
-      country?: string;
-      provider?: string;
-      scope?: 'all' | 'purchased' | 'free';
-    }) => {
-      if (next.subject != null) setLibrarySubject(next.subject);
-      if (next.grade != null) setLibraryGrade(next.grade);
-      if (next.country != null) setLibraryCountry(next.country);
-      if (next.provider != null) setLibraryProvider(next.provider);
-      if (next.scope != null) setLibraryScope(next.scope);
-    },
-    []
-  );
 
-  const courseFiltersState = useMemo(
+const handleLibraryFiltersChange = useCallback(
+  (next: {
+    subject?: string;
+    grade?: string;
+    country?: string;
+    provider?: string;
+    scope?: 'all' | 'purchased' | 'free';
+  }) => {
+    const patch: any = {};
+
+    if (next.subject != null) patch.subject = String(next.subject || '').trim();
+    if (next.grade != null) patch.gradeBand = String(next.grade || '').trim();
+
+    if (next.provider != null) {
+      const p = String(next.provider || '').trim();
+      patch.providers = p ? [p] : [];
+    }
+
+    if (next.country != null) {
+      const raw = String(next.country || '').trim();
+      if (!raw) {
+        patch.country = '';
+        patch.countryIso2 = '';
+      } else {
+       patch.country = raw;
+patch.countryIso2 = '';
+
+      }
+    }
+
+    // Keep your UI scope toggle (controls which sections show),
+    // but don’t “filter locally” — it only toggles visibility.
+    if (next.scope != null) setLibraryScope(next.scope);
+
+    // Always keep library as OER video mode
+    patch.isOer = true;
+patch.sourceKind = '';          // ✅ IMPORTANT
+patch.contentKinds = ['video'];
+
+    patchLibraryFilters(patch);
+  },
+  [patchLibraryFilters]
+);
+
+   const courseFiltersState = useMemo(
     () => ({
       subject: courseFilters?.subject ?? '',
       grade: courseFilters?.gradeBand ?? '',
       level: courseFilters?.level ?? '',
-      country: courseCountry,
+      country: courseFilters?.country ?? '',
       minRating: courseFilters?.minRating ?? 0,
       maxPrice: courseFilters?.maxPrice ?? 0,
-      duration,
+      duration: courseFilters?.duration ?? '',
     }),
-    [courseFilters, courseCountry, duration]
+    [courseFilters]
   );
 
-  const libraryFiltersState = useMemo(
-    () => ({
-      subject: librarySubject,
-      grade: libraryGrade,
-      country: libraryCountry,
-      provider: libraryProvider,
-      scope: libraryScope,
-    }),
-    [librarySubject, libraryGrade, libraryCountry, libraryProvider, libraryScope]
-  );
+const libraryFiltersState = useMemo(
+  () => ({
+    subject: libraryFilters?.subject ?? '',
+    grade: libraryFilters?.gradeBand ?? '',
+    country: libraryFilters?.country ?? '',
+    provider: Array.isArray(libraryFilters?.providers) ? (libraryFilters.providers[0] ?? '') : '',
+    scope: libraryScope,
+  }),
+  [libraryFilters, libraryScope]
+);
+
 
   const showPurchasedLibrary = libraryScope !== 'free';
   const showFreeLibrary = libraryScope !== 'purchased';
 
-  const clearAllCourses = useCallback(() => {
-    clearCourseFilters();
-    setCourseCountry('');
-    setDuration('');
+    const clearAllCourses = useCallback(() => {
+    clearCourseFilters(); // resets { isOer:false, sourceKind:'tutor' }
     setCourseQuery('');
     try {
-      setCourseIsOer(false);
       handleCourseSearch('');
     } catch {}
-  }, [clearCourseFilters, handleCourseSearch, setCourseIsOer]);
+  }, [clearCourseFilters, handleCourseSearch]);
+
 
   const clearAllLibrary = useCallback(() => {
-    setLibraryQuery('');
-    setLibrarySubject('');
-    setLibraryGrade('');
-    setLibraryCountry('');
-    setLibraryProvider('');
-    setLibraryScope('all');
-  }, []);
+  setLibraryQuery('');
+  setLibraryScope('all');
 
-  useEffect(() => {
-    if (courseIntent.subject && !courseFilters?.subject) setCourseSubject(courseIntent.subject);
-    if (courseIntent.gradeBand && !courseFilters?.gradeBand)
-      setCourseGradeBand(courseIntent.gradeBand);
-    if (courseIntent.level && !courseFilters?.level) setCourseLevel(courseIntent.level);
-    if (courseIntent.minRating && (courseFilters?.minRating ?? 0) === 0)
-      setCourseMinRating(courseIntent.minRating);
-    if (courseIntent.maxPrice && (courseFilters?.maxPrice ?? 0) === 0)
-      setCourseMaxPrice(courseIntent.maxPrice);
-    if (courseIntent.country?.name && !courseCountry) setCourseCountry(courseIntent.country.name);
-  }, [
-    courseIntent,
-    courseFilters,
-    courseCountry,
-    setCourseSubject,
-    setCourseGradeBand,
-    setCourseLevel,
-    setCourseMinRating,
-    setCourseMaxPrice,
-  ]);
+  // reset to default library mode
+  clearLibraryFilters();
+ patchLibraryFilters({
+  isOer: true,
+  sourceKind: '',          // ✅ IMPORTANT
+  contentKinds: ['video'],
+  providers: [],
+});
 
-  useEffect(() => {
-    const sp = new URLSearchParams(location.search);
-    const tabParam = sp.get('tab');
-    if (tabParam === 'library' || tabParam === 'courses') {
-      setTab(tabParam);
+
+  try {
+    handleLibrarySearch('');
+  } catch {}
+}, [clearLibraryFilters, patchLibraryFilters, handleLibrarySearch]);
+
+
+  
+useEffect(() => {
+  const sp = new URLSearchParams(location.search);
+
+  // tab
+  const tabParam = sp.get('tab');
+  if (tabParam === 'library' || tabParam === 'courses') {
+    setTab(tabParam);
+  }
+
+  // query (drive both search boxes)
+  const qParam = sp.get('q');
+  if (qParam != null) {
+    const qv = String(qParam || '');
+    setCourseQuery(qv);
+    setLibraryQuery(qv);
+  }
+
+  // shared params
+  const subject = sp.get('subject');
+  const gradeBand = sp.get('gradeBand');
+  const level = sp.get('level');
+  const country = sp.get('country');
+  const countryIso2 = sp.get('countryIso2');
+  const minRating = sp.get('minRating');
+  const maxPrice = sp.get('maxPrice');
+  const durationParam = sp.get('duration');
+  const scope = sp.get('scope');
+  const provider = sp.get('provider');
+  const sort = sp.get('sort');
+  const sourceKind = sp.get('sourceKind');
+  const isOer = sp.get('isOer');
+
+  // ----------------- Courses (hook) -----------------
+  const coursePatch: any = {};
+
+  if (subject != null) coursePatch.subject = String(subject || '').trim();
+  if (gradeBand != null) coursePatch.gradeBand = String(gradeBand || '').trim();
+  if (level != null) coursePatch.level = String(level || '').trim();
+  if (durationParam != null) coursePatch.duration = String(durationParam || '').trim();
+  if (sort != null) coursePatch.sort = String(sort || '').trim();
+  if (sourceKind != null) coursePatch.sourceKind = String(sourceKind || '').trim();
+
+  if (minRating != null) coursePatch.minRating = Number(minRating || 0);
+  if (maxPrice != null) coursePatch.maxPrice = Number(maxPrice || 0);
+
+  if (isOer != null) {
+  const b = String(isOer) === 'true' || String(isOer) === '1';
+  coursePatch.isOer = b;
+  // ✅ don’t force sourceKind='oer' here
+}
+
+
+  if (countryIso2 != null && String(countryIso2).trim()) {
+    coursePatch.countryIso2 = String(countryIso2).trim().toUpperCase();
+  }
+
+  if (country != null) {
+    const raw = String(country || '').trim();
+    if (!raw) {
+      coursePatch.country = '';
+      if (!coursePatch.countryIso2) coursePatch.countryIso2 = '';
+    } else {
+     coursePatch.country = raw;
+if (!coursePatch.countryIso2) coursePatch.countryIso2 = '';
+
     }
+  }
 
-    const q = sp.get('q');
-    if (q != null) {
-      setCourseQuery(q);
-      setLibraryQuery(q);
-    }
+  if (Object.keys(coursePatch).length) patchCourseFilters(coursePatch);
 
-    const subject = sp.get('subject');
-    const gradeBand = sp.get('gradeBand');
-    const level = sp.get('level');
-    const country = sp.get('country');
-    const minRating = sp.get('minRating');
-    const maxPrice = sp.get('maxPrice');
-    const durationParam = sp.get('duration');
-    const scope = sp.get('scope');
-    const provider = sp.get('provider');
+  // ----------------- Library (hook) -----------------
+  // Always keep Library in "free OER video collections" mode
+ const libPatch: any = {
+  isOer: true,
+  sourceKind: '',          // ✅ IMPORTANT
+  contentKinds: ['video'],
+};
 
-    if (subject != null) setCourseSubject(subject);
-    if (gradeBand != null) setCourseGradeBand(gradeBand);
-    if (level != null) setCourseLevel(level);
-    if (country != null) {
-      const normalized = normalizeCountryLabel(country);
-      setCourseCountry(normalized?.name || country);
-    }
-    if (minRating != null) setCourseMinRating(Number(minRating || 0));
-    if (maxPrice != null) setCourseMaxPrice(Number(maxPrice || 0));
-    if (durationParam != null) setDuration(durationParam);
 
-    if (subject != null) setLibrarySubject(subject);
-    if (gradeBand != null) setLibraryGrade(gradeBand);
-    if (country != null) {
-      const normalized = normalizeCountryLabel(country);
-      setLibraryCountry(normalized?.name || country);
-    }
-    if (provider != null) setLibraryProvider(provider);
-    if (scope === 'all' || scope === 'free' || scope === 'purchased') {
-      setLibraryScope(scope);
-    }
-  }, [
-    location.search,
-    setCourseSubject,
-    setCourseGradeBand,
-    setCourseLevel,
-    setCourseMinRating,
-    setCourseMaxPrice,
-  ]);
+  if (subject != null) libPatch.subject = String(subject || '').trim();
+  if (gradeBand != null) libPatch.gradeBand = String(gradeBand || '').trim();
 
-  const enrolledCourseIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const e of enrollments as any[]) {
-      const cid = String(e?.course_id ?? e?.courseId ?? '');
-      if (cid) set.add(cid);
+  if (provider != null) {
+    const p = String(provider || '').trim();
+    libPatch.providers = p ? [p] : [];
+  }
+
+  if (countryIso2 != null && String(countryIso2).trim()) {
+    libPatch.countryIso2 = String(countryIso2).trim().toUpperCase();
+  }
+
+  if (country != null) {
+    const raw = String(country || '').trim();
+    if (!raw) {
+      libPatch.country = '';
+      if (!libPatch.countryIso2) libPatch.countryIso2 = '';
+    } else {
+      libPatch.country = raw;
+if (!libPatch.countryIso2) libPatch.countryIso2 = '';
+
     }
-    return set;
-  }, [enrollments]);
+  }
+
+  patchLibraryFilters(libPatch);
+
+  // UI-only toggle (NOT filtering)
+  if (scope === 'all' || scope === 'free' || scope === 'purchased') {
+    setLibraryScope(scope);
+  }
+}, [location.search, patchCourseFilters, patchLibraryFilters]);
+
+
+const enrolledCourseIds = useMemo(() => {
+  const set = new Set<string>();
+  for (const e of (enrollments as any[]) || []) {
+    const cid = String(e?.course_id ?? e?.courseId ?? '').trim();
+    if (cid) set.add(cid);
+  }
+  return set;
+}, [enrollments]);
+
 
   const {
     items: topCourses,
@@ -1024,78 +1185,31 @@ useEffect(() => {
     [tutorNameById]
   );
 
-  /* ✅ Catalog list now comes from searchedCourses (NOT useCourses) */
-  const filteredRows = useMemo(() => {
+  const displayRows = useMemo(() => {
     const rows = (activeCourses ?? []) as any[];
-    const normalizedCountry =
-      normalizeCountryLabel(courseCountry)?.name?.toLowerCase() || courseCountry.toLowerCase();
+    return rows.filter((c) => !!resolveTutorName(c));
+  }, [activeCourses, resolveTutorName]);
 
-    const filtered = rows
-      .filter((c) => !isOerCourse(c) && wasUploadedByTutor(c)) // safety
-      .filter((c) => {
-        const cDuration = String(c.duration ?? '').toLowerCase();
-        const okDuration = duration ? cDuration.includes(duration.toLowerCase()) : true;
-        return okDuration;
-      })
-      .filter((c) => {
-        if (!normalizedCountry) return true;
-        const hay = [
-          c.country,
-          c.country_code,
-          c.location,
-          c.region,
-          c.metadata,
-          c.description,
-        ]
-          .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || {})))
-          .join(' ')
-          .toLowerCase();
-        return hay.includes(normalizedCountry);
-      });
-
-    if (!courseIntent.query) return filtered;
-
-    const scored = filtered.map((c, idx) => {
-      const tutor = resolveTutorName(c) ?? '';
-      const hay = [
-        c.title,
-        c.description,
-        c.subject,
-        c.gradeBand,
-        c.grade_band,
-        c.level,
-        c.tags,
-        tutor,
-        c.country,
-      ]
-        .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || [])))
-        .join(' ');
-      return { c, idx, score: rankMatch(hay, courseIntent) };
-    });
-
-    scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
-    return scored.map((s) => s.c);
-  }, [activeCourses, duration, courseCountry, courseIntent, resolveTutorName]);
 
   const tutorUserIdsInCourses = useMemo(() => {
     const set = new Set<string>();
-    (filteredRows as any[]).forEach((c) => {
+    (displayRows as any[]).forEach((c) => {
       const id = getTutorUserId(c);
       if (id) set.add(id);
     });
     return Array.from(set);
-  }, [filteredRows]);
+  }, [displayRows]);
 
-  useEffect(() => {
-    // seed from embedded user objects
+    useEffect(() => {
     const seed: Record<string, string> = {};
-    (filteredRows as any[]).forEach((c) => {
+    (displayRows as any[]).forEach((c) => {
       const u = coerceObj<{ id?: string | number; name?: string }>((c as any).user);
       const id = u?.id != null ? String(u.id) : '';
       if (id && typeof u?.name === 'string' && !tutorNameById[id]) seed[id] = u.name;
     });
     if (Object.keys(seed).length) setTutorNameById((prev) => ({ ...prev, ...seed }));
-  }, [filteredRows, tutorNameById]);
+  }, [displayRows, tutorNameById]);
+
 
   const missingTutorUserIds = useMemo(
     () => tutorUserIdsInCourses.filter((id) => !tutorNameById[id]),
@@ -1117,10 +1231,7 @@ useEffect(() => {
     };
   }, [missingTutorUserIds, fetchTutorNamesByUserIds]);
 
-  const displayRows = useMemo(
-    () => filteredRows.filter((c) => !!resolveTutorName(c)),
-    [filteredRows, resolveTutorName]
-  );
+
 
   /* Ratings */
   const [ratings, setRatings] = useState<
@@ -1211,102 +1322,9 @@ useEffect(() => {
 
 
 
-  /* Fetch OER video collections */
-  const [oerVideoCols, setOerVideoCols] = useState<OerCollection[]>([]);
-  const [loadingVCols, setLoadingVCols] = useState(false);
-  const [errVCols, setErrVCols] = useState<string | null>(null);
 
-  useEffect(() => {
-    let aborted = false;
-    (async () => {
-      if (!apiBase) return;
-      setLoadingVCols(true);
-      setErrVCols(null);
-      try {
-        let r = await fetch(api('/oer/collections?kind=video&limit=48'));
-        let arr = r.ok ? toArray<OerCollection>(await r.json().catch(() => [])) : [];
-        if (arr.length === 0) {
-          r = await fetch(api('/oer/collections?kind=videos&limit=48'));
-          if (r.ok) arr = toArray<OerCollection>(await r.json().catch(() => []));
-        }
-        if (arr.length === 0) {
-          r = await fetch(api('/oer/collections?limit=48'));
-          if (r.ok) {
-            const all = toArray<OerCollection>(await r.json().catch(() => []));
-            arr = all.filter(
-              (c) => isOerVideoCollectionStrict(c) && !isDocKind(c) && !isOpenStaxDoc(c)
-            );
-          }
-        }
-        const cleaned = arr.filter(
-          (c) => isOerVideoCollectionStrict(c) && !isDocKind(c) && !isOpenStaxDoc(c)
-        );
-        if (!aborted) setOerVideoCols(cleaned);
-      } catch (e: any) {
-        if (!aborted) setErrVCols(String(e?.message || e) || 'Failed to fetch');
-      } finally {
-        if (!aborted) setLoadingVCols(false);
-      }
-    })();
-    return () => {
-      aborted = true;
-    };
-  }, [api, apiBase, apiBase]);
 
-  const filteredOerVideos = useMemo(() => {
-    const normalizedCountry =
-      normalizeCountryLabel(libraryCountry)?.name?.toLowerCase() || libraryCountry.toLowerCase();
-    const query = libraryIntent.query.toLowerCase();
 
-    const filtered = oerVideoCols.filter((c) => {
-      if (librarySubject) {
-        const subj = String(c.subject ?? '').toLowerCase();
-        if (!subj.includes(librarySubject.toLowerCase())) return false;
-      }
-      if (libraryGrade) {
-        const grade = String(c.grade ?? c.grade_band ?? c.gradeBand ?? '').toLowerCase();
-        if (!grade.includes(libraryGrade.toLowerCase())) return false;
-      }
-      if (libraryProvider) {
-        const provider = String(c.provider ?? c.source ?? '').toLowerCase();
-        if (!provider.includes(libraryProvider.toLowerCase())) return false;
-      }
-      if (normalizedCountry) {
-        const hay = [
-          c.country,
-          c.country_code,
-          c.location,
-          c.metadata,
-          c.description,
-          c.tags,
-        ]
-          .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || {})))
-          .join(' ')
-          .toLowerCase();
-        if (!hay.includes(normalizedCountry)) return false;
-      }
-      return true;
-    });
-
-    if (!query) return filtered;
-
-    const scored = filtered.map((c, idx) => {
-      const hay = [c.title, c.description, c.subject, c.tags, c.provider, c.country]
-        .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || [])))
-        .join(' ');
-      return { c, idx, score: rankMatch(hay, libraryIntent) };
-    });
-
-    scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
-    return scored.map((s) => s.c);
-  }, [
-    oerVideoCols,
-    librarySubject,
-    libraryGrade,
-    libraryCountry,
-    libraryProvider,
-    libraryIntent,
-  ]);
 
   /* UI consts */
   const TAB_BTN_BASE =
@@ -1315,17 +1333,11 @@ useEffect(() => {
     'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#3d99f5]/60 ' +
     'focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-[#0a0f15]';
 
-  const courseSearchError =
-    (courseSearchMeta as any)?.error ||
-    (courseSearchMeta as any)?.err ||
-    (courseSearchMeta as any)?.message ||
-    null;
+   const courseMeta = useMemo(() => normalizeCourseSearchMeta(courseSearchMeta), [courseSearchMeta]);
 
-  const [stableCourses, setStableCourses] = useState<Course[]>([]);
-  useEffect(() => {
-    if (!courseSearchLoading) setStableCourses((searchedCourses ?? []) as Course[]);
-  }, [courseSearchLoading, searchedCourses]);
-  const activeCourses = courseSearchLoading ? stableCourses : searchedCourses;
+const courseSearchError = courseMeta.error;
+
+  
 
   return (
     <div
@@ -1433,15 +1445,17 @@ useEffect(() => {
                         </h2>
                       </div>
                       <div className="mt-3">
-                        <ClassVaultList
-                          embedded
-                          filters={{
-                            query: libraryQuery,
-                            subject: librarySubject,
-                            grade: libraryGrade,
-                            country: libraryCountry,
-                          }}
-                        />
+                       <ClassVaultList
+                      embedded
+                      hideOerCollections
+                      filters={{
+                        query: libraryQuery,
+                        subject: libraryFiltersState.subject,
+                        grade: libraryFiltersState.grade,
+                        country: libraryFiltersState.country,
+                      }}
+                    />
+
                       </div>
                     </div>
                   )}
@@ -1490,14 +1504,16 @@ useEffect(() => {
                         </p>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-                          {filteredOerVideos.map((col) => {
+                         {filteredOerVideos.map((col: any) => {
+
                             const idOrSlug = String(col.slug ?? col.id);
                             return (
                               <div
                                 key={idOrSlug}
                                 className="rounded-xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden"
                               >
-                                <Link to={getOerReaderPath(col)}>
+                                <Link to={getVideoCollectionPath(col)}>
+
                                   <div
                                     className="aspect-video bg-cover bg-center"
                                     style={{
@@ -1512,7 +1528,7 @@ useEffect(() => {
                                   </p>
                                   <div className="mt-2">
                                     <Link
-                                      to={getOerReaderPath(col)}
+                                      to={getVideoCollectionPath(col)}
                                       className="text-xs font-semibold text-[#3d99f5]"
                                     >
                                       Open collection
@@ -2233,7 +2249,8 @@ useEffect(() => {
                                 <td className="table-col-360 h-[72px] px-4 py-2 w-60 text-sm">
                                   <button
                                     className="flex min-w-[84px] items-center justify-center rounded-xl h-8 px-4 bg-[#e7edf4] dark:bg-[#172534] text-sm font-medium w-full"
-                                    onClick={() => setCourseLevel(String(c.level ?? ''))}
+                                   onClick={() => patchCourseFilters({ level: String(c.level ?? '').trim() })}
+
                                     title={`Filter by ${c.level ?? 'level'}`}
                                   >
                                     <span className="truncate">{c.level ?? '—'}</span>
