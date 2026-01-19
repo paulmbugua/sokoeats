@@ -12,6 +12,7 @@ export * from './profileCardApi';
 export * from './profileDetailApi';
 export * from './classVaultApi';
 export * from './coursesApi';
+export * from './searchApi';
 export * from './courseProgressApi';
 export * from './achievementsApi';
 export * from './certificatesApi';
