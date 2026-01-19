@@ -25,20 +25,18 @@ import {
   useOerCourses,
   useTopCourses,
   useWrapOerBook,
+  useUnifiedSearch,
 } from '@mytutorapp/shared/hooks';
 import useCourseSearch, { normalizeCourseSearchMeta } from '@mytutorapp/shared/hooks/useCourseSearch';
 
 import { downloadCertificateFile } from '@mytutorapp/shared/api';
 import { getRequiredQuestions, getRequiredWeeks } from '@mytutorapp/shared/utils/programTrackRequirements';
 import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
+import type { UnifiedSearchItem } from '@mytutorapp/shared/hooks/useUnifiedSearch';
 import type { MainStackParamList } from '../navigation/types';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// ✅ Inline vault list screen (renders under the Library tab)
-import ClassVaultListScreen, {
-  type ClassVaultFilters,
-} from '../screens/ClassVaultListScreen.native';
 import ExploreSearchFiltersBar from '../components/search/ExploreSearchFiltersBar.native';
 
 import { useThemePref } from '../theme/ThemeContext';
@@ -219,53 +217,6 @@ const resolveThumbUri = (backendBase?: string | null, raw?: string | null) => {
   return `${base}/${st}`;
 };
 
-/* --------------------- OER Video Collection helpers --------------------- */
-type OerCollection = {
-  id: string | number;
-  title: string;
-  description?: string;
-  subject?: string;
-  thumbnail_url?: string | null;
-  cover_url?: string | null;
-  items_count?: number;
-  created_at?: string;
-  content_kind?: string | null;
-  provider?: string | null;
-  collection_type?: string | null;
-  slug?: string | null;
-  [k: string]: any;
-};
-
-const norm = (v: any) =>
-  String(v ?? '')
-    .trim()
-    .toLowerCase();
-
-const isOerVideoCollectionStrict = (c: OerCollection): boolean => {
-  const kind = norm(c.content_kind);
-  if (kind === 'video' || kind === 'videos') return true;
-
-  const ctype = norm(c.collection_type);
-  if (ctype.includes('video') || ctype.includes('playlist')) return true;
-
-  const title = norm(c.title);
-  if (/\b(video|playlist|lecture|record(ed)?|stream)\b/.test(title)) return true;
-
-  return false;
-};
-
-const isOpenStaxDoc = (c: OerCollection): boolean => {
-  const prov = norm(c.provider);
-  const slug = norm(c.slug);
-  const title = norm(c.title);
-  return prov.includes('openstax') || slug.includes('openstax') || title.includes('openstax');
-};
-
-const isDocKind = (c: OerCollection): boolean => {
-  const kind = norm(c.content_kind);
-  return kind === 'doc' || kind === 'docs';
-};
-
 function toArray<T = any>(val: any): T[] {
   if (Array.isArray(val)) return val;
   if (val == null) return [];
@@ -304,18 +255,16 @@ const extractCertId = (doc: any): string | null => {
 };
 
 /* ----------------------------- Small cards ----------------------------- */
-const OerVideoCard: React.FC<{
-  col: OerCollection;
+
+const UnifiedLibraryCard: React.FC<{
+  item: UnifiedSearchItem;
   backendBase?: string | null;
   onPress: () => void;
-}> = ({ col, backendBase, onPress }) => {
-  const thumbRaw = col.cover_url || col.thumbnail_url;
-
+  badge?: string;
+}> = ({ item, backendBase, onPress, badge }) => {
   const thumb =
-    resolveThumbUri(backendBase, thumbRaw) ||
-    `https://picsum.photos/seed/${encodeURIComponent(
-      String(col.slug ?? col.id ?? col.title ?? 'oer')
-    )}/800/450`;
+    resolveThumbUri(backendBase, item.thumbnail_url || null) ||
+    `https://picsum.photos/seed/${encodeURIComponent(String(item.id || item.title))}/800/450`;
 
   return (
     <Pressable
@@ -328,18 +277,20 @@ const OerVideoCard: React.FC<{
         resizeMode="cover"
       />
       <Text style={tw`mt-2 font-semibold text-sm text-slate-900 dark:text-white`} numberOfLines={2}>
-        {col.title}
+        {item.title}
       </Text>
       <Text style={tw`text-xs text-[#49739c] dark:text-white/70 mt-0.5`} numberOfLines={1}>
-        {col.subject ?? '—'} • {col.items_count ?? 0} item{(col.items_count ?? 0) === 1 ? '' : 's'}
+        {item.subtitle ?? item.subject ?? item.provider ?? '—'}
       </Text>
-      <View style={tw`mt-2`}>
-        <Text
-          style={tw`text-[11px] px-2 py-0.5 self-start rounded bg-[#e7edf4] dark:bg-[#172534] text-slate-900 dark:text-white/90`}
-        >
-          VIDEO
-        </Text>
-      </View>
+      {badge ? (
+        <View style={tw`mt-2`}>
+          <Text
+            style={tw`text-[11px] px-2 py-0.5 self-start rounded bg-[#e7edf4] dark:bg-[#172534] text-slate-900 dark:text-white/90`}
+          >
+            {badge}
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 };
@@ -522,6 +473,45 @@ const MyCoursesNative: React.FC = () => {
   const courseMeta = useMemo(() => normalizeCourseSearchMeta(courseSearchMeta), [courseSearchMeta]);
   const courseSearchError = courseMeta.error;
 
+  /* ------------------ ✅ Unified: useUnifiedSearch for Library tab ------------------ */
+  const {
+    items: libraryItems,
+    loading: librarySearchLoading,
+    handleSearch: handleLibrarySearch,
+    filters: libraryFilters,
+    patchFilters: patchLibraryFilters,
+    clearFilters: clearLibraryFilters,
+    meta: librarySearchMeta,
+  } = useUnifiedSearch({
+    backendUrl: backendUrl ?? '',
+    initialFilters: {
+      kinds: ['oer_course', 'oer_video', 'purchased_video'],
+      contentKinds: ['video'],
+    },
+  });
+
+  const [stableLibraryItems, setStableLibraryItems] = useState<UnifiedSearchItem[]>([]);
+  useEffect(() => {
+    if (!librarySearchLoading) setStableLibraryItems((libraryItems ?? []) as UnifiedSearchItem[]);
+  }, [librarySearchLoading, libraryItems]);
+
+  const activeLibraryItems = librarySearchLoading
+    ? stableLibraryItems
+    : ((libraryItems ?? []) as UnifiedSearchItem[]);
+
+  const freeOerCollections = useMemo(
+    () => activeLibraryItems.filter((item) => item.kind === 'oer_course'),
+    [activeLibraryItems]
+  );
+  const freeOerVideos = useMemo(
+    () => activeLibraryItems.filter((item) => item.kind === 'oer_video'),
+    [activeLibraryItems]
+  );
+  const purchasedVideos = useMemo(
+    () => activeLibraryItems.filter((item) => item.kind === 'purchased_video'),
+    [activeLibraryItems]
+  );
+
   // Search box
   const [courseQuery, setCourseQuery] = useState('');
 
@@ -594,24 +584,52 @@ const MyCoursesNative: React.FC = () => {
   const [libraryProvider, setLibraryProvider] = useState<string>('');
   const [libraryScope, setLibraryScope] = useState<'all' | 'purchased' | 'free'>('all');
 
-  const [vaultFilters, setVaultFilters] = useState<ClassVaultFilters>({});
-  const clearVaultFilters = useCallback(() => {
+  const debouncedLibrarySearch = useRef(
+    debounce((q: string) => {
+      try {
+        handleLibrarySearch(q);
+      } catch {}
+    }, 250)
+  );
+
+  useEffect(() => {
+    return () => debouncedLibrarySearch.current.cancel();
+  }, []);
+
+  useEffect(() => {
+    debouncedLibrarySearch.current(libraryQuery);
+  }, [libraryQuery]);
+
+  useEffect(() => {
+    if (!backendUrl) return;
+    if (tab !== 'library') return;
+    try {
+      patchLibraryFilters({
+        kinds: ['oer_course', 'oer_video', 'purchased_video'],
+        contentKinds: ['video'],
+        providers: [],
+      });
+      handleLibrarySearch('');
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendUrl, tab]);
+  const clearAllLibrary = useCallback(() => {
     setLibrarySubject('');
     setLibraryGrade('');
     setLibraryCountry('');
     setLibraryProvider('');
     setLibraryScope('all');
     setLibraryQuery('');
-    setVaultFilters({});
-  }, []);
-
-  useEffect(() => {
-    setVaultFilters({
-      category: librarySubject ? [librarySubject] : undefined,
-      ageGroup: libraryGrade ? [libraryGrade] : undefined,
-      country: libraryCountry || undefined,
+    clearLibraryFilters();
+    patchLibraryFilters({
+      kinds: ['oer_course', 'oer_video', 'purchased_video'],
+      contentKinds: ['video'],
+      providers: [],
     });
-  }, [librarySubject, libraryGrade, libraryCountry]);
+    try {
+      handleLibrarySearch('');
+    } catch {}
+  }, [clearLibraryFilters, patchLibraryFilters, handleLibrarySearch]);
 
   const handleLibraryFiltersChange = useCallback(
     (next: {
@@ -626,8 +644,21 @@ const MyCoursesNative: React.FC = () => {
       if (next.country != null) setLibraryCountry(next.country);
       if (next.provider != null) setLibraryProvider(next.provider);
       if (next.scope != null) setLibraryScope(next.scope);
+
+      const patch: any = {};
+      if (next.subject != null) patch.subject = String(next.subject || '').trim();
+      if (next.grade != null) patch.gradeBand = String(next.grade || '').trim();
+      if (next.country != null) patch.country = String(next.country || '').trim();
+      if (next.provider != null) {
+        const p = String(next.provider || '').trim();
+        patch.providers = p ? [p] : [];
+      }
+      patch.kinds = ['oer_course', 'oer_video', 'purchased_video'];
+      patch.contentKinds = ['video'];
+
+      patchLibraryFilters(patch);
     },
-    [setLibrarySubject, setLibraryGrade, setLibraryCountry, setLibraryProvider, setLibraryScope]
+    [setLibrarySubject, setLibraryGrade, setLibraryCountry, setLibraryProvider, setLibraryScope, patchLibraryFilters]
   );
 
   const libraryFiltersState = useMemo(
@@ -668,24 +699,30 @@ const MyCoursesNative: React.FC = () => {
     if (subject != null) {
       patchFilters({ subject });
       setLibrarySubject(subject);
+      patchLibraryFilters({ subject });
     }
     if (gradeBand != null) {
       patchFilters({ gradeBand });
       setLibraryGrade(gradeBand);
+      patchLibraryFilters({ gradeBand });
     }
     if (level != null) patchFilters({ level });
 
     if (country != null) {
       patchFilters({ country });
       setLibraryCountry(country);
+      patchLibraryFilters({ country });
     }
     if (minRating != null && Number.isFinite(minRating)) patchFilters({ minRating });
     if (maxPrice != null && Number.isFinite(maxPrice)) patchFilters({ maxPrice });
     if (durationParam != null) patchFilters({ duration: durationParam } as any);
 
-    if (provider != null) setLibraryProvider(provider);
+    if (provider != null) {
+      setLibraryProvider(provider);
+      patchLibraryFilters({ providers: [provider] });
+    }
     if (scope === 'all' || scope === 'free' || scope === 'purchased') setLibraryScope(scope);
-  }, [route?.params, patchFilters]);
+  }, [route?.params, patchFilters, patchLibraryFilters]);
 
   /* Enrollments */
   const { enrollments, fetchMine } = useEnrollments({
@@ -1140,97 +1177,36 @@ const MyCoursesNative: React.FC = () => {
     goCollection(id, 'doc');
   };
 
-  // OER Video collections state
-  const [oerVideoCols, setOerVideoCols] = useState<OerCollection[]>([]);
-  const [loadingVCols, setLoadingVCols] = useState(false);
-  const [errVCols, setErrVCols] = useState<string | null>(null);
+  const loadingVCols = librarySearchLoading;
+  const errVCols = librarySearchMeta?.error ?? null;
 
-  useEffect(() => {
-    if (!backendUrl) return;
-    const ac = new AbortController();
-    (async () => {
-      setLoadingVCols(true);
-      setErrVCols(null);
-      try {
-        let r = await fetch(api('/oer/collections?kind=video&limit=48'), { signal: ac.signal });
-        let arr = r.ok ? toArray<OerCollection>(await r.json().catch(() => [])) : [];
-        if (arr.length === 0) {
-          r = await fetch(api('/oer/collections?kind=videos&limit=48'), { signal: ac.signal });
-          if (r.ok) arr = toArray<OerCollection>(await r.json().catch(() => []));
+  const goUnifiedItem = useCallback(
+    (item: UnifiedSearchItem) => {
+      if (item.kind === 'purchased_video') {
+        const id = Number(item.id);
+        if (Number.isFinite(id)) {
+          navAny.navigate('ClassVaultDetail', { id });
         }
-        if (arr.length === 0) {
-          r = await fetch(api('/oer/collections?limit=48'), { signal: ac.signal });
-          if (r.ok) {
-            const all = toArray<OerCollection>(await r.json().catch(() => []));
-            arr = all.filter(
-              (c) => isOerVideoCollectionStrict(c) && !isDocKind(c) && !isOpenStaxDoc(c)
-            );
-          }
+        return;
+      }
+      if (item.kind === 'oer_video') {
+        if (hasRoute('VideoCollection')) {
+          navAny.navigate('VideoCollection', { id: item.id });
+          return;
         }
-        const cleaned = arr.filter((c) => !isDocKind(c) && !isOpenStaxDoc(c));
-        setOerVideoCols(cleaned);
-      } catch (e: any) {
-        if (!ac.signal.aborted)
-          setErrVCols(String(e?.message || e) || 'Failed to fetch collections');
-      } finally {
-        if (!ac.signal.aborted) setLoadingVCols(false);
+        goCollection(item.id, 'video');
+        return;
       }
-    })();
-    return () => ac.abort();
-  }, [backendUrl, api]);
-
-  const filteredOerVideos = useMemo(() => {
-    const normalizedCountry = String(libraryCountry || '').trim().toLowerCase();
-    const q = String(libraryQuery || '').trim().toLowerCase();
-
-    return oerVideoCols.filter((c) => {
-      if (librarySubject) {
-        const subj = String(c.subject ?? '').toLowerCase();
-        if (!subj.includes(librarySubject.toLowerCase())) return false;
+      if (item.kind === 'oer_course') {
+        goCollection(item.id, 'video');
+        return;
       }
-      if (libraryGrade) {
-        const grade = String(c.grade ?? c.grade_band ?? c.gradeBand ?? '').toLowerCase();
-        if (!grade.includes(libraryGrade.toLowerCase())) return false;
+      if (item.kind === 'tutor') {
+        navAny.navigate('Profile', { id: item.id });
       }
-      if (libraryProvider) {
-        const provider = String(c.provider ?? c.source ?? '').toLowerCase();
-        if (!provider.includes(libraryProvider.toLowerCase())) return false;
-      }
-      if (normalizedCountry) {
-        const hay = [
-          c.country,
-          c.country_code,
-          c.location,
-          c.metadata,
-          c.description,
-          c.tags,
-        ]
-          .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || {})))
-          .join(' ')
-          .toLowerCase();
-        if (!hay.includes(normalizedCountry)) return false;
-      }
-      if (q) {
-        const hay = [c.title, c.description, c.subject, c.tags, c.provider, c.country]
-          .map((v) => (typeof v === 'string' ? v : JSON.stringify(v || [])))
-          .join(' ')
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [oerVideoCols, librarySubject, libraryGrade, libraryCountry, libraryProvider, libraryQuery]);
-
-  const renderOerVideoItem = ({ item }: { item: OerCollection }) => {
-    const idOrSlug = String(item.slug ?? item.id);
-    return (
-      <OerVideoCard
-        col={item}
-        backendBase={backendUrl}
-        onPress={() => goCollection(idOrSlug, 'video')}
-      />
-    );
-  };
+    },
+    [goCollection, hasRoute, navAny]
+  );
 
   /* --------------------------------- Guards --------------------------------- */
   if (token && roleStr === 'tutor' && !profile) {
@@ -2109,7 +2085,7 @@ const MyCoursesNative: React.FC = () => {
               onQueryChange={setLibraryQuery}
               filters={libraryFiltersState}
               onFiltersChange={handleLibraryFiltersChange}
-              onClearAll={clearVaultFilters}
+              onClearAll={clearAllLibrary}
               variant="library"
               placeholder="Search videos, notes, subjects, countries…"
               isDark={isDark}
@@ -2122,13 +2098,34 @@ const MyCoursesNative: React.FC = () => {
                 </Text>
 
                 <View style={tw`rounded-xl overflow-hidden mt-1`}>
-                  <ClassVaultListScreen
-                    filters={vaultFilters}
-                    clearFilters={clearVaultFilters}
-                    searchTerm={libraryQuery}
-                    embedded
-                    showTitle={false}
-                  />
+                  {loadingVCols && purchasedVideos.length === 0 ? (
+                    <View style={tw`py-4 items-center`}>
+                      <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
+                      <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>
+                        Loading purchased videos…
+                      </Text>
+                    </View>
+                  ) : purchasedVideos.length === 0 ? (
+                    <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+                      No purchased videos yet.
+                    </Text>
+                  ) : (
+                    <FlatList
+                      data={purchasedVideos}
+                      keyExtractor={(item) => String(item.id)}
+                      renderItem={({ item }) => (
+                        <UnifiedLibraryCard
+                          item={item}
+                          backendBase={backendUrl}
+                          badge="PURCHASED"
+                          onPress={() => goUnifiedItem(item)}
+                        />
+                      )}
+                      showsVerticalScrollIndicator={false}
+                      scrollEnabled={false}
+                      contentContainerStyle={tw`pb-4`}
+                    />
+                  )}
                 </View>
               </>
             )}
@@ -2139,7 +2136,7 @@ const MyCoursesNative: React.FC = () => {
                   Free OER Video Collections
                 </Text>
 
-                {loadingVCols && (
+                {loadingVCols && freeOerCollections.length === 0 && (
                   <View style={tw`py-4 items-center`}>
                     <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
                     <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>
@@ -2154,20 +2151,66 @@ const MyCoursesNative: React.FC = () => {
 
                 {!loadingVCols &&
                   !errVCols &&
-                  (filteredOerVideos.length === 0 ? (
+                  (freeOerCollections.length === 0 ? (
                     <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
                       No free OER video collections yet.
                     </Text>
                   ) : (
                     <FlatList
-                      data={filteredOerVideos}
-                      keyExtractor={(item) => String(item.slug ?? item.id)}
-                      renderItem={renderOerVideoItem}
+                      data={freeOerCollections}
+                      keyExtractor={(item) => String(item.id)}
+                      renderItem={({ item }) => (
+                        <UnifiedLibraryCard
+                          item={item}
+                          backendBase={backendUrl}
+                          badge="COLLECTION"
+                          onPress={() => goUnifiedItem(item)}
+                        />
+                      )}
                       showsVerticalScrollIndicator={false}
                       scrollEnabled={false}
                       contentContainerStyle={tw`pb-4`}
                     />
                   ))}
+              </View>
+            )}
+
+            {showFreeLibrary && (
+              <View style={tw`mt-5`}>
+                <Text style={tw`text-base font-bold text-slate-900 dark:text-white mb-2`}>
+                  Free OER Videos
+                </Text>
+
+                {loadingVCols && freeOerVideos.length === 0 && (
+                  <View style={tw`py-4 items-center`}>
+                    <ActivityIndicator color={isDark ? '#ffffff' : '#0d141c'} />
+                    <Text style={tw`mt-2 text-xs text-[#49739c] dark:text-white/70`}>
+                      Loading videos…
+                    </Text>
+                  </View>
+                )}
+
+                {!loadingVCols && freeOerVideos.length === 0 ? (
+                  <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
+                    No free OER videos yet.
+                  </Text>
+                ) : (
+                  <FlatList
+                    data={freeOerVideos}
+                    keyExtractor={(item) => String(item.id)}
+                    renderItem={({ item }) => (
+                      <UnifiedLibraryCard
+                        item={item}
+                        backendBase={backendUrl}
+                        badge="VIDEO"
+                        onPress={() => goUnifiedItem(item)}
+                      />
+                    )}
+                    showsVerticalScrollIndicator={false}
+                    scrollEnabled={false}
+                    contentContainerStyle={tw`pb-4`}
+                  />
+                )}
               </View>
             )}
           </ScrollView>
