@@ -51,6 +51,7 @@ import reviewRouter from './routes/reviewRoutes.js';
 import certificationRoutes from './routes/certificationRoutes.js';
 import certificationsAdminRoutes from './routes/certificationsAdminRoutes.js';
 import courseRoutes from './routes/courseRoutes.js';
+import searchRoutes from './routes/searchRoutes.js';
 import enrollmentRoutes from './routes/enrollmentRoutes.js';
 import paypalRoutes from './routes/paypalRoutes.js';
 import { webhooks } from './controllers/paypalController.js';
@@ -386,6 +387,7 @@ app.use('/api/cloudinary', cloudinaryRoutes);
 
 // Courses (non-AI) & enrollments
 app.use('/api/courses', courseRoutes);
+app.use('/api', searchRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/earnings', earningsRoutes);
 app.use('/api/achievements', achievementsRoutes);

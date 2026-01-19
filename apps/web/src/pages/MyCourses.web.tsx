@@ -3,16 +3,16 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import debounce from 'lodash.debounce';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useEnrollments, useOerCourses, useWrapOerBook, useTopCourses } from '@mytutorapp/shared/hooks';
+import { useEnrollments, useOerCourses, useWrapOerBook, useTopCourses, useUnifiedSearch } from '@mytutorapp/shared/hooks';
 import { downloadCertificateFile } from '@mytutorapp/shared/api/certificatesApi';
 import { generateCertificatePdf } from '@mytutorapp/shared/api/aiCertificatesApi';
 import { fetchCourseProgress } from '@mytutorapp/shared/api/courseProgressApi';
 import { getRequiredQuestions, getRequiredWeeks } from '@mytutorapp/shared/utils/programTrackRequirements';
 
 import type { Course, ProgramTrack } from '@mytutorapp/shared/types';
-import ClassVaultList from '../components/ClassVaultList.web';
 import CourseHero from '../components/CourseHero';
 import useCourseSearch, { normalizeCourseSearchMeta } from '@mytutorapp/shared/hooks/useCourseSearch';
+import type { UnifiedSearchItem } from '@mytutorapp/shared/hooks/useUnifiedSearch';
 
 import ExploreSearchFiltersBar from '../components/search/ExploreSearchFiltersBar.web';
 
@@ -95,13 +95,6 @@ const sanitizeId = (routeId?: string): string => {
   if (s.startsWith(':')) s = s.slice(1);
   return s;
 };
-
-const OER_READER_ROUTE_BASE = '/oer/collections';
-const getOerReaderPath = (c: { id?: string | number; slug?: string }) =>
-  `${OER_READER_ROUTE_BASE}/${encodeURIComponent(String(c.slug ?? c.id))}`;
-
-const getVideoCollectionPath = (c: { id?: string | number; slug?: string }) =>
-  `/videos/${encodeURIComponent(String(c.id ?? c.slug))}`;
 
 
 
@@ -312,40 +305,47 @@ const MyCourses: React.FC = () => {
     refetch: refetchCourseSearch,
   } = useCourseSearch({ backendUrl });
 
-  /* ✅ NEW: Library search hook (server-driven, no local filtering) */
-const {
-  courses: libraryCoursesRaw,
-  loading: librarySearchLoading,
-  handleSearch: handleLibrarySearch,
+  /* ✅ Unified library search hook (single stream) */
+  const {
+    items: libraryItems,
+    loading: librarySearchLoading,
+    handleSearch: handleLibrarySearch,
+    filters: libraryFilters,
+    patchFilters: patchLibraryFilters,
+    clearFilters: clearLibraryFilters,
+    meta: librarySearchMeta,
+  } = useUnifiedSearch({
+    backendUrl,
+    initialFilters: {
+      kinds: ['oer_course', 'oer_video', 'purchased_video'],
+      contentKinds: ['video'],
+    },
+  });
 
-  filters: libraryFilters,
-  patchFilters: patchLibraryFilters,
-  clearFilters: clearLibraryFilters,
+  /** Keep list stable during loading (prevents UI jump) */
+  const [stableLibraryItems, setStableLibraryItems] = useState<UnifiedSearchItem[]>([]);
+  useEffect(() => {
+    if (!librarySearchLoading) setStableLibraryItems((libraryItems ?? []) as UnifiedSearchItem[]);
+  }, [librarySearchLoading, libraryItems]);
 
-  searchMeta: librarySearchMeta,
-  refetch: refetchLibrarySearch,
-} = useCourseSearch({
-  backendUrl,
-  initialFilters: { isOer: true, contentKinds: ['video'], sourceKind: '' },
-});
-
-
-/** Keep list stable during loading (prevents UI jump) */
-const [stableLibraryCourses, setStableLibraryCourses] = useState<Course[]>([]);
-useEffect(() => {
-  if (!librarySearchLoading) setStableLibraryCourses((libraryCoursesRaw ?? []) as Course[]);
-}, [librarySearchLoading, libraryCoursesRaw]);
-
-const activeLibraryCourses = librarySearchLoading
-  ? stableLibraryCourses
-  : ((libraryCoursesRaw ?? []) as Course[]);
+  const activeLibraryItems = librarySearchLoading
+    ? stableLibraryItems
+    : ((libraryItems ?? []) as UnifiedSearchItem[]);
 
   const loadingVCols = librarySearchLoading;
-const errVCols = normalizeCourseSearchMeta(librarySearchMeta).error;
-const filteredOerVideos = useMemo(
-  () => (activeLibraryCourses ?? []) as any[],
-  [activeLibraryCourses]
-);
+  const errVCols = librarySearchMeta?.error ?? null;
+  const freeOerCollections = useMemo(
+    () => activeLibraryItems.filter((item) => item.kind === 'oer_course'),
+    [activeLibraryItems]
+  );
+  const freeOerVideos = useMemo(
+    () => activeLibraryItems.filter((item) => item.kind === 'oer_video'),
+    [activeLibraryItems]
+  );
+  const purchasedVideos = useMemo(
+    () => activeLibraryItems.filter((item) => item.kind === 'purchased_video'),
+    [activeLibraryItems]
+  );
 
 
 
@@ -354,8 +354,7 @@ useEffect(() => {
   if (tab !== 'library') return;
   try {
     patchLibraryFilters({
-      isOer: true,
-      sourceKind: '',
+      kinds: ['oer_course', 'oer_video', 'purchased_video'],
       contentKinds: ['video'],
       providers: [],
     });
@@ -518,10 +517,9 @@ patch.countryIso2 = '';
     // but don’t “filter locally” — it only toggles visibility.
     if (next.scope != null) setLibraryScope(next.scope);
 
-    // Always keep library as OER video mode
-    patch.isOer = true;
-patch.sourceKind = '';          // ✅ IMPORTANT
-patch.contentKinds = ['video'];
+    // Always keep library constrained to the unified stream
+    patch.kinds = ['oer_course', 'oer_video', 'purchased_video'];
+    patch.contentKinds = ['video'];
 
     patchLibraryFilters(patch);
   },
@@ -571,12 +569,11 @@ const libraryFiltersState = useMemo(
 
   // reset to default library mode
   clearLibraryFilters();
- patchLibraryFilters({
-  isOer: true,
-  sourceKind: '',          // ✅ IMPORTANT
-  contentKinds: ['video'],
-  providers: [],
-});
+  patchLibraryFilters({
+    kinds: ['oer_course', 'oer_video', 'purchased_video'],
+    contentKinds: ['video'],
+    providers: [],
+  });
 
 
   try {
@@ -658,11 +655,10 @@ if (!coursePatch.countryIso2) coursePatch.countryIso2 = '';
 
   // ----------------- Library (hook) -----------------
   // Always keep Library in "free OER video collections" mode
- const libPatch: any = {
-  isOer: true,
-  sourceKind: '',          // ✅ IMPORTANT
-  contentKinds: ['video'],
-};
+  const libPatch: any = {
+    kinds: ['oer_course', 'oer_video', 'purchased_video'],
+    contentKinds: ['video'],
+  };
 
 
   if (subject != null) libPatch.subject = String(subject || '').trim();
@@ -1445,17 +1441,58 @@ const courseSearchError = courseMeta.error;
                         </h2>
                       </div>
                       <div className="mt-3">
-                       <ClassVaultList
-                      embedded
-                      hideOerCollections
-                      filters={{
-                        query: libraryQuery,
-                        subject: libraryFiltersState.subject,
-                        grade: libraryFiltersState.grade,
-                        country: libraryFiltersState.country,
-                      }}
-                    />
-
+                        {loadingVCols && purchasedVideos.length === 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                              <div
+                                key={i}
+                                className="rounded-xl ring-1 ring-[#cedbe8] dark:ring-darkCard overflow-hidden"
+                              >
+                                <div className="aspect-video bg-gray-200/70 dark:bg:white/5 animate-pulse" />
+                                <div className="p-3">
+                                  <div className="h-4 w-2/3 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                                  <div className="mt-2 h-3 w-1/2 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : purchasedVideos.length === 0 ? (
+                          <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
+                            No purchased videos yet.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                            {purchasedVideos.map((item) => (
+                              <div
+                                key={item.id}
+                                className="rounded-xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden"
+                              >
+                                <Link to={item.href}>
+                                  <div
+                                    className="aspect-video bg-cover bg-center"
+                                    style={{
+                                      backgroundImage: `url(${item.thumbnail_url || ''})`,
+                                    }}
+                                  />
+                                </Link>
+                                <div className="p-3">
+                                  <p className="text-sm font-semibold line-clamp-2">{item.title}</p>
+                                  <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-1">
+                                    {item.subtitle ?? item.subject ?? 'Purchased video'}
+                                  </p>
+                                  <div className="mt-2">
+                                    <Link
+                                      to={item.href}
+                                      className="text-xs font-semibold text-[#3d99f5]"
+                                    >
+                                      Watch video
+                                    </Link>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1470,7 +1507,7 @@ const courseSearchError = courseMeta.error;
                       {DEBUG_OER && (
                         <span className="text-[11px] text-[#49739c] dark:text-darkTextSecondary">
                           loading={String(loadingVCols)} · error={errVCols || '—'} · total=
-                          {filteredOerVideos.length}
+                          {freeOerCollections.length + freeOerVideos.length}
                         </span>
                       )}
                     </div>
@@ -1498,37 +1535,35 @@ const courseSearchError = courseMeta.error;
 
                     {!loadingVCols &&
                       !errVCols &&
-                      (filteredOerVideos.length === 0 ? (
+                      (freeOerCollections.length === 0 ? (
                         <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-3">
                           No free OER video collections yet.
                         </p>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-                         {filteredOerVideos.map((col: any) => {
-
-                            const idOrSlug = String(col.slug ?? col.id);
+                          {freeOerCollections.map((col) => {
+                            const idOrSlug = String(col.id);
                             return (
                               <div
                                 key={idOrSlug}
                                 className="rounded-xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden"
                               >
-                                <Link to={getVideoCollectionPath(col)}>
-
+                                <Link to={col.href}>
                                   <div
                                     className="aspect-video bg-cover bg-center"
                                     style={{
-                                      backgroundImage: `url(${col.thumbnail_url || col.cover_url || ''})`,
+                                      backgroundImage: `url(${col.thumbnail_url || ''})`,
                                     }}
                                   />
                                 </Link>
                                 <div className="p-3">
                                   <p className="text-sm font-semibold line-clamp-2">{col.title}</p>
                                   <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-1">
-                                    {col.subject ?? '—'}
+                                    {col.subtitle ?? col.subject ?? '—'}
                                   </p>
                                   <div className="mt-2">
                                     <Link
-                                      to={getVideoCollectionPath(col)}
+                                      to={col.href}
                                       className="text-xs font-semibold text-[#3d99f5]"
                                     >
                                       Open collection
@@ -1540,6 +1575,66 @@ const courseSearchError = courseMeta.error;
                           })}
                         </div>
                       ))}
+                  </div>
+                )}
+
+                {showFreeLibrary && (
+                  <div className="px-3 sm:px-4 pb-4">
+                    <div className="mt-4 flex items-center justify-between">
+                      <h3 className="text-[16px] sm:text-[18px] font-bold">Free OER Videos</h3>
+                    </div>
+
+                    {loadingVCols && freeOerVideos.length === 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <div
+                            key={i}
+                            className="rounded-xl ring-1 ring-[#cedbe8] dark:ring-darkCard overflow-hidden"
+                          >
+                            <div className="aspect-video bg-gray-200/70 dark:bg:white/5 animate-pulse" />
+                            <div className="p-3">
+                              <div className="h-4 w-2/3 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                              <div className="mt-2 h-3 w-1/2 bg-gray-200/70 dark:bg-white/5 rounded animate-pulse" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {!loadingVCols && freeOerVideos.length === 0 ? (
+                      <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-3">
+                        No free OER videos yet.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+                        {freeOerVideos.map((item) => (
+                          <div
+                            key={item.id}
+                            className="rounded-xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] overflow-hidden"
+                          >
+                            <Link to={item.href}>
+                              <div
+                                className="aspect-video bg-cover bg-center"
+                                style={{
+                                  backgroundImage: `url(${item.thumbnail_url || ''})`,
+                                }}
+                              />
+                            </Link>
+                            <div className="p-3">
+                              <p className="text-sm font-semibold line-clamp-2">{item.title}</p>
+                              <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-1">
+                                {item.subtitle ?? item.subject ?? 'OER video'}
+                              </p>
+                              <div className="mt-2">
+                                <Link to={item.href} className="text-xs font-semibold text-[#3d99f5]">
+                                  Watch video
+                                </Link>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
