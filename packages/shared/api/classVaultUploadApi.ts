@@ -5,6 +5,29 @@ export interface UploadResult {
   url: string;
 }
 
+function resolveCloudinaryEnvName() {
+  const rawWeb =
+    typeof import.meta !== 'undefined'
+      ? ((import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME as string | undefined)
+      : undefined;
+  const rawMobile =
+    typeof process !== 'undefined'
+      ? (process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME as string | undefined)
+      : undefined;
+
+  const webTrim = typeof rawWeb === 'string' ? rawWeb.trim() : '';
+  const mobileTrim = typeof rawMobile === 'string' ? rawMobile.trim() : '';
+
+  if (rawWeb && !webTrim) {
+    throw new Error('Cloudinary configuration is invalid. Please try again later.');
+  }
+  if (rawMobile && !mobileTrim) {
+    throw new Error('Cloudinary configuration is invalid. Please try again later.');
+  }
+
+  return webTrim || mobileTrim || '';
+}
+
 // Either a browser File or an RN asset
 type Asset = File | { uri: string; name?: string; type?: string };
 
@@ -48,8 +71,14 @@ export const uploadClassVaultAsset = async (
         }
     );
 
+  const envCloudName = resolveCloudinaryEnvName();
+  const cloudName = String(sign.cloudName || envCloudName || '').trim();
+  if (!cloudName) {
+    throw new Error('Cloudinary is not configured. Please try again later.');
+  }
+
   // 2) Cloudinary upload URL
-  const cloudUrl = `https://api.cloudinary.com/v1_1/${sign.cloudName}/${sign.resourceType}/upload`;
+  const cloudUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${sign.resourceType}/upload`;
 
   // 3) Build FormData
   const isBrowserFile =

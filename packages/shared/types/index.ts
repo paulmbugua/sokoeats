@@ -6,6 +6,32 @@
 export type GalleryImage = File | string | null;
 export type LanguageMap = Record<string, boolean>;
 export type Role = 'student' | 'tutor';
+export type LibrarySection = 'purchasedClassVault' | 'createdClassVault' | 'aiCourses' | 'normalCourses';
+export type ResourceCategoryResult<T> = {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+export type UnifiedSearchKind =
+  | 'tutor'
+  | 'oer_video'
+  | 'oer_course'
+  | 'purchased_video'
+  | 'course'
+  | 'classvault_market';
+export type UnifiedSearchResult = {
+  kind: UnifiedSearchKind;
+  id: string;
+  title: string;
+  subtitle?: string;
+  subject?: string;
+  provider?: string;
+  thumbnail_url?: string | null;
+  href: string;
+  score: number;
+  raw?: any;
+};
 export type LegacySize = 'micro' | 'short' | 'standard' | 'deep_dive';
 export type DbCourseSize = 'mini' | 'standard' | 'extended' | 'deep_dive' | 'bootcamp';
 export type AnyCourseSize = LegacySize | DbCourseSize;

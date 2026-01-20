@@ -119,7 +119,7 @@ const MyEnrollmentsPage: React.FC = () => {
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-[28px] sm:text-[32px] font-bold leading-tight">My Enrollments</h1>
             <Link
-              to="/courses"
+              to="/resources?tab=courses"
               className="rounded-xl h-10 px-4 bg-[#3d99f5] text-white text-sm font-semibold hover:brightness-110"
             >
               Explore courses
@@ -144,7 +144,7 @@ const MyEnrollmentsPage: React.FC = () => {
               </p>
               <div className="mt-4">
                 <Link
-                  to="/courses"
+                  to="/resources?tab=courses"
                   className="inline-flex rounded-xl h-10 px-4 bg-[#e7edf4] dark:bg-[#172534] text-sm font-semibold"
                 >
                   Go to Catalog

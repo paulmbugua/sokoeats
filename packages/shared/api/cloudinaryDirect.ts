@@ -3,6 +3,29 @@ import axios from 'axios';
 
 type ProgressCb = (percent: number) => void;
 
+function resolveCloudinaryEnvName() {
+  const rawWeb =
+    typeof import.meta !== 'undefined'
+      ? ((import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME as string | undefined)
+      : undefined;
+  const rawMobile =
+    typeof process !== 'undefined'
+      ? (process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME as string | undefined)
+      : undefined;
+
+  const webTrim = typeof rawWeb === 'string' ? rawWeb.trim() : '';
+  const mobileTrim = typeof rawMobile === 'string' ? rawMobile.trim() : '';
+
+  if (rawWeb && !webTrim) {
+    throw new Error('Cloudinary configuration is invalid. Please try again later.');
+  }
+  if (rawMobile && !mobileTrim) {
+    throw new Error('Cloudinary configuration is invalid. Please try again later.');
+  }
+
+  return webTrim || mobileTrim || '';
+}
+
 export async function getDirectSignature(
   backendUrl: string,
   token: string,
@@ -39,7 +62,13 @@ export async function directUploadToCloudinary(
   },
   onProgress?: ProgressCb
 ): Promise<string> {
-  const endpoint = `https://api.cloudinary.com/v1_1/${cfg.cloudName}/${cfg.resourceType}/upload`;
+  const envCloudName = resolveCloudinaryEnvName();
+  const cloudName = String(cfg.cloudName || envCloudName || '').trim();
+  if (!cloudName) {
+    throw new Error('Cloudinary is not configured. Please try again later.');
+  }
+
+  const endpoint = `https://api.cloudinary.com/v1_1/${cloudName}/${cfg.resourceType}/upload`;
 
   const form = new FormData();
   form.append('file', file);

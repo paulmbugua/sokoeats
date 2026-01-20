@@ -16,6 +16,7 @@ const router = express.Router();
 
 /** PUBLIC */
 router.get('/', courseController.getCourses);
+router.get('/explore', courseController.getExploreCourses);
 router.get('/search', courseController.searchCourses);
 router.get('/featured/courses', courseController.getFeaturedCourses);
 router.get('/featured/videos', courseController.getFeaturedVideos);

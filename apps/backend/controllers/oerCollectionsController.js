@@ -333,6 +333,47 @@ export async function listCourses(req, res) {
   }
 }
 
+export async function listBooks(req, res) {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const like = q ? `%${q}%` : '';
+
+    const args = [limit, offset];
+    let where = '';
+    if (like) {
+      args.push(like);
+      const pLike = `$${args.length}`;
+      where = `
+        WHERE LOWER(COALESCE(title,'')) LIKE ${pLike}
+           OR LOWER(COALESCE(slug,'')) LIKE ${pLike}
+      `;
+    }
+
+    const sql = `
+      SELECT
+        id, slug, title, cover_url, created_at,
+        COUNT(*) OVER()::int AS total_rows
+      FROM oer_books
+      ${where}
+      ORDER BY created_at DESC NULLS LAST, title ASC
+      LIMIT $1 OFFSET $2
+    `;
+    const { rows } = await pool.query(sql, args);
+    const total = rows[0]?.total_rows ?? 0;
+    const enableRaster = String(req.query.raster || '') === '1';
+    const items = rows.map(({ total_rows, ...rest }) => ({
+      ...rest,
+      cover_url: rasterizeIfSvg(rest.cover_url, { enable: enableRaster, w: 800, force: true }),
+    }));
+    return res.json({ items, total, limit, offset });
+  } catch (e) {
+    console.error('[oer] listBooks error:', e);
+    return res.status(500).json({ error: 'Failed to load OER books' });
+  }
+}
+
 /* ------------------------------ Book details ------------------------------ */
 /** GET /api/oer/books/:idOrSlug  → returns the book row with pdf_url */
 export async function getBook(req, res) {

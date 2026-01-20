@@ -51,6 +51,8 @@ export async function unifiedSearch(req, res) {
           oer_video: 0,
           oer_course: 0,
           purchased_video: 0,
+          course: 0,
+          classvault_market: 0,
         },
         warnings: ['Unified search failed.'],
       },

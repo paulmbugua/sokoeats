@@ -3,23 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShopContext } from '@mytutorapp/shared/context';
 import useAppQuery from './useAppQuery';
 import { unifiedSearchApi } from '@mytutorapp/shared/api';
+import type { UnifiedSearchResult } from '@mytutorapp/shared/types';
 
 const cleanBase = (u?: string) => String(u || '').replace(/\/+$/, '');
 const toStr = (v: any) => (v == null ? '' : String(v));
 const normStr = (v: any) => toStr(v).trim();
 
-export type UnifiedSearchItem = {
-  kind: 'tutor' | 'oer_video' | 'oer_course' | 'purchased_video' | 'course';
-  id: string;
-  title: string;
-  subtitle?: string;
-  subject?: string;
-  provider?: string;
-  thumbnail_url?: string | null;
-  href: string;
-  score: number;
-  raw?: any;
-};
+export type UnifiedSearchItem = UnifiedSearchResult;
 
 export type UnifiedSearchMeta = {
   usingServer: boolean;

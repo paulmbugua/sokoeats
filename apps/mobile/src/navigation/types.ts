@@ -9,7 +9,12 @@ export type MainStackParamList = {
   Home: undefined;
   Login: { switch?: boolean; force?: boolean } | undefined;
   Help: undefined;
-  Resources: undefined;
+  Resources:
+    | {
+        tab?: 'videos' | 'courses';
+        q?: string;
+      }
+    | undefined;
   CookiePolicy: undefined;
   PrivacyPolicy: undefined;
   TermsOfService: undefined;

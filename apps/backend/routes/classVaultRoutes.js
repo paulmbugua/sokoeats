@@ -13,7 +13,9 @@ const router = express.Router();
 // console.log('classVault exports:', Object.keys(classVault));
 
 router.get('/', classVault.getAllVideos);
+router.get('/explore', classVault.listMarketplaceVideos);
 router.get('/purchases', authUser, classVault.getPurchases);
+router.get('/mine', authUser, classVault.listMyVideos);
 router.get('/download/:videoId(\\d+)', authUser, classVault.downloadPdfOrVideo);
 router.get('/:id(\\d+)', classVault.getVideoById);
 

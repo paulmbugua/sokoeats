@@ -73,6 +73,12 @@ function coerceInt(val) {
   return Number.isFinite(n) ? n : null;
 }
 
+function clampInt(val, min, max, fallback) {
+  const n = Number(val);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(Math.trunc(n), min), max);
+}
+
 /**
  * Resolve numeric users.id (used by enrollments.student_id, course_purchases.student_id, etc.)
  * With updated anyAuth, req.user.users_id should exist.
@@ -454,26 +460,51 @@ export async function listMyUnlockedAiCourses(req, res) {
       ),
     );
 
+    const limit = clampInt(req.query?.limit, 1, 50, 24);
+    const offset = clampInt(req.query?.offset, 0, Number.MAX_SAFE_INTEGER, 0);
+    const aiParamRaw = String(req.query?.ai ?? '').trim().toLowerCase();
+    const wantsAi = ['1', 'true', 'ai'].includes(aiParamRaw);
+    const wantsNormal = ['0', 'false', 'normal'].includes(aiParamRaw);
+
+    const params = [userId, authUuid, idTexts];
+    let aiWhere = '';
+    if (wantsAi || wantsNormal) {
+      params.push(wantsAi);
+      aiWhere = `AND COALESCE(c.is_ai_generated, FALSE) = $${params.length}`;
+    }
+    params.push(limit, offset);
+    const limitParam = `$${params.length - 1}`;
+    const offsetParam = `$${params.length}`;
+
     const sql = `
       WITH unlocked AS (
         ${unionParts.join('\nUNION ALL\n')}
+      ),
+      deduped AS (
+        SELECT DISTINCT ON (u.course_id)
+          c.*,
+          u.unlock_source,
+          u.unlocked_at
+        FROM unlocked u
+        JOIN courses c
+          ON c.id::text = u.course_id
+          OR (
+            u.course_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+            AND c.id = u.course_id::uuid
+          )
+        WHERE 1=1
+        ${aiWhere}
+        ORDER BY u.course_id, u.unlocked_at DESC NULLS LAST
       )
-      SELECT DISTINCT ON (u.course_id)
-        c.*,
-        u.unlock_source,
-        u.unlocked_at
-      FROM unlocked u
-      JOIN courses c
-        ON c.id::text = u.course_id
-        OR (
-          u.course_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-          AND c.id = u.course_id::uuid
-        )
-      ORDER BY u.course_id, u.unlocked_at DESC NULLS LAST
-      LIMIT 48
+      SELECT
+        *,
+        COUNT(*) OVER()::int AS total_rows
+      FROM deduped
+      ORDER BY unlocked_at DESC NULLS LAST, created_at DESC NULLS LAST, title ASC
+      LIMIT ${limitParam} OFFSET ${offsetParam}
     `;
 
-    const { rows } = await pool.query(sql, [userId, authUuid, idTexts]);
+    const { rows } = await pool.query(sql, params);
 
     log(dbg, 'result', {
       reqId,
@@ -501,8 +532,14 @@ export async function listMyUnlockedAiCourses(req, res) {
       dbgUnlockedSample = unlockedSampleQ.rows || [];
     }
 
+    const total = rows[0]?.total_rows ?? 0;
+    const items = rows.map(({ total_rows, ...rest }) => rest);
+
     return res.json({
-      items: rows,
+      items,
+      total,
+      limit,
+      offset,
       ...(dbg
         ? {
             debug: {

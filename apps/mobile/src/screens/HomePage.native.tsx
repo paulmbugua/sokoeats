@@ -461,16 +461,18 @@ const HomePageNative: React.FC = () => {
       navAny.navigate('OerCollectionReader', { id });
       return;
     }
-    if (hasRoute('Courses')) navAny.navigate('Courses', { free: 1 });
+    if (hasRoute('Resources')) navAny.navigate('Resources', { tab: 'courses' });
   };
 
   const goVideosIndex = () => {
-    if (hasRoute('Videos')) navAny.navigate('Videos');
+    if (hasRoute('Resources')) navAny.navigate('Resources', { tab: 'videos' });
+    else if (hasRoute('Videos')) navAny.navigate('Videos');
     else if (hasRoute('ClassVaultLibrary')) navAny.navigate('ClassVaultLibrary');
   };
 
   const goCoursesIndex = () => {
-    if (hasRoute('Courses')) navAny.navigate('Courses');
+    if (hasRoute('Resources')) navAny.navigate('Resources', { tab: 'courses' });
+    else if (hasRoute('Courses')) navAny.navigate('Courses');
   };
 
   const goCollection = (id: string, kind: 'video' | 'doc') => {

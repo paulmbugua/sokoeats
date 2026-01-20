@@ -28,6 +28,19 @@ async function getFxRate(base, quote) {
   if (base === 'USD' && quote === 'KES') return USD_TO_KES_DEFAULT;
   return 1; // USD->USD or KES->KES placeholder (adjust if you’ll price differently)
 }
+
+function clampInt(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(Math.trunc(n), min), max);
+}
+
+function parsePagination(req, fallbackLimit = 12) {
+  const limit = clampInt(req.query?.limit, 1, 50, fallbackLimit);
+  const offset = clampInt(req.query?.offset, 0, Number.MAX_SAFE_INTEGER, 0);
+  const q = String(req.query?.q ?? '').trim();
+  return { limit, offset, q };
+}
 /** Upload one or more local files to Cloudinary */
 async function uploadToCloudinary(files, resourceType = 'image') {
   try {
@@ -391,6 +404,90 @@ export const getAllVideos = async (req, res) => {
     'SELECT * FROM recorded_videos ORDER BY created_at DESC',
   );
   res.json(result.rows);
+};
+
+/** Explore marketplace (public) with pagination */
+export const listMarketplaceVideos = async (req, res) => {
+  try {
+    const { limit, offset, q } = parsePagination(req, 12);
+    const like = q ? `%${q.toLowerCase()}%` : '';
+    const params = [limit, offset];
+    let where = '';
+    if (like) {
+      params.push(like);
+      const pLike = `$${params.length}`;
+      where = `
+        WHERE LOWER(COALESCE(title, '')) LIKE ${pLike}
+           OR LOWER(COALESCE(description, '')) LIKE ${pLike}
+           OR LOWER(COALESCE(subject, '')) LIKE ${pLike}
+           OR LOWER(COALESCE(grade_level, '')) LIKE ${pLike}
+      `;
+    }
+
+    const sql = `
+      SELECT
+        id, tutor_id, title, description, subject, grade_level,
+        price, duration, tags, video_url, pdf_url, preview_url,
+        thumbnail_url, created_at,
+        COUNT(*) OVER()::int AS total_rows
+      FROM recorded_videos
+      ${where}
+      ORDER BY created_at DESC
+      LIMIT $1 OFFSET $2
+    `;
+    const { rows } = await pool.query(sql, params);
+    const total = rows[0]?.total_rows ?? 0;
+    const items = rows.map(({ total_rows, ...rest }) => rest);
+    return res.json({ items, total, limit, offset });
+  } catch (err) {
+    console.error('[classVault] listMarketplaceVideos error', err);
+    return res.status(500).json({ message: 'Failed to load classvault marketplace.' });
+  }
+};
+
+/** Tutor-owned ClassVault items */
+export const listMyVideos = async (req, res) => {
+  try {
+    const tutorId = req.user?.id;
+    if (!tutorId) return res.status(401).json({ message: 'Unauthorized' });
+
+    const { limit, offset, q } = parsePagination(req, 12);
+    const like = q ? `%${q.toLowerCase()}%` : '';
+    const params = [tutorId, limit, offset];
+    let where = '';
+    if (like) {
+      params.push(like);
+      const pLike = `$${params.length}`;
+      where = `
+        AND (
+          LOWER(COALESCE(rv.title, '')) LIKE ${pLike}
+          OR LOWER(COALESCE(rv.description, '')) LIKE ${pLike}
+          OR LOWER(COALESCE(rv.subject, '')) LIKE ${pLike}
+          OR LOWER(COALESCE(rv.grade_level, '')) LIKE ${pLike}
+        )
+      `;
+    }
+
+    const sql = `
+      SELECT
+        rv.id, rv.tutor_id, rv.title, rv.description, rv.subject, rv.grade_level,
+        rv.price, rv.duration, rv.tags, rv.video_url, rv.pdf_url, rv.preview_url,
+        rv.thumbnail_url, rv.created_at,
+        COUNT(*) OVER()::int AS total_rows
+      FROM recorded_videos rv
+      WHERE rv.tutor_id = $1
+      ${where}
+      ORDER BY rv.created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
+    const { rows } = await pool.query(sql, params);
+    const total = rows[0]?.total_rows ?? 0;
+    const items = rows.map(({ total_rows, ...rest }) => rest);
+    return res.json({ items, total, limit, offset });
+  } catch (err) {
+    console.error('[classVault] listMyVideos error', err);
+    return res.status(500).json({ message: 'Failed to load your ClassVault items.' });
+  }
 };
 
 /** Fetch a single video’s metadata by ID */
@@ -807,6 +904,22 @@ export const getPurchases = async (req, res) => {
   try {
     const studentId = req.user.id;
 
+    const { limit, offset, q } = parsePagination(req, 12);
+    const like = q ? `%${q.toLowerCase()}%` : '';
+    const params = [studentId, limit, offset];
+    let where = '';
+    if (like) {
+      params.push(like);
+      const pLike = `$${params.length}`;
+      where = `
+        AND (
+          LOWER(COALESCE(rv.title, '')) LIKE ${pLike}
+          OR LOWER(COALESCE(rv.subject, '')) LIKE ${pLike}
+          OR LOWER(COALESCE(rv.grade_level, '')) LIKE ${pLike}
+        )
+      `;
+    }
+
     const query = `
       SELECT
         cp.id            AS purchase_id,
@@ -818,15 +931,22 @@ export const getPurchases = async (req, res) => {
         rv.subject,
         rv.grade_level,
         rv.video_url,
-        rv.pdf_url
+        rv.pdf_url,
+        rv.thumbnail_url,
+        rv.preview_url,
+        COUNT(*) OVER()::int AS total_rows
       FROM classvault_purchases cp
       JOIN recorded_videos rv
         ON cp.class_id = rv.id
       WHERE cp.student_id = $1
+      ${where}
       ORDER BY cp.created_at DESC
+      LIMIT $2 OFFSET $3
     `;
-    const { rows } = await pool.query(query, [studentId]);
-    return res.json({ purchases: rows });
+    const { rows } = await pool.query(query, params);
+    const total = rows[0]?.total_rows ?? 0;
+    const purchases = rows.map(({ total_rows, ...rest }) => rest);
+    return res.json({ purchases, total, limit, offset });
   } catch (err) {
     console.error('getPurchases error:', err);
     return res

@@ -11,6 +11,8 @@ import { searchTutorsAdapter } from './adapters/searchTutorsAdapter.js';
 import { searchOerCoursesAdapter } from './adapters/searchOerCoursesAdapter.js';
 import { searchOerVideosAdapter } from './adapters/searchOerVideosAdapter.js';
 import { searchPurchasedVideosAdapter } from './adapters/searchPurchasedVideosAdapter.js';
+import { searchCoursesAdapter } from './adapters/searchCoursesAdapter.js';
+import { searchClassVaultMarketplaceAdapter } from './adapters/searchClassVaultMarketplaceAdapter.js';
 
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 48;
@@ -169,6 +171,13 @@ export async function unifiedSearchService({
     });
   }
 
+  if (shouldInclude('course')) {
+    tasks.push({
+      kind: 'course',
+      run: () => searchCoursesAdapter({ q: effectiveQ, limit: fetchLimit, offset: 0, intent: adapterIntent }),
+    });
+  }
+
   if (shouldInclude('purchased_video')) {
     tasks.push({
       kind: 'purchased_video',
@@ -179,6 +188,19 @@ export async function unifiedSearchService({
           offset: 0,
           intent: adapterIntent,
           user: tokenUser,
+        }),
+    });
+  }
+
+  if (shouldInclude('classvault_market')) {
+    tasks.push({
+      kind: 'classvault_market',
+      run: () =>
+        searchClassVaultMarketplaceAdapter({
+          q: effectiveQ,
+          limit: fetchLimit,
+          offset: 0,
+          intent: adapterIntent,
         }),
     });
   }
@@ -211,7 +233,14 @@ export async function unifiedSearchService({
       acc[item.kind] = (acc[item.kind] || 0) + 1;
       return acc;
     },
-    { tutor: 0, oer_video: 0, oer_course: 0, purchased_video: 0 },
+    {
+      tutor: 0,
+      oer_video: 0,
+      oer_course: 0,
+      purchased_video: 0,
+      course: 0,
+      classvault_market: 0,
+    },
   );
 
   const paged = sorted.slice(offsetN, offsetN + limitN).map((item) => {

@@ -21,6 +21,8 @@ export { default as useAppQuery } from './useAppQuery';
 export { default as useTheme, ThemeProvider, useThemeProvider } from './useTheme';
 export { useOrgProTools } from './useOrgProTools';
 export { default as useUnifiedSearch } from './useUnifiedSearch';
+export { useMyLibrary } from './useMyLibrary';
+export { useResourcesExplore } from './useResourcesExplore';
 export * from './useAchievements';
 export * from './useCertificates';
 export * from './useCourseProgress';
