@@ -20,6 +20,11 @@ export const getDirectUploadSignature = async (req, res) => {
       process.env.CLOUDINARY_API_SECRET,
     );
 
+    const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
+    if (!cloudName) {
+      return res.status(500).json({ message: 'Cloudinary is not configured.' });
+    }
+
     // 🟢 Add debugging logs
     console.log('🎥 Cloudinary sign request:', {
       user: req.user?.id, // who is requesting the sign
@@ -30,7 +35,7 @@ export const getDirectUploadSignature = async (req, res) => {
     });
 
     res.json({
-      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+      cloudName,
       apiKey: process.env.CLOUDINARY_API_KEY,
       timestamp,
       folder,

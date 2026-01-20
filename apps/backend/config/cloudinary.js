@@ -33,6 +33,11 @@ export default function connectCloudinary() {
   }
 
   const finalCfg = cloudinary.config();
+  if (!finalCfg.cloud_name || !String(finalCfg.cloud_name).trim()) {
+    throw new Error(
+      'Cloudinary cloud_name is missing or invalid. Set CLOUDINARY_CLOUD_NAME and restart the server.',
+    );
+  }
   console.log('[cloudinary] configured', {
     cloud_name: finalCfg.cloud_name,
     has_api_key: !!finalCfg.api_key,

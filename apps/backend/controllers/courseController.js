@@ -447,6 +447,51 @@ export const getCourses = async (req, res) => {
   }
 };
 
+export const getExploreCourses = async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 12, 1), 50);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const like = q ? `%${q}%` : '';
+
+    const params = [limit, offset];
+    const where = [aiOff('c', req), hasTutor('c'), `NOT ${isOerCourse('c')}`];
+
+    if (like) {
+      params.push(like);
+      const pLike = `$${params.length}`;
+      where.push(
+        `(LOWER(COALESCE(c.title, '')) LIKE ${pLike} ` +
+          `OR LOWER(COALESCE(c.description, '')) LIKE ${pLike} ` +
+          `OR LOWER(COALESCE(c.subject, '')) LIKE ${pLike})`,
+      );
+    }
+
+    const sql = `
+      SELECT
+        c.id, c.tutor_id, c.title, c.description, c.level, c.duration, c.price,
+        c.syllabus, c.prerequisites,
+        COALESCE(c.avg_rating, 0)::float AS avg_rating,
+        COALESCE(c.ratings_count, 0)     AS ratings_count,
+        c.created_at, c.updated_at,
+        COALESCE(c.thumbnail_url, NULL) AS thumbnail_url,
+        c.subject,
+        COUNT(*) OVER()::int             AS total_rows
+      FROM courses c
+      WHERE ${where.join(' AND ')}
+      ORDER BY c.created_at DESC
+      LIMIT $1 OFFSET $2
+    `;
+    const { rows } = await pool.query(sql, params);
+    const total = rows[0]?.total_rows ?? 0;
+    const items = rows.map(({ total_rows, ...rest }) => rest);
+    return res.json({ items, total, limit, offset });
+  } catch (err) {
+    console.error('[getExploreCourses] server error', err);
+    res.status(500).json({ error: err?.message ?? 'Internal server error' });
+  }
+};
+
 export const getCourseById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -621,18 +666,38 @@ export const getMyCourses = async (req, res) => {
     if (!tutorId) return res.status(401).json({ error: 'Unauthenticated' });
 
     const where = aiExclusionClause('c', req);
+    const rawLimit = req.query.limit;
+    const rawOffset = req.query.offset;
+    const limit =
+      rawLimit != null ? Math.min(Math.max(Number(rawLimit) || 12, 1), 50) : null;
+    const offset =
+      rawOffset != null ? Math.max(Number(rawOffset) || 0, 0) : null;
+
+    const params = [tutorId];
+    let pagination = '';
+    if (limit != null) {
+      params.push(limit);
+      pagination += ` LIMIT $${params.length}`;
+    }
+    if (offset != null) {
+      params.push(offset);
+      pagination += ` OFFSET $${params.length}`;
+    }
+
     const sql = `
       SELECT
         c.id, c.tutor_id, c.title, c.description, c.level, c.duration, c.price,
         c.syllabus, c.prerequisites,
         COALESCE(c.avg_rating, 0)::float AS avg_rating,
         COALESCE(c.ratings_count, 0)     AS ratings_count,
-        c.created_at, c.updated_at
+        c.created_at, c.updated_at,
+        COUNT(*) OVER()::int             AS total_rows
       FROM courses c
       WHERE c.tutor_id = $1 AND ${where} AND ${hasTutor('c')}
       ORDER BY c.updated_at DESC NULLS LAST, c.created_at DESC
+      ${pagination}
     `;
-    const { rows } = await pool.query(sql, [tutorId]);
+    const { rows } = await pool.query(sql, params);
     res.json(rows);
   } catch (err) {
     console.error('[getMyCourses] server error', err);

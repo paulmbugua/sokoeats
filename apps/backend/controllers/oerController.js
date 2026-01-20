@@ -17,6 +17,8 @@ export async function listCatalog(req, res) {
     const type = pickType(req.query.type);
     const subject = (req.query.subject || '').trim();
     const provider = (req.query.provider || '').trim();
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const like = q ? `%${q}%` : '';
 
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
@@ -36,6 +38,15 @@ export async function listCatalog(req, res) {
       args.push(provider);
       where.push(`provider = $${args.length}`);
     }
+    if (like) {
+      args.push(like);
+      const pLike = `$${args.length}`;
+      where.push(
+        `(LOWER(COALESCE(title,'')) LIKE ${pLike} ` +
+          `OR LOWER(COALESCE(subject,'')) LIKE ${pLike} ` +
+          `OR LOWER(COALESCE(provider,'')) LIKE ${pLike})`,
+      );
+    }
 
     const sql = `
       SELECT slug, title, type, provider, subject, grade_level,
@@ -51,6 +62,55 @@ export async function listCatalog(req, res) {
   } catch (e) {
     console.error('[oer] listCatalog error:', e);
     res.status(500).json({ error: 'Failed to load catalog' });
+  }
+}
+
+export async function listOerVideos(req, res) {
+  try {
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const like = q ? `%${q}%` : '';
+    const provider = (req.query.provider || '').trim();
+    const subject = (req.query.subject || '').trim();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 12, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    const args = [limit, offset];
+    const where = [`LOWER(COALESCE(type,'')) = 'video'`];
+    if (provider) {
+      args.push(provider);
+      where.push(`provider = $${args.length}`);
+    }
+    if (subject) {
+      args.push(subject);
+      where.push(`subject = $${args.length}`);
+    }
+    if (like) {
+      args.push(like);
+      const pLike = `$${args.length}`;
+      where.push(
+        `(LOWER(COALESCE(title,'')) LIKE ${pLike} ` +
+          `OR LOWER(COALESCE(subject,'')) LIKE ${pLike} ` +
+          `OR LOWER(COALESCE(provider,'')) LIKE ${pLike})`,
+      );
+    }
+
+    const sql = `
+      SELECT
+        slug, title, type, provider, subject, grade_level,
+        thumbnail_url, source_url, embed_url, created_at,
+        COUNT(*) OVER()::int AS total_rows
+      FROM third_party_catalog
+      WHERE ${where.join(' AND ')}
+      ORDER BY created_at DESC NULLS LAST
+      LIMIT $1 OFFSET $2
+    `;
+    const { rows } = await pool.query(sql, args);
+    const total = rows[0]?.total_rows ?? 0;
+    const items = rows.map(({ total_rows, ...rest }) => rest);
+    return res.json({ items, total, limit, offset });
+  } catch (e) {
+    console.error('[oer] listOerVideos error:', e);
+    return res.status(500).json({ error: 'Failed to load OER videos' });
   }
 }
 

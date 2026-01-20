@@ -4,6 +4,7 @@ import multer from 'multer';
 
 import {
   listCatalog,
+  listOerVideos,
   wrapCatalogItem,
   getOerMeta,
   wrapBook,
@@ -15,6 +16,7 @@ import {
   listCourses,
   getCourse,
   getBook,
+  listBooks,
 } from '../controllers/oerCollectionsController.js';
 
 import { uploadOerCover } from '../controllers/oerUploadController.js';
@@ -52,6 +54,8 @@ r.post(
 
 /* -------------------- Catalog (flat items) -------------------- */
 r.get('/oer/catalog', listCatalog); // ?type=video|text&subject=&provider=&limit=&offset=
+r.get('/oer/videos', listOerVideos); // ?q=&provider=&subject=&limit=&offset=
+r.get('/oer/books', listBooks); // ?q=&limit=&offset=
 
 /* ---- Collections (playlists/library groupings) --------------- */
 r.get('/oer/collections', listCollections);

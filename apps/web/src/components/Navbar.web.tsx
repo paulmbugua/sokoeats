@@ -155,7 +155,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
       params.set('tab', 'courses');
     }
 
-    navigate(`/courses?${params.toString()}`);
+    navigate(`/resources?${params.toString()}`);
   };
 
   const handleThemeToggle = () => {

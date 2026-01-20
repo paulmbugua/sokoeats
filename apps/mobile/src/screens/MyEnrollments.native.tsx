@@ -45,7 +45,7 @@ const MyEnrollmentsScreen: React.FC = () => {
   const [deleting, setDeleting] = useState<string | null>(null);
 
   const goHome = () => navigation.navigate('Home');
-  const goCourses = () => navigation.navigate('Courses');
+  const goCourses = () => navigation.navigate('Resources', { tab: 'courses' });
   const goCourse = (courseId: string) => navigation.navigate('CourseDetails', { courseId });
   const goLogin = () => navigation.navigate('Login');
   const goCreateCourse = () => navigation.navigate('CreateCourse');
