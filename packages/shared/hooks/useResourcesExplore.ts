@@ -323,10 +323,17 @@ function useUnifiedCategory<T>(opts: UnifiedCategoryOpts<T>): PaginatedState<T> 
         const nextOffsetValue = nextOffset + rawItems.length;
         setOffset(nextOffsetValue);
 
-        const countByKind = Number(meta?.countsByKind?.[primaryKind] ?? 0);
-        setTotal((prev) => Math.max(prev, countByKind, nextOffsetValue));
+        const countByKindRaw = meta?.countsByKind?.[primaryKind];
+        const countByKind = Number.isFinite(Number(countByKindRaw))
+          ? Number(countByKindRaw)
+          : undefined;
 
-        setHasMore(rawItems.length === limit);
+        setTotal((prev) =>
+          typeof countByKind === 'number' ? countByKind : Math.max(prev, nextOffsetValue)
+        );
+
+        const totalValue = typeof countByKind === 'number' ? countByKind : nextOffsetValue;
+        setHasMore(nextOffsetValue < totalValue);
       } catch (err: any) {
         if (isAbortError(err)) return;
         setError(err?.message ? String(err.message) : 'Failed to search');

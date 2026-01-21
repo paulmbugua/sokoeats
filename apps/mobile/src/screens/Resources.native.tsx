@@ -10,9 +10,9 @@ import {
   ActivityIndicator,
   Dimensions,
   Platform,
-  Modal, 
-  TouchableOpacity, 
-  Alert,
+  Modal,
+  TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,7 +21,7 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 
-import { useResourcesExplore,useClassVault } from '@mytutorapp/shared/hooks';
+import { useResourcesExplore, useClassVault } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
 
 import type { Course, RecordedVideo } from '@mytutorapp/shared/types';
@@ -75,6 +75,44 @@ const H_PADDING = 16; // px-4
 const CARD_W = SCREEN_W - H_PADDING * 2;
 const PREVIEW_H = Math.round((CARD_W * 9) / 16);
 
+type ResourceFilters = {
+  subject: string;
+  gradeBand: string;
+  country: string;
+  providers: string[];
+  contentKinds: string[];
+  sourceKind: '' | 'oer' | 'tutor';
+  scope: '' | 'free' | 'purchased';
+  minRating: number;
+  maxPrice: number;
+};
+
+const DEFAULT_FILTERS: ResourceFilters = {
+  subject: '',
+  gradeBand: '',
+  country: '',
+  providers: [],
+  contentKinds: [],
+  sourceKind: '',
+  scope: '',
+  minRating: 0,
+  maxPrice: 0,
+};
+
+function countActiveFilters(f: ResourceFilters) {
+  let n = 0;
+  if (f.subject.trim()) n += 1;
+  if (f.gradeBand.trim()) n += 1;
+  if (f.country.trim()) n += 1;
+  if (f.providers.length) n += 1;
+  if (f.contentKinds.length) n += 1;
+  if (f.sourceKind) n += 1;
+  if (f.scope) n += 1;
+  if (f.minRating > 0) n += 1;
+  if (f.maxPrice > 0) n += 1;
+  return n;
+}
+
 
 function toPdfPreviewUrl(pdfUrl: string) {
   const clean = pdfUrl.trim();
@@ -93,6 +131,218 @@ const withBust = (u?: string, bust?: string) => {
   if (!u) return '';
   const b = bust || String(Date.now());
   return `${u}${u.includes('?') ? '&' : '?'}v=${encodeURIComponent(b)}`;
+};
+
+/* ------------------------------ Filters --------------------------------- */
+const FilterChip: React.FC<{
+  label: string;
+  active?: boolean;
+  onPress: () => void;
+}> = ({ label, active, onPress }) => (
+  <Pressable
+    onPress={onPress}
+    style={tw.style(
+      'px-3 py-2 rounded-full border',
+      active
+        ? 'bg-blue-500 border-blue-500'
+        : 'bg-white dark:bg-[#0f1821] border-slate-200 dark:border-white/10'
+    )}
+  >
+    <Text
+      style={tw.style(
+        'text-xs font-semibold',
+        active ? 'text-white' : 'text-slate-700 dark:text-white/80'
+      )}
+    >
+      {label}
+    </Text>
+  </Pressable>
+);
+
+const PROVIDER_CHOICES = ['Khan Academy', 'YouTube', 'OpenStax', 'CK-12', 'MIT OCW'];
+
+const FilterModal: React.FC<{
+  open: boolean;
+  value: ResourceFilters;
+  onChange: (next: ResourceFilters) => void;
+  onClose: () => void;
+  onReset: () => void;
+}> = ({ open, value, onChange, onClose, onReset }) => {
+  const set = (patch: Partial<ResourceFilters>) => onChange({ ...value, ...patch });
+
+  const toggleArr = (key: 'providers' | 'contentKinds', v: string) => {
+    const arr = value[key];
+    set({
+      [key]: arr.includes(v) ? arr.filter((x) => x !== v) : arr.concat(v),
+    } as Partial<ResourceFilters>);
+  };
+
+  return (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={tw`flex-1 bg-black/50`} edges={['top', 'left', 'right']}>
+        <View style={tw`flex-1 justify-end`}>
+          <View
+            style={tw`max-h-[85%] bg-white dark:bg-[#0f1821] rounded-t-3xl border border-slate-200 dark:border-white/10`}
+          >
+            <View style={tw`flex-row items-center justify-between px-4 pt-4 pb-3 border-b border-slate-200 dark:border-white/10`}>
+              <View>
+                <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>
+                  Filters
+                </Text>
+                <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
+                  Narrow results without overthinking it.
+                </Text>
+              </View>
+              <Pressable
+                onPress={onClose}
+                style={tw`h-9 w-9 rounded-full bg-slate-100 dark:bg-white/10 items-center justify-center`}
+              >
+                <Text style={tw`text-base text-slate-700 dark:text-white`}>✕</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={tw`px-4 py-4`}>
+              <View style={tw`mb-5`}>
+                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
+                  Source
+                </Text>
+                <View style={tw`flex-row flex-wrap gap-2`}>
+                  <FilterChip label="All" active={value.sourceKind === ''} onPress={() => set({ sourceKind: '' })} />
+                  <FilterChip label="OER" active={value.sourceKind === 'oer'} onPress={() => set({ sourceKind: 'oer' })} />
+                  <FilterChip label="Tutors" active={value.sourceKind === 'tutor'} onPress={() => set({ sourceKind: 'tutor' })} />
+                </View>
+              </View>
+
+              <View style={tw`mb-5`}>
+                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
+                  Scope
+                </Text>
+                <View style={tw`flex-row flex-wrap gap-2`}>
+                  <FilterChip label="All" active={value.scope === ''} onPress={() => set({ scope: '' })} />
+                  <FilterChip label="Free" active={value.scope === 'free'} onPress={() => set({ scope: 'free' })} />
+                  <FilterChip label="Purchased" active={value.scope === 'purchased'} onPress={() => set({ scope: 'purchased' })} />
+                </View>
+              </View>
+
+              <View style={tw`mb-5`}>
+                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
+                  Content type
+                </Text>
+                <View style={tw`flex-row flex-wrap gap-2`}>
+                  <FilterChip
+                    label="Video"
+                    active={value.contentKinds.includes('video')}
+                    onPress={() => toggleArr('contentKinds', 'video')}
+                  />
+                  <FilterChip
+                    label="Docs / Notes"
+                    active={value.contentKinds.includes('doc')}
+                    onPress={() => toggleArr('contentKinds', 'doc')}
+                  />
+                </View>
+              </View>
+
+              <View style={tw`mb-5`}>
+                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
+                  Providers
+                </Text>
+                <View style={tw`flex-row flex-wrap gap-2`}>
+                  {PROVIDER_CHOICES.map((provider) => (
+                    <FilterChip
+                      key={provider}
+                      label={provider}
+                      active={value.providers.includes(provider)}
+                      onPress={() => toggleArr('providers', provider)}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              <View style={tw`flex-row flex-wrap gap-3 mb-5`}>
+                <View style={tw`flex-1 min-w-[120px]`}>
+                  <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
+                    Subject
+                  </Text>
+                  <TextInput
+                    value={value.subject}
+                    onChangeText={(text) => set({ subject: text })}
+                    placeholder="Math, English…"
+                    placeholderTextColor="#94a3b8"
+                    style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
+                  />
+                </View>
+                <View style={tw`flex-1 min-w-[120px]`}>
+                  <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
+                    Grade band
+                  </Text>
+                  <TextInput
+                    value={value.gradeBand}
+                    onChangeText={(text) => set({ gradeBand: text })}
+                    placeholder="Primary, JHS…"
+                    placeholderTextColor="#94a3b8"
+                    style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
+                  />
+                </View>
+                <View style={tw`flex-1 min-w-[120px]`}>
+                  <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
+                    Country
+                  </Text>
+                  <TextInput
+                    value={value.country}
+                    onChangeText={(text) => set({ country: text })}
+                    placeholder="ke, qa…"
+                    placeholderTextColor="#94a3b8"
+                    style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
+                  />
+                </View>
+              </View>
+
+              <View style={tw`flex-row flex-wrap gap-3 mb-3`}>
+                <View style={tw`flex-1 min-w-[140px]`}>
+                  <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
+                    Min rating
+                  </Text>
+                  <TextInput
+                    value={String(value.minRating || '')}
+                    onChangeText={(text) => set({ minRating: Number(text) || 0 })}
+                    placeholder="0 - 5"
+                    placeholderTextColor="#94a3b8"
+                    keyboardType="numeric"
+                    style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
+                  />
+                </View>
+                <View style={tw`flex-1 min-w-[140px]`}>
+                  <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
+                    Max price (tokens)
+                  </Text>
+                  <TextInput
+                    value={String(value.maxPrice || '')}
+                    onChangeText={(text) => set({ maxPrice: Number(text) || 0 })}
+                    placeholder="No cap"
+                    placeholderTextColor="#94a3b8"
+                    keyboardType="numeric"
+                    style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={tw`flex-row items-center justify-between px-4 pb-4`}>
+              <Pressable
+                onPress={onReset}
+                style={tw`px-4 py-2 rounded-full border border-slate-200 dark:border-white/10`}
+              >
+                <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>Reset</Text>
+              </Pressable>
+              <Pressable onPress={onClose} style={tw`px-5 py-2 rounded-full bg-blue-500`}>
+                <Text style={tw`text-sm font-extrabold text-white`}>Apply</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
 };
 
 /* ------------------------------- Tabs ----------------------------------- */
@@ -440,13 +690,16 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
   const [tab, setTab] = useState<'videos' | 'courses'>(initialTab);
   const [query, setQuery] = useState(initialQuery);
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
+  const [filters, setFilters] = useState<ResourceFilters>(DEFAULT_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 400);
     return () => clearTimeout(t);
   }, [query]);
 
-  const explore = useResourcesExplore(debouncedQuery, tab);
+  const explore = useResourcesExplore(debouncedQuery, tab, filters);
 
   const { backendUrl } = useShopContext();
   const oerCollections = useOerVideoCollections(backendUrl, debouncedQuery);
@@ -471,6 +724,14 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
         : 'Browse tutor-led courses and free OER books.',
     [tab]
   );
+
+  const isPurchasedCoursesScope = filters.scope === 'purchased' && tab === 'courses';
+
+  const clearAll = useCallback(() => {
+    setQuery('');
+    setDebouncedQuery('');
+    setFilters(DEFAULT_FILTERS);
+  }, []);
 
   const sections: ExploreSection[] = useMemo(() => {
     if (tab === 'videos') {
@@ -500,31 +761,35 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
       ];
     }
 
-    return [
-      {
-        key: 'courses',
-        title: 'Courses',
-        subtitle: 'Explore tutor-led courses available to enroll.',
-        data: (explore.normalCourses.items || []).map((item: any) => ({ ...item, kind: 'course' })),
-        loading: explore.normalCourses.loading,
-        error: explore.normalCourses.error,
-        emptyMessage: 'No courses found yet.',
-        hasMore: explore.normalCourses.hasMore,
-        loadMore: explore.normalCourses.loadMore,
-      },
-      {
-        key: 'oerBooks',
+      return [
+        {
+          key: 'courses',
+          title: 'Courses',
+          subtitle: 'Explore tutor-led courses available to enroll.',
+          data: (explore.normalCourses.items || []).map((item: any) => ({ ...item, kind: 'course' })),
+          loading: explore.normalCourses.loading,
+          error: explore.normalCourses.error,
+          emptyMessage: isPurchasedCoursesScope
+            ? 'Purchased scope applies to videos only.'
+            : 'No courses found yet.',
+          hasMore: explore.normalCourses.hasMore,
+          loadMore: explore.normalCourses.loadMore,
+        },
+        {
+          key: 'oerBooks',
         title: 'Free OER books',
         subtitle: 'OpenStax and other openly licensed books.',
-        data: (explore.oerBooks.items || []).map((item: any) => ({ ...item, kind: 'oerBook' })),
-        loading: explore.oerBooks.loading,
-        error: explore.oerBooks.error,
-        emptyMessage: 'No OER books match that search.',
-        hasMore: explore.oerBooks.hasMore,
-        loadMore: explore.oerBooks.loadMore,
-      },
-    ];
-  }, [tab, explore, oerCollections]);
+          data: (explore.oerBooks.items || []).map((item: any) => ({ ...item, kind: 'oerBook' })),
+          loading: explore.oerBooks.loading,
+          error: explore.oerBooks.error,
+          emptyMessage: isPurchasedCoursesScope
+            ? 'Purchased scope applies to videos only.'
+            : 'No OER books match that search.',
+          hasMore: explore.oerBooks.hasMore,
+          loadMore: explore.oerBooks.loadMore,
+        },
+      ];
+  }, [tab, explore, oerCollections, isPurchasedCoursesScope]);
 
   const renderItem = useCallback(
     ({ item }: { item: SectionItem }) => {
@@ -597,7 +862,7 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
         </View>
       );
     },
-    [navigation, visibleIds]
+    [navigation, openPay, purchasedIds, visibleIds]
   );
 
  
@@ -643,6 +908,32 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
             </View>
 
             <View style={tw`mt-4`}>
+              <View style={tw`flex-row items-center justify-between mb-3`}>
+                <Pressable
+                  onPress={() => setFiltersOpen(true)}
+                  style={tw`flex-row items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1821] px-4 py-2`}
+                >
+                  <Text style={tw`text-sm font-semibold text-slate-700 dark:text-white`}>
+                    Filters
+                  </Text>
+                  {activeFilterCount > 0 ? (
+                    <View style={tw`ml-2 h-5 min-w-[20px] px-1 rounded-full bg-blue-500 items-center justify-center`}>
+                      <Text style={tw`text-[11px] font-bold text-white`}>
+                        {activeFilterCount}
+                      </Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+
+                <Pressable
+                  onPress={clearAll}
+                  style={tw`rounded-full border border-slate-200 dark:border-white/10 px-4 py-2`}
+                >
+                  <Text style={tw`text-sm font-semibold text-slate-700 dark:text-white`}>
+                    Clear
+                  </Text>
+                </Pressable>
+              </View>
               <TabBar value={tab} onChange={setTab} />
             </View>
 
@@ -665,7 +956,15 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
         viewabilityConfig={viewabilityConfig}
       />
 
-            <Modal
+      <FilterModal
+        open={filtersOpen}
+        value={filters}
+        onChange={setFilters}
+        onClose={() => setFiltersOpen(false)}
+        onReset={() => setFilters(DEFAULT_FILTERS)}
+      />
+
+      <Modal
         visible={payOpen}
         transparent
         animationType="fade"

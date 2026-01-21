@@ -32,6 +32,30 @@ export const normalizeText = (s) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+export const buildSubjectSearch = (subject) => {
+  const normalized = normalizeText(subject);
+  if (!normalized) {
+    return { normalized: '', likes: [] };
+  }
+
+  const aliasMap = {
+    math: ['math', 'maths', 'mathematics'],
+    maths: ['math', 'maths', 'mathematics'],
+    mathematics: ['math', 'maths', 'mathematics'],
+    'computer science': ['computer science', 'cs', 'computing'],
+    cs: ['computer science', 'cs', 'computing'],
+    computing: ['computer science', 'cs', 'computing'],
+    english: ['english', 'ela', 'language arts'],
+    ela: ['english', 'ela', 'language arts'],
+    'language arts': ['english', 'ela', 'language arts'],
+  };
+
+  const aliases = aliasMap[normalized] ?? [normalized];
+  const likes = Array.from(new Set(aliases)).map((alias) => `%${alias}%`);
+
+  return { normalized, likes };
+};
+
 export const scoreTextMatch = ({ q, title }) => {
   const query = normalizeText(q);
   if (!query) return 0;

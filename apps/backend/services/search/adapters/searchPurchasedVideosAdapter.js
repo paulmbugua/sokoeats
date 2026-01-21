@@ -1,13 +1,19 @@
 // apps/backend/services/search/adapters/searchPurchasedVideosAdapter.js
 import pool from '../../../config/db.js';
-import { scoreIntentMatch, scoreTextMatch, toStr, normalizeText } from '../searchUtils.js';
+import {
+  buildSubjectSearch,
+  scoreIntentMatch,
+  scoreTextMatch,
+  toStr,
+  normalizeText,
+} from '../searchUtils.js';
 
 export async function searchPurchasedVideosAdapter({ q, limit, offset, intent, user }) {
   if (!user || !user.id) return [];
 
   const qStr = toStr(q);
   const like = qStr ? `%${qStr.toLowerCase()}%` : '';
-  const subject = toStr(intent?.subject);
+  const { likes: subjectLikes } = buildSubjectSearch(intent?.subject);
   const contentKinds = Array.isArray(intent?.contentKinds)
     ? intent.contentKinds
     : [];
@@ -17,7 +23,7 @@ export async function searchPurchasedVideosAdapter({ q, limit, offset, intent, u
     if (!normalized.includes('video')) return [];
   }
 
-  const params = [user.id, like, subject, limit, offset];
+  const params = [user.id, like, subjectLikes, limit, offset];
 
   const sql = `
     SELECT
@@ -37,7 +43,9 @@ export async function searchPurchasedVideosAdapter({ q, limit, offset, intent, u
         LOWER(COALESCE(rv.description,'')) LIKE $2
       )
       AND (
-        $3 = '' OR LOWER(COALESCE(rv.subject,'')) = LOWER($3)
+        COALESCE(array_length($3::text[], 1), 0) = 0
+        OR LOWER(COALESCE(rv.subject,'')) LIKE ANY($3::text[])
+        OR LOWER(COALESCE(rv.title,'')) LIKE ANY($3::text[])
       )
     ORDER BY cp.created_at DESC
     LIMIT $4 OFFSET $5;

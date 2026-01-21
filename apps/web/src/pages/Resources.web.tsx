@@ -815,6 +815,8 @@ const ResourcesPage: React.FC = () => {
     [tab]
   );
 
+  const isPurchasedCoursesScope = filters.scope === 'purchased' && tab === 'courses';
+
   const clearAll = useCallback(() => {
     setQuery('');
     setDebouncedQuery('');
@@ -987,6 +989,8 @@ const ResourcesPage: React.FC = () => {
                     <p className="text-sm text-[#5e738f] dark:text-darkTextSecondary">Loading…</p>
                   ) : explore.normalCourses.error ? (
                     <p className="text-sm text-red-600">{explore.normalCourses.error}</p>
+                  ) : isPurchasedCoursesScope ? (
+                    <EmptyState message="Purchased scope applies to videos only." />
                   ) : explore.normalCourses.items.length === 0 ? (
                     <EmptyState message="No courses found yet." />
                   ) : (
@@ -1018,6 +1022,8 @@ const ResourcesPage: React.FC = () => {
                     <p className="text-sm text-[#5e738f] dark:text-darkTextSecondary">Loading…</p>
                   ) : explore.oerBooks.error ? (
                     <p className="text-sm text-red-600">{explore.oerBooks.error}</p>
+                  ) : isPurchasedCoursesScope ? (
+                    <EmptyState message="Purchased scope applies to videos only." />
                   ) : explore.oerBooks.items.length === 0 ? (
                     <EmptyState message="No OER books match that search." />
                   ) : (
