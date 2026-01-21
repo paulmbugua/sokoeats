@@ -557,6 +557,7 @@ const openExamResults = useCallback(() => {
   const tier: OrgTier = (org?.tier as OrgTier) || 'starter';
   const tierMeta = ORG_TIERS[tier];
   const isProTier = tier === 'pro' || tier === 'enterprise';
+
   const seatsMax = tierMeta.seats;
 
   const primaryMembership = useMemo(() => (Array.isArray(membership) ? membership[0] : membership), [membership]);
@@ -1168,15 +1169,14 @@ const StatusPill = ({ status }: { status: ClassicWorkStatus }) => {
 const explicitTab = p.tab as TabKey | undefined;
 
 if (explicitTab === 'examResults') {
-  if (!isProTier) {
-    Alert.alert('Locked', 'Exam results are available on PRO.');
-    return;
+  if (isProTier) {
+    openExamResults();
   }
-  openExamResults();
-  // optional but recommended: clear param so it doesn't re-open on back
+  // ✅ always clear param to avoid re-triggering
   navigation.setParams?.({ tab: undefined });
   return;
 }
+
 
 if (explicitTab) setTab(explicitTab);
 
@@ -2522,38 +2522,55 @@ if (explicitTab) setTab(explicitTab);
               </View>
 
              {/* tabs */}
-                  <View style={tw`flex-row flex-wrap mb-3`}>
-                    {visibleTabs.map((t) => {
-                      const active = tab === t;
-                      return (
-                        <TouchableOpacity
-                          key={t}
-                          onPress={() => {
-                            // ✅ EXAM RESULTS should navigate immediately (no local tab)
-                            if (t === 'examResults') {
-                              if (!isProTier) {
-                                Alert.alert('Locked', 'Exam results are available on PRO.');
-                                return;
-                              }
-                              openExamResults();
-                              return;
-                            }
+<View style={tw`flex-row flex-wrap mb-3`}>
+  {visibleTabs.map((t) => {
+    const active = tab === t;
 
-                            setTab(t);
-                          }}
+    const isExam = t === 'examResults';
+    const examLocked = isExam && !isProTier;
 
-                          style={tw`mr-2 mb-2 px-3 py-1.5 rounded-xl ${active ? 'bg-indigo-600' : 'bg-[#e7edf4] dark:bg-white/10'}`}
-                        >
-                          <Text
-                            style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-sm`}
-                            numberOfLines={1}
-                          >
-                            {TAB_LABEL[t] ?? t}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+    // If exam is locked, make it look like other disabled controls:
+    const bg = active ? 'bg-indigo-600' : 'bg-[#e7edf4] dark:bg-white/10';
+    const opacity = examLocked ? 'opacity-50' : '';
+
+    return (
+      <TouchableOpacity
+        key={t}
+        disabled={examLocked}
+        onPress={() => {
+          // ✅ Exam Results: only navigate if unlocked
+          if (isExam) {
+            if (examLocked) return; // inactive
+            openExamResults();
+            return;
+          }
+
+          setTab(t);
+        }}
+        style={tw`mr-2 mb-2 px-3 py-1.5 rounded-xl ${bg} ${opacity}`}
+        accessibilityState={{ disabled: examLocked }}
+      >
+        <View style={tw`flex-row items-center`}>
+          <Text
+            style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'} text-sm`}
+            numberOfLines={1}
+          >
+            {TAB_LABEL[t] ?? t}
+          </Text>
+
+          {/* ✅ Show PRO badge when locked (Starter) */}
+          {isExam && examLocked && (
+            <View style={tw`ml-2 px-1.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10`}>
+              <Text style={tw`text-[10px] text-[#49739c] dark:text-white/70 font-semibold`}>
+                PRO
+              </Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  })}
+</View>
 
 
               {/* plan summary */}

@@ -816,8 +816,8 @@ function TeachMeSection({
         <TextInput
           value={customTitle}
           onChangeText={setCustomTitle}
-          placeholder="Teach me Photosynthesis"
-          placeholderTextColor="rgba(148,163,184,0.8)"
+          placeholder="Teach me Plants"
+          placeholderTextColor="rgba(6, 13, 24, 0.8)"
           style={tw`flex-1 h-11 rounded-xl px-3 border border-[#cedbe8] dark:border-white/15 bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text-white`}
         />
 

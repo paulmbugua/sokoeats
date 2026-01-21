@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
 // apps/mobile/src/screens/FindTutor.native.tsx
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,7 +31,6 @@ const MIN_RATING_OPTIONS = [0, 3, 4, 4.5, 5] as const;
 const PER_PAGE = 20;
 
 /* ───────── Utils ───────── */
-
 const getRating = (p: any) => {
   const avg = p?.avgRating;
   if (avg != null) return Number(avg) || 0;
@@ -168,10 +167,7 @@ const FilterModal = ({
   onApply: () => void;
 }) => (
   <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-    <Pressable
-      onPress={onClose}
-      style={tw`flex-1 bg-black/40 items-center justify-center p-4`}
-    >
+    <Pressable onPress={onClose} style={tw`flex-1 bg-black/40 items-center justify-center p-4`}>
       <Pressable
         onPress={() => {}}
         style={tw`w-full max-w-[520px] rounded-2xl bg-white dark:bg-[#0b1016] border border-[#e2edf5] dark:border-white/10 p-4`}
@@ -195,9 +191,7 @@ const FilterModal = ({
             />
           </View>
 
-          <Text style={tw`mt-4 text-sm font-semibold text-[#0d141c] dark:text-white`}>
-            Grade band
-          </Text>
+          <Text style={tw`mt-4 text-sm font-semibold text-[#0d141c] dark:text-white`}>Grade band</Text>
           <View style={tw`mt-2 rounded-xl overflow-hidden`}>
             <TextInput
               placeholder="Primary, Secondary…"
@@ -208,9 +202,7 @@ const FilterModal = ({
             />
           </View>
 
-          <Text style={tw`mt-4 text-sm font-semibold text-[#0d141c] dark:text-white`}>
-            Country (ISO2)
-          </Text>
+          <Text style={tw`mt-4 text-sm font-semibold text-[#0d141c] dark:text-white`}>Country (ISO2)</Text>
           <View style={tw`mt-2 rounded-xl overflow-hidden`}>
             <TextInput
               placeholder="ke, qa…"
@@ -222,9 +214,7 @@ const FilterModal = ({
             />
           </View>
 
-          <Text style={tw`mt-4 text-sm font-semibold text-[#0d141c] dark:text-white`}>
-            Min rating
-          </Text>
+          <Text style={tw`mt-4 text-sm font-semibold text-[#0d141c] dark:text-white`}>Min rating</Text>
           <View style={tw`flex-row flex-wrap mt-2`}>
             {MIN_RATING_OPTIONS.map((opt) => {
               const active = Number(filters.minRating || 0) === opt;
@@ -248,10 +238,7 @@ const FilterModal = ({
             <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Reset</Text>
           </Pressable>
 
-          <Pressable
-            onPress={onApply}
-            style={tw`h-10 px-5 rounded-full bg-primary items-center justify-center`}
-          >
+          <Pressable onPress={onApply} style={tw`h-10 px-5 rounded-full bg-primary items-center justify-center`}>
             <Text style={tw`text-sm font-extrabold text-white`}>Apply</Text>
           </Pressable>
         </View>
@@ -284,100 +271,87 @@ const TutorCard = React.memo(function TutorCard({
 
   const langs =
     Array.isArray((item as any).languages) && (item as any).languages.length > 0
-      ? (item as any).languages.slice(0, 3).join(', ') +
-        ((item as any).languages.length > 3 ? '…' : '')
+      ? (item as any).languages.slice(0, 3).join(', ') + ((item as any).languages.length > 3 ? '…' : '')
       : '';
 
   const ccode = String((item as any).country ?? (item as any).country_code ?? '').trim();
   const cname = ccode ? countryName?.(ccode) || ccode : '';
 
- return (
-  <View style={tw`mb-4`}>
-    <View
-      style={tw`flex-row items-stretch justify-between gap-4 rounded-2xl bg-white dark:bg-[#0b1016] p-3 border border-[#e2edf5] dark:border-white/5 shadow-sm`}
-    >
-      <View style={tw`flex-1`}>
-        <Text style={tw`text-xs font-medium text-[#49739c] dark:text-white/70`}>{sub}</Text>
-
-        <View style={tw`flex-row items-center gap-2 mt-0.5`}>
-          {status ? <View style={tw.style('w-2 h-2 rounded-full', chipBg)} /> : null}
-
-          <Pressable onPress={() => onPress((item as any).user_id ?? (item as any).id)}>
-            <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
-              {item.name ?? 'Tutor'}
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={tw`flex-row flex-wrap items-center gap-x-3 gap-y-1 mt-1`}>
-          <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
-            {rating ? `${rating.toFixed(1)}★` : 'No rating'}
-          </Text>
-
-          {typeof tokens === 'number' ? (
-            <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
-              {tokens} tokens
-            </Text>
-          ) : null}
-
-          {langs ? (
-            <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>Languages: {langs}</Text>
-          ) : null}
-
-          {cname ? (
-            <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>{cname}</Text>
-          ) : null}
-        </View>
-
-        {desc ? (
-          <Text style={tw`text-sm mt-1 text-[#0d141c] dark:text-white/90`}>{desc}</Text>
-        ) : null}
-      </View>
-
-      {/* Image + overlay chips */}
-      <Pressable
-        onPress={() => onPress((item as any).user_id ?? (item as any).id)}
-        style={tw`w-36 rounded-xl overflow-hidden`}
+  return (
+    <View style={tw`mb-4`}>
+      <View
+        style={tw`flex-row items-stretch justify-between gap-4 rounded-2xl bg-white dark:bg-[#0b1016] p-3 border border-[#e2edf5] dark:border-white/5 shadow-sm`}
       >
-        <View style={tw`relative`}>
-          <Image source={{ uri: img }} style={tw`w-full aspect-video`} resizeMode="cover" />
+        <View style={tw`flex-1`}>
+          <Text style={tw`text-xs font-medium text-[#49739c] dark:text-white/70`}>{sub}</Text>
 
-          {/* subtle overlay for readability */}
-          <View style={tw`absolute inset-0 bg-black/10`} />
+          <View style={tw`flex-row items-center gap-2 mt-0.5`}>
+            {status ? <View style={tw.style('w-2 h-2 rounded-full', chipBg)} /> : null}
 
-          {/* ✅ overlays: checkmark-only (no "Certified" text), status, new */}
-          {showCertified ? (
-            <View
-              accessibilityLabel="Verified tutor"
-              style={tw`absolute top-3 left-3 z-10 rounded-full px-2 py-1 border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/15`}
-            >
-              <Text style={tw`text-[10px] font-extrabold text-emerald-800 dark:text-emerald-200`}>
-                ✓
+            <Pressable onPress={() => onPress((item as any).user_id ?? (item as any).id)}>
+              <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
+                {item.name ?? 'Tutor'}
               </Text>
-            </View>
-          ) : null}
+            </Pressable>
+          </View>
 
-          {status || showNew ? (
-            <View style={tw`absolute top-3 right-3 z-10 items-end gap-2`}>
-              {status ? (
-                <View style={tw.style('px-2.5 py-1 rounded-full', chipBg)}>
-                  <Text style={tw`text-[10px] font-bold text-white`}>{status}</Text>
-                </View>
-              ) : null}
+          <View style={tw`flex-row flex-wrap items-center gap-x-3 gap-y-1 mt-1`}>
+            <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+              {rating ? `${rating.toFixed(1)}★` : 'No rating'}
+            </Text>
 
-              {showNew && status !== 'New' ? (
-                <View style={tw`px-2.5 py-1 rounded-full bg-sky-500`}>
-                  <Text style={tw`text-[10px] font-bold text-white`}>New</Text>
-                </View>
-              ) : null}
-            </View>
-          ) : null}
+            {typeof tokens === 'number' ? (
+              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>{tokens} tokens</Text>
+            ) : null}
+
+            {langs ? (
+              <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>Languages: {langs}</Text>
+            ) : null}
+
+            {cname ? <Text style={tw`text-sm text-[#0d141c] dark:text-white/90`}>{cname}</Text> : null}
+          </View>
+
+          {desc ? <Text style={tw`text-sm mt-1 text-[#0d141c] dark:text-white/90`}>{desc}</Text> : null}
         </View>
-      </Pressable>
-    </View>
-  </View>
-);
 
+        {/* Image + overlay chips */}
+        <Pressable
+          onPress={() => onPress((item as any).user_id ?? (item as any).id)}
+          style={tw`w-36 rounded-xl overflow-hidden`}
+        >
+          <View style={tw`relative`}>
+            <Image source={{ uri: img }} style={tw`w-full aspect-video`} resizeMode="cover" />
+            <View style={tw`absolute inset-0 bg-black/10`} />
+
+            {showCertified ? (
+              <View
+                accessibilityLabel="Verified tutor"
+                style={tw`absolute top-3 left-3 z-10 rounded-full px-2 py-1 border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/15`}
+              >
+                <Text style={tw`text-[10px] font-extrabold text-emerald-800 dark:text-emerald-200`}>✓</Text>
+              </View>
+            ) : null}
+
+            {status || showNew ? (
+              <View style={tw`absolute top-3 right-3 z-10 items-end gap-2`}>
+                {status ? (
+                  <View style={tw.style('px-2.5 py-1 rounded-full', chipBg)}>
+                    <Text style={tw`text-[10px] font-bold text-white`}>{status}</Text>
+                  </View>
+                ) : null}
+
+                {showNew && status !== 'New' ? (
+                  <View style={tw`px-2.5 py-1 rounded-full bg-sky-500`}>
+                    <Text style={tw`text-[10px] font-bold text-white`}>New</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        </Pressable>
+      </View>
+    </View>
+  );
 });
 
 /* ───────── Screen ───────── */
@@ -385,9 +359,14 @@ const FindTutorScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
+
   const MIN_QUERY_LEN = 4;
   const bottomPad = Math.max(insets.bottom, 16);
   const topPad = Math.max(insets.top, 12);
+
+  // Refs: focus search + scroll to top when navbar triggers
+  const searchRef = useRef<TextInput | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
 
   // ---- Server-driven search + filters (like web) ----
   const home = useHomePage({ debounceMs: 0 }) as any;
@@ -411,10 +390,10 @@ const FindTutorScreen: React.FC = () => {
   const clearFilters: (() => void) | undefined = home?.clearFilters;
   const searchMeta = home?.searchMeta as any;
 
-  // backendUrl optional (for relative gallery urls) — if you store it in context you can wire it here
+  // backendUrl optional (for relative gallery urls) — wire if you have it in context
   const backendUrl = undefined as unknown as string | undefined;
 
-  // local-only UI state (NOT sent to server)
+  // local-only UI state
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -432,33 +411,92 @@ const FindTutorScreen: React.FC = () => {
     [uiFilters?.subject, uiFilters?.gradeBand, uiFilters?.country, uiFilters?.minRating]
   );
 
+  /**
+   * ✅ PARAM HANDLING (critical)
+   * - Only apply params if they exist (prevents openSearch/openFilters from wiping query/filters)
+   * - Support navbar triggers: openSearch/openFilters
+   */
   useEffect(() => {
-    const q = String(route?.params?.q ?? '').trim();
-    const subject = String(route?.params?.subject ?? '').trim();
-    const gradeBand = String(route?.params?.gradeBand ?? '').trim();
-    const countryParam = String(route?.params?.country ?? '').trim();
-    const minRatingParam = route?.params?.minRating;
+    const p: any = route?.params || {};
 
-    setQuery(q);
-    setDebouncedQuery(q);
-    if (q && q.trim().length >= MIN_QUERY_LEN) handleSearch?.(q);
-    if (subject) setSubjectFilter?.(subject);
-    if (gradeBand) setGradeBandFilter?.(gradeBand);
-    if (countryParam) {
+    // Apply explicit incoming search/filter params (only if provided)
+    if (p.q != null) {
+      const q = String(p.q).trim();
+      setQuery(q);
+      setDebouncedQuery(q);
+      if (q.length >= MIN_QUERY_LEN) handleSearch?.(q);
+      else handleSearch?.('');
+      setPage(1);
+    }
+
+    if (p.subject != null) {
+      const subject = String(p.subject).trim();
+      setSubjectFilter?.(subject);
+      setPage(1);
+    }
+
+    if (p.gradeBand != null) {
+      const gradeBand = String(p.gradeBand).trim();
+      setGradeBandFilter?.(gradeBand);
+      setPage(1);
+    }
+
+    if (p.country != null) {
+      const countryParam = String(p.country).trim();
       const normalized = normalizeCountryLabel(countryParam);
       if (normalized?.code) setCountryFilter?.(normalized.code);
+      else setCountryFilter?.(countryParam);
+      setPage(1);
     }
-    if (minRatingParam != null) {
-      const val = Number(minRatingParam);
-      if (Number.isFinite(val)) setMinRatingFilter?.(val);
+
+    if (p.minRating != null) {
+      const val = Number(p.minRating);
+      if (Number.isFinite(val)) {
+        setMinRatingFilter?.(val);
+        setPage(1);
+      }
     }
+
+    // Navbar triggers (like Resources)
+    if (p.openFilters) {
+      setDraftFilters({
+        subject: uiFilters?.subject || '',
+        gradeBand: uiFilters?.gradeBand || '',
+        country: uiFilters?.country || '',
+        minRating: Number(uiFilters?.minRating || 0),
+      });
+      setFiltersOpen(true);
+
+      // clear trigger so it doesn't repeat on re-render
+      try {
+        navigation.setParams({ openFilters: false } as any);
+      } catch {}
+    }
+
+    if (p.openSearch) {
+      setFiltersOpen(false);
+      // ensure the search row is visible
+      scrollRef.current?.scrollTo?.({ y: 0, animated: true });
+      // focus input shortly after scroll/layout
+      setTimeout(() => searchRef.current?.focus?.(), 180);
+
+      try {
+        navigation.setParams({ openSearch: false } as any);
+      } catch {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     route?.params,
     handleSearch,
-    setCountryFilter,
-    setMinRatingFilter,
     setSubjectFilter,
     setGradeBandFilter,
+    setCountryFilter,
+    setMinRatingFilter,
+    navigation,
+    uiFilters?.subject,
+    uiFilters?.gradeBand,
+    uiFilters?.country,
+    uiFilters?.minRating,
   ]);
 
   useEffect(() => {
@@ -473,10 +511,9 @@ const FindTutorScreen: React.FC = () => {
     handleSearch?.(effectiveQuery);
   }, [debouncedQuery, handleSearch]);
 
-  // Tutors already server-filtered; we just ensure role is tutor
+  // Tutors already server-filtered; ensure role is tutor
   const tutors = useMemo<Profile[]>(
-    () =>
-      (filteredProfiles || []).filter((p: any) => String(p?.role || '').toLowerCase() === 'tutor'),
+    () => (filteredProfiles || []).filter((p: any) => String(p?.role || '').toLowerCase() === 'tutor'),
     [filteredProfiles]
   );
 
@@ -485,7 +522,6 @@ const FindTutorScreen: React.FC = () => {
   const pageSafe = Math.min(page, totalPages);
   const pageItems = tutors.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
 
-  // for page dots (don’t render 50 buttons)
   const pageWindow = useMemo(() => {
     const max = 7;
     if (totalPages <= max) return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -495,7 +531,6 @@ const FindTutorScreen: React.FC = () => {
     for (let n = start; n <= end; n++) out.push(n);
     if (!out.includes(1)) out.unshift(1);
     if (!out.includes(totalPages)) out.push(totalPages);
-    // de-dupe
     return Array.from(new Set(out));
   }, [totalPages, pageSafe]);
 
@@ -509,7 +544,8 @@ const FindTutorScreen: React.FC = () => {
     clearFilters?.();
     setDraftFilters(DEFAULT_TUTOR_FILTERS);
     setPage(1);
-  }, [clearFilters]);
+    handleSearch?.('');
+  }, [clearFilters, handleSearch]);
 
   const goProfile = (userId?: string | number) => {
     if (!userId) return;
@@ -531,15 +567,14 @@ const FindTutorScreen: React.FC = () => {
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
       {/* Soft background orbs */}
       <View style={tw`absolute inset-0`}>
-        <View
-          style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-pink-500/12 dark:bg-pink-500/10`}
-        />
-        <View
-          style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/10`}
-        />
+        <View style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-pink-500/12 dark:bg-pink-500/10`} />
+        <View style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/10`} />
       </View>
 
       <ScrollView
+        ref={(r) => {
+          scrollRef.current = r;
+        }}
         style={tw`flex-1`}
         contentContainerStyle={[tw`pb-6`, { paddingTop: topPad, paddingBottom: bottomPad + 80 }]}
         keyboardShouldPersistTaps="handled"
@@ -549,9 +584,7 @@ const FindTutorScreen: React.FC = () => {
         <View style={tw`px-4 pt-2 pb-2`}>
           <View style={tw`flex-row items-end justify-between`}>
             <View style={tw`flex-1 pr-3`}>
-              <Text
-                style={tw`text-xs tracking-[2px] uppercase text-pink-500/80 dark:text-pink-400`}
-              >
+              <Text style={tw`text-xs tracking-[2px] uppercase text-pink-500/80 dark:text-pink-400`}>
                 DayBreak Tutors
               </Text>
               <Text style={tw`text-[28px] font-extrabold text-[#0d141c] dark:text-white mt-1`}>
@@ -561,11 +594,9 @@ const FindTutorScreen: React.FC = () => {
                 Explore expert tutors ready to help you achieve your learning goals.
               </Text>
 
-              {/* Optional meta (like web debug chip) */}
               {searchMeta?.aiUsed != null ? (
                 <Text style={tw`text-[11px] mt-1 text-[#49739c] dark:text-white/60`}>
-                  Search: {searchMeta.aiUsed ? 'AI' : 'Direct'} • {searchMeta.rows ?? tutors.length}{' '}
-                  results
+                  Search: {searchMeta.aiUsed ? 'AI' : 'Direct'} • {searchMeta.rows ?? tutors.length} results
                 </Text>
               ) : null}
             </View>
@@ -574,53 +605,61 @@ const FindTutorScreen: React.FC = () => {
           </View>
 
           {/* Search row + Filters + Clear */}
-          <View style={tw`mt-3 flex-row items-center gap-2`}>
-            <View style={tw`flex-1`}>
-            <View
-              style={tw`flex-row items-center h-12 px-3 rounded-xl bg-slate-100 dark:bg-[#172534] border border-slate-200 dark:border-white/10`}
-            >
-              <Text style={tw`text-base mr-2 text-slate-500 dark:text-white/70`}>🔎</Text>
-              <TextInput
-                placeholder='Search e.g. "Kenya math tutor", "Grade 3", "certified english"'
-                placeholderTextColor="#49739c"
-                  value={query}
-                  onChangeText={(t) => {
-                    setQuery(t);
-                    setPage(1);
-                  }}
-                  style={tw`flex-1 text-[#0d141c] dark:text-white`}
-                  returnKeyType="search"
-                />
-              </View>
-            </View>
+{/* Search bar ONLY (full width) */}
+<View style={tw`mt-3`}>
+  <View
+    style={tw`h-12 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-[#172534] flex-row items-center px-3`}
+  >
+    <Text style={tw`text-slate-500 dark:text-white/70 text-base mr-2`}>🔎</Text>
+    <TextInput
+      ref={(r) => {
+        searchRef.current = r;
+      }}
+      placeholder='Search e.g. "Kenya math tutor", "Grade 3", "certified english"'
+      placeholderTextColor="#49739c"
+      value={query}
+      onChangeText={(t) => {
+        setQuery(t);
+        setPage(1);
+      }}
+      style={tw`flex-1 h-full text-[#0d141c] dark:text-slate-100`}
+      returnKeyType="search"
+    />
+  </View>
+</View>
 
-            <Pressable
-              onPress={() => {
-                setDraftFilters({
-                  subject: uiFilters?.subject || '',
-                  gradeBand: uiFilters?.gradeBand || '',
-                  country: uiFilters?.country || '',
-                  minRating: Number(uiFilters?.minRating || 0),
-                });
-                setFiltersOpen(true);
-              }}
-              style={tw`h-12 px-4 rounded-xl border border-[#e2edf5] dark:border-white/10 bg-white dark:bg-[#0f1821] flex-row items-center`}
-            >
-              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Filters</Text>
-              {activeFilterCount > 0 ? (
-                <View style={tw`ml-2 min-w-[22px] h-[22px] px-2 rounded-full bg-primary items-center justify-center`}>
-                  <Text style={tw`text-[11px] font-extrabold text-white`}>{activeFilterCount}</Text>
-                </View>
-              ) : null}
-            </Pressable>
+{/* Filters + Clear BELOW (match Resources layout) */}
+<View style={tw`mt-4`}>
+  <View style={tw`flex-row items-center justify-between mb-3`}>
+    <Pressable
+      onPress={() => {
+        setDraftFilters({
+          subject: uiFilters?.subject || '',
+          gradeBand: uiFilters?.gradeBand || '',
+          country: uiFilters?.country || '',
+          minRating: Number(uiFilters?.minRating || 0),
+        });
+        setFiltersOpen(true);
+      }}
+      style={tw`flex-row items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1821] px-4 py-2`}
+    >
+      <Text style={tw`text-sm font-semibold text-slate-700 dark:text-white`}>Filters</Text>
+      {activeFilterCount > 0 ? (
+        <View style={tw`ml-2 h-5 min-w-[20px] px-1 rounded-full bg-blue-500 items-center justify-center`}>
+          <Text style={tw`text-[11px] font-bold text-white`}>{activeFilterCount}</Text>
+        </View>
+      ) : null}
+    </Pressable>
 
-            <Pressable
-              onPress={onClearAll}
-              style={tw`h-12 px-4 rounded-xl border border-[#e2edf5] dark:border-white/10 bg-[#f6f9fc] dark:bg-[#172534] items-center justify-center`}
-            >
-              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Clear</Text>
-            </Pressable>
-          </View>
+    <Pressable
+      onPress={onClearAll}
+      style={tw`rounded-full border border-slate-200 dark:border-white/10 px-4 py-2`}
+    >
+      <Text style={tw`text-sm font-semibold text-slate-700 dark:text-white`}>Clear</Text>
+    </Pressable>
+  </View>
+</View>
+
         </View>
 
         {/* Results header */}
@@ -647,7 +686,7 @@ const FindTutorScreen: React.FC = () => {
           )}
         </View>
 
-        {/* Pagination (like web) */}
+        {/* Pagination */}
         {totalPages > 1 ? (
           <View style={tw`px-4 pt-2`}>
             <View style={tw`flex-row items-center justify-center gap-2`}>

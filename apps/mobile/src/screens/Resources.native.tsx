@@ -19,7 +19,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { Image } from 'expo-image';
-import { Video, ResizeMode } from 'expo-av';
+import AutoPreviewVideo from './AutoPreviewVideo.native';
+
 
 import { useResourcesExplore, useClassVault } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -107,7 +108,6 @@ function countActiveFilters(f: ResourceFilters) {
   return n;
 }
 
-
 function toPdfPreviewUrl(pdfUrl: string) {
   const clean = pdfUrl.trim();
   if (!clean) return '';
@@ -116,8 +116,6 @@ function toPdfPreviewUrl(pdfUrl: string) {
   if (Platform.OS === 'android') {
     return `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(clean)}`;
   }
-
-  // iOS can often render PDFs directly
   return clean;
 }
 
@@ -164,135 +162,132 @@ const FilterModal: React.FC<{
   const set = (patch: Partial<ResourceFilters>) => onChange({ ...value, ...patch });
 
   return (
-    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={tw`flex-1 bg-black/50`} edges={['top', 'left', 'right']}>
-        <View style={tw`flex-1 justify-end`}>
-          <View
-            style={tw`max-h-[85%] bg-white dark:bg-[#0f1821] rounded-t-3xl border border-slate-200 dark:border-white/10`}
-          >
-            <View style={tw`flex-row items-center justify-between px-4 pt-4 pb-3 border-b border-slate-200 dark:border-white/10`}>
-              <View>
-                <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>
-                  Filters
-                </Text>
-                <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
-                  Narrow results without overthinking it.
-                </Text>
-              </View>
-              <Pressable
-                onPress={onClose}
-                style={tw`h-9 w-9 rounded-full bg-slate-100 dark:bg-white/10 items-center justify-center`}
-              >
-                <Text style={tw`text-base text-slate-700 dark:text-white`}>✕</Text>
-              </Pressable>
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      {/* Tap outside closes */}
+      <Pressable onPress={onClose} style={tw`flex-1 bg-black/40 items-center justify-center p-4`}>
+        {/* Card (tap inside should NOT close) */}
+        <Pressable
+          onPress={() => {}}
+          style={tw`w-full max-w-[520px] rounded-2xl bg-white dark:bg-[#0f1821] border border-slate-200 dark:border-white/10 overflow-hidden`}
+        >
+          {/* Header */}
+          <View style={tw`flex-row items-center justify-between px-4 pt-4 pb-3 border-b border-slate-200 dark:border-white/10`}>
+            <View>
+              <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>Filters</Text>
+              <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
+                Narrow results without overthinking it.
+              </Text>
             </View>
 
-            <ScrollView contentContainerStyle={tw`px-4 py-4`}>
-              <View style={tw`mb-5`}>
-                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
-                  Source
-                </Text>
-                <View style={tw`flex-row flex-wrap gap-2`}>
-                  <FilterChip label="All" active={value.sourceKind === ''} onPress={() => set({ sourceKind: '' })} />
-                  <FilterChip label="OER" active={value.sourceKind === 'oer'} onPress={() => set({ sourceKind: 'oer' })} />
-                  <FilterChip label="Tutors" active={value.sourceKind === 'tutor'} onPress={() => set({ sourceKind: 'tutor' })} />
-                </View>
-              </View>
-
-              <View style={tw`mb-5`}>
-                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
-                  Scope
-                </Text>
-                <View style={tw`flex-row flex-wrap gap-2`}>
-                  <FilterChip label="All" active={value.scope === ''} onPress={() => set({ scope: '' })} />
-                  <FilterChip label="Free" active={value.scope === 'free'} onPress={() => set({ scope: 'free' })} />
-                  <FilterChip label="Purchased" active={value.scope === 'purchased'} onPress={() => set({ scope: 'purchased' })} />
-                </View>
-              </View>
-
-              <View style={tw`flex-row flex-wrap gap-3 mb-5`}>
-                <View style={tw`flex-1 min-w-[120px]`}>
-                  <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
-                    Subject
-                  </Text>
-                  <TextInput
-                    value={value.subject}
-                    onChangeText={(text) => set({ subject: text })}
-                    placeholder="Math, English…"
-                    placeholderTextColor="#94a3b8"
-                    style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
-                  />
-                </View>
-                <View style={tw`flex-1 min-w-[120px]`}>
-                  <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
-                    Grade band
-                  </Text>
-                  <TextInput
-                    value={value.gradeBand}
-                    onChangeText={(text) => set({ gradeBand: text })}
-                    placeholder="Primary, JHS…"
-                    placeholderTextColor="#94a3b8"
-                    style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
-                  />
-                </View>
-                <View style={tw`flex-1 min-w-[120px]`}>
-                  <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
-                    Country
-                  </Text>
-                  <TextInput
-                    value={value.country}
-                    onChangeText={(text) => set({ country: text })}
-                    placeholder="ke, qa…"
-                    placeholderTextColor="#94a3b8"
-                    style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
-                  />
-                </View>
-              </View>
-
-              <View style={tw`flex-row flex-wrap gap-3 mb-3`}>
-                <View style={tw`flex-1 min-w-[140px]`}>
-                  <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
-                    Min rating
-                  </Text>
-                  <TextInput
-                    value={String(value.minRating || '')}
-                    onChangeText={(text) => set({ minRating: Number(text) || 0 })}
-                    placeholder="0 - 5"
-                    placeholderTextColor="#94a3b8"
-                    keyboardType="numeric"
-                    style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
-                  />
-                </View>
-                <View style={tw`flex-1 min-w-[140px]`}>
-                  <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
-                    Max price (tokens)
-                  </Text>
-                  <TextInput
-                    value={String(value.maxPrice || '')}
-                    onChangeText={(text) => set({ maxPrice: Number(text) || 0 })}
-                    placeholder="No cap"
-                    placeholderTextColor="#94a3b8"
-                    keyboardType="numeric"
-                    style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
-                  />
-                </View>
-              </View>
-            </ScrollView>
-
-            <View style={tw`flex-row items-center justify-between px-4 pb-4`}>
-              <Pressable
-                onPress={onReset}
-                style={tw`px-4 py-2 rounded-full border border-slate-200 dark:border-white/10`}
-              >
-                <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>Reset</Text>
-              </Pressable>
-              <Pressable onPress={onApply} style={tw`px-5 py-2 rounded-full bg-blue-500`}>
-                <Text style={tw`text-sm font-extrabold text-white`}>Apply</Text>
-              </Pressable>
-            </View>
+            <Pressable
+              onPress={onClose}
+              style={tw`h-9 w-9 rounded-full bg-slate-100 dark:bg-white/10 items-center justify-center`}
+            >
+              <Text style={tw`text-base text-slate-700 dark:text-white`}>✕</Text>
+            </Pressable>
           </View>
-        </View>
-      </SafeAreaView>
+
+          {/* Body */}
+          <ScrollView
+            style={tw`max-h-[420px]`}
+            contentContainerStyle={tw`px-4 py-4`}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={tw`mb-5`}>
+              <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>Source</Text>
+              <View style={tw`flex-row flex-wrap gap-2`}>
+                <FilterChip label="All" active={value.sourceKind === ''} onPress={() => set({ sourceKind: '' })} />
+                <FilterChip label="OER" active={value.sourceKind === 'oer'} onPress={() => set({ sourceKind: 'oer' })} />
+                <FilterChip label="Tutors" active={value.sourceKind === 'tutor'} onPress={() => set({ sourceKind: 'tutor' })} />
+              </View>
+            </View>
+
+            <View style={tw`mb-5`}>
+              <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>Scope</Text>
+              <View style={tw`flex-row flex-wrap gap-2`}>
+                <FilterChip label="All" active={value.scope === ''} onPress={() => set({ scope: '' })} />
+                <FilterChip label="Free" active={value.scope === 'free'} onPress={() => set({ scope: 'free' })} />
+                <FilterChip label="Purchased" active={value.scope === 'purchased'} onPress={() => set({ scope: 'purchased' })} />
+              </View>
+            </View>
+
+            <View style={tw`flex-row flex-wrap gap-3 mb-5`}>
+              <View style={tw`flex-1 min-w-[120px]`}>
+                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>Subject</Text>
+                <TextInput
+                  value={value.subject}
+                  onChangeText={(text) => set({ subject: text })}
+                  placeholder="Math, English…"
+                  placeholderTextColor="#94a3b8"
+                  style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
+                />
+              </View>
+
+              <View style={tw`flex-1 min-w-[120px]`}>
+                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>Grade band</Text>
+                <TextInput
+                  value={value.gradeBand}
+                  onChangeText={(text) => set({ gradeBand: text })}
+                  placeholder="Primary, JHS…"
+                  placeholderTextColor="#94a3b8"
+                  style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
+                />
+              </View>
+
+              <View style={tw`flex-1 min-w-[120px]`}>
+                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>Country</Text>
+                <TextInput
+                  value={value.country}
+                  onChangeText={(text) => set({ country: text })}
+                  placeholder="ke, qa…"
+                  placeholderTextColor="#94a3b8"
+                  style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
+                />
+              </View>
+            </View>
+
+            <View style={tw`flex-row flex-wrap gap-3`}>
+              <View style={tw`flex-1 min-w-[140px]`}>
+                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>Min rating</Text>
+                <TextInput
+                  value={String(value.minRating || '')}
+                  onChangeText={(text) => set({ minRating: Number(text) || 0 })}
+                  placeholder="0 - 5"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="numeric"
+                  style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
+                />
+              </View>
+
+              <View style={tw`flex-1 min-w-[140px]`}>
+                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>Max price (tokens)</Text>
+                <TextInput
+                  value={String(value.maxPrice || '')}
+                  onChangeText={(text) => set({ maxPrice: Number(text) || 0 })}
+                  placeholder="No cap"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="numeric"
+                  style={tw`h-10 rounded-xl px-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white`}
+                />
+              </View>
+            </View>
+          </ScrollView>
+
+          {/* Footer actions */}
+          <View style={tw`flex-row items-center justify-between px-4 pb-4 pt-3 border-t border-slate-200 dark:border-white/10`}>
+            <Pressable
+              onPress={onReset}
+              style={tw`px-4 py-2 rounded-full border border-slate-200 dark:border-white/10`}
+            >
+              <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>Reset</Text>
+            </Pressable>
+
+            <Pressable onPress={onApply} style={tw`px-5 py-2 rounded-full bg-blue-500`}>
+              <Text style={tw`text-sm font-extrabold text-white`}>Apply</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 };
@@ -302,9 +297,7 @@ const TabBar: React.FC<{
   value: 'videos' | 'courses';
   onChange: (next: 'videos' | 'courses') => void;
 }> = ({ value, onChange }) => (
-  <View
-    style={tw`flex-row bg-white dark:bg-[#0f1821] rounded-full border border-slate-200 dark:border-white/10 p-1`}
-  >
+  <View style={tw`flex-row bg-white dark:bg-[#0f1821] rounded-full border border-slate-200 dark:border-white/10 p-1`}>
     {([
       { key: 'videos', label: 'Explore Videos & Notes' },
       { key: 'courses', label: 'Explore Courses' },
@@ -312,9 +305,7 @@ const TabBar: React.FC<{
       <Pressable
         key={tab.key}
         onPress={() => onChange(tab.key)}
-        style={tw`flex-1 px-3 py-2 rounded-full ${
-          value === tab.key ? 'bg-blue-500' : 'bg-transparent'
-        }`}
+        style={tw`flex-1 px-3 py-2 rounded-full ${value === tab.key ? 'bg-blue-500' : 'bg-transparent'}`}
       >
         <Text
           style={tw`text-xs text-center font-semibold ${
@@ -382,11 +373,7 @@ function useOerVideoCollections(backendUrl?: string, q?: string) {
       setLoading(true);
       setError(null);
       try {
-        // Matches web behavior: collections, not individual videos
-        const url = `${base}/api/oer/collections?kind=video&limit=48${
-          q?.trim() ? `&q=${encodeURIComponent(q.trim())}` : ''
-        }`;
-
+        const url = `${base}/api/oer/collections?kind=video&limit=48${q?.trim() ? `&q=${encodeURIComponent(q.trim())}` : ''}`;
         const res = await fetch(url, { signal: ac.signal as any });
         const data = res.ok ? await res.json().catch(() => []) : [];
         setItems(Array.isArray(data) ? data : []);
@@ -411,9 +398,7 @@ const ClassVaultMarketCard: React.FC<{
   onPress: () => void;
   isVisible: boolean;
 }> = ({ item, onPress, isVisible }) => {
-  const bust = String(
-    (item as any)?.updated_at || (item as any)?.updatedAt || item.created_at || Date.now()
-  );
+  const bust = String((item as any)?.updated_at || (item as any)?.updatedAt || item.created_at || Date.now());
 
   const pdfUrlRaw = withBust((item as any)?.pdf_url || '', bust);
   const pdfPreviewUrl = pdfUrlRaw ? toPdfPreviewUrl(pdfUrlRaw) : '';
@@ -422,7 +407,6 @@ const ClassVaultMarketCard: React.FC<{
   const thumbUrl = withBust((item as any)?.thumbnail_url || '', bust);
 
   const isPdfOnly = Boolean((item as any)?.pdf_url) && !(item as any)?.video_url;
-
   const [pdfBlocked, setPdfBlocked] = useState(false);
 
   return (
@@ -431,7 +415,6 @@ const ClassVaultMarketCard: React.FC<{
       style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
     >
       <View style={[tw`bg-[#0b1220] overflow-hidden`, { height: PREVIEW_H }]}>
-        {/* ✅ PDF-only: use preview URL (Android uses gview) */}
         {isPdfOnly && WebView && pdfPreviewUrl && !pdfBlocked ? (
           <WebView
             source={{ uri: pdfPreviewUrl }}
@@ -442,37 +425,23 @@ const ClassVaultMarketCard: React.FC<{
           />
         ) : null}
 
-        {/* Thumbnail fallback (also used when pdf preview blocked) */}
         {thumbUrl && (!isPdfOnly || pdfBlocked || !pdfPreviewUrl || !WebView) ? (
           <Image source={{ uri: thumbUrl }} style={tw`w-full h-full`} contentFit="cover" />
         ) : null}
 
-        {/* Video preview */}
-        {!isPdfOnly && previewUrl ? (
-          <Video
-            source={{ uri: previewUrl }}
-            style={tw`absolute inset-0`}
-            resizeMode={ResizeMode.COVER}
-            isLooping
-            isMuted
-            shouldPlay={isVisible}
-            useNativeControls={false}
-            onError={() => {}}
-          />
-        ) : null}
+        {!isPdfOnly && previewUrl && isVisible ? (
+            <AutoPreviewVideo uri={previewUrl} shouldPlay style={tw`absolute inset-0`} />
+          ) : null}
 
-        {/* Badge chip */}
+
         <View style={tw`absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5`}>
           <Text style={tw`text-[11px] text-white font-semibold`}>{isPdfOnly ? 'Notes' : 'Preview'}</Text>
         </View>
 
-        {/* PDF blocked overlay */}
         {isPdfOnly && (pdfBlocked || !WebView || !pdfPreviewUrl) ? (
           <View style={tw`absolute inset-0 items-center justify-center bg-black/35 px-3`}>
             <Text style={tw`text-xs text-white font-semibold`}>Notes preview unavailable</Text>
-            <Text style={tw`text-[11px] text-white/80 mt-1 text-center`}>
-              Tap to open and view the PDF.
-            </Text>
+            <Text style={tw`text-[11px] text-white/80 mt-1 text-center`}>Tap to open and view the PDF.</Text>
           </View>
         ) : null}
       </View>
@@ -504,14 +473,8 @@ const OerCollectionCard: React.FC<{
       style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
     >
       <View style={[tw`bg-slate-200 dark:bg-white/10 overflow-hidden`, { height: PREVIEW_H }]}>
-        {thumb ? (
-          <Image source={{ uri: thumb }} style={tw`w-full h-full`} contentFit="cover" />
-        ) : (
-          <View style={tw`w-full h-full bg-[#0b1220]`} />
-        )}
-
+        {thumb ? <Image source={{ uri: thumb }} style={tw`w-full h-full`} contentFit="cover" /> : <View style={tw`w-full h-full bg-[#0b1220]`} />}
         <View style={tw`absolute inset-0 bg-black/20`} />
-
         <View style={tw`absolute bottom-2 left-2 flex-row items-center`}>
           <View style={tw`rounded-full bg-black/60 px-2 py-0.5 mr-2`}>
             <Text style={tw`text-[11px] text-white font-semibold`}>Free Collection</Text>
@@ -531,7 +494,6 @@ const OerCollectionCard: React.FC<{
         <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={1}>
           Open in Collection Reader
         </Text>
-
         <View style={tw`mt-3 self-start rounded-full bg-blue-500 px-4 py-2`}>
           <Text style={tw`text-sm font-semibold text-white`}>View Collection</Text>
         </View>
@@ -575,20 +537,18 @@ const SimpleCard: React.FC<{
 const ResourcesPage: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<MainStackParamList, 'Resources'>>();
+  const insets = useSafeAreaInsets();
+
   const MIN_QUERY_LEN = 4;
 
   const initialTab = route.params?.tab === 'courses' ? 'courses' : 'videos';
-  const initialQuery = route.params?.q ?? '';
+  const initialQuery = String(route.params?.q ?? '');
 
-  const insets = useSafeAreaInsets();
-const FOOTER_H = 76;
-const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
+  const FOOTER_H = 76;
+  const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
 
-  // ClassVault purchase support (reuse the same logic as ClassVaultListScreen)
-  const {
-    purchasedIds,
-    purchase,
-  } = useClassVault('', ''); // no filters; we only need purchasedIds + purchase()
+  // ClassVault purchase support
+  const { purchasedIds, purchase } = useClassVault('', '');
 
   const shop: any = useShopContext() as any;
   const tokenBalance =
@@ -624,32 +584,60 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
       navigation.navigate('ClassVaultDetail', { id });
     } catch (err: any) {
       const msg =
-        (typeof err?.message === 'string' && err.message) ||
-        'Purchase failed. Please try again.';
+        (typeof err?.message === 'string' && err.message) || 'Purchase failed. Please try again.';
       setPayError(msg);
-
-      if (String(msg).toLowerCase().includes('insufficient')) {
-        // keep modal open; show Buy Tokens CTA
-      } else {
-        // optional: toast/alert for other errors
-      }
     } finally {
       setPayBusy(false);
     }
   };
 
-
-
   const [tab, setTab] = useState<'videos' | 'courses'>(initialTab);
   const [query, setQuery] = useState(initialQuery);
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
+
   const [appliedFilters, setAppliedFilters] = useState<ResourceFilters>(DEFAULT_FILTERS);
   const [draftFilters, setDraftFilters] = useState<ResourceFilters>(DEFAULT_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const activeFilterCount = useMemo(
-    () => countActiveFilters(appliedFilters),
-    [appliedFilters]
-  );
+
+  const activeFilterCount = useMemo(() => countActiveFilters(appliedFilters), [appliedFilters]);
+
+  // ✅ allow navbar icon to focus search input
+  const searchRef = useRef<TextInput | null>(null);
+
+  // ✅ handle navbar-trigger params: openSearch/openFilters
+  useEffect(() => {
+    const p: any = (route as any)?.params || {};
+    const openSearch = Boolean(p?.openSearch);
+    const openFilters = Boolean(p?.openFilters);
+
+    if (typeof p?.tab === 'string') {
+      if (p.tab === 'courses') setTab('courses');
+      if (p.tab === 'videos') setTab('videos');
+    }
+    if (typeof p?.q === 'string') {
+      setQuery(p.q);
+      setDebouncedQuery(p.q);
+    }
+
+    if (openFilters) {
+      setDraftFilters(appliedFilters);
+      setFiltersOpen(true);
+      try {
+        navigation.setParams({ openFilters: false } as any);
+      } catch {}
+    }
+
+    if (openSearch) {
+      // close filters if open
+      setFiltersOpen(false);
+      // focus input shortly after render
+      setTimeout(() => searchRef.current?.focus?.(), 150);
+      try {
+        navigation.setParams({ openSearch: false } as any);
+      } catch {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route?.params]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 400);
@@ -662,7 +650,7 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
 
   const explore = useResourcesExplore(effectiveQuery, tab, appliedFilters);
 
-  const { backendUrl } = useShopContext();
+  const { backendUrl } = useShopContext() as any;
   const oerCollections = useOerVideoCollections(backendUrl, effectiveQuery);
 
   // Visible tracking so only on-screen cards autoplay video previews
@@ -723,34 +711,30 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
       ];
     }
 
-      return [
-        {
-          key: 'courses',
-          title: 'Courses',
-          subtitle: 'Explore tutor-led courses available to enroll.',
-          data: (explore.normalCourses.items || []).map((item: any) => ({ ...item, kind: 'course' })),
-          loading: explore.normalCourses.loading,
-          error: explore.normalCourses.error,
-          emptyMessage: isPurchasedCoursesScope
-            ? 'Purchased scope applies to videos only.'
-            : 'No courses found yet.',
-          hasMore: explore.normalCourses.hasMore,
-          loadMore: explore.normalCourses.loadMore,
-        },
-        {
-          key: 'oerBooks',
+    return [
+      {
+        key: 'courses',
+        title: 'Courses',
+        subtitle: 'Explore tutor-led courses available to enroll.',
+        data: (explore.normalCourses.items || []).map((item: any) => ({ ...item, kind: 'course' })),
+        loading: explore.normalCourses.loading,
+        error: explore.normalCourses.error,
+        emptyMessage: isPurchasedCoursesScope ? 'Purchased scope applies to videos only.' : 'No courses found yet.',
+        hasMore: explore.normalCourses.hasMore,
+        loadMore: explore.normalCourses.loadMore,
+      },
+      {
+        key: 'oerBooks',
         title: 'Free OER books',
         subtitle: 'OpenStax and other openly licensed books.',
-          data: (explore.oerBooks.items || []).map((item: any) => ({ ...item, kind: 'oerBook' })),
-          loading: explore.oerBooks.loading,
-          error: explore.oerBooks.error,
-          emptyMessage: isPurchasedCoursesScope
-            ? 'Purchased scope applies to videos only.'
-            : 'No OER books match that search.',
-          hasMore: explore.oerBooks.hasMore,
-          loadMore: explore.oerBooks.loadMore,
-        },
-      ];
+        data: (explore.oerBooks.items || []).map((item: any) => ({ ...item, kind: 'oerBook' })),
+        loading: explore.oerBooks.loading,
+        error: explore.oerBooks.error,
+        emptyMessage: isPurchasedCoursesScope ? 'Purchased scope applies to videos only.' : 'No OER books match that search.',
+        hasMore: explore.oerBooks.hasMore,
+        loadMore: explore.oerBooks.loadMore,
+      },
+    ];
   }, [tab, explore, oerCollections, isPurchasedCoursesScope]);
 
   const renderItem = useCallback(
@@ -765,19 +749,15 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
               item={item as any}
               isVisible={isVisible}
               onPress={() => {
-  const id = Number((item as any).id);
-  const price = Number((item as any).price ?? 0) || 0;
+                const id = Number((item as any).id);
+                const price = Number((item as any).price ?? 0) || 0;
 
-  // If free or already purchased -> open directly
-  if (price <= 0 || purchasedIds?.has?.(id)) {
-    navigation.navigate('ClassVaultDetail', { id });
-    return;
-  }
-
-  // Otherwise confirm purchase in modal
-  openPay(item as any);
-}}
-
+                if (price <= 0 || purchasedIds?.has?.(id)) {
+                  navigation.navigate('ClassVaultDetail', { id });
+                  return;
+                }
+                openPay(item as any);
+              }}
             />
           </View>
         );
@@ -786,13 +766,9 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
       if (item.kind === 'oerCollection') {
         const col = item as any;
         const id = String(col?.slug ?? col?.id ?? '');
-
         return (
           <View style={tw`px-4`}>
-            <OerCollectionCard
-              col={col}
-              onPress={() => navigation.navigate('OerCollectionReader', { id })}
-            />
+            <OerCollectionCard col={col} onPress={() => navigation.navigate('OerCollectionReader', { id })} />
           </View>
         );
       }
@@ -812,7 +788,6 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
         );
       }
 
-      // course
       return (
         <View style={tw`px-4`}>
           <SimpleCard
@@ -827,8 +802,7 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
     [navigation, openPay, purchasedIds, visibleIds]
   );
 
- 
-    return (
+  return (
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'left', 'right']}>
       <SectionList
         sections={sections}
@@ -836,9 +810,7 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
           `${(item as any).kind}-${String((item as any).id ?? (item as any).slug ?? index)}-${index}`
         }
         renderItem={renderItem}
-        renderSectionHeader={({ section }) => (
-          <SectionHeader title={section.title} subtitle={section.subtitle} />
-        )}
+        renderSectionHeader={({ section }) => <SectionHeader title={section.title} subtitle={section.subtitle} />}
         renderSectionFooter={({ section }) => (
           <SectionFooter
             loading={section.loading}
@@ -860,11 +832,15 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
               >
                 <Text style={tw`text-slate-500 dark:text-white/70 text-base mr-2`}>🔍</Text>
                 <TextInput
+                  ref={(r) => {
+                    searchRef.current = r;
+                  }}
                   value={query}
                   onChangeText={setQuery}
                   placeholder="Search videos, notes, collections, or courses"
                   placeholderTextColor="#7a8aa0"
                   style={tw`flex-1 h-full text-slate-900 dark:text-slate-100`}
+                  returnKeyType="search"
                 />
               </View>
             </View>
@@ -878,14 +854,10 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
                   }}
                   style={tw`flex-row items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1821] px-4 py-2`}
                 >
-                  <Text style={tw`text-sm font-semibold text-slate-700 dark:text-white`}>
-                    Filters
-                  </Text>
+                  <Text style={tw`text-sm font-semibold text-slate-700 dark:text-white`}>Filters</Text>
                   {activeFilterCount > 0 ? (
                     <View style={tw`ml-2 h-5 min-w-[20px] px-1 rounded-full bg-blue-500 items-center justify-center`}>
-                      <Text style={tw`text-[11px] font-bold text-white`}>
-                        {activeFilterCount}
-                      </Text>
+                      <Text style={tw`text-[11px] font-bold text-white`}>{activeFilterCount}</Text>
                     </View>
                   ) : null}
                 </Pressable>
@@ -894,11 +866,10 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
                   onPress={clearAll}
                   style={tw`rounded-full border border-slate-200 dark:border-white/10 px-4 py-2`}
                 >
-                  <Text style={tw`text-sm font-semibold text-slate-700 dark:text-white`}>
-                    Clear
-                  </Text>
+                  <Text style={tw`text-sm font-semibold text-slate-700 dark:text-white`}>Reset</Text>
                 </Pressable>
               </View>
+
               <TabBar value={tab} onChange={setTab} />
             </View>
 
@@ -909,12 +880,7 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
             ) : null}
           </View>
         }
-        // ✅ CRITICAL: padding so last content isn't behind FooterNav
-        contentContainerStyle={[
-          tw`bg-slate-50 dark:bg-[#0b1016]`,
-          { paddingBottom: bottomPad },
-        ]}
-        // ✅ Also add a footer spacer so section footers don't sit under nav
+        contentContainerStyle={[tw`bg-slate-50 dark:bg-[#0b1016]`, { paddingBottom: bottomPad }]}
         ListFooterComponent={<View style={{ height: bottomPad }} />}
         stickySectionHeadersEnabled={false}
         onViewableItemsChanged={onViewableItemsChanged}
@@ -933,18 +899,13 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
         onReset={() => setDraftFilters(DEFAULT_FILTERS)}
       />
 
-      <Modal
-        visible={payOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={closePay}
-      >
+      <Modal visible={payOpen} transparent animationType="fade" onRequestClose={closePay}>
         <View style={tw`flex-1 bg-black/50 items-center justify-center px-5`}>
-          <View style={tw`w-full rounded-2xl bg-white dark:bg-[#0f1821] border border-slate-200 dark:border-white/10 overflow-hidden`}>
+          <View
+            style={tw`w-full rounded-2xl bg-white dark:bg-[#0f1821] border border-slate-200 dark:border-white/10 overflow-hidden`}
+          >
             <View style={tw`px-4 pt-4 pb-3 border-b border-slate-200 dark:border-white/10`}>
-              <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>
-                Confirm purchase
-              </Text>
+              <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>Confirm purchase</Text>
               <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
                 You’re about to unlock this item using tokens.
               </Text>
@@ -965,7 +926,9 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
                 </Text>
               </View>
 
-              <View style={tw`mt-4 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 p-3`}>
+              <View
+                style={tw`mt-4 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 p-3`}
+              >
                 <View style={tw`flex-row items-center justify-between`}>
                   <Text style={tw`text-xs text-slate-500 dark:text-white/60`}>Cost</Text>
                   <Text style={tw`text-sm font-extrabold text-slate-900 dark:text-white`}>
@@ -974,9 +937,7 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
                 </View>
                 <View style={tw`flex-row items-center justify-between mt-2`}>
                   <Text style={tw`text-xs text-slate-500 dark:text-white/60`}>Your balance</Text>
-                  <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>
-                    {tokenBalance} tokens
-                  </Text>
+                  <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>{tokenBalance} tokens</Text>
                 </View>
 
                 {payItem ? (
@@ -986,19 +947,14 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
                 ) : null}
               </View>
 
-              {payError ? (
-                <Text style={tw`text-xs text-red-600 dark:text-red-400 mt-3`}>{payError}</Text>
-              ) : null}
+              {payError ? <Text style={tw`text-xs text-red-600 dark:text-red-400 mt-3`}>{payError}</Text> : null}
             </View>
 
             <View style={tw`px-4 pb-4 flex-row items-center justify-between`}>
               <TouchableOpacity
                 onPress={closePay}
                 disabled={payBusy}
-                style={tw.style(
-                  `px-4 py-2 rounded-full border border-slate-200 dark:border-white/10`,
-                  payBusy && 'opacity-60'
-                )}
+                style={tw.style(`px-4 py-2 rounded-full border border-slate-200 dark:border-white/10`, payBusy && 'opacity-60')}
               >
                 <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>Cancel</Text>
               </TouchableOpacity>
@@ -1012,30 +968,22 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
                     }}
                     style={tw`mr-2 px-4 py-2 rounded-full bg-slate-900 dark:bg-white`}
                   >
-                    <Text style={tw`text-sm font-semibold text-white dark:text-slate-900`}>
-                      Buy tokens
-                    </Text>
+                    <Text style={tw`text-sm font-semibold text-white dark:text-slate-900`}>Buy tokens</Text>
                   </TouchableOpacity>
                 ) : null}
 
                 <TouchableOpacity
                   onPress={doPurchase}
                   disabled={payBusy || !payItem}
-                  style={tw.style(
-                    `px-4 py-2 rounded-full bg-blue-500`,
-                    (payBusy || !payItem) && 'opacity-60'
-                  )}
+                  style={tw.style(`px-4 py-2 rounded-full bg-blue-500`, (payBusy || !payItem) && 'opacity-60')}
                 >
-                  <Text style={tw`text-sm font-extrabold text-white`}>
-                    {payBusy ? 'Purchasing…' : 'Purchase'}
-                  </Text>
+                  <Text style={tw`text-sm font-extrabold text-white`}>{payBusy ? 'Purchasing…' : 'Purchase'}</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
         </View>
       </Modal>
-
     </SafeAreaView>
   );
 };

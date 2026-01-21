@@ -1671,7 +1671,7 @@ const opts: any = {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-gray-500 dark:text-white/60 uppercase tracking-[0.2em]">
-                  Choose a language
+                  Learn a language
                 </span>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-2">
@@ -1719,16 +1719,7 @@ const opts: any = {
               AI Tutor Studio
             </h1>
 
-            {/* ADD THIS */}
-            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-white/5 ring-1 ring-white/10">
-              <span className="text-xs text-gray-600 dark:text-white/70">Now learning:</span>
-              <span className="text-sm font-semibold truncate max-w-[60vw]">{displayTitle}</span>
-
-              {dbgEnabled() ? (
-                <span className="text-[10px] opacity-70">({titleInfo.source})</span>
-              ) : null}
-            </div>
-            {programTrackLocked ? (
+              {programTrackLocked ? (
               <div className="mt-2 text-[11px] text-gray-600 dark:text-white/70">
                 {(() => {
                   const reqs = getProgramTrackRequirements(programTrack);
@@ -1772,36 +1763,36 @@ const opts: any = {
 
           {/* Step indicator */}
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
-            {[
-              { k: 'course', label: 'Choose' },
-              { k: 'outline', label: 'Outline' },
-              { k: 'lessons', label: 'Lessons' },
-              { k: 'quiz', label: 'Quiz' },
-              { k: 'cert', label: 'Certificate' },
-            ].map((s, i) => {
-              const active =
-                (i === 0 && !outline.length) ||
-                (i === 1 && step === 'outlining') ||
-                (i === 2 && (step === 'narrating' || hasAIContent)) ||
-                (i === 3 && (quiz?.questions?.length || step === 'quizzing')) ||
-                (i === 4 && Boolean(grade?.passed));
-              return (
-                <div
-                  key={s.k}
-                  className={`px-2 py-1 rounded-full ring-1 ${
-                    active
-                      ? 'bg-indigo-50 text-indigo-700 ring-indigo-200 dark:bg白/15 dark:text-white dark:ring-white/30'.replace(
-                          '白',
-                          'white'
-                        )
-                      : 'bg-white text-gray-700 ring-gray-200 dark:bg-white/5 dark:text-white/70 dark:ring-white/10'
-                  }`}
-                >
-                  {i + 1}. {s.label}
-                </div>
-              );
-            })}
-          </div>
+  {[
+    { k: 'course', label: 'Choose' },
+    { k: 'outline', label: 'Outline' },
+    { k: 'lessons', label: 'Lessons' },
+    { k: 'quiz', label: 'Quiz' },
+    { k: 'cert', label: 'Certificate' },
+  ].map((s, i) => {
+    const active =
+      (i === 0 && !outline.length) ||
+      (i === 1 && step === 'outlining') ||
+      (i === 2 && (step === 'narrating' || hasAIContent)) ||
+      (i === 3 && (quiz?.questions?.length || step === 'quizzing')) ||
+      (i === 4 && Boolean(grade?.passed));
+
+    return (
+      <div
+        key={s.k}
+        className={[
+          'px-2 py-1 rounded-full ring-1 transition-colors',
+          active
+            ? 'bg-indigo-50 text-indigo-700 ring-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-100 dark:ring-indigo-400/30'
+            : 'bg-gray-50 text-gray-700 ring-gray-200 dark:bg-slate-900/70 dark:text-white/70 dark:ring-white/12',
+        ].join(' ')}
+      >
+        {i + 1}. {s.label}
+      </div>
+    );
+  })}
+</div>
+
 
           
 

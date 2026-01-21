@@ -14,13 +14,6 @@ export function IconButton(
   return <button {...rest} className={`${base} ${className || ''}`} />;
 }
 
-export function PrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const { className, ...rest } = props;
-  const base = `h-10 px-4 rounded-2xl font-semibold transition-all duration-150 shadow-md 
-    focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 bg-white text-black`;
-  return <button {...rest} className={`${base} ${className || ''}`} />;
-}
-
 export default function TopBar({
   title,
   voice,
@@ -28,9 +21,7 @@ export default function TopBar({
   voices,
   voicesLoading,
   voicesError,
-  onPlayPause,
-  playing,
-  loading,
+  // onPlayPause, playing, loading, disablePlay, gateNotice: intentionally unused now (play button removed)
   onToggleTranscript,
   transcriptOpen,
   onToggleThemePanel,
@@ -38,8 +29,6 @@ export default function TopBar({
   isMax,
   templateId,
   setTemplateId,
-  disablePlay = false,
-  gateNotice,
 }: {
   title: string;
   voice: string;
@@ -47,9 +36,11 @@ export default function TopBar({
   voices: string[];
   voicesLoading?: boolean;
   voicesError?: string | null;
+
   onPlayPause: () => void;
   playing: boolean;
   loading: boolean;
+
   onToggleTranscript: () => void;
   transcriptOpen: boolean;
   onToggleThemePanel?: () => void;
@@ -64,50 +55,43 @@ export default function TopBar({
     'overflow-visible bg-[linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.04)_100%)] bg-black/30 backdrop-blur-xl ring-1 ring-white/10 shadow-lg';
 
   const outerFrame = isMax
-    ? // Full-bleed when maximized
-      'mx-0 my-0 rounded-none border-b border-white/10'
-    : // Floating pill when embedded
-      'mx-2 my-2 rounded-2xl';
+    ? 'mx-0 my-0 rounded-none border-b border-white/10'
+    : 'mx-2 my-2 rounded-2xl';
 
   return (
     <div className={`${outerFrame} ${outerBase}`}>
-      <div className="min-h-12 px-3 flex items-center gap-2">
-        <div className="flex items-center gap-3 min-w-0">
+      <div
+        className="
+          min-h-12 px-3
+          flex items-center gap-2
+          flex-wrap sm:flex-nowrap
+        "
+      >
+        {/* Left cluster */}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           <div className="hidden sm:block h-2.5 w-2.5 rounded-full bg-white/80 shadow-[0_0_12px_rgba(255,255,255,0.75)]" />
-          <VoiceSelect
-            value={voice}
-            onChange={setVoice}
-            options={voices.length ? voices : [voice]}
-            loading={voicesLoading}
-            error={voicesError}
-          />
-          <div className="mx-1 text-[12px] sm:text-sm text-white/90 truncate">{title}</div>
+
+          {/* Make VoiceSelect the “elastic” element so it never overlaps right controls */}
+          <div className="min-w-0 flex-1 sm:flex-none sm:min-w-[220px]">
+            <VoiceSelect
+              value={voice}
+              onChange={setVoice}
+              options={voices.length ? voices : [voice]}
+              loading={voicesLoading}
+              error={voicesError}
+            />
+          </div>
+
+          {/* Title: hidden on mobile to avoid overlap; shown from sm+ */}
+          <div className="hidden sm:block mx-1 text-sm text-white/90 truncate max-w-[38vw]">
+            {title}
+          </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        {/* Right cluster: wrap safely on tiny widths */}
+        <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
           <ColorMenu />
           <TemplateMenu value={templateId} onChange={setTemplateId} />
-
-          <PrimaryButton
-            onClick={onPlayPause}
-            title={playing ? 'Pause' : 'Play'}
-            aria-label={playing ? 'Pause' : 'Play'}
-            disabled={loading || disablePlay}
-          >
-            {playing ? 'Pause' : 'Play'}
-          </PrimaryButton>
-
-          {disablePlay && (
-            <span
-              className="text-[12px] text-amber-100/90"
-              title={gateNotice?.reason || 'Narration locked'}
-            >
-              Narration locked
-              {gateNotice?.resetsAt
-                ? ` · Resets ${new Date(gateNotice.resetsAt).toLocaleString()}`
-                : ''}
-            </span>
-          )}
 
           <IconButton
             onClick={onToggleTranscript}

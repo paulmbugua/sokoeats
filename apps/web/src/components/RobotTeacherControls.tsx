@@ -312,6 +312,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
     canStartNow,
     overrideLessons,
     overrideQuiz,
+    setOverrideLessons,
+   setOverrideQuiz,
   } = props;
 
   const [trackInfoOpen, setTrackInfoOpen] = useState(false);

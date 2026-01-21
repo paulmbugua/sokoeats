@@ -1079,18 +1079,23 @@ const trackLockSource = useMemo(() => {
   };
 
   // Only allow first start when there is no built content yet
-  const canStartNow = useMemo(() => {
-   const hasSeed = Boolean(selectedCourse || (customTitle && customTitle.trim()) || params.courseId);
+  const lessonsLen = Array.isArray(lessons) ? lessons.length : 0;
+const outlineLen = Array.isArray(outline) ? outline.length : 0;
 
-    if (!hasSeed) return false;
-    if (activeRunId !== null) return false;
-    const noContentYet =
-      !(joinedSsml && String(joinedSsml).trim()) &&
-      !(ssml && String(ssml).trim()) &&
-      !(Array.isArray(lessons) && lessons.length > 0) &&
-      !(Array.isArray(outline) && outline.length > 0);
-    return noContentYet;
-  }, [selectedCourse, customTitle, activeRunId, joinedSsml, ssml, lessons.length, outline.length]);
+const canStartNow = useMemo(() => {
+  const hasSeed = Boolean(selectedCourse || (customTitle && customTitle.trim()) || params.courseId);
+  if (!hasSeed) return false;
+  if (activeRunId !== null) return false;
+
+  const noContentYet =
+    !(joinedSsml && String(joinedSsml).trim()) &&
+    !(ssml && String(ssml).trim()) &&
+    lessonsLen === 0 &&
+    outlineLen === 0;
+
+  return noContentYet;
+}, [selectedCourse, customTitle, params.courseId, activeRunId, joinedSsml, ssml, lessonsLen, outlineLen]);
+
 
   // preselect course from route param — cancel any active run
   useEffect(() => {
@@ -1575,7 +1580,7 @@ const startLanguageFlow = useCallback(
   );
 
   // Start — robust sequencing (parity-ish with web, but keeping your start gate)
-  const onStart = useCallback(async () => {
+ const onStart = useCallback(async () => {
   if (starting || languageLaunching || llUnlockBusy || !canStartNow) {
     dlog('onStart: ignored (starting=', starting, ', canStartNow=', canStartNow, ')');
     return;
@@ -1606,9 +1611,9 @@ const startLanguageFlow = useCallback(
     // ✅ Custom topic flow stays the same
     if (custom) {
       const ok = requireLanguageAuth(
-  'language-learning',
-  'Please sign in with your user account to start language learning.'
-);
+        'language-learning',
+        'Please sign in with your user account to start language learning.'
+      );
 
       if (!ok) {
         setActiveRunId(null);
@@ -1616,12 +1621,14 @@ const startLanguageFlow = useCallback(
         setPlayerLoading(false);
         return;
       }
+
       const intent = detectLanguageIntent(custom);
+
       if (!intent && isLanguageIntentText(custom)) {
         let msg =
           'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
         try {
-          await startLanguageCourse(backendUrl, authToken as string, custom, {
+          await startLanguageCourse(backendUrl, languageToken as string, custom, {
             orgId: activeOrgId ?? null,
           });
         } catch (err: any) {
@@ -1633,42 +1640,44 @@ const startLanguageFlow = useCallback(
         setPlayerLoading(false);
         return;
       }
-        if (intent) {
-          const langLabel =
-            (intent as any)?.language ||
-            (intent as any)?.targetLanguage ||
-            (intent as any)?.label ||
-            'Language';
 
-          // show web-style "preparing" for the Teach me CTA
-          setLanguageActive(String(langLabel));
-          setLanguageLaunching(true);
+      if (intent) {
+        const langLabel =
+          (intent as any)?.language ||
+          (intent as any)?.targetLanguage ||
+          (intent as any)?.label ||
+          'Language';
 
-          try {
-            await attemptLanguageStart(custom, String(langLabel), 'teachMe');
-          } finally {
-            setLanguageLaunching(false);
-            setLanguageActive(null);
-          }
+        setLanguageActive(String(langLabel));
+        setLanguageLaunching(true);
 
-          return;
+        try {
+          await attemptLanguageStart(custom, String(langLabel), 'teachMe');
+        } finally {
+          setLanguageLaunching(false);
+          setLanguageActive(null);
         }
+
+        return;
+      }
 
       await startCustomTopic(custom);
       await waitForSelection();
-      opts.courseId = selectedCourseRef.current?.id;
-      try {
-      await startWithAI(opts);
-    } catch (e: any) {
-      const status = e?.status ?? e?.response?.status;
-      if (String(status) === '404') {
-        setSharedCourseMissing(true);
-        setSharedCourseChecked(true);
-      }
-      throw e;
-    }
-    return;
 
+      opts.courseId = selectedCourseRef.current?.id;
+
+      try {
+        await startWithAI(opts);
+      } catch (e: any) {
+        const status = e?.status ?? e?.response?.status;
+        if (String(status) === '404') {
+          setSharedCourseMissing(true);
+          setSharedCourseChecked(true);
+        }
+        throw e;
+      }
+
+      return;
     }
 
     let course: any = null;
@@ -1676,23 +1685,23 @@ const startLanguageFlow = useCallback(
     // ✅ 1) If a shared courseId was passed, prefer it
     const sharedId = params.courseId ? String(params.courseId) : '';
     if (sharedId) {
-
       // ✅ orgToken invite / assignment share: don’t require local course list
-if (!validateAgainstTopCourses) {
-  opts.courseId = sharedId;
+      if (!validateAgainstTopCourses) {
+        opts.courseId = sharedId;
 
-  try {
-    await startWithAI(opts);
-  } catch (e: any) {
-    const status = e?.status ?? e?.response?.status;
-    if (String(status) === '404') {
-      setSharedCourseMissing(true);
-      setSharedCourseChecked(true);
-    }
-    throw e;
-  }
-  return;
-}
+        try {
+          await startWithAI(opts);
+        } catch (e: any) {
+          const status = e?.status ?? e?.response?.status;
+          if (String(status) === '404') {
+            setSharedCourseMissing(true);
+            setSharedCourseChecked(true);
+          }
+          throw e;
+        }
+
+        return;
+      }
 
       // Ensure courses are loaded
       if (!topCoursesRef.current.length) {
@@ -1746,17 +1755,17 @@ if (!validateAgainstTopCourses) {
 
     opts.courseId = selectedCourseRef.current.id;
     dlog('onStart → startWithAI', { opts, selectedId: selectedCourseRef.current.id });
-   try {
-  await startWithAI(opts);
-} catch (e: any) {
-  const status = e?.status ?? e?.response?.status;
-  if (String(status) === '404') {
-    setSharedCourseMissing(true);
-    setSharedCourseChecked(true);
-  }
-  throw e;
-}
-return;
+
+    try {
+      await startWithAI(opts);
+    } catch (e: any) {
+      const status = e?.status ?? e?.response?.status;
+      if (String(status) === '404') {
+        setSharedCourseMissing(true);
+        setSharedCourseChecked(true);
+      }
+      throw e;
+    }
 
     return;
   } catch (e) {
@@ -1775,8 +1784,8 @@ return;
   }
 }, [
   starting,
- languageLaunching,
- llUnlockBusy,
+  languageLaunching,
+  llUnlockBusy,
   canStartNow,
   attemptLanguageStart,
   assignmentId,
@@ -1792,37 +1801,36 @@ return;
   loadTopCourses,
   selectCourse,
   params.courseId,
+  validateAgainstTopCourses,
+  requireLanguageAuth,
+  backendUrl,
+  languageToken,
+  activeOrgId,
+  waitForSelection,
+  waitForCourses,
 ]);
 
-const startLanguageFromCard = useCallback(
-  async (language: string) => {
-    if (languageLaunching || llUnlockBusy) return;
+const startLanguageFromCard = useCallback(async (language: string) => {
+  if (languageLaunching || llUnlockBusy) return;
 
-    const ok = requireAuth('ai_sandbox', 'Please sign in to start language learning.');
-    if (!ok) return;
+  const ok = requireLanguageAuth('language-learning', 'Please sign in to start language learning.');
+  if (!ok) return;
 
-    // optional parity: reflect choice in Teach-me input
-    const prompt = `Teach me ${language}`;
-    setCustomTitle(prompt);
-    if (prompt.trim()) selectCourse(null);
+  const prompt = `Teach me ${language}`;
+  setCustomTitle(prompt);
+  if (prompt.trim()) selectCourse(null);
 
-    setLanguageActive(language);
-    setLanguageLaunching(true);
+  setLanguageActive(language);
+  setLanguageLaunching(true);
 
-    // polish: avoid refresh conflicts while swiping cards
-   
-
-    try {
-      resetRunUi();
-      await attemptLanguageStart(prompt, language, 'banner');
-    } finally {
-      setLanguageLaunching(false);
-      setLanguageActive(null);
- 
-    }
-  },
-  [languageLaunching, llUnlockBusy, requireAuth, attemptLanguageStart, resetRunUi, selectCourse]
-);
+  try {
+    resetRunUi();
+    await attemptLanguageStart(prompt, language, 'banner');
+  } finally {
+    setLanguageLaunching(false);
+    setLanguageActive(null);
+  }
+}, [languageLaunching, llUnlockBusy, requireLanguageAuth, attemptLanguageStart, resetRunUi, selectCourse]);
 
 
   
@@ -1986,7 +1994,7 @@ const startLanguageFromCard = useCallback(
               <View style={tw`mb-4`}>
                 <View style={tw`mb-3`}>
                   <Text style={tw`text-[10px] uppercase tracking-[0.3em] text-[#6b7280] dark:text-white/60 mb-2`}>
-                    Choose a language
+                    Learn a language
                   </Text>
 <ScrollView
   horizontal
@@ -2047,27 +2055,7 @@ const startLanguageFromCard = useCallback(
                   AI Tutor Studio
                 </Text>
 
-                {/* ✅ "Now learning" pill (parity with web) */}
-            <View
-              style={tw`mt-2 self-start flex-row items-center gap-2 px-3 py-1 rounded-full
-                        bg-white dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10`}
-            >
-              <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Now learning:</Text>
-
-              <Text
-                numberOfLines={1}
-                style={[tw`text-sm font-semibold text-[#0d141c] dark:text-white`, { maxWidth: 260 }]}
-              >
-                {effectiveCourseTitle}
-              </Text>
-
-              {DBG_ROBOT_TEACHER ? (
-                <Text style={tw`text-[10px] text-[#49739c] dark:text-white/50`}>
-                  ({titleInfo.source})
-                </Text>
-              ) : null}
-            </View>
-
+             
             {/* ✅ Track requirements line when locked */}
             {programTrackLocked ? (
               <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/70`}>

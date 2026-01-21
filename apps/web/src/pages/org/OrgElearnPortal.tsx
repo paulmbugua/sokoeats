@@ -232,6 +232,53 @@ function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
 }
 
+function LockableButton({
+  locked,
+  badge = 'PRO',
+  className,
+  onClick,
+  children,
+  title,
+}: {
+  locked: boolean;
+  badge?: string;
+  className: string;
+  onClick: () => void;
+  children: React.ReactNode;
+  title?: string;
+}) {
+  return (
+    <div className="relative inline-flex w-full sm:w-auto">
+      <button
+        type="button"
+        disabled={locked}
+        onClick={(e) => {
+          if (locked) {
+            e.preventDefault();
+            return;
+          }
+          onClick();
+        }}
+        className={cx(
+          className,
+          locked && 'opacity-60 cursor-not-allowed hover:brightness-100'
+        )}
+        aria-disabled={locked}
+        title={locked ? `${badge} required` : title}
+      >
+        {children}
+      </button>
+
+      {locked && badge ? (
+        <span className="absolute -top-2 -left-2 text-[10px] px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-700 dark:bg-white/10 dark:text-white/70 dark:border-white/10">
+          {badge}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+
 const getAttachmentUrlFromRow = (a: any): string | null =>
   a?.attachment_url ||
   a?.attachmentUrl ||
@@ -2159,22 +2206,24 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
 
     {/* Exam Results on next line (below tabs) + desktop CTA */}
     <div className="flex flex-wrap items-center gap-2">
-      {(tier === 'pro' || tier === 'enterprise') && (
-        <button
-          onClick={() => navigate('/org/exams')}
-          className="
-            inline-flex w-full sm:w-auto justify-center items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold
-            bg-[#e7edf4] text-[#0d141c] hover:bg-[#d7e4f0]
-            dark:bg-[#172534] dark:text-white dark:hover:bg-[#1f2f46]
-            focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3d99f5]
-            focus-visible:ring-offset-2 focus-visible:ring-offset-white
-            dark:focus-visible:ring-offset-slate-900
-          "
-        >
-          <span className="text-base">📊</span>
-          <span>Exam results</span>
-        </button>
-      )}
+      <LockableButton
+  locked={!isProTier}
+  badge="PRO"
+  onClick={() => navigate('/org/exams')}
+  className="
+    inline-flex w-full sm:w-auto justify-center items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold
+    bg-[#e7edf4] text-[#0d141c] hover:bg-[#d7e4f0]
+    dark:bg-[#172534] dark:text-white dark:hover:bg-[#1f2f46]
+    focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3d99f5]
+    focus-visible:ring-offset-2 focus-visible:ring-offset-white
+    dark:focus-visible:ring-offset-slate-900
+  "
+  title="Open Exam Results"
+>
+  <span className="text-base">📊</span>
+  <span>Exam results</span>
+</LockableButton>
+
 
       {/* Primary CTA (keeps your existing behavior: hidden on mobile, sticky CTA handles mobile) */}
       <button

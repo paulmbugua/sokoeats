@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState, useRef } from 'react';
 import { View, Text, SectionList, Pressable, Alert, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import { Video, ResizeMode } from 'expo-av';
+import AutoPreviewVideo from './AutoPreviewVideo.native';
 import { Image } from 'expo-image';
 import tw from '../../tailwind';
 
@@ -202,17 +202,8 @@ const ClassVaultCard: React.FC<{
         ) : null}
 
         {/* Video preview (autoplay only when visible) */}
-        {!pdfOnly && previewUrl ? (
-          <Video
-            source={{ uri: previewUrl }}
-            style={tw`absolute inset-0`}
-            resizeMode={ResizeMode.COVER}
-            isLooping
-            isMuted
-            shouldPlay={!!isVisible}
-            useNativeControls={false}
-            onError={() => {}}
-          />
+       {!pdfOnly && previewUrl && isVisible ? (
+          <AutoPreviewVideo uri={previewUrl} shouldPlay style={tw`absolute inset-0`} />
         ) : null}
 
         {/* Chip */}
