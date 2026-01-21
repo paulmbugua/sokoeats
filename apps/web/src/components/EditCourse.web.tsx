@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useCourses } from '@mytutorapp/shared/hooks/useCourses';
 import type { Course, CoursePayload, SyllabusItem } from '@mytutorapp/shared/types';
+import { uploadClassVaultAsset } from '@mytutorapp/shared/api/classVaultUploadApi';
 
 /* ---------- helpers ---------- */
 const levels = ['Beginner', 'Intermediate', 'Advanced', 'All Levels'] as const;
@@ -163,6 +164,41 @@ const EditCoursePage: React.FC = () => {
   const [dirty, setDirty] = useState(false);
   const [q, setQ] = useState('');
   const [showMobileList, setShowMobileList] = useState(false);
+  const [uploadingWeekKey, setUploadingWeekKey] = useState<string | null>(null);
+const [uploadProgress, setUploadProgress] = useState<number>(0);
+
+const uploadToWeek = async (weekIndex: number, kind: 'video' | 'pdf', file: File) => {
+  if (!backendUrl || !token) {
+    alert('Missing backend or session.');
+    return;
+  }
+
+  const key = `${weekIndex}:${kind}`;
+  setUploadingWeekKey(key);
+  setUploadProgress(0);
+
+  try {
+    const { url } = await uploadClassVaultAsset(
+      backendUrl,
+      token,
+      file,
+      kind,
+      (pct) => setUploadProgress(pct)
+    );
+
+    if (kind === 'video') {
+      onSyllabusChange(weekIndex, 'videoUrl', url);
+    } else {
+      onSyllabusChange(weekIndex, 'notesUrl', url);
+    }
+  } catch (e: any) {
+    alert(`Upload failed: ${e?.message || e}`);
+  } finally {
+    setUploadingWeekKey(null);
+    setUploadProgress(0);
+  }
+};
+
 
   /* load tutor courses, then select first */
   useEffect(() => {
@@ -528,20 +564,84 @@ const EditCoursePage: React.FC = () => {
                           placeholder="Notes / Assignment"
                           className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 resize-y break-words"
                         />
-                        <div className="grid sm:grid-cols-2 gap-2">
-                          <input
-                            value={w.videoUrl ?? ''}
-                            onChange={(e) => onSyllabusChange(i, 'videoUrl', e.target.value)}
-                            placeholder="Video URL (optional)"
-                            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 break-all"
-                          />
-                          <input
-                            value={w.notesUrl ?? ''}
-                            onChange={(e) => onSyllabusChange(i, 'notesUrl', e.target.value)}
-                            placeholder="Notes URL (optional)"
-                            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 break-all"
-                          />
-                        </div>
+                        <div className="grid sm:grid-cols-2 gap-3">
+  {/* Video */}
+  <div className="grid gap-2">
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+        Video
+      </span>
+
+      <label className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold cursor-pointer">
+        Upload video
+        <input
+          type="file"
+          accept="video/*"
+          className="hidden"
+          disabled={!!uploadingWeekKey}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            void uploadToWeek(i, 'video', f);
+            e.currentTarget.value = '';
+          }}
+        />
+      </label>
+    </div>
+
+    <input
+      value={w.videoUrl ?? ''}
+      onChange={(e) => onSyllabusChange(i, 'videoUrl', e.target.value)}
+      placeholder="Video URL (optional)"
+      className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 break-all"
+    />
+
+    {uploadingWeekKey === `${i}:video` && (
+      <div className="text-xs text-slate-500 dark:text-slate-400">
+        Uploading… {uploadProgress}%
+      </div>
+    )}
+  </div>
+
+  {/* Notes */}
+  <div className="grid gap-2">
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+        Notes (PDF)
+      </span>
+
+      <label className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-[#e7edf4] dark:bg-[#172534] hover:brightness-105 text-xs font-semibold cursor-pointer">
+        Upload notes
+        <input
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          disabled={!!uploadingWeekKey}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            void uploadToWeek(i, 'pdf', f);
+            e.currentTarget.value = '';
+          }}
+        />
+      </label>
+    </div>
+
+    <input
+      value={w.notesUrl ?? ''}
+      onChange={(e) => onSyllabusChange(i, 'notesUrl', e.target.value)}
+      placeholder="Notes URL (optional)"
+      className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#172534] px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 break-all"
+    />
+
+    {uploadingWeekKey === `${i}:pdf` && (
+      <div className="text-xs text-slate-500 dark:text-slate-400">
+        Uploading… {uploadProgress}%
+      </div>
+    )}
+  </div>
+</div>
+
                       </div>
                     </details>
                   ))}

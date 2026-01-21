@@ -1,36 +1,55 @@
 import Joi from 'joi';
 
-// A string that is either:
-//  • an absolute URL (http:// or https://…)
-//  • or a relative path, e.g. "/uploads/file.mp4" (percent-encoded, underscores, dots, pluses, hyphens, and parentheses allowed)
+// absolute http(s) OR safe relative file path
 const uriOrRelative = Joi.alternatives().try(
-  // 1) absolute HTTP/HTTPS URL
   Joi.string().uri({ scheme: ['http', 'https'] }),
-  // 2) relative file path with optional leading slash, segments of [A-Za-z0-9_%-\.\+\(\)], and a final extension
   Joi.string().pattern(
-    /^(\/?[A-Za-z0-9_%\-\.\+\(\)]+\/)*[A-Za-z0-9_%\-\.\+\(\)]+\.[A-Za-z0-9]+$/,
-  ),
+    /^(\/?[A-Za-z0-9_%\-\.\+\(\)]+\/)*[A-Za-z0-9_%\-\.\+\(\)]+\.[A-Za-z0-9]+$/
+  )
 );
 
-export const classVaultValidationSchema = Joi.object({
-  title: Joi.string().min(3).max(255).required(),
-  subject: Joi.string().required(),
-  grade_level: Joi.string().required(),
-  price: Joi.number().integer().required(),
-  duration: Joi.number().integer().optional(),
-  tags: Joi.array().items(Joi.string().trim()).optional(),
+const classVaultBaseSchema = Joi.object({
+  title: Joi.string().min(3).max(255),
+  subject: Joi.string(),
+  grade_level: Joi.string(),
+  price: Joi.number().integer(),
+  duration: Joi.number().integer(),
+  tags: Joi.array().items(Joi.string().trim()),
 
-  // Both video_url and pdf_url may be empty or omitted…
-  video_url: uriOrRelative.empty('').optional(),
-  pdf_url: uriOrRelative.empty('').optional(),
-})
+  video_url: uriOrRelative.empty(''),
+  pdf_url: uriOrRelative.empty(''),
+
+  thumbnail_url: uriOrRelative.empty(''),
+  preview_url: uriOrRelative.empty(''),
+});
+
+// ✅ CREATE requires a main file
+export const classVaultValidationSchema = classVaultBaseSchema
+  .fork(Object.keys(classVaultBaseSchema.describe().keys), (s) => s.optional())
+  .required()
   .or('video_url', 'pdf_url')
+  .custom((obj, helpers) => {
+    const hasVideo = Boolean(String(obj.video_url || '').trim());
+    const hasPdf = Boolean(String(obj.pdf_url || '').trim());
+    const hasThumb = Boolean(String(obj.thumbnail_url || '').trim());
+
+    if (hasPdf && !hasVideo && !hasThumb) {
+      return helpers.error('any.custom', {
+        message: 'thumbnail_url is required for Notes (pdf-only) items.',
+      });
+    }
+
+    if (hasPdf && !hasVideo && obj.preview_url) obj.preview_url = '';
+    return obj;
+  })
   .messages({
     'object.missing': 'Either video_url or pdf_url must be provided',
+    'any.custom': '{{#message}}',
   });
 
-// For PATCH/PUT: make every field optional
-export const classVaultUpdateValidationSchema = classVaultValidationSchema.fork(
-  Object.keys(classVaultValidationSchema.describe().keys),
-  (schema) => schema.optional(),
-);
+// ✅ UPDATE: everything optional, NO `.or(...)`
+export const classVaultUpdateValidationSchema = classVaultBaseSchema
+  .fork(Object.keys(classVaultBaseSchema.describe().keys), (s) => s.optional())
+  .messages({
+    'any.custom': '{{#message}}',
+  });

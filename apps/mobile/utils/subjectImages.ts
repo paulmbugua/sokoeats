@@ -1,3 +1,5 @@
+/* apps/mobile/utils/subjectImages.ts */
+
 /* eslint-disable prettier/prettier */
 import type { ImageSourcePropType } from 'react-native';
 import type { Course } from '@mytutorapp/shared/types';

@@ -83,7 +83,7 @@ import ResultsPage from './screens/Results.native';
 /* ─────────────────────────────────────────────────────────
  * ClassVault
  * ───────────────────────────────────────────────────────── */
-import ClassVaultListScreen from './screens/ClassVaultListScreen.native';
+
 import ClassVaultDetailScreen from './screens/ClassVaultDetailScreen.native';
 import ClassVaultUploadScreen from './screens/ClassVaultUploadScreen.native';
 
@@ -373,17 +373,9 @@ type ClassVaultLibraryProps = {
   clearFilters: () => void;
 };
 
-function ClassVaultLibraryScreen({ uiFilters, clearFilters }: ClassVaultLibraryProps) {
-  const filters = React.useMemo(() => {
-    const f = uiFilters as ClassVaultUiFilters;
-    return {
-      category: toStringArray(f.videoCategory ?? f.category),
-      ageGroup: toStringArray(f.videoAgeGroup ?? f.ageGroup),
-    };
-  }, [uiFilters]);
 
-  return <ClassVaultListScreen filters={filters} clearFilters={clearFilters} />;
-}
+
+  
 
 function OrgStaffGuard({ children }: GuardProps) {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
@@ -858,9 +850,7 @@ const App: React.FC = () => {
           <Stack.Screen name="CourseDetails" component={CourseDetails} />
 
           {/* ClassVault */}
-          <Stack.Screen name="ClassVaultLibrary">
-            {() => <ClassVaultLibraryScreen uiFilters={uiFilters} clearFilters={clearFilters} />}
-          </Stack.Screen>
+          
           <Stack.Screen name="ClassVaultDetail" component={ClassVaultDetailScreen} />
           <Stack.Screen name="ClassVaultUpload" component={ClassVaultUploadProtectedScreen} />
 

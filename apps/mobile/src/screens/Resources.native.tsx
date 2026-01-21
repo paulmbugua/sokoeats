@@ -1,21 +1,61 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, SectionList } from 'react-native';
+// apps/mobile/src/screens/Resources.native.tsx
+/* eslint-disable no-console */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  SectionList,
+  ActivityIndicator,
+  Dimensions,
+  Platform,
+  Modal, 
+  TouchableOpacity, 
+  Alert,
+} from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { Image } from 'expo-image';
-import { useResourcesExplore } from '@mytutorapp/shared/hooks';
+import { Video, ResizeMode } from 'expo-av';
+
+import { useResourcesExplore,useClassVault } from '@mytutorapp/shared/hooks';
+import { useShopContext } from '@mytutorapp/shared/context';
+
 import type { Course, RecordedVideo } from '@mytutorapp/shared/types';
-import type { OerBookItem, OerVideoItem } from '@mytutorapp/shared/api/resourcesApi';
+import type { OerBookItem } from '@mytutorapp/shared/api/resourcesApi';
 import type { MainStackParamList } from '../navigation/types';
 import tw from '../../tailwind';
 
+// Optional WebView for PDF preview (graceful fallback if not installed)
+let WebView: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  WebView = require('react-native-webview').WebView;
+} catch {
+  WebView = null;
+}
+
 type Nav = StackNavigationProp<MainStackParamList, 'Resources'>;
+
+type OerCollection = {
+  id: string | number;
+  slug?: string | number;
+  title: string;
+  description?: string | null;
+  thumbnail_url?: string | null;
+  items_count?: number | null;
+  content_kind?: string | null; // 'video'
+  provider?: string | null;
+  [k: string]: any;
+};
 
 type SectionItem =
   | ({ kind: 'classvault' } & RecordedVideo)
   | ({ kind: 'course' } & Course)
-  | ({ kind: 'oerVideo' } & OerVideoItem)
+  | ({ kind: 'oerCollection' } & OerCollection)
   | ({ kind: 'oerBook' } & OerBookItem);
 
 type ExploreSection = {
@@ -30,11 +70,39 @@ type ExploreSection = {
   loadMore: () => void;
 };
 
+const { width: SCREEN_W } = Dimensions.get('window');
+const H_PADDING = 16; // px-4
+const CARD_W = SCREEN_W - H_PADDING * 2;
+const PREVIEW_H = Math.round((CARD_W * 9) / 16);
+
+
+function toPdfPreviewUrl(pdfUrl: string) {
+  const clean = pdfUrl.trim();
+  if (!clean) return '';
+
+  // Android WebView usually can't render PDFs directly -> gview
+  if (Platform.OS === 'android') {
+    return `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(clean)}`;
+  }
+
+  // iOS can often render PDFs directly
+  return clean;
+}
+
+const withBust = (u?: string, bust?: string) => {
+  if (!u) return '';
+  const b = bust || String(Date.now());
+  return `${u}${u.includes('?') ? '&' : '?'}v=${encodeURIComponent(b)}`;
+};
+
+/* ------------------------------- Tabs ----------------------------------- */
 const TabBar: React.FC<{
   value: 'videos' | 'courses';
   onChange: (next: 'videos' | 'courses') => void;
 }> = ({ value, onChange }) => (
-  <View style={tw`flex-row bg-white dark:bg-[#0f1821] rounded-full border border-slate-200 dark:border-white/10 p-1`}>    
+  <View
+    style={tw`flex-row bg-white dark:bg-[#0f1821] rounded-full border border-slate-200 dark:border-white/10 p-1`}
+  >
     {([
       { key: 'videos', label: 'Explore Videos & Notes' },
       { key: 'courses', label: 'Explore Courses' },
@@ -58,35 +126,7 @@ const TabBar: React.FC<{
   </View>
 );
 
-const Card: React.FC<{
-  title: string;
-  subtitle: string;
-  imageUrl?: string | null;
-  onPress: () => void;
-  badge?: string;
-}> = ({ title, subtitle, imageUrl, onPress, badge }) => (
-  <Pressable onPress={onPress} style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}>
-    <View style={tw`h-32 bg-slate-200 dark:bg-white/10`}>
-      {imageUrl ? (
-        <Image source={{ uri: imageUrl }} style={tw`w-full h-full`} contentFit="cover" />
-      ) : null}
-    </View>
-    <View style={tw`p-3`}>
-      <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
-        {title}
-      </Text>
-      <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={1}>
-        {subtitle}
-      </Text>
-      {badge ? (
-        <View style={tw`mt-2 self-start rounded-full bg-blue-50 px-2 py-0.5`}>
-          <Text style={tw`text-[11px] text-blue-600 font-semibold`}>{badge}</Text>
-        </View>
-      ) : null}
-    </View>
-  </Pressable>
-);
-
+/* --------------------------- Section Shell UI ---------------------------- */
 const SectionHeader: React.FC<{ title: string; subtitle: string }> = ({ title, subtitle }) => (
   <View style={tw`px-4 pt-4 pb-2`}>
     <Text style={tw`text-lg font-semibold text-slate-900 dark:text-white`}>{title}</Text>
@@ -104,31 +144,302 @@ const SectionFooter: React.FC<{
 }> = ({ loading, error, empty, emptyMessage, hasMore, onLoadMore }) => (
   <View style={tw`px-4 pb-4`}>
     {loading && !error && empty ? (
-      <Text style={tw`text-sm text-slate-500 dark:text-white/60`}>Loading…</Text>
+      <View style={tw`flex-row items-center`}>
+        <ActivityIndicator />
+        <Text style={tw`ml-2 text-sm text-slate-500 dark:text-white/60`}>Loading…</Text>
+      </View>
     ) : null}
+
     {error ? <Text style={tw`text-sm text-red-500`}>{error}</Text> : null}
+
     {!loading && !error && empty ? (
       <Text style={tw`text-sm text-slate-500 dark:text-white/60`}>{emptyMessage}</Text>
     ) : null}
+
     {hasMore ? (
-      <Pressable
-        onPress={onLoadMore}
-        style={tw`mt-3 self-start rounded-full bg-blue-500 px-4 py-2`}
-      >
+      <Pressable onPress={onLoadMore} style={tw`mt-3 self-start rounded-full bg-blue-500 px-4 py-2`}>
         <Text style={tw`text-sm font-semibold text-white`}>Load more</Text>
       </Pressable>
     ) : null}
   </View>
 );
 
+/* ---------------------- Native: OER video collections -------------------- */
+function useOerVideoCollections(backendUrl?: string, q?: string) {
+  const [items, setItems] = useState<OerCollection[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!backendUrl) return;
+
+    const base = backendUrl.replace(/\/+$/, '');
+    const ac = new AbortController();
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Matches web behavior: collections, not individual videos
+        const url = `${base}/api/oer/collections?kind=video&limit=48${
+          q?.trim() ? `&q=${encodeURIComponent(q.trim())}` : ''
+        }`;
+
+        const res = await fetch(url, { signal: ac.signal as any });
+        const data = res.ok ? await res.json().catch(() => []) : [];
+        setItems(Array.isArray(data) ? data : []);
+      } catch (e: any) {
+        if (e?.name === 'AbortError') return;
+        setError(e?.message || 'Failed to load OER collections');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+    return () => ac.abort();
+  }, [backendUrl, q]);
+
+  return { items, loading, error };
+}
+
+/* ---------------------- Cards: ClassVault (preview) ---------------------- */
+const ClassVaultMarketCard: React.FC<{
+  item: RecordedVideo;
+  onPress: () => void;
+  isVisible: boolean;
+}> = ({ item, onPress, isVisible }) => {
+  const bust = String(
+    (item as any)?.updated_at || (item as any)?.updatedAt || item.created_at || Date.now()
+  );
+
+  const pdfUrlRaw = withBust((item as any)?.pdf_url || '', bust);
+  const pdfPreviewUrl = pdfUrlRaw ? toPdfPreviewUrl(pdfUrlRaw) : '';
+
+  const previewUrl = withBust((item as any)?.preview_url || (item as any)?.video_url || '', bust);
+  const thumbUrl = withBust((item as any)?.thumbnail_url || '', bust);
+
+  const isPdfOnly = Boolean((item as any)?.pdf_url) && !(item as any)?.video_url;
+
+  const [pdfBlocked, setPdfBlocked] = useState(false);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
+    >
+      <View style={[tw`bg-[#0b1220] overflow-hidden`, { height: PREVIEW_H }]}>
+        {/* ✅ PDF-only: use preview URL (Android uses gview) */}
+        {isPdfOnly && WebView && pdfPreviewUrl && !pdfBlocked ? (
+          <WebView
+            source={{ uri: pdfPreviewUrl }}
+            style={{ flex: 1, backgroundColor: 'transparent' }}
+            onError={() => setPdfBlocked(true)}
+            javaScriptEnabled={false}
+            domStorageEnabled={false}
+          />
+        ) : null}
+
+        {/* Thumbnail fallback (also used when pdf preview blocked) */}
+        {thumbUrl && (!isPdfOnly || pdfBlocked || !pdfPreviewUrl || !WebView) ? (
+          <Image source={{ uri: thumbUrl }} style={tw`w-full h-full`} contentFit="cover" />
+        ) : null}
+
+        {/* Video preview */}
+        {!isPdfOnly && previewUrl ? (
+          <Video
+            source={{ uri: previewUrl }}
+            style={tw`absolute inset-0`}
+            resizeMode={ResizeMode.COVER}
+            isLooping
+            isMuted
+            shouldPlay={isVisible}
+            useNativeControls={false}
+            onError={() => {}}
+          />
+        ) : null}
+
+        {/* Badge chip */}
+        <View style={tw`absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5`}>
+          <Text style={tw`text-[11px] text-white font-semibold`}>{isPdfOnly ? 'Notes' : 'Preview'}</Text>
+        </View>
+
+        {/* PDF blocked overlay */}
+        {isPdfOnly && (pdfBlocked || !WebView || !pdfPreviewUrl) ? (
+          <View style={tw`absolute inset-0 items-center justify-center bg-black/35 px-3`}>
+            <Text style={tw`text-xs text-white font-semibold`}>Notes preview unavailable</Text>
+            <Text style={tw`text-[11px] text-white/80 mt-1 text-center`}>
+              Tap to open and view the PDF.
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={tw`p-3`}>
+        <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
+          {item.title}
+        </Text>
+        <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={1}>
+          {item.subject || (item as any)?.grade_level || 'ClassVault'}
+        </Text>
+      </View>
+    </Pressable>
+  );
+};
+
+/* ---------------------- Cards: OER collection ---------------------------- */
+const OerCollectionCard: React.FC<{
+  col: OerCollection;
+  onPress: () => void;
+}> = ({ col, onPress }) => {
+  const title = col?.title ?? 'Collection';
+  const thumb = col?.thumbnail_url || '';
+  const count = Number(col?.items_count ?? 0) || 0;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
+    >
+      <View style={[tw`bg-slate-200 dark:bg-white/10 overflow-hidden`, { height: PREVIEW_H }]}>
+        {thumb ? (
+          <Image source={{ uri: thumb }} style={tw`w-full h-full`} contentFit="cover" />
+        ) : (
+          <View style={tw`w-full h-full bg-[#0b1220]`} />
+        )}
+
+        <View style={tw`absolute inset-0 bg-black/20`} />
+
+        <View style={tw`absolute bottom-2 left-2 flex-row items-center`}>
+          <View style={tw`rounded-full bg-black/60 px-2 py-0.5 mr-2`}>
+            <Text style={tw`text-[11px] text-white font-semibold`}>Free Collection</Text>
+          </View>
+          <View style={tw`rounded-full bg-white/15 px-2 py-0.5`}>
+            <Text style={tw`text-[11px] text-white font-semibold`}>
+              {count} item{count === 1 ? '' : 's'}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={tw`p-3`}>
+        <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
+          {title}
+        </Text>
+        <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={1}>
+          Open in Collection Reader
+        </Text>
+
+        <View style={tw`mt-3 self-start rounded-full bg-blue-500 px-4 py-2`}>
+          <Text style={tw`text-sm font-semibold text-white`}>View Collection</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+};
+
+/* ----------------------- Cards: Course + OER book ------------------------ */
+const SimpleCard: React.FC<{
+  title: string;
+  subtitle: string;
+  imageUrl?: string | null;
+  onPress: () => void;
+  badge?: string;
+}> = ({ title, subtitle, imageUrl, onPress, badge }) => (
+  <Pressable
+    onPress={onPress}
+    style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
+  >
+    <View style={tw`h-32 bg-slate-200 dark:bg-white/10`}>
+      {imageUrl ? <Image source={{ uri: imageUrl }} style={tw`w-full h-full`} contentFit="cover" /> : null}
+    </View>
+    <View style={tw`p-3`}>
+      <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
+        {title}
+      </Text>
+      <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={1}>
+        {subtitle}
+      </Text>
+      {badge ? (
+        <View style={tw`mt-2 self-start rounded-full bg-blue-50 px-2 py-0.5`}>
+          <Text style={tw`text-[11px] text-blue-600 font-semibold`}>{badge}</Text>
+        </View>
+      ) : null}
+    </View>
+  </Pressable>
+);
+
+/* -------------------------------- Screen -------------------------------- */
 const ResourcesPage: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<MainStackParamList, 'Resources'>>();
+
   const initialTab = route.params?.tab === 'courses' ? 'courses' : 'videos';
   const initialQuery = route.params?.q ?? '';
+
+  const insets = useSafeAreaInsets();
+const FOOTER_H = 76;
+const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
+
+  // ClassVault purchase support (reuse the same logic as ClassVaultListScreen)
+  const {
+    purchasedIds,
+    purchase,
+  } = useClassVault('', ''); // no filters; we only need purchasedIds + purchase()
+
+  const shop: any = useShopContext() as any;
+  const tokenBalance =
+    Number(shop?.tokens ?? shop?.tokenBalance ?? shop?.balanceTokens ?? shop?.token_count ?? 0) || 0;
+
+  const [payOpen, setPayOpen] = useState(false);
+  const [payItem, setPayItem] = useState<RecordedVideo | null>(null);
+  const [payBusy, setPayBusy] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const openPay = (item: RecordedVideo) => {
+    setPayError(null);
+    setPayItem(item);
+    setPayOpen(true);
+  };
+
+  const closePay = () => {
+    setPayOpen(false);
+    setPayItem(null);
+    setPayBusy(false);
+    setPayError(null);
+  };
+
+  const doPurchase = async () => {
+    if (!payItem || payBusy) return;
+    setPayBusy(true);
+    setPayError(null);
+
+    try {
+      await purchase(payItem);
+      const id = Number((payItem as any).id);
+      closePay();
+      navigation.navigate('ClassVaultDetail', { id });
+    } catch (err: any) {
+      const msg =
+        (typeof err?.message === 'string' && err.message) ||
+        'Purchase failed. Please try again.';
+      setPayError(msg);
+
+      if (String(msg).toLowerCase().includes('insufficient')) {
+        // keep modal open; show Buy Tokens CTA
+      } else {
+        // optional: toast/alert for other errors
+      }
+    } finally {
+      setPayBusy(false);
+    }
+  };
+
+
+
   const [tab, setTab] = useState<'videos' | 'courses'>(initialTab);
   const [query, setQuery] = useState(initialQuery);
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 400);
@@ -137,17 +448,38 @@ const ResourcesPage: React.FC = () => {
 
   const explore = useResourcesExplore(debouncedQuery, tab);
 
+  const { backendUrl } = useShopContext();
+  const oerCollections = useOerVideoCollections(backendUrl, debouncedQuery);
+
+  // Visible tracking so only on-screen cards autoplay video previews
+  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+  const viewabilityConfig = useMemo(() => ({ itemVisiblePercentThreshold: 55 }), []);
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    const next = new Set<string>();
+    for (const v of viewableItems || []) {
+      const it = v?.item;
+      if (!it) continue;
+      if (it.kind === 'classvault') next.add(`classvault:${String(it.id)}`);
+    }
+    setVisibleIds(next);
+  }).current;
+
+  const headerCopy = useMemo(
+    () =>
+      tab === 'videos'
+        ? 'Discover ClassVault marketplace items and free OER video collections.'
+        : 'Browse tutor-led courses and free OER books.',
+    [tab]
+  );
+
   const sections: ExploreSection[] = useMemo(() => {
     if (tab === 'videos') {
       return [
         {
           key: 'classvault',
           title: 'ClassVault marketplace',
-          subtitle: 'Discover videos and notes from tutors.',
-          data: explore.classVault.items.map((item) => ({
-            ...item,
-            kind: 'classvault',
-          })),
+          subtitle: 'Discover videos and notes from tutors (with previews).',
+          data: (explore.classVault.items || []).map((item: any) => ({ ...item, kind: 'classvault' })),
           loading: explore.classVault.loading,
           error: explore.classVault.error,
           emptyMessage: 'No ClassVault results yet.',
@@ -155,18 +487,15 @@ const ResourcesPage: React.FC = () => {
           loadMore: explore.classVault.loadMore,
         },
         {
-          key: 'oerVideos',
-          title: 'Free OER videos',
-          subtitle: 'Open resources from public providers.',
-          data: explore.oerVideos.items.map((item) => ({
-            ...item,
-            kind: 'oerVideo',
-          })),
-          loading: explore.oerVideos.loading,
-          error: explore.oerVideos.error,
-          emptyMessage: 'No OER videos match that search.',
-          hasMore: explore.oerVideos.hasMore,
-          loadMore: explore.oerVideos.loadMore,
+          key: 'oerCollections',
+          title: 'Free OER video collections',
+          subtitle: 'Curated playlists you can open in the Collection Reader.',
+          data: (oerCollections.items || []).slice(0, 12).map((c: any) => ({ ...c, kind: 'oerCollection' })),
+          loading: oerCollections.loading,
+          error: oerCollections.error,
+          emptyMessage: 'No OER video collections match that search.',
+          hasMore: false,
+          loadMore: () => {},
         },
       ];
     }
@@ -176,10 +505,7 @@ const ResourcesPage: React.FC = () => {
         key: 'courses',
         title: 'Courses',
         subtitle: 'Explore tutor-led courses available to enroll.',
-        data: explore.normalCourses.items.map((item) => ({
-          ...item,
-          kind: 'course',
-        })),
+        data: (explore.normalCourses.items || []).map((item: any) => ({ ...item, kind: 'course' })),
         loading: explore.normalCourses.loading,
         error: explore.normalCourses.error,
         emptyMessage: 'No courses found yet.',
@@ -190,10 +516,7 @@ const ResourcesPage: React.FC = () => {
         key: 'oerBooks',
         title: 'Free OER books',
         subtitle: 'OpenStax and other openly licensed books.',
-        data: explore.oerBooks.items.map((item) => ({
-          ...item,
-          kind: 'oerBook',
-        })),
+        data: (explore.oerBooks.items || []).map((item: any) => ({ ...item, kind: 'oerBook' })),
         loading: explore.oerBooks.loading,
         error: explore.oerBooks.error,
         emptyMessage: 'No OER books match that search.',
@@ -201,98 +524,251 @@ const ResourcesPage: React.FC = () => {
         loadMore: explore.oerBooks.loadMore,
       },
     ];
-  }, [tab, explore]);
+  }, [tab, explore, oerCollections]);
 
-  const renderItem = ({ item }: { item: SectionItem }) => {
-    if (item.kind === 'classvault') {
+  const renderItem = useCallback(
+    ({ item }: { item: SectionItem }) => {
+      if (item.kind === 'classvault') {
+        const key = `classvault:${String((item as any).id)}`;
+        const isVisible = visibleIds.has(key);
+
+        return (
+          <View style={tw`px-4`}>
+            <ClassVaultMarketCard
+              item={item as any}
+              isVisible={isVisible}
+              onPress={() => {
+  const id = Number((item as any).id);
+  const price = Number((item as any).price ?? 0) || 0;
+
+  // If free or already purchased -> open directly
+  if (price <= 0 || purchasedIds?.has?.(id)) {
+    navigation.navigate('ClassVaultDetail', { id });
+    return;
+  }
+
+  // Otherwise confirm purchase in modal
+  openPay(item as any);
+}}
+
+            />
+          </View>
+        );
+      }
+
+      if (item.kind === 'oerCollection') {
+        const col = item as any;
+        const id = String(col?.slug ?? col?.id ?? '');
+
+        return (
+          <View style={tw`px-4`}>
+            <OerCollectionCard
+              col={col}
+              onPress={() => navigation.navigate('OerCollectionReader', { id })}
+            />
+          </View>
+        );
+      }
+
+      if (item.kind === 'oerBook') {
+        const id = (item as any).slug || (item as any).id;
+        return (
+          <View style={tw`px-4`}>
+            <SimpleCard
+              title={(item as any).title}
+              subtitle="Open resources"
+              imageUrl={(item as any).cover_url}
+              onPress={() => navigation.navigate('OerReaderFull', { id })}
+              badge="Free"
+            />
+          </View>
+        );
+      }
+
+      // course
       return (
-        <Card
-          title={item.title}
-          subtitle={item.subject || item.grade_level || 'ClassVault'}
-          imageUrl={item.thumbnail_url}
-          onPress={() => navigation.navigate('ClassVaultDetail', { id: Number(item.id) })}
-        />
+        <View style={tw`px-4`}>
+          <SimpleCard
+            title={(item as any).title}
+            subtitle={(item as any).subject || 'Course'}
+            imageUrl={(item as any).thumbnail_url}
+            onPress={() => navigation.navigate('CourseDetails', { courseId: String((item as any).id) })}
+          />
+        </View>
       );
-    }
+    },
+    [navigation, visibleIds]
+  );
 
-    if (item.kind === 'oerVideo') {
-      const id = item.slug || item.title;
-      return (
-        <Card
-          title={item.title}
-          subtitle={item.provider || item.subject || 'OER Video'}
-          imageUrl={item.thumbnail_url}
-          onPress={() => navigation.navigate('VideoCollection', { id })}
-        />
-      );
-    }
-
-    if (item.kind === 'oerBook') {
-      const id = item.slug || item.id;
-      return (
-        <Card
-          title={item.title}
-          subtitle="OpenStax book"
-          imageUrl={item.cover_url}
-          onPress={() => navigation.navigate('OerReaderFull', { id })}
-        />
-      );
-    }
-
+ 
     return (
-      <Card
-        title={item.title}
-        subtitle={item.subject || 'Course'}
-        imageUrl={item.thumbnail_url}
-        onPress={() => navigation.navigate('CourseDetails', { courseId: String(item.id) })}
-      />
-    );
-  };
+    <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'left', 'right']}>
+      <SectionList
+        sections={sections}
+        keyExtractor={(item, index) =>
+          `${(item as any).kind}-${String((item as any).id ?? (item as any).slug ?? index)}-${index}`
+        }
+        renderItem={renderItem}
+        renderSectionHeader={({ section }) => (
+          <SectionHeader title={section.title} subtitle={section.subtitle} />
+        )}
+        renderSectionFooter={({ section }) => (
+          <SectionFooter
+            loading={section.loading}
+            error={section.error}
+            empty={section.data.length === 0}
+            emptyMessage={section.emptyMessage}
+            hasMore={section.hasMore}
+            onLoadMore={section.loadMore}
+          />
+        )}
+        ListHeaderComponent={
+          <View style={tw`px-4 pt-6 pb-2`}>
+            <Text style={tw`text-2xl font-bold text-slate-900 dark:text-white`}>Explore</Text>
+            <Text style={tw`text-sm text-slate-500 dark:text-white/60 mt-1`}>{headerCopy}</Text>
 
-  return (
-    <SectionList
-      sections={sections}
-      keyExtractor={(item, index) => `${item.kind}-${item.id}-${index}`}
-      renderItem={renderItem}
-      renderSectionHeader={({ section }) => (
-        <SectionHeader title={section.title} subtitle={section.subtitle} />
-      )}
-      renderSectionFooter={({ section }) => (
-        <SectionFooter
-          loading={section.loading}
-          error={section.error}
-          empty={section.data.length === 0}
-          emptyMessage={section.emptyMessage}
-          hasMore={section.hasMore}
-          onLoadMore={section.loadMore}
-        />
-      )}
-      ListHeaderComponent={
-        <View style={tw`px-4 pt-6 pb-2`}>
-          <Text style={tw`text-2xl font-bold text-slate-900 dark:text-white`}>Explore</Text>
-          <Text style={tw`text-sm text-slate-500 dark:text-white/60 mt-1`}>
-            Discover videos, notes, courses, and free resources.
-          </Text>
-          <View style={tw`mt-4`}>
-            <View style={tw`h-12 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-[#172534] flex-row items-center px-3`}>
-              <Text style={tw`text-slate-500 dark:text-white/70 text-base mr-2`}>🔍</Text>
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search resources"
-                placeholderTextColor="#7a8aa0"
-                style={tw`flex-1 h-full text-slate-900 dark:text-slate-100`}
-              />
+            <View style={tw`mt-4`}>
+              <View
+                style={tw`h-12 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-[#172534] flex-row items-center px-3`}
+              >
+                <Text style={tw`text-slate-500 dark:text-white/70 text-base mr-2`}>🔍</Text>
+                <TextInput
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search videos, notes, collections, or courses"
+                  placeholderTextColor="#7a8aa0"
+                  style={tw`flex-1 h-full text-slate-900 dark:text-slate-100`}
+                />
+              </View>
+            </View>
+
+            <View style={tw`mt-4`}>
+              <TabBar value={tab} onChange={setTab} />
+            </View>
+
+            {!WebView && tab === 'videos' ? (
+              <Text style={tw`text-[11px] text-slate-500 dark:text-white/50 mt-3`}>
+                Tip: install react-native-webview to preview PDFs inline.
+              </Text>
+            ) : null}
+          </View>
+        }
+        // ✅ CRITICAL: padding so last content isn't behind FooterNav
+        contentContainerStyle={[
+          tw`bg-slate-50 dark:bg-[#0b1016]`,
+          { paddingBottom: bottomPad },
+        ]}
+        // ✅ Also add a footer spacer so section footers don't sit under nav
+        ListFooterComponent={<View style={{ height: bottomPad }} />}
+        stickySectionHeadersEnabled={false}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+      />
+
+            <Modal
+        visible={payOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closePay}
+      >
+        <View style={tw`flex-1 bg-black/50 items-center justify-center px-5`}>
+          <View style={tw`w-full rounded-2xl bg-white dark:bg-[#0f1821] border border-slate-200 dark:border-white/10 overflow-hidden`}>
+            <View style={tw`px-4 pt-4 pb-3 border-b border-slate-200 dark:border-white/10`}>
+              <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>
+                Confirm purchase
+              </Text>
+              <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
+                You’re about to unlock this item using tokens.
+              </Text>
+            </View>
+
+            <View style={tw`px-4 py-4`}>
+              <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
+                {payItem?.title ?? 'Item'}
+              </Text>
+
+              <View style={tw`mt-2`}>
+                <Text style={tw`text-xs text-slate-500 dark:text-white/60`}>
+                  Type: {payItem && (payItem as any)?.pdf_url && !(payItem as any)?.video_url ? 'Notes' : 'Video'}
+                </Text>
+                <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
+                  Subject: {(payItem as any)?.subject || 'ClassVault'}
+                  {payItem && (payItem as any)?.grade_level != null ? ` • Grade ${(payItem as any).grade_level}` : ''}
+                </Text>
+              </View>
+
+              <View style={tw`mt-4 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 p-3`}>
+                <View style={tw`flex-row items-center justify-between`}>
+                  <Text style={tw`text-xs text-slate-500 dark:text-white/60`}>Cost</Text>
+                  <Text style={tw`text-sm font-extrabold text-slate-900 dark:text-white`}>
+                    {Number((payItem as any)?.price ?? 0) || 0} tokens
+                  </Text>
+                </View>
+                <View style={tw`flex-row items-center justify-between mt-2`}>
+                  <Text style={tw`text-xs text-slate-500 dark:text-white/60`}>Your balance</Text>
+                  <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>
+                    {tokenBalance} tokens
+                  </Text>
+                </View>
+
+                {payItem ? (
+                  <Text style={tw`text-[11px] text-slate-500 dark:text-white/60 mt-3`}>
+                    After purchase, this item will be available in **Purchased Videos & Notes**.
+                  </Text>
+                ) : null}
+              </View>
+
+              {payError ? (
+                <Text style={tw`text-xs text-red-600 dark:text-red-400 mt-3`}>{payError}</Text>
+              ) : null}
+            </View>
+
+            <View style={tw`px-4 pb-4 flex-row items-center justify-between`}>
+              <TouchableOpacity
+                onPress={closePay}
+                disabled={payBusy}
+                style={tw.style(
+                  `px-4 py-2 rounded-full border border-slate-200 dark:border-white/10`,
+                  payBusy && 'opacity-60'
+                )}
+              >
+                <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>Cancel</Text>
+              </TouchableOpacity>
+
+              <View style={tw`flex-row items-center`}>
+                {payError && String(payError).toLowerCase().includes('insufficient') ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      closePay();
+                      navigation.navigate('BuyTokens');
+                    }}
+                    style={tw`mr-2 px-4 py-2 rounded-full bg-slate-900 dark:bg-white`}
+                  >
+                    <Text style={tw`text-sm font-semibold text-white dark:text-slate-900`}>
+                      Buy tokens
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+
+                <TouchableOpacity
+                  onPress={doPurchase}
+                  disabled={payBusy || !payItem}
+                  style={tw.style(
+                    `px-4 py-2 rounded-full bg-blue-500`,
+                    (payBusy || !payItem) && 'opacity-60'
+                  )}
+                >
+                  <Text style={tw`text-sm font-extrabold text-white`}>
+                    {payBusy ? 'Purchasing…' : 'Purchase'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-          <View style={tw`mt-4`}>
-            <TabBar value={tab} onChange={setTab} />
-          </View>
         </View>
-      }
-      contentContainerStyle={tw`pb-10 bg-slate-50 dark:bg-[#0b1016]`}
-      stickySectionHeadersEnabled={false}
-    />
+      </Modal>
+
+    </SafeAreaView>
   );
 };
 

@@ -227,10 +227,18 @@ const StudentProgressRow: React.FC<{
     }
     let ignore = false;
     fetchCourseById(cid)
-      .then((c: Course) => {
-        if (!ignore) setTotalWeeks(Array.isArray(c?.syllabus) ? c.syllabus.length : 0);
-      })
-      .catch(() => setTotalWeeks(0));
+  .then((c: Course | null) => {
+    if (ignore) return;
+    if (!c) {
+      setTotalWeeks(0);
+      return;
+    }
+    setTotalWeeks(Array.isArray(c.syllabus) ? c.syllabus.length : 0);
+  })
+  .catch(() => {
+    if (!ignore) setTotalWeeks(0);
+  });
+
     return () => {
       ignore = true;
     };

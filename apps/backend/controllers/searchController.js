@@ -3,7 +3,12 @@ import { unifiedSearchService } from '../services/search/unifiedSearchService.js
 
 export async function unifiedSearch(req, res) {
   const query = req.query ?? {};
-  const explicitProvided = new Set(Object.keys(query));
+ const explicitProvided = new Set(
+  Object.entries(query)
+    .filter(([_, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+    .map(([k]) => k)
+);
+
 
   const explicitFilters = {
     q: query.q,

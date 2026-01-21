@@ -1,7 +1,13 @@
+// packages/shared/hooks/useResourcesExplore.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { useShopContext } from '@mytutorapp/shared/context';
-import type { Course, RecordedVideo, ResourceCategoryResult, UnifiedSearchResult } from '@mytutorapp/shared/types';
+import type {
+  Course,
+  RecordedVideo,
+  ResourceCategoryResult,
+  UnifiedSearchResult,
+} from '@mytutorapp/shared/types';
 import type { OerBookItem, OerVideoItem } from '@mytutorapp/shared/api/resourcesApi';
 import {
   fetchClassVaultExplore,
@@ -12,6 +18,36 @@ import {
 import { unifiedSearchApi } from '@mytutorapp/shared/api/searchApi';
 
 const DEFAULT_LIMIT = 12;
+
+// ✅ IMPORTANT: stable array references (do NOT inline these in render)
+const KINDS_CLASSVAULT = ['classvault_market'] as const;
+const KINDS_OER_VIDEOS = ['oer_video'] as const;
+const KINDS_COURSES = ['course'] as const;
+const KINDS_OER_COURSES = ['oer_course'] as const;
+
+export type ResourceFilters = {
+  subject: string;
+  gradeBand: string;
+  country: string;
+  providers: string[];
+  contentKinds: string[]; // e.g. ['video','doc']
+  sourceKind: '' | 'oer' | 'tutor';
+  scope: '' | 'free' | 'purchased';
+  minRating: number; // 0..5
+  maxPrice: number; // tokens, 0 = no cap
+};
+
+export const DEFAULT_FILTERS: ResourceFilters = {
+  subject: '',
+  gradeBand: '',
+  country: '',
+  providers: [],
+  contentKinds: [],
+  sourceKind: '',
+  scope: '',
+  minRating: 0,
+  maxPrice: 0,
+};
 
 type PaginatedState<T> = {
   items: T[];
@@ -36,14 +72,22 @@ type UnifiedCategoryOpts<T> = {
   token?: string;
   query: string;
   limit?: number;
-  kinds: string[];
+  kinds: readonly string[];
   primaryKind: string;
   filter?: (item: UnifiedSearchResult) => boolean;
   map: (item: UnifiedSearchResult) => T;
+
+  // ✅ used only for dependency stability
+  filtersKey?: string;
+  filters?: ResourceFilters;
 };
 
 function isAbortError(err: any) {
-  return err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || axios.isCancel(err);
+  return (
+    err?.name === 'CanceledError' ||
+    err?.code === 'ERR_CANCELED' ||
+    axios.isCancel(err)
+  );
 }
 
 function normalizeCourseLevel(): Course['level'] {
@@ -121,38 +165,48 @@ function usePaginatedSection<T>(
 ): PaginatedState<T> {
   const enabled = opts?.enabled ?? true;
   const limit = opts?.limit ?? DEFAULT_LIMIT;
+
   const [items, setItems] = useState<T[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const requestIdRef = useRef(0);
+  const fetcherRef = useRef(fetcher);
+
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  }, [fetcher]);
 
   const fetchPage = useCallback(
     async (nextOffset: number, replace: boolean) => {
       if (!enabled) return;
+
       const requestId = ++requestIdRef.current;
       setLoading(true);
       setError(null);
+
       try {
-        const resp = await fetcher({ limit, offset: nextOffset });
+        const resp = await fetcherRef.current({ limit, offset: nextOffset });
         if (requestId !== requestIdRef.current) return;
+
         setItems((prev) => (replace ? resp.items : prev.concat(resp.items)));
         setTotal(resp.total ?? 0);
         setOffset(nextOffset + resp.items.length);
       } catch (err: any) {
         if (requestId !== requestIdRef.current) return;
-        const msg = err?.message ? String(err.message) : 'Failed to load';
-        setError(msg);
+        setError(err?.message ? String(err.message) : 'Failed to load');
       } finally {
         if (requestId === requestIdRef.current) setLoading(false);
       }
     },
-    [enabled, fetcher, limit]
+    [enabled, limit]
   );
 
   const refresh = useCallback(() => {
     if (!enabled) return;
+    requestIdRef.current += 1;
     setItems([]);
     setTotal(0);
     setOffset(0);
@@ -161,6 +215,7 @@ function usePaginatedSection<T>(
 
   useEffect(() => {
     if (!enabled) {
+      requestIdRef.current += 1;
       setItems([]);
       setTotal(0);
       setOffset(0);
@@ -168,19 +223,25 @@ function usePaginatedSection<T>(
       setError(null);
       return;
     }
-    refresh();
+
+    void fetchPage(0, true);
+
     return () => {
       requestIdRef.current += 1;
     };
-  }, [enabled, refresh, ...deps]);
+  }, [enabled, fetchPage, ...deps]);
 
   const hasMore = items.length < total;
+
   const loadMore = useCallback(() => {
     if (loading || !hasMore) return;
     void fetchPage(offset, false);
   }, [fetchPage, hasMore, loading, offset]);
 
-  return { items, total, loading, error, hasMore, loadMore, refresh };
+  return useMemo(
+    () => ({ items, total, loading, error, hasMore, loadMore, refresh }),
+    [items, total, loading, error, hasMore, loadMore, refresh]
+  );
 }
 
 function useUnifiedCategory<T>(opts: UnifiedCategoryOpts<T>): PaginatedState<T> {
@@ -194,7 +255,11 @@ function useUnifiedCategory<T>(opts: UnifiedCategoryOpts<T>): PaginatedState<T> 
     primaryKind,
     filter,
     map,
+    filtersKey = '',
+    filters,
   } = opts;
+
+  const kindsCsv = useMemo(() => kinds.join(','), [kinds]);
 
   const [items, setItems] = useState<T[]>([]);
   const [total, setTotal] = useState(0);
@@ -202,6 +267,7 @@ function useUnifiedCategory<T>(opts: UnifiedCategoryOpts<T>): PaginatedState<T> 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
+
   const controllerRef = useRef<AbortController | null>(null);
 
   const abortCurrent = useCallback(() => {
@@ -214,20 +280,34 @@ function useUnifiedCategory<T>(opts: UnifiedCategoryOpts<T>): PaginatedState<T> 
   const fetchPage = useCallback(
     async (nextOffset: number, replace: boolean) => {
       if (!enabled || !backendUrl) return;
+
       abortCurrent();
       const controller = new AbortController();
       controllerRef.current = controller;
+
       setLoading(true);
       setError(null);
+
+      const f = filters ?? DEFAULT_FILTERS;
 
       try {
         const resp = await unifiedSearchApi(
           backendUrl,
           {
             q: query,
-            kinds: kinds.join(','),
+            kinds: kindsCsv,
             limit,
             offset: nextOffset,
+
+            subject: f.subject || undefined,
+            gradeBand: f.gradeBand || undefined,
+            country: f.country || undefined,
+            providers: f.providers.length ? f.providers.join(',') : undefined,
+            contentKinds: f.contentKinds.length ? f.contentKinds.join(',') : undefined,
+            sourceKind: f.sourceKind || undefined,
+            scope: f.scope || undefined,
+            minRating: f.minRating > 0 ? f.minRating : undefined,
+            maxPrice: f.maxPrice > 0 ? f.maxPrice : undefined,
           },
           token,
           controller.signal
@@ -239,21 +319,36 @@ function useUnifiedCategory<T>(opts: UnifiedCategoryOpts<T>): PaginatedState<T> 
         const mapped = filtered.map(map);
 
         setItems((prev) => (replace ? mapped : prev.concat(mapped)));
+
         const nextOffsetValue = nextOffset + rawItems.length;
         setOffset(nextOffsetValue);
 
         const countByKind = Number(meta?.countsByKind?.[primaryKind] ?? 0);
         setTotal((prev) => Math.max(prev, countByKind, nextOffsetValue));
+
         setHasMore(rawItems.length === limit);
       } catch (err: any) {
         if (isAbortError(err)) return;
-        const msg = err?.message ? String(err.message) : 'Failed to search';
-        setError(msg);
+        setError(err?.message ? String(err.message) : 'Failed to search');
       } finally {
         setLoading(false);
       }
     },
-    [abortCurrent, backendUrl, enabled, kinds, limit, map, primaryKind, query, token, filter]
+    [
+      abortCurrent,
+      backendUrl,
+      enabled,
+      kindsCsv,
+      limit,
+      map,
+      primaryKind,
+      query,
+      token,
+      filter,
+
+      // ✅ re-run search when filters change
+      filtersKey,
+    ]
   );
 
   const refresh = useCallback(() => {
@@ -261,70 +356,145 @@ function useUnifiedCategory<T>(opts: UnifiedCategoryOpts<T>): PaginatedState<T> 
     setItems([]);
     setTotal(0);
     setOffset(0);
+    setHasMore(false);
     void fetchPage(0, true);
   }, [enabled, fetchPage]);
 
   useEffect(() => {
     if (!enabled) {
       abortCurrent();
+      setItems([]);
+      setTotal(0);
+      setOffset(0);
+      setHasMore(false);
       setLoading(false);
       setError(null);
       return;
     }
+
     refresh();
     return () => abortCurrent();
-  }, [abortCurrent, enabled, query, refresh]);
+  }, [abortCurrent, enabled, refresh]);
 
   const loadMore = useCallback(() => {
     if (loading || !hasMore) return;
     void fetchPage(offset, false);
   }, [fetchPage, hasMore, loading, offset]);
 
-  return { items, total, loading, error, hasMore, loadMore, refresh };
+  return useMemo(
+    () => ({ items, total, loading, error, hasMore, loadMore, refresh }),
+    [items, total, loading, error, hasMore, loadMore, refresh]
+  );
 }
 
-export function useResourcesExplore(query: string, activeTab: TabKey = 'videos') {
+/** ✅ NEW: treat "filters only" as search mode */
+function hasActiveFilters(f?: ResourceFilters) {
+  const x = f ?? DEFAULT_FILTERS;
+  return Boolean(
+    x.subject.trim() ||
+      x.gradeBand.trim() ||
+      x.country.trim() ||
+      x.providers.length ||
+      x.contentKinds.length ||
+      x.sourceKind ||
+      x.scope ||
+      x.minRating > 0 ||
+      x.maxPrice > 0
+  );
+}
+
+export function useResourcesExplore(
+  query: string,
+  activeTab: TabKey = 'videos',
+  filters?: ResourceFilters
+) {
   const { backendUrl, token } = useShopContext();
   const cleanedQuery = query.trim();
   const enabled = Boolean(backendUrl);
-  const isSearchActive = cleanedQuery.length > 0;
 
-  const classVaultExplore = usePaginatedSection<RecordedVideo>(
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? DEFAULT_FILTERS), [filters]);
+
+  // ✅ KEY CHANGE
+  const filtersActive = hasActiveFilters(filters);
+  const isSearchActive = cleanedQuery.length > 0 || filtersActive;
+
+  // Explore fetchers (non-search)
+  const fetchClassVaultPage = useCallback<PaginatedFetcher<RecordedVideo>>(
     ({ limit, offset }) =>
-      fetchClassVaultExplore(backendUrl, { limit, offset, q: cleanedQuery || undefined }),
+      fetchClassVaultExplore(backendUrl, {
+        limit,
+        offset,
+        q: cleanedQuery || undefined,
+      }),
+    [backendUrl, cleanedQuery]
+  );
+
+  const fetchOerVideosPage = useCallback<PaginatedFetcher<OerVideoItem>>(
+    ({ limit, offset }) =>
+      fetchOerVideosExplore(backendUrl, {
+        limit,
+        offset,
+        q: cleanedQuery || undefined,
+      }),
+    [backendUrl, cleanedQuery]
+  );
+
+  const fetchNormalCoursesPage = useCallback<PaginatedFetcher<Course>>(
+    ({ limit, offset }) =>
+      fetchExploreCourses(backendUrl, {
+        limit,
+        offset,
+        q: cleanedQuery || undefined,
+      }),
+    [backendUrl, cleanedQuery]
+  );
+
+  const fetchOerBooksPage = useCallback<PaginatedFetcher<OerBookItem>>(
+    ({ limit, offset }) =>
+      fetchOerBooksExplore(backendUrl, {
+        limit,
+        offset,
+        q: cleanedQuery || undefined,
+      }),
+    [backendUrl, cleanedQuery]
+  );
+
+  // Explore (only when NOT searching)
+  const classVaultExplore = usePaginatedSection<RecordedVideo>(
+    fetchClassVaultPage,
     [backendUrl, cleanedQuery],
     { enabled: enabled && !isSearchActive }
   );
 
   const oerVideosExplore = usePaginatedSection<OerVideoItem>(
-    ({ limit, offset }) =>
-      fetchOerVideosExplore(backendUrl, { limit, offset, q: cleanedQuery || undefined }),
+    fetchOerVideosPage,
     [backendUrl, cleanedQuery],
     { enabled: enabled && !isSearchActive }
   );
 
   const normalCoursesExplore = usePaginatedSection<Course>(
-    ({ limit, offset }) =>
-      fetchExploreCourses(backendUrl, { limit, offset, q: cleanedQuery || undefined }),
+    fetchNormalCoursesPage,
     [backendUrl, cleanedQuery],
     { enabled: enabled && !isSearchActive }
   );
 
   const oerBooksExplore = usePaginatedSection<OerBookItem>(
-    ({ limit, offset }) =>
-      fetchOerBooksExplore(backendUrl, { limit, offset, q: cleanedQuery || undefined }),
+    fetchOerBooksPage,
     [backendUrl, cleanedQuery],
     { enabled: enabled && !isSearchActive }
   );
 
+  // Unified search (runs when query OR filters are active)
   const classVaultSearch = useUnifiedCategory<RecordedVideo>({
     enabled: enabled && isSearchActive && activeTab === 'videos',
     backendUrl,
     token,
     query: cleanedQuery,
-    kinds: ['classvault_market'],
+    kinds: KINDS_CLASSVAULT,
     primaryKind: 'classvault_market',
     map: mapToRecordedVideo,
+    filters,
+    filtersKey,
   });
 
   const oerVideosSearch = useUnifiedCategory<OerVideoItem>({
@@ -332,9 +502,11 @@ export function useResourcesExplore(query: string, activeTab: TabKey = 'videos')
     backendUrl,
     token,
     query: cleanedQuery,
-    kinds: ['oer_video'],
+    kinds: KINDS_OER_VIDEOS,
     primaryKind: 'oer_video',
     map: mapToOerVideo,
+    filters,
+    filtersKey,
   });
 
   const normalCoursesSearch = useUnifiedCategory<Course>({
@@ -342,9 +514,11 @@ export function useResourcesExplore(query: string, activeTab: TabKey = 'videos')
     backendUrl,
     token,
     query: cleanedQuery,
-    kinds: ['course'],
+    kinds: KINDS_COURSES,
     primaryKind: 'course',
     map: mapToCourse,
+    filters,
+    filtersKey,
   });
 
   const oerBooksSearch = useUnifiedCategory<OerBookItem>({
@@ -352,10 +526,12 @@ export function useResourcesExplore(query: string, activeTab: TabKey = 'videos')
     backendUrl,
     token,
     query: cleanedQuery,
-    kinds: ['oer_course'],
+    kinds: KINDS_OER_COURSES,
     primaryKind: 'oer_course',
     filter: isOerBookResult,
     map: mapToOerBook,
+    filters,
+    filtersKey,
   });
 
   const classVault = isSearchActive ? classVaultSearch : classVaultExplore;

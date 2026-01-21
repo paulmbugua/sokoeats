@@ -37,19 +37,61 @@ type UploadOpts = {
 };
 
 /**
+ * Asset types we support for ClassVault.
+ * - video: Cloudinary resource_type 'video'
+ * - pdf: Cloudinary resource_type 'raw'
+ * - thumbnail: Cloudinary resource_type 'image'  ✅ needed for Notes cards in public listings
+ * - preview: Cloudinary resource_type 'video' (short teaser)
+ */
+export type ClassVaultAssetType = 'video' | 'pdf' | 'thumbnail' | 'preview';
+
+function resolveResourceType(type: ClassVaultAssetType): 'video' | 'image' | 'raw' {
+  if (type === 'pdf') return 'raw';
+  if (type === 'thumbnail') return 'image';
+  // preview behaves like video
+  return 'video';
+}
+
+function defaultName(type: ClassVaultAssetType) {
+  switch (type) {
+    case 'thumbnail':
+      return 'thumbnail.jpg';
+    case 'preview':
+      return 'preview.mp4';
+    case 'video':
+      return 'upload.mp4';
+    case 'pdf':
+      return 'upload.pdf';
+  }
+}
+
+function defaultMime(type: ClassVaultAssetType) {
+  switch (type) {
+    case 'thumbnail':
+      return 'image/jpeg';
+    case 'preview':
+    case 'video':
+      return 'video/mp4';
+    case 'pdf':
+      return 'application/pdf';
+  }
+}
+
+/**
  * Direct signed upload to Cloudinary for both Web and React Native.
  * - PDFs: resource_type 'raw'
- * - Videos: resource_type 'video'
+ * - Videos/Previews: resource_type 'video'
+ * - Thumbnails: resource_type 'image'
  */
 export const uploadClassVaultAsset = async (
   backendUrl: string,
   token: string,
   file: Asset,
-  type: 'video' | 'pdf',
+  type: ClassVaultAssetType,
   onProgress?: (percent: number) => void,
   opts?: UploadOpts
 ): Promise<UploadResult> => {
-  const resourceType = type === 'video' ? 'video' : 'raw';
+  const resourceType = resolveResourceType(type);
   const folder = opts?.folder ?? 'class_vault';
 
   // 1) Ask backend for a signed upload (keeps API secret server-side)
@@ -85,16 +127,14 @@ export const uploadClassVaultAsset = async (
     typeof window !== 'undefined' && typeof File !== 'undefined' && file instanceof File;
 
   const nameGuess = (() => {
-    if (isBrowserFile)
-      return (file as File).name || (type === 'video' ? 'upload.mp4' : 'upload.pdf');
+    if (isBrowserFile) return (file as File).name || defaultName(type);
     const rn = file as { uri: string; name?: string };
     if (rn?.name) return rn.name;
-    return type === 'video' ? 'upload.mp4' : 'upload.pdf';
+    return defaultName(type);
   })();
 
   const mimeGuess =
-    (isBrowserFile ? (file as File).type : (file as any).type) ||
-    (type === 'video' ? 'video/mp4' : 'application/pdf');
+    (isBrowserFile ? (file as File).type : (file as any).type) || defaultMime(type);
 
   const form = new FormData();
   form.append(
@@ -115,7 +155,7 @@ export const uploadClassVaultAsset = async (
   // 4) Send with progress:
   // - Web: axios (has progress)
   // - RN: XMLHttpRequest (RN axios has no upload progress)
-  const isRN = typeof document === 'undefined'; // crude but works across Expo/Native
+  const isRN = typeof document === 'undefined';
 
   if (!isRN) {
     // Web
@@ -126,7 +166,6 @@ export const uploadClassVaultAsset = async (
         onProgress(pct);
       },
     });
-    // Cloudinary returns { secure_url, ... }
     return { url: res.data.secure_url };
   }
 

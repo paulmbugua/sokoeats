@@ -2,7 +2,7 @@
 import express from 'express';
 import * as courseController from '../controllers/courseController.js';
 import { createAiSandboxCourse } from '../controllers/coursesController.js';
-
+import requireTutorProfile from '../middleware/requireTutorProfile.js';
 import authUser from '../middleware/authUser.js';
 import anyAuth from '../middleware/anyAuth.js';
 import anyAuthOptional from '../middleware/anyAuthOptional.js';
@@ -30,8 +30,7 @@ router.get('/tutor/:id', courseController.getTutorCourses);
 router.get('/mine/unlocked-ai', anyAuth, listMyUnlockedAiCourses);
 
 /** Create */
-router.post('/', anyAuth, courseController.createCourse);
-
+router.post('/', anyAuth, requireTutorProfile, courseController.createCourse);
 /** AI sandbox */
 router.post(
   '/ai-sandbox',
@@ -52,7 +51,7 @@ router.get('/:id', anyAuthOptional, courseController.getCourseById);
 router.post('/:id/purchase', authUser, courseController.purchaseCourse);
 
 /** Update / delete */
-router.patch('/:id', anyAuth, courseController.updateCourse);
-router.delete('/:id', anyAuth, courseController.deleteCourse);
+router.patch('/:id', anyAuth, requireTutorProfile, courseController.updateCourse);
+router.delete('/:id', anyAuth, requireTutorProfile, courseController.deleteCourse);
 
 export default router;

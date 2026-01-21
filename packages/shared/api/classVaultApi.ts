@@ -6,6 +6,14 @@ import type { CreateRecordedVideoPayload } from '@mytutorapp/shared/hooks/useUpl
 
 const BASE_PATH = '/api/classvault';
 
+export type PurchaseClassVaultResponse = {
+  message?: string;
+  purchase?: any;
+  resources?: { video_url?: string | null; pdf_url?: string | null };
+  tokens?: number;
+  accrual?: any;
+};
+
 export const fetchAllVideos = async (backendUrl: string): Promise<RecordedVideo[]> => {
   const res = await axios.get<RecordedVideo[]>(`${backendUrl}${BASE_PATH}`);
   return res.data;
@@ -20,7 +28,6 @@ export const fetchVideoReviews = async (
   backendUrl: string,
   videoId: number
 ): Promise<VideoReview[]> => {
-  // OLD: `${backendUrl}${BASE_PATH}/${videoId}/reviews`
   const res = await axios.get<VideoReview[]>(`${backendUrl}/api/reviews/videos/${videoId}`);
   return res.data;
 };
@@ -54,8 +61,8 @@ export const fetchDownloadResources = async (
   backendUrl: string,
   videoId: number,
   token: string
-): Promise<{ video_url: string; pdf_url: string }> => {
-  const res = await axios.get<{ video_url: string; pdf_url: string }>(
+): Promise<{ video_url?: string | null; pdf_url?: string | null }> => {
+  const res = await axios.get<{ video_url?: string | null; pdf_url?: string | null }>(
     `${backendUrl}${BASE_PATH}/download/${videoId}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
@@ -63,25 +70,26 @@ export const fetchDownloadResources = async (
 };
 
 // Two-step metadata submission: JSON-only endpoint
+// Backend returns: { success: true, video: RecordedVideo }
 export const createVideoJson = async (
   backendUrl: string,
   token: string,
   data: CreateRecordedVideoPayload
 ): Promise<RecordedVideo> => {
-  const res = await axios.post<RecordedVideo>(
-    `${backendUrl}${BASE_PATH}`, // ← no `/json` suffix
+  const res = await axios.post<{ success: boolean; video: RecordedVideo }>(
+    `${backendUrl}${BASE_PATH}`,
     data,
     { headers: { Authorization: `Bearer ${token}` } }
   );
-  return res.data;
+  return res.data.video;
 };
 
 export const purchaseClassVault = async (
   backendUrl: string,
   videoId: number,
   token: string
-): Promise<{ video_url: string; pdf_url: string }> => {
-  const res = await axios.post<{ video_url: string; pdf_url: string }>(
+): Promise<PurchaseClassVaultResponse> => {
+  const res = await axios.post<PurchaseClassVaultResponse>(
     `${backendUrl}${BASE_PATH}/${videoId}/purchase`,
     {},
     { headers: { Authorization: `Bearer ${token}` } }
@@ -94,9 +102,23 @@ export const fetchPurchasedVideoIds = async (
   token: string
 ): Promise<number[]> => {
   const res = await axios.get<{ purchases: { class_id: number }[] }>(
-    `${backendUrl}/api/classvault/purchases`,
+    `${backendUrl}${BASE_PATH}/purchases`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
-  // Map down to just the class IDs
   return res.data.purchases.map((p) => p.class_id);
+};
+
+export const updateVideoById = async (
+  backendUrl: string,
+  id: number,
+  token: string,
+  data: Partial<CreateRecordedVideoPayload>
+): Promise<RecordedVideo> => {
+  const res = await axios.put<{ success: boolean; video: RecordedVideo }>(
+    `${backendUrl}${BASE_PATH}/${id}`,
+    data,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+
+  return res.data.video;
 };

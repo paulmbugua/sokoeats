@@ -1,42 +1,51 @@
 // controllers/cloudinaryController.js
 import { v2 as cloudinary } from 'cloudinary';
 
-/**
- * Returns a short-lived signature so the browser can upload
- * directly to Cloudinary without proxying big files through Node.
- *
- * Body (optional):
- *   { resourceType?: 'image' | 'video', folder?: string }
- */
+const pick = (v) => (v ?? '').trim() || '';
+
 export const getDirectUploadSignature = async (req, res) => {
   try {
-    const resourceType = (req.body?.resourceType || 'image').toLowerCase();
-    const folder = req.body?.folder || 'class_vault';
+    const resourceType = String(req.body?.resourceType || 'image').toLowerCase();
+    const folder = pick(req.body?.folder) || 'class_vault';
     const timestamp = Math.round(Date.now() / 1000);
 
-    const paramsToSign = { timestamp, folder };
-    const signature = cloudinary.utils.api_sign_request(
-      paramsToSign,
-      process.env.CLOUDINARY_API_SECRET,
-    );
+    // Prefer the already-configured SDK secret (connectCloudinary ran at boot)
+    const cfg = cloudinary.config() || {};
+    const apiSecret =
+      pick(cfg.api_secret) ||
+      pick(process.env.CLOUDINARY_API_SECRET) ||
+      pick(process.env.CLOUDINARY_SECRET_KEY);
 
-    const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
-    if (!cloudName) {
-      return res.status(500).json({ message: 'Cloudinary is not configured.' });
+    const apiKey =
+      pick(cfg.api_key) ||
+      pick(process.env.CLOUDINARY_API_KEY);
+
+    const cloudName =
+      pick(cfg.cloud_name) ||
+      pick(process.env.CLOUDINARY_CLOUD_NAME) ||
+      pick(process.env.CLOUDINARY_NAME);
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      return res.status(500).json({
+        message: 'Cloudinary is not configured (missing cloudName/apiKey/apiSecret).',
+      });
     }
 
-    // 🟢 Add debugging logs
+    const paramsToSign = { timestamp, folder };
+    const signature = cloudinary.utils.api_sign_request(paramsToSign, apiSecret);
+
     console.log('🎥 Cloudinary sign request:', {
-      user: req.user?.id, // who is requesting the sign
+      user: req.user?.id,
       resourceType,
       folder,
       timestamp,
-      apiKey: process.env.CLOUDINARY_API_KEY,
+      cloudName: JSON.stringify(cloudName),
+      apiKey: apiKey ? `${apiKey.slice(0, 4)}…` : null,
     });
 
     res.json({
       cloudName,
-      apiKey: process.env.CLOUDINARY_API_KEY,
+      apiKey,
       timestamp,
       folder,
       signature,

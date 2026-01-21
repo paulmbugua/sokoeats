@@ -44,7 +44,7 @@ import LanguageLearningPage from './pages/LanguageLearning.web';
 import AccountSection from './components/AccountSection.web';
 
 // ClassVault
-import ClassVaultList from './components/ClassVaultList.web';
+
 import ClassVaultDetail from './components/ClassVaultDetail.web';
 import ClassVaultUpload from './components/ClassVaultUpload.web';
 
@@ -585,8 +585,7 @@ const App: React.FC = () => {
           {/* ClassVault */}
           <Route path="/class-vault/upload" element={<ClassVaultUpload />} />
           <Route path="/class-vault/:id" element={<ClassVaultDetail />} />
-          <Route path="/class-vault" element={<ClassVaultList />} />
-
+          
           <Route path="/results" element={<ResultsPage />} />
 
           {/* Enrollments */}

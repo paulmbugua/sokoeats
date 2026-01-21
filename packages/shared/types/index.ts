@@ -590,11 +590,13 @@ export interface CoursePayload {
   price: number;
   syllabus?: SyllabusItem[];
   prerequisites?: string;
+  subject?: string;
 }
 
 export interface Course extends CoursePayload {
   id: string;
   createdAt: string;
+  
 }
 
 export interface Enrollment {

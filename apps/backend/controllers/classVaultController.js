@@ -72,11 +72,23 @@ async function deleteFromCloudinary(publicIds, resourceType = 'image') {
 }
 
 /** Extract the public_id (folder/path/name) from a Cloudinary URL */
+/** Extract Cloudinary public_id from a Cloudinary URL (handles version segments). */
 function getPublicIdFromUrl(url) {
-  const parts = url.split('/upload/');
-  if (parts.length < 2) return null;
-  return parts[1].split('.')[0];
+  try {
+    if (!url || typeof url !== 'string') return null;
+    const clean = url.split('?')[0]; // remove query
+    const parts = clean.split('/upload/');
+    if (parts.length < 2) return null;
+
+    let after = parts[1]; // e.g. v1700000000/class_vault/image/abc.jpg
+    after = after.replace(/^v\d+\//, ''); // strip version prefix
+    after = after.replace(/\.[^/.]+$/, ''); // drop extension
+    return after || null;
+  } catch {
+    return null;
+  }
 }
+
 
 // ─── FFmpeg Utilities ────────────────────────────────────────────────────────
 
@@ -207,14 +219,85 @@ async function generatePreview(inputPath, outputPath, duration = 30) {
   }
 }
 
+async function buildVideoDerivativesFromUrl(req, video_url) {
+  // make absolute if backend serves local files
+  const makeAbsolute = (url) =>
+    /^https?:\/\//.test(url)
+      ? url
+      : `${req.protocol}://${req.get('host')}${url}`;
+
+  const tmpVideo = path.join(os.tmpdir(), `${uuid()}.mp4`);
+  const thumbLocal = path.join(os.tmpdir(), `${uuid()}.jpg`);
+  const previewLocal = path.join(os.tmpdir(), `${uuid()}.mp4`);
+
+  let thumb = null; // { url, public_id }
+  let preview = null; // { url, public_id }
+
+  try {
+    // 1) download
+    const resp = await fetch(makeAbsolute(video_url));
+    if (!resp.ok) throw new Error(`Failed to download video (${resp.status})`);
+
+    await new Promise((resolve, reject) => {
+      const ws = createWriteStream(tmpVideo);
+      resp.body.pipe(ws);
+      resp.body.on('error', reject);
+      ws.on('finish', resolve);
+      ws.on('error', reject);
+    });
+
+    // 2) derivatives (best effort)
+    try {
+      await generateThumbnail(tmpVideo, thumbLocal);
+    } catch (e) {
+      console.warn('[classVault:update] thumbnail generation failed', e?.message);
+    }
+
+    try {
+      await generatePreview(tmpVideo, previewLocal, 30);
+    } catch (e) {
+      console.warn('[classVault:update] preview generation failed', e?.message);
+    }
+
+    // 3) upload what exists
+    try {
+      const s1 = await fs.stat(thumbLocal).catch(() => null);
+      if (s1?.size > 0) {
+        const [u] = await uploadToCloudinary([{ path: thumbLocal }], 'image');
+        thumb = u || null;
+      }
+    } catch (e) {
+      console.warn('[classVault:update] thumbnail upload skipped', e?.message);
+    }
+
+    try {
+      const s2 = await fs.stat(previewLocal).catch(() => null);
+      if (s2?.size > 0) {
+        const [u] = await uploadToCloudinary([{ path: previewLocal }], 'video');
+        preview = u || null;
+      }
+    } catch (e) {
+      console.warn('[classVault:update] preview upload skipped', e?.message);
+    }
+
+    return { thumb, preview };
+  } finally {
+    // cleanup (best effort)
+    Promise.allSettled([
+      fs.unlink(tmpVideo).catch(() => {}),
+      fs.unlink(thumbLocal).catch(() => {}),
+      fs.unlink(previewLocal).catch(() => {}),
+    ]).catch(() => {});
+  }
+}
+
+
 // ─── 1. Create Video (JSON) – with thumbnail & preview uploads ────────────────
 export const createVideoJson = async (req, res) => {
   try {
     const { error, value } = classVaultValidationSchema.validate(req.body);
     if (error) {
-      return res
-        .status(400)
-        .json({ success: false, message: error.details[0].message });
+      return res.status(400).json({ success: false, message: error.details[0].message });
     }
 
     const {
@@ -227,106 +310,30 @@ export const createVideoJson = async (req, res) => {
       tags,
       video_url = '',
       pdf_url = '',
+
+      // ✅ accept public-safe assets from client
+      thumbnail_url: incomingThumb = '',
+      preview_url: incomingPreview = '',
     } = value;
+
     const tutor_id = req.user.id;
 
-    let thumbnail_url = null;
-    let preview_url = null;
+    // ✅ start with any client-provided assets
+    let thumbnail_url = incomingThumb || null;
+    let preview_url = incomingPreview || null;
 
+    // If video exists: generate missing derivatives (best effort)
     if (video_url) {
-      // 1) Download video to temp file
-      const makeAbsolute = (url) =>
-        /^https?:\/\//.test(url)
-          ? url
-          : `${req.protocol}://${req.get('host')}${url}`;
+      const { thumb, preview } = await buildVideoDerivativesFromUrl(req, video_url);
 
-      const tmpVideo = path.join(os.tmpdir(), `${uuid()}.mp4`);
-      const resp = await fetch(makeAbsolute(video_url));
-      if (!resp.ok) throw new Error('Failed to download video');
-      await new Promise((r, rej) => {
-        const ws = createWriteStream(tmpVideo);
-        resp.body.pipe(ws);
-        resp.body.on('error', rej);
-        ws.on('finish', r);
-      });
-
-      // 2) Generate derivatives
-      // 2) Log downloaded file details
-      const { size } = await fs.stat(tmpVideo);
-      console.log('[classVault] tmpVideo downloaded', {
-        tmpVideo,
-        sizeBytes: size,
-        video_url,
-      });
-
-      // 3) Generate derivatives (best-effort — do NOT kill the whole request)
-      const thumbLocal = path.join(os.tmpdir(), `${uuid()}.jpg`);
-      const previewLocal = path.join(os.tmpdir(), `${uuid()}.mp4`);
-
-      try {
-        await generateThumbnail(tmpVideo, thumbLocal);
-      } catch (thumbErr) {
-        console.warn(
-          '[classVault] Thumbnail generation failed, continuing without thumbnail',
-          {
-            err: thumbErr?.message,
-          },
-        );
-      }
-
-      try {
-        await generatePreview(tmpVideo, previewLocal, 30);
-      } catch (prevErr) {
-        console.warn(
-          '[classVault] Preview generation failed, continuing without preview',
-          {
-            err: prevErr?.message,
-          },
-        );
-      }
-
-      // 4) Upload whatever we managed to generate
-      const uploads = [];
-
-      try {
-        // thumbnail (optional)
-        try {
-          const thumbStats = await fs.stat(thumbLocal);
-          if (thumbStats.size > 0) {
-            const [thumbUpload] = await uploadToCloudinary(
-              [{ path: thumbLocal }],
-              'image',
-            );
-            thumbnail_url = thumbUpload.url;
-          }
-        } catch (e) {
-          console.warn('[classVault] No valid thumbnail to upload', e?.message);
-        }
-
-        // preview (optional)
-        try {
-          const prevStats = await fs.stat(previewLocal);
-          if (prevStats.size > 0) {
-            const [previewUpload] = await uploadToCloudinary(
-              [{ path: previewLocal }],
-              'video',
-            );
-            preview_url = previewUpload.url;
-          }
-        } catch (e) {
-          console.warn('[classVault] No valid preview to upload', e?.message);
-        }
-      } finally {
-        // 5) Cleanup temp files (ignore errors)
-        Promise.allSettled([
-          fs.unlink(tmpVideo),
-          fs.unlink(thumbLocal).catch(() => {}),
-          fs.unlink(previewLocal).catch(() => {}),
-        ]).catch(() => {});
-      }
+      // only fill what’s missing
+      if (!thumbnail_url) thumbnail_url = thumb?.url || null;
+      if (!preview_url) preview_url = preview?.url || null;
+    } else {
+      // pdf-only => no preview clip
+      preview_url = null;
     }
 
-    // 5) Persist metadata
     const insertSQL = `
       INSERT INTO recorded_videos
         (tutor_id, title, description, subject, grade_level,
@@ -334,6 +341,7 @@ export const createVideoJson = async (req, res) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING *;
     `;
+
     const result = await pool.query(insertSQL, [
       tutor_id,
       title,
@@ -359,54 +367,89 @@ export const createVideoJson = async (req, res) => {
     });
   }
 };
+;
 
 /**
  * Secure download endpoint: only students who purchased may fetch URLs.
  */
+// controllers/classVaultController.js
 export const downloadPdfOrVideo = async (req, res) => {
   try {
-    const studentId = req.user.id;
-    const videoId = Number(req.params.videoId);
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-    // ✅ Query the correct table name and column names:
-    const access = await pool.query(
+    const videoId = Number(req.params.videoId);
+    if (!Number.isInteger(videoId) || videoId <= 0) {
+      return res.status(400).json({ message: 'Invalid video id' });
+    }
+
+    // 1) Load the item (we need tutor_id + urls)
+    const { rows: vRows } = await pool.query(
+      `SELECT id, tutor_id, pdf_url, video_url
+         FROM recorded_videos
+        WHERE id = $1`,
+      [videoId]
+    );
+
+    if (!vRows.length) return res.status(404).json({ message: 'Not found' });
+
+    const item = vRows[0];
+
+    // ✅ 2) Tutor-owner can always access their own content
+    if (Number(item.tutor_id) === Number(userId)) {
+      return res.json({ pdf_url: item.pdf_url, video_url: item.video_url });
+    }
+
+    // 3) Otherwise, require a purchase (student access)
+    const { rows: accessRows } = await pool.query(
       `SELECT 1
          FROM classvault_purchases
         WHERE student_id = $1
-          AND class_id   = $2`,
-      [studentId, videoId],
+          AND class_id   = $2
+        LIMIT 1`,
+      [userId, videoId]
     );
 
-    if (access.rows.length === 0) {
+    if (!accessRows.length) {
       return res
         .status(403)
         .json({ message: 'Access denied. Please purchase the class.' });
     }
 
-    const result = await pool.query(
-      `SELECT pdf_url, video_url
-         FROM recorded_videos
-        WHERE id = $1`,
-      [videoId],
-    );
-    return res.json(result.rows[0]);
+    return res.json({ pdf_url: item.pdf_url, video_url: item.video_url });
   } catch (err) {
     console.error('downloadPdfOrVideo error:', err);
-    return res
-      .status(500)
-      .json({ message: 'Server error fetching resources.' });
+    return res.status(500).json({ message: 'Server error fetching resources.' });
   }
 };
 
+
 /** Fetch all videos (for listing) */
+/** Fetch all videos (for listing) — PUBLIC SAFE (no paid URLs) */
 export const getAllVideos = async (req, res) => {
-  const result = await pool.query(
-    'SELECT * FROM recorded_videos ORDER BY created_at DESC',
-  );
-  res.json(result.rows);
+  try {
+    const result = await pool.query(`
+      SELECT
+        id, tutor_id, title, description, subject, grade_level,
+        price, duration, tags,
+        preview_url, thumbnail_url, created_at,
+        -- expose availability without exposing URLs
+        (video_url IS NOT NULL AND video_url <> '') AS has_video,
+        (pdf_url   IS NOT NULL AND pdf_url   <> '') AS has_pdf
+      FROM recorded_videos
+      ORDER BY created_at DESC
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[classVault] getAllVideos error', err);
+    res.status(500).json({ message: 'Failed to load videos.' });
+  }
 };
 
+
 /** Explore marketplace (public) with pagination */
+/** Explore marketplace (public) with pagination — PUBLIC SAFE */
 export const listMarketplaceVideos = async (req, res) => {
   try {
     const { limit, offset, q } = parsePagination(req, 12);
@@ -427,8 +470,10 @@ export const listMarketplaceVideos = async (req, res) => {
     const sql = `
       SELECT
         id, tutor_id, title, description, subject, grade_level,
-        price, duration, tags, video_url, pdf_url, preview_url,
-        thumbnail_url, created_at,
+        price, duration, tags,
+        preview_url, thumbnail_url, created_at,
+        (video_url IS NOT NULL AND video_url <> '') AS has_video,
+        (pdf_url   IS NOT NULL AND pdf_url   <> '') AS has_pdf,
         COUNT(*) OVER()::int AS total_rows
       FROM recorded_videos
       ${where}
@@ -436,6 +481,7 @@ export const listMarketplaceVideos = async (req, res) => {
       LIMIT $1 OFFSET $2
     `;
     const { rows } = await pool.query(sql, params);
+
     const total = rows[0]?.total_rows ?? 0;
     const items = rows.map(({ total_rows, ...rest }) => rest);
     return res.json({ items, total, limit, offset });
@@ -444,6 +490,7 @@ export const listMarketplaceVideos = async (req, res) => {
     return res.status(500).json({ message: 'Failed to load classvault marketplace.' });
   }
 };
+
 
 /** Tutor-owned ClassVault items */
 export const listMyVideos = async (req, res) => {
@@ -491,14 +538,35 @@ export const listMyVideos = async (req, res) => {
 };
 
 /** Fetch a single video’s metadata by ID */
+/** Fetch a single video’s metadata by ID — PUBLIC SAFE (no paid URLs) */
 export const getVideoById = async (req, res) => {
-  const { id } = req.params;
-  const result = await pool.query(
-    'SELECT * FROM recorded_videos WHERE id = $1',
-    [id],
-  );
-  res.json(result.rows[0]);
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `
+      SELECT
+        id, tutor_id, title, description, subject, grade_level,
+        price, duration, tags,
+        preview_url, thumbnail_url, created_at,
+        (video_url IS NOT NULL AND video_url <> '') AS has_video,
+        (pdf_url   IS NOT NULL AND pdf_url   <> '') AS has_pdf
+      FROM recorded_videos
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    if (!result.rows.length) return res.status(404).json({ message: 'Not found' });
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('[classVault] getVideoById error', err);
+    res.status(500).json({ message: 'Failed to load class.' });
+  }
 };
+
 
 // ─── Delete Video & All Cloudinary Assets ───────────────────────────────────
 export const deleteVideoById = async (req, res) => {
@@ -509,104 +577,163 @@ export const deleteVideoById = async (req, res) => {
     // 1) Verify ownership
     const dbRes = await pool.query(
       'SELECT * FROM recorded_videos WHERE id = $1 AND tutor_id = $2',
-      [id, tutorId],
+      [id, tutorId]
     );
+
     if (dbRes.rows.length === 0) {
       return res
         .status(404)
         .json({ success: false, message: 'Not found or unauthorized' });
     }
+
     const video = dbRes.rows[0];
 
-    // 2) Collect Cloudinary public_ids
-    const toDelete = [];
-    for (let field of ['video_url', 'preview_url', 'thumbnail_url']) {
-      if (video[field]) {
-        const pid = getPublicIdFromUrl(video[field]);
-        if (pid) toDelete.push(pid);
-      }
-    }
-    // pdf_url left as-is (not managed by Cloudinary)
+    // 2) Collect Cloudinary public_ids (split by resource type)
+    const imageIds = [];
+    const videoIds = [];
+    const rawIds = [];
 
-    // 3) Delete from Cloudinary
-    await deleteFromCloudinary(toDelete, 'auto'); // 'auto' covers image/video
+    const pushIf = (arr, url) => {
+      if (!url) return;
+      const pid = getPublicIdFromUrl(url);
+      if (pid) arr.push(pid);
+    };
+
+    pushIf(videoIds, video.video_url);
+    pushIf(videoIds, video.preview_url);
+    pushIf(imageIds, video.thumbnail_url);
+    pushIf(rawIds, video.pdf_url); // ✅ include pdf if hosted on Cloudinary (raw)
+
+    // 3) Delete from Cloudinary (best effort - do not fail whole request)
+    await Promise.allSettled([
+      imageIds.length ? deleteFromCloudinary(imageIds, 'image') : Promise.resolve(),
+      videoIds.length ? deleteFromCloudinary(videoIds, 'video') : Promise.resolve(),
+      rawIds.length ? deleteFromCloudinary(rawIds, 'raw') : Promise.resolve(),
+    ]);
 
     // 4) Remove DB row
     await pool.query('DELETE FROM recorded_videos WHERE id = $1', [id]);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Video and associated Cloudinary assets deleted.',
     });
   } catch (err) {
     console.error('deleteVideoById error:', err);
-    res
+    return res
       .status(500)
       .json({ success: false, message: 'Server error deleting video' });
   }
 };
 
-/**
- * JSON-based update endpoint: patch any subset of fields.
- */
 export const updateVideoJson = async (req, res) => {
   const { id } = req.params;
   const tutorId = req.user.id;
 
+  const shouldDeleteOld =
+    String(req.query?.deleteOld || '').trim() === '1' ||
+    String(process.env.CLASSVAULT_DELETE_OLD_ASSETS || '') === '1';
+
   try {
-    // 1) validate update payload
-    const { error, value } = classVaultUpdateValidationSchema.validate(
-      req.body,
-    );
+    const { error, value } = classVaultUpdateValidationSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({
-        success: false,
-        message: error.details[0].message,
-      });
+      return res.status(400).json({ success: false, message: error.details[0].message });
     }
 
-    // 2) ensure record exists & tutor owns it
-    const sel = await pool.query(
-      'SELECT 1 FROM recorded_videos WHERE id = $1 AND tutor_id = $2',
-      [id, tutorId],
+    const { rows } = await pool.query(
+      `SELECT * FROM recorded_videos WHERE id = $1 AND tutor_id = $2 LIMIT 1`,
+      [id, tutorId]
     );
-    if (sel.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: 'Video not found or unauthorized' });
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Video not found or unauthorized' });
     }
 
-    // 3) build dynamic SET clause
-    const fields = Object.keys(value);
-    if (fields.length === 0) {
+    const existing = rows[0];
+    const patch = { ...value };
+
+    const norm = (x) => String(x ?? '').trim();
+
+    const hasVideoUrlInPatch = Object.prototype.hasOwnProperty.call(patch, 'video_url');
+    const hasPdfUrlInPatch = Object.prototype.hasOwnProperty.call(patch, 'pdf_url');
+
+    const nextVideoUrl = hasVideoUrlInPatch ? norm(patch.video_url) : norm(existing.video_url);
+    const nextPdfUrl = hasPdfUrlInPatch ? norm(patch.pdf_url) : norm(existing.pdf_url);
+
+    const willBePdfOnly = !nextVideoUrl && Boolean(nextPdfUrl);
+
+    const videoUrlChanged = hasVideoUrlInPatch && norm(existing.video_url) !== nextVideoUrl;
+
+    const oldThumbPid = getPublicIdFromUrl(existing.thumbnail_url);
+    const oldPrevPid = getPublicIdFromUrl(existing.preview_url);
+
+    // If video changed -> regenerate derivatives
+    if (videoUrlChanged) {
+      if (nextVideoUrl) {
+        const { thumb, preview } = await buildVideoDerivativesFromUrl(req, nextVideoUrl);
+        patch.thumbnail_url = thumb?.url || null;
+        patch.preview_url = preview?.url || null;
+      } else {
+        patch.thumbnail_url = null;
+        patch.preview_url = null;
+      }
+    }
+
+    // ✅ Always kill preview for pdf-only
+    if (willBePdfOnly) {
+      patch.preview_url = null;
+    }
+
+    // ✅ Require thumbnail for pdf-only (use patch thumb if present, else existing)
+    const nextThumb = Object.prototype.hasOwnProperty.call(patch, 'thumbnail_url')
+      ? norm(patch.thumbnail_url)
+      : norm(existing.thumbnail_url);
+
+    if (willBePdfOnly && !nextThumb) {
       return res.status(400).json({
         success: false,
-        message: 'No valid fields provided to update.',
+        message: 'thumbnail_url is required for Notes (pdf-only) items. Please upload a thumbnail.',
       });
     }
+
+    const fields = Object.keys(patch);
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, message: 'No valid fields provided to update.' });
+    }
+
     const setClause = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
-    const vals = fields.map((f) => value[f]);
+    const vals = fields.map((f) => patch[f]);
+
     vals.push(id, tutorId);
 
-    // 4) execute update
     const updateQuery = `
       UPDATE recorded_videos
       SET ${setClause}
       WHERE id = $${fields.length + 1} AND tutor_id = $${fields.length + 2}
       RETURNING *;
     `;
-    const updated = await pool.query(updateQuery, vals);
 
-    res.json({ success: true, video: updated.rows[0] });
+    const updated = await pool.query(updateQuery, vals);
+    const updatedRow = updated.rows[0];
+
+    if (shouldDeleteOld && videoUrlChanged) {
+      await Promise.allSettled([
+        oldThumbPid ? deleteFromCloudinary([oldThumbPid], 'image') : Promise.resolve(),
+        oldPrevPid ? deleteFromCloudinary([oldPrevPid], 'video') : Promise.resolve(),
+      ]);
+    }
+
+    return res.json({ success: true, video: updatedRow });
   } catch (err) {
     console.error('Error updating video:', err);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to update video',
       error: err.message,
     });
   }
 };
+
 
 // apps/backend/controllers/classVaultController.js
 export const purchaseClass = async (req, res) => {

@@ -113,9 +113,10 @@ const Footer: React.FC = () => {
           </div>
 
           {/* Store badge */}
+  
           <div className="md:w-1/3 flex justify-center md:justify-end items-center">
             <a
-              href="https://play.google.com/store/apps/details?id=com.DayBreak"
+              href="https://play.google.com/store/apps/details?id=com.paulmbugua2.mytutorapp"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Get the DayBreak app on Google Play"
@@ -128,6 +129,7 @@ const Footer: React.FC = () => {
               />
             </a>
           </div>
+
         </div>
 
         {/* Policy Links */}

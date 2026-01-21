@@ -1,18 +1,25 @@
-import React, { useMemo } from 'react';
-import { View, Text, SectionList, Pressable } from 'react-native';
+import React, { useCallback, useMemo, useState, useRef } from 'react';
+import { View, Text, SectionList, Pressable, Alert, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
+import { Video, ResizeMode } from 'expo-av';
 import { Image } from 'expo-image';
+import tw from '../../tailwind';
+
 import { useMyLibrary } from '@mytutorapp/shared/hooks';
+import { useClassVault } from '@mytutorapp/shared/hooks/useClassVault';
+import { useShopContext } from '@mytutorapp/shared/context';
+
 import type { Course, RecordedVideo } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
-import tw from '../../tailwind';
+
+import { pickImageUriForCourse } from '../../utils/subjectImages'; // ✅ use your subject image picker
 
 type Nav = StackNavigationProp<MainStackParamList, 'Courses'>;
 
 type SectionItem =
-  | ({ kind: 'classvault' } & RecordedVideo)
-  | ({ kind: 'course'; ai?: boolean } & Course);
+  | ({ kind: 'classvault'; sectionKey: string } & RecordedVideo)
+  | ({ kind: 'course'; ai?: boolean; sectionKey: string } & Course);
 
 type LibrarySection = {
   key: string;
@@ -26,34 +33,252 @@ type LibrarySection = {
   loadMore: () => void;
 };
 
-const Card: React.FC<{
-  title: string;
-  subtitle: string;
-  imageUrl?: string | null;
-  badge?: string;
-  onPress: () => void;
-}> = ({ title, subtitle, imageUrl, badge, onPress }) => (
-  <Pressable onPress={onPress} style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}>
-    <View style={tw`h-32 bg-slate-200 dark:bg-white/10`}>
-      {imageUrl ? (
-        <Image source={{ uri: imageUrl }} style={tw`w-full h-full`} contentFit="cover" />
-      ) : null}
-    </View>
-    <View style={tw`p-3`}>
-      <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
-        {title}
-      </Text>
-      <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={1}>
-        {subtitle}
-      </Text>
-      {badge ? (
-        <View style={tw`mt-2 self-start rounded-full bg-blue-50 px-2 py-0.5`}>
-          <Text style={tw`text-[11px] text-blue-600 font-semibold`}>{badge}</Text>
-        </View>
-      ) : null}
-    </View>
-  </Pressable>
+let WebView: any = null;
+try {
+  WebView = require('react-native-webview').WebView;
+} catch {
+  WebView = null;
+}
+
+function toPdfPreviewUrl(pdfUrl: string) {
+  const clean = pdfUrl.trim();
+  if (!clean) return '';
+  if (Platform.OS === 'android') {
+    return `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(clean)}`;
+  }
+  return clean;
+}
+
+function getVaultId(v: any): number {
+  const raw = v?.id ?? v?.class_id ?? v?.video_id ?? v?.recorded_video_id;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : -1;
+}
+
+function cacheBust(item: any) {
+  return String(item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt || Date.now());
+}
+function withBust(url?: string | null, bust?: string) {
+  if (!url) return null;
+  const v = bust || String(Date.now());
+  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(v)}`;
+}
+function isPdfOnly(v: RecordedVideo) {
+  return Boolean(v.pdf_url) && !v.video_url;
+}
+
+function courseThumb(c: any): string | null {
+  return (
+    c?.thumbnail_url ||
+    c?.thumbnailUrl ||
+    c?.thumb_url ||
+    c?.thumbUrl ||
+    c?.image_url ||
+    c?.imageUrl ||
+    c?.cover_url ||
+    c?.coverUrl ||
+    null
+  );
+}
+
+/** ClassVault thumb candidates (so Purchased shows previews too) */
+function classVaultThumb(v: any): string | null {
+  return (
+    v?.thumbnail_url ||
+    v?.thumbnailUrl ||
+    v?.preview_thumbnail_url ||
+    v?.previewThumbnailUrl ||
+    v?.poster_url ||
+    v?.posterUrl ||
+    v?.image_url ||
+    v?.imageUrl ||
+    null
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+ * UI atoms
+ * ───────────────────────────────────────────────────────── */
+
+const Badge: React.FC<{ label: string; tone?: 'blue' | 'red' }> = ({ label, tone = 'blue' }) => (
+  <View
+    style={tw.style(
+      'mt-2 self-start rounded-full px-2 py-0.5',
+      tone === 'blue' ? 'bg-blue-50' : 'bg-red-50'
+    )}
+  >
+    <Text
+      style={tw.style(
+        'text-[11px] font-semibold',
+        tone === 'blue' ? 'text-blue-600' : 'text-red-600'
+      )}
+    >
+      {label}
+    </Text>
+  </View>
 );
+
+const TutorActions: React.FC<{
+  onEdit: () => void;
+  onDelete: () => void;
+  deleting?: boolean;
+}> = ({ onEdit, onDelete, deleting }) => (
+  <View style={tw`absolute top-3 right-3 z-20 flex-row gap-2`}>
+    <Pressable
+      onPress={(e) => {
+        e.stopPropagation?.();
+        onEdit();
+      }}
+      style={tw`h-9 px-3 rounded-lg bg-slate-100 dark:bg-[#172534] justify-center`}
+    >
+      <Text style={tw`text-xs font-semibold text-slate-900 dark:text-white`}>Edit</Text>
+    </Pressable>
+
+    <Pressable
+      disabled={!!deleting}
+      onPress={(e) => {
+        e.stopPropagation?.();
+        onDelete();
+      }}
+      style={tw.style(
+        `h-9 px-3 rounded-lg justify-center`,
+        deleting ? 'bg-red-200/60' : 'bg-red-50 dark:bg-[#2a0d11]'
+      )}
+    >
+      <Text style={tw`text-xs font-semibold text-red-600 dark:text-red-300`}>
+        {deleting ? 'Deleting…' : 'Delete'}
+      </Text>
+    </Pressable>
+  </View>
+);
+
+/**
+ * RN cannot iframe PDFs or autoplay video previews consistently.
+ * So we always render a visible preview:
+ *  - thumbnail when available
+ *  - otherwise a placeholder + chip ("Preview"/"Notes")
+ */
+const ClassVaultCard: React.FC<{
+  item: RecordedVideo;
+  showTutorActions?: boolean;
+  isPurchased?: boolean;
+  deleting?: boolean;
+  isVisible?: boolean;
+  onPress: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}> = ({ item, showTutorActions, isPurchased, deleting, isVisible, onPress, onEdit, onDelete }) => {
+  const bust = cacheBust(item);
+
+  const pdfUrlRaw = withBust((item as any)?.pdf_url || '', bust) || '';
+  const pdfPreviewUrl = pdfUrlRaw ? toPdfPreviewUrl(pdfUrlRaw) : '';
+
+  const previewUrl = withBust((item as any)?.preview_url || (item as any)?.video_url || '', bust) || '';
+  const thumbUrl = withBust(classVaultThumb(item) || '', bust) || '';
+
+  const pdfOnly = Boolean((item as any)?.pdf_url) && !(item as any)?.video_url;
+  const [pdfBlocked, setPdfBlocked] = useState(false);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
+    >
+      <View style={tw`relative h-32 bg-[#0b1220] overflow-hidden`}>
+        {/* PDF-only inline preview (if WebView available) */}
+        {pdfOnly && WebView && pdfPreviewUrl && !pdfBlocked ? (
+          <WebView
+            source={{ uri: pdfPreviewUrl }}
+            style={{ flex: 1, backgroundColor: 'transparent' }}
+            onError={() => setPdfBlocked(true)}
+            javaScriptEnabled={false}
+            domStorageEnabled={false}
+          />
+        ) : null}
+
+        {/* Thumbnail fallback */}
+        {thumbUrl && (!pdfOnly || pdfBlocked || !pdfPreviewUrl || !WebView) ? (
+          <Image source={{ uri: thumbUrl }} style={tw`w-full h-full`} contentFit="cover" cachePolicy="none" />
+        ) : null}
+
+        {/* Video preview (autoplay only when visible) */}
+        {!pdfOnly && previewUrl ? (
+          <Video
+            source={{ uri: previewUrl }}
+            style={tw`absolute inset-0`}
+            resizeMode={ResizeMode.COVER}
+            isLooping
+            isMuted
+            shouldPlay={!!isVisible}
+            useNativeControls={false}
+            onError={() => {}}
+          />
+        ) : null}
+
+        {/* Chip */}
+        <View style={tw`absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5`}>
+          <Text style={tw`text-[11px] text-white font-semibold`}>{pdfOnly ? 'Notes' : 'Preview'}</Text>
+        </View>
+
+        {/* Tutor actions */}
+        {showTutorActions && onEdit && onDelete ? (
+          <TutorActions onEdit={onEdit} onDelete={onDelete} deleting={deleting} />
+        ) : null}
+
+        {/* PDF blocked overlay */}
+        {pdfOnly && (pdfBlocked || !WebView || !pdfPreviewUrl) ? (
+          <View style={tw`absolute inset-0 items-center justify-center bg-black/35 px-3`}>
+            <Text style={tw`text-xs text-white font-semibold`}>Notes preview unavailable</Text>
+            <Text style={tw`text-[11px] text-white/80 mt-1 text-center`}>Tap to open and view the PDF.</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={tw`p-3`}>
+        <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
+          {item.title || 'Untitled'}
+        </Text>
+        <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={1}>
+          {item.subject || (item as any)?.grade_level || 'ClassVault'}
+        </Text>
+        {isPurchased ? <Badge label="Purchased" /> : null}
+      </View>
+    </Pressable>
+  );
+};
+
+
+const CourseCard: React.FC<{
+  course: Course;
+  backendUrl?: string;
+  onPress: () => void;
+  badge?: string;
+}> = ({ course, backendUrl, onPress, badge }) => {
+  // ✅ Always have an image: real thumbnail OR subject-based fallback
+  const thumb = courseThumb(course) || pickImageUriForCourse(course as any, backendUrl);
+  const src = withBust(thumb, cacheBust(course))!;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
+    >
+      <View style={tw`h-28 bg-slate-200 dark:bg-white/10`}>
+        <Image source={{ uri: src }} style={tw`w-full h-full`} contentFit="cover" cachePolicy="none" />
+      </View>
+
+      <View style={tw`p-3`}>
+        <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
+          {course.title || 'Untitled course'}
+        </Text>
+        <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={1}>
+          {(course as any).subject || 'Course'}
+        </Text>
+        {badge ? <Badge label={badge} /> : null}
+      </View>
+    </Pressable>
+  );
+};
 
 const SectionHeader: React.FC<{ title: string; subtitle: string }> = ({ title, subtitle }) => (
   <View style={tw`px-4 pt-4 pb-2`}>
@@ -79,10 +304,7 @@ const SectionFooter: React.FC<{
       <Text style={tw`text-sm text-slate-500 dark:text-white/60`}>{emptyMessage}</Text>
     ) : null}
     {hasMore ? (
-      <Pressable
-        onPress={onLoadMore}
-        style={tw`mt-3 self-start rounded-full bg-blue-500 px-4 py-2`}
-      >
+      <Pressable onPress={onLoadMore} style={tw`mt-3 self-start rounded-full bg-blue-500 px-4 py-2`}>
         <Text style={tw`text-sm font-semibold text-white`}>Load more</Text>
       </Pressable>
     ) : null}
@@ -91,7 +313,101 @@ const SectionFooter: React.FC<{
 
 const MyCoursesNative: React.FC = () => {
   const navigation = useNavigation<Nav>();
+
+  const { backendUrl } = useShopContext();
   const { role, isTutor, sections } = useMyLibrary();
+  const { remove: removeVault } = useClassVault();
+
+  // optimistic hides + delete loading
+  const [deletedCourseIds, setDeletedCourseIds] = useState<Set<string>>(new Set());
+  const [deletedVaultIds, setDeletedVaultIds] = useState<Set<string>>(new Set());
+  const [deletingVaultId, setDeletingVaultId] = useState<string | null>(null);
+
+  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+const viewabilityConfig = useMemo(() => ({ itemVisiblePercentThreshold: 55 }), []);
+
+const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+  const next = new Set<string>();
+  for (const v of viewableItems || []) {
+    const it = v?.item;
+    if (!it) continue;
+    if (it.kind === 'classvault') {
+      const id = getVaultId(it);
+      if (id > 0) next.add(`classvault:${id}`);
+    }
+  }
+  setVisibleIds(next);
+}).current;
+
+
+
+  const tryRefreshSection = useCallback(async (sec: any) => {
+    try {
+      if (typeof sec?.refresh === 'function') return await sec.refresh();
+      if (typeof sec?.refetch === 'function') return await sec.refetch();
+      if (typeof sec?.reload === 'function') return await sec.reload();
+      if (typeof sec?.fetch === 'function') return await sec.fetch();
+    } catch {}
+  }, []);
+
+const onDeleteVault = useCallback(
+  (item: RecordedVideo) => {
+    const idNum = getVaultId(item);
+    if (idNum <= 0) {
+      Alert.alert('Error', 'Invalid item id.');
+      return;
+    }
+
+    Alert.alert('Delete item?', `Delete "${item.title || 'this item'}"? This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          const id = String(idNum);
+          setDeletingVaultId(id);
+          setDeletedVaultIds((prev) => new Set(prev).add(id));
+
+          try {
+            await removeVault(idNum);
+            await tryRefreshSection(sections?.createdClassVault);
+          } catch (e: any) {
+            setDeletedVaultIds((prev) => {
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+            Alert.alert('Failed', e?.message || 'Failed to delete item.');
+          } finally {
+            setDeletingVaultId(null);
+          }
+        },
+      },
+    ]);
+  },
+  [removeVault, sections, tryRefreshSection]
+);
+
+
+  const createdVaultItems = useMemo(() => {
+    const raw = sections.createdClassVault.items || [];
+    return raw.filter((x: any) => !deletedVaultIds.has(String(x?.id)));
+  }, [sections.createdClassVault.items, deletedVaultIds]);
+
+  const purchasedVaultItems = useMemo(() => {
+    const raw = sections.purchasedClassVault.items || [];
+    return raw.filter((x: any) => !deletedVaultIds.has(String(x?.id)));
+  }, [sections.purchasedClassVault.items, deletedVaultIds]);
+
+  const normalCourseItems = useMemo(() => {
+    const raw = sections.normalCourses.items || [];
+    return raw.filter((c: any) => !deletedCourseIds.has(String(c?.id)));
+  }, [sections.normalCourses.items, deletedCourseIds]);
+
+  const aiCourseItems = useMemo(() => {
+    const raw = sections.aiCourses.items || [];
+    return raw.filter((c: any) => !deletedCourseIds.has(String(c?.id)));
+  }, [sections.aiCourses.items, deletedCourseIds]);
 
   const librarySections: LibrarySection[] = useMemo(() => {
     if (role === 'tutor') {
@@ -100,10 +416,7 @@ const MyCoursesNative: React.FC = () => {
           key: 'createdClassVault',
           title: 'Your ClassVault Videos & Notes',
           subtitle: 'Only your uploaded ClassVault content.',
-          data: sections.createdClassVault.items.map((item) => ({
-            ...item,
-            kind: 'classvault',
-          })),
+          data: createdVaultItems.map((item) => ({ ...item, kind: 'classvault', sectionKey: 'createdClassVault' })),
           loading: sections.createdClassVault.loading,
           error: sections.createdClassVault.error,
           emptyMessage: 'You haven’t uploaded any ClassVault videos or notes yet.',
@@ -114,10 +427,7 @@ const MyCoursesNative: React.FC = () => {
           key: 'normalCourses',
           title: 'Your Courses',
           subtitle: 'Courses you created for learners.',
-          data: sections.normalCourses.items.map((item) => ({
-            ...item,
-            kind: 'course',
-          })),
+          data: normalCourseItems.map((item) => ({ ...item, kind: 'course', sectionKey: 'normalCourses' })),
           loading: sections.normalCourses.loading,
           error: sections.normalCourses.error,
           emptyMessage: 'You haven’t created any courses yet.',
@@ -128,11 +438,7 @@ const MyCoursesNative: React.FC = () => {
           key: 'aiCourses',
           title: 'Your AI Courses',
           subtitle: 'AI courses you personally unlocked.',
-          data: sections.aiCourses.items.map((item) => ({
-            ...item,
-            kind: 'course',
-            ai: true,
-          })),
+          data: aiCourseItems.map((item) => ({ ...item, kind: 'course', ai: true, sectionKey: 'aiCourses' })),
           loading: sections.aiCourses.loading,
           error: sections.aiCourses.error,
           emptyMessage: 'You haven’t unlocked any AI courses yet.',
@@ -147,10 +453,7 @@ const MyCoursesNative: React.FC = () => {
         key: 'purchasedClassVault',
         title: 'Purchased Videos & Notes',
         subtitle: 'Your ClassVault purchases live here.',
-        data: sections.purchasedClassVault.items.map((item) => ({
-          ...item,
-          kind: 'classvault',
-        })),
+        data: purchasedVaultItems.map((item) => ({ ...item, kind: 'classvault', sectionKey: 'purchasedClassVault' })),
         loading: sections.purchasedClassVault.loading,
         error: sections.purchasedClassVault.error,
         emptyMessage: 'You haven’t purchased any videos or notes yet.',
@@ -161,11 +464,7 @@ const MyCoursesNative: React.FC = () => {
         key: 'aiCourses',
         title: 'AI Courses',
         subtitle: 'AI-powered courses you unlocked.',
-        data: sections.aiCourses.items.map((item) => ({
-          ...item,
-          kind: 'course',
-          ai: true,
-        })),
+        data: aiCourseItems.map((item) => ({ ...item, kind: 'course', ai: true, sectionKey: 'aiCourses' })),
         loading: sections.aiCourses.loading,
         error: sections.aiCourses.error,
         emptyMessage: 'You haven’t unlocked any AI courses yet.',
@@ -176,10 +475,7 @@ const MyCoursesNative: React.FC = () => {
         key: 'normalCourses',
         title: 'Courses',
         subtitle: 'Courses you enrolled in or purchased.',
-        data: sections.normalCourses.items.map((item) => ({
-          ...item,
-          kind: 'course',
-        })),
+        data: normalCourseItems.map((item) => ({ ...item, kind: 'course', sectionKey: 'normalCourses' })),
         loading: sections.normalCourses.loading,
         error: sections.normalCourses.error,
         emptyMessage: 'You haven’t enrolled in any courses yet.',
@@ -187,27 +483,42 @@ const MyCoursesNative: React.FC = () => {
         loadMore: sections.normalCourses.loadMore,
       },
     ];
-  }, [role, sections]);
+  }, [role, sections, createdVaultItems, purchasedVaultItems, normalCourseItems, aiCourseItems]);
 
   const renderItem = ({ item }: { item: SectionItem }) => {
-    if (item.kind === 'classvault') {
-      return (
-        <Card
-          title={item.title}
-          subtitle={item.subject || item.grade_level || 'ClassVault'}
-          imageUrl={item.thumbnail_url}
-          badge={role === 'student' ? 'Purchased' : undefined}
-          onPress={() => navigation.navigate('ClassVaultDetail', { id: Number(item.id) })}
-        />
-      );
-    }
+if (item.kind === 'classvault') {
+  const id = getVaultId(item);
+  const deleting = deletingVaultId === String(id);
+  const isPurchased = item.sectionKey === 'purchasedClassVault';
+  const key = `classvault:${id}`;
+  const isVisible = visibleIds.has(key);
+
+  return (
+    <ClassVaultCard
+      item={{ ...(item as any), id }} // ✅ normalize id for downstream components
+      isVisible={isVisible}
+      isPurchased={isPurchased}
+      showTutorActions={role === 'tutor' && item.sectionKey === 'createdClassVault'}
+      deleting={deleting}
+      onPress={() => {
+        if (id <= 0) {
+          Alert.alert('Error', 'Invalid item id. Please refresh.');
+          return;
+        }
+        navigation.navigate('ClassVaultDetail', { id });
+      }}
+      onEdit={() => navigation.navigate('ClassVaultUpload')}
+      onDelete={() => onDeleteVault({ ...(item as any), id } as any)}
+    />
+  );
+}
+
 
     if (item.ai) {
       return (
-        <Card
-          title={item.title}
-          subtitle={item.subject || 'AI Course'}
-          imageUrl={item.thumbnail_url}
+        <CourseCard
+          course={item}
+          backendUrl={backendUrl}
           badge="AI"
           onPress={() =>
             navigation.navigate('RobotTutor', {
@@ -221,14 +532,14 @@ const MyCoursesNative: React.FC = () => {
     }
 
     return (
-      <Card
-        title={item.title}
-        subtitle={item.subject || 'Course'}
-        imageUrl={item.thumbnail_url}
+      <CourseCard
+        course={item}
+        backendUrl={backendUrl}
         onPress={() =>
           navigation.navigate('CourseProgress', {
             courseId: String(item.id),
-          })
+            source: 'library',
+          } as any)
         }
       />
     );
@@ -236,12 +547,12 @@ const MyCoursesNative: React.FC = () => {
 
   return (
     <SectionList
+    onViewableItemsChanged={onViewableItemsChanged}
+    viewabilityConfig={viewabilityConfig}
       sections={librarySections}
-      keyExtractor={(item, index) => `${item.kind}-${item.id}-${index}`}
+      keyExtractor={(item, index) => `${item.kind}-${String(item.id)}-${index}`}
       renderItem={renderItem}
-      renderSectionHeader={({ section }) => (
-        <SectionHeader title={section.title} subtitle={section.subtitle} />
-      )}
+      renderSectionHeader={({ section }) => <SectionHeader title={section.title} subtitle={section.subtitle} />}
       renderSectionFooter={({ section }) => (
         <SectionFooter
           loading={section.loading}
@@ -260,6 +571,15 @@ const MyCoursesNative: React.FC = () => {
               ? 'Everything you created or unlocked lives here.'
               : 'Your purchased and enrolled learning content lives here.'}
           </Text>
+
+          {role === 'tutor' ? (
+            <Pressable
+              onPress={() => navigation.navigate('ClassVaultUpload')}
+              style={tw`mt-4 self-start rounded-full bg-blue-500 px-4 py-2`}
+            >
+              <Text style={tw`text-sm font-semibold text-white`}>+ Upload to ClassVault</Text>
+            </Pressable>
+          ) : null}
         </View>
       }
       contentContainerStyle={tw`pb-10 bg-slate-50 dark:bg-[#0b1016]`}

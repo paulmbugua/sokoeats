@@ -158,7 +158,8 @@ export type MainStackParamList = {
   /* ClassVault */
   ClassVaultLibrary: undefined;
   ClassVaultDetail: { id: number };
-  ClassVaultUpload: undefined;
+  ClassVaultUpload: { editId?: number } | undefined;
+
 
   /* Profile & account */
   Account: {

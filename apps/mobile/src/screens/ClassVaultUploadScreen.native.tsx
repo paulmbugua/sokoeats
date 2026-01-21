@@ -1,5 +1,5 @@
 // apps/mobile/src/screens/ClassVaultUploadScreen.native.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,12 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  Image,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -20,14 +22,13 @@ import tw from '../../tailwind';
 import useUploadClassVault, {
   CreateRecordedVideoPayload,
 } from '@mytutorapp/shared/hooks/useUploadClassVault';
+import { useClassVault } from '@mytutorapp/shared/hooks/useClassVault';
+import type { RecordedVideo } from '@mytutorapp/shared/types';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 import type { MainStackParamList } from '../navigation/types';
 import { useThemePref } from '../theme/ThemeContext';
-
-// ✅ use the same selector as CreateProfile
 import SelectField from './SelectField.native';
 
-/* ────────────────────── Subject categories (minimal) ────────────────────── */
 const SUBJECT_CATEGORIES = [
   'Mathematics',
   'Sciences',
@@ -39,15 +40,13 @@ const SUBJECT_CATEGORIES = [
   'Wellness & PE',
 ] as const;
 
+type SubjectCategory = (typeof SUBJECT_CATEGORIES)[number];
 type FileKind = 'video' | 'pdf';
 
+const COUNTRY_KEY = 'classvault:country';
+
 function getErrorMessage(err: unknown): string {
-  if (
-    err &&
-    typeof err === 'object' &&
-    'message' in err &&
-    typeof (err as any).message === 'string'
-  ) {
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as any).message === 'string') {
     return (err as any).message as string;
   }
   try {
@@ -67,6 +66,27 @@ function slugify(s: string) {
     .slice(0, 40);
 }
 
+const norm = (s?: string) => String(s ?? '').toLowerCase().trim();
+
+function findTagValue(tags: unknown, key: string): string | null {
+  if (!Array.isArray(tags)) return null;
+  const want = norm(key);
+  for (const t of tags) {
+    const s = String(t || '');
+    const [k, ...rest] = s.split(':');
+    if (norm(k) === want) return rest.join(':').trim() || null;
+  }
+  return null;
+}
+
+function stripAutoTags(userTags: string[]) {
+  const bannedKeys = new Set(['country', 'subject', 'grade']);
+  return userTags.filter((t) => {
+    const [k] = String(t || '').split(':');
+    return !bannedKeys.has(norm(k));
+  });
+}
+
 function deriveAutoTags(country: string, subject: string, gradeLevel: string): string[] {
   const tags: string[] = [];
   if (country) tags.push(`country:${country}`);
@@ -80,6 +100,7 @@ function deriveAutoTags(country: string, subject: string, gradeLevel: string): s
 
 const ClassVaultUploadScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
+  const route = useRoute<RouteProp<MainStackParamList, 'ClassVaultUpload'>>();
   const insets = useSafeAreaInsets();
   const { resolvedScheme } = useThemePref();
 
@@ -90,30 +111,51 @@ const ClassVaultUploadScreen: React.FC = () => {
     handleSubmitMetadata,
   } = useUploadClassVault();
 
-  // file-upload
+  const { videos, loading: libraryLoading, error: libraryError, update } = useClassVault();
+
+  const editId = useMemo(() => {
+    const raw = route.params?.editId;
+    const n = raw != null ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [route.params]);
+
+  const isEdit = Boolean(editId);
+
+  const editItem = useMemo<RecordedVideo | null>(() => {
+    if (!isEdit || !editId) return null;
+    return (videos || []).find((v) => Number((v as any).id) === Number(editId)) ?? null;
+  }, [videos, isEdit, editId]);
+
+  // file upload
   const [fileType, setFileType] = useState<FileKind>('video');
   const [uploadedUrl, setUploadedUrl] = useState<string>('');
   const [progress, setProgress] = useState<number>(0);
+  const [uploadingFile, setUploadingFile] = useState<boolean>(false);
+  const [replacingFile, setReplacingFile] = useState<boolean>(false);
+
+  // thumbnail upload
+  const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
+  const [thumbProgress, setThumbProgress] = useState<number>(0);
+  const [uploadingThumb, setUploadingThumb] = useState<boolean>(false);
 
   // metadata
-  const [country, setCountry] = useState<string>(''); // iso2 lower-case
+  const [country, setCountry] = useState<string>('');
   const [title, setTitle] = useState<string>('');
-  const [subject, setSubject] = useState<(typeof SUBJECT_CATEGORIES)[number] | ''>('');
+  const [subject, setSubject] = useState<SubjectCategory | ''>('');
   const [gradeLevel, setGradeLevel] = useState<string>('');
   const [price, setPrice] = useState<string>('');
   const [duration, setDuration] = useState<string>('');
   const [tags, setTags] = useState<string>('');
 
+  const [prefilled, setPrefilled] = useState(false);
+
   const placeholderColor = resolvedScheme === 'dark' ? '#64748b' : '#9ca3af';
 
-  // ✅ SelectField options
   const countryOptions = useMemo(() => {
     const arr = Array.isArray(COUNTRIES) ? COUNTRIES : [];
     return arr
       .map((c: any) => {
-        const code = String(c?.code ?? c?.iso2 ?? c?.alpha2 ?? '')
-          .trim()
-          .toLowerCase();
+        const code = String(c?.code ?? c?.iso2 ?? c?.alpha2 ?? '').trim().toLowerCase();
         const label = String(c?.name ?? c?.label ?? c?.country ?? c?.title ?? '').trim();
         return code && label ? { label, value: code } : null;
       })
@@ -122,15 +164,74 @@ const ClassVaultUploadScreen: React.FC = () => {
 
   const subjectOptions = useMemo(() => SUBJECT_CATEGORIES.map((s) => ({ label: s, value: s })), []);
 
+  // Load saved country
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await AsyncStorage.getItem(COUNTRY_KEY);
+        if (saved && !country) setCountry(String(saved).toLowerCase());
+      } catch {}
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist country
+  useEffect(() => {
+    if (!country) return;
+    AsyncStorage.setItem(COUNTRY_KEY, country).catch(() => {});
+  }, [country]);
+
+  // Prefill edit mode from local library (like web)
+  useEffect(() => {
+    if (!isEdit || !editItem || prefilled) return;
+
+    const itemTitle = String((editItem as any).title ?? '');
+    const itemSubject = String((editItem as any).subject ?? '');
+    const itemGrade = String((editItem as any).grade_level ?? '');
+    const itemPrice = (editItem as any).price != null ? String((editItem as any).price) : '';
+    const itemDuration = (editItem as any).duration != null ? String((editItem as any).duration) : '';
+    const itemTagsArr = Array.isArray((editItem as any).tags) ? (editItem as any).tags : [];
+    const itemTagsStr = itemTagsArr.map((t: any) => String(t)).join(', ');
+
+    const tagCountry = findTagValue(itemTagsArr, 'country');
+    const resolvedCountry = (tagCountry && tagCountry.toLowerCase()) || '';
+
+    const videoUrl = String((editItem as any).video_url ?? '');
+    const pdfUrl = String((editItem as any).pdf_url ?? '');
+
+    const inferredType: FileKind = pdfUrl ? 'pdf' : videoUrl ? 'video' : 'video';
+    const inferredUrl = inferredType === 'pdf' ? pdfUrl : videoUrl;
+
+    const turl = String((editItem as any).thumbnail_url ?? '');
+
+    setTitle(itemTitle);
+
+    const asCat = SUBJECT_CATEGORIES.includes(itemSubject as any) ? (itemSubject as SubjectCategory) : '';
+    setSubject(asCat);
+
+    setGradeLevel(itemGrade);
+    setPrice(itemPrice);
+    setDuration(itemDuration);
+    setTags(itemTagsStr);
+
+    setFileType(inferredType);
+    setUploadedUrl(inferredUrl);
+    setProgress(inferredUrl ? 100 : 0);
+
+    setThumbnailUrl(turl);
+    setThumbProgress(turl ? 100 : 0);
+
+    if (resolvedCountry) setCountry(resolvedCountry);
+
+    setPrefilled(true);
+  }, [isEdit, editItem, prefilled]);
+
   /* ────────────────────── Role gates ────────────────────── */
   if (role === null) {
     return (
       <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
         <View style={tw`flex-1 items-center justify-center px-4`}>
-          <ActivityIndicator
-            size="large"
-            color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'}
-          />
+          <ActivityIndicator size="large" color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'} />
           <Text style={tw`mt-3 text-slate-700 dark:text-slate-200`}>Checking permissions…</Text>
         </View>
       </SafeAreaView>
@@ -141,9 +242,7 @@ const ClassVaultUploadScreen: React.FC = () => {
     return (
       <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
         <View style={tw`flex-1 items-center justify-center px-6`}>
-          <View
-            style={tw`rounded-2xl p-5 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
-          >
+          <View style={tw`rounded-2xl p-5 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
             <Text style={tw`text-xl font-semibold text-center text-[#0d141c] dark:text-white`}>
               Access Denied
             </Text>
@@ -156,7 +255,46 @@ const ClassVaultUploadScreen: React.FC = () => {
     );
   }
 
-  /* ────────────────────── File picker ────────────────────── */
+  const requiresThumb = fileType === 'pdf';
+
+  const showEditLoading = isEdit && (libraryLoading || (!editItem && !libraryError));
+  const showEditMissing = isEdit && !libraryLoading && !editItem;
+
+  const disableSubmit =
+    uploadingMeta || uploadingFile || uploadingThumb || showEditLoading || showEditMissing;
+
+  const goBack = () => navigation.goBack();
+
+  const replaceFile = () => {
+    setReplacingFile(true);
+    setUploadedUrl('');
+    setProgress(0);
+  };
+
+  const replaceThumb = () => {
+    setThumbnailUrl('');
+    setThumbProgress(0);
+  };
+
+  const setFileTypeSmart = (next: FileKind) => {
+    setFileType(next);
+
+    // In create mode (or when user is replacing), clear selection
+    if (!isEdit || replacingFile) {
+      setUploadedUrl('');
+      setProgress(0);
+      return;
+    }
+
+    // In edit mode, show the existing asset for that kind
+    const existingVideoUrl = String((editItem as any)?.video_url ?? '');
+    const existingPdfUrl = String((editItem as any)?.pdf_url ?? '');
+    const nextUrl = next === 'pdf' ? existingPdfUrl : existingVideoUrl;
+
+    setUploadedUrl(nextUrl);
+    setProgress(nextUrl ? 100 : 0);
+  };
+
   const pickFile = async (): Promise<void> => {
     try {
       const typeFilter = fileType === 'video' ? ['video/*'] : ['application/pdf'];
@@ -175,7 +313,9 @@ const ClassVaultUploadScreen: React.FC = () => {
 
       const { uri, name, mimeType } = asset;
 
-      setProgress(1);
+      setProgress(0);
+      setUploadedUrl('');
+      setUploadingFile(true);
 
       const { url } = await handleFileUpload({
         fileType,
@@ -189,20 +329,76 @@ const ClassVaultUploadScreen: React.FC = () => {
 
       setUploadedUrl(url);
       setProgress(100);
+      setReplacingFile(false);
     } catch (err: unknown) {
       Alert.alert('Upload failed', getErrorMessage(err));
       setProgress(0);
       setUploadedUrl('');
+    } finally {
+      setUploadingFile(false);
     }
   };
 
-  /* ────────────────────── Submit ────────────────────── */
+  const pickThumbnail = async (): Promise<void> => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        type: ['image/*'],
+        multiple: false,
+      });
+      if (res.canceled) return;
+
+      const asset = res.assets?.[0];
+      if (!asset) {
+        Alert.alert('Upload failed', 'No image selected');
+        return;
+      }
+
+      const { uri, name, mimeType } = asset;
+
+      setThumbProgress(0);
+      setThumbnailUrl('');
+      setUploadingThumb(true);
+
+      const { url } = await handleFileUpload({
+        fileType: 'thumbnail' as any,
+        file: {
+          uri,
+          name,
+          type: mimeType ?? 'image/*',
+        },
+        onProgress: (pct: number) =>
+          setThumbProgress(Math.max(1, Math.min(99, Math.floor(pct)))),
+      });
+
+      setThumbnailUrl(url);
+      setThumbProgress(100);
+    } catch (err: unknown) {
+      Alert.alert('Thumbnail upload failed', getErrorMessage(err));
+      setThumbProgress(0);
+      setThumbnailUrl('');
+    } finally {
+      setUploadingThumb(false);
+    }
+  };
+
   const onSubmit = async (): Promise<void> => {
-    if (!country || !title || !subject || !gradeLevel.trim() || !price || !uploadedUrl) {
-      Alert.alert(
-        'Incomplete',
-        'Fill all required fields (Country, Title, Subject, Grade/Level, Price, File).'
-      );
+    if (!country || !title || !subject || !gradeLevel.trim() || !price) {
+      Alert.alert('Incomplete', 'Please fill all required fields.');
+      return;
+    }
+
+    // In edit mode: require a file ONLY if they clicked "Replace file"
+    if (!uploadedUrl) {
+      if (!isEdit || replacingFile) {
+        Alert.alert('Incomplete', 'Please select a file (or keep the existing one).');
+        return;
+      }
+    }
+
+    // PDF requires thumbnail
+    if (fileType === 'pdf' && !thumbnailUrl) {
+      Alert.alert('Thumbnail required', 'Please upload a thumbnail image for your Notes (required).');
       return;
     }
 
@@ -218,69 +414,156 @@ const ClassVaultUploadScreen: React.FC = () => {
       return;
     }
 
-    const userTags = tags
+    const userTagsRaw = tags
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
 
+    const userTagsClean = stripAutoTags(userTagsRaw);
     const auto = deriveAutoTags(country, subject || '', gradeLevel);
-    const tagSet = Array.from(new Set([...userTags, ...auto]));
+    const allTags = Array.from(new Set([...userTagsClean, ...auto]));
 
-    const payload: CreateRecordedVideoPayload = {
+    // ✅ Edit mode PATCH
+    if (isEdit && editId) {
+      const patch: Partial<CreateRecordedVideoPayload & { thumbnail_url?: string }> = {
+        title,
+        subject,
+        grade_level: gradeLevel,
+        price: priceNum,
+        duration: durationNum,
+        tags: allTags,
+      };
+
+      const existingVideoUrl = String((editItem as any)?.video_url ?? '');
+      const existingPdfUrl = String((editItem as any)?.pdf_url ?? '');
+
+      if (fileType === 'video') {
+        if (uploadedUrl) (patch as any).video_url = uploadedUrl;
+        else if (existingVideoUrl) (patch as any).video_url = existingVideoUrl;
+      }
+
+      if (fileType === 'pdf') {
+        if (uploadedUrl) (patch as any).pdf_url = uploadedUrl;
+        else if (existingPdfUrl) (patch as any).pdf_url = existingPdfUrl;
+      }
+
+      if (thumbnailUrl) (patch as any).thumbnail_url = thumbnailUrl;
+
+      try {
+        await update(Number(editId), patch as any);
+        Alert.alert('Saved', 'Your changes were updated.', [{ text: 'OK', onPress: goBack }]);
+      } catch (err: unknown) {
+        Alert.alert('Update failed', getErrorMessage(err));
+      }
+      return;
+    }
+
+    // ✅ Create mode
+    if (!uploadedUrl) {
+      Alert.alert('Incomplete', 'Please select a file.');
+      return;
+    }
+
+    const payload: CreateRecordedVideoPayload & { thumbnail_url?: string } = {
       title,
       subject,
       grade_level: gradeLevel,
       price: priceNum,
       duration: durationNum,
-      tags: tagSet,
+      tags: allTags,
       video_url: fileType === 'video' ? uploadedUrl : '',
       pdf_url: fileType === 'pdf' ? uploadedUrl : '',
+      thumbnail_url: thumbnailUrl || undefined,
     };
 
     try {
-      await handleSubmitMetadata(payload);
-      Alert.alert('Success', 'Content uploaded!', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      await handleSubmitMetadata(payload as any);
+      Alert.alert('Success', 'Content uploaded!', [{ text: 'OK', onPress: goBack }]);
       setProgress(0);
       setUploadedUrl('');
+      setThumbProgress(0);
+      setThumbnailUrl('');
     } catch (err: unknown) {
       Alert.alert('Submission failed', getErrorMessage(err));
     }
   };
 
-  /* ────────────────────── UI ────────────────────── */
+  const headerLabel = isEdit ? 'Edit ClassVault Item' : 'Upload to ClassVault';
+  const submitLabel = isEdit ? 'Save Changes' : 'Submit to ClassVault';
+
   return (
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={[tw`px-4 pt-4`, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}
+        contentContainerStyle={[
+          tw`px-4 pt-4`,
+          { paddingBottom: Math.max(insets.bottom, 16) + 24 },
+        ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.select({ ios: 'on-drag', android: 'none' })}
         contentInsetAdjustmentBehavior="automatic"
       >
-        {/* Header */}
         <View style={tw`mb-4 items-center`}>
           <Text style={tw`text-2xl font-extrabold text-[#0d141c] dark:text-white text-center`}>
-            Upload to ClassVault
+            {headerLabel}
           </Text>
           <Text style={tw`mt-1 text-sm text-slate-700 dark:text-slate-300 text-center`}>
-            Share your best lessons and earn tokens when students purchase.
+            {isEdit ? `Editing item #${editId ?? ''}` : 'Share your best lessons and earn tokens.'}
           </Text>
         </View>
 
-        {/* Uploading indicator */}
+        {isEdit && (
+          <View
+            style={tw`mb-4 rounded-2xl p-3 bg-[#f0f7ff] dark:bg-[#0b2238] border border-[#cedbe8] dark:border-white/10`}
+          >
+            <View style={tw`flex-row`}>
+              <TouchableOpacity
+                onPress={goBack}
+                activeOpacity={0.9}
+                style={tw`mr-2 rounded-xl px-4 py-2 bg-slate-200 dark:bg-white/10`}
+              >
+                <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Back</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={replaceFile}
+                activeOpacity={0.9}
+                style={tw`mr-2 rounded-xl px-4 py-2 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+              >
+                <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Replace file</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={replaceThumb}
+                activeOpacity={0.9}
+                style={tw`rounded-xl px-4 py-2 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
+              >
+                <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>Replace thumbnail</Text>
+              </TouchableOpacity>
+            </View>
+
+            {showEditLoading ? (
+              <Text style={tw`mt-2 text-xs text-slate-600 dark:text-slate-300`}>Loading item…</Text>
+            ) : null}
+            {libraryError ? (
+              <Text style={tw`mt-2 text-xs text-red-600 dark:text-red-400`}>{String(libraryError)}</Text>
+            ) : null}
+            {showEditMissing ? (
+              <Text style={tw`mt-2 text-xs text-red-600 dark:text-red-400`}>
+                Could not find that ClassVault item. It may have been deleted.
+              </Text>
+            ) : null}
+          </View>
+        )}
+
         {progress > 0 && progress < 100 && (
           <View style={tw`flex-row items-center justify-center mb-3`}>
-            <ActivityIndicator
-              size="small"
-              color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'}
-            />
+            <ActivityIndicator size="small" color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'} />
             <Text style={tw`ml-2 text-slate-700 dark:text-slate-200`}>Uploading… {progress}%</Text>
           </View>
         )}
 
-        {/* ✅ Country (SelectField) */}
+        {/* Country */}
         <View style={tw`mb-3`}>
           <SelectField
             label="Country *"
@@ -300,7 +583,7 @@ const ClassVaultUploadScreen: React.FC = () => {
           style={tw`rounded-2xl mb-3 px-3 py-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white`}
         />
 
-        {/* ✅ Subject Category (SelectField) */}
+        {/* Subject */}
         <View style={tw`mb-3`}>
           <SelectField
             label="Subject Category *"
@@ -311,20 +594,14 @@ const ClassVaultUploadScreen: React.FC = () => {
           />
         </View>
 
-        {/* Grade / Level */}
+        {/* Grade */}
         <TextInput
-          placeholder="Grade / Level *  (e.g., Primary 5, Year 10, A-Levels, University)"
+          placeholder="Grade / Level *"
           placeholderTextColor={placeholderColor}
           value={gradeLevel}
           onChangeText={setGradeLevel}
-          style={tw`rounded-2xl mb-1 px-3 py-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white`}
+          style={tw`rounded-2xl mb-3 px-3 py-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white`}
         />
-        <Text style={tw`text-xs mb-3 text-slate-600 dark:text-slate-400`}>
-          We’ll auto-add a tag like{' '}
-          <Text style={tw`text-pink-600 dark:text-pink-400`}>
-            grade:{slugify(gradeLevel) || '…'}
-          </Text>
-        </Text>
 
         {/* Price */}
         <TextInput
@@ -347,37 +624,18 @@ const ClassVaultUploadScreen: React.FC = () => {
         />
 
         {/* Tags */}
-        <View style={tw`mb-3`}>
-          <TextInput
-            placeholder="Tags (comma-separated)"
-            placeholderTextColor={placeholderColor}
-            value={tags}
-            onChangeText={setTags}
-            style={tw`rounded-2xl px-3 py-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white`}
-          />
-          <Text style={tw`text-xs mt-1 text-slate-600 dark:text-slate-400`}>
-            Auto-tags:{' '}
-            <Text style={tw`text-pink-600 dark:text-pink-400`}>country:{country || '…'}</Text>
-            {subject ? (
-              <Text style={tw`text-pink-600 dark:text-pink-400`}> , subject:{subject}</Text>
-            ) : null}
-            {gradeLevel.trim() ? (
-              <Text style={tw`text-pink-600 dark:text-pink-400`}>
-                {' '}
-                , grade:{slugify(gradeLevel)}
-              </Text>
-            ) : null}
-          </Text>
-        </View>
+        <TextInput
+          placeholder="Tags (comma-separated)"
+          placeholderTextColor={placeholderColor}
+          value={tags}
+          onChangeText={setTags}
+          style={tw`rounded-2xl mb-4 px-3 py-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white`}
+        />
 
-        {/* File kind toggle */}
+        {/* Type toggle */}
         <View style={tw`flex-row items-center justify-center mb-4`}>
           <TouchableOpacity
-            onPress={() => {
-              setFileType('video');
-              setUploadedUrl('');
-              setProgress(0);
-            }}
+            onPress={() => setFileTypeSmart('video')}
             activeOpacity={0.9}
             style={tw.style(
               'px-4 py-2 rounded-xl border',
@@ -386,12 +644,7 @@ const ClassVaultUploadScreen: React.FC = () => {
                 : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10'
             )}
           >
-            <Text
-              style={tw.style(
-                'font-medium',
-                fileType === 'video' ? 'text-white' : 'text-[#0d141c] dark:text-slate-100'
-              )}
-            >
+            <Text style={tw.style('font-medium', fileType === 'video' ? 'text-white' : 'text-[#0d141c] dark:text-slate-100')}>
               Video
             </Text>
           </TouchableOpacity>
@@ -399,11 +652,7 @@ const ClassVaultUploadScreen: React.FC = () => {
           <Text style={tw`mx-3 font-medium text-slate-600 dark:text-slate-300`}>or</Text>
 
           <TouchableOpacity
-            onPress={() => {
-              setFileType('pdf');
-              setUploadedUrl('');
-              setProgress(0);
-            }}
+            onPress={() => setFileTypeSmart('pdf')}
             activeOpacity={0.9}
             style={tw.style(
               'px-4 py-2 rounded-xl border',
@@ -412,21 +661,26 @@ const ClassVaultUploadScreen: React.FC = () => {
                 : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10'
             )}
           >
-            <Text
-              style={tw.style(
-                'font-medium',
-                fileType === 'pdf' ? 'text-white' : 'text-[#0d141c] dark:text-slate-100'
-              )}
-            >
+            <Text style={tw.style('font-medium', fileType === 'pdf' ? 'text-white' : 'text-[#0d141c] dark:text-slate-100')}>
               Class Notes
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Upload Button */}
+        {/* Current file */}
+        {uploadedUrl ? (
+          <View style={tw`mb-4 rounded-2xl p-3 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
+            <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Current file</Text>
+            <Text style={tw`mt-1 text-xs text-slate-600 dark:text-slate-300`} numberOfLines={3}>
+              {uploadedUrl}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Pick file */}
         <TouchableOpacity
           onPress={pickFile}
-          disabled={uploadingMeta}
+          disabled={uploadingMeta || uploadingFile}
           activeOpacity={0.9}
           style={tw`rounded-2xl mb-4 px-3 py-3 flex-row items-center bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
         >
@@ -437,23 +691,80 @@ const ClassVaultUploadScreen: React.FC = () => {
             style={tw`mr-3`}
           />
           <Text style={tw`text-[#0d141c] dark:text-white font-medium`}>
-            {uploadedUrl
-              ? `✅ ${fileType === 'video' ? 'Video Selected' : 'PDF Selected'}`
-              : `Select ${fileType === 'video' ? 'Video' : 'PDF'}`}
+            {uploadingFile
+              ? 'Uploading…'
+              : uploadedUrl
+              ? `✅ ${fileType === 'video' ? 'Video selected' : 'PDF selected'}`
+              : `Select ${fileType === 'video' ? 'Video' : 'PDF'}${isEdit && !replacingFile ? '' : ' *'}`}
           </Text>
         </TouchableOpacity>
+
+        {/* Thumbnail */}
+        <View style={tw`mb-4 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}>
+          <View style={tw`flex-row items-start justify-between`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                Thumbnail image{requiresThumb ? ' *' : ''}
+              </Text>
+              <Text style={tw`mt-1 text-xs text-slate-600 dark:text-slate-300`}>
+                {requiresThumb
+                  ? 'Required for Notes so learners can preview the card without opening the gated PDF.'
+                  : 'Optional but recommended.'}
+              </Text>
+            </View>
+            {thumbnailUrl ? (
+              <Image source={{ uri: thumbnailUrl }} style={tw`w-20 h-14 rounded-lg`} resizeMode="cover" />
+            ) : null}
+          </View>
+
+          {thumbProgress > 0 && thumbProgress < 100 ? (
+            <View style={tw`mt-3 flex-row items-center`}>
+              <ActivityIndicator size="small" color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'} />
+              <Text style={tw`ml-2 text-slate-700 dark:text-slate-200`}>Uploading thumbnail… {thumbProgress}%</Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            onPress={pickThumbnail}
+            disabled={uploadingMeta || uploadingThumb}
+            activeOpacity={0.9}
+            style={tw`mt-3 rounded-2xl px-3 py-3 flex-row items-center bg-slate-50 dark:bg-white/5 border border-[#cedbe8] dark:border-white/10`}
+          >
+            <FontAwesome5
+              name="cloud-upload-alt"
+              size={18}
+              color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'}
+              style={tw`mr-3`}
+            />
+            <Text style={tw`text-[#0d141c] dark:text-white font-medium`}>
+              {uploadingThumb
+                ? 'Uploading thumbnail…'
+                : thumbnailUrl
+                ? '✅ Thumbnail uploaded'
+                : requiresThumb
+                ? 'Upload thumbnail image *'
+                : 'Upload thumbnail image'}
+            </Text>
+          </TouchableOpacity>
+
+          {requiresThumb && !thumbnailUrl ? (
+            <Text style={tw`mt-2 text-xs text-red-600 dark:text-red-400`}>
+              Notes require a thumbnail.
+            </Text>
+          ) : null}
+        </View>
 
         {/* Submit */}
         <TouchableOpacity
           onPress={onSubmit}
-          disabled={uploadingMeta}
+          disabled={disableSubmit}
           activeOpacity={0.9}
-          style={tw.style('rounded-2xl mb-2 px-4 py-3 bg-pink-600', uploadingMeta && 'opacity-60')}
+          style={tw.style('rounded-2xl mb-2 px-4 py-3 bg-pink-600', disableSubmit && 'opacity-60')}
         >
           {uploadingMeta ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text style={tw`text-white text-center font-semibold`}>Submit to ClassVault</Text>
+            <Text style={tw`text-white text-center font-semibold`}>{submitLabel}</Text>
           )}
         </TouchableOpacity>
 

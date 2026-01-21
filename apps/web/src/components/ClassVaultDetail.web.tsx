@@ -1,5 +1,5 @@
 // apps/web/src/components/ClassVaultDetail.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { IconProp } from '@fortawesome/fontawesome-svg-core';
@@ -14,13 +14,18 @@ export default function ClassVaultDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const { backendUrl, token, profile } = useShopContext();
+
+  // Route param → number (may be NaN)
   const videoId = Number(id);
 
-  // Detail hook (safe: always call)
-  const { video, resources, unlockContent, error } = useClassVaultDetail(videoId);
+  // ✅ Normalize + validate (parity with native)
+  const safeVideoId = Number(videoId);
+  const isValidId = Number.isFinite(safeVideoId) && safeVideoId > 0;
+
+  // ✅ Always call hook (keeps hook order stable)
+  const { video, resources, unlockContent, error } = useClassVaultDetail(safeVideoId);
 
   // ---------- All hooks must be above any conditional returns ----------
-  // Unlocking feedback
   const [unlockError, setUnlockError] = useState<string>('');
 
   // Reviews state
@@ -41,57 +46,77 @@ export default function ClassVaultDetail() {
   // Prevent duplicate unlock calls (e.g., React StrictMode double effects)
   const didRequestUnlockRef = useRef<boolean>(false);
 
-  // Reset the gate if the video changes
+  // Optional debug (mirrors native)
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[ClassVaultDetail] route id:', id, 'videoId:', videoId, 'safe:', safeVideoId);
+  }, [id, videoId, safeVideoId]);
+
+  // Reset the gates if the video changes
   useEffect(() => {
     didRequestUnlockRef.current = false;
-  }, [videoId]);
+    promptedRef.current = false;
+    setUnlockError('');
+    // also reset prompt UI
+    setShowPrompt(false);
+    setRating(0);
+    setComment('');
+  }, [safeVideoId]);
 
-  // Fetch protected URLs on mount (guarded)
+  // Fetch protected URLs on mount (ONLY if logged in + valid id)
   useEffect(() => {
+    if (!isValidId) return; // ✅ don’t hit API with NaN/-1
+    if (!token) return; // don’t 401-loop on public view
     if (didRequestUnlockRef.current) return;
     didRequestUnlockRef.current = true;
-    unlockContent().catch((err: { message?: string }) => setUnlockError(err?.message || ''));
-  }, [unlockContent, videoId]);
 
-  // Load reviews
-  const loadReviews = async (): Promise<void> => {
+    unlockContent().catch((err: any) => {
+      const msg = err?.response?.data?.message || err?.message || '';
+      setUnlockError(msg);
+    });
+  }, [unlockContent, safeVideoId, token, isValidId]);
+
+  // Load reviews (guard invalid ids)
+  const loadReviews = useCallback(async (): Promise<void> => {
+    if (!isValidId) return;
     try {
       setLoadingReviews(true);
       setReviewsError('');
-      const data = await fetchVideoReviews(backendUrl, videoId);
-      setReviews(data);
+      const data = await fetchVideoReviews(backendUrl, safeVideoId);
+      setReviews(Array.isArray(data) ? data : []);
     } catch {
       setReviewsError('Failed to load reviews');
     } finally {
       setLoadingReviews(false);
     }
-  };
+  }, [backendUrl, safeVideoId, isValidId]);
 
   useEffect(() => {
     void loadReviews();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendUrl, videoId]);
+  }, [loadReviews]);
 
-  // If user navigated with #review, open the prompt
+  // If user navigated with #review, open the prompt (only if they can submit)
   useEffect(() => {
     if (location.hash === '#review') {
       setShowPrompt(true);
     }
   }, [location.hash]);
 
-  // Helpers to resolve URLs
-  const resolveUrl = (maybeUrl?: string) => {
-    if (!maybeUrl) return '';
-    return maybeUrl.startsWith('http') ? maybeUrl : `${backendUrl}${maybeUrl}`;
+  // Helpers to resolve URLs (never undefined)
+  const resolveUrl = (maybeUrl?: string | null): string => {
+    const u = (maybeUrl ?? '').trim();
+    if (!u) return '';
+    if (u.startsWith('http://') || u.startsWith('https://')) return u;
+    return `${backendUrl}${u}`;
   };
 
   // Reviews helpers
   const myId = profile?.id ? String(profile.id) : '';
-  const hasMyReview = myId ? reviews.some((r) => String(r.student_id) === myId) : false;
+  const hasMyReview = myId ? reviews.some((r) => String((r as any).student_id) === myId) : false;
 
   const avgRating =
     reviews.length > 0
-      ? Number((reviews.reduce((s, r) => s + Number(r.rating), 0) / reviews.length).toFixed(2))
+      ? Number((reviews.reduce((s, r) => s + Number((r as any).rating || 0), 0) / reviews.length).toFixed(2))
       : 0;
 
   const onTimeUpdate = () => {
@@ -112,12 +137,18 @@ export default function ClassVaultDetail() {
       alert('You must be logged in to review');
       return;
     }
+    if (!isValidId) {
+      alert('Invalid video id.');
+      return;
+    }
+
     try {
       setSaving(true);
-      await submitVideoReview(backendUrl, token, videoId, {
+      await submitVideoReview(backendUrl, token, safeVideoId, {
         rating,
         comment: comment.trim() || undefined,
       });
+
       setShowPrompt(false);
       setComment('');
       setRating(0);
@@ -130,6 +161,28 @@ export default function ClassVaultDetail() {
   };
 
   // ---------- Conditional returns (no hooks below this line) ----------
+  if (!isValidId) {
+    return (
+      <div
+        className="relative min-h-screen flex items-center justify-center bg-slate-50 dark:bg-darkBg
+                   text-[#0d141c] dark:text-darkTextPrimary px-4"
+        style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
+      >
+        <div className="rounded-2xl w-full max-w-xl p-6 text-center ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821]">
+          <p className="text-red-600 dark:text-red-400 font-medium">
+            Invalid video id. Please go back and refresh.
+          </p>
+          <button
+            className="mt-4 px-4 py-2 rounded-full bg-[#3d99f5] text-white font-semibold"
+            onClick={() => navigate(-1)}
+          >
+            Go back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div
@@ -153,14 +206,7 @@ export default function ClassVaultDetail() {
       >
         <div className="rounded-full p-4 ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821]">
           <svg className="animate-spin h-7 w-7 text-[#3d99f5]" viewBox="0 0 24 24">
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a 8 8 0 018-8v8z" />
           </svg>
         </div>
@@ -169,16 +215,30 @@ export default function ClassVaultDetail() {
   }
 
   // Safe to read values from `video` now
-  const v = video;
-  const tags = v.tags ?? [];
+  const v: any = video;
+  const tags: string[] = v.tags ?? [];
 
-  const fullVideoUrl = resolveUrl(resources?.video_url);
-  const previewUrl = resolveUrl(v.preview_url);
+  // ✅ New API: public-safe metadata (no direct v.video_url / v.pdf_url)
+  // Use flags if present, else fallback to old fields for backward compatibility
+  const hasVideo = Boolean(v?.has_video) || Boolean(v?.video_url);
+  const hasPdf = Boolean(v?.has_pdf) || Boolean(v?.pdf_url);
+
+  const fullVideoUrl = resolveUrl(resources?.video_url ?? '');
+  const previewUrl = resolveUrl(v?.preview_url ?? '');
   const displayVideo = fullVideoUrl || previewUrl;
-  const pdfUrl = resolveUrl(resources?.pdf_url);
+
+  const pdfUrl = resolveUrl(resources?.pdf_url ?? '');
+
+  const canAccessVideo = Boolean(fullVideoUrl);
+  const canAccessPdf = Boolean(pdfUrl);
 
   const openLink = (url: string) => {
+    if (!url) return;
     window.open(url, '_blank', 'noopener');
+  };
+
+  const goToPurchase = () => {
+    navigate('/buy-tokens');
   };
 
   return (
@@ -195,8 +255,8 @@ export default function ClassVaultDetail() {
           </h1>
         </header>
 
-        {/* Video card */}
-        {displayVideo && (
+        {/* Video card (preview always ok; full plays if unlocked) */}
+        {displayVideo ? (
           <section className="rounded-2xl overflow-hidden ring-1 ring-[#cedbe8] dark:ring-darkCard bg-black">
             <div className="w-full aspect-video bg-black">
               <video
@@ -209,6 +269,12 @@ export default function ClassVaultDetail() {
               />
             </div>
           </section>
+        ) : (
+          <section className="rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] p-5">
+            <p className="text-sm text-center text-[#49739c] dark:text-darkTextSecondary">
+              No preview video is available for this class.
+            </p>
+          </section>
         )}
 
         {/* Meta + Description */}
@@ -216,29 +282,23 @@ export default function ClassVaultDetail() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col">
               <p className="text-[#49739c] dark:text-darkTextSecondary text-sm">Subject</p>
-              <p className="text-[#0d141c] dark:text-darkTextPrimary font-semibold">
-                {v.subject ?? '—'}
-              </p>
+              <p className="text-[#0d141c] dark:text-darkTextPrimary font-semibold">{v.subject ?? '—'}</p>
             </div>
 
             <div className="flex flex-col">
               <p className="text-[#49739c] dark:text-darkTextSecondary text-sm">Grade Level</p>
-              <p className="text-[#0d141c] dark:text-darkTextPrimary font-semibold">
-                {v.grade_level ?? '—'}
-              </p>
+              <p className="text-[#0d141c] dark:text-darkTextPrimary font-semibold">{v.grade_level ?? '—'}</p>
             </div>
           </div>
 
-          {v.description && (
+          {v.description ? (
             <div className="flex flex-col">
               <p className="text-[#49739c] dark:text-darkTextSecondary text-sm">Description</p>
-              <p className="text-[#0d141c] dark:text-darkTextPrimary leading-relaxed">
-                {v.description}
-              </p>
+              <p className="text-[#0d141c] dark:text-darkTextPrimary leading-relaxed">{v.description}</p>
             </div>
-          )}
+          ) : null}
 
-          {tags.length > 0 && (
+          {tags.length > 0 ? (
             <div className="flex flex-col">
               <p className="text-[#49739c] dark:text-darkTextSecondary text-sm">Tags</p>
               <div className="flex flex-wrap gap-2 mt-1">
@@ -255,7 +315,7 @@ export default function ClassVaultDetail() {
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
         </section>
 
         {/* Rating summary + prompt opener */}
@@ -266,21 +326,21 @@ export default function ClassVaultDetail() {
               <span>
                 ★ {avgRating} ({reviews.length})
               </span>
-              {loadingReviews && <span className="ml-2 text-[#49739c]">Loading…</span>}
-              {reviewsError && <span className="ml-2 text-red-600">{reviewsError}</span>}
+              {loadingReviews ? <span className="ml-2 text-[#49739c]">Loading…</span> : null}
+              {reviewsError ? <span className="ml-2 text-red-600">{reviewsError}</span> : null}
             </div>
-            {!hasMyReview && (
-              <button
-                className="ml-auto text-sm underline text-[#3d99f5]"
-                onClick={() => setShowPrompt(true)}
-              >
+
+            {!hasMyReview ? (
+              <button className="ml-auto text-sm underline text-[#3d99f5]" onClick={() => setShowPrompt(true)}>
                 Rate this video
               </button>
-            )}
+            ) : null}
           </div>
-          {showPrompt && !hasMyReview && (
+
+          {showPrompt && !hasMyReview ? (
             <div className="mt-2 rounded-xl ring-1 ring-[#cedbe8] dark:ring-darkCard p-4">
               <p className="text-sm font-semibold mb-2">How was it?</p>
+
               <div className="flex items-center gap-2 mb-2">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button
@@ -293,13 +353,16 @@ export default function ClassVaultDetail() {
                   </button>
                 ))}
               </div>
+
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Optional comment"
                 maxLength={500}
-                className="w-full text-sm rounded-lg p-2 bg-[#e7edf4] dark:bg-[#172534]"
+                className="w-full text-sm rounded-lg p-2 bg-[#e7edf4] dark:bg-[#172534]
+                           text-[#0d141c] dark:text-darkTextPrimary placeholder:text-[#64748b] dark:placeholder:text-[#9ca3af]"
               />
+
               <div className="mt-2 flex gap-2">
                 <button
                   disabled={saving || rating < 1}
@@ -316,66 +379,68 @@ export default function ClassVaultDetail() {
                 </button>
               </div>
             </div>
-          )}
+          ) : null}
         </section>
 
-        {/* Actions */}
+        {/* Actions (use hasPdf/hasVideo flags + unlocked resources) */}
         <section className="rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] p-5 space-y-3">
-          {v.pdf_url && (
+          {hasPdf ? (
             <button
               onClick={() => {
-                if (pdfUrl) openLink(pdfUrl);
-                else navigate('/buy-tokens');
+                if (!token) {
+                  navigate('/login');
+                  return;
+                }
+                if (canAccessPdf) openLink(pdfUrl);
+                else goToPurchase();
               }}
               className={`w-full inline-flex items-center justify-center gap-2 rounded-xl h-11 px-4 font-semibold transition
                 ${
-                  pdfUrl
+                  canAccessPdf
                     ? 'bg-[#0d141c] text-white hover:brightness-110 dark:bg-[#0d141c]'
                     : 'bg-[#e7edf4] text-[#49739c] cursor-pointer'
                 }`}
-              title={pdfUrl ? 'Download Class Notes (PDF)' : 'Purchase to Access PDF'}
+              title={canAccessPdf ? 'Download Class Notes (PDF)' : 'Purchase to Access PDF'}
             >
-              <FontAwesomeIcon
-                icon={(pdfUrl ? faDownload : faShoppingCart) as IconProp}
-                className="text-current"
-              />
-              <span>{pdfUrl ? 'Download Class Notes (PDF)' : 'Purchase to Access PDF'}</span>
+              <FontAwesomeIcon icon={(canAccessPdf ? faDownload : faShoppingCart) as IconProp} className="text-current" />
+              <span>{canAccessPdf ? 'Download Class Notes (PDF)' : 'Purchase to Access PDF'}</span>
             </button>
-          )}
+          ) : null}
 
-          <button
-            onClick={() => {
-              if (fullVideoUrl) openLink(fullVideoUrl);
-              else navigate('/buy-tokens');
-            }}
-            className={`w-full inline-flex items-center justify-center gap-2 rounded-xl h-11 px-4 font-semibold transition
+          {hasVideo ? (
+            <button
+              onClick={() => {
+                if (!token) {
+                  navigate('/login');
+                  return;
+                }
+                if (canAccessVideo) openLink(fullVideoUrl);
+                else goToPurchase();
+              }}
+              className={`w-full inline-flex items-center justify-center gap-2 rounded-xl h-11 px-4 font-semibold transition
               ${
-                fullVideoUrl
-                  ? 'bg-[#3d99f5] text-white hover:brightness-110'
-                  : 'bg-[#e7edf4] text-[#49739c] cursor-pointer'
+                canAccessVideo ? 'bg-[#3d99f5] text-white hover:brightness-110' : 'bg-[#e7edf4] text-[#49739c] cursor-pointer'
               }`}
-            title={fullVideoUrl ? 'Download Full Video' : 'Purchase to Access Video'}
-          >
-            <FontAwesomeIcon
-              icon={(fullVideoUrl ? faDownload : faShoppingCart) as IconProp}
-              className="text-current"
-            />
-            <span>{fullVideoUrl ? 'Download Full Video' : 'Purchase to Access Video'}</span>
-          </button>
+              title={canAccessVideo ? 'Download Full Video' : 'Purchase to Access Video'}
+            >
+              <FontAwesomeIcon icon={(canAccessVideo ? faDownload : faShoppingCart) as IconProp} className="text-current" />
+              <span>{canAccessVideo ? 'Download Full Video' : 'Purchase to Access Video'}</span>
+            </button>
+          ) : null}
 
-          {unlockError && (
-            <p className="text-amber-600 dark:text-amber-400 text-center text-sm">{unlockError}</p>
-          )}
-
-          {/* Small helper row */}
-          <div className="flex items-center justify-center gap-2 pt-1">
-            <FontAwesomeIcon
-              icon={faFilePdf as IconProp}
-              className="text-[#49739c] dark:text-darkTextSecondary"
-            />
-            <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
-              Downloads open in a new tab.
+          {!hasPdf && !hasVideo ? (
+            <p className="text-sm text-center text-[#49739c] dark:text-darkTextSecondary">
+              No downloadable resources were attached to this class.
             </p>
+          ) : null}
+
+          {unlockError ? (
+            <p className="text-amber-600 dark:text-amber-400 text-center text-sm">{unlockError}</p>
+          ) : null}
+
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <FontAwesomeIcon icon={faFilePdf as IconProp} className="text-[#49739c] dark:text-darkTextSecondary" />
+            <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">Downloads open in a new tab.</p>
           </div>
         </section>
       </article>

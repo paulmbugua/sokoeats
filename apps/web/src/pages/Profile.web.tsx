@@ -1062,7 +1062,7 @@ const ProfilePage: React.FC = () => {
               <div className="mx-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {/* Video Vault */}
                 <Link
-                  to="/class-vault"
+                  to="/class-vault/upload"
                   className="relative rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-gradient-to-r from-amber-50 via-rose-50 to-pink-50 dark:from-[#0e1823] dark:via-[#121d2a] dark:to-[#162233] p-4 hover:brightness-105 transition shadow-sm ring-1 ring-amber-200/50 dark:ring-amber-500/10"
                   title="Upload recorded lessons and earn while you sleep"
                 >

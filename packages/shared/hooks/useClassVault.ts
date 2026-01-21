@@ -11,24 +11,21 @@ import {
   deleteVideoById,
   fetchVideoById,
   fetchDownloadResources,
+  updateVideoById,
+  type PurchaseClassVaultResponse,
 } from '@mytutorapp/shared/api/classVaultApi';
 import type { RecordedVideo } from '@mytutorapp/shared/types';
+import type { CreateRecordedVideoPayload } from '@mytutorapp/shared/hooks/useUploadClassVault';
 
 /** split into rows of `size` */
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) {
-    out.push(arr.slice(i, i + size));
-  }
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
 
-/**
- * List‐screen hook
- *
- * @param subjectFilter  single chosen subject (or empty = no filter)
- * @param gradeFilter    single chosen grade (or empty = no filter)
- */
+type UpdatePatch = Partial<CreateRecordedVideoPayload>;
+
 export function useClassVault(subjectFilter: string = '', gradeFilter: string = '') {
   const { backendUrl, token, tokens, setTokens } = useShopContext();
   const qc = useQueryClient();
@@ -43,7 +40,7 @@ export function useClassVault(subjectFilter: string = '', gradeFilter: string = 
     enabled: Boolean(backendUrl),
   });
 
-  // 2) Fetch purchased IDs *only* if we have a token
+  // 2) Fetch purchased IDs only if logged in
   const {
     data: purchasedIdsArr = [],
     isLoading: loadingPurchased,
@@ -54,10 +51,8 @@ export function useClassVault(subjectFilter: string = '', gradeFilter: string = 
     () => fetchPurchasedVideoIds(backendUrl, token!),
     { enabled: Boolean(token) }
   );
-  const purchasedIds = useMemo<Set<number>>(
-    () => new Set<number>(purchasedIdsArr),
-    [purchasedIdsArr]
-  );
+
+  const purchasedIds = useMemo<Set<number>>(() => new Set(purchasedIdsArr), [purchasedIdsArr]);
 
   // Composite loading & error
   const loading = loadingVideos || loadingPurchased;
@@ -69,21 +64,25 @@ export function useClassVault(subjectFilter: string = '', gradeFilter: string = 
     if (token) void refreshPurchased();
   }, [refreshVideos, refreshPurchased, token]);
 
-  // 4) Purchase mutation (requires login)
-  const purchaseMutation = useMutation<
-    { video_url: string; pdf_url: string },
-    Error,
-    RecordedVideo
-  >({
+  // 4) Purchase mutation
+  const purchaseMutation = useMutation<PurchaseClassVaultResponse, Error, RecordedVideo>({
     mutationFn: (video) => {
       if (!token) throw new Error('You must be logged in to purchase');
       return purchaseClassVault(backendUrl, video.id, token);
     },
     onMutate: (video) => {
-      setTokens((t) => t - video.price);
-      qc.setQueryData<number[]>(['purchasedVideoIds', token], (prev = []) => [...prev, video.id]);
+      // optimistic token decrement + add to purchased set
+      setTokens((t) => t - Number(video.price || 0));
+      qc.setQueryData<number[]>(['purchasedVideoIds', token], (prev = []) =>
+        prev.includes(video.id) ? prev : [...prev, video.id]
+      );
     },
-    onError: () => {
+    onSuccess: (resp) => {
+      if (typeof resp?.tokens === 'number') setTokens(resp.tokens);
+    },
+    onError: (_err, video) => {
+      // rollback optimistic changes
+      setTokens((t) => t + Number(video.price || 0));
       if (token) void refreshPurchased();
       void qc.invalidateQueries({ queryKey: ['userTokens'] });
     },
@@ -92,13 +91,14 @@ export function useClassVault(subjectFilter: string = '', gradeFilter: string = 
   const purchase = useCallback(
     async (video: RecordedVideo) => {
       if (!token) throw new Error('You must log in to purchase');
-      if (tokens < video.price) throw new Error('Insufficient tokens');
+      const cost = Number(video.price || 0);
+      if (Number(tokens || 0) < cost) throw new Error('Insufficient tokens');
       await purchaseMutation.mutateAsync(video);
     },
     [purchaseMutation, tokens, token]
   );
 
-  // 5) Delete mutation (tutor only, requires login)
+  // 5) Delete mutation
   const deleteMutation = useMutation<void, Error, number>({
     mutationFn: (id) => {
       if (!token) throw new Error('You must be logged in to delete');
@@ -117,21 +117,50 @@ export function useClassVault(subjectFilter: string = '', gradeFilter: string = 
     [deleteMutation, token]
   );
 
-  // 6) Filtering
+  // 6) Update mutation (tutor edit)
+  const updateMutation = useMutation<RecordedVideo, Error, { id: number; patch: UpdatePatch }>({
+    mutationFn: ({ id, patch }) => {
+      if (!token) throw new Error('You must be logged in to update');
+      return updateVideoById(backendUrl, id, token, patch);
+    },
+    onSuccess: (updated) => {
+      // keep list + detail caches consistent
+      qc.setQueryData<RecordedVideo[]>(['classVaultVideos'], (prev = []) =>
+        prev.map((v) => (v.id === updated.id ? updated : v))
+      );
+      qc.setQueryData<RecordedVideo>(['classVaultVideo', updated.id], updated);
+    },
+    onError: () => {
+      // ensure we re-sync if something went wrong
+      void qc.invalidateQueries({ queryKey: ['classVaultVideos'] });
+    },
+  });
+
+  const update = useCallback(
+    async (id: number, patch: UpdatePatch) => {
+      if (!token) throw new Error('You must be logged in to update');
+      return updateMutation.mutateAsync({ id, patch });
+    },
+    [updateMutation, token]
+  );
+
+  // 7) Filtering (works with new purchase-gated API: has_video/has_pdf flags)
   const filteredVideos = useMemo<RecordedVideo[]>(() => {
-    return videos.filter((v: RecordedVideo) => {
-      if (!v.video_url) return false;
+    return videos.filter((v: any) => {
+      const hasVideo = Boolean(v?.has_video) || Boolean(v?.video_url); // fallback for old data
+      if (!hasVideo) return false;
       if (subjectFilter && v.subject !== subjectFilter) return false;
-      if (gradeFilter && String(v.grade_level) !== gradeFilter) return false;
+      if (gradeFilter && String(v.grade_level) !== String(gradeFilter)) return false;
       return true;
     });
   }, [videos, subjectFilter, gradeFilter]);
 
   const filteredPdfRows = useMemo<RecordedVideo[][]>(() => {
-    const pdfs = videos.filter((v: RecordedVideo) => {
-      if (!v.pdf_url) return false;
+    const pdfs = videos.filter((v: any) => {
+      const hasPdf = Boolean(v?.has_pdf) || Boolean(v?.pdf_url); // fallback for old data
+      if (!hasPdf) return false;
       if (subjectFilter && v.subject !== subjectFilter) return false;
-      if (gradeFilter && String(v.grade_level) !== gradeFilter) return false;
+      if (gradeFilter && String(v.grade_level) !== String(gradeFilter)) return false;
       return true;
     });
     return chunk(pdfs, 2);
@@ -146,9 +175,16 @@ export function useClassVault(subjectFilter: string = '', gradeFilter: string = 
     refresh,
     purchase,
     remove,
+    update,
+
     // filtered
     filteredVideos,
     filteredPdfRows,
+
+    // optional mutation states
+    isPurchasing: purchaseMutation.isPending,
+    isDeleting: deleteMutation.isPending,
+    isUpdating: updateMutation.isPending,
   };
 }
 
@@ -161,7 +197,7 @@ export function useClassVaultDetail(videoId: number) {
   const { backendUrl, token } = useShopContext();
   const qc = useQueryClient();
 
-  // 1) Load video metadata
+  // 1) Load video metadata (PUBLIC SAFE)
   const {
     data: video,
     isLoading: loadingVideo,
@@ -173,7 +209,7 @@ export function useClassVaultDetail(videoId: number) {
     { enabled: Boolean(backendUrl) }
   );
 
-  // 2) Unlock download URLs on demand
+  // 2) Unlock download URLs on demand (AUTH REQUIRED)
   const resourcesKey = ['classVaultResources', token, videoId] as const;
 
   const {
@@ -181,13 +217,13 @@ export function useClassVaultDetail(videoId: number) {
     isLoading: loadingResources,
     error: resourcesError,
     refetch: unlockResources,
-  } = useAppQuery<{ video_url: string; pdf_url: string }, Error>(
+  } = useAppQuery<{ video_url?: string | null; pdf_url?: string | null }, Error>(
     resourcesKey,
     () => fetchDownloadResources(backendUrl, videoId, token!),
     {
       enabled: false, // manual trigger only
-      refetchOnWindowFocus: false, // avoid duplicate calls on focus
-      staleTime: 5 * 60 * 1000, // cache the unlocked URLs for 5 minutes
+      refetchOnWindowFocus: false,
+      staleTime: 5 * 60 * 1000,
     }
   );
 
@@ -202,8 +238,7 @@ export function useClassVaultDetail(videoId: number) {
     },
     unlockContent: async () => {
       if (!token) throw new Error('You must log in to unlock content');
-      // If we already have cached resources, do not refetch
-      if (qc.getQueryData(resourcesKey)) return;
+      if (qc.getQueryData(resourcesKey)) return; // already cached
       await unlockResources();
     },
   };

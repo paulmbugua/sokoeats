@@ -32,38 +32,51 @@ function usePaginatedSection<T>(
 ): PaginatedState<T> {
   const enabled = opts?.enabled ?? true;
   const limit = opts?.limit ?? DEFAULT_LIMIT;
+
   const [items, setItems] = useState<T[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const requestIdRef = useRef(0);
+  const fetcherRef = useRef(fetcher);
+
+  // always keep latest fetcher (without re-triggering effects)
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  }, [fetcher]);
 
   const fetchPage = useCallback(
     async (nextOffset: number, replace: boolean) => {
       if (!enabled) return;
+
       const requestId = ++requestIdRef.current;
       setLoading(true);
       setError(null);
+
       try {
-        const resp = await fetcher({ limit, offset: nextOffset });
+        const resp = await fetcherRef.current({ limit, offset: nextOffset });
         if (requestId !== requestIdRef.current) return;
+
         setItems((prev) => (replace ? resp.items : prev.concat(resp.items)));
         setTotal(resp.total ?? 0);
         setOffset(nextOffset + resp.items.length);
       } catch (err: any) {
         if (requestId !== requestIdRef.current) return;
-        const msg = err?.message ? String(err.message) : 'Failed to load';
-        setError(msg);
+        setError(err?.message ? String(err.message) : 'Failed to load');
       } finally {
         if (requestId === requestIdRef.current) setLoading(false);
       }
     },
-    [enabled, fetcher, limit]
+    [enabled, limit]
   );
 
   const refresh = useCallback(() => {
     if (!enabled) return;
+    // invalidate any in-flight request
+    requestIdRef.current += 1;
+
     setItems([]);
     setTotal(0);
     setOffset(0);
@@ -72,6 +85,7 @@ function usePaginatedSection<T>(
 
   useEffect(() => {
     if (!enabled) {
+      requestIdRef.current += 1;
       setItems([]);
       setTotal(0);
       setOffset(0);
@@ -79,20 +93,30 @@ function usePaginatedSection<T>(
       setError(null);
       return;
     }
-    refresh();
+
+    // initial / deps change
+    void fetchPage(0, true);
+
     return () => {
       requestIdRef.current += 1;
     };
-  }, [enabled, refresh, ...deps]);
+    // ✅ refresh removed from deps to avoid identity loops
+  }, [enabled, limit, fetchPage, ...deps]);
 
   const hasMore = items.length < total;
+
   const loadMore = useCallback(() => {
     if (loading || !hasMore) return;
     void fetchPage(offset, false);
   }, [fetchPage, hasMore, loading, offset]);
 
-  return { items, total, loading, error, hasMore, loadMore, refresh };
+  // ✅ memoize returned object to reduce downstream rerenders
+  return useMemo(
+    () => ({ items, total, loading, error, hasMore, loadMore, refresh }),
+    [items, total, loading, error, hasMore, loadMore, refresh]
+  );
 }
+
 
 export function useMyLibrary() {
   const { backendUrl, token, role, profile } = useShopContext();
@@ -101,29 +125,52 @@ export function useMyLibrary() {
   const isStudent = !isTutor;
   const ready = Boolean(backendUrl && token);
 
+  const purchasedFetcher = useCallback(
+    ({ limit, offset }: { limit: number; offset: number }) =>
+      fetchPurchasedClassVault(backendUrl, token!, { limit, offset }),
+    [backendUrl, token]
+  );
+
+  const createdFetcher = useCallback(
+    ({ limit, offset }: { limit: number; offset: number }) =>
+      fetchCreatedClassVault(backendUrl, token!, { limit, offset }),
+    [backendUrl, token]
+  );
+
+  const aiFetcher = useCallback(
+    ({ limit, offset }: { limit: number; offset: number }) =>
+      fetchUnlockedCourses(backendUrl, token!, { limit, offset, ai: true }),
+    [backendUrl, token]
+  );
+
+  const normalFetcher = useCallback(
+    ({ limit, offset }: { limit: number; offset: number }) =>
+      isTutor
+        ? fetchTutorCoursesPaged(backendUrl, token!, { limit, offset })
+        : fetchUnlockedCourses(backendUrl, token!, { limit, offset, ai: false }),
+    [backendUrl, token, isTutor]
+  );
+
   const purchasedClassVault = usePaginatedSection<RecordedVideo>(
-    ({ limit, offset }) => fetchPurchasedClassVault(backendUrl, token!, { limit, offset }),
+    purchasedFetcher,
     [backendUrl, token],
     { enabled: ready && isStudent }
   );
 
   const createdClassVault = usePaginatedSection<RecordedVideo>(
-    ({ limit, offset }) => fetchCreatedClassVault(backendUrl, token!, { limit, offset }),
+    createdFetcher,
     [backendUrl, token],
     { enabled: ready && isTutor }
   );
 
   const aiCourses = usePaginatedSection<Course>(
-    ({ limit, offset }) => fetchUnlockedCourses(backendUrl, token!, { limit, offset, ai: true }),
+    aiFetcher,
     [backendUrl, token],
     { enabled: ready }
   );
 
   const normalCourses = usePaginatedSection<Course>(
-    ({ limit, offset }) =>
-      isTutor
-        ? fetchTutorCoursesPaged(backendUrl, token!, { limit, offset })
-        : fetchUnlockedCourses(backendUrl, token!, { limit, offset, ai: false }),
+    normalFetcher,
     [backendUrl, token, isTutor],
     { enabled: ready }
   );
@@ -133,21 +180,8 @@ export function useMyLibrary() {
       role: normalizedRole,
       isTutor,
       isStudent,
-      sections: {
-        purchasedClassVault,
-        createdClassVault,
-        aiCourses,
-        normalCourses,
-      },
+      sections: { purchasedClassVault, createdClassVault, aiCourses, normalCourses },
     }),
-    [
-      normalizedRole,
-      isTutor,
-      isStudent,
-      purchasedClassVault,
-      createdClassVault,
-      aiCourses,
-      normalCourses,
-    ]
+    [normalizedRole, isTutor, isStudent, purchasedClassVault, createdClassVault, aiCourses, normalCourses]
   );
 }

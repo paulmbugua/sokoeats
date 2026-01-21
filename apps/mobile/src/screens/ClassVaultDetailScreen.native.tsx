@@ -28,17 +28,35 @@ import { useThemePref } from '../theme/ThemeContext';
 
 type DetailRoute = RouteProp<MainStackParamList, 'ClassVaultDetail'>;
 
+const toVideoSource = (uri: string | null | undefined) => {
+  const u = (uri ?? '').trim();
+  return u ? ({ uri: u } as any) : null;
+};
+
 export default function ClassVaultDetailScreen() {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const { backendUrl, token, profile } = useShopContext();
   const insets = useSafeAreaInsets();
   const { resolvedScheme } = useThemePref();
 
-  const {
+    const {
     params: { id: videoId },
   } = useRoute<DetailRoute>();
 
-  const { video, resources, unlockContent, error } = useClassVaultDetail(videoId);
+  // ✅ normalize route param (prevents NaN/undefined → 404)
+  const safeVideoId = Number(videoId);
+  const isValidId = Number.isFinite(safeVideoId) && safeVideoId > 0;
+
+  // ✅ always call hook (unconditional), but with the normalized id
+  const { video, resources, unlockContent, error } = useClassVaultDetail(
+    isValidId ? safeVideoId : 0
+  );
+
+  // ✅ debug once per id
+  useEffect(() => {
+    console.log('[ClassVaultDetail] route id:', videoId, 'safe:', safeVideoId, 'valid:', isValidId);
+  }, [videoId, safeVideoId, isValidId]);
+
   const [unlockError, setUnlockError] = useState<string>('');
 
   // ------- Reviews state (parity with web) -------
@@ -60,14 +78,16 @@ export default function ClassVaultDetailScreen() {
   useEffect(() => {
     didRequestUnlockRef.current = false;
     promptedRef.current = false;
+    setUnlockError('');
   }, [videoId]);
 
-  // Fetch protected URLs once per id
+  // Fetch protected URLs once per id (best effort; if not purchased, will show a friendly state)
   useEffect(() => {
+    if (!token) return; // no auto-unlock if not logged in
     if (didRequestUnlockRef.current) return;
     didRequestUnlockRef.current = true;
     unlockContent().catch((err: { message?: string }) => setUnlockError(err?.message || ''));
-  }, [unlockContent, videoId]);
+  }, [unlockContent, videoId, token]);
 
   // Reviews
   const myId = profile?.id ? String(profile.id) : '';
@@ -91,19 +111,30 @@ export default function ClassVaultDetailScreen() {
   }, [loadReviews]);
 
   // always returns string (never undefined)
-  const resolveUrl = (maybeUrl?: string): string => {
+  const resolveUrl = (maybeUrl?: string | null): string => {
     if (!maybeUrl) return '';
     if (maybeUrl.startsWith('http://') || maybeUrl.startsWith('https://')) return maybeUrl;
     return `${backendUrl}${maybeUrl}`;
   };
 
-  const fullVideoUrl = resolveUrl(resources?.video_url);
-  const previewUri = resolveUrl(video?.preview_url);
+  // New API (public-safe metadata): video/pdf urls are NOT present publicly.
+  // Use flags when available (has_video/has_pdf), else fallback to old fields.
+  const hasVideo = Boolean((video as any)?.has_video) || Boolean((video as any)?.video_url);
+  const hasPdf = Boolean((video as any)?.has_pdf) || Boolean((video as any)?.pdf_url);
+
+  const fullVideoUrl = resolveUrl(resources?.video_url ?? '');
+  const previewUri = resolveUrl((video as any)?.preview_url ?? '');
   const videoUri = fullVideoUrl || previewUri;
-  const pdfUri = resolveUrl(resources?.pdf_url);
+  const pdfUri = resolveUrl(resources?.pdf_url ?? '');
+
+   const initialSource = toVideoSource(videoUri);
 
   // safe link opener (downloads)
   const openLink = (url: string, label: string) => {
+    if (!url) {
+      Alert.alert('Unavailable', `${label} is not available.`);
+      return;
+    }
     Linking.canOpenURL(url)
       .then((supported) => {
         if (supported) return Linking.openURL(url);
@@ -119,29 +150,33 @@ export default function ClassVaultDetailScreen() {
       : 0;
 
   // ---------- expo-video player (hooks MUST be unconditional) ----------
-  const player = useVideoPlayer(null, (p) => {
+  // ✅ Fix TS2345: pass `undefined` not `null`
+  const player = useVideoPlayer(initialSource as any, (p) => {
     p.loop = false;
     p.timeUpdateEventInterval = 1;
-    if (fullVideoUrl) p.play();
+    // we no longer auto-play inside init because source may change
   });
 
-  // Replace source whenever `videoUri` changes
-  useEffect(() => {
+   useEffect(() => {
     let cancelled = false;
+
+    const next = toVideoSource(videoUri);
+    if (!next) return; // ✅ don't call replace with undefined/null
+
     (async () => {
       try {
         await player.pause();
-        await player.replace(videoUri || null);
+        await player.replace(next as any); // ✅ VideoSource
         if (!cancelled && fullVideoUrl) player.play();
       } catch {
         // ignore
       }
     })();
+
     return () => {
       cancelled = true;
     };
   }, [videoUri, fullVideoUrl, player]);
-
   // 80% watched gate with 'timeUpdate'
   const { currentTime = 0, duration = 0 } = useEvent(player, 'timeUpdate', {
     currentTime: 0,
@@ -180,6 +215,23 @@ export default function ClassVaultDetailScreen() {
   // ✅ Footer guard (so bottom content isn't hidden behind FooterNav)
   const FOOTER_GUARD = 96;
   const bottomPad = Math.max(insets.bottom, 16) + FOOTER_GUARD;
+    // ---------- Early returns (AFTER all hooks) ----------
+  if (!isValidId) {
+    return (
+      <SafeAreaView style={screenBg} edges={['top', 'left', 'right']}>
+        <StatusBar
+          barStyle={resolvedScheme === 'dark' ? 'light-content' : 'dark-content'}
+          backgroundColor={bg}
+        />
+        <View style={tw`flex-1 items-center justify-center px-4`}>
+          <Text style={tw`text-red-600 dark:text-red-400 text-center`}>
+            Invalid video id. Please go back and refresh.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
 
   // ---------- Early returns (AFTER all hooks) ----------
   if (error) {
@@ -204,14 +256,14 @@ export default function ClassVaultDetailScreen() {
           backgroundColor={bg}
         />
         <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator
-            size="large"
-            color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'}
-          />
+          <ActivityIndicator size="large" color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'} />
         </View>
       </SafeAreaView>
     );
   }
+
+  const canAccessVideo = Boolean(fullVideoUrl);
+  const canAccessPdf = Boolean(pdfUri);
 
   // ---------- Main UI ----------
   return (
@@ -250,23 +302,23 @@ export default function ClassVaultDetailScreen() {
         {/* Metadata card */}
         <View style={[tw`p-4 mb-4`, card]}>
           <Text style={[tw`text-xs font-semibold mb-1`, labelText]}>Subject</Text>
-          <Text style={[tw`mb-3`, titleText]}>{video.subject ?? '—'}</Text>
+          <Text style={[tw`mb-3`, titleText]}>{(video as any).subject ?? '—'}</Text>
 
           <Text style={[tw`text-xs font-semibold mb-1`, labelText]}>Grade Level</Text>
-          <Text style={[tw`mb-3`, titleText]}>{video.grade_level ?? '—'}</Text>
+          <Text style={[tw`mb-3`, titleText]}>{(video as any).grade_level ?? '—'}</Text>
 
-          {video.description ? (
+          {(video as any).description ? (
             <>
               <Text style={[tw`text-xs font-semibold mb-1`, labelText]}>Description</Text>
-              <Text style={[tw`mb-3`, subtleText]}>{video.description}</Text>
+              <Text style={[tw`mb-3`, subtleText]}>{(video as any).description}</Text>
             </>
           ) : null}
 
-          {video.tags?.length ? (
+          {(video as any).tags?.length ? (
             <>
               <Text style={[tw`text-xs font-semibold mb-2`, labelText]}>Tags</Text>
               <View style={tw`flex-row flex-wrap`}>
-                {video.tags.map((tag: string) => (
+                {(video as any).tags.map((tag: string) => (
                   <Text
                     key={tag}
                     style={tw`text-xs text-[#0d141c] dark:text-white bg-[#e7edf4] dark:bg-[#172534] px-2 py-1 rounded-full mr-2 mb-2`}
@@ -306,48 +358,57 @@ export default function ClassVaultDetailScreen() {
           </View>
         </View>
 
-        {/* PDF Button */}
-        {video.pdf_url ? (
+        {/* PDF Button (NEW: use hasPdf flag + unlocked resource) */}
+        {hasPdf ? (
           <TouchableOpacity
             onPress={() => {
-              if (!pdfUri) {
-                navigation.navigate('BuyTokens');
+              if (!token) {
+                Alert.alert('Login required', 'Please log in to access downloads.');
                 return;
               }
-              openLink(pdfUri, 'PDF');
+              if (canAccessPdf) openLink(pdfUri, 'PDF');
+              else navigation.navigate('BuyTokens');
             }}
             activeOpacity={0.9}
             style={tw.style(
               'w-full py-3 mb-3 rounded-2xl border',
-              pdfUri
+              canAccessPdf
                 ? 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
                 : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10'
             )}
           >
             <Text style={[tw`text-center font-semibold`, titleText]}>
-              {pdfUri ? 'Download Class Notes (PDF)' : 'Purchase to Access PDF'}
+              {canAccessPdf ? 'Download Class Notes (PDF)' : 'Purchase to Access PDF'}
             </Text>
           </TouchableOpacity>
         ) : null}
 
-        {/* Full Video Button */}
-        <TouchableOpacity
-          onPress={() => {
-            if (fullVideoUrl) openLink(fullVideoUrl, 'Video');
-            else navigation.navigate('BuyTokens');
-          }}
-          activeOpacity={0.9}
-          style={tw.style(
-            'w-full py-3 rounded-2xl border',
-            fullVideoUrl
-              ? 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
-              : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10'
-          )}
-        >
-          <Text style={[tw`text-center font-semibold`, titleText]}>
-            {fullVideoUrl ? 'Download Full Video' : 'Purchase to Access Video'}
-          </Text>
-        </TouchableOpacity>
+        {/* Full Video Button (NEW: use hasVideo flag + unlocked resource) */}
+        {hasVideo ? (
+          <TouchableOpacity
+            onPress={() => {
+              if (!token) {
+                Alert.alert('Login required', 'Please log in to access downloads.');
+                return;
+              }
+              if (canAccessVideo) openLink(fullVideoUrl, 'Video');
+              else navigation.navigate('BuyTokens');
+            }}
+            activeOpacity={0.9}
+            style={tw.style(
+              'w-full py-3 rounded-2xl border',
+              canAccessVideo
+                ? 'bg-white dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10'
+                : 'bg-slate-200 dark:bg-white/5 border-slate-300 dark:border-white/10'
+            )}
+          >
+            <Text style={[tw`text-center font-semibold`, titleText]}>
+              {canAccessVideo ? 'Download Full Video' : 'Purchase to Access Video'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
+        
 
         {/* Unlock error */}
         {unlockError ? (

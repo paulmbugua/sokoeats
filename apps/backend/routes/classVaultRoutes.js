@@ -1,6 +1,8 @@
 // apps/backend/routes/classVaultRoutes.js
 import express from 'express';
 import authUser from '../middleware/authUser.js';
+import requireTutorProfile from '../middleware/requireTutorProfile.js';
+
 import upload from '../middleware/multer.js';
 
 // ⬇ use a namespace import so you see what actually exists
@@ -9,25 +11,44 @@ import { uploadSingleFile } from '../controllers/profileController.js';
 
 const router = express.Router();
 
-// (Optional) one-time debug — remove after confirming
-// console.log('classVault exports:', Object.keys(classVault));
-
-router.get('/', classVault.getAllVideos);
+/* Public reads */
 router.get('/explore', classVault.listMarketplaceVideos);
-router.get('/purchases', authUser, classVault.getPurchases);
-router.get('/mine', authUser, classVault.listMyVideos);
-router.get('/download/:videoId(\\d+)', authUser, classVault.downloadPdfOrVideo);
 router.get('/:id(\\d+)', classVault.getVideoById);
+router.get('/', classVault.getAllVideos);
 
-router.post('/', authUser, express.json(), classVault.createVideoJson);
+/* Auth-only reads */
+router.get('/purchases', authUser, classVault.getPurchases);
+router.get('/mine', authUser, requireTutorProfile, classVault.listMyVideos);
+router.get('/download/:videoId(\\d+)', authUser, classVault.downloadPdfOrVideo);
+
+
+/* -------------------------
+   Tutor-only writes (metadata + uploads)
+   - We gate metadata creation/update/delete
+   - We also gate direct file uploads if you want ONLY tutors uploading assets
+------------------------- */
+
+// Create metadata (JSON)
+router.post('/', authUser, requireTutorProfile, express.json(), classVault.createVideoJson);
+
+// Upload raw asset to your backend (if still used)
 router.post(
   '/upload/:type(video|pdf|preview|thumbnail)',
   authUser,
+  requireTutorProfile,
   upload.single('file'),
   uploadSingleFile,
 );
+
+// Update metadata
+router.put('/:id(\\d+)', authUser, requireTutorProfile, express.json(), classVault.updateVideoJson);
+
+// Delete
+router.delete('/:id(\\d+)', authUser, requireTutorProfile, classVault.deleteVideoById);
+
+/* -------------------------
+   Purchases (students)
+------------------------- */
 router.post('/:id(\\d+)/purchase', authUser, classVault.purchaseClass);
-router.put('/:id(\\d+)', authUser, express.json(), classVault.updateVideoJson);
-router.delete('/:id(\\d+)', authUser, classVault.deleteVideoById);
 
 export default router;

@@ -1,12 +1,7 @@
 // apps/backend/services/search/unifiedSearchService.js
 import { aiParseCourseSearch } from '../aiCourseSearch.js';
-import {
-  clampInt,
-  nowMs,
-  normalizeText,
-  toArr,
-  toStr,
-} from './searchUtils.js';
+import { clampInt, nowMs, normalizeText, toArr, toStr } from './searchUtils.js';
+
 import { searchTutorsAdapter } from './adapters/searchTutorsAdapter.js';
 import { searchOerCoursesAdapter } from './adapters/searchOerCoursesAdapter.js';
 import { searchOerVideosAdapter } from './adapters/searchOerVideosAdapter.js';
@@ -33,7 +28,13 @@ function normalizeContentKinds(kinds) {
   return arr.map((k) => (k === 'text' || k === 'docs' ? 'doc' : k));
 }
 
-function mergeFilters(ai, explicitFilters, explicitProvided) {
+/**
+ * ✅ Updated: allowAiInferred gate so AI-inferred filters don't "hard filter" results
+ * unless we explicitly allow it (second pass).
+ */
+function mergeFilters(ai, explicitFilters, explicitProvided, opts = {}) {
+  const { allowAiInferred = true } = opts;
+
   const pick = (key, fallback = '') =>
     explicitProvided.has(key) ? toStr(explicitFilters[key]) : toStr(fallback);
 
@@ -44,32 +45,44 @@ function mergeFilters(ai, explicitFilters, explicitProvided) {
 
   const providers = providersExplicit
     ? toArr(explicitFilters.providers ?? explicitFilters.provider)
-    : toArr(ai?.providers);
+    : allowAiInferred
+      ? toArr(ai?.providers)
+      : [];
 
   const contentKinds = contentKindsExplicit
     ? normalizeContentKinds(explicitFilters.contentKinds ?? explicitFilters.contentKind)
-    : normalizeContentKinds(ai?.contentKinds);
+    : allowAiInferred
+      ? normalizeContentKinds(ai?.contentKinds)
+      : [];
 
   const sourceKindRaw = explicitProvided.has('sourceKind')
     ? toStr(explicitFilters.sourceKind)
-    : toStr(ai?.sourceKind);
+    : allowAiInferred
+      ? toStr(ai?.sourceKind)
+      : '';
   const sourceKind = normalizeText(sourceKindRaw) === 'video' ? '' : sourceKindRaw;
 
   const minRating = explicitProvided.has('minRating')
     ? Number(explicitFilters.minRating ?? 0)
-    : Number(ai?.minRating ?? 0);
+    : allowAiInferred
+      ? Number(ai?.minRating ?? 0)
+      : 0;
+
   const maxPrice = explicitProvided.has('maxPrice')
     ? Number(explicitFilters.maxPrice ?? 0)
-    : Number(ai?.maxPrice ?? 0);
+    : allowAiInferred
+      ? Number(ai?.maxPrice ?? 0)
+      : 0;
 
   return {
-    subject: pick('subject', ai?.subject),
-    gradeBand: pick('gradeBand', ai?.gradeBand),
-    country: pick('country', ai?.country),
+    // ✅ CRITICAL: only apply AI inferred subject/gradeBand/country/scope if allowed
+    subject: pick('subject', allowAiInferred ? ai?.subject : ''),
+    gradeBand: pick('gradeBand', allowAiInferred ? ai?.gradeBand : ''),
+    country: pick('country', allowAiInferred ? ai?.country : ''),
     providers,
     contentKinds,
     sourceKind,
-    scope: pick('scope', ai?.scope),
+    scope: pick('scope', allowAiInferred ? ai?.scope : ''),
     minRating: Number.isFinite(minRating) ? minRating : 0,
     maxPrice: Number.isFinite(maxPrice) ? maxPrice : 0,
   };
@@ -89,8 +102,7 @@ function resolveKinds(explicitFilters, merged) {
   const includeBySource = (kind) => {
     const source = normalizeText(merged.sourceKind);
     if (source === 'tutor') return kind === 'tutor';
-    if (source === 'oer')
-      return kind === 'oer_course' || kind === 'oer_video';
+    if (source === 'oer') return kind === 'oer_course' || kind === 'oer_video';
     return true;
   };
 
@@ -105,36 +117,19 @@ function resolveKinds(explicitFilters, merged) {
   };
 }
 
-export async function unifiedSearchService({
-  q,
-  limit,
-  offset,
+/**
+ * ✅ New: shared adapter runner so we can do 2-pass searching.
+ * Pass 1 = explicit-only filters (no AI inferred subject/grade/country/scope)
+ * Pass 2 = AI inferred filters (only if pass 1 yields nothing AND AI used)
+ */
+async function runAdapters({
+  effectiveQ,
+  limitN,
+  offsetN,
   tokenUser,
   explicitFilters,
-  explicitProvided,
+  merged,
 }) {
-  const t0 = nowMs();
-  const rawQ = toStr(q);
-  const limitN = clampInt(limit, 1, MAX_LIMIT, DEFAULT_LIMIT);
-  const offsetN = clampInt(offset, 0, Number.MAX_SAFE_INTEGER, 0);
-
-  let ai = null;
-  let aiUsed = false;
-
-  if (rawQ && shouldUseAi(rawQ)) {
-    try {
-      ai = await aiParseCourseSearch(rawQ);
-      aiUsed = Boolean(ai);
-    } catch (err) {
-      ai = null;
-      aiUsed = false;
-    }
-  }
-
-  const aiKeywords = toStr(ai?.keywords);
-  const effectiveQ = aiKeywords || rawQ;
-
-  const merged = mergeFilters(ai, explicitFilters, explicitProvided);
   const normalizedContentKinds = normalizeContentKinds(merged.contentKinds);
   merged.contentKinds = normalizedContentKinds;
 
@@ -153,28 +148,52 @@ export async function unifiedSearchService({
   if (shouldInclude('tutor')) {
     tasks.push({
       kind: 'tutor',
-      run: () => searchTutorsAdapter({ q: effectiveQ, limit: fetchLimit, offset: 0, intent: adapterIntent }),
+      run: () =>
+        searchTutorsAdapter({
+          q: effectiveQ,
+          limit: fetchLimit,
+          offset: 0,
+          intent: adapterIntent,
+        }),
     });
   }
 
   if (shouldInclude('oer_course')) {
     tasks.push({
       kind: 'oer_course',
-      run: () => searchOerCoursesAdapter({ q: effectiveQ, limit: fetchLimit, offset: 0, intent: adapterIntent }),
+      run: () =>
+        searchOerCoursesAdapter({
+          q: effectiveQ,
+          limit: fetchLimit,
+          offset: 0,
+          intent: adapterIntent,
+        }),
     });
   }
 
   if (shouldInclude('oer_video')) {
     tasks.push({
       kind: 'oer_video',
-      run: () => searchOerVideosAdapter({ q: effectiveQ, limit: fetchLimit, offset: 0, intent: adapterIntent }),
+      run: () =>
+        searchOerVideosAdapter({
+          q: effectiveQ,
+          limit: fetchLimit,
+          offset: 0,
+          intent: adapterIntent,
+        }),
     });
   }
 
   if (shouldInclude('course')) {
     tasks.push({
       kind: 'course',
-      run: () => searchCoursesAdapter({ q: effectiveQ, limit: fetchLimit, offset: 0, intent: adapterIntent }),
+      run: () =>
+        searchCoursesAdapter({
+          q: effectiveQ,
+          limit: fetchLimit,
+          offset: 0,
+          intent: adapterIntent,
+        }),
     });
   }
 
@@ -209,12 +228,82 @@ export async function unifiedSearchService({
   const results = await Promise.allSettled(tasks.map((t) => t.run()));
 
   const items = results.flatMap((res, idx) => {
-    if (res.status === 'fulfilled') {
-      return res.value || [];
-    }
+    if (res.status === 'fulfilled') return res.value || [];
     warnings.push(`Adapter ${tasks[idx].kind} failed.`);
     return [];
   });
+
+  return { items, warnings, mergedUsed: merged };
+}
+
+export async function unifiedSearchService({
+  q,
+  limit,
+  offset,
+  tokenUser,
+  explicitFilters,
+  explicitProvided,
+}) {
+  const t0 = nowMs();
+  const rawQ = toStr(q);
+  const limitN = clampInt(limit, 1, MAX_LIMIT, DEFAULT_LIMIT);
+  const offsetN = clampInt(offset, 0, Number.MAX_SAFE_INTEGER, 0);
+
+  let ai = null;
+  let aiUsed = false;
+
+  if (rawQ && shouldUseAi(rawQ)) {
+    try {
+      ai = await aiParseCourseSearch(rawQ);
+      aiUsed = Boolean(ai);
+    } catch {
+      ai = null;
+      aiUsed = false;
+    }
+  }
+
+  const aiKeywords = toStr(ai?.keywords);
+  const effectiveQ = aiKeywords || rawQ;
+
+  // ✅ PASS 1: explicit-only filters (prevents AI inferred subject from killing results)
+  const mergedExplicitOnly = mergeFilters(ai, explicitFilters, explicitProvided, {
+    allowAiInferred: false,
+  });
+
+  let { items, warnings, mergedUsed } = await runAdapters({
+    effectiveQ,
+    limitN,
+    offsetN,
+    tokenUser,
+    explicitFilters,
+    merged: mergedExplicitOnly,
+  });
+
+  // ✅ PASS 2: if empty and AI was used, retry with AI inferred filters
+  if (items.length === 0 && aiUsed) {
+    const mergedAi = mergeFilters(ai, explicitFilters, explicitProvided, {
+      allowAiInferred: true,
+    });
+
+    const second = await runAdapters({
+      effectiveQ,
+      limitN,
+      offsetN,
+      tokenUser,
+      explicitFilters,
+      merged: mergedAi,
+    });
+
+    items = second.items;
+    warnings = warnings.concat(second.warnings);
+    mergedUsed = second.mergedUsed;
+
+    if (items.length) {
+      warnings.push(
+        'AI inferred filters applied after explicit search returned 0 results.',
+      );
+    }
+  }
 
   const sorted = [...items].sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
@@ -248,17 +337,18 @@ export async function unifiedSearchService({
     return rest;
   });
 
-  const meta = {
-    q: rawQ,
-    limit: limitN,
-    offset: offsetN,
-    usingServer: true,
-    aiUsed,
-    parsed: aiUsed ? { ...merged } : null,
-    ms: nowMs() - t0,
-    countsByKind,
-    ...(warnings.length ? { warnings } : {}),
+  return {
+    items: paged,
+    meta: {
+      q: rawQ,
+      limit: limitN,
+      offset: offsetN,
+      usingServer: true,
+      aiUsed,
+      parsed: aiUsed ? { ...mergedUsed } : null,
+      ms: nowMs() - t0,
+      countsByKind,
+      ...(warnings.length ? { warnings } : {}),
+    },
   };
-
-  return { items: paged, meta };
 }
