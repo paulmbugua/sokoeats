@@ -29,8 +29,6 @@ export type ResourceFilters = {
   subject: string;
   gradeBand: string;
   country: string;
-  providers: string[];
-  contentKinds: string[]; // e.g. ['video','doc']
   sourceKind: '' | 'oer' | 'tutor';
   scope: '' | 'free' | 'purchased';
   minRating: number; // 0..5
@@ -41,8 +39,6 @@ export const DEFAULT_FILTERS: ResourceFilters = {
   subject: '',
   gradeBand: '',
   country: '',
-  providers: [],
-  contentKinds: [],
   sourceKind: '',
   scope: '',
   minRating: 0,
@@ -302,8 +298,6 @@ function useUnifiedCategory<T>(opts: UnifiedCategoryOpts<T>): PaginatedState<T> 
             subject: f.subject || undefined,
             gradeBand: f.gradeBand || undefined,
             country: f.country || undefined,
-            providers: f.providers.length ? f.providers.join(',') : undefined,
-            contentKinds: f.contentKinds.length ? f.contentKinds.join(',') : undefined,
             sourceKind: f.sourceKind || undefined,
             scope: f.scope || undefined,
             minRating: f.minRating > 0 ? f.minRating : undefined,
@@ -401,8 +395,6 @@ function hasActiveFilters(f?: ResourceFilters) {
     x.subject.trim() ||
       x.gradeBand.trim() ||
       x.country.trim() ||
-      x.providers.length ||
-      x.contentKinds.length ||
       x.sourceKind ||
       x.scope ||
       x.minRating > 0 ||
@@ -416,14 +408,17 @@ export function useResourcesExplore(
   filters?: ResourceFilters
 ) {
   const { backendUrl, token } = useShopContext();
+  const MIN_QUERY_LEN = 4;
   const cleanedQuery = query.trim();
+  const queryActive = cleanedQuery.length >= MIN_QUERY_LEN;
+  const effectiveQuery = queryActive ? cleanedQuery : '';
   const enabled = Boolean(backendUrl);
 
   const filtersKey = useMemo(() => JSON.stringify(filters ?? DEFAULT_FILTERS), [filters]);
 
   // ✅ KEY CHANGE
   const filtersActive = hasActiveFilters(filters);
-  const isSearchActive = cleanedQuery.length > 0 || filtersActive;
+  const isSearchActive = queryActive || filtersActive;
 
   // Explore fetchers (non-search)
   const fetchClassVaultPage = useCallback<PaginatedFetcher<RecordedVideo>>(
@@ -431,9 +426,9 @@ export function useResourcesExplore(
       fetchClassVaultExplore(backendUrl, {
         limit,
         offset,
-        q: cleanedQuery || undefined,
+        q: effectiveQuery || undefined,
       }),
-    [backendUrl, cleanedQuery]
+    [backendUrl, effectiveQuery]
   );
 
   const fetchOerVideosPage = useCallback<PaginatedFetcher<OerVideoItem>>(
@@ -441,9 +436,9 @@ export function useResourcesExplore(
       fetchOerVideosExplore(backendUrl, {
         limit,
         offset,
-        q: cleanedQuery || undefined,
+        q: effectiveQuery || undefined,
       }),
-    [backendUrl, cleanedQuery]
+    [backendUrl, effectiveQuery]
   );
 
   const fetchNormalCoursesPage = useCallback<PaginatedFetcher<Course>>(
@@ -451,9 +446,9 @@ export function useResourcesExplore(
       fetchExploreCourses(backendUrl, {
         limit,
         offset,
-        q: cleanedQuery || undefined,
+        q: effectiveQuery || undefined,
       }),
-    [backendUrl, cleanedQuery]
+    [backendUrl, effectiveQuery]
   );
 
   const fetchOerBooksPage = useCallback<PaginatedFetcher<OerBookItem>>(
@@ -461,33 +456,33 @@ export function useResourcesExplore(
       fetchOerBooksExplore(backendUrl, {
         limit,
         offset,
-        q: cleanedQuery || undefined,
+        q: effectiveQuery || undefined,
       }),
-    [backendUrl, cleanedQuery]
+    [backendUrl, effectiveQuery]
   );
 
   // Explore (only when NOT searching)
   const classVaultExplore = usePaginatedSection<RecordedVideo>(
     fetchClassVaultPage,
-    [backendUrl, cleanedQuery],
+    [backendUrl, effectiveQuery],
     { enabled: enabled && !isSearchActive }
   );
 
   const oerVideosExplore = usePaginatedSection<OerVideoItem>(
     fetchOerVideosPage,
-    [backendUrl, cleanedQuery],
+    [backendUrl, effectiveQuery],
     { enabled: enabled && !isSearchActive }
   );
 
   const normalCoursesExplore = usePaginatedSection<Course>(
     fetchNormalCoursesPage,
-    [backendUrl, cleanedQuery],
+    [backendUrl, effectiveQuery],
     { enabled: enabled && !isSearchActive }
   );
 
   const oerBooksExplore = usePaginatedSection<OerBookItem>(
     fetchOerBooksPage,
-    [backendUrl, cleanedQuery],
+    [backendUrl, effectiveQuery],
     { enabled: enabled && !isSearchActive }
   );
 
@@ -496,7 +491,7 @@ export function useResourcesExplore(
     enabled: enabled && isSearchActive && activeTab === 'videos',
     backendUrl,
     token,
-    query: cleanedQuery,
+    query: effectiveQuery,
     kinds: KINDS_CLASSVAULT,
     primaryKind: 'classvault_market',
     map: mapToRecordedVideo,
@@ -508,7 +503,7 @@ export function useResourcesExplore(
     enabled: enabled && isSearchActive && activeTab === 'videos',
     backendUrl,
     token,
-    query: cleanedQuery,
+    query: effectiveQuery,
     kinds: KINDS_OER_VIDEOS,
     primaryKind: 'oer_video',
     map: mapToOerVideo,
@@ -520,7 +515,7 @@ export function useResourcesExplore(
     enabled: enabled && isSearchActive && activeTab === 'courses',
     backendUrl,
     token,
-    query: cleanedQuery,
+    query: effectiveQuery,
     kinds: KINDS_COURSES,
     primaryKind: 'course',
     map: mapToCourse,
@@ -532,7 +527,7 @@ export function useResourcesExplore(
     enabled: enabled && isSearchActive && activeTab === 'courses',
     backendUrl,
     token,
-    query: cleanedQuery,
+    query: effectiveQuery,
     kinds: KINDS_OER_COURSES,
     primaryKind: 'oer_course',
     filter: isOerBookResult,
@@ -548,12 +543,12 @@ export function useResourcesExplore(
 
   return useMemo(
     () => ({
-      query: cleanedQuery,
+      query: effectiveQuery,
       classVault,
       oerVideos,
       normalCourses,
       oerBooks,
     }),
-    [cleanedQuery, classVault, oerVideos, normalCourses, oerBooks]
+    [effectiveQuery, classVault, oerVideos, normalCourses, oerBooks]
   );
 }
