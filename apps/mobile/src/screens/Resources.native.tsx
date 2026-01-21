@@ -79,8 +79,6 @@ type ResourceFilters = {
   subject: string;
   gradeBand: string;
   country: string;
-  providers: string[];
-  contentKinds: string[];
   sourceKind: '' | 'oer' | 'tutor';
   scope: '' | 'free' | 'purchased';
   minRating: number;
@@ -91,8 +89,6 @@ const DEFAULT_FILTERS: ResourceFilters = {
   subject: '',
   gradeBand: '',
   country: '',
-  providers: [],
-  contentKinds: [],
   sourceKind: '',
   scope: '',
   minRating: 0,
@@ -104,8 +100,6 @@ function countActiveFilters(f: ResourceFilters) {
   if (f.subject.trim()) n += 1;
   if (f.gradeBand.trim()) n += 1;
   if (f.country.trim()) n += 1;
-  if (f.providers.length) n += 1;
-  if (f.contentKinds.length) n += 1;
   if (f.sourceKind) n += 1;
   if (f.scope) n += 1;
   if (f.minRating > 0) n += 1;
@@ -159,23 +153,15 @@ const FilterChip: React.FC<{
   </Pressable>
 );
 
-const PROVIDER_CHOICES = ['Khan Academy', 'YouTube', 'OpenStax', 'CK-12', 'MIT OCW'];
-
 const FilterModal: React.FC<{
   open: boolean;
   value: ResourceFilters;
   onChange: (next: ResourceFilters) => void;
   onClose: () => void;
+  onApply: () => void;
   onReset: () => void;
-}> = ({ open, value, onChange, onClose, onReset }) => {
+}> = ({ open, value, onChange, onClose, onApply, onReset }) => {
   const set = (patch: Partial<ResourceFilters>) => onChange({ ...value, ...patch });
-
-  const toggleArr = (key: 'providers' | 'contentKinds', v: string) => {
-    const arr = value[key];
-    set({
-      [key]: arr.includes(v) ? arr.filter((x) => x !== v) : arr.concat(v),
-    } as Partial<ResourceFilters>);
-  };
 
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
@@ -221,40 +207,6 @@ const FilterModal: React.FC<{
                   <FilterChip label="All" active={value.scope === ''} onPress={() => set({ scope: '' })} />
                   <FilterChip label="Free" active={value.scope === 'free'} onPress={() => set({ scope: 'free' })} />
                   <FilterChip label="Purchased" active={value.scope === 'purchased'} onPress={() => set({ scope: 'purchased' })} />
-                </View>
-              </View>
-
-              <View style={tw`mb-5`}>
-                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
-                  Content type
-                </Text>
-                <View style={tw`flex-row flex-wrap gap-2`}>
-                  <FilterChip
-                    label="Video"
-                    active={value.contentKinds.includes('video')}
-                    onPress={() => toggleArr('contentKinds', 'video')}
-                  />
-                  <FilterChip
-                    label="Docs / Notes"
-                    active={value.contentKinds.includes('doc')}
-                    onPress={() => toggleArr('contentKinds', 'doc')}
-                  />
-                </View>
-              </View>
-
-              <View style={tw`mb-5`}>
-                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
-                  Providers
-                </Text>
-                <View style={tw`flex-row flex-wrap gap-2`}>
-                  {PROVIDER_CHOICES.map((provider) => (
-                    <FilterChip
-                      key={provider}
-                      label={provider}
-                      active={value.providers.includes(provider)}
-                      onPress={() => toggleArr('providers', provider)}
-                    />
-                  ))}
                 </View>
               </View>
 
@@ -334,7 +286,7 @@ const FilterModal: React.FC<{
               >
                 <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>Reset</Text>
               </Pressable>
-              <Pressable onPress={onClose} style={tw`px-5 py-2 rounded-full bg-blue-500`}>
+              <Pressable onPress={onApply} style={tw`px-5 py-2 rounded-full bg-blue-500`}>
                 <Text style={tw`text-sm font-extrabold text-white`}>Apply</Text>
               </Pressable>
             </View>
@@ -623,6 +575,7 @@ const SimpleCard: React.FC<{
 const ResourcesPage: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<MainStackParamList, 'Resources'>>();
+  const MIN_QUERY_LEN = 4;
 
   const initialTab = route.params?.tab === 'courses' ? 'courses' : 'videos';
   const initialQuery = route.params?.q ?? '';
@@ -690,19 +643,27 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
   const [tab, setTab] = useState<'videos' | 'courses'>(initialTab);
   const [query, setQuery] = useState(initialQuery);
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
-  const [filters, setFilters] = useState<ResourceFilters>(DEFAULT_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState<ResourceFilters>(DEFAULT_FILTERS);
+  const [draftFilters, setDraftFilters] = useState<ResourceFilters>(DEFAULT_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
+  const activeFilterCount = useMemo(
+    () => countActiveFilters(appliedFilters),
+    [appliedFilters]
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 400);
     return () => clearTimeout(t);
   }, [query]);
 
-  const explore = useResourcesExplore(debouncedQuery, tab, filters);
+  const trimmedQuery = query.trim();
+  const queryActive = trimmedQuery.length >= MIN_QUERY_LEN;
+  const effectiveQuery = queryActive ? debouncedQuery.trim() : '';
+
+  const explore = useResourcesExplore(effectiveQuery, tab, appliedFilters);
 
   const { backendUrl } = useShopContext();
-  const oerCollections = useOerVideoCollections(backendUrl, debouncedQuery);
+  const oerCollections = useOerVideoCollections(backendUrl, effectiveQuery);
 
   // Visible tracking so only on-screen cards autoplay video previews
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
@@ -725,12 +686,13 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
     [tab]
   );
 
-  const isPurchasedCoursesScope = filters.scope === 'purchased' && tab === 'courses';
+  const isPurchasedCoursesScope = appliedFilters.scope === 'purchased' && tab === 'courses';
 
   const clearAll = useCallback(() => {
     setQuery('');
     setDebouncedQuery('');
-    setFilters(DEFAULT_FILTERS);
+    setAppliedFilters(DEFAULT_FILTERS);
+    setDraftFilters(DEFAULT_FILTERS);
   }, []);
 
   const sections: ExploreSection[] = useMemo(() => {
@@ -910,7 +872,10 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
             <View style={tw`mt-4`}>
               <View style={tw`flex-row items-center justify-between mb-3`}>
                 <Pressable
-                  onPress={() => setFiltersOpen(true)}
+                  onPress={() => {
+                    setDraftFilters(appliedFilters);
+                    setFiltersOpen(true);
+                  }}
                   style={tw`flex-row items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1821] px-4 py-2`}
                 >
                   <Text style={tw`text-sm font-semibold text-slate-700 dark:text-white`}>
@@ -958,10 +923,14 @@ const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
 
       <FilterModal
         open={filtersOpen}
-        value={filters}
-        onChange={setFilters}
+        value={draftFilters}
+        onChange={setDraftFilters}
         onClose={() => setFiltersOpen(false)}
-        onReset={() => setFilters(DEFAULT_FILTERS)}
+        onApply={() => {
+          setAppliedFilters(draftFilters);
+          setFiltersOpen(false);
+        }}
+        onReset={() => setDraftFilters(DEFAULT_FILTERS)}
       />
 
       <Modal

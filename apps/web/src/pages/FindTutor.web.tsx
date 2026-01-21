@@ -14,6 +14,7 @@ import {
 
 import { useHomePage } from '@mytutorapp/shared/hooks';
 import type { Profile, TutorFilters } from '@mytutorapp/shared/types';
+import { DEFAULT_TUTOR_FILTERS } from '@mytutorapp/shared/types';
 import { countryName } from '@mytutorapp/shared/utils/countries';
 import { normalizeCountryLabel } from '@mytutorapp/shared/utils/smartSearchIntent';
 
@@ -114,12 +115,14 @@ const countActiveTutorFilters = (filters: TutorFilters) => {
 const FilterModal = ({
   open,
   onClose,
+  onApply,
   filters,
   onChange,
   onReset,
 }: {
   open: boolean;
   onClose: () => void;
+  onApply: () => void;
   filters: TutorFilters;
   onChange: (next: Partial<TutorFilters>) => void;
   onReset: () => void;
@@ -201,7 +204,7 @@ const FilterModal = ({
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={onApply}
             className="h-10 px-5 rounded-full bg-[#3d99f5] text-white text-sm font-extrabold"
           >
             Apply
@@ -223,6 +226,7 @@ const resolveImage = (p: any, backendUrl?: string, fallbackName?: string) => {
 
 const FindTutor: React.FC = () => {
   const location = useLocation();
+  const MIN_QUERY_LEN = 4;
   const {
     filteredProfiles, // ✅ already server-filtered by q/subject/country/minRating/maxPrice
     loading,
@@ -233,7 +237,6 @@ const FindTutor: React.FC = () => {
     setMinRatingFilter,
     setGradeBandFilter,
     clearFilters,
-    resetFilters,
     searchMeta,
   } = useHomePage({ debounceMs: 0 });
 
@@ -244,6 +247,7 @@ const FindTutor: React.FC = () => {
   const [page, setPage] = useState(1);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [draftFilters, setDraftFilters] = useState<TutorFilters>(DEFAULT_TUTOR_FILTERS);
 
   const activeFilterCount = useMemo(() => countActiveTutorFilters(uiFilters), [uiFilters]);
 
@@ -257,7 +261,9 @@ const FindTutor: React.FC = () => {
 
     setQuery(q);
     setDebouncedQuery(q);
-    if (q) handleSearch?.(q);
+    if (q && q.trim().length >= MIN_QUERY_LEN) {
+      handleSearch?.(q);
+    }
     if (subject) setSubjectFilter(subject);
     if (gradeBand) setGradeBandFilter(gradeBand);
 
@@ -299,18 +305,21 @@ const FindTutor: React.FC = () => {
   }, [query]);
 
   useEffect(() => {
-    handleSearch?.(debouncedQuery);
+    const trimmed = debouncedQuery.trim();
+    const queryActive = trimmed.length >= MIN_QUERY_LEN;
+    const effectiveQuery = queryActive ? trimmed : '';
+    handleSearch?.(effectiveQuery);
   }, [debouncedQuery, handleSearch]);
 
   const onResetFilters = useCallback(() => {
-    resetFilters();
-    setPage(1);
-  }, [resetFilters]);
+    setDraftFilters(DEFAULT_TUTOR_FILTERS);
+  }, []);
 
   const onClearAll = useCallback(() => {
     setQuery('');
     setDebouncedQuery('');
     clearFilters();
+    setDraftFilters(DEFAULT_TUTOR_FILTERS);
     setPage(1);
   }, [clearFilters]);
 
@@ -372,7 +381,10 @@ const FindTutor: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => setFiltersOpen(true)}
+                onClick={() => {
+                  setDraftFilters(uiFilters);
+                  setFiltersOpen(true);
+                }}
                 className="h-12 px-4 rounded-xl ring-1 ring-[#e7edf4] dark:ring-darkCard bg-white dark:bg-[#0f1821] hover:brightness-105 flex items-center gap-2"
               >
                 <span className="text-sm font-semibold">Filters</span>
@@ -561,15 +573,17 @@ const FindTutor: React.FC = () => {
       <FilterModal
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
-        filters={uiFilters}
-        onChange={(next) => {
-          if (typeof next.subject === 'string') setSubjectFilter(next.subject);
-          if (typeof next.gradeBand === 'string') setGradeBandFilter(next.gradeBand);
-          if (typeof next.country === 'string') setCountryFilter(next.country);
-          if (typeof next.minRating === 'number') setMinRatingFilter(next.minRating);
-          setPage(1);
-        }}
+        filters={draftFilters}
+        onChange={(next) => setDraftFilters((prev) => ({ ...prev, ...next }))}
         onReset={onResetFilters}
+        onApply={() => {
+          setSubjectFilter(draftFilters.subject || '');
+          setGradeBandFilter(draftFilters.gradeBand || '');
+          setCountryFilter(draftFilters.country || '');
+          setMinRatingFilter(Number(draftFilters.minRating || 0));
+          setPage(1);
+          setFiltersOpen(false);
+        }}
       />
     </div>
   );

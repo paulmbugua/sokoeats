@@ -18,6 +18,7 @@ import tw from '../../tailwind';
 
 import { useHomePage } from '@mytutorapp/shared/hooks';
 import type { Profile, TutorFilters } from '@mytutorapp/shared/types';
+import { DEFAULT_TUTOR_FILTERS } from '@mytutorapp/shared/types';
 import { countryName } from '@mytutorapp/shared/utils/countries';
 import { normalizeCountryLabel } from '@mytutorapp/shared/utils/smartSearchIntent';
 
@@ -157,12 +158,14 @@ const FilterModal = ({
   onChange,
   onReset,
   onClose,
+  onApply,
 }: {
   visible: boolean;
   filters: TutorFilters;
   onChange: (next: Partial<TutorFilters>) => void;
   onReset: () => void;
   onClose: () => void;
+  onApply: () => void;
 }) => (
   <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
     <Pressable
@@ -246,7 +249,7 @@ const FilterModal = ({
           </Pressable>
 
           <Pressable
-            onPress={onClose}
+            onPress={onApply}
             style={tw`h-10 px-5 rounded-full bg-primary items-center justify-center`}
           >
             <Text style={tw`text-sm font-extrabold text-white`}>Apply</Text>
@@ -382,6 +385,7 @@ const FindTutorScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
+  const MIN_QUERY_LEN = 4;
   const bottomPad = Math.max(insets.bottom, 16);
   const topPad = Math.max(insets.top, 12);
 
@@ -405,7 +409,6 @@ const FindTutorScreen: React.FC = () => {
   const setMinRatingFilter: ((n: number) => void) | undefined = home?.setMinRatingFilter;
 
   const clearFilters: (() => void) | undefined = home?.clearFilters;
-  const resetFilters: (() => void) | undefined = home?.resetFilters;
   const searchMeta = home?.searchMeta as any;
 
   // backendUrl optional (for relative gallery urls) — if you store it in context you can wire it here
@@ -416,6 +419,7 @@ const FindTutorScreen: React.FC = () => {
   const [page, setPage] = useState(1);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [draftFilters, setDraftFilters] = useState<TutorFilters>(DEFAULT_TUTOR_FILTERS);
 
   const activeFilterCount = useMemo(
     () =>
@@ -437,7 +441,7 @@ const FindTutorScreen: React.FC = () => {
 
     setQuery(q);
     setDebouncedQuery(q);
-    if (q) handleSearch?.(q);
+    if (q && q.trim().length >= MIN_QUERY_LEN) handleSearch?.(q);
     if (subject) setSubjectFilter?.(subject);
     if (gradeBand) setGradeBandFilter?.(gradeBand);
     if (countryParam) {
@@ -463,7 +467,10 @@ const FindTutorScreen: React.FC = () => {
   }, [query]);
 
   useEffect(() => {
-    handleSearch?.(debouncedQuery);
+    const trimmed = debouncedQuery.trim();
+    const queryActive = trimmed.length >= MIN_QUERY_LEN;
+    const effectiveQuery = queryActive ? trimmed : '';
+    handleSearch?.(effectiveQuery);
   }, [debouncedQuery, handleSearch]);
 
   // Tutors already server-filtered; we just ensure role is tutor
@@ -493,14 +500,14 @@ const FindTutorScreen: React.FC = () => {
   }, [totalPages, pageSafe]);
 
   const onReset = () => {
-    resetFilters?.();
-    setPage(1);
+    setDraftFilters(DEFAULT_TUTOR_FILTERS);
   };
 
   const onClearAll = useCallback(() => {
     setQuery('');
     setDebouncedQuery('');
     clearFilters?.();
+    setDraftFilters(DEFAULT_TUTOR_FILTERS);
     setPage(1);
   }, [clearFilters]);
 
@@ -569,13 +576,13 @@ const FindTutorScreen: React.FC = () => {
           {/* Search row + Filters + Clear */}
           <View style={tw`mt-3 flex-row items-center gap-2`}>
             <View style={tw`flex-1`}>
-              <View
-                style={tw`flex-row items-center h-12 px-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534] border border-[#e2edf5] dark:border-white/10`}
-              >
-                <Text style={tw`text-base mr-2`}>🔎</Text>
-                <TextInput
-                  placeholder='Search e.g. "Kenya math tutor", "Grade 3", "certified english"'
-                  placeholderTextColor="#49739c"
+            <View
+              style={tw`flex-row items-center h-12 px-3 rounded-xl bg-slate-100 dark:bg-[#172534] border border-slate-200 dark:border-white/10`}
+            >
+              <Text style={tw`text-base mr-2 text-slate-500 dark:text-white/70`}>🔎</Text>
+              <TextInput
+                placeholder='Search e.g. "Kenya math tutor", "Grade 3", "certified english"'
+                placeholderTextColor="#49739c"
                   value={query}
                   onChangeText={(t) => {
                     setQuery(t);
@@ -588,7 +595,15 @@ const FindTutorScreen: React.FC = () => {
             </View>
 
             <Pressable
-              onPress={() => setFiltersOpen(true)}
+              onPress={() => {
+                setDraftFilters({
+                  subject: uiFilters?.subject || '',
+                  gradeBand: uiFilters?.gradeBand || '',
+                  country: uiFilters?.country || '',
+                  minRating: Number(uiFilters?.minRating || 0),
+                });
+                setFiltersOpen(true);
+              }}
               style={tw`h-12 px-4 rounded-xl border border-[#e2edf5] dark:border-white/10 bg-white dark:bg-[#0f1821] flex-row items-center`}
             >
               <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Filters</Text>
@@ -686,20 +701,22 @@ const FindTutorScreen: React.FC = () => {
       <FilterModal
         visible={filtersOpen}
         filters={{
-          subject: uiFilters?.subject || '',
-          gradeBand: uiFilters?.gradeBand || '',
-          country: uiFilters?.country || '',
-          minRating: Number(uiFilters?.minRating || 0),
+          subject: draftFilters.subject || '',
+          gradeBand: draftFilters.gradeBand || '',
+          country: draftFilters.country || '',
+          minRating: Number(draftFilters.minRating || 0),
         }}
-        onChange={(next) => {
-          if (typeof next.subject === 'string') setSubjectFilter?.(next.subject);
-          if (typeof next.gradeBand === 'string') setGradeBandFilter?.(next.gradeBand);
-          if (typeof next.country === 'string') setCountryFilter?.(next.country);
-          if (typeof next.minRating === 'number') setMinRatingFilter?.(next.minRating);
-          setPage(1);
-        }}
+        onChange={(next) => setDraftFilters((prev) => ({ ...prev, ...next }))}
         onReset={onReset}
         onClose={() => setFiltersOpen(false)}
+        onApply={() => {
+          setSubjectFilter?.(draftFilters.subject || '');
+          setGradeBandFilter?.(draftFilters.gradeBand || '');
+          setCountryFilter?.(draftFilters.country || '');
+          setMinRatingFilter?.(Number(draftFilters.minRating || 0));
+          setPage(1);
+          setFiltersOpen(false);
+        }}
       />
     </SafeAreaView>
   );

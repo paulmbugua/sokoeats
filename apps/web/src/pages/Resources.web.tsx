@@ -1,6 +1,6 @@
 // apps/web/src/pages/ResourcesPage.web.tsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons';
 import PaymentWidget from '../components/PaymentWidget.web';
@@ -62,8 +62,6 @@ type ResourceFilters = {
   subject: string;
   gradeBand: string;
   country: string;
-  providers: string[];
-  contentKinds: string[]; // e.g. ['video','doc']
   sourceKind: '' | 'oer' | 'tutor';
   scope: '' | 'free' | 'purchased';
   minRating: number; // 0..5
@@ -74,8 +72,6 @@ const DEFAULT_FILTERS: ResourceFilters = {
   subject: '',
   gradeBand: '',
   country: '',
-  providers: [],
-  contentKinds: [],
   sourceKind: '',
   scope: '',
   minRating: 0,
@@ -87,8 +83,6 @@ function countActiveFilters(f: ResourceFilters) {
   if (f.subject.trim()) n++;
   if (f.gradeBand.trim()) n++;
   if (f.country.trim()) n++;
-  if (f.providers.length) n++;
-  if (f.contentKinds.length) n++;
   if (f.sourceKind) n++;
   if (f.scope) n++;
   if (f.minRating > 0) n++;
@@ -119,21 +113,12 @@ const FilterModal: React.FC<{
   value: ResourceFilters;
   onChange: (next: ResourceFilters) => void;
   onClose: () => void;
+  onApply: () => void;
   onReset: () => void;
-}> = ({ open, value, onChange, onClose, onReset }) => {
+}> = ({ open, value, onChange, onClose, onApply, onReset }) => {
   if (!open) return null;
 
   const set = (patch: Partial<ResourceFilters>) => onChange({ ...value, ...patch });
-
-  const toggleArr = (key: 'providers' | 'contentKinds', v: string) => {
-    const arr = value[key];
-    set({
-      [key]: arr.includes(v) ? arr.filter((x) => x !== v) : arr.concat(v),
-    } as any);
-  };
-
-  // NOTE: providers here are examples; adapt to whatever your backend supports.
-  const PROVIDER_CHOICES = ['Khan Academy', 'YouTube', 'OpenStax', 'CK-12', 'MIT OCW'];
 
   return (
     <div
@@ -204,45 +189,6 @@ const FilterModal: React.FC<{
             <p className="text-[11px] text-[#5e738f] dark:text-darkTextSecondary mt-2">
               “Purchased” only applies if purchased kinds are included in the server search.
             </p>
-          </div>
-
-          {/* Content kinds */}
-          <div>
-            <p className="text-xs font-bold text-[#49739c] dark:text-darkTextSecondary mb-2">
-              Content type
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Chip
-                active={value.contentKinds.includes('video')}
-                onClick={() => toggleArr('contentKinds', 'video')}
-              >
-                Video
-              </Chip>
-              <Chip
-                active={value.contentKinds.includes('doc')}
-                onClick={() => toggleArr('contentKinds', 'doc')}
-              >
-                Docs / Notes
-              </Chip>
-            </div>
-          </div>
-
-          {/* Providers */}
-          <div>
-            <p className="text-xs font-bold text-[#49739c] dark:text-darkTextSecondary mb-2">
-              Providers
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {PROVIDER_CHOICES.map((p) => (
-                <Chip
-                  key={p}
-                  active={value.providers.includes(p)}
-                  onClick={() => toggleArr('providers', p)}
-                >
-                  {p}
-                </Chip>
-              ))}
-            </div>
           </div>
 
           {/* Simple text inputs */}
@@ -335,7 +281,7 @@ const FilterModal: React.FC<{
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={onApply}
             className="h-10 px-6 rounded-full bg-[#3d99f5] text-white text-sm font-extrabold hover:brightness-110"
           >
             Apply
@@ -701,8 +647,8 @@ const PurchaseModal: React.FC<{
 /* ------------------------------ Page ------------------------------------- */
 const ResourcesPage: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const [params] = useSearchParams();
+  const MIN_QUERY_LEN = 4;
 
   const initialTab = (params.get('tab') || '').toLowerCase() === 'videos' ? 'videos' : 'courses';
 
@@ -711,24 +657,32 @@ const ResourcesPage: React.FC = () => {
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
   // ✅ filter state
-  const [filters, setFilters] = useState<ResourceFilters>(DEFAULT_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState<ResourceFilters>(DEFAULT_FILTERS);
+  const [draftFilters, setDraftFilters] = useState<ResourceFilters>(DEFAULT_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
+  const activeFilterCount = useMemo(
+    () => countActiveFilters(appliedFilters),
+    [appliedFilters]
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 400);
     return () => clearTimeout(t);
   }, [query]);
 
+  const trimmedQuery = query.trim();
+  const queryActive = trimmedQuery.length >= MIN_QUERY_LEN;
+  const effectiveQuery = queryActive ? debouncedQuery.trim() : '';
+
   // Shared hook for marketplace, courses, books, etc.
   // ✅ IMPORTANT: this assumes you updated the hook signature:
   // useResourcesExplore(query, tab, filters)
-  const explore = useResourcesExplore(debouncedQuery, tab, filters as any);
+  const explore = useResourcesExplore(effectiveQuery, tab, appliedFilters as any);
 
   // Backend URL for OER collections fetch (HomePage-style)
   const { backendUrl } = useShopContext();
-  const oerVideoCollections = useOerVideoCollections(backendUrl, debouncedQuery);
+  const oerVideoCollections = useOerVideoCollections(backendUrl, effectiveQuery);
 
   // ✅ ClassVault purchase support (same pattern as native)
   const { purchasedIds, purchase } = useClassVault('', ''); // no filters; just need purchasedIds + purchase()
@@ -815,12 +769,13 @@ const ResourcesPage: React.FC = () => {
     [tab]
   );
 
-  const isPurchasedCoursesScope = filters.scope === 'purchased' && tab === 'courses';
+  const isPurchasedCoursesScope = appliedFilters.scope === 'purchased' && tab === 'courses';
 
   const clearAll = useCallback(() => {
     setQuery('');
     setDebouncedQuery('');
-    setFilters(DEFAULT_FILTERS);
+    setAppliedFilters(DEFAULT_FILTERS);
+    setDraftFilters(DEFAULT_FILTERS);
   }, []);
 
   return (
@@ -854,7 +809,10 @@ const ResourcesPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => setFiltersOpen(true)}
+                onClick={() => {
+                  setDraftFilters(appliedFilters);
+                  setFiltersOpen(true);
+                }}
                 className="h-12 px-4 rounded-xl ring-1 ring-[#e7edf4] dark:ring-darkCard bg-white dark:bg-[#0f1821] hover:brightness-105 flex items-center gap-2"
               >
                 <span className="text-sm font-semibold">Filters</span>
@@ -1053,10 +1011,14 @@ const ResourcesPage: React.FC = () => {
       {/* ✅ Filter modal */}
       <FilterModal
         open={filtersOpen}
-        value={filters}
-        onChange={setFilters}
+        value={draftFilters}
+        onChange={setDraftFilters}
         onClose={() => setFiltersOpen(false)}
-        onReset={() => setFilters(DEFAULT_FILTERS)}
+        onApply={() => {
+          setAppliedFilters(draftFilters);
+          setFiltersOpen(false);
+        }}
+        onReset={() => setDraftFilters(DEFAULT_FILTERS)}
       />
 
       {/* ✅ Purchase modal (web) */}
