@@ -1,6 +1,13 @@
 // apps/backend/services/search/adapters/searchOerVideosAdapter.js
 import pool from '../../../config/db.js';
-import { scoreIntentMatch, scoreTextMatch, toArr, toStr, normalizeText } from '../searchUtils.js';
+import {
+  buildSubjectSearch,
+  scoreIntentMatch,
+  scoreTextMatch,
+  toArr,
+  toStr,
+  normalizeText,
+} from '../searchUtils.js';
 
 function normalizeContentKinds(contentKinds) {
   const kinds = toArr(contentKinds).map((k) => normalizeText(k));
@@ -10,7 +17,7 @@ function normalizeContentKinds(contentKinds) {
 export async function searchOerVideosAdapter({ q, limit, offset, intent }) {
   const qStr = toStr(q);
   const like = qStr ? `%${qStr.toLowerCase()}%` : '';
-  const subject = toStr(intent?.subject);
+  const { likes: subjectLikes } = buildSubjectSearch(intent?.subject);
   const providers = toArr(intent?.providers);
   const contentKinds = normalizeContentKinds(intent?.contentKinds);
 
@@ -18,7 +25,7 @@ export async function searchOerVideosAdapter({ q, limit, offset, intent }) {
     return [];
   }
 
-  const args = [like, subject, providers, limit, offset];
+  const args = [like, subjectLikes, providers, limit, offset];
   let idx = 0;
   const pLike = `$${++idx}`;
   const pSubject = `$${++idx}`;
@@ -43,7 +50,9 @@ export async function searchOerVideosAdapter({ q, limit, offset, intent }) {
         LOWER(COALESCE(tpc.subject,'')) LIKE ${pLike}
       )
       AND (
-        ${pSubject} = '' OR LOWER(COALESCE(tpc.subject,'')) = LOWER(${pSubject})
+        COALESCE(array_length(${pSubject}::text[], 1), 0) = 0
+        OR LOWER(COALESCE(tpc.subject,'')) LIKE ANY(${pSubject}::text[])
+        OR LOWER(COALESCE(tpc.title,'')) LIKE ANY(${pSubject}::text[])
       )
       AND (
         COALESCE(array_length(${pProviders}::text[], 1), 0) = 0

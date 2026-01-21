@@ -1,12 +1,12 @@
 import pool from '../../../config/db.js';
-import { scoreIntentMatch, scoreTextMatch, toStr } from '../searchUtils.js';
+import { buildSubjectSearch, scoreIntentMatch, scoreTextMatch, toStr } from '../searchUtils.js';
 
 export async function searchCoursesAdapter({ q, limit, offset, intent }) {
   const qStr = toStr(q);
   const like = qStr ? `%${qStr.toLowerCase()}%` : '';
-  const subject = toStr(intent?.subject);
+  const { likes: subjectLikes } = buildSubjectSearch(intent?.subject);
 
-  const args = [like, subject, limit, offset];
+  const args = [like, subjectLikes, limit, offset];
   const sql = `
     SELECT
       c.id,
@@ -26,7 +26,8 @@ export async function searchCoursesAdapter({ q, limit, offset, intent }) {
         LOWER(COALESCE(c.subject,'')) LIKE $1
       )
       AND (
-        $2 = '' OR LOWER(COALESCE(c.subject,'')) = LOWER($2)
+        COALESCE(array_length($2::text[], 1), 0) = 0
+        OR LOWER(COALESCE(c.subject,'')) LIKE ANY($2::text[])
       )
     ORDER BY c.created_at DESC NULLS LAST, c.title ASC
     LIMIT $3 OFFSET $4;

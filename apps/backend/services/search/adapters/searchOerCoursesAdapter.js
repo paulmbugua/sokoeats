@@ -1,6 +1,13 @@
 // apps/backend/services/search/adapters/searchOerCoursesAdapter.js
 import pool from '../../../config/db.js';
-import { scoreIntentMatch, scoreTextMatch, toArr, toStr, normalizeText } from '../searchUtils.js';
+import {
+  buildSubjectSearch,
+  scoreIntentMatch,
+  scoreTextMatch,
+  toArr,
+  toStr,
+  normalizeText,
+} from '../searchUtils.js';
 
 function normalizeContentKinds(contentKinds) {
   const kinds = toArr(contentKinds).map((k) => normalizeText(k));
@@ -10,10 +17,10 @@ function normalizeContentKinds(contentKinds) {
 export async function searchOerCoursesAdapter({ q, limit, offset, intent }) {
   const qStr = toStr(q);
   const like = qStr ? `%${qStr.toLowerCase()}%` : '';
-  const subject = toStr(intent?.subject);
+  const { likes: subjectLikes } = buildSubjectSearch(intent?.subject);
   const contentKinds = normalizeContentKinds(intent?.contentKinds);
 
-  const params = [like, subject, contentKinds, limit, offset];
+  const params = [like, subjectLikes, contentKinds, limit, offset];
 
   const sql = `
     WITH base AS (
@@ -107,7 +114,10 @@ export async function searchOerCoursesAdapter({ q, limit, offset, intent }) {
       LOWER(COALESCE(subject,'')) LIKE $1
     )
     AND (
-      $2 = '' OR LOWER(COALESCE(subject,'')) = LOWER($2)
+      COALESCE(array_length($2::text[], 1), 0) = 0
+      OR LOWER(COALESCE(subject,'')) LIKE ANY($2::text[])
+      OR LOWER(COALESCE(title,'')) LIKE ANY($2::text[])
+      OR LOWER(COALESCE(description,'')) LIKE ANY($2::text[])
     )
     AND (
       COALESCE(array_length($3::text[], 1), 0) = 0
