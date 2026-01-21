@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
 // apps/mobile/src/screens/FindTutor.native.tsx
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,7 @@ import {
   Pressable,
   ActivityIndicator,
   ScrollView,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
   Modal,
-  Switch,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, NavigationProp } from '@react-navigation/native';
@@ -20,55 +17,19 @@ import type { MainStackParamList } from '../navigation/types';
 import tw from '../../tailwind';
 
 import { useHomePage } from '@mytutorapp/shared/hooks';
-import type { Profile } from '@mytutorapp/shared/types';
-import { COUNTRIES, countryName } from '@mytutorapp/shared/utils/countries';
+import type { Profile, TutorFilters } from '@mytutorapp/shared/types';
+import { countryName } from '@mytutorapp/shared/utils/countries';
 import { normalizeCountryLabel } from '@mytutorapp/shared/utils/smartSearchIntent';
 
 /* ───────── Constants ───────── */
 const FALLBACK_AVATAR = (name = 'Tutor') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e7edf4&color=0d141c`;
 
-const SUBJECTS = [
-  'Math',
-  'Science',
-  'Programming',
-  'Art',
-  'Wellness',
-  'Languages',
-  'English',
-  'History',
-] as const;
-
-const RATINGS = [5, 4.5, 4, 3.5, 3] as const;
-
-// Web parity
-const AVAILABILITY = ['Online', 'Offline', 'Busy', 'Free Session', 'New'] as const;
-const LANGS_COMMON = ['English', 'Spanish', 'French', 'Arabic', 'Chinese', 'German'] as const;
-
-const TOKENS_OPTIONS = [
-  { label: 'Tokens', value: 0 },
-  { label: '≤ 10', value: 10 },
-  { label: '≤ 20', value: 20 },
-  { label: '≤ 40', value: 40 },
-  { label: '≤ 60', value: 60 },
-  { label: '60+', value: 999999 },
-] as const;
+const MIN_RATING_OPTIONS = [0, 3, 4, 4.5, 5] as const;
 
 const PER_PAGE = 20;
 
 /* ───────── Utils ───────── */
-const normalizeStr = (v: unknown): string => {
-  if (v == null) return '';
-  if (typeof v === 'string') return v.toLowerCase().trim();
-  if (typeof v === 'number' || typeof v === 'boolean') return String(v).toLowerCase().trim();
-  if (Array.isArray(v)) return v.map(normalizeStr).join(' ').trim();
-  if (typeof v === 'object')
-    return Object.values(v as any)
-      .map(normalizeStr)
-      .join(' ')
-      .trim();
-  return '';
-};
 
 const getRating = (p: any) => {
   const avg = p?.avgRating;
@@ -147,30 +108,6 @@ const getDescriptionText = (p: any): string => {
   return '';
 };
 
-const hasAvailability = (p: any, option: string) => {
-  if (!option) return true;
-  const opt = normalizeStatus(option);
-
-  if (opt === 'New') return isNewTutor(p);
-
-  const s = normalizeStatus(p?.status);
-  if (s && s === opt) return true;
-
-  const s2 = normalizeStatus(p?.availability);
-  if (s2 && s2 === opt) return true;
-
-  return false;
-};
-
-const hasLanguage = (p: any, lang: string) => {
-  if (!lang) return true;
-  const list = p?.languages;
-  if (Array.isArray(list)) {
-    return list.map((x: any) => normalizeStr(String(x))).includes(normalizeStr(lang));
-  }
-  return true;
-};
-
 const resolveImage = (p: any, backendUrl?: string, fallbackName?: string) => {
   const g0 = Array.isArray(p?.gallery) ? p.gallery[0] : undefined;
   if (typeof g0 === 'string' && g0.length > 0) {
@@ -178,6 +115,15 @@ const resolveImage = (p: any, backendUrl?: string, fallbackName?: string) => {
     if (g0.startsWith('/') && backendUrl) return `${backendUrl.replace(/\/+$/, '')}${g0}`;
   }
   return FALLBACK_AVATAR(fallbackName ?? p?.name ?? 'Tutor');
+};
+
+const countActiveTutorFilters = (filters: TutorFilters) => {
+  let count = 0;
+  if (filters.subject) count += 1;
+  if (filters.gradeBand) count += 1;
+  if (filters.country) count += 1;
+  if (filters.minRating > 0) count += 1;
+  return count;
 };
 
 /* ───────── Small UI bits ───────── */
@@ -203,6 +149,112 @@ const Chip: React.FC<{
       {label}
     </Text>
   </Pressable>
+);
+
+const FilterModal = ({
+  visible,
+  filters,
+  onChange,
+  onReset,
+  onClose,
+}: {
+  visible: boolean;
+  filters: TutorFilters;
+  onChange: (next: Partial<TutorFilters>) => void;
+  onReset: () => void;
+  onClose: () => void;
+}) => (
+  <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Pressable
+      onPress={onClose}
+      style={tw`flex-1 bg-black/40 items-center justify-center p-4`}
+    >
+      <Pressable
+        onPress={() => {}}
+        style={tw`w-full max-w-[520px] rounded-2xl bg-white dark:bg-[#0b1016] border border-[#e2edf5] dark:border-white/10 p-4`}
+      >
+        <View style={tw`flex-row items-center justify-between`}>
+          <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>Filters</Text>
+          <Pressable onPress={onClose} style={tw`px-3 py-2`}>
+            <Text style={tw`text-sm font-bold text-[#49739c] dark:text-white/70`}>Close</Text>
+          </Pressable>
+        </View>
+
+        <ScrollView style={tw`mt-2 max-h-[420px]`} keyboardShouldPersistTaps="handled">
+          <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Subject</Text>
+          <View style={tw`mt-2 rounded-xl overflow-hidden`}>
+            <TextInput
+              placeholder="Math, English…"
+              placeholderTextColor="#49739c"
+              value={filters.subject}
+              onChangeText={(text) => onChange({ subject: text })}
+              style={tw`h-11 px-3 bg-[#e7edf4] dark:bg-[#172534] text-[#0d141c] dark:text-white`}
+            />
+          </View>
+
+          <Text style={tw`mt-4 text-sm font-semibold text-[#0d141c] dark:text-white`}>
+            Grade band
+          </Text>
+          <View style={tw`mt-2 rounded-xl overflow-hidden`}>
+            <TextInput
+              placeholder="Primary, Secondary…"
+              placeholderTextColor="#49739c"
+              value={filters.gradeBand}
+              onChangeText={(text) => onChange({ gradeBand: text })}
+              style={tw`h-11 px-3 bg-[#e7edf4] dark:bg-[#172534] text-[#0d141c] dark:text-white`}
+            />
+          </View>
+
+          <Text style={tw`mt-4 text-sm font-semibold text-[#0d141c] dark:text-white`}>
+            Country (ISO2)
+          </Text>
+          <View style={tw`mt-2 rounded-xl overflow-hidden`}>
+            <TextInput
+              placeholder="ke, qa…"
+              placeholderTextColor="#49739c"
+              autoCapitalize="characters"
+              value={filters.country}
+              onChangeText={(text) => onChange({ country: text })}
+              style={tw`h-11 px-3 bg-[#e7edf4] dark:bg-[#172534] text-[#0d141c] dark:text-white`}
+            />
+          </View>
+
+          <Text style={tw`mt-4 text-sm font-semibold text-[#0d141c] dark:text-white`}>
+            Min rating
+          </Text>
+          <View style={tw`flex-row flex-wrap mt-2`}>
+            {MIN_RATING_OPTIONS.map((opt) => {
+              const active = Number(filters.minRating || 0) === opt;
+              return (
+                <Chip
+                  key={String(opt)}
+                  label={opt === 0 ? 'Any' : `${opt}★`}
+                  active={active}
+                  onPress={() => onChange({ minRating: opt })}
+                />
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        <View style={tw`flex-row items-center justify-between gap-3 mt-4`}>
+          <Pressable
+            onPress={onReset}
+            style={tw`h-10 px-4 rounded-full border border-[#e2edf5] dark:border-white/10 items-center justify-center`}
+          >
+            <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Reset</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={onClose}
+            style={tw`h-10 px-5 rounded-full bg-primary items-center justify-center`}
+          >
+            <Text style={tw`text-sm font-extrabold text-white`}>Apply</Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Pressable>
+  </Modal>
 );
 
 const TutorCard = React.memo(function TutorCard({
@@ -325,21 +377,6 @@ const TutorCard = React.memo(function TutorCard({
 
 });
 
-/* ───────── Countries normalized for modal ───────── */
-type CountryOpt = { code: string; name: string };
-const COUNTRY_LIST: CountryOpt[] = Array.isArray(COUNTRIES)
-  ? ((COUNTRIES as any[])
-      .map((c) => {
-        if (!c) return null;
-        if (typeof c === 'string') return { code: c, name: c };
-        const code = String((c as any).code ?? (c as any).value ?? (c as any).iso2 ?? '').trim();
-        const name = String((c as any).name ?? (c as any).label ?? code).trim();
-        if (!code && !name) return null;
-        return { code: code || name, name: name || code };
-      })
-      .filter(Boolean) as CountryOpt[])
-  : [];
-
 /* ───────── Screen ───────── */
 const FindTutorScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
@@ -349,7 +386,7 @@ const FindTutorScreen: React.FC = () => {
   const topPad = Math.max(insets.top, 12);
 
   // ---- Server-driven search + filters (like web) ----
-  const home = useHomePage() as any;
+  const home = useHomePage({ debounceMs: 0 }) as any;
 
   const filteredProfiles: Profile[] = (home?.filteredProfiles ?? []) as Profile[];
   const loading: boolean = Boolean(home?.loading);
@@ -357,17 +394,18 @@ const FindTutorScreen: React.FC = () => {
 
   const uiFilters = (home?.uiFilters ?? {}) as {
     subject?: string;
+    gradeBand?: string;
     country?: string; // ISO2
     minRating?: number;
-    maxTokens?: number;
   };
 
   const setSubjectFilter: ((v: string) => void) | undefined = home?.setSubjectFilter;
+  const setGradeBandFilter: ((v: string) => void) | undefined = home?.setGradeBandFilter;
   const setCountryFilter: ((v: string) => void) | undefined = home?.setCountryFilter;
   const setMinRatingFilter: ((n: number) => void) | undefined = home?.setMinRatingFilter;
-  const setMaxTokensFilter: ((n: number) => void) | undefined = home?.setMaxTokensFilter;
 
   const clearFilters: (() => void) | undefined = home?.clearFilters;
+  const resetFilters: (() => void) | undefined = home?.resetFilters;
   const searchMeta = home?.searchMeta as any;
 
   // backendUrl optional (for relative gallery urls) — if you store it in context you can wire it here
@@ -375,22 +413,33 @@ const FindTutorScreen: React.FC = () => {
 
   // local-only UI state (NOT sent to server)
   const [query, setQuery] = useState('');
-  const [availability, setAvailability] = useState<string>(''); // local-only
-  const [language, setLanguage] = useState<string>(''); // local-only
   const [page, setPage] = useState(1);
-  const [live, setLive] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  const activeFilterCount = useMemo(
+    () =>
+      countActiveTutorFilters({
+        subject: uiFilters?.subject || '',
+        gradeBand: uiFilters?.gradeBand || '',
+        country: uiFilters?.country || '',
+        minRating: Number(uiFilters?.minRating || 0),
+      }),
+    [uiFilters?.subject, uiFilters?.gradeBand, uiFilters?.country, uiFilters?.minRating]
+  );
 
   useEffect(() => {
     const q = String(route?.params?.q ?? '').trim();
     const subject = String(route?.params?.subject ?? '').trim();
+    const gradeBand = String(route?.params?.gradeBand ?? '').trim();
     const countryParam = String(route?.params?.country ?? '').trim();
     const minRatingParam = route?.params?.minRating;
 
-    if (q) {
-      setQuery(q);
-      handleSearch?.(q);
-    }
+    setQuery(q);
+    setDebouncedQuery(q);
+    if (q) handleSearch?.(q);
     if (subject) setSubjectFilter?.(subject);
+    if (gradeBand) setGradeBandFilter?.(gradeBand);
     if (countryParam) {
       const normalized = normalizeCountryLabel(countryParam);
       if (normalized?.code) setCountryFilter?.(normalized.code);
@@ -399,29 +448,23 @@ const FindTutorScreen: React.FC = () => {
       const val = Number(minRatingParam);
       if (Number.isFinite(val)) setMinRatingFilter?.(val);
     }
-  }, [route?.params, handleSearch, setCountryFilter, setMinRatingFilter, setSubjectFilter]);
+  }, [
+    route?.params,
+    handleSearch,
+    setCountryFilter,
+    setMinRatingFilter,
+    setSubjectFilter,
+    setGradeBandFilter,
+  ]);
 
-  // Country modal (server filter writes ISO2 to setCountryFilter)
-  const [countryModal, setCountryModal] = useState(false);
-  const [countrySearch, setCountrySearch] = useState('');
-
-  // Live mode debounce
-  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!live) return;
+    const t = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    searchTimeout.current = setTimeout(() => {
-      const trimmed = query.trim();
-      if (/^\d$/.test(trimmed)) return;
-      if (trimmed.length < 2 && trimmed.length !== 0) return;
-      handleSearch?.(query);
-    }, 250);
-
-    return () => {
-      if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    };
-  }, [query, live, handleSearch]);
+  useEffect(() => {
+    handleSearch?.(debouncedQuery);
+  }, [debouncedQuery, handleSearch]);
 
   // Tutors already server-filtered; we just ensure role is tutor
   const tutors = useMemo<Profile[]>(
@@ -430,34 +473,10 @@ const FindTutorScreen: React.FC = () => {
     [filteredProfiles]
   );
 
-  // languages from current result set (plus common)
-  const languagesSet = useMemo(() => {
-    const set = new Set<string>();
-    LANGS_COMMON.forEach((l) => set.add(l));
-    tutors.forEach((t: any) => {
-      if (Array.isArray(t?.languages)) {
-        t.languages.forEach((l: any) => {
-          const s = String(l).trim();
-          if (s) set.add(s);
-        });
-      }
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [tutors]);
-
-  // local-only filtering (availability/language only)
-  const locallyFiltered = useMemo(() => {
-    return tutors.filter((p: any) => {
-      if (availability && !hasAvailability(p, availability)) return false;
-      if (language && !hasLanguage(p, language)) return false;
-      return true;
-    });
-  }, [tutors, availability, language]);
-
   // Pagination (client-side paging of current server result set)
-  const totalPages = Math.max(1, Math.ceil(locallyFiltered.length / PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(tutors.length / PER_PAGE));
   const pageSafe = Math.min(page, totalPages);
-  const pageItems = locallyFiltered.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
+  const pageItems = tutors.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
 
   // for page dots (don’t render 50 buttons)
   const pageWindow = useMemo(() => {
@@ -474,35 +493,21 @@ const FindTutorScreen: React.FC = () => {
   }, [totalPages, pageSafe]);
 
   const onReset = () => {
-    setQuery('');
-    setAvailability('');
-    setLanguage('');
+    resetFilters?.();
     setPage(1);
-    setCountrySearch('');
-    clearFilters?.();
-    handleSearch?.('');
   };
+
+  const onClearAll = useCallback(() => {
+    setQuery('');
+    setDebouncedQuery('');
+    clearFilters?.();
+    setPage(1);
+  }, [clearFilters]);
 
   const goProfile = (userId?: string | number) => {
     if (!userId) return;
     navigation.navigate('Profile', { id: String(userId) });
   };
-
-  const currentCountryLabel = useMemo(() => {
-    const code = String(uiFilters?.country || '').trim();
-    if (!code) return '';
-    const found = COUNTRY_LIST.find((c) => String(c.code).toUpperCase() === code.toUpperCase());
-    return found?.name || countryName?.(code) || code;
-  }, [uiFilters?.country]);
-
-  const countryFilteredList = useMemo(() => {
-    const q = normalizeStr(countrySearch);
-    if (!q) return COUNTRY_LIST.slice(0, 220); // keep modal snappy
-    return COUNTRY_LIST.filter((c) => {
-      const hay = `${c.code} ${c.name}`.toLowerCase();
-      return hay.includes(q);
-    }).slice(0, 250);
-  }, [countrySearch]);
 
   if (loading) {
     return (
@@ -558,211 +563,56 @@ const FindTutorScreen: React.FC = () => {
               ) : null}
             </View>
 
-            <Pressable
-              onPress={onReset}
-              style={tw`rounded-full h-9 px-4 bg-[#e7edf4] dark:bg-[#172534] justify-center`}
-            >
-              <Text style={tw`text-xs font-semibold text-[#0d141c] dark:text-white`}>Reset</Text>
-            </Pressable>
+            <View style={tw`h-9`} />
           </View>
 
-          {/* Search (server-driven) */}
-          <View style={tw`mt-3 rounded-xl overflow-hidden`}>
-            <View style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] h-12 px-3`}>
-              <Text style={tw`text-base mr-2`}>🔎</Text>
-              <TextInput
-                placeholder='Search e.g. "Kenya math tutor", "Grade 3", "certified english"'
-                placeholderTextColor="#49739c"
-                value={query}
-                onChangeText={(t) => {
-                  setQuery(t);
-                  setPage(1);
-                }}
-                onSubmitEditing={() => {
-                  setPage(1);
-                  handleSearch?.(query);
-                }}
-                style={tw`flex-1 text-[#0d141c] dark:text-white`}
-                returnKeyType="search"
-              />
-            </View>
-          </View>
-
-          {/* Live toggle */}
-          <View style={tw`mt-2 flex-row items-center justify-between`}>
-            <Text style={tw`text-xs text-[#49739c] dark:text-white/70`}>
-              Live search (auto-search while typing)
-            </Text>
-            <Switch value={live} onValueChange={setLive} />
-          </View>
-        </View>
-
-        {/* Filters */}
-        <View style={tw`px-4`}>
-          <Text style={tw`text-[18px] font-bold text-[#0d141c] dark:text-white`}>Filters</Text>
-
-          {/* Subject (server) */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={tw`py-2 pr-2`}
-          >
-            <Chip
-              label={uiFilters?.subject ? `Subject: ${uiFilters.subject}` : 'Subject'}
-              active={!!uiFilters?.subject}
-              onPress={() => {
-                setSubjectFilter?.('');
-                setPage(1);
-              }}
-            />
-            {SUBJECTS.map((s) => (
-              <Chip
-                key={s}
-                label={s}
-                active={uiFilters?.subject === s}
-                onPress={() => {
-                  setSubjectFilter?.(s);
-                  setPage(1);
-                }}
-              />
-            ))}
-          </ScrollView>
-
-          {/* Availability (local) */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={tw`py-1 pr-2`}
-          >
-            <Chip
-              label={availability ? `Availability: ${availability}` : 'Availability'}
-              active={!!availability}
-              onPress={() => {
-                setAvailability('');
-                setPage(1);
-              }}
-            />
-            {AVAILABILITY.map((a) => (
-              <Chip
-                key={a}
-                label={a}
-                active={availability === a}
-                onPress={() => {
-                  setAvailability(a);
-                  setPage(1);
-                }}
-              />
-            ))}
-          </ScrollView>
-
-          {/* Tokens (server) */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={tw`py-1 pr-2`}
-          >
-            {TOKENS_OPTIONS.map((o) => {
-              const active = Number(uiFilters?.maxTokens || 0) === o.value;
-              return (
-                <Chip
-                  key={String(o.value)}
-                  label={o.label}
-                  active={active}
-                  onPress={() => {
-                    setMaxTokensFilter?.(o.value);
+          {/* Search row + Filters + Clear */}
+          <View style={tw`mt-3 flex-row items-center gap-2`}>
+            <View style={tw`flex-1`}>
+              <View
+                style={tw`flex-row items-center h-12 px-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534] border border-[#e2edf5] dark:border-white/10`}
+              >
+                <Text style={tw`text-base mr-2`}>🔎</Text>
+                <TextInput
+                  placeholder='Search e.g. "Kenya math tutor", "Grade 3", "certified english"'
+                  placeholderTextColor="#49739c"
+                  value={query}
+                  onChangeText={(t) => {
+                    setQuery(t);
                     setPage(1);
                   }}
+                  style={tw`flex-1 text-[#0d141c] dark:text-white`}
+                  returnKeyType="search"
                 />
-              );
-            })}
-          </ScrollView>
+              </View>
+            </View>
 
-          {/* Language (local) */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={tw`py-1 pr-2`}
-          >
-            <Chip
-              label={language ? `Language: ${language}` : 'Language'}
-              active={!!language}
-              onPress={() => {
-                setLanguage('');
-                setPage(1);
-              }}
-            />
-            {languagesSet.map((l) => (
-              <Chip
-                key={l}
-                label={l}
-                active={language === l}
-                onPress={() => {
-                  setLanguage(l);
-                  setPage(1);
-                }}
-              />
-            ))}
-          </ScrollView>
+            <Pressable
+              onPress={() => setFiltersOpen(true)}
+              style={tw`h-12 px-4 rounded-xl border border-[#e2edf5] dark:border-white/10 bg-white dark:bg-[#0f1821] flex-row items-center`}
+            >
+              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Filters</Text>
+              {activeFilterCount > 0 ? (
+                <View style={tw`ml-2 min-w-[22px] h-[22px] px-2 rounded-full bg-primary items-center justify-center`}>
+                  <Text style={tw`text-[11px] font-extrabold text-white`}>{activeFilterCount}</Text>
+                </View>
+              ) : null}
+            </Pressable>
 
-          {/* Rating (server) */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={tw`py-1 pr-2`}
-          >
-            <Chip
-              label={uiFilters?.minRating ? `Rating: ≥ ${uiFilters.minRating}★` : 'Rating'}
-              active={!!uiFilters?.minRating}
-              onPress={() => {
-                setMinRatingFilter?.(0);
-                setPage(1);
-              }}
-            />
-            {RATINGS.map((r) => (
-              <Chip
-                key={String(r)}
-                label={`${r}★ & up`}
-                active={Number(uiFilters?.minRating || 0) === r}
-                onPress={() => {
-                  setMinRatingFilter?.(r);
-                  setPage(1);
-                }}
-              />
-            ))}
-          </ScrollView>
-
-          {/* Country (server, ISO2) */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={tw`py-1 pr-2`}
-          >
-            <Chip
-              label={uiFilters?.country ? `Country: ${currentCountryLabel}` : 'Country'}
-              active={!!uiFilters?.country}
-              onPress={() => {
-                // open modal to select, like web select dropdown
-                setCountryModal(true);
-              }}
-            />
-            {uiFilters?.country ? (
-              <Chip
-                label="Clear country"
-                active={false}
-                onPress={() => {
-                  setCountryFilter?.('');
-                  setPage(1);
-                }}
-              />
-            ) : null}
-          </ScrollView>
+            <Pressable
+              onPress={onClearAll}
+              style={tw`h-12 px-4 rounded-xl border border-[#e2edf5] dark:border-white/10 bg-[#f6f9fc] dark:bg-[#172534] items-center justify-center`}
+            >
+              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>Clear</Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Results header */}
         <View style={tw`px-4 pt-3 pb-1 flex-row items-center justify-between`}>
           <Text style={tw`text-[18px] font-bold text-[#0d141c] dark:text-white`}>Tutors</Text>
           <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
-            {locallyFiltered.length} result{locallyFiltered.length === 1 ? '' : 's'}
+            {tutors.length} result{tutors.length === 1 ? '' : 's'}
           </Text>
         </View>
 
@@ -833,100 +683,24 @@ const FindTutorScreen: React.FC = () => {
         ) : null}
       </ScrollView>
 
-      {/* Country modal */}
-      <Modal
-        visible={countryModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCountryModal(false)}
-      >
-        <Pressable
-          onPress={() => setCountryModal(false)}
-          style={tw`flex-1 bg-black/40 items-center justify-center p-4`}
-        >
-          <Pressable
-            onPress={() => {}}
-            style={tw`w-full max-w-[520px] rounded-2xl bg-white dark:bg-[#0b1016] border border-[#e2edf5] dark:border-white/10 p-3`}
-          >
-            <View style={tw`flex-row items-center justify-between`}>
-              <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
-                Select country
-              </Text>
-              <Pressable onPress={() => setCountryModal(false)} style={tw`px-3 py-2`}>
-                <Text style={tw`text-sm font-bold text-[#49739c] dark:text-white/70`}>Close</Text>
-              </Pressable>
-            </View>
-
-            <View style={tw`mt-2 rounded-xl overflow-hidden`}>
-              <View style={tw`flex-row items-center bg-[#e7edf4] dark:bg-[#172534] h-11 px-3`}>
-                <Text style={tw`text-base mr-2`}>🔎</Text>
-                <TextInput
-                  placeholder="Search country…"
-                  placeholderTextColor="#49739c"
-                  value={countrySearch}
-                  onChangeText={setCountrySearch}
-                  style={tw`flex-1 text-[#0d141c] dark:text-white`}
-                />
-              </View>
-            </View>
-
-            <ScrollView style={tw`mt-2 max-h-[380px]`} keyboardShouldPersistTaps="handled">
-              {/* Clear */}
-              <Pressable
-                onPress={() => {
-                  setCountryFilter?.('');
-                  setPage(1);
-                  setCountryModal(false);
-                }}
-                style={tw`px-3 py-3 rounded-xl bg-[#e7edf4] dark:bg-[#172534]`}
-              >
-                <Text style={tw`text-sm font-bold text-[#0d141c] dark:text-white`}>
-                  Any country
-                </Text>
-              </Pressable>
-
-              <View style={tw`h-2`} />
-
-              {countryFilteredList.map((c) => {
-                const active =
-                  String(uiFilters?.country || '').toUpperCase() ===
-                  String(c.code || '').toUpperCase();
-                return (
-                  <Pressable
-                    key={c.code}
-                    onPress={() => {
-                      setCountryFilter?.(c.code);
-                      setPage(1);
-                      setCountryModal(false);
-                    }}
-                    style={tw.style(
-                      'px-3 py-3 rounded-xl mb-2',
-                      active ? 'bg-primary' : 'bg-white dark:bg-[#0f1821]',
-                      'border border-[#e2edf5] dark:border-white/10'
-                    )}
-                  >
-                    <Text
-                      style={tw.style(
-                        'text-sm font-bold',
-                        active ? 'text-white' : 'text-[#0d141c] dark:text-white'
-                      )}
-                    >
-                      {c.name}{' '}
-                      <Text
-                        style={tw.style(
-                          active ? 'text-white/90' : 'text-[#49739c] dark:text-white/60'
-                        )}
-                      >
-                        ({c.code})
-                      </Text>
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <FilterModal
+        visible={filtersOpen}
+        filters={{
+          subject: uiFilters?.subject || '',
+          gradeBand: uiFilters?.gradeBand || '',
+          country: uiFilters?.country || '',
+          minRating: Number(uiFilters?.minRating || 0),
+        }}
+        onChange={(next) => {
+          if (typeof next.subject === 'string') setSubjectFilter?.(next.subject);
+          if (typeof next.gradeBand === 'string') setGradeBandFilter?.(next.gradeBand);
+          if (typeof next.country === 'string') setCountryFilter?.(next.country);
+          if (typeof next.minRating === 'number') setMinRatingFilter?.(next.minRating);
+          setPage(1);
+        }}
+        onReset={onReset}
+        onClose={() => setFiltersOpen(false)}
+      />
     </SafeAreaView>
   );
 };

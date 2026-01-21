@@ -1,6 +1,6 @@
 // FindTutor.web.tsx
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { IconProp } from '@fortawesome/fontawesome-svg-core';
@@ -9,47 +9,20 @@ import {
   faChevronLeft,
   faChevronRight,
   faCheckCircle,
+  faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 
 import { useHomePage } from '@mytutorapp/shared/hooks';
-import type { Profile } from '@mytutorapp/shared/types';
-import { COUNTRIES, countryName } from '@mytutorapp/shared/utils/countries';
+import type { Profile, TutorFilters } from '@mytutorapp/shared/types';
+import { countryName } from '@mytutorapp/shared/utils/countries';
 import { normalizeCountryLabel } from '@mytutorapp/shared/utils/smartSearchIntent';
 
 const FALLBACK_AVATAR = (name = 'Tutor') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e7edf4&color=0d141c`;
 
-const SUBJECTS = [
-  'Math',
-  'Science',
-  'Programming',
-  'Art',
-  'Wellness',
-  'Languages',
-  'English',
-  'History',
-] as const;
-
-const RATINGS = [5, 4.5, 4, 3.5, 3] as const;
-const AVAILABILITY = ['Online', 'Offline', 'Busy', 'Free Session', 'New'] as const;
-const LANGS_COMMON = ['English', 'Spanish', 'French', 'Arabic', 'Chinese', 'German'] as const;
-
 const PER_PAGE = 20;
 
 /* utils */
-const normalizeStr = (v: unknown): string => {
-  if (v == null) return '';
-  if (typeof v === 'string') return v.toLowerCase().trim();
-  if (typeof v === 'number' || typeof v === 'boolean') return String(v).toLowerCase().trim();
-  if (Array.isArray(v)) return v.map(normalizeStr).join(' ').trim();
-  if (typeof v === 'object')
-    return Object.values(v as any)
-      .map(normalizeStr)
-      .join(' ')
-      .trim();
-  return '';
-};
-
 const getRating = (p: any) => Number(p?.avgRating ?? p?.rating ?? 0);
 
 const getTokens = (p: any) => {
@@ -129,32 +102,114 @@ const getDescriptionText = (p: any): string => {
   return '';
 };
 
-const hasAvailability = (p: any, option: string) => {
-  if (!option) return true;
-
-  const opt = normalizeStatus(option);
-
-  // Special: New
-  if (opt === 'New') return isNewTutor(p);
-
-  // Primary: status match
-  const s = normalizeStatus(p?.status);
-  if (s && s === opt) return true;
-
-  // Optional: if you stored alternate status fields
-  const s2 = normalizeStatus(p?.availability);
-  if (s2 && s2 === opt) return true;
-
-  return false;
+const countActiveTutorFilters = (filters: TutorFilters) => {
+  let count = 0;
+  if (filters.subject) count += 1;
+  if (filters.gradeBand) count += 1;
+  if (filters.country) count += 1;
+  if (filters.minRating > 0) count += 1;
+  return count;
 };
 
-const hasLanguage = (p: any, lang: string) => {
-  if (!lang) return true;
-  const list = p?.languages;
-  if (Array.isArray(list)) {
-    return list.map((x: any) => normalizeStr(String(x))).includes(normalizeStr(lang));
-  }
-  return true;
+const FilterModal = ({
+  open,
+  onClose,
+  filters,
+  onChange,
+  onReset,
+}: {
+  open: boolean;
+  onClose: () => void;
+  filters: TutorFilters;
+  onChange: (next: Partial<TutorFilters>) => void;
+  onReset: () => void;
+}) => {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+      <div className="w-full max-w-[520px] rounded-2xl bg-white dark:bg-[#0f1821] ring-1 ring-[#e4ecf4] dark:ring-darkCard shadow-xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#e4ecf4] dark:border-white/10">
+          <p className="text-base font-extrabold text-[#0d141c] dark:text-white">Filters</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 w-9 rounded-full bg-[#e7edf4] dark:bg-[#172534] text-[#49739c] dark:text-darkTextSecondary flex items-center justify-center"
+          >
+            <FontAwesomeIcon icon={faXmark as IconProp} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <label className="block text-sm font-semibold text-[#0d141c] dark:text-white">
+            Subject
+            <input
+              value={filters.subject}
+              onChange={(e) => onChange({ subject: e.target.value })}
+              placeholder="Math, English…"
+              className="mt-2 w-full h-11 px-3 rounded-xl bg-[#f6f9fc] dark:bg-[#172534] ring-1 ring-[#e7edf4] dark:ring-darkCard outline-none"
+            />
+          </label>
+
+          <label className="block text-sm font-semibold text-[#0d141c] dark:text-white">
+            Grade band
+            <input
+              value={filters.gradeBand}
+              onChange={(e) => onChange({ gradeBand: e.target.value })}
+              placeholder="Primary, Secondary…"
+              className="mt-2 w-full h-11 px-3 rounded-xl bg-[#f6f9fc] dark:bg-[#172534] ring-1 ring-[#e7edf4] dark:ring-darkCard outline-none"
+            />
+          </label>
+
+          <label className="block text-sm font-semibold text-[#0d141c] dark:text-white">
+            Country (ISO2)
+            <input
+              value={filters.country}
+              onChange={(e) => onChange({ country: e.target.value })}
+              placeholder="ke, qa…"
+              className="mt-2 w-full h-11 px-3 rounded-xl bg-[#f6f9fc] dark:bg-[#172534] ring-1 ring-[#e7edf4] dark:ring-darkCard outline-none uppercase"
+            />
+          </label>
+
+          <label className="block text-sm font-semibold text-[#0d141c] dark:text-white">
+            Min rating
+            <div className="mt-2 flex items-center gap-3">
+              <input
+                type="range"
+                min="0"
+                max="5"
+                step="0.5"
+                value={filters.minRating}
+                onChange={(e) => onChange({ minRating: Number(e.target.value) })}
+                className="w-full accent-[#3d99f5]"
+              />
+              <span className="min-w-[52px] text-sm font-semibold text-[#0d141c] dark:text-white">
+                {filters.minRating ? `${filters.minRating}★` : 'Any'}
+              </span>
+            </div>
+          </label>
+        </div>
+
+        <div className="px-5 pb-5 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onReset}
+            className="h-10 px-4 rounded-full bg-white dark:bg-transparent ring-1 ring-[#e4ecf4] dark:ring-white/10 text-sm font-semibold text-[#0d141c] dark:text-white"
+          >
+            Reset
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 px-5 rounded-full bg-[#3d99f5] text-white text-sm font-extrabold"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const resolveImage = (p: any, backendUrl?: string, fallbackName?: string) => {
@@ -176,32 +231,35 @@ const FindTutor: React.FC = () => {
     setSubjectFilter,
     setCountryFilter,
     setMinRatingFilter,
-    setMaxTokensFilter,
+    setGradeBandFilter,
     clearFilters,
+    resetFilters,
     searchMeta,
-  } = useHomePage();
+  } = useHomePage({ debounceMs: 0 });
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
 
   // local-only UI state (NOT sent to server)
   const [query, setQuery] = useState('');
-  const [availability, setAvailability] = useState<string>(''); // local-only
-  const [language, setLanguage] = useState<string>(''); // local-only
   const [page, setPage] = useState(1);
-  const [live, setLive] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  const activeFilterCount = useMemo(() => countActiveTutorFilters(uiFilters), [uiFilters]);
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
     const q = sp.get('q') ?? '';
     const subject = sp.get('subject') ?? '';
+    const gradeBand = sp.get('gradeBand') ?? '';
     const countryParam = sp.get('country') ?? '';
     const minRatingParam = sp.get('minRating') ?? '';
 
-    if (q) {
-      setQuery(q);
-      handleSearch?.(q);
-    }
+    setQuery(q);
+    setDebouncedQuery(q);
+    if (q) handleSearch?.(q);
     if (subject) setSubjectFilter(subject);
+    if (gradeBand) setGradeBandFilter(gradeBand);
 
     if (countryParam) {
       const normalized = normalizeCountryLabel(countryParam);
@@ -212,7 +270,14 @@ const FindTutor: React.FC = () => {
       const val = Number(minRatingParam);
       if (Number.isFinite(val)) setMinRatingFilter(val);
     }
-  }, [location.search, handleSearch, setCountryFilter, setMinRatingFilter, setSubjectFilter]);
+  }, [
+    location.search,
+    handleSearch,
+    setCountryFilter,
+    setMinRatingFilter,
+    setSubjectFilter,
+    setGradeBandFilter,
+  ]);
 
   // Tutors already filtered by server
   const tutors = useMemo(
@@ -223,45 +288,31 @@ const FindTutor: React.FC = () => {
     [filteredProfiles]
   );
 
-  // languages from current result set (plus common)
-  const languagesSet = useMemo(() => {
-    const set = new Set<string>();
-    LANGS_COMMON.forEach((l) => set.add(l));
-    tutors.forEach((t: any) => {
-      if (Array.isArray(t?.languages)) {
-        t.languages.forEach((l: any) => {
-          const s = String(l).trim();
-          if (s) set.add(s);
-        });
-      }
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [tutors]);
-
-  // local-only filtering (availability/language only)
-  const locallyFiltered = useMemo(() => {
-    return tutors.filter((p: any) => {
-      if (availability && !hasAvailability(p, availability)) return false;
-      if (language && !hasLanguage(p, language)) return false;
-      return true;
-    });
-  }, [tutors, availability, language]);
-
   // pagination (client-side paging of current server result set)
-  const totalPages = Math.max(1, Math.ceil(locallyFiltered.length / PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(tutors.length / PER_PAGE));
   const pageSafe = Math.min(page, totalPages);
-  const pageItems = locallyFiltered.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
+  const pageItems = tutors.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
 
-  const onReset = () => {
-    setQuery('');
-    setAvailability('');
-    setLanguage('');
-    clearFilters(); // ✅ clears server-side filters too
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  useEffect(() => {
+    handleSearch?.(debouncedQuery);
+  }, [debouncedQuery, handleSearch]);
+
+  const onResetFilters = useCallback(() => {
+    resetFilters();
     setPage(1);
+  }, [resetFilters]);
 
-    // optional: trigger server refresh back to default list
-    handleSearch?.('');
-  };
+  const onClearAll = useCallback(() => {
+    setQuery('');
+    setDebouncedQuery('');
+    clearFilters();
+    setPage(1);
+  }, [clearFilters]);
 
   if (loading) {
     return (
@@ -297,163 +348,50 @@ const FindTutor: React.FC = () => {
                 )}
               </div>
 
-              <div className="flex items-end">
-                <button
-                  onClick={() => {
-                    onReset();
-                  }}
-                  className="rounded-xl h-9 px-4 bg-[#e7edf4] dark:bg-[#172534] text-sm"
-                >
-                  Reset filters
-                </button>
-              </div>
+              <div className="flex items-end" />
             </div>
 
-            {/* Search (server-driven) */}
-            <div className="mt-3">
+            {/* Search row + Filters + Clear */}
+            <div className="mt-3 flex gap-2 items-center">
               <label className="flex h-12 w-full">
-                <div className="flex items-stretch rounded-xl h-full w-full">
-                  <div className="text-[#49739c] flex bg-[#e7edf4] dark:bg-[#172534] items-center justify-center pl-4 rounded-l-xl">
+                <div className="flex w-full items-stretch rounded-xl ring-1 ring-[#e7edf4] dark:ring-darkCard bg-[#e7edf4] dark:bg-[#172534] focus-within:ring-primary transition">
+                  <div className="text-[#49739c] dark:text-darkTextSecondary flex items-center justify-center pl-4">
                     <FontAwesomeIcon icon={faMagnifyingGlass as IconProp} />
                   </div>
-
                   <input
                     placeholder='Search e.g. "Kenya math tutor", "Grade 3", "certified english"'
-                    className="form-input w-full rounded-r-xl h-full px-4 bg-[#e7edf4] dark:bg-[#172534] text-[#0d141c] dark:text-darkTextPrimary outline-none border-0 placeholder:text-[#49739c]"
+                    className="w-full bg-transparent h-full px-4 outline-none placeholder:text-[#49739c] dark:placeholder:text-darkTextSecondary"
                     value={query}
                     onChange={(e) => {
-                      const v = e.target.value;
-                      setQuery(v);
+                      setQuery(e.target.value);
                       setPage(1);
-
-                      // ✅ Optional live mode (smart-gated)
-                      if (live) {
-                        const trimmed = v.trim();
-                        // block single-digit + super short noise
-                        if (/^\d$/.test(trimmed)) return;
-                        if (trimmed.length < 2) return;
-                        handleSearch?.(v);
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        setPage(1);
-                        handleSearch?.(query);
-                      }
                     }}
                   />
                 </div>
               </label>
+
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(true)}
+                className="h-12 px-4 rounded-xl ring-1 ring-[#e7edf4] dark:ring-darkCard bg-white dark:bg-[#0f1821] hover:brightness-105 flex items-center gap-2"
+              >
+                <span className="text-sm font-semibold">Filters</span>
+                {activeFilterCount > 0 ? (
+                  <span className="min-w-[22px] h-[22px] px-2 rounded-full bg-[#3d99f5] text-white text-xs font-extrabold flex items-center justify-center">
+                    {activeFilterCount}
+                  </span>
+                ) : null}
+              </button>
+
+              <button
+                type="button"
+                onClick={onClearAll}
+                className="h-12 px-4 rounded-xl ring-1 ring-[#e7edf4] dark:ring-darkCard bg-[#f6f9fc] dark:bg-[#172534] hover:brightness-105 text-sm font-semibold"
+              >
+                Clear
+              </button>
             </div>
           </section>
-
-          {/* Sticky Filters */}
-          <div className="sticky top-0 z-10 mt-4 px-4 py-3 bg-slate-50/90 dark:bg-darkBg/80 backdrop-blur border-y border-[#e7edf4] dark:border-darkCard">
-            <div className="flex gap-3 flex-wrap">
-              {/* Subject (server) */}
-              <select
-                className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-                value={uiFilters.subject}
-                onChange={(e) => {
-                  setSubjectFilter(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">Subject</option>
-                {SUBJECTS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-
-              {/* Availability (local) */}
-              <select
-                className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-                value={availability}
-                onChange={(e) => {
-                  setAvailability(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">Availability</option>
-                {AVAILABILITY.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
-
-              {/* Tokens */}
-              <select
-                className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-                value={uiFilters.maxTokens > 0 ? String(uiFilters.maxTokens) : '0'}
-                onChange={(e) => {
-                  setMaxTokensFilter(Number(e.target.value || 0));
-                  setPage(1);
-                }}
-              >
-                <option value="0">Tokens</option>
-                <option value="10">≤ 10 tokens</option>
-                <option value="20">≤ 20 tokens</option>
-                <option value="40">≤ 40 tokens</option>
-                <option value="60">≤ 60 tokens</option>
-                <option value="999999">60+ tokens</option>
-              </select>
-
-              {/* Language (local) */}
-              <select
-                className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-                value={language}
-                onChange={(e) => {
-                  setLanguage(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">Language</option>
-                {languagesSet.map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-
-              {/* Rating (server) */}
-              <select
-                className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-                value={String(uiFilters.minRating || '')}
-                onChange={(e) => {
-                  setMinRatingFilter(Number(e.target.value || 0));
-                  setPage(1);
-                }}
-              >
-                <option value="">Rating</option>
-                {RATINGS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}★ & up
-                  </option>
-                ))}
-              </select>
-
-              {/* Country (server) — ISO2 code value, label name */}
-              <select
-                className="h-9 rounded-xl bg-[#e7edf4] dark:bg-[#172534] px-3 text-sm"
-                value={uiFilters.country} // ISO2
-                onChange={(e) => {
-                  setCountryFilter(e.target.value); // ISO2 code
-                  setPage(1);
-                }}
-              >
-                <option value="">Country</option>
-                {COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
 
           {/* Results header */}
           <h2 className="text-[22px] font-bold tracking-tight px-4 pb-3 pt-5">Tutors</h2>
@@ -619,6 +557,20 @@ const FindTutor: React.FC = () => {
           )}
         </div>
       </main>
+
+      <FilterModal
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        filters={uiFilters}
+        onChange={(next) => {
+          if (typeof next.subject === 'string') setSubjectFilter(next.subject);
+          if (typeof next.gradeBand === 'string') setGradeBandFilter(next.gradeBand);
+          if (typeof next.country === 'string') setCountryFilter(next.country);
+          if (typeof next.minRating === 'number') setMinRatingFilter(next.minRating);
+          setPage(1);
+        }}
+        onReset={onResetFilters}
+      />
     </div>
   );
 };
