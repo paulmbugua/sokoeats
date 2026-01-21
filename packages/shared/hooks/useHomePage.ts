@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useCallback, useState } from 'react';
-import type { Profile } from '@mytutorapp/shared/types';
+import type { Profile, TutorFilters } from '@mytutorapp/shared/types';
+import { DEFAULT_TUTOR_FILTERS } from '@mytutorapp/shared/types';
 import { fetchTutorProfiles } from '@mytutorapp/shared/api';
 import { searchTutorsApi } from '@mytutorapp/shared/api/profileApi';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -7,19 +8,7 @@ import useAppQuery from './useAppQuery';
 
 const dev = typeof process !== 'undefined' ? process.env.NODE_ENV !== 'production' : false;
 
-type UiFilters = {
-  country: string;
-  subject: string;
-  minRating: number;
-  maxTokens: number; // ✅
-};
-
-const DEFAULT_UI: UiFilters = {
-  country: '',
-  subject: '',
-  minRating: 0,
-  maxTokens: 0,
-};
+type UiFilters = TutorFilters;
 
 const throttle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -39,20 +28,25 @@ type SearchMeta = {
 const cleanBase = (u?: string) => String(u || '').replace(/\/+$/, '');
 
 // ✅ optionally pass a fallback baseUrl (handy for web pages)
-const useHomePage = (opts?: { backendUrl?: string }) => {
+const useHomePage = (opts?: { backendUrl?: string; debounceMs?: number }) => {
   const ctx = useShopContext();
   const backendUrl = cleanBase(ctx?.backendUrl) || cleanBase(opts?.backendUrl);
+  const debounceMs = typeof opts?.debounceMs === 'number' ? opts.debounceMs : 250;
 
   const [rawQ, setRawQ] = useState('');
   const [q, setQ] = useState('');
-  const [uiFilters, setUiFilters] = useState<UiFilters>(DEFAULT_UI);
+  const [uiFilters, setUiFilters] = useState<UiFilters>(DEFAULT_TUTOR_FILTERS);
 
   const [searchMeta, setSearchMeta] = useState<SearchMeta>({ usingServer: true });
 
   useEffect(() => {
-    const t = setTimeout(() => setQ(rawQ.trim()), 250);
+    if (debounceMs <= 0) {
+      setQ(rawQ.trim());
+      return undefined;
+    }
+    const t = setTimeout(() => setQ(rawQ.trim()), debounceMs);
     return () => clearTimeout(t);
-  }, [rawQ]);
+  }, [rawQ, debounceMs]);
 
   const queryKey = useMemo(
     () => [
@@ -61,10 +55,10 @@ const useHomePage = (opts?: { backendUrl?: string }) => {
       q,
       uiFilters.country,
       uiFilters.subject,
+      uiFilters.gradeBand,
       uiFilters.minRating,
-      uiFilters.maxTokens,
     ],
-    [backendUrl, q, uiFilters.country, uiFilters.subject, uiFilters.minRating, uiFilters.maxTokens]
+    [backendUrl, q, uiFilters.country, uiFilters.subject, uiFilters.gradeBand, uiFilters.minRating]
   );
 
   const {
@@ -82,8 +76,8 @@ const useHomePage = (opts?: { backendUrl?: string }) => {
       const params: Record<string, any> = { q, limit, offset };
       if (uiFilters.country) params.country = uiFilters.country;
       if (uiFilters.subject) params.subject = uiFilters.subject;
+      if (uiFilters.gradeBand) params.gradeBand = uiFilters.gradeBand;
       if (uiFilters.minRating > 0) params.minRating = uiFilters.minRating;
-      if (uiFilters.maxTokens > 0) params.maxTokens = uiFilters.maxTokens; // ✅
 
       const t0 = Date.now();
 
@@ -155,15 +149,18 @@ const useHomePage = (opts?: { backendUrl?: string }) => {
     setUiFilters((prev) => ({ ...prev, minRating: Number.isFinite(v) ? v : 0 }));
   }, []);
 
-  const setMaxTokensFilter = useCallback((n: number) => {
-    const v = Number(n || 0);
-    setUiFilters((prev) => ({ ...prev, maxTokens: Number.isFinite(v) ? v : 0 }));
+  const setGradeBandFilter = useCallback((band: string) => {
+    setUiFilters((prev) => ({ ...prev, gradeBand: String(band || '').trim() }));
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setUiFilters(DEFAULT_TUTOR_FILTERS);
   }, []);
 
   const clearFilters = useCallback(() => {
     setRawQ('');
     setQ('');
-    setUiFilters(DEFAULT_UI);
+    setUiFilters(DEFAULT_TUTOR_FILTERS);
   }, []);
 
   return {
@@ -175,8 +172,9 @@ const useHomePage = (opts?: { backendUrl?: string }) => {
     setSubjectFilter,
     setCountryFilter,
     setMinRatingFilter,
-    setMaxTokensFilter,
+    setGradeBandFilter,
     clearFilters,
+    resetFilters,
 
     reloadProfiles,
     searchMeta,
