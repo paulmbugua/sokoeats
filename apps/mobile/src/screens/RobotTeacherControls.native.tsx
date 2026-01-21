@@ -1,5 +1,5 @@
 // apps/mobile/src/screens/RobotTeacherControls.native.tsx
-import React, { memo, useCallback, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import tw from '../../tailwind';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -26,6 +27,8 @@ import { useRegisterScreenRefresh } from '../refresh/GlobalRefreshProvider';
 type SelectOption = { value: string; label: string };
 
 type MIName = React.ComponentProps<typeof MaterialIcons>['name'];
+
+const ADVANCED_STORAGE_KEY = 'robotTutor:advancedOpen:v1';
 
 const TRACK_UI: Partial<
   Record<
@@ -251,6 +254,7 @@ interface ControlsPanelProps {
 /* ───────────────────────────── Panel (native) ───────────────────────────── */
 const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
   const [trackInfoOpen, setTrackInfoOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const {
     showMinimalControls,
     isLockedLearner,
@@ -310,6 +314,21 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
     overlayAvailable,
   } = props;
 
+  useEffect(() => {
+    let mounted = true;
+    AsyncStorage.getItem(ADVANCED_STORAGE_KEY).then((value) => {
+      if (!mounted) return;
+      if (value === 'true') setAdvancedOpen(true);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem(ADVANCED_STORAGE_KEY, String(advancedOpen));
+  }, [advancedOpen]);
+
   // ⬇️ Contribute to the screen’s global pull-to-refresh:
   useRegisterScreenRefresh(
     useCallback(async () => {
@@ -320,8 +339,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
   );
 
   const defaultPresetKey: SizePresetKey = PRESETS[0]?.key ?? 'standard';
-
-  const canTeach = !busy && canStartNow && !!customTitle.trim();
 
   const courseOptions: SelectOption[] = useMemo(
     () => (topCourses || []).map((c) => ({ value: c.id, label: c.title })),
@@ -336,6 +353,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
     selectedCourse?.title || custom || displayCourseTitle || '';
 
   const showCourseOrCustomError = !selectedCourse?.id && !custom;
+  const trackLabel = TRACKS.find((t) => t.key === programTrack)?.label || 'Plan';
+  const defaultQuizForLessons = (n: number) => Math.max(4, n * 2);
+  const advancedDisabled = isLockedLearner || programTrackLocked;
+
+  useEffect(() => {
+    if (advancedDisabled && advancedOpen) setAdvancedOpen(false);
+  }, [advancedDisabled, advancedOpen]);
 
   return (
     <View
@@ -369,226 +393,594 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
           </View>
         </View>
       ) : (
-        <RefreshableScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={tw`gap-3`}>
-          {/* Course */}
-          <View>
-            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Course</Text>
-            <View style={tw`mt-1`}>
-              {isLockedLearner ? (
-                <View
-                  style={tw`h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}
-                >
-                  <Text style={tw`text-[#0d141c] dark:text-white`}>
-                    {selectedCourse?.title || displayCourseTitle || 'Assigned course'}
-                  </Text>
-                </View>
-              ) : (
-                <CourseSelect
-                  value={courseSelectValue}
-                  onChange={(id) => onSelectCourse(id)}
-                  options={courseOptions}
-                  placeholder={(topCourses || []).length ? 'Select a course…' : 'Loading…'}
-                  fallbackLabel={fallbackCourseLabel}
-                />
-              )}
-            </View>
+        <RefreshableScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={tw`gap-2`}>
+          <QuickSetupSection
+            courseOptions={courseOptions}
+            courseSelectValue={courseSelectValue}
+            fallbackCourseLabel={fallbackCourseLabel}
+            topCourses={topCourses}
+            selectedCourse={selectedCourse}
+            displayCourseTitle={displayCourseTitle}
+            isLockedLearner={isLockedLearner}
+            restrictStarter={restrictStarter}
+            onSelectCourse={onSelectCourse}
+            TRACKS={TRACKS}
+            programTrack={programTrack}
+            setProgramTrack={setProgramTrack}
+            trackLessons={trackLessons}
+            overrideLessons={overrideLessons}
+            overrideQuiz={overrideQuiz}
+            trackInfoOpen={trackInfoOpen}
+            setTrackInfoOpen={setTrackInfoOpen}
+            onStart={onStart}
+            busy={busy}
+            hasAIContent={hasAIContent}
+            canStartNow={canStartNow}
+            selectedCourseId={selectedCourse?.id}
+            customTitle={customTitle}
+            onRefreshSelectedAI={onRefreshSelectedAI}
+            onOpenShare={onOpenShare}
+            canShareUi={canShareUi}
+            programTrackLocked={programTrackLocked}
+            trackLabel={trackLabel}
+            defaultQuizCount={defaultQuizForLessons(trackLessons)}
+          />
+
+          <TeachMeSection
+            isLockedLearner={isLockedLearner}
+            customTitle={customTitle}
+            setCustomTitle={setCustomTitle}
+            busy={busy}
+            canStartNow={canStartNow}
+            onStart={onStart}
+            showCourseOrCustomError={showCourseOrCustomError}
+            overlayAvailable={overlayAvailable}
+            onOpenOverlay={onOpenOverlay}
+          />
+
+          <AdvancedSection
+            advancedOpen={advancedOpen}
+            setAdvancedOpen={setAdvancedOpen}
+            advancedDisabled={advancedDisabled}
+            knobsDisabled={knobsDisabled}
+            PRESETS={PRESETS}
+            sizePreset={sizePreset}
+            setSizePreset={setSizePreset}
+            minutes={minutes}
+            setMinutes={setMinutes}
+            defaultPresetKey={defaultPresetKey}
+            capMinutes={capMinutes}
+            classLevel={classLevel}
+            setClassLevel={setClassLevel}
+            totalLessons={totalLessons}
+            setTotalLessons={setTotalLessons}
+            quizCount={quizCount}
+            setQuizCount={setQuizCount}
+            overrideLessons={overrideLessons}
+            setOverrideLessons={setOverrideLessons}
+            overrideQuiz={overrideQuiz}
+            setOverrideQuiz={setOverrideQuiz}
+            trackLessons={trackLessons}
+          />
+        </RefreshableScrollView>
+      )}
+    </View>
+  );
+});
+
+ControlsPanel.displayName = 'RobotTeacherControls';
+export default ControlsPanel;
+
+function QuickSetupSection({
+  courseOptions,
+  courseSelectValue,
+  fallbackCourseLabel,
+  topCourses,
+  selectedCourse,
+  displayCourseTitle,
+  isLockedLearner,
+  restrictStarter,
+  onSelectCourse,
+  TRACKS,
+  programTrack,
+  setProgramTrack,
+  trackLessons,
+  overrideLessons,
+  overrideQuiz,
+  trackInfoOpen,
+  setTrackInfoOpen,
+  onStart,
+  busy,
+  hasAIContent,
+  canStartNow,
+  selectedCourseId,
+  customTitle,
+  onRefreshSelectedAI,
+  onOpenShare,
+  canShareUi,
+  programTrackLocked,
+  trackLabel,
+  defaultQuizCount,
+}: {
+  courseOptions: SelectOption[];
+  courseSelectValue: string;
+  fallbackCourseLabel: string;
+  topCourses: CourseOption[];
+  selectedCourse: CourseOption | null;
+  displayCourseTitle?: string;
+  isLockedLearner: boolean;
+  restrictStarter: boolean;
+  onSelectCourse: (id: string) => void;
+  TRACKS: ReadonlyArray<{ key: TrackKey; label: string; lessons: number }>;
+  programTrack: TrackKey;
+  setProgramTrack: (k: TrackKey) => void;
+  trackLessons: number;
+  overrideLessons: boolean;
+  overrideQuiz: boolean;
+  trackInfoOpen: boolean;
+  setTrackInfoOpen: (open: boolean) => void;
+  onStart: () => Promise<void> | void;
+  busy: boolean;
+  hasAIContent: boolean;
+  canStartNow: boolean;
+  selectedCourseId?: string;
+  customTitle: string;
+  onRefreshSelectedAI: () => Promise<void> | void;
+  onOpenShare: () => void;
+  canShareUi: boolean;
+  programTrackLocked: boolean;
+  trackLabel: string;
+  defaultQuizCount: number;
+}) {
+  const canShare = !!selectedCourseId || !!customTitle.trim();
+
+  return (
+    <View style={tw`gap-2 pb-3 border-b border-[#cedbe8] dark:border-white/10`}>
+      <View style={tw`gap-2`}>
+        <View>
+          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Course</Text>
+          <View style={tw`mt-1`}>
+            {isLockedLearner ? (
+              <View
+                style={tw`h-11 rounded-xl px-3 justify-center bg-[#e7edf4] dark:bg-[#172534]`}
+              >
+                <Text style={tw`text-[#0d141c] dark:text-white`}>
+                  {selectedCourse?.title || displayCourseTitle || 'Assigned course'}
+                </Text>
+              </View>
+            ) : (
+              <CourseSelect
+                value={courseSelectValue}
+                onChange={(id) => onSelectCourse(id)}
+                options={courseOptions}
+                placeholder={(topCourses || []).length ? 'Select a course…' : 'Loading…'}
+                fallbackLabel={fallbackCourseLabel}
+              />
+            )}
           </View>
 
-{/* Program track */}
-<View>
-  <View style={tw`flex-row items-center justify-between`}>
-    <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Program track</Text>
+          {restrictStarter ? (
+            <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/60`}>
+              Some options may be limited on Starter.
+            </Text>
+          ) : null}
+        </View>
 
-    {/* Info button (native parity for web tooltips) */}
-    <Pressable
-      onPress={() => setTrackInfoOpen(true)}
-      accessibilityRole="button"
-      accessibilityLabel="What are program tracks?"
-      style={tw`h-7 w-7 rounded-lg items-center justify-center bg-slate-100 dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10`}
-    >
-      <MaterialIcons name="info-outline" size={16} color="rgba(148,163,184,0.95)" />
-    </Pressable>
-  </View>
-
-  <View style={tw`mt-2 gap-2`}>
-    {TRACKS.map((t) => {
-      const active = programTrack === t.key;
-      const disabled = isLockedLearner || programTrackLocked;
-
-      const meta = TRACK_UI[t.key] ?? {
-        icon: 'school' as MIName,
-        blurb: 'Structured learning track.',
-        outcome: 'Choose what fits your goal.',
-      };
-
-      return (
-        <Pressable
-          key={t.key}
-          onPress={() => {
-            if (!disabled) setProgramTrack(t.key);
-          }}
-          disabled={disabled}
-          accessibilityRole="button"
-          accessibilityState={{ selected: active, disabled }}
-          accessibilityLabel={`${t.label}. Approximately ${t.lessons} lessons.`}
-          style={tw.style(
-            `rounded-2xl border p-3`,
-            active
-              ? `bg-indigo-50 dark:bg-indigo-600/25 border-indigo-300 dark:border-indigo-500/40`
-              : `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`,
-            disabled && `opacity-50`
-          )}
-        >
+        <View>
           <View style={tw`flex-row items-center justify-between`}>
-            <View style={tw`flex-row items-center gap-2`}>
-              <View
-                style={tw.style(
-                  `h-8 w-8 rounded-xl items-center justify-center`,
-                  active ? `bg-indigo-600` : `bg-slate-100 dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`
-                )}
-              >
-                <MaterialIcons
-                  name={meta.icon}
-                  size={18}
-                  color={active ? '#fff' : 'rgba(73,115,156,0.95)'}
-                />
-              </View>
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Program track</Text>
+            <Pressable
+              onPress={() => setTrackInfoOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="What are program tracks?"
+              style={tw`h-7 w-7 rounded-lg items-center justify-center bg-slate-100 dark:bg-[#172534] border border-[#cedbe8] dark:border-white/10`}
+            >
+              <MaterialIcons name="info-outline" size={16} color="rgba(148,163,184,0.95)" />
+            </Pressable>
+          </View>
 
-              <View>
-                <Text
+          <View style={tw`mt-2 gap-2`}>
+            {TRACKS.map((t) => {
+              const active = programTrack === t.key;
+              const disabled = isLockedLearner || programTrackLocked;
+
+              const meta = TRACK_UI[t.key] ?? {
+                icon: 'school' as MIName,
+                blurb: 'Structured learning track.',
+                outcome: 'Choose what fits your goal.',
+              };
+
+              return (
+                <Pressable
+                  key={t.key}
+                  onPress={() => {
+                    if (!disabled) setProgramTrack(t.key);
+                  }}
+                  disabled={disabled}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active, disabled }}
+                  accessibilityLabel={`${t.label}. Approximately ${t.lessons} lessons.`}
                   style={tw.style(
-                    `text-sm font-semibold`,
-                    active ? `text-indigo-700 dark:text-white` : `text-[#0d141c] dark:text-white`
+                    `rounded-2xl border p-2.5`,
+                    active
+                      ? `bg-indigo-50 dark:bg-indigo-600/25 border-indigo-300 dark:border-indigo-500/40`
+                      : `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`,
+                    disabled && `opacity-50`
                   )}
                 >
-                  {t.label}
-                </Text>
-                <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
-                  {meta.outcome}
-                </Text>
-              </View>
-            </View>
+                  <View style={tw`flex-row items-center justify-between`}>
+                    <View style={tw`flex-row items-center gap-2`}>
+                      <View
+                        style={tw.style(
+                          `h-7 w-7 rounded-lg items-center justify-center`,
+                          active
+                            ? `bg-indigo-600`
+                            : `bg-slate-100 dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`
+                        )}
+                      >
+                        <MaterialIcons
+                          name={meta.icon}
+                          size={16}
+                          color={active ? '#fff' : 'rgba(73,115,156,0.95)'}
+                        />
+                      </View>
 
-            <View style={tw`px-2 py-1 rounded-full bg-slate-100 dark:bg-white/10 border border-[#cedbe8] dark:border-white/10`}>
-              <Text style={tw`text-[11px] text-[#0d141c] dark:text-white`}>
-                {t.lessons} lessons
-              </Text>
-            </View>
+                      <View>
+                        <Text
+                          style={tw.style(
+                            `text-sm font-semibold`,
+                            active ? `text-indigo-700 dark:text-white` : `text-[#0d141c] dark:text-white`
+                          )}
+                        >
+                          {t.label}
+                        </Text>
+                        <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
+                          {meta.outcome}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View
+                      style={tw`px-2 py-1 rounded-full bg-slate-100 dark:bg-white/10 border border-[#cedbe8] dark:border-white/10`}
+                    >
+                      <Text style={tw`text-[11px] text-[#0d141c] dark:text-white`}>
+                        {t.lessons} lessons
+                      </Text>
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
 
           <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/60`}>
-            {meta.blurb}
+            Plan: {trackLabel} • {trackLessons} lessons • {defaultQuizCount} questions
           </Text>
-        </Pressable>
-      );
-    })}
-  </View>
 
-  <Text style={tw`mt-2 text-[11px] text-[#49739c] dark:text-white/60`}>
-    Track controls lesson count. We generate ~{trackLessons} lessons for this course.
-  </Text>
+          {overrideLessons || overrideQuiz ? (
+            <Text style={tw`mt-1 text-[11px] text-amber-700 dark:text-amber-200`}>
+              You’re using custom lessons/quiz settings. Tap “Use track defaults” below to sync with this track.
+            </Text>
+          ) : null}
 
-  {(overrideLessons || overrideQuiz) ? (
-    <Text style={tw`mt-1 text-[11px] text-amber-700 dark:text-amber-200`}>
-      You’re using custom lessons/quiz settings. Tap “Use track defaults” below to sync with this track.
-    </Text>
-  ) : null}
-
-  {/* Info Modal */}
-  <Modal
-    visible={trackInfoOpen}
-    transparent
-    animationType="fade"
-    onRequestClose={() => setTrackInfoOpen(false)}
-  >
-    <View style={tw`flex-1 bg-black/40 items-center justify-center px-4`}>
-      <Pressable style={tw`absolute inset-0`} onPress={() => setTrackInfoOpen(false)} />
-
-      <View style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 overflow-hidden`}>
-        <View style={tw`px-4 py-3 flex-row items-center justify-between border-b border-[#cedbe8] dark:border-white/10`}>
-          <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
-            What are program tracks?
-          </Text>
-          <Pressable
-            onPress={() => setTrackInfoOpen(false)}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            style={tw`h-8 w-8 items-center justify-center rounded-lg bg-slate-100 dark:bg-[#172534]`}
+          <Modal
+            visible={trackInfoOpen}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setTrackInfoOpen(false)}
           >
-            <MaterialIcons name="close" size={18} color="rgba(148,163,184,0.9)" />
-          </Pressable>
-        </View>
+            <View style={tw`flex-1 bg-black/40 items-center justify-center px-4`}>
+              <Pressable style={tw`absolute inset-0`} onPress={() => setTrackInfoOpen(false)} />
 
-        <ScrollView style={tw`max-h-96`} contentContainerStyle={tw`p-4 gap-3`}>
-          {TRACKS.map((t) => {
-            const meta = TRACK_UI[t.key] ?? {
-              icon: 'school' as MIName,
-              blurb: 'Structured learning track.',
-              outcome: 'Choose what fits your goal.',
-            };
-
-            return (
               <View
-                key={t.key}
-                style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#172534] p-3`}
+                style={tw`w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10 overflow-hidden`}
               >
-                <View style={tw`flex-row items-center justify-between`}>
-                  <View style={tw`flex-row items-center gap-2`}>
-                    <MaterialIcons name={meta.icon} size={18} color="rgba(73,115,156,0.95)" />
-                    <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
-                      {t.label}
-                    </Text>
-                  </View>
-                  <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
-                    ~{t.lessons} lessons
+                <View
+                  style={tw`px-4 py-3 flex-row items-center justify-between border-b border-[#cedbe8] dark:border-white/10`}
+                >
+                  <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+                    What are program tracks?
                   </Text>
+                  <Pressable
+                    onPress={() => setTrackInfoOpen(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close"
+                    style={tw`h-8 w-8 items-center justify-center rounded-lg bg-slate-100 dark:bg-[#172534]`}
+                  >
+                    <MaterialIcons name="close" size={18} color="rgba(148,163,184,0.9)" />
+                  </Pressable>
                 </View>
 
-                <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/60`}>
-                  {meta.outcome}
-                </Text>
-                <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/60`}>
-                  {meta.blurb}
-                </Text>
-              </View>
-            );
-          })}
+                <ScrollView style={tw`max-h-96`} contentContainerStyle={tw`p-4 gap-3`}>
+                  {TRACKS.map((t) => {
+                    const meta = TRACK_UI[t.key] ?? {
+                      icon: 'school' as MIName,
+                      blurb: 'Structured learning track.',
+                      outcome: 'Choose what fits your goal.',
+                    };
 
-          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
-            Tip: If you override Lessons/Quiz, you’re no longer using track defaults until you tap “Use track defaults”.
-          </Text>
-        </ScrollView>
+                    return (
+                      <View
+                        key={t.key}
+                        style={tw`rounded-2xl border border-[#cedbe8] dark:border-white/10 bg-slate-50 dark:bg-[#172534] p-3`}
+                      >
+                        <View style={tw`flex-row items-center justify-between`}>
+                          <View style={tw`flex-row items-center gap-2`}>
+                            <MaterialIcons
+                              name={meta.icon}
+                              size={18}
+                              color="rgba(73,115,156,0.95)"
+                            />
+                            <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+                              {t.label}
+                            </Text>
+                          </View>
+                          <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
+                            ~{t.lessons} lessons
+                          </Text>
+                        </View>
+
+                        <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/60`}>
+                          {meta.outcome}
+                        </Text>
+                        <Text style={tw`mt-1 text-[11px] text-[#49739c] dark:text-white/60`}>
+                          {meta.blurb}
+                        </Text>
+                      </View>
+                    );
+                  })}
+
+                  <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
+                    Tip: If you override Lessons/Quiz, you’re no longer using track defaults until
+                    you tap “Use track defaults”.
+                  </Text>
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+        </View>
+      </View>
+
+      <View style={tw`flex-row items-center gap-2`}>
+        <View style={tw`flex-1`}>
+          <StartWithAiButton
+            busy={busy}
+            hasAIContent={hasAIContent}
+            onStart={onStart}
+            canStartNow={canStartNow}
+            fullWidth
+          />
+        </View>
+
+        {selectedCourseId && !isLockedLearner ? (
+          <Pressable
+            onPress={() => onRefreshSelectedAI()}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh AI"
+            style={tw`h-11 w-11 rounded-xl items-center justify-center border bg-slate-50 dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`}
+          >
+            <MaterialIcons name="refresh" size={18} color="rgba(73,115,156,0.95)" />
+          </Pressable>
+        ) : null}
+
+        {canShareUi && !isLockedLearner ? (
+          <Pressable
+            onPress={onOpenShare}
+            disabled={!canShare}
+            accessibilityRole="button"
+            accessibilityLabel="Share with learners"
+            style={tw.style(
+              `h-11 w-11 rounded-xl items-center justify-center border`,
+              canShare
+                ? `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
+                : `bg-slate-100 dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-50`
+            )}
+          >
+            <MaterialIcons name="share" size={18} color="rgba(73,115,156,0.95)" />
+          </Pressable>
+        ) : null}
       </View>
     </View>
-  </Modal>
-</View>
+  );
+}
 
+function TeachMeSection({
+  isLockedLearner,
+  customTitle,
+  setCustomTitle,
+  busy,
+  canStartNow,
+  onStart,
+  showCourseOrCustomError,
+  overlayAvailable,
+  onOpenOverlay,
+}: {
+  isLockedLearner: boolean;
+  customTitle: string;
+  setCustomTitle: (s: string) => void;
+  busy: boolean;
+  canStartNow: boolean;
+  onStart: () => Promise<void> | void;
+  showCourseOrCustomError: boolean;
+  overlayAvailable?: boolean;
+  onOpenOverlay?: () => void;
+}) {
+  if (isLockedLearner) return null;
 
-          {/* Lesson size + minutes */}
+  const teachDisabled = busy || !canStartNow || !customTitle.trim();
+
+  return (
+    <View style={tw`gap-2 pb-3 border-b border-[#cedbe8] dark:border-white/10`}>
+      <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Teach me anything</Text>
+      <View style={tw`flex-row items-center gap-2`}>
+        <TextInput
+          value={customTitle}
+          onChangeText={setCustomTitle}
+          placeholder="Teach me Photosynthesis"
+          placeholderTextColor="rgba(148,163,184,0.8)"
+          style={tw`flex-1 h-11 rounded-xl px-3 border border-[#cedbe8] dark:border-white/15 bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text-white`}
+        />
+
+        <Pressable
+          disabled={teachDisabled}
+          onPress={() => {
+            if (!teachDisabled) onStart();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Teach me"
+          style={tw.style(
+            `h-11 px-4 rounded-xl items-center justify-center border flex-row gap-2`,
+            busy
+              ? `bg-indigo-600/60 border-indigo-600/60`
+              : !teachDisabled
+              ? `bg-indigo-600 border-indigo-600`
+              : `opacity-60 bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
+          )}
+        >
+          {busy ? <ActivityIndicator size={12} color="#fff" /> : null}
+          <Text
+            style={tw`${
+              busy || !teachDisabled ? 'text-white' : 'text-[#0d141c] dark:text-white'
+            } text-sm font-semibold`}
+          >
+            {busy ? 'Preparing…' : 'Teach me'}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => {
+            if (overlayAvailable && onOpenOverlay) onOpenOverlay();
+          }}
+          disabled={!overlayAvailable || !onOpenOverlay}
+          accessibilityRole="button"
+          accessibilityLabel="Open lesson overlay"
+          style={tw.style(
+            `h-11 w-11 rounded-xl items-center justify-center border`,
+            overlayAvailable
+              ? `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
+              : `bg-slate-100 dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-50`
+          )}
+        >
+          <MaterialIcons name="layers" size={18} color={overlayAvailable ? '#49739c' : '#94a3b8'} />
+        </Pressable>
+      </View>
+
+      {showCourseOrCustomError && (
+        <Text style={tw`text-xs text-red-500`}>
+          Pick a course or enter a custom topic first.
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function AdvancedSection({
+  advancedOpen,
+  setAdvancedOpen,
+  advancedDisabled,
+  knobsDisabled,
+  PRESETS,
+  sizePreset,
+  setSizePreset,
+  minutes,
+  setMinutes,
+  defaultPresetKey,
+  capMinutes,
+  classLevel,
+  setClassLevel,
+  totalLessons,
+  setTotalLessons,
+  quizCount,
+  setQuizCount,
+  overrideLessons,
+  setOverrideLessons,
+  overrideQuiz,
+  setOverrideQuiz,
+  trackLessons,
+}: {
+  advancedOpen: boolean;
+  setAdvancedOpen: (open: boolean) => void;
+  advancedDisabled: boolean;
+  knobsDisabled: boolean;
+  PRESETS: ReadonlyArray<{ key: SizePresetKey; label: string; min: number }>;
+  sizePreset: SizePresetKey;
+  setSizePreset: (k: SizePresetKey) => void;
+  minutes: number;
+  setMinutes: (n: number) => void;
+  defaultPresetKey: SizePresetKey;
+  capMinutes: (m?: number) => number;
+  classLevel: 'beginner' | 'intermediate' | 'advanced';
+  setClassLevel: (lv: 'beginner' | 'intermediate' | 'advanced') => void;
+  totalLessons: number;
+  setTotalLessons: (n: number) => void;
+  quizCount: number;
+  setQuizCount: (n: number) => void;
+  overrideLessons: boolean;
+  setOverrideLessons: (b: boolean) => void;
+  overrideQuiz: boolean;
+  setOverrideQuiz: (b: boolean) => void;
+  trackLessons: number;
+}) {
+  const inputsDisabled = knobsDisabled || advancedDisabled;
+
+  return (
+    <View style={tw`gap-2`}>
+      <Pressable
+        onPress={() => {
+          if (!advancedDisabled) setAdvancedOpen(!advancedOpen);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Advanced settings"
+        accessibilityState={{ expanded: advancedOpen, disabled: advancedDisabled }}
+        disabled={advancedDisabled}
+        style={tw.style(
+          `flex-row items-center justify-between rounded-xl border px-3 py-2`,
+          `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/10`,
+          advancedDisabled && `opacity-50`
+        )}
+      >
+        <View>
+          <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+            Advanced settings
+          </Text>
+          {!advancedOpen && (
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
+              Minutes, level, lesson size, manual overrides
+            </Text>
+          )}
+        </View>
+        <MaterialIcons
+          name={advancedOpen ? 'expand-less' : 'expand-more'}
+          size={20}
+          color="rgba(148,163,184,0.95)"
+        />
+      </Pressable>
+
+      {advancedOpen && (
+        <View style={tw`gap-3 rounded-xl border px-3 py-3 bg-slate-50 dark:bg-[#0f1821] border-[#cedbe8] dark:border-white/10`}>
           <View>
             <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Lesson size</Text>
-            <View style={tw`mt-1 gap-2`}>
+            <View style={tw`mt-2 gap-2`}>
               <View style={tw`flex-row flex-wrap gap-2`}>
                 {PRESETS.map((p) => {
                   const active = sizePreset === p.key;
-                  const disabled = isLockedLearner;
                   return (
                     <Pressable
                       key={p.key}
                       onPress={() => {
-                        if (disabled) return;
+                        if (inputsDisabled) return;
                         setSizePreset(p.key);
                         setMinutes(capMinutes(minutes < p.min ? p.min : minutes));
                       }}
-                      disabled={disabled}
+                      disabled={inputsDisabled}
                       accessibilityLabel={`${p.label} (~${p.min} min)`}
-                      accessibilityState={{ selected: active, disabled }}
+                      accessibilityState={{ selected: active, disabled: inputsDisabled }}
                       style={tw.style(
                         `px-3 py-1.5 rounded-full border`,
                         active
                           ? `bg-indigo-600 border-indigo-600`
                           : `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`,
-                        disabled && `opacity-50`
+                        inputsDisabled && `opacity-50`
                       )}
                     >
                       <Text style={tw`${active ? 'text-white' : 'text-[#0d141c] dark:text-white'}`}>
@@ -605,18 +997,18 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
                   keyboardType="number-pad"
                   value={String(minutes)}
                   onChangeText={(txt) => {
-                    if (knobsDisabled) return;
+                    if (inputsDisabled) return;
                     const n = Math.max(8, Math.min(600, Number(txt.replace(/[^\d]/g, '')) || 0));
                     setMinutes(n);
                     const found = [...PRESETS].reverse().find((x) => n >= x.min);
                     const key: SizePresetKey = found?.key ?? defaultPresetKey;
                     setSizePreset(key);
                   }}
-                  editable={!knobsDisabled}
+                  editable={!inputsDisabled}
                   placeholderTextColor="rgba(148,163,184,0.8)"
                   style={tw.style(
-                    `h-9 w-20 rounded-xl px-2 border text-[12px] bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text-white`,
-                    knobsDisabled
+                    `h-9 w-20 rounded-xl px-2 border text-[12px] bg-white dark:bg-[#172534] text-[#0d141c] dark:text-white`,
+                    inputsDisabled
                       ? `opacity-50 border-[#cedbe8] dark:border-white/15`
                       : `border-[#cedbe8] dark:border-white/15`
                   )}
@@ -625,7 +1017,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
             </View>
           </View>
 
-          {/* Level */}
           <View>
             <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Level</Text>
             <View
@@ -633,19 +1024,18 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
             >
               {(['beginner', 'intermediate', 'advanced'] as const).map((lv) => {
                 const active = classLevel === lv;
-                const disabled = isLockedLearner;
                 return (
                   <Pressable
                     key={lv}
-                    onPress={() => !disabled && setClassLevel(lv)}
-                    disabled={disabled}
+                    onPress={() => !inputsDisabled && setClassLevel(lv)}
+                    disabled={inputsDisabled}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: active, disabled }}
+                    accessibilityState={{ selected: active, disabled: inputsDisabled }}
                     accessibilityLabel={lv}
                     style={tw.style(
                       `flex-1 px-3 py-2`,
                       active ? `bg-indigo-50 dark:bg-white/10` : `bg-white dark:bg-[#172534]`,
-                      disabled && `opacity-50`
+                      inputsDisabled && `opacity-50`
                     )}
                   >
                     <Text
@@ -663,73 +1053,14 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
             </View>
           </View>
 
-          {/* Start / Refresh / Share */}
-          <View style={tw`flex-row items-end gap-2`}>
-            <StartWithAiButton
-              busy={busy}
-              hasAIContent={hasAIContent}
-              onStart={onStart}
-              canStartNow={canStartNow}
-            />
-
-            {selectedCourse && !isLockedLearner ? (
-              <Pressable
-                onPress={() => onRefreshSelectedAI()}
-                accessibilityRole="button"
-                accessibilityLabel="Refresh AI"
-                style={tw`h-10 px-3 rounded-xl items-center justify-center border bg-slate-50 dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`}
-              >
-                <Text style={tw`text-[#0d141c] dark:text-white`}>Refresh AI</Text>
-              </Pressable>
-            ) : null}
-
-            {canShareUi && !isLockedLearner ? (
-              <Pressable
-                onPress={onOpenShare}
-                disabled={!selectedCourse?.id && !customTitle.trim()}
-                accessibilityRole="button"
-                accessibilityLabel="Share with learners"
-                style={tw.style(
-                  `h-10 px-3 rounded-xl items-center justify-center border`,
-                  selectedCourse?.id
-                    ? `bg-indigo-600 border-indigo-600`
-                    : `bg-slate-50 dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`,
-                  !selectedCourse?.id && !customTitle.trim() && `opacity-60`
-                )}
-              >
-                <Text
-                  style={tw`${
-                    selectedCourse?.id ? 'text-white' : 'text-[#0d141c] dark:text-white'
-                  }`}
-                >
-                  Share with learners
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-
-          {/* Extra knobs (minutes/lessons/quizzes) */}
           <View style={tw`gap-2`}>
-            <LabeledNumber
-              label="Minutes"
-              value={minutes}
-              min={3}
-              max={5000}
-              disabled={knobsDisabled}
-              onChange={(v) => {
-                const vv = Math.max(3, v);
-                setMinutes(vv);
-                const found = [...PRESETS].reverse().find((x) => vv >= x.min);
-                const key: SizePresetKey = found?.key ?? defaultPresetKey;
-                setSizePreset(key);
-              }}
-            />
+            <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Manual overrides</Text>
             <LabeledNumber
               label="Lessons"
               value={totalLessons}
               min={1}
               max={500}
-              disabled={knobsDisabled}
+              disabled={inputsDisabled}
               onChange={(v) => {
                 setOverrideLessons(true);
                 setTotalLessons(Math.max(1, v));
@@ -740,7 +1071,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
               value={quizCount}
               min={4}
               max={400}
-              disabled={knobsDisabled}
+              disabled={inputsDisabled}
               onChange={(v) => {
                 setOverrideQuiz(true);
                 setQuizCount(Math.max(4, v));
@@ -748,110 +1079,29 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
             />
           </View>
 
-          <View style={tw`mt-1 flex-row flex-wrap items-center gap-2`}>
-            {(overrideLessons || overrideQuiz) && (
-              <Pressable
-                onPress={() => {
-                  setOverrideLessons(false);
-                  setOverrideQuiz(false);
-                  setTotalLessons(trackLessons);
-                  setQuizCount(Math.max(4, Math.floor(trackLessons * 2)));
-                }}
-                style={tw`px-3 py-1.5 rounded-full bg-slate-100 dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15`}
-              >
-                <Text style={tw`text-[#0d141c] dark:text-white text-xs`}>Use track defaults</Text>
-              </Pressable>
-            )}
-          </View>
-
-          {/* Custom topic */}
-          {!isLockedLearner && (
-            <View style={tw`mt-1`}>
-              <Text style={tw`text-[11px] text-[#49739c] dark:text-white/70`}>Or type any topic</Text>
-              <TextInput
-                value={customTitle}
-                onChangeText={setCustomTitle}
-                placeholder="e.g., Linear Algebra crash course"
-                placeholderTextColor="rgba(148,163,184,0.8)"
-                style={tw`mt-1 h-11 rounded-xl px-3 border border-[#cedbe8] dark:border-white/15 bg-slate-50 dark:bg-[#172534] text-[#0d141c] dark:text-white`}
-              />
-
-              <View style={tw`mt-2 items-start`}>
-               <Pressable
-                  disabled={busy || !canStartNow || !customTitle.trim()}
-                  onPress={() => {
-                    if (!busy && canStartNow && customTitle.trim()) onStart();
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Teach me"
-                  style={tw.style(
-                    `h-10 px-4 rounded-xl items-center justify-center border flex-row gap-2`,
-                    busy
-                      ? `bg-indigo-600/60 border-indigo-600/60`
-                      : customTitle.trim() && canStartNow
-                      ? `bg-indigo-600 border-indigo-600`
-                      : `opacity-60 bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
-                  )}
-                >
-                  {busy ? <ActivityIndicator size={12} color="#fff" /> : null}
-
-                  <Text
-                    style={tw`${
-                      busy || (customTitle.trim() && canStartNow)
-                        ? 'text-white'
-                        : 'text-[#0d141c] dark:text-white'
-                    } text-sm font-semibold`}
-                  >
-                    {busy ? 'Preparing…' : 'Teach me'}
-                  </Text>
-                </Pressable>
-
-
-                {/* ✅ web parity: show warning when neither course nor custom topic */}
-                {showCourseOrCustomError && (
-                  <Text style={tw`mt-1 text-xs text-red-500`}>
-                    Pick a course or enter a custom topic first.
-                  </Text>
-                )}
-              </View>
-
-              {/* ✅ SINGLE OVERLAY ICON — fixed right after Teach me */}
-              <View style={tw`mt-2 flex-row items-center`}>
-                <Pressable
-                  onPress={() => {
-                    if (overlayAvailable && onOpenOverlay) onOpenOverlay();
-                  }}
-                  disabled={!overlayAvailable || !onOpenOverlay}
-                  accessibilityRole="button"
-                  accessibilityLabel="Open lesson overlay"
-                  style={tw.style(
-                    `h-10 w-10 rounded-xl items-center justify-center border`,
-                    overlayAvailable
-                      ? `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
-                      : `bg-slate-100 dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-50`
-                  )}
-                >
-                  <MaterialIcons
-                    name="layers"
-                    size={20}
-                    color={overlayAvailable ? '#49739c' : '#94a3b8'}
-                  />
-                </Pressable>
-
-                <Text style={tw`ml-2 text-[12px] text-[#49739c] dark:text-white/70`}>
-                  {overlayAvailable ? 'Overlay' : 'No overlay for this lesson'}
-                </Text>
-              </View>
-            </View>
+          {(overrideLessons || overrideQuiz) && (
+            <Pressable
+              onPress={() => {
+                if (inputsDisabled) return;
+                setOverrideLessons(false);
+                setOverrideQuiz(false);
+                setTotalLessons(trackLessons);
+                setQuizCount(Math.max(4, Math.floor(trackLessons * 2)));
+              }}
+              disabled={inputsDisabled}
+              style={tw.style(
+                `self-start px-3 py-1.5 rounded-full bg-white dark:bg-[#172534] border border-[#cedbe8] dark:border-white/15`,
+                inputsDisabled && `opacity-50`
+              )}
+            >
+              <Text style={tw`text-[#0d141c] dark:text-white text-xs`}>Use track defaults</Text>
+            </Pressable>
           )}
-        </RefreshableScrollView>
+        </View>
       )}
     </View>
   );
-});
-
-ControlsPanel.displayName = 'RobotTeacherControls';
-export default ControlsPanel;
+}
 
 function StartWithAiButton({
   busy,
