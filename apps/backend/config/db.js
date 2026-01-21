@@ -2,6 +2,8 @@
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
 
+
+
 dotenv.config();
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -38,23 +40,19 @@ const pool = new Pool({
   application_name: process.env.PGAPPNAME || 'daybreak-backend',
 });
 
-/* ───────── Safe preview log (no passwords) ───────── */
+// Safe preview log (no passwords)
 (function safeLogConfig() {
-  try {
-    if (cfg.connectionString) {
-      const masked = String(cfg.connectionString).replace(
-        /:\/\/([^:]+):([^@]+)@/,
-        '://$1:*****@',
-      );
-      console.log('Using Postgres connection (URL):', masked);
-    } else {
-      const { user, host, port, database } = cfg;
-      console.log(
-        `Using Postgres connection (obj): postgres://${user || 'user'}:*****@${host}:${port}/${database}`,
-      );
-    }
-  } catch {
-    // ignore logging failures
+  if (cfg.connectionString) {
+    const masked = cfg.connectionString.replace(
+      /:\/\/([^:]+):([^@]+)@/,
+      '://$1:*****@',
+    );
+    console.log('Using Postgres connection (URL):', masked);
+  } else {
+    const { user, host, port, database } = cfg;
+    console.log(
+      `Using Postgres connection (obj): postgres://${user || 'user'}:*****@${host}:${port}/${database}`,
+    );
   }
 })();
 
@@ -69,12 +67,11 @@ function shouldLogOnce(key, windowMs = 5000) {
 }
 
 pool.on('connect', (client) => {
-  // Keep this log if you want; if it’s too noisy, remove it.
   console.log('✅ PostgreSQL client connected');
 
-  // Avoid Node crashing when a *checked-out* client drops connection.
+  // IMPORTANT: avoid Node crashing when a *checked-out* client drops connection.
   client.on('error', (err) => {
-    const key = `active:${err.code || err.name}:${String(err.message || '').slice(0, 80)}`;
+    const key = `active:${err.code || err.name}:${(err.message || '').slice(0, 80)}`;
     if (shouldLogOnce(key)) {
       console.warn(
         '⚠️ PG active client error:',
@@ -92,9 +89,14 @@ pool.on('remove', () => {
 
 pool.on('error', (err) => {
   // Errors on *idle* clients — pool will discard & replace automatically.
-  const key = `${err.code || err.name}:${String(err.message || '').slice(0, 80)}`;
+  const key = `${err.code || err.name}:${(err.message || '').slice(0, 80)}`;
   if (shouldLogOnce(key)) {
-    console.warn('⚠️ PG idle client error:', err.code || err.name, '-', err.message);
+    console.warn(
+      '⚠️ PG idle client error:',
+      err.code || err.name,
+      '-',
+      err.message,
+    );
   }
 });
 
@@ -117,8 +119,6 @@ async function waitForPg({
         `⏳ Waiting for Postgres (attempt ${i + 1}/${tries}) — ${err.code || err.message}`,
       );
       if (last) {
-        // IMPORTANT: This is okay at boot time. Once the server is running,
-        // do NOT use pool.end() from this module.
         console.error('🚨 Startup test query failed. Exiting.');
         process.exit(1);
       }
@@ -147,11 +147,18 @@ const DB_DOWN_CODES = new Set([
   '08003', // connection_does_not_exist
 ]);
 
-const RETRYABLE_NODE_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE']);
+const RETRYABLE_NODE_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'EPIPE',
+]);
 
 function markDbDown(err) {
   const code = err?.code || err?.original?.code || '';
-  const msg = String(err?.message || err?.original?.message || '').toLowerCase();
+  const msg = String(
+    err?.message || err?.original?.message || '',
+  ).toLowerCase();
 
   const dbDown =
     DB_DOWN_CODES.has(code) ||
@@ -180,6 +187,7 @@ export async function queryWithRetry(text, params = [], opts = {}) {
     dbDownMaxDelayMs = 2000,
   } = opts;
 
+  // attempt = number of failures so far (0 on first failure)
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await pool.query(text, params);
@@ -193,13 +201,17 @@ export async function queryWithRetry(text, params = [], opts = {}) {
         RETRYABLE_NODE_CODES.has(code) ||
         /Connection terminated unexpectedly/i.test(msg);
 
-      if (!retryable || attempt === retries) throw err;
+      // If not retryable OR we've exhausted retries, throw.
+      if (!retryable || attempt === retries) {
+        throw err; // includes _dbDown/_serverBusy if applicable
+      }
 
+      // exponential backoff with a touch more patience when DB is down
       const baseMin = err._dbDown ? dbDownMinDelayMs : minDelayMs;
       const baseMax = err._dbDown ? dbDownMaxDelayMs : maxDelayMs;
       const sleep = Math.min(baseMax, baseMin * 2 ** attempt);
 
-      const retryNo = attempt + 1;
+      const retryNo = attempt + 1; // human-friendly retry count (1..retries)
       console.warn(
         `[pg:retry] ${code || err.name || 'error'} — retry ${retryNo}/${retries} in ${sleep}ms`,
       );
@@ -208,6 +220,7 @@ export async function queryWithRetry(text, params = [], opts = {}) {
     }
   }
 
+  // Should never reach here, but keeps control-flow analyzers happy.
   throw new Error('queryWithRetry: unreachable');
 }
 
@@ -219,6 +232,8 @@ export async function rollbackQuiet(client) {
     // Swallow rollback failures (connection may already be closed).
   }
 }
+
+
 
 /* ───────── Optional keep-alive ping ───────── */
 const pingEveryMs = Number(process.env.DB_PING_INTERVAL_MS) || 0;
@@ -232,11 +247,18 @@ if (pingEveryMs > 0) {
   }, pingEveryMs).unref();
 }
 
-/**
- * IMPORTANT:
- * - This module must NEVER call pool.end() during normal runtime.
- * - Do NOT register process signal handlers here.
- * - Handle graceful shutdown in ONE place: your server entry (app.listen file).
- */
+/* ───────── Graceful shutdown ───────── */
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGQUIT']) {
+  process.on(sig, async () => {
+    try {
+      await pool.end();
+      console.log('🧹 PG pool closed');
+    } catch (e) {
+      console.warn('PG pool close error:', e?.message);
+    } finally {
+      process.exit(0);
+    }
+  });
+}
 
 export default pool;

@@ -1,9 +1,6 @@
 // apps/backend/server.js
 import 'dotenv/config';
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Optional workers (top-level await is fine in ESM)
-// ────────────────────────────────────────────────────────────────────────────────
 if (
   process.env.NODE_ENV === 'production' &&
   process.env.START_PAYOUT_WORKER === 'true'
@@ -11,53 +8,25 @@ if (
   await import('./cronJobs/payoutWorker.js');
 }
 
+import pool from './config/db.js'; // loads .env variables
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
-import bodyParser from 'body-parser';
-import { Server } from 'socket.io';
-
-import pool from './config/db.js';
-import connectCloudinary from './config/cloudinary.js';
-
 import { runWebhookTickSingleton as runWebhookTick } from './cronJobs/webhookWorkerSingleton.js';
-
-// Middleware
-import {
-  morganMiddleware,
-  helmetMiddleware,
-  errorLogger,
-  limiter, // global soft limiter
-  userLimiter,
-  reviewsLimiter,
-  progressLimiter,
-  aiKeyFn,
-  certificatesLimiter,
-  aiLimiterStrict,
-  loginLimiterFactory,
-} from './middleware/middleware.js';
-
-import { inflightLimiter } from './middleware/inflightLimiter.js';
-import { normalizeCourseSize } from './middleware/normalizeCourseSize.js';
-
-// Controllers
-import { ensureSeedSuperadmin } from './controllers/sessionController.js';
-import { webhooks } from './controllers/paypalController.js';
-import { handlePaystackWebhook } from './controllers/paystackController.js';
-
-// Services
-import { notifyNewMessage } from './services/pushService.js';
-
-// Routes
 import attemptsRoutes from './routes/attemptsRoutes.js';
 import oerRoutes from './routes/oerRoutes.js';
+import { Server } from 'socket.io';
+import bodyParser from 'body-parser';
 import refundRoutes from './routes/refundRoutes.js';
 import emailUnsubscribeRoutes from './routes/emailUnsubscribe.js';
+import connectCloudinary from './config/cloudinary.js';
+import { normalizeCourseSize } from './middleware/normalizeCourseSize.js';
+import { ensureSeedSuperadmin } from './controllers/sessionController.js';
 import progressWatchRoutes from './routes/progressWatchRoutes.js';
 import progressReadRoutes from './routes/progressReadRoutes.js';
 import openstaxIngestRoutes from './routes/openstaxIngestRoutes.js';
 import youtubeIngestRoutes from './routes/youtubeIngestRoutes.js';
-
+// Routes
 import ttsAvatarRoutes from './routes/ttsAvatarRoutes.js';
 import transcriptsRoutes from './routes/transcripts.js';
 import adminRoutes from './routes/adminRoutes.js';
@@ -68,6 +37,7 @@ import aiRoutes from './routes/ai.js';
 import orgRoutes from './routes/orgRoutes.js';
 import cloudinaryRoutes from './routes/cloudinaryRoutes.js';
 import earningsRoutes from './routes/earningsRoutes.js';
+import './cronJobs/scheduler.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import aiCourseRoutes from './routes/aiCourseRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
@@ -81,31 +51,45 @@ import reviewRouter from './routes/reviewRoutes.js';
 import certificationRoutes from './routes/certificationRoutes.js';
 import certificationsAdminRoutes from './routes/certificationsAdminRoutes.js';
 import courseRoutes from './routes/courseRoutes.js';
-import searchRoutes from './routes/searchRoutes.js';
 import enrollmentRoutes from './routes/enrollmentRoutes.js';
 import paypalRoutes from './routes/paypalRoutes.js';
+import { webhooks } from './controllers/paypalController.js';
 import courseProgressRoutes from './routes/courseProgressRoutes.js';
 import achievementsRoutes from './routes/achievementsRoutes.js';
 import certificateRoutes from './routes/certificateRoutes.js';
 import payoutRoutes from './routes/payoutRoutes.js';
+import { inflightLimiter } from './middleware/inflightLimiter.js';
 import orgExamsRoutes from './routes/orgExamsRoutes.js';
 import paystackRoutes from './routes/paystackRoutes.js';
+import { handlePaystackWebhook } from './controllers/paystackController.js';
 import pushRoutes from './routes/pushRoutes.js';
+import { notifyNewMessage } from './services/pushService.js';
 import messagesRoutes from './routes/messagesRoutes.js';
 import orgFeesRoutes from './routes/orgFeesRoutes.js';
 import orgProToolsRoutes from './routes/orgProToolsRoutes.js';
 
-// Scheduler (side-effect import)
-import './cronJobs/scheduler.js';
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Boot-time setup
-// ────────────────────────────────────────────────────────────────────────────────
+// Middleware
+import {
+  morganMiddleware,
+  helmetMiddleware,
+  errorLogger,
+  limiter, // global soft limiter
+  userLimiter,
+  reviewsLimiter,
+  progressLimiter,
+  aiKeyFn,
+  certificatesLimiter,
+  aiLimiterStrict, // ⇐ use the new per-user/per-bucket limiter
+  loginLimiterFactory,
+} from './middleware/middleware.js';
+
+
 connectCloudinary();
 
-// Webhook worker tick (dev-safe singleton)
 if (process.env.START_WEBHOOK_WORKER === 'true') {
   console.log('▶️  Webhook worker: enabled (10s interval)');
+  // Avoid dup intervals during hot-reload
   if (!globalThis.__WEBHOOK_TICK__) {
     globalThis.__WEBHOOK_TICK__ = setInterval(() => {
       runWebhookTick().catch((e) => console.error('[webhookTick]', e));
@@ -114,79 +98,52 @@ if (process.env.START_WEBHOOK_WORKER === 'true') {
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
-// Process safety (do NOT call pool.end() here; handled in shutdown below)
+// Handle unhandled promise rejections
 // ────────────────────────────────────────────────────────────────────────────────
 process.on('unhandledRejection', (err) => {
   console.error('❌ Unhandled rejection:', err);
 });
-process.on('uncaughtException', (err) => {
-  console.error('❌ Uncaught exception:', err);
-});
 
-// ────────────────────────────────────────────────────────────────────────────────
-// App + Server
-// ────────────────────────────────────────────────────────────────────────────────
 const app = express();
-
-// ✅ 1) Kill ETags so Express never emits 304 for APIs
-app.set('etag', false);
-
-// ✅ 2) Make ALL /api responses non-cacheable (prevents browser/proxy 304 behavior)
-app.use('/api', (req, res, next) => {
-  res.setHeader(
-    'Cache-Control',
-    'no-store, no-cache, must-revalidate, proxy-revalidate',
-  );
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Surrogate-Control', 'no-store');
-
-  // Optional: extra hardening for some proxies
-  res.setHeader('Vary', 'Origin');
-
-  next();
-});
-
-const server = http.createServer(app);
-
-const io = new Server(server, {
-  cors: {
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error(`Not allowed by CORS (socket): ${origin}`));
-    },
-    methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Anon-Id',
-      'X-Program-Track',
-      'X-Assignment-Id',
-      'X-Org-Id',
-    ],
-    credentials: true,
-  },
-  pingTimeout: 30_000,
-  pingInterval: 10_000,
-});
-
-const port = Number(process.env.PORT ?? 4000);
-const isProduction = process.env.NODE_ENV === 'production';
-
 const BUILD =
   process.env.RAILWAY_GIT_COMMIT_SHA ||
   process.env.GIT_SHA ||
   process.env.APP_BUILD ||
   'dev';
 
-// ─── URLs ───────────────────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  res.setHeader('x-daybreak-build', BUILD);
+  next();
+});
+
+app.use((req, _res, next) => {
+  const url = req.originalUrl || req.url || '';
+  if (url.includes('paystack')) {
+    console.log('[PAYSTACK][REQ]', {
+      method: req.method,
+      url,
+      host: req.get('host'),
+      origin: req.get('origin'),
+      proto: req.get('x-forwarded-proto'),
+      secure: req.secure,
+      ip: req.ip,
+    });
+  }
+  next();
+});
+
+const server = http.createServer(app);
+const port = Number(process.env.PORT ?? 4000);
+const isProduction = process.env.NODE_ENV === 'production';
+
+// ─── 1) Environment vars ────────────────────────────────────────────────────────
 const BACKEND_URL =
   process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 4000}`;
 const WEB_BACKEND_URL = process.env.WEB_BACKEND_URL || 'http://localhost:5173';
 const PROD_BACKEND_URL =
   process.env.PROD_BACKEND_URL || 'https://server.daybreaklearner.com';
 
-// ─── Origins ────────────────────────────────────────────────────────────────────
+// ─── 2) Allowed origins ────────────────────────────────────────────────────────
 const productionOrigins = [
   'https://daybreaklearner.com',
   'https://www.daybreaklearner.com',
@@ -212,50 +169,16 @@ const developmentOrigins = [
 
 const allowedOrigins = isProduction ? productionOrigins : developmentOrigins;
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Core middleware
-// ────────────────────────────────────────────────────────────────────────────────
-app.set('trust proxy', 1);
-
-app.use((req, res, next) => {
-  res.setHeader('x-daybreak-build', BUILD);
-  next();
-});
-
-// expose io on req
-app.use((req, _res, next) => {
-  req.io = io;
-  next();
-});
-
-// Paystack request debug (optional)
-app.use((req, _res, next) => {
-  const url = req.originalUrl || req.url || '';
-  if (url.includes('paystack')) {
-    console.log('[PAYSTACK][REQ]', {
-      method: req.method,
-      url,
-      host: req.get('host'),
-      origin: req.get('origin'),
-      proto: req.get('x-forwarded-proto'),
-      secure: req.secure,
-      ip: req.ip,
-    });
-  }
-  next();
-});
-
-// CORS (single source of truth)
+// ─── 3) CORS for ALL endpoints & preflight OPTIONS (single source of truth) ────
 const corsOptions = {
   origin: (origin, callback) => {
-    // If you want to reduce log spam, comment next line out:
-    // console.log('🛂 CORS origin check:', origin);
+    console.log('🛂 CORS origin check:', origin);
     if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
     console.warn('🚫 Blocked by CORS:', origin);
     return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
+    allowedHeaders: [
     'Content-Type',
     'Authorization',
     'X-Requested-With',
@@ -265,46 +188,39 @@ const corsOptions = {
     'X-Platform',
     'Cache-Control',
 
-    // AI flow extras
+    // ✅ AI flow extras
     'X-Program-Track',
     'X-Anon-Id',
     'X-Assignment-Id',
     'X-Org-Id',
 
-    // optional
+    // (optional but handy)
     'X-Quiz-Type',
     'X-Idempotency-Key',
   ],
+
   exposedHeaders: [
     'Content-Disposition',
-
     // Rate limit (IETF draft)
     'RateLimit-Limit',
     'RateLimit-Remaining',
     'RateLimit-Reset',
-
     // Legacy GitHub-style
     'X-RateLimit-Limit',
     'X-RateLimit-Remaining',
     'X-RateLimit-Reset',
-
     // Retry advice
     'Retry-After',
-
-    // extras
-    'X-Program-Track',
+     'X-Program-Track',
     'X-Degraded',
   ],
   credentials: true,
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+app.options('*', cors(corsOptions)); // Same options for preflight
 
-app.use(helmetMiddleware);
-app.use(morganMiddleware);
-
-// Webhooks (RAW) must be registered BEFORE JSON parser (for those routes only)
+// ─── 7) Webhooks (raw body) must come BEFORE JSON parser for that route only ───
 app.post(
   '/api/paypal/webhook',
   bodyParser.raw({ type: 'application/json' }),
@@ -314,7 +230,7 @@ app.post(
   },
   webhooks,
 );
-
+// ✅ Paystack webhook must be RAW (before express.json)
 app.post(
   '/api/paystack/webhook',
   bodyParser.raw({ type: 'application/json', limit: '1mb' }),
@@ -325,25 +241,29 @@ app.post(
   handlePaystackWebhook,
 );
 
-// Normal body parsing after webhooks
+// ─── 4) Global middleware ───────────────────────────────────────────────────────
+app.use(helmetMiddleware);
+app.use(morganMiddleware);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.set('trust proxy', 1);
 
-// Mild global limiter (keeps surprise fan-outs in check)
+// 🔒 Mild global soft limiter (keeps surprise fan-outs in check)
 app.use(limiter);
 
-// Login-only rate limiting
+// 🔐 Login-only rate limiting (5 attempts / 15m, skip success)
 const loginLimiter = loginLimiterFactory({ windowMs: 15 * 60_000, limit: 5 });
-app.post('/api/auth/admin-env-login', loginLimiter, (req, _res, next) => next());
+
+// Middleware-only routes that pass through to actual routers:
+app.post('/api/auth/admin-env-login', loginLimiter, (req, _res, next) =>
+  next(),
+);
 app.post('/api/admin/login', loginLimiter, (req, _res, next) => next());
 app.post('/api/auth/login', loginLimiter, (req, _res, next) => next());
 app.post('/api/institutions/auth/login', loginLimiter, (req, _res, next) =>
   next(),
 );
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Health / debug
-// ────────────────────────────────────────────────────────────────────────────────
 app.get('/healthz', (_req, res) => res.status(200).send('ok'));
 
 app.get('/__build', (_req, res) => {
@@ -354,7 +274,7 @@ app.get('/__build', (_req, res) => {
   });
 });
 
-// Paystack return endpoints
+// ✅ Paystack return endpoints (support both /paystack/return and /api/paystack/return)
 function redirectToDeepLink(req, res) {
   console.log('[PAYSTACK][RETURN] hit', {
     url: req.originalUrl,
@@ -362,10 +282,12 @@ function redirectToDeepLink(req, res) {
   });
 
   const deep = new URL('daybreak://paystack/callback');
+
   for (const [k, v] of Object.entries(req.query || {})) {
     if (v == null) continue;
     deep.searchParams.set(k, String(v));
   }
+
   if (!deep.searchParams.get('reference') && deep.searchParams.get('trxref')) {
     deep.searchParams.set('reference', deep.searchParams.get('trxref'));
   }
@@ -380,31 +302,58 @@ function redirectToDeepLink(req, res) {
 app.get('/paystack/return', redirectToDeepLink);
 app.get('/api/paystack/return', redirectToDeepLink);
 
-// ────────────────────────────────────────────────────────────────────────────────
-// HTTPS redirect in production
-// ────────────────────────────────────────────────────────────────────────────────
+// ─── 5) Socket.IO setup ─────────────────────────────────────────────────────────
+const io = new Server(server, {
+  cors: {
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin))
+        return callback(null, true);
+      return callback(new Error(`Not allowed by CORS (socket): ${origin}`));
+    },
+    methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
+        allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Anon-Id',
+      'X-Program-Track',
+      'X-Assignment-Id',
+      'X-Org-Id',
+    ],
+
+    credentials: true,
+  },
+  pingTimeout: 30000,
+  pingInterval: 10000,
+});
+
+// expose io on req
+app.use((req, _res, next) => {
+  req.io = io;
+  next();
+});
+
+// ─── 6) HTTPS redirect in production ────────────────────────────────────────────
 if (isProduction) {
   app.use((req, res, next) => {
     const skipRedirect =
-      req.path === '/healthz' ||
-      req.path === '/api/paypal/webhook' ||
-      req.path === '/api/paystack/webhook' ||
-      req.path === '/api/fees/inbound/mpesa' ||
-      req.path === '/api/fees/inbound/confirm' ||
-      req.path === '/api/fees/inbound/validate' ||
-      req.path === '/api/fees/inbound/bank' ||
-      req.headers['x-railway-healthcheck'];
+  req.path === '/healthz' ||
+  req.path === '/api/paypal/webhook' ||
+  req.path === '/api/paystack/webhook' ||
+  req.path === '/api/fees/inbound/mpesa' ||
+  req.path === '/api/fees/inbound/confirm' ||
+  req.path === '/api/fees/inbound/validate' ||
+  req.path === '/api/fees/inbound/bank' ||
+  req.headers['x-railway-healthcheck'];
 
-    if (skipRedirect) return next();
+    if (skipRedirect) {
+      return next();
+    }
     if (req.secure) return next();
     return res.redirect(`https://${req.headers.host}${req.url}`);
   });
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// REST routes
-// ────────────────────────────────────────────────────────────────────────────────
-
+// ─── 8) Mount REST routes (with per-route limiters where needed) ───────────────
 // User & profiles
 app.use('/api/user', userLimiter, userRouter);
 app.use('/api/profile', profileRoutes);
@@ -419,7 +368,7 @@ app.use('/api/paypal', paypalRoutes);
 app.use('/api/payouts', payoutRoutes);
 app.use('/api/payment', refundRoutes);
 app.use('/api/paystack', paystackRoutes);
-app.use('/api', orgFeesRoutes);
+app.use('/api',           orgFeesRoutes);
 
 // Tutor sessions / M-Pesa
 app.use('/api/tutor-session', tutorSessionRoutes);
@@ -435,9 +384,8 @@ app.use('/api/certificates', certificatesLimiter, certificateRoutes);
 app.use('/api/classvault', classVaultRoutes);
 app.use('/api/cloudinary', cloudinaryRoutes);
 
-// Courses & enrollments
+// Courses (non-AI) & enrollments
 app.use('/api/courses', courseRoutes);
-app.use('/api', searchRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/earnings', earningsRoutes);
 app.use('/api/achievements', achievementsRoutes);
@@ -445,7 +393,8 @@ app.use('/api/achievements', achievementsRoutes);
 // Auth & Admin
 app.use('/api/institutions/auth', institutionAuthRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminStaffRoutes);
+
+app.use('/api/admin', adminStaffRoutes); // /api/admin/staff
 app.use('/api/admin', adminRoutes);
 
 // Organization
@@ -458,14 +407,14 @@ app.use('/api/org', orgProToolsRoutes);
 app.use('/api/course-progress', progressLimiter, courseProgressRoutes);
 app.use('/api', progressLimiter, progressWatchRoutes);
 app.use('/api', progressLimiter, progressReadRoutes);
-
-// OER + ingest
 app.use('/api', oerRoutes);
 app.use('/api', openstaxIngestRoutes);
+
 app.use('/api', youtubeIngestRoutes);
 
-// AI routes (ensure size normalization runs before AI handlers)
+// ✅ Ensure course size normalization runs BEFORE AI handlers that rely on it
 app.use('/api/ai', normalizeCourseSize);
+
 app.use(
   '/api/ai',
   inflightLimiter({
@@ -473,10 +422,11 @@ app.use(
     max: Number(process.env.AI_MAX_INFLIGHT || 2),
   }),
 );
-app.use('/api/ai', aiLimiterStrict, aiRoutes);
-app.use('/api/ai', aiLimiterStrict, aiCourseRoutes);
+// ✅ Apply strict AI limiter to expensive AI/TTS work (per-user, per-bucket)
+app.use('/api/ai', aiLimiterStrict, aiRoutes); // general AI endpoints
+app.use('/api/ai', aiLimiterStrict, aiCourseRoutes); // AI course generation
 
-// TTS avatars (also protected)
+// TTS avatars also hit Azure—protect them, too
 app.use(
   '/api/ttsAvatar',
   inflightLimiter({
@@ -486,28 +436,31 @@ app.use(
 );
 app.use('/api/ttsAvatar', aiLimiterStrict, ttsAvatarRoutes);
 
-// Transcripts
+// Transcripts (if these call AI, consider adding aiLimiterStrict as well)
 app.use('/api/transcripts', transcriptsRoutes);
 
-// Email unsubscribe
+// Legacy / secondary router for /api/courses (kept if intentional)
+
 app.use('/api/email', emailUnsubscribeRoutes);
 
 // Root ping
 app.get('/', (_req, res) => res.send('API Working'));
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Socket.IO: messaging
-// ────────────────────────────────────────────────────────────────────────────────
+// =======================
+// ✅ SOCKET.IO FOR MESSAGING (UPDATED FOR PROFILE IDs)
+// =======================
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('joinRoom', (profileId) => {
-    if (!profileId) {
+    if (profileId) {
+      socket.join(String(profileId));
+      console.log(
+        `Socket ${socket.id} joined room for profile ID: ${profileId}`,
+      );
+    } else {
       console.error('joinRoom: Missing or invalid profileId');
-      return;
     }
-    socket.join(String(profileId));
-    console.log(`Socket ${socket.id} joined room for profile ID: ${profileId}`);
   });
 
   socket.on('sendMessage', async (data, callback) => {
@@ -532,10 +485,10 @@ io.on('connection', (socket) => {
       }
 
       // Find or create conversation
-      const conversation = await pool.query(
+      let conversation = await pool.query(
         `SELECT id FROM conversations
-         WHERE (sender_id = $1 AND recipient_id = $2)
-            OR (sender_id = $2 AND recipient_id = $1)`,
+       WHERE (sender_id = $1 AND recipient_id = $2)
+          OR (sender_id = $2 AND recipient_id = $1)`,
         [senderProfileId, recipientProfileId],
       );
 
@@ -543,7 +496,7 @@ io.on('connection', (socket) => {
       if (conversation.rows.length === 0) {
         const newConversation = await pool.query(
           `INSERT INTO conversations (sender_id, recipient_id, unread_count)
-           VALUES ($1, $2, 1) RETURNING id`,
+         VALUES ($1, $2, 1) RETURNING id`,
           [senderProfileId, recipientProfileId],
         );
         conversationId = newConversation.rows[0].id;
@@ -551,8 +504,8 @@ io.on('connection', (socket) => {
         conversationId = conversation.rows[0].id;
         await pool.query(
           `UPDATE conversations
-           SET unread_count = unread_count + 1, updated_at = NOW()
-           WHERE id = $1 AND recipient_id = $2`,
+         SET unread_count = unread_count + 1, updated_at = NOW()
+         WHERE id = $1 AND recipient_id = $2`,
           [conversationId, recipientProfileId],
         );
       }
@@ -560,11 +513,11 @@ io.on('connection', (socket) => {
       // Store message
       await pool.query(
         `INSERT INTO messages (conversation_id, sender_id, content)
-         VALUES ($1, $2, $3)`,
+       VALUES ($1, $2, $3)`,
         [conversationId, senderProfileId, content],
       );
 
-      // Emit realtime events (rooms are profile ids)
+      // Emit realtime events (socket rooms are profile ids)
       io.to(String(recipientProfileId)).emit('messageReceived', {
         recipientId: String(recipientProfileId),
         content,
@@ -583,18 +536,23 @@ io.on('connection', (socket) => {
         conversationId: String(conversationId),
       });
 
-      // Push notification (don’t block socket response)
+      // ✅ PUSH NOTIFICATION (must be inside this async handler)
+      // Fetch sender name from DB (don’t trust client payload)
       const senderNameRes = await pool.query(
         'SELECT name FROM profiles WHERE id = $1',
         [senderProfileId],
       );
       const senderNameDb = senderNameRes.rows[0]?.name || 'New message';
 
+      // Don’t block socket response if Expo is slow
       void notifyNewMessage({
-        recipientProfileId,
+        recipientProfileId: recipientProfileId,
         title: senderNameDb,
         body: String(content || 'You have a new message').slice(0, 140),
-        data: { screen: 'Messages', params: { studentId: String(senderProfileId) } },
+        data: {
+          screen: 'Messages',
+          params: { studentId: String(senderProfileId) },
+        },
       }).catch((e) =>
         console.warn('[push] notifyNewMessage failed', e?.message || e),
       );
@@ -611,21 +569,25 @@ io.on('connection', (socket) => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Error logging + 404 + 500
-// ────────────────────────────────────────────────────────────────────────────────
 app.use(errorLogger);
 
+// 404 handler
+// 404 handler (must be AFTER all routes, BEFORE 500 handler)
 app.use((req, res) => {
   const url = req.originalUrl || req.url || '';
   if (url.includes('paystack')) {
-    console.log('[PAYSTACK][404]', { method: req.method, url, host: req.get('host') });
+    console.log('[PAYSTACK][404]', {
+      method: req.method,
+      url,
+      host: req.get('host'),
+    });
   }
   res.status(404).json({ message: 'Route Not Found' });
 });
 
-app.use((err, _req, res, next) => {
-  console.error('Error:', err.stack || err);
+// 500 handler
+app.use((err, req, res, next) => {
+  console.error('Error:', err.stack);
   if (res.headersSent) return next(err);
   res.status(500).json({ message: 'Internal Server Error' });
 });
@@ -633,9 +595,7 @@ app.use((err, _req, res, next) => {
 // Seed superadmin (non-blocking)
 await ensureSeedSuperadmin().catch(() => {});
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Start server + graceful shutdown (ONLY place that calls pool.end())
-// ────────────────────────────────────────────────────────────────────────────────
+// ─── 11) Start server ──────────────────────────────────────────────────────────
 server.listen(port, '0.0.0.0', () => {
   console.log(`
 🚀 Server listening on port ${port}
@@ -644,40 +604,3 @@ server.listen(port, '0.0.0.0', () => {
   • Prod URL     : ${PROD_BACKEND_URL}
 `);
 });
-
-let shuttingDown = false;
-async function shutdown(signal) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-
-  console.log(`[shutdown] ${signal} received — closing HTTP server...`);
-
-  // Stop webhook interval if running
-  if (globalThis.__WEBHOOK_TICK__) {
-    clearInterval(globalThis.__WEBHOOK_TICK__);
-    globalThis.__WEBHOOK_TICK__ = null;
-  }
-
-  // Stop accepting new connections
-  server.close(async () => {
-    try {
-      console.log('[shutdown] closing PG pool...');
-      await pool.end();
-      console.log('🧹 PG pool closed');
-    } catch (e) {
-      console.warn('PG pool close error:', e?.message || e);
-    } finally {
-      process.exit(0);
-    }
-  });
-
-  // Safety: force-exit if something hangs
-  setTimeout(() => {
-    console.warn('[shutdown] force exit (timeout)');
-    process.exit(1);
-  }, 15_000).unref();
-}
-
-process.once('SIGINT', () => shutdown('SIGINT'));
-process.once('SIGTERM', () => shutdown('SIGTERM'));
-process.once('SIGQUIT', () => shutdown('SIGQUIT'));
