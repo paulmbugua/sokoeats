@@ -1,10 +1,11 @@
 // apps/web/src/pages/MyCourses.tsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useMyLibrary } from '@mytutorapp/shared/hooks';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAiCourse, useMyLibrary } from '@mytutorapp/shared/hooks';
 import { useClassVault } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
-import type { Course, RecordedVideo } from '@mytutorapp/shared/types';
+import { pickImageUriForCourse } from '@mytutorapp/shared/utils/subjectImages';
+import type { Course, RecordedVideo, TopCourse } from '@mytutorapp/shared/types';
 import CourseHero from '../components/CourseHero';
 
 /* ─────────────────────────────────────────────────────────
@@ -39,6 +40,20 @@ function cacheBustKey(item: any) {
 function withBust(url: string, bust: string) {
   if (!url) return '';
   return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(bust)}`;
+}
+
+function courseThumb(c: any): string | null {
+  return (
+    c?.thumbnail_url ||
+    c?.thumbnailUrl ||
+    c?.thumb_url ||
+    c?.thumbUrl ||
+    c?.image_url ||
+    c?.imageUrl ||
+    c?.cover_url ||
+    c?.coverUrl ||
+    null
+  );
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -79,6 +94,127 @@ const LoadMoreButton: React.FC<{
     </button>
   </div>
 );
+
+const TopCoursesPromoGrid: React.FC<{
+  backendUrl?: string;
+  authToken?: string;
+  onPick: (course: TopCourse) => void;
+}> = ({ backendUrl, authToken, onPick }) => {
+  const { topCourses, loadTopCourses, hasMoreCourses, coursesCursor, error } = useAiCourse(
+    backendUrl || '',
+    authToken,
+    { defaultQuizType: 'mcq' }
+  );
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoCursor, setPromoCursor] = useState<string | null>(null);
+  const [promoHasMore, setPromoHasMore] = useState(false);
+  const promoCursorRef = useRef<string | null>(null);
+  const canLoadMore = promoHasMore || Boolean(promoCursor);
+
+  useEffect(() => {
+    setPromoCursor(coursesCursor ?? null);
+    promoCursorRef.current = coursesCursor ?? null;
+  }, [coursesCursor]);
+
+  useEffect(() => {
+    setPromoHasMore(Boolean(hasMoreCourses));
+  }, [hasMoreCourses]);
+
+  useEffect(() => {
+    if (!error) return;
+    setPromoError(error);
+  }, [error]);
+
+  const fetchTopCourses = useCallback(
+    async (opts?: { append?: boolean }) => {
+      if (!backendUrl || !authToken) return;
+      setPromoLoading(true);
+      setPromoError(null);
+      try {
+        await loadTopCourses({
+          limit: 10,
+          append: opts?.append,
+          cursor: opts?.append ? promoCursorRef.current ?? undefined : undefined,
+        });
+      } catch (e: any) {
+        setPromoError(e?.message || 'Failed to load courses');
+      } finally {
+        setPromoLoading(false);
+      }
+    },
+    [backendUrl, authToken, loadTopCourses]
+  );
+
+  useEffect(() => {
+    fetchTopCourses({ append: false });
+  }, [fetchTopCourses]);
+
+  if (!topCourses.length && promoLoading) {
+    return <p className="text-sm text-[#5e738f] dark:text-darkTextSecondary mt-3">Loading top courses…</p>;
+  }
+
+  return (
+    <div className="mt-4">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-base font-semibold text-[#0d141c] dark:text-darkTextPrimary">Top AI courses</h3>
+        <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
+          Try one instantly with AI Tutor Studio
+        </p>
+      </div>
+
+      {promoError ? (
+        <div className="mt-3">
+          <p className="text-sm text-red-600">{promoError}</p>
+          <button
+            type="button"
+            onClick={() => fetchTopCourses({ append: false })}
+            className="text-sm font-semibold text-blue-600 dark:text-blue-400 mt-2"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {topCourses.map((course) => {
+          const image = courseThumb(course) || pickImageUriForCourse(course as any, backendUrl);
+          return (
+            <button
+              type="button"
+              key={course.id}
+              onClick={() => onPick(course)}
+              className="text-left rounded-2xl ring-1 ring-[#e4ecf4] dark:ring-darkCard bg-white dark:bg-[#111b25] overflow-hidden hover:shadow-sm transition"
+            >
+              <div className="h-32 bg-slate-100 dark:bg-white/10">
+                <img src={image} alt={course.title} className="h-full w-full object-cover" />
+              </div>
+              <div className="p-3">
+                <p className="text-sm font-semibold line-clamp-2 text-[#0d141c] dark:text-darkTextPrimary">
+                  {course.title || 'Untitled course'}
+                </p>
+                <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-1 line-clamp-2">
+                  {course.blurb || 'AI course'}
+                </p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="pt-3">
+        <button
+          type="button"
+          onClick={() => fetchTopCourses({ append: true })}
+          disabled={promoLoading || !canLoadMore}
+          className="px-4 py-2 text-sm font-semibold rounded-full bg-[#3d99f5] text-white disabled:opacity-60"
+        >
+          {promoLoading ? 'Loading…' : canLoadMore ? 'Load more' : 'All loaded'}
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const ClassVaultCard: React.FC<{
   item: RecordedVideo; // expected to be normalized in parent, but also guarded inside
@@ -300,9 +436,11 @@ const CourseCard: React.FC<{
 
 const MyCourses: React.FC = () => {
   const navigate = useNavigate();
-  const { backendUrl, token, profile, role: ctxRole } = useShopContext();
+  const location = useLocation();
+  const { backendUrl, token, orgToken, profile, role: ctxRole } = useShopContext();
   const { role, isTutor, sections } = useMyLibrary();
   const { remove: removeVault } = useClassVault();
+  const authToken = token || orgToken;
 
   const title = 'My Library';
 
@@ -363,6 +501,17 @@ const MyCourses: React.FC = () => {
   const openCourse = (course: Course) => {
     navigate(`/progress/${encodeURIComponent(String(course.id))}`);
   };
+
+  useEffect(() => {
+    if (authToken) return;
+    navigate('/login', {
+      state: {
+        reason: 'auth',
+        message: 'Please sign in to view your library',
+        returnTo: location.pathname,
+      },
+    });
+  }, [authToken, navigate, location.pathname]);
 
   // ---------- delete handlers ----------
   const onDeleteCourse = useCallback(
@@ -481,6 +630,18 @@ const MyCourses: React.FC = () => {
     [roleStr, isOwnerClassVault, isTutor]
   );
 
+  if (!authToken) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary">
+        <main className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <p className="text-sm text-[#49739c] dark:text-darkTextSecondary">
+            Please sign in to view your library
+          </p>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div
       className="min-h-screen bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary"
@@ -539,7 +700,20 @@ const MyCourses: React.FC = () => {
               ) : sections.normalCourses.error ? (
                 <p className="text-sm text-red-600">{sections.normalCourses.error}</p>
               ) : normalCourseItems.length === 0 ? (
-                <EmptyState message="You haven’t created any courses yet." />
+                <>
+                  <EmptyState message="You haven’t created any courses yet." />
+                  <TopCoursesPromoGrid
+                    backendUrl={backendUrl}
+                    authToken={authToken}
+                    onPick={(course) =>
+                      navigate(
+                        `/robot-teach?courseId=${encodeURIComponent(String(course.id))}&courseTitle=${encodeURIComponent(
+                          course.title || 'AI Course'
+                        )}&source=top-courses`
+                      )
+                    }
+                  />
+                </>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {normalCourseItems.map((course: any) => {
@@ -644,7 +818,20 @@ const MyCourses: React.FC = () => {
               ) : sections.normalCourses.error ? (
                 <p className="text-sm text-red-600">{sections.normalCourses.error}</p>
               ) : normalCourseItems.length === 0 ? (
-                <EmptyState message="You haven’t enrolled in any courses yet." />
+                <>
+                  <EmptyState message="You haven’t enrolled in any courses yet." />
+                  <TopCoursesPromoGrid
+                    backendUrl={backendUrl}
+                    authToken={authToken}
+                    onPick={(course) =>
+                      navigate(
+                        `/robot-teach?courseId=${encodeURIComponent(String(course.id))}&courseTitle=${encodeURIComponent(
+                          course.title || 'AI Course'
+                        )}&source=top-courses`
+                      )
+                    }
+                  />
+                </>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {normalCourseItems.map((course: any) => (
