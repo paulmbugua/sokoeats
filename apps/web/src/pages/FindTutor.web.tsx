@@ -368,7 +368,7 @@ const FindTutor: React.FC = () => {
                     <FontAwesomeIcon icon={faMagnifyingGlass as IconProp} />
                   </div>
                   <input
-                    placeholder='Search e.g. "Kenya math tutor", "Grade 3", "certified english"'
+                    placeholder='Search e.g. "math tutor", "Grade 3"'
                     className="w-full bg-transparent h-full px-4 outline-none placeholder:text-[#49739c] dark:placeholder:text-darkTextSecondary"
                     value={query}
                     onChange={(e) => {

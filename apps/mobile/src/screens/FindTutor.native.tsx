@@ -615,7 +615,7 @@ const FindTutorScreen: React.FC = () => {
       ref={(r) => {
         searchRef.current = r;
       }}
-      placeholder='Search e.g. "Kenya math tutor", "Grade 3", "certified english"'
+      placeholder='Search e.g. "math tutor", "Grade 3"'
       placeholderTextColor="#49739c"
       value={query}
       onChangeText={(t) => {
