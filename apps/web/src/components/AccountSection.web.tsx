@@ -457,6 +457,21 @@ const AccountSection: React.FC = () => {
                   )}
                 </div>
 
+                {/* Note */}
+                <div>
+                  <textarea
+                    name="note"
+                    placeholder="Note (optional)"
+                    className="block w-full p-3 rounded-xl text-sm bg-slate-50 border text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary dark:bg-[#0b1620] dark:border-[#182430] dark:text-slate-100 border-slate-200"
+                    value={formData.note || ''}
+                    onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                    rows={3}
+                  />
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Share any quick question or availability details for the tutor.
+                  </p>
+                </div>
+
                 {/* Session Type */}
                 <div>
                   <select

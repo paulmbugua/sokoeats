@@ -56,6 +56,8 @@ export const sessionValidationSchema = Joi.object({
       'alternatives.match': 'Session cost must be a valid number',
       'number.positive': 'Session cost must be greater than zero',
     }),
+
+  note: Joi.string().trim().max(500).optional().label('Note'),
 })
   // disallow any keys not listed above
   .options({ allowUnknown: false });

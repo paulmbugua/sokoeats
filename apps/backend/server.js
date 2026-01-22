@@ -67,6 +67,13 @@ import { notifyNewMessage } from './services/pushService.js';
 import messagesRoutes from './routes/messagesRoutes.js';
 import orgFeesRoutes from './routes/orgFeesRoutes.js';
 import orgProToolsRoutes from './routes/orgProToolsRoutes.js';
+import {
+  canChatUnlocked,
+  getRoles,
+  resolveStudentTutor,
+  syncConversationLock,
+} from './services/chatGatingService.js';
+import { setSocketServer } from './services/socketService.js';
 
 
 // Middleware
@@ -326,6 +333,8 @@ const io = new Server(server, {
   pingInterval: 10000,
 });
 
+setSocketServer(io);
+
 // expose io on req
 app.use((req, _res, next) => {
   req.io = io;
@@ -463,15 +472,15 @@ io.on('connection', (socket) => {
     }
   });
 
+  const getProfileById = async (profileId) => {
+    const result = await pool.query('SELECT id FROM profiles WHERE id = $1', [
+      profileId,
+    ]);
+    return result.rows.length > 0 ? result.rows[0].id : null;
+  };
+
   socket.on('sendMessage', async (data, callback) => {
     const { recipientId, content, senderId } = data;
-
-    const getProfileById = async (profileId) => {
-      const result = await pool.query('SELECT id FROM profiles WHERE id = $1', [
-        profileId,
-      ]);
-      return result.rows.length > 0 ? result.rows[0].id : null;
-    };
 
     try {
       const senderProfileId = await getProfileById(senderId);
@@ -481,6 +490,27 @@ io.on('connection', (socket) => {
         return callback?.({
           status: 'error',
           message: 'Sender or recipient profile not found.',
+        });
+      }
+
+      const rolesMap = await getRoles(senderProfileId, recipientProfileId);
+      const { studentProfileId, tutorProfileId } = resolveStudentTutor(
+        senderProfileId,
+        recipientProfileId,
+        rolesMap,
+        recipientProfileId,
+      );
+      const senderIsStudent =
+        String(senderProfileId) === String(studentProfileId);
+      const unlocked = await canChatUnlocked(
+        studentProfileId,
+        tutorProfileId,
+      );
+      if (!unlocked && senderIsStudent) {
+        return callback?.({
+          status: 'error',
+          code: 'CHAT_LOCKED',
+          message: 'Book a session to message this tutor.',
         });
       }
 
@@ -495,9 +525,9 @@ io.on('connection', (socket) => {
       let conversationId;
       if (conversation.rows.length === 0) {
         const newConversation = await pool.query(
-          `INSERT INTO conversations (sender_id, recipient_id, unread_count)
-         VALUES ($1, $2, 1) RETURNING id`,
-          [senderProfileId, recipientProfileId],
+          `INSERT INTO conversations (sender_id, recipient_id, unread_count, chat_status)
+         VALUES ($1, $2, 1, $3) RETURNING id`,
+          [senderProfileId, recipientProfileId, unlocked ? 'unlocked' : 'locked'],
         );
         conversationId = newConversation.rows[0].id;
       } else {
@@ -509,6 +539,12 @@ io.on('connection', (socket) => {
           [conversationId, recipientProfileId],
         );
       }
+
+      await syncConversationLock(
+        conversationId,
+        studentProfileId,
+        tutorProfileId,
+      );
 
       // Store message
       await pool.query(
@@ -561,6 +597,162 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('Error sending message:', error);
       callback?.({ status: 'error', message: 'Failed to send message' });
+    }
+  });
+
+  socket.on('prebookingInquiry', async (data, callback) => {
+    const { tutorProfileId, topic, level, availability, note, senderId } = data || {};
+
+    if (!tutorProfileId || !topic || !level || !availability || !senderId) {
+      return callback?.({
+        status: 'error',
+        message: 'Tutor, topic, level, availability, and sender are required.',
+      });
+    }
+
+    try {
+      const senderProfileId = await getProfileById(senderId);
+      const recipientProfileId = await getProfileById(tutorProfileId);
+
+      if (!senderProfileId || !recipientProfileId) {
+        return callback?.({
+          status: 'error',
+          message: 'Sender or recipient profile not found.',
+        });
+      }
+
+      const rolesMap = await getRoles(senderProfileId, recipientProfileId);
+      const senderRole = rolesMap[String(senderProfileId)]?.role ?? null;
+      if (senderRole && senderRole !== 'student') {
+        return callback?.({
+          status: 'error',
+          message: 'Only students can send prebooking inquiries.',
+        });
+      }
+
+      const { studentProfileId, tutorProfileId: resolvedTutorProfileId } =
+        resolveStudentTutor(
+          senderProfileId,
+          recipientProfileId,
+          rolesMap,
+          recipientProfileId,
+        );
+
+      const unlocked = await canChatUnlocked(
+        studentProfileId,
+        resolvedTutorProfileId,
+      );
+      if (unlocked) {
+        return callback?.({
+          status: 'error',
+          message: 'Already unlocked.',
+        });
+      }
+
+      const conversationResult = await pool.query(
+        `SELECT id, prebooking_used FROM conversations
+         WHERE (sender_id = $1 AND recipient_id = $2)
+            OR (sender_id = $2 AND recipient_id = $1)
+         LIMIT 1`,
+        [senderProfileId, resolvedTutorProfileId],
+      );
+
+      let conversationId = conversationResult.rows[0]?.id;
+      const prebookingUsed = conversationResult.rows[0]?.prebooking_used;
+
+      if (prebookingUsed) {
+        return callback?.({
+          status: 'error',
+          message: 'Inquiry already used.',
+        });
+      }
+
+      if (!conversationId) {
+        const newConversation = await pool.query(
+          `INSERT INTO conversations 
+            (sender_id, recipient_id, unread_count, chat_status, prebooking_used, prebooking_at)
+           VALUES ($1, $2, 1, 'locked', true, NOW())
+           RETURNING id`,
+          [senderProfileId, resolvedTutorProfileId],
+        );
+        conversationId = newConversation.rows[0].id;
+      } else {
+        await pool.query(
+          `UPDATE conversations
+           SET prebooking_used = true,
+               prebooking_at = NOW(),
+               chat_status = 'locked',
+               unread_count = unread_count + 1,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [conversationId],
+        );
+      }
+
+      const contentParts = [
+        `Inquiry: ${topic}`,
+        `Level: ${level}`,
+        `Availability: ${availability}`,
+      ];
+      if (note) contentParts.push(`Note: ${note}`);
+      const content = contentParts.join(' | ');
+
+      await pool.query(
+        `INSERT INTO messages (conversation_id, sender_id, content, meta)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          conversationId,
+          senderProfileId,
+          content,
+          {
+            type: 'prebooking_inquiry',
+            topic,
+            level,
+            availability,
+            note: note ?? '',
+          },
+        ],
+      );
+
+      io.to(String(resolvedTutorProfileId)).emit('messageReceived', {
+        recipientId: String(resolvedTutorProfileId),
+        content,
+        senderId: String(senderProfileId),
+        senderName: null,
+        unread: true,
+        conversationId: String(conversationId),
+        meta: {
+          type: 'prebooking_inquiry',
+          topic,
+          level,
+          availability,
+          note: note ?? '',
+        },
+      });
+
+      io.to(String(senderProfileId)).emit('messageReceived', {
+        recipientId: String(resolvedTutorProfileId),
+        content,
+        senderId: String(senderProfileId),
+        senderName: 'You',
+        unread: false,
+        conversationId: String(conversationId),
+        meta: {
+          type: 'prebooking_inquiry',
+          topic,
+          level,
+          availability,
+          note: note ?? '',
+        },
+      });
+
+      callback?.({ status: 'success', conversationId });
+    } catch (error) {
+      console.error('Error sending prebooking inquiry:', error);
+      callback?.({
+        status: 'error',
+        message: 'Failed to send prebooking inquiry',
+      });
     }
   });
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperPlane, faSmile, faBars, faTimes, faHome } from '@fortawesome/free-solid-svg-icons';
 import { useMessages } from '@mytutorapp/shared/hooks';
@@ -8,6 +8,7 @@ import chatPlaceholder from '../assets/chat.png';
 
 const Messages: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const {
     activeChat,
     setActiveChat,
@@ -29,6 +30,8 @@ const Messages: React.FC = () => {
   };
 
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const isLockedForStudent =
+    activeChat?.chatStatus === 'locked' && myProfile?.role === 'student';
 
   // Auto-open chat if ?studentId=...
   useEffect(() => {
@@ -62,6 +65,24 @@ const Messages: React.FC = () => {
       ...msg,
       timestamp: msg.timestamp ?? new Date().toISOString(),
     })) || [];
+
+  const handleCreateSession = () => {
+    if (!activeChat) return;
+    const comment = 'Booking to unlock messaging';
+    const params = new URLSearchParams();
+    params.set('tab', 'sessions');
+    params.set('action', 'createSession');
+    params.set('tutorId', String(activeChat.recipientId));
+    if (activeChat.name) params.set('tutorName', activeChat.name);
+    params.set('subject', 'General');
+    params.set('sessionType', '');
+    params.set('sessionCost', '');
+    params.set('pricing', '{}');
+    params.set('comment', comment);
+    params.set('description', comment);
+    params.set('note', comment);
+    navigate(`/account?${params.toString()}`);
+  };
 
   return (
     <div
@@ -240,6 +261,19 @@ const Messages: React.FC = () => {
           >
             {activeChat ? (
               <div className="space-y-3">
+                {isLockedForStudent && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <span>Book a session to unlock tutor replies.</span>
+                      <button
+                        onClick={handleCreateSession}
+                        className="inline-flex items-center justify-center rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-white"
+                      >
+                        Create Session
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {convertedMessages
                   .slice()
                   .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
@@ -299,9 +333,10 @@ const Messages: React.FC = () => {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    sendAndRefresh();
+                    if (!isLockedForStudent) sendAndRefresh();
                   }
                 }}
+                disabled={isLockedForStudent}
                 className="
                   flex-grow p-2 rounded-lg
                   bg-softGray dark:bg-darkBg
@@ -318,16 +353,19 @@ const Messages: React.FC = () => {
                   transition-colors
                 "
                 aria-label="Emoji"
+                disabled={isLockedForStudent}
               >
                 <FontAwesomeIcon icon={faSmile} />
               </button>
               <button
                 onClick={sendAndRefresh}
+                disabled={isLockedForStudent}
                 className="
                   bg-secondary text-white px-4 py-2 rounded-lg
                   flex items-center gap-2
                   hover:opacity-90 active:opacity-80
                   transition
+                  disabled:opacity-50 disabled:cursor-not-allowed
                 "
                 aria-label="Send"
               >

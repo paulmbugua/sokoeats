@@ -1,5 +1,12 @@
 import pool from '../config/db.js';
 import { notifyNewMessage } from '../services/pushService.js';
+import {
+  canChatUnlocked,
+  getRoles,
+  resolveStudentTutor,
+  syncConversationLock,
+} from '../services/chatGatingService.js';
+import { emitToProfile } from '../services/socketService.js';
 
 // Add to Favorites
 export const addToFavorites = async (req, res) => {
@@ -56,6 +63,27 @@ export const sendMessage = async (req, res) => {
     // recipientId is already a profile id
     const recipientProfileId = recipientId;
 
+    const rolesMap = await getRoles(senderProfileId, recipientProfileId);
+    const { studentProfileId, tutorProfileId } = resolveStudentTutor(
+      senderProfileId,
+      recipientProfileId,
+      rolesMap,
+      recipientProfileId,
+    );
+    const senderIsStudent =
+      String(senderProfileId) === String(studentProfileId);
+
+    const unlocked = await canChatUnlocked(
+      studentProfileId,
+      tutorProfileId,
+    );
+    if (!unlocked && senderIsStudent) {
+      return res.status(403).json({
+        error: 'CHAT_LOCKED',
+        message: 'Book a session to message this tutor.',
+      });
+    }
+
     // Upsert conversation
     let conversation = await pool.query(
       `SELECT id FROM conversations 
@@ -67,10 +95,10 @@ export const sendMessage = async (req, res) => {
     let conversationId;
     if (conversation.rows.length === 0) {
       const newConv = await pool.query(
-        `INSERT INTO conversations (sender_id, recipient_id, unread_count) 
-         VALUES ($1, $2, 1) 
+        `INSERT INTO conversations (sender_id, recipient_id, unread_count, chat_status) 
+         VALUES ($1, $2, 1, $3) 
          RETURNING id`,
-        [senderProfileId, recipientProfileId],
+        [senderProfileId, recipientProfileId, unlocked ? 'unlocked' : 'locked'],
       );
       conversationId = newConv.rows[0].id;
     } else {
@@ -82,6 +110,12 @@ export const sendMessage = async (req, res) => {
         [conversationId, recipientProfileId],
       );
     }
+
+    await syncConversationLock(
+      conversationId,
+      studentProfileId,
+      tutorProfileId,
+    );
 
     // Insert message
     const messageResult = await pool.query(
@@ -120,6 +154,160 @@ export const sendMessage = async (req, res) => {
   }
 };
 
+export const prebookingInquiry = async (req, res) => {
+  try {
+    const authSenderId = req.user.id;
+    const { tutorProfileId, topic, level, availability, note } = req.body;
+
+    if (!authSenderId || !tutorProfileId || !topic || !level || !availability) {
+      return res.status(400).json({
+        message:
+          'Tutor profile ID, topic, level, and availability are required.',
+      });
+    }
+
+    const senderProfileResult = await pool.query(
+      'SELECT id FROM profiles WHERE user_id = $1',
+      [authSenderId],
+    );
+    if (senderProfileResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Sender profile not found.' });
+    }
+    const senderProfileId = senderProfileResult.rows[0].id;
+
+    const tutorProfileResult = await pool.query(
+      'SELECT id FROM profiles WHERE id = $1',
+      [tutorProfileId],
+    );
+    if (tutorProfileResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Tutor profile not found.' });
+    }
+
+    const rolesMap = await getRoles(senderProfileId, tutorProfileId);
+    const senderRole = rolesMap[String(senderProfileId)]?.role ?? null;
+    if (senderRole && senderRole !== 'student') {
+      return res.status(403).json({
+        message: 'Only students can send prebooking inquiries.',
+      });
+    }
+
+    const { studentProfileId, tutorProfileId: resolvedTutorProfileId } =
+      resolveStudentTutor(
+        senderProfileId,
+        tutorProfileId,
+        rolesMap,
+        tutorProfileId,
+      );
+
+    const unlocked = await canChatUnlocked(
+      studentProfileId,
+      resolvedTutorProfileId,
+    );
+    if (unlocked) {
+      return res.status(400).json({ message: 'Already unlocked.' });
+    }
+
+    const conversationResult = await pool.query(
+      `SELECT id, prebooking_used FROM conversations
+       WHERE (sender_id = $1 AND recipient_id = $2)
+          OR (sender_id = $2 AND recipient_id = $1)
+       LIMIT 1`,
+      [senderProfileId, resolvedTutorProfileId],
+    );
+
+    let conversationId = conversationResult.rows[0]?.id;
+    const prebookingUsed = conversationResult.rows[0]?.prebooking_used;
+
+    if (prebookingUsed) {
+      return res.status(400).json({ message: 'Inquiry already used.' });
+    }
+
+    if (!conversationId) {
+      const newConversation = await pool.query(
+        `INSERT INTO conversations 
+          (sender_id, recipient_id, unread_count, chat_status, prebooking_used, prebooking_at)
+         VALUES ($1, $2, 1, 'locked', true, NOW())
+         RETURNING id`,
+        [senderProfileId, resolvedTutorProfileId],
+      );
+      conversationId = newConversation.rows[0].id;
+    } else {
+      await pool.query(
+        `UPDATE conversations
+         SET prebooking_used = true,
+             prebooking_at = NOW(),
+             chat_status = 'locked',
+             unread_count = unread_count + 1,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [conversationId],
+      );
+    }
+
+    const contentParts = [
+      `Inquiry: ${topic}`,
+      `Level: ${level}`,
+      `Availability: ${availability}`,
+    ];
+    if (note) contentParts.push(`Note: ${note}`);
+    const content = contentParts.join(' | ');
+
+    await pool.query(
+      `INSERT INTO messages (conversation_id, sender_id, content, meta)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        conversationId,
+        senderProfileId,
+        content,
+        {
+          type: 'prebooking_inquiry',
+          topic,
+          level,
+          availability,
+          note: note ?? '',
+        },
+      ],
+    );
+
+    emitToProfile(resolvedTutorProfileId, 'messageReceived', {
+      recipientId: String(resolvedTutorProfileId),
+      content,
+      senderId: String(senderProfileId),
+      senderName: null,
+      unread: true,
+      conversationId: String(conversationId),
+      meta: {
+        type: 'prebooking_inquiry',
+        topic,
+        level,
+        availability,
+        note: note ?? '',
+      },
+    });
+
+    emitToProfile(senderProfileId, 'messageReceived', {
+      recipientId: String(resolvedTutorProfileId),
+      content,
+      senderId: String(senderProfileId),
+      senderName: 'You',
+      unread: false,
+      conversationId: String(conversationId),
+      meta: {
+        type: 'prebooking_inquiry',
+        topic,
+        level,
+        availability,
+        note: note ?? '',
+      },
+    });
+
+    res.status(200).json({ ok: true, conversationId });
+  } catch (error) {
+    console.error('Failed to send prebooking inquiry:', error);
+    res.status(500).json({ message: 'Failed to send prebooking inquiry.' });
+  }
+};
+
 // Get Conversations with Pagination
 export const getConversations = async (req, res) => {
   const authUserId = req.user.id;
@@ -143,6 +331,8 @@ export const getConversations = async (req, res) => {
           c.id, 
           c.sender_id,
           c.recipient_id,
+          c.chat_status,
+          c.prebooking_used,
           p1.name AS sender_name,
           p1.gallery[1] AS sender_avatar,
           p2.name AS recipient_name,
@@ -196,25 +386,91 @@ export const getMessages = async (req, res) => {
     // recipientId is already a profile id
     const recipientProfileId = recipientId;
 
+    const conversationResult = await pool.query(
+      `SELECT id FROM conversations 
+       WHERE (sender_id = $1 AND recipient_id = $2) 
+          OR (sender_id = $2 AND recipient_id = $1)
+       LIMIT 1`,
+      [senderProfileId, recipientProfileId],
+    );
+    const conversationId = conversationResult.rows[0]?.id;
+    if (!conversationId) {
+      return res.status(200).json({ messages: [] });
+    }
+
+    const rolesMap = await getRoles(senderProfileId, recipientProfileId);
+    const senderRole = rolesMap[String(senderProfileId)]?.role ?? null;
+    const recipientRole = rolesMap[String(recipientProfileId)]?.role ?? null;
+
+    let studentProfileId = null;
+    let tutorProfileId = null;
+
+    if (
+      (senderRole === 'student' && recipientRole === 'tutor') ||
+      (senderRole === 'tutor' && recipientRole === 'student')
+    ) {
+      const resolved = resolveStudentTutor(
+        senderProfileId,
+        recipientProfileId,
+        rolesMap,
+      );
+      studentProfileId = resolved.studentProfileId;
+      tutorProfileId = resolved.tutorProfileId;
+    } else if (senderRole === 'student') {
+      studentProfileId = senderProfileId;
+      tutorProfileId = recipientProfileId;
+    } else if (senderRole === 'tutor') {
+      tutorProfileId = senderProfileId;
+      studentProfileId = recipientProfileId;
+    } else if (recipientRole === 'student') {
+      studentProfileId = recipientProfileId;
+      tutorProfileId = senderProfileId;
+    } else if (recipientRole === 'tutor') {
+      tutorProfileId = recipientProfileId;
+      studentProfileId = senderProfileId;
+    } else {
+      tutorProfileId = senderProfileId;
+      studentProfileId = recipientProfileId;
+    }
+
+    const { chatStatus } = await syncConversationLock(
+      conversationId,
+      studentProfileId,
+      tutorProfileId,
+    );
+
     const messages = await pool.query(
       `SELECT * FROM messages 
-       WHERE conversation_id IN (
-         SELECT id FROM conversations 
-         WHERE (sender_id = $1 AND recipient_id = $2) 
-            OR (sender_id = $2 AND recipient_id = $1)
-       ) 
+       WHERE conversation_id = $1
        ORDER BY created_at ASC
-       LIMIT $3 OFFSET $4`,
-      [senderProfileId, recipientProfileId, limit, offset],
+       LIMIT $2 OFFSET $3`,
+      [conversationId, limit, offset],
     );
+
+    let rows = messages.rows;
+    const viewerIsStudent =
+      String(senderProfileId) === String(studentProfileId);
+    if (chatStatus === 'locked' && viewerIsStudent) {
+      rows = rows.filter(
+        (m) => String(m.sender_id) === String(studentProfileId),
+      );
+      rows.push({
+        id: 'system-locked',
+        sender_id: 'system',
+        content: 'Book a session to view tutor replies.',
+        unread: false,
+        meta: { type: 'system_locked_notice' },
+        created_at: new Date().toISOString(),
+      });
+    }
 
     console.log(
       'Fetched messages for conversation with recipientProfileId ' +
         recipientProfileId +
         ':',
-      messages.rows,
+      rows,
     );
-    res.status(200).json({ messages: messages.rows });
+    res.status(200).json({ messages: rows });
   } catch (error) {
     console.error('Error fetching messages:', error);
     res.status(500).json({ message: 'Failed to retrieve messages.' });

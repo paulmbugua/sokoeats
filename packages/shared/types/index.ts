@@ -376,6 +376,7 @@ export interface SessionFormData {
   date: string;
   sessionType?: string;
   sessionCost?: string;
+  note?: string;
   comment?: string;
   rating?: string;
 }
@@ -1124,6 +1125,7 @@ export type ChatMessage = {
   content: string;
   unread: boolean;
   timestamp: string;
+  meta?: any;
 };
 
 export type RawConversation = {
@@ -1136,6 +1138,8 @@ export type RawConversation = {
   recipient_avatar?: string;
   last_message?: string;
   unread_count?: number;
+  chat_status?: 'locked' | 'unlocked';
+  prebooking_used?: boolean;
   messages?: Array<{
     id: string | number;
     sender_id: string | number;
@@ -1143,6 +1147,7 @@ export type RawConversation = {
     content: string;
     unread?: boolean;
     timestamp?: string;
+    meta?: any;
   }>;
 };
 
@@ -1154,6 +1159,8 @@ export type Conversation = {
   lastMessage: string;
   unreadCount: number;
   messages: ChatMessage[];
+  chatStatus?: 'locked' | 'unlocked';
+  prebookingUsed?: boolean;
 };
 
 export type ChatContextValue = {
@@ -1162,8 +1169,22 @@ export type ChatContextValue = {
   isSocketReady: boolean;
   fetchConversations: () => Promise<void>;
   fetchMessages: (recipientId: string, limit?: number, offset?: number) => Promise<void>;
-  sendMessage: (recipientId: string, content: string) => void;
+  sendMessage: (
+    recipientId: string,
+    content: string
+  ) => Promise<{ ok: boolean; error?: string; message?: string }>;
+  sendPrebookingInquiry: (payload: {
+    tutorProfileId: string;
+    topic: string;
+    level: string;
+    availability: string;
+    note?: string;
+  }) => Promise<{ ok: boolean; error?: string; message?: string }>;
   markAsRead: (recipientId: string) => void;
+  setActiveConversation: (
+    conversationId: string | null,
+    recipientId: string | null
+  ) => void;
 };
 
 export type OerCatalogItem = {
