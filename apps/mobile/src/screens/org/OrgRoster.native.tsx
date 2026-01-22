@@ -1411,97 +1411,111 @@ const shareCurrentClassRoster = useCallback(async () => {
 
 
     return (
-      <Pressable
-        onPress={() => {
-          if (selectMode) toggleSelect(item.id);
-        }}
-        style={tw`py-3`}
-      >
-        <View style={tw`flex-row items-center justify-between gap-3`}>
-          <View style={tw`flex-1 min-w-0`}>
-            <View style={tw`flex-row items-center gap-2 flex-wrap`}>
-              <Text numberOfLines={1} style={tw`text-[15px] font-bold ${TITLE}`}>
-                {item.name || item.email || `User #${item.id}`}
+  <Pressable
+    onPress={() => {
+      if (selectMode) toggleSelect(item.id);
+    }}
+    style={tw`px-4 py-3`} // ✅ add horizontal padding
+  >
+    {/* Top row: name + chips + checkbox */}
+    <View style={tw`flex-row items-start justify-between gap-3`}>
+      <View style={tw`flex-1 min-w-0 pr-2`}>
+        {/* Name + chips */}
+        <View style={tw`flex-row items-center gap-2 flex-wrap`}>
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={tw`text-[15px] font-extrabold ${TITLE} flex-shrink`}
+          >
+            {item.name || item.email || `User #${item.id}`}
+          </Text>
+
+          {!isInstructor && !!cls ? (
+            <View style={tw`px-2 py-0.5 rounded-full bg-indigo-500/10`}>
+              <Text style={tw`text-[11px] font-semibold text-indigo-700 dark:text-indigo-200`}>
+                {cls}
               </Text>
-
-              {!isInstructor && !!cls ? (
-                <View style={tw`px-2 py-0.5 rounded-full bg-indigo-500/10`}>
-                  <Text style={tw`text-[11px] font-semibold text-indigo-700 dark:text-indigo-200`}>
-                    {cls}
-                  </Text>
-                </View>
-              ) : null}
-
-              {isInstructor && hasFees ? (
-                <View style={tw`px-2 py-0.5 rounded-full bg-emerald-500/10`}>
-                  <Text style={tw`text-[11px] font-semibold text-emerald-700 dark:text-emerald-200`}>
-                    Fees access
-                  </Text>
-                </View>
-              ) : null}
             </View>
+          ) : null}
 
-            {item.email ? (
-              <Text numberOfLines={1} style={tw`text-xs ${SUBTLE} mt-0.5`}>
-                {item.email}
+          {isInstructor && hasFees ? (
+            <View style={tw`px-2 py-0.5 rounded-full bg-emerald-500/10`}>
+              <Text style={tw`text-[11px] font-semibold text-emerald-700 dark:text-emerald-200`}>
+                Fees access
               </Text>
-            ) : null}
-
-            {subtitle ? (
-              <Text numberOfLines={1} style={tw`text-xs ${SUBTLE} mt-0.5`}>
-                {subtitle}
-              </Text>
-            ) : null}
-          </View>
-
-          {selectMode ? (
-            <View
-              style={tw`h-6 w-6 rounded-md border ${
-                selected ? 'bg-[#0d141c] dark:bg-white border-transparent' : 'border-[#cedbe8] dark:border-white/20'
-              } items-center justify-center`}
-            >
-              {selected ? <Text style={tw`text-white dark:text-black font-extrabold`}>✓</Text> : null}
             </View>
-          ) : (
-            <View style={tw`flex-row items-center gap-2`}>
-              {isInstructor ? (
-                <Pressable
-                  onPress={() => void handleFeeAccess(item, !hasFees)}
-                  disabled={!feeReady || feeSaving}
-                  style={tw`px-3 py-2 rounded-xl ${
-                    hasFees
-                      ? 'bg-emerald-500/15'
-                      : 'bg-[#e7edf4] dark:bg-[#172534]'
-                  } ${(feeReady && !feeSaving) ? '' : 'opacity-60'}`}
-                >
-                  <Text style={tw`text-[12px] font-semibold ${
-                    hasFees ? 'text-emerald-700 dark:text-emerald-200' : TITLE
-                  }`}>
-                    {hasFees ? 'Remove fees' : 'Grant fees'}
-                  </Text>
-                </Pressable>
-              ) : null}
-
-              <Pressable
-                onPress={() => (isInstructor ? setEditingInstructor(item) : setEditingLearner(item))}
-                style={tw`px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534]`}
-              >
-                <Text style={tw`text-[12px] font-semibold ${TITLE}`}>Edit</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => void handleRemoveMember(item)}
-                style={tw`px-3 py-2 rounded-xl bg-rose-600/15`}
-              >
-                <Text style={tw`text-[12px] font-semibold text-rose-700 dark:text-rose-200`}>Remove</Text>
-              </Pressable>
-            </View>
-          )}
+          ) : null}
         </View>
 
-        <View style={tw`mt-3 h-px bg-black/5 dark:bg-white/10`} />
-      </Pressable>
-    );
+        {/* Meta lines */}
+        {item.email ? (
+          <Text numberOfLines={1} ellipsizeMode="tail" style={tw`text-xs ${SUBTLE} mt-1`}>
+            {item.email}
+          </Text>
+        ) : null}
+
+        {subtitle ? (
+          <Text numberOfLines={1} ellipsizeMode="tail" style={tw`text-xs ${SUBTLE} mt-0.5`}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+
+      {/* Checkbox (select mode) */}
+      {selectMode ? (
+        <View
+          style={tw`h-6 w-6 rounded-md border ${
+            selected
+              ? 'bg-[#0d141c] dark:bg-white border-transparent'
+              : 'border-[#cedbe8] dark:border-white/20'
+          } items-center justify-center flex-shrink-0`}
+        >
+          {selected ? <Text style={tw`text-white dark:text-black font-extrabold`}>✓</Text> : null}
+        </View>
+      ) : null}
+    </View>
+
+    {/* Bottom row: actions (wrap nicely) */}
+    {!selectMode ? (
+      <View style={tw`mt-3 flex-row flex-wrap gap-2 justify-end`}>
+        {isInstructor ? (
+          <Pressable
+            onPress={() => void handleFeeAccess(item, !hasFees)}
+            disabled={!feeReady || feeSaving}
+            style={tw`px-3 py-2 rounded-xl ${
+              hasFees ? 'bg-emerald-500/15' : 'bg-[#e7edf4] dark:bg-[#172534]'
+            } ${(feeReady && !feeSaving) ? '' : 'opacity-60'}`}
+          >
+            <Text
+              style={tw`text-[12px] font-semibold ${
+                hasFees ? 'text-emerald-700 dark:text-emerald-200' : TITLE
+              }`}
+            >
+              {hasFees ? 'Remove fees' : 'Grant fees'}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          onPress={() => (isInstructor ? setEditingInstructor(item) : setEditingLearner(item))}
+          style={tw`px-3 py-2 rounded-xl bg-[#e7edf4] dark:bg-[#172534]`}
+        >
+          <Text style={tw`text-[12px] font-semibold ${TITLE}`}>Edit</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => void handleRemoveMember(item)}
+          style={tw`px-3 py-2 rounded-xl bg-rose-600/15`}
+        >
+          <Text style={tw`text-[12px] font-semibold text-rose-700 dark:text-rose-200`}>Remove</Text>
+        </Pressable>
+      </View>
+    ) : null}
+
+    <View style={tw`mt-3 h-px bg-black/5 dark:bg-white/10`} />
+  </Pressable>
+);
+
   };
 
   const Header = (

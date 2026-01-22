@@ -1,5 +1,6 @@
 // apps/backend/controllers/orgBillingController.js
 import fetch from 'node-fetch';
+import crypto from 'node:crypto';
 import pool from '../config/db.js';
 import { resolvePrice, ORG_SEATS } from '../services/orgPricing.js';
 import { stkPushOrgSubscription } from '../services/mpesaOrgService.js';
@@ -281,7 +282,8 @@ export async function initOrgSubscription(req, res) {
   if (!mem.rowCount) return res.status(403).json({ message: 'Forbidden' });
 
   // ✅ NEW: idempotency key (optional)
-  const idemKey = String(req.get('x-idempotency-key') || '').trim() || null;
+ const idemKey =
+  String(req.get('x-idempotency-key') || '').trim() || crypto.randomUUID();
 
   // NOTE:
   // - PAYSTACK keeps USD intent
@@ -404,15 +406,17 @@ export async function initOrgSubscription(req, res) {
       idemKeyIsNull: idemKey === null,
     });
 
-    const ins = await pool.query(
-      `INSERT INTO org_subscription_payments
-         (org_id, tier, cycle, currency, amount_cents, provider, status, meta)
-       VALUES ($1,$2,$3,$4,$5,$6,'pending',
-         jsonb_build_object('idemKey', $7::text)
-       )
-       RETURNING *`,
-      [orgId, tier, cycle, intentCurrency, amount_cents, method, idemKey],
-    );
+   const ins = await pool.query(
+  `INSERT INTO org_subscription_payments
+     (org_id, tier, cycle, currency, amount_cents, provider, status, meta)
+   VALUES
+     ($1::uuid, $2::text, $3::text, $4::text, $5::int, $6::text, 'pending',
+      jsonb_build_object('idemKey', to_jsonb($7::text))
+     )
+   RETURNING *`,
+  [orgId, tier, cycle, intentCurrency, amount_cents, method, idemKey]
+);
+
 
     payment = ins.rows[0];
   } catch (err) {
@@ -441,31 +445,32 @@ export async function initOrgSubscription(req, res) {
       const amountKesInt = Math.max(1, Math.round(kesMinor / 100)); // integer KES
       const expectedKesMinor = amountKesInt * 100;
 
-      await pool.query(
-        `UPDATE org_subscription_payments
-            SET meta = COALESCE(meta,'{}'::jsonb) ||
-                      jsonb_build_object(
-                        'kind','org',
-                        'orgId',$2,
-                        'tier',$3,
-                        'cycle',$4,
-                        'expectedKesMinor',$5::int,
-                        'expectedKesInt',$6::int,
-                        'chargeCurrency','KES',
-                        'idemKey',$7::text
-                      ),
-                updated_at=NOW()
-          WHERE id=$1`,
-        [
-          payment.id,
-          String(orgId),
-          tier,
-          cycle,
-          expectedKesMinor,
-          amountKesInt,
-          idemKey,
-        ],
-      );
+     await pool.query(
+  `UPDATE org_subscription_payments
+      SET meta = COALESCE(meta,'{}'::jsonb) ||
+                jsonb_build_object(
+                  'kind','org',
+                  'orgId', $2::text,
+                  'tier',  $3::text,
+                  'cycle', $4::text,
+                  'expectedKesMinor', $5::int,
+                  'expectedKesInt',   $6::int,
+                  'chargeCurrency','KES',
+                  'idemKey', $7::text
+                ),
+          updated_at=NOW()
+    WHERE id=$1`,
+  [
+    payment.id,
+    String(orgId),
+    tier,
+    cycle,
+    expectedKesMinor,
+    amountKesInt,
+    idemKey,
+  ]
+);
+
 
       let stk;
       try {
@@ -673,6 +678,7 @@ export async function initOrgSubscription(req, res) {
 export async function confirmOrgSubscription(req, res) {
   const userId = req.user?.id;
   const { paymentId } = req.params;
+  
   const { provider_reference } = req.body || {}; // Paystack ref OR MpesaReceiptNumber (optional)
 
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
@@ -785,7 +791,11 @@ export async function confirmOrgSubscription(req, res) {
           message: 'not-success-yet',
           checkoutRequestId: pay.provider_txn_id || null,
         });
+
+        
       }
+
+      
 
       const expectedMinor = Number.isFinite(Number(meta?.expectedKesMinor))
         ? Number(meta.expectedKesMinor)

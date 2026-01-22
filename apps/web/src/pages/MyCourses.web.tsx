@@ -105,11 +105,13 @@ const TopCoursesPromoGrid: React.FC<{
     authToken,
     { defaultQuizType: 'mcq' }
   );
+
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoCursor, setPromoCursor] = useState<string | null>(null);
   const [promoHasMore, setPromoHasMore] = useState(false);
   const promoCursorRef = useRef<string | null>(null);
+
   const canLoadMore = promoHasMore || Boolean(promoCursor);
 
   useEffect(() => {
@@ -133,7 +135,8 @@ const TopCoursesPromoGrid: React.FC<{
       setPromoError(null);
       try {
         await loadTopCourses({
-          limit: 10,
+          // ✅ 20 at a time
+          limit: 20,
           append: opts?.append,
           cursor: opts?.append ? promoCursorRef.current ?? undefined : undefined,
         });
@@ -151,13 +154,19 @@ const TopCoursesPromoGrid: React.FC<{
   }, [fetchTopCourses]);
 
   if (!topCourses.length && promoLoading) {
-    return <p className="text-sm text-[#5e738f] dark:text-darkTextSecondary mt-3">Loading top courses…</p>;
+    return (
+      <p className="text-sm text-[#5e738f] dark:text-darkTextSecondary mt-3">
+        Loading top courses…
+      </p>
+    );
   }
 
   return (
     <div className="mt-4">
       <div className="flex flex-col gap-1">
-        <h3 className="text-base font-semibold text-[#0d141c] dark:text-darkTextPrimary">Top AI courses</h3>
+        <h3 className="text-base font-semibold text-[#0d141c] dark:text-darkTextPrimary">
+          Top AI courses
+        </h3>
         <p className="text-xs text-[#49739c] dark:text-darkTextSecondary">
           Try one instantly with AI Tutor Studio
         </p>
@@ -176,9 +185,12 @@ const TopCoursesPromoGrid: React.FC<{
         </div>
       ) : null}
 
-      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* ✅ 3 columns (prevents stretched cards) */}
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 gap-3">
         {topCourses.map((course) => {
-          const image = courseThumb(course) || pickImageUriForCourse(course as any, backendUrl);
+          const rawImage = courseThumb(course) || pickImageUriForCourse(course as any, backendUrl);
+          const image = rawImage; // keep as-is; subjectImages should already be absolute / safe
+
           return (
             <button
               type="button"
@@ -215,6 +227,7 @@ const TopCoursesPromoGrid: React.FC<{
     </div>
   );
 };
+
 
 const ClassVaultCard: React.FC<{
   item: RecordedVideo; // expected to be normalized in parent, but also guarded inside

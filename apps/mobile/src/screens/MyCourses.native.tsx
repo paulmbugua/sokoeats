@@ -1,5 +1,9 @@
+/* eslint-disable no-console */
+// apps/mobile/src/screens/MyCourses.native.tsx
+
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { View, Text, SectionList, Pressable, Alert, Platform } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import AutoPreviewVideo from './AutoPreviewVideo.native';
@@ -13,7 +17,7 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import type { Course, RecordedVideo, TopCourse } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
 
-import { pickImageUriForCourse } from '../../utils/subjectImages'; // ✅ use your subject image picker
+import { pickImageUriForCourse } from '../../utils/subjectImages'; // ✅ subject image fallback
 
 type Nav = StackNavigationProp<MainStackParamList, 'Courses'>;
 
@@ -63,10 +67,6 @@ function withBust(url?: string | null, bust?: string) {
   const v = bust || String(Date.now());
   return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(v)}`;
 }
-function isPdfOnly(v: RecordedVideo) {
-  return Boolean(v.pdf_url) && !v.video_url;
-}
-
 function courseThumb(c: any): string | null {
   return (
     c?.thumbnail_url ||
@@ -80,7 +80,6 @@ function courseThumb(c: any): string | null {
     null
   );
 }
-
 /** ClassVault thumb candidates (so Purchased shows previews too) */
 function classVaultThumb(v: any): string | null {
   return (
@@ -104,13 +103,13 @@ const Badge: React.FC<{ label: string; tone?: 'blue' | 'red' }> = ({ label, tone
   <View
     style={tw.style(
       'mt-2 self-start rounded-full px-2 py-0.5',
-      tone === 'blue' ? 'bg-blue-50' : 'bg-red-50'
+      tone === 'blue' ? 'bg-blue-50 dark:bg-blue-500/10' : 'bg-red-50 dark:bg-red-500/10'
     )}
   >
     <Text
       style={tw.style(
         'text-[11px] font-semibold',
-        tone === 'blue' ? 'text-blue-600' : 'text-red-600'
+        tone === 'blue' ? 'text-blue-600 dark:text-blue-300' : 'text-red-600 dark:text-red-300'
       )}
     >
       {label}
@@ -152,12 +151,6 @@ const TutorActions: React.FC<{
   </View>
 );
 
-/**
- * RN cannot iframe PDFs or autoplay video previews consistently.
- * So we always render a visible preview:
- *  - thumbnail when available
- *  - otherwise a placeholder + chip ("Preview"/"Notes")
- */
 const ClassVaultCard: React.FC<{
   item: RecordedVideo;
   showTutorActions?: boolean;
@@ -182,10 +175,9 @@ const ClassVaultCard: React.FC<{
   return (
     <Pressable
       onPress={onPress}
-      style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
+      style={tw`mb-3 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
     >
       <View style={tw`relative h-32 bg-[#0b1220] overflow-hidden`}>
-        {/* PDF-only inline preview (if WebView available) */}
         {pdfOnly && WebView && pdfPreviewUrl && !pdfBlocked ? (
           <WebView
             source={{ uri: pdfPreviewUrl }}
@@ -196,27 +188,22 @@ const ClassVaultCard: React.FC<{
           />
         ) : null}
 
-        {/* Thumbnail fallback */}
         {thumbUrl && (!pdfOnly || pdfBlocked || !pdfPreviewUrl || !WebView) ? (
           <Image source={{ uri: thumbUrl }} style={tw`w-full h-full`} contentFit="cover" cachePolicy="none" />
         ) : null}
 
-        {/* Video preview (autoplay only when visible) */}
-       {!pdfOnly && previewUrl && isVisible ? (
+        {!pdfOnly && previewUrl && isVisible ? (
           <AutoPreviewVideo uri={previewUrl} shouldPlay style={tw`absolute inset-0`} />
         ) : null}
 
-        {/* Chip */}
         <View style={tw`absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5`}>
           <Text style={tw`text-[11px] text-white font-semibold`}>{pdfOnly ? 'Notes' : 'Preview'}</Text>
         </View>
 
-        {/* Tutor actions */}
         {showTutorActions && onEdit && onDelete ? (
           <TutorActions onEdit={onEdit} onDelete={onDelete} deleting={deleting} />
         ) : null}
 
-        {/* PDF blocked overlay */}
         {pdfOnly && (pdfBlocked || !WebView || !pdfPreviewUrl) ? (
           <View style={tw`absolute inset-0 items-center justify-center bg-black/35 px-3`}>
             <Text style={tw`text-xs text-white font-semibold`}>Notes preview unavailable</Text>
@@ -238,21 +225,19 @@ const ClassVaultCard: React.FC<{
   );
 };
 
-
 const CourseCard: React.FC<{
   course: Course;
   backendUrl?: string;
   onPress: () => void;
   badge?: string;
 }> = ({ course, backendUrl, onPress, badge }) => {
-  // ✅ Always have an image: real thumbnail OR subject-based fallback
   const thumb = courseThumb(course) || pickImageUriForCourse(course as any, backendUrl);
   const src = withBust(thumb, cacheBust(course))!;
 
   return (
     <Pressable
       onPress={onPress}
-      style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
+      style={tw`mb-3 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
     >
       <View style={tw`h-28 bg-slate-200 dark:bg-white/10`}>
         <Image source={{ uri: src }} style={tw`w-full h-full`} contentFit="cover" cachePolicy="none" />
@@ -295,12 +280,19 @@ const SectionFooter: React.FC<{
       <Text style={tw`text-sm text-slate-500 dark:text-white/60`}>{emptyMessage}</Text>
     ) : null}
     {hasMore ? (
-      <Pressable onPress={onLoadMore} style={tw`mt-3 self-start rounded-full bg-blue-500 px-4 py-2`}>
+      <Pressable
+        onPress={onLoadMore}
+        style={tw`mt-3 self-start rounded-full bg-blue-500 px-4 py-2`}
+      >
         <Text style={tw`text-sm font-semibold text-white`}>Load more</Text>
       </Pressable>
     ) : null}
   </View>
 );
+
+/* ─────────────────────────────────────────────────────────
+ * ✅ Top AI courses promo (now up to 20 per batch)
+ * ───────────────────────────────────────────────────────── */
 
 const TopCoursesPromoGrid: React.FC<{
   backendUrl?: string;
@@ -312,26 +304,21 @@ const TopCoursesPromoGrid: React.FC<{
     authToken,
     { defaultQuizType: 'mcq' }
   );
+
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
-  const [promoCursor, setPromoCursor] = useState<string | null>(null);
-  const [promoHasMore, setPromoHasMore] = useState(false);
   const promoCursorRef = useRef<string | null>(null);
-  const canLoadMore = promoHasMore || Boolean(promoCursor);
 
   useEffect(() => {
-    setPromoCursor(coursesCursor ?? null);
     promoCursorRef.current = coursesCursor ?? null;
   }, [coursesCursor]);
-
-  useEffect(() => {
-    setPromoHasMore(Boolean(hasMoreCourses));
-  }, [hasMoreCourses]);
 
   useEffect(() => {
     if (!error) return;
     setPromoError(error);
   }, [error]);
+
+  const canLoadMore = Boolean(hasMoreCourses) || Boolean(promoCursorRef.current);
 
   const fetchTopCourses = useCallback(
     async (opts?: { append?: boolean }) => {
@@ -340,7 +327,8 @@ const TopCoursesPromoGrid: React.FC<{
       setPromoError(null);
       try {
         await loadTopCourses({
-          limit: 10,
+          // ✅ increased to 20
+          limit: 20,
           append: opts?.append,
           cursor: opts?.append ? promoCursorRef.current ?? undefined : undefined,
         });
@@ -367,76 +355,83 @@ const TopCoursesPromoGrid: React.FC<{
 
   return (
     <View style={tw`mt-4`}>
-      <Text style={tw`text-base font-semibold text-slate-900 dark:text-white`}>Top AI courses</Text>
-      <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
-        Try one instantly with AI Tutor Studio
-      </Text>
+      <View style={tw`rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] p-4`}>
+        <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>Top AI courses</Text>
+        <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
+          Try one instantly with AI Tutor Studio
+        </Text>
 
-      {promoError ? (
-        <View style={tw`mt-3`}>
-          <Text style={tw`text-sm text-red-500`}>{promoError}</Text>
-          <Pressable onPress={() => fetchTopCourses({ append: false })} style={tw`mt-2 self-start`}>
-            <Text style={tw`text-sm font-semibold text-blue-600 dark:text-blue-400`}>Retry</Text>
-          </Pressable>
+        {promoError ? (
+          <View style={tw`mt-3`}>
+            <Text style={tw`text-sm text-red-500`}>{promoError}</Text>
+            <Pressable onPress={() => fetchTopCourses({ append: false })} style={tw`mt-2 self-start`}>
+              <Text style={tw`text-sm font-semibold text-blue-600 dark:text-blue-400`}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={tw`mt-3 flex-row flex-wrap -mx-2`}>
+          {topCourses.map((course) => {
+            const thumb = courseThumb(course) || pickImageUriForCourse(course as any, backendUrl);
+            const src = withBust(thumb, cacheBust(course))!;
+            return (
+              <View key={String(course.id)} style={tw`w-1/2 px-2 mb-4`}>
+                <Pressable
+                  onPress={() => onPick(course)}
+                  style={tw`rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1821] overflow-hidden`}
+                >
+                  <View style={tw`h-28 bg-slate-200 dark:bg-white/10`}>
+                    <Image source={{ uri: src }} style={tw`w-full h-full`} contentFit="cover" cachePolicy="none" />
+                  </View>
+                  <View style={tw`p-3`}>
+                    <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
+                      {course.title || 'Untitled course'}
+                    </Text>
+                    <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={2}>
+                      {course.blurb || 'AI course'}
+                    </Text>
+                  </View>
+                </Pressable>
+              </View>
+            );
+          })}
         </View>
-      ) : null}
 
-      <View style={tw`mt-3 flex-row flex-wrap -mx-2`}>
-        {topCourses.map((course) => {
-          const thumb = courseThumb(course) || pickImageUriForCourse(course as any, backendUrl);
-          return (
-            <View key={course.id} style={tw`w-1/2 px-2 mb-4`}>
-              <Pressable
-                onPress={() => onPick(course)}
-                style={tw`rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
-              >
-                <View style={tw`h-28 bg-slate-200 dark:bg-white/10`}>
-                  <Image source={{ uri: thumb }} style={tw`w-full h-full`} contentFit="cover" cachePolicy="none" />
-                </View>
-                <View style={tw`p-3`}>
-                  <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
-                    {course.title || 'Untitled course'}
-                  </Text>
-                  <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={2}>
-                    {course.blurb || 'AI course'}
-                  </Text>
-                </View>
-              </Pressable>
-            </View>
-          );
-        })}
-      </View>
-
-      <Pressable
-        onPress={() => fetchTopCourses({ append: true })}
-        disabled={promoLoading || !canLoadMore}
-        style={tw.style(
-          'mt-1 self-start rounded-full px-4 py-2',
-          promoLoading || !canLoadMore ? 'bg-slate-200 dark:bg-white/10' : 'bg-blue-500'
-        )}
-      >
-        <Text
+        <Pressable
+          onPress={() => fetchTopCourses({ append: true })}
+          disabled={promoLoading || !canLoadMore}
           style={tw.style(
-            'text-sm font-semibold',
-            promoLoading || !canLoadMore ? 'text-slate-500 dark:text-white/60' : 'text-white'
+            'mt-1 rounded-xl px-4 py-3 items-center justify-center',
+            promoLoading || !canLoadMore ? 'bg-slate-200 dark:bg-white/10' : 'bg-blue-500'
           )}
         >
-          {promoLoading ? 'Loading…' : canLoadMore ? 'Load more' : 'All loaded'}
-        </Text>
-      </Pressable>
+          <Text
+            style={tw.style(
+              'text-sm font-extrabold',
+              promoLoading || !canLoadMore ? 'text-slate-500 dark:text-white/60' : 'text-white'
+            )}
+          >
+            {promoLoading ? 'Loading…' : canLoadMore ? 'Load more' : 'All loaded'}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 };
 
 const MyCoursesNative: React.FC = () => {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
+
+  // ✅ Footer overlay safety (like your other screens)
+  const FOOTER_OVERLAY_PX = 84;
+  const bottomPad = Math.max(FOOTER_OVERLAY_PX, FOOTER_OVERLAY_PX + insets.bottom);
 
   const { backendUrl, token, orgToken } = useShopContext();
   const { role, isTutor, sections } = useMyLibrary();
   const { remove: removeVault } = useClassVault();
   const authToken = token || orgToken;
 
-  // optimistic hides + delete loading
   const [deletedCourseIds, setDeletedCourseIds] = useState<Set<string>>(new Set());
   const [deletedVaultIds, setDeletedVaultIds] = useState<Set<string>>(new Set());
   const [deletingVaultId, setDeletingVaultId] = useState<string | null>(null);
@@ -457,7 +452,6 @@ const MyCoursesNative: React.FC = () => {
     setVisibleIds(next);
   }).current;
 
-
   const tryRefreshSection = useCallback(async (sec: any) => {
     try {
       if (typeof sec?.refresh === 'function') return await sec.refresh();
@@ -469,11 +463,14 @@ const MyCoursesNative: React.FC = () => {
 
   useEffect(() => {
     if (authToken) return;
-    navigation.navigate('Login' as any, {
-      reason: 'auth',
-      message: 'Please sign in to view your library',
-      returnTo: 'Courses',
-    } as any);
+    navigation.navigate(
+      'Login' as any,
+      {
+        reason: 'auth',
+        message: 'Please sign in to view your library',
+        returnTo: 'Courses',
+      } as any
+    );
   }, [authToken, navigation]);
 
   const onDeleteVault = useCallback(
@@ -513,7 +510,6 @@ const MyCoursesNative: React.FC = () => {
     },
     [removeVault, sections, tryRefreshSection]
   );
-
 
   const createdVaultItems = useMemo(() => {
     const raw = sections.createdClassVault.items || [];
@@ -621,7 +617,7 @@ const MyCoursesNative: React.FC = () => {
 
       return (
         <ClassVaultCard
-          item={{ ...(item as any), id }} // ✅ normalize id for downstream components
+          item={{ ...(item as any), id }}
           isVisible={isVisible}
           isPurchased={isPurchased}
           showTutorActions={role === 'tutor' && item.sectionKey === 'createdClassVault'}
@@ -638,7 +634,6 @@ const MyCoursesNative: React.FC = () => {
         />
       );
     }
-
 
     if (item.ai) {
       return (
@@ -662,77 +657,83 @@ const MyCoursesNative: React.FC = () => {
         course={item}
         backendUrl={backendUrl}
         onPress={() =>
-          navigation.navigate('CourseProgress', {
-            courseId: String(item.id),
-            source: 'library',
-          } as any)
+          navigation.navigate(
+            'CourseProgress',
+            {
+              courseId: String(item.id),
+              source: 'library',
+            } as any
+          )
         }
       />
     );
   };
 
-  if (!authToken) {
-    return null;
-  }
+  if (!authToken) return null;
 
   return (
-    <SectionList
-      onViewableItemsChanged={onViewableItemsChanged}
-      viewabilityConfig={viewabilityConfig}
-      sections={librarySections}
-      keyExtractor={(item, index) => `${item.kind}-${String(item.id)}-${index}`}
-      renderItem={renderItem}
-      renderSectionHeader={({ section }) => <SectionHeader title={section.title} subtitle={section.subtitle} />}
-      renderSectionFooter={({ section }) => (
-        <View>
-          <SectionFooter
-            loading={section.loading}
-            error={section.error}
-            empty={section.data.length === 0}
-            emptyMessage={section.emptyMessage}
-            hasMore={section.hasMore}
-            onLoadMore={section.loadMore}
-          />
-          {section.key === 'normalCourses' &&
-          section.data.length === 0 &&
-          !section.loading &&
-          !section.error ? (
-            <TopCoursesPromoGrid
-              backendUrl={backendUrl}
-              authToken={authToken || undefined}
-              onPick={(course) =>
-                navigation.navigate('RobotTutor', {
-                  courseId: String(course.id),
-                  courseTitle: course.title,
-                  source: 'top-courses',
-                })
-              }
+    <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
+      <SectionList
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        sections={librarySections}
+        keyExtractor={(item, index) => `${item.kind}-${String(item.id)}-${index}`}
+        renderItem={renderItem}
+        renderSectionHeader={({ section }) => <SectionHeader title={section.title} subtitle={section.subtitle} />}
+        renderSectionFooter={({ section }) => (
+          <View>
+            <SectionFooter
+              loading={section.loading}
+              error={section.error}
+              empty={section.data.length === 0}
+              emptyMessage={section.emptyMessage}
+              hasMore={section.hasMore}
+              onLoadMore={section.loadMore}
             />
-          ) : null}
-        </View>
-      )}
-      ListHeaderComponent={
-        <View style={tw`px-4 pt-6 pb-2`}>
-          <Text style={tw`text-2xl font-bold text-slate-900 dark:text-white`}>My Library</Text>
-          <Text style={tw`text-sm text-slate-500 dark:text-white/60 mt-1`}>
-            {isTutor
-              ? 'Everything you created or unlocked lives here.'
-              : 'Your purchased and enrolled learning content lives here.'}
-          </Text>
 
-          {role === 'tutor' ? (
-            <Pressable
-              onPress={() => navigation.navigate('ClassVaultUpload')}
-              style={tw`mt-4 self-start rounded-full bg-blue-500 px-4 py-2`}
-            >
-              <Text style={tw`text-sm font-semibold text-white`}>+ Upload to ClassVault</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      }
-      contentContainerStyle={tw`pb-10 bg-slate-50 dark:bg-[#0b1016]`}
-      stickySectionHeadersEnabled={false}
-    />
+            {/* ✅ Show Top AI courses under Courses when empty */}
+            {section.key === 'normalCourses' &&
+            section.data.length === 0 &&
+            !section.loading &&
+            !section.error ? (
+              <TopCoursesPromoGrid
+                backendUrl={backendUrl}
+                authToken={authToken || undefined}
+                onPick={(course) =>
+                  navigation.navigate('RobotTutor', {
+                    courseId: String(course.id),
+                    courseTitle: course.title,
+                    source: 'top-courses',
+                  })
+                }
+              />
+            ) : null}
+          </View>
+        )}
+        ListHeaderComponent={
+          <View style={tw`px-4 pt-4 pb-2`}>
+            <Text style={tw`text-2xl font-extrabold text-slate-900 dark:text-white`}>My Library</Text>
+            <Text style={tw`text-sm text-slate-500 dark:text-white/60 mt-1`}>
+              {isTutor
+                ? 'Everything you created or unlocked lives here.'
+                : 'Your purchased and enrolled learning content lives here.'}
+            </Text>
+
+            {role === 'tutor' ? (
+              <Pressable
+                onPress={() => navigation.navigate('ClassVaultUpload')}
+                style={tw`mt-4 self-start rounded-full bg-blue-500 px-4 py-2`}
+              >
+                <Text style={tw`text-sm font-semibold text-white`}>+ Upload to ClassVault</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        }
+        stickySectionHeadersEnabled={false}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={tw.style('bg-slate-50 dark:bg-[#0b1016]', { paddingBottom: bottomPad })}
+      />
+    </SafeAreaView>
   );
 };
 

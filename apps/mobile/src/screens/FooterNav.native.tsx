@@ -222,7 +222,7 @@ useEffect(() => {
             iconName="home"
             iconColor={homeActiveIcon}
             active={homeIsActive}
-            label="Home"
+            label=" "
           />
 
           {/* Profile / Org / Learner / Instructor */}

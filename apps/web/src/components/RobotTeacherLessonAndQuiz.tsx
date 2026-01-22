@@ -222,6 +222,32 @@ const debitInFlightRef = useRef(false);
 const startingAttemptRef = useRef(false);
 const submittingRef = useRef(false);
 
+/** Persisted submit marker (prevents "stuck submitted" UX across refresh) */
+const submitLsKey = useMemo(() => {
+  if (assignmentId) return `rt:quiz:submitted:org:${assignmentId}`;
+  if (course?.id) return `rt:quiz:submitted:free:${course.id}`;
+  // fallback so it still scopes per course-ish
+  return courseTitle ? `rt:quiz:submitted:free:${courseTitle}` : null;
+}, [assignmentId, course?.id, courseTitle]);
+
+const [submitState, setSubmitState] = useState<'submitted' | null>(null);
+
+// optional: show a brief "retrying..." state + timeout warning
+const [pendingQuizGen, setPendingQuizGen] = useState(false);
+const pendingTimerRef = useRef<number | null>(null);
+
+// hydrate submit marker once
+useEffect(() => {
+  if (!submitLsKey) return;
+  try {
+    const raw = localStorage.getItem(submitLsKey);
+    if (raw) setSubmitState('submitted');
+  } catch {
+    /* ignore */
+  }
+}, [submitLsKey]);
+
+
 // ─── Attempt integrity (web) ─────────────────────────────────────────
 const {
   attempt,
@@ -395,6 +421,8 @@ const restorePrePurchaseState = useCallback(async () => {
     });
   }, [quiz?.questions?.map((q: any) => q.id).join('|'), answers, enforcedQuizType]);
 
+  
+
   // ---------- PERSISTENT CERTIFICATE (localStorage) ----------
   const lsKey = useMemo(() => (course?.id ? `cert:last:${course.id}` : null), [course?.id]);
   const [persistedCert, setPersistedCert] = useState<{
@@ -428,14 +456,17 @@ const restorePrePurchaseState = useCallback(async () => {
     })();
   }, [bindDeviceId]);
 
-  useEffect(() => {
-    // a new run means a new player lifecycle — allow ready to fire again
-    hasSignaledReadyRef.current = false;
-  }, [activeRunId]);
-
-  useEffect(() => {
+ useEffect(() => {
+  // a new run means a new player lifecycle — allow ready to fire again
   hasSignaledReadyRef.current = false;
+  wasLoadingRef.current = false; // ✅ add
+}, [activeRunId]);
+
+useEffect(() => {
+  hasSignaledReadyRef.current = false;
+  wasLoadingRef.current = false; // ✅ add
 }, [course?.id]);
+
 
 
   // load from localStorage on mount
@@ -882,6 +913,118 @@ const hasTimer = displayTimerSec > 0;
     checkPaymentStatus,
     openQuizGate,
   ]);
+
+  const retryQuizNow = useCallback(async () => {
+  // Block if narration lock
+  if (narrationBlocked) return;
+
+  // Non-org must be unlocked (same UX as generate/start)
+  if (!isOrgFlowFlag) {
+    if (checkingAccess) {
+      openQuizGate(true);
+      return;
+    }
+    const unlocked = hasUnlockedCourse || (await checkPaymentStatus());
+    if (!unlocked) {
+      openQuizGate(true);
+      return;
+    }
+  }
+
+  // Org retry: requires auth + new attempt (timer)
+  if (isOrgFlow && assignmentId) {
+    if (!requireAuth('start_attempt', 'Please sign in to retry.')) return;
+    if (startingAttemptRef.current) return;
+    startingAttemptRef.current = true;
+  }
+
+  try {
+    // ✅ Clear any "submitted" memory so user isn't stuck in Submitted state
+    try {
+      if (submitLsKey) localStorage.removeItem(submitLsKey);
+    } catch {}
+    setSubmitState(null);
+
+    // (re)arm timer
+    if (isOrgFlow && assignmentId) {
+      const timerSecEff =
+        (orgMeta?.timer_s ?? timerSec ?? 0) > 0 ? Number(orgMeta?.timer_s ?? timerSec) : 0;
+
+      const att = await startAttempt({
+        assignmentId: assignmentId!,
+        timerSec: timerSecEff,
+        heartbeatSec: 15,
+        maxBackgrounds: 2,
+        maxSuspicion: 5,
+      });
+
+      const ms = (att?.remainingMs ?? 0) || (timerSecEff > 0 ? timerSecEff * 1000 : 0);
+      if (ms > 0) setLocalRemainingMs(ms);
+    } else {
+      const effective = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
+      if (effective > 0) setLocalRemainingMs(effective * 1000);
+    }
+
+    // ✅ Reset local UI state
+    setForceUnlock(true);
+    markActive();
+    setRetakeMode(true);
+    setWorkingAnswers({});
+
+    // ✅ Generate immediately (no extra clicks)
+    await generateQuizNow?.(
+      isOrgFlow && assignmentId && Number.isFinite(orgMeta?.quizSize)
+        ? undefined
+        : Number(displayQuestions || 0),
+      undefined,
+      undefined,
+      undefined,
+      assignmentId,
+      desiredQuizType,
+      { lessonIndex: currentIdx }
+    );
+
+    // optional: pending spinner + "no questions" warning
+    setPendingQuizGen(true);
+    if (pendingTimerRef.current) window.clearTimeout(pendingTimerRef.current);
+    pendingTimerRef.current = window.setTimeout(() => {
+      if (!Array.isArray(quiz?.questions) || quiz.questions.length === 0) {
+        alert('No questions were generated. Please try again.');
+      }
+      setPendingQuizGen(false);
+      pendingTimerRef.current = null;
+    }, 8000);
+  } catch (e) {
+    console.error('[retryQuizNow] failed', e);
+    alert('Retry failed. Please try again.');
+  } finally {
+    startingAttemptRef.current = false;
+  }
+}, [
+  narrationBlocked,
+  isOrgFlowFlag,
+  checkingAccess,
+  openQuizGate,
+  hasUnlockedCourse,
+  checkPaymentStatus,
+  isOrgFlow,
+  assignmentId,
+  requireAuth,
+  submitLsKey,
+  orgMeta?.timer_s,
+  orgMeta?.quizSize,
+  timerSec,
+  startAttempt,
+  setLocalRemainingMs,
+  quiz?.timerSec,
+  displayQuestions,
+  currentIdx,
+  generateQuizNow,
+  desiredQuizType,
+  markActive,
+  quiz?.questions, // ok to keep; you already depend on quiz in many callbacks
+]);
+
 
   const effectiveTimerSecForArming = useMemo(() => {
   // If confirmInfo exists, it’s what the user just confirmed.
@@ -1355,20 +1498,23 @@ const hasTimer = displayTimerSec > 0;
               if (preparing) return;
               await onRequestStartGuarded(args);
             }}
-            onPlayerLoadingChange={(b: boolean) => {
-              // keep your existing preparing toggle
-              if (activeRunId !== null) setPreparing(b);
+           onPlayerLoadingChange={(b: boolean) => {
+          if (activeRunId !== null) setPreparing(b);
 
-              // fire onPlayerReady exactly once: transition loading -> not loading
-              if (!b && !hasSignaledReadyRef.current) {
-                hasSignaledReadyRef.current = true;
-                onPlayerReady?.();
-              }
-              wasLoadingRef.current = b;
+          // ✅ Fire ready ONCE, only after we've seen loading=true at least once,
+          // then a transition to loading=false.
+          const wasLoading = wasLoadingRef.current === true;
+          if (wasLoading && !b && !hasSignaledReadyRef.current) {
+            hasSignaledReadyRef.current = true;
+            onPlayerReady?.();
+          }
 
-              // pass through to parent if they provided one
-              onPlayerLoadingChangeProp?.(b);
-            }}
+          // update last state AFTER checks
+          wasLoadingRef.current = b;
+
+          onPlayerLoadingChangeProp?.(b);
+        }}
+
             activeIndex={currentIdx}
           />
 
@@ -1713,15 +1859,30 @@ const hasTimer = displayTimerSec > 0;
                     assignmentId || `free:${course?.id || course?.slug || courseTitle || 'free-course'}`;
 
                   // ✅ submitAttempt for BOTH paths (org + non-org)
-                  try {
-                    await submitAttempt(assignmentKey, payloadAnswers);
-                  } catch (e) {
-                    // org + free both continue to grade, but log differently if you want
-                    if (isOrgFlow && assignmentId) console.error('submitAttempt failed', e);
-                    else console.warn('[free] submitAttempt failed (continuing to grade)', e);
-                  }
+                 try {
+  await submitAttempt(assignmentKey, payloadAnswers);
 
-                  await gradeNow();
+  // ✅ remember submitted (for UI + refresh protection)
+  try {
+    if (submitLsKey) localStorage.setItem(submitLsKey, String(Date.now()));
+  } catch {}
+  setSubmitState('submitted');
+} catch (e: any) {
+  // If backend says "already submitted" (or 409), treat as submitted so UI isn't weird
+  const msg = String(e?.message || '');
+  const status = Number(e?.status || e?.data?.status || 0);
+  if (status === 409 || /already/i.test(msg)) {
+    try {
+      if (submitLsKey) localStorage.setItem(submitLsKey, String(Date.now()));
+    } catch {}
+    setSubmitState('submitted');
+  }
+
+  if (isOrgFlow && assignmentId) console.error('submitAttempt failed', e);
+  else console.warn('[free] submitAttempt failed (continuing to grade)', e);
+}
+await gradeNow();
+
                   markNotActive();
                   setRetakeMode(false);
                 } finally {
@@ -1948,55 +2109,13 @@ const hasTimer = displayTimerSec > 0;
               {isOrgFlow && assignmentId && (
                 <div className="mt-3">
                   <button
-                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500"
-                    onClick={async () => {
-                      if (!requireAuth('start_attempt', 'Please sign in to retry.')) return;
-                      if (startingAttemptRef.current) return;
-                      startingAttemptRef.current = true;
-                      try {
-                        const timerSecEff =
-                          (orgMeta?.timer_s ?? timerSec ?? 0) > 0
-                            ? Number(orgMeta?.timer_s ?? timerSec)
-                            : 0;
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500"
+                  onClick={retryQuizNow}
+                  disabled={pendingQuizGen}
+                >
+                  {pendingQuizGen ? 'Retrying…' : 'Retry quiz'}
+                </button>
 
-                        // Start via hook (updates attempt/attemptId internally)
-                        const att = await startAttempt({
-                          assignmentId: assignmentId!,
-                          timerSec: timerSecEff,
-                          heartbeatSec: 15,
-                          maxBackgrounds: 2,
-                          maxSuspicion: 5,
-                        });
-
-                        const ms =
-                          Number(att?.remainingMs ?? 0) ||
-                          (timerSecEff > 0 ? timerSecEff * 1000 : 0);
-                        if (ms > 0) setLocalRemainingMs(ms);
-
-                        setForceUnlock(true);
-                        setRetakeMode(true);
-                        setWorkingAnswers({});
-
-                        markActive();
-
-                        await generateQuizNow(
-                          undefined, // org lock decides size
-                          undefined,
-                          undefined,
-                          undefined,
-                          assignmentId,
-                          desiredQuizType,
-                          { lessonIndex: currentIdx }
-                        );
-                      } catch (e) {
-                        console.error('[retry] failed', e);
-                      } finally {
-                        startingAttemptRef.current = false;
-                      }
-                    }}
-                  >
-                    Retry quiz
-                  </button>
                 </div>
               )}
 
@@ -2004,26 +2123,13 @@ const hasTimer = displayTimerSec > 0;
               {!isOrgFlow && (
                 <div className="mt-3">
                   <button
-                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500"
-                    onClick={async () => {
-                      setRetakeMode(true);
-                      setWorkingAnswers({});
-                      if (displayTimerSec > 0) setLocalRemainingMs(displayTimerSec * 1000);
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500"
+                onClick={retryQuizNow}
+                disabled={pendingQuizGen}
+              >
+                {pendingQuizGen ? 'Retrying…' : 'Retry quiz'}
+              </button>
 
-                      markActive();
-                      await generateQuizNow(
-                        displayQuestions,
-                        undefined,
-                        undefined,
-                        undefined,
-                        assignmentId,
-                        desiredQuizType,
-                        { lessonIndex: currentIdx }
-                      );
-                    }}
-                  >
-                    Retry quiz
-                  </button>
                 </div>
               )}
             </div>

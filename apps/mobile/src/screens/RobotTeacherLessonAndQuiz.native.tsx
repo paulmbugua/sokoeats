@@ -1726,7 +1726,121 @@ const handleSubmit = useCallback(async () => {
     overrideLessons,
   ]);
 
-  
+  const retryQuizNow = useCallback(async () => {
+  // Block if narration lock
+  if (narrationBlocked) return;
+
+  // Non-org must be unlocked (same UX as generate/start)
+  if (!isOrgFlowFlag) {
+    if (checkingAccess) {
+      openQuizGate(true);
+      return;
+    }
+    const unlocked = hasUnlockedCourse || (await checkPaymentStatus());
+    if (!unlocked) {
+      openQuizGate(true);
+      return;
+    }
+  }
+
+  // Org retry: requires auth + new attempt (timer)
+  if (isOrgFlow && assignmentId) {
+    if (!requireAuth('start_attempt', 'Please sign in to retry.')) return;
+    if (startingAttemptRef.current) return;
+    startingAttemptRef.current = true;
+  }
+
+  try {
+    // ✅ Clear any "submitted" memory so user isn't stuck in Submitted state
+    try {
+      if (submitLsKey) await AsyncStorage.removeItem(submitLsKey);
+    } catch {}
+    setSubmitState(null);
+
+    // (re)arm timer
+    if (isOrgFlow && assignmentId) {
+      const timerSecEff =
+        (orgMeta?.timer_s ?? timerSec ?? 0) > 0 ? Number(orgMeta?.timer_s ?? timerSec) : 0;
+
+      const att = await startAttempt({
+        assignmentId: assignmentId!,
+        timerSec: timerSecEff,
+        heartbeatSec: 15,
+        maxBackgrounds: 2,
+        maxSuspicion: 5,
+      });
+
+      const ms = (att?.remainingMs ?? 0) || (timerSecEff > 0 ? timerSecEff * 1000 : 0);
+      if (ms > 0) setLocalRemainingMs(ms);
+    } else {
+      const effective = Number(quiz?.timerSec) || (orgMeta?.timer_s ?? timerSec ?? 0);
+      if (effective > 0) setLocalRemainingMs(effective * 1000);
+    }
+
+    // ✅ Reset local UI state
+    setForceUnlock(true);
+    markActive();
+    setRetakeMode(true);
+    setWorkingAnswers({});
+
+    // ✅ Generate immediately (no extra clicks)
+    const retryRequested = Number(displayQuestions || 0);
+    const minOptsRetry = manualLessonsSelected ? {} : { lessonIndex: currentIdx };
+    const retryQ = applyMinPerLesson(retryRequested, displayLessons, minOptsRetry);
+    const passTotalLessonsRetry = manualLessonsSelected ? Number(safeLessons) : undefined;
+
+    await generateQuizNow?.(
+      isOrgFlow && assignmentId && Number.isFinite(orgMeta?.quizSize) ? undefined : retryQ,
+      undefined,
+      undefined,
+      passTotalLessonsRetry,
+      assignmentId,
+      desiredQuizType,
+      { lessonIndex: currentIdx }
+    );
+
+    setPendingQuizGen(true);
+    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    pendingTimerRef.current = setTimeout(() => {
+      if (!Array.isArray(quiz?.questions) || quiz.questions.length === 0) {
+        Alert.alert('No questions', 'The quiz could not be generated. Please try again.');
+      }
+      setPendingQuizGen(false);
+      pendingTimerRef.current = null;
+    }, 8000);
+  } catch (e) {
+    console.error('[retryQuizNow] failed', e);
+    Alert.alert('Retry failed', 'Please try again.');
+  } finally {
+    startingAttemptRef.current = false;
+  }
+}, [
+  narrationBlocked,
+  isOrgFlowFlag,
+  checkingAccess,
+  openQuizGate,
+  hasUnlockedCourse,
+  checkPaymentStatus,
+  isOrgFlow,
+  assignmentId,
+  requireAuth,
+  submitLsKey,
+  orgMeta?.timer_s,
+  orgMeta?.quizSize,
+  timerSec,
+  startAttempt,
+  setLocalRemainingMs,
+  quiz?.timerSec,
+  displayQuestions,
+  manualLessonsSelected,
+  currentIdx,
+  displayLessons,
+  safeLessons,
+  generateQuizNow,
+  desiredQuizType,
+  markActive,
+]);
+
 
   // Transcript generation (native)
   const downloadTranscript = useCallback(async () => {
@@ -2528,7 +2642,10 @@ useEffect(() => {
                   }}
                   style={tw`px-4 py-2 rounded-xl bg-indigo-600`}
                 >
+                  <TouchableOpacity onPress={retryQuizNow} style={tw`px-4 py-2 rounded-xl bg-indigo-600`}>
                   <Text style={tw`text-white font-semibold`}>Retry quiz</Text>
+                </TouchableOpacity>
+
                 </TouchableOpacity>
               </View>
             </View>
