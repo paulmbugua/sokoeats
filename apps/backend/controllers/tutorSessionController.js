@@ -10,6 +10,8 @@ import {
   sendPaystackTransfer,
 } from '../utils/paystack.js';
 import { initiateB2CPayment } from '../services/mpesaService.js';
+import { getProfileIdForUserId } from '../services/chatGatingService.js';
+import { emitToProfile } from '../services/socketService.js';
 
 const PLATFORM_FEE = 0.15; // 15%
 const USD_TO_KES_DEFAULT = 133.75; // fallback; replace with your FX source
@@ -24,7 +26,7 @@ export const createSession = async (req, res) => {
   console.log('Received Payload:', req.body);
   try {
     // ← include tutorName here
-    const { tutorId, tutorName, subject, date, sessionType } =
+    const { tutorId, tutorName, subject, date, sessionType, note } =
       await sessionValidationSchema.validateAsync(req.body);
     const studentUserId = req.user.id; // Authenticated user's ID
 
@@ -74,8 +76,8 @@ export const createSession = async (req, res) => {
     // ← include tutor_name in the INSERT
     const newSession = await pool.query(
       `INSERT INTO tutor_sessions
-         (tutor_id, tutor_name, student_id, session_type, subject, date, status, amount, type, created_at) 
-       VALUES ($1,      $2,         $3,         $4,           $5,      $6,   'upcoming', $7,     'session', NOW()) 
+         (tutor_id, tutor_name, student_id, session_type, subject, date, status, amount, type, description, created_at) 
+       VALUES ($1,      $2,         $3,         $4,           $5,      $6,   'upcoming', $7,     'session', $8,        NOW()) 
        RETURNING *`,
       [
         tutorId, // users.id
@@ -85,8 +87,40 @@ export const createSession = async (req, res) => {
         subject,
         date,
         sessionCost,
+        note || null,
       ],
     );
+
+    const studentProfileId = await getProfileIdForUserId(studentUserId);
+    const tutorProfileId = await getProfileIdForUserId(tutorId);
+    if (studentProfileId && tutorProfileId) {
+      const conversationResult = await pool.query(
+        `SELECT id FROM conversations
+         WHERE (sender_id = $1 AND recipient_id = $2)
+            OR (sender_id = $2 AND recipient_id = $1)
+         LIMIT 1`,
+        [studentProfileId, tutorProfileId],
+      );
+      let conversationId = conversationResult.rows[0]?.id;
+      if (!conversationId) {
+        const newConversation = await pool.query(
+          `INSERT INTO conversations (sender_id, recipient_id, unread_count, chat_status)
+           VALUES ($1, $2, 0, 'unlocked')
+           RETURNING id`,
+          [studentProfileId, tutorProfileId],
+        );
+        conversationId = newConversation.rows[0].id;
+      } else {
+        await pool.query(
+          `UPDATE conversations SET chat_status='unlocked', updated_at=NOW()
+           WHERE id=$1 AND chat_status <> 'unlocked'`,
+          [conversationId],
+        );
+      }
+
+      emitToProfile(studentProfileId, 'chatUnlocked', { conversationId });
+      emitToProfile(tutorProfileId, 'chatUnlocked', { conversationId });
+    }
 
     // Send email notifications
     const tutorUser = await pool.query('SELECT * FROM users WHERE id = $1', [
@@ -230,6 +264,24 @@ export const acceptSession = async (req, res) => {
         `Your session request for "${sessionData.subject}" has been accepted by the tutor.`,
       ],
     );
+
+    const conversationUnlock = await pool.query(
+      `SELECT id FROM conversations
+       WHERE (sender_id = $1 AND recipient_id = $2)
+          OR (sender_id = $2 AND recipient_id = $1)
+       LIMIT 1`,
+      [tutorProfileId, studentProfileId],
+    );
+    const conversationId = conversationUnlock.rows[0]?.id;
+    if (conversationId) {
+      await pool.query(
+        `UPDATE conversations SET chat_status='unlocked', updated_at=NOW()
+         WHERE id=$1 AND chat_status <> 'unlocked'`,
+        [conversationId],
+      );
+      emitToProfile(studentProfileId, 'chatUnlocked', { conversationId });
+      emitToProfile(tutorProfileId, 'chatUnlocked', { conversationId });
+    }
 
     // ─────────────────────────────────────────────────────────────
     // 4) Determine tutor payout currency (LOGGED)

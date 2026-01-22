@@ -25,6 +25,7 @@ export interface ChatMessage {
   unread: boolean;
   timestamp?: string;
   sender_name?: string;
+  meta?: any;
 }
 
 /** One conversation thread */
@@ -36,6 +37,8 @@ export interface Conversation {
   unreadCount: number;
   avatar: string;
   messages: ChatMessage[];
+  chatStatus?: 'locked' | 'unlocked';
+  prebookingUsed?: boolean;
 }
 
 /** Raw shape from your backend */
@@ -49,6 +52,8 @@ export interface RawConversation {
   recipient_avatar?: string;
   last_message: string;
   unread_count: number;
+  chat_status?: 'locked' | 'unlocked';
+  prebooking_used?: boolean;
   messages: ChatMessage[];
 }
 
@@ -81,6 +86,20 @@ export interface ChatContextValue {
   isSocketReady: boolean;
   fetchConversations: () => Promise<void>;
   fetchMessages: (recipientId: string, limit?: number, offset?: number) => Promise<void>;
-  sendMessage: (recipientId: string, content: string) => void;
+  sendMessage: (
+    recipientId: string,
+    content: string
+  ) => Promise<{ ok: boolean; error?: string; message?: string }>;
+  sendPrebookingInquiry: (payload: {
+    tutorProfileId: string;
+    topic: string;
+    level: string;
+    availability: string;
+    note?: string;
+  }) => Promise<{ ok: boolean; error?: string; message?: string }>;
   markAsRead: (recipientId: string) => void;
+  setActiveConversation: (
+    conversationId: string | null,
+    recipientId: string | null
+  ) => void;
 }

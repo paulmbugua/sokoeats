@@ -102,6 +102,9 @@ function parseAccountPath(path: string): MainStackParamList['Account'] {
     tutorId: p.get('tutorId') || undefined,
     tutorName: p.get('tutorName') || undefined,
     subject: p.get('subject') || undefined,
+    comment: p.get('comment') || undefined,
+    description: p.get('description') || undefined,
+    note: p.get('note') || undefined,
     pricing,
     tab,
   };
@@ -181,6 +184,9 @@ const AccountSectionNative: React.FC = () => {
     if (params.tutorId) qp.set('tutorId', params.tutorId);
     if (params.tutorName) qp.set('tutorName', params.tutorName);
     if (params.subject) qp.set('subject', params.subject);
+    if (params.comment) qp.set('comment', params.comment);
+    if (params.description) qp.set('description', params.description);
+    if (params.note) qp.set('note', params.note);
     if (params.pricing) qp.set('pricing', JSON.stringify(params.pricing));
     if (params.tab) qp.set('tab', params.tab);
     return qp;
@@ -597,6 +603,22 @@ const AccountSectionNative: React.FC = () => {
                     {sessionFormErrors.subject}
                   </Text>
                 )}
+
+                {/* Note */}
+                <TextInput
+                  placeholder="Note (optional)"
+                  placeholderTextColor={placeholderColor}
+                  value={formData.note || ''}
+                  onChangeText={(t) => {
+                    setFormData({ ...formData, note: t });
+                  }}
+                  style={tw.style(inputBase, 'mt-2', 'h-20')}
+                  multiline
+                  textAlignVertical="top"
+                />
+                <Text style={tw`mt-1 text-[11px] text-slate-500 dark:text-slate-400`}>
+                  Share any quick question or availability details for the tutor.
+                </Text>
 
                 {/* Session Type */}
                 <View style={tw`mt-1`}>

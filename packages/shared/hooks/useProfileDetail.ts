@@ -76,7 +76,7 @@ export default function useProfileDetail(
   options?: UseProfileDetailOptions
 ) {
   const { token, profile: myProfile } = useShopContext();
-  const { sendMessage, chats } = useChatContext(); // ✅ only here
+  const { sendMessage, sendPrebookingInquiry, chats } = useChatContext(); // ✅ only here
   const notify = {
     success: options?.notify?.success ?? ((m: string) => console.log(`[success] ${m}`)),
     error: options?.notify?.error ?? ((m: string) => console.error(`[error] ${m}`)),
@@ -212,14 +212,47 @@ export default function useProfileDetail(
       notify.error("Message can't be empty.");
       return;
     }
-    await sendMessage(tutorProfile.id, newMessage.trim());
+    const result = await sendMessage(tutorProfile.id, newMessage.trim());
+    if (!result.ok) {
+      notify.error(result.message || 'Unable to send message.');
+      return;
+    }
     setNewMessage('');
     setShowChat(false);
     notify.success('Message sent.');
   }, [newMessage, sendMessage, tutorProfile, token]);
 
-  const chatMessages: ChatMessage[] =
-    chats.find((c) => String(c.recipientId) === String(tutorProfile?.id))?.messages ?? [];
+  const chatThread = chats.find(
+    (c) => String(c.recipientId) === String(tutorProfile?.id)
+  );
+  const chatMessages: ChatMessage[] = chatThread?.messages ?? [];
+  const chatStatus = chatThread?.chatStatus ?? 'locked';
+  const prebookingUsed = chatThread?.prebookingUsed ?? false;
+
+  const handleSendPrebookingInquiry = useCallback(
+    async (payload: {
+      topic: string;
+      level: string;
+      availability: string;
+      note?: string;
+    }) => {
+      if (!tutorProfile?.id) {
+        notify.error('Tutor profile unavailable.');
+        return { ok: false, error: 'MISSING_TUTOR' };
+      }
+      const result = await sendPrebookingInquiry({
+        tutorProfileId: String(tutorProfile.id),
+        ...payload,
+      });
+      if (!result.ok) {
+        notify.error(result.message || 'Unable to send inquiry.');
+        return result;
+      }
+      notify.success('Inquiry sent.');
+      return result;
+    },
+    [sendPrebookingInquiry, tutorProfile?.id]
+  );
 
   const handleImageClick = useCallback((img: string) => setSelectedImage(img), []);
   const closeModal = useCallback(() => setSelectedImage(null), []);
@@ -234,6 +267,9 @@ export default function useProfileDetail(
     handleCreateSession,
     handleSendMessage,
     chatMessages,
+    chatStatus,
+    prebookingUsed,
+    handleSendPrebookingInquiry,
     selectedImage,
     handleImageClick,
     closeModal,

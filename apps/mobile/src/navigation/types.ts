@@ -167,6 +167,9 @@ export type MainStackParamList = {
     tutorId?: string;
     tutorName?: string;
     subject?: string;
+    comment?: string;
+    description?: string;
+    note?: string;
     pricing?: Record<string, string>;
     tab?: ActiveTab;
   };

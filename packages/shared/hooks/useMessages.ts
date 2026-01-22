@@ -37,7 +37,15 @@ const useMessages = (options?: UseMessagesOptions) => {
   const { token, profile: myProfile } = useShopContext();
 
   // 2) Chat methods & data
-  const { fetchConversations, fetchMessages, chats, markAsRead, sendMessage } = useChatContext();
+  const {
+    fetchConversations,
+    fetchMessages,
+    chats,
+    markAsRead,
+    sendMessage,
+    sendPrebookingInquiry,
+    setActiveConversation,
+  } = useChatContext();
 
   // 3) UI state
   const [activeChat, setActiveChat] = useState<Conversation | null>(null);
@@ -45,6 +53,8 @@ const useMessages = (options?: UseMessagesOptions) => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [messageOffset, setMessageOffset] = useState(0);
   const messagesLimit = 20;
+  const isLockedForStudent =
+    activeChat?.chatStatus === 'locked' && myProfile?.role === 'student';
 
   // StrictMode guard to avoid double fetch in dev
   const fetchedOnce = useRef(false);
@@ -79,6 +89,12 @@ const useMessages = (options?: UseMessagesOptions) => {
     if (updated) setActiveChat(updated);
   }, [chats, activeChat]);
 
+  useEffect(() => {
+    if (!activeChat) {
+      setActiveConversation(null, null);
+    }
+  }, [activeChat, setActiveConversation]);
+
   // 7) Auto-scroll on new messages
   useEffect(() => {
     if (activeChat?.messages?.length) {
@@ -90,6 +106,7 @@ const useMessages = (options?: UseMessagesOptions) => {
   const openChat = async (chat: Conversation) => {
     setActiveChat(chat);
     setMessageOffset(0);
+    setActiveConversation(chat.conversationId, chat.recipientId);
 
     await fetchMessages(chat.recipientId, messagesLimit, 0);
     setSidebarOpen(false);
@@ -131,10 +148,34 @@ const useMessages = (options?: UseMessagesOptions) => {
       notify.error("Message can't be empty.");
       return;
     }
-    await sendMessage(activeChat.recipientId, newMessage.trim());
+    const result = await sendMessage(activeChat.recipientId, newMessage.trim());
+    if (!result.ok) {
+      notify.error(result.message || 'Unable to send message.');
+      return;
+    }
     setNewMessage('');
     setTimeout(scrollToBottom, 100);
     notify.success('Message sent.');
+  };
+
+  const handleSendPrebookingInquiry = async (payload: {
+    tutorProfileId: string;
+    topic: string;
+    level: string;
+    availability: string;
+    note?: string;
+  }) => {
+    if (!token) {
+      notify.error('You need to be logged in to send inquiries.');
+      return { ok: false, error: 'UNAUTHORIZED' };
+    }
+    const result = await sendPrebookingInquiry(payload);
+    if (!result.ok) {
+      notify.error(result.message || 'Unable to send inquiry.');
+      return result;
+    }
+    notify.success('Inquiry sent.');
+    return result;
   };
 
   return {
@@ -148,10 +189,12 @@ const useMessages = (options?: UseMessagesOptions) => {
     messageContainerRef,
     handleScroll,
     handleSendMessage,
+    handleSendPrebookingInquiry,
     openChat,
     loadMoreMessages,
     chats,
     myProfile,
+    isLockedForStudent,
   };
 };
 

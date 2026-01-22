@@ -13,17 +13,20 @@ import {
   AppState,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, RouteProp, useIsFocused } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import {
+  useNavigation,
+  useRoute,
+  RouteProp,
+  useIsFocused,
+  NavigationProp,
+} from '@react-navigation/native';
 import { FontAwesome } from '@expo/vector-icons';
 import { useMessages } from '@mytutorapp/shared/hooks';
 import { notifyNow } from '../../utils/notifications';
 import tw from '../../tailwind';
 import chat from '../../assets/chat.png';
 import type { ChatMessage as SharedChatMessage } from '@mytutorapp/shared/types/ShopContextTypes';
-
-type RootStackParamList = { Home: undefined };
-type LoginNav = StackNavigationProp<RootStackParamList, 'Home'>;
+import type { MainStackParamList } from '../navigation/types';
 
 interface RouteParams {
   studentId?: string;
@@ -38,6 +41,8 @@ type ChatListItem = {
   lastMessage?: string;
   unreadCount?: number;
   recipientId?: string | number;
+  chatStatus?: 'locked' | 'unlocked';
+  prebookingUsed?: boolean;
   messages?: Array<
     SharedChatMessage & {
       timestamp?: string;
@@ -50,7 +55,7 @@ type ChatListItem = {
 };
 
 const MessagesNative: React.FC = () => {
-  const navigation = useNavigation<LoginNav>();
+  const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<RouteT>();
   const insets = useSafeAreaInsets();
 
@@ -90,9 +95,12 @@ const MessagesNative: React.FC = () => {
     ...(i.recipientId != null ? { recipientId: String(i.recipientId) } : {}),
   });
 
+  const isLockedForStudent =
+    activeChat?.chatStatus === 'locked' && myProfile?.role === 'student';
   const chatsArr: ChatListItem[] = Array.isArray(chats) ? (chats as ChatListItem[]) : [];
 
   const sendAndRefresh = () => {
+    if (isLockedForStudent) return;
     handleSendMessage();
   };
 
@@ -226,6 +234,24 @@ const MessagesNative: React.FC = () => {
       </View>
     );
   }
+
+  const handleCreateSession = () => {
+    if (!activeChat) return;
+    const comment = 'Booking to unlock messaging';
+    navigation.navigate('Account', {
+      tab: 'sessions',
+      action: 'createSession',
+      tutorId: String(activeChat.recipientId ?? ''),
+      tutorName: activeChat.name || '',
+      subject: 'General',
+      sessionType: '',
+      sessionCost: '',
+      pricing: '{}',
+      comment,
+      description: comment,
+      note: comment,
+    });
+  };
 
   return (
     <View
@@ -396,7 +422,23 @@ const MessagesNative: React.FC = () => {
           keyboardShouldPersistTaps="handled"
         >
           {activeChat ? (
-            sortedMessages.map((msg) => {
+            <>
+              {isLockedForStudent && (
+                <View
+                  style={tw`mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3`}
+                >
+                  <Text style={tw`text-sm text-amber-900 mb-2`}>
+                    Book a session to unlock tutor replies.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={handleCreateSession}
+                    style={tw`self-start bg-pink-600 px-3 py-1.5 rounded-lg`}
+                  >
+                    <Text style={tw`text-xs font-semibold text-white`}>Create Session</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {sortedMessages.map((msg) => {
               const rawSenderId = String(
                 (msg as { sender_id?: string | number; sender?: string | number }).sender_id ??
                   msg.sender
@@ -439,7 +481,8 @@ const MessagesNative: React.FC = () => {
                   </View>
                 </View>
               );
-            })
+              })}
+            </>
           ) : (
             <View style={tw`flex-1 items-center justify-center mt-12`}>
               <Text style={tw`text-slate-600 dark:text-slate-400`}>
@@ -464,6 +507,7 @@ const MessagesNative: React.FC = () => {
               onSubmitEditing={sendAndRefresh}
               blurOnSubmit={false}
               returnKeyType="send"
+              editable={!isLockedForStudent}
               style={tw`flex-1 px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white`}
               multiline={false}
               placeholderTextColor={tw.color('text-slate-500') as string}
@@ -472,6 +516,7 @@ const MessagesNative: React.FC = () => {
               accessibilityLabel="Insert emoji"
               accessibilityHint="Open emoji picker"
               style={tw`px-3 py-2`}
+              disabled={isLockedForStudent}
             >
               <FontAwesome
                 name="smile-o"
@@ -481,9 +526,13 @@ const MessagesNative: React.FC = () => {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={sendAndRefresh}
+              disabled={isLockedForStudent}
               accessibilityLabel="Send message"
               accessibilityHint="Send the message you typed"
-              style={tw`bg-pink-600 px-4 py-2 rounded-xl ml-1`}
+              style={tw.style(
+                'bg-pink-600 px-4 py-2 rounded-xl ml-1',
+                isLockedForStudent ? 'opacity-50' : ''
+              )}
             >
               <FontAwesome name="paper-plane" size={18} color="#fff" />
             </TouchableOpacity>

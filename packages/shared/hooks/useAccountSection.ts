@@ -211,6 +211,7 @@ export const useAccountSection = (options?: {
     subject: '',
     pricing: {},
     date: new Date().toISOString().slice(0, 10),
+    note: '',
   });
 
   const [ratingData, setRatingData] = useState<RatingFormData>({
@@ -342,12 +343,18 @@ export const useAccountSection = (options?: {
   /* 7) URL-driven tab logic ------------------------------------------------- */
   useEffect(() => {
     if (queryParams?.get('action') === 'createSession') {
+      const note =
+        queryParams.get('note') ??
+        queryParams.get('comment') ??
+        queryParams.get('description') ??
+        '';
       setActiveTab('sessions');
       setFormData((fd) => ({
         ...fd,
         tutorId: queryParams.get('tutorId') ?? '',
         tutorName: queryParams.get('tutorName') ?? '',
         subject: queryParams.get('subject') ?? '',
+        note,
         pricing: queryParams.get('pricing') ? JSON.parse(queryParams.get('pricing')!) : {},
       }));
     }

@@ -1,11 +1,10 @@
 // apps/web/src/pages/ProfileDetailPage.web.tsx
-import React, { useMemo, useEffect, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useProfileDetail from '@mytutorapp/shared/hooks/useProfileDetail';
 import useProfileCard from '@mytutorapp/shared/hooks/useProfileCard';
 import { useShopContext } from '@mytutorapp/shared/context';
 import type { TutorProfile } from '@mytutorapp/shared/types';
-import debounce from 'lodash.debounce';
 import Navbar from '../components/Navbar.web';
 import Footer from '../components/Footer.web';
 import Spinner from '../components/Spinner.web';
@@ -73,22 +72,16 @@ const ProfileDetailPage: React.FC = () => {
   const {
     tutorProfile,
     loading,
-    showChat,
-    newMessage,
-    setNewMessage,
-    toggleChat,
-    handleCreateSession,
-    handleSendMessage,
-    chatMessages,
     selectedImage,
     handleImageClick,
     closeModal,
+    chatStatus,
+    prebookingUsed,
+    handleSendPrebookingInquiry,
+    myProfile,
   } = useProfileDetail(id!, backendUrl);
 
   const resolveAsset = (raw: string) => (raw?.startsWith('/') ? `${backendUrl}${raw}` : raw);
-
-  const debouncedSendMessage = useMemo(() => debounce(handleSendMessage, 300), [handleSendMessage]);
-  useEffect(() => () => debouncedSendMessage.cancel(), [debouncedSendMessage]);
 
   const profile: TutorProfile = useMemo(() => {
     const tp = tutorProfile as Partial<TutorProfile> | undefined;
@@ -96,6 +89,16 @@ const ProfileDetailPage: React.FC = () => {
   }, [tutorProfile]);
 
   useProfileCard(profile, backendUrl, token);
+
+  const [showInquiryModal, setShowInquiryModal] = useState(false);
+  const [inquiryForm, setInquiryForm] = useState({
+    topic: '',
+    level: '',
+    availability: '',
+    note: '',
+  });
+  const [inquiryError, setInquiryError] = useState('');
+  const [sendingInquiry, setSendingInquiry] = useState(false);
 
   const pickDefaultSession = (pricing?: Record<string, number | string>) => {
     if (!pricing) return { type: '', cost: '' };
@@ -106,22 +109,64 @@ const ProfileDetailPage: React.FC = () => {
     return { type, cost: String(price ?? '') };
   };
 
-  const onCreateSession = useCallback(() => {
-    const subject = profile.category || 'General';
-    const { type, cost } = pickDefaultSession(profile.pricing);
+  const onCreateSession = useCallback(
+    (note?: string) => {
+      const subject = profile.category || 'General';
+      const { type, cost } = pickDefaultSession(profile.pricing);
 
-    const params = new URLSearchParams();
-    params.set('tab', 'sessions');
-    params.set('action', 'createSession');
-    params.set('tutorId', (profile.user_id || profile.user) ?? '');
-    params.set('tutorName', profile.name ?? '');
-    params.set('subject', subject);
-    if (type) params.set('sessionType', type);
-    if (cost) params.set('sessionCost', cost);
-    if (profile.pricing) params.set('pricing', JSON.stringify(profile.pricing));
+      const params = new URLSearchParams();
+      params.set('tab', 'sessions');
+      params.set('action', 'createSession');
+      params.set('tutorId', (profile.user_id || profile.user) ?? '');
+      params.set('tutorName', profile.name ?? '');
+      params.set('subject', subject);
+      params.set('sessionType', type || '');
+      params.set('sessionCost', cost || '');
+      params.set('pricing', JSON.stringify(profile.pricing ?? {}));
+      if (note) params.set('note', note);
+      if (note) params.set('comment', note);
+      if (note) params.set('description', note);
 
-    navigate(`/account?${params.toString()}`);
-  }, [navigate, profile]);
+      navigate(`/account?${params.toString()}`);
+    },
+    [navigate, profile]
+  );
+
+  const onQuickQuestions = useCallback(() => {
+    onCreateSession(
+      'Quick question: Can you share your availability this week?'
+    );
+  }, [onCreateSession]);
+
+  const openMessagesThread = useCallback(() => {
+    if (!profile.id) return;
+    navigate(`/messages?studentId=${profile.id}`);
+  }, [navigate, profile.id]);
+
+  const canSendInquiry =
+    myProfile?.role === 'student' && chatStatus === 'locked' && !prebookingUsed;
+
+  const handleInquirySubmit = async () => {
+    setInquiryError('');
+    if (!inquiryForm.topic || !inquiryForm.level || !inquiryForm.availability) {
+      setInquiryError('Please fill topic, level, and availability.');
+      return;
+    }
+    setSendingInquiry(true);
+    const result = await handleSendPrebookingInquiry({
+      topic: inquiryForm.topic,
+      level: inquiryForm.level,
+      availability: inquiryForm.availability,
+      note: inquiryForm.note || undefined,
+    });
+    setSendingInquiry(false);
+    if (!result.ok) {
+      setInquiryError(result.message || 'Unable to send inquiry.');
+      return;
+    }
+    setInquiryForm({ topic: '', level: '', availability: '', note: '' });
+    setShowInquiryModal(false);
+  };
 
   if (loading) {
     return (
@@ -287,7 +332,7 @@ const ProfileDetailPage: React.FC = () => {
             </div>
 
             <motion.button
-              onClick={onCreateSession}
+              onClick={() => onCreateSession()}
               className="w-full bg-primary hover:bg-secondary text-white py-2 rounded-lg font-medium transition"
               whileHover={{ scale: prefersReducedMotion ? 1 : 1.01 }}
               whileTap={{ scale: 0.98 }}
@@ -311,10 +356,38 @@ const ProfileDetailPage: React.FC = () => {
               ))}
             </motion.div>
 
-            <ProfileActions
-              recipientId={(profile.user_id || profile.user) as string}
-              onSendMessage={toggleChat}
-            />
+            <div className="space-y-2">
+              <button
+                onClick={onQuickQuestions}
+                className="inline-flex items-center justify-center w-full h-11 rounded-xl bg-white text-darkText font-medium ring-1 ring-gray-200 shadow-sm hover:bg-softGray transition dark:bg-darkCard dark:text-darkTextPrimary dark:ring-darkCard"
+              >
+                Quick Questions
+              </button>
+
+              {chatStatus === 'unlocked' ? (
+                <button
+                  onClick={openMessagesThread}
+                  className="inline-flex items-center justify-center w-full h-11 rounded-xl bg-primary text-white font-semibold shadow hover:shadow-md transition"
+                >
+                  Message Tutor
+                </button>
+              ) : (
+                <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Chat unlocks after booking.
+                </div>
+              )}
+
+              {canSendInquiry && (
+                <button
+                  onClick={() => setShowInquiryModal(true)}
+                  className="inline-flex items-center justify-center w-full h-11 rounded-xl bg-secondary text-white font-semibold shadow hover:shadow-md transition"
+                >
+                  Send 1 Inquiry
+                </button>
+              )}
+
+              <ProfileActions recipientId={(profile.user_id || profile.user) as string} />
+            </div>
           </motion.div>
         </motion.section>
 
@@ -398,6 +471,61 @@ const ProfileDetailPage: React.FC = () => {
           <ProfileActions.Recommended recommended={profile.recommended} statusColor={statusColor} />
         </motion.section>
       </main>
+
+      {showInquiryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-darkCard">
+            <h3 className="text-lg font-semibold text-primary mb-4">Send 1 Inquiry</h3>
+            <div className="space-y-3">
+              <input
+                value={inquiryForm.topic}
+                onChange={(e) => setInquiryForm({ ...inquiryForm, topic: e.target.value })}
+                placeholder="Topic (e.g. Algebra basics)"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:bg-darkBg dark:border-darkBg"
+              />
+              <input
+                value={inquiryForm.level}
+                onChange={(e) => setInquiryForm({ ...inquiryForm, level: e.target.value })}
+                placeholder="Level (e.g. Grade 10)"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:bg-darkBg dark:border-darkBg"
+              />
+              <input
+                value={inquiryForm.availability}
+                onChange={(e) =>
+                  setInquiryForm({ ...inquiryForm, availability: e.target.value })
+                }
+                placeholder="Availability (e.g. Weeknights after 6pm)"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:bg-darkBg dark:border-darkBg"
+              />
+              <textarea
+                value={inquiryForm.note}
+                onChange={(e) => setInquiryForm({ ...inquiryForm, note: e.target.value })}
+                placeholder="Optional note"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:bg-darkBg dark:border-darkBg"
+                rows={3}
+              />
+              {inquiryError && (
+                <p className="text-sm text-red-600 dark:text-red-400">{inquiryError}</p>
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowInquiryModal(false)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 dark:border-darkBg dark:text-darkTextSecondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleInquirySubmit}
+                disabled={sendingInquiry}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {sendingInquiry ? 'Sending...' : 'Send Inquiry'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
 

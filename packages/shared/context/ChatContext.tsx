@@ -36,6 +36,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [chats, setChats] = useState<Conversation[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [isSocketReady, setSocketReady] = useState<boolean>(false);
+  const activeConversationRef = useRef<string | null>(null);
+  const activeRecipientRef = useRef<string | null>(null);
 
   const dev = typeof process !== 'undefined' ? process.env.NODE_ENV !== 'production' : false;
   const hasAuth = Boolean(token && profile?.id);
@@ -50,7 +52,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       sender_name: m.sender_name || '',
       content: m.content,
       unread: Boolean(m.unread),
-      timestamp: m.timestamp || new Date().toISOString(),
+      timestamp: m.timestamp || m.created_at || new Date().toISOString(),
+      meta: m.meta || {},
     }),
     []
   );
@@ -74,6 +77,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         lastMessage: r.last_message ?? '',
         unreadCount: Number(r.unread_count ?? 0),
         messages: Array.isArray(r.messages) ? r.messages.map(normalizeMsg) : [],
+        chatStatus: r.chat_status,
+        prebookingUsed: r.prebooking_used ?? false,
       };
     },
     [normalizeMsg, profile?.id]
@@ -216,29 +221,47 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       });
       setUnreadCount((u) => u + inc.unreadCount);
     });
+    socket.on('chatUnlocked', (payload?: { conversationId?: string }) => {
+      fetchConversations();
+      const activeConversationId = activeConversationRef.current;
+      const activeRecipientId = activeRecipientRef.current;
+      if (
+        payload?.conversationId &&
+        activeConversationId &&
+        String(payload.conversationId) === String(activeConversationId) &&
+        activeRecipientId
+      ) {
+        fetchMessages(activeRecipientId, 20, 0);
+      }
+    });
 
     return () => {
       socket.off('connect');
       socket.off('disconnect');
       socket.off('messageReceived');
+      socket.off('chatUnlocked');
       socket.disconnect();
     };
-  }, [socket, profile?.id, mapRaw]);
+  }, [socket, profile?.id, mapRaw, fetchConversations, fetchMessages]);
 
   // ———————————————————————————————————————————————
   // Send message (optimistic)
   // ———————————————————————————————————————————————
   const sendMessage = useCallback(
-    (recipientId: string, content: string) => {
-      if (!(socket && isSocketReady && profile?.id != null)) return;
+    async (recipientId: string, content: string) => {
+      if (!(socket && isSocketReady && profile?.id != null)) {
+        return { ok: false, error: 'SOCKET_NOT_READY' };
+      }
 
+      const tempId = `temp-${Date.now()}`;
       const temp: ChatMessage = {
-        id: `temp-${Date.now()}`,
+        id: tempId,
         sender: String(profile.id),
         sender_name: profile.name || '',
         content,
         unread: false,
         timestamp: new Date().toISOString(),
+        meta: {},
       };
       setChats((prev) =>
         prev.map((c) =>
@@ -252,14 +275,94 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         )
       );
 
-      socket.emit('sendMessage', {
-        recipientId,
-        content,
-        senderId: profile.id,
-        unread: true,
+      return new Promise<{ ok: boolean; error?: string; message?: string }>((resolve) => {
+        socket.emit(
+          'sendMessage',
+          {
+            recipientId,
+            content,
+            senderId: profile.id,
+            unread: true,
+          },
+          (resp?: { status?: string; code?: string; message?: string }) => {
+            if (resp?.status === 'error' && resp?.code === 'CHAT_LOCKED') {
+              setChats((prev) =>
+                prev.map((c) =>
+                  c.recipientId === recipientId
+                    ? {
+                        ...c,
+                        messages: c.messages.filter((m) => m.id !== tempId),
+                      }
+                    : c
+                )
+              );
+              resolve({
+                ok: false,
+                error: resp.code,
+                message: resp.message,
+              });
+              return;
+            }
+            if (resp?.status === 'error') {
+              resolve({ ok: false, error: 'SEND_FAILED', message: resp.message });
+              return;
+            }
+            resolve({ ok: true });
+          }
+        );
       });
     },
     [socket, isSocketReady, profile]
+  );
+
+  const sendPrebookingInquiry = useCallback(
+    async (payload: {
+      tutorProfileId: string;
+      topic: string;
+      level: string;
+      availability: string;
+      note?: string;
+    }) => {
+      if (!hasAuth || !profile?.id) {
+        return { ok: false, error: 'UNAUTHORIZED' };
+      }
+
+      if (socket && isSocketReady) {
+        return new Promise<{ ok: boolean; error?: string; message?: string }>((resolve) => {
+          socket.emit(
+            'prebookingInquiry',
+            {
+              ...payload,
+              senderId: profile.id,
+            },
+            (resp?: { status?: string; message?: string }) => {
+              if (resp?.status === 'success') {
+                fetchConversations();
+                resolve({ ok: true });
+                return;
+              }
+              resolve({ ok: false, error: 'INQUIRY_FAILED', message: resp?.message });
+            }
+          );
+        });
+      }
+
+      try {
+        await axios.post(
+          `${backendUrl}/api/profileActions/prebookingInquiry`,
+          payload,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        await fetchConversations();
+        return { ok: true };
+      } catch (err: any) {
+        const message = err?.response?.data?.message || 'Failed to send inquiry.';
+        return { ok: false, error: 'INQUIRY_FAILED', message };
+      }
+    },
+    [backendUrl, fetchConversations, hasAuth, isSocketReady, profile?.id, socket, token]
   );
 
   // ———————————————————————————————————————————————
@@ -309,9 +412,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       fetchConversations,
       fetchMessages,
       sendMessage,
+      sendPrebookingInquiry,
       markAsRead,
+      setActiveConversation: (conversationId: string | null, recipientId: string | null) => {
+        activeConversationRef.current = conversationId;
+        activeRecipientRef.current = recipientId;
+      },
     }),
-    [chats, unreadCount, isSocketReady, fetchConversations, fetchMessages, sendMessage, markAsRead]
+    [
+      chats,
+      unreadCount,
+      isSocketReady,
+      fetchConversations,
+      fetchMessages,
+      sendMessage,
+      sendPrebookingInquiry,
+      markAsRead,
+    ]
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

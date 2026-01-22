@@ -8,7 +8,9 @@ import type { TutorProfile } from '@mytutorapp/shared/types';
 
 interface ProfileActionsProps {
   recipientId: string;
-  onSendMessage: (recipientId: string) => void;
+  onSendMessage?: (recipientId: string) => void;
+  showMessageButton?: boolean;
+  messageLabel?: string;
 }
 
 interface ProfileActionsStatic {
@@ -21,19 +23,22 @@ interface ProfileActionsStatic {
 const ProfileActions: React.FC<ProfileActionsProps> & ProfileActionsStatic = ({
   recipientId,
   onSendMessage,
+  showMessageButton = false,
+  messageLabel = 'Send Message',
 }) => {
   const { handleAddToFavorites } = useProfileActions();
 
   return (
     <div className="space-y-2">
-      {/* Primary action */}
-      <button
-        onClick={() => onSendMessage(recipientId)}
-        className="inline-flex items-center justify-center w-full h-11 rounded-xl bg-primary text-white font-semibold shadow hover:shadow-md transition active:translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-primary/60"
-      >
-        <FontAwesomeIcon icon={faEnvelope as IconProp} className="mr-2" />
-        Send Message
-      </button>
+      {showMessageButton && onSendMessage && (
+        <button
+          onClick={() => onSendMessage(recipientId)}
+          className="inline-flex items-center justify-center w-full h-11 rounded-xl bg-primary text-white font-semibold shadow hover:shadow-md transition active:translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-primary/60"
+        >
+          <FontAwesomeIcon icon={faEnvelope as IconProp} className="mr-2" />
+          {messageLabel}
+        </button>
+      )}
 
       {/* Secondary action */}
       <button
