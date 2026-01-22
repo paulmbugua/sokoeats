@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { View, Text, SectionList, Pressable, Alert, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -6,11 +6,11 @@ import AutoPreviewVideo from './AutoPreviewVideo.native';
 import { Image } from 'expo-image';
 import tw from '../../tailwind';
 
-import { useMyLibrary } from '@mytutorapp/shared/hooks';
+import { useAiCourse, useMyLibrary } from '@mytutorapp/shared/hooks';
 import { useClassVault } from '@mytutorapp/shared/hooks/useClassVault';
 import { useShopContext } from '@mytutorapp/shared/context';
 
-import type { Course, RecordedVideo } from '@mytutorapp/shared/types';
+import type { Course, RecordedVideo, TopCourse } from '@mytutorapp/shared/types';
 import type { MainStackParamList } from '../navigation/types';
 
 import { pickImageUriForCourse } from '../../utils/subjectImages'; // ✅ use your subject image picker
@@ -302,12 +302,139 @@ const SectionFooter: React.FC<{
   </View>
 );
 
+const TopCoursesPromoGrid: React.FC<{
+  backendUrl?: string;
+  authToken?: string;
+  onPick: (course: TopCourse) => void;
+}> = ({ backendUrl, authToken, onPick }) => {
+  const { topCourses, loadTopCourses, hasMoreCourses, coursesCursor, error } = useAiCourse(
+    backendUrl || '',
+    authToken,
+    { defaultQuizType: 'mcq' }
+  );
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoCursor, setPromoCursor] = useState<string | null>(null);
+  const [promoHasMore, setPromoHasMore] = useState(false);
+  const promoCursorRef = useRef<string | null>(null);
+  const canLoadMore = promoHasMore || Boolean(promoCursor);
+
+  useEffect(() => {
+    setPromoCursor(coursesCursor ?? null);
+    promoCursorRef.current = coursesCursor ?? null;
+  }, [coursesCursor]);
+
+  useEffect(() => {
+    setPromoHasMore(Boolean(hasMoreCourses));
+  }, [hasMoreCourses]);
+
+  useEffect(() => {
+    if (!error) return;
+    setPromoError(error);
+  }, [error]);
+
+  const fetchTopCourses = useCallback(
+    async (opts?: { append?: boolean }) => {
+      if (!backendUrl || !authToken) return;
+      setPromoLoading(true);
+      setPromoError(null);
+      try {
+        await loadTopCourses({
+          limit: 10,
+          append: opts?.append,
+          cursor: opts?.append ? promoCursorRef.current ?? undefined : undefined,
+        });
+      } catch (e: any) {
+        setPromoError(e?.message || 'Failed to load courses');
+      } finally {
+        setPromoLoading(false);
+      }
+    },
+    [backendUrl, authToken, loadTopCourses]
+  );
+
+  useEffect(() => {
+    fetchTopCourses({ append: false });
+  }, [fetchTopCourses]);
+
+  if (!topCourses.length && promoLoading) {
+    return (
+      <View style={tw`mt-4`}>
+        <Text style={tw`text-sm text-slate-500 dark:text-white/60`}>Loading top courses…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={tw`mt-4`}>
+      <Text style={tw`text-base font-semibold text-slate-900 dark:text-white`}>Top AI courses</Text>
+      <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
+        Try one instantly with AI Tutor Studio
+      </Text>
+
+      {promoError ? (
+        <View style={tw`mt-3`}>
+          <Text style={tw`text-sm text-red-500`}>{promoError}</Text>
+          <Pressable onPress={() => fetchTopCourses({ append: false })} style={tw`mt-2 self-start`}>
+            <Text style={tw`text-sm font-semibold text-blue-600 dark:text-blue-400`}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      <View style={tw`mt-3 flex-row flex-wrap -mx-2`}>
+        {topCourses.map((course) => {
+          const thumb = courseThumb(course) || pickImageUriForCourse(course as any, backendUrl);
+          return (
+            <View key={course.id} style={tw`w-1/2 px-2 mb-4`}>
+              <Pressable
+                onPress={() => onPick(course)}
+                style={tw`rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
+              >
+                <View style={tw`h-28 bg-slate-200 dark:bg-white/10`}>
+                  <Image source={{ uri: thumb }} style={tw`w-full h-full`} contentFit="cover" cachePolicy="none" />
+                </View>
+                <View style={tw`p-3`}>
+                  <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
+                    {course.title || 'Untitled course'}
+                  </Text>
+                  <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`} numberOfLines={2}>
+                    {course.blurb || 'AI course'}
+                  </Text>
+                </View>
+              </Pressable>
+            </View>
+          );
+        })}
+      </View>
+
+      <Pressable
+        onPress={() => fetchTopCourses({ append: true })}
+        disabled={promoLoading || !canLoadMore}
+        style={tw.style(
+          'mt-1 self-start rounded-full px-4 py-2',
+          promoLoading || !canLoadMore ? 'bg-slate-200 dark:bg-white/10' : 'bg-blue-500'
+        )}
+      >
+        <Text
+          style={tw.style(
+            'text-sm font-semibold',
+            promoLoading || !canLoadMore ? 'text-slate-500 dark:text-white/60' : 'text-white'
+          )}
+        >
+          {promoLoading ? 'Loading…' : canLoadMore ? 'Load more' : 'All loaded'}
+        </Text>
+      </Pressable>
+    </View>
+  );
+};
+
 const MyCoursesNative: React.FC = () => {
   const navigation = useNavigation<Nav>();
 
-  const { backendUrl } = useShopContext();
+  const { backendUrl, token, orgToken } = useShopContext();
   const { role, isTutor, sections } = useMyLibrary();
   const { remove: removeVault } = useClassVault();
+  const authToken = token || orgToken;
 
   // optimistic hides + delete loading
   const [deletedCourseIds, setDeletedCourseIds] = useState<Set<string>>(new Set());
@@ -315,21 +442,20 @@ const MyCoursesNative: React.FC = () => {
   const [deletingVaultId, setDeletingVaultId] = useState<string | null>(null);
 
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
-const viewabilityConfig = useMemo(() => ({ itemVisiblePercentThreshold: 55 }), []);
+  const viewabilityConfig = useMemo(() => ({ itemVisiblePercentThreshold: 55 }), []);
 
-const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-  const next = new Set<string>();
-  for (const v of viewableItems || []) {
-    const it = v?.item;
-    if (!it) continue;
-    if (it.kind === 'classvault') {
-      const id = getVaultId(it);
-      if (id > 0) next.add(`classvault:${id}`);
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    const next = new Set<string>();
+    for (const v of viewableItems || []) {
+      const it = v?.item;
+      if (!it) continue;
+      if (it.kind === 'classvault') {
+        const id = getVaultId(it);
+        if (id > 0) next.add(`classvault:${id}`);
+      }
     }
-  }
-  setVisibleIds(next);
-}).current;
-
+    setVisibleIds(next);
+  }).current;
 
 
   const tryRefreshSection = useCallback(async (sec: any) => {
@@ -341,43 +467,52 @@ const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     } catch {}
   }, []);
 
-const onDeleteVault = useCallback(
-  (item: RecordedVideo) => {
-    const idNum = getVaultId(item);
-    if (idNum <= 0) {
-      Alert.alert('Error', 'Invalid item id.');
-      return;
-    }
+  useEffect(() => {
+    if (authToken) return;
+    navigation.navigate('Login' as any, {
+      reason: 'auth',
+      message: 'Please sign in to view your library',
+      returnTo: 'Courses',
+    } as any);
+  }, [authToken, navigation]);
 
-    Alert.alert('Delete item?', `Delete "${item.title || 'this item'}"? This cannot be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          const id = String(idNum);
-          setDeletingVaultId(id);
-          setDeletedVaultIds((prev) => new Set(prev).add(id));
+  const onDeleteVault = useCallback(
+    (item: RecordedVideo) => {
+      const idNum = getVaultId(item);
+      if (idNum <= 0) {
+        Alert.alert('Error', 'Invalid item id.');
+        return;
+      }
 
-          try {
-            await removeVault(idNum);
-            await tryRefreshSection(sections?.createdClassVault);
-          } catch (e: any) {
-            setDeletedVaultIds((prev) => {
-              const next = new Set(prev);
-              next.delete(id);
-              return next;
-            });
-            Alert.alert('Failed', e?.message || 'Failed to delete item.');
-          } finally {
-            setDeletingVaultId(null);
-          }
+      Alert.alert('Delete item?', `Delete "${item.title || 'this item'}"? This cannot be undone.`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const id = String(idNum);
+            setDeletingVaultId(id);
+            setDeletedVaultIds((prev) => new Set(prev).add(id));
+
+            try {
+              await removeVault(idNum);
+              await tryRefreshSection(sections?.createdClassVault);
+            } catch (e: any) {
+              setDeletedVaultIds((prev) => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+              });
+              Alert.alert('Failed', e?.message || 'Failed to delete item.');
+            } finally {
+              setDeletingVaultId(null);
+            }
+          },
         },
-      },
-    ]);
-  },
-  [removeVault, sections, tryRefreshSection]
-);
+      ]);
+    },
+    [removeVault, sections, tryRefreshSection]
+  );
 
 
   const createdVaultItems = useMemo(() => {
@@ -477,32 +612,32 @@ const onDeleteVault = useCallback(
   }, [role, sections, createdVaultItems, purchasedVaultItems, normalCourseItems, aiCourseItems]);
 
   const renderItem = ({ item }: { item: SectionItem }) => {
-if (item.kind === 'classvault') {
-  const id = getVaultId(item);
-  const deleting = deletingVaultId === String(id);
-  const isPurchased = item.sectionKey === 'purchasedClassVault';
-  const key = `classvault:${id}`;
-  const isVisible = visibleIds.has(key);
+    if (item.kind === 'classvault') {
+      const id = getVaultId(item);
+      const deleting = deletingVaultId === String(id);
+      const isPurchased = item.sectionKey === 'purchasedClassVault';
+      const key = `classvault:${id}`;
+      const isVisible = visibleIds.has(key);
 
-  return (
-    <ClassVaultCard
-      item={{ ...(item as any), id }} // ✅ normalize id for downstream components
-      isVisible={isVisible}
-      isPurchased={isPurchased}
-      showTutorActions={role === 'tutor' && item.sectionKey === 'createdClassVault'}
-      deleting={deleting}
-      onPress={() => {
-        if (id <= 0) {
-          Alert.alert('Error', 'Invalid item id. Please refresh.');
-          return;
-        }
-        navigation.navigate('ClassVaultDetail', { id });
-      }}
-      onEdit={() => navigation.navigate('ClassVaultUpload')}
-      onDelete={() => onDeleteVault({ ...(item as any), id } as any)}
-    />
-  );
-}
+      return (
+        <ClassVaultCard
+          item={{ ...(item as any), id }} // ✅ normalize id for downstream components
+          isVisible={isVisible}
+          isPurchased={isPurchased}
+          showTutorActions={role === 'tutor' && item.sectionKey === 'createdClassVault'}
+          deleting={deleting}
+          onPress={() => {
+            if (id <= 0) {
+              Alert.alert('Error', 'Invalid item id. Please refresh.');
+              return;
+            }
+            navigation.navigate('ClassVaultDetail', { id });
+          }}
+          onEdit={() => navigation.navigate('ClassVaultUpload')}
+          onDelete={() => onDeleteVault({ ...(item as any), id } as any)}
+        />
+      );
+    }
 
 
     if (item.ai) {
@@ -536,23 +671,45 @@ if (item.kind === 'classvault') {
     );
   };
 
+  if (!authToken) {
+    return null;
+  }
+
   return (
     <SectionList
-    onViewableItemsChanged={onViewableItemsChanged}
-    viewabilityConfig={viewabilityConfig}
+      onViewableItemsChanged={onViewableItemsChanged}
+      viewabilityConfig={viewabilityConfig}
       sections={librarySections}
       keyExtractor={(item, index) => `${item.kind}-${String(item.id)}-${index}`}
       renderItem={renderItem}
       renderSectionHeader={({ section }) => <SectionHeader title={section.title} subtitle={section.subtitle} />}
       renderSectionFooter={({ section }) => (
-        <SectionFooter
-          loading={section.loading}
-          error={section.error}
-          empty={section.data.length === 0}
-          emptyMessage={section.emptyMessage}
-          hasMore={section.hasMore}
-          onLoadMore={section.loadMore}
-        />
+        <View>
+          <SectionFooter
+            loading={section.loading}
+            error={section.error}
+            empty={section.data.length === 0}
+            emptyMessage={section.emptyMessage}
+            hasMore={section.hasMore}
+            onLoadMore={section.loadMore}
+          />
+          {section.key === 'normalCourses' &&
+          section.data.length === 0 &&
+          !section.loading &&
+          !section.error ? (
+            <TopCoursesPromoGrid
+              backendUrl={backendUrl}
+              authToken={authToken || undefined}
+              onPick={(course) =>
+                navigation.navigate('RobotTutor', {
+                  courseId: String(course.id),
+                  courseTitle: course.title,
+                  source: 'top-courses',
+                })
+              }
+            />
+          ) : null}
+        </View>
       )}
       ListHeaderComponent={
         <View style={tw`px-4 pt-6 pb-2`}>
