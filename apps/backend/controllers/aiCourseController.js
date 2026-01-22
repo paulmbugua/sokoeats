@@ -1,5 +1,8 @@
 // apps/backend/controllers/aiCourseController.js
 import pool from '../config/db.js';
+import { aiJson, breakerActive, tripBreaker } from '../services/aiCourseCore.js';
+
+
 
 import {
   withGate,
@@ -99,6 +102,42 @@ function shortMatches(user, q) {
   return false;
 }
 
+function pickUserText(a) {
+  if (!a || typeof a !== 'object') return '';
+  return String(
+    a.answerText ?? a.text ?? a.value ?? a.free ?? a.written ?? ''
+  ).trim();
+}
+
+function questionText(q) {
+  const p = String(q?.prompt ?? '').trim();
+  const d = String(q?.display ?? '').trim();
+  return p || d || '';
+}
+
+function clamp01(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
+// Very light fallback if AI is unavailable (no key, no LLM)
+function heuristicShortScore(qText, userText) {
+  const q = (qText || '').toLowerCase();
+  const a = (userText || '').toLowerCase();
+  if (!a) return { score: 0, feedback: 'No answer provided.' };
+
+  // simple overlap heuristic
+  const qWords = new Set(q.split(/\W+/).filter(w => w.length >= 4));
+  const aWords = new Set(a.split(/\W+/).filter(w => w.length >= 4));
+  let hit = 0;
+  for (const w of qWords) if (aWords.has(w)) hit++;
+  const score = qWords.size ? Math.min(1, hit / Math.max(3, qWords.size * 0.4)) : 0.2;
+
+  return { score: clamp01(score), feedback: 'Auto-graded (fallback). Consider regrading later.' };
+}
+
+
 function olMeta(outline) {
   const len = Array.isArray(outline) ? outline.length : 0;
   const head = Array.isArray(outline)
@@ -156,6 +195,60 @@ function notesPreview(markdown = '', maxChars = 400) {
   return `${s.slice(0, maxChars).trim()}...\n\n> 🔒 Unlock full notes with Certificate.`;
 }
 
+async function gradeShortWithAI({ qText, userText }) {
+  if (!qText) return { score: 0, feedback: 'Missing question text.' };
+  if (!userText) return { score: 0, feedback: 'No answer provided.' };
+
+  // If breaker active, do not call OpenAI
+  if (breakerActive()) return heuristicShortScore(qText, userText);
+
+  const schema = {
+    name: 'ShortGrade',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        score: { type: 'number', minimum: 0, maximum: 1 },
+        feedback: { type: 'string' },
+      },
+      required: ['score', 'feedback'],
+    },
+  };
+
+  const system =
+    'You are a fair, consistent grader. Accept paraphrases. Ignore minor grammar/spelling. Award partial credit. Be strict only if the answer is clearly wrong or irrelevant.';
+
+  const user = `
+Grade the student's short-answer response.
+
+Question:
+${qText}
+
+Student answer:
+${userText}
+
+Return JSON only with:
+- score: number from 0 to 1 (partial credit allowed)
+- feedback: 1-2 short sentences (helpful, not harsh)
+`.trim();
+
+  try {
+    // Use a gate so grading spikes don't overload you
+    const out = await withGate('grade_short', async () =>
+      aiJson({ system, user, temperature: 0.2, tries: 2, schema }),
+    );
+
+    return {
+      score: clamp01(out?.score),
+      feedback: String(out?.feedback ?? '').slice(0, 500),
+    };
+  } catch (e) {
+    // If quota/rate-limit etc, trip breaker and fall back
+    if (e?.aiKind === 'quota' || e?.aiKind === 'rate_limit') tripBreaker(10);
+    return heuristicShortScore(qText, userText);
+  }
+}
 
 
 /* ─────────────────────────────────────────────────────────
@@ -918,7 +1011,7 @@ export async function generateQuiz(req, res) {
 }
 
 // Pure sync grading using provided key
-// Pure sync grading using provided key (MCQ + short-answer)
+// Pure sync grading using provided key (MCQ + short-answer) + AI grading fallback for sanitized short answers
 export async function gradeQuiz(req, res) {
   try {
     const { value, error } = gradeSchema.validate(req.body, {
@@ -928,10 +1021,6 @@ export async function gradeQuiz(req, res) {
     });
 
     if (error) {
-      console.warn(
-        '[ai] grade validation failed',
-        error.details?.map((d) => d.message),
-      );
       return res.status(400).json({
         error: 'VALIDATION_FAILED',
         message: error.message,
@@ -941,7 +1030,7 @@ export async function gradeQuiz(req, res) {
 
     const { quiz, answers } = value;
 
-    // --- helper: local uuid check (in case isUuid isn't in scope here) ---
+    // --- helper: local uuid check ---
     const isUuidLocal = (s) =>
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
         String(s || ''),
@@ -960,7 +1049,7 @@ export async function gradeQuiz(req, res) {
         ? Number(value.passMark)
         : undefined;
 
-    // Resolve studentId (your schema uses numeric users.id)
+    // Resolve studentId
     const studentId = req.user?.id ?? req.user?.users_id ?? null;
 
     // ✅ Resolve courseId from multiple possible sources
@@ -976,21 +1065,6 @@ export async function gradeQuiz(req, res) {
 
     const courseId = courseIdFromBody || courseIdFromQuiz || null;
     const courseIdIsUuid = courseId ? isUuidLocal(courseId) : false;
-
-    // --- start logs ---
-    console.log('[ai] gradeQuiz:start', {
-      studentId,
-      hasUser: !!req.user,
-      assignmentId: assignmentId || null,
-      courseIdFromBody,
-      courseIdFromQuiz,
-      courseId,
-      courseIdIsUuid,
-      quizId: quiz?.id || quiz?.quizId || null,
-      quizType: quiz?.quizType || null,
-      questions: Array.isArray(quiz?.questions) ? quiz.questions.length : 0,
-      answers: Array.isArray(answers) ? answers.length : 0,
-    });
 
     // If passMark missing, look up from assignment → locked_config → org default → 70
     if ((passMark === undefined || Number.isNaN(passMark)) && assignmentId) {
@@ -1021,119 +1095,102 @@ export async function gradeQuiz(req, res) {
     if (passMark === undefined || Number.isNaN(passMark)) passMark = 70;
     passMark = Math.max(0, Math.min(100, Math.round(passMark)));
 
-    // ---------- mixed-type grading (MCQ + short) ----------
-    const byId = new Map((answers || []).map((a) => [a.questionId, a]));
+    // ---------- NEW grading: supports MCQ + keyed short + AI short fallback ----------
+    const answersById = new Map((answers || []).map((a) => [String(a.questionId), a]));
 
-    const normType = (t) => {
-      const s = String(t || '').trim().toLowerCase();
-      if (
-        [
-          'mcq',
-          'multiple',
-          'multiple_choice',
-          'multiple-choice',
-          'choice',
-          'choices',
-        ].includes(s)
-      )
-        return 'mcq';
-      if (
-        [
-          'short',
-          'open',
-          'free',
-          'shortanswer',
-          'short-answer',
-          'short_answer',
-          'written',
-          'fill',
-          'fill_in',
-          'fill-in',
-        ].includes(s)
-      )
-        return 'short';
-      return '';
-    };
+    const results = [];
+    let sum = 0;
 
-    let correct = 0;
-    const total = Array.isArray(quiz?.questions) ? quiz.questions.length : 0;
-    const packType = normType(quiz?.quizType);
+    const questions = Array.isArray(quiz?.questions) ? quiz.questions : [];
 
-    for (const q of quiz?.questions || []) {
-      const a = byId.get(q.id);
-      if (!a) continue;
+    for (const q of questions) {
+      const qid = String(q.id);
+      const a = answersById.get(qid);
 
-      const qType =
-        normType(q?.type) ||
-        packType ||
-        (Array.isArray(q?.choices) && Number.isFinite(Number(q?.answerIndex))
-          ? 'mcq'
-          : 'short');
-
-      if (qType === 'mcq') {
-        const choiceIndex = Number.isFinite(Number(a.choiceIndex))
-          ? Number(a.choiceIndex)
-          : -1;
-        const answerIndex = Number.isFinite(Number(q?.answerIndex))
-          ? Number(q.answerIndex)
-          : -1;
-        if (choiceIndex >= 0 && choiceIndex === answerIndex) correct += 1;
-      } else {
-        const userRaw =
-          a?.text ?? a?.answerText ?? a?.value ?? a?.free ?? a?.written ?? '';
-        const userStr = String(userRaw ?? '').trim();
-
-        let candidate = userStr;
-        if (
-          !candidate &&
-          Array.isArray(q?.choices) &&
-          Number.isFinite(Number(a?.choiceIndex))
-        ) {
-          const idx = Number(a.choiceIndex);
-          if (idx >= 0 && idx < q.choices.length)
-            candidate = String(q.choices[idx] || '');
-        }
-
-        if (candidate && shortMatches(candidate, q)) correct += 1;
+      // If no answer for this question, count as 0 but still include result entry
+      if (!a) {
+        results.push({
+          questionId: q.id,
+          type:
+            q?.type === 'mcq' || Array.isArray(q?.choices)
+              ? 'mcq'
+              : 'short',
+          correct: false,
+          score: 0,
+          feedback: 'No answer provided.',
+        });
+        continue;
       }
+
+      const isMcq =
+        q?.type === 'mcq' ||
+        (Array.isArray(q?.choices) && typeof q?.answerIndex === 'number');
+
+      if (isMcq) {
+        const picked =
+          Number.isFinite(Number(a?.choiceIndex)) ? Number(a.choiceIndex) : -1;
+        const ans =
+          Number.isFinite(Number(q?.answerIndex)) ? Number(q.answerIndex) : -1;
+
+        const ok = picked >= 0 && ans >= 0 && picked === ans;
+        const score = ok ? 1 : 0;
+        sum += score;
+
+        results.push({
+          questionId: q.id,
+          type: 'mcq',
+          correct: ok,
+          score,
+        });
+        continue;
+      }
+
+      // SHORT
+      const userText = pickUserText(a);
+      const qText = questionText(q);
+
+      // If answer key exists, keep your existing strict logic
+      if (q?.answer) {
+        const ok = userText ? shortMatches(userText, q) : false; // your existing function
+        const score = ok ? 1 : 0;
+        sum += score;
+
+        results.push({
+          questionId: q.id,
+          type: 'short',
+          correct: ok,
+          score,
+        });
+        continue;
+      }
+
+      // ✅ No key → AI grade (partial credit)
+      const g = await gradeShortWithAI({ qText, userText });
+      const score = clamp01(g.score);
+      sum += score;
+
+      results.push({
+        questionId: q.id,
+        type: 'short',
+        correct: score >= 0.7,
+        score,
+        feedback: g.feedback,
+      });
     }
 
-    const scorePct = total ? Math.round((correct / total) * 100) : 0;
+    const total = questions.length || 1;
+    const scorePct = Math.round((sum / total) * 100);
     const passed = scorePct >= passMark;
 
-    console.log('[ai] gradeQuiz:computed', {
-      correct,
-      total,
-      scorePct,
-      passMark,
-      passed,
-      assignmentId: assignmentId || null,
-      courseId,
-      courseIdIsUuid,
-      studentId,
-    });
+    // For DB compatibility (if correct column is INT), store "count of correct" using same threshold as correct=true
+    const correctCount = results.reduce((acc, r) => acc + (r.score >= 0.7 ? 1 : 0), 0);
 
     // ---------- Persist attempt for NON-org flows ----------
-    // Certificates use quiz_attempts, so this must succeed for catalog/non-org quizzes.
     let attemptSaved = false;
     let attemptId = null;
 
-    if (assignmentId) {
-      console.log('[ai] gradeQuiz:persist skip (org flow)', { assignmentId });
-    } else if (!studentId) {
-      console.warn('[ai] gradeQuiz:persist skip (missing studentId)', {
-        reqUserKeys: req.user ? Object.keys(req.user) : null,
-      });
-    } else if (!courseId) {
-      console.warn('[ai] gradeQuiz:persist skip (missing courseId)', {
-        courseIdFromBody,
-        courseIdFromQuiz,
-      });
-    } else if (!courseIdIsUuid) {
-      console.warn('[ai] gradeQuiz:persist skip (courseId not uuid)', { courseId });
-    } else {
-      // ✅ If we don't have a real quiz UUID from `quizzes`, store NULL.
-      // This avoids FK violations and still allows certificate checks by (student_id, course_id).
+    if (!assignmentId && studentId && courseId && courseIdIsUuid) {
+      // ✅ If we don't have a real quiz UUID from `quizzes`, store NULL (avoid FK violations)
       const quizIdToInsert =
         (typeof quiz?.id === 'string' && isUuidLocal(quiz.id) ? quiz.id : null) ||
         (typeof quiz?.quizId === 'string' && isUuidLocal(quiz.quizId)
@@ -1141,42 +1198,13 @@ export async function gradeQuiz(req, res) {
           : null) ||
         null;
 
+      // Store detailed grading so you can show per-question feedback in UI later
       const answersJson = {
         answers: Array.isArray(answers) ? answers : [],
         quizType: quiz?.quizType || null,
+        results,
+        sumScore: sum, // float 0..total
       };
-
-      // Optional: log whether the table has the columns you expect
-      try {
-        const cols = await pool.query(
-          `
-          SELECT column_name
-            FROM information_schema.columns
-           WHERE table_schema='public'
-             AND table_name='quiz_attempts'
-             AND column_name IN (
-               'id','quiz_id','total','correct','score_pct','passed',
-               'answers_json','created_at','pass_mark','student_id','course_id'
-             )
-          `,
-        );
-        console.log('[ai] gradeQuiz:quiz_attempts columns present', {
-          cols: cols.rows.map((r) => r.column_name),
-        });
-      } catch (e) {
-        console.warn('[ai] gradeQuiz:columns probe failed', e?.message || e);
-      }
-
-      console.log('[ai] gradeQuiz:persist start', {
-        studentId,
-        courseId,
-        quizIdToInsert,
-        total,
-        correct,
-        scorePct,
-        passed,
-        passMark,
-      });
 
       try {
         const ins = await pool.query(
@@ -1185,15 +1213,15 @@ export async function gradeQuiz(req, res) {
             (id, quiz_id, total, correct, score_pct, passed, answers_json, created_at, pass_mark, student_id, course_id)
           VALUES
             (gen_random_uuid(),
-             $1::uuid,                 -- ✅ NULL allowed now
+             $1::uuid,                 -- NULL allowed
              $2, $3, $4, $5, $6::jsonb, NOW(), $7, $8, $9::uuid)
           RETURNING id, created_at
           `,
           [
-            quizIdToInsert,             // ✅ can be null
+            quizIdToInsert,
             total,
-            correct,
-            scorePct,
+            correctCount, // ✅ int-safe
+            scorePct,     // ✅ reflects partial credit
             passed,
             JSON.stringify(answersJson),
             passMark,
@@ -1204,12 +1232,6 @@ export async function gradeQuiz(req, res) {
 
         attemptSaved = ins.rowCount > 0;
         attemptId = ins.rows?.[0]?.id || null;
-
-        console.log('[ai] gradeQuiz:persist ok', {
-          attemptSaved,
-          attemptId,
-          created_at: ins.rows?.[0]?.created_at || null,
-        });
       } catch (e) {
         console.warn('[ai] gradeQuiz: failed to persist quiz_attempts', {
           message: e?.message,
@@ -1221,7 +1243,6 @@ export async function gradeQuiz(req, res) {
           column: e?.column,
           where: e?.where,
         });
-        // Don't fail grading just because persistence failed
       }
     }
 
@@ -1229,18 +1250,18 @@ export async function gradeQuiz(req, res) {
       await markLanguageQuizPassed({ courseId, userId: studentId }).catch(() => null);
     }
 
+    // ✅ Response includes per-question scoring + feedback
     return res.json({
-      correct,
+      correct: correctCount, // int-friendly
       total,
-      scorePct,
+      scorePct,              // fair score (partial credit)
       passed,
       passMark,
       assignmentId: assignmentId || null,
-
-      // Debug-only additions
       attemptSaved,
       attemptId,
       courseId: courseId || null,
+      results,
     });
   } catch (err) {
     console.error('[ai] gradeQuiz error:', err);

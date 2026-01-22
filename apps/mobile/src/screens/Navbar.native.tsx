@@ -51,7 +51,7 @@ function safeActiveKey(x: any): string {
 const NavbarNative: React.FC<Props> = ({
   items,
   activeRouteName,
-  title = 'Explore',
+  title = 'Daybreak',
   subtitle = 'Find tutors, courses, and resources',
   onPressSearch,
   onPressFilter,

@@ -181,14 +181,19 @@ const mcqQuestionForGrading = Joi.object({
 
 const shortQuestionForGrading = Joi.object({
   ...baseQuestionFields,
-  type: Joi.string().valid('short').optional(), // may be absent in some payloads
-  // canonical correct answer
+  type: Joi.string().valid('short').optional(),
   answer: Joi.string().min(1).required(),
-  // additional accepted forms
   accept: Joi.array().items(Joi.string()).optional(),
-  // optional regex (applied to normalized user text server-side)
   regex: Joi.string().optional(),
 }).or('prompt', 'display');
+
+// ✅ NEW: client "sanitized" short question (no answer key)
+const shortQuestionClientForGrading = Joi.object({
+  ...baseQuestionFields,
+  type: Joi.string().valid('short').optional(),
+  // no answer/accept/regex required here
+}).or('prompt', 'display');
+
 
 export const gradeSchema = Joi.object({
   // ✅ ADD THIS (top-level)
@@ -198,9 +203,14 @@ export const gradeSchema = Joi.object({
   quiz: Joi.object({
     quizType: Joi.string().valid('mcq', 'short').optional(),
     questions: Joi.array()
-      .items(
-        Joi.alternatives().try(mcqQuestionForGrading, shortQuestionForGrading),
+     .items(
+        Joi.alternatives().try(
+          mcqQuestionForGrading,
+          shortQuestionForGrading,
+          shortQuestionClientForGrading, // ✅ accept sanitized short questions
+        ),
       )
+
       .min(1)
       .required(),
   }).required(),

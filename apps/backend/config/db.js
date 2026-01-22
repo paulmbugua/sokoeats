@@ -3,7 +3,6 @@ import { Pool } from 'pg';
 import dotenv from 'dotenv';
 
 
-
 dotenv.config();
 
 
@@ -100,6 +99,8 @@ pool.on('error', (err) => {
     );
   }
 });
+
+
 
 /* ───────── Robust startup probe (dev/containers) ───────── */
 const startupTries = Number(process.env.DB_STARTUP_TRIES ?? 12);
