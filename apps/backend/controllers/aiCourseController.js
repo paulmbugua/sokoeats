@@ -38,8 +38,75 @@ import { markLanguageQuizPassed } from '../services/aiLanguageService.js';
 /* ─────────────────────────────────────────────────────────
  * Helpers
  * ───────────────────────────────────────────────────────── */
+
+const DEBUG_GRADE = process.env.DEBUG_GRADE === 'true';
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  const normText = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const tokens = (s) => normText(s).split(' ').filter(Boolean);
+
+const jaccard = (aTokens, bTokens) => {
+  const A = new Set(aTokens);
+  const B = new Set(bTokens);
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  const union = A.size + B.size - inter;
+  return union ? inter / union : 0;
+};
+
+// Accept q.answer as string OR array of strings OR object-like
+const getAnswerKeyStrings = (q) => {
+  const raw = q?.answer;
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+  if (typeof raw === 'string') return [raw];
+  // sometimes AI packs in {text:"...", keywords:[...]}
+  if (typeof raw === 'object') {
+    const out = [];
+    if (raw.text) out.push(String(raw.text));
+    if (Array.isArray(raw.keywords)) out.push(...raw.keywords.map(String));
+    return out.filter(Boolean);
+  }
+  return [String(raw)];
+};
+
+// loose match for keyed short answers
+const shortMatchesLoose = (userText, q) => {
+  const u = normText(userText);
+  if (!u) return { ok: false, sim: 0, reason: 'empty_user' };
+
+  const keys = getAnswerKeyStrings(q).map(normText).filter(Boolean);
+  if (!keys.length) return { ok: false, sim: 0, reason: 'no_key' };
+
+  const uTok = tokens(u);
+
+  // 1) exact normalized match
+  if (keys.some((k) => k === u)) return { ok: true, sim: 1, reason: 'exact' };
+
+  // 2) containment either way (handles long-form answers)
+  if (keys.some((k) => k.length >= 6 && u.includes(k))) return { ok: true, sim: 0.95, reason: 'user_contains_key' };
+  if (keys.some((k) => k.includes(u) && u.length >= 6)) return { ok: true, sim: 0.95, reason: 'key_contains_user' };
+
+  // 3) token similarity (Jaccard) vs best key
+  let best = 0;
+  for (const k of keys) {
+    const sim = jaccard(uTok, tokens(k));
+    if (sim > best) best = sim;
+  }
+
+  // tune threshold: 0.45–0.6 works well for short answers
+  const ok = best >= 0.5;
+  return { ok, sim: best, reason: ok ? 'token_sim' : 'low_sim' };
+};
 
 function isUuid(v) {
   return UUID_RE.test(String(v || '').trim());
@@ -1172,19 +1239,21 @@ export async function gradeQuiz(req, res) {
     };
 
     // More tolerant text picker (covers most FE shapes)
-    const pickUserTextLoose = (a) => {
-      const candidates = [
-        a?.text,
-        a?.answer,
-        a?.value,
-        a?.response,
-        a?.input,
-        a?.userText,
-        a?.shortAnswer,
-      ];
-      const t = candidates.find((x) => typeof x === 'string' && x.trim());
-      return t ? t.trim() : '';
-    };
+  const pickUserTextLoose = (a) => {
+  const candidates = [
+    a?.answerText,      // ✅ ADD THIS (your FE)
+    a?.text,
+    a?.answer,
+    a?.value,
+    a?.response,
+    a?.input,
+    a?.userText,
+    a?.shortAnswer,
+  ];
+  const t = candidates.find((x) => typeof x === 'string' && x.trim());
+  return t ? t.trim() : '';
+};
+
 
     // More tolerant choice index picker
     const pickChoiceIndexLoose = (a) => {
@@ -1311,6 +1380,11 @@ export async function gradeQuiz(req, res) {
 
       // SHORT
       const userText = pickUserTextLoose(a);
+      if (debug) {
+      console.log('[gradeQuiz] picked userText keys:', Object.keys(a || {}));
+      console.log('[gradeQuiz] picked userText length:', userText.length);
+    }
+
       const qText = questionText(q);
 
       if (debug) {
@@ -1323,25 +1397,56 @@ export async function gradeQuiz(req, res) {
 
       // If answer key exists, keep your existing strict logic
       if (q?.answer) {
-        const ok = userText ? shortMatches(userText, q) : false; // your existing function
-        const score = ok ? 1 : 0;
-        sum += score;
+  const heuristic = shortMatchesLoose(userText, q);
 
-        results.push({
-          questionId: q.id,
-          type: 'short',
-          correct: ok,
-          score,
-        });
+  if (DEBUG_GRADE) {
+    console.log('[gradeQuiz] short-key-debug:', {
+      qid,
+      key: q.answer,
+      userPreview: String(userText || '').slice(0, 120),
+      heuristic,
+    });
+  }
 
-        if (debug) {
-          console.log('[gradeQuiz] short-keyed-grade:', {
-            qid,
-            ok,
-          });
-        }
-        continue;
-      }
+  // If heuristic passes, accept full credit
+  if (heuristic.ok) {
+    sum += 1;
+    results.push({
+      questionId: q.id,
+      type: 'short',
+      correct: true,
+      score: 1,
+      feedback: heuristic.reason,
+    });
+    continue;
+  }
+
+  // ✅ If heuristic fails but user answered, use AI partial credit
+  if (userText && userText.trim()) {
+    const g = await gradeShortWithAI({ qText, userText });
+    const score = clamp01(g.score);
+    sum += score;
+
+    results.push({
+      questionId: q.id,
+      type: 'short',
+      correct: score >= 0.7,
+      score,
+      feedback: `heuristic:${heuristic.reason} sim:${heuristic.sim.toFixed(2)} | ai:${g.feedback || ''}`,
+    });
+    continue;
+  }
+
+  // no text at all
+  results.push({
+    questionId: q.id,
+    type: 'short',
+    correct: false,
+    score: 0,
+    feedback: 'No answer provided.',
+  });
+  continue;
+}
 
       // ✅ No key → AI grade (partial credit)
       const g = await gradeShortWithAI({ qText, userText });
