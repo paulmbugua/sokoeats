@@ -8,10 +8,10 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import tw from '../../../tailwind';
 import { useRoute, useNavigation, RouteProp, NavigationProp } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrgInvite } from '@mytutorapp/shared/hooks';
 import { acceptOrgInvite, acceptOrgMembershipInvite } from '@mytutorapp/shared/api';
@@ -29,7 +29,7 @@ type MainStackParamList = {
     | {
         assignmentId: string;
         courseId?: string;
-        courseTitle?: string; // ✅ NEW
+        courseTitle?: string;
         lock?: string;
         flow?: string;
         qt?: string;
@@ -44,9 +44,7 @@ type Nav = NavigationProp<MainStackParamList>;
 // normalize & resolve quizType from varying shapes
 type QuizType = 'mcq' | 'short';
 const normalizeQuizType = (v: unknown): QuizType | null => {
-  const s = String(v ?? '')
-    .trim()
-    .toLowerCase();
+  const s = String(v ?? '').trim().toLowerCase();
   if (!s) return null;
   if (['mcq', 'multiple', 'multiple_choice', 'multiple-choice', 'choice', 'choices'].includes(s))
     return 'mcq';
@@ -89,6 +87,8 @@ const ROBOT_SCREEN = 'RobotTutor' as const;
 const OrgInviteLandingNative: React.FC = () => {
   const route = useRoute<ScreenRoute>();
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
+
   const code = route.params?.code ?? '';
 
   // ⬇️ Match web: allow both direct token and orgToken
@@ -190,14 +190,12 @@ const OrgInviteLandingNative: React.FC = () => {
 
   // UI parts
   const orgName = (meta as OrgInviteInfo | undefined)?.org_name ?? 'Organization';
-
-  // ✅ Landing title now uses robust resolver
   const title = kind === 'membership' ? 'Join organization' : inviteTitleInfo.title;
-
   const subtitle =
     kind === 'membership'
       ? 'You have been invited to join this organization.'
       : 'Invitation to learn';
+
   const logoUrl = kind === 'assignment' ? (meta as OrgInviteInfo | undefined)?.logo_url : undefined;
   const signatureUrl =
     kind === 'assignment' ? (meta as OrgInviteInfo | undefined)?.signature_url : undefined;
@@ -219,7 +217,6 @@ const OrgInviteLandingNative: React.FC = () => {
       return;
     }
 
-    // Require auth; send to org login with return target (similar to web)
     if (!learnerToken) {
       navigation.navigate('OrgLogin', {
         next: `/org/join/${code}`,
@@ -233,16 +230,12 @@ const OrgInviteLandingNative: React.FC = () => {
       if (kind === 'membership') {
         const resp: any = await acceptOrgMembershipInvite(backendUrl, learnerToken, code);
         if (!resp?.ok) throw new Error('Failed to join organization.');
-        Alert.alert('Joined', 'You have joined the organization.');
         navigation.navigate('OrgElearnPortal' as never);
         return;
       }
 
-      // assignment path
       const resp: any = await acceptOrgInvite(backendUrl, learnerToken, code);
-      if (!resp?.ok) {
-        throw new Error(resp?.message || 'Failed to accept invite.');
-      }
+      if (!resp?.ok) throw new Error(resp?.message || 'Failed to accept invite.');
 
       const enrollment = resp.enrollment ?? resp.attempt ?? resp;
 
@@ -258,31 +251,17 @@ const OrgInviteLandingNative: React.FC = () => {
         (meta as OrgInviteInfo | undefined)?.course_id ??
         '';
 
-      if (!assignmentId) {
-        throw new Error('Invite accepted, but no assignment found.');
-      }
-      if (!courseId) {
-        throw new Error('Shared course not found.');
-      }
+      if (!assignmentId) throw new Error('Invite accepted, but no assignment found.');
+      if (!courseId) throw new Error('Shared course not found.');
 
       const qt = resolveQuizType(meta as any);
       const qs = resolveQuizSize(meta as any);
-
-      const courseTitle = inviteTitleInfo.title; // ✅ “Title Passport”
-
-      console.log('[OrgInviteLandingNative] accept → RobotTutor nav', {
-        assignmentId,
-        courseId,
-        courseTitle,
-        qt,
-        qs,
-        enrollmentKeys: enrollment ? Object.keys(enrollment) : [],
-      });
+      const courseTitle = inviteTitleInfo.title;
 
       navigation.navigate(ROBOT_SCREEN, {
         assignmentId: String(assignmentId),
         courseId: courseId ? String(courseId) : undefined,
-        courseTitle, // ✅ PASS IT
+        courseTitle,
         lock: '1',
         flow: 'org',
         ...(qt ? { qt } : {}),
@@ -316,18 +295,43 @@ const OrgInviteLandingNative: React.FC = () => {
     inviteTitleInfo.title,
   ]);
 
+  const topPad = Math.max(insets.top, 12);
+  const bottomPad = Math.max(insets.bottom, 16);
+
+  // Small UI helper for meta chips (light/dark)
+  const Chip = ({ label }: { label: React.ReactNode }) => (
+    <View style={tw`px-3 py-1 mr-2 mb-2 rounded-full bg-[#e7edf4] dark:bg-[#172534]`}>
+      <Text style={tw`text-xs text-[#0d141c] dark:text-white`}>{label}</Text>
+    </View>
+  );
+
   return (
-    <View style={tw`flex-1 bg-[#0b1220] px-3 pt-6 pb-4`}>
-      <ScrollView contentContainerStyle={tw`grow items-center`}>
-        <View style={tw`w-full max-w-xl rounded-2xl border border-white/10 bg-white/5 p-4`}>
+    <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
+      {/* Soft background orbs (match FindTutor vibe) */}
+      <View style={tw`absolute inset-0`}>
+        <View style={tw`absolute -top-16 -right-10 h-36 w-36 rounded-full bg-pink-500/12 dark:bg-pink-500/10`} />
+        <View style={tw`absolute -bottom-24 -left-20 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/10`} />
+      </View>
+
+      <ScrollView
+        contentContainerStyle={[
+          tw`grow items-center px-3`,
+          { paddingTop: topPad + 8, paddingBottom: bottomPad + 16 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View
+          style={tw`w-full max-w-xl rounded-2xl bg-white dark:bg-[#0f1821] border border-[#e2edf5] dark:border-white/10 p-4 shadow-sm`}
+        >
           {/* Loading / invalid */}
           {loading ? (
             <View>
-              <Text style={tw`text-white/80 text-sm`}>Loading…</Text>
+              <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>Loading…</Text>
             </View>
           ) : !meta ? (
             <View>
-              <Text style={tw`text-white/80 text-sm`}>{error || 'Invalid invite.'}</Text>
+              <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`}>{error || 'Invalid invite.'}</Text>
             </View>
           ) : (
             <>
@@ -336,17 +340,18 @@ const OrgInviteLandingNative: React.FC = () => {
                 {!!logoUrl && (
                   <Image
                     source={{ uri: logoUrl }}
-                    style={tw`h-10 w-10 rounded mr-3`}
+                    style={tw`h-10 w-10 rounded mr-3 bg-[#e7edf4] dark:bg-[#172534]`}
                     resizeMode="cover"
                   />
                 )}
+
                 <View style={tw`flex-1`}>
-                  <Text style={tw`text-white/70 text-[13px]`}>{subtitle}</Text>
-                  <Text style={tw`text-white text-lg font-semibold`} numberOfLines={2}>
+                  <Text style={tw`text-[#49739c] dark:text-white/70 text-[13px]`}>{subtitle}</Text>
+                  <Text style={tw`text-[#0d141c] dark:text-white text-lg font-semibold`} numberOfLines={2}>
                     {title}
                   </Text>
                   {!!orgName && (
-                    <Text style={tw`text-white/70 text-sm`} numberOfLines={1}>
+                    <Text style={tw`text-[#49739c] dark:text-white/70 text-sm`} numberOfLines={1}>
                       {orgName}
                     </Text>
                   )}
@@ -356,60 +361,81 @@ const OrgInviteLandingNative: React.FC = () => {
               {/* Meta row — assignment-only */}
               {kind === 'assignment' && (
                 <View style={tw`flex-row flex-wrap mt-4`}>
-                  <View style={tw`px-2 py-1 mr-2 mb-2 rounded-full bg-white/10`}>
-                    <Text style={tw`text-white text-xs`}>
-                      Pass mark: <Text style={tw`font-bold`}>{passMarkLabel}</Text>
-                    </Text>
-                  </View>
-                  <View style={tw`px-2 py-1 mr-2 mb-2 rounded-full bg-white/10`}>
-                    <Text style={tw`text-white text-xs`}>
-                      Timer: <Text style={tw`font-bold`}>{timerLabel}</Text>
-                    </Text>
-                  </View>
+                  <Chip
+                    label={
+                      <>
+                        Pass mark: <Text style={tw`font-bold`}>{passMarkLabel}</Text>
+                      </>
+                    }
+                  />
+                  <Chip
+                    label={
+                      <>
+                        Timer: <Text style={tw`font-bold`}>{timerLabel}</Text>
+                      </>
+                    }
+                  />
                   {typeof maxAttempts === 'number' && (
-                    <View style={tw`px-2 py-1 mr-2 mb-2 rounded-full bg-white/10`}>
-                      <Text style={tw`text-white text-xs`}>
-                        Attempts:{' '}
-                        <Text style={tw`font-bold`}>{maxAttempts === 0 ? '∞' : maxAttempts}</Text>
-                      </Text>
-                    </View>
+                    <Chip
+                      label={
+                        <>
+                          Attempts: <Text style={tw`font-bold`}>{maxAttempts === 0 ? '∞' : maxAttempts}</Text>
+                        </>
+                      }
+                    />
                   )}
                   {!!dueLabel && (
-                    <View style={tw`px-2 py-1 mr-2 mb-2 rounded-full bg-white/10`}>
-                      <Text style={tw`text-white text-xs`}>
-                        Due: <Text style={tw`font-bold`}>{dueLabel}</Text>
-                      </Text>
-                    </View>
+                    <Chip
+                      label={
+                        <>
+                          Due: <Text style={tw`font-bold`}>{dueLabel}</Text>
+                        </>
+                      }
+                    />
                   )}
-                  <View style={tw`px-2 py-1 mr-2 mb-2 rounded-full bg-white/10`}>
-                    <Text style={tw`text-white text-xs`}>
-                      Answer type: <Text style={tw`font-bold`}>{quizTypeLabel}</Text>
-                    </Text>
-                  </View>
+                  <Chip
+                    label={
+                      <>
+                        Answer type: <Text style={tw`font-bold`}>{quizTypeLabel}</Text>
+                      </>
+                    }
+                  />
                   {quizSize != null && (
-                    <View style={tw`px-2 py-1 mr-2 mb-2 rounded-full bg-white/10`}>
-                      <Text style={tw`text-white text-xs`}>
-                        Questions: <Text style={tw`font-bold`}>{quizSize}</Text>
-                      </Text>
-                    </View>
+                    <Chip
+                      label={
+                        <>
+                          Questions: <Text style={tw`font-bold`}>{quizSize}</Text>
+                        </>
+                      }
+                    />
                   )}
                 </View>
               )}
 
               {/* What to expect */}
-              <View style={tw`mt-3 rounded-xl border border-white/10 bg-white/5 p-3 flex-row`}>
+              <View
+                style={tw`mt-3 rounded-xl border border-[#e2edf5] dark:border-white/10 bg-[#f4f7fb] dark:bg-white/5 p-3 flex-row`}
+              >
                 <View
-                  style={tw`h-8 w-8 rounded-lg items-center justify-center mr-3 ${
-                    quizType === 'short' ? 'bg-emerald-600' : 'bg-indigo-600'
-                  }`}
+                  style={tw.style(
+                    `h-8 w-8 rounded-lg items-center justify-center mr-3`,
+                    kind === 'membership'
+                      ? 'bg-sky-600'
+                      : quizType === 'short'
+                        ? 'bg-emerald-600'
+                        : 'bg-indigo-600'
+                  )}
                 >
-                  <Text style={tw`text-white`}>{quizType === 'short' ? '⌨️' : '📝'}</Text>
+                  <Text style={tw`text-white`}>
+                    {kind === 'membership' ? '🏫' : quizType === 'short' ? '⌨️' : '📝'}
+                  </Text>
                 </View>
+
                 <View style={tw`flex-1`}>
-                  <Text style={tw`text-white text-sm font-semibold`}>
+                  <Text style={tw`text-[#0d141c] dark:text-white text-sm font-semibold`}>
                     {kind === 'membership' ? 'Organization access' : quizTypeLabel}
                   </Text>
-                  <Text style={tw`text-white/70 text-xs mt-0.5`}>
+                  <Text style={tw`text-[#49739c] dark:text-white/70 text-xs mt-0.5`}>
                     {kind === 'membership'
                       ? 'You will be added to this organization. Your admins can assign courses to you afterwards.'
                       : quizTypeDesc || 'Your organization set the answer format for this quiz.'}
@@ -419,11 +445,14 @@ const OrgInviteLandingNative: React.FC = () => {
 
               {/* Domain restriction (assignment-only UI) */}
               {kind === 'assignment' && domainRestricted && (
-                <View style={tw`mt-3 rounded-lg bg-yellow-500/10 border border-yellow-400/20 p-3`}>
-                  <Text style={tw`text-yellow-200 text-xs font-semibold`}>Restricted invite</Text>
-                  <Text style={tw`text-yellow-200 text-xs mt-1`}>
-                    Only emails from <Text style={tw`font-bold`}>{allowedDomains.join(', ')}</Text>{' '}
-                    can accept this invite.
+                <View
+                  style={tw`mt-3 rounded-lg bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-200 dark:border-yellow-400/20 p-3`}
+                >
+                  <Text style={tw`text-yellow-800 dark:text-yellow-200 text-xs font-semibold`}>
+                    Restricted invite
+                  </Text>
+                  <Text style={tw`text-yellow-800 dark:text-yellow-200 text-xs mt-1`}>
+                    Only emails from <Text style={tw`font-bold`}>{allowedDomains.join(', ')}</Text> can accept this invite.
                     {learnerToken
                       ? ' If this isn’t your organization email, sign out and sign back in with the permitted address.'
                       : ' Please sign in using an email on one of those domains.'}
@@ -436,9 +465,7 @@ const OrgInviteLandingNative: React.FC = () => {
                 <TouchableOpacity
                   onPress={onAccept}
                   disabled={accepting || loading}
-                  style={tw`w-full rounded-xl bg-emerald-600 py-3 items-center ${
-                    accepting || loading ? 'opacity-60' : ''
-                  }`}
+                  style={tw`w-full rounded-xl bg-emerald-600 py-3 items-center ${accepting || loading ? 'opacity-60' : ''}`}
                 >
                   {accepting || loading ? (
                     <ActivityIndicator color="#fff" />
@@ -449,40 +476,36 @@ const OrgInviteLandingNative: React.FC = () => {
 
                 <TouchableOpacity
                   onPress={() => navigation.goBack()}
-                  style={tw`mt-2 w-full rounded-xl bg-white/10 py-3 items-center`}
+                  style={tw`mt-2 w-full rounded-xl bg-[#e7edf4] dark:bg-[#172534] py-3 items-center border border-[#e2edf5] dark:border-white/10`}
                 >
-                  <Text style={tw`text-white`}>Cancel</Text>
+                  <Text style={tw`text-[#0d141c] dark:text-white`}>Cancel</Text>
                 </TouchableOpacity>
               </View>
 
               {/* Signature (assignment-only) */}
               {kind === 'assignment' && !!signatureUrl && (
                 <View style={tw`mt-4 items-start`}>
-                  <Image
-                    source={{ uri: signatureUrl }}
-                    style={tw`h-10 w-40 opacity-70`}
-                    resizeMode="contain"
-                  />
+                  <Image source={{ uri: signatureUrl }} style={tw`h-10 w-40 opacity-70`} resizeMode="contain" />
                 </View>
               )}
 
               {/* Error */}
-              {!!error && <Text style={tw`mt-3 text-yellow-300 text-xs`}>{error}</Text>}
+              {!!error && (
+                <Text style={tw`mt-3 text-rose-600 dark:text-yellow-300 text-xs`}>{error}</Text>
+              )}
 
               {/* Footnote */}
               {!!orgName && (
-                <Text style={tw`mt-4 text-[12px] text-white/60`}>
+                <Text style={tw`mt-4 text-[12px] text-[#49739c] dark:text-white/60`}>
                   {kind === 'membership' ? (
                     <>
-                      By joining, you’ll be added to{' '}
-                      <Text style={tw`font-semibold`}>{orgName}</Text>. Your admins may assign
+                      By joining, you’ll be added to <Text style={tw`font-semibold`}>{orgName}</Text>. Your admins may assign
                       courses to you.
                     </>
                   ) : (
                     <>
-                      By starting, you’ll be added as a learner in{' '}
-                      <Text style={tw`font-semibold`}>{orgName}</Text> for this course. Your attempt
-                      may be timed and limited by your organization’s policy.
+                      By starting, you’ll be added as a learner in <Text style={tw`font-semibold`}>{orgName}</Text> for this course.
+                      Your attempt may be timed and limited by your organization’s policy.
                     </>
                   )}
                 </Text>
@@ -491,7 +514,7 @@ const OrgInviteLandingNative: React.FC = () => {
           )}
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 

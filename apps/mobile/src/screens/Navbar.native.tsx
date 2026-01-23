@@ -2,14 +2,14 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import type { StackNavigationProp } from '@react-navigation/stack';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import tw from '../../tailwind';
 import type { MainStackParamList } from '../navigation/types';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useThemePref } from '../theme/ThemeContext';
 
-type NavProp = StackNavigationProp<MainStackParamList>;
+type NavProp = NativeStackNavigationProp<MainStackParamList>;
 type MIName = React.ComponentProps<typeof MaterialIcons>['name'];
 
 type NavbarItem = {
@@ -80,17 +80,20 @@ const NavbarNative: React.FC<Props> = ({
     return () => (typeof unsub === 'function' ? unsub() : undefined);
   }, [navigation]);
 
-  const go = useCallback(
-    (name: keyof MainStackParamList, params?: any) => {
-      try {
-        // @ts-ignore
-        navigation.navigate(name as never, params as never);
-      } catch {
-        // ignore
-      }
-    },
-    [navigation]
-  );
+ const go = useCallback(
+  <T extends keyof MainStackParamList>(
+    name: T,
+    params?: MainStackParamList[T]
+  ) => {
+    try {
+      if (params === undefined) navigation.navigate(name as any);
+      else navigation.navigate(name as any, params as any);
+    } catch {}
+  },
+  [navigation]
+);
+
+
 
   const defaultItems = useMemo<NavbarItem[]>(
     () => [

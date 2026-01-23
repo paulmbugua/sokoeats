@@ -94,7 +94,8 @@ export default function expoConfig({ config }) {
 
       notification: {
         icon: './assets/notification-icon.png',
-        color: '#FF6B00',
+        color: '#A057ff',
+
         defaultChannel: 'default',
       },
 

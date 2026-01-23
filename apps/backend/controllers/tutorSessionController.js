@@ -24,65 +24,101 @@ async function getFxRate(base, quote) {
 // Create a New Session
 export const createSession = async (req, res) => {
   console.log('Received Payload:', req.body);
-  try {
-    // ← include tutorName here
-    const { tutorId, tutorName, subject, date, sessionType, note } =
-      await sessionValidationSchema.validateAsync(req.body);
-    const studentUserId = req.user.id; // Authenticated user's ID
 
-    // Fetch student details
-    const studentUser = await pool.query('SELECT * FROM users WHERE id = $1', [
+  try {
+    // ✅ Only validate keys your API actually accepts
+    const cleanBody = {
+      tutorId: req.body?.tutorId,
+      tutorName: req.body?.tutorName,
+      subject: req.body?.subject,
+      pricing: req.body?.pricing,
+      date: req.body?.date,
+      sessionType: req.body?.sessionType,
+      note: req.body?.note,
+    };
+
+    const { tutorId, tutorName, subject, date, sessionType, note } =
+      await sessionValidationSchema.validateAsync(cleanBody, {
+        abortEarly: false,
+        allowUnknown: false,
+        convert: true,
+      });
+
+    // ✅ Authenticated student user id (users.id)
+    const studentUserId = req.user.id;
+
+    // 1) Fetch student details (users.id)
+    const studentUserRes = await pool.query('SELECT * FROM users WHERE id = $1', [
       studentUserId,
     ]);
-    if (studentUser.rows.length === 0)
-      return res.status(404).json({ message: 'Student user not found.' });
 
-    // Fetch tutor's profile by matching profiles.user_id = tutorId
+    if (studentUserRes.rows.length === 0) {
+      console.warn('[createSession] student user NOT FOUND', { studentUserId });
+      return res.status(404).json({ message: 'Student user not found.' });
+    }
+
+    const studentUser = studentUserRes.rows[0];
+
+    // 2) Fetch tutor profile (accept profiles.id OR profiles.user_id)
     const tutorProfileRes = await pool.query(
-      'SELECT * FROM profiles WHERE user_id = $1',
-      [tutorId],
+      `
+      SELECT *
+      FROM profiles
+      WHERE user_id::text = $1
+         OR id::text      = $1
+      LIMIT 1
+      `,
+      [String(tutorId)],
     );
-    if (tutorProfileRes.rows.length === 0)
+
+    if (tutorProfileRes.rows.length === 0) {
+      console.warn('[createSession] tutor profile NOT FOUND (user_id or id)', { tutorId });
       return res.status(404).json({ message: 'Tutor not found.' });
+    }
+
     const tutorProfile = tutorProfileRes.rows[0];
 
-    // Validate session pricing
+    // ✅ canonical tutor users.id (THIS is what tutor_sessions.tutor_id expects)
+    const tutorUserId = tutorProfile.user_id;
+
+    // 3) Validate session pricing (from tutorProfile)
     const pricingData = tutorProfile.pricing;
     const pricing =
-      typeof pricingData === 'string'
-        ? JSON.parse(pricingData)
-        : pricingData || {};
-    const sessionCost = pricing[sessionType];
+      typeof pricingData === 'string' ? JSON.parse(pricingData) : pricingData || {};
+
+    const sessionCost = pricing?.[sessionType];
+
     if (!sessionCost) {
       return res
         .status(400)
         .json({ message: 'Invalid session type or pricing not available.' });
     }
 
-    // Check student token balance
-    if (studentUser.rows[0].tokens < sessionCost) {
-      const tokenDifference = sessionCost - studentUser.rows[0].tokens;
+    // 4) Check student token balance
+    if (Number(studentUser.tokens) < Number(sessionCost)) {
+      const tokenDifference = Number(sessionCost) - Number(studentUser.tokens);
       return res.status(400).json({
         message: `Insufficient tokens. You need ${tokenDifference} more tokens to book this session.`,
       });
     }
 
-    // Deduct tokens from the student
+    // 5) Deduct tokens from the student
     await pool.query('UPDATE users SET tokens = tokens - $1 WHERE id = $2', [
       sessionCost,
       studentUserId,
     ]);
 
-    // ← include tutor_name in the INSERT
+    // 6) Create session (✅ use tutorUserId in tutor_sessions.tutor_id)
     const newSession = await pool.query(
       `INSERT INTO tutor_sessions
-         (tutor_id, tutor_name, student_id, session_type, subject, date, status, amount, type, description, created_at) 
-       VALUES ($1,      $2,         $3,         $4,           $5,      $6,   'upcoming', $7,     'session', $8,        NOW()) 
+         (tutor_id, tutor_name, student_id, session_type, subject, date, status, amount, type, description, created_at)
+       VALUES
+         ($1,       $2,         $3,         $4,           $5,      $6,   'upcoming', $7,     'session', $8,        NOW())
        RETURNING *`,
       [
-        tutorId, // users.id
-        tutorName, // newly captured tutor name
-        studentUserId, // users.id
+        tutorUserId,          // ✅ users.id (canonical)
+        tutorName || tutorProfile.name || null,
+        studentUserId,        // users.id
         sessionType,
         subject,
         date,
@@ -91,8 +127,10 @@ export const createSession = async (req, res) => {
       ],
     );
 
+    // 7) Unlock chat (✅ use tutorUserId everywhere downstream)
     const studentProfileId = await getProfileIdForUserId(studentUserId);
-    const tutorProfileId = await getProfileIdForUserId(tutorId);
+    const tutorProfileId = await getProfileIdForUserId(tutorUserId);
+
     if (studentProfileId && tutorProfileId) {
       const conversationResult = await pool.query(
         `SELECT id FROM conversations
@@ -101,7 +139,9 @@ export const createSession = async (req, res) => {
          LIMIT 1`,
         [studentProfileId, tutorProfileId],
       );
+
       let conversationId = conversationResult.rows[0]?.id;
+
       if (!conversationId) {
         const newConversation = await pool.query(
           `INSERT INTO conversations (sender_id, recipient_id, unread_count, chat_status)
@@ -112,7 +152,8 @@ export const createSession = async (req, res) => {
         conversationId = newConversation.rows[0].id;
       } else {
         await pool.query(
-          `UPDATE conversations SET chat_status='unlocked', updated_at=NOW()
+          `UPDATE conversations
+             SET chat_status='unlocked', updated_at=NOW()
            WHERE id=$1 AND chat_status <> 'unlocked'`,
           [conversationId],
         );
@@ -122,30 +163,37 @@ export const createSession = async (req, res) => {
       emitToProfile(tutorProfileId, 'chatUnlocked', { conversationId });
     }
 
-    // Send email notifications
-    const tutorUser = await pool.query('SELECT * FROM users WHERE id = $1', [
-      tutorId,
+    // 8) Email tutor (✅ fetch tutor user using tutorUserId)
+    const tutorUserRes = await pool.query('SELECT * FROM users WHERE id = $1', [
+      tutorUserId,
     ]);
-    if (tutorUser.rows.length === 0)
+
+    if (tutorUserRes.rows.length === 0) {
+      console.warn('[createSession] tutor user NOT FOUND', { tutorUserId, tutorId });
       return res.status(404).json({ message: 'Tutor user not found.' });
+    }
+
+    const tutorUser = tutorUserRes.rows[0];
 
     await sendNotification({
-      to: tutorUser.rows[0].email,
+      to: tutorUser.email,
       subject: 'New Tutoring Session Scheduled',
-      body: `Dear ${tutorUser.rows[0].name},\n\nA new session has been scheduled with you by ${studentUser.rows[0].name}.\n\nSession Details:\nSubject: ${subject}\nDate: ${new Date(
+      body: `Dear ${tutorUser.name},\n\nA new session has been scheduled with you by ${studentUser.name}.\n\nSession Details:\nSubject: ${subject}\nDate: ${new Date(
         date,
       ).toLocaleString()}\nSession Type: ${sessionType}\n\nBest regards,\nTutoring Platform`,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: 'Session created successfully.',
       session: newSession.rows[0],
+      tutorUserId, // optional for debugging
     });
   } catch (error) {
     console.error('Error creating session:', error.message || error);
-    res.status(500).json({ message: 'Internal server error.' });
+    return res.status(500).json({ message: 'Internal server error.' });
   }
 };
+;
 
 export const acceptSession = async (req, res) => {
   try {

@@ -2087,23 +2087,7 @@ const startLanguageFromCard = useCallback(async (language: string) => {
 
               </View>
 
-              {/* Share dialog near header */}
-              <Modal
-                visible={canShareUi && shareOpen}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setShareOpen(false)}
-              >
-                <OrgShareDialog
-                  open={canShareUi && shareOpen}
-                  onClose={() => setShareOpen(false)}
-                  courseId={selectedCourse?.id || null}
-                  courseTitle={effectiveCourseTitle || null}
-                  totalLessons={safeLessons}
-                  quizCount={safeQuiz}
-                  minutes={capMinutes(minutes)}
-                />
-              </Modal>
+              
 
               <Modal
   visible={Boolean(llUnlockOpen && llUnlockCtx)}
@@ -2502,6 +2486,18 @@ const startLanguageFromCard = useCallback(async (language: string) => {
             )}
           </View>
         </RefreshableScrollView>
+        
+              {/* Share dialog near header */}
+             
+                <OrgShareDialog
+                  open={canShareUi && shareOpen}
+                  onClose={() => setShareOpen(false)}
+                  courseId={selectedCourse?.id || null}
+                  courseTitle={effectiveCourseTitle || null}
+                  totalLessons={safeLessons}
+                  quizCount={safeQuiz}
+                  minutes={capMinutes(minutes)}
+                />
 
         {/* ✅ GLOBAL OVERLAY LAYER (outside ScrollView, above everything) */}
         <View
@@ -2515,6 +2511,7 @@ const startLanguageFromCard = useCallback(async (language: string) => {
             ref={overlayRef}
           />
         </View>
+        
       </View>
     </SafeAreaView>
   );

@@ -1,6 +1,6 @@
 /// <reference path="../declarations.d.ts" />
 /* eslint-disable prettier/prettier */
-
+import axios, { AxiosError } from 'axios';
 import {
   useFocusEffect,
   useNavigation,
@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getTutorProfile } from '@mytutorapp/shared/api/profileDetailApi';
 
 import Spinner from './Spinner.native';
 import useAccountSection from '@mytutorapp/shared/hooks/useAccountSection';
@@ -155,7 +156,7 @@ const buildSessionBannerFromErrors = (errs: SessionFormErrors) => {
 
 const AccountSectionNative: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const { backendUrl } = useShopContext();
+ const { backendUrl, token } = useShopContext();
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'Account'>>();
   const { resolvedScheme } = useThemePref();
@@ -187,7 +188,14 @@ const AccountSectionNative: React.FC = () => {
     if (params.comment) qp.set('comment', params.comment);
     if (params.description) qp.set('description', params.description);
     if (params.note) qp.set('note', params.note);
-    if (params.pricing) qp.set('pricing', JSON.stringify(params.pricing));
+    if (params.pricing) {
+        const p =
+          typeof (params as any).pricing === 'string'
+            ? String((params as any).pricing)
+            : JSON.stringify((params as any).pricing);
+        qp.set('pricing', p);
+      }
+
     if (params.tab) qp.set('tab', params.tab);
     return qp;
   }, [params]);
@@ -260,16 +268,52 @@ const AccountSectionNative: React.FC = () => {
     },
   });
 
-  const sessionTypeOptions: SelectOption[] = useMemo(() => {
-    const pricingMap = formData.pricing as Record<string, number | string> | undefined;
-    if (!pricingMap) return [];
-    return Object.entries(pricingMap).map(([type, price]) => ({
-      value: type,
-      label: `${type.charAt(0).toUpperCase() + type.slice(1)} – ${price} Tokens`,
-    }));
-  }, [formData.pricing]);
+  const pricingObj = useMemo(() => {
+  // ✅ prefer params.pricing (what navigation passed)
+  const fromParams: any = (params as any)?.pricing;
 
-  const hasSessionTypes = sessionTypeOptions.length > 0;
+  // fallback to hook state
+  const fromForm: any = (formData as any)?.pricing;
+
+  const candidate = fromParams && Object.keys(fromParams).length ? fromParams : fromForm;
+
+  if (!candidate) return {};
+
+  if (typeof candidate === 'string') {
+    try {
+      const parsed = JSON.parse(candidate);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  return typeof candidate === 'object' ? candidate : {};
+}, [params, (formData as any)?.pricing]);
+
+
+const pricingEntries = useMemo(
+  () => Object.entries(pricingObj).filter(([k]) => !!k),
+  [pricingObj]
+);
+
+const sessionTypeOptions: SelectOption[] = useMemo(() => {
+  return pricingEntries.map(([type, price]) => ({
+    value: type,
+    label: `${type.charAt(0).toUpperCase() + type.slice(1)} – ${String(price)} Tokens`,
+  }));
+}, [pricingEntries]);
+
+const hasSessionTypes = sessionTypeOptions.length > 0;
+
+
+  useEffect(() => {
+  console.log('[Account] params.pricing =', params?.pricing);
+  console.log('[Account] formData.pricing =', (formData as any)?.pricing);
+  console.log('[Account] pricingObj =', pricingObj);
+  console.log('[Account] sessionTypeOptions =', sessionTypeOptions);
+}, [params?.pricing, (formData as any)?.pricing, pricingObj, sessionTypeOptions]);
+
 
   const { lifetimeByCurrency, pendingWithdrawalsByCurrency, completedEarnings } = useMemo(() => {
     const sums: Record<string, number> = {};
@@ -302,6 +346,123 @@ const AccountSectionNative: React.FC = () => {
   );
 
   const earningsLastSeenRef = useRef<number | null>(null);
+  const isEmptyObj = (o: any) => !o || typeof o !== 'object' || Object.keys(o).length === 0;
+
+useEffect(() => {
+  const tutorId = String(params.tutorId || formData.tutorId || '');
+  if (!tutorId) return;
+
+  const wantsSession = params.action === 'createSession';
+  if (!wantsSession) return;
+
+  // already have pricing? stop.
+  if (!isEmptyObj(pricingObj)) return;
+
+  let cancelled = false;
+
+  (async () => {
+  try {
+    const base = backendUrl.replace(/\/$/, '');
+
+    let data: any = null;
+
+    try {
+      // 1) try user endpoint
+      data = await getTutorProfile(base, token || '', tutorId);
+    } catch (e) {
+      const ae = e as AxiosError;
+
+      // 2) fallback to /api/profile/:id if 404
+      if (ae.response?.status === 404) {
+        const resp = await axios.get(`${base}/api/profile/${encodeURIComponent(tutorId)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          timeout: 10000,
+        });
+        data = resp.data;
+      } else {
+        throw e;
+      }
+    }
+
+    const p = data?.pricing || data?.profile?.pricing || data?.tutorProfile?.pricing || null;
+    if (!p || typeof p !== 'object') return;
+
+    const pricing = Object.fromEntries(
+      Object.entries(p).map(([k, v]) => [k, String(v ?? '0')])
+    );
+
+    setFormData((prev: any) => ({ ...prev, tutorId, pricing }));
+
+    setFormData((prev: any) => {
+      if (prev.sessionType) return prev;
+      const [firstKey] = Object.keys(pricing);
+      if (!firstKey) return prev;
+      return {
+        ...prev,
+        sessionType: firstKey,
+        sessionCost: String(pricing[firstKey] ?? '0'),
+        pricing,
+      };
+    });
+  } catch (e) {
+      console.log('[AccountSectionNative] pricing fetch failed', e);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [params.action, params.tutorId, formData.tutorId, backendUrl, token, pricingObj, setFormData]);
+
+  useEffect(() => {
+  const p: any = (params as any)?.pricing;
+  const hasP = p && typeof p === 'object' && Object.keys(p).length > 0;
+
+  const fp: any = (formData as any)?.pricing;
+  const hasFP = fp && typeof fp === 'object' && Object.keys(fp).length > 0;
+
+  if (hasP && !hasFP) {
+    setFormData({ ...formData, pricing: p });
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [(params as any)?.pricing]);
+
+// ✅ Ensure navigation params hydrate the session form (especially when Account is already mounted)
+useEffect(() => {
+  if (params?.action !== 'createSession') return;
+
+  setFormData((prev: any) => ({
+    ...prev,
+    tutorId: params.tutorId ?? prev.tutorId ?? '',
+    tutorName: params.tutorName ?? prev.tutorName ?? '',
+    subject: params.subject ?? prev.subject ?? '',
+
+    // keep your unlock context if present
+    comment: params.comment ?? prev.comment,
+    description: params.description ?? prev.description,
+    note: params.note ?? prev.note,
+
+    // pricing may arrive from Messages
+    pricing: (params as any)?.pricing ?? prev.pricing,
+  }));
+
+  // optional: clear old validation errors when arriving with prefilled values
+  setSessionFormErrors((prev) => ({ ...prev, subject: undefined, tutorId: undefined }));
+  setSessionBanner('');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [
+  params?.action,
+  params?.tutorId,
+  params?.tutorName,
+  params?.subject,
+  params?.comment,
+  params?.description,
+  params?.note,
+  (params as any)?.pricing,
+  setFormData,
+]);
+
+
   useEffect(() => {
     const current = earnings?.available ?? approxAvailable;
     const prev = earningsLastSeenRef.current;
@@ -624,17 +785,19 @@ const AccountSectionNative: React.FC = () => {
                 <View style={tw`mt-1`}>
                   <SelectField
                     value={formData.sessionType || ''}
-                    onChange={(sessionType) => {
-                      const sessionCost = String(
-                        (formData.pricing as Record<string, number | string>)?.[sessionType] ?? 0
-                      );
-                      setFormData({ ...formData, sessionType, sessionCost });
+                   onChange={(sessionType) => {
+                    const sessionCost = String((pricingObj as any)?.[sessionType] ?? 0);
 
-                      if (sessionFormErrors.sessionType) {
-                        const { sessionType: _st, ...rest } = sessionFormErrors;
-                        setSessionFormErrors(rest);
-                      }
-                    }}
+                    // ✅ keep pricing object in state (same as web)
+                    setFormData({ ...formData, sessionType, sessionCost, pricing: pricingObj });
+
+                    if (sessionFormErrors.sessionType) {
+                      const { sessionType: _st, ...rest } = sessionFormErrors;
+                      setSessionFormErrors(rest);
+                    }
+                  }}
+
+
                     options={sessionTypeOptions}
                     placeholder={
                       hasSessionTypes ? 'Select Session Type' : 'No session types configured'
@@ -644,7 +807,9 @@ const AccountSectionNative: React.FC = () => {
                     placeholderColor={placeholderColor}
                     selectedTextColor={selectedTextColor}
                   />
+                  
                 </View>
+                
 
                 {/* Date */}
                 <TouchableOpacity

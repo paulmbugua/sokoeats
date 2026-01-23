@@ -1,6 +1,6 @@
 /// <reference path="../declarations.d.ts" />
 
-import React, { useMemo, useEffect, useCallback, useState } from 'react';
+import React, { useMemo, useEffect, useCallback } from 'react';
 import { View, Text, Image, TouchableOpacity, ScrollView, TextInput, Modal } from 'react-native';
 import { useRoute, useNavigation, RouteProp, NavigationProp } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import useProfileDetail from '@mytutorapp/shared/hooks/useProfileDetail';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useProfileCard } from '@mytutorapp/shared/hooks';
 import type { TutorProfile, Role, Profile } from '@mytutorapp/shared/types';
+import debounce from 'lodash.debounce';
 import tw from '../../tailwind';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import ProfileCard from './ProfileCard.native';
@@ -141,13 +142,21 @@ const ProfileDetailPage: React.FC = () => {
   const {
     tutorProfile,
     loading,
+    showChat,
+    newMessage,
+    setNewMessage,
+    toggleChat,
+    handleCreateSession,
+    handleSendMessage,
+    chatMessages,
     selectedImage,
     handleImageClick,
     closeModal,
-    chatStatus,
-    prebookingUsed,
-    handleSendPrebookingInquiry,
   } = useProfileDetail(id, backendUrl);
+
+  // Debounced sender
+  const debouncedSendMessage = useMemo(() => debounce(handleSendMessage, 300), [handleSendMessage]);
+  useEffect(() => () => debouncedSendMessage.cancel(), [debouncedSendMessage]);
 
   const numericProfile = useMemo(
     () => (tutorProfile ? convertToTutorProfile(tutorProfile as any) : defaultTutorProfile),
@@ -157,8 +166,8 @@ const ProfileDetailPage: React.FC = () => {
   // Card metadata / impressions
   useProfileCard(numericProfile, backendUrl, token);
 
-  const onCreateSession = useCallback(
-    (note?: string) => {
+  const onCreateSession = useCallback(() => {
+    try {
       const subject = numericProfile.category || 'General';
       const { type, cost } = pickDefaultSession(numericProfile.pricing as any);
 
@@ -168,62 +177,14 @@ const ProfileDetailPage: React.FC = () => {
         tutorId: (numericProfile.user_id || numericProfile.user) ?? '',
         tutorName: numericProfile.name ?? '',
         subject,
-        comment: note,
-        description: note,
-        note,
         sessionType: type,
         sessionCost: cost,
         pricing: JSON.stringify(numericProfile.pricing),
       });
-    },
-    [navigation, numericProfile]
-  );
-
-  const onQuickQuestions = useCallback(() => {
-    onCreateSession(
-      'Quick question: Can you share your availability this week?'
-    );
-  }, [onCreateSession]);
-
-  const openMessagesThread = useCallback(() => {
-    if (!numericProfile.id) return;
-    navigation.navigate('Messages' as any, { studentId: String(numericProfile.id) });
-  }, [navigation, numericProfile.id]);
-
-  const [showInquiryModal, setShowInquiryModal] = useState(false);
-  const [inquiryForm, setInquiryForm] = useState({
-    topic: '',
-    level: '',
-    availability: '',
-    note: '',
-  });
-  const [inquiryError, setInquiryError] = useState('');
-  const [sendingInquiry, setSendingInquiry] = useState(false);
-
-  const canSendInquiry =
-    myProfile?.role === 'student' && chatStatus === 'locked' && !prebookingUsed;
-
-  const handleInquirySubmit = async () => {
-    setInquiryError('');
-    if (!inquiryForm.topic || !inquiryForm.level || !inquiryForm.availability) {
-      setInquiryError('Please fill topic, level, and availability.');
-      return;
+    } catch {
+      handleCreateSession(navigation.navigate as any);
     }
-    setSendingInquiry(true);
-    const result = await handleSendPrebookingInquiry({
-      topic: inquiryForm.topic,
-      level: inquiryForm.level,
-      availability: inquiryForm.availability,
-      note: inquiryForm.note || undefined,
-    });
-    setSendingInquiry(false);
-    if (!result.ok) {
-      setInquiryError(result.message || 'Unable to send inquiry.');
-      return;
-    }
-    setInquiryForm({ topic: '', level: '', availability: '', note: '' });
-    setShowInquiryModal(false);
-  };
+  }, [navigation, numericProfile, handleCreateSession]);
 
   // Media
   const hero = numericProfile.gallery[0] || '';
@@ -244,6 +205,10 @@ const ProfileDetailPage: React.FC = () => {
       }
     })();
   }, [videoUri, profilePlayer]);
+
+  const handleSendPress = useCallback(() => {
+    debouncedSendMessage();
+  }, [debouncedSendMessage]);
 
   // Early returns
   if (loading) {
@@ -296,7 +261,10 @@ const ProfileDetailPage: React.FC = () => {
     ['Teaching Style', teachingStyle],
   ];
 
-  const bottomPad = insets.bottom + 24;
+  // Dynamic bottom padding so content doesn't hide under chat/footer/home-indicator
+  const CHAT_OVERLAY_HEIGHT = showChat ? 320 : 0; // overlay ~ max-h-72 (288) + input bar
+  const FAB_ZONE = 88; // space for the chat FAB (bottom:24 + size)
+  const bottomPad = insets.bottom + Math.max(CHAT_OVERLAY_HEIGHT, FAB_ZONE) + 24;
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
@@ -368,7 +336,7 @@ const ProfileDetailPage: React.FC = () => {
           </View>
 
           <TouchableOpacity
-            onPress={() => onCreateSession()}
+            onPress={onCreateSession}
             style={tw`mt-5 w-full bg-indigo-600 py-2 rounded-lg shadow items-center`}
           >
             <Text style={tw`text-white font-semibold`}>Create Session</Text>
@@ -386,38 +354,10 @@ const ProfileDetailPage: React.FC = () => {
           </View>
 
           <View style={tw`mt-4`}>
-            <TouchableOpacity
-              onPress={onQuickQuestions}
-              style={tw`w-full h-11 rounded-xl bg-white items-center justify-center border border-gray-200/70 shadow-sm dark:bg-[#0f1821] dark:border-darkCard mb-2`}
-            >
-              <Text style={tw`text-darkText font-medium dark:text-darkTextPrimary`}>
-                Quick Questions
-              </Text>
-            </TouchableOpacity>
-
-            {chatStatus === 'unlocked' ? (
-              <TouchableOpacity
-                onPress={openMessagesThread}
-                style={tw`w-full h-11 rounded-xl bg-indigo-600 items-center justify-center shadow mb-2`}
-              >
-                <Text style={tw`text-white font-semibold`}>Message Tutor</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={tw`rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mb-2`}>
-                <Text style={tw`text-sm text-amber-900`}>Chat unlocks after booking.</Text>
-              </View>
-            )}
-
-            {canSendInquiry && (
-              <TouchableOpacity
-                onPress={() => setShowInquiryModal(true)}
-                style={tw`w-full h-11 rounded-xl bg-pink-600 items-center justify-center shadow mb-2`}
-              >
-                <Text style={tw`text-white font-semibold`}>Send 1 Inquiry</Text>
-              </TouchableOpacity>
-            )}
-
-            <ProfileActions recipientId={(numericProfile.user_id || numericProfile.user) as string} />
+            <ProfileActions
+              recipientId={(numericProfile.user_id || numericProfile.user) as string}
+              onSendMessage={toggleChat}
+            />
           </View>
         </View>
 
@@ -512,65 +452,67 @@ const ProfileDetailPage: React.FC = () => {
         </Modal>
       ) : null}
 
-      {showInquiryModal && (
-        <Modal transparent animationType="fade" onRequestClose={() => setShowInquiryModal(false)}>
-          <View style={tw`absolute inset-0 bg-black/50 items-center justify-center px-4`}>
-            <View style={tw`w-full rounded-2xl bg-white p-5 dark:bg-[#0f1821]`}>
-              <Text style={tw`text-lg font-semibold text-indigo-600 dark:text-indigo-300 mb-3`}>
-                Send 1 Inquiry
-              </Text>
-              <TextInput
-                placeholder="Topic (e.g. Algebra basics)"
-                placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
-                value={inquiryForm.topic}
-                onChangeText={(t) => setInquiryForm({ ...inquiryForm, topic: t })}
-                style={tw`mb-2 rounded-lg border border-[#cedbe8] px-3 py-2 text-[#0d141c] dark:text-white dark:border-white/10`}
-              />
-              <TextInput
-                placeholder="Level (e.g. Grade 10)"
-                placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
-                value={inquiryForm.level}
-                onChangeText={(t) => setInquiryForm({ ...inquiryForm, level: t })}
-                style={tw`mb-2 rounded-lg border border-[#cedbe8] px-3 py-2 text-[#0d141c] dark:text-white dark:border-white/10`}
-              />
-              <TextInput
-                placeholder="Availability (e.g. Weeknights after 6pm)"
-                placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
-                value={inquiryForm.availability}
-                onChangeText={(t) => setInquiryForm({ ...inquiryForm, availability: t })}
-                style={tw`mb-2 rounded-lg border border-[#cedbe8] px-3 py-2 text-[#0d141c] dark:text-white dark:border-white/10`}
-              />
-              <TextInput
-                placeholder="Optional note"
-                placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
-                value={inquiryForm.note}
-                onChangeText={(t) => setInquiryForm({ ...inquiryForm, note: t })}
-                style={tw`mb-2 rounded-lg border border-[#cedbe8] px-3 py-2 text-[#0d141c] dark:text-white dark:border-white/10`}
-                multiline
-              />
-              {inquiryError ? (
-                <Text style={tw`text-sm text-red-600 dark:text-red-300 mb-2`}>{inquiryError}</Text>
-              ) : null}
-              <View style={tw`flex-row justify-end mt-2`}>
-                <TouchableOpacity
-                  onPress={() => setShowInquiryModal(false)}
-                  style={tw`px-4 py-2 rounded-lg border border-[#cedbe8] mr-2 dark:border-white/10`}
+      {/* Chat FAB + overlay */}
+      {String(myProfile?.id ?? '') !== String(numericProfile.id) && (
+        <View style={[tw`absolute right-6`, { bottom: insets.bottom + 24 }]}>
+          <TouchableOpacity
+            onPress={toggleChat}
+            style={tw`bg-pink-600 dark:bg-pink-500 p-3 rounded-full shadow-lg`}
+          >
+            <FontAwesome name="smile-o" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
+      )}
+      {showChat && (
+        <View
+          style={[
+            tw`absolute right-0 w-full max-w-md bg-white dark:bg-[#0f1821] border-t border-[#cedbe8] dark:border-white/10 shadow-xl`,
+            { bottom: insets.bottom },
+          ]}
+        >
+          <ScrollView contentContainerStyle={tw`p-4 max-h-72`}>
+            {chatMessages.length ? (
+              chatMessages.map((msg, i) => (
+                <View
+                  key={`${msg.sender}-${i}`}
+                  style={tw`p-2 rounded mb-2 ${
+                    msg.sender === 'me'
+                      ? 'bg-indigo-600 self-end'
+                      : 'bg-slate-200 dark:bg-gray-700 self-start'
+                  }`}
                 >
-                  <Text style={tw`text-sm text-slate-600 dark:text-slate-300`}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleInquirySubmit}
-                  disabled={sendingInquiry}
-                  style={tw`px-4 py-2 rounded-lg bg-indigo-600`}
-                >
-                  <Text style={tw`text-sm font-semibold text-white`}>
-                    {sendingInquiry ? 'Sending...' : 'Send Inquiry'}
+                  <Text
+                    style={tw`${msg.sender === 'me' ? 'text-white' : 'text-[#0d141c] dark:text-white'}`}
+                  >
+                    {msg.content}
                   </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+                </View>
+              ))
+            ) : (
+              <Text style={tw`text-slate-600 dark:text-gray-400`}>Start the conversation!</Text>
+            )}
+          </ScrollView>
+          <View
+            style={[
+              tw`flex-row items-center p-2 border-t border-[#cedbe8] dark:border-white/10`,
+              { paddingBottom: insets.bottom },
+            ]}
+          >
+            <TextInput
+              value={newMessage}
+              onChangeText={setNewMessage}
+              placeholder="Type your message"
+              placeholderTextColor={resolvedScheme === 'dark' ? '#9CA3AF' : '#6B7280'}
+              style={tw`flex-1 bg-white dark:bg-gray-700 text-[#0d141c] dark:text-white px-3 py-2 rounded-l`}
+            />
+            <TouchableOpacity
+              onPress={handleSendPress}
+              style={tw`bg-pink-600 dark:bg-pink-500 px-4 py-2 rounded-r`}
+            >
+              <FontAwesome name="paper-plane" size={16} color="white" />
+            </TouchableOpacity>
           </View>
-        </Modal>
+        </View>
       )}
     </SafeAreaView>
   );

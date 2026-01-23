@@ -1,11 +1,14 @@
 // apps/web/src/components/AccountSection.web.tsx
 import React, { useMemo, useEffect, useRef, useState } from 'react';
+import axios, { AxiosError } from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Spinner from './Spinner.web';
-import useAccountSection from '@mytutorapp/shared/hooks/useAccountSection';
+import { useAccountSection } from '@mytutorapp/shared/hooks/useAccountSection';
 import debounce from 'lodash.debounce';
 import type { SessionType, Transaction, EarningsSummary } from '@mytutorapp/shared/types';
 import { useWithdrawal } from '@mytutorapp/shared/hooks';
+import { getTutorProfile } from '@mytutorapp/shared/api/profileDetailApi';
+import { useShopContext } from '@mytutorapp/shared/context'
 
 // Safe currency formatter
 const currencyFmt = (amt: number, currency: string) => {
@@ -30,6 +33,38 @@ const MIN_WITHDRAW: Record<'USD' | 'KES', number> = { USD: 20, KES: 200 };
 const AccountSection: React.FC = () => {
   // Track which session IDs have missing-reason errors
   const [cancelError, setCancelError] = useState<Record<string, boolean>>({});
+  const { backendUrl, token } = useShopContext() as any;
+
+const isEmptyObj = (o: any) =>
+  !o || typeof o !== 'object' || Object.keys(o).length === 0;
+
+const parsePricing = (raw: any): Record<string, number> => {
+  if (!raw) return {};
+
+  const toNumMap = (obj: any) =>
+    Object.fromEntries(
+      Object.entries(obj).map(([k, v]) => [k, Math.max(0, Number(v) || 0)])
+    ) as Record<string, number>;
+
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return toNumMap(parsed);
+      }
+      return {};
+    } catch {
+      return {};
+    }
+  }
+
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    return toNumMap(raw);
+  }
+
+  return {};
+};
+
 
   // Track validation errors for "Create Session" form (student)
   type SessionFormErrors = Record<string, string>;
@@ -188,6 +223,109 @@ const AccountSection: React.FC = () => {
   // Withdrawal form state
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
   const minAmount = MIN_WITHDRAW[payoutCurrency];
+
+  const qpPricingRaw = queryParams.get('pricing');
+const pricingFromQP = useMemo(() => parsePricing(qpPricingRaw), [qpPricingRaw]);
+
+const pricingObj = useMemo(() => {
+  const fromForm = parsePricing((formData as any)?.pricing);
+  return !isEmptyObj(pricingFromQP) ? pricingFromQP : fromForm;
+}, [pricingFromQP, (formData as any)?.pricing]);
+
+useEffect(() => {
+  const action = queryParams.get('action');
+  if (action !== 'createSession') return;
+
+  const tutorId = queryParams.get('tutorId') || '';
+  const tutorName = queryParams.get('tutorName') || '';
+  const subject = queryParams.get('subject') || '';
+  const comment = queryParams.get('comment') || '';
+  const description = queryParams.get('description') || '';
+  const note = queryParams.get('note') || '';
+
+  setFormData((prev: any) => ({
+    ...prev,
+    tutorId: tutorId || prev.tutorId || '',
+    tutorName: tutorName || prev.tutorName || '',
+    subject: subject || prev.subject || '',
+    comment: comment || prev.comment,
+    description: description || prev.description,
+    note: note || prev.note,
+    pricing: !isEmptyObj(pricingFromQP) ? pricingFromQP : prev.pricing,
+  }));
+
+  // clear old errors when arriving prefilled
+  setSessionFormErrors((prev) => ({ ...prev, tutorId: '', subject: '' }));
+  setSessionBanner('');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [location.search, setFormData, pricingFromQP]);
+
+useEffect(() => {
+  const action = queryParams.get('action');
+  if (action !== 'createSession') return;
+
+  const tutorId = String(queryParams.get('tutorId') || formData.tutorId || '');
+  if (!tutorId) return;
+
+  // already have pricing => stop
+  if (!isEmptyObj(pricingObj)) return;
+
+  let cancelled = false;
+
+  (async () => {
+    try {
+      const base = String(backendUrl || '').replace(/\/$/, '');
+      let data: any = null;
+
+      try {
+        data = await getTutorProfile(base, token || '', tutorId);
+      } catch (e) {
+        const ae = e as AxiosError;
+        if (ae.response?.status === 404) {
+          const resp = await axios.get(`${base}/api/profile/${encodeURIComponent(tutorId)}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            timeout: 10000,
+          });
+          data = resp.data;
+        } else {
+          throw e;
+        }
+      }
+
+      const p =
+        data?.pricing ||
+        data?.profile?.pricing ||
+        data?.tutorProfile?.pricing ||
+        null;
+
+      const pricing = parsePricing(p);
+      if (cancelled || isEmptyObj(pricing)) return;
+
+      setFormData((prev: any) => {
+        const next = { ...prev, tutorId, pricing };
+
+        // choose a default sessionType if not set
+        if (!next.sessionType) {
+          const firstKey = Object.keys(pricing)[0];
+          if (firstKey) {
+            next.sessionType = firstKey;
+            next.sessionCost = String(pricing[firstKey] ?? '0');
+          }
+        }
+        return next;
+      });
+    } catch (e) {
+      console.log('[AccountSection.web] pricing fetch failed', e);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [location.search, backendUrl, token, formData.tutorId, pricingObj, setFormData]);
+
+
 
   // Sync tab from query (?tab=sessions) + backwards compat for (?sessions)
   useEffect(() => {
@@ -474,46 +612,48 @@ const AccountSection: React.FC = () => {
 
                 {/* Session Type */}
                 <div>
-                  <select
-                    name="sessionType"
-                    className={`block w-full p-3 rounded-xl text-sm
-                                  bg-slate-50 border text-slate-900
-                                  focus:outline-none focus:ring-2 focus:ring-primary
-                                  dark:bg-[#0b1620] dark:border-[#182430] dark:text-slate-100
-                                  ${
-                                    sessionFormErrors.sessionType
-                                      ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500'
-                                      : 'border-slate-200'
-                                  }`}
-                    value={formData.sessionType || ''}
-                    onChange={(e) => {
-                      const sessionType = e.target.value;
-                      const sessionCost = String(
-                        formData.pricing?.[sessionType as keyof typeof formData.pricing] || 0
-                      );
-                      setFormData({ ...formData, sessionType, sessionCost });
-                      if (sessionFormErrors.sessionType) {
-                        setSessionFormErrors((prev) => {
-                          const { sessionType, ...rest } = prev;
-                          return rest;
-                        });
-                      }
-                    }}
-                    aria-invalid={!!sessionFormErrors.sessionType}
-                    aria-describedby={
-                      sessionFormErrors.sessionType ? 'err-session-type' : undefined
-                    }
-                  >
-                    <option value="" disabled>
-                      Select Session Type
-                    </option>
-                    {formData.pricing &&
-                      Object.entries(formData.pricing).map(([type, price]) => (
-                        <option key={type} value={type}>
-                          {`${type.charAt(0).toUpperCase() + type.slice(1)} – ${price} Tokens`}
-                        </option>
-                      ))}
-                  </select>
+<select
+  name="sessionType"
+  className={`block w-full p-3 rounded-xl text-sm
+              bg-slate-50 border text-slate-900
+              focus:outline-none focus:ring-2 focus:ring-primary
+              dark:bg-[#0b1620] dark:border-[#182430] dark:text-slate-100
+              ${
+                sessionFormErrors.sessionType
+                  ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500'
+                  : 'border-slate-200'
+              }`}
+  value={formData.sessionType || ''}
+  onChange={(e) => {
+    const sessionType = e.target.value;
+    const costNum = (pricingObj as any)?.[sessionType] ?? 0;
+    const sessionCost = String(costNum);
+    setFormData({ ...formData, sessionType, sessionCost, pricing: pricingObj });
+
+    // ✅ keep pricing object in state (parity with mobile)
+    setFormData({ ...formData, sessionType, sessionCost, pricing: pricingObj });
+
+    if (sessionFormErrors.sessionType) {
+      setSessionFormErrors((prev) => {
+        const { sessionType: _st, ...rest } = prev;
+        return rest;
+      });
+    }
+  }}
+  aria-invalid={!!sessionFormErrors.sessionType}
+  aria-describedby={sessionFormErrors.sessionType ? 'err-session-type' : undefined}
+>
+  <option value="" disabled>
+    {Object.keys(pricingObj).length ? 'Select Session Type' : 'No session types configured'}
+  </option>
+
+  {Object.entries(pricingObj).map(([type, price]) => (
+    <option key={type} value={type}>
+      {`${type.charAt(0).toUpperCase() + type.slice(1)} – ${String(price)} Tokens`}
+    </option>
+  ))}
+</select>
+
                   {sessionFormErrors.sessionType && (
                     <p
                       id="err-session-type"

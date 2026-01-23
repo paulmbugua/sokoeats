@@ -46,19 +46,24 @@ export const sessionValidationSchema = Joi.object({
 
   // accept numeric or numeric-string costs
   sessionCost: Joi.alternatives()
-    .try(
-      Joi.number().precision(2).positive(),
-      Joi.string().pattern(/^\d+(\.\d{1,2})?$/),
-    )
-    .required()
-    .label('Session Cost')
-    .messages({
-      'alternatives.match': 'Session cost must be a valid number',
-      'number.positive': 'Session cost must be greater than zero',
-    }),
+  .try(
+    Joi.number().precision(2).positive(),
+    Joi.string().pattern(/^\d+(\.\d{1,2})?$/),
+  )
+  .optional()     // ✅ was required()
+  .label('Session Cost'),
 
-  note: Joi.string().trim().max(500).optional().label('Note'),
+
+  note: Joi.string()
+  .trim()
+  .max(500)
+  .allow('')       // ✅ allow empty string
+  .optional()
+  .label('Note'),
+
 })
+
+
   // disallow any keys not listed above
   .options({ allowUnknown: false });
 

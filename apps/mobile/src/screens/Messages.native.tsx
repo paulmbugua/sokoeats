@@ -1,6 +1,7 @@
 // apps/mobile/src/screens/Messages.native.tsx
-/* eslint-disable prettier/prettier */
-import React, { useEffect, useRef, useMemo } from 'react';
+
+import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
+import axios, { AxiosError } from 'axios';
 import {
   View,
   Text,
@@ -11,8 +12,12 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   AppState,
+  Keyboard, 
+  Platform,
+   Animated,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import {
   useNavigation,
   useRoute,
@@ -27,6 +32,8 @@ import tw from '../../tailwind';
 import chat from '../../assets/chat.png';
 import type { ChatMessage as SharedChatMessage } from '@mytutorapp/shared/types/ShopContextTypes';
 import type { MainStackParamList } from '../navigation/types';
+import { getTutorProfile } from '@mytutorapp/shared/api/profileDetailApi';
+import { useShopContext } from '@mytutorapp/shared/context';
 
 interface RouteParams {
   studentId?: string;
@@ -59,6 +66,57 @@ const MessagesNative: React.FC = () => {
   const route = useRoute<RouteT>();
   const insets = useSafeAreaInsets();
 
+ const FOOTER_HEIGHT = 80;
+const COMPOSER_HEIGHT = 64;
+const FOOTER_GAP = FOOTER_HEIGHT ;
+const bottomSafe = Math.max(insets.bottom, 12);
+
+// ✅ declare state BEFORE using it anywhere
+const [keyboardOpen, setKeyboardOpen] = useState(false);
+const kbAnim = useRef(new Animated.Value(0)).current;
+
+// ✅ padding for ScrollView content
+const messagesBottomPadding =
+  (keyboardOpen ? 0 : FOOTER_GAP) + bottomSafe + COMPOSER_HEIGHT + 12;
+
+// ✅ composer bottom (either animated kb height OR fixed footer gap)
+const composerBottom = keyboardOpen ? kbAnim : FOOTER_GAP;
+
+
+
+
+
+
+useEffect(() => {
+  const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+  const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+  const subShow = Keyboard.addListener(showEvt, (e: any) => {
+    const h = e?.endCoordinates?.height ?? 0;
+    setKeyboardOpen(true);
+    Animated.timing(kbAnim, {
+      toValue: h,
+      duration: Platform.OS === 'ios' ? 250 : 140,
+      useNativeDriver: false,
+    }).start();
+  });
+
+  const subHide = Keyboard.addListener(hideEvt, () => {
+    setKeyboardOpen(false);
+    Animated.timing(kbAnim, {
+      toValue: 0,
+      duration: Platform.OS === 'ios' ? 250 : 140,
+      useNativeDriver: false,
+    }).start();
+  });
+
+  return () => {
+    subShow.remove();
+    subHide.remove();
+  };
+}, [kbAnim]);
+
+
   const {
     activeChat,
     setActiveChat,
@@ -78,6 +136,54 @@ const MessagesNative: React.FC = () => {
   const isFocused = useIsFocused();
   const appStateRef = useRef(AppState.currentState);
   const seenMsgIdsRef = useRef<Set<string>>(new Set());
+    const { backendUrl, token } = useShopContext();
+
+  const [creatingSession, setCreatingSession] = useState(false);
+
+  const fetchTutorMeta = useCallback(
+    async (tutorId: string) => {
+      const base = String(backendUrl || '').replace(/\/$/, '');
+
+      let data: any = null;
+
+      try {
+        // 1) try user endpoint (same as AccountSectionNative)
+        data = await getTutorProfile(base, token || '', tutorId);
+      } catch (e) {
+        const ae = e as AxiosError;
+
+        // 2) fallback to /api/profile/:id if 404
+        if (ae.response?.status === 404) {
+          const resp = await axios.get(`${base}/api/profile/${encodeURIComponent(tutorId)}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            timeout: 10000,
+          });
+          data = resp.data;
+        } else {
+          throw e;
+        }
+      }
+
+      const category =
+        data?.category ??
+        data?.profile?.category ??
+        data?.tutorProfile?.category ??
+        data?.tutor?.category ??
+        '';
+
+      const pricingRaw =
+        data?.pricing ?? data?.profile?.pricing ?? data?.tutorProfile?.pricing ?? data?.tutor?.pricing ?? null;
+
+      const pricing =
+        pricingRaw && typeof pricingRaw === 'object'
+          ? Object.fromEntries(Object.entries(pricingRaw).map(([k, v]) => [k, String(v ?? '0')]))
+          : undefined;
+
+      return { category, pricing };
+    },
+    [backendUrl, token]
+  );
+
 
   // Track app state
   useEffect(() => {
@@ -235,31 +341,62 @@ const MessagesNative: React.FC = () => {
     );
   }
 
-  const handleCreateSession = () => {
+    const handleCreateSession = useCallback(async () => {
     if (!activeChat) return;
+
+    const tutorId = String(activeChat.recipientId ?? '');
+    if (!tutorId) return;
+
     const comment = 'Booking to unlock messaging';
-    navigation.navigate('Account', {
-      tab: 'sessions',
-      action: 'createSession',
-      tutorId: String(activeChat.recipientId ?? ''),
-      tutorName: activeChat.name || '',
-      subject: 'General',
-      sessionType: '',
-      sessionCost: '',
-      pricing: '{}',
-      comment,
-      description: comment,
-      note: comment,
-    });
-  };
+
+    setCreatingSession(true);
+    try {
+      // If your chat list ever includes category, prefer it (zero network)
+      const quickCategory = (activeChat as any)?.category || (activeChat as any)?.subject || '';
+
+      const meta = quickCategory
+        ? { category: quickCategory, pricing: undefined }
+        : await fetchTutorMeta(tutorId);
+
+      const subject = meta.category || 'General';
+
+      navigation.navigate('Account', {
+        tab: 'sessions',
+        action: 'createSession',
+        tutorId,
+        tutorName: activeChat.name || '',
+        subject,
+
+        // ✅ optional but recommended: makes Session Type options appear instantly
+        ...(meta.pricing ? { pricing: meta.pricing } : {}),
+
+        // keep your existing “unlock messaging” context
+        comment,
+        description: comment,
+        note: comment,
+      });
+    } catch (e) {
+      console.log('[Messages] create session meta fetch failed', e);
+      // still navigate (fallback)
+      navigation.navigate('Account', {
+        tab: 'sessions',
+        action: 'createSession',
+        tutorId,
+        tutorName: activeChat.name || '',
+        subject: 'General',
+        comment,
+        description: comment,
+        note: comment,
+      });
+    } finally {
+      setCreatingSession(false);
+    }
+  }, [activeChat, navigation, fetchTutorMeta]);
+
 
   return (
-    <View
-      style={[
-        tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`,
-        { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 8) },
-      ]}
-    >
+  <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
+
       {/* Top bar */}
       <View
         style={tw`flex-row items-center justify-between px-4 py-3 bg-white dark:bg-[#0f1821] border-b border-[#cedbe8] dark:border-white/10`}
@@ -413,14 +550,15 @@ const MessagesNative: React.FC = () => {
       {/* Messages body */}
       <View style={tw`flex-1`}>
         <ScrollView
-          ref={messageContainerRef as React.RefObject<ScrollView>}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          onContentSizeChange={scrollToBottom}
-          style={tw`flex-1 px-4 py-3`}
-          contentContainerStyle={tw`pb-2`}
-          keyboardShouldPersistTaps="handled"
-        >
+  ref={messageContainerRef as React.RefObject<ScrollView>}
+  onScroll={onScroll}
+  scrollEventThrottle={16}
+  onContentSizeChange={scrollToBottom}
+  style={tw`flex-1 px-4 py-3`}
+  contentContainerStyle={[tw`pb-2`, { paddingBottom: messagesBottomPadding }]}
+  keyboardShouldPersistTaps="handled"
+>
+
           {activeChat ? (
             <>
               {isLockedForStudent && (
@@ -432,10 +570,17 @@ const MessagesNative: React.FC = () => {
                   </Text>
                   <TouchableOpacity
                     onPress={handleCreateSession}
-                    style={tw`self-start bg-pink-600 px-3 py-1.5 rounded-lg`}
+                    disabled={creatingSession}
+                    style={tw.style(
+                      'self-start bg-pink-600 px-3 py-1.5 rounded-lg',
+                      creatingSession ? 'opacity-60' : ''
+                    )}
                   >
-                    <Text style={tw`text-xs font-semibold text-white`}>Create Session</Text>
+                    <Text style={tw`text-xs font-semibold text-white`}>
+                      {creatingSession ? 'Loading…' : 'Create Session'}
+                    </Text>
                   </TouchableOpacity>
+
                 </View>
               )}
               {sortedMessages.map((msg) => {
@@ -492,54 +637,65 @@ const MessagesNative: React.FC = () => {
           )}
         </ScrollView>
 
-        {/* Composer */}
-        {activeChat && (
-          <View
-            style={tw`flex-row items-center px-3 py-3 bg-white dark:bg-[#0f1821] border-t border-[#cedbe8] dark:border-white/10`}
-          >
-            <TextInput
-              ref={messageInputRef}
-              accessibilityLabel="Message input"
-              accessibilityHint="Type your message here"
-              placeholder="Type a message..."
-              value={newMessage}
-              onChangeText={setNewMessage}
-              onSubmitEditing={sendAndRefresh}
-              blurOnSubmit={false}
-              returnKeyType="send"
-              editable={!isLockedForStudent}
-              style={tw`flex-1 px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white`}
-              multiline={false}
-              placeholderTextColor={tw.color('text-slate-500') as string}
-            />
-            <TouchableOpacity
-              accessibilityLabel="Insert emoji"
-              accessibilityHint="Open emoji picker"
-              style={tw`px-3 py-2`}
-              disabled={isLockedForStudent}
-            >
-              <FontAwesome
-                name="smile-o"
-                size={22}
-                color={tw.color(`text-slate-600 dark:text-slate-300`) as string}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={sendAndRefresh}
-              disabled={isLockedForStudent}
-              accessibilityLabel="Send message"
-              accessibilityHint="Send the message you typed"
-              style={tw.style(
-                'bg-pink-600 px-4 py-2 rounded-xl ml-1',
-                isLockedForStudent ? 'opacity-50' : ''
-              )}
-            >
-              <FontAwesome name="paper-plane" size={18} color="#fff" />
-            </TouchableOpacity>
-          </View>
+{/* Composer (floating like WhatsApp) */}
+{activeChat && (
+  <Animated.View
+    style={[
+      tw`border-t px-3 py-3 bg-white dark:bg-[#0f1821]`,
+      {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+       bottom: composerBottom,
+
+
+
+        paddingBottom: bottomSafe,
+        zIndex: 50,
+        borderTopWidth: 1,
+        borderColor: 'rgba(206,219,232,1)', // match your border color
+      },
+    ]}
+  >
+    <View style={tw`flex-row items-center`}>
+      <TextInput
+        ref={messageInputRef}
+        placeholder="Type a message..."
+        value={newMessage}
+        onChangeText={setNewMessage}
+        onSubmitEditing={sendAndRefresh}
+        blurOnSubmit={false}
+        returnKeyType="send"
+        editable={!isLockedForStudent}
+        style={tw`flex-1 px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#0b1016] border border-[#cedbe8] dark:border-white/10 text-[#0d141c] dark:text-white`}
+        multiline={false}
+        placeholderTextColor={tw.color('text-slate-500') as string}
+      />
+
+      <TouchableOpacity style={tw`px-3 py-2`} disabled={isLockedForStudent}>
+        <FontAwesome
+          name="smile-o"
+          size={22}
+          color={tw.color(`text-slate-600 dark:text-slate-300`) as string}
+        />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={sendAndRefresh}
+        disabled={isLockedForStudent}
+        style={tw.style(
+          'bg-pink-600 px-4 py-2 rounded-xl ml-1',
+          isLockedForStudent ? 'opacity-50' : ''
         )}
-      </View>
+      >
+        <FontAwesome name="paper-plane" size={18} color="#fff" />
+      </TouchableOpacity>
     </View>
+  </Animated.View>
+)}
+
+      </View>
+   </SafeAreaView>
   );
 };
 

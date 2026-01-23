@@ -10,11 +10,16 @@ export type MainStackParamList = {
   Login: { switch?: boolean; force?: boolean } | undefined;
   Help: undefined;
   Resources:
-    | {
-        tab?: 'videos' | 'courses';
-        q?: string;
-      }
-    | undefined;
+  | {
+      tab?: 'videos' | 'courses';
+      q?: string;
+
+      // ✅ add these
+      openSearch?: boolean;
+      openFilters?: boolean;
+    }
+  | undefined;
+
   CookiePolicy: undefined;
   PrivacyPolicy: undefined;
   TermsOfService: undefined;
@@ -110,7 +115,16 @@ export type MainStackParamList = {
     | undefined;
 
   /* Discovery & tutor */
-  FindTutor: { subject?: string } | undefined;
+ FindTutor:
+  | {
+      subject?: string;
+
+      // ✅ add these
+      openSearch?: boolean;
+      openFilters?: boolean;
+    }
+  | undefined;
+
   RobotTutor:
   | {
       assignmentId?: string | number;
@@ -170,6 +184,8 @@ export type MainStackParamList = {
     comment?: string;
     description?: string;
     note?: string;
+    sessionType?: string;
+    sessionCost?: string;
     pricing?: Record<string, string>;
     tab?: ActiveTab;
   };
@@ -211,4 +227,7 @@ export type MainStackParamList = {
         returnTo?: string;
       }
     | undefined;
+
+
+    
 };

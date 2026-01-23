@@ -87,20 +87,41 @@ function normalizeChemAnswer(s = '') {
     .replace(/\u00B7/g, '.') // middle dot (hydrates)
     .toLowerCase();
 }
-function shortMatches(user, q) {
-  const u = normalizeChemAnswer(user);
-  const canon = normalizeChemAnswer(q.answer || '');
-  if (u === canon) return true;
-  for (const a of q.accept || []) {
-    if (u === normalizeChemAnswer(a)) return true;
-  }
-  if (q.regex) {
-    try {
-      if (new RegExp(q.regex).test(user)) return true;
-    } catch {}
-  }
+function norm(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function softMatch(userText, key) {
+  const u = norm(userText);
+  const k = norm(key);
+  if (!u || !k) return false;
+  if (u === k) return true;
+  if (u.includes(k)) return true;
+
+  // If key is long (definitions), allow user to be slightly shorter
+  if (k.length >= 25 && k.includes(u) && u.split(' ').length >= 4) return true;
+
   return false;
 }
+
+function shortMatches(userText, q) {
+  if (!userText || !String(userText).trim()) return false;
+
+  // regex wins if present (but don’t let it be the only path)
+  if (q?.regex) {
+    try {
+      if (new RegExp(q.regex, 'i').test(userText)) return true;
+    } catch {}
+  }
+
+  const keys = [q?.answer, ...(Array.isArray(q?.accept) ? q.accept : [])].filter(Boolean);
+  return keys.some((k) => softMatch(userText, k));
+}
+
 
 function pickUserText(a) {
   if (!a || typeof a !== 'object') return '';
@@ -1011,7 +1032,6 @@ export async function generateQuiz(req, res) {
 }
 
 // Pure sync grading using provided key
-// Pure sync grading using provided key (MCQ + short-answer) + AI grading fallback for sanitized short answers
 export async function gradeQuiz(req, res) {
   try {
     const { value, error } = gradeSchema.validate(req.body, {
@@ -1029,6 +1049,12 @@ export async function gradeQuiz(req, res) {
     }
 
     const { quiz, answers } = value;
+
+    // Turn on debug logs when explicitly requested OR when not production
+    const debug =
+      value?.debug === true ||
+      String(process.env.DEBUG_QUIZ_GRADE || '').toLowerCase() === 'true' ||
+      process.env.NODE_ENV !== 'production';
 
     // --- helper: local uuid check ---
     const isUuidLocal = (s) =>
@@ -1096,16 +1122,146 @@ export async function gradeQuiz(req, res) {
     passMark = Math.max(0, Math.min(100, Math.round(passMark)));
 
     // ---------- NEW grading: supports MCQ + keyed short + AI short fallback ----------
-    const answersById = new Map((answers || []).map((a) => [String(a.questionId), a]));
+    const questions = Array.isArray(quiz?.questions) ? quiz.questions : [];
+
+    // ---------------------------
+    // ✅ Payload normalizer (web + mobile)
+    // ---------------------------
+    const questionIdsInOrder = questions.map((q) => String(q?.id ?? ''));
+
+    // Accept many possible key names from FE
+    const getAnswerQid = (a) =>
+      a?.questionId ??
+      a?.questionID ??
+      a?.question_id ??
+      a?.qid ??
+      a?.id ??
+      a?.question ??
+      null;
+
+    // If FE sends numeric indices (0..n-1) or (1..n), map them to real IDs
+    const normalizeQid = (raw) => {
+      if (raw == null) return null;
+      const s = String(raw).trim();
+      if (!s) return null;
+
+      // exact match to real id
+      if (questionIdsInOrder.includes(s)) return s;
+
+      // "q1" style but FE sends "1"
+      if (/^\d+$/.test(s)) {
+        const n = Number(s);
+        // try 0-based then 1-based
+        if (questionIdsInOrder[n]) return questionIdsInOrder[n]; // 0-based
+        if (questionIdsInOrder[n - 1]) return questionIdsInOrder[n - 1]; // 1-based
+        // also try "qN"
+        const qStyle = `q${n}`;
+        if (questionIdsInOrder.includes(qStyle)) return qStyle;
+      }
+
+      // fallback: if FE sends "q-1" etc, try to extract a number
+      const m = s.match(/(\d+)/);
+      if (m) {
+        const n = Number(m[1]);
+        if (questionIdsInOrder[n - 1]) return questionIdsInOrder[n - 1];
+        const qStyle = `q${n}`;
+        if (questionIdsInOrder.includes(qStyle)) return qStyle;
+      }
+
+      return s; // last resort
+    };
+
+    // More tolerant text picker (covers most FE shapes)
+    const pickUserTextLoose = (a) => {
+      const candidates = [
+        a?.text,
+        a?.answer,
+        a?.value,
+        a?.response,
+        a?.input,
+        a?.userText,
+        a?.shortAnswer,
+      ];
+      const t = candidates.find((x) => typeof x === 'string' && x.trim());
+      return t ? t.trim() : '';
+    };
+
+    // More tolerant choice index picker
+    const pickChoiceIndexLoose = (a) => {
+      const candidates = [
+        a?.choiceIndex,
+        a?.selectedIndex,
+        a?.answerIndex,
+        a?.index,
+        a?.selected,
+      ];
+      const v = candidates.find((x) => x !== undefined && x !== null);
+      return Number.isFinite(Number(v)) ? Number(v) : -1;
+    };
+
+    // Build map using normalized ids
+    const answersById = new Map(
+      (Array.isArray(answers) ? answers : [])
+        .map((a) => {
+          const raw = getAnswerQid(a);
+          const qid = normalizeQid(raw);
+          return [String(qid), a];
+        })
+        .filter(([qid]) => qid && qid !== 'null' && qid !== 'undefined'),
+    );
+
+    // ---------------------------
+    // ✅ Debug logs to kill the “0%” bug
+    // ---------------------------
+    if (debug) {
+      console.log('[gradeQuiz] quiz.id:', quiz?.id ?? null);
+      console.log('[gradeQuiz] quiz.courseId:', quiz?.courseId ?? null);
+      console.log('[gradeQuiz] courseId resolved:', courseId);
+      console.log('[gradeQuiz] passMark:', passMark);
+      console.log('[gradeQuiz] questions:', questionIdsInOrder);
+
+      const aList = Array.isArray(answers) ? answers : [];
+      console.log(
+        '[gradeQuiz] incoming answers (sample up to 10):',
+        aList.slice(0, 10).map((a, i) => ({
+          i,
+          questionId: a?.questionId,
+          questionID: a?.questionID,
+          question_id: a?.question_id,
+          qid: a?.qid,
+          id: a?.id,
+          question: a?.question,
+          choiceIndex: a?.choiceIndex,
+          selectedIndex: a?.selectedIndex,
+          answerIndex: a?.answerIndex,
+          text: typeof a?.text === 'string' ? a.text.slice(0, 60) : undefined,
+          answer: typeof a?.answer === 'string' ? a.answer.slice(0, 60) : undefined,
+          value: typeof a?.value === 'string' ? a.value.slice(0, 60) : undefined,
+          keys: Object.keys(a || {}),
+        })),
+      );
+
+      console.log('[gradeQuiz] mapped answer ids:', Array.from(answersById.keys()));
+    }
 
     const results = [];
     let sum = 0;
 
-    const questions = Array.isArray(quiz?.questions) ? quiz.questions : [];
-
     for (const q of questions) {
       const qid = String(q.id);
       const a = answersById.get(qid);
+
+      if (debug) {
+        const rawKey = a ? getAnswerQid(a) : null;
+        const normKey = rawKey != null ? normalizeQid(rawKey) : null;
+        console.log('[gradeQuiz] map-check:', {
+          qid,
+          hasAnswer: Boolean(a),
+          rawKey,
+          normKey,
+          typeHint: q?.type ?? null,
+        });
+      }
 
       // If no answer for this question, count as 0 but still include result entry
       if (!a) {
@@ -1127,8 +1283,7 @@ export async function gradeQuiz(req, res) {
         (Array.isArray(q?.choices) && typeof q?.answerIndex === 'number');
 
       if (isMcq) {
-        const picked =
-          Number.isFinite(Number(a?.choiceIndex)) ? Number(a.choiceIndex) : -1;
+        const picked = pickChoiceIndexLoose(a);
         const ans =
           Number.isFinite(Number(q?.answerIndex)) ? Number(q.answerIndex) : -1;
 
@@ -1142,12 +1297,29 @@ export async function gradeQuiz(req, res) {
           correct: ok,
           score,
         });
+
+        if (debug) {
+          console.log('[gradeQuiz] mcq-grade:', {
+            qid,
+            picked,
+            ans,
+            ok,
+          });
+        }
         continue;
       }
 
       // SHORT
-      const userText = pickUserText(a);
+      const userText = pickUserTextLoose(a);
       const qText = questionText(q);
+
+      if (debug) {
+        console.log('[gradeQuiz] short-input:', {
+          qid,
+          userTextPreview: userText ? userText.slice(0, 120) : '',
+          hasKey: Boolean(q?.answer),
+        });
+      }
 
       // If answer key exists, keep your existing strict logic
       if (q?.answer) {
@@ -1161,6 +1333,13 @@ export async function gradeQuiz(req, res) {
           correct: ok,
           score,
         });
+
+        if (debug) {
+          console.log('[gradeQuiz] short-keyed-grade:', {
+            qid,
+            ok,
+          });
+        }
         continue;
       }
 
@@ -1176,6 +1355,14 @@ export async function gradeQuiz(req, res) {
         score,
         feedback: g.feedback,
       });
+
+      if (debug) {
+        console.log('[gradeQuiz] short-ai-grade:', {
+          qid,
+          score,
+          feedbackPreview: (g?.feedback || '').slice(0, 140),
+        });
+      }
     }
 
     const total = questions.length || 1;
@@ -1198,12 +1385,17 @@ export async function gradeQuiz(req, res) {
           : null) ||
         null;
 
-      // Store detailed grading so you can show per-question feedback in UI later
       const answersJson = {
         answers: Array.isArray(answers) ? answers : [],
         quizType: quiz?.quizType || null,
         results,
         sumScore: sum, // float 0..total
+        debugMap: debug
+          ? {
+              questionIdsInOrder,
+              mappedAnswerIds: Array.from(answersById.keys()),
+            }
+          : undefined,
       };
 
       try {
@@ -1232,6 +1424,10 @@ export async function gradeQuiz(req, res) {
 
         attemptSaved = ins.rowCount > 0;
         attemptId = ins.rows?.[0]?.id || null;
+
+        if (debug) {
+          console.log('[gradeQuiz] attempt saved:', { attemptSaved, attemptId });
+        }
       } catch (e) {
         console.warn('[ai] gradeQuiz: failed to persist quiz_attempts', {
           message: e?.message,
@@ -1250,7 +1446,6 @@ export async function gradeQuiz(req, res) {
       await markLanguageQuizPassed({ courseId, userId: studentId }).catch(() => null);
     }
 
-    // ✅ Response includes per-question scoring + feedback
     return res.json({
       correct: correctCount, // int-friendly
       total,

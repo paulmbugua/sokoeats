@@ -368,6 +368,8 @@ app.use('/api/user', userLimiter, userRouter);
 app.use('/api/profile', profileRoutes);
 app.use('/api/profileActions', profileActionsRoutes);
 app.use('/api/push', pushRoutes);
+app.use('/api/tutor-session', tutorSessionRoutes);
+
 app.use('/api', messagesRoutes);
 
 // Payments & webhooks
@@ -380,7 +382,7 @@ app.use('/api/paystack', paystackRoutes);
 app.use('/api',           orgFeesRoutes);
 
 // Tutor sessions / M-Pesa
-app.use('/api/tutor-session', tutorSessionRoutes);
+
 app.use('/api/mpesa', mpesaUrlsRoutes);
 
 // Reviews & public content

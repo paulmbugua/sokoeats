@@ -1,6 +1,6 @@
-/* eslint-disable prettier/prettier */
+
 // apps/mobile/src/screens/FindTutor.native.tsx
-import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import React, { useEffect, memo, useMemo, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -247,7 +247,8 @@ const FilterModal = ({
   </Modal>
 );
 
-const TutorCard = React.memo(function TutorCard({
+const TutorCard = memo(function TutorCard({
+
   item,
   onPress,
   backendUrl,

@@ -1,10 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
+import axios, { AxiosError } from 'axios';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperPlane, faSmile, faBars, faTimes, faHome } from '@fortawesome/free-solid-svg-icons';
 import { useMessages } from '@mytutorapp/shared/hooks';
 import type { ChatMessage } from '@mytutorapp/shared/types/ShopContextTypes';
 import chatPlaceholder from '../assets/chat.png';
+import { getTutorProfile } from '@mytutorapp/shared/api/profileDetailApi';
+import { useShopContext } from '@mytutorapp/shared/context';
 
 const Messages: React.FC = () => {
   const location = useLocation();
@@ -32,6 +35,58 @@ const Messages: React.FC = () => {
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const isLockedForStudent =
     activeChat?.chatStatus === 'locked' && myProfile?.role === 'student';
+
+    const { backendUrl, token } = useShopContext() as any;
+const [creatingSession, setCreatingSession] = useState(false);
+
+const fetchTutorMeta = useCallback(
+  async (tutorId: string) => {
+    const base = String(backendUrl || '').replace(/\/$/, '');
+
+    let data: any = null;
+
+    try {
+      // 1) try user endpoint (same as mobile)
+      data = await getTutorProfile(base, token || '', tutorId);
+    } catch (e) {
+      const ae = e as AxiosError;
+
+      // 2) fallback to /api/profile/:id if 404
+      if (ae.response?.status === 404) {
+        const resp = await axios.get(`${base}/api/profile/${encodeURIComponent(tutorId)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          timeout: 10000,
+        });
+        data = resp.data;
+      } else {
+        throw e;
+      }
+    }
+
+    const category =
+      data?.category ??
+      data?.profile?.category ??
+      data?.tutorProfile?.category ??
+      data?.tutor?.category ??
+      '';
+
+    const pricingRaw =
+      data?.pricing ??
+      data?.profile?.pricing ??
+      data?.tutorProfile?.pricing ??
+      data?.tutor?.pricing ??
+      null;
+
+    const pricing =
+      pricingRaw && typeof pricingRaw === 'object'
+        ? Object.fromEntries(Object.entries(pricingRaw).map(([k, v]) => [k, String(v ?? '0')]))
+        : undefined;
+
+    return { category, pricing };
+  },
+  [backendUrl, token]
+);
+
 
   // Auto-open chat if ?studentId=...
   useEffect(() => {
@@ -66,23 +121,65 @@ const Messages: React.FC = () => {
       timestamp: msg.timestamp ?? new Date().toISOString(),
     })) || [];
 
-  const handleCreateSession = () => {
-    if (!activeChat) return;
-    const comment = 'Booking to unlock messaging';
+  const handleCreateSession = useCallback(async () => {
+  if (!activeChat) return;
+
+  const tutorId = String(activeChat.recipientId ?? '');
+  if (!tutorId) return;
+
+  const comment = 'Booking to unlock messaging';
+
+  setCreatingSession(true);
+  try {
+    // prefer already-known subject/category if available (no network)
+    const quickCategory =
+      (activeChat as any)?.category ||
+      (activeChat as any)?.subject ||
+      '';
+
+    const meta = quickCategory
+      ? { category: quickCategory, pricing: undefined }
+      : await fetchTutorMeta(tutorId);
+
+    const subject = meta.category || 'General';
+    const pricing = meta.pricing || {};
+
     const params = new URLSearchParams();
     params.set('tab', 'sessions');
     params.set('action', 'createSession');
-    params.set('tutorId', String(activeChat.recipientId));
+    params.set('tutorId', tutorId);
+    if (activeChat.name) params.set('tutorName', activeChat.name);
+    params.set('subject', subject);
+
+    // ✅ key part: send pricing so Session Type options show instantly
+    params.set('pricing', JSON.stringify(pricing));
+
+    // keep unlock context
+    params.set('comment', comment);
+    params.set('description', comment);
+    params.set('note', comment);
+
+    navigate(`/account?${params.toString()}`);
+  } catch (e) {
+    console.log('[Messages.web] create session meta fetch failed', e);
+
+    // fallback navigation
+    const params = new URLSearchParams();
+    params.set('tab', 'sessions');
+    params.set('action', 'createSession');
+    params.set('tutorId', String(activeChat.recipientId ?? ''));
     if (activeChat.name) params.set('tutorName', activeChat.name);
     params.set('subject', 'General');
-    params.set('sessionType', '');
-    params.set('sessionCost', '');
     params.set('pricing', '{}');
     params.set('comment', comment);
     params.set('description', comment);
     params.set('note', comment);
+
     navigate(`/account?${params.toString()}`);
-  };
+  } finally {
+    setCreatingSession(false);
+  }
+}, [activeChat, navigate, fetchTutorMeta]);
 
   return (
     <div
@@ -267,10 +364,12 @@ const Messages: React.FC = () => {
                       <span>Book a session to unlock tutor replies.</span>
                       <button
                         onClick={handleCreateSession}
-                        className="inline-flex items-center justify-center rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-white"
+                        disabled={creatingSession}
+                        className="inline-flex items-center justify-center rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
                       >
-                        Create Session
+                        {creatingSession ? 'Loading…' : 'Create Session'}
                       </button>
+
                     </div>
                   </div>
                 )}

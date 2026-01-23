@@ -383,14 +383,36 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
           </View>
 
           <View style={tw`flex-row items-end gap-2`}>
-            <StartWithAiButton
-              busy={busy}
-              hasAIContent={hasAIContent}
-              onStart={onStart}
-              canStartNow={canStartNow}
-              fullWidth
-            />
-          </View>
+  <View style={tw`flex-1`}>
+    <StartWithAiButton
+      busy={busy}
+      hasAIContent={hasAIContent}
+      onStart={onStart}
+      canStartNow={canStartNow}
+      fullWidth
+    />
+  </View>
+
+  {/* ✅ Lesson overlay доступ for org/locked learners too */}
+  <Pressable
+    onPress={() => {
+      if (onOpenOverlay) onOpenOverlay();
+    }}
+    disabled={!onOpenOverlay || !overlayAvailable}
+
+    accessibilityRole="button"
+    accessibilityLabel="Open lesson overlay"
+    style={tw.style(
+      `h-11 w-11 rounded-xl items-center justify-center border`,
+      overlayAvailable
+        ? `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
+        : `bg-slate-100 dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-60`
+    )}
+  >
+    <MaterialIcons name="layers" size={18} color={overlayAvailable ? '#49739c' : '#94a3b8'} />
+  </Pressable>
+</View>
+
         </View>
       ) : (
         <RefreshableScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={tw`gap-2`}>

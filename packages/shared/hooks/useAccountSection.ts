@@ -76,6 +76,9 @@ export const useAccountSection = (options?: {
   const { alertFn, confirmFn, navigateFn, queryParams } = options ?? {};
   const { token, backendUrl, setTokens } = useShopContext();
 
+  
+
+
   // ✅ Active tab
   const [activeTab, setActiveTab] = useState<
     'overview' | 'transactions' | 'sessions' | 'reviews' | 'earnings'
@@ -205,7 +208,28 @@ export const useAccountSection = (options?: {
   console.log('[useAccountSection] normalized earnings passed to UI', earnings);
 
   /* 5) Local UI state ------------------------------------------------------- */
-  const [formData, setFormData] = useState<SessionFormData>({
+  const normalizePricingObject = useCallback((pricing: any): Record<string, any> => {
+    if (!pricing) return {};
+
+    // already an object (and not an array)
+    if (typeof pricing === 'object' && !Array.isArray(pricing)) return pricing;
+
+    // allow stringified JSON
+    if (typeof pricing === 'string') {
+      try {
+        const parsed = JSON.parse(pricing);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+      } catch {
+        // ignore
+      }
+    }
+
+    // anything else becomes empty object
+    return {};
+  }, []);
+
+  // Internal state (never expose raw setter)
+  const [_formData, _setFormData] = useState<SessionFormData>({
     tutorId: '',
     tutorName: '',
     subject: '',
@@ -213,6 +237,27 @@ export const useAccountSection = (options?: {
     date: new Date().toISOString().slice(0, 10),
     note: '',
   });
+
+  // ✅ Exposed formData is ALWAYS normalized
+  const formData: SessionFormData = {
+    ..._formData,
+    pricing: normalizePricingObject((_formData as any).pricing),
+  };
+
+  // ✅ Exposed setFormData ALWAYS enforces pricing as object
+  const setFormData: Dispatch<SetStateAction<SessionFormData>> = useCallback(
+    (next) => {
+      _setFormData((prev) => {
+        const resolved = typeof next === 'function' ? (next as any)(prev) : next;
+
+        return {
+          ...resolved,
+          pricing: normalizePricingObject((resolved as any)?.pricing),
+        };
+      });
+    },
+    [normalizePricingObject]
+  );
 
   const [ratingData, setRatingData] = useState<RatingFormData>({
     id: '',
@@ -226,6 +271,7 @@ export const useAccountSection = (options?: {
 
   const [cancelReasons, setCancelReasons] = useState<Record<string, string>>({});
   const [showRatingModal, setShowRatingModal] = useState(false);
+
 
   /* 6) Mutations ------------------------------------------------------------ */
   const cancelSessionM = useMutation<void, Error, { sessionId: string; reason: string }>({
@@ -348,17 +394,23 @@ export const useAccountSection = (options?: {
         queryParams.get('comment') ??
         queryParams.get('description') ??
         '';
+
       setActiveTab('sessions');
+
+      const pricingObj = normalizePricingObject(queryParams.get('pricing'));
+
       setFormData((fd) => ({
         ...fd,
         tutorId: queryParams.get('tutorId') ?? '',
         tutorName: queryParams.get('tutorName') ?? '',
         subject: queryParams.get('subject') ?? '',
         note,
-        pricing: queryParams.get('pricing') ? JSON.parse(queryParams.get('pricing')!) : {},
+        pricing: pricingObj,
       }));
     }
-  }, [queryParams, setActiveTab, setFormData]);
+  }, [queryParams, setActiveTab, setFormData, normalizePricingObject]);
+
+
 
   /* 8) When Earnings tab is open, refresh related data on focus ------------ */
   useEffect(() => {
@@ -411,10 +463,16 @@ export const useAccountSection = (options?: {
     [confirmCancelSession, user.role]
   );
 
-  const handleSessionCreation = useCallback(
-    () => createSessionM.mutate(formData),
-    [createSessionM, formData]
+   const handleSessionCreation = useCallback(
+    () =>
+      createSessionM.mutate({
+        ...formData,
+        pricing: normalizePricingObject((formData as any).pricing),
+      }),
+    [createSessionM, formData, normalizePricingObject]
   );
+
+
 
   const handleCompletePending = useCallback(
     (sessionId: string) => completePendingM.mutate(sessionId),

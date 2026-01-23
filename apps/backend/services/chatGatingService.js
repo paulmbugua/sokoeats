@@ -2,31 +2,36 @@ import pool from '../config/db.js';
 
 export async function getUserIdForProfileId(profileId) {
   if (!profileId) return null;
-  const r = await pool.query('SELECT user_id FROM profiles WHERE id = $1', [
-    profileId,
-  ]);
+  const r = await pool.query('SELECT user_id FROM profiles WHERE id = $1::int', [Number(profileId)]);
   return r.rows[0]?.user_id ?? null;
 }
 
 export async function getProfileIdForUserId(userId) {
   if (!userId) return null;
-  const r = await pool.query('SELECT id FROM profiles WHERE user_id = $1', [
-    userId,
-  ]);
+ const r = await pool.query('SELECT id FROM profiles WHERE user_id = $1::int', [Number(userId)]);
   return r.rows[0]?.id ?? null;
 }
 
 export async function getRoles(profileIdA, profileIdB) {
-  const ids = [String(profileIdA), String(profileIdB)];
+  const ids = [profileIdA, profileIdB]
+    .map((v) => Number(v))
+    .filter((n) => Number.isInteger(n));
+
+  if (!ids.length) return {};
+
   const r = await pool.query(
-    `SELECT id, role, user_id FROM profiles WHERE id = ANY($1::text[])`,
+    `SELECT id, role, user_id
+       FROM profiles
+      WHERE id = ANY($1::int[])`,
     [ids],
   );
+
   return r.rows.reduce((acc, row) => {
     acc[String(row.id)] = { role: row.role, user_id: row.user_id };
     return acc;
   }, {});
 }
+
 
 export function resolveStudentTutor(
   profileIdA,
