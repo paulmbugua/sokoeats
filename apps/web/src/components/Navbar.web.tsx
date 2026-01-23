@@ -15,7 +15,7 @@ import {
   faChalkboardTeacher,
   faGraduationCap,
 } from '@fortawesome/free-solid-svg-icons';
-import { useShopContext } from '@mytutorapp/shared/context';
+import { useChatContext, useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useTheme } from '@mytutorapp/shared/hooks';
 import {
@@ -39,6 +39,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
   const { role } = useOrg() ?? {};
   const location = useLocation();
   const navigate = useNavigate();
+  const { unreadCount, chats } = useChatContext();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -165,6 +166,22 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
   };
 
   const isDark = (theme || '').toString().toLowerCase() === 'dark';
+  const totalUnreadCount = useMemo(() => {
+    if (typeof unreadCount === 'number') return unreadCount;
+    return chats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
+  }, [unreadCount, chats]);
+
+  const unreadBadgeLabel = totalUnreadCount > 99 ? '99+' : String(totalUnreadCount);
+  const hasUnreadMessages = totalUnreadCount > 0;
+
+  const handleNotificationsClick = () => {
+    const latestUnreadChat = chats.find((chat) => (chat.unreadCount || 0) > 0);
+    if (latestUnreadChat?.recipientId) {
+      navigate(`/messages?studentId=${encodeURIComponent(latestUnreadChat.recipientId)}`);
+      return;
+    }
+    navigate('/messages');
+  };
 
   // One responsive pill style used by Org shortcuts everywhere
   const ORG_PILL =
@@ -339,10 +356,18 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
             {/* Bell */}
             <button
               type="button"
-              className="inline-flex items-center justify-center rounded-xl h-10 w-10 bg-gray-100 dark:bg-[#172534] ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
-              aria-label="Notifications"
+              onClick={handleNotificationsClick}
+              className="relative inline-flex items-center justify-center rounded-xl h-10 w-10 bg-gray-100 dark:bg-[#172534] ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
+              aria-label={`Unread messages: ${totalUnreadCount}`}
             >
               <FontAwesomeIcon icon={faBell as IconProp} />
+              {hasUnreadMessages && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-[0.65rem] font-bold leading-5 text-center ring-2 ring-white dark:ring-darkBg"
+                >
+                  {unreadBadgeLabel}
+                </span>
+              )}
             </button>
 
             {/* Theme toggle */}
