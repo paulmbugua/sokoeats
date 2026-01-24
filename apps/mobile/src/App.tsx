@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { View, StyleSheet,Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StackActions } from '@react-navigation/native';
 
 import TransitionOverlay from './screens/TransitionOverlay.native';
 import { useThemePref } from './theme/ThemeContext';
@@ -642,6 +643,22 @@ function ResultsScreen() {
   );
 }
 
+function OerCollectionReaderAliasScreen() {
+  const navigation = useNavigation<NavigationProp<MainStackParamList>>();
+  const route = useRoute<RouteProp<MainStackParamList, 'OerCollectionReader'>>();
+
+  React.useEffect(() => {
+    const id = route.params?.id;
+    if (!id) return;
+
+    // Redirect to the screen you already use for collections
+    navigation.dispatch(StackActions.replace('VideoCollection', { id }));
+  }, [navigation, route.params?.id]);
+
+  return <Spinner label="Loading collection…" />;
+}
+
+
 /* ─────────────────────────────────────────────────────────
  * App
  * ───────────────────────────────────────────────────────── */
@@ -803,6 +820,7 @@ const App: React.FC = () => {
           <Stack.Screen name="Resources" component={ResourcesPage} />
           <Stack.Screen name="Videos" component={VideosScreen} />
           <Stack.Screen name="VideoCollection" component={VideosScreen} />
+          <Stack.Screen name="OerCollectionReader" component={OerCollectionReaderAliasScreen} />
           <Stack.Screen name="OerReaderFull" component={OerReaderFullNative} />
 
           {/* Policies */}

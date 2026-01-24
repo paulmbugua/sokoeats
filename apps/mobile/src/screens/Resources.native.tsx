@@ -21,7 +21,6 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import { Image } from 'expo-image';
 import AutoPreviewVideo from './AutoPreviewVideo.native';
 
-
 import { useResourcesExplore, useClassVault } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
 
@@ -53,11 +52,20 @@ type OerCollection = {
   [k: string]: any;
 };
 
+// ✅ NEW: “grid row” item (since SectionList doesn’t support numColumns)
+type GridRowItem = {
+  kind: 'gridRow';
+  rowKind: 'course' | 'oerBook';
+  rowId: string;
+  items: Array<Course | OerBookItem>;
+};
+
 type SectionItem =
   | ({ kind: 'classvault' } & RecordedVideo)
   | ({ kind: 'course' } & Course)
   | ({ kind: 'oerCollection' } & OerCollection)
-  | ({ kind: 'oerBook' } & OerBookItem);
+  | ({ kind: 'oerBook' } & OerBookItem)
+  | GridRowItem;
 
 type ExploreSection = {
   key: string;
@@ -125,6 +133,13 @@ const withBust = (u?: string, bust?: string) => {
   return `${u}${u.includes('?') ? '&' : '?'}v=${encodeURIComponent(b)}`;
 };
 
+// ✅ helper: chunk array for 2-per-row grid
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 /* ------------------------------ Filters --------------------------------- */
 const FilterChip: React.FC<{
   label: string;
@@ -171,7 +186,9 @@ const FilterModal: React.FC<{
           style={tw`w-full max-w-[520px] rounded-2xl bg-white dark:bg-[#0f1821] border border-slate-200 dark:border-white/10 overflow-hidden`}
         >
           {/* Header */}
-          <View style={tw`flex-row items-center justify-between px-4 pt-4 pb-3 border-b border-slate-200 dark:border-white/10`}>
+          <View
+            style={tw`flex-row items-center justify-between px-4 pt-4 pb-3 border-b border-slate-200 dark:border-white/10`}
+          >
             <View>
               <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>Filters</Text>
               <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
@@ -196,9 +213,21 @@ const FilterModal: React.FC<{
             <View style={tw`mb-5`}>
               <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>Source</Text>
               <View style={tw`flex-row flex-wrap gap-2`}>
-                <FilterChip label="All" active={value.sourceKind === ''} onPress={() => set({ sourceKind: '' })} />
-                <FilterChip label="OER" active={value.sourceKind === 'oer'} onPress={() => set({ sourceKind: 'oer' })} />
-                <FilterChip label="Tutors" active={value.sourceKind === 'tutor'} onPress={() => set({ sourceKind: 'tutor' })} />
+                <FilterChip
+                  label="All"
+                  active={value.sourceKind === ''}
+                  onPress={() => set({ sourceKind: '' })}
+                />
+                <FilterChip
+                  label="OER"
+                  active={value.sourceKind === 'oer'}
+                  onPress={() => set({ sourceKind: 'oer' })}
+                />
+                <FilterChip
+                  label="Tutors"
+                  active={value.sourceKind === 'tutor'}
+                  onPress={() => set({ sourceKind: 'tutor' })}
+                />
               </View>
             </View>
 
@@ -207,7 +236,11 @@ const FilterModal: React.FC<{
               <View style={tw`flex-row flex-wrap gap-2`}>
                 <FilterChip label="All" active={value.scope === ''} onPress={() => set({ scope: '' })} />
                 <FilterChip label="Free" active={value.scope === 'free'} onPress={() => set({ scope: 'free' })} />
-                <FilterChip label="Purchased" active={value.scope === 'purchased'} onPress={() => set({ scope: 'purchased' })} />
+                <FilterChip
+                  label="Purchased"
+                  active={value.scope === 'purchased'}
+                  onPress={() => set({ scope: 'purchased' })}
+                />
               </View>
             </View>
 
@@ -260,7 +293,9 @@ const FilterModal: React.FC<{
               </View>
 
               <View style={tw`flex-1 min-w-[140px]`}>
-                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>Max price (tokens)</Text>
+                <Text style={tw`text-xs font-bold text-slate-500 dark:text-white/60 mb-2`}>
+                  Max price (tokens)
+                </Text>
                 <TextInput
                   value={String(value.maxPrice || '')}
                   onChangeText={(text) => set({ maxPrice: Number(text) || 0 })}
@@ -274,11 +309,10 @@ const FilterModal: React.FC<{
           </ScrollView>
 
           {/* Footer actions */}
-          <View style={tw`flex-row items-center justify-between px-4 pb-4 pt-3 border-t border-slate-200 dark:border-white/10`}>
-            <Pressable
-              onPress={onReset}
-              style={tw`px-4 py-2 rounded-full border border-slate-200 dark:border-white/10`}
-            >
+          <View
+            style={tw`flex-row items-center justify-between px-4 pb-4 pt-3 border-t border-slate-200 dark:border-white/10`}
+          >
+            <Pressable onPress={onReset} style={tw`px-4 py-2 rounded-full border border-slate-200 dark:border-white/10`}>
               <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>Reset</Text>
             </Pressable>
 
@@ -297,7 +331,9 @@ const TabBar: React.FC<{
   value: 'videos' | 'courses';
   onChange: (next: 'videos' | 'courses') => void;
 }> = ({ value, onChange }) => (
-  <View style={tw`flex-row bg-white dark:bg-[#0f1821] rounded-full border border-slate-200 dark:border-white/10 p-1`}>
+  <View
+    style={tw`flex-row bg-white dark:bg-[#0f1821] rounded-full border border-slate-200 dark:border-white/10 p-1`}
+  >
     {([
       { key: 'videos', label: 'Explore Videos & Notes' },
       { key: 'courses', label: 'Explore Courses' },
@@ -318,6 +354,55 @@ const TabBar: React.FC<{
     ))}
   </View>
 );
+
+const MiniMediaTabs: React.FC<{
+  value: 'all' | 'videos' | 'notes';
+  onChange: (v: 'all' | 'videos' | 'notes') => void;
+}> = ({ value, onChange }) => {
+  const Tab = ({
+    k,
+    label,
+    emoji,
+  }: {
+    k: 'all' | 'videos' | 'notes';
+    label: string;
+    emoji: string;
+  }) => {
+    const active = value === k;
+    return (
+      <Pressable
+        onPress={() => onChange(k)}
+        style={tw.style(
+          'px-3 py-2 rounded-full border flex-row items-center',
+          active
+            ? 'bg-slate-900 dark:bg-white border-slate-900 dark:border-white'
+            : 'bg-white dark:bg-[#0f1821] border-slate-200 dark:border-white/10'
+        )}
+      >
+        <Text style={tw.style('text-xs font-extrabold mr-1', active ? 'text-white dark:text-slate-900' : 'text-slate-700 dark:text-white/80')}>
+          {emoji}
+        </Text>
+        <Text
+          style={tw.style(
+            'text-xs font-semibold',
+            active ? 'text-white dark:text-slate-900' : 'text-slate-600 dark:text-white/70'
+          )}
+        >
+          {label}
+        </Text>
+      </Pressable>
+    );
+  };
+
+  return (
+    <View style={tw`mt-3 flex-row items-center gap-2`}>
+      <Tab k="all" label="All" emoji="✨" />
+      <Tab k="videos" label="Videos" emoji="🎬" />
+      <Tab k="notes" label="Notes" emoji="📄" />
+    </View>
+  );
+};
+
 
 /* --------------------------- Section Shell UI ---------------------------- */
 const SectionHeader: React.FC<{ title: string; subtitle: string }> = ({ title, subtitle }) => (
@@ -373,7 +458,9 @@ function useOerVideoCollections(backendUrl?: string, q?: string) {
       setLoading(true);
       setError(null);
       try {
-        const url = `${base}/api/oer/collections?kind=video&limit=48${q?.trim() ? `&q=${encodeURIComponent(q.trim())}` : ''}`;
+        const url = `${base}/api/oer/collections?kind=video&limit=48${
+          q?.trim() ? `&q=${encodeURIComponent(q.trim())}` : ''
+        }`;
         const res = await fetch(url, { signal: ac.signal as any });
         const data = res.ok ? await res.json().catch(() => []) : [];
         setItems(Array.isArray(data) ? data : []);
@@ -398,15 +485,36 @@ const ClassVaultMarketCard: React.FC<{
   onPress: () => void;
   isVisible: boolean;
 }> = ({ item, onPress, isVisible }) => {
-  const bust = String((item as any)?.updated_at || (item as any)?.updatedAt || item.created_at || Date.now());
+  const bust = String(
+    (item as any)?.updated_at || (item as any)?.updatedAt || item.created_at || Date.now()
+  );
 
   const pdfUrlRaw = withBust((item as any)?.pdf_url || '', bust);
   const pdfPreviewUrl = pdfUrlRaw ? toPdfPreviewUrl(pdfUrlRaw) : '';
 
-  const previewUrl = withBust((item as any)?.preview_url || (item as any)?.video_url || '', bust);
+  const previewUrl = withBust(
+  (item as any)?.preview_url ||
+    (item as any)?.previewUrl ||
+    (item as any)?.video_url ||
+    (item as any)?.videoUrl ||
+    '',
+  bust
+);
+
   const thumbUrl = withBust((item as any)?.thumbnail_url || '', bust);
 
-  const isPdfOnly = Boolean((item as any)?.pdf_url) && !(item as any)?.video_url;
+  const isPdfOnly = (() => {
+  const it: any = item as any;
+  const hasPdf = Boolean(it?.has_pdf) || Boolean(it?.pdf_url) || Boolean(it?.pdfUrl);
+  const hasVideo =
+    Boolean(it?.has_video) ||
+    Boolean(it?.video_url) ||
+    Boolean(it?.videoUrl) ||
+    Boolean(it?.preview_url) ||
+    Boolean(it?.previewUrl);
+  return hasPdf && !hasVideo;
+})();
+
   const [pdfBlocked, setPdfBlocked] = useState(false);
 
   return (
@@ -430,9 +538,8 @@ const ClassVaultMarketCard: React.FC<{
         ) : null}
 
         {!isPdfOnly && previewUrl && isVisible ? (
-            <AutoPreviewVideo uri={previewUrl} shouldPlay style={tw`absolute inset-0`} />
-          ) : null}
-
+          <AutoPreviewVideo uri={previewUrl} shouldPlay style={tw`absolute inset-0`} />
+        ) : null}
 
         <View style={tw`absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5`}>
           <Text style={tw`text-[11px] text-white font-semibold`}>{isPdfOnly ? 'Notes' : 'Preview'}</Text>
@@ -441,7 +548,9 @@ const ClassVaultMarketCard: React.FC<{
         {isPdfOnly && (pdfBlocked || !WebView || !pdfPreviewUrl) ? (
           <View style={tw`absolute inset-0 items-center justify-center bg-black/35 px-3`}>
             <Text style={tw`text-xs text-white font-semibold`}>Notes preview unavailable</Text>
-            <Text style={tw`text-[11px] text-white/80 mt-1 text-center`}>Tap to open and view the PDF.</Text>
+            <Text style={tw`text-[11px] text-white/80 mt-1 text-center`}>
+              Tap to open and view the PDF.
+            </Text>
           </View>
         ) : null}
       </View>
@@ -473,7 +582,11 @@ const OerCollectionCard: React.FC<{
       style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
     >
       <View style={[tw`bg-slate-200 dark:bg-white/10 overflow-hidden`, { height: PREVIEW_H }]}>
-        {thumb ? <Image source={{ uri: thumb }} style={tw`w-full h-full`} contentFit="cover" /> : <View style={tw`w-full h-full bg-[#0b1220]`} />}
+        {thumb ? (
+          <Image source={{ uri: thumb }} style={tw`w-full h-full`} contentFit="cover" />
+        ) : (
+          <View style={tw`w-full h-full bg-[#0b1220]`} />
+        )}
         <View style={tw`absolute inset-0 bg-black/20`} />
         <View style={tw`absolute bottom-2 left-2 flex-row items-center`}>
           <View style={tw`rounded-full bg-black/60 px-2 py-0.5 mr-2`}>
@@ -503,6 +616,7 @@ const OerCollectionCard: React.FC<{
 };
 
 /* ----------------------- Cards: Course + OER book ------------------------ */
+// ✅ Updated: No bottom margin here (grid row controls spacing)
 const SimpleCard: React.FC<{
   title: string;
   subtitle: string;
@@ -512,10 +626,12 @@ const SimpleCard: React.FC<{
 }> = ({ title, subtitle, imageUrl, onPress, badge }) => (
   <Pressable
     onPress={onPress}
-    style={tw`mb-3 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
+    style={tw`rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
   >
     <View style={tw`h-32 bg-slate-200 dark:bg-white/10`}>
-      {imageUrl ? <Image source={{ uri: imageUrl }} style={tw`w-full h-full`} contentFit="cover" /> : null}
+      {imageUrl ? (
+        <Image source={{ uri: imageUrl }} style={tw`w-full h-full`} contentFit="cover" />
+      ) : null}
     </View>
     <View style={tw`p-3`}>
       <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`} numberOfLines={2}>
@@ -546,6 +662,24 @@ const ResourcesPage: React.FC = () => {
 
   const FOOTER_H = 76;
   const bottomPad = Math.max(insets.bottom, 10) + FOOTER_H;
+  const [mediaTab, setMediaTab] = useState<'all' | 'videos' | 'notes'>('all');
+
+const isNotesOnly = useCallback((it: any) => {
+  const hasPdf =
+    Boolean(it?.has_pdf) ||
+    Boolean(it?.pdf_url) ||
+    Boolean(it?.pdfUrl);
+
+  const hasVideo =
+    Boolean(it?.has_video) ||
+    Boolean(it?.video_url) ||
+    Boolean(it?.videoUrl) ||
+    Boolean(it?.preview_url) ||
+    Boolean(it?.previewUrl);
+
+  return hasPdf && !hasVideo;
+}, []);
+
 
   // ClassVault purchase support
   const { purchasedIds, purchase } = useClassVault('', '');
@@ -603,6 +737,11 @@ const ResourcesPage: React.FC = () => {
 
   // ✅ allow navbar icon to focus search input
   const searchRef = useRef<TextInput | null>(null);
+
+  useEffect(() => {
+  if (tab !== 'videos') setMediaTab('all');
+}, [tab]);
+
 
   // ✅ handle navbar-trigger params: openSearch/openFilters
   useEffect(() => {
@@ -683,59 +822,110 @@ const ResourcesPage: React.FC = () => {
     setDraftFilters(DEFAULT_FILTERS);
   }, []);
 
-  const sections: ExploreSection[] = useMemo(() => {
-    if (tab === 'videos') {
-      return [
-        {
-          key: 'classvault',
-          title: 'ClassVault marketplace',
-          subtitle: 'Discover videos and notes from tutors (with previews).',
-          data: (explore.classVault.items || []).map((item: any) => ({ ...item, kind: 'classvault' })),
-          loading: explore.classVault.loading,
-          error: explore.classVault.error,
-          emptyMessage: 'No ClassVault results yet.',
-          hasMore: explore.classVault.hasMore,
-          loadMore: explore.classVault.loadMore,
-        },
-        {
-          key: 'oerCollections',
-          title: 'Free OER video collections',
-          subtitle: 'Curated playlists you can open in the Collection Reader.',
-          data: (oerCollections.items || []).slice(0, 12).map((c: any) => ({ ...c, kind: 'oerCollection' })),
-          loading: oerCollections.loading,
-          error: oerCollections.error,
-          emptyMessage: 'No OER video collections match that search.',
-          hasMore: false,
-          loadMore: () => {},
-        },
-      ];
-    }
+  // ✅ NEW: grid rows for courses + books
+const sections: ExploreSection[] = useMemo(() => {
+  // ✅ put it HERE (top of the useMemo)
+  const classVaultRaw = (explore.classVault.items || []).map((item: any) => ({
+    ...item,
+    kind: 'classvault',
+  }));
 
+  const classVaultFiltered =
+    tab !== 'videos'
+      ? classVaultRaw
+      : mediaTab === 'all'
+      ? classVaultRaw
+      : mediaTab === 'notes'
+      ? classVaultRaw.filter((x: any) => isNotesOnly(x))
+      : classVaultRaw.filter((x: any) => !isNotesOnly(x));
+
+  // ✅ now use classVaultFiltered below
+  if (tab === 'videos') {
     return [
       {
-        key: 'courses',
-        title: 'Courses',
-        subtitle: 'Explore tutor-led courses available to enroll.',
-        data: (explore.normalCourses.items || []).map((item: any) => ({ ...item, kind: 'course' })),
-        loading: explore.normalCourses.loading,
-        error: explore.normalCourses.error,
-        emptyMessage: isPurchasedCoursesScope ? 'Purchased scope applies to videos only.' : 'No courses found yet.',
-        hasMore: explore.normalCourses.hasMore,
-        loadMore: explore.normalCourses.loadMore,
+        key: 'classvault',
+        title: 'ClassVault marketplace',
+        subtitle:
+          mediaTab === 'notes'
+            ? 'Notes only (PDFs) from tutors.'
+            : mediaTab === 'videos'
+            ? 'Video lessons only from tutors (with previews).'
+            : 'Discover videos and notes from tutors (with previews).',
+        data: classVaultFiltered,
+        loading: explore.classVault.loading,
+        error: explore.classVault.error,
+        emptyMessage:
+          mediaTab === 'notes'
+            ? 'No notes found yet.'
+            : mediaTab === 'videos'
+            ? 'No videos found yet.'
+            : 'No ClassVault results yet.',
+        hasMore: explore.classVault.hasMore,
+        loadMore: explore.classVault.loadMore,
       },
       {
-        key: 'oerBooks',
-        title: 'Free OER books',
-        subtitle: 'OpenStax and other openly licensed books.',
-        data: (explore.oerBooks.items || []).map((item: any) => ({ ...item, kind: 'oerBook' })),
-        loading: explore.oerBooks.loading,
-        error: explore.oerBooks.error,
-        emptyMessage: isPurchasedCoursesScope ? 'Purchased scope applies to videos only.' : 'No OER books match that search.',
-        hasMore: explore.oerBooks.hasMore,
-        loadMore: explore.oerBooks.loadMore,
-      },
+  key: 'oerCollections',
+  title: 'Free OER video collections',
+  subtitle: 'Curated playlists you can open in the Collection Reader.',
+  data: (oerCollections.items || []).slice(0, 12).map((c: any) => ({ ...c, kind: 'oerCollection' })),
+  loading: oerCollections.loading,
+  error: oerCollections.error,
+  emptyMessage: 'No OER video collections match that search.',
+  hasMore: false,
+  loadMore: () => {},
+},
+
     ];
-  }, [tab, explore, oerCollections, isPurchasedCoursesScope]);
+  }
+
+  // existing courses tab logic stays the same...
+  const courseRows: GridRowItem[] = chunk(explore.normalCourses.items || [], 2).map((pair, idx) => ({
+    kind: 'gridRow',
+    rowKind: 'course',
+    rowId: `course-row-${idx}`,
+    items: pair as any,
+  }));
+
+  const bookRows: GridRowItem[] = chunk(explore.oerBooks.items || [], 2).map((pair, idx) => ({
+    kind: 'gridRow',
+    rowKind: 'oerBook',
+    rowId: `book-row-${idx}`,
+    items: pair as any,
+  }));
+
+  return [
+    {
+      key: 'courses',
+      title: 'Courses',
+      subtitle: 'Explore tutor-led courses available to enroll.',
+      data: courseRows as any,
+      loading: explore.normalCourses.loading,
+      error: explore.normalCourses.error,
+      emptyMessage: isPurchasedCoursesScope ? 'Purchased scope applies to videos only.' : 'No courses found yet.',
+      hasMore: explore.normalCourses.hasMore,
+      loadMore: explore.normalCourses.loadMore,
+    },
+    {
+      key: 'oerBooks',
+      title: 'Free OER books',
+      subtitle: 'OpenStax and other openly licensed books.',
+      data: bookRows as any,
+      loading: explore.oerBooks.loading,
+      error: explore.oerBooks.error,
+      emptyMessage: isPurchasedCoursesScope ? 'Purchased scope applies to videos only.' : 'No OER books match that search.',
+      hasMore: explore.oerBooks.hasMore,
+      loadMore: explore.oerBooks.loadMore,
+    },
+  ];
+}, [
+  tab,
+  mediaTab,          // ✅ add this
+  explore,
+  oerCollections,
+  isPurchasedCoursesScope,
+  isNotesOnly,       // ✅ add this (because you call it)
+]);
+
 
   const renderItem = useCallback(
     ({ item }: { item: SectionItem }) => {
@@ -773,10 +963,67 @@ const ResourcesPage: React.FC = () => {
         );
       }
 
+      // ✅ NEW: grid row renderer (2 per row)
+      if (item.kind === 'gridRow') {
+        const row = item as GridRowItem;
+        const first = row.items[0] as any;
+        const second = row.items[1] as any;
+
+        return (
+          <View style={tw`px-4 mb-3 flex-row`}>
+            <View style={tw`flex-1`}>
+              {row.rowKind === 'course' ? (
+                <SimpleCard
+                  title={String(first?.title ?? 'Course')}
+                  subtitle={String(first?.subject ?? 'Course')}
+                  imageUrl={first?.thumbnail_url ?? null}
+                  onPress={() => navigation.navigate('CourseDetails', { courseId: String(first?.id) })}
+                />
+              ) : (
+                <SimpleCard
+                  title={String(first?.title ?? 'Book')}
+                  subtitle="Open resources"
+                  imageUrl={first?.cover_url ?? null}
+                  onPress={() => navigation.navigate('OerReaderFull', { id: first?.slug || first?.id })}
+                  badge="Free"
+                />
+              )}
+            </View>
+
+            <View style={tw`w-3`} />
+
+            <View style={tw`flex-1`}>
+              {second ? (
+                row.rowKind === 'course' ? (
+                  <SimpleCard
+                    title={String(second?.title ?? 'Course')}
+                    subtitle={String(second?.subject ?? 'Course')}
+                    imageUrl={second?.thumbnail_url ?? null}
+                    onPress={() => navigation.navigate('CourseDetails', { courseId: String(second?.id) })}
+                  />
+                ) : (
+                  <SimpleCard
+                    title={String(second?.title ?? 'Book')}
+                    subtitle="Open resources"
+                    imageUrl={second?.cover_url ?? null}
+                    onPress={() => navigation.navigate('OerReaderFull', { id: second?.slug || second?.id })}
+                    badge="Free"
+                  />
+                )
+              ) : (
+                // spacer to keep row width consistent when odd count
+                <View style={tw`flex-1`} />
+              )}
+            </View>
+          </View>
+        );
+      }
+
+      // (kept for compatibility / other types; normally gridRow handles these in courses tab)
       if (item.kind === 'oerBook') {
         const id = (item as any).slug || (item as any).id;
         return (
-          <View style={tw`px-4`}>
+          <View style={tw`px-4 mb-3`}>
             <SimpleCard
               title={(item as any).title}
               subtitle="Open resources"
@@ -789,7 +1036,7 @@ const ResourcesPage: React.FC = () => {
       }
 
       return (
-        <View style={tw`px-4`}>
+        <View style={tw`px-4 mb-3`}>
           <SimpleCard
             title={(item as any).title}
             subtitle={(item as any).subject || 'Course'}
@@ -806,9 +1053,16 @@ const ResourcesPage: React.FC = () => {
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'left', 'right']}>
       <SectionList
         sections={sections}
-        keyExtractor={(item, index) =>
-          `${(item as any).kind}-${String((item as any).id ?? (item as any).slug ?? index)}-${index}`
-        }
+        keyExtractor={(item) => {
+          const k = (item as any)?.kind;
+          if (k === 'gridRow') return `gridRow:${(item as any).rowId}`;
+          if (k === 'classvault') return `classvault:${String((item as any).id)}`;
+          if (k === 'oerCollection') return `oerCollection:${String((item as any).slug ?? (item as any).id)}`;
+          if (k === 'oerBook') return `oerBook:${String((item as any).slug ?? (item as any).id)}`;
+          if (k === 'course') return `course:${String((item as any).id)}`;
+          return `item:${String((item as any).id ?? (item as any).slug ?? 'unknown')}`;
+        }}
+
         renderItem={renderItem}
         renderSectionHeader={({ section }) => <SectionHeader title={section.title} subtitle={section.subtitle} />}
         renderSectionFooter={({ section }) => (
@@ -871,6 +1125,10 @@ const ResourcesPage: React.FC = () => {
               </View>
 
               <TabBar value={tab} onChange={setTab} />
+              {tab === 'videos' ? (
+  <MiniMediaTabs value={mediaTab} onChange={setMediaTab} />
+) : null}
+
             </View>
 
             {!WebView && tab === 'videos' ? (
@@ -905,7 +1163,9 @@ const ResourcesPage: React.FC = () => {
             style={tw`w-full rounded-2xl bg-white dark:bg-[#0f1821] border border-slate-200 dark:border-white/10 overflow-hidden`}
           >
             <View style={tw`px-4 pt-4 pb-3 border-b border-slate-200 dark:border-white/10`}>
-              <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>Confirm purchase</Text>
+              <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>
+                Confirm purchase
+              </Text>
               <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
                 You’re about to unlock this item using tokens.
               </Text>
@@ -918,7 +1178,9 @@ const ResourcesPage: React.FC = () => {
 
               <View style={tw`mt-2`}>
                 <Text style={tw`text-xs text-slate-500 dark:text-white/60`}>
-                  Type: {payItem && (payItem as any)?.pdf_url && !(payItem as any)?.video_url ? 'Notes' : 'Video'}
+                  Type:{' '}
+                  {payItem && isNotesOnly(payItem as any) ? 'Notes' : 'Video'}
+
                 </Text>
                 <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
                   Subject: {(payItem as any)?.subject || 'ClassVault'}
@@ -937,7 +1199,9 @@ const ResourcesPage: React.FC = () => {
                 </View>
                 <View style={tw`flex-row items-center justify-between mt-2`}>
                   <Text style={tw`text-xs text-slate-500 dark:text-white/60`}>Your balance</Text>
-                  <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>{tokenBalance} tokens</Text>
+                  <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>
+                    {tokenBalance} tokens
+                  </Text>
                 </View>
 
                 {payItem ? (
@@ -954,7 +1218,10 @@ const ResourcesPage: React.FC = () => {
               <TouchableOpacity
                 onPress={closePay}
                 disabled={payBusy}
-                style={tw.style(`px-4 py-2 rounded-full border border-slate-200 dark:border-white/10`, payBusy && 'opacity-60')}
+                style={tw.style(
+                  `px-4 py-2 rounded-full border border-slate-200 dark:border-white/10`,
+                  payBusy && 'opacity-60'
+                )}
               >
                 <Text style={tw`text-sm font-semibold text-slate-900 dark:text-white`}>Cancel</Text>
               </TouchableOpacity>
@@ -977,7 +1244,9 @@ const ResourcesPage: React.FC = () => {
                   disabled={payBusy || !payItem}
                   style={tw.style(`px-4 py-2 rounded-full bg-blue-500`, (payBusy || !payItem) && 'opacity-60')}
                 >
-                  <Text style={tw`text-sm font-extrabold text-white`}>{payBusy ? 'Purchasing…' : 'Purchase'}</Text>
+                  <Text style={tw`text-sm font-extrabold text-white`}>
+                    {payBusy ? 'Purchasing…' : 'Purchase'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>

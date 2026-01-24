@@ -37,6 +37,38 @@ const Tabs: React.FC<{
   </div>
 );
 
+const MiniMediaTabs: React.FC<{
+  value: 'all' | 'videos' | 'notes';
+  onChange: (v: 'all' | 'videos' | 'notes') => void;
+}> = ({ value, onChange }) => {
+  const Tab = ({ k, label, emoji }: { k: 'all' | 'videos' | 'notes'; label: string; emoji: string }) => {
+    const active = value === k;
+    return (
+      <button
+        type="button"
+        onClick={() => onChange(k)}
+        className={`h-9 px-3 rounded-full text-xs font-semibold ring-1 transition inline-flex items-center gap-1 ${
+          active
+            ? 'bg-[#0d141c] dark:bg-white text-white dark:text-[#0d141c] ring-[#0d141c] dark:ring-white'
+            : 'bg-white dark:bg-[#0f1821] text-[#5e738f] dark:text-darkTextSecondary ring-[#e4ecf4] dark:ring-darkCard hover:brightness-105'
+        }`}
+      >
+        <span className={`text-xs ${active ? 'font-extrabold' : 'font-bold'}`}>{emoji}</span>
+        <span>{label}</span>
+      </button>
+    );
+  };
+
+  return (
+    <div className="mt-3 flex items-center gap-2">
+      <Tab k="all" label="All" emoji="✨" />
+      <Tab k="videos" label="Videos" emoji="🎬" />
+      <Tab k="notes" label="Notes" emoji="📄" />
+    </div>
+  );
+};
+
+
 const LoadMoreButton: React.FC<{
   onClick: () => void;
   disabled?: boolean;
@@ -304,14 +336,10 @@ const ClassVaultCard: React.FC<{
   const withBust = (u?: string | null) =>
     u ? `${u}${u.includes('?') ? '&' : '?'}v=${encodeURIComponent(bust)}` : '';
 
-  // ✅ Use server flags (fallbacks in case older payloads still have urls)
   const hasVideo = Boolean((item as any)?.has_video) || Boolean((item as any)?.video_url);
   const hasPdf = Boolean((item as any)?.has_pdf) || Boolean((item as any)?.pdf_url);
-
-  // ✅ “Notes” means: has pdf and no video
   const isNotes = hasPdf && !hasVideo;
 
-  // ✅ Public-safe preview assets only
   const poster = withBust((item as any)?.thumbnail_url || null);
   const preview = withBust((item as any)?.preview_url || null);
 
@@ -333,7 +361,6 @@ const ClassVaultCard: React.FC<{
       className="block text-left rounded-xl ring-1 ring-[#e4ecf4] dark:ring-darkCard bg-white dark:bg-[#111b25] overflow-hidden hover:shadow-sm transition"
     >
       <div className="relative aspect-video bg-[#0b1220] overflow-hidden">
-        {/* ✅ Thumbnail / fallback */}
         {poster ? (
           <div
             className="absolute inset-0 bg-cover bg-center"
@@ -343,7 +370,6 @@ const ClassVaultCard: React.FC<{
           <div className="absolute inset-0 bg-gradient-to-br from-[#0b1220] to-[#111b25]" />
         )}
 
-        {/* ✅ Video preview only if preview_url exists */}
         {!isNotes && preview ? (
           <video
             key={preview}
@@ -377,21 +403,37 @@ const ClassVaultCard: React.FC<{
 };
 
 /* ----------------------------- Course cards ------------------------------ */
+/**
+ * ✅ Updated:
+ * - responsive media height for better “fit”
+ * - consistent content spacing
+ * - keeps CourseHero but ensures it fills a true media container
+ */
 const CourseCard: React.FC<{ course: Course }> = ({ course }) => (
   <Link
     to={`/courses/${encodeURIComponent(String(course.id))}`}
-    className="rounded-xl ring-1 ring-[#e4ecf4] dark:ring-darkCard bg-white dark:bg-[#111b25] overflow-hidden hover:shadow-sm transition"
+    className="group rounded-xl ring-1 ring-[#e4ecf4] dark:ring-darkCard bg-white dark:bg-[#111b25] overflow-hidden hover:shadow-sm transition flex flex-col"
   >
-    <div className="h-28">
-      <CourseHero course={course} className="h-full" />
+    <div className="relative w-full h-36 sm:h-40 md:h-44 bg-[#0b1220] overflow-hidden">
+      <CourseHero course={course} className="absolute inset-0 w-full h-full" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
     </div>
-    <div className="p-3">
-      <p className="text-sm font-semibold line-clamp-2 text-[#0d141c] dark:text-darkTextPrimary">
-        {course.title}
-      </p>
-      <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-1">
-        {course.subject || 'Course'}
-      </p>
+
+    <div className="p-3 flex-1 flex flex-col justify-between">
+      <div>
+        <p className="text-sm font-semibold line-clamp-2 text-[#0d141c] dark:text-darkTextPrimary">
+          {course.title}
+        </p>
+        <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-1">
+          {course.subject || 'Course'}
+        </p>
+      </div>
+
+      <div className="mt-3">
+        <span className="inline-flex items-center justify-center rounded-lg h-9 px-4 bg-[#3d99f5] text-white text-sm font-semibold group-hover:brightness-110">
+          View course
+        </span>
+      </div>
     </div>
   </Link>
 );
@@ -401,17 +443,29 @@ const OerBookCard: React.FC<{ item: OerBookItem }> = ({ item }) => {
   return (
     <Link
       to={`/oer/${encodeURIComponent(String(id))}`}
-      className="rounded-xl ring-1 ring-[#e4ecf4] dark:ring-darkCard bg-white dark:bg-[#111b25] overflow-hidden hover:shadow-sm transition"
+      className="group rounded-xl ring-1 ring-[#e4ecf4] dark:ring-darkCard bg-white dark:bg-[#111b25] overflow-hidden hover:shadow-sm transition flex flex-col"
     >
-      <div
-        className="aspect-[4/3] bg-cover bg-center"
-        style={{ backgroundImage: `url(${item.cover_url || ''})` }}
-      />
-      <div className="p-3">
-        <p className="text-sm font-semibold line-clamp-2 text-[#0d141c] dark:text-darkTextPrimary">
-          {item.title}
-        </p>
-        <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-1">Open resources</p>
+      <div className="relative w-full h-40 sm:h-44 md:h-48 bg-[#0b1220] overflow-hidden">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${item.cover_url || ''})` }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
+      </div>
+
+      <div className="p-3 flex-1 flex flex-col justify-between">
+        <div>
+          <p className="text-sm font-semibold line-clamp-2 text-[#0d141c] dark:text-darkTextPrimary">
+            {item.title}
+          </p>
+          <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-1">Open resources</p>
+        </div>
+
+        <div className="mt-3">
+          <span className="inline-flex items-center justify-center rounded-lg h-9 px-4 bg-[#3d99f5] text-white text-sm font-semibold group-hover:brightness-110">
+            Open book
+          </span>
+        </div>
       </div>
     </Link>
   );
@@ -656,29 +710,51 @@ const ResourcesPage: React.FC = () => {
   const [query, setQuery] = useState<string>(params.get('q') ?? '');
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
+  const [mediaTab, setMediaTab] = useState<'all' | 'videos' | 'notes'>('all');
+
+const isNotesOnly = useCallback((it: any) => {
+  const hasPdf = Boolean(it?.has_pdf) || Boolean(it?.pdf_url);
+  const hasVideo = Boolean(it?.has_video) || Boolean(it?.video_url) || Boolean(it?.preview_url);
+  return hasPdf && !hasVideo;
+}, []);
+
+
   // ✅ filter state
   const [appliedFilters, setAppliedFilters] = useState<ResourceFilters>(DEFAULT_FILTERS);
   const [draftFilters, setDraftFilters] = useState<ResourceFilters>(DEFAULT_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const activeFilterCount = useMemo(
-    () => countActiveFilters(appliedFilters),
-    [appliedFilters]
-  );
+  const activeFilterCount = useMemo(() => countActiveFilters(appliedFilters), [appliedFilters]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 400);
     return () => clearTimeout(t);
   }, [query]);
 
+  useEffect(() => {
+  if (tab !== 'videos') setMediaTab('all');
+}, [tab]);
+
+
   const trimmedQuery = query.trim();
   const queryActive = trimmedQuery.length >= MIN_QUERY_LEN;
   const effectiveQuery = queryActive ? debouncedQuery.trim() : '';
 
   // Shared hook for marketplace, courses, books, etc.
-  // ✅ IMPORTANT: this assumes you updated the hook signature:
-  // useResourcesExplore(query, tab, filters)
   const explore = useResourcesExplore(effectiveQuery, tab, appliedFilters as any);
+
+  const classVaultRaw = useMemo(
+  () => (explore.classVault.items || []) as any[],
+  [explore.classVault.items]
+);
+
+const classVaultFiltered = useMemo(() => {
+  if (tab !== 'videos') return classVaultRaw;
+  if (mediaTab === 'all') return classVaultRaw;
+  if (mediaTab === 'notes') return classVaultRaw.filter((x) => isNotesOnly(x));
+  return classVaultRaw.filter((x) => !isNotesOnly(x));
+}, [tab, mediaTab, classVaultRaw, isNotesOnly]);
+
 
   // Backend URL for OER collections fetch (HomePage-style)
   const { backendUrl } = useShopContext();
@@ -741,7 +817,6 @@ const ResourcesPage: React.FC = () => {
 
   const handlePaymentClose = useCallback(() => {
     setOpenPayment(false);
-    // optional: if you want to refresh tokens here, call your shop refreshWallet/refetchDetails
   }, []);
 
   const onOpenClassVault = useCallback(
@@ -758,7 +833,7 @@ const ResourcesPage: React.FC = () => {
       // Otherwise confirm purchase
       openPay(item);
     },
-    [navigate, openPay, purchasedIds]
+    [navigate, openPay, purchasedIds],
   );
 
   const headerCopy = useMemo(
@@ -766,7 +841,7 @@ const ResourcesPage: React.FC = () => {
       tab === 'videos'
         ? 'Discover ClassVault marketplace items and free OER video collections.'
         : 'Browse tutor-led courses and free OER books.',
-    [tab]
+    [tab],
   );
 
   const isPurchasedCoursesScope = appliedFilters.scope === 'purchased' && tab === 'courses';
@@ -777,6 +852,12 @@ const ResourcesPage: React.FC = () => {
     setAppliedFilters(DEFAULT_FILTERS);
     setDraftFilters(DEFAULT_FILTERS);
   }, []);
+
+  // ✅ NEW: responsive grid for Courses + OER books
+  // - mobile: 2 per row
+  // - tablet: 3 per row
+  // - desktop: 4 per row
+  const gridCards = 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3';
 
   return (
     <div
@@ -843,8 +924,15 @@ const ResourcesPage: React.FC = () => {
                   <div>
                     <h2 className="text-lg font-semibold">ClassVault marketplace</h2>
                     <p className="text-xs text-[#49739c] dark:text-darkTextSecondary mt-1">
-                      Discover videos and notes from tutors (with previews).
+                      {mediaTab === 'notes'
+                        ? 'Notes only (PDFs) from tutors.'
+                        : mediaTab === 'videos'
+                        ? 'Video lessons only from tutors (with previews).'
+                        : 'Discover videos and notes from tutors (with previews).'}
                     </p>
+
+                    <MiniMediaTabs value={mediaTab} onChange={setMediaTab} />
+
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -875,17 +963,27 @@ const ResourcesPage: React.FC = () => {
                     <p className="text-sm text-[#5e738f] dark:text-darkTextSecondary">Loading…</p>
                   ) : explore.classVault.error ? (
                     <p className="text-sm text-red-600">{explore.classVault.error}</p>
-                  ) : explore.classVault.items.length === 0 ? (
-                    <EmptyState message="No ClassVault results yet." />
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {explore.classVault.items.map((item) => (
-                        <ClassVaultCard
-                          key={String((item as any)?.id)}
-                          item={item as any}
-                          onOpen={onOpenClassVault}
+                  ) : classVaultFiltered.length === 0 ? (
+                        <EmptyState
+                          message={
+                            mediaTab === 'notes'
+                              ? 'No notes found yet.'
+                              : mediaTab === 'videos'
+                              ? 'No videos found yet.'
+                              : 'No ClassVault results yet.'
+                          }
                         />
-                      ))}
+                      )
+                      : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {classVaultFiltered.map((item) => (
+                          <ClassVaultCard
+                            key={String((item as any)?.id)}
+                            item={item as any}
+                            onOpen={onOpenClassVault}
+                          />
+                        ))}
+
                     </div>
                   )}
 
@@ -952,7 +1050,7 @@ const ResourcesPage: React.FC = () => {
                   ) : explore.normalCourses.items.length === 0 ? (
                     <EmptyState message="No courses found yet." />
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className={gridCards}>
                       {explore.normalCourses.items.map((course) => (
                         <CourseCard key={String((course as any)?.id)} course={course as any} />
                       ))}
@@ -985,7 +1083,7 @@ const ResourcesPage: React.FC = () => {
                   ) : explore.oerBooks.items.length === 0 ? (
                     <EmptyState message="No OER books match that search." />
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className={gridCards}>
                       {explore.oerBooks.items.map((item) => (
                         <OerBookCard
                           key={String((item as any)?.slug || (item as any)?.id)}

@@ -443,19 +443,10 @@ export async function ingestOpenStax(req, res) {
 
     // Build chapters from HTML pages (no PDFs) if admin only provided bookUrl
     if ((!Array.isArray(chapters) || chapters.length === 0) && bookUrl) {
-      // Optional domain guard if you want:
-      // if (!/^https?:\/\/([^/]+\.)?openstax\.org\//i.test(bookUrl)) {
-      //   return res.status(400).json({ error: 'bookUrl must be an openstax.org URL' });
-      // }
-
       chapters = await scrapeOpenStaxToc(bookUrl, startPageUrl);
     }
 
-    if (
-      !collection?.title ||
-      !Array.isArray(chapters) ||
-      chapters.length === 0
-    ) {
+    if (!collection?.title || !Array.isArray(chapters) || chapters.length === 0) {
       return res.status(400).json({
         error: 'collection.title and chapters[] (or bookUrl) required',
       });
@@ -509,15 +500,15 @@ export async function ingestOpenStax(req, res) {
         `INSERT INTO third_party_catalog
            (provider, slug, title, type, subject, grade_level, thumbnail_url, source_url,
             commercial_allowed, license, license_url, attribution_html, created_at)
-        VALUES ('openstax',$1,$2,'text',$3,$4,$5,$6,true,$7,$8,$9,now())
+         VALUES ('openstax',$1,$2,'text',$3,$4,$5,$6,true,$7,$8,$9,now())
          ON CONFLICT (provider, slug) DO NOTHING`,
         [
           slug, // $1
           ch.title, // $2
           collection.subject || null, // $3
           ch.grade_level || null, // $4
-          resolvedThumb || null, // $5  <-- NEW: thumbnail_url
-          ch.url, // $6  <-- source_url
+          resolvedThumb || null, // $5
+          ch.url, // $6
           license?.text || 'CC BY 4.0', // $7
           license?.url || 'https://creativecommons.org/licenses/by/4.0/', // $8
           `<p>OpenStax content used under Creative Commons. See source page for details.</p>`, // $9
@@ -535,8 +526,7 @@ export async function ingestOpenStax(req, res) {
     if (bookUrl) {
       const norm = normalizeOpenStax(bookUrl);
       const bookSlug =
-        norm?.slug ||
-        slugify(collection.title, { lower: true, strict: true }).slice(0, 80);
+        norm?.slug || slugify(collection.title, { lower: true, strict: true }).slice(0, 80);
 
       await client.query(
         `INSERT INTO oer_books (id, slug, title, provider, web_url, cover_url, license, license_url, created_at, updated_at)
@@ -550,7 +540,7 @@ export async function ingestOpenStax(req, res) {
         [
           bookSlug,
           collection.title,
-          norm ? norm.detailsUrl : bookUrl, // store the /details URL for consistency
+          norm ? norm.detailsUrl : bookUrl,
           resolvedThumb || null,
           license?.text || 'CC BY 4.0',
           license?.url || 'https://creativecommons.org/licenses/by/4.0/',
@@ -575,6 +565,8 @@ export async function ingestOpenStax(req, res) {
     let courseId;
     if (existingCourse.rowCount) {
       courseId = existingCourse.rows[0].id;
+
+      // ✅ UPDATED: stamp OER flags so it never mixes with tutor-created courses
       await client.query(
         `UPDATE courses
             SET description   = COALESCE($2, description),
@@ -584,6 +576,9 @@ export async function ingestOpenStax(req, res) {
                 price         = 0,
                 price_label   = 'Free',
                 syllabus      = $5,
+                source_kind   = 'oer',
+                content_kind  = 'doc',
+                is_oer        = TRUE,
                 updated_at    = now()
           WHERE id = $1`,
         [
@@ -595,23 +590,25 @@ export async function ingestOpenStax(req, res) {
         ],
       );
     } else {
+      // ✅ UPDATED: include source_kind/content_kind/is_oer on insert
       const cr = await client.query(
         `INSERT INTO courses
           (id, title, description, subject, thumbnail_url,
-          level, price, price_label, provider,
-          tutor_id, created_at, syllabus)
-        VALUES (gen_random_uuid(), $1, $2, $3, $4,
-                'All Levels', 0, 'Free', 'openstax',
-                $5, now(), $6)
-        RETURNING id
-        `,
+           level, price, price_label, provider,
+           tutor_id, created_at, syllabus,
+           source_kind, content_kind, is_oer)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4,
+                 'All Levels', 0, 'Free', 'openstax',
+                 $5, now(), $6,
+                 'oer', 'doc', TRUE)
+         RETURNING id`,
         [
           collection.title,
           collection.description || '',
           collection.subject || null,
           resolvedThumb || null,
-          tutorId, // ✅ now bound to $5
-          JSON.stringify(syllabus), // ✅ bound to $6
+          tutorId, // $5
+          JSON.stringify(syllabus), // $6
         ],
       );
       courseId = cr.rows[0].id;
@@ -635,6 +632,7 @@ export async function ingestOpenStax(req, res) {
     client.release();
   }
 }
+
 
 // At top of the file you already have:
 // import pool from '../config/db.js';

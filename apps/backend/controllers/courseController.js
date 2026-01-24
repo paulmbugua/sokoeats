@@ -472,26 +472,29 @@ export const getExploreCourses = async (req, res) => {
     const like = q ? `%${q}%` : '';
 
     const params = [limit, offset];
+
+    // ✅ Only normal tutor-created courses
     const where = [
-  aiOff('c', req),
-  hasTutor('c'),
-  `NOT ${isOerCourse('c')}`,
+      aiOff('c', req),
+      hasTutor('c'),
 
-  // ✅ prevent OER book/doc courses from leaking into normal course explore
-  `LOWER(COALESCE(c.source_kind,'')) NOT IN ('doc','text')`,
-  `LOWER(COALESCE(c.content_kind,'')) NOT IN ('doc','text')`,
-  `COALESCE(c.is_oer,FALSE) = FALSE`,
-];
+      // ✅ HARD BLOCK: exclude any OER course variants
+      `COALESCE(c.is_oer, FALSE) = FALSE`,
+      `LOWER(COALESCE(c.provider, '')) <> 'openstax'`,
+      `NOT ${isOerCourse('c')}`,
 
-
+      // ✅ prevent OER book/doc courses from leaking into normal course explore
+      `LOWER(COALESCE(c.source_kind, '')) NOT IN ('oer', 'doc', 'text')`,
+      `LOWER(COALESCE(c.content_kind, '')) NOT IN ('doc', 'text')`,
+    ];
 
     if (like) {
       params.push(like);
       const pLike = `$${params.length}`;
       where.push(
-        `(LOWER(COALESCE(c.title, '')) LIKE ${pLike} ` +
-          `OR LOWER(COALESCE(c.description, '')) LIKE ${pLike} ` +
-          `OR LOWER(COALESCE(c.subject, '')) LIKE ${pLike})`,
+        `(LOWER(COALESCE(c.title, '')) LIKE ${pLike}
+          OR LOWER(COALESCE(c.description, '')) LIKE ${pLike}
+          OR LOWER(COALESCE(c.subject, '')) LIKE ${pLike})`,
       );
     }
 
@@ -504,21 +507,24 @@ export const getExploreCourses = async (req, res) => {
         c.created_at, c.updated_at,
         COALESCE(c.thumbnail_url, NULL) AS thumbnail_url,
         c.subject,
-        COUNT(*) OVER()::int             AS total_rows
+        COUNT(*) OVER()::int            AS total_rows
       FROM courses c
       WHERE ${where.join(' AND ')}
       ORDER BY c.created_at DESC
       LIMIT $1 OFFSET $2
     `;
+
     const { rows } = await pool.query(sql, params);
     const total = rows[0]?.total_rows ?? 0;
     const items = rows.map(({ total_rows, ...rest }) => rest);
+
     return res.json({ items, total, limit, offset });
   } catch (err) {
     console.error('[getExploreCourses] server error', err);
     res.status(500).json({ error: err?.message ?? 'Internal server error' });
   }
 };
+
 
 export const getCourseById = async (req, res) => {
   try {

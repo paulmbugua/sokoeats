@@ -1,4 +1,3 @@
-
 // apps/mobile/src/screens/HomePage.native.tsx
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
@@ -455,10 +454,20 @@ const HomePageNative: React.FC = () => {
     else if (hasRoute('Videos')) navAny.navigate('Videos');
   };
 
-  // ✅ your stack has OerCollectionReader({ id })
-  const goOerReader = (id: string) => {
+  // ✅ Resources behavior:
+  // - OER VIDEO collections -> OerCollectionReader({ id })
+  // - OER BOOKS -> OerReaderFull({ id })
+  const goOerVideoCollection = (id: string) => {
     if (hasRoute('OerCollectionReader')) {
       navAny.navigate('OerCollectionReader', { id });
+      return;
+    }
+    if (hasRoute('Resources')) navAny.navigate('Resources', { tab: 'videos' });
+  };
+
+  const goOerBook = (id: string) => {
+    if (hasRoute('OerReaderFull')) {
+      navAny.navigate('OerReaderFull', { id });
       return;
     }
     if (hasRoute('Resources')) navAny.navigate('Resources', { tab: 'courses' });
@@ -475,30 +484,32 @@ const HomePageNative: React.FC = () => {
     else if (hasRoute('Courses')) navAny.navigate('Courses');
   };
 
-  const goCollection = (id: string, kind: 'video' | 'doc') => {
-    // keep behavior simple + consistent: collection reader if present, else fall back to indexes
-    if (hasRoute('OerCollectionReader')) {
-      navAny.navigate('OerCollectionReader', { id });
-      return;
-    }
-    if (kind === 'video') goVideosIndex();
-    else goCoursesIndex();
-  };
-
+  // Keep behavior simple + consistent:
+  // - if video collection -> OerCollectionReader
+  // - if doc/book -> OerReaderFull
+  // - else fallback
   const navigateForItem = (c: any) => {
     const id = idOrSlug(c);
     const ckind = sStr(c?.content_kind ?? c?.contentKind ?? c?.type);
 
-    if (isOerLike(c)) {
-      if (ckind.includes('video')) return goCollection(id, 'video');
-      return goOerReader(id);
+    // ✅ OER-ish
+    if (isOerLike(c) || isDocish(c)) {
+      // video collections
+      if (ckind.includes('video') || isVideoish(c)) return goOerVideoCollection(id);
+
+      // docs/books (OpenStax etc.)
+      return goOerBook(id);
     }
+
+    // ✅ Recorded video (ClassVault)
     if (isVideoish(c)) return goRecordedVideo(Number(c?.id ?? 0));
+
+    // ✅ Real course
     return goCourse(String(c?.id ?? id));
   };
 
   const { backendUrl, token, role } = useShopContext();
-  const { purchasedIds, purchase, refresh: refreshClassVault } = useClassVault('', ''); // ✅ just to get purchasedIds + purchase flow
+  const { purchasedIds, purchase, refresh: refreshClassVault } = useClassVault('', ''); // ✅ purchasedIds + purchase flow
 
   const [buyingId, setBuyingId] = useState<number | null>(null);
 
@@ -551,8 +562,6 @@ const HomePageNative: React.FC = () => {
         fetchFeaturedVideos({ limit: VISIBLE_LIMIT, minCount: 1 }),
         fetchRecommendedCourses({ limit: VISIBLE_LIMIT, minCount: 1 }),
         refreshClassVault?.(),
-        // if your useHomePage hook exposes something like refetch, you can also call it:
-        // (home as any)?.refetch?.(),
       ]);
     } finally {
       setRefreshing(false);
@@ -622,9 +631,9 @@ const HomePageNative: React.FC = () => {
 
   /* ----------------------- Ratings Prefetch (Courses) -------------------- */
 
-  const [courseRatings, setCourseRatings] = useState<
-    Record<string, { avg: number; count: number }>
-  >({});
+  const [courseRatings, setCourseRatings] = useState<Record<string, { avg: number; count: number }>>(
+    {}
+  );
   const fetchingCourseIdsRef = useRef<Set<string>>(new Set());
 
   const fetchCourseRatings = async (courseId: string) => {
@@ -665,9 +674,9 @@ const HomePageNative: React.FC = () => {
 
   /* ------------------------ Ratings Prefetch (Videos) -------------------- */
 
-  const [videoRatings, setVideoRatings] = useState<
-    Record<string | number, { avg: number; count: number }>
-  >({});
+  const [videoRatings, setVideoRatings] = useState<Record<string | number, { avg: number; count: number }>>(
+    {}
+  );
   const fetchingVideoIdsRef = useRef<Set<string | number>>(new Set());
 
   const fetchVideoRating = async (vid: number | string) => {
@@ -782,6 +791,7 @@ const HomePageNative: React.FC = () => {
     () => (recommendedCourses as Course[]).filter((c: any) => !isVideoish(c)),
     [recommendedCourses]
   );
+
   const handleRecordedVideoPress = useCallback(
     (v: RecordedVideo) => {
       const vid = Number((v as any)?.id ?? 0);
@@ -793,7 +803,7 @@ const HomePageNative: React.FC = () => {
         return;
       }
 
-      // Unlocked: open and it will auto-play full video in detail screen
+      // Unlocked
       if (isUnlocked(vid)) {
         goRecordedVideo(vid);
         return;
@@ -820,11 +830,9 @@ const HomePageNative: React.FC = () => {
           {
             text: 'Buy Tokens',
             onPress: () => {
-              // If your stack has BuyTokens, go there
               try {
                 navAny.navigate('BuyTokens');
               } catch {
-                // fallback: open ClassVaultLibrary
                 goVideosIndex();
               }
             },
@@ -862,7 +870,7 @@ const HomePageNative: React.FC = () => {
         ]
       );
     },
-    [role, token, isUnlocked, purchase, buyingId, navAny, goRecordedVideo, goVideosIndex]
+    [role, token, isUnlocked, purchase, buyingId, navAny]
   );
 
   const { resolvedScheme } = useThemePref();
@@ -904,9 +912,7 @@ const HomePageNative: React.FC = () => {
         {/* Featured Tutors – always visible, no SectionReveal */}
         <View style={tw`mt-6 px-4`}>
           <View style={tw`flex-row items-center justify-between`}>
-            <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white`}>
-              Featured Tutors
-            </Text>
+            <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white`}>Featured Tutors</Text>
             <TouchableOpacity onPress={() => navAny.navigate('FindTutor')}>
               <Text style={tw`text-pink-600`}>See All Tutors</Text>
             </TouchableOpacity>
@@ -939,24 +945,14 @@ const HomePageNative: React.FC = () => {
                       ) : null}
 
                       <View style={tw`self-center`}>
-                        <Image
-                          source={{ uri: t.image }}
-                          style={tw`w-16 h-16 rounded-full`}
-                          resizeMode="cover"
-                        />
+                        <Image source={{ uri: t.image }} style={tw`w-16 h-16 rounded-full`} resizeMode="cover" />
                       </View>
 
                       <View style={tw`mt-2 items-center`}>
-                        <Text
-                          numberOfLines={1}
-                          style={tw`text-[13px] font-medium text-[#0d141c] dark:text-white`}
-                        >
+                        <Text numberOfLines={1} style={tw`text-[13px] font-medium text-[#0d141c] dark:text-white`}>
                           {t.name}
                         </Text>
-                        <Text
-                          numberOfLines={1}
-                          style={tw`text-[11px] text-slate-600 dark:text-slate-400`}
-                        >
+                        <Text numberOfLines={1} style={tw`text-[11px] text-slate-600 dark:text-slate-400`}>
                           {t.subject}
                         </Text>
                         <Text style={tw`text-yellow-600 dark:text-yellow-400 text-[11px] mt-1`}>
@@ -964,7 +960,6 @@ const HomePageNative: React.FC = () => {
                         </Text>
                       </View>
                     </View>
-
                   </CardFadeIn>
                 </TouchableOpacity>
               ))}
@@ -975,18 +970,14 @@ const HomePageNative: React.FC = () => {
         {/* Featured Courses (mixed normal + OER docs) – 2-column grid */}
         <View style={tw`mt-6 px-4`}>
           <View style={tw`flex-row items-center justify-between`}>
-            <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white`}>
-              Featured Courses
-            </Text>
+            <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white`}>Featured Courses</Text>
             <TouchableOpacity onPress={goCoursesIndex}>
               <Text style={tw`text-pink-600`}>Browse All</Text>
             </TouchableOpacity>
           </View>
 
           {featuredCoursesDisplay.length === 0 ? (
-            <Text style={tw`text-slate-600 dark:text-slate-300 mt-2`}>
-              No featured courses yet.
-            </Text>
+            <Text style={tw`text-slate-600 dark:text-slate-300 mt-2`}>No featured courses yet.</Text>
           ) : (
             <SectionReveal scrollY={scrollY} offset={160}>
               <View style={tw`mt-3 flex-row flex-wrap -mx-1`}>
@@ -1000,7 +991,7 @@ const HomePageNative: React.FC = () => {
                   return (
                     <TouchableOpacity
                       key={`featc-${cid}`}
-                      onPress={() => navigateForItem(c)}
+                      onPress={() => navigateForItem(c)} // ✅ now opens OER docs as OerReaderFull
                       activeOpacity={0.9}
                       style={tw`w-1/2 px-1 mb-3`}
                     >
@@ -1009,34 +1000,22 @@ const HomePageNative: React.FC = () => {
                           style={tw`rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                         >
                           <CardMedia src={thumb} title={c.title} />
-                          <Text
-                            numberOfLines={1}
-                            style={tw`font-semibold text-[#0d141c] dark:text-white`}
-                          >
+                          <Text numberOfLines={1} style={tw`font-semibold text-[#0d141c] dark:text-white`}>
                             {c.title}
                           </Text>
                           <Text style={tw`text-yellow-600 dark:text-yellow-400 text-xs mt-1`}>
                             {starRow(r.avg)} {r.count > 0 ? `(${r.count})` : ''}
                           </Text>
 
-                          <Text
-                            numberOfLines={2}
-                            style={tw`text-slate-600 dark:text-slate-400 text-sm mt-1`}
-                          >
+                          <Text numberOfLines={2} style={tw`text-slate-600 dark:text-slate-400 text-sm mt-1`}>
                             {c.description ||
-                              (free
-                                ? 'Open & free to start learning.'
-                                : 'Learn with a top-rated course.')}
+                              (free ? 'Open & free to start learning.' : 'Learn with a top-rated course.')}
                           </Text>
 
                           <View style={tw`flex-row mt-2`}>
                             {free ? (
                               <>
-                                <Text
-                                  style={tw`text-emerald-700 dark:text-emerald-300 text-xs mr-3`}
-                                >
-                                  Free
-                                </Text>
+                                <Text style={tw`text-emerald-700 dark:text-emerald-300 text-xs mr-3`}>Free</Text>
                                 <Text style={tw`text-slate-600 dark:text-slate-400 text-xs`}>
                                   Level: {c.level ?? '—'}
                                 </Text>
@@ -1067,9 +1046,7 @@ const HomePageNative: React.FC = () => {
         {/* Featured Videos (mixed recorded + OER collections) – keep single column */}
         <View style={tw`mt-6 px-4`}>
           <View style={tw`flex-row items-center justify-between`}>
-            <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white`}>
-              Featured Videos
-            </Text>
+            <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white`}>Featured Videos</Text>
             <TouchableOpacity onPress={goVideosIndex}>
               <Text style={tw`text-pink-600`}>See All</Text>
             </TouchableOpacity>
@@ -1097,8 +1074,7 @@ const HomePageNative: React.FC = () => {
                       : 0;
                     const base = extractRating(v as unknown as Ratingish);
                     const r = videoRatings[v.id] ?? base;
-                    const thumb =
-                      pickThumb(v, backendUrl) || FALLBACK_CARD((v as any).title || subject);
+                    const thumb = pickThumb(v, backendUrl) || FALLBACK_CARD((v as any).title || subject);
                     const previewUrl = (v as any).preview_url ?? (v as any).previewUrl ?? '';
 
                     return (
@@ -1111,15 +1087,8 @@ const HomePageNative: React.FC = () => {
                           <View
                             style={tw`mb-3 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                           >
-                            <CardMedia
-                              src={thumb}
-                              title={(v as any).title || subject}
-                              previewUrl={previewUrl}
-                            />
-                            <Text
-                              numberOfLines={1}
-                              style={tw`font-semibold text-[#0d141c] dark:text-white`}
-                            >
+                            <CardMedia src={thumb} title={(v as any).title || subject} previewUrl={previewUrl} />
+                            <Text numberOfLines={1} style={tw`font-semibold text-[#0d141c] dark:text-white`}>
                               {v.title ?? subject}
                             </Text>
                             <Text style={tw`text-yellow-600 dark:text-yellow-400 text-xs mt-1`}>
@@ -1129,8 +1098,7 @@ const HomePageNative: React.FC = () => {
                               {subject} • Grade {grade}
                             </Text>
                             <Text style={tw`text-slate-700 dark:text-slate-200 text-sm mt-2`}>
-                              <Text style={tw`font-medium`}>Price:</Text> {priceTokens.toFixed(0)}{' '}
-                              tokens
+                              <Text style={tw`font-medium`}>Price:</Text> {priceTokens.toFixed(0)} tokens
                             </Text>
                             <Text style={tw`text-pink-600 dark:text-pink-400 mt-2`}>
                               {unlocked
@@ -1151,7 +1119,7 @@ const HomePageNative: React.FC = () => {
                   return (
                     <TouchableOpacity
                       key={`vid-col-${col.id}`}
-                      onPress={() => goCollection(String(col.id), 'video')}
+                      onPress={() => goOerVideoCollection(String(col.id))} // ✅ same as Resources (OerCollectionReader)
                       activeOpacity={0.9}
                     >
                       <CardFadeIn index={idx}>
@@ -1159,10 +1127,7 @@ const HomePageNative: React.FC = () => {
                           style={tw`mb-3 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                         >
                           <CardMedia src={thumb} title={col.title} />
-                          <Text
-                            numberOfLines={1}
-                            style={tw`font-semibold text-[#0d141c] dark:text-white`}
-                          >
+                          <Text numberOfLines={1} style={tw`font-semibold text-[#0d141c] dark:text-white`}>
                             {col.title ?? 'Collection'}
                           </Text>
                           <Text style={tw`text-slate-600 dark:text-slate-400 text-sm mt-1`}>
@@ -1171,9 +1136,7 @@ const HomePageNative: React.FC = () => {
                               ? ` • ${col.items_count} item${col.items_count === 1 ? '' : 's'}`
                               : ''}
                           </Text>
-                          <Text style={tw`text-pink-600 dark:text-pink-400 mt-2`}>
-                            View Collection →
-                          </Text>
+                          <Text style={tw`text-pink-600 dark:text-pink-400 mt-2`}>View Collection →</Text>
                         </View>
                       </CardFadeIn>
                     </TouchableOpacity>
@@ -1207,7 +1170,7 @@ const HomePageNative: React.FC = () => {
                   return (
                     <TouchableOpacity
                       key={`free-${cid}`}
-                      onPress={() => goOerReader(cid)}
+                      onPress={() => goOerBook(cid)} // ✅ now behaves like Resources free OER books (OerReaderFull)
                       activeOpacity={0.9}
                       style={tw`w-1/2 px-1 mb-3`}
                     >
@@ -1216,25 +1179,17 @@ const HomePageNative: React.FC = () => {
                           style={tw`rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                         >
                           <CardMedia src={thumb} title={c.title} />
-                          <Text
-                            numberOfLines={1}
-                            style={tw`font-semibold text-[#0d141c] dark:text-white`}
-                          >
+                          <Text numberOfLines={1} style={tw`font-semibold text-[#0d141c] dark:text-white`}>
                             {c.title}
                           </Text>
                           <Text style={tw`text-yellow-600 dark:text-yellow-400 text-xs mt-1`}>
                             {starRow(r.avg)} {r.count > 0 ? `(${r.count})` : ''}
                           </Text>
-                          <Text
-                            numberOfLines={2}
-                            style={tw`text-slate-600 dark:text-slate-400 text-sm mt-1`}
-                          >
+                          <Text numberOfLines={2} style={tw`text-slate-600 dark:text-slate-400 text-sm mt-1`}>
                             {c.description || 'Open & free to start learning.'}
                           </Text>
                           <View style={tw`flex-row mt-2`}>
-                            <Text style={tw`text-emerald-700 dark:text-emerald-300 text-xs mr-3`}>
-                              Free
-                            </Text>
+                            <Text style={tw`text-emerald-700 dark:text-emerald-300 text-xs mr-3`}>Free</Text>
                             <Text style={tw`text-slate-600 dark:text-slate-400 text-xs`}>
                               Level: {(c as any).level ?? '—'}
                             </Text>
@@ -1259,9 +1214,7 @@ const HomePageNative: React.FC = () => {
           </View>
 
           {freeVideoCollections.length === 0 ? (
-            <Text style={tw`text-slate-600 dark:text-slate-300 mt-2`}>
-              No free videos to show yet.
-            </Text>
+            <Text style={tw`text-slate-600 dark:text-slate-300 mt-2`}>No free videos to show yet.</Text>
           ) : (
             <SectionReveal scrollY={scrollY} offset={160}>
               <View style={tw`mt-3`}>
@@ -1270,7 +1223,7 @@ const HomePageNative: React.FC = () => {
                   return (
                     <TouchableOpacity
                       key={`col-${col.id}`}
-                      onPress={() => goCollection(String(col.id), 'video')}
+                      onPress={() => goOerVideoCollection(String(col.id))} // ✅ same as Resources (OerCollectionReader)
                       activeOpacity={0.9}
                     >
                       <CardFadeIn index={idx}>
@@ -1278,10 +1231,7 @@ const HomePageNative: React.FC = () => {
                           style={tw`mb-3 rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                         >
                           <CardMedia src={thumb} title={col.title} />
-                          <Text
-                            numberOfLines={1}
-                            style={tw`font-semibold text-[#0d141c] dark:text-white`}
-                          >
+                          <Text numberOfLines={1} style={tw`font-semibold text-[#0d141c] dark:text-white`}>
                             {col.title ?? 'Collection'}
                           </Text>
                           <Text style={tw`text-slate-600 dark:text-slate-400 text-sm mt-1`}>
@@ -1290,9 +1240,7 @@ const HomePageNative: React.FC = () => {
                               ? ` • ${col.items_count} item${col.items_count === 1 ? '' : 's'}`
                               : ''}
                           </Text>
-                          <Text style={tw`text-pink-600 dark:text-pink-400 mt-2`}>
-                            View Collection →
-                          </Text>
+                          <Text style={tw`text-pink-600 dark:text-pink-400 mt-2`}>View Collection →</Text>
                         </View>
                       </CardFadeIn>
                     </TouchableOpacity>
@@ -1306,9 +1254,7 @@ const HomePageNative: React.FC = () => {
         {/* Recommended Courses (no videos) – 2-column grid */}
         <View style={tw`mt-6 px-4`}>
           <View style={tw`flex-row items-center justify-between`}>
-            <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white`}>
-              Recommended Courses
-            </Text>
+            <Text style={tw`text-xl font-bold text-[#0d141c] dark:text-white`}>Recommended Courses</Text>
             <TouchableOpacity onPress={goCoursesIndex}>
               <Text style={tw`text-pink-600`}>Browse all</Text>
             </TouchableOpacity>
@@ -1320,15 +1266,15 @@ const HomePageNative: React.FC = () => {
             <SectionReveal scrollY={scrollY} offset={160}>
               <View style={tw`mt-3 flex-row flex-wrap -mx-1`}>
                 {recommendedCoursesOnly.slice(0, VISIBLE_LIMIT).map((c: Course, idx) => {
-                  const cid = String(c.id);
+                  const cid = String((c as any).id ?? idx);
                   const base = extractRating(c);
-                  const r = courseRatings[cid] ?? base;
-                  const thumb = pickCourseAwareThumb(c, backendUrl) || FALLBACK_CARD(c.title);
+                  const r = courseRatings[String(c.id)] ?? base;
+                  const thumb = pickCourseAwareThumb(c, backendUrl) || FALLBACK_CARD((c as any).title);
 
                   return (
                     <TouchableOpacity
                       key={`recc-${cid}`}
-                      onPress={() => navigateForItem(c)}
+                      onPress={() => navigateForItem(c)} // ✅ if an OER/book sneaks in, it opens like Resources
                       activeOpacity={0.9}
                       style={tw`w-1/2 px-1 mb-3`}
                     >
@@ -1336,21 +1282,15 @@ const HomePageNative: React.FC = () => {
                         <View
                           style={tw`rounded-2xl p-4 bg-white dark:bg-[#0f1821] border border-[#cedbe8] dark:border-white/10`}
                         >
-                          <CardMedia src={thumb} title={c.title} />
-                          <Text
-                            numberOfLines={1}
-                            style={tw`font-semibold text-[#0d141c] dark:text-white`}
-                          >
-                            {c.title}
+                          <CardMedia src={thumb} title={(c as any).title} />
+                          <Text numberOfLines={1} style={tw`font-semibold text-[#0d141c] dark:text-white`}>
+                            {(c as any).title}
                           </Text>
                           <Text style={tw`text-yellow-600 dark:text-yellow-400 text-xs mt-1`}>
                             {starRow(r.avg)} {r.count > 0 ? `(${r.count})` : ''}
                           </Text>
-                          <Text
-                            numberOfLines={2}
-                            style={tw`text-slate-600 dark:text-slate-400 text-sm mt-1`}
-                          >
-                            {c.description || 'Top picks based on quality and popularity.'}
+                          <Text numberOfLines={2} style={tw`text-slate-600 dark:text-slate-400 text-sm mt-1`}>
+                            {(c as any).description || 'Top picks based on quality and popularity.'}
                           </Text>
                         </View>
                       </CardFadeIn>

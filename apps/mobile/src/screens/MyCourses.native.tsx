@@ -21,9 +21,17 @@ import { pickImageUriForCourse } from '../../utils/subjectImages'; // ✅ subjec
 
 type Nav = StackNavigationProp<MainStackParamList, 'Courses'>;
 
+type AiRowItem = {
+  kind: 'aiRow';
+  sectionKey: 'aiCourses';
+  rowKey: string;
+  items: [Course, Course?];
+};
+
 type SectionItem =
   | ({ kind: 'classvault'; sectionKey: string } & RecordedVideo)
-  | ({ kind: 'course'; ai?: boolean; sectionKey: string } & Course);
+  | ({ kind: 'course'; ai?: boolean; sectionKey: string } & Course)
+  | AiRowItem;
 
 type LibrarySection = {
   key: string;
@@ -95,6 +103,17 @@ function classVaultThumb(v: any): string | null {
   );
 }
 
+function chunk2<T>(arr: readonly T[]): Array<[T, T?]> {
+  const out: Array<[T, T?]> = [];
+  for (let i = 0; i < arr.length; i += 2) {
+    const a = arr[i];
+    if (a === undefined) continue; // ✅ fixes “T | undefined not assignable to T”
+    out.push([a, arr[i + 1]]);
+  }
+  return out;
+}
+
+
 /* ─────────────────────────────────────────────────────────
  * UI atoms
  * ───────────────────────────────────────────────────────── */
@@ -125,6 +144,7 @@ const TutorActions: React.FC<{
   <View style={tw`absolute top-3 right-3 z-20 flex-row gap-2`}>
     <Pressable
       onPress={(e) => {
+        // @ts-ignore
         e.stopPropagation?.();
         onEdit();
       }}
@@ -136,6 +156,7 @@ const TutorActions: React.FC<{
     <Pressable
       disabled={!!deleting}
       onPress={(e) => {
+        // @ts-ignore
         e.stopPropagation?.();
         onDelete();
       }}
@@ -256,6 +277,39 @@ const CourseCard: React.FC<{
   );
 };
 
+/** ✅ Nicer, compact AI tile (2 per row) */
+const AiCourseTile: React.FC<{
+  course: Course;
+  backendUrl?: string;
+  onPress: () => void;
+}> = ({ course, backendUrl, onPress }) => {
+  const thumb = courseThumb(course) || pickImageUriForCourse(course as any, backendUrl);
+  const src = withBust(thumb, cacheBust(course))!;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={tw`flex-1 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] overflow-hidden`}
+    >
+      <View style={tw`h-24 bg-slate-200 dark:bg-white/10`}>
+        <Image source={{ uri: src }} style={tw`w-full h-full`} contentFit="cover" cachePolicy="none" />
+        <View style={tw`absolute top-2 left-2 rounded-full bg-black/55 px-2 py-0.5`}>
+          <Text style={tw`text-[10px] text-white font-extrabold`}>AI</Text>
+        </View>
+      </View>
+
+      <View style={tw`p-3`}>
+        <Text style={tw`text-[13px] font-extrabold text-slate-900 dark:text-white`} numberOfLines={2}>
+          {course.title || 'AI course'}
+        </Text>
+        <Text style={tw`text-[11px] text-slate-500 dark:text-white/60 mt-1`} numberOfLines={2}>
+          {(course as any)?.blurb || (course as any)?.subject || 'AI powered'}
+        </Text>
+      </View>
+    </Pressable>
+  );
+};
+
 const SectionHeader: React.FC<{ title: string; subtitle: string }> = ({ title, subtitle }) => (
   <View style={tw`px-4 pt-4 pb-2`}>
     <Text style={tw`text-lg font-semibold text-slate-900 dark:text-white`}>{title}</Text>
@@ -280,10 +334,7 @@ const SectionFooter: React.FC<{
       <Text style={tw`text-sm text-slate-500 dark:text-white/60`}>{emptyMessage}</Text>
     ) : null}
     {hasMore ? (
-      <Pressable
-        onPress={onLoadMore}
-        style={tw`mt-3 self-start rounded-full bg-blue-500 px-4 py-2`}
-      >
+      <Pressable onPress={onLoadMore} style={tw`mt-3 self-start rounded-full bg-blue-500 px-4 py-2`}>
         <Text style={tw`text-sm font-semibold text-white`}>Load more</Text>
       </Pressable>
     ) : null}
@@ -291,7 +342,7 @@ const SectionFooter: React.FC<{
 );
 
 /* ─────────────────────────────────────────────────────────
- * ✅ Top AI courses promo (now up to 20 per batch)
+ * ✅ Top AI courses promo (20 per batch)
  * ───────────────────────────────────────────────────────── */
 
 const TopCoursesPromoGrid: React.FC<{
@@ -327,7 +378,6 @@ const TopCoursesPromoGrid: React.FC<{
       setPromoError(null);
       try {
         await loadTopCourses({
-          // ✅ increased to 20
           limit: 20,
           append: opts?.append,
           cursor: opts?.append ? promoCursorRef.current ?? undefined : undefined,
@@ -357,9 +407,7 @@ const TopCoursesPromoGrid: React.FC<{
     <View style={tw`mt-4`}>
       <View style={tw`rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111b25] p-4`}>
         <Text style={tw`text-base font-extrabold text-slate-900 dark:text-white`}>Top AI courses</Text>
-        <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>
-          Try one instantly with AI Tutor Studio
-        </Text>
+        <Text style={tw`text-xs text-slate-500 dark:text-white/60 mt-1`}>Try one instantly with AI Tutor Studio</Text>
 
         {promoError ? (
           <View style={tw`mt-3`}>
@@ -423,14 +471,24 @@ const MyCoursesNative: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
 
-  // ✅ Footer overlay safety (like your other screens)
+  // ✅ Footer overlay safety
   const FOOTER_OVERLAY_PX = 84;
   const bottomPad = Math.max(FOOTER_OVERLAY_PX, FOOTER_OVERLAY_PX + insets.bottom);
 
   const { backendUrl, token } = useShopContext();
-  const { role, isTutor, sections } = useMyLibrary();
+  const lib = useMyLibrary();
   const { remove: removeVault } = useClassVault();
   const authToken = token;
+
+  // ✅ defensive (prevents “Cannot read property 'items' of undefined” / section crash)
+  const role = lib?.role ?? 'student';
+  const isTutor = Boolean(lib?.isTutor);
+  const sections = lib?.sections ?? {
+    createdClassVault: { items: [], loading: false, error: null, hasMore: false, loadMore: () => {} },
+    purchasedClassVault: { items: [], loading: false, error: null, hasMore: false, loadMore: () => {} },
+    normalCourses: { items: [], loading: false, error: null, hasMore: false, loadMore: () => {} },
+    aiCourses: { items: [], loading: false, error: null, hasMore: false, loadMore: () => {} },
+  };
 
   const [deletedCourseIds, setDeletedCourseIds] = useState<Set<string>>(new Set());
   const [deletedVaultIds, setDeletedVaultIds] = useState<Set<string>>(new Set());
@@ -512,24 +570,61 @@ const MyCoursesNative: React.FC = () => {
   );
 
   const createdVaultItems = useMemo(() => {
-    const raw = sections.createdClassVault.items || [];
+    const raw = (sections as any)?.createdClassVault?.items || [];
     return raw.filter((x: any) => !deletedVaultIds.has(String(x?.id)));
-  }, [sections.createdClassVault.items, deletedVaultIds]);
+  }, [sections, deletedVaultIds]);
 
   const purchasedVaultItems = useMemo(() => {
-    const raw = sections.purchasedClassVault.items || [];
+    const raw = (sections as any)?.purchasedClassVault?.items || [];
     return raw.filter((x: any) => !deletedVaultIds.has(String(x?.id)));
-  }, [sections.purchasedClassVault.items, deletedVaultIds]);
+  }, [sections, deletedVaultIds]);
 
   const normalCourseItems = useMemo(() => {
-    const raw = sections.normalCourses.items || [];
+    const raw = (sections as any)?.normalCourses?.items || [];
     return raw.filter((c: any) => !deletedCourseIds.has(String(c?.id)));
-  }, [sections.normalCourses.items, deletedCourseIds]);
+  }, [sections, deletedCourseIds]);
 
-  const aiCourseItems = useMemo(() => {
-    const raw = sections.aiCourses.items || [];
-    return raw.filter((c: any) => !deletedCourseIds.has(String(c?.id)));
-  }, [sections.aiCourses.items, deletedCourseIds]);
+  const aiCourseItems = useMemo<Course[]>(() => {
+  const raw = ((sections as any)?.aiCourses?.items ?? []) as Course[];
+  return raw.filter((c: any) => !deletedCourseIds.has(String(c?.id)));
+}, [sections, deletedCourseIds]);
+
+
+  /** ✅ Auto-fetch until we have at least 20 AI courses (best-effort) */
+  const autoLoadRef = useRef({ running: false, tries: 0 });
+  useEffect(() => {
+    const sec: any = (sections as any)?.aiCourses;
+    if (!sec?.loadMore) return;
+    if (sec.loading) return;
+    if (!sec.hasMore) return;
+    if (aiCourseItems.length >= 20) return;
+
+    if (autoLoadRef.current.running) return;
+    if (autoLoadRef.current.tries >= 3) return; // prevent infinite loops
+
+    autoLoadRef.current.running = true;
+    autoLoadRef.current.tries += 1;
+
+    Promise.resolve()
+      .then(() => sec.loadMore())
+      .catch(() => {})
+      .finally(() => {
+        autoLoadRef.current.running = false;
+      });
+  }, [sections, aiCourseItems.length]);
+
+const aiRows = useMemo<AiRowItem[]>(() => {
+  const pairs = chunk2(aiCourseItems); // Array<[Course, Course?]>
+  return pairs.map(([a, b], idx) => ({
+    kind: 'aiRow' as const,
+    sectionKey: 'aiCourses' as const,
+    rowKey: `aiRow:${idx}:${String((a as any)?.id)}:${b ? String((b as any)?.id) : 'x'}`,
+    items: [a, b], // ✅ typed as [Course, Course?]
+  }));
+}, [aiCourseItems]);
+
+
+
 
   const librarySections: LibrarySection[] = useMemo(() => {
     if (role === 'tutor') {
@@ -538,76 +633,141 @@ const MyCoursesNative: React.FC = () => {
           key: 'createdClassVault',
           title: 'Your ClassVault Videos & Notes',
           subtitle: 'Only your uploaded ClassVault content.',
-          data: createdVaultItems.map((item) => ({ ...item, kind: 'classvault', sectionKey: 'createdClassVault' })),
-          loading: sections.createdClassVault.loading,
-          error: sections.createdClassVault.error,
+          data: createdVaultItems.map((item: any) => ({
+            ...item,
+            kind: 'classvault',
+            sectionKey: 'createdClassVault',
+          })),
+          loading: (sections as any)?.createdClassVault?.loading,
+          error: (sections as any)?.createdClassVault?.error,
           emptyMessage: 'You haven’t uploaded any ClassVault videos or notes yet.',
-          hasMore: sections.createdClassVault.hasMore,
-          loadMore: sections.createdClassVault.loadMore,
+          hasMore: (sections as any)?.createdClassVault?.hasMore,
+          loadMore: (sections as any)?.createdClassVault?.loadMore || (() => {}),
         },
         {
           key: 'normalCourses',
           title: 'Your Courses',
           subtitle: 'Courses you created for learners.',
-          data: normalCourseItems.map((item) => ({ ...item, kind: 'course', sectionKey: 'normalCourses' })),
-          loading: sections.normalCourses.loading,
-          error: sections.normalCourses.error,
+          data: normalCourseItems.map((item: any) => ({
+            ...item,
+            kind: 'course',
+            sectionKey: 'normalCourses',
+          })),
+          loading: (sections as any)?.normalCourses?.loading,
+          error: (sections as any)?.normalCourses?.error,
           emptyMessage: 'You haven’t created any courses yet.',
-          hasMore: sections.normalCourses.hasMore,
-          loadMore: sections.normalCourses.loadMore,
+          hasMore: (sections as any)?.normalCourses?.hasMore,
+          loadMore: (sections as any)?.normalCourses?.loadMore || (() => {}),
         },
         {
           key: 'aiCourses',
           title: 'Your AI Courses',
           subtitle: 'AI courses you personally unlocked.',
-          data: aiCourseItems.map((item) => ({ ...item, kind: 'course', ai: true, sectionKey: 'aiCourses' })),
-          loading: sections.aiCourses.loading,
-          error: sections.aiCourses.error,
+          data: aiRows,
+          loading: (sections as any)?.aiCourses?.loading,
+          error: (sections as any)?.aiCourses?.error,
           emptyMessage: 'You haven’t unlocked any AI courses yet.',
-          hasMore: sections.aiCourses.hasMore,
-          loadMore: sections.aiCourses.loadMore,
+          hasMore: (sections as any)?.aiCourses?.hasMore,
+          loadMore: (sections as any)?.aiCourses?.loadMore || (() => {}),
         },
       ];
     }
 
+    // ✅ STUDENT ORDER FIX:
+    // Purchased Videos & Notes -> Courses -> AI Courses (AI MUST be last)
     return [
       {
         key: 'purchasedClassVault',
         title: 'Purchased Videos & Notes',
         subtitle: 'Your ClassVault purchases live here.',
-        data: purchasedVaultItems.map((item) => ({ ...item, kind: 'classvault', sectionKey: 'purchasedClassVault' })),
-        loading: sections.purchasedClassVault.loading,
-        error: sections.purchasedClassVault.error,
+        data: purchasedVaultItems.map((item: any) => ({
+          ...item,
+          kind: 'classvault',
+          sectionKey: 'purchasedClassVault',
+        })),
+        loading: (sections as any)?.purchasedClassVault?.loading,
+        error: (sections as any)?.purchasedClassVault?.error,
         emptyMessage: 'You haven’t purchased any videos or notes yet.',
-        hasMore: sections.purchasedClassVault.hasMore,
-        loadMore: sections.purchasedClassVault.loadMore,
-      },
-      {
-        key: 'aiCourses',
-        title: 'AI Courses',
-        subtitle: 'AI-powered courses you unlocked.',
-        data: aiCourseItems.map((item) => ({ ...item, kind: 'course', ai: true, sectionKey: 'aiCourses' })),
-        loading: sections.aiCourses.loading,
-        error: sections.aiCourses.error,
-        emptyMessage: 'You haven’t unlocked any AI courses yet.',
-        hasMore: sections.aiCourses.hasMore,
-        loadMore: sections.aiCourses.loadMore,
+        hasMore: (sections as any)?.purchasedClassVault?.hasMore,
+        loadMore: (sections as any)?.purchasedClassVault?.loadMore || (() => {}),
       },
       {
         key: 'normalCourses',
         title: 'Courses',
         subtitle: 'Courses you enrolled in or purchased.',
-        data: normalCourseItems.map((item) => ({ ...item, kind: 'course', sectionKey: 'normalCourses' })),
-        loading: sections.normalCourses.loading,
-        error: sections.normalCourses.error,
+        data: normalCourseItems.map((item: any) => ({
+          ...item,
+          kind: 'course',
+          sectionKey: 'normalCourses',
+        })),
+        loading: (sections as any)?.normalCourses?.loading,
+        error: (sections as any)?.normalCourses?.error,
         emptyMessage: 'You haven’t enrolled in any courses yet.',
-        hasMore: sections.normalCourses.hasMore,
-        loadMore: sections.normalCourses.loadMore,
+        hasMore: (sections as any)?.normalCourses?.hasMore,
+        loadMore: (sections as any)?.normalCourses?.loadMore || (() => {}),
+      },
+      {
+        key: 'aiCourses',
+        title: 'AI Courses',
+        subtitle: 'AI-powered courses you unlocked.',
+        data: aiRows,
+        loading: (sections as any)?.aiCourses?.loading,
+        error: (sections as any)?.aiCourses?.error,
+        emptyMessage: 'You haven’t unlocked any AI courses yet.',
+        hasMore: (sections as any)?.aiCourses?.hasMore,
+        loadMore: (sections as any)?.aiCourses?.loadMore || (() => {}),
       },
     ];
-  }, [role, sections, createdVaultItems, purchasedVaultItems, normalCourseItems, aiCourseItems]);
+  }, [
+    role,
+    sections,
+    createdVaultItems,
+    purchasedVaultItems,
+    normalCourseItems,
+    aiRows,
+  ]);
 
   const renderItem = ({ item }: { item: SectionItem }) => {
+   if (item.kind === 'aiRow') {
+  const left = item.items[0]; // Course
+  const right = item.items[1]; // Course | undefined
+
+  return (
+    <View style={tw`px-4 mb-3`}>
+      <View style={tw`flex-row gap-3`}>
+        <AiCourseTile
+          course={left}
+          backendUrl={backendUrl}
+          onPress={() =>
+            navigation.navigate('RobotTutor', {
+              courseId: String((left as any).id),
+              courseTitle: (left as any).title,
+              source: 'library',
+            })
+          }
+        />
+
+        {right ? (
+          <AiCourseTile
+            course={right}
+            backendUrl={backendUrl}
+            onPress={() =>
+              navigation.navigate('RobotTutor', {
+                courseId: String((right as any).id),
+                courseTitle: (right as any).title,
+                source: 'library',
+              })
+            }
+          />
+        ) : (
+          <View style={tw`flex-1`} />
+        )}
+      </View>
+    </View>
+  );
+}
+
+
     if (item.kind === 'classvault') {
       const id = getVaultId(item);
       const deleting = deletingVaultId === String(id);
@@ -616,56 +776,44 @@ const MyCoursesNative: React.FC = () => {
       const isVisible = visibleIds.has(key);
 
       return (
-        <ClassVaultCard
-          item={{ ...(item as any), id }}
-          isVisible={isVisible}
-          isPurchased={isPurchased}
-          showTutorActions={role === 'tutor' && item.sectionKey === 'createdClassVault'}
-          deleting={deleting}
-          onPress={() => {
-            if (id <= 0) {
-              Alert.alert('Error', 'Invalid item id. Please refresh.');
-              return;
-            }
-            navigation.navigate('ClassVaultDetail', { id });
-          }}
-          onEdit={() => navigation.navigate('ClassVaultUpload')}
-          onDelete={() => onDeleteVault({ ...(item as any), id } as any)}
-        />
+        <View style={tw`px-4`}>
+          <ClassVaultCard
+            item={{ ...(item as any), id }}
+            isVisible={isVisible}
+            isPurchased={isPurchased}
+            showTutorActions={role === 'tutor' && item.sectionKey === 'createdClassVault'}
+            deleting={deleting}
+            onPress={() => {
+              if (id <= 0) {
+                Alert.alert('Error', 'Invalid item id. Please refresh.');
+                return;
+              }
+              navigation.navigate('ClassVaultDetail', { id });
+            }}
+            onEdit={() => navigation.navigate('ClassVaultUpload')}
+            onDelete={() => onDeleteVault({ ...(item as any), id } as any)}
+          />
+        </View>
       );
     }
 
-    if (item.ai) {
-      return (
+    // normal courses (non-ai)
+    return (
+      <View style={tw`px-4`}>
         <CourseCard
           course={item}
           backendUrl={backendUrl}
-          badge="AI"
           onPress={() =>
-            navigation.navigate('RobotTutor', {
-              courseId: String(item.id),
-              courseTitle: item.title,
-              source: 'library',
-            })
+            navigation.navigate(
+              'CourseProgress',
+              {
+                courseId: String((item as any).id),
+                source: 'library',
+              } as any
+            )
           }
         />
-      );
-    }
-
-    return (
-      <CourseCard
-        course={item}
-        backendUrl={backendUrl}
-        onPress={() =>
-          navigation.navigate(
-            'CourseProgress',
-            {
-              courseId: String(item.id),
-              source: 'library',
-            } as any
-          )
-        }
-      />
+      </View>
     );
   };
 
@@ -674,10 +822,17 @@ const MyCoursesNative: React.FC = () => {
   return (
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
       <SectionList
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={8}
+        windowSize={7}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         sections={librarySections}
-        keyExtractor={(item, index) => `${item.kind}-${String(item.id)}-${index}`}
+        keyExtractor={(item: SectionItem) => {
+          if (item.kind === 'aiRow') return item.rowKey;
+          if (item.kind === 'classvault') return `classvault:${getVaultId(item)}`;
+          return `course:${String((item as any).id)}`;
+        }}
         renderItem={renderItem}
         renderSectionHeader={({ section }) => <SectionHeader title={section.title} subtitle={section.subtitle} />}
         renderSectionFooter={({ section }) => (
@@ -691,22 +846,21 @@ const MyCoursesNative: React.FC = () => {
               onLoadMore={section.loadMore}
             />
 
-            {/* ✅ Show Top AI courses under Courses when empty */}
-            {section.key === 'normalCourses' &&
-            section.data.length === 0 &&
-            !section.loading &&
-            !section.error ? (
-              <TopCoursesPromoGrid
-                backendUrl={backendUrl}
-                authToken={authToken || undefined}
-                onPick={(course) =>
-                  navigation.navigate('RobotTutor', {
-                    courseId: String(course.id),
-                    courseTitle: course.title,
-                    source: 'top-courses',
-                  })
-                }
-              />
+            {/* ✅ Show Top AI courses promo under "Courses" when empty */}
+            {section.key === 'normalCourses' && section.data.length === 0 && !section.loading && !section.error ? (
+              <View style={tw`px-4`}>
+                <TopCoursesPromoGrid
+                  backendUrl={backendUrl}
+                  authToken={authToken || undefined}
+                  onPick={(course) =>
+                    navigation.navigate('RobotTutor', {
+                      courseId: String(course.id),
+                      courseTitle: course.title,
+                      source: 'top-courses',
+                    })
+                  }
+                />
+              </View>
             ) : null}
           </View>
         )}
@@ -714,9 +868,7 @@ const MyCoursesNative: React.FC = () => {
           <View style={tw`px-4 pt-4 pb-2`}>
             <Text style={tw`text-2xl font-extrabold text-slate-900 dark:text-white`}>My Library</Text>
             <Text style={tw`text-sm text-slate-500 dark:text-white/60 mt-1`}>
-              {isTutor
-                ? 'Everything you created or unlocked lives here.'
-                : 'Your purchased and enrolled learning content lives here.'}
+              {isTutor ? 'Everything you created or unlocked lives here.' : 'Your purchased and enrolled learning content lives here.'}
             </Text>
 
             {role === 'tutor' ? (
