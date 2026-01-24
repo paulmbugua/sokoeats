@@ -277,11 +277,19 @@ const TutorCard = memo(function TutorCard({
 
   const ccode = String((item as any).country ?? (item as any).country_code ?? '').trim();
   const cname = ccode ? countryName?.(ccode) || ccode : '';
+   const go = () => onPress((item as any).user_id ?? (item as any).id);
 
   return (
-    <View style={tw`mb-4`}>
-      <View
-        style={tw`flex-row items-stretch justify-between gap-4 rounded-2xl bg-white dark:bg-[#0b1016] p-3 border border-[#e2edf5] dark:border-white/5 shadow-sm`}
+ <View style={tw`mb-4`}>
+      {/* ✅ Whole card is touchable */}
+      <Pressable
+        onPress={go}
+        style={({ pressed }) =>
+          tw.style(
+            'flex-row items-stretch justify-between gap-4 rounded-2xl bg-white dark:bg-[#0b1016] p-3 border border-[#e2edf5] dark:border-white/5 shadow-sm',
+            pressed ? 'opacity-90' : ''
+          )
+        }
       >
         <View style={tw`flex-1`}>
           <Text style={tw`text-xs font-medium text-[#49739c] dark:text-white/70`}>{sub}</Text>
@@ -289,11 +297,10 @@ const TutorCard = memo(function TutorCard({
           <View style={tw`flex-row items-center gap-2 mt-0.5`}>
             {status ? <View style={tw.style('w-2 h-2 rounded-full', chipBg)} /> : null}
 
-            <Pressable onPress={() => onPress((item as any).user_id ?? (item as any).id)}>
-              <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
-                {item.name ?? 'Tutor'}
-              </Text>
-            </Pressable>
+            {/* ✅ No longer a Pressable (whole card already clickable) */}
+            <Text style={tw`text-base font-extrabold text-[#0d141c] dark:text-white`}>
+              {item.name ?? 'Tutor'}
+            </Text>
           </View>
 
           <View style={tw`flex-row flex-wrap items-center gap-x-3 gap-y-1 mt-1`}>
@@ -302,7 +309,9 @@ const TutorCard = memo(function TutorCard({
             </Text>
 
             {typeof tokens === 'number' ? (
-              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>{tokens} tokens</Text>
+              <Text style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}>
+                {tokens} tokens
+              </Text>
             ) : null}
 
             {langs ? (
@@ -315,11 +324,8 @@ const TutorCard = memo(function TutorCard({
           {desc ? <Text style={tw`text-sm mt-1 text-[#0d141c] dark:text-white/90`}>{desc}</Text> : null}
         </View>
 
-        {/* Image + overlay chips */}
-        <Pressable
-          onPress={() => onPress((item as any).user_id ?? (item as any).id)}
-          style={tw`w-36 rounded-xl overflow-hidden`}
-        >
+        {/* ✅ Image is now just a View (still visually the same) */}
+        <View style={tw`w-36 rounded-xl overflow-hidden`}>
           <View style={tw`relative`}>
             <Image source={{ uri: img }} style={tw`w-full aspect-video`} resizeMode="cover" />
             <View style={tw`absolute inset-0 bg-black/10`} />
@@ -329,7 +335,9 @@ const TutorCard = memo(function TutorCard({
                 accessibilityLabel="Verified tutor"
                 style={tw`absolute top-3 left-3 z-10 rounded-full px-2 py-1 border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/15`}
               >
-                <Text style={tw`text-[10px] font-extrabold text-emerald-800 dark:text-emerald-200`}>✓</Text>
+                <Text style={tw`text-[10px] font-extrabold text-emerald-800 dark:text-emerald-200`}>
+                  ✓
+                </Text>
               </View>
             ) : null}
 
@@ -349,8 +357,8 @@ const TutorCard = memo(function TutorCard({
               </View>
             ) : null}
           </View>
-        </Pressable>
-      </View>
+        </View>
+      </Pressable>
     </View>
   );
 });
