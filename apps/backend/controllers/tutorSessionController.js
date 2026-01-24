@@ -16,10 +16,47 @@ import { emitToProfile } from '../services/socketService.js';
 const PLATFORM_FEE = 0.15; // 15%
 const USD_TO_KES_DEFAULT = 133.75; // fallback; replace with your FX source
 
+function normalizeTxnPaymentMethod(input) {
+  const s = String(input ?? '').trim();
+  const upper = s.toUpperCase();
+
+  if (!s) return 'PlatformBalance';
+
+  // MPESA variants -> DB canonical
+  if (
+    upper === 'MPESA' ||
+    upper === 'M-PESA' ||
+    upper === 'M_PESA' ||
+    upper === 'M PESA' ||
+    s === 'M-Pesa'
+  ) {
+    return 'M-Pesa';
+  }
+
+  // Wise variants
+  if (upper === 'WISE') return 'Wise';
+
+  // Platform balance variants
+  if (upper === 'PLATFORMBALANCE' || upper === 'PLATFORM_BALANCE') {
+    return 'PlatformBalance';
+  }
+
+  // Safe fallback (must match DB CHECK)
+  return 'PlatformBalance';
+}
+
+function httpError(res, status, code, message, extra = {}) {
+  // message is what the app should show to the user
+  return res.status(status).json({ ok: false, code, message, ...extra });
+}
+
+
 async function getFxRate(base, quote) {
   if (base === 'USD' && quote === 'KES') return USD_TO_KES_DEFAULT;
   return 1; // USD->USD or KES->KES placeholder
 }
+
+
 
 // Create a New Session
 export const createSession = async (req, res) => {
@@ -285,6 +322,7 @@ export const acceptSession = async (req, res) => {
         .status(404)
         .json({ message: 'Student or tutor profile not found.' });
     }
+
     const studentProfileId = studentProfileRes.rows[0].id;
     const tutorProfileId = tutorProfileRes.rows[0].id;
 
@@ -320,6 +358,7 @@ export const acceptSession = async (req, res) => {
        LIMIT 1`,
       [tutorProfileId, studentProfileId],
     );
+
     const conversationId = conversationUnlock.rows[0]?.id;
     if (conversationId) {
       await pool.query(
@@ -342,10 +381,7 @@ export const acceptSession = async (req, res) => {
       [sessionData.tutor_id],
     );
 
-    console.log(
-      '[acceptSession] tutorProfilePayout.rows:',
-      tutorProfilePayout.rows,
-    );
+    console.log('[acceptSession] tutorProfilePayout.rows:', tutorProfilePayout.rows);
 
     const payoutCurrency = String(
       tutorProfilePayout.rows[0]?.payout_currency || 'USD',
@@ -379,13 +415,10 @@ export const acceptSession = async (req, res) => {
         creditedAmount,
       });
     } else {
-      console.log(
-        '[acceptSession] No FX applied (payoutCurrency is not KES):',
-        {
-          payoutCurrency,
-          creditedAmount,
-        },
-      );
+      console.log('[acceptSession] No FX applied (payoutCurrency is not KES):', {
+        payoutCurrency,
+        creditedAmount,
+      });
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -396,23 +429,21 @@ export const acceptSession = async (req, res) => {
       [sessionData.student_id],
     );
 
-    console.log(
-      '[acceptSession] paymentRecord.rowCount:',
-      paymentRecord.rowCount,
-    );
+    console.log('[acceptSession] paymentRecord.rowCount:', paymentRecord.rowCount);
 
+    // ✅ UPDATED: normalize payment method to match DB CHECK
     let paystackRef = null;
     let mpesaRef = null;
-    // default to a valid enumerated value
-    let paymentMethod = 'PlatformBalance';
+    let paymentMethod = 'PlatformBalance'; // must match CHECK
 
     if (paymentRecord.rows.length === 0) {
-      console.warn(
-        '[acceptSession] Payment record not found; using PlatformBalance as payment_method for Expected Earnings',
-        { sessionId, studentId: sessionData.student_id },
-      );
+      console.warn('[acceptSession] Payment record not found; using PlatformBalance', {
+        sessionId,
+        studentId: sessionData.student_id,
+      });
     } else {
       const pr = paymentRecord.rows[0];
+
       console.log('[acceptSession] paymentRecord row:', {
         id: pr.id,
         payment_method: pr.payment_method,
@@ -420,15 +451,24 @@ export const acceptSession = async (req, res) => {
         mpesa_reference: pr.mpesa_reference,
       });
 
-      if (pr.payment_method === 'Paystack') {
-        paymentMethod = 'Paystack';
-        paystackRef = pr.transaction_id;
-      } else if (pr.payment_method === 'M-Pesa') {
-        paymentMethod = 'M-Pesa';
-        mpesaRef = pr.mpesa_reference;
-      } else if (pr.payment_method) {
-        paymentMethod = pr.payment_method;
+      // Normalize to DB allowed values
+      paymentMethod = normalizeTxnPaymentMethod(pr.payment_method);
+
+      // Keep refs (optional)
+      if (paymentMethod === 'M-Pesa') {
+        mpesaRef = pr.mpesa_reference || pr.transaction_id || null;
       }
+
+      // If upstream mentions paystack, keep ref for analytics, but DO NOT set paymentMethod='Paystack'
+      if (String(pr.payment_method || '').toLowerCase().includes('paystack')) {
+        paystackRef = pr.transaction_id || null;
+      }
+
+      console.log('[acceptSession] transaction.payment_method normalize', {
+        raw: pr.payment_method,
+        normalized: paymentMethod,
+        allowed: ['M-Pesa', 'Wise', 'PlatformBalance'],
+      });
     }
 
     const desc =
@@ -462,7 +502,7 @@ export const acceptSession = async (req, res) => {
         payoutCurrency,
         paystackRef,
         mpesaRef,
-        paymentMethod,
+        paymentMethod, // ✅ always one of: M-Pesa | Wise | PlatformBalance
       ],
     );
 
@@ -487,16 +527,17 @@ export const acceptSession = async (req, res) => {
     console.log('[acceptSession] Email notifications sent.');
     console.log('[acceptSession] ========= END (OK) =========\n');
 
-    res.status(200).json({
+    return res.status(200).json({
       message: 'Session accepted, student notified, and transaction recorded.',
       session: sessionData,
     });
   } catch (error) {
     console.error('[acceptSession] ERROR:', error.message || error);
     console.log('[acceptSession] ========= END (ERROR) =========\n');
-    res.status(500).json({ message: 'Internal server error.' });
+    return res.status(500).json({ message: 'Internal server error.' });
   }
 };
+
 
 export const cancelSession = async (req, res) => {
   const { sessionId } = req.params;
@@ -594,53 +635,89 @@ export const cancelSession = async (req, res) => {
 
 // Mark Session as Completed and Record Earnings
 export const completeSession = async (req, res) => {
+  const LOG = (...a) => console.log('[completeSession]', ...a);
+  const WARN = (...a) => console.warn('[completeSession]', ...a);
+  const ERR = (...a) => console.error('[completeSession]', ...a);
+
   try {
     const { sessionId } = req.body;
-    // Use the authenticated user's ID from the auth middleware
-    const tutorUserId = req.user.id;
+    const tutorUserId = req.user?.id;
 
-    console.log('Complete-Pending Request initiated', {
-      sessionId,
-      tutorUserId,
-      user: req.user,
-      profile: req.profile,
-    });
+    LOG('BEGIN', { sessionId, tutorUserId });
 
+    // ---- Guards / Friendly errors ----
     if (!tutorUserId) {
-      return res
-        .status(403)
-        .json({ message: 'Unauthorized: Tutor not found.' });
+      return httpError(
+        res,
+        401,
+        'UNAUTHORIZED',
+        'You must be logged in as a tutor to mark a session complete.',
+      );
     }
 
-    // Fetch the session with only the needed fields.
-    // Now tutor_id and student_id are users.id, so we compare directly:
+    const sid =
+      typeof sessionId === 'number'
+        ? sessionId
+        : typeof sessionId === 'string' && /^\d+$/.test(sessionId)
+          ? Number(sessionId)
+          : null;
+
+    if (!sid) {
+      return httpError(
+        res,
+        400,
+        'INVALID_SESSION_ID',
+        'Invalid session id. Please refresh and try again.',
+      );
+    }
+
+    // ---- Fetch session (must be accepted + owned by tutor) ----
     const sessionResult = await pool.query(
-      `SELECT id, tutor_id, student_id, session_type, zoom_meeting_ids
+      `SELECT id, tutor_id, student_id, session_type, zoom_meeting_ids, status
        FROM tutor_sessions
-       WHERE id = $1 AND tutor_id = $2 AND status = 'accepted'`,
-      [sessionId, tutorUserId],
+       WHERE id = $1 AND tutor_id = $2`,
+      [sid, tutorUserId],
     );
 
-    console.log('Session query rowCount:', sessionResult.rowCount);
+    LOG('session query', { rowCount: sessionResult.rowCount });
+
     if (sessionResult.rowCount === 0) {
-      return res
-        .status(404)
-        .json({ message: 'Session not found or already processed.' });
+      return httpError(
+        res,
+        404,
+        'SESSION_NOT_FOUND',
+        'Session not found, or it does not belong to you.',
+        { sessionId: sid },
+      );
     }
 
     const session = sessionResult.rows[0];
-    console.log('Session found:', session);
+    LOG('session found', session);
 
-    // Check that the session has Zoom meeting IDs
-    const meetingIds = session.zoom_meeting_ids;
-    if (!meetingIds || meetingIds.length === 0) {
-      return res
-        .status(400)
-        .json({ message: 'No Zoom meeting IDs found for this session.' });
+    if (session.status !== 'accepted') {
+      return httpError(
+        res,
+        400,
+        'SESSION_NOT_ACCEPTED',
+        `You can only mark an accepted session as complete-pending. Current status: "${session.status}".`,
+        { status: session.status },
+      );
     }
-    console.log('Meeting IDs:', meetingIds);
 
-    // Fetch attendance records from zoomwebhooks.
+    // ---- Validate Zoom IDs ----
+    const meetingIds = session.zoom_meeting_ids;
+    if (!Array.isArray(meetingIds) || meetingIds.length === 0) {
+      return httpError(
+        res,
+        400,
+        'NO_ZOOM_MEETING_IDS',
+        'This session has no Zoom meeting IDs yet. Create Zoom links first, then try again.',
+      );
+    }
+
+    LOG('meetingIds', meetingIds);
+
+    // ---- Fetch attendance ----
     const attendanceResult = await pool.query(
       `SELECT event, timestamp
        FROM zoomwebhooks
@@ -648,105 +725,142 @@ export const completeSession = async (req, res) => {
       [meetingIds],
     );
 
+    LOG('attendance rows', { rowCount: attendanceResult.rowCount });
+
     if (attendanceResult.rowCount === 0) {
-      return res
-        .status(400)
-        .json({ message: 'No attendance records found for these meetings.' });
+      return httpError(
+        res,
+        400,
+        'NO_ATTENDANCE_FOUND',
+        'No Zoom attendance records were found yet. If you just finished the session, wait a moment and try again.',
+        { meetingIds },
+      );
     }
 
-    // Determine expected duration based on session_type and set the threshold at 75%
+    // ---- Duration rules ----
     const sessionDurationMap = {
       privateSession: 60,
       groupSession: 90,
       lecture: 120,
       workshop: 180,
     };
-    const expectedDuration = sessionDurationMap[session.session_type] || 60;
-    const requiredAttendance = expectedDuration * 0.75;
-    console.log(
-      `Expected Duration: ${expectedDuration} mins, Required Attendance (75%): ${requiredAttendance} mins`,
-    );
 
-    // Calculate total meeting duration:
+    const expectedDuration = sessionDurationMap[session.session_type] || 60;
+    const requiredAttendance = Math.round(expectedDuration * 0.75);
+
+    LOG('duration policy', { expectedDuration, requiredAttendance });
+
+    // ---- Compute attendance window ----
     let firstJoinTime = null;
     let lastLeaveTime = null;
 
-    attendanceResult.rows.forEach((record) => {
+    for (const record of attendanceResult.rows) {
+      const t = record?.timestamp ? new Date(record.timestamp) : null;
+      if (!t || Number.isNaN(t.getTime())) continue;
+
       if (record.event === 'meeting.participant_joined') {
-        const joinTime = new Date(record.timestamp);
-        if (!firstJoinTime || joinTime < firstJoinTime) {
-          firstJoinTime = joinTime;
-        }
+        if (!firstJoinTime || t < firstJoinTime) firstJoinTime = t;
       }
       if (record.event === 'meeting.participant_left') {
-        const leaveTime = new Date(record.timestamp);
-        if (!lastLeaveTime || leaveTime > lastLeaveTime) {
-          lastLeaveTime = leaveTime;
-        }
+        if (!lastLeaveTime || t > lastLeaveTime) lastLeaveTime = t;
       }
-    });
+    }
+
+    LOG('attendance window', { firstJoinTime, lastLeaveTime });
 
     if (!firstJoinTime || !lastLeaveTime) {
-      return res
-        .status(400)
-        .json({ message: 'Meeting join or leave time missing from records.' });
+      return httpError(
+        res,
+        400,
+        'INCOMPLETE_ATTENDANCE_EVENTS',
+        'Zoom records are incomplete (missing join/leave events). Please ensure the meeting was started and ended properly, then try again.',
+      );
     }
+
     if (lastLeaveTime <= firstJoinTime) {
-      return res.status(400).json({
-        message: 'Invalid meeting times: leave time is not after join time.',
-      });
+      return httpError(
+        res,
+        400,
+        'INVALID_ATTENDANCE_TIMES',
+        'Zoom attendance times look invalid (leave time is not after join time). Please try again later.',
+      );
     }
 
     const totalMeetingDuration = Math.round(
       (lastLeaveTime - firstJoinTime) / (1000 * 60),
     );
-    console.log(`Total Meeting Duration: ${totalMeetingDuration} mins`);
 
-    // Check if the actual meeting duration meets the 75% threshold
+    LOG('computed duration', { totalMeetingDuration });
+
     if (totalMeetingDuration < requiredAttendance) {
-      return res.status(400).json({
-        message: `Completion failed. Total meeting duration of ${totalMeetingDuration} minutes is less than the required ${requiredAttendance} minutes.`,
-      });
+      return httpError(
+        res,
+        400,
+        'INSUFFICIENT_ATTENDANCE',
+        `Completion failed. The session lasted ${totalMeetingDuration} minutes, but at least ${requiredAttendance} minutes are required (75% of expected duration).`,
+        { totalMeetingDuration, requiredAttendance, expectedDuration },
+      );
     }
 
-    // Mark session as 'completed_pending' and update duration and end_time
-    await pool.query(
+    // ---- Mark session complete-pending ----
+    const upd = await pool.query(
       `UPDATE tutor_sessions 
        SET status = 'completed_pending', 
            duration = $1,
            end_time = $2,
            completion_request_time = NOW(), 
            completion_deadline = NOW() + INTERVAL '24 hours'
-       WHERE id = $3`,
-      [totalMeetingDuration, lastLeaveTime, sessionId],
+       WHERE id = $3
+       RETURNING id, status, duration, end_time, completion_deadline`,
+      [totalMeetingDuration, lastLeaveTime, sid],
     );
-    console.log('Session marked as complete-pending.');
 
-    // Notify the student: Fetch student's email using student_id (which is users.id)
+    LOG('update complete-pending', { rowCount: upd.rowCount, row: upd.rows?.[0] });
+
+    // ---- Notify student (best-effort) ----
     const studentEmailResult = await pool.query(
       'SELECT email FROM users WHERE id = $1',
       [session.student_id],
     );
+
     if (studentEmailResult.rowCount > 0) {
-      await sendNotification({
-        to: studentEmailResult.rows[0].email,
-        subject: 'Session Completion Pending Confirmation',
-        body: `Dear Student,\n\nYour session has been marked as complete-pending by your tutor. Please confirm it within 24 hours to complete the process.\n\nBest regards,\nTutoring Platform`,
-      });
-      console.log(
-        'Notification sent to student:',
-        studentEmailResult.rows[0].email,
-      );
+      const email = studentEmailResult.rows[0].email;
+      try {
+        await sendNotification({
+          to: email,
+          subject: 'Session Completion Pending Confirmation',
+          body:
+            `Dear Student,\n\nYour tutor marked your session as complete-pending. ` +
+            `Please confirm it within 24 hours to complete the process.\n\nBest regards,\nTutoring Platform`,
+        });
+        LOG('student notified', { email });
+      } catch (e) {
+        WARN('failed to notify student', { err: e?.message });
+        // do not fail the request for email issues
+      }
+    } else {
+      WARN('student email not found', { studentId: session.student_id });
     }
 
-    res.status(200).json({
-      message: 'Session marked as complete, pending student confirmation.',
+    return res.status(200).json({
+      ok: true,
+      message: 'Session marked as complete-pending. Waiting for student confirmation.',
+      data: upd.rows[0],
     });
   } catch (error) {
-    console.error('Error completing session:', error.message || error);
-    res.status(500).json({ message: 'Internal server error.' });
+    ERR('ERROR', error);
+
+    // ✅ Return a nicer message even on unexpected failures
+    return httpError(
+      res,
+      500,
+      'SERVER_ERROR',
+      'Something went wrong while marking the session complete. Please try again, or contact support if it persists.',
+      { detail: error?.message },
+    );
   }
 };
+
 
 export const confirmCompletion = async (req, res) => {
   const client = await pool.connect();

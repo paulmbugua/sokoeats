@@ -309,14 +309,38 @@ export const useAccountSection = (options?: {
     },
   });
 
-  const completePendingM = useMutation<void, Error, string>({
-    mutationFn: (sessionId) => accountApi.completePendingSession(backendUrl, token!, sessionId),
-    onSuccess: () => {
-      alertFn?.('Session marked as complete-pending.');
-      refetchSessions();
-    },
-    onError: () => alertFn?.('Failed to mark complete-pending.'),
-  });
+  const completePendingM = useMutation<any, any, string>({
+  mutationFn: (sessionId) =>
+    accountApi.completePendingSession(backendUrl, token!, sessionId),
+
+  onSuccess: () => {
+    alertFn?.('Session marked as complete-pending.');
+    refetchSessions();
+  },
+
+  onError: (err) => {
+    // Prefer API-provided message (from your improved controller)
+    if (axios.isAxiosError(err)) {
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message;
+
+      // Optional: include code for debugging in dev
+      const code = err.response?.data?.code;
+      const finalMsg =
+        code && typeof code === 'string'
+          ? `${msg} (${code})`
+          : msg;
+
+      alertFn?.(finalMsg || 'Failed to mark complete-pending.');
+      return;
+    }
+
+    alertFn?.(err?.message || 'Failed to mark complete-pending.');
+  },
+});
+
 
   const confirmCompleteM = useMutation<void, Error, string>({
     mutationFn: (sessionId) => accountApi.confirmSessionCompletion(backendUrl, token!, sessionId),

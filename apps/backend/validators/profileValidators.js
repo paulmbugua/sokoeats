@@ -20,7 +20,10 @@ const validPayoutMethods = ['mpesa', 'wise']; // ✅ only the two you support
 const payoutCurrencyJoi = Joi.string()
   .valid(...validPayoutCurrencies)
   .default('USD');
-const payoutMethodJoi = Joi.string().valid(...validPayoutMethods);
+const payoutMethodJoi = Joi.string()
+  .valid(...validPayoutMethods)
+  .default('wise');
+
 
 // Reusable URL-or-path schemas
 const httpUrl = Joi.string().uri({ scheme: [/https?/] });
@@ -138,15 +141,7 @@ export const profileValidationSchema = Joi.object({
   }),
 
   // Legacy (only if KES)
-  paymentMethod: Joi.when('role', {
-    is: 'tutor',
-    then: Joi.when('payoutCurrency', {
-      is: 'KES',
-      then: Joi.string().valid('mpesa').default('mpesa'),
-      otherwise: Joi.forbidden(),
-    }),
-    otherwise: Joi.forbidden(),
-  }),
+  paymentMethod: Joi.forbidden(),
   bankAccount: Joi.forbidden(),
   bankCode: Joi.forbidden(),
 

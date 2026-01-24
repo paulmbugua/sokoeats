@@ -263,17 +263,12 @@ export const createProfileJson = async (req, res) => {
   try {
     // 1) Raw payload + light coercion (be defensive)
     const payload = req.body || {};
+
     // 🔓 Optional age: normalize to a number or drop it
     let ageNormalized;
-    if (
-      payload.age !== undefined &&
-      payload.age !== null &&
-      String(payload.age).trim() !== ''
-    ) {
+    if (payload.age !== undefined && payload.age !== null && String(payload.age).trim() !== '') {
       const n = Number(payload.age);
-      if (Number.isFinite(n)) {
-        ageNormalized = n;
-      }
+      if (Number.isFinite(n)) ageNormalized = n;
     }
 
     let languagesIn = [];
@@ -292,13 +287,9 @@ export const createProfileJson = async (req, res) => {
     // 2) Normalize payout (tutor only)
     const isTutor = String(payload.role || '').toLowerCase() === 'tutor';
     const payout = normalizePayoutFromBody(payload, payload.role);
+
     if (payout.error) {
-      console.error(
-        'normalizePayoutFromBody → error:',
-        payout.error,
-        'payload:',
-        payload,
-      );
+      console.error('normalizePayoutFromBody → error:', payout.error, 'payload:', payload);
       return res.status(400).json({ message: payout.error });
     }
 
@@ -308,8 +299,15 @@ export const createProfileJson = async (req, res) => {
       ? {
           payoutCurrency: payout.payout_currency,
           payoutMethod: payout.payout_method,
+
           ...(payout.payout_currency === 'KES' && payout.mpesa_phone_number
             ? { mpesaPhoneNumber: payout.mpesa_phone_number }
+            : {}),
+
+          ...(payout.payout_currency === 'USD' &&
+          payout.payout_method === 'wise' &&
+          payout.wise_email
+            ? { wiseEmail: payout.wise_email }
             : {}),
         }
       : {};
@@ -318,21 +316,16 @@ export const createProfileJson = async (req, res) => {
       ...payload,
       ...(typeof ageNormalized === 'number' ? { age: ageNormalized } : {}),
       languages: languagesIn,
-      ...(isTutor
-        ? { gallery: galleryIn, video: videoIn, ...payoutFields }
-        : {}),
+      ...(isTutor ? { gallery: galleryIn, video: videoIn, ...payoutFields } : {}),
     };
 
-    // 4) Validate (schema should allow missing student age/languages/country)
+    // 4) Validate
     const { error, value } = profileValidationSchema.validate(toValidate, {
       abortEarly: false,
       stripUnknown: true,
     });
 
-    console.log(
-      'createProfileJson → incoming payload:',
-      JSON.stringify(payload, null, 2),
-    );
+    console.log('createProfileJson → incoming payload:', JSON.stringify(payload, null, 2));
     console.log(
       'createProfileJson → normalized/validated candidate (toValidate):',
       JSON.stringify(toValidate, null, 2),
@@ -360,6 +353,7 @@ export const createProfileJson = async (req, res) => {
       payoutCurrency,
       payoutMethod,
       mpesaPhoneNumber,
+      wiseEmail,
       gallery,
       video,
     } = value;
@@ -370,26 +364,6 @@ export const createProfileJson = async (req, res) => {
     const jsonDescription = isTutor ? JSON.stringify(description || {}) : null;
     const jsonPricing = isTutor ? JSON.stringify(pricing || {}) : null;
 
-    // 6) SQL (country & school_grade included; student fields may be NULL)
-    const insertSQL = `
-      INSERT INTO profiles
-        (user_id, role, name, age, languages,
-         country, school_grade,
-         category, description, pricing,
-         gallery, video, payment_method,
-         bank_account, bank_code, mpesa_phone_number,
-         payout_currency, payout_method
-        )
-      VALUES
-        ($1,$2,$3,$4,$5,
-         $6,$7,
-         $8,$9,$10,
-         $11,$12,$13,
-         $14,$15,$16,
-         $17,$18)
-      RETURNING *;
-    `;
-
     // Age may be missing for students → store NULL
     const ageParam =
       typeof age === 'number' && Number.isFinite(age)
@@ -398,12 +372,46 @@ export const createProfileJson = async (req, res) => {
           ? parseInt(age, 10)
           : null;
 
+    // ✅ Keep these aligned with your business rules
+    const finalPayoutCurrency = isTutor ? (payoutCurrency || payout.payout_currency || 'USD') : null;
+    const finalPayoutMethod = isTutor ? (payoutMethod || payout.payout_method || 'wise') : null;
+
+    const finalMpesa =
+      isTutor && finalPayoutCurrency === 'KES'
+        ? (mpesaPhoneNumber ?? payout.mpesa_phone_number ?? null)
+        : null;
+
+    const finalWise =
+      isTutor && finalPayoutCurrency === 'USD'
+        ? (wiseEmail ?? payout.wise_email ?? null)
+        : null;
+
+    // 6) SQL (✅ includes wise_email)
+    const insertSQL = `
+      INSERT INTO profiles
+        (user_id, role, name, age, languages,
+         country, school_grade,
+         category, description, pricing,
+         gallery, video, payment_method,
+         bank_account, bank_code, mpesa_phone_number,
+         payout_currency, payout_method, wise_email
+        )
+      VALUES
+        ($1,$2,$3,$4,$5,
+         $6,$7,
+         $8,$9,$10,
+         $11,$12,$13,
+         $14,$15,$16,
+         $17,$18,$19)
+      RETURNING *;
+    `;
+
     const params = [
       req.user.id, // $1
       role, // $2
       name, // $3
-      ageParam, // $4  (NULL ok for students)
-      Array.isArray(languages) ? languages : [], // $5 (jsonb[])
+      ageParam, // $4
+      Array.isArray(languages) ? languages : [], // $5
       country, // $6
       schoolGrade ?? null, // $7
       isTutor ? (category ?? null) : null, // $8
@@ -414,20 +422,16 @@ export const createProfileJson = async (req, res) => {
       isTutor ? (paymentMethod ?? null) : null, // $13
       isTutor ? (bankAccount ?? null) : null, // $14
       isTutor ? (bankCode ?? null) : null, // $15
-      isTutor ? (mpesaPhoneNumber ?? null) : null, // $16
-      isTutor ? payoutCurrency || 'USD' : null, // $17
-      isTutor ? payoutMethod || 'wise' : null, // $18  ← default to "wise"
+      isTutor ? finalMpesa : null, // $16
+      isTutor ? finalPayoutCurrency : null, // $17
+      isTutor ? finalPayoutMethod : null, // $18
+      isTutor ? finalWise : null, // $19 ✅ NEW
     ];
 
-    // Sanity check
-    if (params.length !== 18) {
-      console.error(
-        'createProfileJson → params length mismatch:',
-        params.length,
-      );
-      return res
-        .status(500)
-        .json({ message: 'Server error: SQL params mismatch.' });
+    // ✅ Sanity check (NOW 19)
+    if (params.length !== 19) {
+      console.error('createProfileJson → params length mismatch:', params.length);
+      return res.status(500).json({ message: 'Server error: SQL params mismatch.' });
     }
 
     console.log('createProfileJson → final SQL params snapshot:', {
@@ -439,32 +443,22 @@ export const createProfileJson = async (req, res) => {
       country: params[5],
       school_grade: params[6],
       category: params[7],
-      descriptionKeys:
-        isTutor && description ? Object.keys(description || {}) : null,
-      pricing: isTutor
-        ? JSON.stringify(pricing || {}).slice(0, 120) + '…'
-        : null,
-      galleryCount: isTutor
-        ? Array.isArray(gallery)
-          ? gallery.length
-          : 0
-        : null,
-      hasVideo: isTutor ? Boolean(video) : null,
-      paymentMethod: params[12],
-      mpesa_phone_number: params[15],
+      galleryCount: isTutor ? (Array.isArray(params[10]) ? params[10].length : 0) : null,
+      hasVideo: isTutor ? Boolean(params[11]) : null,
       payout_currency: params[16],
       payout_method: params[17],
+      mpesa_phone_number: params[15],
+      wise_email: params[18],
     });
 
     const { rows } = await pool.query(insertSQL, params);
     return res.status(201).json({ success: true, profile: rows[0] });
   } catch (err) {
     console.error('createProfileJson error:', err);
-    return res
-      .status(500)
-      .json({ message: 'Server error', error: err.message });
+    return res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
 
 export const updateProfileVideoJson = async (req, res) => {
   try {
@@ -501,6 +495,7 @@ export const updateProfile = async (req, res) => {
       bankAccount,
       bankCode,
       mpesaPhoneNumber,
+      wiseEmail, // ✅ already added
       gallery: rawGallery,
       country,
       schoolGrade,
@@ -510,14 +505,11 @@ export const updateProfile = async (req, res) => {
       paypalEmail,
     } = req.body;
 
-    const profileResult = await pool.query(
-      'SELECT * FROM profiles WHERE user_id = $1',
-      [req.user.id],
-    );
+    const profileResult = await pool.query('SELECT * FROM profiles WHERE user_id = $1', [
+      req.user.id,
+    ]);
     if (!profileResult.rows.length) {
-      return res
-        .status(404)
-        .json({ success: false, message: 'Profile not found.' });
+      return res.status(404).json({ success: false, message: 'Profile not found.' });
     }
     const profile = profileResult.rows[0];
     const normalizedRole = String(profile.role || '').toLowerCase();
@@ -529,11 +521,10 @@ export const updateProfile = async (req, res) => {
       const trimmed = ageStr.trim();
       if (trimmed !== '') {
         const n = Number(trimmed);
-        if (Number.isFinite(n)) {
-          age = n;
-        }
+        if (Number.isFinite(n)) age = n;
       }
     }
+
     const parsedLanguages = Array.isArray(languages) ? languages : [];
 
     // ---- gallery normalize
@@ -566,9 +557,7 @@ export const updateProfile = async (req, res) => {
       const desc = req.body.description || {};
       description = {
         bio: desc.bio ?? existingDesc.bio ?? '',
-        expertise: Array.isArray(desc.expertise)
-          ? desc.expertise
-          : existingDesc.expertise || [],
+        expertise: Array.isArray(desc.expertise) ? desc.expertise : existingDesc.expertise || [],
         teachingStyle: Array.isArray(desc.teachingStyle)
           ? desc.teachingStyle
           : existingDesc.teachingStyle || [],
@@ -585,9 +574,12 @@ export const updateProfile = async (req, res) => {
         paypalEmail,
         paypal_email: paypalEmail,
         mpesaPhoneNumber: mpesaPhoneNumber ?? profile.mpesa_phone_number,
+        wiseEmail: wiseEmail ?? req.body.wise_email ?? profile.wise_email,
+        wise_email: wiseEmail ?? req.body.wise_email ?? profile.wise_email,
       },
       normalizedRole,
     );
+
     if (payout.error) {
       return res.status(400).json({ success: false, message: payout.error });
     }
@@ -624,42 +616,42 @@ export const updateProfile = async (req, res) => {
         bankCode,
         payoutCurrency: payout.payout_currency,
         payoutMethod: payout.payout_method,
+
         ...(payout.payout_currency === 'KES'
-          ? {
-              mpesaPhoneNumber: payout.mpesa_phone_number,
-            }
+          ? { mpesaPhoneNumber: payout.mpesa_phone_number }
           : {}),
+
         ...(payout.payout_currency === 'USD' &&
         payout.payout_method === 'stripe' &&
         payout.stripe_connect_id
-          ? {
-              stripeConnectId: payout.stripe_connect_id,
-            }
+          ? { stripeConnectId: payout.stripe_connect_id }
           : {}),
+
         ...(payout.payout_currency === 'USD' &&
         payout.payout_method === 'paypal' &&
         payout.paypal_email
-          ? {
-              paypalEmail: payout.paypal_email,
-            }
+          ? { paypalEmail: payout.paypal_email }
+          : {}),
+
+        // ✅ ADD THIS
+        ...(payout.payout_currency === 'USD' &&
+        payout.payout_method === 'wise' &&
+        payout.wise_email
+          ? { wiseEmail: payout.wise_email }
           : {}),
       }),
     };
 
-    console.log(
-      'updateProfile → validationData:',
-      JSON.stringify(validationData, null, 2),
-    );
+    console.log('updateProfile → validationData:', JSON.stringify(validationData, null, 2));
 
-    const { error, value } = profileUpdateValidationSchema.validate(
-      validationData,
-      { stripUnknown: true, abortEarly: false },
-    );
+    const { error, value } = profileUpdateValidationSchema.validate(validationData, {
+      stripUnknown: true,
+      abortEarly: false,
+    });
+
     if (error) {
       console.error('Validation Error:', error.details);
-      return res
-        .status(400)
-        .json({ success: false, message: error.details[0].message });
+      return res.status(400).json({ success: false, message: error.details[0].message });
     }
 
     // ---- updatedData to persist
@@ -671,42 +663,32 @@ export const updateProfile = async (req, res) => {
       country: normIso2(value.country) || null, // final guard
       school_grade: value.schoolGrade ?? profile.school_grade,
 
-      category:
-        normalizedRole === 'tutor'
-          ? (value.category ?? profile.category)
-          : profile.category,
-      description:
-        normalizedRole === 'tutor'
-          ? JSON.stringify(value.description)
-          : profile.description,
-      pricing:
-        normalizedRole === 'tutor'
-          ? JSON.stringify(value.pricing)
-          : profile.pricing,
+      category: normalizedRole === 'tutor' ? value.category ?? profile.category : profile.category,
+      description: normalizedRole === 'tutor' ? JSON.stringify(value.description) : profile.description,
+      pricing: normalizedRole === 'tutor' ? JSON.stringify(value.pricing) : profile.pricing,
       experience_level:
-        normalizedRole === 'tutor'
-          ? value.experienceLevel
-          : profile.experience_level,
+        normalizedRole === 'tutor' ? value.experienceLevel : profile.experience_level,
       status: normalizedRole === 'tutor' ? value.status : profile.status,
-      recommended:
-        normalizedRole === 'tutor' ? value.recommended : profile.recommended,
-      payment_method:
-        normalizedRole === 'tutor'
-          ? value.paymentMethod
-          : profile.payment_method,
+      recommended: normalizedRole === 'tutor' ? value.recommended : profile.recommended,
+      payment_method: normalizedRole === 'tutor' ? value.paymentMethod : profile.payment_method,
+
       bank_account:
         normalizedRole === 'tutor' && value.paymentMethod === 'bank'
           ? value.bankAccount
           : profile.bank_account,
+
       bank_code:
         normalizedRole === 'tutor' && value.paymentMethod === 'bank'
           ? value.bankCode
           : profile.bank_code,
+
       mpesa_phone_number:
         normalizedRole === 'tutor' && value.paymentMethod === 'mpesa'
           ? value.mpesaPhoneNumber || payout.mpesa_phone_number
           : payout.mpesa_phone_number || profile.mpesa_phone_number,
+
       gallery: parsedGallery.length ? parsedGallery : profile.gallery,
+
       video:
         normalizedRole === 'tutor' && typeof value.video === 'string'
           ? value.video
@@ -716,33 +698,41 @@ export const updateProfile = async (req, res) => {
         normalizedRole === 'tutor'
           ? payout.payout_currency || profile.payout_currency || 'USD'
           : profile.payout_currency,
+
       payout_method:
         normalizedRole === 'tutor'
           ? payout.payout_method || profile.payout_method || 'stripe'
           : profile.payout_method,
+
       stripe_connect_id:
         normalizedRole === 'tutor'
           ? payout.stripe_connect_id || profile.stripe_connect_id || null
           : profile.stripe_connect_id,
+
       paypal_email:
         normalizedRole === 'tutor'
           ? payout.paypal_email || profile.paypal_email || null
           : profile.paypal_email,
+
+      // ✅ ADD THIS (persist wise email)
+      wise_email:
+        normalizedRole === 'tutor'
+          ? payout.wise_email || profile.wise_email || null
+          : profile.wise_email,
     };
 
     // ---- uploads (unchanged)
     const images = ['image1', 'image2', 'image3', 'image4']
       .map((k) => req.files?.[k]?.[0])
       .filter(Boolean);
+
     if (images.length) {
       const uploaded = await uploadToCloudinary(images, 'image');
       updatedData.gallery = uploaded.map((u) => u.url);
     }
+
     if (normalizedRole === 'tutor' && req.files?.video?.[0]) {
-      const [videoUploaded] = await uploadToCloudinary(
-        [req.files.video[0]],
-        'video',
-      );
+      const [videoUploaded] = await uploadToCloudinary([req.files.video[0]], 'video');
       updatedData.video = videoUploaded.url || updatedData.video;
     }
 
@@ -768,68 +758,56 @@ export const updateProfile = async (req, res) => {
         payout_currency = $18,
         payout_method   = $19,
         stripe_connect_id = $20,
-        paypal_email      = $21
-      WHERE user_id = $22
+        paypal_email      = $21,
+        wise_email        = $22
+      WHERE user_id = $23
       RETURNING *;
     `;
 
     const params = [
-      updatedData.name,
-      updatedData.age,
-      updatedData.languages,
-      updatedData.country,
-      updatedData.school_grade,
-      updatedData.category,
-      updatedData.description,
-      updatedData.pricing,
-      updatedData.experience_level,
-      updatedData.status,
-      updatedData.recommended,
-      updatedData.payment_method,
-      updatedData.bank_account,
-      updatedData.bank_code,
-      updatedData.mpesa_phone_number,
-      updatedData.gallery,
-      updatedData.video,
-      updatedData.payout_currency,
-      updatedData.payout_method,
-      updatedData.stripe_connect_id,
-      updatedData.paypal_email,
-      req.user.id,
+      updatedData.name,               // $1
+      updatedData.age,                // $2
+      updatedData.languages,          // $3
+      updatedData.country,            // $4
+      updatedData.school_grade,       // $5
+      updatedData.category,           // $6
+      updatedData.description,        // $7
+      updatedData.pricing,            // $8
+      updatedData.experience_level,   // $9
+      updatedData.status,             // $10
+      updatedData.recommended,        // $11
+      updatedData.payment_method,     // $12
+      updatedData.bank_account,       // $13
+      updatedData.bank_code,          // $14
+      updatedData.mpesa_phone_number, // $15
+      updatedData.gallery,            // $16
+      updatedData.video,              // $17
+      updatedData.payout_currency,    // $18
+      updatedData.payout_method,      // $19
+      updatedData.stripe_connect_id,  // $20
+      updatedData.paypal_email,       // $21
+      updatedData.wise_email,         // $22 ✅ NEW
+      req.user.id,                    // $23 ✅ shifted
     ];
 
     const result = await pool.query(updateQuery, params);
-    res.status(200).json({ success: true, profile: result.rows[0] });
+    return res.status(200).json({ success: true, profile: result.rows[0] });
   } catch (err) {
     console.error('Error in updateProfile:', err);
-    res
-      .status(500)
-      .json({ message: 'Failed to update profile.', error: err.message });
+    return res.status(500).json({ message: 'Failed to update profile.', error: err.message });
   }
 };
 
 // ─── 4. Get User Profile ────────────────────────────────────────────────────
 export const getUserProfile = async (req, res) => {
   try {
-    const rawId = req.user?.id;
-    const userId = Number(rawId);
+    const userId = String(req.user?.id || '').trim();
+    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-    // Admin tokens are non-numeric (e.g., "admin:email") → no profile row
-    if (!Number.isInteger(userId)) {
-      return res.json({ success: true, profileExists: false });
-    }
-
-    const { rows } = await pool.query(
-      'SELECT * FROM profiles WHERE user_id = $1',
-      [userId],
-    );
+    const { rows } = await pool.query('SELECT * FROM profiles WHERE user_id = $1', [userId]);
 
     if (!rows.length) {
-      return res.json({
-        success: true,
-        profileExists: false,
-        profile: { gallery: [] },
-      });
+      return res.json({ success: true, profileExists: false, profile: { gallery: [] } });
     }
 
     const prof = rows[0];
@@ -840,6 +818,7 @@ export const getUserProfile = async (req, res) => {
     return res.status(500).json({ message: 'Failed to fetch profile.' });
   }
 };
+
 
 // ─── 5. Toggle Notifications ────────────────────────────────────────────────
 export const toggleNotifications = async (req, res) => {

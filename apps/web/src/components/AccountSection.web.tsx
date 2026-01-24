@@ -1152,7 +1152,7 @@ useEffect(() => {
                   <li>
                     • Your withdrawal method & currency follow your profile’s payout settings.
                   </li>
-                  <li>• USD withdrawals use Stripe or PayPal; KES uses M-Pesa B2C.</li>
+                  <li>• USD withdrawals use Wise; KES uses M-Pesa B2C.</li>
                   <li>• Requests move to a processing queue; you’ll get an email update.</li>
                 </ul>
               </div>

@@ -381,26 +381,30 @@ export const createCourse = async (req, res) => {
     }
 
     // Ensure tutor exists (clearer error than FK violation)
-    const tutorCheck = await pool.query('SELECT 1 FROM users WHERE id = $1', [
-      tutorId,
-    ]);
+    const tutorCheck = await pool.query('SELECT 1 FROM users WHERE id = $1', [tutorId]);
     if (tutorCheck.rowCount === 0) {
       return res.status(400).json({ error: `Tutor ${tutorId} not found` });
     }
 
     const cleanedSyllabus = normalizeSyllabus(value.syllabus);
 
+    // ✅ Stamp tutor-created courses so they never mix with OER/doc/text rows
     const result = await pool.query(
       `INSERT INTO courses (
-         id, tutor_id, title, description, level, duration, price, syllabus, prerequisites
+         id, tutor_id, title, description, level, duration, price, syllabus, prerequisites,
+         source_kind, content_kind, is_oer
        ) VALUES (
-         gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8
+         gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8,
+         'tutor', 'course', FALSE
        )
        RETURNING
          id, tutor_id, title, description, level, duration, price, syllabus, prerequisites,
          COALESCE(avg_rating, 0)::float AS avg_rating,
          COALESCE(ratings_count, 0)     AS ratings_count,
-         created_at, updated_at`,
+         created_at, updated_at,
+         COALESCE(source_kind,'')       AS source_kind,
+         COALESCE(content_kind,'')      AS content_kind,
+         COALESCE(is_oer, FALSE)        AS is_oer`,
       [
         tutorId,
         value.title,
@@ -416,12 +420,25 @@ export const createCourse = async (req, res) => {
     return res.json(result.rows[0]);
   } catch (err) {
     console.error('[createCourse] server error', err);
+
+    // FK tutor_id
     if (err && err.code === '23503') {
       return res.status(400).json({ error: 'Invalid tutorId (foreign key).' });
     }
-    return res
-      .status(500)
-      .json({ error: err?.message ?? 'Internal server error' });
+
+    // Missing columns (if migration not applied yet)
+    if (
+      err &&
+      err.code === '42703' && // undefined_column
+      /source_kind|content_kind|is_oer/i.test(String(err.message || ''))
+    ) {
+      return res.status(500).json({
+        error:
+          'Database schema missing columns (source_kind/content_kind/is_oer). Run the migration then retry.',
+      });
+    }
+
+    return res.status(500).json({ error: err?.message ?? 'Internal server error' });
   }
 };
 
@@ -455,7 +472,18 @@ export const getExploreCourses = async (req, res) => {
     const like = q ? `%${q}%` : '';
 
     const params = [limit, offset];
-    const where = [aiOff('c', req), hasTutor('c'), `NOT ${isOerCourse('c')}`];
+    const where = [
+  aiOff('c', req),
+  hasTutor('c'),
+  `NOT ${isOerCourse('c')}`,
+
+  // ✅ prevent OER book/doc courses from leaking into normal course explore
+  `LOWER(COALESCE(c.source_kind,'')) NOT IN ('doc','text')`,
+  `LOWER(COALESCE(c.content_kind,'')) NOT IN ('doc','text')`,
+  `COALESCE(c.is_oer,FALSE) = FALSE`,
+];
+
+
 
     if (like) {
       params.push(like);
@@ -1339,11 +1367,27 @@ if (wantsOerVideos) {
     conditions.push(aiExclusionClause('c', req, { allowAuthed: allowAuthedAiHere }));
 
     // ✅ OER/tutor allowance (patched)
-    if (merged.isOer) {
-      conditions.push(oerClause('c'));
-    } else {
-      conditions.push(`(${hasTutor('c')} OR ${oerClause('c')})`);
-    }
+    // ✅ OER/tutor separation (no mixing)
+if (merged.isOer) {
+  // Only OER items
+  conditions.push(oerClause('c'));
+} else {
+  // Only tutor-created courses (explicitly exclude OER/doc/text)
+  conditions.push(hasTutor('c'));
+  conditions.push(`NOT ${oerClause('c')}`);
+
+  // extra guard for your doc/text source_kind + content_kind
+  if (cols.has('source_kind')) {
+    conditions.push(`LOWER(COALESCE(c.source_kind,'')) NOT IN ('oer','wrapped_oer','doc','text')`);
+  }
+  if (cols.has('content_kind')) {
+    conditions.push(`LOWER(COALESCE(c.content_kind,'')) NOT IN ('doc','text')`);
+  }
+  if (cols.has('is_oer')) {
+    conditions.push(`COALESCE(c.is_oer,FALSE) = FALSE`);
+  }
+}
+
 
     // ✅ contentKinds filter (patched)
     if (Array.isArray(merged.contentKinds) && merged.contentKinds.length && cols.has('content_kind')) {
