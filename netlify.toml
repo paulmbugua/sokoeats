@@ -1,54 +1,35 @@
 [build]
   command = "yarn workspace @mytutorapp/web build"
   publish = "apps/web/dist"
-  # base is optional when building from repo root
-  # base = "."
 
-# 1) Firebase Auth handler proxy (keeps Google sign-in on your domain)
+# Proxy Firebase auth handler on your domain (only needed for redirect flows)
 [[redirects]]
   from   = "/__/auth/*"
   to     = "https://mytutorapp-d3c91.firebaseapp.com/__/auth/:splat"
   status = 200
   force  = true
 
-# 2) API proxy — preserve the /api prefix on the target
+# API proxy
 [[redirects]]
   from   = "/api/*"
   to     = "https://server.daybreaklearner.com/api/:splat"
   status = 200
   force  = true
 
-# (Optional) redirect www → apex
+# Canonical redirect: apex -> www (or remove and use Netlify UI)
 [[redirects]]
-  from   = "https://www.daybreaklearner.com/*"
-  to     = "https://daybreaklearner.com/:splat"
+  from   = "https://daybreaklearner.com/*"
+  to     = "https://www.daybreaklearner.com/:splat"
   status = 301
   force  = true
 
-# 3) SPA fallback
+# SPA fallback
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
   status = 200
 
 [context.production.environment]
-  VITE_BACKEND_URL             = "https://server.daybreaklearner.com"
-  VITE_FIREBASE_AUTH_DOMAIN    = "daybreaklearner.com"
-   VITE_DEBUG_ERRORS = "1"
-
-# (Optional) Cache headers for built assets; keep HTML un-cached for fresh SPA
-[[headers]]
-  for = "/assets/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "/index.html"
-  [headers.values]
-    Cache-Control = "no-cache"
-
-# (Optional) Security headers (ensure you’re fully on HTTPS first)
-[[headers]]
-  for = "/*"
-  [headers.values]
-    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+  VITE_BACKEND_URL          = "https://server.daybreaklearner.com"
+  VITE_FIREBASE_AUTH_DOMAIN = "mytutorapp-d3c91.firebaseapp.com"
+  VITE_DEBUG_ERRORS         = "1"
