@@ -249,7 +249,7 @@ function buildLearnerPrintHtml(orgName: string, classLabel: string, learners: Mi
 
 const OrgRosterPage: React.FC = () => {
   const nav = useNavigate();
-  const { backendUrl, orgToken, setOrgToken } = useShopContext() as any;
+  const { backendUrl, orgToken, orgLogout } = useShopContext() as any;
 
   const [tab, setTab] = useState<TabKey>('learners');
 
@@ -839,13 +839,7 @@ const OrgRosterPage: React.FC = () => {
 
   const logoutInstitution = async () => {
     try {
-      await setOrgToken?.('');
-      localStorage.removeItem('orgToken');
-      localStorage.removeItem('auth:mode');
-      localStorage.removeItem('auth:orgId');
-      localStorage.removeItem('auth:token');
-      localStorage.removeItem('org:role');
-      localStorage.removeItem('org:activeId');
+      await orgLogout?.();
       sessionStorage.removeItem('auth:returnTo');
       sessionStorage.removeItem('auth:returnTo:org');
     } catch {

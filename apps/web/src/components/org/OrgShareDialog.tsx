@@ -67,7 +67,7 @@ export default function OrgShareDialog({
   kind = 'quiz',
 }: Props) {
   const nav = useNavigate();
-  const { backendUrl, token, orgToken } = useShopContext();
+  const { backendUrl, orgToken } = useShopContext();
   const { org, activeOrgId, orgTier } = useOrg();
 
   const assignmentKind = kind || 'quiz';
@@ -260,7 +260,7 @@ export default function OrgShareDialog({
 
   const handleShare = async () => {
     setErr('');
-    const bearer = orgToken || token;
+    const bearer = orgToken;
     if (!bearer) {
       return nav('/org/login', {
         state: {

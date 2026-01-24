@@ -34,7 +34,7 @@ const FALLBACK_AVATAR = (name = 'You') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=223649&color=ffffff`;
 
 const Navbar: React.FC<Props> = ({ avatarUrl }) => {
-  const { token, orgToken, backendUrl, profile, orgLogout } = useShopContext() as any;
+  const { token, orgToken, backendUrl, profile, orgLogout, authMode } = useShopContext() as any;
 
   const { role } = useOrg() ?? {};
   const location = useLocation();
@@ -51,10 +51,8 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
 
   const isOrg = useMemo(() => {
     const onOrgRoute = location.pathname.startsWith('/org');
-    const sticky =
-      typeof window !== 'undefined' && window.localStorage.getItem('auth:mode') === 'org';
-    return onOrgRoute || sticky;
-  }, [location.pathname]);
+    return onOrgRoute || authMode === 'org';
+  }, [location.pathname, authMode]);
 
   const normalizedRole = (role || '').toString().toLowerCase();
   const isLearnerRole = normalizedRole === 'learner' || normalizedRole === 'student';

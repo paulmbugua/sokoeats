@@ -180,13 +180,14 @@ const useAuth = (options?: UseLoginOptions) => {
 
   // Read context once, then safely pluck optional fields (avoids TS error 2339)
   const shop = useShopContext() as unknown as {
-    setToken: (t: string) => void;
+    loginConsumer: (t: string, meta?: { userId?: string; email?: string }) => void;
+    logout: () => Promise<void> | void;
     backendUrl: string;
     token?: string;
     // setProfile might not exist on some builds; treat as optional
     setProfile?: (p: unknown | null) => void;
   };
-  const { setToken, backendUrl, token } = shop;
+  const { loginConsumer, logout: logoutFromContext, backendUrl, token } = shop;
   const setProfile = shop.setProfile; // optional
 
   const [isDeleting, setIsDeleting] = useState(false);
@@ -209,14 +210,14 @@ const useAuth = (options?: UseLoginOptions) => {
         const backToInvite = inviteBase(saved);
 
         if (backToInvite) {
-          setToken(jwt);
+          loginConsumer(jwt);
           clearAuthFlags();
           nav(backToInvite); // back to Accept & Join
           return;
         }
 
         if (role) {
-          setToken(jwt);
+          loginConsumer(jwt);
           clearAuthFlags();
           nav(nextAfterAuth('/home')); // honors any generic returnTo fallback
           return;
@@ -232,7 +233,7 @@ const useAuth = (options?: UseLoginOptions) => {
         throw e;
       }
     },
-    [backendUrl, setToken, alertFn]
+    [backendUrl, loginConsumer, alertFn]
   );
 
   const handleGoogleLoginFailure = useCallback(
@@ -249,7 +250,7 @@ const useAuth = (options?: UseLoginOptions) => {
       const pending = getPendingJwt();
       if (!pending) throw new Error('Missing pending JWT');
       await api.updateRole(backendUrl, payload, pending);
-      setToken(pending);
+      loginConsumer(pending);
       clearAuthFlags();
 
       // If the user arrived via invite (and had to pick a role), return to invite base
@@ -258,7 +259,7 @@ const useAuth = (options?: UseLoginOptions) => {
       nav(backToInvite || '/home');
       clearReturnTo();
     },
-    [backendUrl, setToken]
+    [backendUrl, loginConsumer]
   );
 
   /** EMAIL/PASSWORD FLOWS */
@@ -269,7 +270,7 @@ const useAuth = (options?: UseLoginOptions) => {
         const saved = readReturnTo();
         const backToInvite = inviteBase(saved);
 
-        setToken(resp.token);
+        loginConsumer(resp.token);
 
         // Safely persist profile if the API included it (no unsafe Record cast)
         const maybeProfile = (resp as unknown as { profile?: unknown }).profile;
@@ -286,7 +287,7 @@ const useAuth = (options?: UseLoginOptions) => {
       }
       return resp;
     },
-    [backendUrl, setToken, setProfile]
+    [backendUrl, loginConsumer, setProfile]
   );
 
   const registerWithEmail = useCallback(
@@ -296,7 +297,7 @@ const useAuth = (options?: UseLoginOptions) => {
         const saved = readReturnTo();
         const backToInvite = inviteBase(saved);
 
-        setToken(resp.token);
+        loginConsumer(resp.token);
 
         const maybeProfile = (resp as unknown as { profile?: unknown }).profile;
         if (typeof maybeProfile !== 'undefined') {
@@ -312,7 +313,7 @@ const useAuth = (options?: UseLoginOptions) => {
       }
       return resp;
     },
-    [backendUrl, setToken, setProfile]
+    [backendUrl, loginConsumer, setProfile]
   );
 
   const sendResetOTP = useCallback(
@@ -331,12 +332,12 @@ const useAuth = (options?: UseLoginOptions) => {
 
   /** Logout */
   const logout = useCallback(() => {
-    setToken(''); // ShopContext treats empty as logged out
+    void logoutFromContext?.();
     setProfile?.(null);
     clearAuthFlags();
     clearReturnTo();
     nav('/login'); // -> 'Login' on native
-  }, [setToken, setProfile]);
+  }, [logoutFromContext, setProfile]);
 
   /** Helpers */
   const isRoleModalNeeded = useCallback(() => getNeedRoleFlag(), []);

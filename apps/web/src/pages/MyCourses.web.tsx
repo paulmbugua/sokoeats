@@ -450,10 +450,10 @@ const CourseCard: React.FC<{
 const MyCourses: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { backendUrl, token, orgToken, profile, role: ctxRole } = useShopContext();
+  const { backendUrl, token, profile, role: ctxRole } = useShopContext();
   const { role, isTutor, sections } = useMyLibrary();
   const { remove: removeVault } = useClassVault();
-  const authToken = token || orgToken;
+  const authToken = token;
 
   const title = 'My Library';
 

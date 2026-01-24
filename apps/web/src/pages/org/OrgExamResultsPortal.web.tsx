@@ -161,14 +161,14 @@ const OrgExamResultsPortal: React.FC = () => {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
-  const { backendUrl, token: userToken, orgToken, userId } = useShopContext() as any;
+  const { backendUrl, orgToken, userId } = useShopContext() as any;
 
   // view mode: admin vs learner
   const rawView = params.get('view');
   const view: 'learner' | 'admin' = rawView === 'learner' ? 'learner' : 'admin';
   const isLearnerView = view === 'learner';
 
-  const authToken = orgToken || userToken || '';
+  const authToken = orgToken || '';
 
   // support ?studentId= and ?student_id=
   const studentIdParam = params.get('studentId') ?? params.get('student_id');

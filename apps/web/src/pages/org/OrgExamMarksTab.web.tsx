@@ -71,8 +71,8 @@ const OrgExamMarksTab: React.FC<OrgExamMarksTabProps> = ({
   onEmailStudentCard,
   saveSheet,
 }) => {
-  const { backendUrl, token: userToken, orgToken } = useShopContext();
-  const authToken = orgToken || userToken;
+  const { backendUrl, orgToken } = useShopContext();
+  const authToken = orgToken;
   const { org } = (useOrg?.() ?? {}) as any;
   const orgId = org?.id || (org as any)?.org_id || (org as any)?.orgId || null;
 

@@ -30,7 +30,6 @@ export function useOrgAttendance(opts?: UseOrgAttendanceOptions) {
   const shop = useShopContext() as any;
 
   const ctxBackendUrl = shop?.backendUrl;
-  const ctxToken = shop?.token;
   const ctxOrgToken = shop?.orgToken;
   const ctxOrgId = shop?.orgId;
 
@@ -40,10 +39,10 @@ export function useOrgAttendance(opts?: UseOrgAttendanceOptions) {
     return raw ? raw.replace(/\/+$/, '') : '';
   }, [opts?.backendUrl, ctxBackendUrl]);
 
-  // ✅ org pages should prefer orgToken (stable)
+  // ✅ org pages should use orgToken (stable)
   const token = useMemo(() => {
-    return opts?.token ?? ctxOrgToken ?? ctxToken ?? null;
-  }, [opts?.token, ctxOrgToken, ctxToken]);
+    return opts?.token ?? ctxOrgToken ?? null;
+  }, [opts?.token, ctxOrgToken]);
 
   const orgId = useMemo(() => {
     return opts?.orgId ?? ctxOrgId ?? null;
@@ -58,7 +57,7 @@ export function useOrgAttendance(opts?: UseOrgAttendanceOptions) {
   const missing = useMemo(() => {
     const m: string[] = [];
     if (!backendUrl) m.push('backendUrl');
-    if (!token) m.push('token/orgToken');
+    if (!token) m.push('orgToken');
     if (!orgId) m.push('orgId');
     return m;
   }, [backendUrl, token, orgId]);

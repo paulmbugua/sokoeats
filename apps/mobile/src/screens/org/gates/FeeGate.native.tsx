@@ -16,7 +16,7 @@ export default function FeeGate({ children }: Props) {
 
   const feeAccess = useOrgInstructorFeeAccess({
     backendUrl: shop?.backendUrl,
-    token: shop?.orgToken ?? shop?.token,
+    token: shop?.orgToken,
     orgId: activeOrgId || org?.id,
   });
 

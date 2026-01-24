@@ -199,6 +199,7 @@ const ProfilePage: React.FC = () => {
     language,
     tokens = 0,
     token,
+    authMode,
     loadingProfile,
     refetchDetails,
     reftechDetails,
@@ -507,11 +508,9 @@ const ProfilePage: React.FC = () => {
   }, [refreshAccountState]);
 
   useEffect(() => {
-    const isOrgMode =
-      typeof window !== 'undefined' && window.localStorage.getItem('auth:mode') === 'org';
-    if (isOrgMode) nav('/org/profile', { replace: true });
+    if (authMode === 'org') nav('/org/profile', { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authMode]);
 
   // Optional: if PaymentWidget dispatches a CustomEvent('wallet:updated', {detail:{balance}})
   useEffect(() => {

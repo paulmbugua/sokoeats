@@ -289,7 +289,8 @@ const OrgProfileNative: React.FC = () => {
 
   const exitOrgMode = async () => {
     try {
-      await AsyncStorage.multiRemove(['auth:mode', 'auth:orgId', 'auth:returnTo:org', 'auth:returnTo']);
+      await orgLogout?.();
+      await AsyncStorage.multiRemove(['auth:orgId', 'auth:returnTo:org', 'auth:returnTo']);
     } catch {}
     navigation.replace('ProfileSelf');
   };
@@ -298,12 +299,9 @@ const OrgProfileNative: React.FC = () => {
     try {
       await orgLogout?.();
       await AsyncStorage.multiRemove([
-        'auth:mode',
         'auth:orgId',
         'auth:returnTo:org',
         'auth:returnTo',
-        'orgToken',
-        'auth:token',
         'org:role',
         'org:activeId',
       ]);

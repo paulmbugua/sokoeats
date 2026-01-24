@@ -8,15 +8,15 @@ export default function OrgJoinPage() {
   const { code = '' } = useParams();
   const nav = useNavigate();
   const loc = useLocation();
-  const { backendUrl, token } = useShopContext() as any;
+  const { backendUrl, orgToken } = useShopContext() as any;
 
   // If not logged in, remember where to come back to and go login
   useEffect(() => {
-    if (!token) {
+    if (!orgToken) {
       sessionStorage.setItem('auth:returnTo', loc.pathname + loc.search);
       nav('/org/login', { replace: true });
     }
-  }, [token, loc, nav]);
+  }, [orgToken, loc, nav]);
 
   const [loading, setLoading] = useState(true);
   const [invite, setInvite] = useState<any>(null);
@@ -37,9 +37,7 @@ export default function OrgJoinPage() {
   }, [backendUrl, code]);
 
   const onAccept = useCallback(async () => {
-    const res = await acceptOrgInvite(backendUrl, token, code);
-    // 👇 success handler: mark org-mode for invited users too
-    localStorage.setItem('auth:mode', 'org');
+    const res = await acceptOrgInvite(backendUrl, orgToken, code);
     const orgId = res.enrollment?.orgId;
     if (orgId) {
       localStorage.setItem('auth:orgId', orgId);
@@ -48,7 +46,7 @@ export default function OrgJoinPage() {
     // optional: clear returnTo saved earlier
     sessionStorage.removeItem('auth:returnTo');
     nav('/org/profile', { replace: true });
-  }, [backendUrl, token, code, nav]);
+  }, [backendUrl, orgToken, code, nav]);
 
   if (loading) return <div className="p-6">Loading invite…</div>;
 

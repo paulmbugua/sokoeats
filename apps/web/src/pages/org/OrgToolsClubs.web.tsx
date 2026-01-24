@@ -105,9 +105,8 @@ const OrgToolsClubsPage: React.FC = () => {
   const orgFromHook = orgState?.org || orgState?.organization || null;
 
   // ✅ IMPORTANT:
-  // - Org tools endpoints usually accept orgToken
-  // - BUT /clubs/mine often needs user identity → we will call it with userToken separately.
-  const clubToken = (ctxOrgToken as string) || (ctxUserToken as string) || null;
+  // - Org tools endpoints require orgToken
+  const clubToken = (ctxOrgToken as string) || null;
 
   // ✅ orgId resolution order (include activeOrgId + org.id to avoid “missing orgId” edge cases)
   const orgId =
@@ -179,10 +178,7 @@ const OrgToolsClubsPage: React.FC = () => {
   const [myClubsError, setMyClubsError] = useState<string | null>(null);
 
  // ✅ pick a token that can identify the logged-in user
-const mineToken =
-  (ctxUserToken as string) ||
-  (ctxOrgToken as string) || // allow orgToken too (often still a JWT with user)
-  null;
+const mineToken = (ctxUserToken as string) || null;
 
 // ✅ show heads-up only when user is on Mine tab AND we truly lack a token AND nothing loaded yet
 const showMineHeadsUp = mode === 'mine' && !mineToken && myClubsLocal.length === 0;

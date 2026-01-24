@@ -125,10 +125,12 @@ interface ProtectedRouteProps {
 
 // accept either normal token OR orgToken
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { token, orgToken } = useShopContext() as any;
+  const { authMode, accessToken, hydrated } = useShopContext() as any;
   const location = useLocation();
 
-  const isAuthed = Boolean(token || orgToken);
+  if (!hydrated) return <Spinner />;
+
+  const isAuthed = authMode === 'consumer' && Boolean(accessToken);
 
   if (!isAuthed) {
     const fromPath = location.pathname || '';
@@ -142,11 +144,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 
 // Org-only protected route: checks orgToken (not user token) and avoids first-render race
 const OrgProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { orgToken, initializing } = useShopContext() as any;
+  const { orgToken, hydrated } = useShopContext() as any;
   const location = useLocation();
 
   // wait for tokens to hydrate (no blank screen)
-  if (initializing) return <Spinner />;
+  if (!hydrated) return <Spinner />;
 
   if (orgToken) return <>{children}</>;
 
@@ -161,12 +163,12 @@ const OrgProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 
 /* Enforce first-login redirect inside protected area (general app) */
 const FirstLoginGate: React.FC = () => {
-  const { token, userId, userEmail } = useShopContext();
+  const { token, userId, userEmail, authMode, hydrated } = useShopContext();
   const location = useLocation();
   const isFirstLogin = useIsFirstLogin();
   const markSeen = useMarkFirstLoginSeen();
 
-  if (!token) return null;
+  if (!hydrated || authMode !== 'consumer' || !token) return null;
 
   const path = location.pathname;
 
@@ -194,10 +196,11 @@ const FirstLoginGate: React.FC = () => {
 
 /* Root landing: decide "/" after auth */
 const RootLandingOrHome: React.FC = () => {
-  const { token } = useShopContext();
+  const { token, authMode } = useShopContext();
   const isFirstLogin = useIsFirstLogin();
   const markSeen = useMarkFirstLoginSeen();
 
+  if (authMode === 'org') return <Navigate to="/org" replace />;
   if (!token) return <Landing />;
 
   const first = isFirstLogin();
@@ -211,7 +214,7 @@ const RootLandingOrHome: React.FC = () => {
 /* If already logged in, bounce away from /login appropriately
    allow explicit switch via ?switch=1 or ?force=1 */
 const LoggedOutOnly: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { token } = useShopContext();
+  const { token, authMode, hydrated } = useShopContext();
   const location = useLocation();
 
   const params = new URLSearchParams(location.search);
@@ -221,7 +224,7 @@ const LoggedOutOnly: React.FC<{ children: ReactNode }> = ({ children }) => {
   const markSeen = useMarkFirstLoginSeen();
 
   // If not logged in OR explicitly switching, render the login page
-  if (!token || switching) return <>{children}</>;
+  if (!hydrated || !token || switching || authMode !== 'consumer') return <>{children}</>;
 
   // if we have a saved deep link (e.g., /org/join/:code or a robot link),
   // honor that FIRST so invite flows return to the landing page.
@@ -387,8 +390,8 @@ const OrgInstructorOnlyRoute: React.FC<{ children: ReactNode }> = ({ children })
    App
    ─────────────────────────── */
 const App: React.FC = () => {
-  const { initializing } = useShopContext();
-  if (initializing) return <Spinner />;
+  const { hydrated } = useShopContext();
+  if (!hydrated) return <Spinner />;
 
   return (
     <>

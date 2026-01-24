@@ -80,7 +80,7 @@ const hardNavigate = (target: string) => {
 };
 
 export default function useInstitutionAuth(opts: Options = {}) {
-  const { backendUrl, setOrgToken, setToken } = useShopContext() as any;
+  const { backendUrl, loginOrg } = useShopContext() as any;
   const alertFn = opts.alertFn ?? ((m: string) => console.log('[inst-auth]', m));
 
   const readReturnTo = (): string =>
@@ -103,14 +103,8 @@ export default function useInstitutionAuth(opts: Options = {}) {
       else safeRemoveSession(MUST_CHANGE_KEY);
     }
 
-    // ✅ 1) Clear user token FIRST (prevents a moment where both sessions appear active)
-    await setToken?.('');
-
-    // ✅ 2) Put org JWT into context
-    await setOrgToken?.(t);
-
-    // 3) Flip into org UI mode (web)
-    safeSetLocal('auth:mode', 'org');
+    // ✅ 1) Put org JWT into context (single-session auth)
+    await loginOrg?.(t);
 
     // 4) Ensure org exists AND fetch my_role (non-blocking)
     void (async () => {

@@ -283,8 +283,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
 
   // ── Contexts & hooks ─────────────────────────────────────
   const effectiveVoice = voiceName || defaultVoice;
-  const { backendUrl, token, orgToken, role: globalRole } = useShopContext() as any;
-  const authToken = token || orgToken || undefined;
+  const { backendUrl, token, orgToken, authMode, role: globalRole } = useShopContext() as any;
+  const authToken = authMode === 'org' ? orgToken || undefined : token || undefined;
   const isGlobalAdmin = globalRole === 'admin' || globalRole === 'superadmin';
 
   const [internalThemeOpen, setInternalThemeOpen] = useState(false);

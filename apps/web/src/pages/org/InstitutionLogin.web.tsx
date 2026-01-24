@@ -16,7 +16,7 @@ const InstitutionLogin: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const { orgToken } = useShopContext() as any;
+  const { orgToken, hydrated } = useShopContext() as any;
 
   // ✅ NEW: read query params (supports step-up / reauth flows)
   const qs = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -33,8 +33,9 @@ const InstitutionLogin: React.FC = () => {
 
   // ✅ IMPORTANT: If already authenticated, only redirect for normal login (NOT reauth)
   useLayoutEffect(() => {
-  if (orgToken && !reauth) navigate('/org', { replace: true });
-}, [orgToken, navigate, reauth]);
+    if (!hydrated) return;
+    if (orgToken && !reauth) navigate('/org', { replace: true });
+  }, [orgToken, navigate, reauth, hydrated]);
 
   // —— Local state —— //
   const [authMode, setAuthMode] = useState<AuthMode>('Login');

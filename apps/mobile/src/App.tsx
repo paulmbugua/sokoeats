@@ -138,6 +138,8 @@ type ShopCtx = {
   token?: string | null;
   orgToken?: string | null;
   initializing?: boolean;
+  hydrated?: boolean;
+  authMode?: 'consumer' | 'org' | null;
   userId?: string | number | null;
   userEmail?: string | null;
   profile?: ShopProfile | null;
@@ -268,15 +270,16 @@ function useMarkFirstLoginSeen() {
 type GuardProps = { children: ReactNode };
 
 function ProtectedRoute({ children }: GuardProps) {
-  const { token } = useShopContext() as unknown as ShopCtx;
-  if (!token) return <LoginScreen />;
+  const { token, hydrated, authMode } = useShopContext() as unknown as ShopCtx;
+  if (!hydrated) return <Spinner />;
+  if (!token || authMode !== 'consumer') return <LoginScreen />;
   return <>{children}</>;
 }
 
 function OrgProtectedRoute({ children }: GuardProps) {
-  const { orgToken, initializing } = useShopContext() as unknown as ShopCtx;
+  const { orgToken, hydrated } = useShopContext() as unknown as ShopCtx;
 
-  if (initializing) return <Spinner label="Opening institution…" />;
+  if (!hydrated) return <Spinner label="Opening institution…" />;
   if (!orgToken) return <InstitutionLogin />;
 
   return <>{children}</>;
@@ -647,7 +650,7 @@ const App: React.FC = () => {
   const [bootReady, setBootReady] = React.useState(false);
   const [initialRoute, setInitialRoute] = React.useState<keyof MainStackParamList>('Landing');
 
-  const { token, initializing } = (useShopContext() as unknown as ShopCtx) ?? {};
+  const { token, hydrated, authMode } = (useShopContext() as unknown as ShopCtx) ?? {};
   const isFirstLogin = useIsFirstLogin();
   const markSeen = useMarkFirstLoginSeen();
   const { uiFilters, clearFilters } = useHomePage();
@@ -712,7 +715,7 @@ const App: React.FC = () => {
     const decide = async () => {
       if (!mounted) return;
 
-      if (!token) {
+      if (!token || authMode !== 'consumer') {
         setInitialRoute('Landing');
         setBootReady(true);
         return;
@@ -729,10 +732,10 @@ const App: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [token, isFirstLogin, markSeen]);
+  }, [token, authMode, isFirstLogin, markSeen]);
 
   // ✅ early returns AFTER hooks
-  if (initializing === true) return <Spinner />;
+  if (!hydrated) return <Spinner />;
   if (!bootReady) return <Spinner />;
 
   return (

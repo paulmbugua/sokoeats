@@ -395,12 +395,12 @@ export default function OrgAttendanceNative() {
     };
   }, [scheme]);
 
-  const { orgToken, token, backendUrl } = useShopContext() as any;
+  const { orgToken, backendUrl } = useShopContext() as any;
   const { isPro, upgradeCta, org, classLabels = [] } = (useOrgProTools?.() ?? {}) as any;
 
   const attendance = useOrgAttendance({
     backendUrl,
-    token: orgToken || token,
+    token: orgToken,
     orgId: org?.id,
   }) as any;
 
@@ -485,7 +485,7 @@ export default function OrgAttendanceNative() {
     if (!ready) return;
     setRosterLoading(true);
     try {
-      const res: any = await getOrgRoster(backendUrl, orgToken || token, org?.id);
+      const res: any = await getOrgRoster(backendUrl, orgToken, org?.id);
       const learners = res?.learners || res?.items || res?.rows || [];
       setLearnersAll(Array.isArray(learners) ? learners : []);
     } catch {
@@ -493,7 +493,7 @@ export default function OrgAttendanceNative() {
     } finally {
       setRosterLoading(false);
     }
-  }, [ready, backendUrl, orgToken, token, org?.id]);
+  }, [ready, backendUrl, orgToken, org?.id]);
 
   const loadList = useCallback(async () => {
     if (!ready) return;

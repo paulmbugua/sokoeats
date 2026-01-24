@@ -42,7 +42,7 @@ type Org = {
 
 const OrgProfilePage: React.FC = () => {
   const nav = useNavigate();
-  const { backendUrl, orgToken, setOrgToken } = useShopContext() as any;
+  const { backendUrl, orgToken, orgLogout } = useShopContext() as any;
 
   const [org, setOrg] = useState<Org | null>(null);
   const [seatsUsed, setSeatsUsed] = useState<number>(0);
@@ -102,9 +102,9 @@ const OrgProfilePage: React.FC = () => {
   const hasGroupingLabels =
     !!org?.house_label?.trim() || !!org?.dorm_label?.trim() || !!org?.club_label?.trim();
 
-  const logoutOrgMode = () => {
+  const logoutOrgMode = async () => {
     try {
-      localStorage.removeItem('auth:mode');
+      await orgLogout?.();
       localStorage.removeItem('auth:orgId');
       localStorage.removeItem('auth:returnTo:org');
       // clear org role/active to avoid stale redirects
@@ -119,12 +119,8 @@ const OrgProfilePage: React.FC = () => {
   // full institution logout (clears JWT + org mode and returns to org login)
   const logoutInstitution = async () => {
     try {
-      await setOrgToken?.('');
-
-      localStorage.removeItem('orgToken');
-      localStorage.removeItem('auth:mode');
+      await orgLogout?.();
       localStorage.removeItem('auth:orgId');
-      localStorage.removeItem('auth:token');
       localStorage.removeItem('org:role');
       localStorage.removeItem('org:activeId');
       sessionStorage.removeItem('auth:returnTo');

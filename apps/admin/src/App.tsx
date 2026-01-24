@@ -116,15 +116,15 @@ function RequireRole({
 
 /** Shell shown for all authenticated admin pages */
 function AdminShell() {
-  const { setToken, setAdminToken } = useShopContext();
+  const { logout, setAdminToken } = useShopContext();
   const isDark = useIsDark();
   const nav = useNavigate();
 
   const onLogout = useCallback(async () => {
-    await Promise.all([setToken(''), setAdminToken('')]);
+    await Promise.all([logout(), setAdminToken('')]);
     localStorage.removeItem('role'); // optional
     nav('/login', { replace: true });
-  }, [nav, setToken, setAdminToken]);
+  }, [nav, logout, setAdminToken]);
 
   return (
     <div className="app-body min-h-screen">

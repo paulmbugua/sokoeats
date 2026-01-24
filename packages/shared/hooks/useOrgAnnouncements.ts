@@ -12,7 +12,7 @@ import {
 
 interface UseOrgAnnouncementsOptions {
   backendUrl?: string;
-  token?: string | null; // can be user token OR orgToken
+  token?: string | null; // orgToken
   orgId?: string | null;
 }
 
@@ -22,7 +22,7 @@ export function useOrgAnnouncements(opts?: UseOrgAnnouncementsOptions) {
   const backendUrl = opts?.backendUrl ?? ctx?.backendUrl;
 
   // ✅ IMPORTANT: org portal uses orgToken (App.tsx guards org pages with orgToken)
-  const token = (opts?.token ?? ctx?.orgToken ?? ctx?.token ?? null) as string | null;
+  const token = (opts?.token ?? ctx?.orgToken ?? null) as string | null;
 
   const orgId = (opts?.orgId ?? ctx?.orgId ?? null) as string | null;
 
@@ -39,11 +39,10 @@ export function useOrgAnnouncements(opts?: UseOrgAnnouncementsOptions) {
     () => ({
       orgId,
       hasToken: Boolean(token),
-      hasUserToken: Boolean(ctx?.token),
       hasOrgToken: Boolean(ctx?.orgToken),
       backendUrl: backendUrl || '(env fallback)',
     }),
-    [orgId, token, ctx?.token, ctx?.orgToken, backendUrl],
+    [orgId, token, ctx?.orgToken, backendUrl],
   );
 
   const fetchAnnouncements = useCallback(

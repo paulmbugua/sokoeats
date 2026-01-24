@@ -427,10 +427,10 @@ const MyCoursesNative: React.FC = () => {
   const FOOTER_OVERLAY_PX = 84;
   const bottomPad = Math.max(FOOTER_OVERLAY_PX, FOOTER_OVERLAY_PX + insets.bottom);
 
-  const { backendUrl, token, orgToken } = useShopContext();
+  const { backendUrl, token } = useShopContext();
   const { role, isTutor, sections } = useMyLibrary();
   const { remove: removeVault } = useClassVault();
-  const authToken = token || orgToken;
+  const authToken = token;
 
   const [deletedCourseIds, setDeletedCourseIds] = useState<Set<string>>(new Set());
   const [deletedVaultIds, setDeletedVaultIds] = useState<Set<string>>(new Set());

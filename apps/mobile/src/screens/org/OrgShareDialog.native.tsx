@@ -192,7 +192,7 @@ export default function OrgShareDialogNative({
   quizCount,
   minutes,
 }: Props) {
-  const { backendUrl, token, orgToken } = useShopContext();
+  const { backendUrl, orgToken } = useShopContext();
   const { org, activeOrgId, orgTier } = useOrg();
   const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
   const palette = usePalette();
@@ -299,7 +299,7 @@ export default function OrgShareDialogNative({
 
   const handleShare = useCallback(async () => {
     setErr('');
-    const bearer = orgToken || token;
+    const bearer = orgToken;
 
     if (!bearer) {
       Alert.alert('Sign in required', 'Please sign in to share.');
@@ -400,7 +400,6 @@ export default function OrgShareDialogNative({
     }
   }, [
     orgToken,
-    token,
     backendUrl,
     activeOrgId,
     canCreate,

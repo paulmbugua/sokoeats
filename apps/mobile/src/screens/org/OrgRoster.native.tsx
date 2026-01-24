@@ -636,7 +636,7 @@ const OrgRosterScreen: React.FC = () => {
   const NAV_SPACER_PX = 12;
   const bottomPad = Math.max(FOOTER_OVERLAY_PX, FOOTER_OVERLAY_PX + insets.bottom);
 
-  const { backendUrl, orgToken, setOrgToken } = useShopContext() as any;
+  const { backendUrl, orgToken, orgLogout } = useShopContext() as any;
 
   const [tab, setTab] = useState<TabKey>('learners');
 
@@ -1341,12 +1341,9 @@ const shareCurrentClassRoster = useCallback(async () => {
 
   const logoutInstitution = useCallback(async () => {
     try {
-      await setOrgToken?.('');
+      await orgLogout?.();
       await AsyncStorage.multiRemove([
-        'orgToken',
-        'auth:mode',
         'auth:orgId',
-        'auth:token',
         'org:role',
         'org:activeId',
         'auth:returnTo',
@@ -1356,7 +1353,7 @@ const shareCurrentClassRoster = useCallback(async () => {
       // ignore
     }
     navigation.navigate('InstitutionLogin' as any);
-  }, [navigation, setOrgToken]);
+  }, [navigation, orgLogout]);
 
   const seatPct = Math.min(100, Math.round(((seatsUsed || 0) / (seatsMax || 1)) * 100));
 

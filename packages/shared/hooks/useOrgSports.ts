@@ -10,7 +10,7 @@ import {
 
 interface UseOrgSportsOptions {
   backendUrl?: string;
-  token?: string | null; // can be user token OR orgToken (we prefer orgToken)
+  token?: string | null; // orgToken
   orgId?: string | null;
 }
 
@@ -23,8 +23,8 @@ export function useOrgSports(opts?: UseOrgSportsOptions) {
 
   const backendUrl = opts?.backendUrl ?? ctx?.backendUrl;
 
-  // ✅ org tools MUST prefer orgToken (same style as clubs)
-  const token = (opts?.token ?? ctx?.orgToken ?? ctx?.token ?? null) as string | null;
+  // ✅ org tools MUST use orgToken (same style as clubs)
+  const token = (opts?.token ?? ctx?.orgToken ?? null) as string | null;
 
   const orgId = (opts?.orgId ?? ctx?.orgId ?? ctx?.org_id ?? null) as string | null;
 
@@ -41,11 +41,10 @@ export function useOrgSports(opts?: UseOrgSportsOptions) {
     () => ({
       orgId,
       hasToken: Boolean(token),
-      hasUserToken: Boolean(ctx?.token),
       hasOrgToken: Boolean(ctx?.orgToken),
       backendUrl: backendUrl || '(env fallback)',
     }),
-    [orgId, token, ctx?.token, ctx?.orgToken, backendUrl],
+    [orgId, token, ctx?.orgToken, backendUrl],
   );
 
   const fetchEvents = useCallback(
