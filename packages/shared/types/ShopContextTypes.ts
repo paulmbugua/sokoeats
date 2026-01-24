@@ -61,10 +61,15 @@ export interface RawConversation {
 export interface ShopContextValue {
   backendUrl: string;
   initializing: boolean;
+  hydrated: boolean;
+  authMode: 'consumer' | 'org' | null;
+  accessToken: string | null;
   token: string;
   userId: string | null;
   language: string; // keep liberal; provider currently uses 'EN' | 'FR'
-  setToken: (newToken: string) => Promise<void>;
+  loginConsumer: (newToken: string, meta?: { userId?: string; email?: string }) => Promise<void>;
+  loginOrg: (newToken: string, meta?: { userId?: string; email?: string }) => Promise<void>;
+  hydrateAuth: () => Promise<void>;
   toggleLanguage: () => void;
   logout: () => Promise<void>;
   userEmail: string | null;
@@ -73,7 +78,7 @@ export interface ShopContextValue {
   loadingProfile: boolean;
   profile: Profile | null;
   orgToken: string;
-  setOrgToken: (t: string) => Promise<void> | void;
+  orgLogout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   refreshUserDetails: () => Promise<void>;
   role: UserRole; // <-- now includes admin/superadmin

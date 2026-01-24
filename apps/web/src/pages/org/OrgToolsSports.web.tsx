@@ -159,12 +159,11 @@ const OrgToolsSportsPage: React.FC = () => {
   const { isPro, upgradeCta, org, activeOrgId } = useOrgProTools() as any;
   const { orgId: orgIdParam } = useParams();
 
-  const { backendUrl, token: userToken, orgToken, orgId: ctxOrgId } = useShopContext() as any;
+  const { backendUrl, orgToken, orgId: ctxOrgId } = useShopContext() as any;
   const orgState = (useOrg?.() ?? {}) as any;
   const orgFromHook = orgState?.org || orgState?.organization || null;
 
-  // ✅ enforce orgToken usage (fallback to user token only to avoid hard break in dev)
-  const sportsToken = (orgToken as string) || (userToken as string) || null;
+  const sportsToken = (orgToken as string) || null;
 
   const resolvedOrgId =
     (orgIdParam as string) ||
@@ -194,7 +193,7 @@ const OrgToolsSportsPage: React.FC = () => {
       orgFromHook_id: orgFromHook?.id ?? null,
       orgFromProTools_id: org?.id ?? null,
       resolved_orgId: resolvedOrgId ?? null,
-      has_user_token: Boolean(userToken),
+      has_user_token: false,
       has_org_token: Boolean(orgToken),
       resolved_has_sports_token: Boolean(sportsToken),
       backendUrl_ctx: backendUrl ?? null,
@@ -207,7 +206,6 @@ const OrgToolsSportsPage: React.FC = () => {
     orgFromHook?.id,
     org?.id,
     resolvedOrgId,
-    userToken,
     orgToken,
     sportsToken,
     backendUrl,

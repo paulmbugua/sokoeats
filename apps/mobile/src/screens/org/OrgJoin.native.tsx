@@ -21,7 +21,7 @@ const OrgJoinNative: React.FC = () => {
   const navigation = useNavigation<any>();
   const code = route.params?.code ?? ''; // expected from deep link/route params
 
-  const { backendUrl, token } = useShopContext() as any;
+  const { backendUrl, orgToken } = useShopContext() as any;
 
   const [loading, setLoading] = useState(true);
   const [invite, setInvite] = useState<any>(null);
@@ -30,7 +30,7 @@ const OrgJoinNative: React.FC = () => {
   // If not logged in, remember returnTo and go to Institution login
   useEffect(() => {
     (async () => {
-      if (!token) {
+      if (!orgToken) {
         try {
           const returnTo = `/org/join/${code}`;
           await AsyncStorage.setItem(RETURN_TO_KEY, returnTo);
@@ -38,7 +38,7 @@ const OrgJoinNative: React.FC = () => {
         navigation.replace('InstitutionLogin', { next: `/org/join/${code}` });
       }
     })();
-  }, [token, code, navigation]);
+  }, [orgToken, code, navigation]);
 
   // Resolve invite
   useEffect(() => {
@@ -61,7 +61,7 @@ const OrgJoinNative: React.FC = () => {
   }, [backendUrl, code]);
 
   const onAccept = useCallback(async () => {
-    if (!token) {
+    if (!orgToken) {
       // just in case: bounce to login
       try {
         await AsyncStorage.setItem(RETURN_TO_KEY, `/org/join/${code}`);
@@ -72,11 +72,9 @@ const OrgJoinNative: React.FC = () => {
 
     try {
       setBusy(true);
-      const res = await acceptOrgInvite(backendUrl, token, code);
+      const res = await acceptOrgInvite(backendUrl, orgToken, code);
 
-      // Mark org-mode for invited users too (native storage)
       try {
-        await AsyncStorage.setItem('auth:mode', 'org');
         const orgId = res?.enrollment?.orgId;
         if (orgId) {
           await AsyncStorage.setItem('auth:orgId', String(orgId));
@@ -93,7 +91,7 @@ const OrgJoinNative: React.FC = () => {
     } finally {
       setBusy(false);
     }
-  }, [backendUrl, token, code, navigation]);
+  }, [backendUrl, orgToken, code, navigation]);
 
   if (loading) {
     return (

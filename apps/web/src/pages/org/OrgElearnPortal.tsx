@@ -440,7 +440,7 @@ const resolvedTabForLearner: TabKey =
     '';
 
   const { backendUrl, token: userToken, orgToken } = useShopContext();
-  const authToken = orgToken || userToken;
+  const authToken = orgToken;
 
   const { role, org: orgFromGate } = useOrg({ currency: 'USD' }); // role doesn't depend on pricing currency
 

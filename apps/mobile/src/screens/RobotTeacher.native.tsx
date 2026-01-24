@@ -406,40 +406,40 @@ const wantedCourseId = useMemo(() => {
   }, []);
 
   const effectiveVoice = voiceName || defaultVoice;
- const { backendUrl, token, orgToken, role: globalRole } = useShopContext() as any;
-const authToken = token || orgToken;
+  const { backendUrl, token, orgToken, authMode, role: globalRole } = useShopContext() as any;
+  const authToken = authMode === 'org' ? orgToken : token;
 
-// ✅ Language learning must use the user's token (wallet tokens live on user)
-const languageToken = token;
+  // ✅ Language learning must use the user's token (wallet tokens live on user)
+  const languageToken = token;
 
-// ─────────────────────────────────────────────────────────
-// Auth helpers (must be declared BEFORE requireLanguageAuth)
-// ─────────────────────────────────────────────────────────
-const goToLoginWithReturn = useCallback(
-  (reason?: string, message?: string) => {
-    dlog('navigate → Login', { reason, message });
-    navigation.navigate('Login' as any, { reason, message } as any);
-  },
-  [navigation]
-);
+  // ─────────────────────────────────────────────────────────
+  // Auth helpers (must be declared BEFORE requireLanguageAuth)
+  // ─────────────────────────────────────────────────────────
+  const goToLoginWithReturn = useCallback(
+    (reason?: string, message?: string) => {
+      dlog('navigate → Login', { reason, message });
+      navigation.navigate('Login' as any, { reason, message } as any);
+    },
+    [navigation]
+  );
 
-const requireAuth = useCallback(
-  (reason?: string, message?: string) => {
-    if (authToken) return true;
-    goToLoginWithReturn(reason, message);
-    return false;
-  },
-  [authToken, goToLoginWithReturn]
-);
+  const requireAuth = useCallback(
+    (reason?: string, message?: string) => {
+      if (authToken) return true;
+      goToLoginWithReturn(reason, message);
+      return false;
+    },
+    [authToken, goToLoginWithReturn]
+  );
 
-const requireLanguageAuth = useCallback(
-  (reason?: string, message?: string) => {
-    if (languageToken) return true;
-    goToLoginWithReturn(reason ?? 'language-learning', message ?? 'Please sign in to continue.');
-    return false;
-  },
-  [languageToken, goToLoginWithReturn]
-);
+  const requireLanguageAuth = useCallback(
+    (reason?: string, message?: string) => {
+      if (languageToken) return true;
+      goToLoginWithReturn(reason ?? 'language-learning', message ?? 'Please sign in to continue.');
+      return false;
+    },
+    [languageToken, goToLoginWithReturn]
+  );
 
 
   const isGlobalAdmin = globalRole === 'admin' || globalRole === 'superadmin';
@@ -455,9 +455,9 @@ const requireLanguageAuth = useCallback(
   const urlQuizTypeHint = useMemo(() => normQt(params?.qt), [params?.qt]);
 
   const ai = useAiCourse(backendUrl, authToken || undefined, {
-  urlQuizTypeHint,
-  defaultQuizType: 'mcq',
-});
+    urlQuizTypeHint,
+    defaultQuizType: 'mcq',
+  });
 
 
   const {

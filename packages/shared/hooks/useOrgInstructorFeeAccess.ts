@@ -30,8 +30,8 @@ export function useOrgInstructorFeeAccess(opts?: UseOrgInstructorFeeAccessOption
     [opts?.backendUrl, shop?.backendUrl],
   );
   const token = useMemo(
-    () => opts?.token ?? shop?.orgToken ?? shop?.token ?? null,
-    [opts?.token, shop?.orgToken, shop?.token],
+    () => opts?.token ?? shop?.orgToken ?? null,
+    [opts?.token, shop?.orgToken],
   );
   const orgId = useMemo(
     () => opts?.orgId ?? orgState?.activeOrgId ?? shop?.orgId ?? null,

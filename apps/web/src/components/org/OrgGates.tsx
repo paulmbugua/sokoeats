@@ -30,10 +30,10 @@ interface GateProps {
 }
 
 export const OrgAuthGate: React.FC<GateProps> = ({ children }) => {
-  const { initializing, orgToken } = useShopContext() as any;
+  const { hydrated, orgToken } = useShopContext() as any;
   const location = useLocation();
 
-  if (initializing) {
+  if (!hydrated) {
     return (
       <div className="min-h-screen flex items-center justify-center text-sm text-gray-500 dark:text-darkTextSecondary">
         <Spinner />

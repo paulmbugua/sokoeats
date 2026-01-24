@@ -19,8 +19,8 @@ export default function AssignmentSharePanel({
   defaultPassMark = null,
   defaultTimerS = null,
 }: Props) {
-  const { backendUrl, token, orgToken } = useShopContext();
-  const bearer = orgToken || token;
+  const { backendUrl, orgToken } = useShopContext();
+  const bearer = orgToken;
   const { activeOrgId, org, orgSeats, orgTier } = useOrg();
 
   const [titleOverride, setTitleOverride] = React.useState(suggestedTitle);
@@ -45,9 +45,9 @@ export default function AssignmentSharePanel({
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      if (!backendUrl || !token || !activeOrgId) return;
+      if (!backendUrl || !orgToken || !activeOrgId) return;
       try {
-        const { seats_used } = await getOrgUsage(backendUrl, token, activeOrgId);
+        const { seats_used } = await getOrgUsage(backendUrl, orgToken, activeOrgId);
         if (mounted) setSeatsUsed(seats_used);
       } catch {
         // non-blocking
@@ -56,7 +56,7 @@ export default function AssignmentSharePanel({
     return () => {
       mounted = false;
     };
-  }, [backendUrl, token, activeOrgId]);
+  }, [backendUrl, orgToken, activeOrgId]);
 
   async function makeQr(url: string) {
     try {

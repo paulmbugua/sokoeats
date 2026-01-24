@@ -61,8 +61,8 @@ const resolveQuizSize = (meta: any): number | null => {
 
 export default function OrgInviteLanding() {
   const { code = '' } = useParams();
-  const { backendUrl, token, orgToken } = useShopContext() as any;
-  const learnerToken = token || orgToken;
+  const { backendUrl, orgToken } = useShopContext() as any;
+  const learnerToken = orgToken;
   const nav = useNavigate();
 
   // NEW: consume kind + error from the hook

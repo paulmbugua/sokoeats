@@ -15,7 +15,7 @@ import {
 
 interface UseOrgClubsOptions {
   backendUrl?: string;
-  token?: string | null; // can be user token OR orgToken
+  token?: string | null; // orgToken
   orgId?: string | null;
 }
 
@@ -28,8 +28,8 @@ export function useOrgClubs(opts?: UseOrgClubsOptions) {
 
   const backendUrl = opts?.backendUrl ?? ctx?.backendUrl;
 
-  // ✅ IMPORTANT: org portal pages usually need orgToken first
-  const token = (opts?.token ?? ctx?.orgToken ?? ctx?.token ?? null) as string | null;
+  // ✅ org portal pages require orgToken
+  const token = (opts?.token ?? ctx?.orgToken ?? null) as string | null;
 
   const orgId = (opts?.orgId ?? ctx?.orgId ?? ctx?.org_id ?? null) as string | null;
 
@@ -48,11 +48,10 @@ export function useOrgClubs(opts?: UseOrgClubsOptions) {
     () => ({
       orgId,
       hasToken: Boolean(token),
-      hasUserToken: Boolean(ctx?.token),
       hasOrgToken: Boolean(ctx?.orgToken),
       backendUrl: backendUrl || '(env fallback)',
     }),
-    [orgId, token, ctx?.token, ctx?.orgToken, backendUrl],
+    [orgId, token, ctx?.orgToken, backendUrl],
   );
 
   const fetchClubs = useCallback(async () => {

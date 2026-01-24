@@ -26,7 +26,7 @@ const ROLES: Role[] = ['student', 'tutor', 'admin', 'superadmin'];
 
 export default function Users() {
   // ⬇️ Prefer adminToken; fall back to normal token for legacy paths
-  const { backendUrl, adminToken, token, setToken } = useShopContext();
+  const { backendUrl, adminToken, token, loginConsumer } = useShopContext();
 
   const base = useMemo(() => (backendUrl || '').replace(/\/+$/, ''), [backendUrl]);
   const authToken = adminToken || token || '';
@@ -150,7 +150,7 @@ export default function Users() {
         { headers: { ...authHeaders, 'Content-Type': 'application/json' } }
       );
       if (!data.success || !data.token) throw new Error('Failed to impersonate');
-      await setToken(data.token); // switch this tab to the user's token
+      await loginConsumer(data.token); // switch this tab to the user's token
       toast.info(`Now impersonating ${u.email}`);
     });
 

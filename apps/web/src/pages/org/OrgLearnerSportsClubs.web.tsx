@@ -122,7 +122,7 @@ const OrgLearnerSportsClubsPage: React.FC = () => {
   const orgState = (useOrg?.() ?? {}) as any;
   const orgFromHook = orgState?.org || orgState?.organization || null;
 
-  const { backendUrl, token: userToken, orgToken, orgId: ctxOrgId } = useShopContext() as any;
+  const { backendUrl, orgToken, orgId: ctxOrgId } = useShopContext() as any;
 
   const resolvedOrgId =
     (ctxOrgId as string) ||
@@ -130,11 +130,8 @@ const OrgLearnerSportsClubsPage: React.FC = () => {
     (orgState?.org?.id as string) ||
     null;
 
-  // Sports can work with orgToken OR user token (prefer orgToken)
-  const sportsToken = (orgToken as string) || (userToken as string) || null;
-
-  // My clubs is best with user token (identity). Fallback to orgToken if needed.
-  const clubsToken = (userToken as string) || (orgToken as string) || null;
+  const sportsToken = (orgToken as string) || null;
+  const clubsToken = (orgToken as string) || null;
 
   const tab = (params.get('tab') || 'sports').toLowerCase();
   const activeTab: 'sports' | 'clubs' = tab === 'clubs' ? 'clubs' : 'sports';
@@ -236,8 +233,8 @@ const OrgLearnerSportsClubsPage: React.FC = () => {
   const clubsAuthErr =
     clubsStatus === 401 || clubsStatus === 403 || /unauthor|token|session|jwt|forbidden/i.test(clubsMsg);
 
-  // Show heads-up ONLY if userToken is missing AND we actually hit an auth error on clubs
-  const showMineHeadsUp = activeTab === 'clubs' && !userToken && clubsAuthErr;
+  // Show heads-up ONLY if orgToken is missing AND we actually hit an auth error on clubs
+  const showMineHeadsUp = activeTab === 'clubs' && !orgToken && clubsAuthErr;
 
   const missingCtx = !resolvedOrgId || !backendUrl || (!sportsToken && !clubsToken);
 

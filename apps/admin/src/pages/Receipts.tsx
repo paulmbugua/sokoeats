@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { useShopContext } from '@mytutorapp/shared/context';
 import {
   FileDown,
   Loader2,
@@ -110,8 +111,9 @@ function toISOEndExclusive(d: string) {
 }
 
 export default function Receipts() {
-  const BACKEND = useMemo(() => pickBackend(), []);
-  const token = useMemo(() => localStorage.getItem('authToken') || '', []);
+  const { backendUrl: ctxBackendUrl, adminToken, token } = useShopContext();
+  const BACKEND = useMemo(() => (ctxBackendUrl || pickBackend()).replace(/\/+$/, ''), [ctxBackendUrl]);
+  const authToken = adminToken || token || '';
   const [list, setList] = useState<Tx[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -138,7 +140,7 @@ export default function Receipts() {
   const timerRef = useRef<number | null>(null);
 
   const fetchReceipts = useCallback(async () => {
-    if (!BACKEND || !token) {
+    if (!BACKEND || !authToken) {
       setErr('Not signed in. Please log in as an admin.');
       return;
     }
@@ -158,7 +160,7 @@ export default function Receipts() {
       const res = await axios.get(url, {
         params,
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${authToken}`,
           Accept: 'application/json',
         },
         validateStatus: () => true,
@@ -181,7 +183,7 @@ export default function Receipts() {
     } finally {
       setLoading(false);
     }
-  }, [BACKEND, token, method, status, email, q, since, until, limit]);
+  }, [BACKEND, authToken, method, status, email, q, since, until, limit]);
 
   useEffect(() => {
     fetchReceipts();
@@ -223,7 +225,7 @@ export default function Receipts() {
 
       const res = await axios.get(`${BACKEND}/api/admin/proof`, {
         params,
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf' },
+        headers: { Authorization: `Bearer ${authToken}`, Accept: 'application/pdf' },
         responseType: 'blob',
         validateStatus: () => true,
       });

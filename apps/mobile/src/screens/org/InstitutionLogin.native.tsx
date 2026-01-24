@@ -231,7 +231,7 @@ const InstitutionLoginNative: React.FC = () => {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<RouteProp<MainStackParamList, 'InstitutionLogin'>>();
 
-  const { orgToken, orgLogout } = useShopContext() as any;
+  const { orgToken, orgLogout, hydrated } = useShopContext() as any;
   const palette = usePalette();
 
   // keep latest params for navigateFn (avoids stale closures)
@@ -245,6 +245,7 @@ const InstitutionLoginNative: React.FC = () => {
 
   // ✅ IMPORTANT: If already authenticated, only redirect for normal login (NOT reauth)
   useEffect(() => {
+    if (!hydrated) return;
     if (orgToken && !reauth) {
       navigation.dispatch(
         CommonActions.reset({
@@ -253,7 +254,7 @@ const InstitutionLoginNative: React.FC = () => {
         })
       );
     }
-  }, [orgToken, reauth, navigation]);
+  }, [orgToken, reauth, navigation, hydrated]);
 
   // ❗️Clear existing org-session when asked
   useEffect(() => {
@@ -856,7 +857,6 @@ const InstitutionLoginNative: React.FC = () => {
                       style={palette.linkText() as any}
                       onPress={async () => {
                         try {
-                          await AsyncStorage.setItem('auth:mode', 'user');
                           await clearReturnTo();
                         } catch {}
                         navigation.navigate('Login' as any, { switch: true } as any);

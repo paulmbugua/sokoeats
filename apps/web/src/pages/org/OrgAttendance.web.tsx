@@ -254,12 +254,12 @@ const ConfirmModal: React.FC<{
 const card = 'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900';
 
 const OrgAttendancePage: React.FC = () => {
-  const { orgToken, token, backendUrl } = useShopContext() as any;
+  const { orgToken, backendUrl } = useShopContext() as any;
   const { isPro, upgradeCta, org, classLabels = [] } = useOrgProTools() as any;
 
   const attendance = useOrgAttendance({
     backendUrl,
-    token: orgToken || token,
+    token: orgToken,
     orgId: org?.id,
   });
 
@@ -326,7 +326,7 @@ const OrgAttendancePage: React.FC = () => {
     queryKey: ['orgRoster', org?.id],
     enabled: ready,
     queryFn: async () => {
-      const res: any = await getOrgRoster(backendUrl, orgToken || token, org?.id);
+      const res: any = await getOrgRoster(backendUrl, orgToken, org?.id);
       const learners = res?.learners || res?.items || res?.rows || [];
       return { ...res, learners };
     },

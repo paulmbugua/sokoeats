@@ -91,9 +91,9 @@ const OrgInviteLandingNative: React.FC = () => {
 
   const code = route.params?.code ?? '';
 
-  // ⬇️ Match web: allow both direct token and orgToken
-  const { backendUrl, token, orgToken } = useShopContext() as any;
-  const learnerToken = token || orgToken;
+  // ⬇️ Org invites require org session
+  const { backendUrl, orgToken } = useShopContext() as any;
+  const learnerToken = orgToken;
 
   // NEW: get kind + error from hook (assignment | membership)
   const { kind, data: meta, error: hookError, loading } = useOrgInvite(code);

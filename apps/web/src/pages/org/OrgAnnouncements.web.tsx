@@ -43,19 +43,15 @@ const OrgAnnouncementsPage: React.FC = () => {
   // so orgIdParam will normally be undefined. Keep it for future-proofing.
   const { orgId: orgIdParam } = useParams();
 
-  const {
-    orgId: ctxOrgId,
-    token: ctxUserToken,
-    orgToken: ctxOrgToken,
-    backendUrl: ctxBackendUrl,
-  } = useShopContext() as any;
+  const { orgId: ctxOrgId, orgToken: ctxOrgToken, backendUrl: ctxBackendUrl } =
+    useShopContext() as any;
 
   // ✅ useOrg is already used in admin/staff guards; calling it here gives us org.id reliably.
   const orgState = (useOrg?.() ?? {}) as any;
   const orgFromHook = orgState?.org || orgState?.organization || null;
 
   // ✅ IMPORTANT: org pages usually use orgToken, not user token
-  const token = (ctxOrgToken as string) || (ctxUserToken as string) || null;
+  const token = (ctxOrgToken as string) || null;
 
   // ✅ orgId resolution order:
   // 1) URL param (if you later add /org/:orgId/announcements)
@@ -93,13 +89,13 @@ const OrgAnnouncementsPage: React.FC = () => {
       ctxOrgId: ctxOrgId ?? null,
       orgFromHook_id: orgFromHook?.id ?? null,
       resolved_orgId: orgId ?? null,
-      has_user_token: Boolean(ctxUserToken),
+      has_user_token: false,
       has_org_token: Boolean(ctxOrgToken),
       resolved_has_token: Boolean(token),
       backendUrl_ctx: ctxBackendUrl ?? null,
       location: window.location.pathname,
     });
-  }, [orgIdParam, ctxOrgId, ctxUserToken, ctxOrgToken, ctxBackendUrl, orgId, token, orgFromHook?.id]);
+  }, [orgIdParam, ctxOrgId, ctxOrgToken, ctxBackendUrl, orgId, token, orgFromHook?.id]);
 
   // ✅ only fetch when ready (REMOVE the older unguarded fetch useEffect)
   useEffect(() => {
@@ -165,7 +161,7 @@ Thank you.`;
       resolved_orgId: orgId,
       has_token: Boolean(token),
       has_org_token: Boolean(ctxOrgToken),
-      has_user_token: Boolean(ctxUserToken),
+      has_user_token: false,
     });
 
    const payload: any = {

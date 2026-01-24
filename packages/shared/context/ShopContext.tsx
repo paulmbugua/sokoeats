@@ -17,6 +17,15 @@ import type {
   Profile,
   UserRole,
 } from '@mytutorapp/shared/types/ShopContextTypes';
+import {
+  migrateLegacyTokens,
+  readSession,
+  setAuthSessionStorage,
+  setConsumerSession,
+  setOrgSession,
+  clearSession as clearAuthSession,
+  type AuthMode,
+} from '@mytutorapp/shared/utils/authSession';
 
 interface ShopContextProviderProps {
   children: ReactNode;
@@ -45,8 +54,12 @@ interface ApiUserMeResponse {
 export type ShopContextValue = BaseShopContextValue & {
   /** Institution JWT (separate from user token) */
   orgToken: string;
-  /** Set/Clear institution JWT (persists via storage when available) */
-  setOrgToken: (t: string) => Promise<void> | void;
+  /** login as institution (persists via session storage) */
+  loginOrg: (t: string, meta?: { userId?: string; email?: string }) => Promise<void>;
+  /** login as consumer (persists via session storage) */
+  loginConsumer: (t: string, meta?: { userId?: string; email?: string }) => Promise<void>;
+  /** Hydrate auth state on app start */
+  hydrateAuth: () => Promise<void>;
   /** Shared axios instance with guards & baseURL */
   http: AxiosInstance;
   /** Explicitly logout of institution session only */
@@ -161,16 +174,20 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
   const queryClient = useQueryClient();
 
   // ── Local state ───────────────────────────────────────────────────────────
-  const [token, setTokenState] = useState<string>(''); // user (student/tutor) token
-  const [orgToken, setOrgTokenState] = useState<string>(''); // institution token
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [adminToken, setAdminTokenState] = useState<string>(''); // admin token
-  const [initializing, setInitializing] = useState<boolean>(true);
+  const [hydrated, setHydrated] = useState<boolean>(false);
 
   const [language, setLanguage] = useState<'EN' | 'FR'>('EN');
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [tokens, setTokens] = useState<number>(0);
   const [userId, setUserId] = useState<string | null>(null);
   const [role, setRole] = useState<UserRole>(null);
+
+  const token = authMode === 'consumer' ? accessToken ?? '' : '';
+  const orgToken = authMode === 'org' ? accessToken ?? '' : '';
+  const initializing = !hydrated;
 
   // ---- Shared axios instance (one per provider) ----
   const httpRef = useRef<AxiosInstance>(
@@ -184,6 +201,10 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
   useEffect(() => {
     httpRef.current.defaults.baseURL = backendUrl;
   }, [backendUrl]);
+
+  useEffect(() => {
+    setAuthSessionStorage(storage);
+  }, [storage]);
 
   // Keep the latest tokens available to interceptors
   const tokensRef = useRef<{ token: string; orgToken: string; adminToken: string }>({
@@ -202,30 +223,44 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
   }, [adminToken]);
 
   // ── Logout helpers ────────────────────────────────────────────────────────
+  const hasAutoClearedRef = useRef(false);
+
+  const clearAuthState = useCallback(async () => {
+    setAuthMode(null);
+    setAccessToken(null);
+    setUserEmail(null);
+    setUserId(null);
+    setRole(null);
+    setTokens(0);
+    delete httpRef.current.defaults.headers.common.Authorization;
+    await clearAuthSession();
+  }, []);
+
   const doAutoUserLogout = useCallback(async () => {
+    if (authMode !== 'consumer') return;
+    if (hasAutoClearedRef.current) return;
+    hasAutoClearedRef.current = true;
     try {
       await queryClient.cancelQueries();
       queryClient.clear();
     } catch {}
-    setTokenState('');
-    setUserEmail(null);
-    setUserId(null);
-    setRole(null);
+    await clearAuthState();
     try {
-      await storage?.removeItem('token');
       await storage?.removeItem('role');
     } catch {}
-    delete httpRef.current.defaults.headers.common.Authorization;
     if (navigateFn) navigateFn('/login');
-  }, [navigateFn, queryClient, storage]);
+  }, [authMode, clearAuthState, navigateFn, queryClient, storage]);
 
   const doAutoOrgLogout = useCallback(async () => {
-    setOrgTokenState('');
+    if (authMode !== 'org') return;
+    if (hasAutoClearedRef.current) return;
+    hasAutoClearedRef.current = true;
+    await clearAuthState();
     try {
-      await storage?.removeItem('orgToken');
-      await storage?.removeItem('auth:mode');
+      await storage?.removeItem('auth:orgId');
     } catch {}
-  }, [storage]);
+    if (navigateFn) navigateFn('/org/login');
+  }, [authMode, clearAuthState, navigateFn, storage]);
 
   const doAutoAdminLogout = useCallback(async () => {
     setAdminTokenState('');
@@ -236,8 +271,13 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
   }, [storage]);
 
   const orgLogout = useCallback(async (): Promise<void> => {
-    await runLogoutOnce(doAutoOrgLogout);
-  }, [doAutoOrgLogout]);
+    hasAutoClearedRef.current = false;
+    await clearAuthState();
+    try {
+      await storage?.removeItem('auth:orgId');
+    } catch {}
+    if (navigateFn) navigateFn('/org/login');
+  }, [clearAuthState, navigateFn, storage]);
 
   const adminLogout = useCallback(async (): Promise<void> => {
     await runLogoutOnce(doAutoAdminLogout);
@@ -255,72 +295,76 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Persist / load tokens & role once ─────────────────────────────────────
-  useEffect(() => {
-    (async () => {
-      try {
-        const [t, r, ot, at] = await Promise.all([
-          storage?.getItem('token'),
-          storage?.getItem('role'),
-          storage?.getItem('orgToken'),
-          storage?.getItem('adminToken'),
-        ]);
+  const hydrateAuth = useCallback(async (): Promise<void> => {
+    try {
+      const migration = await migrateLegacyTokens();
+      const [session, r, at] = await Promise.all([
+        readSession(),
+        storage?.getItem('role'),
+        storage?.getItem('adminToken'),
+      ]);
 
-        if (t && t.split('.').length === 3) {
-          setTokenState(t);
-          // default Authorization should be user token only
-          httpRef.current.defaults.headers.common.Authorization = `Bearer ${t}`;
-        } else if (t) {
-          await storage?.removeItem('token');
-        }
+      const nextMode = session?.mode ?? null;
+      const nextToken = session?.accessToken ?? null;
+      setAuthMode(nextMode);
+      setAccessToken(nextToken);
+      setUserId(session?.userId ?? null);
+      setUserEmail(session?.email ?? null);
+      if (r) setRole(normalizeRole(r));
 
-        if (ot && ot.split('.').length === 3) {
-          setOrgTokenState(ot);
-        } else if (ot) {
-          await storage?.removeItem('orgToken');
-        }
-
-        if (at && at.split('.').length === 3) {
-          setAdminTokenState(at);
-        } else if (at) {
-          await storage?.removeItem('adminToken');
-        }
-
-        if (r) setRole(normalizeRole(r));
-      } finally {
-        setInitializing(false);
+      if (at && at.split('.').length === 3) {
+        setAdminTokenState(at);
+      } else if (at) {
+        await storage?.removeItem('adminToken');
       }
-    })();
+
+      const isDev =
+        typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+      if (isDev) {
+        const preview = nextToken ? `${nextToken.slice(0, 6)}…${nextToken.slice(-4)}` : 'none';
+        console.log('[auth] hydrated', {
+          mode: nextMode,
+          token: preview,
+          migrated: migration.migrated,
+        });
+      }
+    } finally {
+      setHydrated(true);
+    }
   }, [storage]);
 
-  // ── Set / clear user token (writes to storage) ────────────────────────────
-  const setToken = useCallback(
-    async (newToken: string): Promise<void> => {
-      setTokenState(newToken);
-      if (newToken) {
-        httpRef.current.defaults.headers.common.Authorization = `Bearer ${newToken}`;
-        await storage?.setItem('token', newToken);
-      } else {
-        delete httpRef.current.defaults.headers.common.Authorization;
-        await storage?.removeItem('token');
-        await storage?.removeItem('role');
-      }
+  useEffect(() => {
+    void hydrateAuth();
+  }, [hydrateAuth]);
+
+  const loginConsumer = useCallback(
+    async (newToken: string, meta?: { userId?: string; email?: string }) => {
+      hasAutoClearedRef.current = false;
+      await setConsumerSession(newToken, {
+        userId: meta?.userId,
+        email: meta?.email,
+      });
+      setAuthMode('consumer');
+      setAccessToken(newToken);
+      if (meta?.userId) setUserId(meta.userId);
+      if (meta?.email) setUserEmail(meta.email);
     },
-    [storage]
+    []
   );
 
-  // ── Set / clear institution token (writes to storage) ─────────────────────
-  const setOrgToken = useCallback(
-    async (newOrgToken: string): Promise<void> => {
-      if (typeof newOrgToken !== 'string' || newOrgToken.split('.').length !== 3) {
-        console.warn('[ShopContext] setOrgToken ignored non-JWT value');
-        return;
-      }
-      setOrgTokenState(newOrgToken);
-      await storage?.setItem('orgToken', newOrgToken);
-      await storage?.setItem('auth:mode', 'org').catch(() => {});
+  const loginOrg = useCallback(
+    async (newToken: string, meta?: { userId?: string; email?: string }) => {
+      hasAutoClearedRef.current = false;
+      await setOrgSession(newToken, {
+        userId: meta?.userId,
+        email: meta?.email,
+      });
+      setAuthMode('org');
+      setAccessToken(newToken);
+      if (meta?.userId) setUserId(meta.userId);
+      if (meta?.email) setUserEmail(meta.email);
     },
-    [storage]
+    []
   );
 
   // ── Set / clear admin token (writes to storage) ───────────────────────────
@@ -338,31 +382,36 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
 
   // Public user logout (does not touch org or admin sessions)
   const logout = useCallback(async (): Promise<void> => {
-    await runLogoutOnce(doAutoUserLogout);
-  }, [doAutoUserLogout]);
+    hasAutoClearedRef.current = false;
+    await clearAuthState();
+    try {
+      await storage?.removeItem('role');
+    } catch {}
+    if (navigateFn) navigateFn('/login');
+  }, [clearAuthState, navigateFn, storage]);
 
   const toggleLanguage = useCallback(() => {
     setLanguage((prev) => (prev === 'EN' ? 'FR' : 'EN'));
   }, []);
 
- // ── React Query: fetch /api/profile/me (user profile) ─────────────────────
-const isOrgMode = Boolean(orgToken);
+  // ── React Query: fetch /api/profile/me (user profile) ─────────────────────
+  const isOrgMode = authMode === 'org';
 
-const {
-  data: queryData,
-  isLoading: loadingProfile,
-  refetch,
-} = useAppQuery<Profile | null, Error>(
-  ['profile', token, adminToken, orgToken], // optional add orgToken to key
-  async () => {
-    const res = await httpRef.current.get<ApiProfileMeResponse>('/api/profile/me');
-    return res.data.profileExists ? res.data.profile : null;
-  },
-  {
-    enabled: Boolean(token) && !adminToken && !isOrgMode, // ✅ skip user hydrate in org mode
-    retry: false,
-  }
-);
+  const {
+    data: queryData,
+    isLoading: loadingProfile,
+    refetch,
+  } = useAppQuery<Profile | null, Error>(
+    ['profile', token, adminToken, orgToken], // optional add orgToken to key
+    async () => {
+      const res = await httpRef.current.get<ApiProfileMeResponse>('/api/profile/me');
+      return res.data.profileExists ? res.data.profile : null;
+    },
+    {
+      enabled: hydrated && Boolean(token) && !adminToken && !isOrgMode, // ✅ skip user hydrate in org mode
+      retry: false,
+    }
+  );
 
 
   const profile: Profile | null = queryData ?? null;
@@ -398,9 +447,9 @@ const {
   }, [userEmail, tokens, userId, role, storage]);
 
   useEffect(() => {
-  if (!token || adminToken || isOrgMode) return; // ✅ skip when org logged in
-  void fetchUserDetails().catch((e) => console.error(e));
-}, [token, adminToken, isOrgMode, fetchUserDetails]);
+    if (!hydrated || !token || adminToken || isOrgMode) return; // ✅ skip when org logged in
+    void fetchUserDetails().catch((e) => console.error(e));
+  }, [hydrated, token, adminToken, isOrgMode, fetchUserDetails]);
 
 
   const refreshUserDetails = useCallback(async (): Promise<void> => {
@@ -413,10 +462,15 @@ const {
       // existing
       backendUrl,
       token,
+      authMode,
+      accessToken,
+      hydrated,
       initializing,
       userId,
       language,
-      setToken,
+      loginConsumer,
+      loginOrg,
+      hydrateAuth,
       toggleLanguage,
       logout,
       userEmail,
@@ -430,7 +484,6 @@ const {
 
       // org
       orgToken,
-      setOrgToken,
       orgLogout,
 
       // axios
@@ -444,10 +497,15 @@ const {
     [
       backendUrl,
       token,
+      authMode,
+      accessToken,
+      hydrated,
       initializing,
       userId,
       language,
-      setToken,
+      loginConsumer,
+      loginOrg,
+      hydrateAuth,
       toggleLanguage,
       logout,
       userEmail,
@@ -458,7 +516,6 @@ const {
       refreshUserDetails,
       role,
       orgToken,
-      setOrgToken,
       orgLogout,
       adminToken,
       setAdminToken,

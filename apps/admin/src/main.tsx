@@ -16,27 +16,13 @@ const backendUrl =
 
 const storage = {
   getItem: async (k: string) =>
-    Promise.resolve(
-      k === 'token'
-        ? (localStorage.getItem('token') ?? localStorage.getItem('authToken'))
-        : localStorage.getItem(k)
-    ),
+    Promise.resolve(localStorage.getItem(k)),
   setItem: async (k: string, v: string) => {
-    if (k === 'token') {
-      localStorage.setItem('token', v);
-      localStorage.setItem('authToken', v);
-    } else {
-      localStorage.setItem(k, v);
-    }
+    localStorage.setItem(k, v);
     return Promise.resolve();
   },
   removeItem: async (k: string) => {
-    if (k === 'token') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('authToken');
-    } else {
-      localStorage.removeItem(k);
-    }
+    localStorage.removeItem(k);
     return Promise.resolve();
   },
 };

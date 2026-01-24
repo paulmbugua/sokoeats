@@ -188,11 +188,10 @@ const OrgInstructorHome: React.FC = () => {
   const shop = (useShopContext?.() ?? {}) as any;
 
   const backendUrl: string | null = shop?.backendUrl ?? null;
-  const userToken: string | null = shop?.token ?? null;
   const orgToken: string | null = shop?.orgToken ?? null;
   const orgLogout: null | (() => Promise<void>) = shop?.orgLogout ?? null;
 
-  const authToken = orgToken || userToken;
+  const authToken = orgToken;
   const navigate = useNavigate();
 
   const location = useLocation();

@@ -476,8 +476,8 @@ const ScopeFields = ({
 ────────────────────────────── */
 const OrgElearnPortalNative: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const { backendUrl, token, orgToken } = useShopContext() as any;
-  const authToken: string | undefined = orgToken || token;
+  const { backendUrl, orgToken } = useShopContext() as any;
+  const authToken: string | undefined = orgToken;
 
   const { org: orgCtx, role, membership } = (useOrg() ?? {}) as any;
 
@@ -1075,7 +1075,7 @@ const StatusPill = ({ status }: { status: ClassicWorkStatus }) => {
             apiCycle,
             method: 'PAYSTACK',
             hasAuthToken: !!authToken,
-            tokenSource: orgToken ? 'orgToken' : token ? 'token' : 'none',
+            tokenSource: orgToken ? 'orgToken' : 'none',
           });
 
           let init: any;

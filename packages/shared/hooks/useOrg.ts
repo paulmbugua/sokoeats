@@ -77,7 +77,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
 
   // ✅ force stable strings (fixes "string | undefined" arg errors)
   const backendUrl: string = String(ctx?.backendUrl ?? '').trim();
-  const bearer: string = String(ctx?.orgToken ?? ctx?.token ?? '').trim();
+  const bearer: string = String(ctx?.orgToken ?? '').trim();
 
   const userId = ctx?.userId;
   const ctxStorage = ctx?.storage;
