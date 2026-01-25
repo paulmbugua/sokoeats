@@ -7,6 +7,7 @@ import {
   ssmlToDisplayTokens,
   type WordTiming as TxWordTiming, // { i, t, w }
 } from '@mytutorapp/shared/utils/transcript';
+import { buildWordDisplayTokens, joinWordsForDisplay, shouldInsertSpace } from '@mytutorapp/shared/hooks/useWordSync';
 import type {
   WordTiming as ApiWordTiming, // backend timing shape (e.g., { start, end, text })
 } from '@mytutorapp/shared/api/ttsAvatarApi';
@@ -134,10 +135,7 @@ export default function Narration({
   // Screen-reader: announce the active paragraph
   const srText = React.useMemo(() => {
     if (!activePara) return '';
-    return activePara.wordIndices
-      .map((i) => words[i]?.text)
-      .filter(Boolean)
-      .join(' ');
+    return joinWordsForDisplay(words, activePara.wordIndices);
   }, [activePara, words]);
 
   // Transitions
@@ -451,6 +449,7 @@ export default function Narration({
 
                 // Fallback: render from sentence/word arrays (no SSML tokens)
                 if (activePara) {
+                  let prevSentenceLastText = '';
                   return (
                     <div
                       className="pointer-events-none"
@@ -464,25 +463,35 @@ export default function Narration({
                       {Array.from(
                         { length: activePara.sentEnd - activePara.sentStart + 1 },
                         (_, k) => activePara.sentStart + k
-                      ).map((sIdx, blockI) => {
+                      ).map((sIdx) => {
                         const s = sentences[sIdx];
                         const isActiveSentence = sIdx === activeSentenceIdx;
                         const sentStyle = sentenceStyleFor(isActiveSentence);
+                        const firstWordText = words[s.indices[0]]?.text ?? '';
+                        const needsLeadingSpace = shouldInsertSpace(
+                          prevSentenceLastText,
+                          firstWordText
+                        );
+                        const tokens = buildWordDisplayTokens(words, s.indices);
+                        const lastIndex = s.indices[s.indices.length - 1];
+                        const lastTokenText = lastIndex != null ? words[lastIndex]?.text ?? '' : '';
+                        prevSentenceLastText = lastTokenText;
 
                         return (
                           <span key={`sent-${sIdx}`} style={sentStyle}>
-                            {s.indices.map((wi, j) => {
-                              const w = words[wi];
-                              const isActive = wi === effectiveIndex;
+                            {needsLeadingSpace ? ' ' : ''}
+                            {tokens.map((tok) => {
+                              if (!tok.text) return null;
+                              const isActive = tok.index === effectiveIndex;
                               const style = isActive ? activeWordStyle() : defaultWordStyle;
                               return (
                                 <span
-                                  key={wi}
+                                  key={tok.index}
                                   className="inline"
                                   style={style}
                                   aria-current={isActive ? 'true' : undefined}
                                 >
-                                  {(j || blockI ? ' ' : '') + (w?.text ?? '')}
+                                  {tok.text}
                                 </span>
                               );
                             })}
