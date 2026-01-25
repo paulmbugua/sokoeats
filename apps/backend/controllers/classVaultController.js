@@ -16,7 +16,14 @@ import {
 } from '../validators/classVaultValidator.js';
 import { sendNotification } from '../utils/sendNotification.js';
 import { v2 as cloudinary } from 'cloudinary';
-import { deleteObject, uploadLocalFile, isR2Url } from '../services/r2UploadService.js';
+import {
+  deleteObject,
+  uploadLocalFile,
+  isR2Url,
+  parseR2Url,
+  presignGet,
+} from '../services/r2UploadService.js';
+
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 ffmpeg.setFfprobePath(ffprobeInstaller.path);
@@ -42,6 +49,8 @@ function parsePagination(req, fallbackLimit = 12) {
   const q = String(req.query?.q ?? '').trim();
   return { limit, offset, q };
 }
+
+
 /** Upload one or more local files to Cloudinary */
 async function uploadToCloudinary(files, resourceType = 'image') {
   try {
@@ -60,6 +69,29 @@ async function uploadToCloudinary(files, resourceType = 'image') {
     throw new Error('File upload failed');
   }
 }
+
+async function maybePresignR2(url, expiresInSec = 900) {
+  const u = String(url || '').trim();
+  if (!u) return null;
+
+  // If it's R2, convert to signed GET
+  if (isR2Url(u)) {
+    const parsed = parseR2Url(u);
+    if (!parsed?.bucket || !parsed?.objectPath) {
+      throw new Error(`Failed to parse R2 url: ${u}`);
+    }
+    const signed = await presignGet({
+      bucket: parsed.bucket,
+      objectPath: parsed.objectPath,
+      expiresInSec,
+    });
+    return signed.url;
+  }
+
+  // Cloudinary / others: return as-is
+  return u;
+}
+
 
 /** Delete one or more Cloudinary public_ids */
 async function deleteFromCloudinary(publicIds, resourceType = 'image') {
@@ -220,6 +252,32 @@ async function generatePreview(inputPath, outputPath, duration = 30) {
   }
 }
 
+async function resolveFetchableVideoUrl(req, videoUrl) {
+  if (!videoUrl) return null;
+
+  // R2 stored url (/media/... or R2_PUBLIC_BASE_URL/...)
+  if (isR2Url(videoUrl)) {
+    const parsed = parseR2Url(videoUrl);
+    if (!parsed?.bucket || !parsed?.objectPath) {
+      throw new Error(`Failed to parse R2 URL: ${videoUrl}`);
+    }
+    const signed = await presignGet({
+      bucket: parsed.bucket,
+      objectPath: parsed.objectPath,
+      expiresInSec: 300,
+    });
+    return signed.url;
+  }
+
+  // Non-R2: make absolute if it's relative
+  if (!/^https?:\/\//.test(videoUrl)) {
+    return `${req.protocol}://${req.get('host')}${videoUrl}`;
+  }
+
+  return videoUrl;
+}
+
+
 async function buildVideoDerivativesFromUrl(req, video_url, ownerId) {
   // make absolute if backend serves local files
   const makeAbsolute = (url) =>
@@ -236,7 +294,11 @@ async function buildVideoDerivativesFromUrl(req, video_url, ownerId) {
 
   try {
     // 1) download
-    const resp = await fetch(makeAbsolute(video_url));
+    const fetchUrl = await resolveFetchableVideoUrl(req, video_url);
+if (!fetchUrl) throw new Error('Missing video_url');
+
+const resp = await fetch(fetchUrl);
+
     if (!resp.ok) throw new Error(`Failed to download video (${resp.status})`);
 
     await new Promise((resolve, reject) => {
@@ -390,40 +452,53 @@ export const downloadPdfOrVideo = async (req, res) => {
       return res.status(400).json({ message: 'Invalid video id' });
     }
 
-    // 1) Load the item (we need tutor_id + urls)
+    // 1) Load the item
     const { rows: vRows } = await pool.query(
       `SELECT id, tutor_id, pdf_url, video_url
          FROM recorded_videos
-        WHERE id = $1`,
+        WHERE id = $1
+        LIMIT 1`,
       [videoId]
     );
 
     if (!vRows.length) return res.status(404).json({ message: 'Not found' });
-
     const item = vRows[0];
 
-    // ✅ 2) Tutor-owner can always access their own content
-    if (Number(item.tutor_id) === Number(userId)) {
-      return res.json({ pdf_url: item.pdf_url, video_url: item.video_url });
+    // 2) Allow tutor-owner always
+    const isOwner = Number(item.tutor_id) === Number(userId);
+
+    // 3) If not owner, require purchase
+    if (!isOwner) {
+      const { rows: accessRows } = await pool.query(
+        `SELECT 1
+           FROM classvault_purchases
+          WHERE student_id = $1
+            AND class_id   = $2
+          LIMIT 1`,
+        [userId, videoId]
+      );
+
+      if (!accessRows.length) {
+        return res.status(403).json({
+          message: 'Access denied. Please purchase the class.',
+        });
+      }
     }
 
-    // 3) Otherwise, require a purchase (student access)
-    const { rows: accessRows } = await pool.query(
-      `SELECT 1
-         FROM classvault_purchases
-        WHERE student_id = $1
-          AND class_id   = $2
-        LIMIT 1`,
-      [userId, videoId]
-    );
+    // 4) Return signed R2 URLs (short-lived), cloudinary as-is
+    // Adjust expiry as you like: 15 mins = 900, 60 mins = 3600
+    const expiresInSec = Number(process.env.R2_DOWNLOAD_EXPIRES_SEC || 900);
 
-    if (!accessRows.length) {
-      return res
-        .status(403)
-        .json({ message: 'Access denied. Please purchase the class.' });
-    }
+    const pdf_url = await maybePresignR2(item.pdf_url, expiresInSec);
+    const video_url = await maybePresignR2(item.video_url, expiresInSec);
 
-    return res.json({ pdf_url: item.pdf_url, video_url: item.video_url });
+    return res.json({
+      pdf_url,
+      video_url,
+      expiresInSec,
+      // Optional: helps client understand these are time-limited
+      signed: true,
+    });
   } catch (err) {
     console.error('downloadPdfOrVideo error:', err);
     return res.status(500).json({ message: 'Server error fetching resources.' });

@@ -1,4 +1,3 @@
-// apps/backend/services/r2UploadService.js
 import path from 'path';
 import { createReadStream } from 'fs';
 import { v4 as uuid } from 'uuid';
@@ -10,18 +9,28 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-const REQUIRED_ENVS = ['R2_ENDPOINT', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_VIDEOS'];
+// Full videos are private (R2_BUCKET_VIDEOS)
+// Previews/thumbs are public (R2_BUCKET_PREVIEWS + R2_PUBLIC_BASE_URL_PREVIEWS)
+const REQUIRED_ENVS = [
+  'R2_ENDPOINT',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET_VIDEOS',
+  'R2_BUCKET_PREVIEWS',
+  'R2_PUBLIC_BASE_URL_PREVIEWS',
+];
 
-const R2_PUBLIC_BASE_URL = String(process.env.R2_PUBLIC_BASE_URL || '').replace(/\/+$/, '');
+const R2_PUBLIC_BASE_URL_PREVIEWS = String(
+  process.env.R2_PUBLIC_BASE_URL_PREVIEWS || ''
+).replace(/\/+$/, '');
+
 const BACKEND_PUBLIC_BASE_URL = String(
   process.env.BACKEND_PUBLIC_BASE_URL || process.env.BACKEND_URL || ''
 ).replace(/\/+$/, '');
 
 function requireEnv(name) {
   const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
+  if (!value) throw new Error(`Missing required env var: ${name}`);
   return value;
 }
 
@@ -58,26 +67,44 @@ function buildObjectPath({ kind, ownerId, filename, now = new Date() }) {
   return `${kind}/${ownerId}/${year}/${month}/${unique}-${safeName}`;
 }
 
-function getDefaultBucket() {
+// Decide bucket by kind
+function getBucketForKind(kind) {
+  const k = String(kind || '').toLowerCase();
+  if (k === 'preview' || k === 'thumb' || k === 'thumbnail') {
+    return requireEnv('R2_BUCKET_PREVIEWS');
+  }
   return requireEnv('R2_BUCKET_VIDEOS');
 }
 
-function resolvePublicUrl({ bucket, objectPath }) {
-  if (R2_PUBLIC_BASE_URL) {
-    return `${R2_PUBLIC_BASE_URL}/${objectPath}`;
+// Only previews/thumbs get a direct public URL
+function resolvePublicUrl({ bucket, objectPath, kind }) {
+  const k = String(kind || '').toLowerCase();
+
+  if (k === 'preview' || k === 'thumb' || k === 'thumbnail') {
+    if (!R2_PUBLIC_BASE_URL_PREVIEWS) {
+      throw new Error('Missing R2_PUBLIC_BASE_URL_PREVIEWS');
+    }
+    return `${R2_PUBLIC_BASE_URL_PREVIEWS}/${objectPath}`;
   }
+
+  // Private assets: store a backend proxy URL if you want
+  // (your download endpoint should presign and return the real signed URL)
   if (BACKEND_PUBLIC_BASE_URL) {
     return `${BACKEND_PUBLIC_BASE_URL}/media/${bucket}/${objectPath}`;
   }
-  throw new Error('Missing BACKEND_PUBLIC_BASE_URL (or R2_PUBLIC_BASE_URL) for media URLs.');
+
+  throw new Error(
+    'Full videos are private: no public URL. Use presignGet via download endpoint.'
+  );
 }
 
+// Detect if url is from R2 (preview public domain or backend proxy)
 function detectUploadProvider(url) {
   if (!url || typeof url !== 'string') return null;
   if (/cloudinary\.com/i.test(url)) return 'cloudinary';
 
-  const publicBase = R2_PUBLIC_BASE_URL;
-  if (publicBase && url.startsWith(`${publicBase}/`)) return 'r2';
+  const previewBase = R2_PUBLIC_BASE_URL_PREVIEWS;
+  if (previewBase && url.startsWith(`${previewBase}/`)) return 'r2';
 
   if (BACKEND_PUBLIC_BASE_URL && url.startsWith(`${BACKEND_PUBLIC_BASE_URL}/media/`)) return 'r2';
 
@@ -86,14 +113,15 @@ function detectUploadProvider(url) {
   return null;
 }
 
+// Parse R2 URLs into { bucket, objectPath }
 function parseR2Url(url) {
   if (!url || typeof url !== 'string') return null;
-  const bucketFallback = process.env.R2_BUCKET_VIDEOS || '';
 
-  const publicBase = R2_PUBLIC_BASE_URL;
-  if (publicBase && url.startsWith(`${publicBase}/`)) {
-    const objectPath = url.slice(publicBase.length + 1);
-    return { bucket: bucketFallback, objectPath };
+  const previewBase = R2_PUBLIC_BASE_URL_PREVIEWS;
+  if (previewBase && url.startsWith(`${previewBase}/`)) {
+    const objectPath = url.slice(previewBase.length + 1);
+    const bucket = process.env.R2_BUCKET_PREVIEWS || '';
+    return { bucket, objectPath };
   }
 
   const backendBase = BACKEND_PUBLIC_BASE_URL;
@@ -116,7 +144,7 @@ function parseR2Url(url) {
 export async function presignPut({ kind, filename, contentType, sizeBytes, ownerId }) {
   REQUIRED_ENVS.forEach(requireEnv);
 
-  const bucket = getDefaultBucket();
+  const bucket = getBucketForKind(kind);
   const objectPath = buildObjectPath({ kind, ownerId, filename });
   const client = getR2Client();
 
@@ -139,14 +167,14 @@ export async function presignPut({ kind, filename, contentType, sizeBytes, owner
   };
 }
 
-export function finalize({ bucket, objectPath }) {
-  return { url: resolvePublicUrl({ bucket, objectPath }) };
+export function finalize({ bucket, objectPath, kind }) {
+  return { url: resolvePublicUrl({ bucket, objectPath, kind }) };
 }
 
 export async function presignGet({ bucket, objectPath, expiresInSec = 60 }) {
   REQUIRED_ENVS.forEach(requireEnv);
-  const client = getR2Client();
 
+  const client = getR2Client();
   const command = new GetObjectCommand({
     Bucket: bucket,
     Key: objectPath,
@@ -170,9 +198,7 @@ export async function deleteObject({ bucket, objectPath, url }) {
     }
   }
 
-  if (!targetBucket || !targetPath) {
-    return { deleted: false };
-  }
+  if (!targetBucket || !targetPath) return { deleted: false };
 
   const client = getR2Client();
   const command = new DeleteObjectCommand({ Bucket: targetBucket, Key: targetPath });
@@ -183,10 +209,14 @@ export async function deleteObject({ bucket, objectPath, url }) {
 export async function uploadLocalFile({ kind, ownerId, filePath, filename, contentType }) {
   REQUIRED_ENVS.forEach(requireEnv);
 
-  const bucket = getDefaultBucket();
-  const objectPath = buildObjectPath({ kind, ownerId, filename: filename || path.basename(filePath) });
-  const client = getR2Client();
+  const bucket = getBucketForKind(kind);
+  const objectPath = buildObjectPath({
+    kind,
+    ownerId,
+    filename: filename || path.basename(filePath),
+  });
 
+  const client = getR2Client();
   const command = new PutObjectCommand({
     Bucket: bucket,
     Key: objectPath,
@@ -195,10 +225,11 @@ export async function uploadLocalFile({ kind, ownerId, filePath, filename, conte
   });
 
   await client.send(command);
+
   return {
     bucket,
     objectPath,
-    url: resolvePublicUrl({ bucket, objectPath }),
+    url: resolvePublicUrl({ bucket, objectPath, kind }),
   };
 }
 
