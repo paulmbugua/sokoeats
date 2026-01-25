@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { basename } from 'node:path';
 import { simpleAlign } from './simpleAlignerService.js';
 import { alignWithGoogleSttWordOffsets } from './googleSttAlignService.js';
+import { normalizeIncomingSsml } from '../../../packages/shared/utils/ssmlText.js';
 
 // ─────────────────────────────────────────────────────────
 const thisFile = basename(fileURLToPath(import.meta.url));
@@ -317,6 +318,7 @@ export async function synthesizeTtsLocalFirst({
   let wordsList = null;
 
   if (ssml) {
+    ssml = normalizeIncomingSsml(String(ssml));
     if (wantTimepoints) {
       const injected = injectMarksIntoSsml(ssml);
       inputSSML = injected.ssml;

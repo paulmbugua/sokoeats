@@ -21,6 +21,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useWordSync } from '@mytutorapp/shared/hooks/useWordSync';
 import type { PlaybackPayload, PlaybackQueueItem } from '@mytutorapp/shared/types';
+import { ssmlToPlainText } from '@mytutorapp/shared/utils/ssmlText';
 
 import { listTtsVoices, type TtsVoiceInfo } from '@mytutorapp/shared/api/ttsAvatarApi';
 
@@ -323,6 +324,51 @@ function hasUsefulPunctuation(arr: Array<{ text?: string }>) {
     // sentence / clause punctuation (IGNORE apostrophes inside words)
     return /[.!?…,:;(){}[\]]/.test(t);
   });
+}
+
+function mergeExampleSentenceGroups(
+  groups: Array<{ indices: number[] }> = [],
+  words: Array<{ text?: string }> = []
+) {
+  if (!groups.length) return groups;
+  const exampleRe = /\b(for instance|for example|let's look at an example)\b/i;
+  const sentenceText = (group: { indices: number[] }) =>
+    group.indices
+      .map((wi) => words[wi]?.text)
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+  const merged: Array<{ indices: number[] }> = [];
+  let i = 0;
+  while (i < groups.length) {
+    const current = groups[i];
+    const currentText = sentenceText(current);
+    const next = groups[i + 1];
+    const nextText = next ? sentenceText(next) : '';
+
+    if (currentText && exampleRe.test(currentText) && next && !nextText) {
+      let j = i + 2;
+      let nextNonEmpty: { indices: number[] } | null = null;
+      while (j < groups.length) {
+        const text = sentenceText(groups[j]);
+        if (text) {
+          nextNonEmpty = groups[j];
+          break;
+        }
+        j++;
+      }
+      if (nextNonEmpty) {
+        merged.push({ ...current, indices: [...current.indices, ...nextNonEmpty.indices] });
+        i = j + 1;
+        continue;
+      }
+    }
+
+    merged.push(current);
+    i++;
+  }
+  return merged;
 }
 
 // ───────────────────── Inner Player ─────────────────────
@@ -1158,7 +1204,10 @@ useEffect(() => {
   const volDown = () => setVolume(Math.max(0, +Math.max(0, volume - 0.1).toFixed(3)));
   const volUp = () => setVolume(Math.min(1, +Math.min(1, volume + 0.1).toFixed(3)));
 
-  const sentences = (sentenceGroups || []) as SentenceGroup[];
+  const sentences = mergeExampleSentenceGroups(
+    (sentenceGroups || []) as SentenceGroup[],
+    words as any[]
+  ) as SentenceGroup[];
   const [stableTimed, setStableTimed] = useState<{
     words: any[];
     sentences: SentenceGroup[];
@@ -1663,18 +1712,6 @@ function applyPunctuationToWords(
   }
 
   return out;
-}
-
-function ssmlToPlainText(ssml: string) {
-  return (ssml || '')
-    .replace(/<break[^>]*\/>/gi, ' ')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<p[^>]*>/gi, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
 }
 
 function NarrationStage({
