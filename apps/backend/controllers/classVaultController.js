@@ -16,6 +16,7 @@ import {
 } from '../validators/classVaultValidator.js';
 import { sendNotification } from '../utils/sendNotification.js';
 import { v2 as cloudinary } from 'cloudinary';
+import { deleteObject, uploadLocalFile, isR2Url } from '../services/r2UploadService.js';
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 ffmpeg.setFfprobePath(ffprobeInstaller.path);
@@ -219,7 +220,7 @@ async function generatePreview(inputPath, outputPath, duration = 30) {
   }
 }
 
-async function buildVideoDerivativesFromUrl(req, video_url) {
+async function buildVideoDerivativesFromUrl(req, video_url, ownerId) {
   // make absolute if backend serves local files
   const makeAbsolute = (url) =>
     /^https?:\/\//.test(url)
@@ -231,7 +232,7 @@ async function buildVideoDerivativesFromUrl(req, video_url) {
   const previewLocal = path.join(os.tmpdir(), `${uuid()}.mp4`);
 
   let thumb = null; // { url, public_id }
-  let preview = null; // { url, public_id }
+  let preview = null; // { url }
 
   try {
     // 1) download
@@ -273,8 +274,14 @@ async function buildVideoDerivativesFromUrl(req, video_url) {
     try {
       const s2 = await fs.stat(previewLocal).catch(() => null);
       if (s2?.size > 0) {
-        const [u] = await uploadToCloudinary([{ path: previewLocal }], 'video');
-        preview = u || null;
+        const uploaded = await uploadLocalFile({
+          kind: 'preview',
+          ownerId: String(ownerId),
+          filePath: previewLocal,
+          filename: 'preview.mp4',
+          contentType: 'video/mp4',
+        });
+        preview = uploaded || null;
       }
     } catch (e) {
       console.warn('[classVault:update] preview upload skipped', e?.message);
@@ -324,7 +331,7 @@ export const createVideoJson = async (req, res) => {
 
     // If video exists: generate missing derivatives (best effort)
     if (video_url) {
-      const { thumb, preview } = await buildVideoDerivativesFromUrl(req, video_url);
+      const { thumb, preview } = await buildVideoDerivativesFromUrl(req, video_url, tutor_id);
 
       // only fill what’s missing
       if (!thumbnail_url) thumbnail_url = thumb?.url || null;
@@ -568,7 +575,7 @@ export const getVideoById = async (req, res) => {
 };
 
 
-// ─── Delete Video & All Cloudinary Assets ───────────────────────────────────
+// ─── Delete Video & All Assets ──────────────────────────────────────────────
 export const deleteVideoById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -588,13 +595,18 @@ export const deleteVideoById = async (req, res) => {
 
     const video = dbRes.rows[0];
 
-    // 2) Collect Cloudinary public_ids (split by resource type)
+    // 2) Collect Cloudinary public_ids (split by resource type) and R2 URLs
     const imageIds = [];
     const videoIds = [];
     const rawIds = [];
+    const r2Urls = [];
 
     const pushIf = (arr, url) => {
       if (!url) return;
+      if (isR2Url(url)) {
+        r2Urls.push(url);
+        return;
+      }
       const pid = getPublicIdFromUrl(url);
       if (pid) arr.push(pid);
     };
@@ -604,11 +616,14 @@ export const deleteVideoById = async (req, res) => {
     pushIf(imageIds, video.thumbnail_url);
     pushIf(rawIds, video.pdf_url); // ✅ include pdf if hosted on Cloudinary (raw)
 
-    // 3) Delete from Cloudinary (best effort - do not fail whole request)
+    // 3) Delete from Cloudinary + R2 (best effort - do not fail whole request)
     await Promise.allSettled([
       imageIds.length ? deleteFromCloudinary(imageIds, 'image') : Promise.resolve(),
       videoIds.length ? deleteFromCloudinary(videoIds, 'video') : Promise.resolve(),
       rawIds.length ? deleteFromCloudinary(rawIds, 'raw') : Promise.resolve(),
+      r2Urls.length
+        ? Promise.allSettled(r2Urls.map((url) => deleteObject({ url })))
+        : Promise.resolve(),
     ]);
 
     // 4) Remove DB row
@@ -616,7 +631,7 @@ export const deleteVideoById = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Video and associated Cloudinary assets deleted.',
+      message: 'Video and associated assets deleted.',
     });
   } catch (err) {
     console.error('deleteVideoById error:', err);
@@ -664,13 +679,15 @@ export const updateVideoJson = async (req, res) => {
 
     const videoUrlChanged = hasVideoUrlInPatch && norm(existing.video_url) !== nextVideoUrl;
 
-    const oldThumbPid = getPublicIdFromUrl(existing.thumbnail_url);
-    const oldPrevPid = getPublicIdFromUrl(existing.preview_url);
+    const oldThumbUrl = existing.thumbnail_url;
+    const oldPrevUrl = existing.preview_url;
+    const oldThumbPid = !isR2Url(oldThumbUrl) ? getPublicIdFromUrl(oldThumbUrl) : null;
+    const oldPrevPid = !isR2Url(oldPrevUrl) ? getPublicIdFromUrl(oldPrevUrl) : null;
 
     // If video changed -> regenerate derivatives
     if (videoUrlChanged) {
       if (nextVideoUrl) {
-        const { thumb, preview } = await buildVideoDerivativesFromUrl(req, nextVideoUrl);
+        const { thumb, preview } = await buildVideoDerivativesFromUrl(req, nextVideoUrl, tutorId);
         patch.thumbnail_url = thumb?.url || null;
         patch.preview_url = preview?.url || null;
       } else {
@@ -720,6 +737,8 @@ export const updateVideoJson = async (req, res) => {
       await Promise.allSettled([
         oldThumbPid ? deleteFromCloudinary([oldThumbPid], 'image') : Promise.resolve(),
         oldPrevPid ? deleteFromCloudinary([oldPrevPid], 'video') : Promise.resolve(),
+        isR2Url(oldThumbUrl) ? deleteObject({ url: oldThumbUrl }) : Promise.resolve(),
+        isR2Url(oldPrevUrl) ? deleteObject({ url: oldPrevUrl }) : Promise.resolve(),
       ]);
     }
 
