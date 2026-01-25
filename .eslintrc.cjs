@@ -52,6 +52,7 @@ module.exports = {
           path.resolve(__dirname, 'apps/web/tsconfig.json'),
           path.resolve(__dirname, 'packages/shared/tsconfig.json'),
           path.resolve(__dirname, 'apps/backend/tsconfig.json'),
+          path.resolve(__dirname, 'apps/admin/tsconfig.json'),
           // ✅ Add the unified one too
           path.resolve(__dirname, 'tsconfig.eslint.json'),
         ],
@@ -119,6 +120,31 @@ module.exports = {
         'import/no-named-as-default-member': 'off',
       },
     },
+
+    {
+  files: ['apps/admin/**/*.{js,jsx,ts,tsx}'],
+  // ✅ Don't create another TS program; use the unified one already
+  parserOptions: { project: null },
+  env: { browser: true, node: true },
+  rules: {
+    // Match apps/web behavior
+    '@typescript-eslint/no-unused-vars': 'off',
+    '@typescript-eslint/no-explicit-any': 'off',
+
+    // Helpful for modern React setups (JSX runtime)
+    'react/react-in-jsx-scope': 'off',
+
+    // If admin imports sometimes look odd due to monorepo tooling
+    'import/default': 'off',
+    'import/no-unresolved': 'off',
+    'import/no-named-as-default-member': 'off',
+
+    // Optional: admin pages are usually internal, so prop-types noise isn't useful
+    'react/prop-types': 'off',
+    'react/display-name': 'off',
+  },
+},
+
 
     {
       files: ['packages/shared/**/*.{ts,tsx,js,jsx}'],

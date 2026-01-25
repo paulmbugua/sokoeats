@@ -476,11 +476,24 @@ export function buildWordDisplayTokens(
 function decorateTimingsFromSource(timings: WordTiming[], sourceText?: string): WordTiming[] {
   if (!timings?.length || !sourceText) return timings;
 
+<<<<<<< HEAD
   const visible = normalizeDisplayText(
     unwordifyUnitExponentForDisplay(
       unwordifyScientificNotationForDisplay(extractDisplayTextFromSsml(sourceText))
     )
   );
+=======
+  // If timings already have punctuation/symbols, don't touch them.
+  const timingsHavePunc = timings.some((w) => {
+    const t = (w?.text || '').trim();
+    if (!t) return false;
+    if (/^[\p{P}\p{S}]+$/u.test(t)) return true;
+    return /[.!?…,:;(){}[\]]/.test(t);
+  });
+  if (timingsHavePunc) return timings;
+
+  const visible = ssmlVisibleText(sourceText);
+>>>>>>> ebf4715 (tts updates)
   if (!visible) return timings;
 
   const rawTokens = tokenizeDisplayText(visible);
@@ -776,7 +789,7 @@ function groupWordsBySentence(words: WordTiming[], maxChars: number): SentenceTi
   let start = 0;
   let lastText = '';
   let idxs: number[] = [];
-  const isEnd = (t: string) => /[\.!\?…]["']?$/.test(t);
+  const isEnd = (t: string) => /[.!?…]["']?$/.test(t);
   words.forEach((w, i) => {
     const text = w.text || '';
     if (!buf) start = w.start;

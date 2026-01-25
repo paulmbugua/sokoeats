@@ -74,7 +74,7 @@ function sanitizeForGoogle(ssmlInner) {
   s = s.replace(/<\/?mstts:[^>]*>/gi, '');
   s = s.replace(/<\/?amazon:[^>]*>/gi, '');
   s = s.replace(/<\/?voice[^>]*>/gi, '');
-  s = s.replace(/\s+\>/g, '>').replace(/\<\s+/g, '<');
+  s = s.replace(/\s+>/g, '>').replace(/<\s+/g, '<');
   return s;
 }
 
@@ -164,7 +164,7 @@ function injectMarksIntoSsml(ssml) {
   const raw = toGcpSsml(ssml.trim());
   const inner = sanitizeForGoogle(unwrapSpeak(raw));
   const tokens = inner.split(/(<[^>]+>)/g).filter(Boolean);
-  const wordRe = /([A-Za-z0-9]+(?:[’'\-][A-Za-z0-9]+)*)/g;
+  const wordRe = /([A-Za-z0-9]+(?:[’'-][A-Za-z0-9]+)*)/g;
   let idx = 0;
   const words = [];
 
