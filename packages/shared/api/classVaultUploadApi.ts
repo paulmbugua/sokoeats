@@ -1,5 +1,6 @@
 // packages/shared/api/classVaultUploadApi.ts
 import axios from 'axios';
+import { completeUpload, requestUploadPresign } from './uploadApi';
 
 export interface UploadResult {
   url: string;
@@ -80,7 +81,7 @@ function defaultMime(type: ClassVaultAssetType) {
 /**
  * Direct signed upload to Cloudinary for both Web and React Native.
  * - PDFs: resource_type 'raw'
- * - Videos/Previews: resource_type 'video'
+ * - Videos/Previews: R2 presigned PUT
  * - Thumbnails: resource_type 'image'
  */
 export const uploadClassVaultAsset = async (
@@ -91,6 +92,60 @@ export const uploadClassVaultAsset = async (
   onProgress?: (percent: number) => void,
   opts?: UploadOpts
 ): Promise<UploadResult> => {
+  const isR2Kind = type === 'video' || type === 'preview';
+  const isBrowserFile =
+    typeof window !== 'undefined' && typeof File !== 'undefined' && file instanceof File;
+
+  const nameGuess = (() => {
+    if (isBrowserFile) return (file as File).name || defaultName(type);
+    const rn = file as { uri: string; name?: string };
+    if (rn?.name) return rn.name;
+    return defaultName(type);
+  })();
+
+  const mimeGuess =
+    (isBrowserFile ? (file as File).type : (file as any).type) || defaultMime(type);
+
+  if (isR2Kind) {
+    const payload = isBrowserFile
+      ? { data: file as File, sizeBytes: (file as File).size }
+      : await (async () => {
+          const uri = (file as { uri: string }).uri;
+          const resp = await fetch(uri);
+          if (!resp.ok) throw new Error(`Failed to read file (${resp.status})`);
+          const blob = await resp.blob();
+          return { data: blob, sizeBytes: blob.size };
+        })();
+
+    const presign = await requestUploadPresign(backendUrl, token, type, {
+      filename: nameGuess,
+      contentType: mimeGuess,
+      sizeBytes: payload.sizeBytes,
+    });
+
+    if (presign.provider !== 'r2') {
+      throw new Error('R2 upload is not available. Please try again later.');
+    }
+
+    await axios.put(presign.uploadUrl, payload.data, {
+      headers: { ...(presign.headers || {}), 'Content-Type': mimeGuess },
+      onUploadProgress: (e) => {
+        if (!onProgress) return;
+        const pct = e.total ? Math.round((e.loaded * 100) / e.total) : 0;
+        onProgress(pct);
+      },
+    });
+
+    const { url } = await completeUpload(backendUrl, token, {
+      provider: 'r2',
+      bucket: presign.bucket,
+      objectPath: presign.objectPath,
+      kind: type,
+    });
+
+    return { url };
+  }
+
   const resourceType = resolveResourceType(type);
   const folder = opts?.folder ?? 'class_vault';
 
@@ -123,19 +178,6 @@ export const uploadClassVaultAsset = async (
   const cloudUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${sign.resourceType}/upload`;
 
   // 3) Build FormData
-  const isBrowserFile =
-    typeof window !== 'undefined' && typeof File !== 'undefined' && file instanceof File;
-
-  const nameGuess = (() => {
-    if (isBrowserFile) return (file as File).name || defaultName(type);
-    const rn = file as { uri: string; name?: string };
-    if (rn?.name) return rn.name;
-    return defaultName(type);
-  })();
-
-  const mimeGuess =
-    (isBrowserFile ? (file as File).type : (file as any).type) || defaultMime(type);
-
   const form = new FormData();
   form.append(
     'file',

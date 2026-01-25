@@ -26,6 +26,7 @@ export * from './languageLearningApi';
 export * from './orgApi';
 export * from './orgProApi';
 export * from './institutionAuth';
+export * from './uploadApi';
 export * from './uploadAsset';
 export * from './oerApi';
 export * from './orgInstructorsApi';

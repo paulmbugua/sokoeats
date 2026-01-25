@@ -36,6 +36,7 @@ import institutionAuthRoutes from './routes/institutionAuthRoutes.js';
 import aiRoutes from './routes/ai.js';
 import orgRoutes from './routes/orgRoutes.js';
 import cloudinaryRoutes from './routes/cloudinaryRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
 import earningsRoutes from './routes/earningsRoutes.js';
 import './cronJobs/scheduler.js';
 import paymentRoutes from './routes/paymentRoutes.js';
@@ -394,6 +395,7 @@ app.use('/api/certificates', certificatesLimiter, certificateRoutes);
 // ClassVault & media
 app.use('/api/classvault', classVaultRoutes);
 app.use('/api/cloudinary', cloudinaryRoutes);
+app.use(uploadRoutes);
 
 // Courses (non-AI) & enrollments
 app.use('/api/courses', courseRoutes);

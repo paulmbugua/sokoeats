@@ -6,6 +6,17 @@
 export type GalleryImage = File | string | null;
 export type LanguageMap = Record<string, boolean>;
 export type Role = 'student' | 'tutor';
+export type UploadKind = 'video' | 'preview' | 'avatar' | 'thumbnail' | 'pdf';
+export type PresignResponse = {
+  provider: 'r2';
+  bucket: string;
+  objectPath: string;
+  method: 'PUT';
+  uploadUrl: string;
+  headers: Record<string, string>;
+  expiresInSec: number;
+};
+export type CompleteResponse = { url: string };
 export type LibrarySection = 'purchasedClassVault' | 'createdClassVault' | 'aiCourses' | 'normalCourses';
 export type ResourceCategoryResult<T> = {
   items: T[];
