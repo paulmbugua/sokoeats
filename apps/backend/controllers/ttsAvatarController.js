@@ -4,6 +4,7 @@ import {
   synthesizeTtsLocalFirst,
   listGoogleVoices,
 } from '../services/googleTtsService.js';
+import { normalizeIncomingSsml } from '../../../packages/shared/utils/ssmlText.js';
 
 const NS = '[tts]';
 
@@ -66,6 +67,16 @@ export const speakRobot = async (req, res) => {
   let { ssml, text, voiceName, rate, pitch } = req.body || {};
 
   try {
+    if (ssml) {
+      const normalized = normalizeIncomingSsml(String(ssml));
+      if (normalized !== ssml) {
+        console.warn(NS, 'SSML normalized', {
+          beforeLen: String(ssml).length,
+          afterLen: normalized.length,
+        });
+      }
+      ssml = normalized;
+    }
     // Map Azure-ish names → Google Wavenet defaults
     function mapVoice(v) {
       const s = String(v || '').toLowerCase();

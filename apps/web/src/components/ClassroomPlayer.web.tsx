@@ -115,6 +115,51 @@ function buildSegmentsFromQueue(items: PlaybackQueueItem[]) {
     }));
 }
 
+function mergeExampleSentenceGroups(
+  groups: Array<{ indices: number[] }> = [],
+  words: Array<{ text?: string }> = []
+) {
+  if (!groups.length) return groups;
+  const exampleRe = /\b(for instance|for example|let's look at an example)\b/i;
+  const sentenceText = (group: { indices: number[] }) =>
+    group.indices
+      .map((wi) => words[wi]?.text)
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+  const merged: Array<{ indices: number[] }> = [];
+  let i = 0;
+  while (i < groups.length) {
+    const current = groups[i];
+    const currentText = sentenceText(current);
+    const next = groups[i + 1];
+    const nextText = next ? sentenceText(next) : '';
+
+    if (currentText && exampleRe.test(currentText) && next && !nextText) {
+      let j = i + 2;
+      let nextNonEmpty: { indices: number[] } | null = null;
+      while (j < groups.length) {
+        const text = sentenceText(groups[j]);
+        if (text) {
+          nextNonEmpty = groups[j];
+          break;
+        }
+        j++;
+      }
+      if (nextNonEmpty) {
+        merged.push({ ...current, indices: [...current.indices, ...nextNonEmpty.indices] });
+        i = j + 1;
+        continue;
+      }
+    }
+
+    merged.push(current);
+    i++;
+  }
+  return merged;
+}
+
 function LanguageQueuePlayer({
   playback,
   title,
@@ -294,6 +339,10 @@ function Container(props: Props) {
     setVolume,
   } = useWordSync();
   const words = wordsRaw ?? [];
+  const displaySentenceGroups = React.useMemo(
+    () => mergeExampleSentenceGroups(sentenceGroups || [], words),
+    [sentenceGroups, words]
+  );
 
   const hasLessons = Array.isArray(lessons) && lessons.length > 0;
   const hasJoined = typeof ssml === 'string' && ssml.trim().length > 0;
@@ -967,7 +1016,7 @@ const [showAudioDebug, setShowAudioDebug] = React.useState(false);
           {backdropOverride}
 
           <Narration
-            sentences={sentenceGroups || []}
+            sentences={displaySentenceGroups || []}
             words={words}
             currentIndex={currentIndex}
             lessonIdx={lessonIdx}
@@ -1193,11 +1242,12 @@ const [showAudioDebug, setShowAudioDebug] = React.useState(false);
         <TranscriptDrawer
           open={showTranscript}
           title={titleForUi}
-          lines={sentenceGroups || []}
+          lines={displaySentenceGroups || []}
           words={words}
           activeLine={React.useMemo(
-            () => (sentenceGroups || []).findIndex((s: any) => s.indices.includes(currentIndex)),
-            [sentenceGroups, currentIndex]
+            () =>
+              (displaySentenceGroups || []).findIndex((s: any) => s.indices.includes(currentIndex)),
+            [displaySentenceGroups, currentIndex]
           )}
           currentIndex={currentIndex}
           top={topH}

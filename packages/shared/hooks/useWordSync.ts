@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useRobotSpeaker } from './useRobotSpeaker';
 import type { WordTiming, SpeakResp } from '../api/ttsAvatarApi';
 import { bestAudioUrl } from '../api/ttsAvatarApi';
+import { decodeHtmlEntities, looksLikeEscapedSsml, ssmlToPlainText } from '../utils/ssmlText';
 
 /* ─────────────────────────────────────────────────────────
    Types / guards
@@ -98,24 +99,19 @@ function parseSimpleVttOrSrt(text: string): WordTiming[] {
 /* Normalization for crude fallbacks only (never touch precise timings) */
 function normalizeTextForFallback(input?: string): string {
   if (!input) return '';
-  return input
+  return decodeHtmlEntities(String(input))
+    .replace(/&nbsp;/g, ' ')
     .replace(/<\/?[^>]+>/g, ' ')
-    .replace(
-      /&nbsp;|&amp;|&lt;|&gt;/g,
-      (m) =>
-        ({
-          '&nbsp;': ' ',
-          '&amp;': '&',
-          '&lt;': '<',
-          '&gt;': '>',
-        })[m] as string
-    )
     .replace(/\s*\n+\s*/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function ssmlVisibleText(input?: string): string {
+  if (!input) return '';
+  if (/<\s*(speak|break|prosody|mark|p|s)\b/i.test(input) || looksLikeEscapedSsml(input)) {
+    return ssmlToPlainText(input);
+  }
   return normalizeTextForFallback(input);
 }
 
@@ -134,7 +130,24 @@ function decorateTimingsFromSource(timings: WordTiming[], sourceText?: string): 
   const visible = ssmlVisibleText(sourceText);
   if (!visible) return timings;
 
-  const tokens = visible.split(/\s+/).filter(Boolean);
+  const rawTokens = visible.split(/\s+/).filter(Boolean);
+  const ssmlWordRe = /^(?:lt|gt|break|prosody|speak|mark|bookmark|mstts)$/i;
+  const isDebrisToken = (token: string, prev?: string, next?: string) => {
+    const t = token.trim();
+    if (!t) return true;
+    if (/[<>]/.test(t)) return true;
+    if (/time\s*=\s*["']?\d+ms["']?/i.test(t)) return true;
+    if (ssmlWordRe.test(t)) {
+      const prevMatch = !!prev && ssmlWordRe.test(prev.trim());
+      const nextMatch = !!next && ssmlWordRe.test(next.trim());
+      if (prevMatch || nextMatch) return true;
+    }
+    return false;
+  };
+  const tokens = rawTokens.filter(
+    (tok, idx, arr) => !isDebrisToken(tok, arr[idx - 1], arr[idx + 1])
+  );
+  if (!tokens.length) return timings;
 
   const norm = (s: string) =>
     (s || '')
@@ -200,7 +213,7 @@ function decorateTimingsFromSource(timings: WordTiming[], sourceText?: string): 
 
 function approximateFromVisemes(visemes: Viseme[] | undefined, ssmlOrText?: string): WordTiming[] {
   if (!visemes?.length) return [];
-  const plain = normalizeTextForFallback(ssmlOrText);
+  const plain = ssmlVisibleText(ssmlOrText);
   const words = plain ? plain.split(/\s+/) : [];
   const lastTime = visemes[visemes.length - 1]?.time ?? 0;
   const dur = Math.max(0.5, lastTime + 0.25);
@@ -848,7 +861,7 @@ export function useWordSync() {
         const vs =
           (resp as any).visemes ||
           (typeof robot.getVisemes === 'function' ? robot.getVisemes() : []);
-        const plain = normalizeTextForFallback(ex.ssml ?? ex.text ?? ex.rawText ?? '');
+        const plain = ssmlVisibleText(ex.ssml ?? ex.text ?? ex.rawText ?? '');
         const wordCount = plain ? plain.split(/\s+/).filter(Boolean).length : 0;
 
         // If we already know audio duration, use it. Otherwise rough-estimate.
