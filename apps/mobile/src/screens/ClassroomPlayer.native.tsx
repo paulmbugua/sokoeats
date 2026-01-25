@@ -19,7 +19,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from '@react-navigation/native';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { useWordSync } from '@mytutorapp/shared/hooks/useWordSync';
+import { joinWordsForDisplay, useWordSync } from '@mytutorapp/shared/hooks/useWordSync';
 import type { PlaybackPayload, PlaybackQueueItem } from '@mytutorapp/shared/types';
 import { ssmlToPlainText } from '@mytutorapp/shared/utils/ssmlText';
 
@@ -1795,7 +1795,7 @@ function NarrationStage({
                   sIdx === visibleSentenceIndices[visibleSentenceIndices.length - 1] ? 0 : fontSize * 0.4,
               }}
             >
-              {s.indices.map((wi) => words[wi]?.text).filter(Boolean).join(' ')}
+              {joinWordsForDisplay(words, s.indices)}
             </Text>
           );
         })}
@@ -2057,7 +2057,7 @@ function TranscriptModal({
                   style={tw.style('px-2 py-1.5 rounded-xl mb-1', isActive ? 'bg-indigo-600/70' : 'bg-slate-800/80')}
                 >
                   <Text style={tw.style('text-[12px]', isActive ? 'text-white' : 'text-slate-100')}>
-                    {s.indices.map((wi) => words[wi]?.text).filter(Boolean).join(' ')}
+                    {joinWordsForDisplay(words, s.indices)}
                   </Text>
                 </Pressable>
               );

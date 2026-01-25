@@ -1,6 +1,7 @@
 // src/components/SideDrawers.tsx
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { buildWordDisplayTokens } from '@mytutorapp/shared/hooks/useWordSync';
 
 // Optional Markdown + LaTeX support (same pattern as LessonOverlay)
 let ReactMarkdown: any, remarkGfm: any, remarkMath: any, rehypeKatex: any;
@@ -205,19 +206,19 @@ export const TranscriptDrawer: React.FC<TranscriptDrawerProps> = ({
                   onClick={() => ln.indices.length && onSeekToWord(ln.indices[0])}
                   title="Seek to this line"
                 >
-                  {ln.indices.map((wi, j) => {
-                    const w = words[wi];
-                    const isActiveWord = wi === currentIndex;
+                  {buildWordDisplayTokens(words, ln.indices).map((tok) => {
+                    if (!tok.text) return null;
+                    const isActiveWord = tok.index === currentIndex;
                     return (
                       <motion.span
-                        key={wi}
+                        key={tok.index}
                         layout
                         initial={false}
                         animate={isActiveWord ? { scale: 1.08 } : { scale: 1 }}
                         transition={{ type: 'spring', stiffness: 500, damping: 30, mass: 0.3 }}
                         className={isActiveWord ? 'bg-white text-black px-1.5 rounded' : ''}
                       >
-                        {(j ? ' ' : '') + w.text}
+                        {tok.text}
                       </motion.span>
                     );
                   })}

@@ -3,7 +3,12 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useRobotSpeaker } from './useRobotSpeaker';
 import type { WordTiming, SpeakResp } from '../api/ttsAvatarApi';
 import { bestAudioUrl } from '../api/ttsAvatarApi';
-import { decodeHtmlEntities, looksLikeEscapedSsml, ssmlToPlainText } from '../utils/ssmlText';
+import {
+  decodeHtmlEntities,
+  looksLikeEscapedSsml,
+  normalizeIncomingSsml,
+  ssmlToPlainText,
+} from '../utils/ssmlText';
 
 /* ─────────────────────────────────────────────────────────
    Types / guards
@@ -19,7 +24,13 @@ type RobotSpeaker = {
   getVisemes?: () => Viseme[] | undefined;
 };
 
-type ExtendedSpeakResp = SpeakResp & { ssml?: string; text?: string; rawText?: string };
+type ExtendedSpeakResp = SpeakResp & {
+  ssml?: string;
+  text?: string;
+  rawText?: string;
+  displayText?: string;
+  rawDisplayText?: string;
+};
 type TtsMark = { i: number; t: number; w: string };
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
@@ -107,6 +118,306 @@ function normalizeTextForFallback(input?: string): string {
     .trim();
 }
 
+function extractDisplayTextFromSsml(input?: string): string {
+  if (!input) return '';
+  let out = normalizeIncomingSsml(String(input));
+  out = out.replace(/<\s*break\b[^>]*\/?>/gi, ' ');
+  out = out.replace(/<\s*mark\b[^>]*\/?>/gi, ' ');
+  out = out.replace(/<\s*bookmark\b[^>]*\/?>/gi, ' ');
+  out = out.replace(/<\s*\/p\s*>/gi, '\n');
+  out = out.replace(/<\s*p\b[^>]*>/gi, ' ');
+  out = out.replace(/<\s*\/s\s*>/gi, '\n');
+  out = out.replace(/<\s*s\b[^>]*>/gi, ' ');
+  out = out.replace(/<[^>]+>/g, ' ');
+  out = decodeHtmlEntities(out);
+  return out;
+}
+
+function normalizeDisplayText(input?: string): string {
+  if (!input) return '';
+  return String(input).replace(/[ \t]+\n/g, '\n').replace(/\s+/g, ' ').trim();
+}
+
+function tokenizeDisplayText(text: string): string[] {
+  const raw = normalizeDisplayText(text);
+  if (!raw) return [];
+  return raw.split(/\s+/).filter(Boolean);
+}
+
+const DIGIT_WORDS = new Map([
+  ['zero', '0'],
+  ['oh', '0'],
+  ['one', '1'],
+  ['two', '2'],
+  ['three', '3'],
+  ['four', '4'],
+  ['five', '5'],
+  ['six', '6'],
+  ['seven', '7'],
+  ['eight', '8'],
+  ['nine', '9'],
+]);
+const TENS_WORDS = new Map([
+  ['ten', 10],
+  ['eleven', 11],
+  ['twelve', 12],
+  ['thirteen', 13],
+  ['fourteen', 14],
+  ['fifteen', 15],
+  ['sixteen', 16],
+  ['seventeen', 17],
+  ['eighteen', 18],
+  ['nineteen', 19],
+  ['twenty', 20],
+  ['thirty', 30],
+  ['forty', 40],
+  ['fifty', 50],
+  ['sixty', 60],
+  ['seventy', 70],
+  ['eighty', 80],
+  ['ninety', 90],
+]);
+const ORDINAL_WORDS = new Map([
+  ['first', 1],
+  ['second', 2],
+  ['third', 3],
+  ['fourth', 4],
+  ['fifth', 5],
+  ['sixth', 6],
+  ['seventh', 7],
+  ['eighth', 8],
+  ['ninth', 9],
+  ['tenth', 10],
+  ['eleventh', 11],
+  ['twelfth', 12],
+  ['thirteenth', 13],
+  ['fourteenth', 14],
+  ['fifteenth', 15],
+  ['sixteenth', 16],
+  ['seventeenth', 17],
+  ['eighteenth', 18],
+  ['nineteenth', 19],
+  ['twentieth', 20],
+]);
+const EXPONENT_WORDS = new Set<string>([
+  ...Array.from(DIGIT_WORDS.keys()),
+  ...Array.from(TENS_WORDS.keys()),
+  ...Array.from(ORDINAL_WORDS.keys()),
+  'minus',
+  'and',
+]);
+const UNIT_TOKENS = new Set([
+  'mol',
+  'mole',
+  's',
+  'sec',
+  'second',
+  'm',
+  'meter',
+  'metre',
+  'kg',
+  'g',
+  'l',
+  'j',
+  'kj',
+  'pa',
+  'atm',
+  'hz',
+  'n',
+  'v',
+  'a',
+  'k',
+]);
+
+function parseWordDigit(token: string): string | null {
+  const lower = token.toLowerCase();
+  if (DIGIT_WORDS.has(lower)) return DIGIT_WORDS.get(lower) || null;
+  if (/^\d+$/.test(lower)) return lower;
+  return null;
+}
+
+function parseExponentDigit(token: string): string | null {
+  const lower = token.toLowerCase();
+  const digit = parseWordDigit(lower);
+  if (digit != null) return digit;
+  const ordinal = ORDINAL_WORDS.get(lower);
+  if (ordinal != null) return String(ordinal);
+  const tens = TENS_WORDS.get(lower);
+  if (tens != null) return String(tens);
+  return null;
+}
+
+function parseMantissaTokens(tokens: string[]): string | null {
+  if (!tokens.length) return null;
+  const normalized = tokens.map((t) => t.toLowerCase());
+  const pointIdx = normalized.indexOf('point');
+  if (pointIdx >= 0) {
+    const intPartTokens = normalized.slice(0, pointIdx);
+    const fracTokens = normalized.slice(pointIdx + 1);
+    if (!intPartTokens.length || !fracTokens.length) return null;
+    const intDigits = intPartTokens.map((t) => parseWordDigit(t)).filter(Boolean);
+    const fracDigits = fracTokens.map((t) => parseWordDigit(t)).filter(Boolean);
+    if (intDigits.length !== intPartTokens.length || fracDigits.length !== fracTokens.length) return null;
+    return `${intDigits.join('')}.${fracDigits.join('')}`;
+  }
+
+  if (normalized.every((t) => /^\d+$/.test(t))) {
+    if (normalized.length === 1) return normalized[0];
+    const [first, ...rest] = normalized;
+    return `${first}.${rest.join('')}`;
+  }
+
+  const digitTokens = normalized.map((t) => parseWordDigit(t)).filter(Boolean);
+  if (digitTokens.length === normalized.length) return digitTokens.join('');
+
+  return null;
+}
+
+function parseExponentTokens(tokens: string[]): string | null {
+  if (!tokens.length) return null;
+  const cleaned = tokens
+    .join(' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/-/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!cleaned.length) return null;
+  const prefix: string[] = [];
+  for (const tok of cleaned) {
+    if (EXPONENT_WORDS.has(tok) || /^\d+$/.test(tok)) prefix.push(tok);
+    else break;
+  }
+  if (!prefix.length) return null;
+  const digitCandidate = prefix.join('').match(/^\d+$/);
+  if (digitCandidate) return digitCandidate[0];
+
+  const hasLeadingMinus = prefix[0] === 'minus';
+  const tokensNoMinus = prefix.filter((t) => t !== 'minus' && t !== 'and');
+  if (!tokensNoMinus.length) return null;
+
+  const values = tokensNoMinus.map((t) =>
+    TENS_WORDS.get(t) ?? ORDINAL_WORDS.get(t) ?? (DIGIT_WORDS.get(t) ? Number(DIGIT_WORDS.get(t)) : NaN)
+  );
+
+  if (values.some((v) => Number.isNaN(v))) return null;
+
+  let total = 0;
+  if (values.length === 1) total = values[0];
+  else if (values.length === 2 && values[0] >= 20 && values[1] < 10) total = values[0] + values[1];
+  else total = values.reduce((sum, v) => sum + v, 0);
+
+  if (hasLeadingMinus && total > 0) total = -total;
+  return String(total);
+}
+
+function takeExponentTokens(tokens: string[]): string[] {
+  const out: string[] = [];
+  for (const tok of tokens) {
+    const lower = tok.toLowerCase();
+    if (EXPONENT_WORDS.has(lower) || /^\d+$/.test(lower)) out.push(tok);
+    else break;
+  }
+  return out;
+}
+
+function unwordifyScientificNotationForDisplay(input: string): string {
+  if (!input) return '';
+  const tokens = tokenizeDisplayText(input);
+  if (!tokens.length) return input;
+  const out: string[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const lower = tokens[i].toLowerCase();
+    if (!DIGIT_WORDS.has(lower) && !/^\d+$/.test(lower)) {
+      out.push(tokens[i]);
+      i++;
+      continue;
+    }
+
+    let j = i + 1;
+    while (j < tokens.length && tokens[j].toLowerCase() !== 'times') j++;
+    if (j >= tokens.length) {
+      out.push(tokens[i]);
+      i++;
+      continue;
+    }
+
+    const mantissa = parseMantissaTokens(tokens.slice(i, j));
+    if (!mantissa) {
+      out.push(tokens[i]);
+      i++;
+      continue;
+    }
+
+    const afterTimes = tokens.slice(j + 1);
+    if (afterTimes.length < 2) {
+      out.push(tokens[i]);
+      i++;
+      continue;
+    }
+
+    const tenIdx = afterTimes.findIndex((t) => t.toLowerCase() === 'ten');
+    if (tenIdx !== 0) {
+      out.push(tokens[i]);
+      i++;
+      continue;
+    }
+
+    const toIdx = afterTimes.findIndex((t) => t.toLowerCase() === 'to');
+    if (toIdx < 0 || toIdx > 2) {
+      out.push(tokens[i]);
+      i++;
+      continue;
+    }
+
+    const exponentTokens = takeExponentTokens(
+      afterTimes.slice(toIdx + 1).filter((t) => t.toLowerCase() !== 'the')
+    );
+    const exponent = parseExponentTokens(exponentTokens);
+    if (!exponent) {
+      out.push(tokens[i]);
+      i++;
+      continue;
+    }
+
+    out.push(`${mantissa} × 10^${exponent}`);
+    i = i + (j - i) + 1 + 1 + toIdx + 1 + exponentTokens.length;
+  }
+
+  return out.join(' ');
+}
+
+function unwordifyUnitExponentForDisplay(input: string): string {
+  if (!input) return '';
+  const tokens = tokenizeDisplayText(input);
+  if (!tokens.length) return input;
+  const out: string[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const unit = tokens[i];
+    const unitLower = unit.toLowerCase();
+    if (!UNIT_TOKENS.has(unitLower)) {
+      out.push(unit);
+      i++;
+      continue;
+    }
+    const next = tokens[i + 1]?.toLowerCase();
+    const expToken = tokens[i + 2];
+    const expDigit = expToken ? parseExponentDigit(expToken) : null;
+    if (next === 'minus' && expDigit) {
+      out.push(`${unit}−${expDigit}`);
+      i += 3;
+      continue;
+    }
+    out.push(unit);
+    i++;
+  }
+  return out.join(' ');
+}
+
 function ssmlVisibleText(input?: string): string {
   if (!input) return '';
   if (/<\s*(speak|break|prosody|mark|p|s)\b/i.test(input) || looksLikeEscapedSsml(input)) {
@@ -115,22 +426,64 @@ function ssmlVisibleText(input?: string): string {
   return normalizeTextForFallback(input);
 }
 
+const NO_SPACE_BEFORE_RE = /^[,.;:!?\)%\]\}…”’"']/u;
+const NO_SPACE_AFTER_RE = /[\(\[\{\u201c\u2018"'“‘]$/u;
+
+export function shouldInsertSpace(prevText: string, nextText: string): boolean {
+  if (!prevText) return false;
+  if (!nextText) return false;
+  if (NO_SPACE_BEFORE_RE.test(nextText)) return false;
+  if (NO_SPACE_AFTER_RE.test(prevText)) return false;
+  return true;
+}
+
+export function joinWordsForDisplay(
+  words: Array<{ text?: string }> = [],
+  indices?: number[]
+): string {
+  const list = indices ? indices.map((i) => words[i]).filter(Boolean) : words;
+  let out = '';
+  let prevText = '';
+  for (const item of list) {
+    const text = item?.text ?? '';
+    if (!text) continue;
+    if (shouldInsertSpace(prevText, text)) out += ' ';
+    out += text;
+    prevText = text;
+  }
+  return out.trim();
+}
+
+export function buildWordDisplayTokens(
+  words: Array<{ text?: string }> = [],
+  indices: number[]
+): Array<{ index: number; text: string; raw?: string }> {
+  const out: Array<{ index: number; text: string; raw?: string }> = [];
+  let prevText = '';
+  for (const idx of indices) {
+    const raw = words[idx]?.text ?? '';
+    if (!raw) {
+      out.push({ index: idx, text: '', raw });
+      continue;
+    }
+    const text = `${shouldInsertSpace(prevText, raw) ? ' ' : ''}${raw}`;
+    out.push({ index: idx, text, raw });
+    prevText = raw;
+  }
+  return out;
+}
+
 function decorateTimingsFromSource(timings: WordTiming[], sourceText?: string): WordTiming[] {
   if (!timings?.length || !sourceText) return timings;
 
-  // If timings already have punctuation/symbols, don't touch them.
-  const timingsHavePunc = timings.some((w) => {
-    const t = (w?.text || '').trim();
-    if (!t) return false;
-    if (/^[\p{P}\p{S}]+$/u.test(t)) return true;
-    return /[.!?…,:;(){}\[\]]/.test(t);
-  });
-  if (timingsHavePunc) return timings;
-
-  const visible = ssmlVisibleText(sourceText);
+  const visible = normalizeDisplayText(
+    unwordifyUnitExponentForDisplay(
+      unwordifyScientificNotationForDisplay(extractDisplayTextFromSsml(sourceText))
+    )
+  );
   if (!visible) return timings;
 
-  const rawTokens = visible.split(/\s+/).filter(Boolean);
+  const rawTokens = tokenizeDisplayText(visible);
   const ssmlWordRe = /^(?:lt|gt|break|prosody|speak|mark|bookmark|mstts)$/i;
   const isDebrisToken = (token: string, prev?: string, next?: string) => {
     const t = token.trim();
@@ -164,6 +517,22 @@ function decorateTimingsFromSource(timings: WordTiming[], sourceText?: string): 
     return { leading, core, trailing };
   };
 
+  const alignFormulaToken = (startIndex: number, tokenCore: string) => {
+    const target = norm(tokenCore);
+    if (!target) return null;
+    let combined = '';
+    let k = startIndex;
+    while (k < out.length && combined.length < target.length) {
+      const piece = norm(out[k]?.text || '');
+      if (!piece) break;
+      combined += piece;
+      if (combined === target) return k;
+      if (!target.startsWith(combined)) break;
+      k++;
+    }
+    return null;
+  };
+
   const out = timings.map((w) => ({ ...w }));
   let j = 0;
   let lastMatched = -1;
@@ -189,16 +558,28 @@ function decorateTimingsFromSource(timings: WordTiming[], sourceText?: string): 
       }
       if (isPuncOnly(tok)) break;
       const { core } = peel(tok);
-      if (norm(core) === base) break;
+      const coreNorm = norm(core);
+      if (coreNorm === base) break;
+      const formulaEnd = alignFormulaToken(i, core);
+      if (formulaEnd != null) break;
       j++;
     }
 
     const tok = tokens[j];
     if (tok && !isPuncOnly(tok)) {
       const { leading, core, trailing } = peel(tok);
+      const coreNorm = norm(core);
+      const formulaEnd = alignFormulaToken(i, core);
       out[i].text = `${leading}${core}${trailing}`;
       lastMatched = i;
       j++;
+
+      if (formulaEnd != null && formulaEnd > i) {
+        for (let k = i + 1; k <= formulaEnd; k++) {
+          out[k].text = '';
+        }
+        i = formulaEnd;
+      }
 
       // Immediately attach punctuation-only tokens after the word
       while (j < tokens.length && isPuncOnly(tokens[j])) {
@@ -208,7 +589,143 @@ function decorateTimingsFromSource(timings: WordTiming[], sourceText?: string): 
     }
   }
 
+  return applyUnitExponentToTimings(applyScientificNotationToTimings(out));
+}
+
+function applyScientificNotationToTimings(words: WordTiming[]): WordTiming[] {
+  if (!words?.length) return words;
+  const cleaned = words.map((w) =>
+    (w.text || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]/gu, '')
+  );
+
+  const out = words.map((w) => ({ ...w }));
+
+  let i = 0;
+  while (i < out.length) {
+    const token = cleaned[i];
+    if (!token) {
+      i++;
+      continue;
+    }
+
+    const isDigitStart = DIGIT_WORDS.has(token) || /^\d+$/.test(token);
+    if (!isDigitStart) {
+      i++;
+      continue;
+    }
+
+    let j = i + 1;
+    while (j < cleaned.length && cleaned[j] !== 'times') j++;
+    if (j >= cleaned.length) {
+      i++;
+      continue;
+    }
+
+    const mantissa = parseMantissaTokens(cleaned.slice(i, j));
+    if (!mantissa) {
+      i++;
+      continue;
+    }
+
+    const afterTimes = cleaned.slice(j + 1);
+    if (afterTimes[0] !== 'ten') {
+      i++;
+      continue;
+    }
+
+    const toIdx = afterTimes.findIndex((t) => t === 'to');
+    if (toIdx < 0 || toIdx > 2) {
+      i++;
+      continue;
+    }
+
+    const exponentTokens = takeExponentTokens(afterTimes.slice(toIdx + 1).filter((t) => t !== 'the'));
+    const exponent = parseExponentTokens(exponentTokens);
+    if (!exponent) {
+      i++;
+      continue;
+    }
+
+    const phraseLen = j - i + 1 + 1 + toIdx + 1 + exponentTokens.length;
+    out[i].text = `${mantissa} × 10^${exponent}`;
+    for (let k = i + 1; k < i + phraseLen && k < out.length; k++) {
+      out[k].text = '';
+    }
+    i += phraseLen;
+  }
+
   return out;
+}
+
+function applyUnitExponentToTimings(words: WordTiming[]): WordTiming[] {
+  if (!words?.length) return words;
+  const out = words.map((w) => ({ ...w }));
+  const peel = (t: string) => {
+    const leading = t.match(/^[\p{P}\p{S}]+/u)?.[0] ?? '';
+    const trailing = t.match(/[\p{P}\p{S}]+$/u)?.[0] ?? '';
+    const core = t.slice(leading.length, t.length - trailing.length);
+    return { leading, core, trailing };
+  };
+
+  let i = 0;
+  while (i < out.length - 2) {
+    const current = out[i]?.text || '';
+    const next = out[i + 1]?.text || '';
+    const nextNext = out[i + 2]?.text || '';
+    const { leading, core, trailing } = peel(current);
+    const unit = core.toLowerCase().replace(/[^\p{L}]/gu, '');
+    if (!UNIT_TOKENS.has(unit)) {
+      i++;
+      continue;
+    }
+    const nextCore = peel(next).core.toLowerCase().replace(/[^\p{L}]/gu, '');
+    if (nextCore !== 'minus') {
+      i++;
+      continue;
+    }
+    const expCore = peel(nextNext).core.toLowerCase();
+    const expDigit = parseExponentDigit(expCore);
+    if (!expDigit) {
+      i++;
+      continue;
+    }
+    out[i].text = `${leading}${core}−${expDigit}${trailing}`;
+    out[i + 1].text = '';
+    out[i + 2].text = '';
+    i += 3;
+  }
+
+  return out;
+}
+
+export function debugTranscriptSample(): string {
+  if (process.env.NODE_ENV === 'production') return '';
+  const sample =
+    "Welcome to our first lesson on stoichiometry, a fundamental concept in chemistry... containing approximately 6.02214076 × 10^23 mol−1 particles known as Avogadro's number.";
+  const wordified =
+    "Welcome to our first lesson on stoichiometry, a fundamental concept in chemistry... containing approximately 6 022 times ten to the twenty three mol minus one particles known as Avogadro's number.";
+  const displaySource = unwordifyUnitExponentForDisplay(
+    unwordifyScientificNotationForDisplay(wordified)
+  );
+  const fakeTimings = wordified
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((text, i) => ({ text, start: i * 0.12, end: i * 0.12 + 0.08 }));
+  const decorated = decorateTimingsFromSource(fakeTimings, displaySource);
+  const line = joinWordsForDisplay(decorated);
+  // eslint-disable-next-line no-console
+  console.log('[TranscriptSample]', line);
+  return line;
+}
+
+if (
+  process.env.NODE_ENV !== 'production' &&
+  typeof globalThis !== 'undefined' &&
+  (globalThis as any).window
+) {
+  (globalThis as any).__debugTranscriptSample = debugTranscriptSample;
 }
 
 function approximateFromVisemes(visemes: Viseme[] | undefined, ssmlOrText?: string): WordTiming[] {
@@ -255,16 +772,21 @@ export type SentenceTiming = {
 };
 function groupWordsBySentence(words: WordTiming[], maxChars: number): SentenceTiming[] {
   const sentences: SentenceTiming[] = [];
-  let buf = '',
-    start = 0;
+  let buf = '';
+  let start = 0;
+  let lastText = '';
   let idxs: number[] = [];
   const isEnd = (t: string) => /[\.!\?…]["']?$/.test(t);
   words.forEach((w, i) => {
-    const piece = (buf ? ' ' : '') + w.text;
+    const text = w.text || '';
     if (!buf) start = w.start;
-    buf += piece;
+    if (text) {
+      if (shouldInsertSpace(lastText, text)) buf += ' ';
+      buf += text;
+      lastText = text;
+    }
     idxs.push(i);
-    if (isEnd(w.text) || buf.length >= maxChars) {
+    if (text && (isEnd(text) || buf.length >= maxChars)) {
       sentences.push({
         text: buf.trim(),
         start,
@@ -273,6 +795,7 @@ function groupWordsBySentence(words: WordTiming[], maxChars: number): SentenceTi
       });
       buf = '';
       idxs = [];
+      lastText = '';
     }
   });
   if (buf && idxs.length) {
@@ -400,6 +923,7 @@ export function useWordSync() {
   const lastBaseRef = useRef<string>('');
   const lastRespRef = useRef<SpeakResp | null>(null);
   const lastTimingSigRef = useRef<string>('');
+  const displayTextRef = useRef<string>('');
 
   // duration derived from timing
   const durationFromWords = useMemo(
@@ -451,10 +975,31 @@ export function useWordSync() {
     setEndedTick((n) => n + 1);
   };
 
+  const captureDisplayText = (payload?: unknown) => {
+    if (!payload || typeof payload !== 'object') {
+      displayTextRef.current = '';
+      return;
+    }
+    const maybe = payload as { displayText?: string; rawDisplayText?: string };
+    const text =
+      (typeof maybe.displayText === 'string' && maybe.displayText) ||
+      (typeof maybe.rawDisplayText === 'string' && maybe.rawDisplayText) ||
+      '';
+    displayTextRef.current = text;
+  };
+
+  const stripDisplayText = (payload?: unknown) => {
+    if (!payload || typeof payload !== 'object') return payload;
+    const { displayText, rawDisplayText, ...rest } = payload as Record<string, unknown>;
+    return rest;
+  };
+
   const speak = useCallback(
     async (backendBase: string, ...rest: unknown[]) => {
       lastBaseRef.current = backendBase;
-      return robot.speak(backendBase, ...rest);
+      captureDisplayText(rest[0]);
+      const nextPayload = stripDisplayText(rest[0]);
+      return robot.speak(backendBase, nextPayload as any, rest[1], rest[2]);
     },
     [robot]
   );
@@ -462,7 +1007,9 @@ export function useWordSync() {
   const requestSpeech = useCallback(
     async (backendBase: string, ...rest: unknown[]) => {
       lastBaseRef.current = backendBase;
-      return robot.requestSpeech?.(backendBase, ...rest);
+      captureDisplayText(rest[0]);
+      const nextPayload = stripDisplayText(rest[0]);
+      return robot.requestSpeech?.(backendBase, nextPayload as any, rest[1], rest[2]);
     },
     [robot]
   );
@@ -781,6 +1328,7 @@ export function useWordSync() {
     microScaleRef.current = 1;
     anchorMediaRef.current = 0;
     anchorWordRef.current = 0;
+    displayTextRef.current = '';
 
     // Only clear if there's something to clear
     setWords((prev) => (prev.length ? [] : prev));
@@ -880,7 +1428,14 @@ export function useWordSync() {
       if (cancelled) return;
 
       const ex: ExtendedSpeakResp = resp as ExtendedSpeakResp;
-      const sourceText = ex.ssml ?? ex.text ?? ex.rawText ?? '';
+      const sourceText =
+        displayTextRef.current ||
+        ex.displayText ||
+        ex.rawDisplayText ||
+        ex.ssml ||
+        ex.text ||
+        ex.rawText ||
+        '';
 
       nextWords = decorateTimingsFromSource(nextWords, sourceText);
 
