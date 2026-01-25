@@ -1,4 +1,6 @@
 /* eslint-disable no-console */
+// packages/shared/utils/firebaseConfig.ts (or wherever this file lives)
+
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
@@ -28,18 +30,21 @@ const expoBucket =
   '';
 
 // Web (Vite) vars
-const apiKey = viteEnv?.VITE_FIREBASE_API_KEY ?? expoApiKey;
-const projectId = viteEnv?.VITE_FIREBASE_PROJECT_ID ?? expoProjectId ?? 'mytutorapp-d3c91';
-const appId = viteEnv?.VITE_FIREBASE_APP_ID ?? expoAppId;
-const messagingSenderId = viteEnv?.VITE_FIREBASE_MESSAGING_SENDER_ID ?? expoSenderId;
-const authDomain =
-  (viteEnv?.VITE_FIREBASE_AUTH_DOMAIN ?? expoAuthDomain ?? `${projectId}.firebaseapp.com`).trim();
-const storageBucket =
+const apiKey = (viteEnv?.VITE_FIREBASE_API_KEY ?? expoApiKey ?? '').trim();
+const projectId = (viteEnv?.VITE_FIREBASE_PROJECT_ID ?? expoProjectId ?? 'mytutorapp-d3c91').trim();
+const appId = (viteEnv?.VITE_FIREBASE_APP_ID ?? expoAppId ?? '').trim();
+const messagingSenderId = (viteEnv?.VITE_FIREBASE_MESSAGING_SENDER_ID ?? expoSenderId ?? '').trim();
+const authDomain = (
+  viteEnv?.VITE_FIREBASE_AUTH_DOMAIN ??
+  expoAuthDomain ??
+  `${projectId}.firebaseapp.com`
+).trim();
+const storageBucket = (
   viteEnv?.VITE_FIREBASE_STORAGE_BUCKET ??
   expoBucket ??
-  `${projectId}.appspot.com`;
+  `${projectId}.appspot.com`
+).trim();
 
-  // ✅ Add it here
 try {
   console.log(
     '[firebase] apiKey prefix',
@@ -52,7 +57,7 @@ try {
 if (!apiKey) {
   // Don’t hard-crash the whole app; log clearly.
   console.error(
-    '[firebase] Missing apiKey. Ensure EXPO_PUBLIC_FIREBASE_API_KEY is set for this EAS build profile.'
+    '[firebase] Missing apiKey. Ensure EXPO_PUBLIC_FIREBASE_API_KEY (mobile) or VITE_FIREBASE_API_KEY (web) is set.'
   );
 }
 
@@ -73,6 +78,19 @@ try {
   auth = getAuth(app);
 } catch (e) {
   console.error('[firebase] getAuth failed:', e);
+}
+
+/**
+ * ✅ Option A: keep `auth` nullable, but provide a safe non-null getter for callers.
+ * This removes TS2345 while still not hard-crashing the whole app at import time.
+ */
+export function getAuthOrThrow() {
+  if (!auth) {
+    throw new Error(
+      'Firebase Auth is not initialized. Check FIREBASE env vars (apiKey/authDomain/projectId/etc.).'
+    );
+  }
+  return auth;
 }
 
 // Web-only: ensure Firebase Auth persists across refreshes in the browser
@@ -99,7 +117,8 @@ export async function ensureBrowserPersistence() {
   }
 }
 
-
 export { auth };
+
+// Providers
 export const googleProvider = new GoogleAuthProvider();
 export const provider = googleProvider;

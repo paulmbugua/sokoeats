@@ -1,7 +1,7 @@
 // apps/web/src/components/GoogleRedirectHandler.tsx
 import React, { useEffect, useRef } from 'react';
-import { auth } from '@mytutorapp/shared/utils/firebaseConfig';
 import { getRedirectResult, onAuthStateChanged, getIdToken } from 'firebase/auth';
+import { getAuthOrThrow } from '@mytutorapp/shared/utils/firebaseConfig';
 
 type Props = {
   onSuccess: (idToken: string) => Promise<void>;
@@ -20,6 +20,20 @@ const GoogleRedirectHandler: React.FC<Props> = ({ onSuccess, onFailure }) => {
 
   useEffect(() => {
     let mounted = true;
+
+    // ✅ Avoid TS2345 by never using nullable auth
+    let auth: ReturnType<typeof getAuthOrThrow> | null = null;
+    try {
+      auth = getAuthOrThrow();
+    } catch (e) {
+      // If auth isn't available (bad config), don't crash the app
+      if (DEBUG) console.error('[GoogleRedirectHandler] getAuthOrThrow failed:', e);
+      onFailure(e instanceof Error ? e : undefined);
+      return () => {
+        mounted = false;
+      };
+    }
+
     const hadMarker = sessionStorage.getItem(REDIRECT_MARKER) === '1';
 
     const log = (...a: any[]) => {
@@ -55,30 +69,27 @@ const GoogleRedirectHandler: React.FC<Props> = ({ onSuccess, onFailure }) => {
       try {
         if (!hadMarker) return;
 
-        const result = await getRedirectResult(auth);
+        const result = await getRedirectResult(auth!);
         if (!mounted || doneRef.current) return;
 
         if (result?.user) {
-          // ✅ Get a Firebase ID token (what your backend expects)
-          const idToken = await getIdToken(result.user, /* forceRefresh */ true);
+          const idToken = await getIdToken(result.user, true);
           await complete(idToken);
           return;
         }
 
-        // No result yet — fall back to auth state listener below
         log('No redirect result; will rely on onAuthStateChanged');
       } catch (e: any) {
-        // Don’t fail immediately; let the auth state fallback try.
-        // Many transient cases end up succeeding via onAuthStateChanged.
+        // Don’t fail immediately; auth-state fallback often succeeds
         log('getRedirectResult error:', e);
       }
     })();
 
-    // Fallback: if redirect result isn't available yet, rely on auth state
-    const unsub = onAuthStateChanged(auth, async (u) => {
+    // Fallback: rely on auth state
+    const unsub = onAuthStateChanged(auth!, async (u) => {
       if (!mounted || !u || !hadMarker || doneRef.current) return;
       try {
-        const tok = await getIdToken(u, /* forceRefresh */ true);
+        const tok = await getIdToken(u, true);
         await complete(tok);
       } catch (e: any) {
         if (!mounted || doneRef.current) return;

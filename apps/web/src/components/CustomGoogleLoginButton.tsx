@@ -1,11 +1,18 @@
 // apps/web/src/components/CustomGoogleLoginButton.tsx
 import React, { useState } from 'react';
 import { FcGoogle } from 'react-icons/fc';
-import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
-import { auth, provider } from '@mytutorapp/shared/utils/firebaseConfig';
+import { signInWithPopup, signInWithRedirect, GoogleAuthProvider } from 'firebase/auth';
+import { getAuthOrThrow } from '@mytutorapp/shared/utils/firebaseConfig';
 
 const REDIRECT_MARKER = 'auth:googleRedirect';
 const BUSY_KEY = 'auth:busy';
+
+function buildGoogleProviderSelectAccount() {
+  const p = new GoogleAuthProvider();
+  // ✅ Always show account chooser (even if already signed-in in this browser)
+  p.setCustomParameters({ prompt: 'select_account' });
+  return p;
+}
 
 export default function CustomGoogleLoginButton({
   onSuccess,
@@ -17,6 +24,9 @@ export default function CustomGoogleLoginButton({
   const [loading, setLoading] = useState(false);
 
   const startRedirectFlow = async () => {
+    const auth = getAuthOrThrow();
+    const provider = buildGoogleProviderSelectAccount();
+
     sessionStorage.setItem(REDIRECT_MARKER, '1');
     sessionStorage.setItem(BUSY_KEY, '1');
     await signInWithRedirect(auth, provider);
@@ -25,11 +35,13 @@ export default function CustomGoogleLoginButton({
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
+      const auth = getAuthOrThrow();
+      const provider = buildGoogleProviderSelectAccount();
 
-      // 1) Try fast popup first
+      // 1) Try popup first
       try {
         const result = await signInWithPopup(auth, provider);
-        const idToken = await result.user.getIdToken(/* forceRefresh */ true);
+        const idToken = await result.user.getIdToken(true);
         await onSuccess(idToken);
         setLoading(false);
         return;
@@ -43,12 +55,12 @@ export default function CustomGoogleLoginButton({
           code === 'auth/operation-not-supported-in-this-environment' ||
           code === 'auth/operation-not-allowed';
 
-        // 2) Fallback to redirect if popup won't work
+        // 2) Fallback to redirect
         if (popupBlocked || unsupported) {
           await startRedirectFlow();
           return;
         }
-        throw e; // real error -> drop to catch
+        throw e;
       }
     } catch (err) {
       console.error('[google] signIn failed:', err);
