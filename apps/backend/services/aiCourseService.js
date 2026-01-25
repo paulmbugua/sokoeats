@@ -803,6 +803,43 @@ function innerProsody(ssml) {
   return (m ? m[1] : String(ssml)).trim();
 }
 
+function fixDanglingExampleLeadins(s) {
+  let out = String(s || '');
+
+  out = out.replace(
+    /(<p[^>]*>)([\s\S]*?)(\b(?:for example|for instance|e\.g\.|such as)\b|:)\s*(<\/p>)/gi,
+    (m, pOpen, body, badTail, pClose) => {
+      const cleanedBody = String(body).replace(/\s+$/, '');
+      const exampleSentence = 'For example, if x = 3 and y = 2x, then y = 6.';
+
+      const endsOk = /[.?!]\s*$/.test(cleanedBody);
+      return `${pOpen}${cleanedBody}${endsOk ? '' : '.'} ${exampleSentence}${pClose}`;
+    },
+  );
+
+  return out;
+}
+
+
+function ensureWorkedExampleInMarkdown(md, ssml) {
+  const has = /(^|\n)##\s*Worked example\b/i.test(md || '');
+  if (has) return md || '';
+
+  const plain = String(ssml || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const m = plain.match(
+    /(?:for example|for instance|e\.g\.|such as)\s*,?\s*([^.!?]{20,200})[.!?]/i,
+  );
+  if (!m) return md || '';
+
+  const ex = m[1].trim();
+  return `${(md || '').trim()}\n\n## Worked example\n> ${ex}\n`.trim();
+}
+
+
 export async function generateLessonSSMLService(
   {
     courseId,
@@ -1027,56 +1064,63 @@ export async function generateLessonSSMLService(
     };
   }
 
-  async function retryPlainSSML() {
-    const o = outlineSlice[0];
-    const absoluteIdx = safeStart;
-    const id = `L${absoluteIdx + 1}`;
-    const title = o?.title || `Lesson ${absoluteIdx + 1}`;
-    const kp = Array.isArray(o?.keyPoints) ? o.keyPoints.slice(0, 4) : [];
-    
+async function retryPlainSSML() {
+  const o = outlineSlice[0];
+  const absoluteIdx = safeStart;
+  const id = `L${absoluteIdx + 1}`;
+  const title = o?.title || `Lesson ${absoluteIdx + 1}`;
+  const kp = Array.isArray(o?.keyPoints) ? o.keyPoints.slice(0, 4) : [];
 
-    const system = `You are a master teacher. Return ONLY valid Azure SSML for a single narrated lesson (no JSON, no backticks).
+  const system = `You are a master teacher. Return ONLY valid Azure SSML for a single narrated lesson (no JSON, no backticks).
 Wrap exactly:
 <speak version="1.0" xml:lang="en-US" xmlns:mstts="http://www.w3.org/2001/mstts"><voice name="${voiceName}"><prosody rate="${pace.ratePct}" pitch="+0st"> ... </prosody></voice></speak>
 Rules:
- - (Keep paragraphs short)
- - (Natural, teacherly tone)
- - (Do not use literal labels like "Hook:", "Core concept:", "Micro-check:", or "Recap:")
- - Punctuation: Every sentence MUST end with ., ?, or !. Use commas for introductory phrases (e.g., "However," "For example,") and for nonessential clauses. Prefer the Oxford comma in 3+ item lists. Keep "e.g." and "i.e." with periods intact. No comma splices.`;
-    /* If you also want bookmarks on the plain path, add one more bullet above:
- - Insert <bookmark mark="L{ABS}.S{n}"/> at the start of EVERY <p>, where ABS is the absolute 1-based lesson number in the whole course.
-*/
+ - Keep paragraphs short.
+ - Natural, teacherly tone.
+ - Do not use literal labels like "Hook:", "Core concept:", "Micro-check:", or "Recap:".
+ - Punctuation: Every sentence MUST end with ., ?, or !. Use commas for introductory phrases (e.g., "However," "For example,") and for nonessential clauses. Prefer the Oxford comma in 3+ item lists. Keep "e.g." and "i.e." with periods intact. No comma splices.
+ - Examples (MANDATORY):
+   • Never end a sentence/paragraph with “for example”, “e.g.”, “such as”, or a trailing colon.
+   • If you introduce an example, include it immediately in the same paragraph (no dangling lead-in).
+Output requirements:
+ - Use <p> blocks only (no <s>, no <audio>, no unsupported tags).
+ - Avoid dangling lead-ins like "for example:" at the end of a paragraph; include the example right there.
+ - End every paragraph with a sentence-ending punctuation mark.`;
 
-    const user = `Course: ${courseTitle}
+  /* If you also want bookmarks on the plain path, add one more bullet above:
+   - Insert <bookmark mark="L{ABS}.S{n}"/> at the start of EVERY <p>, where ABS is the absolute 1-based lesson number in the whole course.
+  */
+
+  const user = `Course: ${courseTitle}
 Absolute lesson #: ${absoluteIdx + 1}
 Title: ${title}
 Goals: ${kp.join('; ') || 'Teach the core concept, give one tight example, call out a pitfall, run a micro-check, and recap.'}
-Write the narration.`;
+Write the narration with at least one concrete worked example (included immediately when introduced).`;
 
-    const content = await withTimeout(async (signal) => {
-      const r = await withGate(
-        'openai:ssml',
-        process.env.NODE_ENV === 'production' ? 1 : 2,
-        () =>
-          openai.chat.completions.create(
-            {
-              model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-              temperature: 0.35,
-              messages: [
-                { role: 'system', content: system },
-                { role: 'user', content: user },
-              ],
-              max_tokens: 1400,
-            },
-            { signal },
-          ),
-      );
-      return r.choices?.[0]?.message?.content || '';
-    }, OPENAI_REQUEST_TIMEOUT_MS);
+  const content = await withTimeout(async (signal) => {
+    const r = await withGate(
+      'openai:ssml',
+      process.env.NODE_ENV === 'production' ? 1 : 2,
+      () =>
+        openai.chat.completions.create(
+          {
+            model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+            temperature: 0.35,
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: user },
+            ],
+            max_tokens: 1400,
+          },
+          { signal },
+        ),
+    );
+    return r.choices?.[0]?.message?.content || '';
+  }, OPENAI_REQUEST_TIMEOUT_MS);
 
-    let ssml = content?.trim() || '';
-    if (!/^\s*<speak[\s>]/i.test(ssml)) {
-      ssml = `
+  let ssml = content?.trim() || '';
+  if (!/^\s*<speak[\s>]/i.test(ssml)) {
+    ssml = `
 <speak version="1.0" xml:lang="en-US" xmlns:mstts="http://www.w3.org/2001/mstts">
   <voice name="${voiceName}">
     <prosody rate="${pace.ratePct}" pitch="+0st">
@@ -1084,84 +1128,101 @@ ${ssml}
     </prosody>
   </voice>
 </speak>`.trim();
-    }
+  }
 
-    // Sanitize and then enforce length
-    ssml = sanitizeSsml(ssml, id, voiceName, {
+  // Sanitize and then enforce length
+  ssml = sanitizeSsml(ssml, id, voiceName, {
+    ratePct: pace.ratePct,
+    breakMs: pace.paraBreakMs,
+    sentencesPerPara: sppNum,
+    dedupe: false,
+  });
+  ssml = closeProsodyIfMissing(ssml);
+
+
+
+  ssml = fixDanglingExampleLeadins(ssml);
+
+  const minWords = wordsMin;
+  if (wordCountFromSsml(ssml) < Math.floor(minWords * 0.9)) {
+    const expandSystem = `You expand Azure SSML while keeping the same wrapper and voice.
+Return ONLY valid SSML. Append 4–6 new <p> blocks that deepen the worked example,
+add a brief pitfall explanation, a realistic micro-check, and a plain-English recap.
+Rules:
+ - Do not use literal labels like "Hook:" etc.
+ - Keep the same prosody rate (${pace.ratePct}).
+ - Examples (MANDATORY):
+   • Never end a sentence/paragraph with “for example”, “e.g.”, “such as”, or a trailing colon.
+   • If you introduce an example, include it immediately in the same paragraph (no dangling lead-in).`;
+
+    const expandUser = `Here is the current SSML for lesson ${id}. Expand it to ~${minWords} words total:\n\n${ssml}`;
+
+    const expanded = await withTimeout(async (signal) => {
+      const r = await withGate(
+        'openai:ssml:expand',
+        process.env.NODE_ENV === 'production' ? 1 : 2,
+        () =>
+          openai.chat.completions.create(
+            {
+              model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+              temperature: 0.3,
+              messages: [
+                { role: 'system', content: expandSystem },
+                { role: 'user', content: expandUser },
+              ],
+              max_tokens: 1400,
+            },
+            { signal },
+          ),
+      );
+      return r.choices?.[0]?.message?.content || ssml;
+    }, OPENAI_REQUEST_TIMEOUT_MS);
+
+    ssml = sanitizeSsml(expanded, id, voiceName, {
       ratePct: pace.ratePct,
       breakMs: pace.paraBreakMs,
       sentencesPerPara: sppNum,
       dedupe: false,
     });
     ssml = closeProsodyIfMissing(ssml);
+    ssml = fixDanglingExampleLeadins(ssml);
 
-    const minWords = wordsMin;
-    if (wordCountFromSsml(ssml) < Math.floor(minWords * 0.9)) {
-      const expandSystem = `You expand Azure SSML while keeping the same wrapper and voice.
-Return ONLY valid SSML. Append 4–6 new <p> blocks that deepen the worked example,
-add a brief pitfall explanation, a realistic micro-check, and a plain-English recap.
-Do not use literal labels like "Hook:" etc. Keep the same prosody rate (${pace.ratePct}).`;
-      const expandUser = `Here is the current SSML for lesson ${id}. Expand it to ~${minWords} words total:\n\n${ssml}`;
-
-      const expanded = await withTimeout(async (signal) => {
-        const r = await withGate(
-          'openai:ssml:expand',
-          process.env.NODE_ENV === 'production' ? 1 : 2,
-          () =>
-            openai.chat.completions.create(
-              {
-                model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-                temperature: 0.3,
-                messages: [
-                  { role: 'system', content: expandSystem },
-                  { role: 'user', content: expandUser },
-                ],
-                max_tokens: 1400,
-              },
-              { signal },
-            ),
-        );
-        return r.choices?.[0]?.message?.content || ssml;
-      }, OPENAI_REQUEST_TIMEOUT_MS);
-
-      ssml = sanitizeSsml(expanded, id, voiceName, {
-        ratePct: pace.ratePct,
-        breakMs: pace.paraBreakMs,
-        sentencesPerPara: sppNum,
-        dedupe: false,
-      });
-      ssml = closeProsodyIfMissing(ssml);
-    }
-
-    const syntheticSvg =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="160"><rect width="300" height="160" fill="#f6f7fb"/><circle cx="70" cy="80" r="28" fill="#c4d7ff"/><rect x="120" y="60" width="150" height="40" fill="#b8e3d0"/></svg>';
-    const estSeconds = Math.round(
-      (preset.estAudioMinSec + preset.estAudioMaxSec) / 2,
-    );
-    const lesson = {
-      id,
-      title,
-      goals: kp,
-      ssml: ssml.trim(),
-      estSeconds,
-      markdown: `## Illustrations\n![Simple schematic](data:image/svg+xml;utf8,${encodeURIComponent(syntheticSvg)})`,
-      formulas: [],
-      tables: [],
-      images: [
-        {
-          id: `${id}-im1`,
-          title: 'Simple schematic',
-          alt: 'Simple schematic',
-          url: `data:image/svg+xml;utf8,${encodeURIComponent(syntheticSvg)}`,
-          caption: 'Generated placeholder',
-          announceAtSentence: 1,
-        },
-      ],
-      
-      charts: [],
-    };
-    return { lessons: [lesson], joinedSsml: lesson.ssml };
   }
+
+  const syntheticSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="160"><rect width="300" height="160" fill="#f6f7fb"/><circle cx="70" cy="80" r="28" fill="#c4d7ff"/><rect x="120" y="60" width="150" height="40" fill="#b8e3d0"/></svg>';
+
+  const estSeconds = Math.round(
+    (preset.estAudioMinSec + preset.estAudioMaxSec) / 2,
+  );
+
+  const lesson = {
+    id,
+    title,
+    goals: kp,
+    ssml: ssml.trim(),
+    estSeconds,
+    markdown: `## Illustrations\n![Simple schematic](data:image/svg+xml;utf8,${encodeURIComponent(
+      syntheticSvg,
+    )})`,
+    formulas: [],
+    tables: [],
+    images: [
+      {
+        id: `${id}-im1`,
+        title: 'Simple schematic',
+        alt: 'Simple schematic',
+        url: `data:image/svg+xml;utf8,${encodeURIComponent(syntheticSvg)}`,
+        caption: 'Generated placeholder',
+        announceAtSentence: 1,
+      },
+    ],
+    charts: [],
+  };
+
+  return { lessons: [lesson], joinedSsml: lesson.ssml };
+}
+
 
   try {
     const outlineStr = outlineSlice
@@ -1196,6 +1257,11 @@ Guidelines for each lesson (write *naturally*, no section labels):
 - Structure as ${paraMin}–${paraMax} paragraphs. Each <p> has ${sentencesPerPara} short sentences (≤ 140 chars).
 - Insert <bookmark mark="L{ABS}.S{n}"/> at the start of EVERY <p>, where ABS is the absolute 1-based lesson number in the whole course.
 - Punctuation: end every sentence with ., ?, or !; use commas after introductory phrases and for nonessential clauses; prefer the Oxford comma in 3+ item lists; keep "e.g."/"i.e." properly punctuated; avoid comma splices.
+- Examples (MANDATORY):
+  • Never write a paragraph or sentence that ends with “for example”, “e.g.”, “such as”, or a trailing colon.
+  • When you introduce an example, include the actual example immediately in the same paragraph.
+  • Also include the same example in the lesson "markdown" under a "## Worked example" section (quote block).
+
 
 - Wrap Azure SSML exactly:
   <speak version="1.0" xml:lang="en-US" xmlns:mstts="http://www.w3.org/2001/mstts"><voice name="${voiceName}"><prosody rate="${pace.ratePct}" pitch="+0st"> ... </prosody></voice></speak>
@@ -1284,6 +1350,7 @@ ${ssml}
         dedupe: false,
       });
       ssml = closeProsodyIfMissing(ssml);
+      ssml = fixDanglingExampleLeadins(ssml);
 
       // Enforce preset length if short (≈90% of wordsMin)
       const minWords = wordsMin;
@@ -1291,7 +1358,11 @@ ${ssml}
         const expandSystem = `You expand Azure SSML while keeping the same wrapper and voice.
 Return ONLY valid SSML. Append 4–6 new <p> blocks that deepen the worked example,
 add a brief pitfall explanation, a realistic micro-check, and a plain-English recap.
-Do not use literal labels like "Hook:" etc. Keep the same prosody rate (${pace.ratePct}).`;
+Do not use literal labels like "Hook:" etc. Keep the same prosody rate (${pace.ratePct}).
+Examples (MANDATORY):
+ - Never end a sentence/paragraph with “for example”, “e.g.”, “such as”, or a trailing colon.
+ - If you introduce an example, include it immediately in the same paragraph (no dangling lead-in).`;
+
         const expandUser = `Here is the current SSML for lesson ${id}. Expand it to ~${minWords} words total:\n\n${ssml}`;
 
         const expanded = await withTimeout(async (signal) => {
@@ -1322,9 +1393,11 @@ Do not use literal labels like "Hook:" etc. Keep the same prosody rate (${pace.r
           dedupe: false,
         });
         ssml = closeProsodyIfMissing(ssml);
+        ssml = fixDanglingExampleLeadins(ssml);
       }
 
-      const markdown = typeof l?.markdown === 'string' ? l.markdown : '';
+      let markdown = typeof l?.markdown === 'string' ? l.markdown : '';
+      markdown = ensureWorkedExampleInMarkdown(markdown, ssml);
       const formulas = Array.isArray(l?.formulas) ? l.formulas : [];
       const tables = Array.isArray(l?.tables) ? l.tables : [];
       const charts = Array.isArray(l?.charts) ? l.charts : [];
@@ -1991,7 +2064,7 @@ const sigOf = (q) =>
 
 const uniqueAi = new Set(all.map(sigOf)).size;
 const rawCount = all.length;
-const toppedUp = Math.max(0, n - uniqueAi);
+const toppedUp = Math.max(0, n - all.length);
 const degraded = all.length === 0 || toppedUp > 0;
 
 // Clamp + timer decision (NOW normalized exists)

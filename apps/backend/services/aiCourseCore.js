@@ -882,6 +882,142 @@ export async function resolveCourseSize({
   return SIZE_PRESETS.mini;
 }
 
+function escapeXmlText(t) {
+  return String(t || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Prevent sentence splitting at common abbreviations (e.g. i.e. etc.)
+function protectAbbreviations(raw) {
+  const map = new Map([
+    ['e.g.', 'EG_ABBR'],
+    ['i.e.', 'IE_ABBR'],
+    ['etc.', 'ETC_ABBR'],
+    ['vs.', 'VS_ABBR'],
+    ['Mr.', 'MR_ABBR'],
+    ['Mrs.', 'MRS_ABBR'],
+    ['Dr.', 'DR_ABBR'],
+    ['Prof.', 'PROF_ABBR'],
+    ['Sr.', 'SR_ABBR'],
+    ['Jr.', 'JR_ABBR'],
+  ]);
+
+  let out = String(raw || '');
+  for (const [k, v] of map.entries()) {
+    // replace case-insensitively but preserve original casing is not needed for TTS
+    out = out.replace(new RegExp(k.replace('.', '\\.'), 'gi'), v);
+  }
+  return out;
+}
+
+function restoreAbbreviations(raw) {
+  return String(raw || '')
+    .replace(/EG_ABBR/g, 'e.g.')
+    .replace(/IE_ABBR/g, 'i.e.')
+    .replace(/ETC_ABBR/g, 'etc.')
+    .replace(/VS_ABBR/g, 'vs.')
+    .replace(/MR_ABBR/g, 'Mr.')
+    .replace(/MRS_ABBR/g, 'Mrs.')
+    .replace(/DR_ABBR/g, 'Dr.')
+    .replace(/PROF_ABBR/g, 'Prof.')
+    .replace(/SR_ABBR/g, 'Sr.')
+    .replace(/JR_ABBR/g, 'Jr.');
+}
+
+// If the model writes a lead-in like “For example:” as its own fragment,
+// merge it into the next sentence so it doesn't “pause then vanish”.
+function mergeDanglingLeadIns(items) {
+  const LEADIN_ONLY =
+    /^\s*(for example|for instance|e\.g\.|such as|consider|let's say|as an example)\s*[:,-]?\s*$/i;
+
+  const merged = [];
+  for (let i = 0; i < items.length; i++) {
+    const cur = items[i];
+    const next = items[i + 1];
+
+    // Extract text without leading bookmark for checking
+    const curText = String(cur?.s || '').replace(/^<bookmark[^>]*\/>\s*/i, '').trim();
+    const nextText = String(next?.s || '').replace(/^<bookmark[^>]*\/>\s*/i, '').trim();
+
+    if (next && LEADIN_ONLY.test(curText) && nextText) {
+      // Keep the current bookmark, append the next sentence content
+      const bm = String(cur.s).match(/^<bookmark[^>]*\/>/i)?.[0] || '';
+      merged.push({
+      ...cur,
+      hardP: Boolean(cur?.hardP || next?.hardP),
+      s: `${bm} ${curText.replace(/[:,-]\s*$/, '')}, ${nextText}`.trim(),
+    });
+
+      i++; // skip next
+      continue;
+    }
+
+    // Also merge if lead-in ends with ":" and next exists
+    if (next && /:\s*$/.test(curText) && nextText) {
+      const bm = String(cur.s).match(/^<bookmark[^>]*\/>/i)?.[0] || '';
+      merged.push({ ...cur, s: `${bm} ${curText.replace(/:\s*$/, '')}: ${nextText}`.trim() });
+      i++;
+      continue;
+    }
+
+    merged.push(cur);
+  }
+  return merged;
+}
+
+// Make symbols speak naturally (math + chemistry + programming-ish)
+function speakSpecials(text) {
+  let t = String(text || '');
+
+  // Normalize a few unicode math symbols
+  t = t
+    .replace(/≤/g, ' less than or equal to ')
+    .replace(/≥/g, ' greater than or equal to ')
+    .replace(/≠/g, ' not equal to ')
+    .replace(/≈/g, ' approximately equal to ')
+    .replace(/→/g, ' yields ')
+    .replace(/⇌/g, ' is in equilibrium with ')
+    .replace(/Δ/g, ' delta ');
+
+  // Basic operator words (be conservative so you don’t ruin normal sentences)
+  // Only when surrounded by spaces or digits/variables
+  t = t
+    .replace(/(\w)\s*\+\s*(\w)/g, '$1 plus $2')
+    .replace(/(\w)\s*-\s*(\w)/g, '$1 minus $2')
+    .replace(/(\w)\s*\*\s*(\w)/g, '$1 times $2')
+    .replace(/(\w)\s*\/\s*(\w)/g, '$1 divided by $2')
+    .replace(/(\w)\s*=\s*(\w)/g, '$1 equals $2');
+
+  // Exponents like x^2, 10^3
+  t = t.replace(/(\b\w+)\s*\^\s*2\b/g, '$1 squared');
+  t = t.replace(/(\b\w+)\s*\^\s*3\b/g, '$1 cubed');
+  t = t.replace(/(\b\w+)\s*\^\s*(\d+)\b/g, '$1 to the power of $2');
+
+  // Chemistry: wrap compact formulas like H2SO4, NaCl, CO2 in characters mode
+  // Heuristic: 2+ element tokens with digits, no spaces, not too long
+  t = t.replace(
+    /\b([A-Z][a-z]?\d*){2,}\b/g,
+    (m) => `<say-as interpret-as="characters">${m}</say-as>`,
+  );
+
+  // Common units (nice-to-have)
+  t = t
+    .replace(/\b°C\b/g, ' degrees Celsius ')
+    .replace(/\bmol\b/gi, ' mole ')
+    .replace(/\bL\b/g, ' liter ');
+
+  // Programming-ish: keep underscores readable
+  t = t.replace(/\b([a-zA-Z]+_[a-zA-Z_]+)\b/g, (m) => {
+    const spoken = m.replace(/_/g, ' underscore ');
+    return `<say-as interpret-as="characters">${spoken}</say-as>`;
+  });
+
+  return t.replace(/\s{2,}/g, ' ').trim();
+}
+
+
 /* ─────────────────────────────────────────────────────────
  * SSML sanitizer
  * ───────────────────────────────────────────────────────── */
@@ -893,8 +1029,7 @@ export function sanitizeSsml(
 ) {
   if (!ssml) return ssml;
 
-  const TRANSITION_RE =
-    /^(?:First,|Next,|Now,|For example,|However,|Then,|Finally,|In short,)\s*/i;
+  const TRANSITION_RE = /^(?:First,|Next,|Now,|However,|Then,|Finally,|In short,)\s*/i;
   const normQuotes = (t) => t.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
   const keepOuterP = (t) =>
     t
@@ -1031,22 +1166,38 @@ export function sanitizeSsml(
   }
 
   // 1) Strip outer wrappers but keep <p> markers, normalize quotes
-  const inner = normQuotes(keepOuterP(ssml));
+  const inner = protectAbbreviations(normQuotes(keepOuterP(ssml)));
+
 
   // 2) Into sentences
   let pieces = splitIntoSentencesPreservingP(inner).map(({ s, hardP }) => {
+
     const out = ensureBookmark(s);
     const bm = out.match(/^<bookmark[^>]*\/>/i)?.[0] || '';
     const afterBm = out.replace(/^<bookmark[^>]*\/>\s*/i, '');
-    const cleaned = relabel(afterBm.replace(TRANSITION_RE, ''))
-      .replace(/\s+([.,!?;:])/g, '$1')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    const spoken = ensureOxfordComma(
-      ensureIntroComma(sayBracketsToOf(cleaned)),
-    );
-    return { s: `${bm} ${spoken}`.trim(), hardP };
+    let cleaned = relabel(afterBm.replace(TRANSITION_RE, ''))
+  .replace(/\s+([.,!?;:])/g, '$1')
+  .replace(/\s{2,}/g, ' ')
+  .trim();
+
+// ✅ do text-only transforms first
+cleaned = sayBracketsToOf(cleaned);
+cleaned = ensureIntroComma(cleaned);
+cleaned = ensureOxfordComma(cleaned);
+
+// ✅ restore abbreviations before final SSML shaping
+cleaned = restoreAbbreviations(cleaned);
+
+// ✅ escape raw text, then add SSML tags (don't escape after this)
+cleaned = escapeXmlText(cleaned);
+cleaned = speakSpecials(cleaned);
+
+return { s: `${bm} ${cleaned}`.trim(), hardP };
+
   });
+
+  pieces = mergeDanglingLeadIns(pieces);
+
   // 3) Optional *gentle* dedupe (exact duplicates only)
   if (opts?.dedupe) {
     const seen = new Set();
