@@ -9,6 +9,8 @@ import {
   BookOpenCheck,
   Video,
   BadgeCheck,
+  Building2,
+  BadgePercent,
 } from 'lucide-react';
 
 const navItem =
@@ -67,6 +69,22 @@ export default function Sidebar() {
         >
           <FileText className="w-5 h-5" />
           <p className="hidden md:block">Receipts</p>
+        </NavLink>
+
+        <NavLink
+          to="/orgs"
+          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
+        >
+          <Building2 className="w-5 h-5" />
+          <p className="hidden md:block">Institutions</p>
+        </NavLink>
+
+        <NavLink
+          to="/org-pricing"
+          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
+        >
+          <BadgePercent className="w-5 h-5" />
+          <p className="hidden md:block">Org Pricing</p>
         </NavLink>
 
         <NavLink to="/users" className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}>

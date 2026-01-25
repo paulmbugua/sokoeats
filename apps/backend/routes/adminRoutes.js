@@ -27,6 +27,14 @@ import {
 } from '../controllers/adminController.js';
 
 import { adminLogin } from '../controllers/userController.js';
+import {
+  adminGetOrgPricing,
+  adminListOrgs,
+  adminOrgSubscriptions,
+  adminUpdateOrgPricing,
+  adminUpsertOrgPricing,
+  adminUpgradeOrg,
+} from '../controllers/adminOrgController.js';
 
 const adminRouter = Router();
 
@@ -141,5 +149,14 @@ adminRouter.post('/users/:id/reset-password', (req, res, next) =>
 adminRouter.post('/users/:id/impersonate', (req, res, next) =>
   callIfFn(adminImpersonateUser, req, res, next),
 );
+
+/* -------- Orgs & Org Pricing -------- */
+adminRouter.get('/orgs', adminListOrgs);
+adminRouter.get('/orgs/:orgId/subscriptions', adminOrgSubscriptions);
+adminRouter.post('/orgs/:orgId/upgrade', adminUpgradeOrg);
+
+adminRouter.get('/org-pricing', adminGetOrgPricing);
+adminRouter.post('/org-pricing', adminUpsertOrgPricing);
+adminRouter.put('/org-pricing/:id', adminUpdateOrgPricing);
 
 export default adminRouter;

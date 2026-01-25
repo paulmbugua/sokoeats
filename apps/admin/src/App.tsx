@@ -18,6 +18,8 @@ import Users from './pages/Users';
 import AdminLogin from './pages/AdminLogin';
 import OpenStaxIngest from './pages/OpenStaxIngest';
 import Certifications from './pages/Certifications';
+import OrgPricingManage from './pages/OrgPricingManage';
+import OrgSubscriptionsManage from './pages/OrgSubscriptionsManage';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { ThemeProvider } from '@mytutorapp/shared/hooks';
@@ -172,6 +174,8 @@ const App: React.FC = () => {
           <Route path="/packages" element={<PackagesManage />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/receipts" element={<Receipts />} />
+          <Route path="/orgs" element={<OrgSubscriptionsManage />} />
+          <Route path="/org-pricing" element={<OrgPricingManage />} />
           <Route path="/users" element={<Users />} />
           <Route path="/certifications" element={<Certifications />} />
           <Route path="/oer/youtube-ingest" element={<YouTubeIngest />} />
