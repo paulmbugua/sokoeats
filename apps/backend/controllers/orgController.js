@@ -7,6 +7,7 @@ import { ensureOrgForUser } from '../services/orgBootstrap.js';
 import { enqueueWebhook } from '../helpers/webhooks.js';
 import PDFDocument from 'pdfkit';
 import { resolveInstructorFeeTable } from '../utils/feeAccessTable.js';
+import { notifyEvent } from '../services/notificationEvents.js';
 // Helpers
 const nowPlusSec = (sec) => new Date(Date.now() + sec * 1000);
 
@@ -378,6 +379,30 @@ export async function createAssignment(req, res) {
       created_at: row?.created_at,
       updated_at: row?.updated_at,
     });
+
+    if (classLabelNorm) {
+      const learnerRows = await pool.query(
+        `select user_id
+           from org_learner_profiles
+          where org_id = $1 and class_label = $2 and user_id is not null`,
+        [orgId, classLabelNorm],
+      );
+      const learnerUserIds = learnerRows.rows
+        .map((r) => r.user_id)
+        .filter(Boolean);
+
+      void notifyEvent(
+        'ORG_ASSIGNMENT_SHARED',
+        learnerUserIds,
+        {
+          assignmentId: row?.id,
+          courseId,
+          title: row?.title_override || 'New assignment',
+        },
+      ).catch((e) =>
+        console.warn('[push] org assignment notify failed', e?.message || e),
+      );
+    }
 
     return res.json(row);
   } catch (e) {

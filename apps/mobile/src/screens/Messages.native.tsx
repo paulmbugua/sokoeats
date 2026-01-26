@@ -33,7 +33,7 @@ import chat from '../../assets/chat.png';
 import type { ChatMessage as SharedChatMessage } from '@mytutorapp/shared/types/ShopContextTypes';
 import type { MainStackParamList } from '../navigation/types';
 import { getTutorProfile } from '@mytutorapp/shared/api/profileDetailApi';
-import { useShopContext } from '@mytutorapp/shared/context';
+import { useChatContext, useShopContext } from '@mytutorapp/shared/context';
 
 interface RouteParams {
   studentId?: string;
@@ -137,6 +137,7 @@ useEffect(() => {
   const appStateRef = useRef(AppState.currentState);
   const seenMsgIdsRef = useRef<Set<string>>(new Set());
     const { backendUrl, token } = useShopContext();
+    const { setChatPresence } = useChatContext();
 
   const [creatingSession, setCreatingSession] = useState(false);
 
@@ -234,6 +235,21 @@ useEffect(() => {
   useEffect(() => {
     if (activeChat) messageInputRef.current?.focus();
   }, [activeChat]);
+
+  useEffect(() => {
+    if (!setChatPresence) return;
+    const conversationId = activeChat?.conversationId
+      ? String(activeChat.conversationId)
+      : null;
+    if (conversationId && isFocused) {
+      setChatPresence(conversationId, true);
+      return () => setChatPresence(conversationId, false);
+    }
+    if (conversationId) {
+      setChatPresence(conversationId, false);
+    }
+    return undefined;
+  }, [activeChat?.conversationId, isFocused, setChatPresence]);
 
   // Scroll handler that mirrors web
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {

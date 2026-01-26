@@ -107,4 +107,6 @@ export interface ChatContextValue {
     conversationId: string | null,
     recipientId: string | null
   ) => void;
+  setAppPresence: (active: boolean) => void;
+  setChatPresence: (conversationId: string | null, active: boolean) => void;
 }

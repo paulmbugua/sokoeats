@@ -19,6 +19,7 @@ import {
   renderInstitutionFeeStatementPdf,
 } from '../services/orgFeePdfService.js';
 import { resolveInstructorFeeTable } from '../utils/feeAccessTable.js';
+import { notifyEvent } from '../services/notificationEvents.js';
 
 
 function normalizeCurrency(v, fallback = 'USD') {
@@ -732,6 +733,18 @@ async function tryAutoPostInbound(client, orgId, inboundRow, req) {
     [locked.id, learnerRef, paymentId],
   );
 
+  void notifyEvent(
+    'ORG_FEE_UPDATED',
+    String(learnerRef),
+    {
+      amountCents: Number(locked.amount_cents || 0),
+      currency: locked.currency || 'KES',
+      orgId,
+    },
+  ).catch((e) =>
+    console.warn('[push] inbound fee notify failed', e?.message || e),
+  );
+
   return { ok: true, paymentId, learnerRef };
 }
 
@@ -842,6 +855,18 @@ async function postInboundToLearner(
             updated_at=now()
       where id=$1`,
     [inboundRow.id, String(learnerRef), paymentId],
+  );
+
+  void notifyEvent(
+    'ORG_FEE_UPDATED',
+    String(learnerRef),
+    {
+      amountCents: Number(inboundRow.amount_cents || 0),
+      currency: inboundRow.currency || 'KES',
+      orgId,
+    },
+  ).catch((e) =>
+    console.warn('[push] manual fee notify failed', e?.message || e),
   );
 
   return { ok: true, paymentId, learnerRef };
@@ -1522,6 +1547,18 @@ export async function recordFeePayment(req, res) {
         value.charge_id || null,
         value.metadata || {},
       ],
+    );
+
+    void notifyEvent(
+      'ORG_FEE_UPDATED',
+      String(rows[0]?.learner_id),
+      {
+        amountCents: rows[0]?.amount_cents,
+        currency: rows[0]?.currency,
+        orgId,
+      },
+    ).catch((e) =>
+      console.warn('[push] fee payment notify failed', e?.message || e),
     );
 
     return res.status(201).json(rows[0]);
@@ -2774,4 +2811,3 @@ export async function getMyFeeStatementPdf(req, res) {
     return res.status(500).json({ message: 'Unable to render statement PDF' });
   }
 }
-

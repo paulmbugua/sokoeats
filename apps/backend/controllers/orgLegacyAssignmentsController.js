@@ -3,6 +3,7 @@ import 'dotenv/config';
 import pool from '../config/db.js';
 import { requireOrgTier } from '../utils/orgTierGuard.js';
 import * as crypto from 'crypto';
+import { notifyEvent } from '../services/notificationEvents.js';
 
 /**
  * POST /api/orgs/:orgId/assignments/legacy
@@ -173,6 +174,29 @@ export async function createOrgLegacyAssignment(req, res) {
       created_by: assignment?.created_by,
       created_at: assignment?.created_at,
     });
+
+    if (classLabel) {
+      const learnerRows = await pool.query(
+        `select user_id
+           from org_learner_profiles
+          where org_id = $1 and class_label = $2 and user_id is not null`,
+        [orgId, classLabel],
+      );
+      const learnerUserIds = learnerRows.rows
+        .map((r) => r.user_id)
+        .filter(Boolean);
+
+      void notifyEvent(
+        'ORG_ASSIGNMENT_SHARED',
+        learnerUserIds,
+        {
+          assignmentId: assignment?.id,
+          title: assignment?.title || 'New assignment',
+        },
+      ).catch((e) =>
+        console.warn('[push] org legacy assignment notify failed', e?.message || e),
+      );
+    }
 
     return res.status(201).json({ ok: true, assignment });
   } catch (err) {
@@ -1503,4 +1527,3 @@ export async function getOrgInstructorAiSubmission(req, res) {
 // - Create instructors A and B; ensure each only sees submissions for their own assignments.
 // - Verify class_label and admission filters narrow the result set correctly.
 // - Confirm pagination (limit/offset) returns stable totals when page size changes.
-

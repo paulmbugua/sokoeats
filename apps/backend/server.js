@@ -64,7 +64,7 @@ import orgExamsRoutes from './routes/orgExamsRoutes.js';
 import paystackRoutes from './routes/paystackRoutes.js';
 import { handlePaystackWebhook } from './controllers/paystackController.js';
 import pushRoutes from './routes/pushRoutes.js';
-import { notifyNewMessage } from './services/pushService.js';
+import { notifyEvent } from './services/notificationEvents.js';
 import messagesRoutes from './routes/messagesRoutes.js';
 import orgFeesRoutes from './routes/orgFeesRoutes.js';
 import orgProToolsRoutes from './routes/orgProToolsRoutes.js';
@@ -74,7 +74,12 @@ import {
   resolveStudentTutor,
   syncConversationLock,
 } from './services/chatGatingService.js';
-import { setSocketServer } from './services/socketService.js';
+import {
+  setSocketServer,
+  setAppPresence,
+  setChatPresence,
+  clearPresence,
+} from './services/socketService.js';
 
 
 // Middleware
@@ -468,12 +473,27 @@ io.on('connection', (socket) => {
   socket.on('joinRoom', (profileId) => {
     if (profileId) {
       socket.join(String(profileId));
+      socket.data.profileId = String(profileId);
       console.log(
         `Socket ${socket.id} joined room for profile ID: ${profileId}`,
       );
     } else {
       console.error('joinRoom: Missing or invalid profileId');
     }
+  });
+
+  socket.on('presence:app', (payload) => {
+    const profileId = payload?.profileId;
+    if (!profileId) return;
+    socket.data.profileId = String(profileId);
+    setAppPresence(profileId, Boolean(payload?.active));
+  });
+
+  socket.on('presence:chat', (payload) => {
+    const profileId = payload?.profileId;
+    if (!profileId) return;
+    socket.data.profileId = String(profileId);
+    setChatPresence(profileId, payload?.conversationId, Boolean(payload?.active));
   });
 
   const getProfileById = async (profileId) => {
@@ -585,16 +605,19 @@ io.on('connection', (socket) => {
       const senderNameDb = senderNameRes.rows[0]?.name || 'New message';
 
       // Don’t block socket response if Expo is slow
-      void notifyNewMessage({
-        recipientProfileId: recipientProfileId,
-        title: senderNameDb,
-        body: String(content || 'You have a new message').slice(0, 140),
-        data: {
-          screen: 'Messages',
-          params: { studentId: String(senderProfileId) },
+      void notifyEvent(
+        'CHAT_MESSAGE',
+        String(recipientProfileId),
+        {
+          senderName: senderNameDb,
+          preview: String(content || 'You have a new message').slice(0, 140),
+          senderProfileId,
+          recipientProfileId,
+          conversationId,
         },
-      }).catch((e) =>
-        console.warn('[push] notifyNewMessage failed', e?.message || e),
+        { recipientProfileId: String(recipientProfileId) },
+      ).catch((e) =>
+        console.warn('[push] chat notify failed', e?.message || e),
       );
 
       callback?.({ status: 'success', message: 'Message sent successfully' });
@@ -750,6 +773,27 @@ io.on('connection', (socket) => {
         },
       });
 
+      const senderNameRes = await pool.query(
+        'SELECT name FROM profiles WHERE id = $1',
+        [senderProfileId],
+      );
+      const senderNameDb = senderNameRes.rows[0]?.name || 'Student';
+
+      void notifyEvent(
+        'INQUIRY_SENT',
+        String(resolvedTutorProfileId),
+        {
+          studentProfileId: senderProfileId,
+          studentName: senderNameDb,
+          topic,
+          level,
+          conversationId,
+        },
+        { recipientProfileId: String(resolvedTutorProfileId) },
+      ).catch((e) =>
+        console.warn('[push] inquiry notify failed', e?.message || e),
+      );
+
       callback?.({ status: 'success', conversationId });
     } catch (error) {
       console.error('Error sending prebooking inquiry:', error);
@@ -762,6 +806,9 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
+    if (socket.data?.profileId) {
+      clearPresence(socket.data.profileId);
+    }
   });
 });
 

@@ -17,6 +17,7 @@ import {
   messageSendSchema,
 } from '../validators/orgEngagementValidators.js';
 import { renderAnnouncementPdf } from '../services/orgAnnouncementPdfService.js';
+import { notifyEvent } from '../services/notificationEvents.js';
 
 const normalizeOrgId = (req) => req.params?.orgId || req.body?.org_id || req.query?.org_id;
 
@@ -462,13 +463,14 @@ export async function upsertAttendanceEntries(req, res) {
   try {
     // ensure session exists for org
     const session = await pool.query(
-      `select id
+      `select id, session_date, class_label, period_label
          from org_attendance_sessions
         where org_id=$1 and id=$2
         limit 1`,
       [orgId, sessionId],
     );
     if (!session.rows.length) return res.status(404).json({ message: 'Session not found' });
+    const sessionRow = session.rows[0];
 
     const entries = Array.isArray(value?.entries) ? value.entries : [];
 
@@ -535,6 +537,36 @@ export async function upsertAttendanceEntries(req, res) {
       }
 
       await client.query('COMMIT');
+
+      const absentLearnerIds = normalized
+        .filter((entry) => entry.status === 'absent')
+        .map((entry) => entry.learner_id);
+      if (absentLearnerIds.length) {
+        const learnerUsers = await pool.query(
+          `select user_id
+             from org_learner_profiles
+            where org_id = $1 and id = any($2::uuid[]) and user_id is not null`,
+          [orgId, absentLearnerIds],
+        );
+        const sessionLabelParts = [];
+        if (sessionRow?.class_label) sessionLabelParts.push(String(sessionRow.class_label));
+        if (sessionRow?.session_date) {
+          sessionLabelParts.push(new Date(sessionRow.session_date).toDateString());
+        }
+        if (sessionRow?.period_label) sessionLabelParts.push(String(sessionRow.period_label));
+
+        void notifyEvent(
+          'ORG_ATTENDANCE_ABSENT',
+          learnerUsers.rows.map((r) => r.user_id).filter(Boolean),
+          {
+            sessionId,
+            sessionLabel: sessionLabelParts.join(' • ') || undefined,
+          },
+        ).catch((e) =>
+          console.warn('[push] attendance notify failed', e?.message || e),
+        );
+      }
+
       return res.json({ ok: true });
     } catch (err) {
       await client.query('ROLLBACK');

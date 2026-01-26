@@ -1,5 +1,5 @@
 import pool from '../config/db.js';
-import { notifyNewMessage } from '../services/pushService.js';
+import { notifyEvent } from '../services/notificationEvents.js';
 import {
   canChatUnlocked,
   getRoles,
@@ -131,18 +131,19 @@ export const sendMessage = async (req, res) => {
       [conversationId],
     );
 
-    // ✅ SEND PUSH HERE (after message is saved)
-    // Don’t block the response if Expo is slow:
-    void notifyNewMessage({
-      recipientProfileId: String(recipientProfileId),
-      title: senderName,
-      body: String(content).slice(0, 140),
-      data: {
-        screen: 'Messages',
-        params: { studentId: String(senderProfileId) },
-        conversationId: String(conversationId),
+    // ✅ PUSH (chat throttling + presence aware)
+    void notifyEvent(
+      'CHAT_MESSAGE',
+      String(recipientProfileId),
+      {
+        senderName,
+        preview: String(content).slice(0, 140),
+        senderProfileId,
+        recipientProfileId,
+        conversationId,
       },
-    }).catch((e) => console.error('[push] notifyNewMessage failed', e));
+      { recipientProfileId: String(recipientProfileId) },
+    ).catch((e) => console.error('[push] chat notify failed', e));
 
     res.status(201).json({
       message: 'Message sent successfully',
@@ -167,13 +168,14 @@ export const prebookingInquiry = async (req, res) => {
     }
 
     const senderProfileResult = await pool.query(
-      'SELECT id FROM profiles WHERE user_id = $1',
+      'SELECT id, name FROM profiles WHERE user_id = $1',
       [authSenderId],
     );
     if (senderProfileResult.rows.length === 0) {
       return res.status(404).json({ message: 'Sender profile not found.' });
     }
     const senderProfileId = senderProfileResult.rows[0].id;
+    const senderName = senderProfileResult.rows[0].name || 'Student';
 
     const tutorProfileResult = await pool.query(
       'SELECT id FROM profiles WHERE id = $1',
@@ -300,6 +302,19 @@ export const prebookingInquiry = async (req, res) => {
         note: note ?? '',
       },
     });
+
+    void notifyEvent(
+      'INQUIRY_SENT',
+      String(resolvedTutorProfileId),
+      {
+        studentProfileId: senderProfileId,
+        studentName: senderName,
+        topic,
+        level,
+        conversationId,
+      },
+      { recipientProfileId: String(resolvedTutorProfileId) },
+    ).catch((e) => console.error('[push] inquiry notify failed', e));
 
     res.status(200).json({ ok: true, conversationId });
   } catch (error) {
