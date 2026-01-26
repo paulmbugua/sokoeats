@@ -19,10 +19,24 @@ import type {
   RawConversation,
   Conversation,
   ChatMessage,
-  ChatContextValue,
+  ChatContextValue as SharedChatContextValue,
 } from '@mytutorapp/shared/types';
 
-export const ChatContext = createContext<ChatContextValue | undefined>(undefined);
+/**
+ * ✅ FIX:
+ * Your shared ChatContextValue currently doesn't include setChatPresence,
+ * but the app uses it. We extend the shared type locally so TS stops erroring
+ * even before you update the shared types package.
+ *
+ * Later you can (optionally) add these fields to @mytutorapp/shared/types too.
+ */
+export type ChatContextValueFixed = SharedChatContextValue & {
+  setAppPresence?: (active: boolean) => void;
+  setChatPresence: (conversationId: string | null, active: boolean) => void;
+  setActiveConversation?: (conversationId: string | null, recipientId: string | null) => void;
+};
+
+export const ChatContext = createContext<ChatContextValueFixed | undefined>(undefined);
 
 type ChatProviderProps = {
   children: ReactNode;
@@ -48,7 +62,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const normalizeMsg = useCallback(
     (m: any): ChatMessage => ({
       id: String(m.id),
-      sender: String(m.sender_id),
+      sender: String(m.sender_id ?? m.sender ?? ''),
       sender_name: m.sender_name || '',
       content: m.content,
       unread: Boolean(m.unread),
@@ -72,7 +86,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       return {
         conversationId: String(r.id),
         recipientId: peerId,
-        name: peerName ?? '', // ← fix: ensure string
+        name: peerName ?? '',
         avatar: peerAvatar ?? '',
         lastMessage: r.last_message ?? '',
         unreadCount: Number(r.unread_count ?? 0),
@@ -93,10 +107,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   >(
     ['conversations', token, profile?.id],
     async () => {
-      // This function only runs when enabled=true (see options below)
       const res = await axios.get(`${backendUrl}/api/profileActions/conversations`, {
         headers: { Authorization: `Bearer ${token}` },
-        // Accept 401/404 as non-throwing responses
         validateStatus: (s) => (s >= 200 && s < 300) || s === 401 || s === 404,
       });
       if (res.status === 401 || res.status === 404) {
@@ -106,10 +118,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       return (res.data?.conversations as RawConversation[]) ?? [];
     },
     {
-      enabled: hasAuth, // ⬅️ no auth, no request (prevents 401 spam)
+      enabled: hasAuth,
       refetchOnWindowFocus: false,
       retry: (count, err: any) => {
-        // Don’t retry unauthorized/missing endpoints
         const status = err?.response?.status ?? 0;
         if (status === 401 || status === 404) return false;
         return count < 1;
@@ -123,7 +134,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   useEffect(() => {
     const formatted = rawConversations.filter((r) => r.sender_id !== r.recipient_id).map(mapRaw);
-
     const total = formatted.reduce((sum, c) => sum + c.unreadCount, 0);
 
     const same =
@@ -144,9 +154,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     }
   }, [rawConversations, mapRaw]);
 
-  // Manual refetch
   const fetchConversations = useCallback(async (): Promise<void> => {
-    if (!hasAuth) return; // ⬅️ guard
+    if (!hasAuth) return;
     await rawRefetchConversations();
   }, [rawRefetchConversations, hasAuth]);
 
@@ -155,7 +164,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // ———————————————————————————————————————————————
   const fetchMessages = useCallback(
     async (recipientId: string, limit = 20, offset = 0) => {
-      if (!hasAuth || !recipientId) return; // ⬅️ guard
+      if (!hasAuth || !recipientId) return;
+
       try {
         const res = await axios.get(
           `${backendUrl}/api/profileActions/conversations/${recipientId}/messages`,
@@ -165,21 +175,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             validateStatus: (s) => (s >= 200 && s < 300) || s === 401 || s === 404,
           }
         );
+
         if (res.status === 401 || res.status === 404) return;
+
         const newMsgs = (res.data?.messages as any[])?.map?.(normalizeMsg) ?? [];
 
         setChats((prev) =>
           prev.map((c) =>
             c.recipientId !== recipientId
               ? c
-              : {
-                  ...c,
-                  messages: offset === 0 ? newMsgs : [...c.messages, ...newMsgs],
-                }
+              : { ...c, messages: offset === 0 ? newMsgs : [...c.messages, ...newMsgs] }
           )
         );
       } catch {
-        // swallow; UI can stay as-is
+        // swallow
       }
     },
     [backendUrl, token, normalizeMsg, hasAuth]
@@ -203,8 +212,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     socket.connect();
     socket.on('connect', () => setSocketReady(true));
     socket.on('disconnect', () => setSocketReady(false));
+
     socket.on('messageReceived', (raw: RawConversation) => {
       const inc = mapRaw(raw);
+
       setChats((prev) => {
         const idx = prev.findIndex((c) => c.conversationId === inc.conversationId);
         if (idx > -1) {
@@ -219,12 +230,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         }
         return [inc, ...prev];
       });
+
       setUnreadCount((u) => u + inc.unreadCount);
     });
+
     socket.on('chatUnlocked', (payload?: { conversationId?: string }) => {
       fetchConversations();
       const activeConversationId = activeConversationRef.current;
       const activeRecipientId = activeRecipientRef.current;
+
       if (
         payload?.conversationId &&
         activeConversationId &&
@@ -263,14 +277,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         timestamp: new Date().toISOString(),
         meta: {},
       };
+
       setChats((prev) =>
         prev.map((c) =>
           c.recipientId === recipientId
-            ? {
-                ...c,
-                lastMessage: content,
-                messages: [...c.messages, temp],
-              }
+            ? { ...c, lastMessage: content, messages: [...c.messages, temp] }
             : c
         )
       );
@@ -278,35 +289,25 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       return new Promise<{ ok: boolean; error?: string; message?: string }>((resolve) => {
         socket.emit(
           'sendMessage',
-          {
-            recipientId,
-            content,
-            senderId: profile.id,
-            unread: true,
-          },
+          { recipientId, content, senderId: profile.id, unread: true },
           (resp?: { status?: string; code?: string; message?: string }) => {
             if (resp?.status === 'error' && resp?.code === 'CHAT_LOCKED') {
               setChats((prev) =>
                 prev.map((c) =>
                   c.recipientId === recipientId
-                    ? {
-                        ...c,
-                        messages: c.messages.filter((m) => m.id !== tempId),
-                      }
+                    ? { ...c, messages: c.messages.filter((m) => m.id !== tempId) }
                     : c
                 )
               );
-              resolve({
-                ok: false,
-                error: resp.code,
-                message: resp.message,
-              });
+              resolve({ ok: false, error: resp.code, message: resp.message });
               return;
             }
+
             if (resp?.status === 'error') {
               resolve({ ok: false, error: 'SEND_FAILED', message: resp.message });
               return;
             }
+
             resolve({ ok: true });
           }
         );
@@ -323,18 +324,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       availability: string;
       note?: string;
     }) => {
-      if (!hasAuth || !profile?.id) {
-        return { ok: false, error: 'UNAUTHORIZED' };
-      }
+      if (!hasAuth || !profile?.id) return { ok: false, error: 'UNAUTHORIZED' };
 
       if (socket && isSocketReady) {
         return new Promise<{ ok: boolean; error?: string; message?: string }>((resolve) => {
           socket.emit(
             'prebookingInquiry',
-            {
-              ...payload,
-              senderId: profile.id,
-            },
+            { ...payload, senderId: profile.id },
             (resp?: { status?: string; message?: string }) => {
               if (resp?.status === 'success') {
                 fetchConversations();
@@ -348,13 +344,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       }
 
       try {
-        await axios.post(
-          `${backendUrl}/api/profileActions/prebookingInquiry`,
-          payload,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        await axios.post(`${backendUrl}/api/profileActions/prebookingInquiry`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         await fetchConversations();
         return { ok: true };
       } catch (err: any) {
@@ -365,6 +357,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     [backendUrl, fetchConversations, hasAuth, isSocketReady, profile?.id, socket, token]
   );
 
+  // ✅ App presence (online/offline)
   const setAppPresence = useCallback(
     (active: boolean) => {
       if (!(socket && isSocketReady && profile?.id != null)) return;
@@ -373,14 +366,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     [socket, isSocketReady, profile?.id]
   );
 
+  /**
+   * ✅ Chat presence
+   * conversationId may be null (meaning: not viewing any chat)
+   */
   const setChatPresence = useCallback(
     (conversationId: string | null, active: boolean) => {
       if (!(socket && isSocketReady && profile?.id != null)) return;
-      socket.emit('presence:chat', {
-        profileId: profile.id,
-        conversationId,
-        active,
-      });
+      socket.emit('presence:chat', { profileId: profile.id, conversationId, active });
     },
     [socket, isSocketReady, profile?.id]
   );
@@ -392,6 +385,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     () =>
       debounce(async (recipientId: string) => {
         if (!hasAuth || !recipientId) return;
+
         try {
           const res = await axios.post(
             `${backendUrl}/api/profileActions/conversations/${recipientId}/markAsRead`,
@@ -424,7 +418,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // ———————————————————————————————————————————————
   // Context value
   // ———————————————————————————————————————————————
-  const value = useMemo<ChatContextValue>(
+  const value = useMemo<ChatContextValueFixed>(
     () => ({
       chats,
       unreadCount,
@@ -434,12 +428,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       sendMessage,
       sendPrebookingInquiry,
       markAsRead,
+
       setActiveConversation: (conversationId: string | null, recipientId: string | null) => {
         activeConversationRef.current = conversationId;
         activeRecipientRef.current = recipientId;
       },
+
       setAppPresence,
-      setChatPresence,
+      setChatPresence, // ✅ now guaranteed in type
     }),
     [
       chats,
@@ -458,7 +454,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 };
 
-export const useChatContext = (): ChatContextValue => {
+export const useChatContext = (): ChatContextValueFixed => {
   const ctx = useContext(ChatContext);
   if (!ctx) throw new Error('useChatContext must be used within ChatProvider');
   return ctx;

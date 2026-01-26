@@ -6,7 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import tw from '../../tailwind';
 import type { MainStackParamList } from '../navigation/types';
-import { useShopContext } from '@mytutorapp/shared/context';
+import { useShopContext, useChatContext } from '@mytutorapp/shared/context';
 import { useThemePref } from '../theme/ThemeContext';
 
 type NavProp = NativeStackNavigationProp<MainStackParamList>;
@@ -58,6 +58,7 @@ const NavbarNative: React.FC<Props> = ({
 }) => {
   const navigation = useNavigation<NavProp>();
   const { orgToken } = useShopContext();
+  const { unreadCount } = useChatContext(); // ✅ global unread count from ChatContext
   const { resolvedScheme } = useThemePref();
   const isDark = resolvedScheme === 'dark';
 
@@ -80,39 +81,41 @@ const NavbarNative: React.FC<Props> = ({
     return () => (typeof unsub === 'function' ? unsub() : undefined);
   }, [navigation]);
 
- const go = useCallback(
-  <T extends keyof MainStackParamList>(
-    name: T,
-    params?: MainStackParamList[T]
-  ) => {
-    try {
-      if (params === undefined) navigation.navigate(name as any);
-      else navigation.navigate(name as any, params as any);
-    } catch {}
-  },
-  [navigation]
-);
+  const go = useCallback(
+    <T extends keyof MainStackParamList>(name: T, params?: MainStackParamList[T]) => {
+      try {
+        if (params === undefined) navigation.navigate(name as any);
+        else navigation.navigate(name as any, params as any);
+      } catch {}
+    },
+    [navigation]
+  );
 
+  const activeKey = safeActiveKey(activeRouteName ?? currentRoute);
 
+  const defaultItems = useMemo<NavbarItem[]>(() => {
+    // ✅ don’t show badge while already on Messages screen (keeps UI clean)
+    const showMsgBadge = activeKey !== 'Messages' && unreadCount > 0;
 
-  const defaultItems = useMemo<NavbarItem[]>(
-    () => [
+    return [
       { label: 'Find Tutor', route: 'FindTutor', icon: 'person-search' },
       { label: 'My Courses', route: 'Courses', icon: 'menu-book' },
       { label: 'Resources', route: 'Resources', icon: 'auto-stories' },
-      { label: 'Messages', route: 'Messages', icon: 'chat-bubble-outline' },
+      {
+        label: 'Messages',
+        route: 'Messages',
+        icon: 'chat-bubble-outline',
+        badgeCount: showMsgBadge ? unreadCount : 0,
+      },
       {
         label: 'Institutions',
         route: (orgToken ? 'OrgProfile' : 'InstitutionLogin') as keyof MainStackParamList,
         icon: 'business',
       },
-    ],
-    [orgToken]
-  );
+    ];
+  }, [orgToken, unreadCount, activeKey]);
 
   const navItems = items ?? defaultItems;
-
-  const activeKey = safeActiveKey(activeRouteName ?? currentRoute);
   const headerVisible = Boolean(title || subtitle);
 
   const scrollRef = useRef<ScrollView | null>(null);
@@ -149,10 +152,6 @@ const NavbarNative: React.FC<Props> = ({
     () => ({
       activeGlow: {
         backgroundColor: isDark ? 'rgba(56,189,248,0.12)' : 'rgba(14,165,233,0.18)',
-      },
-      badge: {
-        backgroundColor: isDark ? '#f97316' : '#ef4444',
-        borderColor: isDark ? 'rgba(251,146,60,0.8)' : 'rgba(239,68,68,0.8)',
       },
       container: {
         elevation: isDark ? 4 : 6,
@@ -211,27 +210,19 @@ const NavbarNative: React.FC<Props> = ({
     [go]
   );
 
-  // ✅ FIX: Search/Filter always respond (fallback navigation if no handler provided)
+  // ✅ Search/Filter always respond (fallback navigation if no handler provided)
   const handleSearchPress = useCallback(() => {
     if (onPressSearch) return onPressSearch();
-
-    // sensible fallback behavior
-    if (activeKey === 'Resources') return go('Resources', { openSearch: true });
-    if (activeKey === 'FindTutor') return go('FindTutor', { openSearch: true });
-
-    // default to tutor search (most useful)
-    return go('FindTutor', { openSearch: true });
+    if (activeKey === 'Resources') return go('Resources', { openSearch: true } as any);
+    if (activeKey === 'FindTutor') return go('FindTutor', { openSearch: true } as any);
+    return go('FindTutor', { openSearch: true } as any);
   }, [onPressSearch, activeKey, go]);
 
   const handleFilterPress = useCallback(() => {
     if (onPressFilter) return onPressFilter();
-
-    // sensible fallback behavior
-    if (activeKey === 'Resources') return go('Resources', { openFilters: true });
-    if (activeKey === 'FindTutor') return go('FindTutor', { openFilters: true });
-
-    // default to tutor filters
-    return go('FindTutor', { openFilters: true });
+    if (activeKey === 'Resources') return go('Resources', { openFilters: true } as any);
+    if (activeKey === 'FindTutor') return go('FindTutor', { openFilters: true } as any);
+    return go('FindTutor', { openFilters: true } as any);
   }, [onPressFilter, activeKey, go]);
 
   return (
@@ -257,7 +248,6 @@ const NavbarNative: React.FC<Props> = ({
             )}
           </View>
 
-          {/* ✅ Always clickable */}
           <View style={tw`flex-row items-center gap-2 ml-3`}>
             <Pressable
               accessibilityLabel="Search"
@@ -269,12 +259,7 @@ const NavbarNative: React.FC<Props> = ({
                 pressed && [styles.iconButtonPressed, themeStyles.iconButtonPressed],
               ]}
             >
-              <MaterialIcons
-                name="search"
-                size={18}
-                // a little pop of color
-                color={isDark ? '#38bdf8' : '#0ea5e9'}
-              />
+              <MaterialIcons name="search" size={18} color={isDark ? '#38bdf8' : '#0ea5e9'} />
             </Pressable>
 
             <Pressable
@@ -287,12 +272,7 @@ const NavbarNative: React.FC<Props> = ({
                 pressed && [styles.iconButtonPressed, themeStyles.iconButtonPressed],
               ]}
             >
-              <MaterialIcons
-                name="tune"
-                size={18}
-                // a little pop of color
-                color={isDark ? '#a78bfa' : '#7c3aed'}
-              />
+              <MaterialIcons name="tune" size={18} color={isDark ? '#a78bfa' : '#7c3aed'} />
             </Pressable>
           </View>
         </View>
@@ -322,10 +302,10 @@ const NavbarNative: React.FC<Props> = ({
               const key = item.key ?? item.label;
               const isActive = item.route === (activeKey as any);
 
-              // ✅ colored icons per pill (icons only)
               const routeColor =
-                (item.route && ROUTE_ICON_COLORS[item.route]) ||
-                (isDark ? '#cbd5f5' : '#64748b');
+                (item.route && ROUTE_ICON_COLORS[item.route]) || (isDark ? '#cbd5f5' : '#64748b');
+
+              const badge = Number(item.badgeCount ?? 0);
 
               return (
                 <Pressable
@@ -353,14 +333,7 @@ const NavbarNative: React.FC<Props> = ({
                   />
 
                   <View style={tw`flex-row items-center gap-1.5 px-3 ${BAR.pill}`}>
-                    {item.icon && (
-                      <MaterialIcons
-                        name={item.icon}
-                        size={15}
-                        // keep icon color vivid even when active
-                        color={routeColor}
-                      />
-                    )}
+                    {item.icon && <MaterialIcons name={item.icon} size={15} color={routeColor} />}
 
                     <Text
                       style={tw`${isActive ? 'text-white' : 'text-gray-700 dark:text-gray-200'} text-[12px] font-medium`}
@@ -368,10 +341,11 @@ const NavbarNative: React.FC<Props> = ({
                       {item.label}
                     </Text>
 
-                    {typeof item.badgeCount === 'number' && item.badgeCount > 0 && (
-                      <View style={[styles.badge, themeStyles.badge]}>
-                        <Text style={tw`text-[10px] text-white font-semibold`}>
-                          {item.badgeCount > 99 ? '99+' : item.badgeCount}
+                    {/* ✅ pill-blended badge chip */}
+                    {badge > 0 && (
+                      <View style={[styles.badgeChip, isActive ? styles.badgeChipActive : null]}>
+                        <Text style={[styles.badgeText, isActive ? styles.badgeTextActive : null]}>
+                          {badge > 99 ? '99+' : badge}
                         </Text>
                       </View>
                     )}
@@ -388,24 +362,12 @@ const NavbarNative: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   activeGlow: {
-    backgroundColor: 'rgba(14,165,233,0.18)',
     borderRadius: 999,
     bottom: -8,
     left: -8,
     position: 'absolute',
     right: -8,
     top: -8,
-  },
-  badge: {
-    alignItems: 'center',
-    backgroundColor: '#ef4444',
-    borderRadius: 9,
-    borderWidth: 1,
-    height: 18,
-    justifyContent: 'center',
-    marginLeft: 4,
-    minWidth: 18,
-    paddingHorizontal: 5,
   },
   container: {
     elevation: 6,
@@ -428,7 +390,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(148,163,184,0.2)',
   },
   pill: {
-    backgroundColor: 'rgba(255,255,255,0.65)',
     borderColor: 'rgba(148,163,184,0.35)',
     borderRadius: 999,
     borderWidth: 1,
@@ -453,6 +414,31 @@ const styles = StyleSheet.create({
     height: UNDERLINE_H,
     position: 'absolute',
     width: 28, // fixed width => native-driver translate safe
+  },
+
+  // ✅ nicer badge chip (blends into pill)
+  badgeChip: {
+    marginLeft: 6,
+    paddingHorizontal: 7,
+    height: 18,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.22)',
+  },
+  badgeChipActive: {
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#ef4444',
+  },
+  badgeTextActive: {
+    color: '#ffffff',
   },
 });
 

@@ -103,10 +103,9 @@ export interface ChatContextValue {
     note?: string;
   }) => Promise<{ ok: boolean; error?: string; message?: string }>;
   markAsRead: (recipientId: string) => void;
-  setActiveConversation: (
-    conversationId: string | null,
-    recipientId: string | null
-  ) => void;
-  setAppPresence: (active: boolean) => void;
-  setChatPresence: (conversationId: string | null, active: boolean) => void;
+
+  // ✅ make optional if some providers/consumers lag behind
+  setActiveConversation?: (conversationId: string | null, recipientId: string | null) => void;
+  setAppPresence?: (active: boolean) => void;
+  setChatPresence?: (conversationId: string | null, active: boolean) => void;
 }

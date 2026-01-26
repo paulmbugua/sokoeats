@@ -70,6 +70,7 @@ const MessagesNative: React.FC = () => {
 const COMPOSER_HEIGHT = 64;
 const FOOTER_GAP = FOOTER_HEIGHT ;
 const bottomSafe = Math.max(insets.bottom, 12);
+const lastMarkedRef = useRef<string | null>(null);
 
 // ✅ declare state BEFORE using it anywhere
 const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -137,7 +138,7 @@ useEffect(() => {
   const appStateRef = useRef(AppState.currentState);
   const seenMsgIdsRef = useRef<Set<string>>(new Set());
     const { backendUrl, token } = useShopContext();
-    const { setChatPresence } = useChatContext();
+    const { setChatPresence, markAsRead, setActiveConversation } = useChatContext();
 
   const [creatingSession, setCreatingSession] = useState(false);
 
@@ -193,6 +194,30 @@ useEffect(() => {
     });
     return () => sub.remove();
   }, []);
+
+ 
+
+useEffect(() => {
+  if (!isFocused) return;
+
+  const recipientId = activeChat?.recipientId ? String(activeChat.recipientId) : null;
+  const conversationId = activeChat?.conversationId ? String(activeChat.conversationId) : null;
+
+  setActiveConversation?.(conversationId, recipientId);
+
+  if (!recipientId) return;
+  if (lastMarkedRef.current === recipientId) return;
+
+  lastMarkedRef.current = recipientId;
+  markAsRead(recipientId);
+}, [
+  isFocused,
+  activeChat?.conversationId,
+  activeChat?.recipientId,
+  markAsRead,
+  setActiveConversation,
+]);
+
 
   // Coerce our local list item to the stricter Conversation type that openChat expects.
   type OpenChatArg = Parameters<typeof openChat>[0];
@@ -321,6 +346,9 @@ useEffect(() => {
 
     const latest = incoming[incoming.length - 1];
     if (!latest) return;
+
+    const appActive = appStateRef.current === 'active';
+if (!appActive) return;
 
     const senderName =
       (latest as any).sender_name || (activeChat && activeChat.name) || 'New message';
@@ -506,9 +534,15 @@ useEffect(() => {
                     <TouchableOpacity
                       key={String(chatItem.conversationId)}
                       onPress={() => {
-                        openChat(toOpenChatArg(chatItem));
-                        setSidebarOpen(false);
-                      }}
+                      openChat(toOpenChatArg(chatItem));
+                      setSidebarOpen(false);
+
+                      // ✅ clear badge immediately (snappy UX)
+                      if (chatItem.recipientId != null) {
+                        markAsRead(String(chatItem.recipientId));
+                      }
+                    }}
+
                       accessibilityLabel={`Open chat with ${chatItem.name}`}
                       style={tw`mb-2`}
                     >
