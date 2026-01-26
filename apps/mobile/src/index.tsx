@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 
 import axios, { isAxiosError } from 'axios';
 import React, { useEffect } from 'react';
-import { LogBox, StatusBar, Platform } from 'react-native';
+import { AppState, LogBox, StatusBar, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
 import { registerRootComponent } from 'expo';
@@ -31,6 +31,7 @@ import tw from '../tailwind';
 import {
   ShopContextProvider,
   ChatProvider,
+  useChatContext,
   useShopContext,
 } from '@mytutorapp/shared/context';
 import { storage } from '../utils/storage';
@@ -197,6 +198,7 @@ const RootInner: React.FC = () => {
   const navRef = useNavigationContainerRef<MainStackParamList>();
 
   const { http, token, orgToken } = useShopContext() as unknown as ShopCtx;
+  const { setAppPresence } = useChatContext();
 
   useEffect(() => {
     let cancelled = false;
@@ -236,6 +238,15 @@ const RootInner: React.FC = () => {
       cancelled = true;
     };
   }, [http, token, orgToken]);
+
+  useEffect(() => {
+    if (!setAppPresence) return;
+    setAppPresence(true);
+    const sub = AppState.addEventListener('change', (state) => {
+      setAppPresence(state === 'active');
+    });
+    return () => sub.remove();
+  }, [setAppPresence]);
 
   useEffect(() => {
   const handleResp = (resp: Notifications.NotificationResponse) => {

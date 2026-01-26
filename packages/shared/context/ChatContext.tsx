@@ -365,6 +365,26 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     [backendUrl, fetchConversations, hasAuth, isSocketReady, profile?.id, socket, token]
   );
 
+  const setAppPresence = useCallback(
+    (active: boolean) => {
+      if (!(socket && isSocketReady && profile?.id != null)) return;
+      socket.emit('presence:app', { profileId: profile.id, active });
+    },
+    [socket, isSocketReady, profile?.id]
+  );
+
+  const setChatPresence = useCallback(
+    (conversationId: string | null, active: boolean) => {
+      if (!(socket && isSocketReady && profile?.id != null)) return;
+      socket.emit('presence:chat', {
+        profileId: profile.id,
+        conversationId,
+        active,
+      });
+    },
+    [socket, isSocketReady, profile?.id]
+  );
+
   // ———————————————————————————————————————————————
   // Mark as read (debounced, quiet on 401/404)
   // ———————————————————————————————————————————————
@@ -418,6 +438,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         activeConversationRef.current = conversationId;
         activeRecipientRef.current = recipientId;
       },
+      setAppPresence,
+      setChatPresence,
     }),
     [
       chats,
@@ -428,6 +450,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       sendMessage,
       sendPrebookingInquiry,
       markAsRead,
+      setAppPresence,
+      setChatPresence,
     ]
   );
 

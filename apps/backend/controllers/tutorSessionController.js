@@ -12,6 +12,7 @@ import {
 import { initiateB2CPayment } from '../services/mpesaService.js';
 import { getProfileIdForUserId } from '../services/chatGatingService.js';
 import { emitToProfile } from '../services/socketService.js';
+import { notifyEvent } from '../services/notificationEvents.js';
 
 const PLATFORM_FEE = 0.15; // 15%
 const USD_TO_KES_DEFAULT = 133.75; // fallback; replace with your FX source
@@ -219,6 +220,14 @@ export const createSession = async (req, res) => {
         date,
       ).toLocaleString()}\nSession Type: ${sessionType}\n\nBest regards,\nTutoring Platform`,
     });
+
+    void notifyEvent('SESSION_CREATED', String(tutorUserId), {
+      sessionId: newSession.rows[0]?.id,
+      studentUserId,
+      studentName: studentUser.name || 'Student',
+      subject,
+      date,
+    }).catch((e) => console.warn('[push] session created notify failed', e?.message || e));
 
     return res.status(201).json({
       message: 'Session created successfully.',
@@ -841,6 +850,17 @@ export const completeSession = async (req, res) => {
     } else {
       WARN('student email not found', { studentId: session.student_id });
     }
+
+    void notifyEvent(
+      'SESSION_COMPLETE_PENDING',
+      String(session.student_id),
+      {
+        sessionId: sid,
+        tutorUserId,
+      },
+    ).catch((e) =>
+      WARN('push notify failed', { err: e?.message || e }),
+    );
 
     return res.status(200).json({
       ok: true,
