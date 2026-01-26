@@ -476,13 +476,6 @@ export function buildWordDisplayTokens(
 function decorateTimingsFromSource(timings: WordTiming[], sourceText?: string): WordTiming[] {
   if (!timings?.length || !sourceText) return timings;
 
-<<<<<<< HEAD
-  const visible = normalizeDisplayText(
-    unwordifyUnitExponentForDisplay(
-      unwordifyScientificNotationForDisplay(extractDisplayTextFromSsml(sourceText))
-    )
-  );
-=======
   // If timings already have punctuation/symbols, don't touch them.
   const timingsHavePunc = timings.some((w) => {
     const t = (w?.text || '').trim();
@@ -493,7 +486,6 @@ function decorateTimingsFromSource(timings: WordTiming[], sourceText?: string): 
   if (timingsHavePunc) return timings;
 
   const visible = ssmlVisibleText(sourceText);
->>>>>>> ebf4715 (tts updates)
   if (!visible) return timings;
 
   const rawTokens = tokenizeDisplayText(visible);

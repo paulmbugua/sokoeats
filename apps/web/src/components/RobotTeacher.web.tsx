@@ -531,6 +531,7 @@ const [llUnlockOpen, setLlUnlockOpen] = useState(false);
 const [llUnlockBusy, setLlUnlockBusy] = useState(false);
 const [llUnlockErr, setLlUnlockErr] = useState<string | null>(null);
 const unlockedLanguageCoursesRef = useRef<Set<string>>(new Set());
+const selectedCourseIdRef = useRef<string | null>(null);
 const pendingLanguageStartRef = useRef<{
   prompt: string;
   languageLabel: string;
@@ -607,6 +608,10 @@ useEffect(() => {
   const id = window.setInterval(() => setLlUnlockNowTs(Date.now()), 1000);
   return () => window.clearInterval(id);
 }, [llUnlockOpen, llUnlockCtx?.resetAt]);
+
+useEffect(() => {
+  selectedCourseIdRef.current = selectedCourse?.id ? normId(selectedCourse.id) : null;
+}, [selectedCourse?.id]);
 
 const llUnlockResetLabel = useMemo(() => {
   const resetAt = llUnlockCtx?.resetAt;
@@ -1021,7 +1026,8 @@ const displayTitle = useMemo(() => {
 
 // If a courseId is in the URL (share link), it must win over any stale/default selection.
 const effectiveCourseIdForStart =
-   desiredCourseId || selectedCourseRef.current?.id || selectedCourse?.id || null;
+  desiredCourseId || selectedCourseIdRef.current || selectedCourse?.id || null;
+
 
 const canStartNow = useMemo(() => {
   // ✅ always block starts while AI is busy / mutex is held
@@ -1814,14 +1820,19 @@ const opts: any = {
   topCourses={(topCourses || []).map((c: TopCourse) => ({ id: c.id, title: c.title }))}
   selectedCourse={selectedCourse ? { id: selectedCourse.id, title: selectedCourse.title } : null}
   displayCourseTitle={displayTitle}
-  onSelectCourse={(id) => {
-    setPreparing(false);
-    setActiveRunId(null);
-    setBlockedUntilStart(true);
-    const found = (topCourses || []).find((c) => c.id === id) || null;
-    dlog('CourseSelect.onChange/Select →', { id, foundTitle: found?.title });
-    selectCourse(found);
-  }}
+onSelectCourse={(id) => {
+  setPreparing(false);
+  setActiveRunId(null);
+  setBlockedUntilStart(true);
+
+  const found = (topCourses || []).find((c) => c.id === id) || null;
+
+  selectedCourseIdRef.current = found?.id ? normId(found.id) : normId(id); // ✅ lock immediately
+  dlog('CourseSelect.onChange/Select →', { id, foundTitle: found?.title });
+
+  selectCourse(found);
+}}
+
   PRESETS={PRESETS}
   TRACKS={TRACKS}
   trackLessons={trackLessons}
@@ -1965,14 +1976,18 @@ const opts: any = {
                 }))}
                 activeId={selectedCourse?.id || null}
                 onSelect={(id) => {
-                  const found = (topCourses || []).find((c) => c.id === id) || null;
-                  dlog('CourseList.onSelect', { id, title: found?.title });
-                  setPreparing(false);
-                  setActiveRunId(null);
-                  setBlockedUntilStart(true);
-                  setLockedSsml(null);
-                  selectCourse(found);
-                }}
+                const found = (topCourses || []).find((c) => c.id === id) || null;
+
+                dlog('CourseList.onSelect', { id, title: found?.title });
+                setPreparing(false);
+                setActiveRunId(null);
+                setBlockedUntilStart(true);
+                setLockedSsml(null);
+
+                selectedCourseIdRef.current = found?.id ? normId(found.id) : normId(id); // ✅ lock immediately
+                selectCourse(found);
+              }}
+
                 onRefresh={refreshCourseList}
                 onLoadMore={handleLoadMore}
                 hasMore={Boolean(hasMoreCourses)}

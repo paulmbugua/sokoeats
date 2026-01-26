@@ -9,6 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  useColorScheme,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -63,6 +64,13 @@ export default function ProfileDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
   const route = useRoute<R>();
+  const scheme = useColorScheme();
+const isDark = scheme === 'dark';
+
+const placeholderColor = isDark ? '#9CA3AF' : '#111827'; // dark: gray-400, light: near-black
+
+const cursorColor = isDark ? '#60A5FA' : '#2563EB'; // optional: blue cursor
+
 
   const id = route.params?.id;
   const { backendUrl, token } = useShopContext();
@@ -378,69 +386,90 @@ export default function ProfileDetailScreen() {
 
       </ScrollView>
 
-      {/* ✅ Inquiry Modal (matches web fields) */}
-      <Modal visible={showInquiryModal} transparent animationType="fade" onRequestClose={() => setShowInquiryModal(false)}>
-        <View style={tw`flex-1 bg-black/60 items-center justify-center px-4`}>
-          <View style={tw`w-full max-w-xl rounded-2xl bg-white dark:bg-black border border-gray-200 dark:border-white/10 p-4`}>
-            <Text style={tw`text-lg font-semibold text-blue-600 dark:text-blue-400`}>Send 1 Inquiry</Text>
+{/* ✅ Inquiry Modal (high-contrast placeholders in light mode) */}
+<Modal
+  visible={showInquiryModal}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setShowInquiryModal(false)}
+>
+  <View style={tw`flex-1 bg-black/60 items-center justify-center px-4`}>
+    <View style={tw`w-full max-w-xl rounded-2xl bg-white dark:bg-black border border-gray-200 dark:border-white/10 p-4`}>
+      <Text style={tw`text-lg font-semibold text-blue-600 dark:text-blue-400`}>
+        Send 1 Inquiry
+      </Text>
 
-            <View style={tw`mt-3`}>
-              <TextInput
-                value={inquiryForm.topic}
-                onChangeText={(t) => setInquiryForm((p) => ({ ...p, topic: t }))}
-                placeholder="Topic (e.g. Algebra basics)"
-                placeholderTextColor={Platform.OS === 'ios' ? '#999' : undefined}
-                style={tw`mt-2 px-3 py-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white`}
-              />
-              <TextInput
-                value={inquiryForm.level}
-                onChangeText={(t) => setInquiryForm((p) => ({ ...p, level: t }))}
-                placeholder="Level (e.g. Grade 10)"
-                placeholderTextColor={Platform.OS === 'ios' ? '#999' : undefined}
-                style={tw`mt-2 px-3 py-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white`}
-              />
-              <TextInput
-                value={inquiryForm.availability}
-                onChangeText={(t) => setInquiryForm((p) => ({ ...p, availability: t }))}
-                placeholder="Availability (e.g. Weeknights after 6pm)"
-                placeholderTextColor={Platform.OS === 'ios' ? '#999' : undefined}
-                style={tw`mt-2 px-3 py-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white`}
-              />
-              <TextInput
-                value={inquiryForm.note}
-                onChangeText={(t) => setInquiryForm((p) => ({ ...p, note: t }))}
-                placeholder="Optional note"
-                placeholderTextColor={Platform.OS === 'ios' ? '#999' : undefined}
-                multiline
-                style={tw`mt-2 px-3 py-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white min-h-[90px]`}
-              />
+      <View style={tw`mt-3`}>
+        <TextInput
+          value={inquiryForm.topic}
+          onChangeText={(t) => setInquiryForm((p) => ({ ...p, topic: t }))}
+          placeholder="Topic (e.g. Algebra basics)"
+          placeholderTextColor={placeholderColor}
+          selectionColor={cursorColor}
+          style={tw`mt-2 px-3 py-3 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white`}
+        />
 
-              {!!inquiryError && (
-                <Text style={tw`mt-2 text-sm text-red-600 dark:text-red-400`}>{inquiryError}</Text>
-              )}
-            </View>
+        <TextInput
+          value={inquiryForm.level}
+          onChangeText={(t) => setInquiryForm((p) => ({ ...p, level: t }))}
+          placeholder="Level (e.g. Grade 10)"
+          placeholderTextColor={placeholderColor}
+          selectionColor={cursorColor}
+          style={tw`mt-2 px-3 py-3 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white`}
+        />
 
-            <View style={tw`mt-4 flex-row justify-end`}>
-              <Pressable
-                onPress={() => setShowInquiryModal(false)}
-                style={tw`px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10`}
-              >
-                <Text style={tw`text-gray-700 dark:text-gray-200 font-semibold`}>Cancel</Text>
-              </Pressable>
+        <TextInput
+          value={inquiryForm.availability}
+          onChangeText={(t) => setInquiryForm((p) => ({ ...p, availability: t }))}
+          placeholder="Availability (e.g. Weeknights after 6pm)"
+          placeholderTextColor={placeholderColor}
+          selectionColor={cursorColor}
+          style={tw`mt-2 px-3 py-3 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white`}
+        />
 
-              <Pressable
-                onPress={handleInquirySubmit}
-                disabled={sendingInquiry}
-                style={tw`ml-2 px-4 py-3 rounded-xl bg-blue-600 ${sendingInquiry ? 'opacity-60' : ''}`}
-              >
-                <Text style={tw`text-white font-semibold`}>
-                  {sendingInquiry ? 'Sending...' : 'Send Inquiry'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        <TextInput
+          value={inquiryForm.note}
+          onChangeText={(t) => setInquiryForm((p) => ({ ...p, note: t }))}
+          placeholder="Optional note"
+          placeholderTextColor={placeholderColor}
+          selectionColor={cursorColor}
+          multiline
+          textAlignVertical="top"
+          style={tw`mt-2 px-3 py-3 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white min-h-[90px]`}
+        />
+
+        {!!inquiryError && (
+          <Text style={tw`mt-2 text-sm text-red-600 dark:text-red-400`}>
+            {inquiryError}
+          </Text>
+        )}
+      </View>
+
+      <View style={tw`mt-4 flex-row justify-end`}>
+        <Pressable
+          onPress={() => setShowInquiryModal(false)}
+          style={tw`px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10`}
+        >
+          <Text style={tw`text-gray-800 dark:text-gray-200 font-semibold`}>
+            Cancel
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleInquirySubmit}
+          disabled={sendingInquiry}
+          style={tw`ml-2 px-4 py-3 rounded-xl bg-blue-600 ${sendingInquiry ? 'opacity-60' : ''}`}
+        >
+          <Text style={tw`text-white font-semibold`}>
+            {sendingInquiry ? 'Sending...' : 'Send Inquiry'}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  </View>
+</Modal>
+
+
 
       {/* ✅ Lightbox */}
       <Modal visible={!!selectedImage} transparent animationType="fade" onRequestClose={closeModal}>

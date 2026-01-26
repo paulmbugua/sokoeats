@@ -538,7 +538,13 @@ const ClassVaultMarketCard: React.FC<{
         ) : null}
 
         {!isPdfOnly && previewUrl && isVisible ? (
-          <AutoPreviewVideo uri={previewUrl} shouldPlay style={tw`absolute inset-0`} />
+          <AutoPreviewVideo
+        uri={previewUrl}
+        shouldPlay={isVisible}
+        allowTapToToggleMute
+        style={tw`absolute inset-0`}
+      />
+
         ) : null}
 
         <View style={tw`absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5`}>
