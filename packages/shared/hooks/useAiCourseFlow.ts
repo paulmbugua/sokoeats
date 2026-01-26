@@ -69,6 +69,9 @@ type LessonLite = {
   title?: string;
   ssml: string;
   markdown?: string;
+  narration?: string;
+  narrationDisplay?: string;
+  narrationTts?: string;
   formulas?: any[];
   tables?: any[];
   images?: any[];
@@ -198,6 +201,8 @@ export function useAiCourse(backendUrl: string, authToken?: string, flowHints?: 
   const [lessons, setLessons] = useState<AILesson[]>([]);
   const [currentLessonIndex, setCurrentLessonIndex] = useState<number>(0);
   const [joinedSsml, setJoinedSsml] = useState<string>('');
+  const [joinedNarrationDisplay, setJoinedNarrationDisplay] = useState<string>('');
+  const [joinedNarrationTts, setJoinedNarrationTts] = useState<string>('');
   const [ssml, setSsml] = useState<string>('');
   const anonId = useMemo(() => getOrCreateAnonId(), []);
 
@@ -346,6 +351,8 @@ export function useAiCourse(backendUrl: string, authToken?: string, flowHints?: 
 
       setCurrentLessonIndex(0);
       setJoinedSsml('');
+      setJoinedNarrationDisplay('');
+      setJoinedNarrationTts('');
       setSsml('');
       clearQueue();
       setQuiz(null);
@@ -502,6 +509,12 @@ export function useAiCourse(backendUrl: string, authToken?: string, flowHints?: 
         }
 
         const maybeL = pack?.lessons?.[0] as LessonLite | undefined;
+        if (typeof (pack as any)?.joinedNarrationDisplay === 'string') {
+          setJoinedNarrationDisplay((pack as any).joinedNarrationDisplay);
+        }
+        if (typeof (pack as any)?.joinedNarrationTts === 'string') {
+          setJoinedNarrationTts((pack as any).joinedNarrationTts);
+        }
 
         // Ensure we ALWAYS end up with a real LessonLite (never undefined)
         let L: LessonLite;
@@ -781,6 +794,8 @@ return L;
         setCurrentIdx(0);
         setSsml(L0.ssml);
         setJoinedSsml(''); // joined mode OFF
+        setJoinedNarrationDisplay('');
+        setJoinedNarrationTts('');
         setStep('ready');
 
         if (DBG) {
@@ -1192,6 +1207,8 @@ return L;
     currentLessonIndex, // kept in sync with currentIdx
     currentLesson,
     joinedSsml,
+    joinedNarrationDisplay,
+    joinedNarrationTts,
     ssml,
     degradedNotice,
     gateMode,

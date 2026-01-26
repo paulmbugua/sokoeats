@@ -8,6 +8,8 @@ export type Bookmark = { time: number; text?: string };
 export type SpeakReq = {
   ssml?: string;
   text?: string;
+  ttsText?: string;
+  displayText?: string;
   voiceName?: string;
   rate?: string; // e.g. "0%", "+10%", "-15%"
   pitch?: string; // e.g. "0st", "+2st", "-3st"
@@ -21,6 +23,7 @@ export type SpeakResp = {
 
   visemes?: Viseme[];
   words?: WordTiming[];
+  wordsDisplay?: WordTiming[];
   bookmarks?: Bookmark[];
 
   // inline text (when server sends them)
@@ -30,6 +33,9 @@ export type SpeakResp = {
   // url variants (when served from cache/CDN)
   subtitleVttUrl?: string;
   subtitleSrtUrl?: string;
+
+  displayText?: string;
+  ttsText?: string;
 };
 
 export type TtsVoiceInfo = {

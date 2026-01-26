@@ -369,7 +369,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                   ? 'opacity-60 cursor-not-allowed bg-indigo-600/60 text-white ring-indigo-600/60'
                   : 'bg-indigo-600 text-white ring-indigo-600 hover:bg-indigo-700'
               }`}
-              title="AI will generate outline + narration"
+              title="AI will generate outline + narration (math symbols render in transcripts)"
             >
           <span className="inline-flex items-center justify-center gap-2">
             {busy ? (
@@ -604,7 +604,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = React.memo((props) => {
                       ? 'opacity-60 cursor-not-allowed bg-indigo-600/60 text-white ring-indigo-600/60'
                       : 'bg-indigo-600 text-white ring-indigo-600 hover:bg-indigo-700'
                   }`}
-                  title="AI will generate outline + narration"
+                  title="AI will generate outline + narration (math symbols render in transcripts)"
                 >
                   <span className="inline-flex items-center justify-center gap-2">
                     {busy ? (

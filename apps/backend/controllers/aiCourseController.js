@@ -837,6 +837,18 @@ const estimateText = outlineSlice
           typeof data?.joinedSsml === 'string' ? data.joinedSsml.length : 0,
         notice: !!data?.notice,
       });
+      // CURRENT RESPONSE SHAPE (generateLessonSSML):
+      // {
+      //   lessons: [
+      //     {
+      //       id, title, goals, ssml, estSeconds, markdown, formulas, tables, charts, images, snippets,
+      //       narration, narrationDisplay, narrationTts, narrationTokenMap
+      //     }
+      //   ],
+      //   joinedSsml,
+      //   joinedNarration, joinedNarrationDisplay, joinedNarrationTts, joinedNarrationTokenMap,
+      //   queue, mode, notice, usage, entitlement
+      // }
       return res.status(statusOut).json(data);
     });
   } catch (err) {

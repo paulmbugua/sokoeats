@@ -118,9 +118,13 @@ export async function alignWithGoogleSttWordOffsets({
   audioMp3Buffer,
   languageCode = 'en-US',
   scriptWords = [],
+  scriptText,
 }) {
   if (!audioMp3Buffer?.length)
     throw new Error('alignWithGoogleSttWordOffsets: missing mp3 buffer');
+  if ((!scriptWords || scriptWords.length === 0) && typeof scriptText === 'string') {
+    scriptWords = scriptText.trim().split(/\s+/).filter(Boolean);
+  }
   if (!scriptWords?.length)
     throw new Error('alignWithGoogleSttWordOffsets: missing scriptWords');
 

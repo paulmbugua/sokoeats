@@ -7,6 +7,7 @@ import {
   createRedis,
   ensureRedisConnected,
 } from '../cronJobs/redisConnection.js';
+// Narration normalization utilities live in packages/shared/utils/narrationNormalize.js.
 
 /* ─────────────────────────────────────────────────────────
  * Logging helpers

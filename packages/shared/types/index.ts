@@ -911,11 +911,33 @@ export type AILesson = {
   goals?: string[];
   ssml: string;
   estSeconds?: number;
+  narration?: string;
+  narrationDisplay?: string;
+  narrationTts?: string;
+  narrationTokenMap?: Array<{
+    displaySpan: [number, number];
+    ttsSpan: [number, number];
+    kind: 'word' | 'math' | 'chem';
+    raw: string;
+    display: string;
+    tts: string;
+  }>;
 };
 
 export type LessonPack = {
   lessons: AILesson[];
   joinedSsml: string;
+  joinedNarration?: string;
+  joinedNarrationDisplay?: string;
+  joinedNarrationTts?: string;
+  joinedNarrationTokenMap?: Array<{
+    displaySpan: [number, number];
+    ttsSpan: [number, number];
+    kind: 'word' | 'math' | 'chem';
+    raw: string;
+    display: string;
+    tts: string;
+  }>;
   quiz: Quiz;
   notice?: { degraded: boolean; reason: string };
   mode?: LessonGateMode;
@@ -953,6 +975,17 @@ export type CoursePackage = {
   outline: AiOutlineSection[];
   lessons: AILesson[];
   joinedSsml: string;
+  joinedNarration?: string;
+  joinedNarrationDisplay?: string;
+  joinedNarrationTts?: string;
+  joinedNarrationTokenMap?: Array<{
+    displaySpan: [number, number];
+    ttsSpan: [number, number];
+    kind: 'word' | 'math' | 'chem';
+    raw: string;
+    display: string;
+    tts: string;
+  }>;
   quiz: Quiz;
   notice?: { degraded: boolean; reason: string };
 };

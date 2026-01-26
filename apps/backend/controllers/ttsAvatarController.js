@@ -5,6 +5,11 @@ import {
   listGoogleVoices,
 } from '../services/googleTtsService.js';
 import { normalizeIncomingSsml } from '../../../packages/shared/utils/ssmlText.js';
+import {
+  normalizeNarration,
+  mapWordTimingsToDisplay,
+} from '../../../packages/shared/utils/narrationNormalize.js';
+import { ssmlToPlainText } from '../../../packages/shared/utils/ssmlText.js';
 
 const NS = '[tts]';
 
@@ -64,7 +69,7 @@ export const speakRobot = async (req, res) => {
     String(req.query?.raw || '').toLowerCase() === '1' ||
     /\baudio\/mpeg\b/.test(String(req.headers?.accept || ''));
 
-  let { ssml, text, voiceName, rate, pitch } = req.body || {};
+  let { ssml, text, voiceName, rate, pitch, ttsText: ttsTextOverride } = req.body || {};
 
   try {
     if (ssml) {
@@ -77,6 +82,14 @@ export const speakRobot = async (req, res) => {
       }
       ssml = normalized;
     }
+
+    const rawText = ssml ? ssmlToPlainText(ssml) : String(text || '');
+    const normalizedNarration = normalizeNarration(rawText);
+    const ttsText = typeof ttsTextOverride === 'string' && ttsTextOverride.trim()
+      ? ttsTextOverride.trim()
+      : normalizedNarration.ttsText;
+    const displayText = normalizedNarration.displayText;
+    const tokenMap = normalizedNarration.tokenMap;
     // Map Azure-ish names → Google Wavenet defaults
     function mapVoice(v) {
       const s = String(v || '').toLowerCase();
@@ -97,7 +110,7 @@ export const speakRobot = async (req, res) => {
     const safePitch = pitch ?? '+0st';
 
     const ssmlLen = ssml ? String(ssml).length : 0;
-    const textLen = text ? String(text).length : 0;
+    const textLen = ttsText ? String(ttsText).length : 0;
 
     console.info(NS, 'speak IN', {
       hasSsml: !!ssml,
@@ -110,7 +123,7 @@ export const speakRobot = async (req, res) => {
       wantsRaw,
     });
 
-    if (!ssml && !text) {
+    if (!ssml && !text && !ttsText) {
       console.warn(NS, 'EMPTY_TEXT');
       return res
         .status(400)
@@ -122,11 +135,19 @@ export const speakRobot = async (req, res) => {
     //    - { cdnUrl: undefined, mp3Buffer }  ← not uploaded yet
     const out = await synthesizeTtsLocalFirst({
       ssml,
-      text,
+      text: ssml ? undefined : ttsText || text,
       voiceName: mappedVoice,
       speakingRate,
       pitch: safePitch,
       wantTimepoints: true,
+      alignmentText: ttsText || text,
+    });
+
+    const wordsDisplay = mapWordTimingsToDisplay({
+      tokenMap,
+      ttsText: ttsText || '',
+      displayText,
+      ttsWordTimings: out.wordsJson || [],
     });
 
     const audioId = out.cacheKey;
@@ -149,17 +170,25 @@ export const speakRobot = async (req, res) => {
         return res.status(302).end();
       }
 
+      // CURRENT RESPONSE SHAPE (speakRobot):
+      // {
+      //   url, cdnUrl, streamPath, words, wordsDisplay, visemes, bookmarks,
+      //   vtt, srt, cached, hotTtlMs, displayText, ttsText
+      // }
       return res.json({
         url: cdnFromSvc, // <-- actual URL string
         cdnUrl: cdnFromSvc, // duplicate for compatibility
         streamPath, // hot stream fallback (will 302 if buffer is gone)
         words: out.wordsJson,
+        wordsDisplay,
         visemes: out.visemesJson,
         bookmarks: out.bookmarksJson,
         vtt: out.vttText,
         srt: out.srtText,
         cached: out.cached === true,
         hotTtlMs: HOT_TTL_MS,
+        displayText,
+        ttsText,
       });
     }
 
@@ -230,12 +259,15 @@ export const speakRobot = async (req, res) => {
       cdnUrl,
       streamPath, // immediate stream from HOT cache
       words: out.wordsJson,
+      wordsDisplay,
       visemes: out.visemesJson,
       bookmarks: out.bookmarksJson,
       vtt: out.vttText,
       srt: out.srtText,
       cached: false,
       hotTtlMs: HOT_TTL_MS,
+      displayText,
+      ttsText,
     });
   } catch (err) {
     console.error(

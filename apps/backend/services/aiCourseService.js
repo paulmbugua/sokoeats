@@ -44,6 +44,11 @@ import {
   fairTimerSec,
   ENABLE_LESSON_IMAGES,
 } from './aiCourseCore.js';
+import { ssmlToPlainText } from '../../../packages/shared/utils/ssmlText.js';
+import {
+  normalizeNarration,
+  stripDoubleFullstops,
+} from '../../../packages/shared/utils/narrationNormalize.js';
 
 /* ─────────────────────────────────────────────────────────
  * Re-export selected core utilities so existing imports don't break
@@ -803,6 +808,48 @@ function innerProsody(ssml) {
   return (m ? m[1] : String(ssml)).trim();
 }
 
+function normalizeLessonNarration(lesson) {
+  if (!lesson || typeof lesson !== 'object') return lesson;
+  const ssml = String(lesson.ssml || '');
+  if (!ssml) return lesson;
+
+  const rawNarration = ssmlToPlainText(ssml);
+  const narration = stripDoubleFullstops(rawNarration);
+  const normalized = normalizeNarration(narration);
+
+  return {
+    ...lesson,
+    narration,
+    narrationDisplay: normalized.displayText,
+    narrationTts: normalized.ttsText,
+    narrationTokenMap: normalized.tokenMap,
+  };
+}
+
+function normalizeLessonPack(pack) {
+  if (!pack || typeof pack !== 'object') return pack;
+  const lessons = Array.isArray(pack.lessons)
+    ? pack.lessons.map(normalizeLessonNarration)
+    : pack.lessons;
+
+  if (typeof pack.joinedSsml !== 'string') {
+    return { ...pack, lessons };
+  }
+
+  const rawJoined = ssmlToPlainText(pack.joinedSsml);
+  const joinedNarration = stripDoubleFullstops(rawJoined);
+  const joinedNormalized = normalizeNarration(joinedNarration);
+
+  return {
+    ...pack,
+    lessons,
+    joinedNarration,
+    joinedNarrationDisplay: joinedNormalized.displayText,
+    joinedNarrationTts: joinedNormalized.ttsText,
+    joinedNarrationTokenMap: joinedNormalized.tokenMap,
+  };
+}
+
 function fixDanglingExampleLeadins(s) {
   let out = String(s || '');
 
@@ -956,9 +1003,13 @@ export async function generateLessonSSMLService(
     const produced = Number(cached?.lessons?.length ?? takeCount);
     const hasMore = safeStart + produced < outline.length;
     const nextStart = hasMore ? safeStart + produced : null;
+    const payload = normalizeLessonPack({
+      ...cached,
+      queue: { nextStart, hasMore, total: outline.length },
+    });
     return {
       status: 200,
-      data: { ...cached, queue: { nextStart, hasMore, total: outline.length } },
+      data: payload,
       headers: {
         'X-Cache': 'HIT',
         'X-Next-Start': nextStart != null ? String(nextStart) : '',
@@ -977,10 +1028,10 @@ export async function generateLessonSSMLService(
     const produced = pack.lessons?.length ?? 0;
     const hasMore = safeStart + produced < outline.length;
     const nextStart = hasMore ? safeStart + produced : null;
-    const payload = {
+    const payload = normalizeLessonPack({
       ...pack,
       queue: { nextStart, hasMore, total: outline.length },
-    };
+    });
 
     await cacheSetJSON(cacheKey, payload, REDIS_TTL.ssml);
 
@@ -1053,13 +1104,14 @@ export async function generateLessonSSMLService(
     const produced = pack.lessons?.length ?? 0;
     const hasMore = safeStart + produced < outline.length;
     const nextStart = hasMore ? safeStart + produced : null;
+    const payload = normalizeLessonPack({
+      ...pack,
+      notice: fallbackNotice('breaker_active'),
+      queue: { nextStart, hasMore, total: outline.length },
+    });
     return {
       status: 503,
-      data: {
-        ...pack,
-        notice: fallbackNotice('breaker_active'),
-        queue: { nextStart, hasMore, total: outline.length },
-      },
+      data: payload,
       headers: { 'Retry-After': '600' },
     };
   }
@@ -1525,11 +1577,11 @@ const renderSnippet = (sn) => {
         const produced = pack.lessons?.length ?? 0;
         const hasMore = safeStart + produced < outline.length;
         const nextStart = hasMore ? safeStart + produced : null;
-        const payload = {
+        const payload = normalizeLessonPack({
           ...pack,
           queue: { nextStart, hasMore, total: outline.length },
-        };
-        await cacheSetJSON(cacheKey, pack, REDIS_TTL.ssml);
+        });
+        await cacheSetJSON(cacheKey, payload, REDIS_TTL.ssml);
         return {
           status: 206,
           data: {
@@ -1556,10 +1608,10 @@ const renderSnippet = (sn) => {
         const produced = pack.lessons?.length ?? 0;
         const hasMore = safeStart + produced < outline.length;
         const nextStart = hasMore ? safeStart + produced : null;
-        const payload = {
+        const payload = normalizeLessonPack({
           ...pack,
           queue: { nextStart, hasMore, total: outline.length },
-        };
+        });
         return {
           status: 502,
           data: {
@@ -1596,11 +1648,11 @@ ${bodies.join('\n')}
 
     const hasMore = safeStart + lessons.length < outline.length;
     const nextStart = hasMore ? safeStart + lessons.length : null;
-    const payload = {
+    const payload = normalizeLessonPack({
       lessons,
       joinedSsml,
       queue: { nextStart, hasMore, total: outline.length },
-    };
+    });
     await cacheSetJSON(cacheKey, payload, REDIS_TTL.ssml);
     log('log', 'lesson', 'success', {
       lessons: lessons.length,
@@ -1690,13 +1742,14 @@ ${bodies.join('\n')}
         snippets: 0,
         fallback: 'scaffold',
       });
+      const payload = normalizeLessonPack({
+        ...pack,
+        notice: fallbackNotice(c.kind),
+        queue: { nextStart, hasMore, total: outline.length },
+      });
       return {
         status: 503,
-        data: {
-          ...pack,
-          notice: fallbackNotice(c.kind),
-          queue: { nextStart, hasMore, total: outline.length },
-        },
+        data: payload,
         headers: { 'Retry-After': String(c.retryAfterSec || 10) },
       };
     }
@@ -1733,13 +1786,14 @@ ${bodies.join('\n')}
           fallback: 'plain_ssml',
         });
 
+        const payload = normalizeLessonPack({
+          ...pack,
+          notice: fallbackNotice('schema_error_plain_ssml'),
+          queue: { nextStart, hasMore, total: outline.length },
+        });
         return {
           status: 206,
-          data: {
-            ...pack,
-            notice: fallbackNotice('schema_error_plain_ssml'),
-            queue: { nextStart, hasMore, total: outline.length },
-          },
+          data: payload,
           headers: {},
         };
       } catch {
@@ -1747,13 +1801,14 @@ ${bodies.join('\n')}
         const produced = pack.lessons?.length ?? 0;
         const hasMore = safeStart + produced < outline.length;
         const nextStart = hasMore ? safeStart + produced : null;
+        const payload = normalizeLessonPack({
+          ...pack,
+          notice: fallbackNotice('bad_request_scaffold'),
+          queue: { nextStart, hasMore, total: outline.length },
+        });
         return {
           status: 502,
-          data: {
-            ...pack,
-            notice: fallbackNotice('bad_request_scaffold'),
-            queue: { nextStart, hasMore, total: outline.length },
-          },
+          data: payload,
           headers: {},
         };
       }
@@ -2412,13 +2467,13 @@ ${bodies.join('\n')}
 
   return {
     status: anyDegraded ? 206 : 200,
-    data: {
+    data: normalizeLessonPack({
       outline,
       lessons,
       joinedSsml,
       quiz,
       notice: anyDegraded ? fallbackNotice('degraded_generation') : undefined,
-    },
+    }),
     headers: {},
   };
 }

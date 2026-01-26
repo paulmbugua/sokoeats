@@ -308,6 +308,8 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
     lessons,
     ssml,
     joinedSsml,
+    joinedNarrationDisplay,
+    joinedNarrationTts,
     gateMode,
     gateNotice,
     gateUsage,
@@ -1884,6 +1886,8 @@ onSelectCourse={(id) => {
             currentIdx={currentIdx}
             backendUrl={backendUrl}
             hasJoined={hasJoined}
+            joinedNarrationDisplay={joinedNarrationDisplay}
+            joinedNarrationTts={joinedNarrationTts}
             gateMode={gateMode}
             gateNotice={gateNotice}
             gateUsage={gateUsage}

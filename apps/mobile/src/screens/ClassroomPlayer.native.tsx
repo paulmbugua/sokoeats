@@ -40,6 +40,9 @@ export type LessonLite = {
   id: string;
   title?: string;
   ssml: string;
+  narration?: string;
+  narrationDisplay?: string;
+  narrationTts?: string;
   markdown?: string;
 };
 
@@ -57,6 +60,8 @@ type SentenceGroup = {
 
 type Props = {
   ssml?: string;
+  joinedNarrationDisplay?: string;
+  joinedNarrationTts?: string;
   lessons?: LessonLite[];
   title?: string;
   voiceName?: string;
@@ -686,13 +691,21 @@ useEffect(() => {
     return (ssml || '').trim();
   }, [useJoined, ssml, hasLessons, lessons, uiLessonIdx]);
 
+  const currentLesson = hasLessons ? lessons[uiLessonIdx] : undefined;
+  const currentDisplayText = useJoined
+    ? props.joinedNarrationDisplay
+    : currentLesson?.narrationDisplay;
+  const currentTtsText = useJoined
+    ? props.joinedNarrationTts
+    : currentLesson?.narrationTts;
+
   const displayWords = useMemo(() => {
     const alreadyDecorated = hasUsefulPunctuation(words as any);
     if (alreadyDecorated) return words as any;
 
-    const plain = ssmlToPlainText(effectiveSsml ?? '');
+    const plain = currentDisplayText || ssmlToPlainText(effectiveSsml ?? '');
     return applyPunctuationToWords(words as any, plain) as any;
-  }, [words, effectiveSsml]);
+  }, [words, effectiveSsml, currentDisplayText]);
 
   const lessonContentKey = useMemo(() => {
     if (useJoined) return `joined:${course?.id ?? title ?? 'joined'}`;
@@ -972,7 +985,12 @@ useEffect(() => {
       if (!audioUrl && !loading && effectiveBackend) {
         try {
           clearForNewSession();
-          await speak(effectiveBackend, { ssml: trimmed, voiceName: voice });
+          await speak(effectiveBackend, {
+            ssml: trimmed,
+            voiceName: voice,
+            displayText: currentDisplayText,
+            ttsText: currentTtsText,
+          });
         } catch {}
         return;
       }
@@ -1064,7 +1082,12 @@ useEffect(() => {
         clearForNewSession();
         if (!trimmed || cancelled) return;
 
-        await speak(effectiveBackend, { ssml: trimmed, voiceName: voice });
+        await speak(effectiveBackend, {
+          ssml: trimmed,
+          voiceName: voice,
+          displayText: currentDisplayText,
+          ttsText: currentTtsText,
+        });
         if (cancelled) return;
       } catch (e) {
         console.warn('[ClassroomPlayer.native] speak failed', e);
@@ -1392,7 +1415,7 @@ useEffect(() => {
                 fontSize={stageFontSize}
                 isDark={isDark}
                 maximized={maximized}
-                fallbackSsml={shouldShowFallback ? effectiveSsml : ''}
+                fallbackSsml={shouldShowFallback ? currentDisplayText || effectiveSsml : ''}
               />
 
               {/* Status */}

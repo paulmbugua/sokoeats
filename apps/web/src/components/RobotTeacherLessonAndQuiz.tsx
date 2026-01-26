@@ -62,6 +62,8 @@ interface LessonAndQuizProps {
   courseTitle: string;
   isMaximized: boolean;
   hasJoined: boolean;
+  joinedNarrationDisplay?: string;
+  joinedNarrationTts?: string;
   onToggleMaximized: () => void;
   currentIdx: number;
   course: any;
@@ -153,6 +155,8 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   backendUrl,
   onBeforePlay,
   hasJoined,
+  joinedNarrationDisplay,
+  joinedNarrationTts,
   onStart,
   onEnded,
   gateMode,
@@ -1472,6 +1476,8 @@ const hasTimer = displayTimerSec > 0;
           <ClassroomThemeShell
             ssml={displaySsml}
             lessons={lessonsArr}
+            joinedNarrationDisplay={joinedNarrationDisplay}
+            joinedNarrationTts={joinedNarrationTts}
             voiceName={voiceName}
             title={courseTitle}
             maximized={isMaximized}
