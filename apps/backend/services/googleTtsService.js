@@ -305,6 +305,7 @@ export async function synthesizeTtsLocalFirst({
   speakingRate,
   pitch,
   wantTimepoints = true,
+  alignmentText,
 }) {
   const t0 = process.hrtime.bigint();
 
@@ -364,7 +365,10 @@ export async function synthesizeTtsLocalFirst({
     let wordsJson = null;
 
     if (wantTimepoints && (wordsList?.length || 0) > 0) {
-      const plain = wordsList.join(' ');
+      const plain =
+        typeof alignmentText === 'string' && alignmentText.trim()
+          ? alignmentText.trim()
+          : wordsList.join(' ');
       const aligned = await simpleAlign({
         audioBuffer: undefined,
         audioUrl: cdnUrlCached || undefined,
@@ -535,17 +539,37 @@ export async function synthesizeTtsLocalFirst({
   }
 
   // 1) Google timepoints (marks)
+  const alignmentTextClean =
+    typeof alignmentText === 'string' && alignmentText.trim()
+      ? alignmentText.trim()
+      : '';
+  const alignmentWords = alignmentTextClean
+    ? alignmentTextClean.split(/\s+/).filter(Boolean)
+    : [];
+
   let wordsJson =
     wantTimepoints && collectedWords.length
-      ? collectedWords.sort((a, b) => a.i - b.i)
+      ? collectedWords
+          .sort((a, b) => a.i - b.i)
+          .map((w, idx) =>
+            alignmentWords.length === collectedWords.length
+              ? { ...w, w: alignmentWords[idx] }
+              : w,
+          )
       : null;
 
-  // 2) simpleAlign fallback (only if empty)
-  if (wantTimepoints && (!wordsJson || wordsJson.length === 0)) {
+  const alignmentMismatch =
+    alignmentWords.length > 0 &&
+    wordsJson?.length &&
+    alignmentWords.length !== wordsJson.length;
+
+  // 2) simpleAlign fallback (if empty or alignment mismatch)
+  if (wantTimepoints && (!wordsJson || wordsJson.length === 0 || alignmentMismatch)) {
     const plain =
-      wordsList && wordsList.length
+      alignmentTextClean ||
+      (wordsList && wordsList.length
         ? wordsList.join(' ')
-        : unwrapSpeak(inputSSML);
+        : unwrapSpeak(inputSSML));
     const aligned = await simpleAlign({
       audioBuffer: finalCdnUrl ? undefined : mp3Buffer,
       audioUrl: finalCdnUrl || undefined,
@@ -567,7 +591,8 @@ export async function synthesizeTtsLocalFirst({
         const { wordsJson: sttAligned } = await alignWithGoogleSttWordOffsets({
           audioMp3Buffer: mp3Buffer,
           languageCode: langCode || 'en-US',
-          scriptWords: wordsList,
+          scriptWords:
+            alignmentWords.length > 0 ? alignmentWords : wordsList,
         });
         if (Array.isArray(sttAligned) && sttAligned.length)
           wordsJson = sttAligned;
@@ -582,8 +607,11 @@ export async function synthesizeTtsLocalFirst({
   // 4) Final fallback: evenly-spaced timings
   if (!wordsJson || wordsJson.length === 0) {
     wordsJson =
-      wantTimepoints && wordsList?.length
-        ? approxTimings(wordsList, rateMult)
+      wantTimepoints && (alignmentWords.length || wordsList?.length)
+        ? approxTimings(
+            alignmentWords.length ? alignmentWords : wordsList,
+            rateMult,
+          )
         : null;
   }
 

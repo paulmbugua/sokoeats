@@ -187,6 +187,8 @@ interface LessonAndQuizProps {
   onToggleMaximized: () => void;
   onStart?: () => Promise<void> | void;
   hasJoined?: boolean;
+  joinedNarrationDisplay?: string;
+  joinedNarrationTts?: string;
   canAutoStart?: boolean;
   course: any;
   gateMode?: 'narration' | 'notes_only';
@@ -303,6 +305,8 @@ const LessonAndQuizPane: React.FC<LessonAndQuizProps> = ({
   onPlayerReady,
   onStart,
   hasJoined,
+  joinedNarrationDisplay,
+  joinedNarrationTts,
   canAutoStart = false,
   tryGenerateCertificate,
   generateAICert,
@@ -2175,6 +2179,8 @@ useEffect(() => {
           <ClassroomThemeShell
             ssml={displaySsml}
             lessons={lessonsArr}
+            joinedNarrationDisplay={joinedNarrationDisplay}
+            joinedNarrationTts={joinedNarrationTts}
             voiceName={voiceName}
             title={courseTitle}
             maximized={isMaximized}

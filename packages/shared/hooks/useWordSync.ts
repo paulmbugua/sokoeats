@@ -1381,8 +1381,11 @@ export function useWordSync() {
       let nextWords: WordTiming[] = [];
       let source: 'words' | 'marks' | 'subtitles' | 'fallback' = 'fallback';
 
-      if ((resp as any).words?.length) {
-        const arr = (resp as any).words as unknown[];
+      const wordsPayload = (resp as any).wordsDisplay?.length
+        ? (resp as any).wordsDisplay
+        : (resp as any).words;
+      if (wordsPayload?.length) {
+        const arr = wordsPayload as unknown[];
         if (isWordTimingArray(arr)) {
           nextWords = arr as WordTiming[];
           source = 'words';

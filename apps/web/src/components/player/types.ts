@@ -4,6 +4,9 @@ export type LessonLite = {
   id: string;
   title?: string;
   ssml: string;
+  narration?: string;
+  narrationDisplay?: string;
+  narrationTts?: string;
   markdown?: string;
   formulas?: {
     id: string;

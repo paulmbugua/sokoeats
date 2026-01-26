@@ -11,7 +11,7 @@ import rehypeKatex from 'rehype-katex';
 /* ─────────────────────────────────────────────────────────
    Types
    ───────────────────────────────────────────────────────── */
-type Word = { text: string; start: number; end: number };
+type Word = { text: string; start: number; end: number }; // text may include math symbols (display narration)
 
 type Formula = {
   id: string;

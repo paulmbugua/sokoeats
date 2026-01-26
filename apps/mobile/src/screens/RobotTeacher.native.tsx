@@ -467,6 +467,8 @@ const wantedCourseId = useMemo(() => {
     lessons,
     ssml,
     joinedSsml,
+    joinedNarrationDisplay,
+    joinedNarrationTts,
     quiz,
     answers,
     grade,
@@ -2363,6 +2365,9 @@ const startLanguageFromCard = useCallback(async (language: string) => {
                 currentIdx={currentIdx ?? 0}
                 outline={outline}
                 backendUrl={backendUrl}
+                hasJoined={hasJoined}
+                joinedNarrationDisplay={joinedNarrationDisplay}
+                joinedNarrationTts={joinedNarrationTts}
                 gateMode={gateMode}
                 gateNotice={gateNotice}
                 gateUsage={gateUsage}

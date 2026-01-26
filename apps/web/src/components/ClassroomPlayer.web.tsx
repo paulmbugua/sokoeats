@@ -22,6 +22,8 @@ import type { LessonLite, OutlineSection } from './player/types';
 
 type Props = {
   ssml?: string;
+  joinedNarrationDisplay?: string;
+  joinedNarrationTts?: string;
   lessons?: LessonLite[];
   title?: string;
   voiceName?: string;
@@ -478,18 +480,30 @@ const [showAudioDebug, setShowAudioDebug] = React.useState(false);
         await pause();
       } catch {}
 
+      const curLesson = hasLessons ? lessons[lessonIdx] : undefined;
       const cur = useJoined
         ? (ssml || '').trim()
-        : hasLessons
-          ? (lessons[lessonIdx]?.ssml || '').trim()
+        : curLesson
+          ? (curLesson.ssml || '').trim()
           : (ssml || '').trim();
+      const displayText = useJoined
+        ? props.joinedNarrationDisplay
+        : curLesson?.narrationDisplay;
+      const ttsText = useJoined
+        ? props.joinedNarrationTts
+        : curLesson?.narrationTts;
 
       try {
         clearForNewSession();
       } catch {}
 
       if (cur.length > 0) {
-        await speak(effectiveBackend, { ssml: cur, voiceName: voice });
+        await speak(effectiveBackend, {
+          ssml: cur,
+          voiceName: voice,
+          displayText,
+          ttsText,
+        });
         lastSpeakKey.current = key;
         if (advancingRef.current) {
           advancingRef.current = false;
