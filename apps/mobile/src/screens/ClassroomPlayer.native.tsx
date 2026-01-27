@@ -336,9 +336,11 @@ function mergeExampleSentenceGroups(
   words: Array<{ text?: string }> = []
 ) {
   if (!groups.length) return groups;
+
   const exampleRe = /\b(for instance|for example|let's look at an example)\b/i;
-  const sentenceText = (group: { indices: number[] }) =>
-    group.indices
+
+  const sentenceText = (group?: { indices: number[] }) =>
+    (group?.indices ?? [])
       .map((wi) => words[wi]?.text)
       .filter(Boolean)
       .join(' ')
@@ -346,25 +348,37 @@ function mergeExampleSentenceGroups(
 
   const merged: Array<{ indices: number[] }> = [];
   let i = 0;
+
   while (i < groups.length) {
     const current = groups[i];
+    if (!current) {
+      i++;
+      continue;
+    }
+
     const currentText = sentenceText(current);
     const next = groups[i + 1];
-    const nextText = next ? sentenceText(next) : '';
+    const nextText = sentenceText(next);
 
+    // If we see "for example" sentence and next group is empty, merge with the next non-empty sentence.
     if (currentText && exampleRe.test(currentText) && next && !nextText) {
       let j = i + 2;
       let nextNonEmpty: { indices: number[] } | null = null;
+
       while (j < groups.length) {
-        const text = sentenceText(groups[j]);
-        if (text) {
-          nextNonEmpty = groups[j];
+        const g = groups[j];
+        const text = sentenceText(g);
+        if (g && text) {
+          nextNonEmpty = g;
           break;
         }
         j++;
       }
+
       if (nextNonEmpty) {
-        merged.push({ ...current, indices: [...current.indices, ...nextNonEmpty.indices] });
+        merged.push({
+          indices: [...current.indices, ...nextNonEmpty.indices],
+        });
         i = j + 1;
         continue;
       }
@@ -373,8 +387,10 @@ function mergeExampleSentenceGroups(
     merged.push(current);
     i++;
   }
+
   return merged;
 }
+
 
 // ───────────────────── Inner Player ─────────────────────
 
@@ -1240,17 +1256,18 @@ useEffect(() => {
   const liveReady = !!(sentences?.length && words?.length);
 
   useEffect(() => {
-    if (!liveReady) return;
+  if (!liveReady) return;
 
-    setStableTimed((prev) => {
-      if (prev?.key === lessonContentKey) return prev;
-      return {
-        words: displayWords as any,
-        sentences: sentences as any,
-        key: lessonContentKey,
-      };
-    });
-  }, [liveReady, lessonContentKey, displayWords, sentences]);
+  setStableTimed((prev) => {
+    if (prev?.key === lessonContentKey) return prev;
+    return {
+      words: displayWords as any,
+      sentences: sentences as any,
+      key: lessonContentKey,
+    };
+  });
+}, [liveReady, lessonContentKey, displayWords, sentences]);
+
 
   const renderWords = liveReady ? (displayWords as any) : (stableTimed?.words ?? []);
   const renderSentences = liveReady ? (sentences as any) : (stableTimed?.sentences ?? []);
@@ -1783,14 +1800,17 @@ function NarrationStage({
     return idx === -1 ? 0 : idx;
   }, [sentences, currentIndex]);
 
-  const visibleSentenceIndices = useMemo(() => {
-    const idx = activeSentenceIdx;
-    const arr: number[] = [];
-    if (idx > 0) arr.push(idx - 1);
-    arr.push(idx);
-    if (idx + 1 < sentences.length) arr.push(idx + 1);
-    return arr;
-  }, [sentences, activeSentenceIdx]);
+  const visibleSentences = useMemo(() => {
+  if (!sentences?.length) return [];
+
+  const idx = Math.max(0, Math.min(activeSentenceIdx, sentences.length - 1));
+  const candidates = [idx - 1, idx, idx + 1];
+
+  return candidates
+    .filter((i) => i >= 0 && i < sentences.length)
+    .map((i) => ({ group: sentences[i]!, idx: i }));
+}, [sentences, activeSentenceIdx]);
+
 
   return (
     <View
@@ -1801,27 +1821,25 @@ function NarrationStage({
       )}
     >
       <ScrollView contentContainerStyle={tw`flex-1 justify-center`} showsVerticalScrollIndicator={false}>
-        {visibleSentenceIndices.map((sIdx) => {
-          const s = sentences[sIdx];
-          const isActiveSentence = sIdx === activeSentenceIdx;
-          if (!s) return null;
+        {visibleSentences.map(({ group, idx }) => {
+  const isActiveSentence = idx === activeSentenceIdx;
 
-          return (
-            <Text
-              key={`sent-${sIdx}`}
-              style={{
-                textAlign: 'center',
-                fontSize,
-                lineHeight: fontSize * 1.35,
-                color: isActiveSentence ? baseTextColor : dimmedColor,
-                marginBottom:
-                  sIdx === visibleSentenceIndices[visibleSentenceIndices.length - 1] ? 0 : fontSize * 0.4,
-              }}
-            >
-              {joinWordsForDisplay(words, s.indices)}
-            </Text>
-          );
-        })}
+  return (
+    <Text
+      key={`sent-${idx}`}
+      style={{
+        textAlign: 'center',
+        fontSize,
+        lineHeight: fontSize * 1.35,
+        color: isActiveSentence ? baseTextColor : dimmedColor,
+        marginBottom: idx === visibleSentences[visibleSentences.length - 1]?.idx ? 0 : fontSize * 0.4,
+      }}
+    >
+      {joinWordsForDisplay(words, group.indices)}
+    </Text>
+  );
+})}
+
       </ScrollView>
     </View>
   );

@@ -3,15 +3,26 @@ import 'react-native-gesture-handler';
 import * as Linking from 'expo-linking';
 
 import axios, { isAxiosError } from 'axios';
-import React, { useEffect } from 'react';
-import { AppState, LogBox, StatusBar, Platform } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AppState,
+  LogBox,
+  StatusBar,
+  Platform,
+  Animated,
+  View,
+  Image,
+  StyleSheet,
+} from 'react-native';
 import * as Notifications from 'expo-notifications';
+import * as SplashScreen from 'expo-splash-screen';
 
 import { registerRootComponent } from 'expo';
 import ExpoConstants from 'expo-constants';
+import brandMark from '../assets/brand-mark.png';
 
 import { ThemeProvider, useThemePref } from './theme/ThemeContext';
-import { QueryClient,QueryClientProvider, type QueryCacheNotifyEvent } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, type QueryCacheNotifyEvent } from '@tanstack/react-query';
 import { GlobalRefreshProvider } from './refresh/GlobalRefreshProvider';
 import {
   NavigationContainer,
@@ -191,14 +202,104 @@ type ShopCtx = {
 };
 
 /* ──────────────────────────────────────────────────────────
+   Splash → Loading → App transition (Meta-style)
+────────────────────────────────────────────────────────── */
+const MIN_LOADING_MS = 450;
+const FADE_MS = 220;
+
+/**
+ * Simple in-app loading screen:
+ * - black background
+ * - centered brand mark
+ * - NO footer (footer belongs to native splash image only)
+ */
+const LoadingOverlay: React.FC<{ opacity: Animated.Value }> = ({ opacity }) => {
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.96)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeIn, { toValue: 1, duration: 260, useNativeDriver: true }),
+      Animated.timing(scale, { toValue: 1, duration: 260, useNativeDriver: true }),
+    ]).start();
+  }, [fadeIn, scale]);
+
+  return (
+    <Animated.View style={[styles.loadingLayer, { opacity }]}>
+      <Animated.View style={{ opacity: fadeIn, transform: [{ scale }] }}>
+        {/* If you add a dedicated asset later, swap to brand-mark.png */}
+        <Image source={brandMark} style={styles.logo} resizeMode="contain" />
+
+      </Animated.View>
+    </Animated.View>
+  );
+};
+
+function useBootTransition(appReady: boolean) {
+  const [booted, setBooted] = useState(false);
+
+  const loadingOpacity = useRef(new Animated.Value(1)).current;
+  const appOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      // Keep native splash until we decide to hide it
+      try {
+        await SplashScreen.preventAutoHideAsync();
+      } catch {
+        // ignore
+      }
+
+      const t0 = Date.now();
+
+      // Wait until the app is actually ready (e.g., ShopContext hydrated)
+      if (!appReady) return;
+
+      const elapsed = Date.now() - t0;
+      const remaining = Math.max(0, MIN_LOADING_MS - elapsed);
+      if (remaining) await new Promise((r) => setTimeout(r, remaining));
+
+      // Now hide native splash, then cross-fade
+      try {
+        await SplashScreen.hideAsync();
+      } catch {
+        // ignore
+      }
+
+      if (!mounted) return;
+      setBooted(true);
+
+      Animated.parallel([
+        Animated.timing(loadingOpacity, { toValue: 0, duration: FADE_MS, useNativeDriver: true }),
+        Animated.timing(appOpacity, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
+      ]).start();
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [appReady, loadingOpacity, appOpacity]);
+
+  return { booted, loadingOpacity, appOpacity };
+}
+
+/* ──────────────────────────────────────────────────────────
    Root composition (ThemeProvider only)
 ────────────────────────────────────────────────────────── */
 const RootInner: React.FC = () => {
   const { resolvedScheme } = useThemePref(); // 'light' | 'dark'
   const navRef = useNavigationContainerRef<MainStackParamList>();
 
-  const { http, token, orgToken } = useShopContext() as unknown as ShopCtx;
+  const { http, token, orgToken, initializing } = useShopContext() as unknown as ShopCtx;
   const { setAppPresence } = useChatContext();
+
+  // Consider app "ready" when ShopContext finishes hydration.
+  // If you want stricter readiness later, extend this condition.
+  const appReady = initializing === false;
+
+  const { loadingOpacity, appOpacity } = useBootTransition(appReady);
 
   useEffect(() => {
     let cancelled = false;
@@ -249,34 +350,34 @@ const RootInner: React.FC = () => {
   }, [setAppPresence]);
 
   useEffect(() => {
-  const handleResp = (resp: Notifications.NotificationResponse) => {
-    const data = resp.notification.request.content.data as unknown as {
-      screen?: unknown;
-      params?: unknown;
+    const handleResp = (resp: Notifications.NotificationResponse) => {
+      const data = resp.notification.request.content.data as unknown as {
+        screen?: unknown;
+        params?: unknown;
+      };
+
+      if (typeof data?.screen !== 'string') return;
+
+      navRef.current?.dispatch(
+        CommonActions.navigate({
+          name: data.screen as never,
+          params: (data.params as never) ?? undefined,
+        })
+      );
     };
 
-    if (typeof data?.screen !== 'string') return;
+    (async () => {
+      const last = await Notifications.getLastNotificationResponseAsync();
+      if (last) handleResp(last);
+    })();
 
-    navRef.current?.dispatch(
-      CommonActions.navigate({
-        name: data.screen as never,
-        params: (data.params as never) ?? undefined,
-      })
-    );
-  };
+    const cleanup = initNotificationListeners({
+      onReceive: () => {},
+      onRespond: handleResp,
+    });
 
-  (async () => {
-    const last = await Notifications.getLastNotificationResponseAsync();
-    if (last) handleResp(last);
-  })();
-
-  const cleanup = initNotificationListeners({
-    onReceive: () => {},
-    onRespond: handleResp,
-  });
-
-  return () => cleanup();
-}, [navRef]);
+    return () => cleanup();
+  }, [navRef]);
 
   return (
     <>
@@ -285,15 +386,22 @@ const RootInner: React.FC = () => {
         backgroundColor="transparent"
         barStyle={resolvedScheme === 'dark' ? 'light-content' : 'dark-content'}
       />
-      <GlobalRefreshProvider>
-        <NavigationContainer
-          ref={navRef}
-          theme={resolvedScheme === 'dark' ? NavDark : NavLight}
-          linking={linking}
-        >
-          <App />
-        </NavigationContainer>
-      </GlobalRefreshProvider>
+
+      {/* App UI layer (fades in) */}
+      <Animated.View style={[styles.appLayer, { opacity: appOpacity }]}>
+        <GlobalRefreshProvider>
+          <NavigationContainer
+            ref={navRef}
+            theme={resolvedScheme === 'dark' ? NavDark : NavLight}
+            linking={linking}
+          >
+            <App />
+          </NavigationContainer>
+        </GlobalRefreshProvider>
+      </Animated.View>
+
+      {/* In-app loading overlay (fades out) */}
+      <LoadingOverlay opacity={loadingOpacity} />
     </>
   );
 };
@@ -321,7 +429,6 @@ const Root: React.FC = () => {
   );
 };
 
-
 /* ──────────────────────────────────────────────────────────
    Mount
 ────────────────────────────────────────────────────────── */
@@ -330,6 +437,28 @@ declare global {
   var queryClient: QueryClient | undefined;
 }
 
-
 registerRootComponent(Root);
 globalThis.queryClient = queryClient;
+
+/* ──────────────────────────────────────────────────────────
+   Styles
+────────────────────────────────────────────────────────── */
+const styles = StyleSheet.create({
+  appLayer: {
+    backgroundColor: '#000000', // prevents white flash during cross-fade
+    flex: 1,
+  },
+
+  loadingLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+  },
+
+  logo: {
+    height: 170,
+    width: 170,
+  },
+});
+

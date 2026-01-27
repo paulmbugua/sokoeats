@@ -562,7 +562,7 @@ const LANGUAGE_BUNDLE_TOKENS = 20;
 
 const [languageLaunching, setLanguageLaunching] = useState(false);
 const [languageActive, setLanguageActive] = useState<string | null>(null);
-
+const [overlayCoachOpen, setOverlayCoachOpen] = useState(false);
 const [llUnlockOpen, setLlUnlockOpen] = useState(false);
 const [llUnlockBusy, setLlUnlockBusy] = useState(false);
 const [llUnlockErr, setLlUnlockErr] = useState<string | null>(null);
@@ -591,6 +591,8 @@ useEffect(() => {
     ctxCourseIdLen: llUnlockCtx?.courseId ? String(llUnlockCtx.courseId).length : 0,
   });
 }, [llUnlockOpen, llUnlockBusy, llUnlockCtx, backendUrl, languageToken]);
+
+
 
 // lightweight in-memory cache (web uses localStorage; native keeps this per app session)
 const llCourseIdCacheRef = useRef<Map<string, string>>(new Map());
@@ -854,6 +856,8 @@ const isLockedLearner =
     startIdx: null,
   });
 
+  
+
   useEffect(() => {
     if (startIdx == null) return;
     if (!outline?.length) return;
@@ -1063,6 +1067,8 @@ const trackLockSource = useMemo(() => {
   useEffect(() => {
     selectedCourseRef.current = selectedCourse;
   }, [selectedCourse]);
+
+  
 
   const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
   const waitForCourses = async (timeoutMs = 5000, pollMs = 50) => {
@@ -1834,7 +1840,25 @@ const startLanguageFromCard = useCallback(async (language: string) => {
   }
 }, [languageLaunching, llUnlockBusy, requireLanguageAuth, attemptLanguageStart, resetRunUi, selectCourse]);
 
+useEffect(() => {
+  let cancelled = false;
 
+  (async () => {
+    if (!overlayAvailable) return;
+
+    const key = `rt_overlay_hint_v1:${selectedCourse?.id || customTitle || 'free'}`;
+    const seen = await AsyncStorage.getItem(key).catch(() => null);
+    if (seen) return;
+
+    if (!cancelled) setOverlayCoachOpen(true);
+
+    await AsyncStorage.setItem(key, '1').catch(() => {});
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [overlayAvailable, selectedCourse?.id, customTitle]);
   
 
   // course change — cancel any active run and spinner
@@ -2278,6 +2302,21 @@ const startLanguageFromCard = useCallback(async (language: string) => {
                 })}
               </View>
 
+              {overlayCoachOpen && overlayAvailable ? (
+            <Pressable
+              onPress={() => setOverlayCoachOpen(false)}
+              style={tw`mb-2 rounded-2xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 px-3 py-2`}
+            >
+              <Text style={tw`text-[12px] text-indigo-900 dark:text-indigo-100`}>
+                💡 Tap <Text style={tw`font-bold`}>Overlay</Text> to open formulas, tables, charts & code for this lesson.
+              </Text>
+              <Text style={tw`mt-1 text-[11px] text-indigo-700 dark:text-indigo-200/80`}>
+                Drag it anywhere • pinch to resize • tap × to close
+              </Text>
+            </Pressable>
+          ) : null}
+
+
               {/* Controls */}
               <ControlsPanel
                 showMinimalControls={showMinimalControls}
@@ -2436,7 +2475,6 @@ const startLanguageFromCard = useCallback(async (language: string) => {
                 displayRemainingMs={displayRemainingMs}
                 disableQuiz={disableQuiz}
                 onStart={onStart}
-                hasJoined={hasJoined}
                 canAutoStart={false}
                 onViewResults={(
                   courseId: string,
