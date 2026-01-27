@@ -30,6 +30,7 @@ import OrgExamMarksTab from './OrgExamMarksTab.native';
 import OrgExamReportsTab from './OrgExamReportsTab.native';
 
 import { useThemePref } from '../../theme/ThemeContext';
+import { Coachmark, useCoachmark } from '../../components/hints/Coachmark.native';
 
 type ViewTab = 'setup' | 'marks' | 'reports';
 
@@ -284,6 +285,10 @@ const OrgExamResultsPortalNative: React.FC = () => {
     configAiLoading,
     previewConfigWithAi,
   } = useOrgExams({ backendUrl, token: authToken, orgId });
+  const examFlowHint = useCoachmark(
+    'org_exam_flow_v1',
+    !isLearnerView && !configLoading && !sheetLoading
+  );
 
   const cfg = config ?? emptyConfig;
   const [editingConfig, setEditingConfig] = useState<OrgExamConfig>(emptyConfig);
@@ -1383,7 +1388,7 @@ const OrgExamResultsPortalNative: React.FC = () => {
             {!isLearnerView && (
               <View
                 style={[
-                  tw`flex-row items-center rounded-2xl px-1.5 py-1`,
+                  tw`flex-row items-center rounded-2xl px-1.5 py-1 relative`,
                   {
                     backgroundColor: palette.chipBg,
                     borderColor: palette.accentSoft,
@@ -1391,6 +1396,14 @@ const OrgExamResultsPortalNative: React.FC = () => {
                   },
                 ]}
               >
+                <Coachmark
+                  id="org_exam_flow_v1"
+                  title="Follow the flow"
+                  text="Start in Setup, enter Marks, then export Reports for families."
+                  visible={examFlowHint.visible}
+                  onDismiss={examFlowHint.dismiss}
+                  placement="bottom"
+                />
                 <TouchableOpacity
                   onPress={() => setTab('setup')}
                   style={tabButtonStyles(tab === 'setup', 0.9)} // smaller pill

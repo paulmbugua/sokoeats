@@ -24,6 +24,7 @@ import {
 } from '@mytutorapp/shared/api/orgInstructorsApi';
 
 import { useOrgInstructorFeeAccess } from '@mytutorapp/shared/hooks/useOrgInstructorFeeAccess';
+import { Coachmark, useCoachmark } from '../../components/hints/Coachmark';
 
 import {
   Skeleton,
@@ -274,6 +275,7 @@ const OrgRosterPage: React.FC = () => {
   // modals
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<'instructor' | 'learner'>('learner');
+  const rosterHint = useCoachmark('org_roster_add_v1', !loading);
   const [addInstructorOpen, setAddInstructorOpen] = useState(false);
   const [addLearnerOpen, setAddLearnerOpen] = useState(false);
   const [editingInstructor, setEditingInstructor] = useState<MiniUser | null>(null);
@@ -1045,7 +1047,15 @@ const OrgRosterPage: React.FC = () => {
         </div>
 
         {/* action bar */}
-        <div className={`${cardBase} mt-4 p-3 sm:p-4`}>
+        <div className={`${cardBase} mt-4 p-3 sm:p-4 relative`}>
+          <Coachmark
+            id="org_roster_add_v1"
+            title="Grow your roster"
+            text="Use Add, Invite, or Import CSV to quickly bring instructors and learners in."
+            visible={rosterHint.visible}
+            onDismiss={rosterHint.dismiss}
+            placement="top"
+          />
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               {/* select / bulk delete */}

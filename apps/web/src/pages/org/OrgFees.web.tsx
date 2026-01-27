@@ -10,6 +10,7 @@ import { getOrgRoster } from '@mytutorapp/shared/api/orgApi';
 import { useOrgFeeStructures } from '@mytutorapp/shared/hooks/useOrgFeeStructures';
 import { useOrgFeeBalances } from '@mytutorapp/shared/hooks/useOrgFeeBalances';
 import { useOrgFeeStatement } from '@mytutorapp/shared/hooks/useOrgFeeStatement';
+import { Coachmark, useCoachmark } from '../../components/hints/Coachmark';
 import type { FeeStructure, FeeStructureItem } from '@mytutorapp/shared/types';
 
 import {
@@ -244,6 +245,7 @@ const feesUnlocked = useMemo(() => {
     token: orgToken,
     orgId,
   });
+  const feesQuickActionsHint = useCoachmark('org_fees_quick_actions_v1', !balancesLoading);
 
   const {
     charges,
@@ -1344,7 +1346,15 @@ const handleSaveStructure = async ({ forceActive }: { forceActive?: boolean } = 
         </SectionCard>
 
         <SectionCard title="Quick actions" subtitle="Charges, payments, balances, and statements">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="relative grid gap-3 md:grid-cols-2">
+            <Coachmark
+              id="org_fees_quick_actions_v1"
+              title="Record fees faster"
+              text="Select a learner below, then use Quick actions to charge or record payments."
+              visible={feesQuickActionsHint.visible}
+              onDismiss={feesQuickActionsHint.dismiss}
+              placement="top"
+            />
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800">
               <div className="text-xs text-slate-500">Balances</div>
               <div className="mt-1 text-lg font-semibold">{balancesLoading ? 'Loading…' : `${balances?.length || 0} learners`}</div>

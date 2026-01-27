@@ -4,6 +4,7 @@ import axios, { AxiosError } from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Spinner from './Spinner.web';
 import { useAccountSection } from '@mytutorapp/shared/hooks/useAccountSection';
+import { Coachmark, useCoachmark } from './hints/Coachmark';
 import debounce from 'lodash.debounce';
 import type { SessionType, Transaction, EarningsSummary } from '@mytutorapp/shared/types';
 import { useWithdrawal } from '@mytutorapp/shared/hooks';
@@ -176,6 +177,8 @@ const parsePricing = (raw: any): Record<string, number> => {
   });
 
   const role = user.role;
+  const transactionsHint = useCoachmark('account_transactions_v1', activeTab === 'transactions');
+  const sessionsHint = useCoachmark('account_sessions_v1', activeTab === 'sessions');
 
   // Withdrawal hook
   const { withdraw, isSubmitting: isWithdrawing } = useWithdrawal({
@@ -420,10 +423,26 @@ useEffect(() => {
 
       {/* Tabs */}
       <div
-        className="flex flex-wrap justify-center sm:justify-start gap-2 sm:gap-3 mt-6
+        className="relative flex flex-wrap justify-center sm:justify-start gap-2 sm:gap-3 mt-6
                    border-b border-slate-200 dark:border-[#182430] pb-2"
         role="tablist"
       >
+        <Coachmark
+          id="account_transactions_v1"
+          title="Track your balance"
+          text="Transactions show token purchases, earnings, and deductions."
+          visible={transactionsHint.visible}
+          onDismiss={transactionsHint.dismiss}
+          placement="bottom"
+        />
+        <Coachmark
+          id="account_sessions_v1"
+          title="Manage sessions"
+          text="Create sessions, review upcoming lessons, and see status updates here."
+          visible={sessionsHint.visible}
+          onDismiss={sessionsHint.dismiss}
+          placement="bottom"
+        />
         {(['overview', 'transactions', 'sessions', 'reviews', 'earnings'] as const).map((tab) => {
           if (tab === 'reviews' && role !== 'student') return null;
           if (tab === 'earnings' && role !== 'tutor') return null;

@@ -24,6 +24,7 @@ import type {
 import OrgExamSetupTab from './OrgExamSetupTab.web';
 import OrgExamMarksTab from './OrgExamMarksTab.web';
 import OrgExamReportsTab from './OrgExamReportsTab.web';
+import { Coachmark, useCoachmark } from '../../components/hints/Coachmark';
 
 const TAB_BTN_BASE =
   'group relative inline-flex items-center justify-center h-10 sm:h-11 px-4 sm:px-6 rounded-xl ' +
@@ -225,6 +226,10 @@ const OrgExamResultsPortal: React.FC = () => {
     configAiLoading,
     previewConfigWithAi,
   } = useOrgExams({ backendUrl, token: authToken, orgId });
+  const examFlowHint = useCoachmark(
+    'org_exam_flow_v1',
+    !isLearnerView && !configLoading && !sheetLoading
+  );
 
   const cfg = config ?? emptyConfig;
   const [editingConfig, setEditingConfig] = useState<OrgExamConfig>(emptyConfig);
@@ -1199,8 +1204,16 @@ const OrgExamResultsPortal: React.FC = () => {
                 <div
                   role="tablist"
                   aria-label="Exam views"
-                  className="inline-flex items-center rounded-2xl p-1.5 bg-white/80 dark:bg-[#0b1420]/80 ring-2 ring-[#3d99f5] dark:ring-[#3d99f5]/90 shadow-xl backdrop-blur supports-[backdrop-filter]:backdrop-blur"
+                  className="relative inline-flex items-center rounded-2xl p-1.5 bg-white/80 dark:bg-[#0b1420]/80 ring-2 ring-[#3d99f5] dark:ring-[#3d99f5]/90 shadow-xl backdrop-blur supports-[backdrop-filter]:backdrop-blur"
                 >
+                  <Coachmark
+                    id="org_exam_flow_v1"
+                    title="Follow the flow"
+                    text="Start in Setup, enter Marks, then export Reports for families."
+                    visible={examFlowHint.visible}
+                    onDismiss={examFlowHint.dismiss}
+                    placement="bottom"
+                  />
                   <button
                     role="tab"
                     aria-selected={tab === 'setup'}

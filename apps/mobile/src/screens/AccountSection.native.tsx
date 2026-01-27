@@ -26,6 +26,7 @@ import { getTutorProfile } from '@mytutorapp/shared/api/profileDetailApi';
 
 import Spinner from './Spinner.native';
 import useAccountSection from '@mytutorapp/shared/hooks/useAccountSection';
+import { Coachmark, useCoachmark } from '../components/hints/Coachmark.native';
 import { useWithdrawal } from '@mytutorapp/shared/hooks';
 import debounce from 'lodash.debounce';
 
@@ -524,6 +525,8 @@ useEffect(() => {
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const dateValue = formData.date ? new Date(String(formData.date)) : new Date();
+  const transactionsHint = useCoachmark('account_transactions_v1', activeTab === 'transactions');
+  const sessionsHint = useCoachmark('account_sessions_v1', activeTab === 'sessions');
 
   const availableTabs: ActiveTab[] = [
     'overview',
@@ -620,9 +623,25 @@ useEffect(() => {
 
         {/* Tabs */}
         <View
-          style={tw`flex-row flex-wrap gap-2 mt-4 border-b border-slate-200 dark:border-white/10 pb-2`}
+          style={tw`flex-row flex-wrap gap-2 mt-4 border-b border-slate-200 dark:border-white/10 pb-2 relative`}
           accessibilityRole="tablist"
         >
+          <Coachmark
+            id="account_transactions_v1"
+            title="Track your balance"
+            text="Transactions show token purchases, earnings, and deductions."
+            visible={transactionsHint.visible}
+            onDismiss={transactionsHint.dismiss}
+            placement="bottom"
+          />
+          <Coachmark
+            id="account_sessions_v1"
+            title="Manage sessions"
+            text="Create sessions, review upcoming lessons, and see status updates here."
+            visible={sessionsHint.visible}
+            onDismiss={sessionsHint.dismiss}
+            placement="bottom"
+          />
           {availableTabs.map((tab) => {
             const isActive = activeTab === tab;
             return (
