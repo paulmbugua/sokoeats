@@ -20,6 +20,7 @@ import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
 import { useOrgAnnouncements } from '@mytutorapp/shared/hooks/useOrgAnnouncements';
 
 import { useThemePref } from '../../theme/ThemeContext';
+import { Coachmark, useCoachmark } from '../../components/hints/Coachmark.native';
 
 // Optional but recommended (parity with Newsletter screen)
 import { RefreshableScrollView } from '../../refresh/Refreshable';
@@ -351,6 +352,7 @@ const backendUrl: string | undefined = (ctxBackendUrl as string) || undefined;
 
   const [limitToClass, setLimitToClass] = useState(false);
   const [flash, setFlash] = useState<{ tone: 'ok' | 'warn' | 'bad'; msg: string } | null>(null);
+  const announcementHint = useCoachmark('org_announcements_publish_v1', !loading && !missingCtx);
 
   const isAgm = String(form.category || '').toLowerCase() === 'agm';
   const canPost = useMemo(() => Boolean(form.title.trim() && form.body.trim()), [form.title, form.body]);
@@ -739,7 +741,15 @@ Thank you.`;
           />
 
           {/* Actions */}
-          <View style={tw`flex-row flex-wrap gap-2 mt-2`}>
+          <View style={tw`flex-row flex-wrap gap-2 mt-2 relative`}>
+            <Coachmark
+              id="org_announcements_publish_v1"
+              title="Notify everyone"
+              text="Publish here to send an announcement to learners and instructors."
+              visible={announcementHint.visible}
+              onDismiss={announcementHint.dismiss}
+              placement="top"
+            />
             <PrimaryBtn
               label={saving ? 'Publishing…' : 'Publish'}
               onPress={handleSave}

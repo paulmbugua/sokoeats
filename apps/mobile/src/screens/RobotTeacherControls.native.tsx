@@ -1,5 +1,5 @@
 // apps/mobile/src/screens/RobotTeacherControls.native.tsx
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,14 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import tw from '../../tailwind';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { ProgramTrack } from '@mytutorapp/shared/types';
+import { Coachmark, useCoachmark } from '../components/hints/Coachmark.native';
 
 export type SizePresetKey = 'quick' | 'standard' | 'extended' | 'intensive' | 'marathon';
 export type TrackKey = ProgramTrack;
@@ -246,6 +248,7 @@ interface ControlsPanelProps {
   // overlay
   onOpenOverlay?: () => void;
   overlayAvailable?: boolean;
+  overlayHintEligible?: boolean;
 }
 
 
@@ -312,6 +315,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
 
     onOpenOverlay,
     overlayAvailable,
+    overlayHintEligible = false,
   } = props;
 
   useEffect(() => {
@@ -356,6 +360,52 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
   const trackLabel = TRACKS.find((t) => t.key === programTrack)?.label || 'Plan';
   const defaultQuizForLessons = (n: number) => Math.max(4, n * 2);
   const advancedDisabled = isLockedLearner || programTrackLocked;
+  const overlayHint = useCoachmark('lesson_overlay_v1', overlayHintEligible);
+  const [overlayPulse, setOverlayPulse] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!overlayHint.visible) {
+      setOverlayPulse(false);
+      pulseAnim.stopAnimation();
+      pulseAnim.setValue(0);
+      return;
+    }
+
+    setOverlayPulse(true);
+    pulseAnim.setValue(0.25);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.75,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0.25,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+
+    const timer = setTimeout(() => {
+      loop.stop();
+      setOverlayPulse(false);
+      pulseAnim.setValue(0);
+    }, 4000);
+
+    return () => {
+      loop.stop();
+      clearTimeout(timer);
+    };
+  }, [overlayHint.visible, pulseAnim]);
+
+  const handleOpenOverlay = useCallback(() => {
+    if (overlayHint.visible) overlayHint.dismiss();
+    if (overlayAvailable && onOpenOverlay) onOpenOverlay();
+  }, [overlayHint, overlayAvailable, onOpenOverlay]);
 
   useEffect(() => {
     if (advancedDisabled && advancedOpen) setAdvancedOpen(false);
@@ -394,23 +444,49 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
   </View>
 
   {/* ✅ Lesson overlay доступ for org/locked learners too */}
-  <Pressable
-    onPress={() => {
-      if (onOpenOverlay) onOpenOverlay();
-    }}
-    disabled={!onOpenOverlay || !overlayAvailable}
-
-    accessibilityRole="button"
-    accessibilityLabel="Open lesson overlay"
-    style={tw.style(
-      `h-11 w-11 rounded-xl items-center justify-center border`,
-      overlayAvailable
-        ? `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
-        : `bg-slate-100 dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-60`
-    )}
-  >
-    <MaterialIcons name="layers" size={18} color={overlayAvailable ? '#49739c' : '#94a3b8'} />
-  </Pressable>
+  <View style={tw`relative`}>
+    <Coachmark
+      id="lesson_overlay_v1"
+      title="Slides & Helpers"
+      text="Tap here to open formulas, tables, code snippets, and charts for this lesson."
+      visible={overlayHint.visible}
+      onDismiss={overlayHint.dismiss}
+      placement="top"
+    />
+    {overlayPulse ? (
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          tw`absolute inset-0 rounded-xl border border-indigo-300/70`,
+          {
+            opacity: pulseAnim,
+            transform: [
+              {
+                scale: pulseAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 1.5],
+                }),
+              },
+            ],
+          },
+        ]}
+      />
+    ) : null}
+    <Pressable
+      onPress={handleOpenOverlay}
+      disabled={!onOpenOverlay || !overlayAvailable}
+      accessibilityRole="button"
+      accessibilityLabel="Open lesson overlay"
+      style={tw.style(
+        `h-11 w-11 rounded-xl items-center justify-center border`,
+        overlayAvailable
+          ? `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
+          : `bg-slate-100 dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-60`
+      )}
+    >
+      <MaterialIcons name="layers" size={18} color={overlayAvailable ? '#49739c' : '#94a3b8'} />
+    </Pressable>
+  </View>
 </View>
 
         </View>
@@ -457,7 +533,11 @@ const ControlsPanel: React.FC<ControlsPanelProps> = memo((props) => {
             onStart={onStart}
             showCourseOrCustomError={showCourseOrCustomError}
             overlayAvailable={overlayAvailable}
-            onOpenOverlay={onOpenOverlay}
+            onOpenOverlay={handleOpenOverlay}
+            overlayHintVisible={overlayHint.visible}
+            onOverlayHintDismiss={overlayHint.dismiss}
+            overlayPulse={overlayPulse}
+            pulseAnim={pulseAnim}
           />
 
           <AdvancedSection
@@ -826,6 +906,10 @@ function TeachMeSection({
   showCourseOrCustomError: boolean;
   overlayAvailable?: boolean;
   onOpenOverlay?: () => void;
+  overlayHintVisible?: boolean;
+  onOverlayHintDismiss?: () => void;
+  overlayPulse?: boolean;
+  pulseAnim?: Animated.Value;
 }) {
   if (isLockedLearner) return null;
 
@@ -869,22 +953,49 @@ function TeachMeSection({
           </Text>
         </Pressable>
 
-        <Pressable
-          onPress={() => {
-            if (overlayAvailable && onOpenOverlay) onOpenOverlay();
-          }}
-          disabled={!overlayAvailable || !onOpenOverlay}
-          accessibilityRole="button"
-          accessibilityLabel="Open lesson overlay"
-          style={tw.style(
-            `h-11 w-11 rounded-xl items-center justify-center border`,
-            overlayAvailable
-              ? `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
-              : `bg-slate-100 dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-50`
-          )}
-        >
-          <MaterialIcons name="layers" size={18} color={overlayAvailable ? '#49739c' : '#94a3b8'} />
-        </Pressable>
+        <View style={tw`relative`}>
+          <Coachmark
+            id="lesson_overlay_v1"
+            title="Slides & Helpers"
+            text="Tap here to open formulas, tables, code snippets, and charts for this lesson."
+            visible={overlayHintVisible ?? false}
+            onDismiss={onOverlayHintDismiss ?? (() => {})}
+            placement="top"
+          />
+          {overlayPulse && pulseAnim ? (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                tw`absolute inset-0 rounded-xl border border-indigo-300/70`,
+                {
+                  opacity: pulseAnim,
+                  transform: [
+                    {
+                      scale: pulseAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 1.5],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            />
+          ) : null}
+          <Pressable
+            onPress={handleOpenOverlay}
+            disabled={!overlayAvailable || !onOpenOverlay}
+            accessibilityRole="button"
+            accessibilityLabel="Open lesson overlay"
+            style={tw.style(
+              `h-11 w-11 rounded-xl items-center justify-center border`,
+              overlayAvailable
+                ? `bg-white dark:bg-[#172534] border-[#cedbe8] dark:border-white/15`
+                : `bg-slate-100 dark:bg-[#172534] border-[#cedbe8] dark:border-white/10 opacity-50`
+            )}
+          >
+            <MaterialIcons name="layers" size={18} color={overlayAvailable ? '#49739c' : '#94a3b8'} />
+          </Pressable>
+        </View>
       </View>
 
       {showCourseOrCustomError && (

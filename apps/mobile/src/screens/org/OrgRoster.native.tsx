@@ -26,6 +26,7 @@ import * as Clipboard from 'expo-clipboard';
 
 import tw from '../../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
+import { Coachmark, useCoachmark } from '../../components/hints/Coachmark.native';
 
 import {
   getOrgRoster as apiRoster,
@@ -664,6 +665,7 @@ const OrgRosterScreen: React.FC = () => {
   const [inviteRole, setInviteRole] = useState<'instructor' | 'learner'>('learner');
   const [addInstructorOpen, setAddInstructorOpen] = useState(false);
   const [addLearnerOpen, setAddLearnerOpen] = useState(false);
+  const rosterHint = useCoachmark('org_roster_add_v1', !loading);
   const [editingInstructor, setEditingInstructor] = useState<MiniUser | null>(null);
   const [editingLearner, setEditingLearner] = useState<MiniUser | null>(null);
 
@@ -1651,7 +1653,15 @@ const shareCurrentClassRoster = useCallback(async () => {
       </View>
 
       {/* Action bar */}
-      <View style={tw`${CARD} mt-4 p-4`}>
+      <View style={tw`${CARD} mt-4 p-4 relative`}>
+        <Coachmark
+          id="org_roster_add_v1"
+          title="Grow your roster"
+          text="Use Add, Invite, or Import CSV to quickly bring instructors and learners in."
+          visible={rosterHint.visible}
+          onDismiss={rosterHint.dismiss}
+          placement="top"
+        />
         <View style={tw`flex-row flex-wrap items-center gap-2`}>
           {selectMode ? (
             <>

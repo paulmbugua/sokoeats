@@ -27,6 +27,7 @@ import { PROD_BASE, moneyFromCents, toCents, emptyItem } from './OrgFees.shared.
 import { MoneyStack, Badge, CircleCheckbox } from './OrgFees.ui.native';
 import { UnmatchedPaymentsModal, ResponsiveChargeModal, ResponsivePaymentModal, StatementModal } from './OrgFees.modals.native';
 import FeeGate from './gates/FeeGate.native';
+import { Coachmark, useCoachmark } from '../../components/hints/Coachmark.native';
 
 import type { FeeStructure, FeeStructureItem } from '@mytutorapp/shared/types';
 
@@ -557,6 +558,7 @@ function OrgFeesInner() {
   const [q, setQ] = useState('');
   const [classFilter, setClassFilter] = useState<string>('all');
   const [selectedLearnerId, setSelectedLearnerId] = useState<string>('');
+  const feesQuickActionsHint = useCoachmark('org_fees_quick_actions_v1', !balancesLoading);
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -1278,7 +1280,15 @@ function OrgFeesInner() {
 
             <Divider theme={theme} />
 
-            <View style={tw`flex-row flex-wrap`}>
+            <View style={tw`flex-row flex-wrap relative`}>
+              <Coachmark
+                id="org_fees_quick_actions_v1"
+                title="Record fees faster"
+                text="Select a learner below, then use Quick actions to charge or record payments."
+                visible={feesQuickActionsHint.visible}
+                onDismiss={feesQuickActionsHint.dismiss}
+                placement="top"
+              />
               <Chip theme={theme} label={balancesLoading ? 'Refreshing…' : 'Refresh balances'} active={false} onPress={fetchBalances} />
               <Chip
                 theme={theme}

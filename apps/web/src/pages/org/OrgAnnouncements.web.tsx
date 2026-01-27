@@ -5,6 +5,7 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
 import { useOrgAnnouncements } from '@mytutorapp/shared/hooks/useOrgAnnouncements';
+import { Coachmark, useCoachmark } from '../../components/hints/Coachmark';
 import { CircleCheckbox } from './OrgFees.ui';
 
 
@@ -209,6 +210,7 @@ Thank you.`;
   };
 
   const missingCtx = !orgId || !token;
+  const announcementHint = useCoachmark('org_announcements_publish_v1', !loading && !missingCtx);
 
   
 
@@ -438,7 +440,15 @@ Thank you.`;
             </label>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 relative">
+            <Coachmark
+              id="org_announcements_publish_v1"
+              title="Notify everyone"
+              text="Publish here to send an announcement to learners and instructors."
+              visible={announcementHint.visible}
+              onDismiss={announcementHint.dismiss}
+              placement="top"
+            />
             <button
               disabled={!canPost || saving || missingCtx}
               onClick={handleSave}
