@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import tw from '../../tailwind';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { ProgramTrack } from '@mytutorapp/shared/types';
-import { Coachmark, useCoachmark } from '../components/hints/Coachmark.native';
+import { Coachmark, useCoachmark } from './Coachmark.native';
 
 export type SizePresetKey = 'quick' | 'standard' | 'extended' | 'intensive' | 'marathon';
 export type TrackKey = ProgramTrack;
@@ -896,6 +896,12 @@ function TeachMeSection({
   showCourseOrCustomError,
   overlayAvailable,
   onOpenOverlay,
+
+  // ✅ add these (you already declared them in the prop type)
+  overlayHintVisible = false,
+  onOverlayHintDismiss,
+  overlayPulse = false,
+  pulseAnim,
 }: {
   isLockedLearner: boolean;
   customTitle: string;
@@ -914,6 +920,12 @@ function TeachMeSection({
   if (isLockedLearner) return null;
 
   const teachDisabled = busy || !canStartNow || !customTitle.trim();
+
+  // ✅ local handler (since handleOpenOverlay is defined in parent)
+  const handleOpenOverlay = useCallback(() => {
+    onOverlayHintDismiss?.();
+    if (overlayAvailable && onOpenOverlay) onOpenOverlay();
+  }, [onOverlayHintDismiss, overlayAvailable, onOpenOverlay]);
 
   return (
     <View style={tw`gap-2 pb-3 border-b border-[#cedbe8] dark:border-white/10`}>
@@ -954,33 +966,34 @@ function TeachMeSection({
         </Pressable>
 
         <View style={tw`relative`}>
-          <Coachmark
-            id="lesson_overlay_v1"
-            title="Slides & Helpers"
-            text="Tap here to open formulas, tables, code snippets, and charts for this lesson."
-            visible={overlayHintVisible ?? false}
-            onDismiss={onOverlayHintDismiss ?? (() => {})}
-            placement="top"
-          />
-          {overlayPulse && pulseAnim ? (
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                tw`absolute inset-0 rounded-xl border border-indigo-300/70`,
-                {
-                  opacity: pulseAnim,
-                  transform: [
-                    {
-                      scale: pulseAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [1, 1.5],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            />
-          ) : null}
+<Coachmark
+  id="lesson_overlay_v1"
+  title="Slides & Helpers"
+  text="Tap here to open formulas, tables, code snippets, and charts for this lesson."
+  visible={overlayHintVisible}
+  onDismiss={onOverlayHintDismiss ?? (() => {})}
+  placement="top"
+/>
+
+{overlayPulse && pulseAnim ? (
+  <Animated.View
+    pointerEvents="none"
+    style={[
+      tw`absolute inset-0 rounded-xl border border-indigo-300/70`,
+      {
+        opacity: pulseAnim,
+        transform: [
+          {
+            scale: pulseAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [1, 1.5],
+            }),
+          },
+        ],
+      },
+    ]}
+  />
+) : null}
           <Pressable
             onPress={handleOpenOverlay}
             disabled={!overlayAvailable || !onOpenOverlay}

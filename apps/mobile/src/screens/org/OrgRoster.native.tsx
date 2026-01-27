@@ -26,7 +26,7 @@ import * as Clipboard from 'expo-clipboard';
 
 import tw from '../../../tailwind';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { Coachmark, useCoachmark } from '../../components/hints/Coachmark.native';
+import { Coachmark, useCoachmark } from '../Coachmark.native';
 
 import {
   getOrgRoster as apiRoster,

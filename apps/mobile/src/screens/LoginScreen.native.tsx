@@ -281,6 +281,15 @@ const LoginScreenNative: React.FC = () => {
   const canContinue = role === 'tutor' ? true : isStudentValid;
   const ctaText = role === 'tutor' ? 'Create account' : 'Create profile';
 
+  const safeFirebaseSignOut = async () => {
+  try {
+    if (auth) await signOut(auth);
+  } catch {
+    // ignore
+  }
+};
+
+
   const submitRoleFromModal = async () => {
     clearErrors();
     if (!role) {
@@ -318,24 +327,23 @@ const LoginScreenNative: React.FC = () => {
 
   // Cancel role modal: clear pending auth + fully sign out (parity with web)
   const handleCancelRole = async () => {
-    try {
-      setBusy(false);
-      setShowRoleModal(false);
-      clearAuthFlags();
-      await signOut(auth);
-    } catch {
-      // ignore
-    }
-  };
+  try {
+    setBusy(false);
+    setShowRoleModal(false);
+    clearAuthFlags();
+    await safeFirebaseSignOut();
+  } catch {
+    // ignore
+  }
+};
 
-  const handleSwitchSignOut = async () => {
-    try {
-      await logout?.();
-    } catch {}
-    try {
-      await signOut(auth);
-    } catch {}
-  };
+const handleSwitchSignOut = async () => {
+  try {
+    await logout?.();
+  } catch {}
+  await safeFirebaseSignOut();
+};
+
 
   const emailFormTitle = useMemo(
     () => (authMode === 'Login' ? 'Welcome back 👋' : 'Create your DayBreak account'),

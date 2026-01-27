@@ -27,7 +27,7 @@ import { PROD_BASE, moneyFromCents, toCents, emptyItem } from './OrgFees.shared.
 import { MoneyStack, Badge, CircleCheckbox } from './OrgFees.ui.native';
 import { UnmatchedPaymentsModal, ResponsiveChargeModal, ResponsivePaymentModal, StatementModal } from './OrgFees.modals.native';
 import FeeGate from './gates/FeeGate.native';
-import { Coachmark, useCoachmark } from '../../components/hints/Coachmark.native';
+import { Coachmark, useCoachmark } from '../Coachmark.native';
 
 import type { FeeStructure, FeeStructureItem } from '@mytutorapp/shared/types';
 
@@ -671,6 +671,10 @@ function OrgFeesInner() {
     setMode('payment');
   };
 
+  const selectedLearner = useMemo(() => {
+  return learners.find((l: any) => sameId(pickFeeLearnerRef(l), selectedLearnerId)) || null;
+}, [learners, selectedLearnerId]);
+
   const openStatement = async (learnerId?: string) => {
     const id = ensureSelectedLearner(learnerId);
     if (!id) return;
@@ -769,9 +773,6 @@ function OrgFeesInner() {
     if (unmatchedOpen) fetchUnmatched();
   }, [unmatchedOpen, fetchUnmatched]);
 
-  const selectedLearner = useMemo(() => {
-    return learners.find((l: any) => sameId(pickFeeLearnerRef(l), selectedLearnerId)) || null;
-  }, [learners, selectedLearnerId]);
 
   /* ─────────────────────────────────────────────────────────
    * Upgrade gating

@@ -26,7 +26,7 @@ import { getTutorProfile } from '@mytutorapp/shared/api/profileDetailApi';
 
 import Spinner from './Spinner.native';
 import useAccountSection from '@mytutorapp/shared/hooks/useAccountSection';
-import { Coachmark, useCoachmark } from '../components/hints/Coachmark.native';
+import { Coachmark, useCoachmark } from './Coachmark.native';
 import { useWithdrawal } from '@mytutorapp/shared/hooks';
 import debounce from 'lodash.debounce';
 

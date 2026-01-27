@@ -20,7 +20,7 @@ import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
 import { useOrgAnnouncements } from '@mytutorapp/shared/hooks/useOrgAnnouncements';
 
 import { useThemePref } from '../../theme/ThemeContext';
-import { Coachmark, useCoachmark } from '../../components/hints/Coachmark.native';
+import { Coachmark, useCoachmark } from '../Coachmark.native';
 
 // Optional but recommended (parity with Newsletter screen)
 import { RefreshableScrollView } from '../../refresh/Refreshable';
@@ -252,6 +252,7 @@ export default function OrgAnnouncementsNative() {
   const insets = useSafeAreaInsets();
   const { resolvedScheme } = useThemePref();
   const isDark = resolvedScheme === 'dark';
+  
 
   // Match Newsletter layout paddings (avoid footer overlay)
   const NAV_SPACER_PX = 12;
@@ -349,6 +350,7 @@ const backendUrl: string | undefined = (ctxBackendUrl as string) || undefined;
     agenda_md: '',
     class_label: '',
   });
+  const missingCtx = !orgId || !token || !backendUrl;
 
   const [limitToClass, setLimitToClass] = useState(false);
   const [flash, setFlash] = useState<{ tone: 'ok' | 'warn' | 'bad'; msg: string } | null>(null);
@@ -357,7 +359,6 @@ const backendUrl: string | undefined = (ctxBackendUrl as string) || undefined;
   const isAgm = String(form.category || '').toLowerCase() === 'agm';
   const canPost = useMemo(() => Boolean(form.title.trim() && form.body.trim()), [form.title, form.body]);
 
-  const missingCtx = !orgId || !token || !backendUrl;
 
   useEffect(() => {
     if (!orgId || !token || !backendUrl) return;

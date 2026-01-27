@@ -30,7 +30,7 @@ import OrgExamMarksTab from './OrgExamMarksTab.native';
 import OrgExamReportsTab from './OrgExamReportsTab.native';
 
 import { useThemePref } from '../../theme/ThemeContext';
-import { Coachmark, useCoachmark } from '../../components/hints/Coachmark.native';
+import { Coachmark, useCoachmark } from '../Coachmark.native';
 
 type ViewTab = 'setup' | 'marks' | 'reports';
 
