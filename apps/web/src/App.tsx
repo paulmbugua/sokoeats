@@ -11,6 +11,7 @@ import Landing from './pages/Landing.web';
 import HomePage from './pages/HomePage.web';
 import FindTutor from './pages/FindTutor.web';
 import RobotTutorPage from './pages/RobotTutor.web';
+import RobotTeachAdLanding from './pages/RobotTeachAdLanding.web';
 import HelpPage from './pages/HelpPage.web';
 import ResourcesPage from './pages/Resources.web';
 import ProfileDetailPage from './pages/ProfileDetailPage.web';
@@ -412,6 +413,8 @@ const App: React.FC = () => {
           <Route path="/home" element={<HomePage />} />
           <Route path="/find-tutor" element={<FindTutor />} />
           <Route path="/robot-teach" element={<RobotTutorPage />} />
+          <Route path="/robot-teach/start" element={<RobotTeachAdLanding />} />
+          <Route path="/ai-robot-teacher" element={<Navigate to="/robot-teach/start" replace />} />
 
           <Route path="/refunds" element={<RefundsAndCancellations />} />
           <Route path="/fulfillment" element={<FulfillmentPolicy />} />
