@@ -4,6 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import useAuth from '@mytutorapp/shared/hooks/useAuth';
 import { useShopContext } from '@mytutorapp/shared/context';
 import CustomGoogleLoginButton from '../components/CustomGoogleLoginButton';
+import { trackEvent } from '../analytics/ga4';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 import CountrySelect from '../components/CountrySelect';
 // For Cancel in the role modal
@@ -175,6 +176,7 @@ const LoginPage: React.FC = () => {
           return;
         }
         await loginWithEmail({ email: email.trim(), password });
+        trackEvent('login_success');
         const target = getReturnTo();
         clearReturnTo();
         navigate(target, { replace: true });

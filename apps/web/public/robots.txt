@@ -1,0 +1,24 @@
+User-agent: *
+Allow: /
+
+# Block private/org/protected surfaces from crawling
+Disallow: /org/
+Disallow: /account
+Disallow: /messages
+Disallow: /results
+Disallow: /my-courses
+Disallow: /settings/
+Disallow: /profile/me
+Disallow: /class-vault/
+Disallow: /create-course
+Disallow: /enroll/
+Disallow: /progress/
+Disallow: /language/
+Disallow: /paystack/callback
+Disallow: /paystack/callback/redirect
+
+# /org/join is public but should not be indexed/crawled
+Disallow: /org/join/
+
+# Sitemap link (must use absolute URL)
+Sitemap: {SITE_URL}/sitemap.xml
