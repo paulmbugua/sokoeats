@@ -16,6 +16,7 @@ import useUploadClassVault, {
 import { useClassVault } from '@mytutorapp/shared/hooks/useClassVault';
 import type { RecordedVideo } from '@mytutorapp/shared/types';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
+import SeoHead from './seo/SeoHead';
 
 /* ───────────────────────── Minimal subjects (major categories) ───────────────────────── */
 const SUBJECT_CATEGORIES = [
@@ -459,13 +460,19 @@ export default function ClassVaultUpload() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-darkBg py-10 sm:py-16 px-3 sm:px-4">
+      <SeoHead
+        title="ClassVault Upload | DayBreak"
+        description="Upload videos and notes to your ClassVault."
+        canonicalPath="/class-vault/upload"
+        noindex
+      />
       <form
         onSubmit={onSubmit}
         className="relative max-w-2xl mx-auto p-4 sm:p-6 space-y-6 rounded-2xl border border-[#cedbe8]
                    dark:border-darkCard bg-white dark:bg-[#0f1821] shadow-sm
                    text-[#0d141c] dark:text-darkTextPrimary overflow-x-hidden"
       >
-        <h2 className={headingTone}>{headerLabel}</h2>
+        <h1 className={headingTone}>{headerLabel}</h1>
 
         {isEdit && (
           <div className="rounded-xl bg-[#f0f7ff] dark:bg-[#0b2238] ring-1 ring-[#cedbe8] dark:ring-darkCard p-3">

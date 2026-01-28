@@ -8,6 +8,7 @@ import type { ChatMessage } from '@mytutorapp/shared/types/ShopContextTypes';
 import chatPlaceholder from '../assets/chat.png';
 import { getTutorProfile } from '@mytutorapp/shared/api/profileDetailApi';
 import { useShopContext } from '@mytutorapp/shared/context';
+import SeoHead from '../components/seo/SeoHead';
 
 const Messages: React.FC = () => {
   const location = useLocation();
@@ -108,6 +109,12 @@ const fetchTutorMeta = useCallback(
   if (!myProfile) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-softGray dark:bg-darkBg text-darkText dark:text-darkTextPrimary">
+        <SeoHead
+          title="Messages | DayBreak"
+          description="Private messages with your tutors and learners."
+          canonicalPath="/messages"
+          noindex
+        />
         <p>Loading…</p>
       </div>
     );
@@ -197,6 +204,15 @@ const fetchTutorMeta = useCallback(
         pb-20    /* bottom gap for footer */
       "
     >
+      <SeoHead
+        title="Messages | DayBreak"
+        description="Private messages with your tutors and learners."
+        canonicalPath="/messages"
+        noindex
+      />
+      <h1 className="px-4 text-2xl sm:text-3xl font-bold text-darkText dark:text-darkTextPrimary">
+        Messages
+      </h1>
       {/* Home Link (theme-aware) */}
       <Link
         to="/"

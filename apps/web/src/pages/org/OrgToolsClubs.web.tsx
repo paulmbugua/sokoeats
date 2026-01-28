@@ -1,6 +1,6 @@
 // apps/web/src/pages/org/OrgToolsClubs.web.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -9,6 +9,7 @@ import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
 import { useOrgClubs } from '@mytutorapp/shared/hooks/useOrgClubs';
 import { getOrgRoster } from '@mytutorapp/shared/api/orgApi';
 import { getMyClubs as apiGetMyClubs } from '@mytutorapp/shared/api/orgEngagementApi';
+import SeoHead from '../../components/seo/SeoHead';
 
 // ✅ reuse the same smooth helpers Fees uses
 import type { LearnerLite } from './OrgFees.shared';
@@ -89,6 +90,7 @@ const TEMPLATES = [
 ];
 
 const OrgToolsClubsPage: React.FC = () => {
+  const location = useLocation();
   const { isPro, upgradeCta, org, activeOrgId } = useOrgProTools() as any;
 
   // future-proof if you later add /org/:orgId/clubs
@@ -447,6 +449,12 @@ const fetchMine = useCallback(async () => {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-10">
+      <SeoHead
+        title="Clubs & Societies | DayBreak"
+        description="Manage clubs and memberships."
+        canonicalPath={location.pathname}
+        noindex
+      />
       {/* Missing context strip */}
       {missingCtx ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/40 dark:bg-rose-900/20 dark:text-rose-200">

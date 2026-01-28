@@ -1,7 +1,7 @@
 // apps/web/src/pages/org/OrgLearnerFees.web.tsx
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useShopContext } from '@mytutorapp/shared/context';
 import {
@@ -10,6 +10,7 @@ import {
   apiGetMyFeeStructure, // ✅ ADD
   apiDownloadMyFeeStructurePdf, // ✅ ADD
 } from '@mytutorapp/shared/api/orgProApi';
+import SeoHead from '../../components/seo/SeoHead';
 
 function cn(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
@@ -63,6 +64,7 @@ function pickArray(...xs: any[]) {
 }
 
 const OrgLearnerFeesPage: React.FC = () => {
+  const location = useLocation();
   const { org, role, currentUser } = (useOrg?.() ?? {}) as any;
   const [params] = useSearchParams();
 
@@ -322,6 +324,12 @@ const OrgLearnerFeesPage: React.FC = () => {
 
   return (
     <div className={pageShell}>
+      <SeoHead
+        title="Learner Fees | DayBreak"
+        description="View fee statements and payment history."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <div className="max-w-screen-lg mx-auto space-y-4">
         {/* Header */}
         <header className={cn(card, 'flex items-start justify-between gap-3')}>

@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useShopContext } from '@mytutorapp/shared/context';
+import SeoHead from '../../components/seo/SeoHead';
 
 import {
   updateOrgBranding,
@@ -772,6 +773,12 @@ const OrgInstructorHome: React.FC = () => {
 
   return (
     <div className={pageShell}>
+      <SeoHead
+        title="Instructor Portal | DayBreak"
+        description="Instructor dashboard for assignments and learners."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <div className="max-w-screen-xl mx-auto space-y-4">
         {/* HERO */}
         <header

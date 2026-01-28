@@ -1,6 +1,6 @@
 // apps/web/src/pages/org/OrgNewsletters.web.tsx
 import React, { useEffect, useMemo, useState,useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import { useOrgClassLabels } from '@mytutorapp/shared/hooks/useOrgClassLabels';
@@ -8,6 +8,7 @@ import { useOrgClassLabels } from '@mytutorapp/shared/hooks/useOrgClassLabels';
 import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrgNewsletters } from '@mytutorapp/shared/hooks/useOrgNewsletters';
+import SeoHead from '../../components/seo/SeoHead';
 
 import {
   apiCreateOrgNewsletter,
@@ -779,6 +780,7 @@ function HeaderInner({ hideRightMeta }: { hideRightMeta?: boolean }) {
 /* -------------------------------------------------------------------------- */
 
 const OrgNewslettersPage: React.FC = () => {
+  const location = useLocation();
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
 
@@ -1141,6 +1143,12 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
   if (isPrint) {
   return (
     <div className="print-root">
+      <SeoHead
+        title="Newsletters Print | DayBreak"
+        description="Print view for institution newsletters."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <style>{`
         @media print {
           html, body { background: #fff !important; }
@@ -1176,6 +1184,12 @@ async function buildPdfBase64FromRef(el: HTMLElement, fileName: string) {
 
   return (
    <div className="mx-auto max-w-7xl space-y-4 px-3 sm:px-4 py-5 sm:py-8">
+        <SeoHead
+          title="Newsletters | DayBreak"
+          description="Create and send newsletters for your institution."
+          canonicalPath={location.pathname}
+          noindex
+        />
 
         <style>{`
       /* used by html2pdf export */

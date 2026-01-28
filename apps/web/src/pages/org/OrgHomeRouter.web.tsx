@@ -3,6 +3,7 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
+import SeoHead from '../../components/seo/SeoHead';
 
 const MUST_CHANGE_KEY = 'org:mustChangePassword';
 
@@ -69,7 +70,16 @@ const OrgHomeRouter: React.FC = () => {
   // Still resolving org + role → show lightweight loader
   if (busy) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center text-sm text-gray-500 dark:text-darkTextSecondary">
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-2 text-sm text-gray-500 dark:text-darkTextSecondary">
+        <SeoHead
+          title="Institution Portal | DayBreak"
+          description="Routing to your institution workspace."
+          canonicalPath="/org"
+          noindex
+        />
+        <h1 className="text-lg font-semibold text-gray-800 dark:text-darkTextPrimary">
+          Institution Portal
+        </h1>
         Checking your institution role…
       </div>
     );

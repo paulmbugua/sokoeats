@@ -1,6 +1,6 @@
 // apps/web/src/pages/ProfileDetailPage.web.tsx
 import React, { useMemo, useCallback, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import useProfileDetail from '@mytutorapp/shared/hooks/useProfileDetail';
 import useProfileCard from '@mytutorapp/shared/hooks/useProfileCard';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -11,6 +11,7 @@ import Spinner from '../components/Spinner.web';
 import ProfileActions from '../components/ProfileActions.web';
 import TutorReviews from '../components/TutorReviews.web';
 import { motion, useReducedMotion, Variants } from 'framer-motion';
+import SeoHead from '../components/seo/SeoHead';
 
 /* ----------------------------- Motion variants ---------------------------- */
 const fadeUp: Variants = {
@@ -65,6 +66,7 @@ const defaultTutorProfile: TutorProfile = {
 const ProfileDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const prefersReducedMotion = useReducedMotion() ?? false;
 
   const { backendUrl, token } = useShopContext();
@@ -99,6 +101,25 @@ const ProfileDetailPage: React.FC = () => {
   });
   const [inquiryError, setInquiryError] = useState('');
   const [sendingInquiry, setSendingInquiry] = useState(false);
+
+  const profileTitle = profile?.name
+    ? `Tutor Profile: ${profile.name} | DayBreak`
+    : 'Tutor Profile | DayBreak';
+  const profileDescription =
+    'View tutor expertise, languages, ratings, and availability to find the right match.';
+
+  const profileJsonLd = useMemo(
+    () => [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: profile?.name ? `Tutor Profile: ${profile.name}` : 'Tutor Profile',
+        description: profileDescription,
+        url: location.pathname,
+      },
+    ],
+    [location.pathname, profile?.name, profileDescription]
+  );
 
   const pickDefaultSession = (pricing?: Record<string, number | string>) => {
     if (!pricing) return { type: '', cost: '' };
@@ -171,6 +192,11 @@ const ProfileDetailPage: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen app-body flex items-center justify-center">
+        <SeoHead
+          title="Tutor Profile | DayBreak"
+          description={profileDescription}
+          canonicalPath={location.pathname}
+        />
         <Spinner />
       </div>
     );
@@ -179,6 +205,11 @@ const ProfileDetailPage: React.FC = () => {
   if (!tutorProfile) {
     return (
       <div className="min-h-screen app-body flex items-center justify-center">
+        <SeoHead
+          title="Tutor Profile | DayBreak"
+          description={profileDescription}
+          canonicalPath={location.pathname}
+        />
         <p className="text-darkText dark:text-darkTextPrimary">Tutor profile not found.</p>
       </div>
     );
@@ -216,6 +247,12 @@ const ProfileDetailPage: React.FC = () => {
 
   return (
     <div className="relative min-h-screen app-body overflow-x-hidden">
+      <SeoHead
+        title={profileTitle}
+        description={profileDescription}
+        canonicalPath={location.pathname}
+        jsonLd={profileJsonLd}
+      />
       {/* Top Nav */}
       <motion.div
         className="fixed top-0 left-0 w-full z-50"
@@ -235,6 +272,9 @@ const ProfileDetailPage: React.FC = () => {
       )}
 
       <main className="pt-24 md:pt-16 px-4 lg:px-8 max-w-7xl mx-auto space-y-12 pb-20">
+        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
+          Tutor Profile{profile.name ? `: ${profile.name}` : ''}
+        </h1>
         {/* Top Section */}
         <motion.section
           className="flex flex-col md:flex-row gap-8"

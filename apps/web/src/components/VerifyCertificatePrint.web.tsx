@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async';
 import { useVerifyCertificate } from '@mytutorapp/shared/hooks/useVerifyCertificate';
 import { useShopContext } from '@mytutorapp/shared/context';
+import SeoHead from './seo/SeoHead';
 
 const A4_MM_WIDTH = 210; // mm
 const A4_MM_HEIGHT = 297; // mm
@@ -13,15 +13,16 @@ const VerifyCertificatePrintPage: React.FC = () => {
   const { data, loading, error } = useVerifyCertificate({ backendUrl, certificateId: id });
 
   const cert = data?.certificate;
-  const title = cert
-    ? `Certificate • ${cert.student_name} • ${cert.course_title}`
-    : 'Verify Certificate';
+  const title = id ? `Verify Certificate ${id} (Print) | DayBreak` : 'Verify Certificate (Print) | DayBreak';
 
   return (
     <div className="min-h-screen bg-slate-50 text-[#0d141c]">
-      <Helmet>
-        <title>{title}</title>
-      </Helmet>
+      <SeoHead
+        title={title}
+        description="Print-friendly certificate verification view."
+        canonicalPath={`/verify/${id}/print`}
+        noindex
+      />
 
       <div className="max-w-5xl mx-auto px-4 py-6">
         {/* Toolbar (hidden in print) */}

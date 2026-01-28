@@ -6,6 +6,7 @@ import { useOrgInvite } from '@mytutorapp/shared/hooks';
 import { acceptOrgInvite, acceptOrgMembershipInvite } from '@mytutorapp/shared/api';
 import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
 import type { OrgInviteInfo } from '@mytutorapp/shared/types';
+import SeoHead from '../../components/seo/SeoHead';
 
 const ROBOT_ROUTE = '/robot-teach';
 
@@ -281,6 +282,12 @@ export default function OrgInviteLanding() {
 
   return (
     <div className="min-h-screen bg-[#0b1220] text-white px-3 sm:px-4 py-6 grid place-items-center">
+      <SeoHead
+        title="Organization Invite | DayBreak"
+        description="Join your organization’s DayBreak learning space."
+        canonicalPath={`/org/join/${code}`}
+        noindex
+      />
       <div className="w-full max-w-md sm:max-w-xl rounded-2xl ring-1 ring-white/10 bg-white/5 p-4 sm:p-5">
         {/* Loading / invalid */}
         {loading ? (
@@ -298,7 +305,7 @@ export default function OrgInviteLanding() {
               )}
               <div className="min-w-0">
                 <div className="text-[13px] text-white/70">{subtitle}</div>
-                <div className="text-lg sm:text-xl font-semibold truncate">{title}</div>
+                <h1 className="text-lg sm:text-xl font-semibold truncate">{title}</h1>
                 <div className="text-white/70 text-sm truncate">{orgName}</div>
               </div>
             </div>

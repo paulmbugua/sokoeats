@@ -1,6 +1,6 @@
 // apps/web/src/pages/Profile.web.tsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import RefundCenter from '../components/RefundCenter.web';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -22,6 +22,7 @@ import useAppQuery from '@mytutorapp/shared/hooks/useAppQuery';
 import * as accountApi from '@mytutorapp/shared/api';
 
 import { fetchEarningsSummary } from '@mytutorapp/shared/api/accountApi';
+import SeoHead from '../components/seo/SeoHead';
 
 // Icons
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -191,6 +192,7 @@ const StudentProgressRow: React.FC<{
 
 /* ---------------------------------- Page ---------------------------------- */
 const ProfilePage: React.FC = () => {
+  const location = useLocation();
   const nav = useNavigate();
   const {
     profile,
@@ -537,6 +539,12 @@ const ProfilePage: React.FC = () => {
       className="min-h-screen bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary"
       style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
     >
+      <SeoHead
+        title="My Profile | DayBreak"
+        description="Manage your DayBreak profile, enrollments, and settings."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <div className="flex justify-center py-5 px-4 sm:px-6 lg:px-10">
         <div className="w-full max-w-[1200px] grid grid-cols-1 md:grid-cols-[20rem_1fr] gap-4">
           {/* Sidebar */}

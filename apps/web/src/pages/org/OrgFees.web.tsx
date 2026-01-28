@@ -11,6 +11,7 @@ import { useOrgFeeStructures } from '@mytutorapp/shared/hooks/useOrgFeeStructure
 import { useOrgFeeBalances } from '@mytutorapp/shared/hooks/useOrgFeeBalances';
 import { useOrgFeeStatement } from '@mytutorapp/shared/hooks/useOrgFeeStatement';
 import { Coachmark, useCoachmark } from '../../components/hints/Coachmark';
+import SeoHead from '../../components/seo/SeoHead';
 import type { FeeStructure, FeeStructureItem } from '@mytutorapp/shared/types';
 
 import {
@@ -853,6 +854,12 @@ const handleSaveStructure = async ({ forceActive }: { forceActive?: boolean } = 
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 md:py-10">
+      <SeoHead
+        title="Fees & Payments | DayBreak"
+        description="Manage fee structures and balances."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm uppercase tracking-wide text-blue-500">Org tools</p>

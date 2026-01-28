@@ -1,7 +1,7 @@
 // apps/web/src/pages/org/OrgExamResultsPortal.web.tsx
 /* eslint-disable no-console */
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { getMyOrgOrBootstrap } from '@mytutorapp/shared/api';
 import type { OrgResp as Org } from '@mytutorapp/shared/api/orgApi';
@@ -25,6 +25,7 @@ import OrgExamSetupTab from './OrgExamSetupTab.web';
 import OrgExamMarksTab from './OrgExamMarksTab.web';
 import OrgExamReportsTab from './OrgExamReportsTab.web';
 import { Coachmark, useCoachmark } from '../../components/hints/Coachmark';
+import SeoHead from '../../components/seo/SeoHead';
 
 const TAB_BTN_BASE =
   'group relative inline-flex items-center justify-center h-10 sm:h-11 px-4 sm:px-6 rounded-xl ' +
@@ -159,6 +160,7 @@ type AttendanceFormState = {
 };
 
 const OrgExamResultsPortal: React.FC = () => {
+  const location = useLocation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
@@ -1184,6 +1186,12 @@ const OrgExamResultsPortal: React.FC = () => {
       className="relative min-h-screen flex flex-col bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary overflow-x-hidden"
       style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
     >
+      <SeoHead
+        title="Exam Results Portal | DayBreak"
+        description="Manage exam setup, marks, and reports."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <main className="flex-1 flex justify-center py-6 px-3 sm:px-4 lg:px-10">
         <div className="flex flex-col w-full max-w-[1200px]">
           {/* Header */}

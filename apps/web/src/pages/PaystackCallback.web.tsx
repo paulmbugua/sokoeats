@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { paystackVerify } from '@mytutorapp/shared/api';
 import { confirmOrgSubscription } from '@mytutorapp/shared/api/orgApi';
+import SeoHead from '../components/seo/SeoHead';
 
 type Status = 'verifying' | 'success' | 'failed';
 
@@ -228,6 +229,12 @@ export default function PaystackCallbackWeb() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
+      <SeoHead
+        title="Payment Callback | DayBreak"
+        description="Finishing payment verification."
+        canonicalPath="/paystack/callback"
+        noindex
+      />
       <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-[#0f1821] ring-1 ring-slate-200 dark:ring-white/10 p-5">
         <h1 className="text-lg font-semibold">
           Paystack callback

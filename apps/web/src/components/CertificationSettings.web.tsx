@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useShopContext } from '@mytutorapp/shared/context';
 import Spinner from './Spinner.web';
 import useCertificationSettings, { Base64File } from '@mytutorapp/shared/hooks/useCertificationSettings';
+import SeoHead from './seo/SeoHead';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
@@ -82,6 +83,12 @@ export default function CertificationSettings() {
   // ─────────────────────────────────────────────────────────────
   const PageShell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <div className="min-h-[calc(100vh-64px)] bg-slate-50 dark:bg-[#0b1016]">
+      <SeoHead
+        title="Certification Settings | DayBreak"
+        description="Manage certification templates and uploads."
+        canonicalPath="/settings/certification"
+        noindex
+      />
       {/* soft background orbs (optional, matches your modern pages) */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-24 -right-20 h-72 w-72 rounded-full bg-pink-500/10 dark:bg-pink-500/10" />
@@ -90,6 +97,9 @@ export default function CertificationSettings() {
 
       {/* center container */}
       <div className="relative mx-auto w-full max-w-3xl px-4">
+        <h1 className="pt-10 text-2xl sm:text-3xl font-bold text-[#0d141c] dark:text-white">
+          Certification Settings
+        </h1>
         <div className="pt-10 pb-16 sm:pt-14 sm:pb-20">{children}</div>
       </div>
     </div>

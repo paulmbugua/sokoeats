@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 
 import { Users, GraduationCap, Search, Printer,Download } from 'lucide-react';
 
@@ -25,6 +25,7 @@ import {
 
 import { useOrgInstructorFeeAccess } from '@mytutorapp/shared/hooks/useOrgInstructorFeeAccess';
 import { Coachmark, useCoachmark } from '../../components/hints/Coachmark';
+import SeoHead from '../../components/seo/SeoHead';
 
 import {
   Skeleton,
@@ -249,6 +250,7 @@ function buildLearnerPrintHtml(orgName: string, classLabel: string, learners: Mi
 }
 
 const OrgRosterPage: React.FC = () => {
+  const location = useLocation();
   const nav = useNavigate();
   const { backendUrl, orgToken, orgLogout } = useShopContext() as any;
 
@@ -884,6 +886,12 @@ const OrgRosterPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary">
+      <SeoHead
+        title="Roster | DayBreak"
+        description="Manage your institution roster."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-6">
         {/* header */}
         <div className={`${cardBase} p-4 sm:p-5`}>

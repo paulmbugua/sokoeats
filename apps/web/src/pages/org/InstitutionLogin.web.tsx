@@ -4,6 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import useInstitutionAuth from '@mytutorapp/shared/hooks/useInstitutionAuth';
 import CustomGoogleLoginButton from '../../components/CustomGoogleLoginButton';
 import { useShopContext } from '@mytutorapp/shared/context';
+import SeoHead from '../../components/seo/SeoHead';
 
 const LOGIN_BG =
   'https://images.unsplash.com/photo-1513258496099-48168024aec0?q=80&w=2000&auto=format&fit=crop';
@@ -303,6 +304,11 @@ const navigateAfterAuth = useCallback(
 
   return (
     <div className="relative min-h-screen overflow-hidden text-darkText dark:text-darkTextPrimary">
+      <SeoHead
+        title="Institution Portal Login | DayBreak"
+        description="Sign in to the DayBreak institution portal for administrators, instructors, and learners."
+        canonicalPath="/org/login"
+      />
       {/* BG */}
       <div
         className="absolute inset-0 bg-cover bg-center"

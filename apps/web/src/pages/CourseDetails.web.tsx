@@ -1,11 +1,12 @@
 // apps/web/src/pages/CourseDetails.web.tsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import debounce from 'lodash.debounce';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useCourses, useEnrollments, useOerMeta } from '@mytutorapp/shared/hooks';
 import { useCourseReviews } from '@mytutorapp/shared/hooks/useCourseReviews';
 import type { Course } from '@mytutorapp/shared/types';
+import SeoHead from '../components/seo/SeoHead';
 
 interface MaybeInstructor {
   tutorName?: string;
@@ -33,6 +34,7 @@ function toTokens(v: unknown): number {
 
 const CourseDetails: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { courseId } = useParams<{ courseId: string }>();
   const { backendUrl, token, profile, tokens: walletTokens = 0 } = useShopContext();
   const role = String(profile?.role ?? '').toLowerCase();
@@ -178,6 +180,12 @@ const CourseDetails: React.FC = () => {
       className="min-h-screen bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary"
       style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
     >
+      <SeoHead
+        title={`${c.title} | DayBreak`}
+        description={c.description || 'Course details and enrollment options.'}
+        canonicalPath={location.pathname}
+        noindex
+      />
       <main className="max-w-5xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">

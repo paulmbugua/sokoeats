@@ -1,8 +1,9 @@
 // apps/web/src/pages/org/OrgElearnPortal.tsx
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link, useLocation } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { uploadAsset, getMyOrgOrBootstrap } from '@mytutorapp/shared/api';
+import SeoHead from '../../components/seo/SeoHead';
 
 import {
   getOrgLearnersProgress,
@@ -409,6 +410,7 @@ function PortalIconTile({
 
 
 export default function OrgElearnPortal() {
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -1575,6 +1577,12 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
   className="relative min-h-screen flex flex-col bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary overflow-x-hidden"
   style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
 >
+  <SeoHead
+    title="Institution Portal | DayBreak"
+    description="Manage your institution’s learning portal, branding, and analytics."
+    canonicalPath={location.pathname}
+    noindex
+  />
   <main className="flex-1 flex justify-center py-6 px-3 sm:px-4 lg:px-10">
     <div className="w-full max-w-screen-xl mx-auto space-y-4">
       {isLearnerView ? (
