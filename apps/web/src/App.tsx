@@ -1,5 +1,5 @@
 // apps/web/src/App.tsx
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import SiteLayout from './layouts/SiteLayout.web';
@@ -85,6 +85,7 @@ import PaystackCallbackRedirectWeb from '@/pages/PaystackCallbackRedirect.web';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { OrgGate, OrgAuthGate } from './components/org/OrgGates';
+import { initGA4, trackPageView } from './analytics/ga4';
 
 /* ───────────────────────────
    Per-user "first login" helpers
@@ -391,6 +392,15 @@ const OrgInstructorOnlyRoute: React.FC<{ children: ReactNode }> = ({ children })
    ─────────────────────────── */
 const App: React.FC = () => {
   const { hydrated } = useShopContext();
+  const location = useLocation();
+
+  useEffect(() => {
+    initGA4();
+  }, []);
+
+  useEffect(() => {
+    trackPageView(`${location.pathname}${location.search}`);
+  }, [location.pathname, location.search]);
   if (!hydrated) return <Spinner />;
 
   return (

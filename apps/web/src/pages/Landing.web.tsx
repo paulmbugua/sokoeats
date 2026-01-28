@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { motion, useMotionValue, useSpring, useReducedMotion, Variants } from 'framer-motion';
+import { trackEvent } from '../analytics/ga4';
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 28 },
@@ -709,6 +710,7 @@ const Hero: React.FC<{
             <Link
               to="/robot-teach"
               aria-label="Learn a course using A.I. Robot Teacher"
+              onClick={() => trackEvent('robot_teach_start')}
               className="flex h-11 sm:h-12 items-center justify-center rounded-xl px-5
                bg-black/70 hover:bg-black/80 text-white text-sm sm:text-base
                font-bold tracking-[0.01em] shadow-sm

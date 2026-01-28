@@ -5,6 +5,7 @@ import useInstitutionAuth from '@mytutorapp/shared/hooks/useInstitutionAuth';
 import CustomGoogleLoginButton from '../../components/CustomGoogleLoginButton';
 import { useShopContext } from '@mytutorapp/shared/context';
 import SeoHead from '../../components/seo/SeoHead';
+import { trackEvent } from '../../analytics/ga4';
 
 const LOGIN_BG =
   'https://images.unsplash.com/photo-1513258496099-48168024aec0?q=80&w=2000&auto=format&fit=crop';
@@ -177,6 +178,7 @@ const navigateAfterAuth = useCallback(
           setError('Please enter email and password.');
           return;
         }
+        trackEvent('org_login_start');
 
         // ✅ NEW: pass reauth payload through (safe even if backend ignores)
         const extra =
@@ -187,6 +189,7 @@ const navigateAfterAuth = useCallback(
               : ({} as any);
 
         await loginWithEmail({ email: email.trim(), password, ...extra } as any);
+        trackEvent('org_login_success');
         return;
       }
 
@@ -263,6 +266,7 @@ const navigateAfterAuth = useCallback(
   const onGoogleSuccess = useCallback(
     async (idToken: string) => {
       await handleGoogleLoginSuccess(idToken, name || undefined);
+      trackEvent('org_login_success');
     },
     [handleGoogleLoginSuccess, name]
   );

@@ -18,6 +18,7 @@ import { DEFAULT_TUTOR_FILTERS } from '@mytutorapp/shared/types';
 import { countryName } from '@mytutorapp/shared/utils/countries';
 import { normalizeCountryLabel } from '@mytutorapp/shared/utils/smartSearchIntent';
 import SeoHead from '../components/seo/SeoHead';
+import { trackEvent } from '../analytics/ga4';
 
 const FALLBACK_AVATAR = (name = 'Tutor') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e7edf4&color=0d141c`;
@@ -459,6 +460,11 @@ const FindTutor: React.FC = () => {
 
                       <Link
                         to={`/profile/${t?.user_id ?? t?.id}`}
+                        onClick={() =>
+                          trackEvent('tutor_profile_open', {
+                            tutor_id: t?.user_id ?? t?.id,
+                          })
+                        }
                         className="text-base font-bold leading-tight text-darkText dark:text-darkTextPrimary hover:underline"
                       >
                         {t?.name ?? 'Tutor'}
@@ -493,6 +499,11 @@ const FindTutor: React.FC = () => {
 
                   <Link
                     to={`/profile/${t?.user_id ?? t?.id}`}
+                    onClick={() =>
+                      trackEvent('tutor_profile_open', {
+                        tutor_id: t?.user_id ?? t?.id,
+                      })
+                    }
                     className="w-full md:flex-1 rounded-xl overflow-hidden ring-1 ring-[#e7edf4] dark:ring-darkCard relative"
                   >
                     <div

@@ -1,5 +1,5 @@
 // apps/web/src/pages/ProfileDetailPage.web.tsx
-import React, { useMemo, useCallback, useState } from 'react';
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import useProfileDetail from '@mytutorapp/shared/hooks/useProfileDetail';
 import useProfileCard from '@mytutorapp/shared/hooks/useProfileCard';
@@ -12,6 +12,7 @@ import ProfileActions from '../components/ProfileActions.web';
 import TutorReviews from '../components/TutorReviews.web';
 import { motion, useReducedMotion, Variants } from 'framer-motion';
 import SeoHead from '../components/seo/SeoHead';
+import { trackEvent } from '../analytics/ga4';
 
 /* ----------------------------- Motion variants ---------------------------- */
 const fadeUp: Variants = {
@@ -107,6 +108,11 @@ const ProfileDetailPage: React.FC = () => {
     : 'Tutor Profile | DayBreak';
   const profileDescription =
     'View tutor expertise, languages, ratings, and availability to find the right match.';
+
+  useEffect(() => {
+    if (!id) return;
+    trackEvent('tutor_profile_view', { tutor_id: id });
+  }, [id]);
 
   const profileJsonLd = useMemo(
     () => [
