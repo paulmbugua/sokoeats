@@ -1,12 +1,13 @@
 // apps/web/src/pages/org/OrgToolsSports.web.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useLocation } from 'react-router-dom';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
 import { useOrgSports } from '@mytutorapp/shared/hooks/useOrgSports';
 import type { OrgSportsEvent } from '@mytutorapp/shared/types';
+import SeoHead from '../../components/seo/SeoHead';
 
 function cn(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
@@ -156,6 +157,7 @@ async function downloadBlob(blob: Blob, filename: string) {
 }
 
 const OrgToolsSportsPage: React.FC = () => {
+  const location = useLocation();
   const { isPro, upgradeCta, org, activeOrgId } = useOrgProTools() as any;
   const { orgId: orgIdParam } = useParams();
 
@@ -484,6 +486,12 @@ const OrgToolsSportsPage: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-10">
+      <SeoHead
+        title="Sports Tools | DayBreak"
+        description="Manage sports events and schedules."
+        canonicalPath={location.pathname}
+        noindex
+      />
       {/* Strict orgToken missing warning */}
       {strictMissing ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/40 dark:bg-rose-900/20 dark:text-rose-200">

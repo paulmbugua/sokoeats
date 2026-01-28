@@ -4,6 +4,7 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import useManageProfileForm from '@mytutorapp/shared/hooks/useManageProfileForm';
 import { toast } from 'react-toastify';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
+import SeoHead from './seo/SeoHead';
 
 const STATUS_OPTIONS = [
   { value: 'Online', label: 'Online' },
@@ -173,6 +174,15 @@ const ManageProfileForm: FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-darkBg py-10 sm:py-16 px-3 sm:px-4">
+      <SeoHead
+        title="Manage Profile | DayBreak"
+        description="Update your DayBreak profile details."
+        canonicalPath="/settings/manage"
+        noindex
+      />
+      <h1 className="text-2xl font-bold text-center text-[#0d141c] dark:text-darkTextPrimary mb-6">
+        Manage Profile
+      </h1>
       <form
         onSubmit={(e) => {
           e.preventDefault();

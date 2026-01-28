@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useProfileForm } from '@mytutorapp/shared/hooks';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 import CountrySelect from './CountrySelect';
+import SeoHead from './seo/SeoHead';
 
 // Pricing keys + ranges (tokens == USD)
 type PricingKeys = 'privateSession' | 'groupSession' | 'workshop' | 'lecture';
@@ -253,6 +254,12 @@ const CreateProfileForm: FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-darkBg py-10 sm:py-16 px-3 sm:px-4">
+      <SeoHead
+        title="Create Profile | DayBreak"
+        description="Set up your DayBreak profile information."
+        canonicalPath="/settings/create"
+        noindex
+      />
       <form
         ref={formRef}
         onSubmit={onFormSubmit}
@@ -262,7 +269,7 @@ const CreateProfileForm: FC = () => {
         noValidate
         aria-describedby={banner ? 'form-error-banner' : undefined}
       >
-        <h2 className="text-2xl font-bold text-center dark:text-white">Create Your Profile</h2>
+        <h1 className="text-2xl font-bold text-center dark:text-white">Create Your Profile</h1>
 
         {/* Top error banner */}
         {banner && (

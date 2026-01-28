@@ -2,6 +2,7 @@
 import React from 'react';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useAchievements } from '@mytutorapp/shared/hooks/useAchievements';
+import SeoHead from './seo/SeoHead';
 
 type Props = { studentId?: number; title?: string };
 
@@ -28,14 +29,24 @@ const AchievementsList: React.FC<Props> = ({ studentId, title = 'Achievements' }
   );
 
   return (
-    <section aria-labelledby="achievements-heading" className="space-y-4">
-      <header className="flex items-center justify-between">
-        <h2
-          id="achievements-heading"
-          className="text-xl font-bold text-gray-900 dark:text-gray-100"
-        >
-          {title}
-        </h2>
+    <div className="space-y-4">
+      <SeoHead
+        title="Achievements | DayBreak"
+        description="Track your DayBreak achievements and badges."
+        canonicalPath="/achievements"
+        noindex
+      />
+      <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
+        {title}
+      </h1>
+      <section aria-labelledby="achievements-heading" className="space-y-4">
+        <header className="flex items-center justify-between">
+          <h2
+            id="achievements-heading"
+            className="text-xl font-bold text-gray-900 dark:text-gray-100"
+          >
+            {title}
+          </h2>
         {!loading && (
           <button
             onClick={() => refetch()}
@@ -138,7 +149,8 @@ const AchievementsList: React.FC<Props> = ({ studentId, title = 'Achievements' }
           ))}
         </ul>
       )}
-    </section>
+      </section>
+    </div>
   );
 };
 

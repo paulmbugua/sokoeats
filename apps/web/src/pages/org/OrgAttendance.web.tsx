@@ -1,10 +1,12 @@
 // apps/web/src/pages/org/OrgAttendancePage.tsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
 import { useOrgAttendance } from '@mytutorapp/shared/hooks/useOrgAttendance';
 import { getOrgRoster } from '@mytutorapp/shared/api/orgApi';
+import SeoHead from '../../components/seo/SeoHead';
 
 function cn(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
@@ -254,6 +256,7 @@ const ConfirmModal: React.FC<{
 const card = 'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900';
 
 const OrgAttendancePage: React.FC = () => {
+  const location = useLocation();
   const { orgToken, backendUrl } = useShopContext() as any;
   const { isPro, upgradeCta, org, classLabels = [] } = useOrgProTools() as any;
 
@@ -648,6 +651,12 @@ const OrgAttendancePage: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-10">
+      <SeoHead
+        title="Attendance | DayBreak"
+        description="Track and manage attendance in your institution."
+        canonicalPath={location.pathname}
+        noindex
+      />
       {/* ✅ Confirmation modal */}
       <ConfirmModal
         open={confirmClearSaved}

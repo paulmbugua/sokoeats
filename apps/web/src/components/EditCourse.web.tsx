@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useCourses } from '@mytutorapp/shared/hooks/useCourses';
 import type { Course, CoursePayload, SyllabusItem } from '@mytutorapp/shared/types';
 import { uploadClassVaultAsset } from '@mytutorapp/shared/api/classVaultUploadApi';
+import SeoHead from './seo/SeoHead';
 
 /* ---------- helpers ---------- */
 const levels = ['Beginner', 'Intermediate', 'Advanced', 'All Levels'] as const;
@@ -137,6 +138,7 @@ function CoursesList({
 
 /* ---------- page ---------- */
 const EditCoursePage: React.FC = () => {
+  const location = useLocation();
   const { backendUrl, token } = useShopContext();
 
   const {
@@ -321,6 +323,12 @@ const uploadToWeek = async (weekIndex: number, kind: 'video' | 'pdf', file: File
       className="min-h-[100dvh] bg-slate-50 dark:bg-[#0b121a] text-[#0d141c] dark:text-darkTextPrimary"
       style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
     >
+      <SeoHead
+        title="Edit Courses | DayBreak"
+        description="Manage and edit your course content."
+        canonicalPath={location.pathname}
+        noindex
+      />
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-slate-200/60 dark:border-white/10 backdrop-blur bg-white/80 dark:bg-[#0b121a]/80 supports-[padding:max(0px,env(safe-area-inset-top))]:pt-[max(0px,env(safe-area-inset-top))]">
         <div className="max-w-[1200px] mx-auto px-3 sm:px-4 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2">

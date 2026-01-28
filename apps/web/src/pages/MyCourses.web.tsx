@@ -7,6 +7,7 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { pickImageUriForCourse } from '@mytutorapp/shared/utils/subjectImages';
 import type { Course, RecordedVideo, TopCourse } from '@mytutorapp/shared/types';
 import CourseHero from '../components/CourseHero';
+import SeoHead from '../components/seo/SeoHead';
 
 /* ─────────────────────────────────────────────────────────
  * ✅ ID Normalization (same intent as native)
@@ -660,6 +661,11 @@ const MyCourses: React.FC = () => {
       className="min-h-screen bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary"
       style={{ fontFamily: 'Manrope, "Noto Sans", sans-serif' }}
     >
+      <SeoHead
+        title="Courses Catalog | DayBreak"
+        description="Browse DayBreak courses and start learning with AI-guided lessons and tutor support."
+        canonicalPath="/courses"
+      />
       <main className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">{title}</h1>

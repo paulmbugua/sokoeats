@@ -8,6 +8,7 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { useClassVaultDetail } from '@mytutorapp/shared/hooks/useClassVault';
 import { fetchVideoReviews, submitVideoReview } from '@mytutorapp/shared/api/classVaultApi';
 import type { VideoReview } from '@mytutorapp/shared/types';
+import SeoHead from './seo/SeoHead';
 
 export default function ClassVaultDetail() {
   const { id } = useParams<{ id: string }>();
@@ -247,6 +248,12 @@ export default function ClassVaultDetail() {
                  text-[#0d141c] dark:text-darkTextPrimary px-4 py-6"
       style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
     >
+      <SeoHead
+        title={`${v.title} | DayBreak`}
+        description="View your ClassVault content details."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <article className="w-full max-w-3xl space-y-5">
         {/* Title card */}
         <header className="rounded-2xl ring-1 ring-[#cedbe8] dark:ring-darkCard bg-white dark:bg-[#0f1821] p-5">

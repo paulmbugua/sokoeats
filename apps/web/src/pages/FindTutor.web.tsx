@@ -17,6 +17,7 @@ import type { Profile, TutorFilters } from '@mytutorapp/shared/types';
 import { DEFAULT_TUTOR_FILTERS } from '@mytutorapp/shared/types';
 import { countryName } from '@mytutorapp/shared/utils/countries';
 import { normalizeCountryLabel } from '@mytutorapp/shared/utils/smartSearchIntent';
+import SeoHead from '../components/seo/SeoHead';
 
 const FALLBACK_AVATAR = (name = 'Tutor') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e7edf4&color=0d141c`;
@@ -336,6 +337,11 @@ const FindTutor: React.FC = () => {
       className="relative min-h-screen flex flex-col bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary overflow-x-hidden"
       style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
     >
+      <SeoHead
+        title="Find a Tutor | DayBreak"
+        description="Browse expert tutors by subject, grade band, and availability to match your learning goals."
+        canonicalPath="/find-tutor"
+      />
       <main className="flex-1 flex justify-center py-5 px-4 lg:px-10">
         <div className="flex flex-col w-full max-w-[960px]">
           {/* Header */}

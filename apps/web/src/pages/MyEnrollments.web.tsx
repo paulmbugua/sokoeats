@@ -4,6 +4,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useEnrollments } from '@mytutorapp/shared/hooks';
 import type { Enrollment } from '@mytutorapp/shared/types';
+import SeoHead from '../components/seo/SeoHead';
 
 type NormalizedEnrollment = {
   id: string;
@@ -114,6 +115,12 @@ const MyEnrollmentsPage: React.FC = () => {
       className="relative min-h-screen flex flex-col bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary"
       style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
     >
+      <SeoHead
+        title="My Enrollments | DayBreak"
+        description="Manage your active course enrollments."
+        canonicalPath="/my-courses"
+        noindex
+      />
       <div className="flex flex-1 justify-center py-6 px-4 sm:px-6 lg:px-10">
         <div className="w-full max-w-[1000px]">
           <div className="flex items-center justify-between mb-4">

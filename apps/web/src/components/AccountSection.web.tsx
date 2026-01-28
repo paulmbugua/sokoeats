@@ -10,6 +10,7 @@ import type { SessionType, Transaction, EarningsSummary } from '@mytutorapp/shar
 import { useWithdrawal } from '@mytutorapp/shared/hooks';
 import { getTutorProfile } from '@mytutorapp/shared/api/profileDetailApi';
 import { useShopContext } from '@mytutorapp/shared/context'
+import SeoHead from './seo/SeoHead';
 
 // Safe currency formatter
 const currencyFmt = (amt: number, currency: string) => {
@@ -377,6 +378,12 @@ useEffect(() => {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-[#0b1118]">
+        <SeoHead
+          title="Account | DayBreak"
+          description="Manage your DayBreak account details, sessions, and billing."
+          canonicalPath="/account"
+          noindex
+        />
         <Spinner />
       </div>
     );
@@ -390,6 +397,15 @@ useEffect(() => {
                  px-3 sm:px-6 md:px-10"
       style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
     >
+      <SeoHead
+        title="Account | DayBreak"
+        description="Manage your DayBreak account details, sessions, and billing."
+        canonicalPath="/account"
+        noindex
+      />
+      <h1 className="mt-4 text-2xl sm:text-3xl font-bold text-[#0d141c] dark:text-white">
+        Account
+      </h1>
       {/* Header */}
       <div
         className="mt-4 rounded-2xl p-6 sm:p-7 md:p-8 shadow-lg

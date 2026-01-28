@@ -16,6 +16,7 @@ import type {
   PlaybackPayload,
   PlaybackQueueItem,
 } from '@mytutorapp/shared/types';
+import SeoHead from '../components/seo/SeoHead';
 
 // Modified for Language Learning UX upgrade (active line, autoplay, themed voice panel).
 const extractInitMessages = (
@@ -935,6 +936,12 @@ const promptLocked =
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
+      <SeoHead
+        title={`${title} | DayBreak`}
+        description="Practice language learning with guided prompts and feedback."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <div className="max-w-6xl mx-auto px-4 py-8 pb-28">
         <header className="mb-6">
           <div className="rounded-3xl border border-slate-200/70 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 p-5 shadow-sm">

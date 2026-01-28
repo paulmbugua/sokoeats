@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
@@ -7,6 +7,7 @@ import { useOrgProTools } from '@mytutorapp/shared/hooks/useOrgProTools';
 import { useOrgAnnouncements } from '@mytutorapp/shared/hooks/useOrgAnnouncements';
 import { Coachmark, useCoachmark } from '../../components/hints/Coachmark';
 import { CircleCheckbox } from './OrgFees.ui';
+import SeoHead from '../../components/seo/SeoHead';
 
 
 function toIsoOrNull(v: string) {
@@ -38,6 +39,7 @@ function cn(...xs: Array<string | false | null | undefined>) {
 }
 
 const OrgAnnouncementsPage: React.FC = () => {
+  const location = useLocation();
   const { isPro, upgradeCta } = useOrgProTools();
 
   // NOTE: App.tsx route is "/org/announcements" (no :orgId),
@@ -216,6 +218,12 @@ Thank you.`;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-10">
+      <SeoHead
+        title="Announcements | DayBreak"
+        description="Create and manage institution announcements."
+        canonicalPath={location.pathname}
+        noindex
+      />
       {/* ✅ Visible context strip (matches your banner but now accurate) */}
       {missingCtx ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/40 dark:bg-rose-900/20 dark:text-rose-200">

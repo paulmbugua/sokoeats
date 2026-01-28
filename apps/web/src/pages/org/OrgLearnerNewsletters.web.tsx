@@ -1,12 +1,13 @@
 // apps/web/src/pages/org/OrgLearnerNewsletters.web.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { apiGetLearnerNewsletter, apiListLearnerNewsletters } from '@mytutorapp/shared/api/orgProApi';
 import { getAnnouncementFeed } from '@mytutorapp/shared/api/orgEngagementApi';
+import SeoHead from '../../components/seo/SeoHead';
 
 type LearnerNewsletter = {
   id: string | number;
@@ -124,6 +125,7 @@ function mapAnnouncement(a: any) {
 }
 
 export const OrgLearnerNewslettersPage: React.FC = () => {
+  const location = useLocation();
   const { org } = (useOrg?.() ?? {}) as any;
   const { backendUrl, orgToken } = useShopContext() as any;
   const orgId = org?.id as string | undefined;
@@ -437,6 +439,12 @@ export const OrgLearnerNewslettersPage: React.FC = () => {
 
   return (
     <div className={pageShell}>
+      <SeoHead
+        title="Learner Newsletters | DayBreak"
+        description="View newsletters and announcements from your institution."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <div className="max-w-screen-xl mx-auto space-y-4">
         <header className={cn(card, 'flex items-center justify-between gap-3')}>
           <div className="min-w-0">

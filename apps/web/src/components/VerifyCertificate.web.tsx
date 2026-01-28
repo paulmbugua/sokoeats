@@ -1,8 +1,8 @@
 import React from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async';
 import { useVerifyCertificate } from '@mytutorapp/shared/hooks/useVerifyCertificate';
 import { useShopContext } from '@mytutorapp/shared/context';
+import SeoHead from './seo/SeoHead';
 
 const VerifyCertificatePage: React.FC = () => {
   // Works for BOTH routes:
@@ -27,30 +27,36 @@ const VerifyCertificatePage: React.FC = () => {
   const ogCertId = certIdFromData || certificateId;
   const ogImage = ogCertId ? `${backendUrl}/api/certificates/${ogCertId}/og` : '';
 
-  const ogTitle =
-    data?.valid && data.certificate
-      ? `Certificate: ${data.certificate.student_name} • ${data.certificate.course_title}`
-      : 'Certificate Verification';
+  const certLabel = certNoFromData || certNo || certIdFromData || certificateId || '';
+  const pageTitle = certLabel
+    ? `Verify Certificate ${certLabel} | DayBreak`
+    : 'Verify Certificate | DayBreak';
 
-  const ogDesc =
-    data?.valid && data.certificate?.issued_at
-      ? `Verified certificate issued on ${new Date(data.certificate.issued_at).toDateString()}`
-      : 'Check if a certificate is valid.';
+  const pageDescription = certLabel
+    ? `Verify the authenticity of certificate ${certLabel} on DayBreak.`
+    : 'Verify the authenticity of a DayBreak certificate by ID or number.';
+
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Certificate Verification',
+      description: pageDescription,
+      url: `/verify/${certLabel || certificateId || ''}`,
+    },
+  ];
 
   const printId = certIdFromData || certificateId; // print route expects UUID
 
   return (
     <div className="min-h-screen bg-slate-50 text-[#0d141c]">
-      <Helmet>
-        <title>{ogTitle}</title>
-        <meta name="description" content={ogDesc} />
-        <meta property="og:type" content="website" />
-        <meta property="og:title" content={ogTitle} />
-        <meta property="og:description" content={ogDesc} />
-        {ogImage ? <meta property="og:image" content={ogImage} /> : null}
-        <meta name="twitter:card" content="summary_large_image" />
-        {ogImage ? <meta name="twitter:image" content={ogImage} /> : null}
-      </Helmet>
+      <SeoHead
+        title={pageTitle}
+        description={pageDescription}
+        canonicalPath={`/verify/${certLabel || certificateId || ''}`}
+        ogImage={ogImage || undefined}
+        jsonLd={jsonLd}
+      />
 
       <div className="max-w-2xl mx-auto px-4 py-10">
         <header className="flex items-center gap-3 mb-8">

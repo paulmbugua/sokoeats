@@ -11,6 +11,7 @@ import { downloadCertificateFile, downloadTranscriptFile } from '@mytutorapp/sha
 import { useWatchProgress } from '@mytutorapp/shared/hooks/useWatchProgress';
 import VideoWatchDialog from '../components/VideoWatchDialog.web';
 import { useReadProgress } from '@mytutorapp/shared/hooks/useReadProgress';
+import SeoHead from './seo/SeoHead';
 
 import type {
   Course as CourseType,
@@ -653,6 +654,12 @@ useEffect(() => {
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-12 space-y-12">
+      <SeoHead
+        title={`${selectedCourse.title} Progress | DayBreak`}
+        description="Track your learning progress and course milestones."
+        canonicalPath={location.pathname}
+        noindex
+      />
       {/* Header */}
       <header className="space-y-2">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">

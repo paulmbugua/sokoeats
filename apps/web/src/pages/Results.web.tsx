@@ -27,6 +27,7 @@ import {
   downloadCertificateFile,
   downloadTranscriptFile,
 } from '@mytutorapp/shared/api';
+import SeoHead from '../components/seo/SeoHead';
 
 // Icons (same style as Profile.web.tsx)
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -956,6 +957,12 @@ const ResultsPage: React.FC = () => {
       className="min-h-screen bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary"
       style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
     >
+      <SeoHead
+        title="Results & Certificates | DayBreak"
+        description="View your results, certificates, and transcripts."
+        canonicalPath={location.pathname}
+        noindex
+      />
       {/* toast */}
       {toast ? (
         <div className="fixed z-[60] top-4 right-4">

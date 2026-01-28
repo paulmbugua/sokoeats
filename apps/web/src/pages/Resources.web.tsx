@@ -11,6 +11,7 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import type { Course, RecordedVideo } from '@mytutorapp/shared/types';
 import type { OerBookItem } from '@mytutorapp/shared/api/resourcesApi';
 import CourseHero from '../components/CourseHero';
+import SeoHead from '../components/seo/SeoHead';
 
 /* ----------------------------- Small UI bits ----------------------------- */
 const Tabs: React.FC<{
@@ -864,6 +865,11 @@ const classVaultFiltered = useMemo(() => {
       className="relative min-h-screen flex flex-col bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary overflow-x-hidden"
       style={{ fontFamily: 'Manrope, "Noto Sans", sans-serif' }}
     >
+      <SeoHead
+        title="Learning Resources | DayBreak"
+        description="Explore free and premium learning resources, videos, notes, and tutor-made content."
+        canonicalPath="/resources"
+      />
       <main className="flex-1">
         <div className="mx-auto w-full max-w-screen-xl lg:max-w-screen-2xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
           <div className="flex flex-col gap-2">

@@ -1,10 +1,11 @@
 // apps/web/src/pages/CourseEnrollment.web.tsx
 import React, { useEffect, useMemo } from 'react';
-import { useParams, useNavigate, Navigate } from 'react-router-dom';
+import { useParams, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useEnrollments } from '@mytutorapp/shared/hooks/useEnrollments';
 import { useCourses } from '@mytutorapp/shared/hooks';
 import type { Course } from '@mytutorapp/shared/types';
+import SeoHead from './seo/SeoHead';
 
 interface Props {
   /** Optional: preloaded course; if not provided we fetch by id */
@@ -19,6 +20,7 @@ function toTokens(v: unknown): number {
 
 const CourseEnrollment: React.FC<Props> = ({ course }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { courseId } = useParams<{ courseId: string }>();
   const { backendUrl, token, role, tokens: walletTokens = 0 } = useShopContext();
 
@@ -120,6 +122,12 @@ const CourseEnrollment: React.FC<Props> = ({ course }) => {
 
   return (
     <div className="max-w-3xl mx-auto p-6">
+      <SeoHead
+        title={`${c.title} Enrollment | DayBreak`}
+        description="Complete enrollment for your selected course."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <div className="rounded-2xl border border-[#cedbe8] dark:border-darkCard bg-white dark:bg-[#0f1821] p-6">
         <h1 className="text-3xl font-bold mb-2 text-gray-900 dark:text-gray-100">{c.title}</h1>
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -7,6 +7,7 @@ import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 
 import type { OrgSportsEvent, OrgClub } from '@mytutorapp/shared/types';
 import { listSportsEvents, getMyClubs as apiGetMyClubs } from '@mytutorapp/shared/api/orgEngagementApi';
+import SeoHead from '../../components/seo/SeoHead';
 
 function cn(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
@@ -116,6 +117,7 @@ function TabButton({
 }
 
 const OrgLearnerSportsClubsPage: React.FC = () => {
+  const location = useLocation();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
 
@@ -240,6 +242,12 @@ const OrgLearnerSportsClubsPage: React.FC = () => {
 
   return (
     <div className={pageShell}>
+      <SeoHead
+        title="Sports & Clubs | DayBreak"
+        description="View sports events and clubs in your institution portal."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <div className="max-w-screen-lg mx-auto space-y-4">
         {/* Header */}
         <header className={cn(card, 'flex items-center justify-between gap-3')}>

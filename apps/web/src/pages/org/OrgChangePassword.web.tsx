@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { institutionChangePassword } from '@mytutorapp/shared/api/institutionAuth';
+import SeoHead from '../../components/seo/SeoHead';
 
 const MUST_CHANGE_KEY = 'org:mustChangePassword';
 
@@ -114,6 +115,12 @@ const OrgChangePassword: React.FC = () => {
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4 py-10">
+      <SeoHead
+        title="Change Password | DayBreak"
+        description="Update your institution portal password."
+        canonicalPath="/org/change-password"
+        noindex
+      />
       <div className="w-full max-w-md rounded-2xl bg-white/90 dark:bg-[#0f1821] shadow-lg ring-1 ring-gray-200 dark:ring-darkCard p-6 sm:p-8">
         <h1 className="text-xl font-semibold text-center mb-2">Update your password</h1>
         <p className="text-xs text-center text-gray-500 dark:text-darkTextSecondary mb-4">

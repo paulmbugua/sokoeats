@@ -1,7 +1,7 @@
 // apps/web/src/pages/org/OrgLearnerHome.web.tsx
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrgLearnerFees } from '@mytutorapp/shared/hooks/useOrgLearnerFees';
@@ -10,6 +10,7 @@ import {
   apiGetMyFeeStatement,
   apiGetMyFeeStructure,
 } from '@mytutorapp/shared/api/orgProApi';
+import SeoHead from '../../components/seo/SeoHead';
 
 function cn(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
@@ -168,6 +169,7 @@ function IconTile({
 }
 
 const OrgLearnerHome: React.FC = () => {
+  const location = useLocation();
   const { org, role, currentUser } = (useOrg?.() ?? {}) as any;
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -488,6 +490,12 @@ const OrgLearnerHome: React.FC = () => {
 
   return (
     <div className={pageShell}>
+      <SeoHead
+        title="Learner Portal | DayBreak"
+        description="Access your institution learner dashboard."
+        canonicalPath={location.pathname}
+        noindex
+      />
       <div className="max-w-screen-lg mx-auto space-y-4">
         {/* Header */}
         <header className={cn(heroBg, 'p-4 sm:p-5 flex items-center justify-between gap-3')}>

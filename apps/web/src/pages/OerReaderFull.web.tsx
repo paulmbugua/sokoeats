@@ -1,8 +1,9 @@
 // apps/web/src/pages/OerReaderFull.web.tsx
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { useShopContext } from '@mytutorapp/shared/context';
+import SeoHead from '../components/seo/SeoHead';
 
 type OerItem = {
   id?: string | number;
@@ -94,6 +95,7 @@ const OerReaderFull: React.FC = () => {
   const { id: rawId } = useParams<{ id: string }>();
   const id = sanitizeId(rawId);
   const nav = useNavigate();
+  const location = useLocation();
   const { backendUrl, token } = useShopContext();
 
   const [loading, setLoading] = useState(true);
@@ -164,8 +166,45 @@ const OerReaderFull: React.FC = () => {
     return u;
   }, [item]);
 
+  const titleBase = item?.title ? `${item.title}` : 'Open Educational Resource';
+  const pageTitle = item?.title
+    ? `Open Educational Resource: ${item.title} | DayBreak`
+    : 'Open Educational Resource | DayBreak';
+  const description = item?.provider
+    ? `Read open educational content from ${item.provider} on DayBreak.`
+    : 'Read open educational content and materials on DayBreak.';
+
+  const jsonLd = useMemo(() => {
+    if (item?.title) {
+      return [
+        {
+          '@context': 'https://schema.org',
+          '@type': 'CreativeWork',
+          name: item.title,
+          url: item.web_url || undefined,
+          publisher: item.provider ? { '@type': 'Organization', name: item.provider } : undefined,
+        },
+      ];
+    }
+    return [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: 'Open Educational Resource',
+        description,
+        url: location.pathname,
+      },
+    ];
+  }, [description, item?.provider, item?.title, item?.web_url, location.pathname]);
+
   return (
     <div className="min-h-screen h-screen w-full flex flex-col bg-slate-50 dark:bg-[#0a0f15]">
+      <SeoHead
+        title={pageTitle}
+        description={description}
+        canonicalPath={location.pathname}
+        jsonLd={jsonLd}
+      />
       {/* Header */}
       <header className="shrink-0 sticky top-0 z-20 backdrop-blur-xl bg-white/80 dark:bg-[#0a0f15]/80 border-b border-slate-200/70 dark:border-white/10">
         <div className="max-w-screen-2xl mx-auto px-3 sm:px-4 py-2 flex items-center gap-2">
@@ -177,7 +216,7 @@ const OerReaderFull: React.FC = () => {
             <ArrowLeft className="w-4 h-4" /> Back
           </button>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold truncate">{item?.title || 'Open Resource'}</div>
+            <h1 className="text-base font-semibold truncate">{titleBase}</h1>
             <div className="text-[11px] text-slate-500 truncate">{item?.provider || 'OER'}</div>
           </div>
           {src && (

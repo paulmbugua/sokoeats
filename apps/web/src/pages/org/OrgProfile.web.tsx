@@ -1,6 +1,6 @@
 // apps/web/src/pages/org/OrgProfile.web.tsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { CalendarCheck2, Wallet, Mail, Megaphone } from 'lucide-react';
 
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -8,6 +8,7 @@ import { getMyOrgOrBootstrap, getOrgUsage, uploadAsset } from '@mytutorapp/share
 import { setOrgLearnerPhotoByAdmission } from '@mytutorapp/shared/api/orgLearnersApi';
 
 import ThemeToggle from '../../components/ThemeToggle.web';
+import SeoHead from '../../components/seo/SeoHead';
 
 import { Skeleton, resolveAsset, tierBadge, cardBase } from './portal/OrgProfileShared.web';
 
@@ -41,6 +42,7 @@ type Org = {
 /* ------------------------------- page -------------------------------- */
 
 const OrgProfilePage: React.FC = () => {
+  const location = useLocation();
   const nav = useNavigate();
   const { backendUrl, orgToken, orgLogout } = useShopContext() as any;
 
@@ -157,6 +159,12 @@ const OrgProfilePage: React.FC = () => {
   /* -------------------------------- render -------------------------------- */
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary">
+      <SeoHead
+        title="Institution Profile | DayBreak"
+        description="Manage your institution profile and branding."
+        canonicalPath={location.pathname}
+        noindex
+      />
       {/* Hero */}
       <div className="relative">
         <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 via-indigo-600 to-cyan-500 opacity-20 dark:opacity-25" />

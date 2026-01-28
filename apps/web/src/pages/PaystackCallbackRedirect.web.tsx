@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import SeoHead from '../components/seo/SeoHead';
 
 export default function PaystackCallbackRedirectWeb() {
   const { search } = useLocation();
@@ -17,7 +18,13 @@ export default function PaystackCallbackRedirectWeb() {
 
   return (
     <div style={{ padding: 24, fontFamily: 'system-ui' }}>
-      <h2>Returning to the app…</h2>
+      <SeoHead
+        title="Payment Redirect | DayBreak"
+        description="Redirecting back to the DayBreak app."
+        canonicalPath="/paystack/callback/redirect"
+        noindex
+      />
+      <h1>Returning to the app…</h1>
       <p>If nothing happens, open the app manually.</p>
     </div>
   );

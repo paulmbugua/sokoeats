@@ -1,9 +1,11 @@
 // apps/web/src/pages/CreateCourse.web.tsx
 import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useCourses } from '@mytutorapp/shared/hooks/useCourses';
 import { useShopContext } from '@mytutorapp/shared/context';
 import type { CoursePayload, SyllabusItem } from '@mytutorapp/shared/types';
 import { uploadClassVaultAsset } from '@mytutorapp/shared/api/classVaultUploadApi';
+import SeoHead from './seo/SeoHead';
 
 const steps = ['Basic Info', 'Details', 'Syllabus', 'Review'] as const;
 
@@ -61,6 +63,7 @@ type EditableSyllabusField = 'topic' | 'assignment' | 'videoUrl' | 'notesUrl';
 type FieldName = 'title' | 'description' | 'level' | 'duration' | 'prerequisites';
 
 export default function CreateCoursePage() {
+  const location = useLocation();
   const { backendUrl, token, profile } = useShopContext();
   const { addCourse, loading, error } = useCourses({ backendUrl, token });
 
@@ -376,6 +379,12 @@ export default function CreateCoursePage() {
       className="min-h-[100dvh] bg-slate-50 dark:bg-[#0b121a]"
       style={{ fontFamily: `Manrope, "Noto Sans", sans-serif` }}
     >
+      <SeoHead
+        title="Create Course | DayBreak"
+        description="Create a new course with AI-ready lessons and resources."
+        canonicalPath={location.pathname}
+        noindex
+      />
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-slate-200/60 dark:border-white/10 backdrop-blur bg-white/70 dark:bg-[#0b121a]/70">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
