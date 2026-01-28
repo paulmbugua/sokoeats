@@ -1,10 +1,11 @@
 // apps/web/src/components/CreateProfileForm.web.tsx
-import React, { FC, useRef, useState } from 'react';
+import React, { FC, useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProfileForm } from '@mytutorapp/shared/hooks';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 import CountrySelect from './CountrySelect';
 import SeoHead from './seo/SeoHead';
+
 
 // Pricing keys + ranges (tokens == USD)
 type PricingKeys = 'privateSession' | 'groupSession' | 'workshop' | 'lecture';
@@ -15,6 +16,8 @@ const tokenRanges: Record<PricingKeys, { min: number; max: number }> = {
   lecture: { min: 5, max: 100 }, // one-to-many, lower interaction
 };
 const pricingFields: PricingKeys[] = ['privateSession', 'groupSession', 'workshop', 'lecture'];
+const EXPERTISE_OPTIONS = ['Exam Prep', 'Skill Building', 'Homework Help', 'Career Guidance'] as const;
+
 
 // If your shared types include an UploadAsset, use it; otherwise:
 interface UploadAsset {
@@ -120,6 +123,14 @@ const CreateProfileForm: FC = () => {
     (el as any)?.focus?.();
   };
 
+  useEffect(() => {
+  if (role === 'tutor' && Array.isArray(expertise) && expertise.length === 0) {
+    setExpertise(['Homework Help']); // soft default
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [role]);
+
+
   const buildBannerFromErrors = (errs: Errors) => {
     const keys = Object.keys(errs);
     if (!keys.length) return '';
@@ -200,6 +211,8 @@ const CreateProfileForm: FC = () => {
         return;
       }
     }
+
+    
 
     // 2) Custom cross-field validation (languages, country, payout details, pricing bounds)
     const { ok, firstKey } = validateCustom();
@@ -423,10 +436,13 @@ const CreateProfileForm: FC = () => {
                 </option>
                 <option value="Mathematics">Mathematics</option>
                 <option value="Sciences">Sciences</option>
-                <option value="Programming">Programming</option>
-                <option value="Art & Design">Art & Design</option>
                 <option value="Languages">Languages</option>
-                <option value="Wellness">Wellness</option>
+                <option value="Arts">Arts</option>
+                <option value="Social Studies">Social Studies</option>
+                <option value="Technology & Computing">Technology & Computing</option>
+                <option value="Business & Economics">Business & Economics</option>
+                <option value="Wellness & PE">Wellness & PE</option>
+
               </select>
               {errors.category && (
                 <p id="err-category" className="text-sm text-red-600 dark:text-red-400">
@@ -562,32 +578,33 @@ const CreateProfileForm: FC = () => {
               />
             </div>
 
-            {/* Expertise */}
-            <div>
-              <h3 className="text-base sm:text-lg font-semibold text-[#49739c] dark:text-gray-200 mb-2">
-                Expertise
-              </h3>
-              <div className="flex flex-wrap gap-3">
-                {['Exam Prep', 'Skill Building', 'Homework Help', 'Career Guidance'].map(
-                  (skill) => (
-                    <button
-                      key={skill}
-                      type="button"
-                      className={`p-2 rounded-lg text-sm sm:text-base ${expertise.includes(skill) ? chipOn : chipOff}`}
-                      onClick={() =>
-                        setExpertise((prev) =>
-                          prev.includes(skill)
-                            ? prev.filter((item) => item !== skill)
-                            : [...prev, skill]
-                        )
-                      }
-                    >
-                      {skill}
-                    </button>
-                  )
-                )}
-              </div>
-            </div>
+ {/* Expertise */}
+<div className="space-y-2">
+  <label className={labelBase}>Expertise (optional)</label>
+  <div className="flex flex-wrap gap-2">
+    {EXPERTISE_OPTIONS.map((opt) => (
+      <button
+        key={opt}
+        type="button"
+        onClick={() =>
+          setExpertise((prev) =>
+            prev.includes(opt) ? prev.filter((x) => x !== opt) : [...prev, opt]
+          )
+        }
+        className={`px-3 py-1 rounded-full border text-sm ${
+          expertise.includes(opt) ? chipOn : chipOff
+        }`}
+        aria-pressed={expertise.includes(opt)}
+      >
+        {opt}
+      </button>
+    ))}
+  </div>
+  <p className="text-xs text-[#49739c] dark:text-gray-300">
+    This helps learners find you faster. You can skip it for now.
+  </p>
+</div>
+
 
             {/* Pricing */}
             <div className="space-y-4">

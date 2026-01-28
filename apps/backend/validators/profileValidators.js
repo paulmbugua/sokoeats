@@ -4,14 +4,17 @@ import Joi from 'joi';
 // -------------------------------------------------------------
 // Constants
 // -------------------------------------------------------------
-const validCategories = [
+export const validCategories = [
   'Mathematics',
   'Sciences',
-  'Programming',
   'Languages',
-  'Art & Design',
-  'Wellness',
+  'Arts',
+  'Social Studies',
+  'Technology & Computing',
+  'Business & Economics',
+  'Wellness & PE',
 ];
+
 
 const validPayoutCurrencies = ['KES', 'USD'];
 const validPayoutMethods = ['mpesa', 'wise']; // ✅ only the two you support
@@ -106,13 +109,17 @@ export const profileValidationSchema = Joi.object({
     otherwise: Joi.forbidden(),
   }),
 
-  category: Joi.when('role', {
-    is: 'tutor',
-    then: Joi.string()
-      .valid(...validCategories)
-      .required(),
-    otherwise: Joi.forbidden(),
-  }),
+ category: Joi.when('role', {
+  is: 'tutor',
+  then: Joi.string()
+    .valid(...validCategories)
+    .required()
+    .messages({
+      'any.only': `"category" must be one of [${validCategories.join(', ')}]`,
+    }),
+  otherwise: Joi.forbidden(),
+}),
+
 
   recommended: Joi.when('role', {
     is: 'tutor',

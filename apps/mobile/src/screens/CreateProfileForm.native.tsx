@@ -1,4 +1,3 @@
-/* eslint-disable prettier/prettier */
 import React, { useEffect, useMemo, useCallback, useRef, useState } from 'react';
 import {
   ScrollView,
@@ -47,11 +46,14 @@ function isUploadAsset(obj: unknown): obj is UploadAsset {
 const CATEGORIES: string[] = [
   'Mathematics',
   'Sciences',
-  'Programming',
-  'Art & Design',
   'Languages',
-  'Wellness',
+  'Arts',
+  'Social Studies',
+  'Technology & Computing',
+  'Business & Economics',
+  'Wellness & PE',
 ];
+
 
 // Try to get a proper image MIME (like image/jpeg) from the asset
 const guessImageMime = (asset: ImagePicker.ImagePickerAsset): string => {
@@ -227,6 +229,14 @@ export default function CreateProfileFormNative() {
     const items = keys.map((k) => labelFor[k] || k);
     return `Please complete: ${items.join(' • ')}.`;
   };
+
+  useEffect(() => {
+  if (role === 'tutor' && Array.isArray(expertise) && expertise.length === 0) {
+    setExpertise(['Homework Help']); // soft default (parity with web)
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [role]);
+
 
   // Ask once for perms (camera + library)
   useEffect(() => {
@@ -781,34 +791,36 @@ export default function CreateProfileFormNative() {
                 />
               </View>
 
-              {/* Expertise */}
-              <View style={tw`gap-2`}>
-                <Text style={tw`text-base font-semibold text-[#49739c] dark:text-gray-200`}>
-                  Expertise
-                </Text>
-                <View style={tw`flex-row flex-wrap gap-2`}>
-                  {['Exam Prep', 'Skill Building', 'Homework Help', 'Career Guidance'].map(
-                    (skill) => {
-                      const on = expertise.includes(skill);
-                      return (
-                        <TouchableOpacity
-                          key={skill}
-                          onPress={() =>
-                            setExpertise((prev) =>
-                              on ? prev.filter((i) => i !== skill) : [...prev, skill]
-                            )
-                          }
-                          style={on ? chipOn : chipOff}
-                        >
-                          <Text style={on ? tw`text-white` : tw`text-[#49739c] dark:text-gray-300`}>
-                            {skill}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    }
-                  )}
-                </View>
-              </View>
+{/* Expertise */}
+<View style={tw`gap-2`}>
+  <Text style={label}>Expertise (optional)</Text>
+
+  <View style={tw`flex-row flex-wrap gap-2`}>
+    {['Exam Prep', 'Skill Building', 'Homework Help', 'Career Guidance'].map((opt) => {
+      const on = expertise.includes(opt);
+      return (
+        <TouchableOpacity
+          key={opt}
+          onPress={() =>
+            setExpertise((prev) => (on ? prev.filter((x) => x !== opt) : [...prev, opt]))
+          }
+          style={on ? chipOn : chipOff}
+          accessibilityRole="button"
+          accessibilityState={{ selected: on }}
+        >
+          <Text style={on ? tw`text-white` : tw`text-[#49739c] dark:text-gray-300`}>
+            {opt}
+          </Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+
+  <Text style={tw`text-xs text-[#49739c] dark:text-gray-300`}>
+    This helps learners find you faster. You can skip it for now.
+  </Text>
+</View>
+
 
               {/* Pricing */}
               <View style={tw`gap-4`}>

@@ -10,7 +10,7 @@ import {
 import { normalizePayoutFromBody } from '../utils/payout.js';
 import { aiParseTutorSearch } from '../services/aiTutorSearchService.js';
 import { resolveCountryIso2FromText } from '../utils/countries.js';
-
+import { normalizeCategory } from '../utils/normalizeCategory.js';
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -106,7 +106,8 @@ export const createProfile = async (req, res) => {
     } = req.body;
 
     const isTutor = String(role || '').toLowerCase() === 'tutor';
-    const category = req.body.category?.trim() || null;
+    const categoryRaw = req.body.category;
+    const category = normalizeCategory(categoryRaw) || null;
     let languages = [];
     try {
       languages = Array.isArray(req.body.languages)
@@ -312,12 +313,21 @@ export const createProfileJson = async (req, res) => {
         }
       : {};
 
-    const toValidate = {
-      ...payload,
-      ...(typeof ageNormalized === 'number' ? { age: ageNormalized } : {}),
-      languages: languagesIn,
-      ...(isTutor ? { gallery: galleryIn, video: videoIn, ...payoutFields } : {}),
-    };
+      const normalizedCategory = normalizeCategory(payload.category);
+
+   const toValidate = {
+  ...payload,
+  ...(typeof ageNormalized === 'number' ? { age: ageNormalized } : {}),
+  languages: languagesIn,
+  ...(isTutor
+    ? {
+        category: normalizedCategory,
+        gallery: galleryIn,
+        video: videoIn,
+        ...payoutFields,
+      }
+    : {}),
+};
 
     // 4) Validate
     const { error, value } = profileValidationSchema.validate(toValidate, {
@@ -593,7 +603,7 @@ export const updateProfile = async (req, res) => {
       null;
 
     const normalizedCountry = normIso2(countryFromLegacy) || null;
-
+    const normalizedCategory = normalizeCategory(category);
     // ---- validation payload (always include country/schoolGrade)
     const validationData = {
       role: normalizedRole,
@@ -603,7 +613,7 @@ export const updateProfile = async (req, res) => {
       country: normalizedCountry,
       schoolGrade,
       ...(normalizedRole === 'tutor' && {
-        category,
+        category: normalizedCategory,
         pricing,
         recommended,
         experienceLevel,

@@ -1,4 +1,4 @@
-/* eslint-disable prettier/prettier */
+
 // apps/mobile/src/screens/ManageProfileForm.native.tsx
 
 import React, { useEffect, useMemo, useCallback, useRef, useState } from 'react';
