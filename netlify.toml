@@ -1,6 +1,9 @@
 [build]
-  command = "yarn workspace @mytutorapp/web build"
-  publish = "apps/web/dist"
+  command = "yarn workspace @mytutorapp/web-next build"
+  publish = "apps/web-next/.next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
 
 # Proxy Firebase auth handler on your domain (only needed for redirect flows)
 [[redirects]]
@@ -23,13 +26,114 @@
   status = 301
   force  = true
 
-# SPA fallback
+# -----------------------------------------------------------------------------
+# App routing (Vite site) - keep protected/org routes on the legacy SPA
+# NOTE: update the target to your deployed Vite site origin if different.
+# -----------------------------------------------------------------------------
 [[redirects]]
-  from   = "/*"
-  to     = "/index.html"
+  from = "/profile/me"
+  to = "https://app.daybreaklearner.com/profile/me"
   status = 200
+  force = true
+
+[[redirects]]
+  from = "/org/*"
+  to = "https://app.daybreaklearner.com/org/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/paystack/*"
+  to = "https://app.daybreaklearner.com/paystack/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/account"
+  to = "https://app.daybreaklearner.com/account"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/messages"
+  to = "https://app.daybreaklearner.com/messages"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/settings/*"
+  to = "https://app.daybreaklearner.com/settings/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/courses/*"
+  to = "https://app.daybreaklearner.com/courses/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/class-vault/*"
+  to = "https://app.daybreaklearner.com/class-vault/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/results"
+  to = "https://app.daybreaklearner.com/results"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/my-courses"
+  to = "https://app.daybreaklearner.com/my-courses"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/create-course"
+  to = "https://app.daybreaklearner.com/create-course"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/enroll/*"
+  to = "https://app.daybreaklearner.com/enroll/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/progress/*"
+  to = "https://app.daybreaklearner.com/progress/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/achievements"
+  to = "https://app.daybreaklearner.com/achievements"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/language/*"
+  to = "https://app.daybreaklearner.com/language/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/login"
+  to = "https://app.daybreaklearner.com/login"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/home"
+  to = "https://app.daybreaklearner.com/home"
+  status = 200
+  force = true
 
 [context.production.environment]
-  VITE_BACKEND_URL          = "https://server.daybreaklearner.com"
-  VITE_FIREBASE_AUTH_DOMAIN = "mytutorapp-d3c91.firebaseapp.com"
-  VITE_DEBUG_ERRORS         = "1"
+  NEXT_PUBLIC_SITE_URL       = "https://www.daybreaklearner.com"
+  NEXT_PUBLIC_BACKEND_URL    = "https://server.daybreaklearner.com"
+  NEXT_PUBLIC_GA4_MEASUREMENT_ID = ""
+  NEXT_PUBLIC_APP_ORIGIN     = "https://app.daybreaklearner.com"
