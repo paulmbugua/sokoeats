@@ -1084,7 +1084,20 @@ const sections: ExploreSection[] = useMemo(() => {
         ListHeaderComponent={
           <View style={tw`px-4 pt-6 pb-2`}>
             <Text style={tw`text-2xl font-bold text-slate-900 dark:text-white`}>Explore</Text>
-            <Text style={tw`text-sm text-slate-500 dark:text-white/60 mt-1`}>{headerCopy}</Text>
+            <View style={tw`flex-row flex-wrap items-center mt-1`}>
+              <Text style={tw`text-sm text-slate-500 dark:text-white/60`}>{headerCopy}</Text>
+              <Text style={tw`text-sm text-slate-400 dark:text-white/50 mx-1`}>•</Text>
+              <Pressable
+                onPress={() => navigation.navigate('VerifyCertificate')}
+                accessibilityRole="link"
+                accessibilityLabel="Verify a course certificate"
+                hitSlop={6}
+              >
+                <Text style={tw`text-xs font-semibold text-slate-500 dark:text-white/60`}>
+                  Verify a certificate
+                </Text>
+              </Pressable>
+            </View>
 
             <View style={tw`mt-4`}>
               <View
