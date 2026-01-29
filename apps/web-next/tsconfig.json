@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "react-router-dom": ["src/lib/react-router-dom"],
+      "@mytutorapp/shared": ["../../packages/shared/index.ts"],
+      "@mytutorapp/shared/*": ["../../packages/shared/*"],
+      "@mytutorapp/shared/types": ["../../packages/shared/types/index.ts"]
+    },
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "types": ["node"],
+    "moduleResolution": "bundler",
+    "noEmit": true
+  },
+  "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules"]
+}

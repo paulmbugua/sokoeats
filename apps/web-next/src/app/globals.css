@@ -1,0 +1,442 @@
+/* Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Montserrat:wght@300;400;600&display=swap');
+
+/* KaTeX (for LaTeX formulas in Markdown) */
+/* If you already import this in JS (e.g., main.tsx), you can delete this line. */
+@import 'katex/dist/katex.min.css';
+@import 'react-pdf/dist/Page/AnnotationLayer.css';
+@import 'react-pdf/dist/Page/TextLayer.css';
+
+/* Tailwind layers */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Root font size + sane text scaling */
+  html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  @media (min-width: 768px) {
+    html {
+      font-size: 14px;
+    }
+  }
+
+  /* Light mode defaults */
+  body {
+    @apply font-sans text-darkText bg-softGray antialiased;
+    font-family: 'Poppins', sans-serif;
+  }
+  /* Force inherit */
+  * {
+    font-family: inherit;
+  }
+
+  /* Dark mode overrides */
+  .dark body {
+    @apply bg-darkBg text-darkTextPrimary;
+  }
+
+  /* Links */
+  a {
+    @apply transition-colors duration-200;
+  }
+
+  /* ───────── Focus / outline reset (removes blue glow & rectangles) ───────── */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  input,
+  textarea,
+  select,
+  button {
+    outline: none !important;
+    box-shadow: none !important;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  input:focus,
+  textarea:focus,
+  select:focus,
+  button:focus,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  button:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Kill WebKit search field chrome (extra decorations & glow) */
+  input[type='search'] {
+    outline: none !important;
+    box-shadow: none !important;
+    border: none; /* no rectangular border */
+    background-clip: padding-box; /* keep radius clean */
+  }
+  input[type='search']::-webkit-search-decoration,
+  input[type='search']::-webkit-search-cancel-button,
+  input[type='search']::-webkit-search-results-button,
+  input[type='search']::-webkit-search-results-decoration {
+    display: none;
+  }
+
+  /* If a Tailwind ring-* wrapper contains an input, neutralize its ring shadow */
+  /* (prevents the wrapper from looking like a focus rectangle) */
+  .ring-1:has(input),
+  .ring-2:has(input),
+  .ring:has(input) {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb; /* gray-200, matches your light theme */
+  }
+  .dark .ring-1:has(input),
+  .dark .ring-2:has(input),
+  .dark .ring:has(input) {
+    border-color: rgba(255, 255, 255, 0.1); /* matches dark ring color */
+  }
+}
+
+/* Smooth anchors opt-in */
+html.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+/* Keep anchored sections visible below sticky headers */
+section[id] {
+  scroll-margin-top: 80px;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  html.scroll-smooth {
+    scroll-behavior: auto;
+  }
+}
+
+/* Hide scrollbars (opt-in) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Modified for Language Learning UX upgrade: minimal panel animation. */
+@keyframes llFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ll-panel-animate {
+  animation: llFadeUp 180ms ease-out;
+}
+
+/* ---------------------------
+   Components / Utilities
+   --------------------------- */
+@layer components {
+  /* App wrappers */
+  .app-body {
+    @apply text-darkText bg-softGray dark:bg-darkBg dark:text-darkTextPrimary;
+  }
+  .app-heading {
+    @apply text-plum font-display font-semibold dark:text-darkTextPrimary;
+  }
+
+  /* Theme-aware panel */
+  .panel {
+    @apply rounded-2xl bg-white ring-1 ring-gray-200 shadow-sm
+           dark:bg-white/5 dark:ring-white/10;
+  }
+
+  /* Small chips (inactive) */
+  .chip {
+    @apply px-2.5 py-1 rounded-full text-[11px] ring-1 transition
+           bg-white text-darkText ring-gray-200 hover:bg-gray-50
+           dark:bg-white/5 dark:text-white/85 dark:ring-white/10 dark:hover:bg-white/10;
+  }
+  /* Active chip accent (indigo) */
+  .chip-active {
+    @apply bg-indigo-50 text-indigo-700 ring-indigo-300
+           dark:bg-indigo-600/40 dark:text-white dark:ring-indigo-500;
+  }
+
+  .overlay-panel {
+    @apply rounded-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur
+           ring-1 ring-white/10 shadow-2xl;
+  }
+  .overlay-header {
+    @apply flex items-center gap-2 px-3 py-2 select-none
+           bg-slate-100/80 dark:bg-slate-800/80;
+  }
+
+  /* Cards used inside overlay (full + floating) */
+  .overlay-grid-card {
+    @apply rounded-2xl p-3 sm:p-5 shadow-2xl ring-1;
+  }
+  .overlay-float-card {
+    @apply rounded-2xl p-2.5 sm:p-3.5 shadow-lg ring-1;
+  }
+
+  /* Kind label + gradient text */
+  .overlay-kind-label {
+    @apply text-[11px] sm:text-xs uppercase tracking-wide mb-2
+           bg-clip-text text-transparent bg-gradient-to-r;
+  }
+  .overlay-kind-label--float {
+    @apply text-[11px] sm:text-xs uppercase tracking-wide mb-1
+           bg-clip-text text-transparent bg-gradient-to-r;
+  }
+
+  /* Inputs (placeholder fixed for Tailwind v3) */
+  .input {
+    @apply w-full p-3 rounded-lg border bg-white text-darkText
+           ring-0 border-gray-300
+           dark:bg-[#172534] dark:border-darkCard dark:text-darkTextPrimary;
+
+    /* remove any focus outline/glow/shift */
+    @apply focus:ring-0 focus:shadow-none focus:border-transparent focus:outline-none;
+  }
+  .input::placeholder {
+    @apply text-gray-400 dark:text-darkTextSecondary;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg
+           bg-softPink text-white font-medium transition duration-200 hover:bg-pink-700
+           dark:hover:bg-pink-600;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg
+           border border-softPink text-softPink font-medium transition duration-200
+           hover:bg-softPink hover:text-white;
+  }
+
+  .link {
+    @apply text-gray-500 hover:text-softPink cursor-pointer dark:text-darkTextSecondary;
+  }
+
+  .form-heading {
+    @apply text-2xl font-bold text-center text-softPink;
+  }
+
+  /* Progress bar animation */
+  .progress-bar-inner {
+    transition: width 0.3s ease;
+  }
+
+  /* Modal */
+  .modal-backdrop {
+    @apply fixed inset-0 flex items-center justify-center bg-black/50 z-50;
+  }
+  .modal-content {
+    @apply panel p-6 w-full max-w-sm;
+  }
+}
+
+@layer components {
+  /* Math blocks (KaTeX) — readable in both themes */
+  .prose :is(.katex-display) {
+    @apply my-3 p-3 rounded-xl ring-1 ring-black/10 dark:ring-white/10
+           bg-white/80 dark:bg-slate-900/80 backdrop-blur overflow-x-auto;
+  }
+  /* Inline math — subtle chip bg in prose text */
+  .prose :is(p, li) .katex {
+    @apply px-1 rounded bg-zinc-900/5 dark:bg-white/10;
+  }
+  /* Keep math text legible */
+  .prose :is(.katex-display, .katex) {
+    color: inherit;
+  }
+
+  /* ---------- Prose helpers & image-only paragraph polish ---------- */
+  /* Theme-aware prose helper */
+  .prose-theme {
+    @apply prose prose-base max-w-none;
+  }
+  .dark .prose-theme {
+    @apply prose-invert;
+  }
+
+  /* If a paragraph contains only a single image, present it like a block/figure */
+  .prose :where(p:has(> img:only-child)) {
+    display: block;
+    margin-block: 0.75em 1em;
+  }
+  .prose img {
+    display: block;
+    margin-inline: auto;
+    border-radius: 0.75rem; /* rounded-xl */
+    height: auto;
+    max-width: 100%;
+  }
+}
+
+/* ===== Fix: make formula text bright in the dark overlay ===== */
+@layer components {
+  /* KaTeX inside overlay: inherit and brighten in dark mode */
+  .overlay-panel :is(.katex, .katex-display) {
+    color: inherit;
+  }
+  .dark .overlay-panel :is(.katex, .katex-display) {
+    color: #fff !important;
+  }
+
+  /* Plain-text formulas (non-KaTeX) */
+  .dark .overlay-panel [data-kind='formula'] {
+    color: #fff !important; /* base text */
+  }
+  .dark
+    .overlay-panel
+    [data-kind='formula']
+    :is(.formula-box, .formula-text, .rounded, .rounded-lg, .rounded-xl) {
+    color: #fff !important; /* inner “pill” / box text */
+  }
+  /* optional: slightly softer for helper text lines like “Read as:” */
+  .dark .overlay-panel [data-kind='formula'] .hint,
+  .dark .overlay-panel [data-kind='formula'] .muted {
+    color: rgba(255, 255, 255, 0.8) !important;
+  }
+
+  /* If any opacity utilities were applied, neutralize them */
+  .dark .overlay-panel [data-kind='formula'] * {
+    --tw-text-opacity: 1 !important;
+  }
+}
+
+/* Small utilities the overlay relies on */
+@layer utilities {
+  /* Ensure cards don't split across columns in the full-screen overlay */
+  .break-inside-avoid {
+    break-inside: avoid;
+  }
+}
+
+/* ── Focus/outline + ring overrides for all form controls ── */
+@layer utilities {
+  /* No tap highlight on mobile */
+  .app-body * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Rings per kind */
+  .ring-accent-formula {
+    @apply ring-violet-300/50 dark:ring-violet-400/30;
+  }
+  .ring-accent-table {
+    @apply ring-emerald-300/50 dark:ring-emerald-400/30;
+  }
+  .ring-accent-image {
+    @apply ring-rose-300/50 dark:ring-rose-400/30;
+  }
+  .ring-accent-snippet {
+    @apply ring-amber-300/50 dark:ring-amber-400/30;
+  }
+  .ring-accent-chart {
+    @apply ring-sky-300/50   dark:ring-sky-400/30;
+  }
+
+  /* Label gradients per kind */
+  .grad-formula {
+    @apply from-violet-300 via-fuchsia-300 to-sky-300;
+  }
+  .grad-table {
+    @apply from-emerald-300 via-teal-300   to-softPink;
+  }
+  .grad-image {
+    @apply from-softPink   via-rose-300    to-softPink;
+  }
+  .grad-snippet {
+    @apply from-amber-300  via-orange-300  to-softPink;
+  }
+  .grad-chart {
+    @apply from-sky-300    via-indigo-300  to-softPink;
+  }
+
+  /* Resize handle */
+  .resize-handle {
+    @apply absolute right-1.5 bottom-1.5 w-5 h-5 rounded-md cursor-nwse-resize
+           bg-slate-300/80 hover:bg-slate-400/80
+           dark:bg-slate-600/80 dark:hover:bg-slate-500/80;
+  }
+
+  /* Nuke blue glow/outline from controls (keyboard-visible focus can be re-enabled via .kbd-focus) */
+  .app-body :is(input, textarea, select, button) {
+    outline: none !important;
+    box-shadow: none !important; /* kills Tailwind ring box-shadow */
+  }
+  .app-body :is(input, textarea, select, button):is(:focus, :focus-visible) {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: transparent; /* avoid border color flips */
+  }
+
+  /* WebKit search field decorations + focus ring */
+  .app-body input[type='search'] {
+    -webkit-appearance: none;
+    appearance: none;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  .app-body input[type='search']::-webkit-search-decoration,
+  .app-body input[type='search']::-webkit-search-cancel-button,
+  .app-body input[type='search']::-webkit-search-results-button,
+  .app-body input[type='search']::-webkit-search-results-decoration {
+    display: none;
+  }
+
+  /* If a wrapper has a Tailwind ring AND contains an input, remove the rectangle */
+  /* Uses :has() which is supported in modern Chrome/Edge/Safari */
+  .app-body :is([class*='ring-'], .ring, .ring-1, .ring-2):has(:is(input, textarea, select)) {
+    box-shadow: none !important; /* hide the ring rectangle */
+    border: 1px solid transparent; /* keep layout without visible border */
+  }
+}
+
+@layer base {
+  /* Keep KaTeX using its own fonts */
+  .katex,
+  .katex * {
+    font-family: KaTeX_Main, 'Times New Roman', serif !important;
+  }
+
+  /* Monospace for code UI and prose */
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace !important;
+  }
+}
+
+@layer utilities {
+  /* Keyboard-only focus ring you can enable per container with class="kbd-focus" */
+  .kbd-focus :is(a, button, input, select, textarea):focus-visible {
+    @apply ring-2 ring-offset-2 ring-indigo-400 dark:ring-indigo-500
+           ring-offset-white dark:ring-offset-slate-900 outline-none;
+  }
+
+  /* Optional: fallback if a browser lacks :has (most modern ones support it) */
+  @supports not (selector(:has(*))) {
+    .no-has .ring-wrapper {
+      box-shadow: none !important;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .dark .no-has .ring-wrapper {
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+  }
+}
