@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons';
+import { faCertificate, faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons';
 import PaymentWidget from '../components/PaymentWidget.web';
 
 import { useResourcesExplore, useClassVault } from '@mytutorapp/shared/hooks';
@@ -874,7 +874,18 @@ const classVaultFiltered = useMemo(() => {
         <div className="mx-auto w-full max-w-screen-xl lg:max-w-screen-2xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
           <div className="flex flex-col gap-2">
             <h1 className="tracking-tight text-[28px] sm:text-[32px] font-bold">Explore</h1>
-            <p className="text-sm text-[#49739c] dark:text-darkTextSecondary">{headerCopy}</p>
+            <p className="text-sm text-[#49739c] dark:text-darkTextSecondary">
+              <span>{headerCopy}</span>
+              <span className="mx-1 text-[#8aa0b8] dark:text-darkTextSecondary">•</span>
+              <Link
+                to="/verify"
+                aria-label="Verify a course certificate"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[#5e738f] dark:text-darkTextSecondary hover:text-[#3d99f5] transition"
+              >
+                <FontAwesomeIcon icon={faCertificate} className="text-[10px]" />
+                <span>Verify a certificate</span>
+              </Link>
+            </p>
           </div>
 
           <div className="flex flex-col gap-3">

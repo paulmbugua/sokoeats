@@ -507,6 +507,19 @@ const CourseProgressScreen: React.FC = () => {
   return 'certificate';
 }, [programTrackParam, courseTrackRaw, storedTrack]);
 
+  const isAiCourse = useMemo(() => {
+    const raw = selectedCourse as any;
+    if (!raw) return false;
+    const aiFlag = Boolean(
+      raw?.is_ai_generated ?? raw?.is_ai ?? raw?.ai_course_id ?? raw?.aiCourseId ?? raw?.ai_course
+    );
+    const sourceKind = String(
+      raw?.source_kind ?? raw?.sourceKind ?? raw?.course_source ?? raw?.courseSource ?? raw?.source ?? ''
+    ).toLowerCase();
+    const hasAiSource = sourceKind.includes('ai') || sourceKind.includes('robot');
+    return aiFlag || hasAiSource;
+  }, [selectedCourse]);
+
 
   const totalWeeks = isSandboxSource ? getRequiredWeeks(effectiveTrack) : syllabus.length || 0;
   const totalQuestions = isSandboxSource ? getRequiredQuestions(effectiveTrack) : 0;
@@ -1483,6 +1496,13 @@ const CourseProgressScreen: React.FC = () => {
                     programTrack: effectiveTrack,
                     startWeek: item.week,
                     source: 'sandbox',
+                  });
+                  return;
+                }
+                if (isAiCourse) {
+                  navigation.navigate('RobotTutor', {
+                    courseId,
+                    startWeek: item.week,
                   });
                   return;
                 }
