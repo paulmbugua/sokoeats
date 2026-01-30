@@ -81,3 +81,7 @@ turbo/
 
 # Git LFS cache (optional, if using LFS)
 *.lfsconfig
+
+# Next.js
+apps/web-next/.next/
+apps/web-next/out/
