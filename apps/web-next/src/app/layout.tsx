@@ -13,6 +13,10 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport = {
+  themeColor: '#111827',
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const gaId = process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID;
 
