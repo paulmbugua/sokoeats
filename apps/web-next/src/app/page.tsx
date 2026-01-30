@@ -1,5 +1,5 @@
 import Script from 'next/script';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import Landing from '@/pages/Landing.web';
 import { landingDescription, landingJsonLd, landingOgImage, landingTitle } from '@/lib/landingSeo';
 import { siteUrl } from '@/lib/site';
@@ -33,6 +33,9 @@ export const metadata: Metadata = {
     description: landingDescription,
     images: [landingOgImage],
   },
+};
+
+export const viewport: Viewport = {
   themeColor: '#111827',
 };
 
