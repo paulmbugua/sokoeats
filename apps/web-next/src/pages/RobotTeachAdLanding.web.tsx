@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { trackEvent } from '../analytics/ga4';
 
 const RobotTeachAdLanding: React.FC = () => {
-  const navigate = useNavigate();
+  const router = useRouter();
 
   useEffect(() => {
     trackEvent('robot_teach_ad_view');
@@ -13,7 +13,7 @@ const RobotTeachAdLanding: React.FC = () => {
 
   const handleCtaClick = (source: string) => {
     trackEvent('robot_teach_ad_cta_click', { source });
-    navigate('/robot-teach');
+    router.push('/robot-teach');
   };
 
   return (

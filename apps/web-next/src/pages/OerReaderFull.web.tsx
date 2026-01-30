@@ -1,7 +1,7 @@
 // apps/web/src/pages/OerReaderFull.web.tsx
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { useShopContext } from '@mytutorapp/shared/context';
 
@@ -92,9 +92,10 @@ function firstHtmlishFromPayload(payload: any, slugOrId: string): OerItem | null
 }
 
 const OerReaderFull: React.FC = () => {
-  const { id: rawId } = useParams<{ id: string }>();
+  const params = useParams<{ id?: string }>();
+  const rawId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const id = sanitizeId(rawId);
-  const nav = useNavigate();
+  const router = useRouter();
   const { backendUrl, token } = useShopContext();
 
   const [loading, setLoading] = useState(true);
@@ -173,7 +174,7 @@ const OerReaderFull: React.FC = () => {
       <header className="shrink-0 sticky top-0 z-20 backdrop-blur-xl bg-white/80 dark:bg-[#0a0f15]/80 border-b border-slate-200/70 dark:border-white/10">
         <div className="max-w-screen-2xl mx-auto px-3 sm:px-4 py-2 flex items-center gap-2">
           <button
-            onClick={() => nav(-1)}
+            onClick={() => router.back()}
             className="inline-flex items-center gap-2 text-sm font-semibold rounded-xl px-2 h-9 hover:bg-slate-100/80 dark:hover:bg-white/10"
             title="Back"
           >

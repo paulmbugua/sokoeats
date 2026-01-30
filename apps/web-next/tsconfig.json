@@ -5,7 +5,6 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "react-router-dom": ["src/lib/react-router-dom"],
       "@mytutorapp/shared": ["../../packages/shared/index.ts"],
       "@mytutorapp/shared/*": ["../../packages/shared/*"],
       "@mytutorapp/shared/types": ["../../packages/shared/types/index.ts"]

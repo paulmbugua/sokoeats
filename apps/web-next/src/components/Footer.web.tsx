@@ -1,19 +1,22 @@
+'use client';
+
 // apps/web/src/components/Footer.web.tsx (or wherever it lives)
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useShopContext } from '@mytutorapp/shared/context';
 
 const PLAY_STORE_BADGE_URL =
   'https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png';
 
 const Footer: React.FC = () => {
-  const navigate = useNavigate();
+  const router = useRouter();
   const { token, orgToken, logout, orgLogout } = useShopContext() as any;
 
   const handleJoinClick = () => {
     // "Become a Tutor" should only care about normal user accounts
-    if (!token) navigate('/login');
-    else navigate('/become-tutor');
+    if (!token) router.push('/login');
+    else router.push('/become-tutor');
   };
 
   const handleAuthClick = async () => {
@@ -30,11 +33,11 @@ const Footer: React.FC = () => {
         }
       } finally {
         // After any logout, go back to main landing flow
-        navigate('/', { replace: true });
+        router.replace('/');
       }
     } else {
       // When it's showing "Login", always go to the normal user login page
-      navigate('/login');
+      router.push('/login');
     }
   };
 
@@ -64,7 +67,7 @@ const Footer: React.FC = () => {
 
           <div className="text-center md:text-left">
             <p className="text-lg font-semibold">Need Assistance?</p>
-            <Link to="/help" className="mt-1 inline-block text-primary hover:underline">
+            <Link href="/help" className="mt-1 inline-block text-primary hover:underline">
               FAQ / Contact Support
             </Link>
           </div>
@@ -100,7 +103,7 @@ const Footer: React.FC = () => {
           {/* Center buttons */}
           <div className="md:w-1/3 flex flex-col items-center justify-center gap-3">
             <Link
-              to="/find-tutor"
+              href="/find-tutor"
               className="px-4 py-2 rounded-md bg-primary text-white hover:opacity-90 transition"
             >
               Find Tutors
@@ -137,25 +140,25 @@ const Footer: React.FC = () => {
         {/* Policy Links */}
         <div className="w-full text-center">
           <div className="grid grid-cols-2 place-items-center sm:flex sm:flex-wrap sm:justify-center gap-3 sm:gap-6 text-xs">
-            <Link to="/privacy-policy" className="hover:text-primary">
+            <Link href="/privacy-policy" className="hover:text-primary">
               Privacy Policy
             </Link>
-            <Link to="/terms" className="hover:text-primary">
+            <Link href="/terms" className="hover:text-primary">
               Terms of Service
             </Link>
-            <Link to="/anti-spam-policy" className="hover:text-primary">
+            <Link href="/anti-spam-policy" className="hover:text-primary">
               Anti-Spam Policy
             </Link>
-            <Link to="/complaints-feedback" className="hover:text-primary">
+            <Link href="/complaints-feedback" className="hover:text-primary">
               Complaints & Feedback
             </Link>
-            <Link to="/refunds" className="hover:text-primary">
+            <Link href="/refunds" className="hover:text-primary">
               Refund & Cancellation Policy
             </Link>
-            <Link to="/fulfillment" className="hover:text-primary">
+            <Link href="/fulfillment" className="hover:text-primary">
               Fulfillment & Delivery Policy
             </Link>
-            <Link to="/payment-flow" className="hover:text-primary">
+            <Link href="/payment-flow" className="hover:text-primary">
               How Payments Work
             </Link>
           </div>

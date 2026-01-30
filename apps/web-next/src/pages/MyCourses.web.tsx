@@ -1,7 +1,8 @@
 // apps/web/src/pages/MyCourses.tsx
 'use client';
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAiCourse, useMyLibrary } from '@mytutorapp/shared/hooks';
 import { useClassVault } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -272,7 +273,7 @@ const ClassVaultCard: React.FC<{
   return (
     <div className="relative">
       <Link
-        to={to}
+        href={to}
         onClick={(e) => {
           if (idNum <= 0) {
             e.preventDefault();
@@ -351,7 +352,7 @@ const ClassVaultCard: React.FC<{
       {showTutorActions && (
         <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
           <Link
-          to={editTo || `/class-vault/upload?edit=${encodeURIComponent(idStr)}`}
+          href={editTo || `/class-vault/upload?edit=${encodeURIComponent(idStr)}`}
           onClick={(e) => e.stopPropagation()}
           className="inline-flex items-center justify-center rounded-lg h-9 px-3 text-xs font-semibold
                     bg-[#e7edf4] dark:bg-[#172534] hover:brightness-105"
@@ -421,7 +422,7 @@ const CourseCard: React.FC<{
     {showTutorActions && (
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
         <Link
-          to={`/courses/${course.id}/edit`}
+          href={`/courses/${course.id}/edit`}
           onClick={(e) => e.stopPropagation()}
           className="inline-flex items-center justify-center rounded-lg h-9 px-3 text-xs font-semibold
                      bg-[#e7edf4] dark:bg-[#172534] hover:brightness-105"
@@ -449,8 +450,8 @@ const CourseCard: React.FC<{
 );
 
 const MyCourses: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const router = useRouter();
+  const pathname = usePathname();
   const { backendUrl, token, profile, role: ctxRole } = useShopContext();
   const { role, isTutor, sections } = useMyLibrary();
   const { remove: removeVault } = useClassVault();
@@ -505,7 +506,7 @@ const MyCourses: React.FC = () => {
 
   const aiCourseCta = (course: Course) => {
     const cid = course.id;
-    navigate(
+    router.push(
       `/robot-teach?courseId=${encodeURIComponent(String(cid))}&title=${encodeURIComponent(
         course.title || 'AI Course'
       )}`
@@ -513,19 +514,17 @@ const MyCourses: React.FC = () => {
   };
 
   const openCourse = (course: Course) => {
-    navigate(`/progress/${encodeURIComponent(String(course.id))}`);
+    router.push(`/progress/${encodeURIComponent(String(course.id))}`);
   };
 
   useEffect(() => {
     if (authToken) return;
-    navigate('/login', {
-      state: {
-        reason: 'auth',
-        message: 'Please sign in to view your library',
-        returnTo: location.pathname,
-      },
-    });
-  }, [authToken, navigate, location.pathname]);
+    const params = new URLSearchParams();
+    params.set('reason', 'auth');
+    params.set('message', 'Please sign in to view your library');
+    if (pathname) params.set('returnTo', pathname);
+    router.push(`/login?${params.toString()}`);
+  }, [authToken, pathname, router]);
 
   // ---------- delete handlers ----------
   const onDeleteCourse = useCallback(

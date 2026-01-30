@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 
 const HelpPage: React.FC = () => {
   return (
@@ -41,21 +41,21 @@ const HelpPage: React.FC = () => {
         <ol className="list-decimal pl-5 space-y-2">
           <li>
             <strong>Create your account</strong> →{' '}
-            <Link to="/login" className="text-primary underline">
+            <Link href="/login" className="text-primary underline">
               Login / Sign up
             </Link>
             .
           </li>
           <li>
             <strong>Complete your profile</strong> → add your learning goals on{' '}
-            <Link to="/profile/me" className="text-primary underline">
+            <Link href="/profile/me" className="text-primary underline">
               My Profile
             </Link>
             .
           </li>
           <li>
             <strong>Find a tutor</strong> → browse and book on{' '}
-            <Link to="/find-tutor" className="text-primary underline">
+            <Link href="/find-tutor" className="text-primary underline">
               Find Tutors
             </Link>
             .
@@ -65,7 +65,7 @@ const HelpPage: React.FC = () => {
           </li>
           <li>
             Prefer self-paced? Try the{' '}
-            <Link to="/robot-teach" className="text-primary underline">
+            <Link href="/robot-teach" className="text-primary underline">
               AI Tutor Studio
             </Link>{' '}
             for free lessons & quizzes.
@@ -86,11 +86,11 @@ const HelpPage: React.FC = () => {
         </ul>
         <p className="text-xs text-gray-500">
           See also:{' '}
-          <Link to="/payment-flow" className="underline text-primary">
+          <Link href="/payment-flow" className="underline text-primary">
             How Payments Work
           </Link>{' '}
           •{' '}
-          <Link to="/refunds" className="underline text-primary">
+          <Link href="/refunds" className="underline text-primary">
             Refund & Cancellation Policy
           </Link>
         </p>
@@ -108,15 +108,15 @@ const HelpPage: React.FC = () => {
         </ul>
         <p className="text-xs text-gray-500">
           Policies:{' '}
-          <Link to="/terms" className="underline text-primary">
+          <Link href="/terms" className="underline text-primary">
             Terms of Service
           </Link>{' '}
           •{' '}
-          <Link to="/privacy-policy" className="underline text-primary">
+          <Link href="/privacy-policy" className="underline text-primary">
             Privacy Policy
           </Link>{' '}
           •{' '}
-          <Link to="/refunds" className="underline text-primary">
+          <Link href="/refunds" className="underline text-primary">
             Refunds
           </Link>
         </p>
@@ -164,7 +164,7 @@ const HelpPage: React.FC = () => {
         <ul className="list-disc pl-5 space-y-2">
           <li>
             Get started at{' '}
-            <Link to="/become-tutor" className="underline text-primary">
+            <Link href="/become-tutor" className="underline text-primary">
               Become a Tutor
             </Link>
             .
@@ -175,11 +175,11 @@ const HelpPage: React.FC = () => {
           </li>
           <li>
             See{' '}
-            <Link to="/terms" className="underline text-primary">
+            <Link href="/terms" className="underline text-primary">
               Terms
             </Link>{' '}
             and{' '}
-            <Link to="/anti-spam-policy" className="underline text-primary">
+            <Link href="/anti-spam-policy" className="underline text-primary">
               Anti-Spam Policy
             </Link>
             .
@@ -193,14 +193,14 @@ const HelpPage: React.FC = () => {
         <ul className="list-disc pl-5 space-y-2">
           <li>
             Log in to your org portal:{' '}
-            <Link to="/org/login" className="underline text-primary">
+            <Link href="/org/login" className="underline text-primary">
               Institution Login
             </Link>
             .
           </li>
           <li>
             Provision seats and manage assignments. See{' '}
-            <Link to="/fulfillment" className="underline text-primary">
+            <Link href="/fulfillment" className="underline text-primary">
               Fulfillment & Delivery
             </Link>{' '}
             and MSAs/order forms.
@@ -241,7 +241,7 @@ const HelpPage: React.FC = () => {
           </p>
           <p className="text-xs text-gray-500 mt-2">
             You can also leave structured feedback here:{' '}
-            <Link to="/complaints-feedback" className="underline text-primary">
+            <Link href="/complaints-feedback" className="underline text-primary">
               Complaints & Feedback
             </Link>
             .

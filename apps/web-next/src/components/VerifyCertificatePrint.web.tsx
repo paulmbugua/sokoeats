@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useVerifyCertificate } from '@mytutorapp/shared/hooks/useVerifyCertificate';
 import { useShopContext } from '@mytutorapp/shared/context';
 
@@ -10,7 +11,8 @@ const A4_MM_HEIGHT = 297; // mm
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.daybreaklearner.com';
 
 const VerifyCertificatePrintPage: React.FC = () => {
-  const { id = '' } = useParams<{ id: string }>();
+  const params = useParams<{ id?: string }>();
+  const id = (Array.isArray(params?.id) ? params.id[0] : params?.id) ?? '';
   const { backendUrl } = useShopContext();
   const { data, loading, error } = useVerifyCertificate({ backendUrl, certificateId: id });
 
@@ -46,7 +48,7 @@ const VerifyCertificatePrintPage: React.FC = () => {
               Print
             </button>
             <Link
-              to={`/verify/${id}`}
+              href={`/verify/${id}`}
               className="inline-flex items-center justify-center rounded-xl h-10 px-4 bg-white ring-1 ring-[#cedbe8] font-semibold"
             >
               Back

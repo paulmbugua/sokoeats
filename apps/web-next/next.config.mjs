@@ -14,7 +14,6 @@ const nextConfig = {
   turbopack: {
     resolveAlias: {
       '@': path.resolve(__dirname, 'src'),
-      'react-router-dom': path.resolve(__dirname, 'src/lib/react-router-dom'),
       'react-native$': 'react-native-web',
       'react-native/Libraries/Utilities/Platform':
         'react-native-web/dist/exports/Platform',

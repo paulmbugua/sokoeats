@@ -1,7 +1,7 @@
 // apps/web/src/pages/OerCollectionReader.web.tsx
 'use client';
 import React, { useCallback, useEffect, useRef, useState, useMemo, lazy, Suspense } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useWrapOerBook } from '@mytutorapp/shared/hooks';
@@ -307,11 +307,13 @@ function coerceItemsFromPayload(payload: any, slugOrId: string): CollectionItem[
 /* Page */
 /* -------------------------------------------------------------------------- */
 const OerCollectionReader: React.FC = () => {
-  const { id: rawId } = useParams<{ id: string }>();
+  const params = useParams<{ id?: string }>();
+  const rawId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const id = sanitizeId(rawId);
 
-  const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const { backendUrl, token } = useShopContext();
   const { wrapBook } = useWrapOerBook();
 
@@ -319,7 +321,7 @@ const OerCollectionReader: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [items, setItems] = useState<CollectionItem[]>([]);
 
-  const initialIndexParam = params.get('item');
+  const initialIndexParam = searchParams.get('item');
   const [activeIndex, setActiveIndex] = useState<number>(
     initialIndexParam ? Number(initialIndexParam) : 0
   );
@@ -545,15 +547,12 @@ const OerCollectionReader: React.FC = () => {
   useEffect(() => {
     if (!items.length) return;
     const idx = Math.min(Math.max(activeIndex, 0), items.length - 1);
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.set('item', String(idx));
-        return next;
-      },
-      { replace: true }
-    );
-  }, [activeIndex, items.length, setParams]);
+    const itemValue = String(idx);
+    if (searchParams.get('item') === itemValue) return;
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set('item', itemValue);
+    router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false });
+  }, [activeIndex, items.length, pathname, router, searchParams]);
 
   // Compute URLs
 
@@ -717,7 +716,7 @@ const OerCollectionReader: React.FC = () => {
     try {
       const idOrSlug = String(activeItem!.slug ?? activeItem!.id);
       const { courseId } = await wrapBook(idOrSlug);
-      navigate(`/progress/${courseId}`);
+      router.push(`/progress/${courseId}`);
     } catch (e: any) {
       alert(e?.message || 'Failed to start guided reading');
     }
@@ -733,7 +732,7 @@ const OerCollectionReader: React.FC = () => {
       <header className="sticky top-0 z-30 backdrop-blur-xl bg-white/70 dark:bg-[#0a0f15]/70 border-b border-slate-200/70 dark:border-white/10">
         <div className="mx-auto max-w-[1400px] px-3 sm:px-4 py-2 flex items-center gap-2">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => router.back()}
             className="inline-flex items-center gap-2 text-sm font-semibold rounded-xl px-2 h-9 hover:bg-slate-100/80 dark:hover:bg-white/10"
             title="Back"
           >
