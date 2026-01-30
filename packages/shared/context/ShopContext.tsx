@@ -13,7 +13,7 @@ import React, {
   useRef,
 } from 'react';
 import axios, { AxiosError, AxiosInstance } from 'axios';
-import { useQueryClient } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import useAppQuery from '../hooks/useAppQuery';
 import type {
   ShopContextValue as BaseShopContextValue,
@@ -39,6 +39,7 @@ interface ShopContextProviderProps {
     removeItem: (key: string) => Promise<void>;
   };
   navigateFn?: (destination: string) => void;
+  queryClient?: QueryClient;
 }
 
 interface ApiProfileMeResponse {
@@ -173,8 +174,9 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
   backendUrl,
   storage,
   navigateFn,
+  queryClient,
 }) => {
-  const queryClient = useQueryClient();
+  const qc = queryClient;
 
   // ── Local state ───────────────────────────────────────────────────────────
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
@@ -244,15 +246,15 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
     if (hasAutoClearedRef.current) return;
     hasAutoClearedRef.current = true;
     try {
-      await queryClient.cancelQueries();
-      queryClient.clear();
+      await qc?.cancelQueries();
+      qc?.clear();
     } catch {}
     await clearAuthState();
     try {
       await storage?.removeItem('role');
     } catch {}
     if (navigateFn) navigateFn('/login');
-  }, [authMode, clearAuthState, navigateFn, queryClient, storage]);
+  }, [authMode, clearAuthState, navigateFn, qc, storage]);
 
   const doAutoOrgLogout = useCallback(async () => {
     if (authMode !== 'org') return;

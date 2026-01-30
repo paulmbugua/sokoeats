@@ -39,7 +39,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ShopContextProvider backendUrl={backendUrl} storage={storage}>
+      <ShopContextProvider backendUrl={backendUrl} storage={storage} queryClient={queryClient}>
         <ChatProvider>
           <ThemeProvider applyToDocument storageKey="theme">
             {children}
