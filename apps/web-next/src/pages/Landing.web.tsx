@@ -1,7 +1,7 @@
 // apps/web/src/pages/Landing.web.tsx
 'use client';
 import React, { useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { motion, useMotionValue, useSpring, useReducedMotion, Variants } from 'framer-motion';
 import { trackEvent } from '../analytics/ga4';
@@ -218,8 +218,7 @@ const Landing: React.FC = () => {
 
             <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
-                to="/org/login"
-                state={{ next: '/org' }}
+                href="/org/login?next=/org"
                 className="inline-flex h-11 sm:h-12 items-center justify-center rounded-xl px-5
                         bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition
                         w-full sm:w-auto"
@@ -266,8 +265,7 @@ const Landing: React.FC = () => {
                 A single click to match, transparent pricing, and session reminders built-in.
               </p>
               <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }}>
-                <Link
-                  to={ctaPath}
+                <Link href={ctaPath}
                   className="group relative inline-flex items-center justify-center rounded-xl h-11 sm:h-12 px-5 sm:px-6 font-bold text-white bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 transition"
                 >
                   <span className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition will-change-transform bg-gradient-to-r from-white/10 to-white/0" />
@@ -353,8 +351,7 @@ const Landing: React.FC = () => {
               </div>
             </dl>
             <div className="mt-4">
-              <Link
-                to="/robot-teach"
+              <Link href="/robot-teach"
                 className="inline-flex items-center justify-center rounded-xl h-11 px-5 font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition"
                 aria-label="Learn with AI Robot Teacher"
               >
@@ -438,8 +435,7 @@ const Hero: React.FC<{
             transition={{ duration: 0.6, ease: 'easeOut', delay: 0.32 }}
           >
             <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }}>
-              <Link
-                to={ctaPath}
+              <Link href={ctaPath}
                 className="flex min-w-[120px] items-center justify-center rounded-xl h-11 sm:h-12 px-5 bg-white text-slate-900 text-sm font-bold tracking-[0.01em] sm:text-base w-full sm:w-auto"
               >
                 Get started
@@ -457,8 +453,7 @@ const Hero: React.FC<{
 
             <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }}>
               <Link
-                to="/org/login"
-                state={{ next: '/org' }} // optional; matches how you hint target elsewhere
+                href="/org/login?next=/org"
                 aria-label="Open the Institution E-Learning portal"
                 className="flex min-w-[120px] items-center justify-center rounded-xl h-11 sm:h-12 px-5
                             bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold tracking-[0.01em]
@@ -476,8 +471,7 @@ const Hero: React.FC<{
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, ease: 'easeOut', delay: 0.38 }}
           >
-            <Link
-              to="/robot-teach"
+            <Link href="/robot-teach"
               aria-label="Learn a course using A.I. Robot Teacher"
               onClick={() => trackEvent('robot_teach_start')}
               className="flex h-11 sm:h-12 items-center justify-center rounded-xl px-5

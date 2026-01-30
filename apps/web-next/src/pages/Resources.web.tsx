@@ -1,7 +1,8 @@
 // apps/web/src/pages/ResourcesPage.web.tsx
 'use client';
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCertificate, faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons';
 import PaymentWidget from '../components/PaymentWidget.web';
@@ -412,7 +413,7 @@ const ClassVaultCard: React.FC<{
  */
 const CourseCard: React.FC<{ course: Course }> = ({ course }) => (
   <Link
-    to={`/courses/${encodeURIComponent(String(course.id))}`}
+    href={`/courses/${encodeURIComponent(String(course.id))}`}
     className="group rounded-xl ring-1 ring-[#e4ecf4] dark:ring-darkCard bg-white dark:bg-[#111b25] overflow-hidden hover:shadow-sm transition flex flex-col"
   >
     <div className="relative w-full h-36 sm:h-40 md:h-44 bg-[#0b1220] overflow-hidden">
@@ -443,7 +444,7 @@ const OerBookCard: React.FC<{ item: OerBookItem }> = ({ item }) => {
   const id = item.slug || item.id;
   return (
     <Link
-      to={`/oer/${encodeURIComponent(String(id))}`}
+      href={`/oer/${encodeURIComponent(String(id))}`}
       className="group rounded-xl ring-1 ring-[#e4ecf4] dark:ring-darkCard bg-white dark:bg-[#111b25] overflow-hidden hover:shadow-sm transition flex flex-col"
     >
       <div className="relative w-full h-40 sm:h-44 md:h-48 bg-[#0b1220] overflow-hidden">
@@ -533,7 +534,7 @@ const OerCollectionCard: React.FC<{ col: OerCollection }> = ({ col }) => {
 
   return (
     <Link
-      to={href}
+      href={href}
       className="group block rounded-xl ring-1 ring-[#e4ecf4] dark:ring-darkCard bg-white dark:bg-[#111b25] overflow-hidden hover:shadow-sm transition"
     >
       <div className="relative aspect-video bg-black/60 overflow-hidden">
@@ -701,8 +702,8 @@ const PurchaseModal: React.FC<{
 
 /* ------------------------------ Page ------------------------------------- */
 const ResourcesPage: React.FC = () => {
-  const navigate = useNavigate();
-  const [params] = useSearchParams();
+  const router = useRouter();
+  const params = useSearchParams();
   const MIN_QUERY_LEN = 4;
 
   const initialTab = (params.get('tab') || '').toLowerCase() === 'videos' ? 'videos' : 'courses';
@@ -801,7 +802,7 @@ const classVaultFiltered = useMemo(() => {
       await purchase(payItem);
       const id = Number((payItem as any).id);
       closePay();
-      navigate(`/class-vault/${encodeURIComponent(String(id))}`);
+      router.push(`/class-vault/${encodeURIComponent(String(id))}`);
     } catch (err: any) {
       const msg =
         (typeof err?.message === 'string' && err.message) || 'Purchase failed. Please try again.';
@@ -827,7 +828,7 @@ const classVaultFiltered = useMemo(() => {
 
       // Free or already purchased -> open directly
       if (price <= 0 || purchasedIds?.has?.(id)) {
-        navigate(`/class-vault/${encodeURIComponent(String(id))}`);
+        router.push(`/class-vault/${encodeURIComponent(String(id))}`);
         return;
       }
 
@@ -873,7 +874,7 @@ const classVaultFiltered = useMemo(() => {
               <span>{headerCopy}</span>
               <span className="mx-1 text-[#8aa0b8] dark:text-darkTextSecondary">•</span>
               <Link
-                to="/verify"
+                href="/verify"
                 aria-label="Verify a course certificate"
                 className="inline-flex items-center gap-1 text-xs font-semibold text-[#5e738f] dark:text-darkTextSecondary hover:text-[#3d99f5] transition"
               >
@@ -1033,7 +1034,7 @@ const classVaultFiltered = useMemo(() => {
                   {oerVideoCollections.items.length > 12 && (
                     <div className="pt-3">
                       <Link
-                        to="/oer/collections"
+                        href="/oer/collections"
                         className="inline-flex items-center justify-center rounded-full h-10 px-5 bg-[#e7edf4] dark:bg-[#172534] text-sm font-semibold hover:brightness-105"
                       >
                         Browse all collections

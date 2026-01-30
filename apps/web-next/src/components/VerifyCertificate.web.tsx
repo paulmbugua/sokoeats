@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { useParams, Link } from 'react-router-dom';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useVerifyCertificate } from '@mytutorapp/shared/hooks/useVerifyCertificate';
 import { useShopContext } from '@mytutorapp/shared/context';
 
@@ -12,8 +13,8 @@ const VerifyCertificatePage: React.FC = () => {
   const params = useParams<{ id?: string; certNo?: string }>();
   const { backendUrl } = useShopContext();
 
-  const certificateId = params.id || '';
-  const certNo = params.certNo || '';
+  const certificateId = Array.isArray(params?.id) ? params.id[0] : params?.id || '';
+  const certNo = Array.isArray(params?.certNo) ? params.certNo[0] : params?.certNo || '';
 
   const { data, loading, error } = useVerifyCertificate({
     backendUrl,
@@ -90,7 +91,7 @@ const VerifyCertificatePage: React.FC = () => {
 
                 {printId ? (
                   <Link
-                    to={`/verify/${printId}/print`}
+                    href={`/verify/${printId}/print`}
                     className="inline-flex items-center justify-center rounded-xl h-10 px-4 bg-white ring-1 ring-[#cedbe8] font-semibold"
                   >
                     Print View
@@ -98,7 +99,7 @@ const VerifyCertificatePage: React.FC = () => {
                 ) : null}
 
                 <Link
-                  to="/"
+                  href="/"
                   className="inline-flex items-center justify-center rounded-xl h-10 px-4 bg-[#e7edf4] text-[#0d141c] font-semibold"
                 >
                   Back Home

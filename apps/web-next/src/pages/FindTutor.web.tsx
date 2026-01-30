@@ -2,7 +2,8 @@
 'use client';
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { IconProp } from '@fortawesome/fontawesome-svg-core';
 import {
@@ -227,7 +228,7 @@ const resolveImage = (p: any, backendUrl?: string, fallbackName?: string) => {
 };
 
 const FindTutor: React.FC = () => {
-  const location = useLocation();
+  const searchParams = useSearchParams();
   const MIN_QUERY_LEN = 4;
   const {
     filteredProfiles, // ✅ already server-filtered by q/subject/country/minRating/maxPrice
@@ -254,12 +255,11 @@ const FindTutor: React.FC = () => {
   const activeFilterCount = useMemo(() => countActiveTutorFilters(uiFilters), [uiFilters]);
 
   useEffect(() => {
-    const sp = new URLSearchParams(location.search);
-    const q = sp.get('q') ?? '';
-    const subject = sp.get('subject') ?? '';
-    const gradeBand = sp.get('gradeBand') ?? '';
-    const countryParam = sp.get('country') ?? '';
-    const minRatingParam = sp.get('minRating') ?? '';
+    const q = searchParams.get('q') ?? '';
+    const subject = searchParams.get('subject') ?? '';
+    const gradeBand = searchParams.get('gradeBand') ?? '';
+    const countryParam = searchParams.get('country') ?? '';
+    const minRatingParam = searchParams.get('minRating') ?? '';
 
     setQuery(q);
     setDebouncedQuery(q);
@@ -279,7 +279,7 @@ const FindTutor: React.FC = () => {
       if (Number.isFinite(val)) setMinRatingFilter(val);
     }
   }, [
-    location.search,
+    searchParams,
     handleSearch,
     setCountryFilter,
     setMinRatingFilter,
@@ -454,7 +454,7 @@ const FindTutor: React.FC = () => {
                       })()}
 
                       <Link
-                        to={`/profile/${t?.user_id ?? t?.id}`}
+                        href={`/profile/${t?.user_id ?? t?.id}`}
                         onClick={() =>
                           trackEvent('tutor_profile_open', {
                             tutor_id: t?.user_id ?? t?.id,
@@ -493,7 +493,7 @@ const FindTutor: React.FC = () => {
                   </div>
 
                   <Link
-                    to={`/profile/${t?.user_id ?? t?.id}`}
+                    href={`/profile/${t?.user_id ?? t?.id}`}
                     onClick={() =>
                       trackEvent('tutor_profile_open', {
                         tutor_id: t?.user_id ?? t?.id,

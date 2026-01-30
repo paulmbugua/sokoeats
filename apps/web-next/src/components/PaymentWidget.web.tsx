@@ -1,11 +1,13 @@
 // apps/web/src/components/payment/PaymentWidget.web.tsx
+'use client';
+
 import React, { useMemo, useEffect, useState } from 'react';
 import { assets } from '../assets/assets';
 import { FaStar, FaStarHalfAlt, FaRegStar } from 'react-icons/fa';
 import debounce from 'lodash.debounce';
 import Spinner from './Spinner.web';
 import { usePayment, useHomePage } from '@mytutorapp/shared/hooks';
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { paystackCreateOrder } from '@mytutorapp/shared/api';
 import type {
@@ -476,15 +478,15 @@ const PaymentWidget: React.FC<Props> = ({
         {/* Policy links / fine print */}
         <div className="text-[11px] leading-5 text-gray-500 dark:text-darkTextSecondary border-t pt-3 px-4">
           By paying you agree to our{' '}
-          <Link to="/refunds" className="text-primary underline">
+          <Link href="/refunds" className="text-primary underline">
             Refund & Cancellation Policy
           </Link>{' '}
           and{' '}
-          <Link to="/fulfillment" className="text-primary underline">
+          <Link href="/fulfillment" className="text-primary underline">
             Fulfillment & Delivery Policy
           </Link>
           . See{' '}
-          <Link to="/payment-flow" className="text-primary underline">
+          <Link href="/payment-flow" className="text-primary underline">
             how payments work
           </Link>
           .
