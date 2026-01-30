@@ -11,24 +11,24 @@ const nextConfig = {
 
   transpilePackages: ['@mytutorapp/shared'],
 
-  webpack: (config) => {
-    config.resolve.alias = {
-      ...(config.resolve.alias || {}),
+  turbopack: {
+    resolveAlias: {
       '@': path.resolve(__dirname, 'src'),
       'react-router-dom': path.resolve(__dirname, 'src/lib/react-router-dom'),
       'react-native$': 'react-native-web',
       'react-native/Libraries/Utilities/Platform':
         'react-native-web/dist/exports/Platform',
-    };
-
-    config.resolve.extensions = [
+    },
+    resolveExtensions: [
       '.web.tsx',
       '.web.ts',
       '.web.js',
-      ...config.resolve.extensions,
-    ];
-
-    return config;
+      '.tsx',
+      '.ts',
+      '.jsx',
+      '.js',
+      '.json',
+    ],
   },
 };
 
