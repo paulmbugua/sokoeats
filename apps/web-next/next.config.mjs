@@ -5,6 +5,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const reactQueryPath = path.resolve(__dirname, '../../node_modules/@tanstack/react-query');
+const queryCorePath = path.resolve(__dirname, '../../node_modules/@tanstack/query-core');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -28,6 +31,14 @@ const nextConfig = {
       '.js',
       '.json',
     ],
+  },
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...(config.resolve.alias ?? {}),
+      '@tanstack/react-query': reactQueryPath,
+      '@tanstack/query-core': queryCorePath,
+    };
+    return config;
   },
 };
 

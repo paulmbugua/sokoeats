@@ -1,22 +1,26 @@
+// apps/web/src/components/Footer.web.tsx (or wherever it lives)
 'use client';
 
-// apps/web/src/components/Footer.web.tsx (or wherever it lives)
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useShopContext } from '@mytutorapp/shared/context';
-
-const PLAY_STORE_BADGE_URL =
-  'https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png';
+import { appUrl } from '@/lib/appOrigin';
 
 const Footer: React.FC = () => {
   const router = useRouter();
   const { token, orgToken, logout, orgLogout } = useShopContext() as any;
+  const playStoreBadgeUrl =
+    process.env.NEXT_PUBLIC_PLAY_STORE_BADGE_URL ||
+    'https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png';
 
   const handleJoinClick = () => {
     // "Become a Tutor" should only care about normal user accounts
-    if (!token) router.push('/login');
-    else router.push('/become-tutor');
+    if (!token) {
+      window.location.href = appUrl('/login');
+      return;
+    }
+    window.location.href = appUrl('/become-tutor');
   };
 
   const handleAuthClick = async () => {
@@ -37,7 +41,7 @@ const Footer: React.FC = () => {
       }
     } else {
       // When it's showing "Login", always go to the normal user login page
-      router.push('/login');
+      window.location.href = appUrl('/login');
     }
   };
 
@@ -128,7 +132,7 @@ const Footer: React.FC = () => {
               className="inline-flex"
             >
               <img
-                src={PLAY_STORE_BADGE_URL}
+                src={playStoreBadgeUrl}
                 alt="Get it on Google Play"
                 className="h-12 md:h-14 lg:h-16"
               />

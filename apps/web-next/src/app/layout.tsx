@@ -3,6 +3,8 @@ import Script from 'next/script';
 import Providers from './providers';
 import AnalyticsTracker from './Analytics';
 import { SITE_URL } from '@/lib/site';
+import LegacyFooter from '@/components/legacy/Footer.web';
+import LegacyNavbar from '@/components/legacy/Navbar.web';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -10,6 +12,9 @@ export const metadata: Metadata = {
   title: {
     default: 'DayBreak Learner',
     template: '%s | DayBreak',
+  },
+  icons: {
+    icon: 'https://www.daybreaklearner.com/favicon.ico',
   },
 };
 
@@ -39,7 +44,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Providers>
           <AnalyticsTracker />
-          {children}
+          <LegacyNavbar />
+          <main>{children}</main>
+          <LegacyFooter />
         </Providers>
       </body>
     </html>
