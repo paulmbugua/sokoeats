@@ -1,23 +1,6 @@
 import { redirect } from 'next/navigation';
+import { appUrl } from '@/lib/appOrigin';
 
-const appOrigin =
-  process.env.NEXT_PUBLIC_APP_ORIGIN_DEV ||
-  process.env.NEXT_PUBLIC_APP_ORIGIN ||
-  '';
-
-export default function OrgLoginBridge({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
-  const qs = new URLSearchParams();
-
-  for (const [k, v] of Object.entries(searchParams ?? {})) {
-    if (Array.isArray(v)) v.forEach((vv) => vv != null && qs.append(k, vv));
-    else if (v != null) qs.set(k, v);
-  }
-
-  // preserve ?next=/org etc.
-  const url = `${appOrigin}/org/login${qs.toString() ? `?${qs}` : ''}`;
-  redirect(url);
+export default function OrgLoginBridge() {
+  redirect(appUrl('/org/login?next=/org'));
 }

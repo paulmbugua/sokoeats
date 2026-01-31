@@ -3,6 +3,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { appUrl } from '@/lib/appOrigin';
 
 const HelpPage: React.FC = () => {
   return (
@@ -41,21 +42,21 @@ const HelpPage: React.FC = () => {
         <ol className="list-decimal pl-5 space-y-2">
           <li>
             <strong>Create your account</strong> →{' '}
-            <Link href="/login" className="text-primary underline">
+            <Link href={appUrl('/login')} className="text-primary underline">
               Login / Sign up
             </Link>
             .
           </li>
           <li>
             <strong>Complete your profile</strong> → add your learning goals on{' '}
-            <Link href="/profile/me" className="text-primary underline">
+            <Link href={appUrl('/profile/me')} className="text-primary underline">
               My Profile
             </Link>
             .
           </li>
           <li>
             <strong>Find a tutor</strong> → browse and book on{' '}
-            <Link href="/find-tutor" className="text-primary underline">
+            <Link href={appUrl('/find-tutor')} className="text-primary underline">
               Find Tutors
             </Link>
             .
@@ -65,7 +66,7 @@ const HelpPage: React.FC = () => {
           </li>
           <li>
             Prefer self-paced? Try the{' '}
-            <Link href="/robot-teach" className="text-primary underline">
+            <Link href={appUrl('/robot-teach')} className="text-primary underline">
               AI Tutor Studio
             </Link>{' '}
             for free lessons & quizzes.
@@ -164,7 +165,7 @@ const HelpPage: React.FC = () => {
         <ul className="list-disc pl-5 space-y-2">
           <li>
             Get started at{' '}
-            <Link href="/become-tutor" className="underline text-primary">
+            <Link href={appUrl('/become-tutor')} className="underline text-primary">
               Become a Tutor
             </Link>
             .
@@ -193,7 +194,7 @@ const HelpPage: React.FC = () => {
         <ul className="list-disc pl-5 space-y-2">
           <li>
             Log in to your org portal:{' '}
-            <Link href="/org/login" className="underline text-primary">
+            <Link href={appUrl('/org/login?next=/org')} className="underline text-primary">
               Institution Login
             </Link>
             .

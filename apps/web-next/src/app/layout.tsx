@@ -3,8 +3,8 @@ import Script from 'next/script';
 import Providers from './providers';
 import AnalyticsTracker from './Analytics';
 import { SITE_URL } from '@/lib/site';
-import PublicFooter from '@/components/PublicFooter';
-import PublicNavbar from '@/components/PublicNavbar';
+import NavbarLegacy from '@/components/legacy/Navbar.web';
+import FooterLegacy from '@/components/legacy/Footer.web';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -41,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </>
         ) : null}
       </head>
-     <body>
+      <body>
         <Providers>
           <AnalyticsTracker />
           <NavbarLegacy />
@@ -49,7 +49,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <FooterLegacy />
         </Providers>
       </body>
-
     </html>
   );
 }
