@@ -13,6 +13,9 @@ export const metadata: Metadata = {
     default: 'DayBreak Learner',
     template: '%s | DayBreak',
   },
+  icons: {
+    icon: 'https://www.daybreaklearner.com/favicon.ico',
+  },
 };
 
 export const viewport = {
