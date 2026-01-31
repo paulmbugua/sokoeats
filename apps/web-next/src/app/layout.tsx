@@ -41,14 +41,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </>
         ) : null}
       </head>
-      <body>
+     <body>
         <Providers>
           <AnalyticsTracker />
-          <PublicNavbar />
-          <main>{children}</main>
-          <PublicFooter />
+          <NavbarLegacy />
+          {children}
+          <FooterLegacy />
         </Providers>
       </body>
+
     </html>
   );
 }
