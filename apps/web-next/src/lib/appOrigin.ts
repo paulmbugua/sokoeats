@@ -3,17 +3,19 @@
 export const APP_ORIGIN =
   process.env.NEXT_PUBLIC_APP_ORIGIN?.trim() || 'https://app.daybreaklearner.com';
 
-// Local dev override (so clicking goes to Vite dev server)
-export const APP_ORIGIN_DEV =
-  process.env.NEXT_PUBLIC_APP_ORIGIN_DEV?.trim() || APP_ORIGIN;
+const normalizeOrigin = (origin: string) => origin.replace(/\/+$/, '');
 
-/**
- * In production: return a path ("/login") so Netlify redirects can proxy to Vite.
- * In development: return absolute URL ("http://localhost:5173/login") to avoid Next 404s.
- */
+const normalizePath = (path: string) => {
+  const [pathPart, hash] = path.split('#');
+  const [pathnameRaw, query] = pathPart.split('?');
+  const pathname = pathnameRaw.startsWith('/') ? pathnameRaw : `/${pathnameRaw}`;
+  const normalizedPath = pathname.replace(/\/{2,}/g, '/');
+  const queryString = query ? `?${query}` : '';
+  const hashString = hash ? `#${hash}` : '';
+  return `${normalizedPath}${queryString}${hashString}`;
+};
+
 export const appUrl = (path: string) => {
-  if (process.env.NODE_ENV === 'development') {
-    return `${APP_ORIGIN_DEV}${path.startsWith('/') ? '' : '/'}${path}`;
-  }
-  return path.startsWith('/') ? path : `/${path}`;
+  if (!path) return normalizeOrigin(APP_ORIGIN);
+  return `${normalizeOrigin(APP_ORIGIN)}${normalizePath(path)}`;
 };

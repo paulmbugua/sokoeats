@@ -3,7 +3,11 @@ import type { Metadata } from 'next';
 import VerifyCertificatePage from '@/components/VerifyCertificate.web';
 import { siteUrl } from '@/lib/site';
 
-export async function generateMetadata({ params }: { params: { certNo: string } }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: { certNo: string };
+}): Promise<Metadata> {
   const certNo = params.certNo;
   const title = certNo
     ? `Verify Certificate ${certNo} | DayBreak`
@@ -12,6 +16,8 @@ export async function generateMetadata({ params }: { params: { certNo: string } 
     ? `Verify the authenticity of certificate ${certNo} on DayBreak.`
     : 'Verify the authenticity of a DayBreak certificate by ID or number.';
   const canonical = siteUrl(`/verify/no/${certNo}`);
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/+$/, '') || '';
+  const ogImage = backendUrl ? `${backendUrl}/api/certificates/${certNo}/og` : undefined;
 
   return {
     title,
@@ -22,11 +28,13 @@ export async function generateMetadata({ params }: { params: { certNo: string } 
       url: canonical,
       title,
       description,
+      images: ogImage ? [{ url: ogImage }] : undefined,
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
+      images: ogImage ? [ogImage] : undefined,
     },
   };
 }

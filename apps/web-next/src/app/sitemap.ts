@@ -6,11 +6,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const routes = [
     '/',
     '/robot-teach',
+    '/robot-teach/start',
+    '/ai-robot-teacher',
     '/find-tutor',
     '/resources',
     '/courses',
     '/help',
     '/verify',
+    '/privacy-policy',
+    '/terms',
+    '/cookie-policy',
+    '/anti-spam-policy',
+    '/complaints-feedback',
+    '/refunds',
+    '/fulfillment',
+    '/payment-flow',
+    '/unsubscribe',
   ];
 
   return routes.map((path) => ({
