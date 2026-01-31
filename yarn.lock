@@ -4660,7 +4660,6 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@mytutorapp/shared@workspace:packages/shared"
   dependencies:
-    "@tanstack/react-query": "npm:5.89.0"
     "@types/dompurify": "npm:^3.2.0"
     "@types/jsdom": "npm:^27.0.0"
     "@types/lodash.debounce": "npm:^4"
@@ -4699,7 +4698,6 @@ __metadata:
     "@fortawesome/free-regular-svg-icons": "npm:6.4.0"
     "@fortawesome/free-solid-svg-icons": "npm:6.4.0"
     "@fortawesome/react-fontawesome": "npm:0.2.2"
-    "@tanstack/react-query": "npm:^5.89.0"
     "@types/node": "npm:^20.17.6"
     "@types/react": "npm:~19.1.10"
     "@types/react-dom": "npm:19.0.3"
@@ -17572,6 +17570,7 @@ __metadata:
     "@google-cloud/speech": "npm:^7.2.1"
     "@tailwindcss/forms": "npm:^0.5.10"
     "@tailwindcss/typography": "npm:^0.5.16"
+    "@tanstack/react-query": "npm:5.89.0"
     "@types/lodash.debounce": "npm:^4.0.9"
     "@types/react-native-vector-icons": "npm:6.4.18"
     "@typescript-eslint/eslint-plugin": "npm:^8.31.1"

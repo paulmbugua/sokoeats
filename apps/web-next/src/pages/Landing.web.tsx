@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { motion, useMotionValue, useSpring, useReducedMotion, Variants } from 'framer-motion';
 import { trackEvent } from '../analytics/ga4';
+import { appUrl } from '@/lib/appOrigin';
+
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 28 },
@@ -217,8 +219,7 @@ const Landing: React.FC = () => {
             </div>
 
             <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <Link
-                href="/org/login?next=/org"
+             <Link href={appUrl('/org/login?next=/org')}
                 className="inline-flex h-11 sm:h-12 items-center justify-center rounded-xl px-5
                         bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition
                         w-full sm:w-auto"
@@ -265,7 +266,7 @@ const Landing: React.FC = () => {
                 A single click to match, transparent pricing, and session reminders built-in.
               </p>
               <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }}>
-                <Link href={ctaPath}
+                <Link href={appUrl(ctaPath)}
                   className="group relative inline-flex items-center justify-center rounded-xl h-11 sm:h-12 px-5 sm:px-6 font-bold text-white bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 transition"
                 >
                   <span className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition will-change-transform bg-gradient-to-r from-white/10 to-white/0" />
@@ -452,8 +453,7 @@ const Hero: React.FC<{
             </motion.div>
 
             <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }}>
-              <Link
-                href="/org/login?next=/org"
+             <Link href={appUrl('/org/login?next=/org')}
                 aria-label="Open the Institution E-Learning portal"
                 className="flex min-w-[120px] items-center justify-center rounded-xl h-11 sm:h-12 px-5
                             bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold tracking-[0.01em]

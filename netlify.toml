@@ -5,6 +5,10 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# -----------------------------------------------------------------------------
+# Core proxies (work for BOTH Next + proxied app pages)
+# -----------------------------------------------------------------------------
+
 # Proxy Firebase auth handler on your domain (only needed for redirect flows)
 [[redirects]]
   from   = "/__/auth/*"
@@ -19,7 +23,7 @@
   status = 200
   force  = true
 
-# Canonical redirect: apex -> www (or remove and use Netlify UI)
+# Canonical redirect: apex -> www (optional if handled in Netlify UI)
 [[redirects]]
   from   = "https://daybreaklearner.com/*"
   to     = "https://www.daybreaklearner.com/:splat"
@@ -28,112 +32,157 @@
 
 # -----------------------------------------------------------------------------
 # App routing (Vite site) - keep protected/org routes on the legacy SPA
-# NOTE: update the target to your deployed Vite site origin if different.
+# Primary app origin:
+#   https://app.daybreaklearner.com
 # -----------------------------------------------------------------------------
-[[redirects]]
-  from = "/profile/me"
-  to = "https://app.daybreaklearner.com/profile/me"
-  status = 200
-  force = true
 
 [[redirects]]
-  from = "/org/*"
-  to = "https://app.daybreaklearner.com/org/:splat"
+  from   = "/org/login"
+  to     = "https://app.daybreaklearner.com/org/login"
   status = 200
-  force = true
+  force  = true
 
 [[redirects]]
-  from = "/paystack/*"
-  to = "https://app.daybreaklearner.com/paystack/:splat"
+  from   = "/org/join/*"
+  to     = "https://app.daybreaklearner.com/org/join/:splat"
   status = 200
-  force = true
+  force  = true
+
+
+# Org portal + invite flows + org tools (NOT indexable)
+[[redirects]]
+  from   = "/org/*"
+  to     = "https://app.daybreaklearner.com/org/:splat"
+  status = 200
+  force  = true
+
+# Paystack callbacks (must not be indexed)
+[[redirects]]
+  from   = "/paystack/*"
+  to     = "https://app.daybreaklearner.com/paystack/:splat"
+  status = 200
+  force  = true
+
+# Auth / logged-in SPA pages
+[[redirects]]
+  from   = "/login"
+  to     = "https://app.daybreaklearner.com/login"
+  status = 200
+  force  = true
 
 [[redirects]]
-  from = "/account"
-  to = "https://app.daybreaklearner.com/account"
+  from   = "/home"
+  to     = "https://app.daybreaklearner.com/home"
   status = 200
-  force = true
+  force  = true
+
+# Account + messaging
+[[redirects]]
+  from   = "/account"
+  to     = "https://app.daybreaklearner.com/account"
+  status = 200
+  force  = true
 
 [[redirects]]
-  from = "/messages"
-  to = "https://app.daybreaklearner.com/messages"
+  from   = "/messages"
+  to     = "https://app.daybreaklearner.com/messages"
   status = 200
-  force = true
+  force  = true
+
+# Settings + profile management
+[[redirects]]
+  from   = "/settings/*"
+  to     = "https://app.daybreaklearner.com/settings/:splat"
+  status = 200
+  force  = true
 
 [[redirects]]
-  from = "/settings/*"
-  to = "https://app.daybreaklearner.com/settings/:splat"
+  from   = "/profile/me"
+  to     = "https://app.daybreaklearner.com/profile/me"
   status = 200
-  force = true
+  force  = true
+
+# Learning lifecycle (protected)
+[[redirects]]
+  from   = "/my-courses"
+  to     = "https://app.daybreaklearner.com/my-courses"
+  status = 200
+  force  = true
 
 [[redirects]]
-  from = "/courses/*"
-  to = "https://app.daybreaklearner.com/courses/:splat"
+  from   = "/results"
+  to     = "https://app.daybreaklearner.com/results"
   status = 200
-  force = true
+  force  = true
 
 [[redirects]]
-  from = "/class-vault/*"
-  to = "https://app.daybreaklearner.com/class-vault/:splat"
+  from   = "/enroll/*"
+  to     = "https://app.daybreaklearner.com/enroll/:splat"
   status = 200
-  force = true
+  force  = true
 
 [[redirects]]
-  from = "/results"
-  to = "https://app.daybreaklearner.com/results"
+  from   = "/progress/*"
+  to     = "https://app.daybreaklearner.com/progress/:splat"
   status = 200
-  force = true
+  force  = true
 
 [[redirects]]
-  from = "/my-courses"
-  to = "https://app.daybreaklearner.com/my-courses"
+  from   = "/language/*"
+  to     = "https://app.daybreaklearner.com/language/:splat"
   status = 200
-  force = true
+  force  = true
+
+# ClassVault (protected)
+[[redirects]]
+  from   = "/class-vault/*"
+  to     = "https://app.daybreaklearner.com/class-vault/:splat"
+  status = 200
+  force  = true
+
+# Achievements (protected)
+[[redirects]]
+  from   = "/achievements"
+  to     = "https://app.daybreaklearner.com/achievements"
+  status = 200
+  force  = true
+
+# Course detail/progress/edit routes are protected in your Vite app
+# IMPORTANT: DO NOT proxy /courses itself because it's a public SEO route on Next.
+[[redirects]]
+  from   = "/courses/*/progress"
+  to     = "https://app.daybreaklearner.com/courses/:splat/progress"
+  status = 200
+  force  = true
 
 [[redirects]]
-  from = "/create-course"
-  to = "https://app.daybreaklearner.com/create-course"
+  from   = "/courses/*/edit"
+  to     = "https://app.daybreaklearner.com/courses/:splat/edit"
   status = 200
-  force = true
+  force  = true
 
 [[redirects]]
-  from = "/enroll/*"
-  to = "https://app.daybreaklearner.com/enroll/:splat"
+  from   = "/courses/*"
+  to     = "https://app.daybreaklearner.com/courses/:splat"
   status = 200
-  force = true
+  force  = true
 
+# Create course (protected)
 [[redirects]]
-  from = "/progress/*"
-  to = "https://app.daybreaklearner.com/progress/:splat"
+  from   = "/create-course"
+  to     = "https://app.daybreaklearner.com/create-course"
   status = 200
-  force = true
+  force  = true
 
-[[redirects]]
-  from = "/achievements"
-  to = "https://app.daybreaklearner.com/achievements"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/language/*"
-  to = "https://app.daybreaklearner.com/language/:splat"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/login"
-  to = "https://app.daybreaklearner.com/login"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/home"
-  to = "https://app.daybreaklearner.com/home"
-  status = 200
-  force = true
+# -----------------------------------------------------------------------------
+# NOTE:
+# We intentionally DO NOT add a global "/* -> /index.html" SPA fallback.
+# Next.js handles routing for all public pages on www.
+# -----------------------------------------------------------------------------
 
 [context.production.environment]
-  NEXT_PUBLIC_SITE_URL       = "https://www.daybreaklearner.com"
-  NEXT_PUBLIC_BACKEND_URL    = "https://server.daybreaklearner.com"
-  NEXT_PUBLIC_GA4_MEASUREMENT_ID = ""
-  NEXT_PUBLIC_APP_ORIGIN     = "https://app.daybreaklearner.com"
+  NEXT_PUBLIC_SITE_URL            = "https://www.daybreaklearner.com"
+  NEXT_PUBLIC_BACKEND_URL         = "https://server.daybreaklearner.com"
+  NEXT_PUBLIC_APP_ORIGIN          = "https://app.daybreaklearner.com"
+  # Optional (set later):
+  # NEXT_PUBLIC_GA4_MEASUREMENT_ID = "G-XXXXXXXXXX"

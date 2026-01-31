@@ -53,6 +53,7 @@ module.exports = {
           path.resolve(__dirname, 'packages/shared/tsconfig.json'),
           path.resolve(__dirname, 'apps/backend/tsconfig.json'),
           path.resolve(__dirname, 'apps/admin/tsconfig.json'),
+          path.resolve(__dirname, 'apps/web-next/tsconfig.json'),
           // ✅ Add the unified one too
           path.resolve(__dirname, 'tsconfig.eslint.json'),
         ],
@@ -120,6 +121,21 @@ module.exports = {
         'import/no-named-as-default-member': 'off',
       },
     },
+
+    {
+  files: ['apps/web-next/**/*.{js,jsx,ts,tsx}'],
+  parserOptions: { project: null },
+  env: { browser: true, node: true },
+  rules: {
+    '@typescript-eslint/no-unused-vars': 'off',
+    '@typescript-eslint/no-explicit-any': 'off',
+    'react/prop-types': 'off',
+    'react/display-name': 'off',
+    // keep unresolved ON now that resolver is fixed
+    // 'import/no-unresolved': 'off',
+  },
+},
+
 
     {
   files: ['apps/admin/**/*.{js,jsx,ts,tsx}'],
