@@ -23,7 +23,7 @@ const BRAND = 'DayBreak';
 
 const Landing: React.FC = () => {
   const { token } = useShopContext() as any;
-  const ctaPath = token ? '/find-tutor' : '/login';
+  const ctaPath = token ? appUrl('/find-tutor') : appUrl('/login');
   const prefersReducedMotion = useReducedMotion() ?? false;
 
   return (
@@ -266,7 +266,7 @@ const Landing: React.FC = () => {
                 A single click to match, transparent pricing, and session reminders built-in.
               </p>
               <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }}>
-                <Link href={appUrl(ctaPath)}
+                <Link href={ctaPath}
                   className="group relative inline-flex items-center justify-center rounded-xl h-11 sm:h-12 px-5 sm:px-6 font-bold text-white bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 transition"
                 >
                   <span className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition will-change-transform bg-gradient-to-r from-white/10 to-white/0" />
