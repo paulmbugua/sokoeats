@@ -6,8 +6,6 @@ import useProfileDetail from '@mytutorapp/shared/hooks/useProfileDetail';
 import useProfileCard from '@mytutorapp/shared/hooks/useProfileCard';
 import { useShopContext } from '@mytutorapp/shared/context';
 import type { TutorProfile } from '@mytutorapp/shared/types';
-import Navbar from '../components/Navbar.web';
-import Footer from '../components/Footer.web';
 import Spinner from '../components/Spinner.web';
 import ProfileActions from '../components/ProfileActions.web';
 import TutorReviews from '../components/TutorReviews.web';
@@ -224,16 +222,6 @@ const ProfileDetailPage: React.FC = () => {
 
   return (
     <div className="relative min-h-screen app-body overflow-x-hidden">
-      {/* Top Nav */}
-      <motion.div
-        className="fixed top-0 left-0 w-full z-50"
-        initial={{ y: -16, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.35, ease: 'easeOut' }}
-      >
-        <Navbar />
-      </motion.div>
-
       {/* decorative glows */}
       {!prefersReducedMotion && (
         <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
@@ -538,7 +526,6 @@ const ProfileDetailPage: React.FC = () => {
         </div>
       )}
 
-      <Footer />
 
       {/* Lightbox for gallery image */}
       {selectedImage && (
