@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
+import { appUrl } from '@/lib/appOrigin';
 
 export default function AiRobotTeacherRedirect() {
-  redirect('/robot-teach');
+  redirect(appUrl('/robot-teach'));
 }

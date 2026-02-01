@@ -2,13 +2,14 @@
 'use client';
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useAiCourse, useMyLibrary } from '@mytutorapp/shared/hooks';
 import { useClassVault } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { pickImageUriForCourse } from '@mytutorapp/shared/utils/subjectImages';
 import type { Course, RecordedVideo, TopCourse } from '@mytutorapp/shared/types';
 import CourseHero from '../components/CourseHero';
+import { appUrl } from '@/lib/appOrigin';
 
 /* ─────────────────────────────────────────────────────────
  * ✅ ID Normalization (same intent as native)
@@ -268,7 +269,8 @@ const ClassVaultCard: React.FC<{
     return () => window.clearTimeout(t);
   }, [video]);
 
-  const to = idNum > 0 ? `/class-vault/${encodeURIComponent(String(idNum))}` : '#';
+  const to =
+    idNum > 0 ? appUrl(`/class-vault/${encodeURIComponent(String(idNum))}`) : '#';
 
   return (
     <div className="relative">
@@ -352,14 +354,16 @@ const ClassVaultCard: React.FC<{
       {showTutorActions && (
         <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
           <Link
-          href={editTo || `/class-vault/upload?edit=${encodeURIComponent(idStr)}`}
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center justify-center rounded-lg h-9 px-3 text-xs font-semibold
+            href={appUrl(
+              editTo || `/class-vault/upload?edit=${encodeURIComponent(idStr)}`
+            )}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center justify-center rounded-lg h-9 px-3 text-xs font-semibold
                     bg-[#e7edf4] dark:bg-[#172534] hover:brightness-105"
-          title="Edit"
-        >
-          Edit
-        </Link>
+            title="Edit"
+          >
+            Edit
+          </Link>
 
 
           <button
@@ -450,7 +454,6 @@ const CourseCard: React.FC<{
 );
 
 const MyCourses: React.FC = () => {
-  const router = useRouter();
   const pathname = usePathname();
   const { backendUrl, token, profile, role: ctxRole } = useShopContext();
   const { role, isTutor, sections } = useMyLibrary();
@@ -506,7 +509,7 @@ const MyCourses: React.FC = () => {
 
   const aiCourseCta = (course: Course) => {
     const cid = course.id;
-    router.push(
+    window.location.href = appUrl(
       `/robot-teach?courseId=${encodeURIComponent(String(cid))}&title=${encodeURIComponent(
         course.title || 'AI Course'
       )}`
@@ -514,7 +517,7 @@ const MyCourses: React.FC = () => {
   };
 
   const openCourse = (course: Course) => {
-    router.push(`/progress/${encodeURIComponent(String(course.id))}`);
+    window.location.href = appUrl(`/progress/${encodeURIComponent(String(course.id))}`);
   };
 
   useEffect(() => {
@@ -523,8 +526,8 @@ const MyCourses: React.FC = () => {
     params.set('reason', 'auth');
     params.set('message', 'Please sign in to view your library');
     if (pathname) params.set('returnTo', pathname);
-    router.push(`/login?${params.toString()}`);
-  }, [authToken, pathname, router]);
+    window.location.href = appUrl(`/login?${params.toString()}`);
+  }, [authToken, pathname]);
 
   // ---------- delete handlers ----------
   const onDeleteCourse = useCallback(
@@ -719,11 +722,11 @@ const MyCourses: React.FC = () => {
                     backendUrl={backendUrl}
                     authToken={authToken}
                     onPick={(course) =>
-                      navigate(
+                      (window.location.href = appUrl(
                         `/robot-teach?courseId=${encodeURIComponent(String(course.id))}&courseTitle=${encodeURIComponent(
                           course.title || 'AI Course'
                         )}&source=top-courses`
-                      )
+                      ))
                     }
                   />
                 </>
@@ -837,11 +840,11 @@ const MyCourses: React.FC = () => {
                     backendUrl={backendUrl}
                     authToken={authToken}
                     onPick={(course) =>
-                      navigate(
+                      (window.location.href = appUrl(
                         `/robot-teach?courseId=${encodeURIComponent(String(course.id))}&courseTitle=${encodeURIComponent(
                           course.title || 'AI Course'
                         )}&source=top-courses`
-                      )
+                      ))
                     }
                   />
                 </>

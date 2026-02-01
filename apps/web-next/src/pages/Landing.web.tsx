@@ -352,7 +352,7 @@ const Landing: React.FC = () => {
               </div>
             </dl>
             <div className="mt-4">
-              <Link href="/robot-teach"
+              <Link href={appUrl('/robot-teach')}
                 className="inline-flex items-center justify-center rounded-xl h-11 px-5 font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition"
                 aria-label="Learn with AI Robot Teacher"
               >
@@ -471,7 +471,7 @@ const Hero: React.FC<{
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, ease: 'easeOut', delay: 0.38 }}
           >
-            <Link href="/robot-teach"
+            <Link href={appUrl('/robot-teach')}
               aria-label="Learn a course using A.I. Robot Teacher"
               onClick={() => trackEvent('robot_teach_start')}
               className="flex h-11 sm:h-12 items-center justify-center rounded-xl px-5

@@ -8,6 +8,7 @@ import {
   useSearchParams as useNextSearchParams,
   useParams as useNextParams,
 } from 'next/navigation';
+import { appUrl } from '@/lib/appOrigin';
 
 type NavigateOptions = { replace?: boolean };
 
@@ -16,15 +17,12 @@ type LinkProps = Omit<React.ComponentProps<typeof NextLink>, 'href'> & {
   href?: string;
 };
 
-const APP_ORIGIN = process.env.NEXT_PUBLIC_APP_ORIGIN || 'https://app.daybreaklearner.com';
-
 const isNextRoute = (href: string) => {
   if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:')) {
     return true;
   }
   const [path] = href.split(/[?#]/);
   if (path === '/') return true;
-  if (path === '/robot-teach') return true;
   if (path === '/find-tutor') return true;
   if (path === '/resources') return true;
   if (path === '/courses') return true;
@@ -35,7 +33,7 @@ const isNextRoute = (href: string) => {
   return false;
 };
 
-const resolveHref = (href: string) => (isNextRoute(href) ? href : `${APP_ORIGIN}${href}`);
+const resolveHref = (href: string) => (isNextRoute(href) ? href : appUrl(href));
 
 export function Link({ to, href, ...props }: LinkProps) {
   const raw = (href || to || '/') as string;

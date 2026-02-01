@@ -5,9 +5,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
   const routes = [
     '/',
-    '/robot-teach',
-    '/robot-teach/start',
-    '/ai-robot-teacher',
     '/find-tutor',
     '/resources',
     '/courses',

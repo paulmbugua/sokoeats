@@ -1,7 +1,21 @@
 // apps/web-next/src/lib/appOrigin.ts
 
-export const APP_ORIGIN =
-  process.env.NEXT_PUBLIC_APP_ORIGIN?.trim() || 'https://app.daybreaklearner.com';
+import { SITE_URL } from '@/lib/site';
+
+const resolveBaseOrigin = () => {
+  const configuredOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN?.trim();
+  if (configuredOrigin) return configuredOrigin;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return SITE_URL;
+};
+
+const ensureAppPath = (origin: string) => {
+  const trimmed = origin.trim().replace(/\/+$/, '');
+  if (!trimmed) return trimmed;
+  return trimmed.endsWith('/app') ? trimmed : `${trimmed}/app`;
+};
+
+export const APP_ORIGIN = ensureAppPath(resolveBaseOrigin());
 
 const normalizeOrigin = (origin: string) => origin.replace(/\/+$/, '');
 
