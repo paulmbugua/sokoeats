@@ -31,146 +31,12 @@
   force  = true
 
 # -----------------------------------------------------------------------------
-# App routing (Vite site) - keep protected/org routes on the legacy SPA
-# Primary app origin:
-#   https://app.daybreaklearner.com
+# App routing (legacy Vite site) mounted under /app/*
 # -----------------------------------------------------------------------------
 
 [[redirects]]
-  from   = "/org/login"
-  to     = "https://app.daybreaklearner.com/org/login"
-  status = 200
-  force  = true
-
-[[redirects]]
-  from   = "/org/join/*"
-  to     = "https://app.daybreaklearner.com/org/join/:splat"
-  status = 200
-  force  = true
-
-
-# Org portal + invite flows + org tools (NOT indexable)
-[[redirects]]
-  from   = "/org/*"
-  to     = "https://app.daybreaklearner.com/org/:splat"
-  status = 200
-  force  = true
-
-# Paystack callbacks (must not be indexed)
-[[redirects]]
-  from   = "/paystack/*"
-  to     = "https://app.daybreaklearner.com/paystack/:splat"
-  status = 200
-  force  = true
-
-# Auth / logged-in SPA pages
-[[redirects]]
-  from   = "/login"
-  to     = "https://app.daybreaklearner.com/login"
-  status = 200
-  force  = true
-
-[[redirects]]
-  from   = "/home"
-  to     = "https://app.daybreaklearner.com/home"
-  status = 200
-  force  = true
-
-# Account + messaging
-[[redirects]]
-  from   = "/account"
-  to     = "https://app.daybreaklearner.com/account"
-  status = 200
-  force  = true
-
-[[redirects]]
-  from   = "/messages"
-  to     = "https://app.daybreaklearner.com/messages"
-  status = 200
-  force  = true
-
-# Settings + profile management
-[[redirects]]
-  from   = "/settings/*"
-  to     = "https://app.daybreaklearner.com/settings/:splat"
-  status = 200
-  force  = true
-
-[[redirects]]
-  from   = "/profile/me"
-  to     = "https://app.daybreaklearner.com/profile/me"
-  status = 200
-  force  = true
-
-# Learning lifecycle (protected)
-[[redirects]]
-  from   = "/my-courses"
-  to     = "https://app.daybreaklearner.com/my-courses"
-  status = 200
-  force  = true
-
-[[redirects]]
-  from   = "/results"
-  to     = "https://app.daybreaklearner.com/results"
-  status = 200
-  force  = true
-
-[[redirects]]
-  from   = "/enroll/*"
-  to     = "https://app.daybreaklearner.com/enroll/:splat"
-  status = 200
-  force  = true
-
-[[redirects]]
-  from   = "/progress/*"
-  to     = "https://app.daybreaklearner.com/progress/:splat"
-  status = 200
-  force  = true
-
-[[redirects]]
-  from   = "/language/*"
-  to     = "https://app.daybreaklearner.com/language/:splat"
-  status = 200
-  force  = true
-
-# ClassVault (protected)
-[[redirects]]
-  from   = "/class-vault/*"
-  to     = "https://app.daybreaklearner.com/class-vault/:splat"
-  status = 200
-  force  = true
-
-# Achievements (protected)
-[[redirects]]
-  from   = "/achievements"
-  to     = "https://app.daybreaklearner.com/achievements"
-  status = 200
-  force  = true
-
-# Course detail/progress/edit routes are protected in your Vite app
-# IMPORTANT: DO NOT proxy /courses itself because it's a public SEO route on Next.
-[[redirects]]
-  from   = "/courses/*/progress"
-  to     = "https://app.daybreaklearner.com/courses/:splat/progress"
-  status = 200
-  force  = true
-
-[[redirects]]
-  from   = "/courses/*/edit"
-  to     = "https://app.daybreaklearner.com/courses/:splat/edit"
-  status = 200
-  force  = true
-
-[[redirects]]
-  from   = "/courses/*"
-  to     = "https://app.daybreaklearner.com/courses/:splat"
-  status = 200
-  force  = true
-
-# Create course (protected)
-[[redirects]]
-  from   = "/create-course"
-  to     = "https://app.daybreaklearner.com/create-course"
+  from   = "/app/*"
+  to     = "https://app.daybreaklearner.com/:splat"
   status = 200
   force  = true
 
@@ -183,6 +49,6 @@
 [context.production.environment]
   NEXT_PUBLIC_SITE_URL            = "https://www.daybreaklearner.com"
   NEXT_PUBLIC_BACKEND_URL         = "https://server.daybreaklearner.com"
-  NEXT_PUBLIC_APP_ORIGIN          = "https://app.daybreaklearner.com"
+  NEXT_PUBLIC_APP_ORIGIN          = "https://www.daybreaklearner.com/app"
   # Optional (set later):
   # NEXT_PUBLIC_GA4_MEASUREMENT_ID = "G-XXXXXXXXXX"

@@ -1,7 +1,8 @@
 // apps/web/src/pages/ProfileDetailPage.web.tsx
 'use client';
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
+import { appUrl } from '@/lib/appOrigin';
 import useProfileDetail from '@mytutorapp/shared/hooks/useProfileDetail';
 import useProfileCard from '@mytutorapp/shared/hooks/useProfileCard';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -65,7 +66,6 @@ const defaultTutorProfile: TutorProfile = {
 const ProfileDetailPage: React.FC = () => {
   const params = useParams<{ id?: string }>();
   const id = Array.isArray(params?.id) ? params.id[0] : params?.id;
-  const router = useRouter();
   const prefersReducedMotion = useReducedMotion() ?? false;
 
   const { backendUrl, token } = useShopContext();
@@ -133,9 +133,9 @@ const ProfileDetailPage: React.FC = () => {
       if (note) params.set('comment', note);
       if (note) params.set('description', note);
 
-      router.push(`/account?${params.toString()}`);
+      window.location.href = appUrl(`/account?${params.toString()}`);
     },
-    [router, profile]
+    [profile]
   );
 
   const onQuickQuestions = useCallback(() => {
@@ -146,8 +146,8 @@ const ProfileDetailPage: React.FC = () => {
 
   const openMessagesThread = useCallback(() => {
     if (!profile.id) return;
-    router.push(`/messages?studentId=${profile.id}`);
-  }, [router, profile.id]);
+    window.location.href = appUrl(`/messages?studentId=${profile.id}`);
+  }, [profile.id]);
 
   const canSendInquiry =
     myProfile?.role === 'student' && chatStatus === 'locked' && !prebookingUsed;

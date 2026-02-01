@@ -2,7 +2,8 @@
 'use client';
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { appUrl } from '@/lib/appOrigin';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCertificate, faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons';
 import PaymentWidget from '../components/PaymentWidget.web';
@@ -702,7 +703,6 @@ const PurchaseModal: React.FC<{
 
 /* ------------------------------ Page ------------------------------------- */
 const ResourcesPage: React.FC = () => {
-  const router = useRouter();
   const params = useSearchParams();
   const MIN_QUERY_LEN = 4;
 
@@ -803,7 +803,7 @@ const classVaultFiltered = useMemo(() => {
       await purchase(payItem);
       const id = Number((payItem as any).id);
       closePay();
-      router.push(`/class-vault/${encodeURIComponent(String(id))}`);
+      window.location.href = appUrl(`/class-vault/${encodeURIComponent(String(id))}`);
     } catch (err: any) {
       const msg =
         (typeof err?.message === 'string' && err.message) || 'Purchase failed. Please try again.';
@@ -811,7 +811,7 @@ const classVaultFiltered = useMemo(() => {
     } finally {
       setPayBusy(false);
     }
-  }, [payItem, payBusy, purchase, closePay, router]);
+  }, [payItem, payBusy, purchase, closePay]);
 
   const onBuyTokens = useCallback(() => {
     closePay();
@@ -829,14 +829,14 @@ const classVaultFiltered = useMemo(() => {
 
       // Free or already purchased -> open directly
       if (price <= 0 || purchasedIds?.has?.(id)) {
-        router.push(`/class-vault/${encodeURIComponent(String(id))}`);
+        window.location.href = appUrl(`/class-vault/${encodeURIComponent(String(id))}`);
         return;
       }
 
       // Otherwise confirm purchase
       openPay(item);
     },
-    [router, openPay, purchasedIds],
+    [openPay, purchasedIds],
   );
 
   const headerCopy = useMemo(

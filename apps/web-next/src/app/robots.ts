@@ -8,9 +8,6 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: '*',
         allow: [
           '/',
-          '/robot-teach',
-          '/robot-teach/start',
-          '/ai-robot-teacher',
           '/find-tutor',
           '/resources',
           '/courses',
@@ -29,6 +26,7 @@ export default function robots(): MetadataRoute.Robots {
           '/verify/',
         ],
         disallow: [
+          '/app',
           '/org',
           '/org/',
           '/account',
