@@ -1,4 +1,4 @@
-// apps/web/src/pages/ResourcesPage.web.tsx
+// apps/web-next/src/pages/ResourcesPage.web.tsx
 'use client';
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
@@ -706,10 +706,11 @@ const ResourcesPage: React.FC = () => {
   const params = useSearchParams();
   const MIN_QUERY_LEN = 4;
 
-  const initialTab = (params.get('tab') || '').toLowerCase() === 'videos' ? 'videos' : 'courses';
+   const initialTab =
+    ((params?.get('tab') ?? '')).toLowerCase() === 'videos' ? 'videos' : 'courses';
 
   const [tab, setTab] = useState<'videos' | 'courses'>(initialTab);
-  const [query, setQuery] = useState<string>(params.get('q') ?? '');
+  const [query, setQuery] = useState<string>(params?.get('q') ?? '');
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
   const [mediaTab, setMediaTab] = useState<'all' | 'videos' | 'notes'>('all');
@@ -810,7 +811,7 @@ const classVaultFiltered = useMemo(() => {
     } finally {
       setPayBusy(false);
     }
-  }, [payItem, payBusy, purchase, closePay, navigate]);
+  }, [payItem, payBusy, purchase, closePay, router]);
 
   const onBuyTokens = useCallback(() => {
     closePay();
@@ -835,7 +836,7 @@ const classVaultFiltered = useMemo(() => {
       // Otherwise confirm purchase
       openPay(item);
     },
-    [navigate, openPay, purchasedIds],
+    [router, openPay, purchasedIds],
   );
 
   const headerCopy = useMemo(

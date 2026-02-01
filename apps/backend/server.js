@@ -168,6 +168,7 @@ const productionOrigins = [
 const developmentOrigins = [
   BACKEND_URL,
   WEB_BACKEND_URL,
+  'http://localhost:3000',
   'http://127.0.0.1:5173',
   'http://localhost:5174',
   'http://localhost:5173',
