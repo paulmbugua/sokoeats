@@ -1,6 +1,6 @@
 import Script from 'next/script';
 import type { Metadata } from 'next';
-import OerReaderFull from '@/pages/OerReaderFull.web';
+import OerReaderFull from '@/legacy-pages/OerReaderFull.web';
 import { siteUrl } from '@/lib/site';
 import { publicEnv } from '@/lib/env';
 

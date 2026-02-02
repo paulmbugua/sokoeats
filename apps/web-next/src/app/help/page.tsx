@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import HelpPage from '@/pages/HelpPage.web';
+import HelpPage from '@/legacy-pages/HelpPage.web';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Help, FAQ & Support — DayBreak';

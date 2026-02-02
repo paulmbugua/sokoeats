@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import FindTutor from '@/pages/FindTutor.web';
+import FindTutor from '@/legacy-pages/FindTutor.web';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Find a Tutor | DayBreak';

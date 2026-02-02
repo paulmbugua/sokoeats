@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import PrivacyPolicy from '@/pages/PrivacyPolicy';
+import PrivacyPolicy from '@/legacy-pages/PrivacyPolicy';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Privacy Policy | DayBreak';

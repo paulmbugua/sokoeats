@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import Resources from '@/pages/Resources.web';
+import Resources from '@/legacy-pages/Resources.web';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Learning Resources | DayBreak';

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import ProfileDetailPage from '@/pages/ProfileDetailPage.web';
+import ProfileDetailPage from '@/legacy-pages/ProfileDetailPage.web';
 import { siteUrl } from '@/lib/site';
 import { publicEnv } from '@/lib/env';
 

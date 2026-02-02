@@ -1,6 +1,6 @@
 import Script from 'next/script';
 import type { Metadata, Viewport } from 'next';
-import Landing from '@/pages/Landing.web';
+import Landing from '@/legacy-pages/Landing.web';
 import { landingDescription, landingJsonLd, landingOgImage, landingTitle } from '@/lib/landingSeo';
 import { siteUrl } from '@/lib/site';
 

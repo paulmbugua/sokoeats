@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import CookiePolicy from '@/pages/CookiePolicy.web';
+import CookiePolicy from '@/legacy-pages/CookiePolicy.web';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Cookie Policy | DayBreak';

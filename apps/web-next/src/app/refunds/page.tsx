@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import RefundsAndCancellations from '@/pages/RefundsAndCancellations';
+import RefundsAndCancellations from '@/legacy-pages/RefundsAndCancellations';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Refunds & Cancellations | DayBreak';
