@@ -22,7 +22,8 @@ const HERO_BG = process.env.NEXT_PUBLIC_HERO_BG ?? '';
 const BRAND = 'DayBreak';
 
 const Landing: React.FC = () => {
-  const ctaPath = ROUTES.robotTeacherLanding;
+ const ctaPath = appUrl('/login');
+
   const prefersReducedMotion = useReducedMotion() ?? false;
   const handleRobotTeachStart = () => {
     try {
@@ -78,7 +79,16 @@ const Landing: React.FC = () => {
             variants={stagger}
           >
             <motion.div variants={fadeUp} className="@[480px]:p-4">
-              <Hero prefersReducedMotion={prefersReducedMotion} ctaPath={ctaPath} />
+              <Hero
+                prefersReducedMotion={prefersReducedMotion}
+                ctaPath={ctaPath}
+                onRobotTeachStart={() => {
+                  try {
+                    trackEvent('robot_teach_start');
+                  } catch {}
+                }}
+              />
+
             </motion.div>
           </motion.div>
         </section>
@@ -374,7 +384,9 @@ const Landing: React.FC = () => {
 const Hero: React.FC<{
   prefersReducedMotion: boolean;
   ctaPath: string;
-}> = ({ prefersReducedMotion, ctaPath }) => {
+  onRobotTeachStart?: () => void;
+}> = ({ prefersReducedMotion, ctaPath, onRobotTeachStart }) => {
+
   return (
     <div className="relative overflow-hidden rounded-2xl">
       {/* Hero background */}
@@ -475,18 +487,24 @@ const Hero: React.FC<{
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, ease: 'easeOut', delay: 0.38 }}
           >
-            <Link href={ROUTES.robotTeacherLanding}
+            <Link
+              href={ROUTES.robotTeacherLanding}
               aria-label="Learn a course using A.I. Robot Teacher"
-              onClick={handleRobotTeachStart}
+              onClick={() => {
+                try {
+                  onRobotTeachStart?.();
+                } catch {}
+              }}
               className="flex h-11 sm:h-12 items-center justify-center rounded-xl px-5
-               bg-black/70 hover:bg-black/80 text-white text-sm sm:text-base
-               font-bold tracking-[0.01em] shadow-sm
-               focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40
-               min-w-[120px] w-full sm:w-auto"
+                bg-black/70 hover:bg-black/80 text-white text-sm sm:text-base
+                font-bold tracking-[0.01em] shadow-sm
+                focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40
+                min-w-[120px] w-full sm:w-auto"
             >
               <span className="mr-2">🤖</span>
               Learn with A.I.
             </Link>
+
           </motion.div>
         </div>
       </motion.div>
