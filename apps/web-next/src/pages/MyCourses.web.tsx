@@ -10,6 +10,7 @@ import { pickImageUriForCourse } from '@mytutorapp/shared/utils/subjectImages';
 import type { Course, RecordedVideo, TopCourse } from '@mytutorapp/shared/types';
 import CourseHero from '../components/CourseHero';
 import { appUrl } from '@/lib/appOrigin';
+import { ROUTES } from '@/lib/routes';
 
 /* ─────────────────────────────────────────────────────────
  * ✅ ID Normalization (same intent as native)
@@ -509,11 +510,9 @@ const MyCourses: React.FC = () => {
 
   const aiCourseCta = (course: Course) => {
     const cid = course.id;
-    window.location.href = appUrl(
-      `/robot-teach?courseId=${encodeURIComponent(String(cid))}&title=${encodeURIComponent(
-        course.title || 'AI Course'
-      )}`
-    );
+    window.location.href = `${ROUTES.robotTeacherLanding}?courseId=${encodeURIComponent(
+      String(cid)
+    )}&title=${encodeURIComponent(course.title || 'AI Course')}`;
   };
 
   const openCourse = (course: Course) => {
@@ -722,11 +721,9 @@ const MyCourses: React.FC = () => {
                     backendUrl={backendUrl}
                     authToken={authToken}
                     onPick={(course) =>
-                      (window.location.href = appUrl(
-                        `/robot-teach?courseId=${encodeURIComponent(String(course.id))}&courseTitle=${encodeURIComponent(
-                          course.title || 'AI Course'
-                        )}&source=top-courses`
-                      ))
+                      (window.location.href = `${ROUTES.robotTeacherLanding}?courseId=${encodeURIComponent(
+                        String(course.id)
+                      )}&courseTitle=${encodeURIComponent(course.title || 'AI Course')}&source=top-courses`)
                     }
                   />
                 </>
@@ -840,11 +837,9 @@ const MyCourses: React.FC = () => {
                     backendUrl={backendUrl}
                     authToken={authToken}
                     onPick={(course) =>
-                      (window.location.href = appUrl(
-                        `/robot-teach?courseId=${encodeURIComponent(String(course.id))}&courseTitle=${encodeURIComponent(
-                          course.title || 'AI Course'
-                        )}&source=top-courses`
-                      ))
+                      (window.location.href = `${ROUTES.robotTeacherLanding}?courseId=${encodeURIComponent(
+                        String(course.id)
+                      )}&courseTitle=${encodeURIComponent(course.title || 'AI Course')}&source=top-courses`)
                     }
                   />
                 </>
