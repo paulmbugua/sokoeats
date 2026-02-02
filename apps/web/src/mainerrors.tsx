@@ -47,6 +47,7 @@ function Fallback() {
 }
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
+const routerBase = import.meta.env.VITE_BRIDGED === '1' ? '/app' : undefined;
 if (backendUrl) axios.defaults.baseURL = backendUrl;
 
 if (import.meta.env.PROD) {
@@ -87,7 +88,7 @@ if (!container) {
     <React.StrictMode>
       <HelmetProvider>
         <ErrorBoundary FallbackComponent={Fallback}>
-          <BrowserRouter>
+          <BrowserRouter basename={routerBase}>
             <QueryClientProvider client={queryClient}>
               <ShopContextProvider backendUrl={backendUrl} storage={storage}>
                 <ChatProvider>

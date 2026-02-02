@@ -24,6 +24,11 @@ const BRAND = 'DayBreak';
 const Landing: React.FC = () => {
   const ctaPath = ROUTES.robotTeacherLanding;
   const prefersReducedMotion = useReducedMotion() ?? false;
+  const handleRobotTeachStart = () => {
+    try {
+      trackEvent('robot_teach_start');
+    } catch {}
+  };
 
   return (
     <div
@@ -472,7 +477,7 @@ const Hero: React.FC<{
           >
             <Link href={ROUTES.robotTeacherLanding}
               aria-label="Learn a course using A.I. Robot Teacher"
-              onClick={() => trackEvent('robot_teach_start')}
+              onClick={handleRobotTeachStart}
               className="flex h-11 sm:h-12 items-center justify-center rounded-xl px-5
                bg-black/70 hover:bg-black/80 text-white text-sm sm:text-base
                font-bold tracking-[0.01em] shadow-sm
