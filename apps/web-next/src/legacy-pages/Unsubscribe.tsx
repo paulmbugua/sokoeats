@@ -8,17 +8,24 @@ export default function UnsubscribePage() {
   const { backendUrl } = useShopContext();
   const [state, setState] = useState<'idle' | 'working' | 'done' | 'error'>('idle');
   const [email, setEmail] = useState('');
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get('t');
-  const e = params.get('e');
+  const [token, setToken] = useState<string | null>(null);
+  const [encodedEmail, setEncodedEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    if (e && token) {
+    const params = new URLSearchParams(window.location.search);
+    setToken(params.get('t'));
+    setEncodedEmail(params.get('e'));
+  }, []);
+
+  useEffect(() => {
+    if (encodedEmail && token) {
       (async () => {
         setState('working');
         try {
           const r = await fetch(
-            `${backendUrl}/api/email/unsubscribe?e=${encodeURIComponent(e)}&t=${encodeURIComponent(token)}`
+            `${backendUrl}/api/email/unsubscribe?e=${encodeURIComponent(
+              encodedEmail
+            )}&t=${encodeURIComponent(token)}`
           );
           setState(r.ok ? 'done' : 'error');
         } catch {
@@ -26,7 +33,7 @@ export default function UnsubscribePage() {
         }
       })();
     }
-  }, [backendUrl, e, token]);
+  }, [backendUrl, encodedEmail, token]);
 
   // Success page (covers both token flow and manual form)
   if (state === 'done') {
@@ -39,7 +46,7 @@ export default function UnsubscribePage() {
   }
 
   // Tokenized link flow status
-  if (e && token) {
+  if (encodedEmail && token) {
     return (
       <div className="mx-auto max-w-md p-6 text-center">
         <h1 className="text-xl font-semibold mb-2">Updating your preferences…</h1>
