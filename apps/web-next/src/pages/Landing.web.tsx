@@ -2,10 +2,10 @@
 'use client';
 import React, { useCallback } from 'react';
 import Link from 'next/link';
-import { useShopContext } from '@mytutorapp/shared/context';
 import { motion, useMotionValue, useSpring, useReducedMotion, Variants } from 'framer-motion';
 import { trackEvent } from '../analytics/ga4';
 import { appUrl } from '@/lib/appOrigin';
+import { ROUTES } from '@/lib/routes';
 
 
 const fadeUp: Variants = {
@@ -22,8 +22,7 @@ const HERO_BG = process.env.NEXT_PUBLIC_HERO_BG ?? '';
 const BRAND = 'DayBreak';
 
 const Landing: React.FC = () => {
-  const { token } = useShopContext() as any;
-  const ctaPath = token ? '/find-tutor' : '/login';
+  const ctaPath = ROUTES.robotTeacherLanding;
   const prefersReducedMotion = useReducedMotion() ?? false;
 
   return (
@@ -352,7 +351,7 @@ const Landing: React.FC = () => {
               </div>
             </dl>
             <div className="mt-4">
-              <Link href={appUrl('/robot-teach')}
+              <Link href={ROUTES.robotTeacherLanding}
                 className="inline-flex items-center justify-center rounded-xl h-11 px-5 font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition"
                 aria-label="Learn with AI Robot Teacher"
               >
@@ -471,7 +470,7 @@ const Hero: React.FC<{
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, ease: 'easeOut', delay: 0.38 }}
           >
-            <Link href={appUrl('/robot-teach')}
+            <Link href={ROUTES.robotTeacherLanding}
               aria-label="Learn a course using A.I. Robot Teacher"
               onClick={() => trackEvent('robot_teach_start')}
               className="flex h-11 sm:h-12 items-center justify-center rounded-xl px-5
