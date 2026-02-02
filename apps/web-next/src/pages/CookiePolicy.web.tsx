@@ -1,4 +1,4 @@
-// src/pages/CookiePolicy.jsx
+// src/pages/CookiePolicy.tsx
 import React from 'react';
 
 const CookiePolicy = () => {

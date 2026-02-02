@@ -47,21 +47,23 @@ export function useLanguageLearning(
     []
   );
 
-  const appendAssistant = useCallback(
-    (assistant: LanguageLearningAssistant, playback: PlaybackPayload) => {
-      const segments = assistant?.segments || [];
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: segments.map((seg) => `${seg.en} / ${seg.tr}`).join('\n'),
-          segments,
-          playback,
-        },
-      ]);
-      setPlaybackQueue(playback);
-    },
-  );
+const appendAssistant = useCallback(
+  (assistant: LanguageLearningAssistant, playback: PlaybackPayload) => {
+    const segments = assistant?.segments || [];
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: segments.map((seg) => `${seg.en} / ${seg.tr}`).join('\n'),
+        segments,
+        playback,
+      },
+    ]);
+    setPlaybackQueue(playback);
+  },
+  []
+);
+
 
   const sendPrompt = useCallback(
     async (prompt: string) => {

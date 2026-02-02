@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
+import { Suspense } from 'react';
+
 import Providers from './providers';
-import AnalyticsTracker from './Analytics';
+import AnalyticsClient from './AnalyticsClient';
+
 import { publicEnv } from '@/lib/env';
 import { SITE_URL, siteUrl } from '@/lib/site';
 import NavbarLegacy from '@/components/legacy/Navbar.web';
@@ -54,7 +57,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <Providers>
-          <AnalyticsTracker />
+          <Suspense fallback={null}>
+            <AnalyticsClient />
+          </Suspense>
+
           <NavbarLegacy />
           {children}
           <FooterLegacy />

@@ -6,6 +6,7 @@ import { ROUTES } from '@/lib/routes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useWrapOerBook } from '@mytutorapp/shared/hooks';
+import dynamic from 'next/dynamic';
 
 import {
   BookOpenText,
@@ -28,8 +29,12 @@ import {
   Copy,
 } from 'lucide-react';
 
-import { Document, Page, pdfjs } from 'react-pdf';
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+
+const PdfViewerClient = dynamic(() => import('../components/pdf/PdfViewer.client'), {
+  ssr: false,
+  loading: () => <div style={{ padding: 12 }}>Loading reader…</div>,
+});
+
 
 // IMPORTANT: react-pdf v7 CSS paths. If on another major, adjust imports.
 
@@ -312,20 +317,25 @@ const OerCollectionReader: React.FC = () => {
   const rawId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const id = sanitizeId(rawId);
 
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
-  const { backendUrl, token } = useShopContext();
-  const { wrapBook } = useWrapOerBook();
+const searchParams = useSearchParams();
+const router = useRouter();
+const pathname = usePathname();
+const { backendUrl, token } = useShopContext();
+const { wrapBook } = useWrapOerBook();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
-  const [items, setItems] = useState<CollectionItem[]>([]);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState<string>('');
+const [items, setItems] = useState<CollectionItem[]>([]);
 
-  const initialIndexParam = searchParams.get('item');
-  const [activeIndex, setActiveIndex] = useState<number>(
-    initialIndexParam ? Number(initialIndexParam) : 0
-  );
+// ✅ make it non-null for TS + runtime safety
+const sp = useMemo(() => searchParams ?? new URLSearchParams(), [searchParams]);
+
+const initialIndexParam = sp.get('item');
+const [activeIndex, setActiveIndex] = useState<number>(() => {
+  const n = initialIndexParam ? Number(initialIndexParam) : 0;
+  return Number.isFinite(n) ? n : 0;
+});
+;
 
   const [pdfPage, setPdfPage] = useState(1);
   const [numPages, setNumPages] = useState<number | null>(null);
@@ -546,14 +556,16 @@ const OerCollectionReader: React.FC = () => {
 
   /* Persist URL param for deep-linking */
   useEffect(() => {
-    if (!items.length) return;
-    const idx = Math.min(Math.max(activeIndex, 0), items.length - 1);
-    const itemValue = String(idx);
-    if (searchParams.get('item') === itemValue) return;
-    const nextParams = new URLSearchParams(searchParams.toString());
-    nextParams.set('item', itemValue);
-    router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false });
-  }, [activeIndex, items.length, pathname, router, searchParams]);
+  if (!items.length) return;
+  const idx = Math.min(Math.max(activeIndex, 0), items.length - 1);
+  const itemValue = String(idx);
+
+  if (sp.get('item') === itemValue) return;
+
+  const nextParams = new URLSearchParams(sp.toString());
+  nextParams.set('item', itemValue);
+  router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false });
+}, [activeIndex, items.length, pathname, router, sp]);
 
   // Compute URLs
 
@@ -680,18 +692,33 @@ const OerCollectionReader: React.FC = () => {
     });
 
   const onKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.target && (e.target as HTMLElement).tagName === 'INPUT') return;
-      if (e.key === '+') {
-        isHtml ? setHtmlZoom((z) => Math.min(2.5, +(z + 0.15).toFixed(2))) : zoomIn();
-      } else if (e.key === '-') {
-        isHtml ? setHtmlZoom((z) => Math.max(0.5, +(z - 0.15).toFixed(2))) : zoomOut();
-      } else if (e.key === 'ArrowRight') goToPage(pdfPage + 1);
-      else if (e.key === 'ArrowLeft') goToPage(pdfPage - 1);
-      else if (e.key.toLowerCase() === 'f') setSpread((s) => !s);
-    },
-    [pdfPage, numPages]
-  );
+  (e: KeyboardEvent) => {
+    if (e.target && (e.target as HTMLElement).tagName === 'INPUT') return;
+
+    if (e.key === '+') {
+      if (isHtml) {
+        setHtmlZoom((z) => Math.min(2.5, +(z + 0.15).toFixed(2)));
+      } else {
+        zoomIn();
+      }
+    } else if (e.key === '-') {
+      if (isHtml) {
+        setHtmlZoom((z) => Math.max(0.5, +(z - 0.15).toFixed(2)));
+      } else {
+        zoomOut();
+      }
+    } else if (e.key === 'ArrowRight') {
+      goToPage(pdfPage + 1);
+    } else if (e.key === 'ArrowLeft') {
+      goToPage(pdfPage - 1);
+    } else if (e.key.toLowerCase() === 'f') {
+      setSpread((s) => !s);
+    }
+  },
+  // ⚠️ also include the values you read inside the callback
+  [isHtml, zoomIn, zoomOut, goToPage, pdfPage]
+);
+
 
   useEffect(() => {
     window.addEventListener('keydown', onKeyDown);
@@ -1228,50 +1255,44 @@ const OerCollectionReader: React.FC = () => {
                 }}
               >
                 <div className="m-auto max-h-[92vh] max-w-[92vw] overflow-auto rounded-xl ring-1 ring-white/15 bg-[#0b1117] p-4 pointer-events-auto">
-                  <Document
-                    file={pdfFile}
-                    options={pdfOptions}
-                    loading={
-                      <div className="text-sm text-slate-300 flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" /> Loading PDF...
-                      </div>
-                    }
-                    onLoadSuccess={onDocumentLoad}
-                    onLoadError={(e) => console.error('PDF error', e)}
-                    className={cx(
-                      'transition-colors duration-200',
-                      darkPaper ? '[&_.react-pdf__Page__canvas]:!bg-[#0f1621]' : '',
-                      'select-text'
-                    )}
-                  >
-                    <div
-                      className={cx(
-                        'flex items-start justify-center',
-                        spread ? 'flex-row gap-4 sm:gap-6' : 'flex-col gap-4 sm:gap-6'
-                      )}
-                    >
-                      <div className="relative">
-                        <Page
-                          pageNumber={pdfPage}
-                          scale={scale}
-                          renderTextLayer
-                          renderAnnotationLayer
-                          className="select-text"
-                        />
-                      </div>
-                      {spread && pdfPage + 1 <= (numPages || 0) && (
-                        <div className="relative">
-                          <Page
-                            pageNumber={pdfPage + 1}
-                            scale={scale}
-                            renderTextLayer
-                            renderAnnotationLayer
-                            className="select-text"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </Document>
+<div className={cx(
+  'transition-colors duration-200',
+  darkPaper ? 'bg-[#0f1621]' : '',
+  'select-text'
+)}>
+  <div
+    className={cx(
+      'flex items-start justify-center',
+      spread ? 'flex-row gap-4 sm:gap-6' : 'flex-col gap-4 sm:gap-6'
+    )}
+  >
+    <div className="relative">
+      <PdfViewerClient
+        fileUrl={getPdfUrl(activeItem!)}
+        pageNumber={pdfPage}
+        scale={scale}
+        token={token}
+        onLoadSuccess={(n) => setNumPages(n)}
+        onOutline={(o) => setOutline(o || [])}
+      />
+      {/* highlights hook point stays possible if you render overlays in PdfViewerClient */}
+    </div>
+
+    {spread && pdfPage + 1 <= (numPages || 0) && (
+      <div className="relative">
+        <PdfViewerClient
+          fileUrl={getPdfUrl(activeItem!)}
+          pageNumber={pdfPage + 1}
+          scale={scale}
+          token={token}
+          onLoadSuccess={(n) => setNumPages(n)}
+          onOutline={() => {}}
+        />
+      </div>
+    )}
+  </div>
+</div>
+
                 </div>
               </motion.div>
             )}

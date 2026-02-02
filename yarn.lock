@@ -4717,6 +4717,7 @@ __metadata:
     react-native-web: "npm:^0.20.0"
     react-pdf: "npm:^10.2.0"
     react-player: "npm:^3.3.3"
+    typescript: "npm:^5.9.3"
   languageName: unknown
   linkType: soft
 
@@ -17573,6 +17574,8 @@ __metadata:
     "@tailwindcss/typography": "npm:^0.5.16"
     "@tanstack/react-query": "npm:5.89.0"
     "@types/lodash.debounce": "npm:^4.0.9"
+    "@types/react": "npm:~19.1.10"
+    "@types/react-dom": "npm:19.0.3"
     "@types/react-native-vector-icons": "npm:6.4.18"
     "@typescript-eslint/eslint-plugin": "npm:^8.31.1"
     "@typescript-eslint/parser": "npm:^8.31.1"
@@ -17594,6 +17597,8 @@ __metadata:
     metro-resolver: "npm:^0.83.1"
     postcss: "npm:^8.4.21"
     prettier: "npm:^3.5.3"
+    react: "npm:19.1.0"
+    react-dom: "npm:19.1.0"
     rimraf: "npm:3.0.2"
     serve: "npm:^14.2.4"
     tailwindcss: "npm:^3.3.2"

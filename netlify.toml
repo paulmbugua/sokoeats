@@ -1,6 +1,6 @@
 [build]
   command = "yarn workspace @mytutorapp/web-next build"
-  publish = "apps/web-next/.next"
+
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

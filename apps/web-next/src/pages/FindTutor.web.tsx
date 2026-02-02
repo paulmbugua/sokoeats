@@ -230,6 +230,8 @@ const resolveImage = (p: any, backendUrl?: string, fallbackName?: string) => {
 
 const FindTutor: React.FC = () => {
   const searchParams = useSearchParams();
+  const sp = useMemo(() => searchParams ?? new URLSearchParams(), [searchParams]);
+
   const MIN_QUERY_LEN = 4;
   const {
     filteredProfiles, // ✅ already server-filtered by q/subject/country/minRating/maxPrice
@@ -255,38 +257,39 @@ const FindTutor: React.FC = () => {
 
   const activeFilterCount = useMemo(() => countActiveTutorFilters(uiFilters), [uiFilters]);
 
-  useEffect(() => {
-    const q = searchParams.get('q') ?? '';
-    const subject = searchParams.get('subject') ?? '';
-    const gradeBand = searchParams.get('gradeBand') ?? '';
-    const countryParam = searchParams.get('country') ?? '';
-    const minRatingParam = searchParams.get('minRating') ?? '';
+useEffect(() => {
+  const q = sp.get('q') ?? '';
+  const subject = sp.get('subject') ?? '';
+  const gradeBand = sp.get('gradeBand') ?? '';
+  const countryParam = sp.get('country') ?? '';
+  const minRatingParam = sp.get('minRating') ?? '';
 
-    setQuery(q);
-    setDebouncedQuery(q);
-    if (q && q.trim().length >= MIN_QUERY_LEN) {
-      handleSearch?.(q);
-    }
-    if (subject) setSubjectFilter(subject);
-    if (gradeBand) setGradeBandFilter(gradeBand);
+  setQuery(q);
+  setDebouncedQuery(q);
+  if (q && q.trim().length >= MIN_QUERY_LEN) {
+    handleSearch?.(q);
+  }
+  if (subject) setSubjectFilter(subject);
+  if (gradeBand) setGradeBandFilter(gradeBand);
 
-    if (countryParam) {
-      const normalized = normalizeCountryLabel(countryParam);
-      if (normalized?.code) setCountryFilter(normalized.code);
-    }
+  if (countryParam) {
+    const normalized = normalizeCountryLabel(countryParam);
+    if (normalized?.code) setCountryFilter(normalized.code);
+  }
 
-    if (minRatingParam) {
-      const val = Number(minRatingParam);
-      if (Number.isFinite(val)) setMinRatingFilter(val);
-    }
-  }, [
-    searchParams,
-    handleSearch,
-    setCountryFilter,
-    setMinRatingFilter,
-    setSubjectFilter,
-    setGradeBandFilter,
-  ]);
+  if (minRatingParam) {
+    const val = Number(minRatingParam);
+    if (Number.isFinite(val)) setMinRatingFilter(val);
+  }
+}, [
+  sp,
+  handleSearch,
+  setCountryFilter,
+  setMinRatingFilter,
+  setSubjectFilter,
+  setGradeBandFilter,
+]);
+
 
   // Tutors already filtered by server
   const tutors = useMemo(

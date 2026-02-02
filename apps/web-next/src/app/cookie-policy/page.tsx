@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import CookiePolicy from '@/pages/CookiePolicy.web';
 import { siteUrl } from '@/lib/site';
 
@@ -23,5 +24,9 @@ export const metadata: Metadata = {
 };
 
 export default function CookiePolicyPage() {
-  return <CookiePolicy />;
+  return (
+    <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
+      <CookiePolicy />
+    </Suspense>
+  );
 }

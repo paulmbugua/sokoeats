@@ -323,16 +323,17 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
         await storage?.removeItem('adminToken');
       }
 
-      const isDev =
-        typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
-      if (isDev) {
-        const preview = nextToken ? `${nextToken.slice(0, 6)}…${nextToken.slice(-4)}` : 'none';
-        console.log('[auth] hydrated', {
-          mode: nextMode,
-          token: preview,
-          migrated: migration.migrated,
-        });
-      }
+     const isDev = process.env.NODE_ENV !== 'production';
+if (isDev) {
+  const preview = nextToken ? `${nextToken.slice(0, 6)}…${nextToken.slice(-4)}` : 'none';
+  // eslint-disable-next-line no-console
+  console.log('[auth] hydrated', {
+    mode: nextMode,
+    token: preview,
+    migrated: migration.migrated,
+  });
+}
+
     } finally {
       setHydrated(true);
     }
