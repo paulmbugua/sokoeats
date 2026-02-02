@@ -8,7 +8,9 @@ const RobotTeachAdLanding: React.FC = () => {
   const robotTeacherUrl = ROUTES.robotTeacherLanding;
 
   useEffect(() => {
-    trackEvent('robot_teach_ad_view');
+    try {
+      trackEvent('robot_teach_ad_view');
+    } catch {}
   }, []);
 
   const handleCtaClick = (source: string) => {
