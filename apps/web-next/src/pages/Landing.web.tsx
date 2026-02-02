@@ -23,7 +23,7 @@ const BRAND = 'DayBreak';
 
 const Landing: React.FC = () => {
   const { token } = useShopContext() as any;
-  const ctaPath = token ? appUrl('/find-tutor') : appUrl('/login');
+  const ctaPath = token ? '/find-tutor' : '/login';
   const prefersReducedMotion = useReducedMotion() ?? false;
 
   return (
@@ -453,7 +453,7 @@ const Hero: React.FC<{
             </motion.div>
 
             <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }}>
-             <Link href={appUrl('/org/login?next=/org')}
+             <Link href={appUrl('/org/login')}
                 aria-label="Open the Institution E-Learning portal"
                 className="flex min-w-[120px] items-center justify-center rounded-xl h-11 sm:h-12 px-5
                             bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold tracking-[0.01em]
