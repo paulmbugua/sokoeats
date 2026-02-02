@@ -4698,6 +4698,7 @@ __metadata:
     "@fortawesome/free-regular-svg-icons": "npm:6.4.0"
     "@fortawesome/free-solid-svg-icons": "npm:6.4.0"
     "@fortawesome/react-fontawesome": "npm:0.2.2"
+    "@tanstack/react-query": "npm:^5.89.0"
     "@types/node": "npm:^20.17.6"
     "@types/react": "npm:~19.1.10"
     "@types/react-dom": "npm:19.0.3"
