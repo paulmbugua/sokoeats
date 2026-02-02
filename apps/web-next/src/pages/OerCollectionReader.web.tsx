@@ -2,7 +2,7 @@
 'use client';
 import React, { useCallback, useEffect, useRef, useState, useMemo, lazy, Suspense } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { appUrl } from '@/lib/appOrigin';
+import { ROUTES } from '@/lib/routes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useWrapOerBook } from '@mytutorapp/shared/hooks';
@@ -717,7 +717,10 @@ const OerCollectionReader: React.FC = () => {
     try {
       const idOrSlug = String(activeItem!.slug ?? activeItem!.id);
       const { courseId } = await wrapBook(idOrSlug);
-      window.location.href = appUrl(`/progress/${courseId}`);
+      const query = new URLSearchParams({
+        courseId: String(courseId),
+      });
+      router.push(`${ROUTES.robotTeacherLanding}?${query.toString()}`);
     } catch (e: any) {
       alert(e?.message || 'Failed to start guided reading');
     }

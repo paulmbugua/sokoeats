@@ -2,10 +2,10 @@
 
 import React, { useEffect } from 'react';
 import { trackEvent } from '../analytics/ga4';
-import { appUrl } from '@/lib/appOrigin';
+import { ROUTES } from '@/lib/routes';
 
 const RobotTeachAdLanding: React.FC = () => {
-  const legacyRobotTeachUrl = appUrl('/robot-teach');
+  const robotTeacherUrl = ROUTES.robotTeacherLanding;
 
   useEffect(() => {
     trackEvent('robot_teach_ad_view');
@@ -13,7 +13,7 @@ const RobotTeachAdLanding: React.FC = () => {
 
   const handleCtaClick = (source: string) => {
     trackEvent('robot_teach_ad_cta_click', { source });
-    window.location.href = legacyRobotTeachUrl;
+    window.location.href = robotTeacherUrl;
   };
 
   return (

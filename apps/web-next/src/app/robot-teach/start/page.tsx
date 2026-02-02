@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
-import { appUrl } from '@/lib/appOrigin';
+import { ROUTES } from '@/lib/routes';
 
 export default function RobotTeachStart() {
-  redirect(appUrl('/robot-teach'));
+  redirect(ROUTES.robotTeacherLanding);
 }
