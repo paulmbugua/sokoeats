@@ -20,6 +20,7 @@ const storage = {
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const backendUrl = publicEnv.backendUrl || '';
+  const sharedChildren = children as unknown as React.ComponentProps<typeof ThemeProvider>['children'];
 
   // ✅ Create QueryClient per app instance (Next-safe)
   const [queryClient] = useState(
@@ -44,7 +45,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <ShopContextProvider backendUrl={backendUrl} storage={storage} queryClient={queryClient}>
         <ChatProvider>
           <ThemeProvider applyToDocument storageKey="theme">
-            {children}
+            {sharedChildren}
           </ThemeProvider>
         </ChatProvider>
       </ShopContextProvider>

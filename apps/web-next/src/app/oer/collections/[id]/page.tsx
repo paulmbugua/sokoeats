@@ -1,6 +1,6 @@
 import Script from 'next/script';
 import type { Metadata } from 'next';
-import OerCollectionReader from '@/legacy-pages/OerCollectionReader.web';
+import OerCollectionReaderClient from './OerCollectionReaderClient';
 import { siteUrl } from '@/lib/site';
 
 export async function generateMetadata({
@@ -40,7 +40,7 @@ export default function OerCollectionRoute({ params }: { params: { id: string } 
 
   return (
     <>
-      <OerCollectionReader />
+      <OerCollectionReaderClient />
       <Script
         id="ld-oer-collection"
         type="application/ld+json"
