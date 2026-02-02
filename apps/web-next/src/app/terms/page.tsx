@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import TermsOfService from '@/pages/TermsOfService';
+import TermsOfService from '@/legacy-pages/TermsOfService';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Terms of Service | DayBreak';

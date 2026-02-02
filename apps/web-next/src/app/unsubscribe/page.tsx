@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import Unsubscribe from '@/pages/Unsubscribe';
+import Unsubscribe from '@/legacy-pages/Unsubscribe';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Unsubscribe | DayBreak';

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import AntiSpamPolicy from '@/pages/AntiSpamPolicy';
+import AntiSpamPolicy from '@/legacy-pages/AntiSpamPolicy';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Anti-Spam Policy | DayBreak';

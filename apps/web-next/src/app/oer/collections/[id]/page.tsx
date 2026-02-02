@@ -1,6 +1,6 @@
 import Script from 'next/script';
 import type { Metadata } from 'next';
-import OerCollectionReader from '@/pages/OerCollectionReader.web';
+import OerCollectionReader from '@/legacy-pages/OerCollectionReader.web';
 import { siteUrl } from '@/lib/site';
 
 export async function generateMetadata({

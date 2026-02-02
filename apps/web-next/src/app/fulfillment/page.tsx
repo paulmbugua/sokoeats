@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import FulfillmentPolicy from '@/pages/FulfillmentPolicy';
+import FulfillmentPolicy from '@/legacy-pages/FulfillmentPolicy';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Fulfillment & Delivery | DayBreak';
