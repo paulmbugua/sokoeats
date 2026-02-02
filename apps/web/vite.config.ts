@@ -7,8 +7,17 @@ const BACKEND_PORT = Number(process.env.BACKEND_PORT || 4000);
 const BACKEND_TARGET =
   process.env.BACKEND_URL?.replace(/\/$/, '') || `http://localhost:${BACKEND_PORT}`;
 
+  const BRIDGED_UNDER_NEXT =
+  process.env.VITE_BRIDGED === '1' || process.env.NEXT_PUBLIC_BRIDGED === '1';
+
+// When proxied under Next at /app/*, Vite must generate paths prefixed with /app/
+const VITE_BASE = BRIDGED_UNDER_NEXT ? '/app/' : '/';
+
+
 export default defineConfig({
   plugins: [react()],
+  base: VITE_BASE,
+
 
   resolve: {
     dedupe: [
@@ -81,13 +90,26 @@ export default defineConfig({
   },
 
   server: {
-    port: 5173,
-    fs: {
-      allow: [path.resolve(__dirname), path.resolve(__dirname, '../../packages/shared')],
-    },
-    proxy: {
-      '/api': { target: BACKEND_TARGET, changeOrigin: true, secure: false },
-      '/socket.io': { target: BACKEND_TARGET, ws: true, changeOrigin: true, secure: false },
-    },
+  port: 5173,
+  strictPort: true,
+  host: '127.0.0.1',
+
+  fs: {
+    allow: [
+      path.resolve(__dirname),
+      path.resolve(__dirname, '../../packages/shared'),
+      // (optional but recommended in monorepo)
+      path.resolve(__dirname, '../..'),
+    ],
   },
+
+  // Helps when being reverse-proxied
+  cors: true,
+
+  proxy: {
+    '/api': { target: BACKEND_TARGET, changeOrigin: true, secure: false },
+    '/socket.io': { target: BACKEND_TARGET, ws: true, changeOrigin: true, secure: false },
+  },
+},
+
 });
