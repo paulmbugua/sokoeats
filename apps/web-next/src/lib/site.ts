@@ -1,5 +1,6 @@
-export const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || 'https://www.daybreaklearner.com';
+import { publicEnv } from './env';
+
+export const SITE_URL = publicEnv.siteUrl;
 
 export const BRAND_NAME = 'DayBreak';
 

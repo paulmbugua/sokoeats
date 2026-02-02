@@ -2,6 +2,7 @@ import Script from 'next/script';
 import type { Metadata } from 'next';
 import VerifyCertificatePage from '@/components/VerifyCertificate.web';
 import { siteUrl } from '@/lib/site';
+import { publicEnv } from '@/lib/env';
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
   const certId = params.id;
@@ -12,7 +13,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
     ? `Verify the authenticity of certificate ${certId} on DayBreak.`
     : 'Verify the authenticity of a DayBreak certificate by ID or number.';
   const canonical = siteUrl(`/verify/${certId}`);
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/+$/, '') || '';
+  const backendUrl = publicEnv.backendUrl?.replace(/\/+$/, '') || '';
   const ogImage = backendUrl ? `${backendUrl}/api/certificates/${certId}/og` : undefined;
 
   return {

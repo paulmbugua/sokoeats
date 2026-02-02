@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useVerifyCertificate } from '@mytutorapp/shared/hooks/useVerifyCertificate';
 import { useShopContext } from '@mytutorapp/shared/context';
+import { SITE_URL } from '@/lib/site';
 
 const A4_MM_WIDTH = 210; // mm
 const A4_MM_HEIGHT = 297; // mm
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.daybreaklearner.com';
 
 const VerifyCertificatePrintPage: React.FC = () => {
   const params = useParams<{ id?: string }>();

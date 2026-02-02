@@ -1,4 +1,6 @@
-const GA4_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID as string | undefined;
+import { publicEnv } from '@/lib/env';
+
+const GA4_MEASUREMENT_ID = publicEnv.ga4MeasurementId || undefined;
 
 const hasWindow = () => typeof window !== 'undefined';
 
