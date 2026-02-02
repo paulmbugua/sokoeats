@@ -281,7 +281,10 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
               <Link href="/resources" className="text-sm/6 hover:text-primary transition-colors">
                 Resources
               </Link>
-              <Link href="/robot-teach" className="text-sm/6 hover:text-primary transition-colors">
+              <Link
+                href={appUrl('/robot-teach')}
+                className="text-sm/6 hover:text-primary transition-colors"
+              >
                 Learn with A.I
               </Link>
 
@@ -504,7 +507,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
             Resources
           </Link>
           <Link
-            href="/robot-teach"
+            href={appUrl('/robot-teach')}
             className="rounded-lg px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#172534]"
           >
             Learn with A.I

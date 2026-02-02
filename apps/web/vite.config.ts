@@ -7,16 +7,12 @@ const BACKEND_PORT = Number(process.env.BACKEND_PORT || 4000);
 const BACKEND_TARGET =
   process.env.BACKEND_URL?.replace(/\/$/, '') || `http://localhost:${BACKEND_PORT}`;
 
-  const BRIDGED_UNDER_NEXT =
-  process.env.VITE_BRIDGED === '1' || process.env.NEXT_PUBLIC_BRIDGED === '1';
-
-// When proxied under Next at /app/*, Vite must generate paths prefixed with /app/
-const VITE_BASE = BRIDGED_UNDER_NEXT ? '/app/' : '/';
+const IS_BRIDGED = process.env.VITE_BRIDGED === '1';
 
 
 export default defineConfig({
   plugins: [react()],
-  base: VITE_BASE,
+  base: IS_BRIDGED ? '/app/' : '/',
 
 
   resolve: {
