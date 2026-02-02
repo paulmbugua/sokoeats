@@ -20,6 +20,7 @@ import { DEFAULT_TUTOR_FILTERS } from '@mytutorapp/shared/types';
 import { countryName } from '@mytutorapp/shared/utils/countries';
 import { normalizeCountryLabel } from '@mytutorapp/shared/utils/smartSearchIntent';
 import { trackEvent } from '../analytics/ga4';
+import { publicEnv } from '@/lib/env';
 
 const FALLBACK_AVATAR = (name = 'Tutor') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e7edf4&color=0d141c`;
@@ -243,7 +244,7 @@ const FindTutor: React.FC = () => {
     searchMeta,
   } = useHomePage({ debounceMs: 0 });
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL as string | undefined;
+  const backendUrl = publicEnv.backendUrl || undefined;
 
   // local-only UI state (NOT sent to server)
   const [query, setQuery] = useState('');

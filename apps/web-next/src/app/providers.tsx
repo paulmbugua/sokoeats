@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@mytutorapp/shared/hooks/react
 import ShopContextProvider from '@mytutorapp/shared/context/ShopContext';
 import { ChatProvider } from '@mytutorapp/shared/context/ChatContext';
 import { ThemeProvider } from '@mytutorapp/shared/hooks';
+import { publicEnv } from '@/lib/env';
 
 const storage = {
   getItem: async (k: string) => Promise.resolve(localStorage.getItem(k)),
@@ -18,7 +19,7 @@ const storage = {
 };
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+  const backendUrl = publicEnv.backendUrl || '';
 
   // ✅ Create QueryClient per app instance (Next-safe)
   const [queryClient] = useState(

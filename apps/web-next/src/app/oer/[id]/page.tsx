@@ -2,6 +2,7 @@ import Script from 'next/script';
 import type { Metadata } from 'next';
 import OerReaderFull from '@/pages/OerReaderFull.web';
 import { siteUrl } from '@/lib/site';
+import { publicEnv } from '@/lib/env';
 
 type OerItem = {
   title?: string;
@@ -41,7 +42,7 @@ const pickTitle = (payload: any): OerItem | null => {
 };
 
 async function fetchOerMeta(id: string) {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const backendUrl = publicEnv.backendUrl;
   if (!backendUrl) return null;
   const base = backendUrl.replace(/\/+$/, '');
   const endpoints = [

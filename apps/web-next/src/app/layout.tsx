@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import Providers from './providers';
 import AnalyticsTracker from './Analytics';
-import { SITE_URL } from '@/lib/site';
+import { publicEnv } from '@/lib/env';
+import { SITE_URL, siteUrl } from '@/lib/site';
 import NavbarLegacy from '@/components/legacy/Navbar.web';
 import FooterLegacy from '@/components/legacy/Footer.web';
 import './globals.css';
@@ -16,6 +17,16 @@ export const metadata: Metadata = {
   icons: {
     icon: 'https://www.daybreaklearner.com/favicon.ico',
   },
+  openGraph: {
+    type: 'website',
+    url: SITE_URL,
+    siteName: 'DayBreak',
+    images: [{ url: siteUrl(publicEnv.ogImage) }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    images: [siteUrl(publicEnv.ogImage)],
+  },
 };
 
 export const viewport = {
@@ -23,7 +34,7 @@ export const viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const gaId = process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID;
+  const gaId = publicEnv.ga4MeasurementId;
 
   return (
     <html lang="en">

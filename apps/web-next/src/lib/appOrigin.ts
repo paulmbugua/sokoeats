@@ -1,10 +1,8 @@
 // apps/web-next/src/lib/appOrigin.ts
 
-const ENV_APP_ORIGIN =
-  process.env.NEXT_PUBLIC_APP_ORIGIN?.trim() ||
-  process.env.NEXT_PUBLIC_LEGACY_APP_ORIGIN?.trim() ||
-  '';
-const PROD_APP_ORIGIN = ENV_APP_ORIGIN || 'https://app.daybreaklearner.com';
+import { publicEnv } from './env';
+
+const PROD_APP_ORIGIN = publicEnv.appOrigin || 'https://app.daybreaklearner.com';
 
 // In dev we proxy legacy app under /app/*
 const DEV_APP_MOUNT = '/app';

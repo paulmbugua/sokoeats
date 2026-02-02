@@ -1,3 +1,4 @@
+import { publicEnv, isAbsoluteUrl } from './env';
 import { BRAND_NAME, SITE_URL, siteUrl } from './site';
 
 export const landingTitle =
@@ -6,9 +7,11 @@ export const landingTitle =
 export const landingDescription =
   'DayBreak powers AI learning for individuals and institutions. Book tutors, run virtual classrooms, publish exam results, share report cards and class reports, and manage assignments and AI-assisted marks entry with an enterprise-ready E-Learning platform.';
 
-export const landingOgImage =
-  process.env.NEXT_PUBLIC_HERO_BG ||
+const fallbackOgImage =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuBgvEqh6MrQ7dVW2qwj-qjGCafebAnWEjA7iwu4aBwvJfiAvneGQcD6xH14zDIWcFdHIVF1yUOtvsMVPHKrnuxAXdqlOKj_Gbf_VBvdobGFojOpO0seljMPOx0GUF1LSkYcCU8Gd_0jz1BC4GkilnIWIs9ZGuqzsN4pO4t8xzWY2uouVckDUvvqonRhWPECRGpV5W0kGh3MF3FPXFtbXyU0DuxtazBEu50XMuUrx4CovU0y47zF1YjXjrNQg6DUZcEu_uJ1um9oLpY';
+const ogImage = publicEnv.heroBg || publicEnv.ogImage || fallbackOgImage;
+
+export const landingOgImage = isAbsoluteUrl(ogImage) ? ogImage : siteUrl(ogImage);
 
 export const landingJsonLd = {
   organization: {

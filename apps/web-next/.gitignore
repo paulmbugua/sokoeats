@@ -1,0 +1,26 @@
+# Dependencies & build output
+node_modules/
+.next/
+out/
+dist/
+build/
+
+# Logs
+*.log
+
+# Binary assets and media
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.ico
+*.gif
+*.pdf
+*.zip
+*.ttf
+*.otf
+*.woff
+*.woff2
+*.mp4
+*.mov
+*.mp3
