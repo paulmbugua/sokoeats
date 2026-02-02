@@ -91,6 +91,7 @@ function Fallback({ error, onRetry }: { error?: Error; onRetry?: () => void }) {
 }
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
+const routerBase = import.meta.env.VITE_BRIDGED === '1' ? '/app' : undefined;
 if (backendUrl) axios.defaults.baseURL = backendUrl;
 
 // ✅ Ensure Firebase uses browser local persistence (safe no-op outside browser)
@@ -173,7 +174,7 @@ if (!container) {
             console.error('[ErrorBoundary]', error, info);
           }}
         >
-          <BrowserRouter>
+          <BrowserRouter basename={routerBase}>
             <QueryClientProvider client={queryClient}>
               <ShopContextProvider backendUrl={backendUrl} storage={storage}>
                 <ChatProvider>
