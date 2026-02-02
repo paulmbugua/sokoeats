@@ -4,6 +4,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { appUrl } from '@/lib/appOrigin';
+import { ROUTES } from '@/lib/routes';
 
 const HelpPage: React.FC = () => {
   return (
@@ -66,7 +67,7 @@ const HelpPage: React.FC = () => {
           </li>
           <li>
             Prefer self-paced? Try the{' '}
-            <Link href={appUrl('/robot-teach')} className="text-primary underline">
+            <Link href={ROUTES.robotTeacherLanding} className="text-primary underline">
               AI Tutor Studio
             </Link>{' '}
             for free lessons & quizzes.

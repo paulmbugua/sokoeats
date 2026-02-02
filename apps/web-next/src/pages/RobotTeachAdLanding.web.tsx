@@ -5,15 +5,19 @@ import { trackEvent } from '../analytics/ga4';
 import { appUrl } from '@/lib/appOrigin';
 
 const RobotTeachAdLanding: React.FC = () => {
-  const legacyRobotTeachUrl = appUrl('/robot-teach');
-
   useEffect(() => {
-    trackEvent('robot_teach_ad_view');
+    try {
+      trackEvent('robot_teach_ad_view');
+    } catch {}
   }, []);
 
   const handleCtaClick = (source: string) => {
-    trackEvent('robot_teach_ad_cta_click', { source });
-    window.location.href = legacyRobotTeachUrl;
+    try {
+      trackEvent('robot_teach_ad_cta_click', { source });
+    } catch {}
+    const legacyUrl = appUrl('/robot-teach');
+    const fallbackUrl = `${window.location.origin}/app/robot-teach`;
+    window.location.assign(legacyUrl || fallbackUrl);
   };
 
   return (
