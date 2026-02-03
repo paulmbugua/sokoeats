@@ -4,54 +4,34 @@ const GA4_MEASUREMENT_ID = publicEnv.ga4MeasurementId || undefined;
 
 const hasWindow = () => typeof window !== 'undefined';
 
-let initialized = false;
-
 declare global {
   interface Window {
-    dataLayer?: unknown[];
     gtag?: (...args: any[]) => void;
   }
 }
 
-const ensureGtag = () => {
-  if (!hasWindow()) return;
-  window.dataLayer = window.dataLayer || [];
-  window.gtag =
-    window.gtag ||
-    ((...args: any[]) => {
-      window.dataLayer?.push(args);
-    });
-};
+// In web-next, gtag.js is loaded in RootLayout via <Script>.
+// So here we only *send* events safely.
+const canSend = () =>
+  Boolean(GA4_MEASUREMENT_ID) && hasWindow() && typeof window.gtag === 'function';
 
 export const initGA4 = () => {
-  if (!GA4_MEASUREMENT_ID || !hasWindow()) return;
-  if (initialized) return;
-  initialized = true;
-
-  ensureGtag();
-
-  if (!document.getElementById('ga4-gtag')) {
-    const script = document.createElement('script');
-    script.id = 'ga4-gtag';
-    script.async = true;
-    script.src = `https://www.googletagmanager.com/gtag/js?id=${GA4_MEASUREMENT_ID}`;
-    document.head.appendChild(script);
-  }
-
-  window.gtag?.('js', new Date());
-  window.gtag?.('config', GA4_MEASUREMENT_ID, { send_page_view: false });
+  // no-op on purpose (RootLayout owns init)
+  return;
 };
 
 export const trackPageView = (path: string) => {
-  if (!GA4_MEASUREMENT_ID || !hasWindow()) return;
-  ensureGtag();
+  if (!canSend()) return;
+
   window.gtag?.('event', 'page_view', {
     page_path: path,
+    page_location: window.location.href,
+    page_title: document.title,
   });
 };
 
 export const trackEvent = (name: string, params: Record<string, any> = {}) => {
-  if (!GA4_MEASUREMENT_ID || !hasWindow()) return;
-  ensureGtag();
+  if (!canSend()) return;
+
   window.gtag?.('event', name, params);
 };

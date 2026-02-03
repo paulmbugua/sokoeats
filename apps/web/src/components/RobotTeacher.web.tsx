@@ -1,5 +1,6 @@
 /* apps/web/src/components/RobotTeacher.web.tsx */
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { trackEvent } from '../analytics/ga4';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
 import { useAiCourse, useAICertificates } from '@mytutorapp/shared/hooks';
@@ -1174,7 +1175,52 @@ useEffect(() => {
   const [sharedCourseMissing, setSharedCourseMissing] = useState(false);
   const [sharedCourseChecked, setSharedCourseChecked] = useState(false);
   
-  
+  useEffect(() => {
+  if (typeof window === 'undefined') return;
+
+  const key = 'rt:conv:first_session_loaded:v1';
+  if (localStorage.getItem(key) === '1') return;
+
+  if (!coursesLoadDone) return;
+  if (!backendUrl) return;
+  if (step === 'error' || aiError) return;
+
+  const shareHasAssignmentNow = Boolean(qpAssignmentId);
+  const validateAgainstTopCoursesNow = Boolean(
+    wantedCourseId && !shareHasAssignmentNow && !isOrgFlow && !isSandboxSource
+  );
+
+  if (validateAgainstTopCoursesNow && sharedCourseChecked && sharedCourseMissing) return;
+
+  try {
+    trackEvent('robot_teacher_first_session_loaded', {
+      source: new URLSearchParams(location.search).get('utm_source') || qpSource || 'direct',
+      isOrgFlow: Boolean(isOrgFlow),
+      isSandbox: Boolean(isSandboxSource),
+      courseId: wantedCourseId || assignedCourseId || selectedCourse?.id || undefined,
+    });
+  } catch {}
+
+  try {
+    localStorage.setItem(key, '1');
+  } catch {}
+}, [
+  coursesLoadDone,
+  backendUrl,
+  step,
+  aiError,
+  qpAssignmentId,
+  wantedCourseId,
+  isOrgFlow,
+  isSandboxSource,
+  sharedCourseChecked,
+  sharedCourseMissing,
+  location.search,
+  qpSource,
+  assignedCourseId,
+  selectedCourse?.id,
+]);
+
 
   useEffect(() => {
   let cancelled = false;

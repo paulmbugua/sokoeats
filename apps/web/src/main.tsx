@@ -19,6 +19,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { queryClient } from '@mytutorapp/shared/utils/queryClient'; // <-- shared singleton
 import { ensureBrowserPersistence } from '@mytutorapp/shared/utils/firebaseConfig'; // ✅ NEW
+import { initGA4 } from './analytics/ga4';
 
 const DevSafeStrictMode: React.FC<React.PropsWithChildren> = ({ children }) =>
   import.meta.env.DEV ? <>{children}</> : <React.StrictMode>{children}</React.StrictMode>;
@@ -30,7 +31,16 @@ const DEBUG =
   import.meta.env.VITE_DEBUG_ERRORS === '1' ||
   new URLSearchParams(window.location.search).has('debug');
 
-function Fallback({ error, onRetry }: { error?: Error; onRetry?: () => void }) {
+function toError(e: unknown): Error | undefined {
+  if (!e) return undefined;
+  if (e instanceof Error) return e;
+  // react-error-boundary sometimes passes strings/objects
+  return new Error(typeof e === 'string' ? e : JSON.stringify(e));
+}
+
+function Fallback({ error, onRetry }: { error?: unknown; onRetry?: () => void }) {
+  const err = toError(error);
+
   return (
     <div
       style={{
@@ -48,7 +58,7 @@ function Fallback({ error, onRetry }: { error?: Error; onRetry?: () => void }) {
       <h1>Something went wrong.</h1>
       <p>Please try refreshing the page.</p>
 
-      {DEBUG && error && (
+      {DEBUG && err && (
         <details
           open
           style={{
@@ -65,9 +75,9 @@ function Fallback({ error, onRetry }: { error?: Error; onRetry?: () => void }) {
         >
           <summary style={{ cursor: 'default', marginBottom: 8 }}>Error details (debug on)</summary>
           <pre style={{ whiteSpace: 'pre-wrap' }}>
-            {error.name}: {error.message}
+            {err.name}: {err.message}
             {'\n'}
-            {error.stack}
+            {err.stack}
           </pre>
         </details>
       )}
@@ -90,9 +100,13 @@ function Fallback({ error, onRetry }: { error?: Error; onRetry?: () => void }) {
   );
 }
 
+
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 const routerBase = import.meta.env.VITE_BRIDGED === '1' ? '/app' : undefined;
 if (backendUrl) axios.defaults.baseURL = backendUrl;
+
+// ✅ Initialize GA4 once (loads gtag.js + config)
+initGA4();
 
 // ✅ Ensure Firebase uses browser local persistence (safe no-op outside browser)
 void ensureBrowserPersistence();

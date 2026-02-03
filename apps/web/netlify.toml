@@ -1,0 +1,12 @@
+[build]
+  command = "yarn workspace @mytutorapp/web build"
+  publish = "dist"
+
+  # ✅ Skip build unless web or shared packages changed
+  ignore = "git diff --name-only \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" | grep -E '^(apps/web/|packages/shared/)' >/dev/null && exit 1 || exit 0"
+
+# ✅ SPA fallback
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
