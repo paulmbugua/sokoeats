@@ -1,1 +1,13 @@
-/*    /index.html   200
+/app  /app/  301
+
+# Assets must be served as real files (NO SPA fallback)
+/app/assets/*  /assets/:splat  200
+
+# Optional: icons (because your HTML references /app/...)
+/app/favicon.ico           /favicon.ico           200
+/app/favicon-16x16.png     /favicon-16x16.png     200
+/app/favicon-32x32.png     /favicon-32x32.png     200
+/app/apple-touch-icon.png  /apple-touch-icon.png  200
+
+# SPA fallback (MUST be last)
+/app/*  /index.html  200

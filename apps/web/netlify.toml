@@ -2,36 +2,5 @@
   command = "yarn workspace @mytutorapp/web build"
   publish = "apps/web/dist"
 
-# 1) Assets: strip the /app prefix so Netlify serves dist/assets/*
-[[redirects]]
-  from = "/app/assets/*"
-  to = "/assets/:splat"
-  status = 200
-  force = true
-
-# 2) Optional: strip /app for common static files (since you reference /app/favicon.ico etc.)
-[[redirects]]
-  from = "/app/favicon.ico"
-  to = "/favicon.ico"
-  status = 200
-
-[[redirects]]
-  from = "/app/favicon-16x16.png"
-  to = "/favicon-16x16.png"
-  status = 200
-
-[[redirects]]
-  from = "/app/favicon-32x32.png"
-  to = "/favicon-32x32.png"
-  status = 200
-
-[[redirects]]
-  from = "/app/apple-touch-icon.png"
-  to = "/apple-touch-icon.png"
-  status = 200
-
-# 3) SPA fallback (must come AFTER assets)
-[[redirects]]
-  from = "/app/*"
-  to = "/index.html"
-  status = 200
+  # ✅ Skip build unless apps/web or shared packages changed
+  ignore = "git diff --name-only \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" | grep -E '^(apps/web/|packages/shared/)' >/dev/null && exit 1 || exit 0"
