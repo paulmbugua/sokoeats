@@ -27,10 +27,15 @@
 # -----------------------------------------------------------------------------
 # App routing (legacy Vite site) mounted under /app/*
 # -----------------------------------------------------------------------------
-
+[[redirects]]
+  from = "/app"
+  to = "/app/"
+  status = 301
+  force = true
+  
 [[redirects]]
   from   = "/app/*"
-  to     = "https://app.daybreaklearner.com/:splat"
+  to     = "https://app.daybreaklearner.com/app/:splat"
   status = 200
   force  = true
 
