@@ -1,9 +1,3 @@
-[build]
-  command = "yarn workspace @mytutorapp/web-next build"
-
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
 
 # -----------------------------------------------------------------------------
 # Core proxies (work for BOTH Next + proxied app pages)
