@@ -32,10 +32,10 @@
   to = "/app/"
   status = 301
   force = true
-  
+
 [[redirects]]
   from   = "/app/*"
-  to     = "https://app.daybreaklearner.com/app/:splat"
+  to     = "https://app.daybreaklearner.com/:splat"
   status = 200
   force  = true
 
