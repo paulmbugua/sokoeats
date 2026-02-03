@@ -7,9 +7,7 @@ const BACKEND_PORT = Number(process.env.BACKEND_PORT || 4000);
 const BACKEND_TARGET =
   process.env.BACKEND_URL?.replace(/\/$/, '') || `http://localhost:${BACKEND_PORT}`;
 
-const IS_BRIDGED =
-  process.env.VITE_BRIDGED === '1' ||
-  process.env.NETLIFY === 'true'; // Netlify sets NETLIFY=true during builds
+const IS_BRIDGED = process.env.VITE_BRIDGED === '1';
 
 
 export default defineConfig({
