@@ -102,7 +102,7 @@ function Fallback({ error, onRetry }: { error?: unknown; onRetry?: () => void })
 
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
-const routerBase = import.meta.env.VITE_BRIDGED === '1' ? '/app' : undefined;
+const routerBase = window.location.pathname.startsWith('/app') ? '/app' : undefined;
 if (backendUrl) axios.defaults.baseURL = backendUrl;
 
 // ✅ Initialize GA4 once (loads gtag.js + config)
