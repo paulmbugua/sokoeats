@@ -3,13 +3,21 @@
   publish = "apps/web/dist"
 
   # ✅ Build ONLY if apps/web or shared packages changed
+  # Netlify: exit 0 => build, exit 1 => skip build
   ignore = "git diff --name-only \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" | grep -qE '^(apps/web/|packages/shared/)' && exit 0 || exit 1"
 
 [context.production.environment]
-  # Build legacy app with base "/" on the app subdomain.
+  # ✅ Force legacy app build base "/" on the app subdomain
   VITE_BRIDGED = "0"
 
-# SPA fallback
+# ✅ Serve static assets as files (avoid any accidental SPA rewrite)
+[[redirects]]
+  from = "/assets/*"
+  to = "/assets/:splat"
+  status = 200
+  force = true
+
+# ✅ SPA fallback (must be last)
 [[redirects]]
   from = "/*"
   to = "/index.html"

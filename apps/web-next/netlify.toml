@@ -1,3 +1,60 @@
 [build]
-ignore = "git diff --name-only \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" | grep -qE '^(apps/web-next/|packages/shared/)' && exit 0 || exit 1"
+  command = "yarn workspace @mytutorapp/web-next build"
+  publish = ".next"
 
+  # ✅ Skip build unless web-next or shared packages changed
+  # Netlify: exit 0 => build, exit 1 => skip build
+  ignore = "git diff --name-only \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" | grep -qE '^(apps/web-next/|packages/shared/)' && exit 0 || exit 1"
+
+# -----------------------------------------------------------------------------
+# Core proxies (needed on www)
+# -----------------------------------------------------------------------------
+
+[[redirects]]
+  from   = "/__/auth/*"
+  to     = "https://mytutorapp-d3c91.firebaseapp.com/__/auth/:splat"
+  status = 200
+  force  = true
+
+[[redirects]]
+  from   = "/api/*"
+  to     = "https://server.daybreaklearner.com/api/:splat"
+  status = 200
+  force  = true
+
+[[redirects]]
+  from   = "https://daybreaklearner.com/*"
+  to     = "https://www.daybreaklearner.com/:splat"
+  status = 301
+  force  = true
+
+# -----------------------------------------------------------------------------
+# Legacy Vite app proxy under /app/*
+# (legacy app is built with base "/" on app.daybreaklearner.com)
+# -----------------------------------------------------------------------------
+
+[[redirects]]
+  from   = "/app"
+  to     = "/app/"
+  status = 301
+  force  = true
+
+# ✅ assets are /assets/* in legacy build (VITE_BRIDGED=0)
+[[redirects]]
+  from   = "/assets/*"
+  to     = "https://app.daybreaklearner.com/assets/:splat"
+  status = 200
+  force  = true
+
+# ✅ pages under /app/*
+[[redirects]]
+  from   = "/app/*"
+  to     = "https://app.daybreaklearner.com/:splat"
+  status = 200
+  force  = true
+
+[context.production.environment]
+  NEXT_PUBLIC_SITE_URL    = "https://www.daybreaklearner.com"
+  NEXT_PUBLIC_BACKEND_URL = "https://server.daybreaklearner.com"
+  NEXT_PUBLIC_APP_ORIGIN  = "https://app.daybreaklearner.com"
+  # NEXT_PUBLIC_GA4_MEASUREMENT_ID = "G-XXXXXXXXXX"
