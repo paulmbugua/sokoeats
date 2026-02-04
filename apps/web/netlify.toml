@@ -5,6 +5,10 @@
   # ✅ Build ONLY if apps/web or shared packages changed
   ignore = "git diff --name-only \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" | grep -qE '^(apps/web/|packages/shared/)' && exit 0 || exit 1"
 
+[context.production.environment]
+  # Build legacy app with base "/" on the app subdomain.
+  VITE_BRIDGED = "0"
+
 # SPA fallback
 [[redirects]]
   from = "/*"
