@@ -4,9 +4,10 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "check:no-pages-router": "node -e \"const fs=require('fs'); const paths=['pages','src/pages'].map(p=>require('path').join(process.cwd(),p)); const bad=paths.filter(p=>fs.existsSync(p)); if(bad.length){ console.error('❌ Pages Router directories found:', bad.join(', ')); process.exit(1);} console.log('✅ No Pages Router dirs found');\"",
+    "build": "yarn check:no-pages-router && next build"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "6.4.0",
@@ -14,6 +15,7 @@
     "@fortawesome/free-regular-svg-icons": "6.4.0",
     "@fortawesome/free-solid-svg-icons": "6.4.0",
     "@fortawesome/react-fontawesome": "0.2.2",
+    "@mytutorapp/shared": "workspace:*",
     "@tanstack/react-query": "^5.89.0",
     "axios": "1.8.3",
     "framer-motion": "^12.23.24",
@@ -34,6 +36,7 @@
     "@types/react": "~19.1.10",
     "@types/react-dom": "19.0.3",
     "eslint": "^8.57.1",
-    "eslint-config-next": "^16.1.6"
+    "eslint-config-next": "^16.1.6",
+    "typescript": "^5.9.3"
   }
 }

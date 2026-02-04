@@ -7,6 +7,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     '/',
     '/find-tutor',
     '/resources',
+    '/robot-teacher',
     '/courses',
     '/help',
     '/verify',

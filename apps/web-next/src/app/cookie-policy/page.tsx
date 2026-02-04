@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import CookiePolicy from '@/pages/CookiePolicy.web';
+import { Suspense } from 'react';
+import CookiePolicy from '@/legacy-pages/CookiePolicy.web';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Cookie Policy | DayBreak';
@@ -23,5 +24,9 @@ export const metadata: Metadata = {
 };
 
 export default function CookiePolicyPage() {
-  return <CookiePolicy />;
+  return (
+    <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
+      <CookiePolicy />
+    </Suspense>
+  );
 }

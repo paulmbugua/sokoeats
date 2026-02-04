@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import MyCourses from '@/pages/MyCourses.web';
+import MyCourses from '@/legacy-pages/MyCourses.web';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Courses Catalog | DayBreak';

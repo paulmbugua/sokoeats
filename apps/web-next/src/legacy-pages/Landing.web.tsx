@@ -6,6 +6,7 @@ import { motion, useMotionValue, useSpring, useReducedMotion, Variants } from 'f
 import { trackEvent } from '../analytics/ga4';
 import { appUrl } from '@/lib/appOrigin';
 import { ROUTES } from '@/lib/routes';
+import { publicEnv } from '@/lib/env';
 
 
 const fadeUp: Variants = {
@@ -17,8 +18,8 @@ const stagger: Variants = {
   show: { transition: { staggerChildren: 0.08 } },
 };
 
-const LANDING_BG = process.env.NEXT_PUBLIC_LANDING_BG ?? '';
-const HERO_BG = process.env.NEXT_PUBLIC_HERO_BG ?? '';
+const LANDING_BG = publicEnv.landingBg;
+const HERO_BG = publicEnv.heroBg;
 const BRAND = 'DayBreak';
 
 const Landing: React.FC = () => {

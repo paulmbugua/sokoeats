@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import ComplaintsFeedback from '@/pages/ComplaintsFeedback';
+import ComplaintsFeedback from '@/legacy-pages/ComplaintsFeedback';
 import { siteUrl } from '@/lib/site';
 
 const title = 'Complaints & Feedback | DayBreak';

@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
-import ProfileDetailPage from '@/pages/ProfileDetailPage.web';
+import ProfileDetailPage from '@/legacy-pages/ProfileDetailPage.web';
 import { siteUrl } from '@/lib/site';
+import { publicEnv } from '@/lib/env';
 
 const descriptionFallback =
   'View tutor expertise, languages, ratings, and availability to find the right match.';
 
 async function fetchProfileName(id: string) {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const backendUrl = publicEnv.backendUrl;
   if (!backendUrl) return null;
   const base = backendUrl.replace(/\/+$/, '');
   const endpoints = [

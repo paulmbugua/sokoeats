@@ -38,6 +38,7 @@
     "lodash.debounce": "^4.0.8",
     "lucide-react": "^0.546.0",
     "moti": "^0.30.0",
+    "motion-dom": "^12.30.0",
     "pdfjs-dist": "^5.4.296",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",

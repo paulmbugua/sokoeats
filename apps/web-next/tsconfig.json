@@ -4,7 +4,7 @@
     "jsx": "preserve",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
+      "@/*": ["./src/*"],
       "@mytutorapp/shared": ["../../packages/shared/index.ts"],
       "@mytutorapp/shared/*": ["../../packages/shared/*"],
       "@mytutorapp/shared/types": ["../../packages/shared/types/index.ts"]

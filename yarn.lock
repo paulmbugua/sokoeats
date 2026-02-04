@@ -4543,6 +4543,7 @@ __metadata:
     firebase-admin: "npm:^13.2.0"
     fluent-ffmpeg: "npm:^2.1.3"
     fs: "npm:^0.0.1-security"
+    get-stream: "npm:^9.0.1"
     globals: "npm:^16.0.0"
     google-auth-library: "npm:^9.15.1"
     helmet: "npm:^8.0.0"
@@ -4656,7 +4657,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@mytutorapp/shared@workspace:packages/shared":
+"@mytutorapp/shared@workspace:*, @mytutorapp/shared@workspace:packages/shared":
   version: 0.0.0-use.local
   resolution: "@mytutorapp/shared@workspace:packages/shared"
   dependencies:
@@ -4698,6 +4699,8 @@ __metadata:
     "@fortawesome/free-regular-svg-icons": "npm:6.4.0"
     "@fortawesome/free-solid-svg-icons": "npm:6.4.0"
     "@fortawesome/react-fontawesome": "npm:0.2.2"
+    "@mytutorapp/shared": "workspace:*"
+    "@tanstack/react-query": "npm:^5.89.0"
     "@types/node": "npm:^20.17.6"
     "@types/react": "npm:~19.1.10"
     "@types/react-dom": "npm:19.0.3"
@@ -4716,6 +4719,7 @@ __metadata:
     react-native-web: "npm:^0.20.0"
     react-pdf: "npm:^10.2.0"
     react-player: "npm:^3.3.3"
+    typescript: "npm:^5.9.3"
   languageName: unknown
   linkType: soft
 
@@ -4756,6 +4760,7 @@ __metadata:
     lodash.debounce: "npm:^4.0.8"
     lucide-react: "npm:^0.546.0"
     moti: "npm:^0.30.0"
+    motion-dom: "npm:^12.30.0"
     pdfjs-dist: "npm:^5.4.296"
     qrcode: "npm:^1.5.4"
     react: "npm:^19.1.0"
@@ -6245,6 +6250,13 @@ __metadata:
   version: 1.1.0
   resolution: "@rtsao/scc@npm:1.1.0"
   checksum: 10c0/b5bcfb0d87f7d1c1c7c0f7693f53b07866ed9fec4c34a97a8c948fb9a7c0082e416ce4d3b60beb4f5e167cbe04cdeefbf6771320f3ede059b9ce91188c409a5b
+  languageName: node
+  linkType: hard
+
+"@sec-ant/readable-stream@npm:^0.4.1":
+  version: 0.4.1
+  resolution: "@sec-ant/readable-stream@npm:0.4.1"
+  checksum: 10c0/64e9e9cf161e848067a5bf60cdc04d18495dc28bb63a8d9f8993e4dd99b91ad34e4b563c85de17d91ffb177ec17a0664991d2e115f6543e73236a906068987af
   languageName: node
   linkType: hard
 
@@ -13230,6 +13242,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"get-stream@npm:^9.0.1":
+  version: 9.0.1
+  resolution: "get-stream@npm:9.0.1"
+  dependencies:
+    "@sec-ant/readable-stream": "npm:^0.4.1"
+    is-stream: "npm:^4.0.1"
+  checksum: 10c0/d70e73857f2eea1826ac570c3a912757dcfbe8a718a033fa0c23e12ac8e7d633195b01710e0559af574cbb5af101009b42df7b6f6b29ceec8dbdf7291931b948
+  languageName: node
+  linkType: hard
+
 "get-symbol-description@npm:^1.1.0":
   version: 1.1.0
   resolution: "get-symbol-description@npm:1.1.0"
@@ -14546,6 +14568,13 @@ __metadata:
   version: 2.0.1
   resolution: "is-stream@npm:2.0.1"
   checksum: 10c0/7c284241313fc6efc329b8d7f08e16c0efeb6baab1b4cd0ba579eb78e5af1aa5da11e68559896a2067cd6c526bd29241dda4eb1225e627d5aa1a89a76d4635a5
+  languageName: node
+  linkType: hard
+
+"is-stream@npm:^4.0.1":
+  version: 4.0.1
+  resolution: "is-stream@npm:4.0.1"
+  checksum: 10c0/2706c7f19b851327ba374687bc4a3940805e14ca496dc672b9629e744d143b1ad9c6f1b162dece81c7bfbc0f83b32b61ccc19ad2e05aad2dd7af347408f60c7f
   languageName: node
   linkType: hard
 
@@ -17450,6 +17479,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"motion-dom@npm:^12.30.0":
+  version: 12.30.0
+  resolution: "motion-dom@npm:12.30.0"
+  dependencies:
+    motion-utils: "npm:^12.29.2"
+  checksum: 10c0/3f8188cfe895f21b27263d412526e0280e4a2aa0c28d6079c5ffacf1db5acc005e2c0b83df9790126f524f073637f326fdf37302ab6c6859659ad0bccc906871
+  languageName: node
+  linkType: hard
+
 "motion-utils@npm:^12.29.2":
   version: 12.29.2
   resolution: "motion-utils@npm:12.29.2"
@@ -17572,6 +17610,8 @@ __metadata:
     "@tailwindcss/typography": "npm:^0.5.16"
     "@tanstack/react-query": "npm:5.89.0"
     "@types/lodash.debounce": "npm:^4.0.9"
+    "@types/react": "npm:~19.1.10"
+    "@types/react-dom": "npm:19.0.3"
     "@types/react-native-vector-icons": "npm:6.4.18"
     "@typescript-eslint/eslint-plugin": "npm:^8.31.1"
     "@typescript-eslint/parser": "npm:^8.31.1"
@@ -17593,6 +17633,8 @@ __metadata:
     metro-resolver: "npm:^0.83.1"
     postcss: "npm:^8.4.21"
     prettier: "npm:^3.5.3"
+    react: "npm:19.1.0"
+    react-dom: "npm:19.1.0"
     rimraf: "npm:3.0.2"
     serve: "npm:^14.2.4"
     tailwindcss: "npm:^3.3.2"

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import PaymentFlow from '@/pages/PaymentFlow';
+import PaymentFlow from '@/legacy-pages/PaymentFlow';
 import { siteUrl } from '@/lib/site';
 
 const title = 'How Payments Work | DayBreak';

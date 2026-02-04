@@ -2,11 +2,19 @@
 'use client';
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
 import { appUrl } from '@/lib/appOrigin';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCertificate, faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons';
-import PaymentWidget from '../components/PaymentWidget.web';
+const PaymentWidget = dynamic(() => import('../components/PaymentWidget.web'), {
+  ssr: false,
+  loading: () => (
+    <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500 dark:border-white/10">
+      Loading payment options…
+    </div>
+  ),
+});
 
 import { useResourcesExplore, useClassVault } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';

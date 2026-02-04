@@ -54,27 +54,61 @@ const nextConfig = {
     if (process.env.NODE_ENV !== 'development') return [];
 
     // ✅ IMPORTANT:
-    // Your Vite app expects base "/app/".
-    // So when Next serves "/app/*", proxy to legacy as "/app/*" (do NOT strip the prefix).
+    // The legacy Vite app is built with base "/" on the app subdomain.
+    // When Next serves "/app/*", proxy to legacy WITHOUT the "/app" prefix.
     return [
       // Legacy app mounted under /app/*
-      { source: '/app/:path*', destination: `${legacyAppOrigin}/app/:path*` },
+      { source: '/app/:path*', destination: `${legacyAppOrigin}/:path*` },
 
       // Also proxy Vite runtime/module paths if they appear at root (some setups do)
-      { source: '/@vite/:path*', destination: `${legacyAppOrigin}/app/@vite/:path*` },
-      { source: '/@react-refresh', destination: `${legacyAppOrigin}/app/@react-refresh` },
-      { source: '/src/:path*', destination: `${legacyAppOrigin}/app/src/:path*` },
-      { source: '/assets/:path*', destination: `${legacyAppOrigin}/app/assets/:path*` },
+      { source: '/@vite/:path*', destination: `${legacyAppOrigin}/@vite/:path*` },
+      { source: '/@react-refresh', destination: `${legacyAppOrigin}/@react-refresh` },
+      { source: '/src/:path*', destination: `${legacyAppOrigin}/src/:path*` },
+      { source: '/assets/:path*', destination: `${legacyAppOrigin}/assets/:path*` },
 
       // Vite dev can request these directly (esp. monorepos / optimizeDeps)
-      { source: '/@fs/:path*', destination: `${legacyAppOrigin}/app/@fs/:path*` },
-      { source: '/node_modules/:path*', destination: `${legacyAppOrigin}/app/node_modules/:path*` },
+      { source: '/@fs/:path*', destination: `${legacyAppOrigin}/@fs/:path*` },
+      { source: '/node_modules/:path*', destination: `${legacyAppOrigin}/node_modules/:path*` },
 
       // common public files
-      { source: '/favicon.ico', destination: `${legacyAppOrigin}/app/favicon.ico` },
-      { source: '/robots.txt', destination: `${legacyAppOrigin}/app/robots.txt` },
-      { source: '/manifest.webmanifest', destination: `${legacyAppOrigin}/app/manifest.webmanifest` },
-      { source: '/vite.svg', destination: `${legacyAppOrigin}/app/vite.svg` },
+      { source: '/favicon.ico', destination: `${legacyAppOrigin}/favicon.ico` },
+      { source: '/robots.txt', destination: `${legacyAppOrigin}/robots.txt` },
+      { source: '/manifest.webmanifest', destination: `${legacyAppOrigin}/manifest.webmanifest` },
+      { source: '/vite.svg', destination: `${legacyAppOrigin}/vite.svg` },
+    ];
+  },
+
+  async headers() {
+    const securityHeaders = [
+      { key: 'X-DNS-Prefetch-Control', value: 'on' },
+      { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' },
+      {
+        key: 'Strict-Transport-Security',
+        value: 'max-age=63072000; includeSubDomains; preload',
+      },
+    ];
+
+    return [
+      {
+        source: '/:path*',
+        headers: securityHeaders,
+      },
+      {
+        source: '/_next/static/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        source: '/_next/image',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+          },
+        ],
+      },
     ];
   },
 };

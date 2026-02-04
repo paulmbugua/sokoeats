@@ -6,12 +6,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { appUrl } from '@/lib/appOrigin';
+import { publicEnv } from '@/lib/env';
 
 const Footer: React.FC = () => {
   const router = useRouter();
   const { token, orgToken, logout, orgLogout } = useShopContext() as any;
   const playStoreBadgeUrl =
-    process.env.NEXT_PUBLIC_PLAY_STORE_BADGE_URL ||
+    publicEnv.playStoreBadgeUrl ||
     'https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png';
 
   const handleJoinClick = () => {

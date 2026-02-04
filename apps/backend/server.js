@@ -157,12 +157,17 @@ const PROD_BACKEND_URL =
   process.env.PROD_BACKEND_URL || 'https://server.daybreaklearner.com';
 
 // ─── 2) Allowed origins ────────────────────────────────────────────────────────
+const WEB_BASE_URL = process.env.WEB_BASE_URL || process.env.WEB_BASE_URLS || '';
+const APP_BASE_URL = process.env.APP_BASE_URL || '';
 const productionOrigins = [
   'https://daybreaklearner.com',
   'https://www.daybreaklearner.com',
+  'https://app.daybreaklearner.com',
   'https://daybreaklearner.netlify.app',
   'https://server.daybreaklearner.com',
   'https://admin.daybreaklearner.com',
+  WEB_BASE_URL,
+  APP_BASE_URL,
 ];
 
 const developmentOrigins = [

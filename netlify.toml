@@ -1,10 +1,3 @@
-[build]
-  command = "yarn workspace @mytutorapp/web-next build"
-  publish = "apps/web-next/.next"
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
-
 # -----------------------------------------------------------------------------
 # Core proxies (work for BOTH Next + proxied app pages)
 # -----------------------------------------------------------------------------
@@ -31,9 +24,29 @@
   force  = true
 
 # -----------------------------------------------------------------------------
-# App routing (legacy Vite site) mounted under /app/*
+# Legacy Vite app routing (mounted under /app/* on www)
+#
+# IMPORTANT:
+# When VITE_BRIDGED=0 on app.daybreaklearner.com, its built assets are /assets/*
+# (NOT /app/assets/*). So we must proxy /assets/* too, otherwise Next will return
+# HTML and the browser throws the "module script ... MIME type text/html" error.
 # -----------------------------------------------------------------------------
 
+# Normalize /app -> /app/
+[[redirects]]
+  from   = "/app"
+  to     = "/app/"
+  status = 301
+  force  = true
+
+# ✅ Proxy legacy app assets (Vite build base "/")
+[[redirects]]
+  from   = "/assets/*"
+  to     = "https://app.daybreaklearner.com/assets/:splat"
+  status = 200
+  force  = true
+
+# ✅ Proxy legacy app pages
 [[redirects]]
   from   = "/app/*"
   to     = "https://app.daybreaklearner.com/:splat"
@@ -49,6 +62,7 @@
 [context.production.environment]
   NEXT_PUBLIC_SITE_URL            = "https://www.daybreaklearner.com"
   NEXT_PUBLIC_BACKEND_URL         = "https://server.daybreaklearner.com"
-  NEXT_PUBLIC_APP_ORIGIN          = "https://www.daybreaklearner.com/app"
+  # For web-next, this should point to the canonical legacy app origin:
+  NEXT_PUBLIC_APP_ORIGIN          = "https://app.daybreaklearner.com"
   # Optional (set later):
   # NEXT_PUBLIC_GA4_MEASUREMENT_ID = "G-XXXXXXXXXX"
