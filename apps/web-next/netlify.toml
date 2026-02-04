@@ -4,7 +4,7 @@
 
   # ✅ Skip build unless web-next or shared packages changed
   # Netlify: exit 0 => build, exit 1 => skip build
-  ignore = "git diff --name-only \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" | grep -qE '^(apps/web-next/|packages/shared/)' && exit 0 || exit 1"
+  ignore = "git diff --name-only \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" | grep -qE '^(apps/web-next/|packages/shared/)' && exit 1 || exit 0"
 
 # -----------------------------------------------------------------------------
 # Core proxies (needed on www)
