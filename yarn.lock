@@ -4634,6 +4634,7 @@ __metadata:
     expo-video: "npm:~3.0.15"
     expo-web-browser: "npm:~15.0.10"
     firebase: "npm:12.2.1"
+    lodash.debounce: "npm:^4.0.8"
     metro: "npm:^0.83.1"
     nativewind: "npm:^4.1.23"
     react: "npm:19.1.0"

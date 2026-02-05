@@ -134,6 +134,10 @@ export function useRobotSpeaker() {
       callId,
       keys,
       wordsLen: (resp as any)?.words?.length ?? 0,
+      wordsDisplayLen: Array.isArray((resp as any)?.wordsDisplay)
+      ? (resp as any).wordsDisplay.length
+      : 0,
+
       visemesLen: (resp as any)?.visemes?.length ?? 0,
       hasVttInline: !!(resp as any)?.vtt,
       hasSrtInline: !!(resp as any)?.srt,

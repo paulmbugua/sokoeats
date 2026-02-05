@@ -7,7 +7,11 @@ import {
   ssmlToDisplayTokens,
   type WordTiming as TxWordTiming, // { i, t, w }
 } from '@mytutorapp/shared/utils/transcript';
-import { buildWordDisplayTokens, joinWordsForDisplay, shouldInsertSpace } from '@mytutorapp/shared/hooks/useWordSync';
+import {
+  buildWordDisplayTokens,
+  joinWordsForDisplay,
+  shouldInsertSpace,
+} from '@mytutorapp/shared/hooks/useWordSync';
 import type {
   WordTiming as ApiWordTiming, // backend timing shape (e.g., { start, end, text })
 } from '@mytutorapp/shared/api/ttsAvatarApi';
@@ -25,7 +29,9 @@ type Paragraph = {
   wordIndices: number[];
 };
 
-type DisplayToken = { kind: 'word'; text: string; index: number } | { kind: 'punct'; text: string };
+type DisplayToken =
+  | { kind: 'word'; text: string; index: number }
+  | { kind: 'punct'; text: string };
 
 // Optional loose timing seen in some pipes
 type LooseTiming = { start: number; end: number; index: number; text?: string };
@@ -57,7 +63,25 @@ function buildParagraphs(sentences: Sentence[], words: Word[], target: number): 
   return paras;
 }
 
-// ======================================================================
+const NS = '[Narration]';
+
+// Detect punct that contains 2+ sentence terminators (even with spaces), e.g. ". . ", "! !", "… …"
+function hasMultiTerminatorsInPunct(s: string) {
+  // any of . ! ? … repeated with optional whitespace between
+  return /[.!?…](?:\s*[.!?…]){1,}/.test(s);
+}
+
+// Optional: collapse ". . " -> ". " (or "… " if you prefer)
+function normalizePunctForRender(s: string) {
+  // collapse repeated dots (or other terminators) inside a single token
+  // ". . " -> ". ", "! ! " -> "! ", "… …" -> "… "
+  if (!hasMultiTerminatorsInPunct(s)) return s;
+
+  // Keep the first terminator character we find, then one trailing space if original had any
+  const first = s.match(/[.!?…]/)?.[0] ?? '.';
+  const hasTrailingSpace = /\s$/.test(s);
+  return first + (hasTrailingSpace ? ' ' : '');
+}
 
 export default function Narration({
   sentences,
@@ -88,6 +112,8 @@ export default function Narration({
   lang?: string;
   templateId?: HighlightTemplate;
 }) {
+  const dev = process.env.NODE_ENV !== 'production';
+
   // Which sentence contains the active word?
   const activeSentenceIdx = React.useMemo(() => {
     const idx = sentences.findIndex((s) => s.indices.includes(currentIndex));
@@ -124,9 +150,7 @@ export default function Narration({
   const activeParagraphIdx = React.useMemo(() => {
     return Math.max(
       0,
-      paragraphs.findIndex(
-        (p) => activeSentenceIdx >= p.sentStart && activeSentenceIdx <= p.sentEnd
-      )
+      paragraphs.findIndex((p) => activeSentenceIdx >= p.sentStart && activeSentenceIdx <= p.sentEnd)
     );
   }, [paragraphs, activeSentenceIdx]);
 
@@ -181,14 +205,73 @@ export default function Narration({
         });
       }
     }
+
+    if (dev) {
+      console.log(`${NS} normalizedTimings`, {
+        timingsInLen: timings.length,
+        outLen: out.length,
+        sample0: out[0],
+        sampleLast: out[out.length - 1],
+      });
+    }
+
     return out;
-  }, [timings]);
+  }, [timings, dev]);
 
   // Tokenize SSML when available – BUT bail out if counts don’t match timings/words
   const tokens: DisplayToken[] | null = React.useMemo(() => {
-    if (!ssml || !normalizedTimings?.length) return null;
+    if (!ssml || !normalizedTimings?.length) {
+      if (dev) {
+        console.log(`${NS} tokens: skip`, {
+          hasSsml: !!ssml,
+          ssmlLen: ssml ? ssml.length : 0,
+          normalizedTimingsLen: normalizedTimings?.length ?? 0,
+        });
+      }
+      return null;
+    }
+
     try {
       const tks = ssmlToDisplayTokens(ssml, normalizedTimings) as DisplayToken[];
+
+      // ---- Debug: check for doubled terminators inside SSML-derived tokens (ALWAYS before mismatch return) ----
+      if (dev) {
+        const isTerm = (s: string) => /[.!?…]/.test(s);
+
+        const hit = tks.findIndex((tok, i) => {
+          const prev = tks[i - 1];
+
+          // NEW: single punct token that contains multiple terminators (". . ")
+          if (tok?.kind === 'punct' && hasMultiTerminatorsInPunct(tok.text)) return true;
+
+          // Case A: punct + punct terminators
+          if (prev?.kind === 'punct' && tok?.kind === 'punct') {
+            return isTerm(prev.text) && isTerm(tok.text);
+          }
+
+          // Case B: word ends with terminator + next punct terminator
+          if (prev?.kind === 'word' && tok?.kind === 'punct') {
+            return isTerm(prev.text?.slice(-1) || '') && isTerm(tok.text || '');
+          }
+
+          // Case C: word itself contains ".." or "..."
+          if (tok?.kind === 'word') {
+            return /[.!?]{2,}/.test(tok.text);
+          }
+
+          return false;
+        });
+
+        if (hit !== -1) {
+          console.log(`${NS} DOUBLE-TERM near index`, hit, {
+            prev2: tks[hit - 2],
+            prev1: tks[hit - 1],
+            cur: tks[hit],
+            next1: tks[hit + 1],
+            next2: tks[hit + 2],
+          });
+        }
+      }
 
       const wordTokCount = tks.filter((t) => t.kind === 'word').length;
       const timingCount = normalizedTimings.length;
@@ -199,11 +282,24 @@ export default function Narration({
         Math.abs(wordTokCount - timingCount) / ref > 0.1 ||
         Math.abs(wordsCount - timingCount) / ref > 0.1;
 
+      if (dev) {
+        console.log(`${NS} token counts`, {
+          wordTokCount,
+          timingCount,
+          wordsCount,
+          mismatch,
+          ssmlLen: ssml.length,
+          head: tks.slice(0, 12).map((t) => ({
+            kind: t.kind,
+            text: t.text,
+            index: (t as any).index,
+          })),
+        });
+      }
+
       if (mismatch) {
-        // Too much drift between SSML tokens, backend timings, and useWordSync.words → fallback
-        if (process.env.NODE_ENV !== 'production') {
-          // optional debug
-          console.warn('[Narration] token/timing mismatch, falling back to simple transcript', {
+        if (dev) {
+          console.warn(`${NS} token/timing mismatch → fallback`, {
             wordTokCount,
             timingCount,
             wordsCount,
@@ -214,37 +310,104 @@ export default function Narration({
 
       return tks;
     } catch (e) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn('[Narration] ssmlToDisplayTokens failed, falling back', e);
+      if (dev) {
+        console.warn(`${NS} ssmlToDisplayTokens failed → fallback`, e);
       }
       return null;
     }
-  }, [ssml, normalizedTimings, words.length]);
+  }, [ssml, normalizedTimings, words.length, dev]);
 
   // Only render tokens that belong to the active paragraph (+ surrounding punctuation)
   const visibleTokens: DisplayToken[] | null = React.useMemo(() => {
     if (!tokens || !activePara) return tokens;
+
     const allowed = new Set(activePara.wordIndices);
     let firstWordPos = -1;
     let lastWordPos = -1;
+
     tokens.forEach((t, i) => {
       if (t.kind === 'word' && allowed.has(t.index)) {
         if (firstWordPos === -1) firstWordPos = i;
         lastWordPos = i;
       }
     });
+
     if (firstWordPos === -1) return [];
 
+    // Only pull true "opening punctuation" to the left (avoid dragging sentence terminators)
+    const isOpeningPunct = (s: string) => /^[("“”'‘’\[\{]+$/.test(s);
+    const isSentenceEndPunct = (s: string) => /^[.!?…]+$/.test(s);
+
     let L = firstWordPos;
-    while (L > 0 && tokens[L - 1].kind === 'punct') L--;
+    while (L > 0 && tokens[L - 1].kind === 'punct') {
+      const p = (tokens[L - 1] as any).text || '';
+      if (isSentenceEndPunct(p)) break;
+      if (!isOpeningPunct(p)) break;
+      L--;
+    }
+
     let R = lastWordPos;
     while (R + 1 < tokens.length && tokens[R + 1].kind === 'punct') R++;
-    return tokens.slice(L, R + 1);
-  }, [tokens, activePara]);
+
+    const slice = tokens.slice(L, R + 1);
+
+    if (dev) {
+      const head = slice.slice(0, 16).map((t) => ({
+        kind: t.kind,
+        text: t.text,
+        index: (t as any).index,
+      }));
+
+      const isTermAny = (s: string) => /[.!?…]/.test(s);
+      const hit = slice.findIndex((tok, i) => {
+        const prev = slice[i - 1];
+        if (!prev) return false;
+
+        // NEW: single punct token with multiple terminators in the VISIBLE slice
+        if (tok.kind === 'punct' && hasMultiTerminatorsInPunct(tok.text)) return true;
+
+        if (prev.kind === 'punct' && tok.kind === 'punct') return isTermAny(prev.text) && isTermAny(tok.text);
+        if (prev.kind === 'word' && tok.kind === 'punct')
+          return isTermAny(prev.text?.slice(-1) || '') && isTermAny(tok.text || '');
+        if (tok.kind === 'word') return /[.!?]{2,}/.test(tok.text);
+        return false;
+      });
+
+      console.log(`${NS} visibleTokens slice`, {
+        activeParagraphIdx,
+        L,
+        R,
+        sliceLen: slice.length,
+        head,
+        doubleTermHit: hit,
+        hitContext:
+          hit !== -1
+            ? {
+                prev2: slice[hit - 2],
+                prev1: slice[hit - 1],
+                cur: slice[hit],
+                next1: slice[hit + 1],
+                next2: slice[hit + 2],
+              }
+            : null,
+      });
+    }
+
+    return slice;
+  }, [tokens, activePara, activeParagraphIdx, dev]);
+
+  React.useEffect(() => {
+    if (!dev) return;
+    const head = (visibleTokens || []).slice(0, 12).map((t) => ({
+      kind: t.kind,
+      text: t.text,
+      index: (t as any).index,
+    }));
+    console.log(`${NS} head tokens`, head);
+  }, [visibleTokens, dev]);
 
   // ====== TEMPLATE RESOLVERS ======
 
-  // base sentence stripe (used for 'clean-stripe' and when highlightStyle === 'stripe')
   const baseSentenceStripe: React.CSSProperties = {
     backgroundImage: 'linear-gradient(transparent 68%, rgb(var(--hl-rgb) / 0.18) 0)',
     backgroundRepeat: 'no-repeat',
@@ -269,7 +432,6 @@ export default function Narration({
       case 'karaoke-glow':
       case 'boxed-pill':
       default:
-        // respect highlightStyle for sentence-level look
         return highlightStyle === 'stripe'
           ? baseSentenceStripe
           : highlightStyle === 'underline'
@@ -321,17 +483,14 @@ export default function Narration({
     }
   }
 
-  // Default for all non-active words: solid white — NO dimming of future words
   const defaultWordStyle: React.CSSProperties = { color: 'rgba(255,255,255,0.98)' };
 
-  // Helpers
+  // (kept for compatibility; not used directly in this version)
   const isWordInActiveSentence = React.useCallback(
     (wi: number | undefined) =>
       typeof wi === 'number' && sentences[activeSentenceIdx]?.indices.includes(wi),
     [sentences, activeSentenceIdx]
   );
-
-  // ======================================================================
 
   return (
     <div
@@ -339,7 +498,6 @@ export default function Narration({
       dir="auto"
       lang={lang}
     >
-      {/* SR current paragraph */}
       <div aria-live="polite" aria-atomic="true" className="sr-only">
         {srText}
       </div>
@@ -370,9 +528,6 @@ export default function Narration({
               {(() => {
                 // Prefer SSML token path when available
                 if (visibleTokens) {
-                  // ——————————— Accurate sentence wrapping for SSML tokens ———————————
-                  // Find active sentence slice (within *visibleTokens*), include adjacent punctuation,
-                  // then render left | ACTIVE SENTENCE (wrapped) | right. Per-word active style still applies.
                   const activeSent = sentences[activeSentenceIdx];
                   const activeSet = new Set<number>(activeSent?.indices ?? []);
                   let L = -1,
@@ -385,23 +540,35 @@ export default function Narration({
                     }
                   });
 
-                  // Token renderer (no sentence style here)
-                  const renderTok = (tok: DisplayToken, i: number) => {
-                    if (tok.kind === 'punct') return <span key={`p-${i}`}>{tok.text}</span>;
-                    const wi = tok.index;
-                    const isActive = wi === effectiveIndex;
-                    const perWord = isActive ? activeWordStyle() : defaultWordStyle;
-                    return (
-                      <span
-                        key={`w-${wi}-${i}`}
-                        data-wi={wi}
-                        aria-current={isActive ? 'true' : undefined}
-                        style={perWord}
-                      >
-                        {tok.text}
-                      </span>
-                    );
-                  };
+const renderTok = (tok: DisplayToken, i: number) => {
+  if (tok.kind === 'punct') {
+    const raw = tok.text;
+    const txt = normalizePunctForRender(raw);
+
+    // Keep logs based on RAW text (so you still catch the bad tokens)
+    if (dev && raw !== txt) {
+      console.log(`${NS} normalize punct`, { raw, txt, at: i });
+    }
+
+    return <span key={`p-${i}`}>{txt}</span>;
+  }
+
+  const wi = tok.index;
+  const isActive = wi === effectiveIndex;
+  const perWord = isActive ? activeWordStyle() : defaultWordStyle;
+
+  return (
+    <span
+      key={`w-${wi}-${i}`}
+      data-wi={wi}
+      aria-current={isActive ? 'true' : undefined}
+      style={perWord}
+    >
+      {tok.text}
+    </span>
+  );
+};
+
 
                   // If the active sentence isn't inside this slice, render flat
                   if (L === -1) {
@@ -420,7 +587,7 @@ export default function Narration({
                     );
                   }
 
-                  // Extend to include adjacent punctuation for clean ribbon edges
+                  // Extend to include adjacent punctuation for clean ribbon edges (inside visibleTokens)
                   while (L > 0 && visibleTokens[L - 1].kind === 'punct') L--;
                   while (R + 1 < visibleTokens.length && visibleTokens[R + 1].kind === 'punct') R++;
 
@@ -468,11 +635,8 @@ export default function Narration({
                         const isActiveSentence = sIdx === activeSentenceIdx;
                         const sentStyle = sentenceStyleFor(isActiveSentence);
                         const firstWordText = words[s.indices[0]]?.text ?? '';
-                        const needsLeadingSpace = shouldInsertSpace(
-                          prevSentenceLastText,
-                          firstWordText
-                        );
-                        const tokens = buildWordDisplayTokens(words, s.indices);
+                        const needsLeadingSpace = shouldInsertSpace(prevSentenceLastText, firstWordText);
+                        const toks = buildWordDisplayTokens(words, s.indices);
                         const lastIndex = s.indices[s.indices.length - 1];
                         const lastTokenText = lastIndex != null ? words[lastIndex]?.text ?? '' : '';
                         prevSentenceLastText = lastTokenText;
@@ -480,7 +644,7 @@ export default function Narration({
                         return (
                           <span key={`sent-${sIdx}`} style={sentStyle}>
                             {needsLeadingSpace ? ' ' : ''}
-                            {tokens.map((tok) => {
+                            {toks.map((tok) => {
                               if (!tok.text) return null;
                               const isActive = tok.index === effectiveIndex;
                               const style = isActive ? activeWordStyle() : defaultWordStyle;

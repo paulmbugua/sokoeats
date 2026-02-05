@@ -189,7 +189,7 @@ const navigateAfterAuth = useCallback(
               : ({} as any);
 
         await loginWithEmail({ email: email.trim(), password, ...extra } as any);
-        trackEvent('org_login_success');
+        trackEvent('login', { method: 'email', mode: 'org', kind: accountKind, reauth: reauth || undefined });
         return;
       }
 
@@ -214,6 +214,7 @@ const navigateAfterAuth = useCallback(
         password,
         role: 'owner',
       } as any);
+      trackEvent('sign_up', { method: 'email', mode: 'org', kind: 'institution', role: 'owner' });
     } catch (err: any) {
       setError(err?.message || 'Authentication failed');
     } finally {
@@ -266,7 +267,7 @@ const navigateAfterAuth = useCallback(
   const onGoogleSuccess = useCallback(
     async (idToken: string) => {
       await handleGoogleLoginSuccess(idToken, name || undefined);
-      trackEvent('org_login_success');
+      trackEvent('login', { method: 'google', mode: 'org', kind: 'institution' });
     },
     [handleGoogleLoginSuccess, name]
   );

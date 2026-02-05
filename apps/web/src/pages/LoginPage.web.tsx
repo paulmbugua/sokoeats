@@ -176,7 +176,7 @@ const LoginPage: React.FC = () => {
           return;
         }
         await loginWithEmail({ email: email.trim(), password });
-        trackEvent('login_success');
+        trackEvent('login', { method: 'email' });
         const target = getReturnTo();
         clearReturnTo();
         navigate(target, { replace: true });
@@ -205,6 +205,7 @@ const LoginPage: React.FC = () => {
         });
 
         // Successful sign-up
+        trackEvent('sign_up', { method: 'email', role });
         const target = getReturnTo();
         clearReturnTo();
         navigate(target, { replace: true });
@@ -317,6 +318,8 @@ const LoginPage: React.FC = () => {
       }
 
       // ⬇️ Close UI immediately after success to avoid flicker
+
+      trackEvent('login', { method: 'google', role });
       closeRoleFlowInstant();
 
       // Go back to original destination if desired
@@ -332,17 +335,21 @@ const LoginPage: React.FC = () => {
 
   // Cancel role modal: fully abort partial Google sign-in
   const handleCancelRole = async () => {
-    try {
-      setBusy(false);
-      closeRoleFlowInstant(); // close UI now
-      clearAuthFlags(); // clear pending jwt/flags
-      await signOut(auth); // end Firebase session
-    } catch {
-      // ignore
-    } finally {
-      navigate('/login', { replace: true });
+  try {
+    setBusy(false);
+    closeRoleFlowInstant(); // close UI now
+    clearAuthFlags(); // clear pending jwt/flags
+
+    if (auth) {
+      await signOut(auth);
     }
-  };
+  } catch {
+    // ignore
+  } finally {
+    navigate('/login', { replace: true });
+  }
+};
+
 
   // Primary button style shared with "Explore Tutors"
   const primaryBtn =
