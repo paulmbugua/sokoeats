@@ -5,6 +5,10 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { paystackVerify } from '@mytutorapp/shared/api';
 import { confirmOrgSubscription } from '@mytutorapp/shared/api/orgApi';
 import SeoHead from '../components/seo/SeoHead';
+import { trackPurchase } from '@/analytics/ga4';
+import { buildOrgPlanItem, buildTokensItem, majorFromMinor, safeNumber } from '@/analytics/ecomBuilders';
+import { clearCheckout, readCheckout } from '@/analytics/checkoutStash';
+import { clearCheckoutOnce } from '@/analytics/checkoutOnce';
 
 type Status = 'verifying' | 'success' | 'failed';
 
@@ -150,6 +154,33 @@ export default function PaystackCallbackWeb() {
 
           await confirmOrgSubscription(backendUrl, orgAuthToken, effectivePaymentId, reference);
 
+          const orgStash = readCheckout('checkout:org');
+          const orgValue = safeNumber(orgStash?.value, 0);
+          const orgCurrency = String(orgStash?.currency || 'KES').toUpperCase();
+
+          if (reference) {
+            // purchase: only after backend confirm success
+            trackPurchase({
+              transaction_id: reference,
+              currency: orgCurrency,
+              value: orgValue,
+              payment_type: 'paystack',
+              affiliation: 'DayBreak Learner',
+              org_id: orgStash?.orgId ?? undefined,
+              org_name: orgStash?.orgName ?? undefined,
+              items: [
+                buildOrgPlanItem({
+                  tier: orgStash?.tier || 'pro',
+                  cycle: orgStash?.cycle || 'monthly',
+                  amountMajor: orgValue,
+                }),
+              ],
+            });
+            clearCheckout('checkout:org');
+            const orgCheckoutKey = `org:${orgStash?.orgId ?? 'unknown'}:${orgStash?.tier || 'pro'}:${orgStash?.cycle || 'monthly'}`;
+            clearCheckoutOnce(orgCheckoutKey);
+          }
+
           // ✅ keep your cleanup snippet (org upgrading plans depend on it)
           safeRemoveSession([
             'org:lastPaystackPaymentId',
@@ -177,7 +208,35 @@ export default function PaystackCallbackWeb() {
         }
 
         // ✅ Correct arg order: (backendUrl, reference, token?)
-        await paystackVerify(backendUrl, reference, pkgToken);
+        const verify = await paystackVerify(backendUrl, reference, pkgToken);
+        const tokenStash = readCheckout('checkout:tokens');
+        const rawAmountMinor =
+          safeNumber((verify as any)?.amount, NaN) ||
+          safeNumber((verify as any)?.raw?.data?.amount, NaN);
+        const rawCurrency =
+          (verify as any)?.currency || (verify as any)?.raw?.data?.currency || tokenStash?.currency;
+        const amountMajor = rawAmountMinor
+          ? majorFromMinor(rawAmountMinor)
+          : safeNumber(tokenStash?.value, 0);
+        const credits = safeNumber(
+          (verify as any)?.creditsPurchased ?? tokenStash?.credits,
+          0
+        );
+
+        if (verify?.ok && reference) {
+          // purchase: only after backend confirm success
+          trackPurchase({
+            transaction_id: reference,
+            currency: String(rawCurrency || 'KES').toUpperCase(),
+            value: amountMajor,
+            payment_type: 'paystack',
+            affiliation: 'DayBreak Learner',
+            items: [buildTokensItem({ credits, price: amountMajor || tokenStash?.value })],
+          });
+          clearCheckout('checkout:tokens');
+          const tokensCheckoutKey = `tokens:${safeNumber(credits, 0)}:${safeNumber(tokenStash?.value, 0)}`;
+          clearCheckoutOnce(tokensCheckoutKey);
+        }
 
         // Refresh/broadcast wallet so Account updates instantly
         const bal = await fetchWalletBalance(backendUrl, pkgToken);

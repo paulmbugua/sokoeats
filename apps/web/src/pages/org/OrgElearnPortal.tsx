@@ -5,6 +5,9 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { uploadAsset, getMyOrgOrBootstrap } from '@mytutorapp/shared/api';
 import SeoHead from '../../components/seo/SeoHead';
 import { trackPurchase } from '@/analytics/ga4';
+import { buildOrgPlanItem, majorFromMinor, safeNumber } from '@/analytics/ecomBuilders';
+import { clearCheckout, readCheckout, stashCheckout } from '@/analytics/checkoutStash';
+import { clearCheckoutOnce } from '@/analytics/checkoutOnce';
 
 import {
   getOrgLearnersProgress,
@@ -1327,39 +1330,56 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     }
   }, [analytics, period]);
 
-  const fireOrgPurchaseOnce = (txRef: string, payload: {
-  tier: 'pro' | 'enterprise';
-  cycle: 'monthly' | 'yearly';
-  amountKes: number;
-  orgName?: string | null;
-  method: 'mpesa' | 'paystack';
-}) => {
-  if (!txRef) return;
+  const fireOrgPurchase = (txRef: string, payload: {
+    tier: 'pro' | 'enterprise';
+    cycle: 'monthly' | 'yearly';
+    amountMajor: number;
+    currency: string;
+    orgName?: string | null;
+    orgId?: string | number | null;
+    method: 'mpesa' | 'paystack';
+  }) => {
+    if (!txRef) return;
+    const value = safeNumber(payload.amountMajor, 0);
 
-  // idempotency guard (avoid double fires on retries)
-  const key = `ga:purchase:${txRef}`;
-  try {
-    if (sessionStorage.getItem(key)) return;
-    sessionStorage.setItem(key, '1');
-  } catch {}
+    // purchase: only after backend confirm success
+    trackPurchase({
+      transaction_id: txRef,
+      currency: String(payload.currency || 'KES').toUpperCase(),
+      value,
+      payment_type: payload.method,
+      affiliation: 'DayBreak Learner',
+      org_id: payload.orgId ?? undefined,
+      org_name: payload.orgName ?? undefined,
+      items: [buildOrgPlanItem({ tier: payload.tier, cycle: payload.cycle, amountMajor: value })],
+    });
+  };
 
-  trackPurchase({
-    transaction_id: txRef,
-    currency: 'KES',
-    value: payload.amountKes,
-    payment_type: payload.method,
-    affiliation: 'DayBreak Learner',
-    org_name: payload.orgName ?? undefined,
-    items: [{
-      item_id: `org_${payload.tier}_${payload.cycle}`,
-      item_name: `${payload.tier.toUpperCase()} Plan (${payload.cycle})`,
-      item_category: 'subscription',
-      item_variant: payload.cycle,
-      price: payload.amountKes,
-      quantity: 1,
-    }],
-  });
-};
+  const finalizeOrgPurchaseFromStash = (opts: {
+    txRef: string;
+    tier: 'pro' | 'enterprise';
+    cycle: 'monthly' | 'yearly';
+    method: 'mpesa' | 'paystack';
+  }) => {
+    const stashed = readCheckout('checkout:org');
+    const amountMajor = safeNumber(stashed?.value, 0);
+    const currency = String(stashed?.currency || 'KES').toUpperCase();
+    const tier = (stashed?.tier as 'pro' | 'enterprise') || opts.tier;
+    const cycle = (stashed?.cycle as 'monthly' | 'yearly') || opts.cycle;
+    const checkoutKey = `org:${stashed?.orgId ?? org?.id ?? 'unknown'}:${tier}:${cycle}`;
+
+    fireOrgPurchase(opts.txRef, {
+      tier,
+      cycle,
+      amountMajor,
+      currency,
+      orgName: stashed?.orgName || org?.name || undefined,
+      orgId: stashed?.orgId || org?.id || undefined,
+      method: opts.method,
+    });
+    clearCheckout('checkout:org');
+    clearCheckoutOnce(checkoutKey);
+  };
 
   /** Checkout handler (M-Pesa / Paystack) */
   const handleCheckout = useCallback(
@@ -1405,6 +1425,18 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
               phone: opts.phone,
             });
             mpesaPaymentIdRef.current = init.paymentId;
+            const expectedKesMinor = (init as any)?.charge?.expectedKesMinor;
+            const amountMajor = majorFromMinor(expectedKesMinor);
+            stashCheckout('checkout:org', {
+              kind: 'org',
+              tier: target,
+              cycle: apiCycle,
+              currency: 'KES',
+              value: amountMajor || readCheckout('checkout:org')?.value || 0,
+              orgId: org.id,
+              orgName: org?.name,
+              timestamp: Date.now(),
+            });
 
             alert(
               'STK Push sent. After approving on your phone, tap “Complete Payment”. If confirmation lags, you may paste the M-Pesa receipt below and press “Update Reference / Complete”.'
@@ -1419,16 +1451,12 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
               mpesaPaymentIdRef.current!,
               opts.reference
             );
-            fireOrgPurchaseOnce(
-  opts.reference || mpesaPaymentIdRef.current!, // choose your best txRef
-  {
-    tier: target,
-    cycle: apiCycle,
-    amountKes: /* use backend amount if returned; else your computed price */,
-    orgName: org?.name,
-    method: 'mpesa',
-  }
-);
+            finalizeOrgPurchaseFromStash({
+              txRef: opts.reference || String(mpesaPaymentIdRef.current || ''),
+              tier: target,
+              cycle: apiCycle,
+              method: 'mpesa',
+            });
             mpesaPaymentIdRef.current = null;
             alert('Payment confirmed. Subscription activated ✅');
             if (target === 'pro') setShowProModal(false);
@@ -1440,16 +1468,12 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
 
           try {
             await confirmOrgSubscription(backendUrl, authToken, mpesaPaymentIdRef.current!);
-            fireOrgPurchaseOnce(
-  opts.reference || mpesaPaymentIdRef.current!, // choose your best txRef
-  {
-    tier: target,
-    cycle: apiCycle,
-    amountKes: /* use backend amount if returned; else your computed price */,
-    orgName: org?.name,
-    method: 'mpesa',
-  }
-);
+            finalizeOrgPurchaseFromStash({
+              txRef: String(mpesaPaymentIdRef.current || ''),
+              tier: target,
+              cycle: apiCycle,
+              method: 'mpesa',
+            });
             mpesaPaymentIdRef.current = null;
             alert('Payment confirmed. Subscription activated ✅');
             if (target === 'pro') setShowProModal(false);
@@ -1463,6 +1487,12 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
               await new Promise((r) => setTimeout(r, 5000));
               try {
                 await confirmOrgSubscription(backendUrl, authToken, mpesaPaymentIdRef.current!);
+                finalizeOrgPurchaseFromStash({
+                  txRef: String(mpesaPaymentIdRef.current || ''),
+                  tier: target,
+                  cycle: apiCycle,
+                  method: 'mpesa',
+                });
                 mpesaPaymentIdRef.current = null;
                 alert('Payment confirmed. Subscription activated ✅');
                 if (target === 'pro') setShowProModal(false);
@@ -1487,41 +1517,48 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
           }
         }
 
-        // ✅ Paystack flow  <-- ADD THIS BLOCK HERE
- // ✅ Paystack flow
-if (apiMethod === 'PAYSTACK') {
-  const init = await initOrgSubscription(backendUrl, authToken, org.id, {
-    
-    tier: target,
-    cycle: apiCycle,
-    method: 'PAYSTACK',
-  } as any);
+        // Paystack flow
+        if (apiMethod === 'PAYSTACK') {
+          const init = await initOrgSubscription(backendUrl, authToken, org.id, {
+            tier: target,
+            cycle: apiCycle,
+            method: 'PAYSTACK',
+          } as any);
 
-  console.log('[initOrgSubscription]', init);
-console.log('[initOrgSubscription keys]', Object.keys(init || {}));
+          const authUrl = (init as any).authorizationUrl || (init as any).authorization_url || '';
+          const paymentId = (init as any).paymentId || (init as any).payment_id || '';
+          const expectedKesMinor = (init as any)?.charge?.expectedKesMinor;
+          const amountMajor = majorFromMinor(expectedKesMinor);
+          const reference = String((init as any)?.reference || '').trim() || undefined;
 
-  const authUrl = (init as any).authorizationUrl || (init as any).authorization_url || '';
-  const paymentId = (init as any).paymentId || (init as any).payment_id || '';
+          if (!authUrl) {
+            alert('Paystack init failed: missing authorization URL');
+            return;
+          }
 
-  if (!authUrl) {
-    alert('Paystack init failed: missing authorization URL');
-    return;
-  }
+          stashCheckout('checkout:org', {
+            kind: 'org',
+            tier: target,
+            cycle: apiCycle,
+            currency: 'KES',
+            value: amountMajor || readCheckout('checkout:org')?.value || 0,
+            reference,
+            orgId: org.id,
+            orgName: org?.name,
+            timestamp: Date.now(),
+          });
 
-  // ✅ PLACE THESE RIGHT HERE (before redirect)
-  try {
-    if (paymentId) sessionStorage.setItem('org:lastPaystackPaymentId', String(paymentId));
-    sessionStorage.setItem('org:lastPaystackTier', String(target));      // "pro" | "enterprise"
-    sessionStorage.setItem('org:lastPaystackCycle', String(apiCycle));   // "monthly" | "yearly"
-    sessionStorage.setItem('org:lastPaystackAt', String(Date.now()));
-    sessionStorage.setItem('org:lastPaystackOrgId', String(org.id));     // optional but useful
-  } catch {}
+          try {
+            if (paymentId) sessionStorage.setItem('org:lastPaystackPaymentId', String(paymentId));
+            sessionStorage.setItem('org:lastPaystackTier', String(target));
+            sessionStorage.setItem('org:lastPaystackCycle', String(apiCycle));
+            sessionStorage.setItem('org:lastPaystackAt', String(Date.now()));
+            sessionStorage.setItem('org:lastPaystackOrgId', String(org.id));
+          } catch {}
 
-  window.location.href = authUrl; // ✅ SAME TAB
-
-  
-  return;
-}
+          window.location.href = authUrl;
+          return;
+        }
 
 
         // Paystack handled via the Paystack Buttons in the modal
@@ -1568,9 +1605,12 @@ console.log('[initOrgSubscription keys]', Object.keys(init || {}));
       // Use paymentId if you have it; otherwise fall back to ref.
       await confirmOrgSubscription(backendUrl, authToken, paymentId || paystackRef, paystackRef);
 
-      // ✅ NOW fire purchase (only after confirm succeeds)
-      // If your backend returns amount, use that. Otherwise you can omit value or use known price table.
-      // fireOrgPurchaseOnce(paystackRef, { tier, cycle, amountKes, orgName: org?.name, method: 'paystack' });
+      finalizeOrgPurchaseFromStash({
+        txRef: paystackRef,
+        tier,
+        cycle,
+        method: 'paystack',
+      });
 
       await refreshOrgAfterPayment();
 
@@ -3162,6 +3202,7 @@ console.log('[initOrgSubscription keys]', Object.keys(init || {}));
             onClose={() => setShowProModal(false)}
             tier="pro"
             orgName={org?.name}
+            orgId={org?.id}
             assets={{
               visamaster: assets?.visamaster, // adjust keys to your assets file
               mpesa: assets?.mpesa,
@@ -3174,6 +3215,7 @@ console.log('[initOrgSubscription keys]', Object.keys(init || {}));
             onClose={() => setShowEnterpriseModal(false)}
             tier="enterprise"
             orgName={org?.name}
+            orgId={org?.id}
             assets={{
               visamaster: assets?.visamaster,
               mpesa: assets?.mpesa,

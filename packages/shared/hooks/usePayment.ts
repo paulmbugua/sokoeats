@@ -21,8 +21,12 @@ interface InitiateResponse {
   transactionId?: string;
 }
 interface CompleteResponse {
-  payment: { status: string; mpesa_reference: string };
-  tokens: number;
+  ok?: boolean;
+  status?: string;
+  message?: string;
+  payment?: any;
+  tokens?: number;
+  transactionId?: string;
 }
 interface UpdateRefResponse {
   message: string;
@@ -97,7 +101,7 @@ interface UsePaymentResult {
 
   confirmingPayment: boolean;
   confirmError: string | null;
-  handleCompletePayment: () => Promise<void>;
+  handleCompletePayment: () => Promise<CompleteResponse | null>;
 
   updatingReference: boolean;
   updateError: string | null;
@@ -318,17 +322,19 @@ const usePayment = (): UsePaymentResult => {
   const handleCompletePayment = useCallback(async () => {
     if (!transactionReference) {
       alert('No transaction reference. Please initiate first.');
-      return;
+      return null;
     }
     try {
       const data = await completeAsync(transactionReference);
       alert(
-        `Payment status: ${data.payment.status}\n` +
-          `Ref: ${data.payment.mpesa_reference}\n` +
-          `Tokens: ${data.tokens}`
+        `Payment status: ${data?.payment?.status || data?.status || 'unknown'}\n` +
+          `Ref: ${data?.payment?.mpesa_reference || data?.transactionId || '—'}\n` +
+          `Tokens: ${data?.tokens ?? '—'}`
       );
+      return data;
     } catch {
       alert('Failed to confirm payment.');
+      return null;
     }
   }, [completeAsync, transactionReference]);
 

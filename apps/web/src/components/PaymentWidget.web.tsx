@@ -1,5 +1,5 @@
 // apps/web/src/components/payment/PaymentWidget.web.tsx
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { assets } from '../assets/assets';
 import { FaStar, FaStarHalfAlt, FaRegStar } from 'react-icons/fa';
 import debounce from 'lodash.debounce';
@@ -8,6 +8,10 @@ import { usePayment, useHomePage } from '@mytutorapp/shared/hooks';
 import { Link } from 'react-router-dom';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { paystackCreateOrder } from '@mytutorapp/shared/api';
+import { trackBeginCheckout, trackAddPaymentInfo, trackPurchase } from '@/analytics/ga4';
+import { buildTokensItem, majorFromMinor, safeNumber } from '@/analytics/ecomBuilders';
+import { clearCheckout, readCheckout, stashCheckout } from '@/analytics/checkoutStash';
+import { clearCheckoutOnce, trackCheckoutOnce } from '@/analytics/checkoutOnce';
 import type {
   PaymentPackage,
   UpdatedProfileData,
@@ -167,6 +171,7 @@ const PaymentWidget: React.FC<Props> = ({
   // Profile-aware locale + display currency
   const [userLocale, setUserLocale] = useState<string>('en-US');
   const [userDisplayCurrency, setUserDisplayCurrency] = useState<string>('USD');
+  const checkoutEventKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const navLocale = getBrowserLocale() || 'en-US';
@@ -320,6 +325,53 @@ const PaymentWidget: React.FC<Props> = ({
 
   /* ───────────────────── Paystack hosted checkout ───────────────────── */
 
+  const buildTokensCheckoutPayload = (method: 'paystack' | 'mpesa') => {
+    if (!selectedPackage) return null;
+    const currency = String(selectedPackage.currency || 'USD').toUpperCase();
+    const value = safeNumber(selectedPackage.price, 0);
+    const items = [buildTokensItem(selectedPackage)];
+    if (!items[0]?.item_id || !items[0]?.item_name) return null;
+    return { currency, value, items, payment_type: method, affiliation: 'DayBreak Learner' };
+  };
+
+  const trackTokensCheckout = (method: 'paystack' | 'mpesa') => {
+    const payload = buildTokensCheckoutPayload(method);
+    if (!payload || payload.value <= 0) return;
+    const itemId = payload.items[0]?.item_id || 'tokens';
+    const baseKey = `${method}:${itemId}:${payload.currency}:${payload.value}`;
+    const checkoutKey = selectedPackage
+      ? `tokens:${safeNumber(selectedPackage.credits, 0)}:${safeNumber(selectedPackage.price, 0)}`
+      : baseKey;
+
+    if (!checkoutEventKeysRef.current.has(`begin:${baseKey}`)) {
+      // begin_checkout: user starts checkout
+      trackCheckoutOnce(checkoutKey, () => {
+        trackBeginCheckout(payload);
+      });
+      checkoutEventKeysRef.current.add(`begin:${baseKey}`);
+    }
+
+    if (!checkoutEventKeysRef.current.has(`add:${baseKey}`)) {
+      // add_payment_info: user chooses method / before redirect
+      trackAddPaymentInfo(payload);
+      checkoutEventKeysRef.current.add(`add:${baseKey}`);
+    }
+  };
+
+  const stashTokensCheckout = (method: 'paystack' | 'mpesa', reference?: string) => {
+    if (!selectedPackage) return;
+    const payload = buildTokensCheckoutPayload(method);
+    if (!payload) return;
+    stashCheckout('checkout:tokens', {
+      kind: 'tokens',
+      credits: safeNumber(selectedPackage.credits, 0),
+      currency: payload.currency,
+      value: payload.value,
+      reference,
+      timestamp: Date.now(),
+    });
+  };
+
   const handlePaystackHosted = useMemo(
     () =>
       debounce(async () => {
@@ -336,11 +388,16 @@ const PaymentWidget: React.FC<Props> = ({
           return;
         }
 
+        trackTokensCheckout('paystack');
+        stashTokensCheckout('paystack');
+
         setCardProcessing(true);
         try {
           const o = await paystackCreateOrder(backendUrl, token, {
             packageId: selectedPackage.id,
           });
+
+          stashTokensCheckout('paystack', o.reference);
 
           // hosted checkout (PCI-safe)
           window.location.href = o.authorization_url;
@@ -447,10 +504,23 @@ const PaymentWidget: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
+  const resolveTokensItems = () => {
+    if (selectedPackage) return [buildTokensItem(selectedPackage)];
+    const stashed = readCheckout('checkout:tokens');
+    return [buildTokensItem({ credits: stashed?.credits, price: stashed?.value })];
+  };
+  const checkoutKey = selectedPackage
+    ? `tokens:${safeNumber(selectedPackage.credits, 0)}:${safeNumber(selectedPackage.price, 0)}`
+    : '';
+  const handleClose = () => {
+    if (checkoutKey) clearCheckoutOnce(checkoutKey);
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
+      <div className="absolute inset-0 bg-black/50" onClick={handleClose} aria-hidden />
 
       {/* Slide-over panel */}
       <aside
@@ -466,7 +536,7 @@ const PaymentWidget: React.FC<Props> = ({
         <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-gray-200 dark:border-darkCard bg-white/90 dark:bg-[#0f1821]/90 backdrop-blur">
           <h3 className="text-lg font-semibold">{title}</h3>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="rounded-lg px-3 py-1 text-sm bg-gray-100 dark:bg-[#172534] hover:opacity-90"
           >
             Close
@@ -630,7 +700,11 @@ const PaymentWidget: React.FC<Props> = ({
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => debouncedInitiate()}
+                    onClick={() => {
+                      trackTokensCheckout('mpesa');
+                      stashTokensCheckout('mpesa');
+                      debouncedInitiate();
+                    }}
                     disabled={initiatingPayment || !selectedPackage}
                     className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 text-sm disabled:opacity-50"
                   >
@@ -639,8 +713,44 @@ const PaymentWidget: React.FC<Props> = ({
 
                   <button
                     onClick={async () => {
-                      await handleCompletePayment();
-                      onClose();
+                      trackTokensCheckout('mpesa');
+                      stashTokensCheckout('mpesa');
+                      const res = await handleCompletePayment();
+                      const payment = res?.payment;
+                      const meta =
+                        typeof payment?.meta === 'string'
+                          ? (() => {
+                              try {
+                                return JSON.parse(payment.meta);
+                              } catch {
+                                return null;
+                              }
+                            })()
+                          : payment?.meta;
+                      const amountMinor = meta?.paidKesMinor ?? meta?.expectedKesMinor;
+                      const amountMajor =
+                        majorFromMinor(amountMinor) || safeNumber(selectedPackage?.price, 0);
+                      const transactionId =
+                        payment?.mpesa_reference ||
+                        payment?.transaction_id ||
+                        res?.transactionId ||
+                        '';
+                      const currency = String(payment?.currency || 'KES').toUpperCase();
+
+                      if (res?.ok && transactionId && amountMajor > 0) {
+                        // purchase: only after backend confirm success
+                        trackPurchase({
+                          transaction_id: transactionId,
+                          currency,
+                          value: amountMajor,
+                          payment_type: 'mpesa',
+                          affiliation: 'DayBreak Learner',
+                          items: resolveTokensItems(),
+                        });
+                        clearCheckout('checkout:tokens');
+                        if (checkoutKey) clearCheckoutOnce(checkoutKey);
+                      }
+                      handleClose();
                     }}
                     disabled={!selectedPackage}
                     className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700 text-sm disabled:opacity-50"

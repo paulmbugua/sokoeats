@@ -2,6 +2,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { trackBeginCheckout, trackAddPaymentInfo } from '@/analytics/ga4'; // adjust path
+import { buildOrgPlanItem, safeNumber } from '@/analytics/ecomBuilders';
+import { stashCheckout } from '@/analytics/checkoutStash';
+import { clearCheckoutOnce, trackCheckoutOnce } from '@/analytics/checkoutOnce';
 
 import type { OrgCurrency, OrgPricingTable } from '@mytutorapp/shared/api/orgApi';
 
@@ -13,6 +16,7 @@ type Props = {
   onClose: () => void;
   tier: 'pro' | 'enterprise';
   orgName?: string | null;
+  orgId?: string | number | null;
 
   assets?: {
     visamaster?: string; // optional image url
@@ -151,6 +155,7 @@ export default function PlanPurchaseModalWeb({
   onClose,
   tier,
   orgName,
+  orgId,
   onCheckout,
   assets,
 }: Props) {
@@ -160,6 +165,12 @@ export default function PlanPurchaseModalWeb({
   const [reference, setReference] = useState('');
   const [uiError, setUiError] = useState<string | null>(null);
   const [checkoutTracked, setCheckoutTracked] = useState(false);
+  const checkoutKey = useMemo(() => `org:${orgId ?? 'unknown'}:${tier}:${cycle}`, [orgId, tier, cycle]);
+
+  const handleClose = () => {
+    clearCheckoutOnce(checkoutKey);
+    onClose();
+  };
 
   // Canonical USD + explicit KES (so M-Pesa pricing is not “estimated”)
   const usd: OrgCurrency = 'USD';
@@ -209,11 +220,11 @@ export default function PlanPurchaseModalWeb({
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') handleClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
+  }, [open, handleClose]);
 
   // reset transient UI errors on key changes
   useEffect(() => setUiError(null), [cycle, method, tier, open]);
@@ -252,23 +263,26 @@ export default function PlanPurchaseModalWeb({
     return formatMoneyIntl(userLocale, 'USD', centsToMajor(usdCents));
   }, [usdCents, userLocale]);
 
-  const gaItem = useMemo(() => {
-  const variant = cycle === 'annual' ? 'annual' : 'monthly';
-  return [{
-    item_id: `org_${tier}_${variant}`,
-    item_name: `${tier.toUpperCase()} Plan (${variant})`,
-    item_category: 'subscription',
-    item_variant: variant,
-    price: usdCents != null ? centsToMajor(usdCents) : undefined,
-    quantity: 1,
-  }];
-}, [tier, cycle, usdCents]);
+  const gaValue = useMemo(() => {
+    const isMpesa = method === 'M-Pesa';
+    const amountMajor = isMpesa ? centsToMajor(kesCents || 0) : centsToMajor(usdCents || 0);
+    return {
+      currency: isMpesa ? 'KES' : 'USD',
+      value: safeNumber(amountMajor, 0),
+    };
+  }, [method, kesCents, usdCents]);
 
-const gaValue = useMemo(() => {
-  if (method === 'M-Pesa' && kesCents != null) return { currency: 'KES', value: centsToMajor(kesCents) };
-  if (usdCents != null) return { currency: 'USD', value: centsToMajor(usdCents) };
-  return { currency: 'USD', value: 0 };
-}, [method, kesCents, usdCents]);
+  const gaItem = useMemo(() => {
+    const variant = cycle === 'annual' ? 'annual' : 'monthly';
+    return [
+      buildOrgPlanItem({
+        tier,
+        cycle: variant,
+        seats: seats ?? undefined,
+        amountMajor: gaValue.value,
+      }),
+    ];
+  }, [tier, cycle, seats, gaValue.value]);
 
   // Decide what “primary” shown price is:
   // - Paystack: show local estimate big (if available) + base USD
@@ -299,6 +313,7 @@ const gaValue = useMemo(() => {
       setUiError('Enter a valid Safaricom number (e.g. 2547XXXXXXXX or 07XXXXXXXX).');
       return;
     }
+    stashOrgCheckout();
     onCheckout({ method: 'M-Pesa', cycle, plan: tier, phone: p });
   };
 
@@ -308,6 +323,7 @@ const gaValue = useMemo(() => {
       setUiError('Enter a valid Safaricom number (e.g. 2547XXXXXXXX or 07XXXXXXXX).');
       return;
     }
+    stashOrgCheckout();
     onCheckout({
       method: 'M-Pesa',
       cycle,
@@ -318,63 +334,71 @@ const gaValue = useMemo(() => {
   };
 
   useEffect(() => {
-  if (!open) return;
-  if (checkoutTracked) return;
-  if (!gaValue.value) return;
+    if (!open) return;
+    if (checkoutTracked) return;
+    if (!gaValue.value || gaValue.value <= 0) return;
 
-  trackBeginCheckout({
-    currency: gaValue.currency,
-    value: gaValue.value,
-    items: gaItem,
-    payment_type: method === 'M-Pesa' ? 'mpesa' : 'paystack',
-  });
+    const checkoutKey = `org:${orgId ?? 'unknown'}:${tier}:${cycle}`;
+    trackCheckoutOnce(checkoutKey, () => {
+      // begin_checkout: user starts checkout
+      trackBeginCheckout({
+        currency: gaValue.currency,
+        value: gaValue.value,
+        items: gaItem,
+        payment_type: method === 'M-Pesa' ? 'mpesa' : 'paystack',
+        affiliation: 'DayBreak Learner',
+      });
+    });
 
-  setCheckoutTracked(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [open, gaValue.currency, gaValue.value, gaItem]);
+    setCheckoutTracked(true);
+  }, [open, checkoutTracked, gaValue.currency, gaValue.value, gaItem, method, orgId, tier, cycle]);
 
-// reset when modal closes
-useEffect(() => {
-  if (!open) setCheckoutTracked(false);
-}, [open]);
+  useEffect(() => {
+    if (!open) {
+      setCheckoutTracked(false);
+      clearCheckoutOnce(checkoutKey);
+    }
+  }, [open, checkoutKey]);
 
-// BEGIN_CHECKOUT: once per modal open (optionally include tier/cycle if you want)
-useEffect(() => {
-  if (!open) return;
-  if (checkoutTracked) return;
-  if (!gaValue.value || gaValue.value <= 0) return;
+  // add_payment_info: user chooses method / before redirect
+  const paymentInfoKeyRef = React.useRef<string>('');
+  useEffect(() => {
+    if (!open) return;
+    if (!gaValue.value || gaValue.value <= 0) return;
 
-  trackBeginCheckout({
-    currency: gaValue.currency,
-    value: gaValue.value,
-    items: gaItem,
-    payment_type: method === 'M-Pesa' ? 'mpesa' : 'paystack',
-  });
+    const k = `${method}:${cycle}:${tier}:${gaValue.currency}:${gaValue.value}`;
+    if (paymentInfoKeyRef.current === k) return;
+    paymentInfoKeyRef.current = k;
 
-  setCheckoutTracked(true);
-}, [open, checkoutTracked, gaValue.currency, gaValue.value, gaItem, method]);
+    trackAddPaymentInfo({
+      currency: gaValue.currency,
+      value: gaValue.value,
+      items: gaItem,
+      payment_type: method === 'M-Pesa' ? 'mpesa' : 'paystack',
+      affiliation: 'DayBreak Learner',
+    });
+  }, [open, method, cycle, tier, gaValue.currency, gaValue.value, gaItem]);
 
-// ADD_PAYMENT_INFO: fire when method changes while open (guard against repeats)
-const paymentInfoKeyRef = React.useRef<string>('');
-useEffect(() => {
-  if (!open) return;
-  if (!gaValue.value || gaValue.value <= 0) return;
-
-  const k = `${method}:${cycle}:${tier}:${gaValue.currency}:${gaValue.value}`;
-  if (paymentInfoKeyRef.current === k) return;
-  paymentInfoKeyRef.current = k;
-
-  trackAddPaymentInfo({
-    currency: gaValue.currency,
-    value: gaValue.value,
-    items: gaItem,
-    payment_type: method === 'M-Pesa' ? 'mpesa' : 'paystack',
-  });
-}, [open, method, cycle, tier, gaValue.currency, gaValue.value, gaItem]);
+  const stashOrgCheckout = () => {
+    if (!gaValue.value || gaValue.value <= 0) return;
+    const variant = cycle === 'annual' ? 'annual' : 'monthly';
+    stashCheckout('checkout:org', {
+      kind: 'org',
+      tier,
+      cycle: variant,
+      seats: seats ?? undefined,
+      currency: gaValue.currency,
+      value: gaValue.value,
+      orgId: orgId ?? undefined,
+      orgName: orgName ?? undefined,
+      timestamp: Date.now(),
+    });
+  };
 
 
 
   const handlePaystack = () => {
+    stashOrgCheckout();
     onCheckout({ method: 'Paystack', cycle, plan: tier });
   };
 
@@ -383,7 +407,7 @@ useEffect(() => {
   return (
     <div className="fixed inset-0 z-[120]">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
 
       {/* Modal shell */}
       <div className="relative z-10 flex min-h-full items-center justify-center p-2 sm:p-4">
@@ -405,7 +429,7 @@ useEffect(() => {
             </div>
 
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="shrink-0 rounded-lg px-2.5 py-1 text-xs sm:text-sm bg-slate-100 text-[#0d141c] hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
             >
               Close
