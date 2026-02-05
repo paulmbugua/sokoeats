@@ -5,7 +5,9 @@ import useInstitutionAuth from '@mytutorapp/shared/hooks/useInstitutionAuth';
 import CustomGoogleLoginButton from '../../components/CustomGoogleLoginButton';
 import { useShopContext } from '@mytutorapp/shared/context';
 import SeoHead from '../../components/seo/SeoHead';
-import { trackEvent } from '../../analytics/ga4';
+import { trackEvent, trackLogin, trackSignUp } from '../../analytics/ga4';
+
+
 
 const LOGIN_BG =
   'https://images.unsplash.com/photo-1513258496099-48168024aec0?q=80&w=2000&auto=format&fit=crop';
@@ -178,7 +180,12 @@ const navigateAfterAuth = useCallback(
           setError('Please enter email and password.');
           return;
         }
-        trackEvent('org_login_start');
+        trackEvent('org_login_start', {
+        kind: accountKind,
+        reauth: reauth || undefined,
+        org_id: orgIdParam || undefined,
+      });
+
 
         // ✅ NEW: pass reauth payload through (safe even if backend ignores)
         const extra =
@@ -189,7 +196,8 @@ const navigateAfterAuth = useCallback(
               : ({} as any);
 
         await loginWithEmail({ email: email.trim(), password, ...extra } as any);
-        trackEvent('login', { method: 'email', mode: 'org', kind: accountKind, reauth: reauth || undefined });
+        trackLogin('email', { mode: 'org', kind: accountKind, reauth: reauth || undefined });
+
         return;
       }
 
@@ -214,7 +222,8 @@ const navigateAfterAuth = useCallback(
         password,
         role: 'owner',
       } as any);
-      trackEvent('sign_up', { method: 'email', mode: 'org', kind: 'institution', role: 'owner' });
+      trackSignUp('email', { mode: 'org', kind: 'institution', role: 'owner' });
+
     } catch (err: any) {
       setError(err?.message || 'Authentication failed');
     } finally {
@@ -267,7 +276,8 @@ const navigateAfterAuth = useCallback(
   const onGoogleSuccess = useCallback(
     async (idToken: string) => {
       await handleGoogleLoginSuccess(idToken, name || undefined);
-      trackEvent('login', { method: 'google', mode: 'org', kind: 'institution' });
+      trackLogin('google', { mode: 'org', kind: 'institution' });
+
     },
     [handleGoogleLoginSuccess, name]
   );

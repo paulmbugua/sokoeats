@@ -81,9 +81,7 @@
   "dependencies": {
     "@google-cloud/speech": "^7.2.1",
     "@tanstack/react-query": "5.89.0",
-    "firebase-admin": "^13.5.0",
-    "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "firebase-admin": "^13.5.0"
   },
   "resolutions": {
     "react": "19.1.0",

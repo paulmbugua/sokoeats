@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams, Link, useLocation } from 'react-router-do
 import { useShopContext } from '@mytutorapp/shared/context';
 import { uploadAsset, getMyOrgOrBootstrap } from '@mytutorapp/shared/api';
 import SeoHead from '../../components/seo/SeoHead';
+import { trackPurchase } from '@/analytics/ga4';
 
 import {
   getOrgLearnersProgress,
@@ -1326,6 +1327,40 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     }
   }, [analytics, period]);
 
+  const fireOrgPurchaseOnce = (txRef: string, payload: {
+  tier: 'pro' | 'enterprise';
+  cycle: 'monthly' | 'yearly';
+  amountKes: number;
+  orgName?: string | null;
+  method: 'mpesa' | 'paystack';
+}) => {
+  if (!txRef) return;
+
+  // idempotency guard (avoid double fires on retries)
+  const key = `ga:purchase:${txRef}`;
+  try {
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+  } catch {}
+
+  trackPurchase({
+    transaction_id: txRef,
+    currency: 'KES',
+    value: payload.amountKes,
+    payment_type: payload.method,
+    affiliation: 'DayBreak Learner',
+    org_name: payload.orgName ?? undefined,
+    items: [{
+      item_id: `org_${payload.tier}_${payload.cycle}`,
+      item_name: `${payload.tier.toUpperCase()} Plan (${payload.cycle})`,
+      item_category: 'subscription',
+      item_variant: payload.cycle,
+      price: payload.amountKes,
+      quantity: 1,
+    }],
+  });
+};
+
   /** Checkout handler (M-Pesa / Paystack) */
   const handleCheckout = useCallback(
     async (
@@ -1384,6 +1419,16 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
               mpesaPaymentIdRef.current!,
               opts.reference
             );
+            fireOrgPurchaseOnce(
+  opts.reference || mpesaPaymentIdRef.current!, // choose your best txRef
+  {
+    tier: target,
+    cycle: apiCycle,
+    amountKes: /* use backend amount if returned; else your computed price */,
+    orgName: org?.name,
+    method: 'mpesa',
+  }
+);
             mpesaPaymentIdRef.current = null;
             alert('Payment confirmed. Subscription activated ✅');
             if (target === 'pro') setShowProModal(false);
@@ -1395,6 +1440,16 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
 
           try {
             await confirmOrgSubscription(backendUrl, authToken, mpesaPaymentIdRef.current!);
+            fireOrgPurchaseOnce(
+  opts.reference || mpesaPaymentIdRef.current!, // choose your best txRef
+  {
+    tier: target,
+    cycle: apiCycle,
+    amountKes: /* use backend amount if returned; else your computed price */,
+    orgName: org?.name,
+    method: 'mpesa',
+  }
+);
             mpesaPaymentIdRef.current = null;
             alert('Payment confirmed. Subscription activated ✅');
             if (target === 'pro') setShowProModal(false);
@@ -1433,35 +1488,41 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
         }
 
         // ✅ Paystack flow  <-- ADD THIS BLOCK HERE
-        if (apiMethod === 'PAYSTACK') {
-          const init = await initOrgSubscription(backendUrl, authToken, org.id, {
-            tier: target,
-            cycle: apiCycle,
-            method: 'PAYSTACK',
-          } as any);
+ // ✅ Paystack flow
+if (apiMethod === 'PAYSTACK') {
+  const init = await initOrgSubscription(backendUrl, authToken, org.id, {
+    
+    tier: target,
+    cycle: apiCycle,
+    method: 'PAYSTACK',
+  } as any);
 
-          const authUrl = (init as any).authorizationUrl || (init as any).authorization_url || '';
+  console.log('[initOrgSubscription]', init);
+console.log('[initOrgSubscription keys]', Object.keys(init || {}));
 
-          const paymentId = (init as any).paymentId || (init as any).payment_id || '';
+  const authUrl = (init as any).authorizationUrl || (init as any).authorization_url || '';
+  const paymentId = (init as any).paymentId || (init as any).payment_id || '';
 
-          if (!authUrl) {
-            alert('Paystack init failed: missing authorization URL');
-            return;
-          }
+  if (!authUrl) {
+    alert('Paystack init failed: missing authorization URL');
+    return;
+  }
 
-          try {
-            if (paymentId) {
-              sessionStorage.setItem('org:lastPaystackPaymentId', String(paymentId));
-              sessionStorage.setItem('org:lastPaystackOrgId', String(org.id));
-              sessionStorage.setItem('org:lastPaystackTier', String(target));
-              sessionStorage.setItem('org:lastPaystackCycle', String(apiCycle));
-              sessionStorage.setItem('org:lastPaystackAt', String(Date.now()));
-            }
-          } catch {}
+  // ✅ PLACE THESE RIGHT HERE (before redirect)
+  try {
+    if (paymentId) sessionStorage.setItem('org:lastPaystackPaymentId', String(paymentId));
+    sessionStorage.setItem('org:lastPaystackTier', String(target));      // "pro" | "enterprise"
+    sessionStorage.setItem('org:lastPaystackCycle', String(apiCycle));   // "monthly" | "yearly"
+    sessionStorage.setItem('org:lastPaystackAt', String(Date.now()));
+    sessionStorage.setItem('org:lastPaystackOrgId', String(org.id));     // optional but useful
+  } catch {}
 
-          window.location.href = authUrl; // ✅ SAME TAB
-          return;
-        }
+  window.location.href = authUrl; // ✅ SAME TAB
+
+  
+  return;
+}
+
 
         // Paystack handled via the Paystack Buttons in the modal
       } catch (err: any) {
@@ -1472,6 +1533,69 @@ const [uploadingBursarSignature, setUploadingBursarSignature] = useState(false);
     },
     [backendUrl, org?.id, authToken, canUpgradePlan]
   );
+
+
+  useEffect(() => {
+  const sp = new URLSearchParams(window.location.search);
+  const paystackRef = sp.get('reference');
+  if (!paystackRef) return;
+  if (!authToken) return;      // wait until tokens hydrate
+  if (!org?.id) return;        // wait until org hydrates
+
+  // ✅ prevent duplicate confirm + duplicate GA
+  const onceKey = `org:paystack:confirmed:${paystackRef}`;
+  try {
+    if (sessionStorage.getItem(onceKey) === '1') return;
+    sessionStorage.setItem(onceKey, '1');
+  } catch {}
+
+  (async () => {
+    try {
+      // read what we saved before redirect
+      const paymentId = sessionStorage.getItem('org:lastPaystackPaymentId') || '';
+      const tier = (sessionStorage.getItem('org:lastPaystackTier') || 'pro') as 'pro' | 'enterprise';
+      const cycle = (sessionStorage.getItem('org:lastPaystackCycle') || 'monthly') as 'monthly' | 'yearly';
+
+      // (optional) time guard: ignore ancient returns
+      const at = Number(sessionStorage.getItem('org:lastPaystackAt') || 0);
+      if (at && Date.now() - at > 60 * 60 * 1000) {
+        // older than 1 hour
+        console.warn('[Paystack return] too old, ignoring');
+        return;
+      }
+
+      // ✅ IMPORTANT: confirm/verify on backend first
+      // Use paymentId if you have it; otherwise fall back to ref.
+      await confirmOrgSubscription(backendUrl, authToken, paymentId || paystackRef, paystackRef);
+
+      // ✅ NOW fire purchase (only after confirm succeeds)
+      // If your backend returns amount, use that. Otherwise you can omit value or use known price table.
+      // fireOrgPurchaseOnce(paystackRef, { tier, cycle, amountKes, orgName: org?.name, method: 'paystack' });
+
+      await refreshOrgAfterPayment();
+
+      // ✅ cleanup URL so refresh doesn't re-run
+      sp.delete('reference');
+      const qs = sp.toString();
+      window.history.replaceState({}, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+
+      // optional: cleanup session markers
+      try {
+        sessionStorage.removeItem('org:lastPaystackPaymentId');
+        sessionStorage.removeItem('org:lastPaystackTier');
+        sessionStorage.removeItem('org:lastPaystackCycle');
+        sessionStorage.removeItem('org:lastPaystackAt');
+        sessionStorage.removeItem('org:lastPaystackOrgId');
+      } catch {}
+    } catch (e) {
+      console.warn('[Paystack return] confirm failed', e);
+      // allow retry if you want:
+      try { sessionStorage.removeItem(onceKey); } catch {}
+    }
+  })();
+}, [backendUrl, authToken, org?.id, refreshOrgAfterPayment]);
+
+  
 
   /** Helpers */
   const seatPct = Math.min(100, Math.round(((seatsUsed || 0) / seatsMax) * 100));

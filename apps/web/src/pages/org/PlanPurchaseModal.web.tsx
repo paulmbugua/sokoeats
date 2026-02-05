@@ -1,6 +1,8 @@
 // apps/web/src/pages/org/PlanPurchaseModal.web.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
+import { trackBeginCheckout, trackAddPaymentInfo } from '@/analytics/ga4'; // adjust path
+
 import type { OrgCurrency, OrgPricingTable } from '@mytutorapp/shared/api/orgApi';
 
 type BillingCycle = 'monthly' | 'annual';
@@ -157,6 +159,7 @@ export default function PlanPurchaseModalWeb({
   const [phone, setPhone] = useState('');
   const [reference, setReference] = useState('');
   const [uiError, setUiError] = useState<string | null>(null);
+  const [checkoutTracked, setCheckoutTracked] = useState(false);
 
   // Canonical USD + explicit KES (so M-Pesa pricing is not “estimated”)
   const usd: OrgCurrency = 'USD';
@@ -199,6 +202,8 @@ export default function PlanPurchaseModalWeb({
     setUserLocale(nextLocale || 'en-US');
     setUserDisplayCurrency((nextCurrency || 'USD').toUpperCase());
   }, []);
+
+  
 
   // Close on ESC
   useEffect(() => {
@@ -247,6 +252,24 @@ export default function PlanPurchaseModalWeb({
     return formatMoneyIntl(userLocale, 'USD', centsToMajor(usdCents));
   }, [usdCents, userLocale]);
 
+  const gaItem = useMemo(() => {
+  const variant = cycle === 'annual' ? 'annual' : 'monthly';
+  return [{
+    item_id: `org_${tier}_${variant}`,
+    item_name: `${tier.toUpperCase()} Plan (${variant})`,
+    item_category: 'subscription',
+    item_variant: variant,
+    price: usdCents != null ? centsToMajor(usdCents) : undefined,
+    quantity: 1,
+  }];
+}, [tier, cycle, usdCents]);
+
+const gaValue = useMemo(() => {
+  if (method === 'M-Pesa' && kesCents != null) return { currency: 'KES', value: centsToMajor(kesCents) };
+  if (usdCents != null) return { currency: 'USD', value: centsToMajor(usdCents) };
+  return { currency: 'USD', value: 0 };
+}, [method, kesCents, usdCents]);
+
   // Decide what “primary” shown price is:
   // - Paystack: show local estimate big (if available) + base USD
   // - M-Pesa: show actual KES big (if available) + base USD
@@ -293,6 +316,63 @@ export default function PlanPurchaseModalWeb({
       reference: reference.trim() || undefined,
     });
   };
+
+  useEffect(() => {
+  if (!open) return;
+  if (checkoutTracked) return;
+  if (!gaValue.value) return;
+
+  trackBeginCheckout({
+    currency: gaValue.currency,
+    value: gaValue.value,
+    items: gaItem,
+    payment_type: method === 'M-Pesa' ? 'mpesa' : 'paystack',
+  });
+
+  setCheckoutTracked(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [open, gaValue.currency, gaValue.value, gaItem]);
+
+// reset when modal closes
+useEffect(() => {
+  if (!open) setCheckoutTracked(false);
+}, [open]);
+
+// BEGIN_CHECKOUT: once per modal open (optionally include tier/cycle if you want)
+useEffect(() => {
+  if (!open) return;
+  if (checkoutTracked) return;
+  if (!gaValue.value || gaValue.value <= 0) return;
+
+  trackBeginCheckout({
+    currency: gaValue.currency,
+    value: gaValue.value,
+    items: gaItem,
+    payment_type: method === 'M-Pesa' ? 'mpesa' : 'paystack',
+  });
+
+  setCheckoutTracked(true);
+}, [open, checkoutTracked, gaValue.currency, gaValue.value, gaItem, method]);
+
+// ADD_PAYMENT_INFO: fire when method changes while open (guard against repeats)
+const paymentInfoKeyRef = React.useRef<string>('');
+useEffect(() => {
+  if (!open) return;
+  if (!gaValue.value || gaValue.value <= 0) return;
+
+  const k = `${method}:${cycle}:${tier}:${gaValue.currency}:${gaValue.value}`;
+  if (paymentInfoKeyRef.current === k) return;
+  paymentInfoKeyRef.current = k;
+
+  trackAddPaymentInfo({
+    currency: gaValue.currency,
+    value: gaValue.value,
+    items: gaItem,
+    payment_type: method === 'M-Pesa' ? 'mpesa' : 'paystack',
+  });
+}, [open, method, cycle, tier, gaValue.currency, gaValue.value, gaItem]);
+
+
 
   const handlePaystack = () => {
     onCheckout({ method: 'Paystack', cycle, plan: tier });

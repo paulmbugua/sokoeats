@@ -1,6 +1,6 @@
 /* apps/web/src/components/RobotTeacher.web.tsx */
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { trackEvent } from '../analytics/ga4';
+import { trackAiGenerateLesson, trackEvent } from '../analytics/ga4';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
 import { useAiCourse, useAICertificates } from '@mytutorapp/shared/hooks';
@@ -941,6 +941,41 @@ const displayTitle = useMemo(() => {
 
   const lastRunKeyRef = React.useRef<string | null>(null);
 
+ const fireAiGenerateLessonOnce = useCallback(
+  (payload: {
+    runId?: number | string;
+    mode?: string;
+    topic?: string;
+    courseId?: string | number;
+    courseTitle?: string;
+    language?: string;
+    voice?: string;
+    // keep your rich fields too
+    [k: string]: any;
+  }) => {
+    const runKey = JSON.stringify({
+      courseId: payload.courseId || null,
+      topic: payload.topic || null,
+      runId: payload.runId || null,
+    });
+
+    if (lastRunKeyRef.current === runKey) return;
+    lastRunKeyRef.current = runKey;
+
+    // ✅ One GA4 call (uses your ga4.ts helper, keeps params clean)
+    trackAiGenerateLesson({
+      mode: 'robot_teacher',
+      course_id: payload.courseId ?? undefined,
+      course_title: (payload.topic ?? payload.courseTitle) ?? undefined,
+      voice: payload.voice ?? effectiveVoice,
+      language: payload.language ?? undefined,
+    } as any);
+  },
+  [effectiveVoice]
+);
+
+
+
   // player readiness (parity with native)
   const [playerReady, setPlayerReady] = useState(false);
   const [playerLoading, setPlayerLoading] = useState(false);
@@ -1600,6 +1635,20 @@ setLockedSsml(null);
       dlog('onStart → startCustomTopic (sandbox)', { custom, opts });
       await startCustomTopic(custom, opts);
       await waitForSelection();
+      fireAiGenerateLessonOnce({
+      runId: id,
+      mode: 'custom_topic',
+      topic: custom,
+      courseId: undefined,
+      programTrack,
+      courseSize,
+      minutes: minutesEffective,
+      totalLessons: safeLessons,
+      quizType: urlQuizTypeHint || 'mcq',
+      isOrgFlow: Boolean(isOrgFlow),
+      isSandbox: Boolean(isSandboxSource),
+      source: qpSource || 'direct',
+    });
       return;
     }
 
@@ -1631,6 +1680,22 @@ const opts: any = {
 
     dlog('onStart → startWithAI', { opts, cid, wantedCourseId });
     await startWithAI(opts);
+    // ✅ Success: AI lesson generated
+fireAiGenerateLessonOnce({
+  runId: id,
+  mode: 'course',
+  topic: undefined,
+  courseId: cid ?? undefined,
+  courseTitle: displayTitle,
+  programTrack,
+  courseSize,
+  minutes: minutesEffective,
+  totalLessons: safeLessons,
+  quizType: urlQuizTypeHint || 'mcq',
+  isOrgFlow: Boolean(isOrgFlow),
+  isSandbox: Boolean(isSandboxSource),
+  source: qpSource || 'direct',
+});
     return;
   } catch (e) {
     console.error('[RobotTeacher.web:onStart] failed', e);

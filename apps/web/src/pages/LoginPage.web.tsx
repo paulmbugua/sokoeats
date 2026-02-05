@@ -4,7 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import useAuth from '@mytutorapp/shared/hooks/useAuth';
 import { useShopContext } from '@mytutorapp/shared/context';
 import CustomGoogleLoginButton from '../components/CustomGoogleLoginButton';
-import { trackEvent } from '../analytics/ga4';
+import { trackLogin, trackSignUp } from '../analytics/ga4';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 import CountrySelect from '../components/CountrySelect';
 // For Cancel in the role modal
@@ -176,7 +176,8 @@ const LoginPage: React.FC = () => {
           return;
         }
         await loginWithEmail({ email: email.trim(), password });
-        trackEvent('login', { method: 'email' });
+        trackLogin('email', { mode: 'consumer' });
+
         const target = getReturnTo();
         clearReturnTo();
         navigate(target, { replace: true });
@@ -205,7 +206,8 @@ const LoginPage: React.FC = () => {
         });
 
         // Successful sign-up
-        trackEvent('sign_up', { method: 'email', role });
+        trackSignUp('email', { mode: 'consumer', role });
+
         const target = getReturnTo();
         clearReturnTo();
         navigate(target, { replace: true });
@@ -319,7 +321,8 @@ const LoginPage: React.FC = () => {
 
       // ⬇️ Close UI immediately after success to avoid flicker
 
-      trackEvent('login', { method: 'google', role });
+      trackLogin('google', { mode: 'consumer', role });
+
       closeRoleFlowInstant();
 
       // Go back to original destination if desired
