@@ -1,26 +1,48 @@
 {
   "cli": {
     "version": ">= 16.7.2",
-    "appVersionSource": "remote"
+    "appVersionSource": "remote",
+    "promptToConfigurePushNotifications": false
   },
   "build": {
     "development": {
       "environment": "development",
+      "node": "20.19.4",
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development"
+      "channel": "development",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "development",
+        "EXPO_PUBLIC_DEFAULT_BACKEND": "lan1",
+        "EXPO_NO_DOTENV": "1"
+      }
     },
     "preview": {
       "environment": "preview",
+      "node": "20.19.4",
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "preview",
+        "EXPO_PUBLIC_DEFAULT_BACKEND": "prod",
+        "EXPO_NO_DOTENV": "1"
+      }
     },
     "production": {
       "environment": "production",
+      "node": "20.19.4",
       "autoIncrement": true,
       "channel": "production",
       "distribution": "store",
-      "android": { "buildType": "app-bundle" },
+      "android": {
+        "buildType": "app-bundle"
+      },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_DEFAULT_BACKEND": "prod",
