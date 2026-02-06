@@ -75,3 +75,9 @@ turbo/
 
 # Git LFS cache (optional, if using LFS)
 *.lfsconfig
+ 
+ # Other apps (not needed for mobile EAS builds)
+apps/web/
+apps/web-next/
+apps/backend/
+apps/admin/

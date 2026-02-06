@@ -7,3 +7,9 @@ ios/build/
 dist/
 web-build/
 *.log
+
+# Monorepo: exclude other apps
+../web/
+../web-next/
+../backend/
+../admin/
