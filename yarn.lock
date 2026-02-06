@@ -17574,6 +17574,7 @@ __metadata:
     postcss: "npm:^8.4.21"
     prettier: "npm:^3.5.3"
     react: "npm:19.1.0"
+    react-native: "npm:0.81.5"
     rimraf: "npm:3.0.2"
     serve: "npm:^14.2.4"
     tailwindcss: "npm:^3.3.2"
