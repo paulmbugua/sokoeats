@@ -1,66 +1,37 @@
-# -------------------------------
-# DO NOT ignore Yarn core files
-# -------------------------------
-!.yarnrc.yml
-!.yarn/releases/**
-!yarn.lock
-!package.json
-!turbo.json
-!tsconfig*.json
+# --- never upload ---
+.git/
+**/.git/
 
-# Keep workspace sources needed by the mobile app
-!apps/mobile/**
-!packages/shared/**
-
-# -------------------------------
-# Ignore heavy / irrelevant stuff
-# -------------------------------
-
-# Node deps (EAS will install)
-node_modules/
-
-# Local caches
-.expo/
-.expo-shared/
-.cache/
-.turbo/
-turbo/
-**/.cxx/
+# local caches / outputs
+**/node_modules/
+**/.expo/
+**/.expo-shared/
+**/.cache/
+**/dist/
 **/build/
+**/.cxx/
+**/*.log
+**/*.tsbuildinfo
+**/web-build/
 
-# Mobile build output (generated)
+# prebuild outputs (you don't commit them anyway)
 apps/mobile/android/
 apps/mobile/ios/
-apps/mobile/dist/
-apps/mobile/web-build/
 
-# Web/Next/admin/backend apps: exclude entirely
-apps/web/**
-apps/web-next/**
-apps/admin/**
-apps/backend/**
+# backend uploads/secrets
+apps/backend/uploads/
+apps/backend/secrets/
 
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# --- DO NOT exclude workspace manifests ---
+# (Do NOT ignore apps/web, apps/backend, etc. at all.)
+# You can ignore only their heavy outputs, which we already do above.
 
-# Env / secrets
-.env
-.env.*
-*.jks
-*.p8
-*.p12
-*.key
-*.pem
-*.mobileprovision
-serviceAccount.json
-firebase-adminsdk-*.json
-**/serviceAccount.json
-**/firebase-adminsdk-*.json
+# --- MUST be included for Yarn 4 workspace installs ---
+!package.json
+!yarn.lock
+!.yarnrc.yml
+!.yarn/**
 
-# IDE / OS
-.vscode/
-.idea/
-.DS_Store
+# --- MUST be included for mobile build ---
+!apps/mobile/**
+!packages/shared/**
