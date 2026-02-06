@@ -10,8 +10,7 @@
       "distribution": "internal",
       "channel": "development",
       "env": {
-        "EAS_BUILD_DISABLE_NPM_CACHE": "1",
-        "YARN_NPM_REGISTRY_SERVER": "https://registry.npmjs.org"
+        "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON"
       }
     },
     "preview": {
@@ -19,8 +18,7 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "EAS_BUILD_DISABLE_NPM_CACHE": "1",
-        "YARN_NPM_REGISTRY_SERVER": "https://registry.npmjs.org"
+        "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON"
       }
     },
     "production": {
@@ -30,8 +28,7 @@
       "distribution": "store",
       "android": { "buildType": "app-bundle" },
       "env": {
-        "EAS_BUILD_DISABLE_NPM_CACHE": "1",
-        "YARN_NPM_REGISTRY_SERVER": "https://registry.npmjs.org",
+        "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON",
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_DEFAULT_BACKEND": "prod",
         "EXPO_NO_DOTENV": "1",

@@ -90,7 +90,8 @@ export default function expoConfig({ config }) {
       // ✅ Keep only what you need (deps may still add others automatically)
       permissions: ['INTERNET', 'POST_NOTIFICATIONS'],
 
-      googleServicesFile: './google-services.json',
+     googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
+
 
       notification: {
         icon: './assets/notification-icon.png',

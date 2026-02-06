@@ -1,0 +1,18 @@
+env: load .env.local
+env: export EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID EXPO_PUBLIC_FIREBASE_API_KEY EXPO_PUBLIC_FIREBASE_PROJECT_ID EXPO_PUBLIC_BACKEND_URL EXPO_PUBLIC_PROD_BACKEND_URL EXPO_PUBLIC_EAS_PROJECT_ID
+Starting Metro Bundler
+iOS Bundled 256970ms (src\index.tsx)
+Android Bundled 261509ms (src\index.tsx)
+Static rendering is enabled. Learn more: https://docs.expo.dev/router/reference/static-rendering/
+Starting Metro Bundler
+Error: Error fetching bundle for static rendering: 404 Not Found
+Error: Error fetching bundle for static rendering: 404 Not Found
+    at requireFileContentsWithMetro (C:\projects\mytutorapp\node_modules\@expo\cli\src\start\server\getStaticRenderFunctions.ts:197:11)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at Object.getStaticRenderFunctions (C:\projects\mytutorapp\node_modules\@expo\cli\src\start\server\getStaticRenderFunctions.ts:213:45)
+    at MetroBundlerDevServer.getStaticRenderFunctionAsync (C:\projects\mytutorapp\node_modules\@expo\cli\src\start\server\metro\MetroBundlerDevServer.ts:187:7)
+    at async Promise.all (index 1)
+    at exportFromServerAsync (C:\projects\mytutorapp\node_modules\@expo\cli\src\export\exportStaticAsync.ts:197:66)
+    at Object.unstable_exportStaticAsync (C:\projects\mytutorapp\node_modules\@expo\cli\src\export\exportStaticAsync.ts:88:12)
+    at Object.exportAppAsync (C:\projects\mytutorapp\node_modules\@expo\cli\src\export\exportApp.ts:171:7)
+    at exportAsync (C:\projects\mytutorapp\node_modules\@expo\cli\src\export\exportAsync.ts:18:3)
