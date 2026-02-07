@@ -2,6 +2,7 @@
 import fetch from 'node-fetch';
 import crypto from 'node:crypto';
 import pool from '../config/db.js';
+import { notifyEvent } from '../services/notificationEvents.js';
 import { resolvePrice, ORG_SEATS } from '../services/orgPricing.js';
 import { stkPushOrgSubscription } from '../services/mpesaOrgService.js';
 import { normalizePhoneNumber } from '../utils/phoneUtils.js';
@@ -891,6 +892,17 @@ export async function confirmOrgSubscription(req, res) {
       const sub = await activateOrgSubscriptionTx(client, fresh.rows[0]);
 
       await client.query('COMMIT');
+      void notifyEvent(
+        'ORG_PLAN_UPGRADED',
+        String(userId),
+        {
+          orgId: pay.org_id,
+          planName: sub?.tier ? String(sub.tier).toUpperCase() : 'Plan',
+          expiresAt: sub?.expires_at || null,
+        },
+      ).catch((e) =>
+        console.warn('[push] org plan upgraded notify failed', e?.message || e),
+      );
       return res.json({ ok: true, subscription: sub });
     }
 
@@ -1011,6 +1023,17 @@ export async function confirmOrgSubscription(req, res) {
     const sub = await activateOrgSubscriptionTx(client, fresh.rows[0]);
 
     await client.query('COMMIT');
+    void notifyEvent(
+      'ORG_PLAN_UPGRADED',
+      String(userId),
+      {
+        orgId: pay.org_id,
+        planName: sub?.tier ? String(sub.tier).toUpperCase() : 'Plan',
+        expiresAt: sub?.expires_at || null,
+      },
+    ).catch((e) =>
+      console.warn('[push] org plan upgraded notify failed', e?.message || e),
+    );
     return res.json({ ok: true, subscription: sub });
   } catch (e) {
     try {

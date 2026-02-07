@@ -187,10 +187,12 @@ export async function createOrgLegacyAssignment(req, res) {
         .filter(Boolean);
 
       void notifyEvent(
-        'ORG_ASSIGNMENT_SHARED',
+        'ORG_ASSIGNMENT_POSTED',
         learnerUserIds,
         {
+          orgId,
           assignmentId: assignment?.id,
+          classLabel,
           title: assignment?.title || 'New assignment',
         },
       ).catch((e) =>

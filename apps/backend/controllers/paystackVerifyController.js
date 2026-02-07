@@ -2,6 +2,7 @@
 import fetch from 'node-fetch';
 import pool from '../config/db.js';
 import { upsertAiCertificateEntitlement } from './_aiCourseEntitlements.js';
+import { notifyEvent } from '../services/notificationEvents.js';
 
 const PAYSTACK_SECRET = (process.env.PAYSTACK_SECRET_KEY || '').trim();
 if (!PAYSTACK_SECRET) throw new Error('Missing PAYSTACK_SECRET_KEY');
@@ -330,6 +331,16 @@ export async function verifyAndFinalize(req, res) {
     });
 
     await client.query('COMMIT');
+    void notifyEvent(
+      'TOKENS_PURCHASED',
+      String(payment.user_id),
+      {
+        credits,
+        tokensBalance: tokens,
+      },
+    ).catch((e) =>
+      console.warn('[push] tokens purchased notify failed', e?.message || e),
+    );
     return res.json({
       ok: true,
       status: 'success',
