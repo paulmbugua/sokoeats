@@ -21,6 +21,7 @@ import LessonOverlayNative, { type LessonOverlayHandle } from './LessonOverlay.n
 import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
 import { getRequiredWeeks, normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrackRequirements';
 import * as Linking from 'expo-linking';
+import * as Localization from 'expo-localization';
 
 import { useOrgAssignment } from '@mytutorapp/shared/hooks/useOrgAssignment';
 import { useAiCourse, useAICertificates } from '@mytutorapp/shared/hooks';
@@ -82,12 +83,37 @@ const TRACKS = [
 ] as const;
 export type TrackKey = (typeof TRACKS)[number]['key'];
 
+const ESL_CARD_LABEL = 'English (ESL)';
+const SUPPORT_LANGUAGE_STORAGE_KEY = 'learning_support_language_v1';
+
 const LANGUAGE_CARDS = [
-  { language: 'German', emoji: '🇩🇪', subtitle: 'Start a lesson' },
-  { language: 'French', emoji: '🇫🇷', subtitle: 'Build confidence' },
-  { language: 'Spanish', emoji: '🇪🇸', subtitle: 'Quick practice' },
-  { language: 'Arabic', emoji: '🇸🇦', subtitle: 'New phrases' },
+  { key: 'en_esl', language: ESL_CARD_LABEL, emoji: '🇬🇧', subtitle: 'Work + daily life' },
+  { key: 'de', language: 'German', emoji: '🇩🇪', subtitle: 'Start a lesson' },
+  { key: 'fr', language: 'French', emoji: '🇫🇷', subtitle: 'Build confidence' },
+  { key: 'es', language: 'Spanish', emoji: '🇪🇸', subtitle: 'Quick practice' },
+  { key: 'ar', language: 'Arabic', emoji: '🇸🇦', subtitle: 'New phrases' },
+  { key: 'hi', language: 'Hindi', emoji: '🇮🇳', subtitle: 'Everyday talk' },
+  { key: 'ur', language: 'Urdu', emoji: '🇵🇰', subtitle: 'Quick practice' },
+  { key: 'tr', language: 'Turkish', emoji: '🇹🇷', subtitle: 'New phrases' },
+  { key: 'ru', language: 'Russian', emoji: '🇷🇺', subtitle: 'Build confidence' },
+  { key: 'tl', language: 'Tagalog', emoji: '🇵🇭', subtitle: 'Start a lesson' },
+  { key: 'ml', language: 'Malayalam', emoji: '🇮🇳', subtitle: 'Daily life' },
 ] as const;
+
+type SupportLanguageOption = 'auto' | 'ar' | 'hi' | 'ur' | 'en';
+type SupportLanguageResolved = Exclude<SupportLanguageOption, 'auto'>;
+
+const SUPPORT_LANGUAGE_OPTIONS: Array<{
+  value: SupportLanguageOption;
+  label: string;
+  subtitle?: string;
+}> = [
+  { value: 'auto', label: 'Auto (recommended)', subtitle: 'Uses your device + region' },
+  { value: 'ar', label: 'Arabic', subtitle: 'العربية' },
+  { value: 'hi', label: 'Hindi', subtitle: 'हिन्दी' },
+  { value: 'ur', label: 'Urdu', subtitle: 'اردو' },
+  { value: 'en', label: 'English', subtitle: 'English' },
+];
 
 
 
@@ -114,6 +140,85 @@ const normQt = (v?: string | null): 'mcq' | 'short' | undefined => {
   return s === 'short' ? 'short' : s === 'mcq' ? 'mcq' : undefined;
 };
 
+const normalizeLocaleTag = (value?: string | null) =>
+  String(value || '')
+    .trim()
+    .replace('_', '-')
+    .toLowerCase();
+
+const normalizeCountryHint = (value?: string | null) => {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return '';
+  if (raw === 'QATAR') return 'QA';
+  if (raw === 'SAUDI ARABIA' || raw === 'SAUDI') return 'SA';
+  if (raw === 'UNITED ARAB EMIRATES' || raw === 'UAE') return 'AE';
+  if (raw === 'PAKISTAN') return 'PK';
+  if (raw === 'INDIA') return 'IN';
+  return raw;
+};
+
+const resolveSupportLanguageAuto = ({
+  locale,
+  profileLanguage,
+  uiLanguage,
+  timeZone,
+  profileCountry,
+  orgCountry,
+}: {
+  locale?: string | null;
+  profileLanguage?: string | null;
+  uiLanguage?: string | null;
+  timeZone?: string | null;
+  profileCountry?: string | null;
+  orgCountry?: string | null;
+}): SupportLanguageResolved => {
+  const prioritizedLangs = [profileLanguage, uiLanguage];
+  for (const lang of prioritizedLangs) {
+    const normalized = normalizeLocaleTag(lang);
+    if (normalized.startsWith('ar')) return 'ar';
+    if (normalized.startsWith('hi')) return 'hi';
+    if (normalized.startsWith('ur')) return 'ur';
+    if (normalized.startsWith('en')) return 'en';
+  }
+
+  const normalizedLocale = normalizeLocaleTag(locale);
+  if (normalizedLocale.startsWith('ar')) return 'ar';
+  if (normalizedLocale.startsWith('hi')) return 'hi';
+  if (normalizedLocale.startsWith('ur')) return 'ur';
+
+  const tz = String(timeZone || '').trim();
+  if (tz === 'Asia/Riyadh' || tz === 'Asia/Qatar') return 'ar';
+  if (tz === 'Asia/Kolkata') return 'hi';
+  if (tz === 'Asia/Karachi') return 'ur';
+
+  const countryRaw = normalizeCountryHint(profileCountry) || normalizeCountryHint(orgCountry);
+
+  const arabicCountries = new Set([
+    'AE',
+    'SA',
+    'QA',
+    'KW',
+    'BH',
+    'OM',
+    'EG',
+    'JO',
+    'IQ',
+    'LB',
+    'MA',
+    'DZ',
+    'TN',
+    'LY',
+    'SD',
+    'SY',
+    'YE',
+  ]);
+
+  if (arabicCountries.has(countryRaw)) return 'ar';
+  if (countryRaw === 'IN') return 'hi';
+  if (countryRaw === 'PK') return 'ur';
+
+  return 'en';
+};
 
 
 // ─────────────────────────────────────────────────────────
@@ -406,7 +511,15 @@ const wantedCourseId = useMemo(() => {
   }, []);
 
   const effectiveVoice = voiceName || defaultVoice;
-  const { backendUrl, token, orgToken, authMode, role: globalRole } = useShopContext() as any;
+  const {
+    backendUrl,
+    token,
+    orgToken,
+    authMode,
+    role: globalRole,
+    profile,
+    language: uiLanguage,
+  } = useShopContext() as any;
   const authToken = authMode === 'org' ? orgToken : token;
 
   // ✅ Language learning must use the user's token (wallet tokens live on user)
@@ -565,6 +678,9 @@ const [languageActive, setLanguageActive] = useState<string | null>(null);
 const [llUnlockOpen, setLlUnlockOpen] = useState(false);
 const [llUnlockBusy, setLlUnlockBusy] = useState(false);
 const [llUnlockErr, setLlUnlockErr] = useState<string | null>(null);
+const [supportLanguageOpen, setSupportLanguageOpen] = useState(false);
+const [supportLanguageSetting, setSupportLanguageSetting] =
+  useState<SupportLanguageOption>('auto');
 const unlockedLanguageCoursesRef = useRef<Set<string>>(new Set());
 const pendingLanguageStartRef = useRef<{
   prompt: string;
@@ -591,6 +707,58 @@ useEffect(() => {
   });
 }, [llUnlockOpen, llUnlockBusy, llUnlockCtx, backendUrl, languageToken]);
 
+useEffect(() => {
+  let mounted = true;
+  (async () => {
+    try {
+      const stored = await AsyncStorage.getItem(SUPPORT_LANGUAGE_STORAGE_KEY);
+      const value = String(stored || '').toLowerCase() as SupportLanguageOption;
+      if (mounted && ['auto', 'ar', 'hi', 'ur', 'en'].includes(value)) {
+        setSupportLanguageSetting(value);
+      }
+    } catch {
+      /* ignore */
+    }
+  })();
+  return () => {
+    mounted = false;
+  };
+}, []);
+
+const deviceLocale = useMemo(() => {
+  const tag = Localization.getLocales?.()[0]?.languageTag;
+  return tag || Localization.locale || 'en-US';
+}, []);
+
+const deviceTimeZone = useMemo(() => Localization.timezone || '', []);
+
+const profileLanguage = useMemo(
+  () =>
+    (profile as any)?.language ||
+    (profile as any)?.preferred_language ||
+    (profile as any)?.preferredLanguage ||
+    null,
+  [profile],
+);
+
+const profileCountry = useMemo(
+  () =>
+    (profile as any)?.country ||
+    (profile as any)?.countryCode ||
+    (profile as any)?.country_code ||
+    null,
+  [profile],
+);
+
+const updateSupportLanguageSetting = useCallback(async (next: SupportLanguageOption) => {
+  setSupportLanguageSetting(next);
+  try {
+    await AsyncStorage.setItem(SUPPORT_LANGUAGE_STORAGE_KEY, next);
+  } catch {
+    /* ignore */
+  }
+}, []);
+
 
 
 // lightweight in-memory cache (web uses localStorage; native keeps this per app session)
@@ -599,10 +767,17 @@ const llCourseIdCacheRef = useRef<Map<string, string>>(new Map());
 const normalizeLangKey = (s?: string | null) => {
   const t = String(s ?? '').trim().toLowerCase();
   if (!t) return '';
+  if (t.includes('english') || t.includes('esl')) return 'english_esl';
   if (t.includes('deutsch') || t.includes('german')) return 'german';
   if (t.includes('français') || t.includes('francais') || t.includes('french')) return 'french';
   if (t.includes('español') || t.includes('espanol') || t.includes('spanish')) return 'spanish';
   if (t.includes('arabic') || t.includes('arab') || t.includes('عربي')) return 'arabic';
+  if (t.includes('hindi') || t.includes('हिन्दी') || t.includes('हिंदी')) return 'hindi';
+  if (t.includes('urdu') || t.includes('اردو')) return 'urdu';
+  if (t.includes('turkish') || t.includes('türkçe') || t.includes('turkce')) return 'turkish';
+  if (t.includes('russian') || t.includes('рус')) return 'russian';
+  if (t.includes('tagalog') || t.includes('filipino')) return 'tagalog';
+  if (t.includes('malayalam') || t.includes('മലയാളം')) return 'malayalam';
   return t;
 };
 
@@ -647,10 +822,17 @@ const getCachedLanguageCourseId = useCallback(async (languageLabel: string) => {
 
 const inferLanguageLabelFromPrompt = (prompt: string) => {
   const p = String(prompt || '').toLowerCase();
+  if (p.includes('teach me english') || p.includes('english')) return ESL_CARD_LABEL;
   if (p.includes('german') || p.includes('deutsch')) return 'German';
   if (p.includes('french') || p.includes('français') || p.includes('francais')) return 'French';
   if (p.includes('spanish') || p.includes('español') || p.includes('espanol')) return 'Spanish';
   if (p.includes('arabic') || p.includes('arab') || p.includes('عربي')) return 'Arabic';
+  if (p.includes('hindi') || p.includes('हिन्दी') || p.includes('हिंदी')) return 'Hindi';
+  if (p.includes('urdu') || p.includes('اردو')) return 'Urdu';
+  if (p.includes('turkish') || p.includes('türkçe') || p.includes('turkce')) return 'Turkish';
+  if (p.includes('russian') || p.includes('рус')) return 'Russian';
+  if (p.includes('tagalog') || p.includes('filipino')) return 'Tagalog';
+  if (p.includes('malayalam') || p.includes('മലയാളം')) return 'Malayalam';
   return '';
 };
 
@@ -829,6 +1011,35 @@ useEffect(() => {
   const isAdminOwner = roles.has('owner') || roles.has('admin');
   const isInstructor = roles.has('instructor') || roles.has('teacher');
   const canShareUi = Boolean(activeOrgId && (isAdminOwner || isInstructor || isGlobalAdmin));
+
+  const orgCountry = useMemo(
+    () =>
+      (orgCtx as any)?.country ||
+      (orgCtx as any)?.countryCode ||
+      (orgCtx as any)?.country_code ||
+      null,
+    [orgCtx],
+  );
+
+  const resolvedSupportLanguage = useMemo<SupportLanguageResolved>(() => {
+    if (supportLanguageSetting !== 'auto') return supportLanguageSetting;
+    return resolveSupportLanguageAuto({
+      locale: deviceLocale,
+      profileLanguage,
+      uiLanguage,
+      timeZone: deviceTimeZone,
+      profileCountry,
+      orgCountry,
+    });
+  }, [
+    deviceLocale,
+    deviceTimeZone,
+    orgCountry,
+    profileCountry,
+    profileLanguage,
+    supportLanguageSetting,
+    uiLanguage,
+  ]);
 
 const lockedByParam = params.lock === '1';
 const lockTrackByParam = params.lockTrack === '1';
@@ -1817,6 +2028,44 @@ const startLanguageFlow = useCallback(
   waitForCourses,
 ]);
 
+const openSupportLanguageModal = useCallback(() => {
+  if (languageLaunching || llUnlockBusy) return;
+  const ok = requireLanguageAuth('language-learning', 'Please sign in to start language learning.');
+  if (!ok) return;
+  setSupportLanguageOpen(true);
+}, [languageLaunching, llUnlockBusy, requireLanguageAuth]);
+
+const startEnglishEsl = useCallback(async () => {
+  if (languageLaunching || llUnlockBusy) return;
+
+  const ok = requireLanguageAuth('language-learning', 'Please sign in to start language learning.');
+  if (!ok) return;
+
+  const prompt = `Teach me English [support=${resolvedSupportLanguage}]`;
+  setCustomTitle(prompt);
+  if (prompt.trim()) selectCourse(null);
+
+  setLanguageActive(ESL_CARD_LABEL);
+  setLanguageLaunching(true);
+  setSupportLanguageOpen(false);
+
+  try {
+    resetRunUi();
+    await attemptLanguageStart(prompt, ESL_CARD_LABEL, 'banner');
+  } finally {
+    setLanguageLaunching(false);
+    setLanguageActive(null);
+  }
+}, [
+  languageLaunching,
+  llUnlockBusy,
+  requireLanguageAuth,
+  resolvedSupportLanguage,
+  attemptLanguageStart,
+  resetRunUi,
+  selectCourse,
+]);
+
 const startLanguageFromCard = useCallback(async (language: string) => {
   if (languageLaunching || llUnlockBusy) return;
 
@@ -2017,10 +2266,12 @@ const startLanguageFromCard = useCallback(async (language: string) => {
 >
   {LANGUAGE_CARDS.map((card) => (
     <Pressable
-      key={card.language}
+      key={card.key}
       disabled={languageLaunching || llUnlockBusy || starting}
       // ❌ remove onPressIn/onPressOut (these were canceling taps)
-      onPress={() => startLanguageFromCard(card.language)}
+      onPress={() =>
+        card.language === ESL_CARD_LABEL ? openSupportLanguageModal() : startLanguageFromCard(card.language)
+      }
       hitSlop={6}
       style={({ pressed }) => [
         tw`w-40 rounded-2xl border border-white/40 dark:border-white/10 bg-white dark:bg-[#141b24] px-4 py-3`,
@@ -2094,7 +2345,93 @@ const startLanguageFromCard = useCallback(async (language: string) => {
 
               </View>
 
-              
+              <Modal
+                visible={supportLanguageOpen}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setSupportLanguageOpen(false)}
+              >
+                <Pressable
+                  onPress={() => setSupportLanguageOpen(false)}
+                  style={[StyleSheet.absoluteFillObject, tw`bg-black/50`]}
+                />
+                <View
+                  style={[
+                    tw`absolute bottom-0 left-0 right-0 bg-white dark:bg-[#141b24] rounded-t-3xl border-t border-[#cedbe8] dark:border-white/10 px-5 pt-4`,
+                    { paddingBottom: (insets?.bottom ?? 0) + 16 },
+                  ]}
+                >
+                  <View style={tw`flex-row items-center justify-between mb-2`}>
+                    <Text style={tw`text-base font-semibold text-[#0d141c] dark:text-white`}>
+                      Choose your support language
+                    </Text>
+                    <Pressable onPress={() => setSupportLanguageOpen(false)} hitSlop={10}>
+                      <Text style={tw`text-sm text-[#6b7280] dark:text-white/70`}>Close</Text>
+                    </Pressable>
+                  </View>
+                  <Text style={tw`text-xs text-[#6b7280] dark:text-white/70 mb-3`}>
+                    This sets your explanation language for English lessons.
+                  </Text>
+                  <View style={tw`gap-2`}>
+                    {SUPPORT_LANGUAGE_OPTIONS.map((opt) => {
+                      const active = supportLanguageSetting === opt.value;
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          onPress={() => updateSupportLanguageSetting(opt.value)}
+                          style={tw.style(
+                            'rounded-xl border px-3 py-2 flex-row items-center justify-between',
+                            active
+                              ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
+                              : 'border-[#cedbe8] dark:border-white/10 bg-white dark:bg-[#141b24]',
+                          )}
+                        >
+                          <View>
+                            <Text
+                              style={tw`text-sm font-semibold text-[#0d141c] dark:text-white`}
+                            >
+                              {opt.label}
+                            </Text>
+                            {opt.subtitle ? (
+                              <Text style={tw`text-xs text-[#6b7280] dark:text-white/60`}>
+                                {opt.subtitle}
+                              </Text>
+                            ) : null}
+                          </View>
+                          {active ? (
+                            <Text style={tw`text-indigo-600 dark:text-indigo-300 text-sm`}>✓</Text>
+                          ) : null}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  {supportLanguageSetting === 'auto' ? (
+                    <Text style={tw`text-xs text-[#6b7280] dark:text-white/60 mt-3`}>
+                      Auto resolves to: {resolvedSupportLanguage.toUpperCase()}
+                    </Text>
+                  ) : null}
+                  <TouchableOpacity
+                    onPress={startEnglishEsl}
+                    disabled={languageLaunching || llUnlockBusy || starting}
+                    style={tw.style(
+                      'mt-4 rounded-xl py-3 items-center',
+                      languageLaunching || llUnlockBusy || starting
+                        ? 'bg-slate-200 dark:bg-slate-700'
+                        : 'bg-indigo-600',
+                    )}
+                  >
+                    <Text
+                      style={tw`text-sm font-semibold ${
+                        languageLaunching || llUnlockBusy || starting
+                          ? 'text-[#6b7280] dark:text-white/70'
+                          : 'text-white'
+                      }`}
+                    >
+                      Start English
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </Modal>
 
               <Modal
   visible={Boolean(llUnlockOpen && llUnlockCtx)}
