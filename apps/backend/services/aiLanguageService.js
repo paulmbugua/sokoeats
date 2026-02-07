@@ -24,11 +24,18 @@ const LANGUAGE_CACHE_TTL_SEC = 60 * 60 * 24 * 14;
 const TX_WARN_MS = Number(process.env.DB_TX_WARN_MS) || 2500;
 
 const LANGUAGE_CONFIG = {
+  en: { label: 'English', locale: 'en-US', native: 'English' },
+  en_esl: { label: 'English (ESL)', locale: 'en-US', native: 'English' },
   de: { label: 'German', locale: 'de-DE', native: 'Deutsch' },
   fr: { label: 'French', locale: 'fr-FR', native: 'Français' },
   es: { label: 'Spanish', locale: 'es-ES', native: 'Español' },
   ar: { label: 'Arabic', locale: 'ar-XA', native: 'العربية' },
-  
+  hi: { label: 'Hindi', locale: 'hi-IN', native: 'हिन्दी' },
+  ur: { label: 'Urdu', locale: 'ur-PK', native: 'اردو' },
+  tr: { label: 'Turkish', locale: 'tr-TR', native: 'Türkçe' },
+  ru: { label: 'Russian', locale: 'ru-RU', native: 'Русский' },
+  tl: { label: 'Tagalog', locale: 'fil-PH', native: 'Tagalog' },
+  ml: { label: 'Malayalam', locale: 'ml-IN', native: 'മലയാളം' },
 };
 
 const asIntId = (v) => {
@@ -168,11 +175,19 @@ export function detectTargetLanguage(prompt) {
   if (!raw) return null;
   const lower = raw.toLowerCase();
 
+  if (/(teach me english|english)/i.test(lower)) return 'en_esl';
+
   const matches = [
     { code: 'de', re: /(germany|german|deutsch)/i },
     { code: 'fr', re: /(france|french|fran[çc]ais)/i },
     { code: 'es', re: /(spain|spanish|espa[ñn]ol)/i },
     { code: 'ar', re: /(arabic|arab|العربية)/i },
+    { code: 'hi', re: /(hindi|हिन्दी|हिंदी)/i },
+    { code: 'ur', re: /(urdu|اردو)/i },
+    { code: 'tr', re: /(turkish|türkçe|turkce)/i },
+    { code: 'ru', re: /(russian|русский|русская|рус)/i },
+    { code: 'tl', re: /(tagalog|filipino|filipina)/i },
+    { code: 'ml', re: /(malayalam|മലയാളം)/i },
   ];
 
   for (const { code, re } of matches) {
@@ -180,6 +195,17 @@ export function detectTargetLanguage(prompt) {
   }
 
   return null;
+}
+
+const SUPPORT_LANGUAGE_CODES = new Set(['ar', 'hi', 'ur', 'en']);
+
+function parseSupportLanguage(prompt) {
+  const raw = String(prompt || '');
+  const trimmed = raw.trim().toLowerCase();
+  if (SUPPORT_LANGUAGE_CODES.has(trimmed)) return trimmed;
+  const match = raw.match(/support\s*[:=]\s*(ar|hi|ur|en)\b/i);
+  const code = String(match?.[1] || 'en').toLowerCase();
+  return SUPPORT_LANGUAGE_CODES.has(code) ? code : 'en';
 }
 
 function languageLabel(code) {
@@ -200,18 +226,22 @@ function pickVoiceByGender(voices, preferredGender) {
   return preferred?.name || voices[0]?.name || null;
 }
 
-function buildLanguageCacheKey({ courseId, prompt, targetLanguage, voices }) {
+function buildLanguageCacheKey({ courseId, prompt, targetLanguage, voices, supportLanguage }) {
   const normalizedPrompt = String(prompt || '').trim().toLowerCase();
   const promptHash = sha1(normalizedPrompt);
   const voiceKey = `${voices?.teacher || 'en'}|${voices?.translator || 'tr'}`;
-  return `ai:lang:${courseId}:${targetLanguage}:${promptHash}:voice=${voiceKey}:mode=queue`;
+  const supportKey =
+    targetLanguage === 'en_esl' ? `:support=${supportLanguage || 'en'}` : '';
+  return `ai:lang:${courseId}:${targetLanguage}${supportKey}:${promptHash}:voice=${voiceKey}:mode=queue`;
 }
 
-async function chooseVoicePair(targetLanguage) {
+async function chooseVoicePair(targetLanguage, supportLanguage) {
+  const translatorLocale =
+    targetLanguage === 'en_esl' ? languageLocale(supportLanguage || 'en') : languageLocale(targetLanguage);
   const [enVoices, targetVoices] = await Promise.all([
     listGoogleVoices({ languageCode: 'en-US', onlyWavenet: true }).catch(() => []),
     listGoogleVoices({
-      languageCode: languageLocale(targetLanguage),
+      languageCode: translatorLocale,
       onlyWavenet: true,
     }).catch(() => []),
   ]);
@@ -261,16 +291,18 @@ function pickDeterministicVoice(voices, preferredGender, salt) {
   return pool[idx]?.name || pool[0]?.name || null;
 }
 
-async function chooseVoicePairForStyle(targetLanguage, voiceId) {
+async function chooseVoicePairForStyle(targetLanguage, voiceId, supportLanguage) {
   const style = String(voiceId || '').trim().toLowerCase();
-  if (!style) return chooseVoicePair(targetLanguage);
+  if (!style) return chooseVoicePair(targetLanguage, supportLanguage);
 
   const preset = VOICE_STYLE_PRESETS[style] || null;
 
+  const translatorLocale =
+    targetLanguage === 'en_esl' ? languageLocale(supportLanguage || 'en') : languageLocale(targetLanguage);
   const [enVoices, targetVoices] = await Promise.all([
     listGoogleVoices({ languageCode: 'en-US', onlyWavenet: true }).catch(() => []),
     listGoogleVoices({
-      languageCode: languageLocale(targetLanguage),
+      languageCode: translatorLocale,
       onlyWavenet: true,
     }).catch(() => []),
   ]);
@@ -396,7 +428,16 @@ async function ensureLanguageCourse({
   profileId,
   prompt,
   targetLanguage,
+  supportLanguage,
 }) {
+  const supportCode = parseSupportLanguage(supportLanguage);
+  const supportFilter =
+    targetLanguage === 'en_esl' ? ` AND (c.metadata->>'supportLanguage') = $4` : '';
+  const params =
+    targetLanguage === 'en_esl'
+      ? [profileId ?? null, userId ?? null, targetLanguage, supportCode]
+      : [profileId ?? null, userId ?? null, targetLanguage];
+
   const existing = await client.query(
     `
     SELECT e.*, c.metadata
@@ -408,22 +449,23 @@ async function ensureLanguageCourse({
     OR
     ($2::int IS NOT NULL AND e.user_id = $2::int)
   )
-
+  ${supportFilter}
      ORDER BY e.updated_at DESC
      LIMIT 1
     `,
-    [profileId ?? null, userId ?? null, targetLanguage]
+    params
 
   );
 
   if (existing.rowCount) return existing.rows[0];
 
   const metadata = {
-  mode: 'language',
-  targetLanguage,
-  titleSeed: prompt,
-  // voices added later by resolveVoices()
-};
+    mode: 'language',
+    targetLanguage,
+    titleSeed: prompt,
+    ...(targetLanguage === 'en_esl' ? { supportLanguage: supportCode } : {}),
+    // voices added later by resolveVoices()
+  };
 
 
 
@@ -553,13 +595,25 @@ async function generateLanguageResponse({
   targetLanguage,
   prompt,
   messages,
+  supportLanguage,
 }) {
   const langLabel = languageLabel(targetLanguage);
   const langNative = LANGUAGE_CONFIG[targetLanguage]?.native || langLabel;
 
-  const system = `You are a bilingual language tutor. The learner is an English speaker learning ${langLabel} (${langNative}).
+  let system = `You are a bilingual language tutor. The learner is an English speaker learning ${langLabel} (${langNative}).
 Return JSON only, following the schema. Keep segments short, conversational, and accurate. Use natural translations.
 Include 3-6 segments, short vocab list, and 2-3 mini practice prompts.`;
+
+  if (targetLanguage === 'en_esl') {
+    const supportCode = SUPPORT_LANGUAGE_CODES.has(String(supportLanguage || '').toLowerCase())
+      ? String(supportLanguage).toLowerCase()
+      : 'en';
+    const supportLabel = languageLabel(supportCode);
+    const supportNative = LANGUAGE_CONFIG[supportCode]?.native || supportLabel;
+    system = `You are an English tutor. Learner’s support language is ${supportLabel} (${supportNative}).
+Return JSON only. segments: en=English line, tr=support-language explanation/translation. Keep short and accurate.
+vocab + miniPractice should include both languages where possible.`;
+  }
 
   const history = buildConversationContext(messages);
   const user = `Conversation so far:\n${history || 'None'}\n\nLearner prompt: ${prompt}\n\nRespond in JSON.`;
@@ -661,7 +715,7 @@ async function buildPlaybackQueue({ segments, voices }) {
 async function resolveVoices(queryable, courseId, targetLanguage, metadata, opts = {}) {
   if (metadata?.voices?.teacher && metadata?.voices?.translator) return metadata.voices;
 
-  const voices = await chooseVoicePair(targetLanguage);
+  const voices = await chooseVoicePair(targetLanguage, metadata?.supportLanguage);
   await upsertCourseMetadata(queryable, courseId, { voices }, opts);
   return voices;
 }
@@ -670,6 +724,7 @@ export async function startLanguageCourse({ userId, profileId, prompt, orgId }) 
   userId = asIntId(userId);
   profileId = asIntId(profileId);
   const targetLanguage = detectTargetLanguage(prompt);
+  const supportLanguage = parseSupportLanguage(prompt);
   if (!targetLanguage) {
     return {
       status: 400,
@@ -700,6 +755,7 @@ export async function startLanguageCourse({ userId, profileId, prompt, orgId }) 
       profileId,
       prompt,
       targetLanguage,
+      supportLanguage,
     });
 
     courseId = entitlementRow.course_id;
@@ -770,6 +826,7 @@ export async function startLanguageCourse({ userId, profileId, prompt, orgId }) 
       prompt,
       targetLanguage,
       voices,
+      supportLanguage: targetLanguage === 'en_esl' ? supportLanguage : undefined,
     });
     const cached = await cacheGetJSON(cacheKey);
 
@@ -782,6 +839,7 @@ export async function startLanguageCourse({ userId, profileId, prompt, orgId }) 
         targetLanguage,
         prompt,
         messages: recentMessages,
+        supportLanguage: targetLanguage === 'en_esl' ? supportLanguage : undefined,
       });
       const cachePayload = {
         segments: assistant?.segments || [],
@@ -856,6 +914,7 @@ export async function sendLanguagePrompt({
   let entitlement;
   let metadata = {};
   let targetLanguage;
+  let supportLanguage = 'en';
   let updatedEnt;
   let promptsLimit = 0;
   let resetsAt = null;
@@ -929,6 +988,7 @@ export async function sendLanguagePrompt({
     );
     metadata = courseQ.rows?.[0]?.metadata || {};
     targetLanguage = entitlement.target_language;
+    supportLanguage = parseSupportLanguage(metadata?.supportLanguage);
     updatedEnt = {
       ...entitlement,
       prompts_used: Number(entitlement.prompts_used || 0) + 1,
@@ -957,6 +1017,7 @@ export async function sendLanguagePrompt({
       prompt,
       targetLanguage,
       voices,
+      supportLanguage: targetLanguage === 'en_esl' ? supportLanguage : undefined,
     });
     const cached = await cacheGetJSON(cacheKey);
 
@@ -969,6 +1030,7 @@ export async function sendLanguagePrompt({
         targetLanguage,
         prompt,
         messages,
+        supportLanguage: targetLanguage === 'en_esl' ? supportLanguage : undefined,
       });
       const cachePayload = {
         segments: assistant?.segments || [],
@@ -1265,6 +1327,7 @@ export async function getLanguagePlayback({
 
     const targetLanguage = entQ.rows[0].target_language;
     const metadata = entQ.rows[0].metadata || {};
+    const supportLanguage = parseSupportLanguage(metadata?.supportLanguage);
 
     // ✅ load the requested assistant message
     const msgRow = await loadAssistantMessageForPlayback(
@@ -1293,7 +1356,7 @@ export async function getLanguagePlayback({
 
     // ✅ voices: use style-based pair for playback (so voiceId actually matters)
     // If you want "default" voices when voiceId is unknown, chooseVoicePairForStyle handles that.
-    const voices = await chooseVoicePairForStyle(targetLanguage, voiceId);
+    const voices = await chooseVoicePairForStyle(targetLanguage, voiceId, supportLanguage);
 
     // ✅ Redis cache key (stable per message+segments+voice)
     const segHash = sha1(JSON.stringify(segments));
