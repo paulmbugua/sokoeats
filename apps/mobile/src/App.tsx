@@ -5,8 +5,6 @@ import { View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StackActions } from '@react-navigation/native';
-
-import TransitionOverlay from './screens/TransitionOverlay.native';
 import { useThemePref } from './theme/ThemeContext';
 
 import { createStackNavigator, TransitionSpecs } from '@react-navigation/stack';
@@ -555,49 +553,6 @@ const App: React.FC = () => {
 
   const { resolvedScheme } = useThemePref();
 
-  // ✅ global transition overlay state (spinner only — no labels)
-  const [navBusy, setNavBusy] = React.useState(false);
-  const navTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const beginNavBusy = React.useCallback((_routeName: string) => {
-    if (navTimerRef.current) clearTimeout(navTimerRef.current);
-
-    // delay so super-fast transitions don't flash overlay
-    navTimerRef.current = setTimeout(() => {
-      setNavBusy(true);
-    }, 120);
-  }, []);
-
-  const endNavBusy = React.useCallback(() => {
-    if (navTimerRef.current) clearTimeout(navTimerRef.current);
-    navTimerRef.current = null;
-    setNavBusy(false);
-  }, []);
-
-  React.useEffect(() => {
-    return () => {
-      if (navTimerRef.current) clearTimeout(navTimerRef.current);
-      navTimerRef.current = null;
-    };
-  }, []);
-
-  // Navigator-level screen listeners
-  const stackScreenListeners = React.useCallback(
-    ({ route }: { route: { name: string } }) => ({
-      transitionStart: (e: unknown) => {
-        const closing = Boolean((e as { data?: { closing?: boolean } })?.data?.closing);
-        if (closing) return;
-        beginNavBusy(String(route.name));
-      },
-      transitionEnd: (e: unknown) => {
-        const closing = Boolean((e as { data?: { closing?: boolean } })?.data?.closing);
-        if (closing) return;
-        endNavBusy();
-      },
-    }),
-    [beginNavBusy, endNavBusy]
-  );
-
   React.useEffect(() => {
     let mounted = true;
 
@@ -631,14 +586,9 @@ const App: React.FC = () => {
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.flex1}>
       <NavbarNative />
 
-      {/* ✅ Global overlay (spinner only) */}
-      {/* If TS complains label is required, change TransitionOverlay prop to label?: string */}
-      <TransitionOverlay visible={navBusy} />
-
       <View style={styles.flex1}>
         <Stack.Navigator
           initialRouteName={initialRoute}
-          screenListeners={stackScreenListeners}
           screenOptions={{
             headerShown: false,
             cardOverlayEnabled: true,
@@ -781,4 +731,3 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
 });
-
