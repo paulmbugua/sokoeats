@@ -392,11 +392,13 @@ export async function createAssignment(req, res) {
         .filter(Boolean);
 
       void notifyEvent(
-        'ORG_ASSIGNMENT_SHARED',
+        'ORG_ASSIGNMENT_POSTED',
         learnerUserIds,
         {
+          orgId,
           assignmentId: row?.id,
           courseId,
+          classLabel: classLabelNorm,
           title: row?.title_override || 'New assignment',
         },
       ).catch((e) =>

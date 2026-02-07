@@ -7,6 +7,7 @@ import {
   newsletterDraftToMarkdown,
 } from '../services/newsletterAiService.js';
 import { buildNewsletterEmailHtml } from '../services/newsletterEmailTemplate.js';
+import { notifyEvent } from '../services/notificationEvents.js';
 
 const PRO_ONLY = ['pro', 'enterprise'];
 
@@ -811,6 +812,22 @@ export async function sendNewsletter(req, res) {
        RETURNING *`,
       [id, orgId],
     );
+
+    if (wantsInApp && learnerTargets.length) {
+      const learnerUserIds = learnerTargets.map((t) => t.user_id).filter(Boolean);
+      void notifyEvent(
+        'ORG_NEWSLETTER_SENT',
+        learnerUserIds,
+        {
+          orgId,
+          newsletterId: id,
+          subject: newsletter.title || 'Newsletter',
+          classLabel: mode === 'class' ? String(class_label || '').trim() : null,
+        },
+      ).catch((e) =>
+        console.warn('[push] org newsletter notify failed', e?.message || e),
+      );
+    }
 
     return res.json({
       newsletter: rows[0],
