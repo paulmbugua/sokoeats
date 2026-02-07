@@ -2,7 +2,7 @@
 .git/
 **/.git/
 
-# local caches / outputs
+# outputs / caches
 **/node_modules/
 **/.expo/
 **/.expo-shared/
@@ -13,21 +13,20 @@
 **/web-build/
 **/dist/
 **/build/
+**/.next/
+**/.turbo/
+**/coverage/
 
-# local env files (use EAS env vars instead)
+# env files
 **/.env
 **/.env.*
 !**/.env.example
 
-# prebuild outputs (you don't commit them anyway)
-apps/mobile/android/
-apps/mobile/ios/
-
-# backend uploads/secrets
+# backend secrets/uploads
 apps/backend/uploads/
 apps/backend/secrets/
 
-# --- MUST be included for Yarn 4 workspace installs ---
+# Yarn essentials
 !package.json
 !yarn.lock
 !.yarnrc.yml
@@ -35,6 +34,18 @@ apps/backend/secrets/
 !.pnp.cjs
 !.pnp.loader.mjs
 
-# --- MUST be included for mobile build ---
+# Don't upload Yarn cache blobs
+.yarn/cache/
+.yarn/unplugged/
+.yarn/install-state.gz
+.yarn/build-state.yml
+
+# Mobile + shared only
+!apps/
 !apps/mobile/**
+!packages/
 !packages/shared/**
+
+# Never upload prebuild folders
+apps/mobile/android/
+apps/mobile/ios/
