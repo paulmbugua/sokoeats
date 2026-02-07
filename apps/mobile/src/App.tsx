@@ -1,7 +1,7 @@
 // apps/mobile/src/App.tsx
 import * as React from 'react';
 import type { ReactNode } from 'react';
-import { View, StyleSheet,Platform } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StackActions } from '@react-navigation/native';
@@ -84,7 +84,6 @@ import ResultsPage from './screens/Results.native';
 /* ─────────────────────────────────────────────────────────
  * ClassVault
  * ───────────────────────────────────────────────────────── */
-
 import ClassVaultDetailScreen from './screens/ClassVaultDetailScreen.native';
 import ClassVaultUploadScreen from './screens/ClassVaultUploadScreen.native';
 
@@ -153,86 +152,6 @@ type OrgState = {
 };
 
 /* ─────────────────────────────────────────────────────────
- * Nav label helpers (SINGLE implementation — no duplicates)
- * ───────────────────────────────────────────────────────── */
-function humanizeRouteName(name: string): string {
-  return String(name || 'Screen')
-    .replace(/[_-]+/g, ' ')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-const ROUTE_LABELS: Partial<Record<keyof MainStackParamList, string>> = {
-  Landing: 'Starting…',
-  Home: 'Loading Home…',
-  Login: 'Opening Login…',
-  FindTutor: 'Finding tutors…',
-  RobotTutor: 'Preparing Robot Tutor…',
-  Help: 'Opening Help…',
-  Resources: 'Loading Resources…',
-  Videos: 'Loading Videos…',
-  VideoCollection: 'Loading Videos…',
-
-  ProfileSelf: 'Opening Profile…',
-  Profile: 'Opening Profile…',
-  Account: 'Opening Account…',
-  Messages: 'Opening Messages…',
-  Settings: 'Opening Settings…',
-  SettingsCreate: 'Opening Profile Setup…',
-  SettingsManage: 'Opening Profile Editor…',
-
-  Courses: 'Loading Courses…',
-  CourseDetails: 'Loading Course…',
-  CourseEnrollment: 'Preparing Enrollment…',
-  CourseProgress: 'Loading Progress…',
-  MyEnrollments: 'Loading Enrollments…',
-  CreateCourse: 'Creating Course…',
-  Achievements: 'Loading Achievements…',
-  Results: 'Preparing Results…',
-
-  ClassVaultLibrary: 'Opening ClassVault…',
-  ClassVaultDetail: 'Loading Class…',
-  ClassVaultUpload: 'Preparing Upload…',
-
-  VerifyCertificate: 'Verifying Certificate…',
-  VerifyCertificatePrint: 'Preparing Certificate…',
-
-  PaymentFlow: 'Securing Payment…',
-  PaystackCheckout: 'Opening Checkout…',
-  PaystackCallback: 'Confirming Payment…',
-
-  InstitutionLogin: 'Opening Institution Login…',
-  OrgInviteLanding: 'Opening Invite…',
-  OrgHome: 'Opening Institution…',
-  OrgElearnPortal: 'Opening Institution Portal…',
-  OrgProfile: 'Opening Institution Profile…',
-  OrgRoster: 'Loading Roster…',
-  OrgExamResultsPortal: 'Loading Exam Results…',
-  OrgAttendance: 'Loading Attendance…',
-  OrgFees: 'Loading Fees…',
-  OrgNewsletters: 'Loading Newsletters…',
-  OrgAnnouncements: 'Loading Announcements…',
-  OrgToolsSports: 'Loading Sports…',
-  OrgToolsClubs: 'Loading Clubs…',
-  OrgLearnerHome: 'Opening Learner Home…',
-  OrgLearnerFees: 'Loading Fees…',
-  OrgInstructorHome: 'Opening Instructor Home…',
-  OrgChangePassword: 'Opening Password…',
-  OrgLearnerNewsletters: 'Loading Newsletters…',
-  OrgLearnerSportsClubs: 'Loading Sports & Clubs…',
-};
-
-function labelForRoute(routeName: string): string {
-  const key = routeName as keyof MainStackParamList;
-  const mapped = ROUTE_LABELS[key];
-  if (mapped) return mapped;
-
-  const nice = humanizeRouteName(routeName);
-  return nice ? `Opening ${nice}…` : 'Opening…';
-}
-
-/* ─────────────────────────────────────────────────────────
  * First-login helpers (per identity)
  * ───────────────────────────────────────────────────────── */
 const firstLoginKey = (userId?: string | number | null, email?: string | null | undefined) =>
@@ -279,13 +198,10 @@ function ProtectedRoute({ children }: GuardProps) {
 
 function OrgProtectedRoute({ children }: GuardProps) {
   const { orgToken, hydrated } = useShopContext() as unknown as ShopCtx;
-
-  if (!hydrated) return <Spinner label="Opening institution…" />;
+  if (!hydrated) return <Spinner />;
   if (!orgToken) return <InstitutionLogin />;
-
   return <>{children}</>;
 }
-
 
 function useOrgRole() {
   const org = (useOrg() ?? {}) as unknown as OrgState;
@@ -350,37 +266,6 @@ function OrgInstructorOnlyGuard({ children }: GuardProps) {
   return null;
 }
 
-/* ─────────────────────────────────────────────────────────
- * Helpers (ClassVault filters) — IMPORTANT: outside App component
- * ───────────────────────────────────────────────────────── */
-function toStringArray(v: unknown): string[] | undefined {
-  if (Array.isArray(v)) {
-    const xs = v.map(String).map((s) => s.trim()).filter(Boolean);
-    return xs.length ? xs : undefined;
-  }
-  if (typeof v === 'string') {
-    const s = v.trim();
-    return s ? [s] : undefined;
-  }
-  return undefined;
-}
-
-type ClassVaultUiFilters = {
-  videoCategory?: unknown;
-  category?: unknown;
-  videoAgeGroup?: unknown;
-  ageGroup?: unknown;
-};
-
-type ClassVaultLibraryProps = {
-  uiFilters: unknown;
-  clearFilters: () => void;
-};
-
-
-
-  
-
 function OrgStaffGuard({ children }: GuardProps) {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const { busy, role, isAdmin, isInstructor, isLearner } = useOrgRole();
@@ -388,13 +273,11 @@ function OrgStaffGuard({ children }: GuardProps) {
   React.useEffect(() => {
     if (busy || !role) return;
 
-    // Learners shouldn't access staff tools
     if (isLearner) {
       navigation.reset({ index: 0, routes: [{ name: 'OrgLearnerHome' }] });
       return;
     }
 
-    // Not staff? kick to login
     if (!(isAdmin || isInstructor)) {
       navigation.reset({ index: 0, routes: [{ name: 'InstitutionLogin' }] });
     }
@@ -480,7 +363,6 @@ function OrgExamResultsPortalScreen() {
   const route = useRoute<RouteProp<MainStackParamList, 'OrgExamResultsPortal'>>();
   const view = route.params?.view;
 
-  // learner view should allow learners; staff view stays staff-only
   const GuardComp = view === 'learner' ? OrgLearnerOnlyGuard : OrgStaffGuard;
 
   return (
@@ -651,39 +533,33 @@ function OerCollectionReaderAliasScreen() {
     const id = route.params?.id;
     if (!id) return;
 
-    // Redirect to the screen you already use for collections
     navigation.dispatch(StackActions.replace('VideoCollection', { id }));
   }, [navigation, route.params?.id]);
 
-  return <Spinner label="Loading collection…" />;
+  return <Spinner />;
 }
-
 
 /* ─────────────────────────────────────────────────────────
  * App
  * ───────────────────────────────────────────────────────── */
 const App: React.FC = () => {
-  // ✅ hooks first (no early returns before all hooks)
+  // ✅ hooks first
   const [bootReady, setBootReady] = React.useState(false);
-  const [initialRoute, setInitialRoute] = React.useState<keyof MainStackParamList>('Landing');
+  const [initialRoute, setInitialRoute] =
+    React.useState<keyof MainStackParamList>('Landing');
 
   const { token, hydrated, authMode } = (useShopContext() as unknown as ShopCtx) ?? {};
   const isFirstLogin = useIsFirstLogin();
   const markSeen = useMarkFirstLoginSeen();
-  const { uiFilters, clearFilters } = useHomePage();
+  useHomePage(); // keep hook if it has side-effects; otherwise you can remove this line safely
 
   const { resolvedScheme } = useThemePref();
 
-  // ✅ NEW: global transition overlay state (no useNavigationState!)
+  // ✅ global transition overlay state (spinner only — no labels)
   const [navBusy, setNavBusy] = React.useState(false);
-  const [navLabel, setNavLabel] = React.useState<string>('Opening…');
-
   const navTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const beginNavBusy = React.useCallback((routeName: string) => {
-    // lock label immediately (no flicker)
-    setNavLabel(labelForRoute(routeName));
-
+  const beginNavBusy = React.useCallback((_routeName: string) => {
     if (navTimerRef.current) clearTimeout(navTimerRef.current);
 
     // delay so super-fast transitions don't flash overlay
@@ -698,7 +574,6 @@ const App: React.FC = () => {
     setNavBusy(false);
   }, []);
 
-  // cleanup on unmount
   React.useEffect(() => {
     return () => {
       if (navTimerRef.current) clearTimeout(navTimerRef.current);
@@ -706,20 +581,17 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Navigator-level screen listeners (route is the transitioning screen)
+  // Navigator-level screen listeners
   const stackScreenListeners = React.useCallback(
     ({ route }: { route: { name: string } }) => ({
       transitionStart: (e: unknown) => {
-        // Ignore the closing screen; handle only the opening one
         const closing = Boolean((e as { data?: { closing?: boolean } })?.data?.closing);
         if (closing) return;
-
         beginNavBusy(String(route.name));
       },
       transitionEnd: (e: unknown) => {
         const closing = Boolean((e as { data?: { closing?: boolean } })?.data?.closing);
         if (closing) return;
-
         endNavBusy();
       },
     }),
@@ -759,8 +631,9 @@ const App: React.FC = () => {
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.flex1}>
       <NavbarNative />
 
-      {/* ✅ Global overlay (once) */}
-      <TransitionOverlay visible={navBusy} label={navLabel} />
+      {/* ✅ Global overlay (spinner only) */}
+      {/* If TS complains label is required, change TransitionOverlay prop to label?: string */}
+      <TransitionOverlay visible={navBusy} />
 
       <View style={styles.flex1}>
         <Stack.Navigator
@@ -808,12 +681,10 @@ const App: React.FC = () => {
           <Stack.Screen name="Home" component={HomePageNative} />
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="FindTutor" component={FindTutor} />
-         <Stack.Screen
+          <Stack.Screen
             name="RobotTutor"
             component={RobotTeacher}
-            options={{
-              gestureEnabled: false,
-                }}
+            options={{ gestureEnabled: false }}
           />
           <Stack.Screen name="LanguageLearning" component={LanguageLearningScreen} />
           <Stack.Screen name="Help" component={HelpPage} />
@@ -834,7 +705,7 @@ const App: React.FC = () => {
 
           {/* Payments */}
           <Stack.Screen name="PaymentFlow" component={PaymentFlow} />
-          <Stack.Screen name="BuyTokens" component={BuyTokensNative} /> 
+          <Stack.Screen name="BuyTokens" component={BuyTokensNative} />
           <Stack.Screen name="PaystackCheckout" component={PaystackCheckoutNative} />
           <Stack.Screen name="PaystackCallback" component={PaystackCallbackNative} />
 
@@ -871,7 +742,6 @@ const App: React.FC = () => {
           <Stack.Screen name="CourseDetails" component={CourseDetails} />
 
           {/* ClassVault */}
-          
           <Stack.Screen name="ClassVaultDetail" component={ClassVaultDetailScreen} />
           <Stack.Screen name="ClassVaultUpload" component={ClassVaultUploadProtectedScreen} />
 
@@ -911,3 +781,4 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
 });
+

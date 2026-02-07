@@ -1,9 +1,0 @@
-node_modules/
-.git/
-.expo/
-.cache/
-android/build/
-ios/build/
-dist/
-web-build/
-*.log
