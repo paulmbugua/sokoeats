@@ -57,12 +57,38 @@ const TRACKS = [
   { key: 'degree', label: 'Comprehensive', lessons: getRequiredWeeks('degree') },
 ] as const satisfies readonly { key: TrackKey; label: string; lessons: number }[];
 
+const ESL_CARD_LABEL = 'English (ESL)';
+const SUPPORT_LANGUAGE_STORAGE_KEY = 'learning_support_language_v1';
+
 const LANGUAGE_CARDS = [
-  { language: 'German', emoji: '🇩🇪', subtitle: 'Start a lesson' },
-  { language: 'French', emoji: '🇫🇷', subtitle: 'Build confidence' },
-  { language: 'Spanish', emoji: '🇪🇸', subtitle: 'Quick practice' },
-  { language: 'Arabic', emoji: '🇸🇦', subtitle: 'New phrases' },
+  { key: 'en_esl', language: ESL_CARD_LABEL, emoji: '🇬🇧', subtitle: 'Work + daily life' },
+  { key: 'de', language: 'German', emoji: '🇩🇪', subtitle: 'Start a lesson' },
+  { key: 'fr', language: 'French', emoji: '🇫🇷', subtitle: 'Build confidence' },
+  { key: 'es', language: 'Spanish', emoji: '🇪🇸', subtitle: 'Quick practice' },
+  { key: 'ar', language: 'Arabic', emoji: '🇸🇦', subtitle: 'New phrases' },
+  { key: 'hi', language: 'Hindi', emoji: '🇮🇳', subtitle: 'Everyday talk' },
+  { key: 'ur', language: 'Urdu', emoji: '🇵🇰', subtitle: 'Quick practice' },
+  { key: 'tr', language: 'Turkish', emoji: '🇹🇷', subtitle: 'New phrases' },
+  { key: 'ru', language: 'Russian', emoji: '🇷🇺', subtitle: 'Build confidence' },
+  { key: 'sw', language: 'Swahili', emoji: '🇰🇪', subtitle: 'Daily life' },
+  { key: 'tl', language: 'Tagalog', emoji: '🇵🇭', subtitle: 'Start a lesson' },
+  { key: 'ml', language: 'Malayalam', emoji: '🇮🇳', subtitle: 'Daily life' },
 ] as const;
+
+type SupportLanguageOption = 'auto' | 'ar' | 'hi' | 'ur' | 'en';
+type SupportLanguageResolved = Exclude<SupportLanguageOption, 'auto'>;
+
+const SUPPORT_LANGUAGE_OPTIONS: Array<{
+  value: SupportLanguageOption;
+  label: string;
+  subtitle?: string;
+}> = [
+  { value: 'auto', label: 'Auto (recommended)', subtitle: 'Uses your device + region' },
+  { value: 'ar', label: 'Arabic', subtitle: 'العربية' },
+  { value: 'hi', label: 'Hindi', subtitle: 'हिन्दी' },
+  { value: 'ur', label: 'Urdu', subtitle: 'اردو' },
+  { value: 'en', label: 'English', subtitle: 'English' },
+];
 
 
 function inferSupportedLanguageLabel(text: string): string | null {
@@ -74,10 +100,18 @@ function inferSupportedLanguageLabel(text: string): string | null {
   const tok = firstWord.toLowerCase().replace(/[^a-z]/g, '');
 
   // keep aligned with LANGUAGE_CARDS
+  if (tok === 'english' || tok === 'esl') return ESL_CARD_LABEL;
   if (tok === 'german' || tok === 'deutsch') return 'German';
   if (tok === 'french' || tok === 'francais') return 'French';
   if (tok === 'spanish' || tok === 'espanol') return 'Spanish';
   if (tok === 'arabic') return 'Arabic';
+  if (tok === 'hindi') return 'Hindi';
+  if (tok === 'urdu') return 'Urdu';
+  if (tok === 'turkish' || tok === 'turkce') return 'Turkish';
+  if (tok === 'russian') return 'Russian';
+  if (tok === 'swahili' || tok === 'kiswahili') return 'Swahili';
+  if (tok === 'tagalog' || tok === 'filipino') return 'Tagalog';
+  if (tok === 'malayalam') return 'Malayalam';
   return null;
 }
 
@@ -90,6 +124,85 @@ const sizeToCourseSize: Record<
   extended: 'extended',
   intensive: 'deep_dive',
   marathon: 'bootcamp',
+};
+
+const normalizeLocaleTag = (value?: string | null) =>
+  String(value || '')
+    .trim()
+    .replace('_', '-')
+    .toLowerCase();
+
+const normalizeCountryHint = (value?: string | null) => {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return '';
+  if (raw === 'QATAR') return 'QA';
+  if (raw === 'SAUDI ARABIA' || raw === 'SAUDI') return 'SA';
+  if (raw === 'UNITED ARAB EMIRATES' || raw === 'UAE') return 'AE';
+  if (raw === 'PAKISTAN') return 'PK';
+  if (raw === 'INDIA') return 'IN';
+  return raw;
+};
+
+const resolveSupportLanguageAuto = ({
+  locale,
+  profileLanguage,
+  uiLanguage,
+  timeZone,
+  profileCountry,
+  orgCountry,
+}: {
+  locale?: string | null;
+  profileLanguage?: string | null;
+  uiLanguage?: string | null;
+  timeZone?: string | null;
+  profileCountry?: string | null;
+  orgCountry?: string | null;
+}): SupportLanguageResolved => {
+  const prioritizedLangs = [profileLanguage, uiLanguage];
+  for (const lang of prioritizedLangs) {
+    const normalized = normalizeLocaleTag(lang);
+    if (normalized.startsWith('ar')) return 'ar';
+    if (normalized.startsWith('hi')) return 'hi';
+    if (normalized.startsWith('ur')) return 'ur';
+    if (normalized.startsWith('en')) return 'en';
+  }
+
+  const normalizedLocale = normalizeLocaleTag(locale);
+  if (normalizedLocale.startsWith('ar')) return 'ar';
+  if (normalizedLocale.startsWith('hi')) return 'hi';
+  if (normalizedLocale.startsWith('ur')) return 'ur';
+
+  const tz = String(timeZone || '').trim();
+  if (tz === 'Asia/Riyadh' || tz === 'Asia/Qatar') return 'ar';
+  if (tz === 'Asia/Kolkata') return 'hi';
+  if (tz === 'Asia/Karachi') return 'ur';
+
+  const countryRaw = normalizeCountryHint(profileCountry) || normalizeCountryHint(orgCountry);
+  const arabicCountries = new Set([
+    'AE',
+    'SA',
+    'QA',
+    'KW',
+    'BH',
+    'OM',
+    'EG',
+    'JO',
+    'IQ',
+    'LB',
+    'MA',
+    'DZ',
+    'TN',
+    'LY',
+    'SD',
+    'SY',
+    'YE',
+  ]);
+
+  if (arabicCountries.has(countryRaw)) return 'ar';
+  if (countryRaw === 'IN') return 'hi';
+  if (countryRaw === 'PK') return 'ur';
+
+  return 'en';
 };
 
 function getCourseBlurb(c: TopCourse): string {
@@ -284,7 +397,15 @@ const RobotTeacher: React.FC<RobotTeacherProps> = ({
 
   // ── Contexts & hooks ─────────────────────────────────────
   const effectiveVoice = voiceName || defaultVoice;
-  const { backendUrl, token, orgToken, authMode, role: globalRole } = useShopContext() as any;
+  const {
+    backendUrl,
+    token,
+    orgToken,
+    authMode,
+    role: globalRole,
+    profile,
+    language: uiLanguage,
+  } = useShopContext() as any;
   const authToken = authMode === 'org' ? orgToken || undefined : token || undefined;
   const isGlobalAdmin = globalRole === 'admin' || globalRole === 'superadmin';
 
@@ -533,6 +654,9 @@ const [languageActive, setLanguageActive] = useState<string | null>(null);
 const [llUnlockOpen, setLlUnlockOpen] = useState(false);
 const [llUnlockBusy, setLlUnlockBusy] = useState(false);
 const [llUnlockErr, setLlUnlockErr] = useState<string | null>(null);
+const [supportLanguageOpen, setSupportLanguageOpen] = useState(false);
+const [supportLanguageSetting, setSupportLanguageSetting] =
+  useState<SupportLanguageOption>('auto');
 const unlockedLanguageCoursesRef = useRef<Set<string>>(new Set());
 const selectedCourseIdRef = useRef<string | null>(null);
 const pendingLanguageStartRef = useRef<{
@@ -546,6 +670,61 @@ const [llUnlockCtx, setLlUnlockCtx] = useState<{
   languageLabel: string;
   resetAt?: string | null;
 } | null>(null);
+
+useEffect(() => {
+  if (typeof window === 'undefined') return;
+  try {
+    const stored = window.localStorage.getItem(SUPPORT_LANGUAGE_STORAGE_KEY);
+    const value = String(stored || '').toLowerCase() as SupportLanguageOption;
+    if (['auto', 'ar', 'hi', 'ur', 'en'].includes(value)) {
+      setSupportLanguageSetting(value);
+    }
+  } catch {
+    /* ignore */
+  }
+}, []);
+
+const deviceLocale = useMemo(() => {
+  if (typeof window === 'undefined') return 'en-US';
+  return navigator.language || 'en-US';
+}, []);
+
+const deviceTimeZone = useMemo(() => {
+  if (typeof window === 'undefined') return '';
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    return '';
+  }
+}, []);
+
+const profileLanguage = useMemo(
+  () =>
+    (profile as any)?.language ||
+    (profile as any)?.preferred_language ||
+    (profile as any)?.preferredLanguage ||
+    null,
+  [profile],
+);
+
+const profileCountry = useMemo(
+  () =>
+    (profile as any)?.country ||
+    (profile as any)?.countryCode ||
+    (profile as any)?.country_code ||
+    null,
+  [profile],
+);
+
+const updateSupportLanguageSetting = useCallback((next: SupportLanguageOption) => {
+  setSupportLanguageSetting(next);
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(SUPPORT_LANGUAGE_STORAGE_KEY, next);
+  } catch {
+    /* ignore */
+  }
+}, []);
 
 const resetRunUi = useCallback(() => {
   setActiveRunId(null);
@@ -641,6 +820,35 @@ const llUnlockResetLabel = useMemo(() => {
   const isAdminOwner = roles.has('owner') || roles.has('admin');
   const isInstructor = roles.has('instructor') || roles.has('teacher');
   const canShareUi = Boolean(activeOrgId && (isAdminOwner || isInstructor || isGlobalAdmin));
+
+  const orgCountry = useMemo(
+    () =>
+      (orgCtx as any)?.country ||
+      (orgCtx as any)?.countryCode ||
+      (orgCtx as any)?.country_code ||
+      null,
+    [orgCtx],
+  );
+
+  const resolvedSupportLanguage = useMemo<SupportLanguageResolved>(() => {
+    if (supportLanguageSetting !== 'auto') return supportLanguageSetting;
+    return resolveSupportLanguageAuto({
+      locale: deviceLocale,
+      profileLanguage,
+      uiLanguage,
+      timeZone: deviceTimeZone,
+      profileCountry,
+      orgCountry,
+    });
+  }, [
+    deviceLocale,
+    deviceTimeZone,
+    orgCountry,
+    profileCountry,
+    profileLanguage,
+    supportLanguageSetting,
+    uiLanguage,
+  ]);
 
 
 const startLanguageFlow = useCallback(
@@ -1561,7 +1769,7 @@ useEffect(() => {
       // User typed "Teach me Italian" etc. -> friendly prompt (no start)
       if (!intent && !inferred && isLanguageIntentText(custom)) {
         let msg =
-          'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
+          'Which language do you want to learn? We currently support English (ESL), German, French, Spanish, Arabic, Hindi, Urdu, Turkish, Russian, Swahili, Tagalog, and Malayalam.';
         try {
           // keep this call if you want backend to return a nicer message
           await startLanguageCourse(backendUrl, authToken as string, custom, {
@@ -1581,14 +1789,17 @@ useEffect(() => {
 // If language intent (or user typed just "German"), go through attemptLanguageStart ONLY.
 
 if (intent || inferred) {
-  const langLabel =
+const langLabel =
     (intent as any)?.language ||
     (intent as any)?.targetLanguage ||
     (intent as any)?.label ||
     inferred ||
     'Language';
 
-const prompt = `Teach me ${langLabel}`;
+const prompt =
+  langLabel === ESL_CARD_LABEL
+    ? `Teach me English [support=${resolvedSupportLanguage}]`
+    : `Teach me ${langLabel}`;
 
 
   // optional: align the input field text with what we're starting
@@ -1726,7 +1937,35 @@ fireAiGenerateLessonOnce({
   requireAuth,
   activeOrgId,
   attemptLanguageStart, // ✅ ADD THIS
+  resolvedSupportLanguage,
 ]);
+
+  const openSupportLanguageModal = useCallback(() => {
+    if (languageLaunching) return;
+    const ok = requireAuth('ai_sandbox', 'Please sign in to start language learning.');
+    if (!ok) return;
+    setSupportLanguageOpen(true);
+  }, [languageLaunching, requireAuth]);
+
+  const startEnglishEsl = useCallback(async () => {
+    if (languageLaunching) return;
+    const ok = requireAuth('ai_sandbox', 'Please sign in to start language learning.');
+    if (!ok) return;
+
+    const prompt = `Teach me English [support=${resolvedSupportLanguage}]`;
+    setCustomTitle(prompt);
+
+    setLanguageActive(ESL_CARD_LABEL);
+    setLanguageLaunching(true);
+    setSupportLanguageOpen(false);
+
+    try {
+      await attemptLanguageStart(prompt, ESL_CARD_LABEL, 'banner');
+    } finally {
+      setLanguageLaunching(false);
+      setLanguageActive(null);
+    }
+  }, [languageLaunching, requireAuth, resolvedSupportLanguage, attemptLanguageStart]);
 
   const startLanguageFromCard = useCallback(
   async (language: string) => {
@@ -1796,9 +2035,13 @@ fireAiGenerateLessonOnce({
               <div className="flex gap-3 overflow-x-auto pb-2">
                {LANGUAGE_CARDS.map((card) => (
                     <button
-                      key={card.language}
+                      key={card.key}
                       disabled={languageLaunching}
-                      onClick={() => startLanguageFromCard(card.language)}
+                      onClick={() =>
+                        card.language === ESL_CARD_LABEL
+                          ? openSupportLanguageModal()
+                          : startLanguageFromCard(card.language)
+                      }
                       className={`min-w-[160px] rounded-2xl border border-white/70 dark:border-white/10
                         bg-gradient-to-br from-white via-white to-emerald-50/70 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-900/40
                         px-4 py-3 text-left shadow-sm transition
@@ -1862,6 +2105,77 @@ fireAiGenerateLessonOnce({
               </div>
             )}
           </header>
+
+          {supportLanguageOpen ? (
+            <div className="fixed inset-0 z-[85] flex items-end sm:items-center justify-center">
+              <div
+                className="absolute inset-0 bg-black/50"
+                onClick={() => setSupportLanguageOpen(false)}
+              />
+              <div className="relative w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/10 p-5 shadow-2xl">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                    Choose your support language
+                  </div>
+                  <button
+                    onClick={() => setSupportLanguageOpen(false)}
+                    className="text-xs text-gray-500 dark:text-white/70"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="text-xs text-gray-500 dark:text-white/70 mb-3">
+                  This sets your explanation language for English lessons.
+                </div>
+                <div className="space-y-2">
+                  {SUPPORT_LANGUAGE_OPTIONS.map((opt) => {
+                    const active = supportLanguageSetting === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        onClick={() => updateSupportLanguageSetting(opt.value)}
+                        className={`w-full rounded-xl border px-3 py-2 flex items-center justify-between text-left ${
+                          active
+                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
+                            : 'border-gray-200 dark:border-white/10 bg-white dark:bg-slate-950'
+                        }`}
+                      >
+                        <div>
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                            {opt.label}
+                          </div>
+                          {opt.subtitle ? (
+                            <div className="text-xs text-gray-500 dark:text-white/60">
+                              {opt.subtitle}
+                            </div>
+                          ) : null}
+                        </div>
+                        {active ? (
+                          <span className="text-sm text-indigo-600 dark:text-indigo-300">✓</span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                {supportLanguageSetting === 'auto' ? (
+                  <div className="mt-3 text-xs text-gray-500 dark:text-white/60">
+                    Auto resolves to: {resolvedSupportLanguage.toUpperCase()}
+                  </div>
+                ) : null}
+                <button
+                  onClick={startEnglishEsl}
+                  disabled={languageLaunching}
+                  className={`mt-4 w-full rounded-xl py-2 text-sm font-semibold ${
+                    languageLaunching
+                      ? 'bg-gray-200 text-gray-500 dark:bg-slate-800 dark:text-white/60'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-500'
+                  }`}
+                >
+                  Start English
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {/* Org share dialog */}
           <OrgShareDialog
