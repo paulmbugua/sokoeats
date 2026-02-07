@@ -4,6 +4,7 @@ import { stkPushC2B } from '../services/mpesaService.js';
 import validatePayment from '../validators/paymentValidation.js';
 import { normalizePhoneNumber } from '../utils/phoneUtils.js';
 import pool from '../config/db.js';
+import { notifyEvent } from '../services/notificationEvents.js';
 
 /* ------------------------------------------------------------------ */
 /* Shared confirm helper (SINGLE source of truth for “complete+credit”)*/
@@ -147,7 +148,12 @@ async function confirmMpesaPaymentTx(client, payRow) {
     [pkg.rows[0].credits, completedPay.user_id],
   );
 
-  return { ok: true, payment: completedPay, tokens: u.rows[0].tokens };
+  return {
+    ok: true,
+    payment: completedPay,
+    tokens: u.rows[0].tokens,
+    credits: Number(pkg.rows[0].credits || 0),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -433,6 +439,19 @@ export const confirmMpesaPayment = async (req, res) => {
       return res.status(400).json(result);
     if (!result.ok) return res.status(400).json(result);
 
+    if (!result.alreadyCompleted && result.ok) {
+      void notifyEvent(
+        'TOKENS_PURCHASED',
+        String(pay.user_id),
+        {
+          credits: result.credits,
+          tokensBalance: result.tokens,
+        },
+      ).catch((e) =>
+        console.warn('[push] tokens purchased notify failed', e?.message || e),
+      );
+    }
+
     return res.status(200).json({
       ...result,
       message: result.alreadyCompleted
@@ -547,6 +566,19 @@ export const updateMpesaReference = async (req, res) => {
     if (!result.ok && result.status === 'failed')
       return res.status(400).json(result);
     if (!result.ok) return res.status(400).json(result);
+
+    if (!result.alreadyCompleted && result.ok) {
+      void notifyEvent(
+        'TOKENS_PURCHASED',
+        String(pay.user_id),
+        {
+          credits: result.credits,
+          tokensBalance: result.tokens,
+        },
+      ).catch((e) =>
+        console.warn('[push] tokens purchased notify failed', e?.message || e),
+      );
+    }
 
     return res.status(200).json({
       ...result,

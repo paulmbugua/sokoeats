@@ -250,10 +250,15 @@ export const acceptSession = async (req, res) => {
 
     // 1) Update session status
     const session = await pool.query(
-      `UPDATE tutor_sessions 
-       SET status = 'accepted' 
-       WHERE id = $1 
-       RETURNING *`,
+      `WITH previous AS (
+         SELECT status
+           FROM tutor_sessions
+          WHERE id = $1
+       )
+       UPDATE tutor_sessions 
+          SET status = 'accepted' 
+        WHERE id = $1 
+        RETURNING *, (SELECT status FROM previous) AS previous_status`,
       [sessionId],
     );
 
@@ -534,6 +539,18 @@ export const acceptSession = async (req, res) => {
     ]);
 
     console.log('[acceptSession] Email notifications sent.');
+
+    if (sessionData.previous_status !== 'accepted') {
+      void notifyEvent(
+        'SESSION_ACCEPTED',
+        String(studentRow.id),
+        {
+          sessionId: sessionData.id,
+          tutorName: tutorRow.name || 'Tutor',
+          subject: sessionData.subject,
+        },
+      ).catch((e) => console.warn('[push] session accepted notify failed', e?.message || e));
+    }
     console.log('[acceptSession] ========= END (OK) =========\n');
 
     return res.status(200).json({
@@ -631,6 +648,18 @@ export const cancelSession = async (req, res) => {
         body: `Dear ${studentUser.rows[0].name},\n\nThe session "${sessionData.subject}" has been cancelled.\n\nReason: ${reason}\n\nBest regards,\nTutoring Platform`,
       }),
     ]);
+
+    if (isTutor) {
+      void notifyEvent(
+        'SESSION_DECLINED',
+        String(sessionData.student_user_id),
+        {
+          sessionId: sessionData.id,
+          tutorName: tutorUser.rows[0]?.name || 'Tutor',
+          subject: sessionData.subject,
+        },
+      ).catch((e) => console.warn('[push] session declined notify failed', e?.message || e));
+    }
 
     res.status(200).json({
       message:
@@ -1028,8 +1057,8 @@ export const confirmCompletion = async (req, res) => {
     // 6) Notifications (best-effort, post-commit)
     (async () => {
       try {
-        const [{ email: studentEmail } = {}] = (
-          await pool.query('SELECT email FROM users WHERE id = $1', [
+        const [{ email: studentEmail, name: studentName } = {}] = (
+          await pool.query('SELECT email, name FROM users WHERE id = $1', [
             s.student_id,
           ])
         ).rows;
@@ -1057,6 +1086,16 @@ export const confirmCompletion = async (req, res) => {
         }
         await Promise.all(tasks);
         LOG('Notifications sent');
+
+        void notifyEvent(
+          'SESSION_STUDENT_CONFIRMED',
+          String(s.tutor_user_id),
+          {
+            sessionId,
+            studentName: studentName || 'Student',
+            subject: s.subject,
+          },
+        ).catch((e) => WARN('push notify failed', { err: e?.message || e }));
       } catch (e) {
         WARN('Notifications failed', { err: e?.message });
       }

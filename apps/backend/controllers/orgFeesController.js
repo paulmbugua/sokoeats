@@ -1397,6 +1397,20 @@ export async function createFeeCharge(req, res) {
       ],
     );
 
+    void notifyEvent(
+      'ORG_FEE_BALANCE_UPDATED',
+      String(rows[0]?.learner_id),
+      {
+        orgId,
+        learnerId: rows[0]?.learner_id,
+        deltaType: 'charge',
+        amountCents: rows[0]?.amount_cents,
+        currency: rows[0]?.currency,
+      },
+    ).catch((e) =>
+      console.warn('[push] fee balance notify failed', e?.message || e),
+    );
+
     return res.status(201).json(rows[0]);
   } catch (err) {
     console.error('[createFeeCharge] error', err);
@@ -1475,6 +1489,23 @@ export async function bulkFeeCharges(req, res) {
     }
 
     await client.query('COMMIT');
+
+    for (const row of inserted) {
+      void notifyEvent(
+        'ORG_FEE_BALANCE_UPDATED',
+        String(row?.learner_id),
+        {
+          orgId,
+          learnerId: row?.learner_id,
+          deltaType: 'charge',
+          amountCents: row?.amount_cents,
+          currency: row?.currency,
+        },
+      ).catch((e) =>
+        console.warn('[push] bulk fee balance notify failed', e?.message || e),
+      );
+    }
+
     return res.json({ inserted, failed });
   } catch (err) {
     await client.query('ROLLBACK');

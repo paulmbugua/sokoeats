@@ -96,7 +96,6 @@ const LANGUAGE_CARDS = [
   { key: 'ur', language: 'Urdu', emoji: '🇵🇰', subtitle: 'Quick practice' },
   { key: 'tr', language: 'Turkish', emoji: '🇹🇷', subtitle: 'New phrases' },
   { key: 'ru', language: 'Russian', emoji: '🇷🇺', subtitle: 'Build confidence' },
-  { key: 'sw', language: 'Swahili', emoji: '🇰🇪', subtitle: 'Daily life' },
   { key: 'tl', language: 'Tagalog', emoji: '🇵🇭', subtitle: 'Start a lesson' },
   { key: 'ml', language: 'Malayalam', emoji: '🇮🇳', subtitle: 'Daily life' },
 ] as const;
@@ -777,7 +776,6 @@ const normalizeLangKey = (s?: string | null) => {
   if (t.includes('urdu') || t.includes('اردو')) return 'urdu';
   if (t.includes('turkish') || t.includes('türkçe') || t.includes('turkce')) return 'turkish';
   if (t.includes('russian') || t.includes('рус')) return 'russian';
-  if (t.includes('swahili') || t.includes('kiswahili')) return 'swahili';
   if (t.includes('tagalog') || t.includes('filipino')) return 'tagalog';
   if (t.includes('malayalam') || t.includes('മലയാളം')) return 'malayalam';
   return t;
@@ -833,7 +831,6 @@ const inferLanguageLabelFromPrompt = (prompt: string) => {
   if (p.includes('urdu') || p.includes('اردو')) return 'Urdu';
   if (p.includes('turkish') || p.includes('türkçe') || p.includes('turkce')) return 'Turkish';
   if (p.includes('russian') || p.includes('рус')) return 'Russian';
-  if (p.includes('swahili') || p.includes('kiswahili')) return 'Swahili';
   if (p.includes('tagalog') || p.includes('filipino')) return 'Tagalog';
   if (p.includes('malayalam') || p.includes('മലയാളം')) return 'Malayalam';
   return '';

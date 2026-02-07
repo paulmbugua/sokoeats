@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import pool from '../config/db.js';
+import { notifyEvent } from '../services/notificationEvents.js';
 
 const FEE_PCT = Number(process.env.PAYMENT_GATEWAY_PERCENT ?? 0);
 const FEE_FIXED = Number(process.env.PAYMENT_GATEWAY_FIXED ?? 0.3);
@@ -244,13 +245,23 @@ export async function captureOrder(req, res) {
         );
       }
 
-      const { tokens } = await creditTokensAndCompletePayment(client, {
+      const { tokens, credits } = await creditTokensAndCompletePayment(client, {
         paymentId: payment.id,
         userId: payment.user_id,
         packageId: payment.package_id,
       });
 
       await client.query('COMMIT');
+      void notifyEvent(
+        'TOKENS_PURCHASED',
+        String(payment.user_id),
+        {
+          credits,
+          tokensBalance: tokens,
+        },
+      ).catch((e) =>
+        console.warn('[push] tokens purchased notify failed', e?.message || e),
+      );
       return res.json({ ...j, tokensCredited: true, tokensBalance: tokens });
     } catch (txErr) {
       await client.query('ROLLBACK');
@@ -367,13 +378,23 @@ export async function webhooks(req, res) {
           );
         }
 
-        await creditTokensAndCompletePayment(client, {
+        const { tokens, credits } = await creditTokensAndCompletePayment(client, {
           paymentId: payment.id,
           userId: payment.user_id,
           packageId: payment.package_id,
         });
 
         await client.query('COMMIT');
+        void notifyEvent(
+          'TOKENS_PURCHASED',
+          String(payment.user_id),
+          {
+            credits,
+            tokensBalance: tokens,
+          },
+        ).catch((e) =>
+          console.warn('[push] tokens purchased notify failed', e?.message || e),
+        );
         return res.status(200).send('ok');
       } catch (txErr) {
         await client.query('ROLLBACK');

@@ -16,6 +16,7 @@ import {
   aiComputeExamSheet,
   aiTransformExamConfig,
 } from '../services/orgExamAiService.js';
+import { notifyEvent } from '../services/notificationEvents.js';
 const upload = multer({ storage: multer.memoryStorage() });
 
 /**
@@ -962,6 +963,28 @@ const normalizedRows = [...dedup.values()];
       );
 
       await client.query('COMMIT');
+
+      const studentUserIds = uniqueStudentIds.map((id) => String(id)).filter(Boolean);
+      if (studentUserIds.length) {
+        const sessionRes = await pool.query(
+          `SELECT label FROM org_exam_sessions WHERE id = $1 AND org_id = $2`,
+          [sessionId, orgId],
+        );
+        const examTitle = sessionRes.rows[0]?.label || 'Exam results';
+
+        void notifyEvent(
+          'ORG_EXAM_RESULTS_AVAILABLE',
+          studentUserIds,
+          {
+            orgId,
+            sessionId,
+            examTitle,
+          },
+        ).catch((e) =>
+          console.warn('[push] exam results notify failed', e?.message || e),
+        );
+      }
+
       return res.json({ ok: true });
     } catch (err) {
       await client.query('ROLLBACK');

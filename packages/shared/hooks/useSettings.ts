@@ -68,6 +68,9 @@ export default function useSettings(options?: UseSettingsOptions): UseSettingsRe
     },
     { id: 'help', label: 'Help', icon: 'faQuestionCircle' },
     { id: 'language', label: 'Language', icon: 'faGlobe' },
+    ...(typeof __DEV__ !== 'undefined' && __DEV__
+      ? [{ id: 'diagnostics', label: 'Diagnostics', icon: 'faBug' }]
+      : []),
     { id: 'logout', label: 'Log Out', icon: 'faPowerOff', action: logout },
   ];
 
