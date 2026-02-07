@@ -19,11 +19,8 @@ import AccountSection from './AccountSection.native';
 import CertificationSettings from './CertificationSettings.native';
 import DeleteAccountScreen from './DeleteAccount.native'; // ← import it here
 import { useSettings } from '@mytutorapp/shared/hooks';
+import type { MainStackParamList } from '../navigation/types';
 import tw from '../../tailwind';
-
-type RootStackParamList = {
-  Home: undefined;
-};
 
 const showToast = (message: string) => {
   Platform.OS === 'android'
@@ -45,13 +42,15 @@ const getIconName = (id: string): keyof typeof FontAwesome.glyphMap => {
       return 'globe';
     case 'logout':
       return 'power-off';
+    case 'diagnostics':
+      return 'bug';
     default:
       return 'user-circle';
   }
 };
 
 const SettingsNative: React.FC = () => {
-  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute();
   const { success, section } = (route.params || {}) as { success?: string; section?: string };
   const paymentSuccess = success === 'true';
@@ -64,7 +63,7 @@ const SettingsNative: React.FC = () => {
 
   const { hasProfile, activeSection, menuItems, handleMenuClick } = useSettings({
     alertFn: (title, message) => showToast(`${title}: ${message}`),
-    navigateFn: (dest) => navigation.navigate(dest as keyof RootStackParamList),
+    navigateFn: (dest) => navigation.navigate(dest as keyof MainStackParamList),
     initialSection: section,
   });
 
@@ -89,6 +88,19 @@ const SettingsNative: React.FC = () => {
 
       case 'language':
         return <Text style={tw`text-white text-center mt-10`}>Language Settings</Text>;
+
+      case 'diagnostics':
+        return (
+          <View style={tw`items-center mt-6`}>
+            <Text style={tw`text-lg font-medium text-white mb-4`}>Diagnostics</Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('PushDiagnostics')}
+              style={tw`bg-purple-700 px-5 py-3 rounded-xl`}
+            >
+              <Text style={tw`text-white font-semibold`}>Open Push Diagnostics</Text>
+            </TouchableOpacity>
+          </View>
+        );
 
       default:
         return <Text style={tw`text-white text-center mt-10`}>Account Details</Text>;

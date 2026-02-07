@@ -66,6 +66,7 @@ import Settings from './screens/SettingsScreen.native';
 import CreateProfileForm from './screens/CreateProfileForm.native';
 import ManageProfileForm from './screens/ManageProfileForm.native';
 import AccountSection from './screens/AccountSection.native';
+import PushDiagnostics from './screens/PushDiagnostics.native';
 
 /* ─────────────────────────────────────────────────────────
  * Courses / Achievements (protected)
@@ -702,6 +703,7 @@ const App: React.FC = () => {
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="SettingsCreate" component={SettingsCreateScreen} />
           <Stack.Screen name="SettingsManage" component={SettingsManageScreen} />
+          <Stack.Screen name="PushDiagnostics" component={PushDiagnostics} />
 
           <Stack.Screen name="MyEnrollments" component={MyEnrollmentsScreen} />
           <Stack.Screen name="CreateCourse" component={CreateCourseScreen} />

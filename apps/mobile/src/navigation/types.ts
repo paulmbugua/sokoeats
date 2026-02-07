@@ -196,6 +196,7 @@ export type MainStackParamList = {
   SettingsCreate: undefined;
   SettingsManage: undefined;
   SettingsAccount?: undefined;
+  PushDiagnostics: undefined;
 
   /* Payments */
   BuyTokens: undefined;
